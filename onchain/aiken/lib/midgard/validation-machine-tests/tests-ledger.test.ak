@@ -1,7 +1,10 @@
 use aiken/cbor
 use aiken/collection/list
 use aiken/merkle_patricia_forestry as mpf
-use aiken/merkle_patricia_forestry/merkling.{null_hash}
+use aiken/merkle_patricia_forestry/helpers.{combine}
+use aiken/merkle_patricia_forestry/merkling.{
+  null_hash, null_hash_2, null_hash_4,
+}
 use aiken/primitive/bytearray
 use env
 use midgard/fraud_proofs/native_tx/compact.{
@@ -37,6 +40,7 @@ use midgard/validation_machine_tests/fixtures_ledger.{
   compact_ledger_delta_successor, compact_ledger_output_descriptor,
   conservation_final_step_is_provable, conservation_mint_step_is_exact,
   ledger_delta_operation_authentication_fixture,
+  ledger_delta_singleton_entry_root, ledger_delta_singleton_finalize,
   min_ada_absolute_vector_is_exact, min_ada_probe_enterprise_output,
   min_ada_probe_rich_output, mint_authorization_step_is_provable,
   target_snapshot_canonical_size, target_snapshot_min_fee_step_is_provable,
@@ -309,13 +313,16 @@ test ledger_delta_output_finish_is_exact() {
   )
 }
 
-test ledger_delta_proof_frame_advances_only_authenticated_frame() {
+// One terminal Branch frame of a pending mutation of `operation_kind`. The
+// claimed successor is the fold without the deletion rule (as for an
+// insertion), so the step holds exactly when that rule does not refuse it.
+fn ledger_delta_terminal_branch_frame(
+  neighbors: ByteArray,
+  operation_kind: Int,
+  opening: ByteArray,
+) -> Bool {
   let key = #"616273656e742d6b6579"
   let value = #"696e7365727465642d76616c7565"
-  let neighbors = h_a
-    |> bytearray.concat(h_b)
-    |> bytearray.concat(h_c)
-    |> bytearray.concat(zero)
   let frame = mpf_proof_fold_v1.ProofFrameV1 {
     version: 1,
     frame_index: 0,
@@ -343,10 +350,11 @@ test ledger_delta_proof_frame_advances_only_authenticated_frame() {
     fold_control,
     frame,
     [],
+    None,
   )
   let pending = vm_machine_types.LedgerDeltaPendingMutationV1 {
     authorization_stage: 1,
-    operation_kind: 1,
+    operation_kind,
     key,
     value,
     descriptor,
@@ -382,64 +390,72 @@ test ledger_delta_proof_frame_advances_only_authenticated_frame() {
     },
     frame,
     [],
+    opening,
   )
 }
 
-test ledger_delta_finalize_applies_only_authenticated_root_transition() {
-  let key = #"696e736572742d6b6579"
-  let value = #"696e736572742d76616c7565"
-  let descriptor = empty_mpf_proof_descriptor()
-  expect Some(fold_control) = mpf_proof_fold_v1.initial_fold_control_v1(
-    key,
-    value,
-    descriptor,
-  )
-  let pending = vm_machine_types.LedgerDeltaPendingMutationV1 {
-    authorization_stage: 1,
-    operation_kind: 1,
-    key,
-    value,
-    descriptor,
-    fold_control,
-  }
-  let operation_leaf = vm_shared.ledger_delta_operation_leaf_hash(
+test ledger_delta_proof_frame_advances_only_authenticated_frame() {
+  ledger_delta_terminal_branch_frame(
+    h_a
+      |> bytearray.concat(h_b)
+      |> bytearray.concat(h_c)
+      |> bytearray.concat(zero),
     1,
-    key,
-    value,
-    descriptor,
+    #"",
   )
-  let operation_frontier = validation_merkle_v1.build_frontier([operation_leaf])
-  let control = vm_machine_types.LedgerDeltaControlV1 {
-    ..compact_ledger_delta_control(1),
-    current_ledger_root: fold_control.excluding_root,
-    pending_mutation_cbor: vm_witness.encode_ledger_delta_pending_mutation_v1(
-      pending,
-    ),
+}
+
+// A deletion's terminal Branch frame must keep two other children
+// (`mpf_proof_v1.terminal_branch_keeps_two_children`). The lone n8 group below
+// holds h_a and h_b in slots 8 and 9 and is opened down to them; the same
+// group with one child is refused, whatever is sent. An insertion folds either
+// frame without the rule.
+test ledger_delta_deletion_frame_keeps_a_terminal_branch_with_two_children() {
+  let lone_n8 = fn(pair) {
+    combine(combine(pair, null_hash_2), null_hash_4)
+      |> bytearray.concat(null_hash_4)
+      |> bytearray.concat(null_hash_2)
+      |> bytearray.concat(null_hash)
   }
-  let pre = compact_ledger_delta_state(
-    control,
-    56,
-    validation_merkle_v1.frontier_commitment(
-      operation_frontier.count,
-      operation_frontier.peaks,
+  let two = lone_n8(combine(h_a, h_b))
+  let one = lone_n8(combine(h_a, null_hash))
+  let opening = bytearray.concat(#"0000", bytearray.concat(h_a, h_b))
+  and {
+    ledger_delta_terminal_branch_frame(two, 0, opening),
+    !ledger_delta_terminal_branch_frame(two, 0, #""),
+    !ledger_delta_terminal_branch_frame(one, 0, #""),
+    !ledger_delta_terminal_branch_frame(
+      one,
+      0,
+      bytearray.concat(#"0000", bytearray.concat(h_a, null_hash)),
     ),
-  )
-  vm_ledger_delta.verify_ledger_delta_finalize_semantics_v1(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor: vm_witness.encode_ledger_delta_control_v1(control),
-      claimed_successor: compact_ledger_delta_successor(
-        pre,
-        vm_machine_types.LedgerDeltaControlV1 {
-          ..control,
-          current_ledger_root: fold_control.including_root,
-          operation_count: 1,
-          operation_peaks: operation_frontier.peaks,
-          pending_mutation_cbor: #"",
-        },
-      ),
-    },
-  )
+    ledger_delta_terminal_branch_frame(one, 1, #""),
+  }
+}
+
+// The first insertion starts from the committed empty ledger, which is named
+// only by `env.empty_merkle_tree_root`; the library's `null_hash` is not a
+// second name for it.
+test ledger_delta_finalize_applies_only_authenticated_root_transition() {
+  let inserted = ledger_delta_singleton_entry_root()
+  and {
+    ledger_delta_singleton_finalize(1, env.empty_merkle_tree_root, inserted),
+    !ledger_delta_singleton_finalize(1, null_hash, inserted),
+    !ledger_delta_singleton_finalize(1, env.empty_merkle_tree_root, h_a),
+  }
+}
+
+// Deleting the only entry leaves the committed empty ledger. The machine's
+// successor root must be the sentinel a block commits for it, never the
+// library's `null_hash`: otherwise the terminal root of an honest drain would
+// disagree with the block, and a block committing `null_hash` would agree.
+test ledger_delta_finalize_names_a_drained_ledger_by_the_committed_sentinel() {
+  let entry = ledger_delta_singleton_entry_root()
+  and {
+    ledger_delta_singleton_finalize(0, entry, env.empty_merkle_tree_root),
+    !ledger_delta_singleton_finalize(0, entry, null_hash),
+    !ledger_delta_singleton_finalize(0, h_a, env.empty_merkle_tree_root),
+  }
 }
 
 test value_and_mint_final_equation_is_enforced_on_l1() {

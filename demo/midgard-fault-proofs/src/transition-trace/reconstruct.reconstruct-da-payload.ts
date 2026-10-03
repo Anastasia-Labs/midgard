@@ -28,7 +28,6 @@ import {
   validateDenseTransitionTrace,
 } from "./reconstruct.decode-transactions.js";
 import {
-  countMismatches,
   eventKeyFingerprint,
   normalizeHeaderHash,
   type PayloadRootSet,
@@ -164,7 +163,6 @@ export const reconstructDaPayload = async ({
     eventToStepRoot: rootData.eventToStep.root,
     validationTracesRoot: rootData.validationTraces.root,
   };
-  const counts = body.counts;
   const mismatchedRoots = rootMismatches(headerRoots(header), roots);
   if (mismatchedRoots.length > 0) {
     throw transitionTraceError(
@@ -174,13 +172,15 @@ export const reconstructDaPayload = async ({
       )}.`,
     );
   }
-  const mismatchedCounts = countMismatches(headerCounts(header), counts);
-  if (mismatchedCounts.length > 0) {
+  // Each counted root embeds its member count, so a header count that
+  // disagrees with an authenticated root is a provable count fault, left to
+  // the detectors. No arm proves a validation_traces count, so that one
+  // disagreement stays an abort.
+  const counts = headerCounts(header);
+  if (BigInt(body.validation_traces.length) !== counts.validationTraceCount) {
     throw transitionTraceError(
       "countMismatch",
-      `Payload counts do not match committed header: ${mismatchedCounts.join(
-        ",",
-      )}.`,
+      "validation_traces member count must equal the header validation_trace_count.",
     );
   }
 
@@ -248,7 +248,7 @@ export const reconstructDaPayload = async ({
     keySchema: Data.Integer() as never,
     valueSchema: SDK.TransitionStepSchema,
   });
-  validateDenseTransitionTrace(transitionTrace, counts.transitionStepCount);
+  validateDenseTransitionTrace(transitionTrace);
   const eventToStep = decodeTypedEntries<SDK.EventKey, SDK.EventToStepValue>({
     fieldName: "event_to_step",
     entries: body.event_to_step,

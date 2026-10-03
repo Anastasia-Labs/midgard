@@ -60,7 +60,6 @@ import {
   decodeMidgardNativeTxWitnessSetCompact,
   decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
-  decodeMidgardVersionedScript,
   decodeSingleCbor,
   encodeMidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
@@ -91,12 +90,12 @@ import {
 } from "../ledger-output-descriptor.js";
 import {
   type MidgardRawEnvelopePhaseAProjection,
-  projectMidgardRawEnvelopeForPhaseAV1,
+  projectMidgardMalformedNativeWitnessEnvelopeV1,
 } from "../ledger-tx.js";
-import type { LocalScriptEvalResult } from "../local-script-eval.js";
 import { decodeMidgardRedeemers } from "../midgard-redeemers.js";
 import { validatePhaseASingle } from "../phase-a.js";
 import { runPhaseBValidationWithPatch } from "../phase-b.js";
+import type { LocalScriptEvalResult } from "../types.js";
 import type { QueuedTx, RejectCode, RejectedTx } from "../types.js";
 import { RejectCodes } from "../types.js";
 import {
@@ -116,6 +115,7 @@ import {
   advanceMidgardResolvedInputsAccumulator,
   emptyMidgardInputResolutionSchedule,
   initialMidgardResolvedInputsAccumulator,
+  orderMidgardInputResolutionSchedule,
   prependMidgardInputResolutionSchedule,
 } from "./input-resolution.js";
 import {
@@ -226,38 +226,15 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       });
       ledgerDescriptorState.set(outRefHex, outputMaterial.descriptorCbor);
     }
-    let rawExecutionProjection: MidgardRawEnvelopePhaseAProjection | null =
-      null;
-    if (
+    const rawExecutionProjection: MidgardRawEnvelopePhaseAProjection | null =
       !("ledgerTx" in phaseA) &&
-      phaseA.code === RejectCodes.InvalidFieldType &&
-      phaseA.consensusPhase === "canonicalDecode"
-    ) {
-      try {
-        const projected = projectMidgardRawEnvelopeForPhaseAV1(
-          queued.txCbor,
-          queued.sourceKind,
-        );
-        if (
-          projected.canonicalSubmittedTx === null &&
-          projected.scriptWitnesses.some(
-            ({ languageTag, versionedItemBytes }) => {
-              if (languageTag !== 0) return false;
-              try {
-                decodeMidgardVersionedScript(versionedItemBytes);
-                return false;
-              } catch {
-                return true;
-              }
-            },
-          )
-        )
-          rawExecutionProjection = projected;
-      } catch {
-        // Non-field-6 malformed material remains the original fail-closed
-        // canonicalDecode rejection.
-      }
-    }
+      phaseA.consensusPhase === "canonicalDecode" &&
+      phaseA.subject?.arm === "WitnessNativeScriptMalformed"
+        ? (projectMidgardMalformedNativeWitnessEnvelopeV1(
+            queued.txCbor,
+            queued.sourceKind,
+          )?.projection ?? null)
+        : null;
     const phaseALedgerTx =
       "ledgerTx" in phaseA
         ? phaseA.ledgerTx
@@ -461,6 +438,23 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         new Error("a rejected transaction must commit an exact ledger no-op"),
       );
     }
+    // A canonicalDecode rejection has no bounded trace: the bytes the trace
+    // would decode below are exactly the ones phase A refused, so exit before
+    // any of them is decoded.
+    if (rejection !== null && rejectionPhase(rejection) === "canonicalDecode") {
+      if (
+        rejection.code === RejectCodes.InvalidFieldType ||
+        rejection.code === RejectCodes.IsValidFalseForbidden
+      )
+        return yield* Effect.fail(
+          new DirectValidationTraceUnavailable(rejection.code),
+        );
+      return yield* Effect.fail(
+        new Error(
+          `V1 canonical rejection ${rejection.code} is not representable by the bounded canonical source`,
+        ),
+      );
+    }
 
     const authenticatedLedgerOps = input.ledgerMutationSteps.map(
       ({ operation, proofFoldTrace }) => ({
@@ -534,18 +528,15 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX,
     );
     const redeemerWitnessesCollection = machineFieldTrace(8);
-    const inputSetScanItems = [
-      ...spendInputsCollection.items.map((item) => ({
-        sourceKind: "spend" as const,
-        collection: spendInputsCollection,
-        item,
-      })),
-      ...referenceInputsCollection.items.map((item) => ({
-        sourceKind: "reference" as const,
-        collection: referenceInputsCollection,
-        item,
-      })),
-    ].sort((left, right) => Buffer.compare(left.item.bytes, right.item.bytes));
+    const collections = {
+      spend: spendInputsCollection,
+      reference: referenceInputsCollection,
+    };
+    const inputSetScanItems = orderMidgardInputResolutionSchedule({
+      spend: spendInputsCollection.items,
+      reference: referenceInputsCollection.items,
+      keyOf: (item) => item.bytes,
+    }).map((node) => ({ ...node, collection: collections[node.sourceKind] }));
     const resolutionItems = inputSetScanItems.map(({ sourceKind, item }) => ({
       sourceKind,
       key: item.bytes,
@@ -1335,20 +1326,6 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           }
         }
       }
-    }
-    if (rejection !== null && terminalPhase === "canonicalDecode") {
-      if (
-        rejection.code === RejectCodes.InvalidFieldType ||
-        rejection.code === RejectCodes.IsValidFalseForbidden
-      )
-        return yield* Effect.fail(
-          new DirectValidationTraceUnavailable(rejection.code),
-        );
-      return yield* Effect.fail(
-        new Error(
-          `V1 canonical rejection ${rejection.code} is not representable by the bounded canonical source`,
-        ),
-      );
     }
     for (const phase of ["compactBinding", "staticLedgerRules"] as const) {
       if (stoppedAtRejection) break;
@@ -2204,8 +2181,10 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             );
           }
           // Chained descriptor-fact attachment: each canonical group is one
-          // checkpointed machine step over the same finalize witness shape;
-          // the thin terminal finalize below requires all four facts exact.
+          // checkpointed machine step over the same finalize witness shape,
+          // its commitments derived from the terminal control alone; the thin
+          // terminal finalize below requires the scan fact to commit exactly
+          // the resolved descriptor.
           let factsProof = outputProof.terminal;
           while (!midgardLedgerOutputProofFactsComplete(factsProof)) {
             pushWitness(
@@ -2217,14 +2196,10 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               }),
               {
                 kind: "ledgerOutputProofFinalize",
-                descriptorCbor,
                 signerProof: { kind: "none" },
               },
             );
-            const attached = attachMidgardLedgerOutputProofFacts(
-              factsProof,
-              descriptorCbor,
-            );
+            const attached = attachMidgardLedgerOutputProofFacts(factsProof);
             if (attached === null) {
               return yield* Effect.fail(
                 new Error("ledger output proof fact attachment failed closed"),
@@ -2242,7 +2217,6 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             }),
             {
               kind: "ledgerOutputProofFinalize",
-              descriptorCbor,
               signerProof,
             },
           );
@@ -2916,8 +2890,9 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               }
               // Chained descriptor-fact attachment: each canonical group is
               // one checkpointed machine step over the same finalize witness
-              // shape; the thin terminal finalize below requires all four
-              // facts exact.
+              // shape, its commitments derived from the terminal control
+              // alone; the thin terminal finalize below requires the scan
+              // fact to commit exactly the output's descriptor.
               let factsProof = outputProof.terminal;
               while (!midgardLedgerOutputProofFactsComplete(factsProof)) {
                 pushWitness(
@@ -2939,14 +2914,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                   }),
                   {
                     kind: "ledgerOutputProofFinalize",
-                    descriptorCbor: outputMaterial.descriptorCbor,
                     signerProof: { kind: "none" },
                   },
                 );
-                const attached = attachMidgardLedgerOutputProofFacts(
-                  factsProof,
-                  outputMaterial.descriptorCbor,
-                );
+                const attached =
+                  attachMidgardLedgerOutputProofFacts(factsProof);
                 if (attached === null) {
                   return yield* Effect.fail(
                     new Error(
@@ -2975,7 +2947,6 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 }),
                 {
                   kind: "ledgerOutputProofFinalize",
-                  descriptorCbor: outputMaterial.descriptorCbor,
                   signerProof,
                 },
               );

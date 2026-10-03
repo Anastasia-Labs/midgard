@@ -63,7 +63,7 @@ import {
   reserveAdmissionBacklogSlot,
 } from "../../src/fibers/admission-backlog-gauge.js";
 import {
-  collectAcceptedReferenceProgramEnvelopes,
+  collectAcceptedProgramEnvelopes,
   requestTxQueueProcessorWakeup,
   withAdmissionLeaseRecovery,
 } from "../../src/fibers/tx-queue-processor.js";
@@ -1072,22 +1072,21 @@ export const registerAdmissionsTests = () => {
                 scriptBytes: encodeMidgardCekProgramEnvelope(attempt.envelope),
               },
             });
-            const referenceProgramEnvelopesByTxId =
-              collectAcceptedReferenceProgramEnvelopes(
-                [
-                  {
-                    ledgerTx: { txId: attempt.txId },
-                    submission: { txCbor: attempt.txCanonicalCbor },
-                    graph: { produced: [] },
-                  },
-                ],
-                new Map([
-                  [attempt.referenceOutRef.toString("hex"), referenceOutput],
-                ]),
-              );
-            expect(
-              referenceProgramEnvelopesByTxId.get(attempt.txIdHex),
-            ).toEqual([attempt.envelope]);
+            const programEnvelopesByTxId = collectAcceptedProgramEnvelopes(
+              [
+                {
+                  ledgerTx: { txId: attempt.txId },
+                  submission: { txCbor: attempt.txCanonicalCbor },
+                  graph: { produced: [] },
+                },
+              ],
+              new Map([
+                [attempt.referenceOutRef.toString("hex"), referenceOutput],
+              ]),
+            );
+            expect(programEnvelopesByTxId.get(attempt.txIdHex)).toEqual([
+              attempt.envelope,
+            ]);
 
             const leaseOwner = "database-test:accepted-reference-material";
             const claimed = yield* TxAdmissionsDB.claimBatch({
@@ -1106,7 +1105,7 @@ export const registerAdmissionsTests = () => {
                   produced: [],
                 },
               ],
-              referenceProgramEnvelopesByTxId,
+              programEnvelopesByTxId,
             });
 
             expect(
@@ -1505,12 +1504,6 @@ export const registerAdmissionsTests = () => {
                       code: RejectCodes.InvalidSignature,
                       detail: "phase1 pool-isolation hold",
                     })),
-                  }),
-                ),
-              evaluateScript: () =>
-                Effect.fail(
-                  new ValidationWorkerError({
-                    message: "unexpected script evaluation",
                   }),
                 ),
             };

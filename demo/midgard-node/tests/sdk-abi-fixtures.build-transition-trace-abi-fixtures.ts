@@ -48,7 +48,7 @@ export const buildTransitionTraceAbiFixtures = (): Record<
   const ledgerDeleteWitness: SDK.LedgerDeleteWitness = {
     key: "aa",
     value: "bb",
-    membership_proof: proof,
+    opening: "",
     delete_proof: proof,
   };
   const ledgerInsertWitness: SDK.LedgerInsertWitness = {

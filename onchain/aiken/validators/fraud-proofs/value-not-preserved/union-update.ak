@@ -12,6 +12,7 @@ pub type Args {
   output_index: Int,
   old_delta: Int,
   proof: mpf.Proof,
+  opening: ByteArray,
 }
 
 validator main(computation_thread_token_policy_id: PolicyId) {
@@ -51,6 +52,7 @@ validator main(computation_thread_token_policy_id: PolicyId) {
           pending.quantity,
           args.old_delta,
           args.proof,
+          args.opening,
         )
         let expected: Data = FoldState {
           balance: BalanceState { ..state.balance, asset_delta_root: root },

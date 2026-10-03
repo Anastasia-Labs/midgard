@@ -40,6 +40,8 @@ use fraud_proofs/validation_trace/cek_context_mint_item as context_mint_item
 use fraud_proofs/validation_trace/cek_context_observer_authenticate as context_observer_authenticate
 use fraud_proofs/validation_trace/cek_context_observer_fold as context_observer_fold
 use fraud_proofs/validation_trace/cek_context_output as context_output
+use fraud_proofs/validation_trace/cek_context_redeemer_select_authenticate as redeemer_select_authenticate
+use fraud_proofs/validation_trace/cek_context_redeemer_select_finish as redeemer_select_finish
 use fraud_proofs/validation_trace/cek_context_reference as context_reference
 use fraud_proofs/validation_trace/cek_context_settle as context_settle
 use fraud_proofs/validation_trace/cek_context_signer as context_signer
@@ -56,6 +58,9 @@ use midgard/bounded_item_v1
 use midgard/cek_context_chain as context_chain
 use midgard/cek_context_item as context_item
 use midgard/cek_context_observer as context_observer
+use midgard/cek_context_redeemer.{
+  RedeemerInitialPending, RedeemerSelectionPending,
+} as context_redeemer
 use midgard/cek_context_step as context_step
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
@@ -85,7 +90,8 @@ use midgard/script_sources_redeemer_normalization_v1.{
 use midgard/validation_machine/cek as cek_semantics
 use midgard/validation_machine/machine_types.{
   CekContextControlV1, CekCoreStepWitness, CekMintContextItemWitness,
-  CekMintHead, CekWitnessControlV1, NativeExecutionScanWitness,
+  CekMintHead, CekRedeemerContextControlV1, CekRedeemerContextSelectWitness,
+  CekRedeemerContextSkipWitness, CekWitnessControlV1, NativeExecutionScanWitness,
   NativeScriptsControlV1, NoAuxiliaryWitness, RedeemerItemStepWitness,
   ValidationAuxiliaryWitnessV1, ValidationOneStepEvidenceV1,
   ValidationOneStepWitnessV1,
@@ -671,7 +677,9 @@ fn context_step_fixture() -> CekStepFixtureV1 {
     [],
     False,
   )
-  let redeemer_context = vm_witness.initial_cek_redeemer_context_control_v1()
+  let redeemer_context = vm_witness.initial_cek_redeemer_context_control_v1(
+    control.purpose_count,
+  )
   let init_control = CekContextControlV1 {
     stage: 6,
     language_tag: 3,
@@ -2577,7 +2585,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
       execution_memory_limit: next_item.execution_memory,
       execution_cpu_limit: next_item.execution_steps,
       redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
-        vm_witness.initial_cek_redeemer_context_control_v1(),
+        vm_witness.initial_cek_redeemer_context_control_v1(native.purpose_count),
       ),
     }
   } else {
@@ -2750,6 +2758,164 @@ test bounded_context_descriptor_tail_handoff_and_return() {
   run_context_descriptor_handoff(True)
 }
 
+// ---- The stage-9 item bind ----
+//
+// At stage 9 item-bind checks no field of the presented item control on its
+// own: `active_scan_hash` pins the control the select built, and the item
+// proof never rewrites its mode, index, count, commitment or tag. These spend
+// item-bind from an honest post-select redeemer control; each fail twin
+// presents a forged item control that only the pin can refuse.
+
+/// The descriptor bytes of witness item `item_index`: a spend at pointer 0,
+/// then a mint at pointer 0.
+fn stage9_item_bytes(item_index: Int) -> ByteArray {
+  if item_index == 0 {
+    #"8400004100820a14"
+  } else {
+    #"8401004100820a14"
+  }
+}
+
+/// The item control an honest select of witness item `item_index` builds.
+fn stage9_item_control(
+  item_index: Int,
+) -> redeemer_item.RedeemerItemProofControlV1 {
+  let bytes = stage9_item_bytes(item_index)
+  redeemer_item.initial_control_v1(
+    redeemer_item.mode_descriptor,
+    item_index,
+    2,
+    bytearray.length(bytes),
+    bounded_item_v1.from_bytes(8, item_index, bytes),
+    item_index,
+    0,
+  )
+}
+
+/// Spend item-bind at stage 9 after the select of item 0, presenting the item
+/// control `forge` makes of the honest one with the header witness of the
+/// item it names. The claimed next control is the one `step_v1` yields.
+fn run_stage9_item_bind(
+  forge: fn(redeemer_item.RedeemerItemProofControlV1) ->
+    redeemer_item.RedeemerItemProofControlV1,
+) -> Bool {
+  let honest = stage9_item_control(0)
+  let presented = forge(honest)
+  let bytes = stage9_item_bytes(presented.item_index)
+  let witness = redeemer_item.RedeemerItemProofWitnessV1 {
+    action: redeemer_item.RedeemerItemOpenHeader,
+    chunk_proof: Some(
+      bounded_item_v1.ChunkProofV1 {
+        version: 1,
+        field_index: 8,
+        item_index: presented.item_index,
+        total_length: bytearray.length(bytes),
+        chunk_index: 0,
+        chunk: bytes,
+        frontier: validation_merkle_v1.build_frontier(
+          [bounded_item_v1.hash_chunk(8, presented.item_index, 0, bytes)],
+        ).peaks,
+        siblings: [],
+      },
+    ),
+    next_chunk_proof: None,
+  }
+  expect Some(redeemer_item.RedeemerItemProofAdvanced { control: next_item }) = redeemer_item.step_v1(
+    presented,
+    witness,
+  )
+  let current = CekRedeemerContextControlV1 {
+    ..vm_witness.initial_cek_redeemer_context_control_v1(2),
+    active_scan_hash: redeemer_item.hash_control_v1(honest),
+    active_redeemer_leaf: script_proof_v1.redeemer_item_leaf_hash(
+      0,
+      honest.item_commitment,
+    ),
+    purpose_bound: 1,
+  }
+  let auxiliary = RedeemerItemStepWitness {
+    redeemer_control: Some(current),
+    control: presented,
+    witness,
+  }
+  let auxiliary_data: Data = auxiliary
+  let f = context_step_fixture()
+  let original = context_staged_fixture(f)
+  let staged = context_chain.ContextStaged {
+    ..original,
+    bound: context_chain.ContextBound {
+      ..original.bound,
+      auxiliary_hash: blake2b_256(cbor.serialise(auxiliary_data)),
+    },
+    context: CekContextControlV1 {
+      ..original.context,
+      stage: 9,
+      redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+        current,
+      ),
+    },
+  }
+  let staged_data: Data = staged
+  let witness_data: Data = witness
+  let pending: Data = CekContextItemStepPending {
+    staged: staged_data,
+    item_control: presented,
+    item_witness_hash: blake2b_256(cbor.serialise(witness_data)),
+    claimed_next: next_item,
+  }
+  context_item_bind.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(staged),
+      },
+    ),
+    ct.Continue(
+      context_item.VerifyItem {
+        input_index: 0,
+        output_index: 0,
+        transition: f.transition,
+        auxiliary: auxiliary_data,
+        claimed_next: next_item,
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(ct_asset, pending),
+  )
+}
+
+test bounded_context_stage9_item_bind_accepts_the_selected_item() {
+  run_stage9_item_bind(fn(control) { control })
+}
+
+test bounded_context_stage9_item_bind_refuses_a_forged_item_count() fail {
+  run_stage9_item_bind(
+    fn(control) {
+      redeemer_item.RedeemerItemProofControlV1 {
+        ..control,
+        item_count: control.item_count + 1,
+      }
+    },
+  )
+}
+
+test bounded_context_stage9_item_bind_refuses_a_flipped_mode() fail {
+  run_stage9_item_bind(
+    fn(control) {
+      redeemer_item.RedeemerItemProofControlV1 {
+        ..control,
+        mode: redeemer_item.mode_data,
+      }
+    },
+  )
+}
+
+test bounded_context_stage9_item_bind_refuses_another_item() fail {
+  run_stage9_item_bind(fn(_) { stage9_item_control(1) })
+}
+
 test bounded_context_binding_wire_matches_sdk() {
   let f = context_step_fixture()
   let staged = context_staged_fixture(f)
@@ -2768,7 +2934,7 @@ test bounded_context_binding_wire_matches_sdk() {
       staged_data,
     ],
   )
-  blake2b_256(cbor.serialise(vector)) == #"3683841371786bc1967f96e267e3ccf3f9bed29b09ae1e229f9311c5e9dac338"
+  blake2b_256(cbor.serialise(vector)) == #"fde5213b570b4d1b49fd4abcf5b491dc11665d9cfd7e01bfe588dbd4d1098aee"
 }
 
 fn ordered_mint_fixture() -> Pair<CekContextControlV1, CekMintHead> {
@@ -3303,4 +3469,639 @@ test context_mint_order_refuses_policy_revisit_and_spurious_head() {
       None,
     ),
   }
+}
+
+// ---------------------------------------------------------------------------
+// Redeemer ledger order in the split redeemer select
+// ---------------------------------------------------------------------------
+//
+// Two purposes on the execution frontier, spend at 0 and mint at 1. The
+// witness list holds the mint redeemer before the spend redeemer, the
+// reverse of ledger order: item 0 is the mint redeemer, item 1 the spend
+// redeemer. With `native_mint` the mint policy is a native script, so it
+// takes no redeemer and the spend redeemer is the only item. The execution
+// leaf at `purpose_bound - 1` admits one step: a select of exactly its
+// purpose and item, or, for a native execution, a skip.
+
+const redeemer_select_other_hash =
+  #"dddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+
+fn redeemer_select_item(item_index: Int) -> ByteArray {
+  cbor.serialise(builtin.i_data(item_index + 100))
+}
+
+fn redeemer_select_commitment(item_index: Int) -> ByteArray {
+  bounded_item_v1.from_bytes(
+    redeemer_item.redeemer_field_index,
+    item_index,
+    redeemer_select_item(item_index),
+  )
+}
+
+/// The item's chunk-frontier root; every item here fits one chunk.
+fn redeemer_select_item_root(item_index: Int) -> ByteArray {
+  let built = validation_merkle_v1.build_frontier(
+    [
+      bounded_item_v1.hash_chunk(
+        redeemer_item.redeemer_field_index,
+        item_index,
+        0,
+        redeemer_select_item(item_index),
+      ),
+    ],
+  )
+  validation_merkle_v1.frontier_commitment(built.count, built.peaks)
+}
+
+fn redeemer_select_leaf(item_index: Int) -> ByteArray {
+  script_proof_v1.redeemer_item_leaf_hash(
+    item_index,
+    redeemer_select_commitment(item_index),
+  )
+}
+
+fn redeemer_select_count(native_mint: Bool) -> Int {
+  if native_mint {
+    1
+  } else {
+    2
+  }
+}
+
+fn redeemer_select_leaves(native_mint: Bool) -> List<ByteArray> {
+  if native_mint {
+    [redeemer_select_leaf(0)]
+  } else {
+    [redeemer_select_leaf(0), redeemer_select_leaf(1)]
+  }
+}
+
+fn redeemer_select_subject(frontier_index: Int) -> ByteArray {
+  if frontier_index == 0 {
+    h_c
+  } else {
+    h_28_a
+  }
+}
+
+fn redeemer_select_source(frontier_index: Int) -> ByteArray {
+  if frontier_index == 0 {
+    h_a
+  } else {
+    h_b
+  }
+}
+
+fn redeemer_select_purpose_leaf(frontier_index: Int) -> ByteArray {
+  script_proof_v1.purpose_leaf_hash(
+    frontier_index,
+    0,
+    h_28_a,
+    redeemer_select_subject(frontier_index),
+  )
+}
+
+fn redeemer_select_execution_leaf(
+  native_mint: Bool,
+  frontier_index: Int,
+) -> ByteArray {
+  if frontier_index == 0 {
+    script_proof_v1.execution_leaf_hash(
+      3,
+      redeemer_select_purpose_leaf(0),
+      h_a,
+      redeemer_select_leaf(redeemer_select_count(native_mint) - 1),
+    )
+  } else if native_mint {
+    script_proof_v1.execution_leaf_hash(
+      0,
+      redeemer_select_purpose_leaf(1),
+      h_b,
+      #"",
+    )
+  } else {
+    script_proof_v1.execution_leaf_hash(
+      3,
+      redeemer_select_purpose_leaf(1),
+      h_b,
+      redeemer_select_leaf(0),
+    )
+  }
+}
+
+fn redeemer_select_executions(native_mint: Bool) -> List<ByteArray> {
+  [
+    redeemer_select_execution_leaf(native_mint, 0),
+    redeemer_select_execution_leaf(native_mint, 1),
+  ]
+}
+
+/// The genuine membership path of `frontier_index`: the other leaf.
+fn redeemer_select_siblings(
+  native_mint: Bool,
+  frontier_index: Int,
+) -> List<ByteArray> {
+  [redeemer_select_execution_leaf(native_mint, 1 - frontier_index)]
+}
+
+/// A Plutus select of the purpose at `named` consuming item `item_index`,
+/// genuine in every field except that `length_delta` is added to the
+/// item's length.
+fn redeemer_select_auxiliary(
+  control: CekRedeemerContextControlV1,
+  item_index: Int,
+  named: Int,
+  length_delta: Int,
+) -> Data {
+  let auxiliary: ValidationAuxiliaryWitnessV1 = CekRedeemerContextSelectWitness {
+    control,
+    item_index,
+    total_length: bytearray.length(redeemer_select_item(item_index)) + length_delta,
+    item_commitment: redeemer_select_commitment(item_index),
+    purpose_kind: named,
+    purpose_index: 0,
+    script_hash: h_28_a,
+    subject: redeemer_select_subject(named),
+    execution_language_tag: 3,
+    source_leaf: redeemer_select_source(named),
+    execution_siblings: redeemer_select_siblings(False, named),
+    item_frontier_root: redeemer_select_item_root(item_index),
+  }
+  let auxiliary_data: Data = auxiliary
+  auxiliary_data
+}
+
+/// A skip of the purpose at `named`, with that purpose's own leaf, source
+/// and genuine execution path.
+fn redeemer_skip_auxiliary(
+  native_mint: Bool,
+  control: CekRedeemerContextControlV1,
+  named: Int,
+) -> ValidationAuxiliaryWitnessV1 {
+  CekRedeemerContextSkipWitness {
+    control,
+    purpose_leaf: redeemer_select_purpose_leaf(named),
+    source_leaf: redeemer_select_source(named),
+    execution_siblings: redeemer_select_siblings(native_mint, named),
+  }
+}
+
+fn redeemer_select_staged(
+  native_mint: Bool,
+  control: CekRedeemerContextControlV1,
+  auxiliary: Data,
+) -> context_chain.ContextStaged {
+  let original = context_staged_fixture(context_step_fixture())
+  expect cek: CekWitnessControlV1 = original.bound.control
+  let executions = validation_merkle_v1.build_frontier(
+    redeemer_select_executions(native_mint),
+  )
+  let bound_control: Data = CekWitnessControlV1 {
+    ..cek,
+    control: NativeScriptsControlV1 {
+      ..cek.control,
+      execution_count: executions.count,
+      execution_peaks: executions.peaks,
+    },
+  }
+  context_chain.ContextStaged {
+    ..original,
+    bound: context_chain.ContextBound {
+      ..original.bound,
+      control: bound_control,
+      auxiliary_hash: blake2b_256(cbor.serialise(auxiliary)),
+    },
+    context: CekContextControlV1 {
+      ..original.context,
+      stage: 9,
+      redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+        control,
+      ),
+    },
+    native: context_step.NativeFacts {
+      ..original.native,
+      redeemer_count: redeemer_select_count(native_mint),
+      redeemer_peaks: validation_merkle_v1.build_frontier(
+        redeemer_select_leaves(native_mint),
+      ).peaks,
+      purpose_count: 2,
+      purpose_peaks: validation_merkle_v1.build_frontier(
+        [redeemer_select_purpose_leaf(0), redeemer_select_purpose_leaf(1)],
+      ).peaks,
+    },
+  }
+}
+
+/// The pending selection the validator yields for
+/// `redeemer_select_auxiliary(control, item_index, named, length_delta)`:
+/// the frontier is always `purpose_bound - 1`, whatever the witness names.
+fn redeemer_select_pending(
+  staged: context_chain.ContextStaged,
+  control: CekRedeemerContextControlV1,
+  item_index: Int,
+  named: Int,
+  length_delta: Int,
+) -> RedeemerSelectionPending {
+  let staged_data: Data = staged
+  RedeemerSelectionPending {
+    staged: staged_data,
+    control,
+    item_index,
+    item_count: staged.native.redeemer_count,
+    total_length: bytearray.length(redeemer_select_item(item_index)) + length_delta,
+    item_commitment: redeemer_select_commitment(item_index),
+    redeemer_leaf: redeemer_select_leaf(item_index),
+    purpose_frontier: control.purpose_bound - 1,
+    purpose_kind: named,
+    purpose_index: 0,
+    script_hash: h_28_a,
+    subject: redeemer_select_subject(named),
+  }
+}
+
+fn redeemer_select_action(auxiliary: Data) -> context_chain.ContextRedeemer {
+  ct.Continue(
+    context_chain.VerifyContext {
+      ..context_chain_action(context_step_fixture()),
+      auxiliary,
+    },
+  )
+}
+
+fn run_redeemer_select_authenticate(
+  control: CekRedeemerContextControlV1,
+  item_index: Int,
+  named: Int,
+  length_delta: Int,
+) -> Bool {
+  let auxiliary = redeemer_select_auxiliary(
+    control,
+    item_index,
+    named,
+    length_delta,
+  )
+  let staged = redeemer_select_staged(False, control, auxiliary)
+  let pending: Data = redeemer_select_pending(
+    staged,
+    control,
+    item_index,
+    named,
+    length_delta,
+  )
+  redeemer_select_authenticate.main.spend(
+    fixture.next_step_script_hash,
+    redeemer_select_other_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(staged),
+      },
+    ),
+    redeemer_select_action(auxiliary),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(ct_asset, pending),
+  )
+}
+
+fn redeemer_skip_successor(
+  staged: context_chain.ContextStaged,
+  control: CekRedeemerContextControlV1,
+) -> context_chain.ContextVerified {
+  let staged_data: Data = staged
+  context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext {
+      next: CekContextControlV1 {
+        ..staged.context,
+        redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+          CekRedeemerContextControlV1 {
+            ..control,
+            purpose_bound: control.purpose_bound - 1,
+          },
+        ),
+      },
+    },
+  }
+}
+
+/// A skip at the purpose bound, verified by the select-authenticate
+/// validator applied with `settle_script_hash`. The transaction continues
+/// the thread to `fixture.next_step_script_hash` either way.
+fn run_redeemer_skip_authenticate(
+  native_mint: Bool,
+  control: CekRedeemerContextControlV1,
+  initialize_script_hash: ByteArray,
+  settle_script_hash: ByteArray,
+) -> Bool {
+  let auxiliary: Data = redeemer_skip_auxiliary(
+    native_mint,
+    control,
+    control.purpose_bound - 1,
+  )
+  let staged = redeemer_select_staged(native_mint, control, auxiliary)
+  let verified: Data = redeemer_skip_successor(staged, control)
+  redeemer_select_authenticate.main.spend(
+    initialize_script_hash,
+    settle_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(staged),
+      },
+    ),
+    redeemer_select_action(auxiliary),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(ct_asset, verified),
+  )
+}
+
+/// A control with one redeemer folded and the given purpose bound.
+fn redeemer_select_after_one(bound: Int) -> CekRedeemerContextControlV1 {
+  CekRedeemerContextControlV1 {
+    ..vm_witness.initial_cek_redeemer_context_control_v1(2),
+    cursor: 1,
+    map_items: cek_data_v1.prepend_data_pair_summary_v1(
+      cek_data_v1.semantic_data_summary_v1(builtin.i_data(0)),
+      cek_data_v1.semantic_data_summary_v1(builtin.i_data(1)),
+      cek_data_v1.empty_data_pair_summary_v1(),
+    ),
+    purpose_bound: bound,
+  }
+}
+
+test redeemer_select_authenticate_takes_the_highest_purpose_first() {
+  run_redeemer_select_authenticate(
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    0,
+    1,
+    0,
+  )
+}
+
+test redeemer_select_authenticate_takes_a_purpose_below_the_bound() {
+  run_redeemer_select_authenticate(redeemer_select_after_one(1), 1, 0, 0)
+}
+
+// With both purposes open, a select of the spend purpose (frontier 0) and
+// its genuine path skips the mint purpose at the frontier; the step above
+// shows the same witness is honest once the bound is 1.
+test redeemer_select_authenticate_refuses_a_select_that_skips_a_purpose() fail {
+  run_redeemer_select_authenticate(
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    1,
+    0,
+    0,
+  )
+}
+
+// The mint purpose at the frontier with the spend purpose's redeemer item.
+test redeemer_select_authenticate_refuses_another_redeemer_item() fail {
+  run_redeemer_select_authenticate(
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    1,
+    1,
+    0,
+  )
+}
+
+// After the spend purpose (frontier 0) the bound is 0, so the mint
+// purpose above it, the retired witness-list order's second select, is
+// refused.
+test redeemer_select_authenticate_refuses_a_purpose_at_or_above_the_bound() fail {
+  run_redeemer_select_authenticate(redeemer_select_after_one(0), 0, 1, 0)
+}
+
+test redeemer_select_authenticate_refuses_the_same_purpose_twice() fail {
+  run_redeemer_select_authenticate(redeemer_select_after_one(1), 0, 1, 0)
+}
+
+test redeemer_select_authenticate_refuses_a_forged_item_length() fail {
+  run_redeemer_select_authenticate(
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    0,
+    1,
+    1,
+  )
+}
+
+test redeemer_select_authenticate_skips_a_native_execution() {
+  run_redeemer_skip_authenticate(
+    True,
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    redeemer_select_other_hash,
+    fixture.next_step_script_hash,
+  )
+}
+
+// The skip continues to the settle validator; a thread routed to any other
+// hash, here the initialize validator's, is refused.
+test redeemer_select_authenticate_refuses_a_skip_to_another_hash() fail {
+  run_redeemer_skip_authenticate(
+    True,
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    fixture.next_step_script_hash,
+    redeemer_select_other_hash,
+  )
+}
+
+test redeemer_select_authenticate_refuses_a_skip_of_a_plutus_execution() fail {
+  run_redeemer_skip_authenticate(
+    False,
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    redeemer_select_other_hash,
+    fixture.next_step_script_hash,
+  )
+}
+
+/// The honest stage-9 skip of the native mint policy as one monolithic
+/// step, for the split parity below.
+fn redeemer_skip_step_fixture() -> CekStepFixtureV1 {
+  let tx = empty_v1_transaction()
+  let executions = validation_merkle_v1.build_frontier(
+    redeemer_select_executions(True),
+  )
+  let control = NativeScriptsControlV1 {
+    ..empty_native_control(tx),
+    redeemer_count: 1,
+    redeemer_peaks: validation_merkle_v1.build_frontier(
+      redeemer_select_leaves(True),
+    ).peaks,
+    purpose_count: 2,
+    purpose_peaks: validation_merkle_v1.build_frontier(
+      [redeemer_select_purpose_leaf(0), redeemer_select_purpose_leaf(1)],
+    ).peaks,
+    execution_count: executions.count,
+    execution_peaks: executions.peaks,
+    execution_cursor: 2,
+    language_bitmap: 1,
+  }
+  let redeemers = vm_witness.initial_cek_redeemer_context_control_v1(2)
+  let original = context_staged_fixture(context_step_fixture()).context
+  let context = CekContextControlV1 {
+    ..original,
+    stage: 9,
+    mint_summary: cek_data_v1.map_data_summary_v1(
+      cek_data_v1.empty_data_pair_summary_v1(),
+    ),
+    redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+      redeemers,
+    ),
+  }
+  let next_context = CekContextControlV1 {
+    ..context,
+    redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+      CekRedeemerContextControlV1 { ..redeemers, purpose_bound: 1 },
+    ),
+  }
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    control,
+    vm_witness.encode_cek_context_control_v1(context),
+    0,
+    #"",
+    0,
+    0,
+    h_b,
+    53,
+    0,
+    0,
+  )
+  let Pair(post, _) = cek_state(
+    tx,
+    control,
+    vm_witness.encode_cek_context_control_v1(next_context),
+    0,
+    #"",
+    0,
+    0,
+    h_b,
+    54,
+    0,
+    0,
+  )
+  step_fixture(
+    2,
+    pre,
+    work_witness_cbor,
+    post,
+    redeemer_skip_auxiliary(True, redeemers, 1),
+    NoCekMaterial,
+  )
+}
+
+/// The skip through the split chain (bind, control, select-authenticate,
+/// settle) wins exactly where the monolithic context step wins.
+test redeemer_skip_split_agrees_with_original() {
+  let f = redeemer_skip_step_fixture()
+  let staged = context_staged_fixture(f)
+  let bound_data: Data = staged.bound
+  let staged_data: Data = staged
+  expect CekRedeemerContextSkipWitness { control, .. } = f.auxiliary
+  let verified = redeemer_skip_successor(staged, control)
+  let verified_data: Data = verified
+  let action = ct.Continue(context_chain_action(f))
+  let next_hash = fixture.next_step_script_hash
+  and {
+    run_kind(2, f),
+    context_bind.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(semantic_datum(prepared(f))),
+      action,
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, bound_data),
+    ),
+    context_control.main.spend(
+      [
+        next_hash, next_hash, next_hash, next_hash, next_hash, next_hash,
+        next_hash, next_hash, next_hash, next_hash,
+      ],
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(staged.bound),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, staged_data),
+    ),
+    redeemer_select_authenticate.main.spend(
+      redeemer_select_other_hash,
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(staged),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, verified_data),
+    ),
+    context_settle.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(verified),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    ),
+  }
+}
+
+fn run_redeemer_select_finish(next_bound: Int) -> Bool {
+  let control = vm_witness.initial_cek_redeemer_context_control_v1(2)
+  let auxiliary = redeemer_select_auxiliary(control, 0, 1, 0)
+  let staged = redeemer_select_staged(False, control, auxiliary)
+  let selection = redeemer_select_pending(staged, control, 0, 1, 0)
+  let summary = cek_data_v1.semantic_data_summary_v1(builtin.i_data(0))
+  let pending = RedeemerInitialPending {
+    selection,
+    purpose: Some(summary),
+    initial_hash: h_c,
+  }
+  let next_redeemers = CekRedeemerContextControlV1 {
+    ..control,
+    active_scan_hash: h_c,
+    active_redeemer_leaf: selection.redeemer_leaf,
+    active_purpose: summary,
+    purpose_bound: next_bound,
+  }
+  let next: Data = context_chain.ContextVerified {
+    staged: selection.staged,
+    successor: context_chain.ContinueContext {
+      next: context_redeemer.context_successor(staged, next_redeemers),
+    },
+  }
+  redeemer_select_finish.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(pending),
+      },
+    ),
+    redeemer_select_action(auxiliary),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+  )
+}
+
+test redeemer_select_finish_lowers_the_bound_to_the_selected_purpose() {
+  run_redeemer_select_finish(1)
+}
+
+test redeemer_select_finish_refuses_a_successor_that_keeps_the_bound() fail {
+  run_redeemer_select_finish(2)
 }

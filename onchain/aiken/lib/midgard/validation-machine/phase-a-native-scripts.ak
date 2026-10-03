@@ -416,52 +416,69 @@ pub fn verify_phase_a_native_item_foreign_payload_v1(
   }
 }
 
+/// The bytes at `control.cursor` of the item `control.item_commitment` commits.
+///
+/// Every stage that reads a token calls this window, and each parser returns
+/// `None` on an empty window, so every one of them takes its
+/// `reject_invalid_field_type` arm there. End of item therefore yields the
+/// empty window and never opens a chunk: when `item_length` is a multiple of
+/// `chunk_bytes`, the chunk `cursor / chunk_bytes` does not exist, and
+/// demanding it left the end-of-item state with no successor at all. At any
+/// other end of item the last chunk yields the same reject, so the successor
+/// is unchanged. `cursor` and `item_length` are control fields the work
+/// witness already binds.
+///
+/// A chunk proof carries no coordinate check of its own. `verify_chunk`
+/// proves it against `control.item_commitment`, and the commitment hashes
+/// the field index, item index and total length. That commitment is
+/// authenticated in both modes: the early scan derives it from the field-6
+/// item the door opened, and a late continuation takes it from the source
+/// leaf the execution leaf proves. A late source keeps its real coordinate
+/// (a reference output in field 2, or inline item 1 or later) while its
+/// control restarts `script_seen` at 0, so a check of field 6 and item
+/// `script_seen` would refuse every chunk of it.
 fn phase_a_native_chunk_window(
   control: PhaseANativeScriptsControlV1,
   chunk_proof: bounded_item_v1.ChunkProofV1,
   next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
 ) -> Option<NativeChunkWindowV1> {
-  let expected_chunk_index = control.cursor / bounded_item_v1.chunk_bytes
-  let count = bounded_item_v1.chunk_count(control.item_length)
-  let current_matches = and {
-    chunk_proof.field_index == 6,
-    chunk_proof.item_index == control.script_seen,
-    chunk_proof.total_length == control.item_length,
-    chunk_proof.chunk_index == expected_chunk_index,
-    bounded_item_v1.verify_chunk(control.item_commitment, chunk_proof),
-  }
-  if !current_matches {
-    None
-  } else if expected_chunk_index + 1 < count {
-    when next_chunk_proof is {
-      None -> None
-      Some(next) ->
-        if and {
-          next.field_index == 6,
-          next.item_index == control.script_seen,
-          next.total_length == control.item_length,
-          next.chunk_index == expected_chunk_index + 1,
-          bounded_item_v1.verify_chunk(control.item_commitment, next),
-        } {
-          Some(
-            NativeChunkWindowV1 {
-              bytes: bytearray.concat(chunk_proof.chunk, next.chunk),
-              offset: control.cursor - expected_chunk_index * bounded_item_v1.chunk_bytes,
-            },
-          )
-        } else {
-          None
-        }
-    }
-  } else if next_chunk_proof == None {
-    Some(
-      NativeChunkWindowV1 {
-        bytes: chunk_proof.chunk,
-        offset: control.cursor - expected_chunk_index * bounded_item_v1.chunk_bytes,
-      },
-    )
+  if control.cursor == control.item_length {
+    Some(NativeChunkWindowV1 { bytes: #"", offset: 0 })
   } else {
-    None
+    let expected_chunk_index = control.cursor / bounded_item_v1.chunk_bytes
+    let offset = control.cursor - expected_chunk_index * bounded_item_v1.chunk_bytes
+    if !and {
+      chunk_proof.total_length == control.item_length,
+      chunk_proof.chunk_index == expected_chunk_index,
+      bounded_item_v1.verify_chunk(control.item_commitment, chunk_proof),
+    } {
+      None
+    } else if expected_chunk_index + 1 < bounded_item_v1.chunk_count(
+      control.item_length,
+    ) {
+      when next_chunk_proof is {
+        None -> None
+        Some(next) ->
+          if and {
+            next.total_length == control.item_length,
+            next.chunk_index == expected_chunk_index + 1,
+            bounded_item_v1.verify_chunk(control.item_commitment, next),
+          } {
+            Some(
+              NativeChunkWindowV1 {
+                bytes: bytearray.concat(chunk_proof.chunk, next.chunk),
+                offset,
+              },
+            )
+          } else {
+            None
+          }
+      }
+    } else if next_chunk_proof == None {
+      Some(NativeChunkWindowV1 { bytes: chunk_proof.chunk, offset })
+    } else {
+      None
+    }
   }
 }
 

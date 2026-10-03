@@ -6,7 +6,6 @@ import "@al-ft/midgard-core/script-proof";
 import "effect";
 import "./cek-executor.js";
 import "./ledger.js";
-import "./local-script-eval.js";
 import "./midgard-redeemers.js";
 import "./script-context.js";
 import "./script-source.js";

@@ -20,6 +20,7 @@ pub type ActionV1 {
     transition: ValidationOneStepWitnessV1,
     frame: ProofFrameV1,
     siblings: List<ByteArray>,
+    opening: ByteArray,
   }
 }
 
@@ -52,8 +53,13 @@ validator main(
         transition,
         frame,
         siblings,
+        opening,
       }) -> {
-        let auxiliary = LedgerDeltaProofFrameWitness { frame, siblings }
+        let auxiliary = LedgerDeltaProofFrameWitness {
+          frame,
+          siblings,
+          opening,
+        }
         let auxiliary_data: Data = auxiliary
         continue_winning(
           LedgerDelta,
@@ -69,6 +75,7 @@ validator main(
             transition,
             frame,
             siblings,
+            opening,
           ),
           own_out_ref,
           tx,

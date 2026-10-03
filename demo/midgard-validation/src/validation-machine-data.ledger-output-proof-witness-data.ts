@@ -184,16 +184,13 @@ export const dataTraverseActionData = (
   if (action === null) return new Constr(0, []);
   switch (action.kind) {
     case "headScalar":
-      return new Constr(1, [int(action.itemLength)]);
+      return new Constr(1, []);
     case "headSequence":
-      return new Constr(2, [int(action.expectedChildren)]);
+      return new Constr(2, []);
     case "headMap":
       return new Constr(3, []);
     case "headLargeConstructor":
-      return new Constr(4, [
-        int(action.constructorCborLength),
-        int(action.expectedChildren),
-      ]);
+      return new Constr(4, []);
     case "attachScalar":
       return new Constr(5, [option(action.parent, dataTraverseFrameData)]);
     case "foldList":
@@ -263,8 +260,6 @@ export const ledgerOutputProofWitnessData = (
       ]);
     case "spanAttach":
       return new Constr(5, [
-        int(witness.start),
-        int(witness.length),
         chunkProofData(witness.chunkProof),
         option(witness.nextChunkProof, chunkProofData),
       ]);
@@ -283,6 +278,7 @@ export const redeemerControlData = (
     bytes(control.activeRedeemerLeaf),
     summaryData(control.activePurpose),
     summaryData(control.currentRedeemer),
+    int(control.purposeBound),
   ]);
 
 export const finalContextControlData = (

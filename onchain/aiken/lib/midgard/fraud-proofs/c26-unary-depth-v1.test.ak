@@ -16,13 +16,13 @@ const adjacent_unary_datum_bytes = 16_177
 const signed_transaction_overhead_bytes = 211
 
 const terminal_pre_control =
-  #"8a010600193f2d193f2d58204b1583076e081511c0c79da0bd361e87a6da46e2bbea22cf93f153a3dbb28203d87a80d87a80d87a80d87a80"
+  #"89010600193f2d193f2d58202ffeeceb1869c66476600e1b0210f55d3f496e48d13b851cab2fea42ad5182ebd87a80d87a80d87a80"
 
 const terminal_frame_cbor =
-  #"8b000040000040010181820058200349c700d41147fa43955b7c1ee2578d2ef8f08599dd99307121859dd2ee8e860184582087f3ecadbcf7a9f6aacd8fb875358df0898dafbc3e02ac97b94590971260e71201193f29193f2d"
+  #"8b000040000040000181820058200349c700d41147fa43955b7c1ee2578d2ef8f08599dd99307121859dd2ee8e860184582087f3ecadbcf7a9f6aacd8fb875358df0898dafbc3e02ac97b94590971260e71201193f29193f2d"
 
 const terminal_post_control =
-  #"8a010700193f2d193f2d40d87a80d87a80d87a80d8799f835820db84befa89735cb7e184bc06890e5b922bcb7e2550caffdff82dcec934fdd723193f2d193f31ff"
+  #"89010700193f2d193f2d40d87a80d87a80d8799f835820db84befa89735cb7e184bc06890e5b922bcb7e2550caffdff82dcec934fdd723193f2d193f31ff"
 
 const terminal_root =
   #"db84befa89735cb7e184bc06890e5b922bcb7e2550caffdff82dcec934fdd723"
@@ -42,13 +42,13 @@ const adjacent_unary_redeemer_data_bytes = 15_985
 const signed_redeemer_transaction_overhead_bytes = 400
 
 const redeemer_terminal_pre_control =
-  #"8a010600193e6d193e6d582023fabfae62d51cba8147f76aef6c613f4f3525e8257361873c678e77aa750929d87a80d87a80d87a80d87a80"
+  #"89010600193e6d193e6d582015f635046996af34931eccd00df33c6f1ebe3ec7cb0924403c2c6cc09eb7eba7d87a80d87a80d87a80"
 
 const redeemer_terminal_frame_cbor =
-  #"8b000040000040010181820058202e255919cf99b2743582ee389fb462ccb7562cf0a614647a01d9ce9fb14000bc0184582003a6eed9be7ce3bf1e01f104842a3b8fc33bfb24f5941e2fc84019a4bdce9c2001193e69193e6d"
+  #"8b000040000040000181820058202e255919cf99b2743582ee389fb462ccb7562cf0a614647a01d9ce9fb14000bc0184582003a6eed9be7ce3bf1e01f104842a3b8fc33bfb24f5941e2fc84019a4bdce9c2001193e69193e6d"
 
 const redeemer_terminal_post_control =
-  #"8a010700193e6d193e6d40d87a80d87a80d87a80d8799f8358207102b7fc9525a54adf2b32de87dfc544c46f2cf275bd45bfa794dbb518f4fa1e193e6d193e71ff"
+  #"89010700193e6d193e6d40d87a80d87a80d8799f8358207102b7fc9525a54adf2b32de87dfc544c46f2cf275bd45bfa794dbb518f4fa1e193e6d193e71ff"
 
 const redeemer_terminal_root =
   #"7102b7fc9525a54adf2b32de87dfc544c46f2cf275bd45bfa794dbb518f4fa1e"
@@ -61,7 +61,7 @@ fn maximum_terminal_frame() -> cek_data_frame_v1.DataFrameV1 {
     constructor_cbor_length: 0,
     constructor_memory: 0,
     tail: #"",
-    expected_children: 1,
+    expected_children: 0,
     child_count: 1,
     child_peaks: [
       validation_merkle_v1.FrontierPeak {
@@ -87,7 +87,7 @@ fn maximum_redeemer_terminal_frame() -> cek_data_frame_v1.DataFrameV1 {
     constructor_cbor_length: 0,
     constructor_memory: 0,
     tail: #"",
-    expected_children: 1,
+    expected_children: 0,
     child_count: 1,
     child_peaks: [
       validation_merkle_v1.FrontierPeak {

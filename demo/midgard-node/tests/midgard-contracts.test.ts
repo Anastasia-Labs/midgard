@@ -159,8 +159,9 @@ describe("midgard contracts registry", () => {
       // normalize bigint parameters as decimal strings. Re-pinned by #689:
       // the pooled DA bond validator was added, the per-block availability
       // bond yield removed, and the availability-challenge and DA-attestation
-      // parameters changed (pool policy, commitment-bound challenges).
-      // The nonterminal MPF leaf-fold correction changes the fraud-proof scripts.
+      // parameters changed (pool policy, commitment-bound challenges). MPF
+      // fixes (leaf fold, terminal neighbour, deletion Branch, emptied ledger
+      // root, disjoint leaf and branch node preimages) change proofs.
       expect(
         createHash("sha256")
           .update(
@@ -168,13 +169,13 @@ describe("midgard contracts registry", () => {
           )
           .digest("hex"),
       ).toBe(
-        "a5ecebb58a390562fa7e44a70010339332b401257da858d3a897e80124390b16",
+        "6502da347543448c8ff9e1fc937a006d5a0bada9ed11e4d4ed3f5131422a8958",
       );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
       // Re-pinned by #689: the state queue and correction lock are applied over
       // the availability-challenge policy, whose parameters now include the
-      // pooled DA bond policy.
+      // pooled DA bond policy, and again for disjoint MPF node preimages.
       expect(
         createHash("sha256")
           .update(
@@ -185,7 +186,7 @@ describe("midgard contracts registry", () => {
           )
           .digest("hex"),
       ).toBe(
-        "0aa26d5c3918993e2ad4e230b6ecd1679f6d5e57c2cdda5407bff2cee32d5744",
+        "6263d434d25ff3bf2b778ca4d1ed74a837bbf27fd4769d7fc49fc1cd60336bb8",
       );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test

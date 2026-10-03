@@ -23,11 +23,12 @@ import "./event-window.forced-verdict-for-rejection.js";
 import "./event-window.classify-forced-transactions.js";
 export { classifyForcedTransactions } from "./event-window.classify-forced-transactions.js";
 export {
+  acceptedTransactionLedgerWitnesses,
   applyValidationLedgerMutations,
   type ClassifiedForcedTransaction,
   type ForcedProgramMaterialSidecarResolver,
   programMaterialSidecarForEnvelopes,
-  validationLedgerWitnesses,
+  rejectedForcedTransactionLedgerWitnesses,
 } from "./event-window.forced-verdict-for-rejection.js";
 export {
   resolveIncludedDepositEntriesForWindow,

@@ -6,6 +6,7 @@ import { CEKConst, CEKError } from "@harmoniclabs/plutus-machine";
 
 import {
   type Bytes,
+  directArgumentsMatchKinds,
   directWitnessPayloadBytes,
   type MidgardCekDirectValueWitness,
   sameBytes,
@@ -35,6 +36,9 @@ export const verifyMidgardCekDirectBuiltin = (
   arguments_: readonly MidgardCekDirectValueWitness[],
   result: MidgardCekDirectValueWitness,
 ): boolean => {
+  // mapData (38) and unMapData (43) succeed only through the map-conversion
+  // arm, so each map step has one successor.
+  if (tag === 38n || tag === 43n) return false;
   try {
     if (
       directWitnessPayloadBytes([...arguments_, result]) >
@@ -97,6 +101,9 @@ export const verifyMidgardCekDirectBuiltinFailure = (
     ) {
       return false;
     }
+    // A known failure applies only to well-typed arguments; an ill-typed
+    // application fails through the type-failure arm instead.
+    if (!directArgumentsMatchKinds(Number(tag), arguments_)) return false;
     return evaluateMidgardCekDirectBuiltin(tag, arguments_).kind === "failure";
   } catch {
     return false;
@@ -122,34 +129,36 @@ type EvaluatedBlsExpression = {
   readonly depth: number;
 };
 
-const evaluateBlsExpression = (
-  expression: MidgardCekBlsExpressionWitness,
+const evaluateBlsLeaf = (
+  expression: Extract<MidgardCekBlsExpressionWitness, { kind: "millerLoop" }>,
 ): EvaluatedBlsExpression => {
-  if (expression.kind === "millerLoop") {
-    const g1Decoded = decodeMidgardCekConstantWitness(expression.g1);
-    const g2Decoded = decodeMidgardCekConstantWitness(expression.g2);
-    if (g1Decoded.type.kind !== "blsG1" || g2Decoded.type.kind !== "blsG2") {
-      throw new Error("BLS expression leaf requires G1 and G2 constants");
-    }
-    const g1 = directConstantToReferenceValue(expression.g1);
-    const g2 = directConstantToReferenceValue(expression.g2);
-    const value = runPinnedReferenceBuiltin(68, [g1, g2]);
-    if (value instanceof CEKError) {
-      throw new Error("reference evaluator rejected a BLS expression leaf");
-    }
-    return Object.freeze({
-      root: hashMidgardCekBlsExpressionNode({
-        kind: "millerLoop",
-        g1Value: hashMidgardCekConstantWitness(expression.g1),
-        g2Value: hashMidgardCekConstantWitness(expression.g2),
-      }),
-      value,
-      leaves: 1,
-      depth: 1,
-    });
+  const g1Decoded = decodeMidgardCekConstantWitness(expression.g1);
+  const g2Decoded = decodeMidgardCekConstantWitness(expression.g2);
+  if (g1Decoded.type.kind !== "blsG1" || g2Decoded.type.kind !== "blsG2") {
+    throw new Error("BLS expression leaf requires G1 and G2 constants");
   }
-  const left = evaluateBlsExpression(expression.left);
-  const right = evaluateBlsExpression(expression.right);
+  const g1 = directConstantToReferenceValue(expression.g1);
+  const g2 = directConstantToReferenceValue(expression.g2);
+  const value = runPinnedReferenceBuiltin(68, [g1, g2]);
+  if (value instanceof CEKError) {
+    throw new Error("reference evaluator rejected a BLS expression leaf");
+  }
+  return Object.freeze({
+    root: hashMidgardCekBlsExpressionNode({
+      kind: "millerLoop",
+      g1Value: hashMidgardCekConstantWitness(expression.g1),
+      g2Value: hashMidgardCekConstantWitness(expression.g2),
+    }),
+    value,
+    leaves: 1,
+    depth: 1,
+  });
+};
+
+const evaluateBlsProduct = (
+  left: EvaluatedBlsExpression,
+  right: EvaluatedBlsExpression,
+): EvaluatedBlsExpression => {
   const value = runPinnedReferenceBuiltin(69, [left.value, right.value]);
   if (value instanceof CEKError) {
     throw new Error("reference evaluator rejected a BLS expression product");
@@ -164,6 +173,58 @@ const evaluateBlsExpression = (
     leaves: left.leaves + right.leaves,
     depth: Math.max(left.depth, right.depth) + 1,
   });
+};
+
+/**
+ * Evaluates an expression left subtree first, then right, then the product,
+ * so the first failure is the one a depth-first reading meets. A subexpression
+ * object reached twice is evaluated once, and the walk keeps its own stack, so
+ * shared subexpressions cost linear time and any depth is walked.
+ */
+const evaluateBlsExpression = (
+  expression: MidgardCekBlsExpressionWitness,
+): EvaluatedBlsExpression => {
+  const evaluated = new Map<
+    MidgardCekBlsExpressionWitness,
+    EvaluatedBlsExpression
+  >();
+  const active = new Set<MidgardCekBlsExpressionWitness>();
+  const work: {
+    readonly expression: MidgardCekBlsExpressionWitness;
+    readonly expanded: boolean;
+  }[] = [{ expression, expanded: false }];
+  while (work.length > 0) {
+    const next = work.pop()!;
+    const node = next.expression;
+    if (next.expanded) {
+      if (node.kind !== "multiply") {
+        throw new Error("BLS expression walk expanded a leaf");
+      }
+      active.delete(node);
+      evaluated.set(
+        node,
+        evaluateBlsProduct(
+          evaluated.get(node.left)!,
+          evaluated.get(node.right)!,
+        ),
+      );
+    } else if (!evaluated.has(node)) {
+      if (active.has(node)) {
+        throw new Error("BLS expression witness is cyclic");
+      }
+      if (node.kind === "millerLoop") {
+        evaluated.set(node, evaluateBlsLeaf(node));
+      } else {
+        active.add(node);
+        work.push(
+          { expression: node, expanded: true },
+          { expression: node.right, expanded: false },
+          { expression: node.left, expanded: false },
+        );
+      }
+    }
+  }
+  return evaluated.get(expression)!;
 };
 
 export type MidgardCekBlsFinalEvaluation = {

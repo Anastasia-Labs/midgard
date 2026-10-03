@@ -25,7 +25,7 @@ export {
 } from "./script-proof.hash-midgard-script-context-item-leaf.js";
 export {
   collectMidgardAttachedProgramEnvelopes,
-  collectMidgardReferencedProgramEnvelopes,
+  collectMidgardEventProgramEnvelopes,
   decodeMidgardScriptProgramEnvelope,
   hashMidgardInlineScriptSourceLeaf,
   hashMidgardReferenceScriptSourceLeaf,

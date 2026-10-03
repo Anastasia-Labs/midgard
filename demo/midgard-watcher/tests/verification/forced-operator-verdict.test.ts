@@ -1,4 +1,11 @@
-import { OperatorVerdictSchema } from "@al-ft/midgard-sdk";
+import {
+  forcedRejectionReason,
+  ForcedRejectionSubjectMissing,
+} from "@al-ft/midgard-fault-proofs";
+import {
+  OperatorVerdictSchema,
+  rejectionReasonArmOf,
+} from "@al-ft/midgard-sdk";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -8,7 +15,6 @@ import {
   WATCHER_FORCED_TX_VALID,
   watcherForcedOperatorVerdict,
 } from "../../src/indexers/user-event-indexer.js";
-import { watcherBlockReplayForcedValidityForRejectCode } from "../../src/verification/block-replay.js";
 import { userEventForcedOperatorVerdictForClassification } from "../support/user-event-forced-order-fixture.js";
 
 /**
@@ -30,7 +36,7 @@ import { userEventForcedOperatorVerdictForClassification } from "../support/user
  * whether or not that gap is repaired.
  */
 
-/** The verdict tags the canonical rejection-to-forced-verdict partition emits. */
+/** The verdict tags the watcher's forced-order fixtures commit. */
 const FIXTURE_CLASSIFICATIONS = Object.freeze([
   "ForcedTxValid",
   "InputNotFound",
@@ -194,84 +200,25 @@ describe("forced operator verdict vocabulary", () => {
     }
   });
 
-  it("partitions the canonical reject codes onto the reason tags", () => {
-    // The class boundaries are the ones the partition has always published;
-    // #640 re-spells each class as the tag the forced leaf now carries, and
-    // E_NATIVE_SCRIPT_INVALID is the one phase-split code: the node
-    // classifier commits WitnessNativeScriptFalse when Phase A rejects and
-    // ExecutionNativeScriptFalse when Phase B does, so the replay's
-    // representative must split identically or exact-arm comparison flags
-    // honest operators.
-    for (const phase of ["phaseA", "phaseB"] as const) {
-      expect(
-        watcherBlockReplayForcedValidityForRejectCode(
-          RejectCodes.InputNotFound,
-          phase,
-        ),
-      ).toBe("InputNotFound");
-      for (const code of [
-        RejectCodes.InvalidSignature,
-        RejectCodes.MissingRequiredWitness,
-      ]) {
-        expect(
-          watcherBlockReplayForcedValidityForRejectCode(code, phase),
-          code,
-        ).toBe("AddressWitnessSignatureInvalid");
-      }
-      for (const code of [
-        RejectCodes.PlutusScriptInvalid,
-        RejectCodes.PlutusEvaluationUnavailable,
-      ]) {
-        expect(
-          watcherBlockReplayForcedValidityForRejectCode(code, phase),
-          code,
-        ).toBe("PlutusExecutionFailed");
-      }
-      expect(
-        watcherBlockReplayForcedValidityForRejectCode(
-          RejectCodes.MinFee,
-          phase,
-        ),
-      ).toBe("FeeBelowMinimum");
-      // The catch-all: every code outside the named classes, which is what
-      // the retired `UnbalancedTx` arm covered.
-      expect(
-        watcherBlockReplayForcedValidityForRejectCode(
-          RejectCodes.ValueNotPreserved,
-          phase,
-        ),
-      ).toBe("ValueNotPreserved");
-      expect(
-        watcherBlockReplayForcedValidityForRejectCode(
-          RejectCodes.TxSize,
-          phase,
-        ),
-      ).toBe("ValueNotPreserved");
-    }
-    expect(
-      watcherBlockReplayForcedValidityForRejectCode(
-        RejectCodes.NativeScriptInvalid,
-        "phaseA",
-      ),
-    ).toBe("WitnessNativeScriptFalse");
-    expect(
-      watcherBlockReplayForcedValidityForRejectCode(
-        RejectCodes.NativeScriptInvalid,
-        "phaseB",
-      ),
-    ).toBe("ExecutionNativeScriptFalse");
-  });
-
-  it("emits only tags the watcher classification vocabulary admits", () => {
-    for (const phase of ["phaseA", "phaseB"] as const) {
-      for (const code of Object.values(RejectCodes)) {
-        const tag = watcherBlockReplayForcedValidityForRejectCode(code, phase);
-        expect(isWatcherForcedOperatorVerdict(tag), code).toBe(true);
-        expect(tag, code).not.toBe(WATCHER_FORCED_TX_VALID);
-        expect(encodeVerdict(tag), code).toBe(
-          FIXTURE_VERDICT_CBOR[tag as keyof typeof FIXTURE_VERDICT_CBOR],
+  it("admits every tag the forced rejection writer emits", () => {
+    // Forced replay compares the committed verdict's tag against the tag of
+    // `forcedRejectionReason`, the one writer the node commits with, so every
+    // tag it can produce must be in the watcher's accepted vocabulary. A
+    // located code is written from its subject, whose tag is one of the arms
+    // pinned above; without a subject it throws, or, for the canonical-decode
+    // rejections no trace commits, writes the tag checked here.
+    for (const code of Object.values(RejectCodes)) {
+      let tag: string;
+      try {
+        tag = rejectionReasonArmOf(
+          forcedRejectionReason({ code, consensusPhase: "canonicalDecode" }),
         );
+      } catch (error) {
+        expect(error, code).toBeInstanceOf(ForcedRejectionSubjectMissing);
+        continue;
       }
+      expect(isWatcherForcedOperatorVerdict(tag), code).toBe(true);
+      expect(tag, code).not.toBe(WATCHER_FORCED_TX_VALID);
     }
   });
 });

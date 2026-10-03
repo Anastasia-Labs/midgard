@@ -13,6 +13,10 @@ import {
 } from "../step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
+import {
+  acceptedTransactionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
 import type { ReceivePurposeLanguageArtifact } from "./actuator.js";
 import {
   prepareReceivePurposeLanguageEvidence,
@@ -134,6 +138,7 @@ const candidates = async (block: CanonicalBlockEvidence) => {
               ),
             });
             const detection: CanonicalViolationDetection = {
+              ...acceptedTransactionSubject(transactionId),
               detectionId: `${RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID}:accepted:${position.toString()}:${transactionId}:${executionIndex.toString()}`,
               headerHash: block.headerHash,
               violationId: RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID,
@@ -221,6 +226,7 @@ const candidates = async (block: CanonicalBlockEvidence) => {
         });
         if (!receivePurposeLanguageEvidenceCloses(evidence)) return null;
         const detection: CanonicalViolationDetection = {
+          ...forcedTransactionSubject(transaction.key),
           detectionId: `${RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID}:forced:${position.toString()}:${transaction.value.tx_id}:${executionIndex.toString()}`,
           headerHash: block.headerHash,
           violationId: RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID,

@@ -5,6 +5,7 @@ use aiken/crypto.{blake2b_256}
 use aiken/fuzz
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
+use midgard/cek_builtin_v1
 use midgard/cek_constant_v1
 use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
@@ -32,6 +33,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
+use midgard/rejection_reason_v1.{reject_plutus_script_invalid}
 use midgard/script_context_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/cek as vm_cek
@@ -819,8 +821,8 @@ test cross_language_cek_context_control_vectors() {
   and {
     vm_witness.encode_cek_context_control_v1(context) == #"981900035820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa5820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb41005820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc4000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa5600000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000040834000000040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000083400000",
     vm_witness.hash_cek_redeemer_context_control_v1(
-      vm_witness.initial_cek_redeemer_context_control_v1(),
-    ) == #"c56f80a85b46a479d9a766ce7050e825484f42da6453a3ec217afc6b03d5f938",
+      vm_witness.initial_cek_redeemer_context_control_v1(0),
+    ) == #"16d11fb592d3cad09ef73bd20c31a8d35a0f502c4eeeddf00ab3e8d037bb6a3f",
   }
 }
 
@@ -986,7 +988,9 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
       tail_control,
     ),
   }
-  let redeemer_context = vm_witness.initial_cek_redeemer_context_control_v1()
+  let redeemer_context = vm_witness.initial_cek_redeemer_context_control_v1(
+    native_control.purpose_count,
+  )
   let selected_context = vm_machine_types.CekContextControlV1 {
     ..initial_context,
     stage: 1,
@@ -1128,7 +1132,7 @@ test cek_context_spend_item_uses_authenticated_descriptor_frontier() {
     subject: key,
     redeemer_leaf: h_c,
     redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
-      vm_witness.initial_cek_redeemer_context_control_v1(),
+      vm_witness.initial_cek_redeemer_context_control_v1(control.purpose_count),
     ),
     execution_memory_limit: 10,
     execution_cpu_limit: 20,
@@ -2048,10 +2052,11 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
     False,
   )
   let active_redeemers = vm_machine_types.CekRedeemerContextControlV1 {
-    ..vm_witness.initial_cek_redeemer_context_control_v1(),
+    ..vm_witness.initial_cek_redeemer_context_control_v1(1),
     active_scan_hash: cek_data_scan_v1.hash_control_v1(scan),
     active_redeemer_leaf: redeemer_leaf,
     active_purpose: purpose_summary,
+    purpose_bound: 0,
   }
   let context_control = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(9),
@@ -2075,6 +2080,7 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
     active_redeemer_leaf: #"",
     active_purpose: cek_data_scan_v1.empty_result_v1(),
     current_redeemer: completed_scan.result,
+    purpose_bound: 0,
   }
   let next_control = vm_machine_types.CekContextControlV1 {
     ..context_control,
@@ -2132,8 +2138,13 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
     redeemer_count: 1,
     redeemer_peaks: redeemer_frontier.peaks,
     purpose_peaks: purpose_frontier.peaks,
+    execution_peaks: validation_merkle_v1.build_frontier(
+      [script_proof_v1.execution_leaf_hash(3, purpose_leaf, h_a, redeemer_leaf)],
+    ).peaks,
   }
-  let initial_redeemers = vm_witness.initial_cek_redeemer_context_control_v1()
+  let initial_redeemers = vm_witness.initial_cek_redeemer_context_control_v1(
+    native_control.purpose_count,
+  )
   // The active redeemer scan is a bounded `redeemer_item_proof_v1` control, not
   // the superseded free-standing `cek_data_scan_v1` control:
   // `verify_cek_redeemer_data_step` seeds `active_scan_hash` with
@@ -2168,6 +2179,7 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
     active_scan_hash: redeemer_item_proof_v1.hash_control_v1(item_control),
     active_redeemer_leaf: redeemer_leaf,
     active_purpose: purpose_summary,
+    purpose_bound: 0,
   }
   expect Some(observer_summary) = script_context_v1.observer_collection_summary_v1(
     [],
@@ -2213,29 +2225,28 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
       vm_machine_types.CekRedeemerContextSelectWitness {
         control: initial_redeemers,
         item_index: 0,
-        item_count: 1,
-        total_length: bytearray.length(
-          encode_midgard_redeemer_witness(redeemer),
-        ),
-        item_commitment: bounded_item_v1.from_bytes(
-          8,
-          0,
-          encode_midgard_redeemer_witness(redeemer),
-        ),
-        redeemer_siblings: [],
-        purpose_frontier_index: 0,
+        total_length: bytearray.length(redeemer_item_cbor),
+        item_commitment: redeemer_item_commitment,
         purpose_kind: 0,
         purpose_index: 0,
         script_hash: h_28_a,
         subject,
-        purpose_siblings: [],
+        execution_language_tag: 3,
+        source_leaf: h_a,
+        execution_siblings: [],
+        item_frontier_root: validation_merkle_v1.frontier_commitment(
+          1,
+          validation_merkle_v1.build_frontier(
+            [bounded_item_v1.hash_chunk(8, 0, 0, redeemer_item_cbor)],
+          ).peaks,
+        ),
       },
     ),
     inline_field_door(),
   )
 }
 
-test cek_context_finalize_seeds_the_exact_semantic_context_application() {
+fn cek_context_finalize_with_redeemer_count(redeemer_count: Int) -> Bool {
   let redeemer = MidgardRedeemerWitness {
     purpose: RewardRedeemer,
     index: 0,
@@ -2255,8 +2266,10 @@ test cek_context_finalize_seeds_the_exact_semantic_context_application() {
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(2, 0, h_28_a, h_28_a)
   let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(tx),
-    redeemer_count: 1,
-    redeemer_peaks: validation_merkle_v1.build_frontier([redeemer_leaf]).peaks,
+    redeemer_count,
+    redeemer_peaks: validation_merkle_v1.build_frontier(
+      list.repeat(redeemer_leaf, redeemer_count),
+    ).peaks,
     purpose_peaks: validation_merkle_v1.build_frontier([purpose_leaf]).peaks,
   }
   let redeemer_summary = cek_data_v1.semantic_data_summary_v1(builtin.i_data(0))
@@ -2278,6 +2291,7 @@ test cek_context_finalize_seeds_the_exact_semantic_context_application() {
     active_redeemer_leaf: #"",
     active_purpose: cek_data_scan_v1.empty_result_v1(),
     current_redeemer: redeemer_summary,
+    purpose_bound: 0,
   }
   expect Some(observer_summary) = script_context_v1.observer_collection_summary_v1(
     [h_28_a],
@@ -2362,6 +2376,16 @@ test cek_context_finalize_seeds_the_exact_semantic_context_application() {
   }
 }
 
+test cek_context_finalize_seeds_the_exact_semantic_context_application() {
+  cek_context_finalize_with_redeemer_count(1)
+}
+
+// Completion needs every redeemer folded: with one of two folded the
+// finalize step is refused.
+test cek_context_finalize_refuses_an_unfolded_redeemer() fail {
+  cek_context_finalize_with_redeemer_count(2)
+}
+
 test cek_spend_finalize_authenticates_descriptor_datum_summary() {
   let tx = empty_v1_transaction()
   let input = MidgardTxInput { tx_id: h_b, output_index: 2 }
@@ -2393,7 +2417,9 @@ test cek_spend_finalize_authenticates_descriptor_datum_summary() {
   }
   let redeemer_summary = cek_data_v1.semantic_data_summary_v1(builtin.i_data(0))
   let redeemer_control = vm_machine_types.CekRedeemerContextControlV1 {
-    ..vm_witness.initial_cek_redeemer_context_control_v1(),
+    ..vm_witness.initial_cek_redeemer_context_control_v1(
+      native_control.purpose_count,
+    ),
     current_redeemer: redeemer_summary,
   }
   expect Some(observer_summary) = script_context_v1.observer_collection_summary_v1(
@@ -2907,6 +2933,186 @@ test cek_active_core_step_replays_exact_machine_transition() {
           },
         },
       },
+      inline_field_door(),
+    ),
+  }
+}
+
+// One validation-machine pre-state whose active CEK state is mkCons of a
+// well-typed item and list. The success step is its one successor: the type
+// failure is refused whichever presentation carries the committed item.
+test mk_cons_of_well_typed_values_has_one_one_step_successor() {
+  let item = cek_constant_v1.ConstantWitnessV1 {
+    type_cbor: #"9f00ff",
+    payload_cbor: #"01",
+  }
+  let items = cek_constant_v1.ConstantWitnessV1 {
+    type_cbor: #"9f0500ff",
+    payload_cbor: #"80",
+  }
+  let result = cek_builtin_v1.ConstantValue(
+    cek_constant_v1.ConstantWitnessV1 {
+      type_cbor: #"9f0500ff",
+      payload_cbor: cbor.serialise(builtin.list_data([builtin.i_data(1)])),
+    },
+  )
+  let direct = [
+    cek_builtin_v1.ConstantValue(item),
+    cek_builtin_v1.ConstantValue(items),
+  ]
+  let Pair(item_payload, item_memory) = cek_constant_v1.constant_semantic_projection(
+    item,
+  )
+  let semantic_item = [
+    cek_builtin_v1.RuntimeSemanticConstantValue {
+      type_cbor: item.type_cbor,
+      payload: item_payload,
+      memory: item_memory,
+    },
+    cek_builtin_v1.RuntimeConstantValue(items),
+  ]
+  let Pair(arguments_root, arguments_count) = cek_builtin_v1.arguments_root_v1(
+    direct,
+  )
+  let machine_pre = cek_machine_v1.MachineStateV1 {
+    mode: cek_machine_v1.mode_builtin,
+    execution_index: 0,
+    focus_root: cek_proof_v1.hash_builtin_value_v1(
+      32,
+      0,
+      arguments_count,
+      arguments_root,
+    ),
+    environment_root: cek_proof_v1.empty_environment_root_v1,
+    continuation_root: cek_proof_v1.empty_continuation_root_v1,
+    auxiliary: 0,
+    cpu: 10,
+    memory: 11,
+  }
+  let budget = cek_builtin_v1.direct_builtin_budget_v1(32, direct)
+  let machine_success = cek_machine_v1.exact_state(
+    machine_pre,
+    cek_machine_v1.mode_return,
+    cek_builtin_v1.result_root_v1(result),
+    cek_proof_v1.empty_environment_root_v1,
+    machine_pre.continuation_root,
+    0,
+    budget.cpu,
+    budget.memory,
+  )
+  let machine_failure = cek_machine_v1.exact_state(
+    machine_pre,
+    cek_machine_v1.mode_halt_error,
+    cek_proof_v1.hash_error_term_v1(),
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    cek_machine_v1.error_builtin_failure,
+    0,
+    0,
+  )
+  let tx = empty_v1_transaction()
+  let purpose_frontier = validation_merkle_v1.build_frontier([h_a])
+  let execution_frontier = validation_merkle_v1.build_frontier([h_b])
+  let control = vm_machine_types.NativeScriptsControlV1 {
+    ..empty_native_control_fixture(tx),
+    purpose_count: 1,
+    purpose_peaks: purpose_frontier.peaks,
+    execution_count: 1,
+    execution_peaks: execution_frontier.peaks,
+    execution_cursor: 1,
+    language_bitmap: 1,
+  }
+  let work_witness_cbor = vm_witness.encode_cek_witness_v1(
+    control,
+    #"",
+    0,
+    0,
+    0,
+    vm_shared.cek_machine_state_hash(machine_pre),
+    1000000,
+    1000000,
+    h_b,
+  )
+  let compact = midgard_transaction_to_compact(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..forced_pending_state(
+      tx_id,
+      tx,
+      validation_context_cbor,
+      validation_trace_v1.Cek,
+      40,
+      work_witness_cbor,
+      validation_trace_v1.hash_ledger_delta(#"80"),
+    ),
+    execution_cpu: 10,
+    execution_memory: 11,
+  }
+  let success_successor = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: 41,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Cek,
+      41,
+      vm_witness.encode_cek_witness_v1(
+        control,
+        #"",
+        0,
+        0,
+        0,
+        vm_shared.cek_machine_state_hash(machine_success),
+        1000000,
+        1000000,
+        h_b,
+      ),
+    ),
+    execution_cpu: machine_success.cpu,
+    execution_memory: machine_success.memory,
+  }
+  let failure_successor = validation_trace_v1.ValidationMachineStateV1 {
+    ..exact_rejection_post(pre, reject_plutus_script_invalid),
+    execution_cpu: machine_failure.cpu,
+    execution_memory: machine_failure.memory,
+  }
+  and {
+    vm_one_step.verify_one_step_evidence(
+      pre,
+      one_step_evidence(
+        work_witness_cbor,
+        success_successor,
+        vm_machine_types.CekCoreStepWitness {
+          step: cek_machine_v1.CoreStepEvidenceV1 {
+            pre: machine_pre,
+            post: machine_success,
+            witness: cek_machine_v1.ExecuteBuiltinDirect {
+              tag: 32,
+              arguments: direct,
+              result,
+            },
+          },
+        },
+      ),
+      inline_field_door(),
+    ),
+    !vm_one_step.verify_one_step_evidence(
+      pre,
+      one_step_evidence(
+        work_witness_cbor,
+        failure_successor,
+        vm_machine_types.CekCoreStepWitness {
+          step: cek_machine_v1.CoreStepEvidenceV1 {
+            pre: machine_pre,
+            post: machine_failure,
+            witness: cek_machine_v1.ExecuteBuiltinTypeFailure {
+              tag: 32,
+              arguments: semantic_item,
+            },
+          },
+        },
+      ),
       inline_field_door(),
     ),
   }

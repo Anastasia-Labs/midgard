@@ -36,6 +36,7 @@ import {
   assertExactFraudSlashLovelaceConservation,
   fraudRemovalUsesWalletCoinSelection,
   fraudSlashEconomicsFromDeploymentManifest,
+  fraudSlashFundingProofSource,
   readFraudSlashFundingAuthority,
   type RemoveFraudulentBlockFraudCategory,
   type RemoveFraudulentBlockLayout,
@@ -274,10 +275,6 @@ export const submitRemoveFraudulentBlock = async ({
   if (initialTarget === undefined) {
     throw new Error(`State queue does not contain block ${headerHash}.`);
   }
-  const fraudulentHeader = await Effect.runPromise(
-    getHeaderFromStateQueueDatum(initialTarget.datum),
-  );
-  const fraudulentOperator = fraudulentHeader.operatorVkey;
   const initialStateQueueRootOutRef = outRefLabel(topology.root.utxo);
   const initialTargetOutRef = outRefLabel(initialTarget.utxo);
   const initialTargetHasSuccessor =
@@ -334,6 +331,10 @@ export const submitRemoveFraudulentBlock = async ({
       }),
     );
     const removedHeaderHash = await requireStateQueueHeaderHash(removed);
+    const removedHeader = await Effect.runPromise(
+      getHeaderFromStateQueueDatum(removed.datum),
+    );
+    const fraudulentOperator = removedHeader.operatorVkey;
     const currentSchedulerUtxo = await requireSingletonUtxo({
       lucid,
       address: contracts.schedulerAddress,
@@ -503,7 +504,6 @@ export const submitRemoveFraudulentBlock = async ({
         "BuildTxWithRedeemer did not resolve remove-fraudulent-block layout.",
       );
     }
-
     const signed = await unsigned.sign.withWallet().complete();
     if (canonicalManifest !== null && slashEconomics !== null) {
       if (operatorSlashingPlan.approach === "OperatorAlreadySlashed") {
@@ -563,7 +563,7 @@ export const submitRemoveFraudulentBlock = async ({
             computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
           category: contracts.fraudCategory,
           headerHash,
-          fraudProofOutRef: outRefLabel(fraudProofUtxo),
+          ...fraudSlashFundingProofSource(fraudProofUtxo, fraudProofUnit),
           removedStateQueueOutRef: outRefLabel(removed.utxo),
           operatorOutRef: outRefLabel(
             operatorSlashingPlan.removalPlan.node.utxo,

@@ -26,6 +26,12 @@ pub const map_frame: Int = 3
 /// Content-addressed traversal frame. Large constructor alternatives are
 /// represented only by the authenticated scalar submachine summary, so this
 /// preimage remains bounded independently of the constructor integer size.
+///
+/// Only a map frame carries a child count fixed by its header
+/// (`expected_children`). Every other frame is open-ended: its
+/// `expected_children` is pinned to zero and its children are exactly the
+/// ones the traversal attached before the authenticated close, so
+/// `child_count` is the count every fold and the finalization use.
 pub type DataFrameV1 {
   kind: Int,
   constructor: Int,
@@ -91,32 +97,48 @@ fn empty_sequence_for(frame: DataFrameV1) -> cek_data_v1.DataSequenceSummaryV1 {
   }
 }
 
-pub fn frame_is_well_formed(frame: DataFrameV1) -> Bool {
-  let maximum_fold_cursor = if frame.kind == map_frame {
+/// The number of children a frame folds: the header count of a map, the
+/// attached count of every open-ended frame.
+fn sequence_children(frame: DataFrameV1) -> Int {
+  if frame.kind == map_frame {
+    frame.expected_children
+  } else {
+    frame.child_count
+  }
+}
+
+/// The fold cursor at which every child has been folded.
+fn complete_fold_cursor(frame: DataFrameV1) -> Int {
+  if frame.kind == map_frame {
     frame.expected_children / 2
   } else {
-    frame.expected_children
+    frame.child_count
   }
+}
+
+pub fn frame_is_well_formed(frame: DataFrameV1) -> Bool {
   let empty_sequence = empty_sequence_for(frame)
   and {
     frame.kind >= constr_small_frame,
     frame.kind <= map_frame,
     constructor_is_well_formed(frame),
     optional_hash_is_well_formed(frame.tail),
-    uint32_is_well_formed(frame.expected_children),
     if frame.kind == map_frame {
-      frame.expected_children % 2 == 0
+      and {
+        uint32_is_well_formed(frame.expected_children),
+        frame.expected_children % 2 == 0,
+        frame.child_count <= frame.expected_children,
+      }
     } else {
-      True
+      frame.expected_children == 0
     },
     uint32_is_well_formed(frame.child_count),
-    frame.child_count <= frame.expected_children,
     validation_merkle_v1.frontier_is_well_formed(
       frame.child_count,
       frame.child_peaks,
     ),
     uint32_is_well_formed(frame.fold_cursor),
-    frame.fold_cursor <= maximum_fold_cursor,
+    frame.fold_cursor <= complete_fold_cursor(frame),
     bytearray.length(frame.sequence.root) == 32,
     uint32_is_well_formed(frame.sequence.length),
     frame.sequence.length == frame.fold_cursor,
@@ -125,7 +147,7 @@ pub fn frame_is_well_formed(frame: DataFrameV1) -> Bool {
     if frame.fold_cursor == 0 {
       frame.sequence == empty_sequence
     } else {
-      frame.child_count == frame.expected_children
+      frame.child_count == sequence_children(frame)
     },
   }
 }
@@ -215,7 +237,6 @@ fn initial_frame(
 pub fn initial_small_constr_frame_v1(
   constructor: Int,
   tail: ByteArray,
-  expected_children: Int,
 ) -> DataFrameV1 {
   initial_frame(
     constr_small_frame,
@@ -224,7 +245,7 @@ pub fn initial_small_constr_frame_v1(
     0,
     0,
     tail,
-    expected_children,
+    0,
     cek_data_v1.empty_data_list_summary_v1(),
   )
 }
@@ -234,7 +255,6 @@ pub fn initial_large_constr_frame_v1(
   constructor_cbor_length: Int,
   constructor_memory: Int,
   tail: ByteArray,
-  expected_children: Int,
 ) -> DataFrameV1 {
   initial_frame(
     constr_large_frame,
@@ -243,15 +263,12 @@ pub fn initial_large_constr_frame_v1(
     constructor_cbor_length,
     constructor_memory,
     tail,
-    expected_children,
+    0,
     cek_data_v1.empty_data_list_summary_v1(),
   )
 }
 
-pub fn initial_list_frame_v1(
-  tail: ByteArray,
-  expected_children: Int,
-) -> DataFrameV1 {
+pub fn initial_list_frame_v1(tail: ByteArray) -> DataFrameV1 {
   initial_frame(
     list_frame,
     0,
@@ -259,7 +276,7 @@ pub fn initial_list_frame_v1(
     0,
     0,
     tail,
-    expected_children,
+    0,
     cek_data_v1.empty_data_list_summary_v1(),
   )
 }
@@ -288,7 +305,11 @@ pub fn append_child_v1(
     frame_is_well_formed(frame),
     summary_is_well_formed(child),
     frame.fold_cursor == 0,
-    frame.child_count < frame.expected_children,
+    if frame.kind == map_frame {
+      frame.child_count < frame.expected_children
+    } else {
+      frame.child_count < uint32_max
+    },
   } {
     Some(
       DataFrameV1 {
@@ -312,12 +333,11 @@ pub fn fold_list_child_v1(
   child: cek_data_v1.DataSummaryV1,
   siblings: List<ByteArray>,
 ) -> Option<DataFrameV1> {
-  let expected_index = frame.expected_children - frame.fold_cursor - 1
+  let expected_index = frame.child_count - frame.fold_cursor - 1
   if and {
     frame_is_well_formed(frame),
     frame.kind != map_frame,
-    frame.child_count == frame.expected_children,
-    frame.fold_cursor < frame.expected_children,
+    frame.fold_cursor < frame.child_count,
     child_index == expected_index,
     validation_merkle_v1.verify_membership(
       frame.child_count,
@@ -394,15 +414,10 @@ pub fn fold_map_pair_v1(
 pub fn finalized_summary_v1(
   frame: DataFrameV1,
 ) -> Option<cek_data_v1.DataSummaryV1> {
-  let expected_fold_cursor = if frame.kind == map_frame {
-    frame.expected_children / 2
-  } else {
-    frame.expected_children
-  }
   if !and {
     frame_is_well_formed(frame),
-    frame.child_count == frame.expected_children,
-    frame.fold_cursor == expected_fold_cursor,
+    frame.child_count == sequence_children(frame),
+    frame.fold_cursor == complete_fold_cursor(frame),
   } {
     None
   } else if frame.kind == constr_small_frame {

@@ -123,6 +123,39 @@
       }
     },
     {
+      "id": "mpf-node-encoding-v1",
+      "kind": "golden",
+      "summary": "MPF node encoding (leaf suffix markers, leaf hashes, proofs and roots) from the MPF library's Trie alone: JSON fixture plus a whole generated Aiken module.",
+      "generators": [
+        "demo/midgard-core/scripts/generate-mpf-node-encoding-v1-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-core:fixtures:mpf-node-encoding-v1:sync",
+        "demo/midgard-core:fixtures:mpf-node-encoding-v1:check"
+      ],
+      "inputs": [
+        "@golden-channel",
+        "onchain/aiken/aiken.toml",
+        "onchain/aiken/aiken.lock",
+        "demo/pnpm-lock.yaml",
+        "demo/midgard-core/package.json"
+      ],
+      "outputs": [
+        "demo/midgard-core/tests/fixtures/mpf-node-encoding-v1.generated.json",
+        "onchain/aiken/lib/midgard/mpf-node-encoding-v1-golden.test.ak"
+      ],
+      "sync": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:mpf-node-encoding-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:mpf-node-encoding-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check MPF node-encoding golden vectors"
+      }
+    },
+    {
       "id": "native-tx-carriage-wire-v1",
       "kind": "golden",
       "summary": "Carriage wire (Plutus Data) surface from the SDK schemas: JSON fixture plus a whole generated Aiken module.",

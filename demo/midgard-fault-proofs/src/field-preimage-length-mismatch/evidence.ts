@@ -25,6 +25,7 @@ import {
 } from "../transition-trace/fetch.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
+import { forcedTransactionSubject } from "../workflow/detection-subject.js";
 import type { FieldPreimageLengthStage } from "./config.js";
 import {
   fieldPreimageLengthCommittedClaim,
@@ -95,6 +96,7 @@ export const detectFieldPreimageLengthCompleteReplay = (
       forcedRejectionReason: reason,
     });
     detections.push({
+      ...forcedTransactionSubject(forced.key),
       detectionId: `${FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID}:${position.toString()}:${forced.value.tx_id}:${fieldIndex.toString()}:wrongfulRejection`,
       headerHash: block.headerHash,
       violationId: FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID,

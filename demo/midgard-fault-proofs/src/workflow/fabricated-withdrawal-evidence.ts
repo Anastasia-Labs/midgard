@@ -26,6 +26,7 @@ import {
   prepareFabricatedWithdrawalFromCommittedLeaves,
 } from "../prepare-fabricated-withdrawal.js";
 import type { CanonicalViolationDetection } from "./classification.js";
+import { withdrawalSubject } from "./detection-subject.js";
 
 export const FABRICATED_WITHDRAWAL_EVIDENCE_AUTHORITY =
   "midgard-production-fabricated-withdrawal-evidence-authority-v1" as const;
@@ -323,6 +324,9 @@ export const createFabricatedWithdrawalEvidenceAuthority = ({
             Object.freeze({
               artifact,
               detection: Object.freeze({
+                ...withdrawalSubject(
+                  evidence.reconstruction.withdrawals[index]!.key,
+                ),
                 detectionId: `${FABRICATED_WITHDRAWAL_VIOLATION_ID}:${index.toString()}:${artifact.withdrawalInclusion.committedWithdrawalIdCbor}`,
                 headerHash: evidence.headerHash,
                 violationId: FABRICATED_WITHDRAWAL_VIOLATION_ID,

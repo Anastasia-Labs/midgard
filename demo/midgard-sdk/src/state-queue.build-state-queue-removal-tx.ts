@@ -6,7 +6,6 @@ import {
   Data,
   fromUnit,
   LucidEvolution,
-  paymentCredentialOf,
   PolicyId,
   Script,
   TxBuilder,
@@ -127,24 +126,11 @@ export const buildStateQueueRemovalTx = (
   // address. Nothing is paid while the compiled reward is zero, which is the
   // only case in which the slashing redeemer may carry a null reward index.
   //
-  // The prover's own signature rides the same branch, because
-  // `route_fraud_prover_reward_v1` demands it exactly when the reward output
-  // exists (the 2026-08-12 orchestrator ruling on #603). It is added here, from
-  // the payment credential of the very address being paid, so that a submitter
-  // who is not the prover produces a transaction the prover can sign rather
-  // than one that fails the on-chain guard with no preflight. When the
-  // submitter *is* the prover the key is already required and this is a no-op.
-  // On the null-index path no reward is paid, no signature is owed, and none is
-  // requested — demanding one there would let an absent prover block a slash.
   const rewardPlan = removeSlashingFraudProverReward(params.slashing);
   if (rewardPlan !== undefined) {
-    tx = tx.pay
-      .ToAddress(rewardPlan.proverEnterpriseAddress, {
-        lovelace: rewardPlan.lovelace,
-      })
-      .addSignerKey(
-        paymentCredentialOf(rewardPlan.proverEnterpriseAddress).hash,
-      );
+    tx = tx.pay.ToAddress(rewardPlan.proverEnterpriseAddress, {
+      lovelace: rewardPlan.lovelace,
+    });
   }
 
   if (params.referenceScripts?.stateQueueSpend === undefined) {

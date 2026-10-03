@@ -179,10 +179,13 @@ export const assertExactFoldSemantics = ({
   for (let position = 0; position < folds.length; position += 1) {
     const action = folds[position]!;
     const expectedIndex = breadth - position - 1;
-    const expectedChildren = kind === "map" ? breadth * 2 : breadth;
+    // Only a map frame carries its header count; constructor and list frames
+    // are open-ended and closed by the authenticated source.
+    const childCount = kind === "map" ? breadth * 2 : breadth;
+    const expectedChildren = kind === "map" ? childCount : 0;
     if (
       action.frame.expectedChildren !== expectedChildren ||
-      action.frame.childCount !== expectedChildren ||
+      action.frame.childCount !== childCount ||
       action.frame.foldCursor !== position
     ) {
       throw new Error(

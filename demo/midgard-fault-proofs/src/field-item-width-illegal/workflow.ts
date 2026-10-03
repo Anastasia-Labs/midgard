@@ -14,6 +14,7 @@ import "../workflow/complete-replay.js";
 import "../workflow/cursor-family-adapter.js";
 import "../workflow/cursor-family-runtime.js";
 import "../workflow/deployment-manifest-binding.js";
+import "../workflow/detection-subject.js";
 import "../workflow/family-definition.js";
 import "../workflow/family-l1-observation.js";
 import "../workflow/manifest-bound-family-assembly.js";

@@ -23,6 +23,13 @@ const UINT64_MAX = 0xffff_ffff_ffff_ffffn;
 
 export type Bytes = Uint8Array;
 
+/**
+ * Only a map frame carries a child count fixed by its header
+ * (`expectedChildren`). Every other frame is open-ended: its
+ * `expectedChildren` is pinned to zero and its children are exactly the ones
+ * the traversal attached before the authenticated close, so `childCount` is
+ * the count every fold and the finalization use.
+ */
 export type MidgardCekDataFrameBase = {
   readonly tail: Bytes;
   readonly expectedChildren: number;
@@ -141,6 +148,18 @@ const constructorFields = (
   }
 };
 
+/** The number of children a frame folds: the header count of a map, the
+ * attached count of every open-ended frame. */
+export const midgardCekDataFrameSequenceChildren = (
+  frame: MidgardCekDataFrame,
+): number => (frame.kind === "map" ? frame.expectedChildren : frame.childCount);
+
+/** The fold cursor at which every child has been folded. */
+export const midgardCekDataFrameCompleteFoldCursor = (
+  frame: MidgardCekDataFrame,
+): number =>
+  frame.kind === "map" ? frame.expectedChildren / 2 : frame.childCount;
+
 const expectedEmptySequence = (
   frame: MidgardCekDataFrame,
 ): MidgardCekDataSequenceSummary =>
@@ -189,23 +208,27 @@ export const validateMidgardCekDataFrame = (
       throw new RangeError("large-constructor frame summary is not canonical");
     }
   }
-  if (frame.kind === "map" && expectedChildren % 2 !== 0) {
+  if (frame.kind === "map") {
+    if (expectedChildren % 2 !== 0) {
+      throw new RangeError(
+        "cek_data_frame.expected_children must contain complete map pairs",
+      );
+    }
+    if (childCount > expectedChildren) {
+      throw new RangeError(
+        "cek_data_frame.child_count exceeds expected_children",
+      );
+    }
+  } else if (expectedChildren !== 0) {
     throw new RangeError(
-      "cek_data_frame.expected_children must contain complete map pairs",
-    );
-  }
-  if (childCount > expectedChildren) {
-    throw new RangeError(
-      "cek_data_frame.child_count exceeds expected_children",
+      "cek_data_frame.expected_children is pinned to zero for an open-ended frame",
     );
   }
   if (frame.childFrontier.count !== childCount) {
     throw new Error("cek_data_frame frontier count does not match child_count");
   }
   validateMidgardValidationMerkleFrontier(frame.childFrontier);
-  const maximumFoldCursor =
-    frame.kind === "map" ? expectedChildren / 2 : expectedChildren;
-  if (foldCursor > maximumFoldCursor) {
+  if (foldCursor > midgardCekDataFrameCompleteFoldCursor(frame)) {
     throw new RangeError(
       "cek_data_frame.fold_cursor exceeds its sequence length",
     );
@@ -242,7 +265,7 @@ export const validateMidgardCekDataFrame = (
         "cek_data_frame zero cursor must use the exact empty sequence",
       );
     }
-  } else if (childCount !== expectedChildren) {
+  } else if (childCount !== midgardCekDataFrameSequenceChildren(frame)) {
     throw new Error(
       "cek_data_frame cannot fold before all children are committed",
     );

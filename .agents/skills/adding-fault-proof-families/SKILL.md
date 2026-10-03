@@ -70,8 +70,13 @@ is stated next to it.
    Assert negatives with `expectOnchainRefusal`
    (`tests/support/emulator/expect-onchain-refusal.ts`). [review]
    Partial machine help: `expectOnchainRefusal` fails a negative that the
-   builder refused (it requires "failed script execution"), but it does not
-   identify which check refused. `assertCompleteLifecycleCoverage`
+   builder refused (it requires "failed script execution"). On the plain
+   blueprint it cannot tell which check refused, so pin the check with
+   `expectOnchainRefusal(build, { refusedBy: "<module>", check: /<trace>/u })`
+   (`refusedBy` a string literal). The fault-proofs script
+   `test:traced-refusals`, which CI runs, swaps each named module for its
+   verbose-traced build and fails any pin not checked against that trace.
+   `assertCompleteLifecycleCoverage`
    (`src/testing/complete-lifecycle.ts:35`) fails a lifecycle missing any of
    the seven `COMPLETE_LIFECYCLE_BASE_SCENARIOS`, but only in tests that opt in
    through `createLifecycleCoverageRecorder`: 16 lifecycle test files as of

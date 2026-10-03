@@ -4,6 +4,7 @@ import { registerCommitteeCleanup } from "./committee-service.test/fixtures.js";
 import { registerL1FinalityTests } from "./committee-service.test/l1-finality.js";
 import { registerL1IntegrityTests } from "./committee-service.test/l1-integrity.js";
 import { registerLifecycleTests } from "./committee-service.test/lifecycle.js";
+import { registerParentStateTests } from "./committee-service.test/parent-state.js";
 import { registerPayloadsTests } from "./committee-service.test/payloads.js";
 import { registerReadinessTests } from "./committee-service.test/readiness.js";
 import { registerRollbackTests } from "./committee-service.test/rollback.js";
@@ -17,5 +18,6 @@ describe("CommitteeService", () => {
   registerL1FinalityTests();
   registerRollbackTests();
   registerPayloadsTests();
+  registerParentStateTests();
   registerLifecycleTests();
 });

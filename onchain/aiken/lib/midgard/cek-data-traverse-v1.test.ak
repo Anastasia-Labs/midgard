@@ -1,5 +1,6 @@
 use aiken/builtin
 use aiken/primitive/bytearray
+use midgard/cek_data_bytes_v1
 use midgard/cek_data_frame_v1
 use midgard/cek_data_integer_v1
 use midgard/cek_data_traverse_v1
@@ -7,13 +8,13 @@ use midgard/cek_source_blob_v1
 use midgard/fraud_proofs/native_tx/codec.{slice_len}
 
 const typescript_terminal_control_cbor =
-  #"8a010711111140d87a80d87a80d87a80d8799f835820844cdd8ac8dc97d87e4ed149da121054504365b523034a804a12c014d55c2c441109ff"
+  #"89010711111140d87a80d87a80d8799f835820844cdd8ac8dc97d87e4ed149da121054504365b523034a804a12c014d55c2c441109ff"
 
 const typescript_active_integer_control_cbor =
-  #"8a0101110b0040d87a80d8799f860100110b00d87a80ffd87a80d87a80"
+  #"890101110b0040d8799f860100110b00d87a80ffd87a80d87a80"
 
 const typescript_active_bytes_control_cbor =
-  #"8a01021118460040d87a80d87a80d8799f86010011184600d87a80ffd87a80"
+  #"8901021118460040d87a80d8799f860102110100d87a80ffd87a80"
 
 fn source_for_control(
   control: cek_data_traverse_v1.DataTraverseControlV1,
@@ -92,10 +93,7 @@ test streams_large_constructor_before_fields_and_matches_typescript() {
   expect Some(opened) = cek_data_traverse_v1.step_v1(
     initial,
     source_for_control(initial, source, 17),
-    cek_data_traverse_v1.HeadLargeConstructor {
-      constructor_cbor_length: 11,
-      expected_children: 1,
-    },
+    cek_data_traverse_v1.HeadLargeConstructor,
   )
   let large_fields = finish_large_constructor(opened, source, 17)
   expect Some(integer) = large_fields.integer
@@ -106,7 +104,6 @@ test streams_large_constructor_before_fields_and_matches_typescript() {
     integer.source_length,
     integer.memory,
     #"",
-    1,
   )
   expect Some(fields_opened) = cek_data_traverse_v1.step_v1(
     large_fields,
@@ -116,7 +113,7 @@ test streams_large_constructor_before_fields_and_matches_typescript() {
   expect Some(field_opened) = cek_data_traverse_v1.step_v1(
     fields_opened,
     source_for_control(fields_opened, source, 17),
-    cek_data_traverse_v1.HeadScalar { item_length: 1 },
+    cek_data_traverse_v1.HeadScalar,
   )
   let field_terminal = finish_scalar(field_opened, source, 17)
   expect Some(field_integer) = field_terminal.integer
@@ -162,27 +159,26 @@ test streams_large_constructor_before_fields_and_matches_typescript() {
     summary.cbor_length == 17,
     summary.memory == 9,
     cek_data_traverse_v1.encode_control_v1(terminal) == typescript_terminal_control_cbor,
-    cek_data_traverse_v1.hash_control_v1(terminal) == #"173ab9eb57665546414d5c286c55bc1fcd939a1784a7b800863e9970b82f6c16",
+    cek_data_traverse_v1.hash_control_v1(terminal) == #"573373b0ded63b7f9faa8b77b0fff3c3983a11638ba43b65699bbe73aa464622",
   }
 }
 
 test pops_an_authenticated_empty_child_container_into_parent() {
   let source = #"d8799f80ff"
   let initial = cek_data_traverse_v1.initial_control_v1(17, 5)
-  let parent = cek_data_frame_v1.initial_small_constr_frame_v1(0, #"", 1)
+  let parent = cek_data_frame_v1.initial_small_constr_frame_v1(0, #"")
   expect Some(parent_opened) = cek_data_traverse_v1.step_v1(
     initial,
     source_for_control(initial, source, 17),
-    cek_data_traverse_v1.HeadSequence { expected_children: 1 },
+    cek_data_traverse_v1.HeadSequence,
   )
   let child = cek_data_frame_v1.initial_list_frame_v1(
     cek_data_frame_v1.hash_frame_v1(parent),
-    0,
   )
   expect Some(child_opened) = cek_data_traverse_v1.step_v1(
     parent_opened,
     source_for_control(parent_opened, source, 17),
-    cek_data_traverse_v1.HeadSequence { expected_children: 0 },
+    cek_data_traverse_v1.HeadSequence,
   )
   expect Some(child_summary) = cek_data_frame_v1.finalized_summary_v1(child)
   expect Some(child_attached) = cek_data_traverse_v1.step_v1(
@@ -233,17 +229,39 @@ test maximum_delegated_source_window_is_132_bytes() {
   expect Some(opened) = cek_data_traverse_v1.step_v1(
     initial,
     source_for_control(initial, source, 17),
-    cek_data_traverse_v1.HeadScalar { item_length: 134 },
+    cek_data_traverse_v1.HeadScalar,
   )
-  expect Some(parsed) = cek_data_traverse_v1.step_v1(
-    opened,
-    source_for_control(opened, source, 17),
-    cek_data_traverse_v1.NoAction,
-  )
+  let parsed = measure_bytes(opened, source, 17, 0)
+  expect Some(bytes_control) = parsed.bytes
   expect Some(span) = cek_data_traverse_v1.next_source_span_v1(parsed)
   and {
+    bytes_control.stage == cek_data_bytes_v1.stage_blob,
+    bytes_control.source_length == 134,
     span.length == 109,
     span.length <= cek_data_traverse_v1.max_source_span,
+  }
+}
+
+/// Steps a measuring bytes control through its chunk headers until the
+/// authenticated break fixes the encoding length; returns the blob-stage
+/// control after asserting the number of measuring steps taken.
+fn measure_bytes(
+  control: cek_data_traverse_v1.DataTraverseControlV1,
+  source: ByteArray,
+  source_start: Int,
+  steps: Int,
+) -> cek_data_traverse_v1.DataTraverseControlV1 {
+  expect Some(bytes_control) = control.bytes
+  if bytes_control.stage != cek_data_bytes_v1.stage_measure {
+    expect steps == 3
+    control
+  } else {
+    expect Some(next) = cek_data_traverse_v1.step_v1(
+      control,
+      source_for_control(control, source, source_start),
+      cek_data_traverse_v1.NoAction,
+    )
+    measure_bytes(next, source, source_start, steps + 1)
   }
 }
 
@@ -270,15 +288,15 @@ test malformed_counts_trailing_bytes_and_small_large_constructor_fail_closed() {
   expect Some(opened) = cek_data_traverse_v1.step_v1(
     initial,
     source_for_control(initial, wrong_source, 17),
-    cek_data_traverse_v1.HeadSequence { expected_children: 2 },
+    cek_data_traverse_v1.HeadSequence,
   )
   expect Some(child_opened) = cek_data_traverse_v1.step_v1(
     opened,
     source_for_control(opened, wrong_source, 17),
-    cek_data_traverse_v1.HeadScalar { item_length: 1 },
+    cek_data_traverse_v1.HeadScalar,
   )
   let child_terminal = finish_scalar(child_opened, wrong_source, 17)
-  let parent = cek_data_frame_v1.initial_list_frame_v1(#"", 2)
+  let parent = cek_data_frame_v1.initial_list_frame_v1(#"")
   expect Some(child_integer) = child_terminal.integer
   expect Some(child_summary) = cek_data_integer_v1.finalize_v1(child_integer)
   expect Some(one_attached) = cek_data_traverse_v1.step_v1(
@@ -291,16 +309,13 @@ test malformed_counts_trailing_bytes_and_small_large_constructor_fail_closed() {
   expect Some(small_opened) = cek_data_traverse_v1.step_v1(
     small_large,
     source_for_control(small_large, small_large_source, 17),
-    cek_data_traverse_v1.HeadLargeConstructor {
-      constructor_cbor_length: 2,
-      expected_children: 0,
-    },
+    cek_data_traverse_v1.HeadLargeConstructor,
   )
   and {
     cek_data_traverse_v1.step_v1(
       one_attached,
       Some(#"ff"),
-      cek_data_traverse_v1.HeadScalar { item_length: 1 },
+      cek_data_traverse_v1.HeadScalar,
     ) == None,
     cek_data_traverse_v1.step_v1(
       small_opened,
@@ -317,16 +332,12 @@ fn scalar_narrow_transition_is_exact(source: ByteArray) -> Bool {
     bytearray.length(source),
   )
   expect Some(window) = source_for_control(initial, source, 17)
-  let opened = cek_data_traverse_v1.prevalidated_head_scalar(
-    initial,
-    window,
-    bytearray.length(source),
-  )
+  let opened = cek_data_traverse_v1.prevalidated_head_scalar(initial, window)
   expect
     opened == cek_data_traverse_v1.step_v1(
       initial,
       Some(window),
-      cek_data_traverse_v1.HeadScalar { item_length: bytearray.length(source) },
+      cek_data_traverse_v1.HeadScalar,
     )
   expect Some(control) = opened
   let terminal = finish_scalar(control, source, 17)

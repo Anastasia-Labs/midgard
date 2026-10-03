@@ -1,7 +1,6 @@
 import { parentPort, threadId, workerData } from "node:worker_threads";
 
 import {
-  evaluateUplcWithContextCbor,
   phaseAAddressCacheStats,
   phaseAPublicKeyCacheStats,
   serializePhaseACandidate,
@@ -11,7 +10,6 @@ import {
 import { NodeEd25519Verifier } from "./utils/ed25519-verifier.js";
 import type {
   PhaseAJobRequest,
-  UplcJobRequest,
   ValidationJobRequest,
   ValidationWorkerInit,
   ValidationWorkerResponse,
@@ -91,26 +89,9 @@ const runPhaseA = (request: PhaseAJobRequest): ValidationWorkerResponse => {
   };
 };
 
-const runUplc = (request: UplcJobRequest): ValidationWorkerResponse => {
-  const result = evaluateUplcWithContextCbor(
-    new Uint8Array(request.scriptBytes),
-    new Uint8Array(request.contextCbor),
-  );
-  return {
-    kind: "uplc",
-    jobId: request.jobId,
-    result:
-      result.kind === "accepted"
-        ? { ok: true, cpu: result.budget.cpu, memory: result.budget.memory }
-        : { ok: false, detail: result.detail },
-  };
-};
-
 port.on("message", (request: ValidationJobRequest) => {
   try {
-    port.postMessage(
-      request.kind === "phase_a" ? runPhaseA(request) : runUplc(request),
-    );
+    port.postMessage(runPhaseA(request));
   } catch (error) {
     port.postMessage({
       kind: "job_failed",

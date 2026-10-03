@@ -4,6 +4,7 @@ import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxCompact,
+  encodeCbor,
   encodeMidgardFieldPreimageForField,
   encodeMidgardVersionedScriptListPreimage,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -16,7 +17,6 @@ import {
   type MidgardNativeTxWitnessSetCanonical,
 } from "@al-ft/midgard-core/codec";
 import { CML } from "@lucid-evolution/lucid";
-import { encode } from "cborg";
 import { describe, expect, it } from "vitest";
 
 import { makeConvertibleCardanoTxBytes } from "./helpers/cardano-native-fixtures.js";
@@ -165,7 +165,7 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
     const scriptDataHash = Buffer.from("55".repeat(32), "hex");
     const auxiliaryDataHash = Buffer.from("66".repeat(32), "hex");
     const redeemerBytes = Buffer.from(
-      encode([[0, 0, Buffer.alloc(0), [0, 0]]]),
+      encodeCbor([[0, 0, Buffer.alloc(0), [0, 0]]]),
     );
     const redeemers = CML.Redeemers.from_cbor_bytes(redeemerBytes);
     const plutusScript = CML.PlutusV3Script.from_raw_bytes(
@@ -477,7 +477,7 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
     expect(redeemers).toBeDefined();
     expect(Buffer.from(redeemers!.to_cbor_bytes())).toEqual(
       Buffer.from(
-        encode(
+        encodeCbor(
           new Map([
             [
               [0, 0],

@@ -247,7 +247,7 @@ export const makeStage = async (
     } = {},
   ) => {
     const purposeKind = options.purposeKind ?? fixture.shape.purposeKind;
-    const purposeIndex = options.purposeIndex ?? 0;
+    const purposeIndex = options.purposeIndex ?? fixture.shape.purposeIndex;
     const referenceScriptUtxo = options.referenceScriptUtxo ?? references[0];
     const result = await measured(options.label ?? "step01", async () =>
       fixture.shape.direction === "accepted"

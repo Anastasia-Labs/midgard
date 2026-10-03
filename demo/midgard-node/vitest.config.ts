@@ -38,6 +38,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/da-bond-pool-bootstrap-emulator.test.ts
  *   tests/deposit-flow-emulator-commit-selection.test.ts
  *   tests/deposit-flow-emulator-confirmation-journal.test.ts
+ *   tests/deposit-flow-emulator-input-resolution.test.ts
  *   tests/deposit-flow-emulator-merge-payout.test.ts
  *   tests/deposit-flow-emulator-recovery-invalidation.test.ts
  *   tests/deposit-flow-emulator-submission.test.ts

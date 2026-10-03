@@ -108,7 +108,9 @@ export const submitMissingScriptSourceStep02 = async ({
     bound.subject.transaction_id !== evidence.finding.subject.transaction_id ||
     bound.purpose_kind !== BigInt(evidence.finding.purposeKind) ||
     bound.purpose_index !== BigInt(evidence.finding.purposeIndex) ||
-    authentication.execution_siblings.length !==
+    // The execution a missing source blocks is the purpose itself, so its
+    // membership is the purpose tree's.
+    authentication.purpose_siblings.length !==
       evidence.descriptor.executionMembership.siblings.length
   )
     throw new Error(

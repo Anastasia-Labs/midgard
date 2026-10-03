@@ -16,9 +16,9 @@ import "./reconstruct.decode-transactions.js";
 import "./reconstruct.authenticate-forced-transaction-preimages.js";
 import "./reconstruct.reconstruct-da-payload.js";
 export { rootMismatches } from "./reconstruct.authenticate-forced-transaction-preimages.js";
+export { decodePayloadStrict } from "./reconstruct.decode-transactions.js";
 export { reconstructDaPayload } from "./reconstruct.reconstruct-da-payload.js";
 export {
-  countMismatches,
   type DecodedForcedTransactionEntry,
   type DecodedRootEntry,
   type DecodedTransactionEntry,
@@ -26,6 +26,7 @@ export {
   eventKeyFingerprint,
   eventKeyPhase,
   type PayloadCountSet,
+  payloadMemberCounts,
   type PayloadRootSet,
   type ReconstructDaPayloadOptions,
   sourceEventKey,

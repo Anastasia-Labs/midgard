@@ -14,6 +14,7 @@ import {
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { verdictDetectionSubject } from "../workflow/detection-subject.js";
 
 export const NETWORK_ID_MISMATCH_REASON = "NetworkIdMismatch" as const;
 export const NETWORK_ID_WRONGFUL_REJECTION_VIOLATION_ID =
@@ -128,6 +129,7 @@ export const detectNetworkIdWrongfulRejections = ({
       return evidence !== null && networkIdWrongfulRejectionCloses(evidence)
         ? [
             Object.freeze({
+              ...verdictDetectionSubject(evidence.subject),
               detectionId: `${NETWORK_ID_WRONGFUL_REJECTION_VIOLATION_ID}:${forcedIndex.toString()}:${evidence.subject.transaction_id}`,
               headerHash: block.headerHash,
               violationId: NETWORK_ID_WRONGFUL_REJECTION_VIOLATION_ID,

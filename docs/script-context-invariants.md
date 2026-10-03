@@ -44,6 +44,17 @@ It is intentionally strict about scope:
 6. `transaction.redeemers` only contains script witnesses, so pubkey-spent inputs do not create `Spend(...)` entries there.
 7. Therefore, when reading `transaction.redeemers` directly, the observable ordering fact is: `Spend` redeemers are sorted by the `TxOutRef` of the spent script inputs that have redeemers.
 
+### Redeemers in Midgard L2 contexts
+
+A Midgard L2 script context orders its redeemer map as Cardano does, and the order does not depend on the order of the transaction's redeemer witness list.
+
+1. Cardano keys its redeemers by `PlutusPurpose AsIx`, whose derived order is (tag, index), and `txInfoRedeemers` is `Map.toList` of that map, so the context map is (tag, index) ascending (cardano-ledger `347ff73c`: Conway/Scripts.hs, Alonzo/TxWits.hs, Babbage/TxInfo.hs; plutus `de88d284`: `AssocMap.unsafeFromList` does not re-sort).
+2. Midgard's redeemer tags are `Spend` 0, `Mint` 1, `Reward` 3 and `Receive` 6, so the map holds spends, then mints, then observers, then receives, each by pointer index ascending. A pointer index is the purpose's position among the transaction's sorted spent inputs, mint policies, observers or receive hashes.
+3. `MidgardV1` contexts include the `Receive` entries last. `PlutusV3` contexts have no receiving purpose and omit them.
+4. Native scripts take no redeemer, so a native-script purpose has no map entry, and a redeemer that points at one is refused as extraneous.
+5. The node builds the map in this order (`redeemersData`, `demo/midgard-validation/src/script-context.ts`). The fault proof folds the redeemers down the execution frontier and prepends each pair. `CekRedeemerContextControlV1.purpose_bound` starts at the purpose count. Each select or skip step proves the execution leaf at exactly `purpose_bound - 1` against the native control's execution frontier, and that membership is the pin: `[execution-leaf]` for a select, `[native-execution]` for a skip. The frontier index is derived from the bound and never named by the witness. The step is a select (auxiliary constructor 17) when that leaf carries a redeemer item leaf (language 3 or 128), and a skip (constructor 40) when it is a native execution (language 0, empty redeemer leaf). Only one of the two can apply at a given bound. Each select or skip lowers `purpose_bound` by exactly one. The item steps between a select and its finish walk the selected item under `active_scan_hash` without moving the bound. The select's `total_length` is fixed by the item commitment through `commitment_from_frontier_root` (`[item-length]`). The fold completes at `cursor == redeemer_count`. The monolithic verifier is `verify_cek_redeemer_data_step` in `onchain/aiken/lib/midgard/validation-machine/cek.ak`. The split chain runs `cek-context-redeemer-select-authenticate`, then `-select-initialize`, `-select-hash` and `-select-finish` for a select; select-authenticate routes a skip straight to `cek-context-settle`. The purpose frontier is itself in ledger order, so the committed map is ascending.
+6. Duplicate pointers differ from Cardano: Cardano's decoder does not reject duplicate redeemer keys and keeps a single entry for the key, while Midgard rejects a transaction with two redeemers at one pointer.
+
 ### Governance-Specific Ordered Fields
 
 1. `transaction.votes` is ordered by ascending `Voter` and then ascending `GovernanceActionId`.

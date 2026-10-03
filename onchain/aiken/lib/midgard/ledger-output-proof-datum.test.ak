@@ -105,15 +105,13 @@ fn datum_ready(
     commitment,
   )
   let at_datum = until_datum(initial, chunk_proof, 64)
-  // The span-attach step records the whole output as the bound window every
-  // datum-stage step below consumes.
+  // The span-attach step records the window from the datum head's span to the
+  // end of the output, which every datum-stage step below consumes.
   Pair(
     advanced(
       proof.step_v1(
         at_datum,
         proof.LedgerOutputProofSpanAttach {
-          start: 0,
-          length: bytearray.length(output),
           chunk_proof,
           next_chunk_proof: None,
         },
@@ -121,6 +119,24 @@ fn datum_ready(
     ),
     chunk_proof,
   )
+}
+
+/// The bytes of the window `control` records, sliced out of `output`.
+fn recorded_window(
+  control: proof.LedgerOutputProofControlV1,
+  output: ByteArray,
+) -> ByteArray {
+  expect Some(window) = control.span_window
+  slice_len(output, window.start, window.length)
+}
+
+/// `recorded_window` with its first byte flipped.
+fn mutated_window(
+  control: proof.LedgerOutputProofControlV1,
+  output: ByteArray,
+) -> ByteArray {
+  let window = recorded_window(control, output)
+  bytearray.concat(#"00", slice_len(window, 1, bytearray.length(window) - 1))
 }
 
 fn active_datum(
@@ -165,12 +181,10 @@ fn routed(
   action: traverse.DataTraverseActionV1,
 ) -> Option<narrow.StepResult> {
   when action is {
-    traverse.HeadScalar { .. } ->
-      narrow_datum.head_scalar(control_frame, witness)
-    traverse.HeadSequence { .. } ->
-      narrow_datum.head_sequence(control_frame, witness)
+    traverse.HeadScalar -> narrow_datum.head_scalar(control_frame, witness)
+    traverse.HeadSequence -> narrow_datum.head_sequence(control_frame, witness)
     traverse.HeadMap { .. } -> narrow_datum.head_map(control_frame, witness)
-    traverse.HeadLargeConstructor { .. } ->
+    traverse.HeadLargeConstructor ->
       narrow_datum.head_large_constructor(control_frame, witness)
     traverse.AttachScalar { .. } ->
       if datum_control.stage == traverse.stage_integer {
@@ -227,7 +241,7 @@ fn same_datum_step(
     action,
     window: when traverse.next_source_span_v1(datum_control) is {
       None -> None
-      Some(_) -> Some(output)
+      Some(_) -> Some(recorded_window(control, output))
     },
   }
   let next = advanced(proof.step_v1(control, typed_witness))
@@ -294,10 +308,7 @@ test datum_family_golden_agreement_over_a_streamed_large_constructor() {
   // Stage role 16: head large-constructor.
   let opened = same_datum_step(
     ready,
-    traverse.HeadLargeConstructor {
-      constructor_cbor_length: 11,
-      expected_children: 1,
-    },
+    traverse.HeadLargeConstructor,
     chunk_proof,
     large_datum_output,
   )
@@ -322,7 +333,6 @@ test datum_family_golden_agreement_over_a_streamed_large_constructor() {
     streamed_integer.source_length,
     streamed_integer.memory,
     fields_control.frame_root,
-    1,
   )
   // Stage role 21: the large-fields completion opens the field frame.
   let fields_opened = same_datum_step(
@@ -335,7 +345,7 @@ test datum_family_golden_agreement_over_a_streamed_large_constructor() {
   // Stage role 4: head scalar.
   let field_opened = same_datum_step(
     fields_opened,
-    traverse.HeadScalar { item_length: 1 },
+    traverse.HeadScalar,
     chunk_proof,
     large_datum_output,
   )
@@ -416,15 +426,9 @@ test datum_family_golden_agreement_over_a_streamed_large_constructor() {
 /// refused by the consuming stage yield's binding clause.
 test datum_window_with_mutated_bytes_fails() fail {
   let Pair(ready, _chunk_proof) = datum_ready(large_datum_output)
-  let mutated = bytearray.concat(
-    #"00",
-    slice_len(large_datum_output, 1, bytearray.length(large_datum_output) - 1),
-  )
+  let mutated = mutated_window(ready, large_datum_output)
   let witness_data: Data = proof.LedgerOutputProofDatum {
-    action: traverse.HeadLargeConstructor {
-      constructor_cbor_length: 11,
-      expected_children: 1,
-    },
+    action: traverse.HeadLargeConstructor,
     window: Some(mutated),
   }
   narrow_datum.head_large_constructor(
@@ -444,10 +448,7 @@ test datum_window_without_span_attach_fails() fail {
   )
   let unattached = until_datum(initial, chunk_proof, 64)
   let witness_data: Data = proof.LedgerOutputProofDatum {
-    action: traverse.HeadLargeConstructor {
-      constructor_cbor_length: 11,
-      expected_children: 1,
-    },
+    action: traverse.HeadLargeConstructor,
     window: Some(large_datum_output),
   }
   narrow_datum.head_large_constructor(
@@ -494,10 +495,7 @@ test large_fields_with_mutated_window_fails_closed() fail {
   let Pair(ready, chunk_proof) = datum_ready(large_datum_output)
   let opened = same_datum_step(
     ready,
-    traverse.HeadLargeConstructor {
-      constructor_cbor_length: 11,
-      expected_children: 1,
-    },
+    traverse.HeadLargeConstructor,
     chunk_proof,
     large_datum_output,
   )
@@ -508,10 +506,7 @@ test large_fields_with_mutated_window_fails_closed() fail {
     large_datum_output,
     256,
   )
-  let mutated = bytearray.concat(
-    #"00",
-    slice_len(large_datum_output, 1, bytearray.length(large_datum_output) - 1),
-  )
+  let mutated = mutated_window(large_fields, large_datum_output)
   let witness_data: Data = proof.LedgerOutputProofDatum {
     action: traverse.NoAction,
     window: Some(mutated),
@@ -528,10 +523,7 @@ test integer_scalar_claim_binds_the_whole_claim() {
   let Pair(ready, chunk_proof) = datum_ready(large_datum_output)
   let opened = same_datum_step(
     ready,
-    traverse.HeadLargeConstructor {
-      constructor_cbor_length: 11,
-      expected_children: 1,
-    },
+    traverse.HeadLargeConstructor,
     chunk_proof,
     large_datum_output,
   )
@@ -550,7 +542,7 @@ test integer_scalar_claim_binds_the_whole_claim() {
   )
   let field_opened = same_datum_step(
     fields_opened,
-    traverse.HeadScalar { item_length: 1 },
+    traverse.HeadScalar,
     chunk_proof,
     large_datum_output,
   )
@@ -576,10 +568,7 @@ test bytes_scalar_attestation_refuses_an_integer_stage_control() fail {
   let Pair(ready, chunk_proof) = datum_ready(large_datum_output)
   let opened = same_datum_step(
     ready,
-    traverse.HeadLargeConstructor {
-      constructor_cbor_length: 11,
-      expected_children: 1,
-    },
+    traverse.HeadLargeConstructor,
     chunk_proof,
     large_datum_output,
   )
@@ -598,7 +587,7 @@ test bytes_scalar_attestation_refuses_an_integer_stage_control() fail {
   )
   let field_opened = same_datum_step(
     fields_opened,
-    traverse.HeadScalar { item_length: 1 },
+    traverse.HeadScalar,
     chunk_proof,
     large_datum_output,
   )

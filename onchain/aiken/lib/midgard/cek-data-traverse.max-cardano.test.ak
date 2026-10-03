@@ -12,22 +12,22 @@ use midgard/validation_merkle_v1
 /// whose `--check` run is a required CI job. Do not hand-edit them; run
 /// `pnpm --dir demo/midgard-validation run fixtures:nested-boundary-aiken:sync`.
 const maximum_cardano_nested_data_pre_control =
-  #"8a01061831193f2b193f2b582064c916e4a790b0d133bb36d04d9e9ecca7dc2f3c679690d2d005f84b311e9d94d87a80d87a80d87a80d87a80"
+  #"8901061831193f2b193f2b5820b7a5df388bb7d14628a7a812e27842ee93277f25fec365aeeb9ff1d0b15215a3d87a80d87a80d87a80"
 
 const maximum_cardano_nested_data_post_control =
-  #"8a01071831193f2b193f2b40d87a80d87a80d87a80d8799f83582077156535ea7ff621233f808b4995b94294f504a0dd78455593440e3d03ad2b6f193f2b19bd6bff"
+  #"8901071831193f2b193f2b40d87a80d87a80d8799f83582077156535ea7ff621233f808b4995b94294f504a0dd78455593440e3d03ad2b6f193f2b19bd6bff"
 
 const maximum_cardano_nested_redeemer_pre_control =
-  #"8a010600193e6e193e6e582008f6a2dc24df8fbc23b2d4255dda3ca30a2fd28eb361e9ab31bf01732c764eead87a80d87a80d87a80d87a80"
+  #"89010600193e6e193e6e58209deb1e806bf050f95842da59778bfcae5b0e5450e319deca83c1417e98751e8cd87a80d87a80d87a80"
 
 const maximum_cardano_nested_redeemer_post_control =
-  #"8a010700193e6e193e6e40d87a80d87a80d87a80d8799f83582026ef420c9e803ba9d74f048b521bff6c99e6a6b4d8aefd077c300a8e31a4dc20193e6e19bb34ff"
+  #"89010700193e6e193e6e40d87a80d87a80d8799f83582026ef420c9e803ba9d74f048b521bff6c99e6a6b4d8aefd077c300a8e31a4dc20193e6e19bb34ff"
 
 const maximum_cardano_nested_data_terminal_frame_child =
   #"f64559d8fa739e5dec6e218602ff2ebd0d24b477421f38b1872a2274454f84c7"
 
 const maximum_cardano_nested_data_terminal_frame =
-  #"8b010058203ba6e86f178af94b2662ab108e98320a100ccd6b2c517f0eee2ab72a2c562fcf020640010181820058209f62b20d5db17ead31389c3864fb7ea3a2f68726b21ef48452c670dab47a8a6601845820f64559d8fa739e5dec6e218602ff2ebd0d24b477421f38b1872a2274454f84c701193f2419bd67"
+  #"8b010058203ba6e86f178af94b2662ab108e98320a100ccd6b2c517f0eee2ab72a2c562fcf020640000181820058209f62b20d5db17ead31389c3864fb7ea3a2f68726b21ef48452c670dab47a8a6601845820f64559d8fa739e5dec6e218602ff2ebd0d24b477421f38b1872a2274454f84c701193f2419bd67"
 
 const maximum_cardano_nested_data_root =
   #"77156535ea7ff621233f808b4995b94294f504a0dd78455593440e3d03ad2b6f"
@@ -40,7 +40,7 @@ const maximum_cardano_nested_redeemer_terminal_frame_child =
   #"0f7bb776751d400f727bf81b02cd7ed66457e144209eb5f9f90e2c6500fe1496"
 
 const maximum_cardano_nested_redeemer_terminal_frame =
-  #"8b010058203ba6e86f178af94b2662ab108e98320a100ccd6b2c517f0eee2ab72a2c562fcf0206400101818200582020de66bc0f1322c9c61884ce582d6698c9075e35c183a4264c6c7c27fbf1401b018458200f7bb776751d400f727bf81b02cd7ed66457e144209eb5f9f90e2c6500fe149601193e6719bb30"
+  #"8b010058203ba6e86f178af94b2662ab108e98320a100ccd6b2c517f0eee2ab72a2c562fcf0206400001818200582020de66bc0f1322c9c61884ce582d6698c9075e35c183a4264c6c7c27fbf1401b018458200f7bb776751d400f727bf81b02cd7ed66457e144209eb5f9f90e2c6500fe149601193e6719bb30"
 
 const maximum_cardano_nested_redeemer_root =
   #"26ef420c9e803ba9d74f048b521bff6c99e6a6b4d8aefd077c300a8e31a4dc20"
@@ -90,53 +90,49 @@ fn applied(
 }
 
 test maximum_cardano_nested_data_applies_real_head_controls() {
-  let large_pre = #"8a01001831193f2b0040d87a80d87a80d87a80d87a80"
+  let large_pre = #"8901001831193f2b0040d87a80d87a80d87a80"
   let large_source = #"d8668218809fa1d879809f9f9f9f"
-  let large_post = #"8a01031831193f2b0340d8799f01ffd8799f86010018340200d87a80ffd87a80d87a80"
-  let sequence_pre = #"8a01001831193f2b07582030d75ccee289617aaa8612e21cc72076bcebd188667fb119d9224f76f05a2d01d87a80d87a80d87a80d87a80"
+  let large_post = #"8901031831193f2b0340d8799f86010018340200d87a80ffd87a80d87a80"
+  let sequence_pre = #"8901001831193f2b075820c13a16cc8c5bae2467ceba89bde9412cc64224c28f3d150d3e5210b9138e5db4d87a80d87a80d87a80"
   let sequence_source = #"d879809f9f9f9f9f9f9f9f9f9f9f"
-  let sequence_post = #"8a01061831193f2b0a5820df8903414ebd963ae3a2ed2ca1ec2f15b56e1017fe0701620626657b7fa92a12d87a80d87a80d87a80d87a80"
-  let map_pre = #"8a01001831193f2b06582001afca7b219108b07ea760418c63d6be0179f69c368e796a8cd0ba46f5e342fcd87a80d87a80d87a80d87a80"
+  let sequence_post = #"8901061831193f2b0a5820464355884b2bef2ae2fd1c5b070581b3184df65b99449ae2c50d1c48c865ca03d87a80d87a80d87a80"
+  let map_pre = #"8901001831193f2b0658206819f5cc22f3ef7b47b8effd21aa1674ab2ccef9b2aba2ff4c0c34f04caf51cdd87a80d87a80d87a80"
   let map_source = #"a1d879809f9f9f9f9f9f9f9f9f9f"
-  let map_post = #"8a01001831193f2b07582030d75ccee289617aaa8612e21cc72076bcebd188667fb119d9224f76f05a2d01d87a80d87a80d87a80d87a80"
-  let scalar_pre = #"8a01001831193f2b165820bf2bd3eb8fc61e7769e9f918c8cdcc9668c96c8be328284060e76931c62005b8d87a80d87a80d87a80d87a80"
+  let map_post = #"8901001831193f2b075820c13a16cc8c5bae2467ceba89bde9412cc64224c28f3d150d3e5210b9138e5db4d87a80d87a80d87a80"
+  let scalar_pre = #"8901001831193f2b16582035e2057243b913c6f5ea98249866cacc7ddc218ef6c2bf8f6c8b78b150ebe882d87a80d87a80d87a80"
   let scalar_source = #"410100ff9f009f0000ffffff9f9f"
-  let scalar_post = #"8a01021831193f2b165820bf2bd3eb8fc61e7769e9f918c8cdcc9668c96c8be328284060e76931c62005b8d87a80d87a80d8799f86010018470200d87a80ffd87a80"
+  let scalar_post = #"8901021831193f2b16582035e2057243b913c6f5ea98249866cacc7ddc218ef6c2bf8f6c8b78b150ebe882d87a80d8799f86010018470200d87a80ffd87a80"
   and {
     applied(
       large_pre,
       Some(large_source),
-      cek_data_traverse_v1.HeadLargeConstructor {
-        constructor_cbor_length: 2,
-        expected_children: 1,
-      },
+      cek_data_traverse_v1.HeadLargeConstructor,
       large_post,
     ),
     applied(
       sequence_pre,
       Some(sequence_source),
-      cek_data_traverse_v1.HeadSequence { expected_children: 0 },
+      cek_data_traverse_v1.HeadSequence,
       sequence_post,
     ),
     applied(map_pre, Some(map_source), cek_data_traverse_v1.HeadMap, map_post),
     applied(
       scalar_pre,
       Some(scalar_source),
-      cek_data_traverse_v1.HeadScalar { item_length: 2 },
+      cek_data_traverse_v1.HeadScalar,
       scalar_post,
     ),
     cek_data_traverse_v1.step_v1(
       cek_data_traverse_v1.decode_control_v1(large_pre),
       Some(#"d8658218809fa1d879809f9f9f9f"),
-      cek_data_traverse_v1.HeadLargeConstructor {
-        constructor_cbor_length: 2,
-        expected_children: 1,
-      },
+      cek_data_traverse_v1.HeadLargeConstructor,
     ) == None,
+    // The head window, not the action, fixes what a head reads: naming the
+    // wrong head kind for an authenticated header is the only freedom left.
     cek_data_traverse_v1.step_v1(
       cek_data_traverse_v1.decode_control_v1(sequence_pre),
       Some(sequence_source),
-      cek_data_traverse_v1.HeadSequence { expected_children: 1 },
+      cek_data_traverse_v1.HeadScalar,
     ) == None,
     cek_data_traverse_v1.step_v1(
       cek_data_traverse_v1.decode_control_v1(map_pre),
@@ -146,7 +142,7 @@ test maximum_cardano_nested_data_applies_real_head_controls() {
     cek_data_traverse_v1.step_v1(
       cek_data_traverse_v1.decode_control_v1(scalar_pre),
       Some(scalar_source),
-      cek_data_traverse_v1.HeadScalar { item_length: 0 },
+      cek_data_traverse_v1.HeadSequence,
     ) == None,
   }
 }
@@ -159,7 +155,7 @@ fn terminal_frame(sequence_root: ByteArray) -> cek_data_frame_v1.DataFrameV1 {
     constructor_cbor_length: 2,
     constructor_memory: 6,
     tail: #"",
-    expected_children: 1,
+    expected_children: 0,
     child_count: 1,
     child_peaks: [
       validation_merkle_v1.FrontierPeak {
@@ -187,7 +183,7 @@ fn redeemer_terminal_frame(
     constructor_cbor_length: 2,
     constructor_memory: 6,
     tail: #"",
-    expected_children: 1,
+    expected_children: 0,
     child_count: 1,
     child_peaks: [
       validation_merkle_v1.FrontierPeak {
@@ -212,8 +208,8 @@ fn maximum_first_list_fold_frame() -> cek_data_frame_v1.DataFrameV1 {
     constructor_cbor_root: #"",
     constructor_cbor_length: 0,
     constructor_memory: 0,
-    tail: #"7f014d1984be15f9587409aa022afa8f6c4e1488924df30c012383e3bbf28e2c",
-    expected_children: 2,
+    tail: #"757c5ddcb6465e8e4e0d5761e928305b4080b75895d1e8cb606d676f43ce981e",
+    expected_children: 0,
     child_count: 2,
     child_peaks: [
       validation_merkle_v1.FrontierPeak {
@@ -238,7 +234,7 @@ fn maximum_map_fold_frame() -> cek_data_frame_v1.DataFrameV1 {
     constructor_cbor_root: #"",
     constructor_cbor_length: 0,
     constructor_memory: 0,
-    tail: #"01afca7b219108b07ea760418c63d6be0179f69c368e796a8cd0ba46f5e342fc",
+    tail: #"6819f5cc22f3ef7b47b8effd21aa1674ab2ccef9b2aba2ff4c0c34f04caf51cd",
     expected_children: 2,
     child_count: 2,
     child_peaks: [
@@ -264,7 +260,7 @@ fn maximum_empty_key_frame() -> cek_data_frame_v1.DataFrameV1 {
     constructor_cbor_root: #"",
     constructor_cbor_length: 0,
     constructor_memory: 0,
-    tail: #"30d75ccee289617aaa8612e21cc72076bcebd188667fb119d9224f76f05a2d01",
+    tail: #"c13a16cc8c5bae2467ceba89bde9412cc64224c28f3d150d3e5210b9138e5db4",
     expected_children: 0,
     child_count: 0,
     child_peaks: [],
@@ -285,7 +281,7 @@ fn maximum_empty_map_parent() -> cek_data_frame_v1.DataFrameV1 {
     constructor_cbor_root: #"",
     constructor_cbor_length: 0,
     constructor_memory: 0,
-    tail: #"01afca7b219108b07ea760418c63d6be0179f69c368e796a8cd0ba46f5e342fc",
+    tail: #"6819f5cc22f3ef7b47b8effd21aa1674ab2ccef9b2aba2ff4c0c34f04caf51cd",
     expected_children: 2,
     child_count: 0,
     child_peaks: [],
@@ -300,8 +296,8 @@ fn maximum_empty_map_parent() -> cek_data_frame_v1.DataFrameV1 {
 }
 
 test maximum_cardano_nested_data_applies_real_fold_controls() {
-  let list_pre = #"8a01061831193f2b181a58207af9fbf871cd41cd5754b69c195d71a3d671739de3f37e177e7313de792b51dcd87a80d87a80d87a80d87a80"
-  let list_post = #"8a01061831193f2b181a58205ff9de6f99abc0e417a8e81850431e4fecf6fe4b0a902e85b8ec2373939440d3d87a80d87a80d87a80d87a80"
+  let list_pre = #"8901061831193f2b181a5820a009d89ecd2a364662093dafe40413c3233fb6d79537da45c37459336c66c6f3d87a80d87a80d87a80"
+  let list_post = #"8901061831193f2b181a58201c3e16b93b20c7eab7e99a6a7b18e4257ff218e668b5834e9d880b5129af54c6d87a80d87a80d87a80"
   let list_child = summary(
     #"0c4e8e7a8396d11dd8c0554ec32416c3257d87175f2dfcc7714469663e0f1da2",
     1,
@@ -315,8 +311,8 @@ test maximum_cardano_nested_data_applies_real_fold_controls() {
       #"48e5cbf5c18eade239c5fdea7e7c105612da100e19047628fc75ca7175197fca",
     ],
   }
-  let map_pre = #"8a01061831193f2b193f2a58204af2404008f74a4ee3eb9123aa0bed99e829e1bf31c6ad5c5ca5efceb0292d85d87a80d87a80d87a80d87a80"
-  let map_post = #"8a01061831193f2b193f2a582062601ffbae712e9b1f490fc9c1b52b6e7f46560afa3c873539a2a54d45afb98fd87a80d87a80d87a80d87a80"
+  let map_pre = #"8901061831193f2b193f2a5820ae42063d36994b0fa095120289717847943d802e0fd9212026a269f507cfec5fd87a80d87a80d87a80"
+  let map_post = #"8901061831193f2b193f2a5820f6c8a5db6c49f465f8655d692343f57169781b788cda38aca163780151ebdaeed87a80d87a80d87a80"
   let map_action = cek_data_traverse_v1.FoldMap {
     frame: maximum_map_fold_frame(),
     pair_index: 0,
@@ -337,8 +333,8 @@ test maximum_cardano_nested_data_applies_real_fold_controls() {
       #"731f16f5e9418e13a0d46f037c791150d0285d1f8d2c96cf39847d0a8c56030d",
     ],
   }
-  let finalize_pre = #"8a01061831193f2b0a5820df8903414ebd963ae3a2ed2ca1ec2f15b56e1017fe0701620626657b7fa92a12d87a80d87a80d87a80d87a80"
-  let finalize_post = #"8a01001831193f2b0a58202ce6e5a25de1f43178e311d53992e750c87a95234d34fddc2f0f6d4477f533f4d87a80d87a80d87a80d87a80"
+  let finalize_pre = #"8901061831193f2b0a5820464355884b2bef2ae2fd1c5b070581b3184df65b99449ae2c50d1c48c865ca03d87a80d87a80d87a80"
+  let finalize_post = #"8901001831193f2b0a58200fa80390947e6e8d3a744e43a83f0244d5bb5682b36a3df62245d193267f09d3d87a80d87a80d87a80"
   and {
     applied(list_pre, None, list_action, list_post),
     applied(map_pre, None, map_action, map_post),

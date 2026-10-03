@@ -1122,10 +1122,10 @@ describe("W25 roots and deterministic replay", () => {
     const unbound = await replay([first, second], priorState);
     expect(unbound.action).toBe("reject");
     expect(unbound.priorStateRoot).toBe(
-      "49476a071f7393279ca22a35d4ebe3b3316190c47890e5af7f3f12fded51c915",
+      "93aa873a2fd64d035256c5525f1e67734c39bb09b610b817d46277c5f68c801f",
     );
     expect(unbound.postStateRoot).toBe(
-      "6d4a5867c105f9c81fa71dfea9c531063c1b3d88d28539b77941eab4ec6c58ac",
+      "d7c918403e67154cdbd5065dd58eb9f911ae13dffb2e0861e2d8b98bd634437e",
     );
     expect(unbound.intermediateRoots).toStrictEqual(FIXED_TWO_TX_ROOTS);
     expect(unbound.transactionRoots).toHaveLength(2);

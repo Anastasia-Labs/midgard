@@ -1,9 +1,4 @@
 import {
-  assertMidgardCekProgramMaterialBundle,
-  decodeMidgardCekProgramMaterialDaEntry,
-  type MidgardCekProgramEnvelope,
-} from "@al-ft/midgard-core/cek-proof";
-import {
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -25,7 +20,6 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import { hexToBytes, normalizeHex } from "../utils/hex.js";
 import {
-  collectProofProgramEnvelopes,
   DaPayloadValidationError,
   type DataSchema,
   decodeCanonicalData,
@@ -98,16 +92,9 @@ export const validateDaPayloadConsensus = (body: SDK.DaPayloadBody): void => {
   }
   const transactionPreimages = new Map(body.transaction_preimages);
   const forcedTransactionPreimages = new Map(body.forced_transaction_preimages);
-  const resolvedOutputsByOutRef = new Map(
-    body.utxos.map(([outRefHex, outputHex]) => [
-      normalizeHex(outRefHex, { fieldName: "utxos.key" }),
-      hexToBytes(outputHex, "utxos.value"),
-    ]),
-  );
 
   let canonicalTransactionBytes = 0;
   let ledgerOperationCount = body.deposits.length;
-  const programEnvelopes = new Map<string, MidgardCekProgramEnvelope>();
   const validateFullTransaction = (
     txCbor: Buffer,
     fieldName: string,
@@ -146,12 +133,6 @@ export const validateDaPayloadConsensus = (body: SDK.DaPayloadBody): void => {
         `${fieldName} violates proof consensus profile: ${violation.code} ${violation.featureId} ${violation.detail}`,
       );
     }
-    collectProofProgramEnvelopes(
-      tx,
-      fieldName,
-      programEnvelopes,
-      resolvedOutputsByOutRef,
-    );
     return tx;
   };
   const countLedgerOperations = (
@@ -308,24 +289,9 @@ export const validateDaPayloadConsensus = (body: SDK.DaPayloadBody): void => {
       `ledger operations ${ledgerOperationCount.toString()} exceed V1 maximum ${limits.maxLedgerOperationCount.toString()}`,
     );
   }
-  try {
-    const material = body.cek_program_material.map(([rootHex, valueHex]) =>
-      decodeMidgardCekProgramMaterialDaEntry(
-        hexToBytes(rootHex, "cek_program_material.root"),
-        hexToBytes(valueHex, "cek_program_material.value"),
-      ),
-    );
-    assertMidgardCekProgramMaterialBundle(
-      [...programEnvelopes.values()],
-      material,
-    );
-  } catch (cause) {
-    throw new DaPayloadValidationError(
-      "coverage_mismatch",
-      "CEK program material does not exactly cover every inline and newly referenced V1 program",
-      { cause },
-    );
-  }
+  // Program material coverage depends on each event's pre-state, so it is
+  // checked by `validateDaPayloadEventProgramCoverage` against the state
+  // before the block.
 };
 
 export const dataHex = <A>(value: A, schema: DataSchema): string =>

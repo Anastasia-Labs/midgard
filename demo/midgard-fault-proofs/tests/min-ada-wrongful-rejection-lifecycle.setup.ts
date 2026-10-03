@@ -5,6 +5,7 @@ import {
   encodeMidgardForcedTxCanonical,
   encodeMidgardTxOutput,
   materializeMidgardNativeTxFromCanonical,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
@@ -48,7 +49,16 @@ import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js"
 
 export let scenarioSequence = 0;
 
+/**
+ * `transactionOf` replaces the filler transaction built around the outputs,
+ * and `namedOutputIndex` names an output other than the last one. A suite
+ * that commits the verdict the node writes needs both: the filler spends no
+ * input, which the node rejects before reading any output.
+ */
 export const setup = async ({
+  transactionOf = (outputs: readonly Buffer[]): MidgardNativeTxFull =>
+    makeNativeTx({ spendInputCbors: [], fee: 7n, outputCbors: [...outputs] }),
+  namedOutputIndex = undefined as number | undefined,
   underfunded = false,
   depth = 0,
   wrongReason = false,
@@ -121,7 +131,7 @@ export const setup = async ({
     expect(encodeMidgardFieldPreimage(outputs).length).toBe(fieldBytes);
   }
   const submitted = materializeMidgardNativeTxFromCanonical(
-    makeNativeTx({ spendInputCbors: [], fee: 7n, outputCbors: outputs }),
+    transactionOf(outputs),
   );
   const tx = materializeMidgardForcedTxFromCanonical(submitted);
   const txId = computeMidgardNativeTxId(tx).toString("hex");
@@ -138,7 +148,7 @@ export const setup = async ({
       ) - 1,
   });
   const key = fixture.eventKey.ForcedTransactionEventKey.tx_order_id;
-  const outputIndex = BigInt(outputs.length - 1);
+  const outputIndex = BigInt(namedOutputIndex ?? outputs.length - 1);
   const reason = wrongReason
     ? ("FeeBelowMinimum" as const)
     : { OutputBelowMinAda: { output_index: outputIndex } };
@@ -230,7 +240,7 @@ export const setup = async ({
   };
   const material = buildCanonicalMidgardLedgerOutputMaterial({
     outputIndex: Number(outputIndex),
-    outputCbor,
+    outputCbor: outputs[Number(outputIndex)]!,
   });
   if (assetCount === 1304)
     expect(material.descriptor.cardanoValueSize).toBe(5000);

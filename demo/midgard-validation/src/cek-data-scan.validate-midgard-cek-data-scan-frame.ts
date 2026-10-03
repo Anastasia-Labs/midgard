@@ -9,7 +9,8 @@ import {
   encodeCborBytes,
   encodeCborInteger,
 } from "@al-ft/midgard-core/codec/cbor";
-import { Constr, Data as LucidData, fromHex } from "@lucid-evolution/lucid";
+import { lucidDataToCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
+import { Constr } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import {
@@ -75,7 +76,7 @@ export const validateSummary = (
 };
 
 const boolDataCbor = (value: boolean): Buffer =>
-  Buffer.from(fromHex(LucidData.to(new Constr(value ? 1 : 0, []))));
+  lucidDataToCborIterative(new Constr(value ? 1 : 0, []));
 
 const summaryCbor = (summary: MidgardCekDataSummary): Buffer =>
   encodeCbor([Buffer.from(summary.root), summary.cborLength, summary.memory]);

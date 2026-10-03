@@ -6,7 +6,6 @@ import "@al-ft/midgard-validation";
 import "@al-ft/midgard-validation/cek-program";
 import "@al-ft/midgard-validation/midgard-redeemers";
 import "@lucid-evolution/lucid";
-import "cborg";
 import "effect";
 import "vitest";
 import "../src/utils.js";

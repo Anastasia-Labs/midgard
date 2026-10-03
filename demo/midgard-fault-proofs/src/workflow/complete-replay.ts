@@ -56,6 +56,7 @@ import "../withdrawal-mistag/replay.js";
 import "../witness-script-decoding/workflow.js";
 import "../zero-input/replay.js";
 import "./classification.js";
+import "./detection-subject.js";
 import "./fabricated-deposit-evidence.js";
 import "./fabricated-withdrawal-evidence.js";
 import "./historical-native-script-corpus.js";

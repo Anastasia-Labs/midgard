@@ -80,10 +80,11 @@ export const decodePayloadStrict = (payloadCbor: Uint8Array): SDK.DaPayload => {
   return payload;
 };
 
+/** The trace's keys must be exactly 0..n-1 for its n members. */
 export const validateDenseTransitionTrace = (
   entries: readonly DecodedRootEntry<bigint, SDK.TransitionStep>[],
-  expectedCount: bigint,
 ): void => {
+  const expectedCount = BigInt(entries.length);
   const seen = new Set<bigint>();
   for (const [index, entry] of entries.entries()) {
     if (entry.key !== entry.value.step_index) {
@@ -95,7 +96,7 @@ export const validateDenseTransitionTrace = (
     if (entry.key < 0n || entry.key >= expectedCount) {
       throw transitionTraceError(
         "invalidPayloadEntries",
-        `transition_trace[${index.toString()}].key ${entry.key.toString()} is outside the declared transition step range.`,
+        `transition_trace[${index.toString()}].key ${entry.key.toString()} is outside the transition step range.`,
       );
     }
     if (seen.has(entry.key)) {

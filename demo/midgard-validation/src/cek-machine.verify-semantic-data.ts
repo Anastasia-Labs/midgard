@@ -1,10 +1,5 @@
 import { commitMidgardCekBlob } from "@al-ft/midgard-core";
-import {
-  DataB,
-  DataConstr,
-  dataFromCbor,
-  DataI,
-} from "@harmoniclabs/plutus-data";
+import { DataB, DataConstr, DataI } from "@harmoniclabs/plutus-data";
 
 import { type MidgardCekDirectValueWitness } from "./cek-builtin.js";
 import {
@@ -12,7 +7,10 @@ import {
   encodeMidgardCekPlutusData,
   type MidgardCekConstantType,
 } from "./cek-constant.js";
-import { commitMidgardCekDataTree } from "./cek-data-tree.js";
+import {
+  commitMidgardCekDataTree,
+  encodeMidgardCekDataTreeInteger,
+} from "./cek-data-tree.js";
 import {
   canonicalBytesLeaf,
   canonicalIntegerLeaf,
@@ -38,6 +36,7 @@ import {
   semanticSummary,
 } from "./cek-machine.verify-semantic-builtin-control.js";
 import { semanticListSource } from "./cek-machine.verify-semantic-list.js";
+import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 
 export const verifySemanticData = (
   tag: bigint,
@@ -154,7 +153,7 @@ export const verifySemanticData = (
     ) {
       return false;
     }
-    const decoded = dataFromCbor(raw);
+    const decoded = plutusDataFromCborIterative(raw);
     if (!sameBytes(encodeMidgardCekPlutusData(decoded), raw)) {
       return false;
     }
@@ -369,11 +368,11 @@ export const verifySemanticData = (
         sameBytes(node.constructorCborRoot, commitMidgardCekBlob(raw).root) &&
         node.constructorCborLength === BigInt(raw.length)
       ) {
-        const decoded = dataFromCbor(raw);
+        const decoded = plutusDataFromCborIterative(raw);
         if (
           decoded instanceof DataI &&
           decoded.int > 127n &&
-          sameBytes(encodeMidgardCekPlutusData(decoded), raw)
+          sameBytes(encodeMidgardCekDataTreeInteger(decoded.int), raw)
         ) {
           constructor = decoded.int;
         }

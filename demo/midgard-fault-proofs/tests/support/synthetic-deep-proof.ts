@@ -215,7 +215,7 @@ const branchMerkleFromNeighbors = ({
 const leafNodeHash = (suffix: string, valueDigest: Buffer): Buffer => {
   const isOdd = suffix.length % 2 > 0;
   const head = isOdd
-    ? Buffer.concat([Buffer.from([0]), nibbleBytes(suffix.slice(0, 1))])
+    ? Buffer.concat([Buffer.from([0x10]), nibbleBytes(suffix.slice(0, 1))])
     : Buffer.from([255]);
   const tail = Buffer.from(isOdd ? suffix.slice(1) : suffix, "hex");
   return computeHash32(Buffer.concat([head, tail, valueDigest]));

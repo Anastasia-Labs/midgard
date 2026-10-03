@@ -1,7 +1,9 @@
 use aiken/builtin
 use aiken/cbor
+use aiken/collection/list
 use midgard/cek_builtin_v1
 use midgard/cek_constant_v1
+use midgard/cek_cost_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_proof_v1
@@ -1299,4 +1301,412 @@ test machine_value_witness_rejects_a_one_field_constr_value() fail {
   expect Some(data) = cbor.deserialise(#"d87c9f4100ff")
   expect decoded: cek_machine_v1.MachineValueWitnessV1 = data
   cbor.serialise(decoded) == cbor.serialise(decoded)
+}
+
+// ---------------------------------------------------------------------------
+// One successor per builtin pre-state. Each case takes one mode_builtin
+// pre-state and offers it to two arms; exactly one may accept.
+// ---------------------------------------------------------------------------
+
+// Map-conversion start steps emitted by the TypeScript trace builder (the
+// map_round_trip_empty and map_round_trip_constant core-step goldens).
+
+const empty_unmap_step_cbor =
+  #"d8799fd8799f03005820db8d5a689fe906712a09ba0941da41a7cbcef8c12ad9e7ac3d9099b6dbc2cdff58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a758206ea68031c2800dfd45b3732e9fd615f19c97b062659999d3ad6ba181af284ddb001a0001f400190320ffd8799f080058208fce9cebbf56200bd4ab72bc735b970257695a871e2c7bbd0bf582aa27dc23db58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a758206ea68031c2800dfd45b3732e9fd615f19c97b062659999d3ad6ba181af284ddb001a0001f400190320ffd905199f182b9fd87a9f439f08ffd8799f5820ee74a59f1ed4e11ab8a5035f44d49fdb4b7a77e51fc7f9bb4013d73037afb0e00104ff04ffffd8799fd8799f469f05060808ff4180ffffd8799fd87b9f005820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba20104ffd87a80d87a80d87c9f0058208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560104ffd87a80d87a80ffffff"
+
+const empty_unmap_step_pre =
+  #"666633bf962f455935c3feb6358cb23b51dba024dbb817b73920abb3a0eb4a77"
+
+const empty_map_step_cbor =
+  #"d8799fd8799f030058203dbaddfafb4c4475e45ba4c3f53a37be05bf4f4f4c06aa1f4f2ed6928f03467d58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b001a0002542f190340ffd8799f080058206fffa27ed4081de72e24c0168dcc4da3b9c33c07e33bb8aefd704b16d8d939c958200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b001a0002542f190340ffd905199f18269fd8799fd8799f469f05060808ff4180ffffffd8799fd8799f439f08ff41a0ffffd8799fd87c9f0058208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560104ffd87a80d87a80d87b9f005820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba20104ffd87a80d87a80ffffff"
+
+const empty_map_step_pre =
+  #"18ce67eb56a8d08bd9ebf5ead6c90b938a0f129ac35d67cf234a3da6c25106ff"
+
+const narrow_unmap_step_cbor =
+  #"d8799fd8799f03005820ad578ff37b0e0997b877836bce3bb95a585307f584ee4283515e74bfa1c11ec158200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a758206ea68031c2800dfd45b3732e9fd615f19c97b062659999d3ad6ba181af284ddb001a0001f400190320ffd8799f0800582016bcaac883d2e351622eaf95064d6225d2ba65ec2c9244c8216eae6123a3327658200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a758206ea68031c2800dfd45b3732e9fd615f19c97b062659999d3ad6ba181af284ddb001a0001f400190320ffd905199f182b9fd8799fd8799f439f08ff4fa2014a2a2a2a2a2a2a2a2a2a2a0203ffffffd8799fd8799f469f05060808ff58189fd8799f014a2a2a2a2a2a2a2a2a2a2affd8799f0203ffffffffd8799fd87b9f0258207f0b53a382ba4d740072bd848b43ba84da5a9378251525b023c19ffd2fc034ec0f1821ffd87a80d8799fd8799f58206102804ee42d85218a31c7dda323bccc1ad4b31a9f3f3880449bdfca06a307dc010558206a157bf5ce93d07c5a59dce62821eba629fb8e3575c5d8ad9a4ee13342b9af250b0e58205770570155d35aedd507d7c4daa9303465bbbf69b8e9a0b604a9c0ee6dcdab61020e181dffffd87c9f025820bd51d81d895064134d8646595d0d2fed86beec8533146d3bc0c74c7211c6f1e218181829ffd8799fd8799f582027b5c54b5b7982aa9796d5b64906da1b91aa41077e3f976625245f9dda2f1635101758208d0163902197d2399d06cd3a2ec5b0a22f6b5b3c67cff731eaa39663f9cc487802161825ffffd87a80ffffff"
+
+const narrow_unmap_step_pre =
+  #"9a07040d5c1117e72eb7205713aed14e80a2b2c041f15ccbf9fe6da620f4a6c4"
+
+const narrow_map_step_cbor =
+  #"d8799fd8799f0300582093bdef27562393576c7d08a738ea3f21bbb37a5e2541bdb304451c456c22b0d458200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b001a0002542f190340ffd8799f080058204df8c150dca87799f4c14e096b03eaf1d409287b51d3e04ea1fb11d6fa53fe1f58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b001a0002542f190340ffd905199f18269fd8799fd8799f469f05060808ff58189fd8799f014a2a2a2a2a2a2a2a2a2a2affd8799f0203ffffffffffd8799fd8799f439f08ff4fa2014a2a2a2a2a2a2a2a2a2a2a0203ffffd8799fd87c9f025820bd51d81d895064134d8646595d0d2fed86beec8533146d3bc0c74c7211c6f1e218181829ffd8799fd8799f582027b5c54b5b7982aa9796d5b64906da1b91aa41077e3f976625245f9dda2f1635101758208d0163902197d2399d06cd3a2ec5b0a22f6b5b3c67cff731eaa39663f9cc487802161825ffffd87a80d87b9f0258207f0b53a382ba4d740072bd848b43ba84da5a9378251525b023c19ffd2fc034ec0f1821ffd87a80d8799fd8799f58206102804ee42d85218a31c7dda323bccc1ad4b31a9f3f3880449bdfca06a307dc010558206a157bf5ce93d07c5a59dce62821eba629fb8e3575c5d8ad9a4ee13342b9af250b0e58205770570155d35aedd507d7c4daa9303465bbbf69b8e9a0b604a9c0ee6dcdab61020e181dffffffffff"
+
+const narrow_map_step_pre =
+  #"eb3fc40544dd958605634539161030268cfcbce4cf7ad5fd24df6a2a1e5eff95"
+
+fn decode_core_step(
+  evidence_cbor: ByteArray,
+) -> cek_machine_v1.CoreStepEvidenceV1 {
+  expect Some(data) = cbor.deserialise(evidence_cbor)
+  expect evidence: cek_machine_v1.CoreStepEvidenceV1 = data
+  evidence
+}
+
+// A context-derived source carries its payload by root; the direct arm reads
+// it inline, so the same committed value is presented with it revealed.
+fn revealed_source(
+  value: cek_builtin_v1.ValueWitnessV1,
+  payload: Option<Data>,
+) -> cek_builtin_v1.ValueWitnessV1 {
+  when payload is {
+    None -> value
+    Some(payload) -> {
+      expect cek_builtin_v1.SemanticConstantValue { type_cbor, .. } = value
+      cek_builtin_v1.ConstantValue(
+        cek_constant_v1.ConstantWitnessV1 {
+          type_cbor,
+          payload_cbor: cbor.serialise(payload),
+        },
+      )
+    }
+  }
+}
+
+// The map-conversion start is accepted and the direct arm, offering the
+// conversion's own result at its own budget, is refused.
+fn map_conversion_has_one_arm(
+  evidence_cbor: ByteArray,
+  pre_hash: ByteArray,
+  expected_tag: Int,
+  source_payload: Option<Data>,
+) -> Bool {
+  let evidence = decode_core_step(evidence_cbor)
+  expect cek_machine_v1.StartBuiltinMapConversion { tag, arguments, result, .. }
+    = evidence.witness
+  expect [source] = arguments
+  let direct_arguments = [revealed_source(source, source_payload)]
+  let pre = evidence.pre
+  let budget = cek_builtin_v1.direct_builtin_budget_v1(tag, direct_arguments)
+  let direct_post = cek_machine_v1.exact_state(
+    pre,
+    cek_machine_v1.mode_return,
+    cek_builtin_v1.result_root_v1(result),
+    cek_proof_v1.empty_environment_root_v1,
+    pre.continuation_root,
+    0,
+    budget.cpu,
+    budget.memory,
+  )
+  and {
+    tag == expected_tag,
+    cek_machine_v1.hash_state_v1(pre) == pre_hash,
+    cek_machine_v1.verify_core_step_v1(pre, evidence.post, evidence.witness),
+    cek_builtin_v1.arguments_root_v1(direct_arguments) == cek_builtin_v1.arguments_root_v1(
+      arguments,
+    ),
+    direct_post != evidence.post,
+    !cek_machine_v1.verify_core_step_v1(
+      pre,
+      direct_post,
+      cek_machine_v1.ExecuteBuiltinDirect {
+        tag,
+        arguments: direct_arguments,
+        result,
+      },
+    ),
+    !cek_builtin_v1.verify_direct_structured_semantics(
+      tag,
+      direct_arguments,
+      result,
+    ),
+  }
+}
+
+test empty_unmap_data_has_only_the_map_conversion_arm() {
+  map_conversion_has_one_arm(
+    empty_unmap_step_cbor,
+    empty_unmap_step_pre,
+    43,
+    Some(builtin.map_data([])),
+  )
+}
+
+test empty_map_data_has_only_the_map_conversion_arm() {
+  map_conversion_has_one_arm(empty_map_step_cbor, empty_map_step_pre, 38, None)
+}
+
+test narrow_unmap_data_has_only_the_map_conversion_arm() {
+  map_conversion_has_one_arm(
+    narrow_unmap_step_cbor,
+    narrow_unmap_step_pre,
+    43,
+    None,
+  )
+}
+
+test narrow_map_data_has_only_the_map_conversion_arm() {
+  map_conversion_has_one_arm(
+    narrow_map_step_cbor,
+    narrow_map_step_pre,
+    38,
+    None,
+  )
+}
+
+fn integer_constant(value: Int) -> cek_constant_v1.ConstantWitnessV1 {
+  cek_constant_v1.ConstantWitnessV1 {
+    type_cbor: #"9f00ff",
+    payload_cbor: cbor.serialise(builtin.i_data(value)),
+  }
+}
+
+fn bytes_constant(value: ByteArray) -> cek_constant_v1.ConstantWitnessV1 {
+  cek_constant_v1.ConstantWitnessV1 {
+    type_cbor: #"9f01ff",
+    payload_cbor: cbor.serialise(builtin.b_data(value)),
+  }
+}
+
+fn repeated_byte(byte: Int, count: Int) -> ByteArray {
+  if count == 0 {
+    #""
+  } else {
+    builtin.cons_bytearray(byte, repeated_byte(byte, count - 1))
+  }
+}
+
+fn builtin_pre(
+  tag: Int,
+  arguments: List<cek_constant_v1.ConstantWitnessV1>,
+) -> cek_machine_v1.MachineStateV1 {
+  let Pair(root, count) = cek_builtin_v1.runtime_arguments_root_v1(
+    list.map(arguments, cek_builtin_v1.RuntimeConstantValue),
+  )
+  state(
+    cek_machine_v1.mode_builtin,
+    cek_proof_v1.hash_builtin_value_v1(tag, 0, count, root),
+    cek_proof_v1.empty_environment_root_v1,
+    h_03,
+    0,
+    10,
+    11,
+  )
+}
+
+fn builtin_failure_post(
+  pre: cek_machine_v1.MachineStateV1,
+  cpu: Int,
+  memory: Int,
+) -> cek_machine_v1.MachineStateV1 {
+  cek_machine_v1.exact_state(
+    pre,
+    cek_machine_v1.mode_halt_error,
+    cek_proof_v1.hash_error_term_v1(),
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    cek_machine_v1.error_builtin_failure,
+    cpu,
+    memory,
+  )
+}
+
+fn type_failure_step(
+  tag: Int,
+  arguments: List<cek_constant_v1.ConstantWitnessV1>,
+) -> Bool {
+  let pre = builtin_pre(tag, arguments)
+  cek_machine_v1.verify_core_step_v1(
+    pre,
+    builtin_failure_post(pre, 0, 0),
+    cek_machine_v1.ExecuteBuiltinTypeFailure {
+      tag,
+      arguments: list.map(arguments, cek_builtin_v1.RuntimeConstantValue),
+    },
+  )
+}
+
+// The known-failure arm charges the builtin's own budget; it applies only when
+// every argument has the kind the builtin reads.
+fn known_failure_step(
+  tag: Int,
+  pre_arguments: List<cek_constant_v1.ConstantWitnessV1>,
+  arguments: List<cek_builtin_v1.ValueWitnessV1>,
+  budget: cek_cost_v1.BuiltinBudgetV1,
+) -> Bool {
+  let pre = builtin_pre(tag, pre_arguments)
+  cek_machine_v1.verify_core_step_v1(
+    pre,
+    builtin_failure_post(pre, budget.cpu, budget.memory),
+    cek_machine_v1.ExecuteBuiltinFailure { tag, arguments },
+  )
+}
+
+fn charged_known_failure_step(
+  tag: Int,
+  arguments: List<cek_constant_v1.ConstantWitnessV1>,
+) -> Bool {
+  let direct = list.map(arguments, cek_builtin_v1.ConstantValue)
+  known_failure_step(
+    tag,
+    arguments,
+    direct,
+    cek_builtin_v1.direct_builtin_budget_v1(tag, direct),
+  )
+}
+
+fn bytes_dividend_by_zero() -> List<cek_constant_v1.ConstantWitnessV1> {
+  [bytes_constant(#"aa"), integer_constant(0)]
+}
+
+fn integer_message_hash_to_group() -> List<cek_constant_v1.ConstantWitnessV1> {
+  [integer_constant(7), bytes_constant(repeated_byte(7, 256))]
+}
+
+test ill_typed_division_by_zero_is_a_type_failure_step() {
+  and {
+    type_failure_step(4, bytes_dividend_by_zero()),
+    type_failure_step(5, bytes_dividend_by_zero()),
+    type_failure_step(6, bytes_dividend_by_zero()),
+    type_failure_step(58, integer_message_hash_to_group()),
+    type_failure_step(65, integer_message_hash_to_group()),
+  }
+}
+
+test ill_typed_quotient_by_zero_is_not_a_known_failure_step() fail {
+  charged_known_failure_step(4, bytes_dividend_by_zero())
+}
+
+test ill_typed_remainder_by_zero_is_not_a_known_failure_step() fail {
+  charged_known_failure_step(5, bytes_dividend_by_zero())
+}
+
+test ill_typed_mod_by_zero_is_not_a_known_failure_step() fail {
+  charged_known_failure_step(6, bytes_dividend_by_zero())
+}
+
+test ill_typed_g1_hash_to_group_is_not_a_known_failure_step() fail {
+  charged_known_failure_step(58, integer_message_hash_to_group())
+}
+
+test ill_typed_g2_hash_to_group_is_not_a_known_failure_step() fail {
+  charged_known_failure_step(65, integer_message_hash_to_group())
+}
+
+fn wide_message_hash_to_group() -> List<cek_constant_v1.ConstantWitnessV1> {
+  [bytes_constant(repeated_byte(9, 64)), bytes_constant(repeated_byte(7, 256))]
+}
+
+// The budget of the same failure with the message sized as one word.
+fn one_word_message_budget() -> cek_cost_v1.BuiltinBudgetV1 {
+  let direct = list.map(
+    wide_message_hash_to_group(),
+    cek_builtin_v1.ConstantValue,
+  )
+  expect [_, dst_size] = cek_builtin_v1.builtin_cost_sizes_v1(58, direct)
+  cek_cost_v1.builtin_budget_v1(58, [1, dst_size])
+}
+
+// The revealed message is wider than one word; that is the size the failure
+// pays.
+test revealed_hash_to_group_failure_pays_the_revealed_size() {
+  let direct = list.map(
+    wide_message_hash_to_group(),
+    cek_builtin_v1.ConstantValue,
+  )
+  let charged = cek_builtin_v1.direct_builtin_budget_v1(58, direct)
+  expect [message_size, _] = cek_builtin_v1.builtin_cost_sizes_v1(58, direct)
+  and {
+    message_size > 1,
+    charged != one_word_message_budget(),
+    known_failure_step(58, wide_message_hash_to_group(), direct, charged),
+  }
+}
+
+// Presented opaquely, the same message has no size and so no budget.
+test opaque_hash_to_group_failure_is_not_a_known_failure_step() fail {
+  expect [message, dst] = wide_message_hash_to_group()
+  known_failure_step(
+    58,
+    wide_message_hash_to_group(),
+    [
+      cek_builtin_v1.OpaqueValue(cek_constant_v1.constant_root_v1(message)),
+      cek_builtin_v1.ConstantValue(dst),
+    ],
+    one_word_message_budget(),
+  )
+}
+
+// mkCons of a well-typed item and list succeeds whichever presentation carries
+// the committed values, so the type-failure arm refuses every presentation.
+test mk_cons_of_well_typed_values_has_only_the_success_arm() {
+  let item = integer_constant(1)
+  let items = cek_constant_v1.ConstantWitnessV1 {
+    type_cbor: #"9f0500ff",
+    payload_cbor: #"80",
+  }
+  let result = cek_builtin_v1.ConstantValue(
+    cek_constant_v1.ConstantWitnessV1 {
+      type_cbor: #"9f0500ff",
+      payload_cbor: cbor.serialise(builtin.list_data([builtin.i_data(1)])),
+    },
+  )
+  let direct = [
+    cek_builtin_v1.ConstantValue(item),
+    cek_builtin_v1.ConstantValue(items),
+  ]
+  let pre = builtin_pre(32, [item, items])
+  let budget = cek_builtin_v1.direct_builtin_budget_v1(32, direct)
+  let success_post = cek_machine_v1.exact_state(
+    pre,
+    cek_machine_v1.mode_return,
+    cek_builtin_v1.result_root_v1(result),
+    cek_proof_v1.empty_environment_root_v1,
+    pre.continuation_root,
+    0,
+    budget.cpu,
+    budget.memory,
+  )
+  let Pair(item_payload, item_memory) = cek_constant_v1.constant_semantic_projection(
+    item,
+  )
+  let Pair(items_payload, items_memory) = cek_constant_v1.constant_semantic_projection(
+    items,
+  )
+  let semantic_item = [
+    cek_builtin_v1.RuntimeSemanticConstantValue {
+      type_cbor: item.type_cbor,
+      payload: item_payload,
+      memory: item_memory,
+    },
+    cek_builtin_v1.RuntimeConstantValue(items),
+  ]
+  let semantic_list = [
+    cek_builtin_v1.RuntimeConstantValue(item),
+    cek_builtin_v1.RuntimeSemanticConstantValue {
+      type_cbor: items.type_cbor,
+      payload: items_payload,
+      memory: items_memory,
+    },
+  ]
+  let type_failure_post = builtin_failure_post(pre, 0, 0)
+  and {
+    cek_machine_v1.verify_core_step_v1(
+      pre,
+      success_post,
+      cek_machine_v1.ExecuteBuiltinDirect { tag: 32, arguments: direct, result },
+    ),
+    cek_builtin_v1.runtime_arguments_root_v1(semantic_item) == cek_builtin_v1.arguments_root_v1(
+      direct,
+    ),
+    cek_builtin_v1.runtime_arguments_root_v1(semantic_list) == cek_builtin_v1.arguments_root_v1(
+      direct,
+    ),
+    !cek_machine_v1.verify_core_step_v1(
+      pre,
+      type_failure_post,
+      cek_machine_v1.ExecuteBuiltinTypeFailure {
+        tag: 32,
+        arguments: semantic_item,
+      },
+    ),
+    !cek_machine_v1.verify_core_step_v1(
+      pre,
+      type_failure_post,
+      cek_machine_v1.ExecuteBuiltinTypeFailure {
+        tag: 32,
+        arguments: semantic_list,
+      },
+    ),
+  }
 }

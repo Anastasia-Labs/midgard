@@ -1,6 +1,7 @@
 import {
   decodeMidgardCekProgramEnvelope,
   decodeMidgardCekProgramMaterialSidecar,
+  type MidgardCekProgramMaterialSidecar,
 } from "@al-ft/midgard-core/cek-proof";
 import {
   computeScriptIntegrityHashForLanguages,
@@ -13,11 +14,6 @@ import {
   buildMidgardCekExecutionGraph,
   executeMidgardCekStructuralProgram,
 } from "./cek-executor.js";
-import {
-  encodeScriptContextCbor,
-  evaluateScriptWithHarmonic,
-  type LocalScriptEvalResult,
-} from "./local-script-eval.js";
 import { findRedeemerByPointer } from "./midgard-redeemers.js";
 import { discoverLocalScriptExecutions } from "./phase-b.discover-local-script-executions.js";
 import {
@@ -27,11 +23,16 @@ import {
   requiredScriptLanguages,
   type ResolvedReferenceInputs,
 } from "./phase-b.resolve-reference-inputs.js";
+import { encodeMidgardCekPlutusData } from "./plutus-data-iterative.encode.js";
 import {
   buildMidgardScriptContext,
   buildPlutusV3ScriptContext,
 } from "./script-context.js";
-import { PhaseBConfig, RejectCodes } from "./types.js";
+import {
+  type LocalScriptEvalResult,
+  PhaseBConfig,
+  RejectCodes,
+} from "./types.js";
 
 export const runLocalScriptEvaluation = (
   node: CandidateNode,
@@ -58,9 +59,10 @@ export const runLocalScriptEvaluation = (
     if (discovered.kind === "rejected") {
       return discovered;
     }
-    let proofProgramMaterial: ReturnType<
-      typeof decodeMidgardCekProgramMaterialSidecar
-    > | null = null;
+    // Phase A refuses a candidate without a sidecar. One that reaches here
+    // without it runs on empty material, so every script goes through the
+    // structural executor.
+    let proofProgramMaterial: MidgardCekProgramMaterialSidecar = [];
     if (candidate.submission.programMaterialSidecarCbor !== null) {
       try {
         proofProgramMaterial = decodeMidgardCekProgramMaterialSidecar(
@@ -81,7 +83,7 @@ export const runLocalScriptEvaluation = (
         .filter((execution) => execution.resolved.source.origin === "inline")
         .map((execution) => execution.resolved.source.sourceId),
     );
-    for (const source of inlineSources) {
+    for (const [position, source] of inlineSources.entries()) {
       if (!usedInlineSourceIds.has(source.sourceId)) {
         const kind =
           source.nativeScript === undefined ? "non-native" : "native";
@@ -90,10 +92,22 @@ export const runLocalScriptEvaluation = (
           code: RejectCodes.InvalidFieldType,
           detail: `extraneous ${kind} script witness ${source.sourceId}`,
           consensusPhase: "scriptSources",
+          subject: {
+            arm: "UnusedScriptWitness",
+            index: BigInt(ledgerTx.scriptWitnesses[position]!.index),
+          },
         };
       }
     }
 
+    // Execution ordinals are positions in the discovered execution list
+    // (spend, mint, observe, receive), native and non-native alike.
+    const executionIndexOf = new Map(
+      discovered.executions.map((execution, index) => [
+        execution,
+        BigInt(index),
+      ]),
+    );
     for (const execution of discovered.executions) {
       if (execution.resolved.version !== "NativeCardano") {
         continue;
@@ -111,6 +125,10 @@ export const runLocalScriptEvaluation = (
           code: RejectCodes.NativeScriptInvalid,
           detail: `native script verification failed for ${execution.purpose.kind} ${execution.purpose.scriptHash}`,
           consensusPhase: "nativeScripts",
+          subject: {
+            arm: "ExecutionNativeScriptFalse",
+            index: executionIndexOf.get(execution)!,
+          },
         };
       }
     }
@@ -132,6 +150,7 @@ export const runLocalScriptEvaluation = (
         code: RejectCodes.InvalidFieldType,
         detail: `script_integrity_hash mismatch: expected ${expectedHex} actual ${actualHex} required_languages=${languages.join(",")}`,
         consensusPhase: "scriptIntegrity",
+        subject: { arm: "ScriptIntegrityHashMismatch" },
       };
     }
 
@@ -150,6 +169,10 @@ export const runLocalScriptEvaluation = (
           code: RejectCodes.PlutusScriptInvalid,
           detail: "ReceivingScript requires MidgardV1 context",
           consensusPhase: "cek",
+          subject: {
+            arm: "ReceivePurposePlutusV3Forbidden",
+            index: executionIndexOf.get(execution)!,
+          },
         };
       }
 
@@ -165,7 +188,7 @@ export const runLocalScriptEvaluation = (
               execution.purpose,
               redeemer,
             );
-      const contextCbor = encodeScriptContextCbor(context);
+      const contextCbor = encodeMidgardCekPlutusData(context);
       const executionBudget =
         config.enforceScriptBudget === false
           ? undefined
@@ -174,62 +197,49 @@ export const runLocalScriptEvaluation = (
               memory: redeemer.exUnits.memory,
             };
       let result: LocalScriptEvalResult;
-      if (proofProgramMaterial !== null) {
-        if (config.evaluateProofScript !== undefined) {
-          result = yield* config.evaluateProofScript(
-            execution.resolved.source.scriptBytes,
-            contextCbor,
-            executionBudget,
-          );
-        } else {
-          try {
-            const envelope = decodeMidgardCekProgramEnvelope(
-              execution.resolved.source.scriptBytes,
-            );
-            const graph = buildMidgardCekExecutionGraph(
-              envelope,
-              proofProgramMaterial,
-              contextCbor,
-            );
-            const cek = executeMidgardCekStructuralProgram({
-              root: graph.root,
-              material: graph.material.values(),
-              constantWitnesses: graph.constantWitnesses,
-              maxSteps: MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
-              executionBudget,
-            });
-            result =
-              cek.stopReason === "budgetExceeded" ||
-              cek.terminalState.mode === "haltSuccess"
-                ? {
-                    kind: "accepted",
-                    budget: {
-                      cpu: cek.terminalState.cpu,
-                      memory: cek.terminalState.memory,
-                    },
-                  }
-                : {
-                    kind: "script_invalid",
-                    detail: `V1 CEK halted with error ${cek.terminalState.auxiliary.toString(10)}`,
-                  };
-          } catch (cause) {
-            result = {
-              kind: "script_invalid",
-              detail: `V1 CEK execution failed closed: ${String(cause)}`,
-            };
-          }
-        }
+      if (config.evaluateProofScript !== undefined) {
+        result = yield* config.evaluateProofScript(
+          execution.resolved.source.scriptBytes,
+          contextCbor,
+          executionBudget,
+        );
       } else {
-        result =
-          config.evaluateScript === undefined
-            ? evaluateScriptWithHarmonic(
-                execution.resolved.source.scriptBytes,
-                context,
-              )
-            : yield* config.evaluateScript(
-                execution.resolved.source.scriptBytes,
-                contextCbor,
-              );
+        try {
+          const envelope = decodeMidgardCekProgramEnvelope(
+            execution.resolved.source.scriptBytes,
+          );
+          const graph = buildMidgardCekExecutionGraph(
+            envelope,
+            proofProgramMaterial,
+            contextCbor,
+          );
+          const cek = executeMidgardCekStructuralProgram({
+            root: graph.root,
+            material: graph.material.values(),
+            constantWitnesses: graph.constantWitnesses,
+            maxSteps: MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
+            executionBudget,
+          });
+          result =
+            cek.stopReason === "budgetExceeded" ||
+            cek.terminalState.mode === "haltSuccess"
+              ? {
+                  kind: "accepted",
+                  budget: {
+                    cpu: cek.terminalState.cpu,
+                    memory: cek.terminalState.memory,
+                  },
+                }
+              : {
+                  kind: "script_invalid",
+                  detail: `V1 CEK halted with error ${cek.terminalState.auxiliary.toString(10)}`,
+                };
+        } catch (cause) {
+          result = {
+            kind: "script_invalid",
+            detail: `V1 CEK execution failed closed: ${String(cause)}`,
+          };
+        }
       }
       if (result.kind === "script_invalid") {
         return {
@@ -237,6 +247,10 @@ export const runLocalScriptEvaluation = (
           code: RejectCodes.PlutusScriptInvalid,
           detail: `${execution.purpose.kind} ${execution.purpose.scriptHash}: ${result.detail}`,
           consensusPhase: "cek",
+          subject: {
+            arm: "PlutusExecutionFailed",
+            index: executionIndexOf.get(execution)!,
+          },
         };
       }
       if (
@@ -249,6 +263,10 @@ export const runLocalScriptEvaluation = (
           code: RejectCodes.PlutusScriptInvalid,
           detail: `${execution.purpose.kind} ${execution.purpose.scriptHash}: budget exceeded (spent mem=${result.budget.memory} cpu=${result.budget.cpu}, declared mem=${redeemer.exUnits.memory} cpu=${redeemer.exUnits.steps})`,
           consensusPhase: "cek",
+          subject: {
+            arm: "PlutusExecutionFailed",
+            index: executionIndexOf.get(execution)!,
+          },
         };
       }
     }

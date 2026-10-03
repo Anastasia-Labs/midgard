@@ -3,7 +3,6 @@ import "node:path";
 import "node:url";
 import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-validation";
-import "@harmoniclabs/plutus-data";
 import "effect";
 import "vitest";
 import "../../midgard-validation/tests/validation-fixtures.js";
@@ -15,12 +14,9 @@ import { existsSync } from "node:fs";
 
 import {
   deserializePhaseACandidate,
-  encodeScriptContextCbor,
-  evaluateScriptWithHarmonic,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
-import { DataConstr } from "@harmoniclabs/plutus-data";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -34,10 +30,7 @@ import {
   FixedValidationWorkerPool,
   ValidationWorkerError,
 } from "../src/services/validation-pool.js";
-import {
-  copyToTransferable,
-  packPhaseAJob,
-} from "../src/workers/utils/validation-pool.js";
+import { packPhaseAJob } from "../src/workers/utils/validation-pool.js";
 import {
   buildAdversarialCorpus,
   init,
@@ -76,36 +69,6 @@ describe("long-lived validation worker pool", () => {
         expect(sample.externalBytes).toBeGreaterThanOrEqual(0);
         expect(sample.comparableFootprintBytes).toBe(
           sample.usedHeapBytes + sample.externalBytes,
-        );
-      }
-    } finally {
-      await pool.close();
-    }
-  });
-
-  it("returns the same UPLC verdict and detail as the inline evaluator", async () => {
-    const pool = new FixedValidationWorkerPool(1, 4, 30_000, workerEntry, init);
-    try {
-      await pool.start();
-      const scriptBytes = Buffer.from("010203", "hex");
-      const context = new DataConstr(0, []);
-      const inline = evaluateScriptWithHarmonic(scriptBytes, context);
-      const response = await pool.submit({
-        kind: "uplc",
-        jobId: pool.allocateJobId(),
-        scriptBytes: copyToTransferable(scriptBytes),
-        contextCbor: copyToTransferable(encodeScriptContextCbor(context)),
-      });
-      expect(response.kind).toBe("uplc");
-      if (response.kind === "uplc") {
-        expect(response.result).toStrictEqual(
-          inline.kind === "accepted"
-            ? {
-                ok: true,
-                cpu: inline.budget.cpu,
-                memory: inline.budget.memory,
-              }
-            : { ok: false, detail: inline.detail },
         );
       }
     } finally {
@@ -258,39 +221,6 @@ describe("long-lived validation worker pool", () => {
               nowCardanoSlotNo: 0n,
               bucketConcurrency: poolSize,
               enforceScriptBudget: true,
-              evaluateScript: (scriptBytes, contextCbor) =>
-                Effect.tryPromise(() =>
-                  pool.submit({
-                    kind: "uplc",
-                    jobId: pool.allocateJobId(),
-                    scriptBytes: copyToTransferable(scriptBytes),
-                    contextCbor: copyToTransferable(contextCbor),
-                  }),
-                ).pipe(
-                  Effect.flatMap((response) => {
-                    if (response.kind !== "uplc") {
-                      return Effect.fail(
-                        new Error(
-                          `expected uplc response, got ${response.kind}`,
-                        ),
-                      );
-                    }
-                    return Effect.succeed(
-                      response.result.ok
-                        ? {
-                            kind: "accepted" as const,
-                            budget: {
-                              cpu: response.result.cpu,
-                              memory: response.result.memory,
-                            },
-                          }
-                        : {
-                            kind: "script_invalid" as const,
-                            detail: response.result.detail,
-                          },
-                    );
-                  }),
-                ),
             },
           ),
         );

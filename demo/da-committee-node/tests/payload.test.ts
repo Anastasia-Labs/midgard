@@ -24,6 +24,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeDaPayloadRoots,
   decodeDaPayloadStrict,
+  validateDaPayloadEventProgramCoverage,
   verifyDaPayloadAgainstHeader,
 } from "../src/da/payload.js";
 import { makePayloadFixture } from "./helpers.js";
@@ -34,6 +35,16 @@ import {
   payloadWithProgramMaterial,
   sortedEntries,
 } from "./payload.payload-with-program-material.js";
+
+/**
+ * Strict decoding followed by the per-event program coverage replay from the
+ * empty pre-state (the fixture transactions spend and reference nothing).
+ */
+const decodeAndReplay = (payload: SDK.DaPayload): SDK.DaPayload => {
+  const decoded = decodeDaPayloadStrict(SDK.encodeDaPayload(payload));
+  validateDaPayloadEventProgramCoverage(decoded.block_body, []);
+  return decoded;
+};
 
 describe("canonical V1 DA payload verification", () => {
   it("rejects duplicate and orphan retained validation witness coordinates", async () => {
@@ -151,6 +162,7 @@ describe("canonical V1 DA payload verification", () => {
       {
         payloadSchemaVersion: 1,
         stateQueueOutRef: "state-queue#0",
+        preBlockUtxos: [],
       },
     );
 
@@ -209,6 +221,7 @@ describe("canonical V1 DA payload verification", () => {
         {
           payloadSchemaVersion: 1,
           stateQueueOutRef: "state-queue#0",
+          preBlockUtxos: [],
         },
       ),
     ).rejects.toMatchObject({
@@ -228,6 +241,7 @@ describe("canonical V1 DA payload verification", () => {
           {
             payloadSchemaVersion: payloadSchemaVersion as 1,
             stateQueueOutRef: "state-queue#0",
+            preBlockUtxos: [],
           },
         ),
       ).rejects.toMatchObject({
@@ -281,6 +295,7 @@ describe("canonical V1 DA payload verification", () => {
       verifyDaPayloadAgainstHeader(stored, fixture.headerHash, fixture.header, {
         payloadSchemaVersion: 1,
         stateQueueOutRef: "state-queue#0",
+        preBlockUtxos: [],
       }),
     ).rejects.toMatchObject({
       code: "root_mismatch",
@@ -311,6 +326,7 @@ describe("canonical V1 DA payload verification", () => {
       verifyDaPayloadAgainstHeader(stored, fixture.headerHash, fixture.header, {
         payloadSchemaVersion: 1,
         stateQueueOutRef: "state-queue#0",
+        preBlockUtxos: [],
       }),
     ).rejects.toMatchObject({
       code: "duplicate_key",
@@ -347,9 +363,7 @@ describe("canonical V1 DA payload verification", () => {
 
   it("deduplicates repeated retained program envelopes without weakening exact material coverage", async () => {
     const fixture = await payloadWithDuplicateProgramEnvelopes();
-    expect(() =>
-      decodeDaPayloadStrict(SDK.encodeDaPayload(fixture.payload)),
-    ).not.toThrow();
+    expect(() => decodeAndReplay(fixture.payload)).not.toThrow();
 
     const missing = {
       ...fixture.payload,
@@ -358,8 +372,8 @@ describe("canonical V1 DA payload verification", () => {
         cek_program_material: [],
       },
     };
-    expect(() => decodeDaPayloadStrict(SDK.encodeDaPayload(missing))).toThrow(
-      /exactly cover every inline and newly referenced V1 program/u,
+    expect(() => decodeAndReplay(missing)).toThrow(
+      /exactly cover every program of every event at its position/u,
     );
 
     const extraNode = { kind: "builtin", tag: 0n } as const;
@@ -382,8 +396,8 @@ describe("canonical V1 DA payload verification", () => {
         ]),
       },
     };
-    expect(() => decodeDaPayloadStrict(SDK.encodeDaPayload(extra))).toThrow(
-      /exactly cover every inline and newly referenced V1 program/u,
+    expect(() => decodeAndReplay(extra)).toThrow(
+      /exactly cover every program of every event at its position/u,
     );
   });
 
@@ -395,9 +409,7 @@ describe("canonical V1 DA payload verification", () => {
       shared.material,
     );
 
-    expect(() =>
-      decodeDaPayloadStrict(SDK.encodeDaPayload(payload)),
-    ).not.toThrow();
+    expect(() => decodeAndReplay(payload)).not.toThrow();
   });
 
   it("rejects an authenticated oversized semantic constant through the strict DA decoder", async () => {
@@ -410,7 +422,7 @@ describe("canonical V1 DA payload verification", () => {
     let rejection: unknown;
 
     try {
-      decodeDaPayloadStrict(SDK.encodeDaPayload(payload));
+      decodeAndReplay(payload);
     } catch (cause) {
       rejection = cause;
     }

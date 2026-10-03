@@ -84,17 +84,31 @@ pub fn commitment(
   expect item_index >= 0
   let count = chunk_count(total_length)
   expect validation_merkle_v1.frontier_is_well_formed(count, frontier)
+  commitment_from_frontier_root(
+    field_index,
+    item_index,
+    total_length,
+    validation_merkle_v1.frontier_commitment(count, frontier),
+  )
+}
+
+/// The item commitment over an already-committed chunk frontier. Every field
+/// of the preimage is a self-delimiting CBOR item, so a commitment has one
+/// `total_length` whatever root is offered. The caller owns the field and
+/// index checks that `commitment` makes.
+pub fn commitment_from_frontier_root(
+  field_index: Int,
+  item_index: Int,
+  total_length: Int,
+  frontier_root: ByteArray,
+) -> ByteArray {
   commitment_domain
     |> bytearray.concat(encode_definite_array_header(5))
     |> bytearray.concat(cbor.serialise(version))
     |> bytearray.concat(cbor.serialise(field_index))
     |> bytearray.concat(cbor.serialise(item_index))
     |> bytearray.concat(cbor.serialise(total_length))
-    |> bytearray.concat(
-        encode_definite_bytes(
-          validation_merkle_v1.frontier_commitment(count, frontier),
-        ),
-      )
+    |> bytearray.concat(encode_definite_bytes(frontier_root))
     |> blake2b_256
 }
 

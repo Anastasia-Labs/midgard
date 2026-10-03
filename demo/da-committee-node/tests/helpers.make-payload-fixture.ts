@@ -40,8 +40,8 @@ export const fixtureHeaderBase = (): Omit<
   | "depositsRoot"
   | "withdrawalsRoot"
 > => ({
-  prevUtxosRoot:
-    "0000000000000000000000000000000000000000000000000000000000000000",
+  // The first block: its pre-state is the empty UTxO set.
+  prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS,
   startTime: 1n,
   endTime: 2n,
@@ -49,7 +49,7 @@ export const fixtureHeaderBase = (): Omit<
   expectedNetworkId: 0n,
   minFeeA: 0n,
   minFeeB: 0n,
-  prevHeaderHash: "11".repeat(28),
+  prevHeaderHash: SDK.GENESIS_HEADER_HASH,
   operatorVkey: "22".repeat(28),
   protocolVersion: BigInt(MIDGARD_PROTOCOL_VERSION),
 });
@@ -118,6 +118,9 @@ const acceptedTraceDescriptor = (seed: number): string =>
 
 export const makePayloadFixture = async (
   transactionCount = 3,
+  headerOverrides: Partial<
+    Pick<Header, "prevHeaderHash" | "prevUtxosRoot">
+  > = {},
 ): Promise<{
   readonly payload: SDK.DaPayload;
   readonly innerPayloadCbor: Buffer;
@@ -163,6 +166,7 @@ export const makePayloadFixture = async (
   };
   const placeholderHeader: Header = {
     ...fixtureHeaderBase(),
+    ...headerOverrides,
     utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -198,6 +202,7 @@ export const makePayloadFixture = async (
   const roots = await computeDaPayloadRoots(payloadWithoutHash);
   const header: Header = {
     ...fixtureHeaderBase(),
+    ...headerOverrides,
     utxosRoot: roots.utxosRoot,
     forcedTransactionsRoot: roots.forcedTransactionsRoot,
     transactionsRoot: roots.transactionsRoot,

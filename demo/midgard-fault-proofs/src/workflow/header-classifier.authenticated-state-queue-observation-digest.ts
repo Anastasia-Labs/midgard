@@ -72,9 +72,16 @@ type DetectionJson = Readonly<{
   diagnostic: string | null;
 }>;
 
-export const detectionJson = (
-  detection: CanonicalViolationDetection,
-): DetectionJson => ({
+/**
+ * A decision records what was selected, never how it was ordered: raw routes
+ * decide before any transition trace exists, so they carry no event subject.
+ */
+export type RecordedDetection = Omit<
+  CanonicalViolationDetection,
+  "frontier" | "subjectEventKeyCbors"
+>;
+
+export const detectionJson = (detection: RecordedDetection): DetectionJson => ({
   detectionId: detection.detectionId,
   headerHash: detection.headerHash,
   violationId: detection.violationId,

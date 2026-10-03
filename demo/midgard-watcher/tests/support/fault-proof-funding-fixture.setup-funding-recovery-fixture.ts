@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import {
+  acceptedTransactionSubject,
   authenticatedStateQueueObservationDigest,
   bindWorkflowActuationJournal,
   bindWorkflowFundingReservationJournal,
@@ -389,6 +390,11 @@ export const setupFundingRecoveryFixture = async (
       evidence,
       detections: [
         {
+          // Both spenders of the shared input.
+          ...acceptedTransactionSubject(
+            evidence.transactions[0]!.nodeTxId,
+            evidence.transactions[1]!.nodeTxId,
+          ),
           detectionId: old.detectionId,
           headerHash: old.headerHash,
           violationId: old.violationId,

@@ -136,22 +136,17 @@ pub fn dispatch_attestation(
   claim
 }
 
-/// The span-attach step witness (`constr 5 [start, length, chunk_proof,
+/// The span-attach step witness (`constr 5 [chunk_proof,
 /// next_chunk_proof]`): the once-per-window chunk merkle verification the
-/// span yield performs before the window's `(start, length, digest)` record
-/// is spliced into frame item 12.
+/// span yield performs before the window's `(start, length, digest)` record,
+/// derived from the pre control, is spliced into frame item 12.
 pub fn span_attach_witness(data: Data) -> proof.LedgerOutputProofWitnessV1 {
   let Pair(tag, fields) = builtin.un_constr_data(data)
   expect tag == 5
-  expect [start_data, length_data, first_data, second_data] = fields
+  expect [first_data, second_data] = fields
   expect chunk_proof: bounded_item_v1.ChunkProofV1 = first_data
   expect next_chunk_proof: Option<bounded_item_v1.ChunkProofV1> = second_data
-  proof.LedgerOutputProofSpanAttach {
-    start: builtin.un_i_data(start_data),
-    length: builtin.un_i_data(length_data),
-    chunk_proof,
-    next_chunk_proof,
-  }
+  proof.LedgerOutputProofSpanAttach { chunk_proof, next_chunk_proof }
 }
 
 /// The window step witness of the chunk-cursor stages (`constr 6 [bytes]`,

@@ -30,6 +30,17 @@ import {
   RejectedTx,
 } from "./types.js";
 
+/**
+ * Validates candidates sequentially, as Cardano applies a block: every spent
+ * and reference input resolves against the ledger state immediately before
+ * its own transaction. Candidates run in rounds of in-block dependency depth
+ * (a producer precedes every spender and referencer of its outputs) and, in
+ * a round, in candidate order; of a referencer and a spender of the same
+ * out-ref, the earlier one decides and the other sees that decision.
+ *
+ * `accepted` is returned in exactly that application order, so a block that
+ * commits `accepted` in order replays to the same verdicts.
+ */
 export const runPhaseBValidationWithPatch = (
   phaseACandidates: readonly PhaseAValidatedTx[],
   preStateEntries: PreState,
@@ -87,7 +98,9 @@ export const runPhaseBValidationWithPatch = (
       .map((node) => node.index);
 
     while (readyQueue.length > 0) {
-      const readyIndices = readyQueue.splice(0, readyQueue.length);
+      const readyIndices = readyQueue
+        .splice(0, readyQueue.length)
+        .sort((left, right) => left - right);
       const readyNodes = readyIndices
         .map((index) => nodes[index])
         .filter((node) => statusByIndex[node.index] === "pending");
@@ -209,14 +222,6 @@ export const runPhaseBValidationWithPatch = (
         );
       }
     }
-
-    accepted.sort((left, right) =>
-      left.submission.arrivalSeq < right.submission.arrivalSeq
-        ? -1
-        : left.submission.arrivalSeq > right.submission.arrivalSeq
-          ? 1
-          : 0,
-    );
 
     return {
       accepted,

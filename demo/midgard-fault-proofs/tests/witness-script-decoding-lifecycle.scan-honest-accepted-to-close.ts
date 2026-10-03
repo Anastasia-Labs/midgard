@@ -36,12 +36,16 @@ import {
 } from "./witness-script-decoding-lifecycle.authentication-seams.js";
 import { makeHarness } from "./witness-script-decoding-lifecycle.make-harness.js";
 
-const shapeOf = (label: string, item: Buffer, fee: bigint): Shape => {
-  const nativeTx = nativeTxWithScriptWitnesses([item], fee);
-  const fieldBytes = scriptWitnessField([item]).length;
+export const shapeOf = (
+  label: string,
+  items: readonly Buffer[],
+  fee: bigint,
+): Shape => {
+  const nativeTx = nativeTxWithScriptWitnesses(items, fee);
+  const fieldBytes = scriptWitnessField(items).length;
   return {
     label,
-    item,
+    items,
     nativeTx,
     txId: computeMidgardNativeTxId(nativeTx).toString("hex"),
     carriage: witnessSetCarriageOf(nativeTx),
@@ -53,63 +57,63 @@ const shapeOf = (label: string, item: Buffer, fee: bigint): Shape => {
 export const headerMaximumShape = () =>
   shapeOf(
     "32,768-byte field 6; [1, 32,762 bytes]: undecodable wrapper over nine bounded-item chunks (Certified)",
-    headerMalformedMaximumItem(),
+    [headerMalformedMaximumItem()],
     1_000n,
   );
 
 export const headerAdjacentShape = () =>
   shapeOf(
     "32,769-byte field 6; [1, 32,763 bytes]: one byte past the aggregate field bound (Certified)",
-    headerMalformedAdjacentItem(),
+    [headerMalformedAdjacentItem()],
     1_008n,
   );
 
 export const nativeMaximumShape = () =>
   shapeOf(
     "32,768-byte field 6; tag-0 payload refused at its fourth primitive step over nine bounded-item chunks (Certified)",
-    decodingMalformedMaximumItem(),
+    [decodingMalformedMaximumItem()],
     1_001n,
   );
 
 export const emptyPayloadShape = () =>
   shapeOf(
     "[0, h'']: decodable wrapper, empty payload (Inline)",
-    emptyPayloadItem(),
+    [emptyPayloadItem()],
     1_002n,
   );
 
 export const smallCanonicalShape = (fee = 1_003n) =>
   shapeOf(
     "all[sig]: canonical, four primitive steps (Inline)",
-    smallCanonicalItem(),
+    [smallCanonicalItem()],
     fee,
   );
 
 export const plutusShape = (fee = 1_004n) =>
   shapeOf(
     "[3, h'01020304']: non-native language (Inline)",
-    decodingPlutusItem(),
+    [decodingPlutusItem()],
     fee,
   );
 
 export const headerSmallShape = (fee = 1_005n) =>
   shapeOf(
     "[1, h'0a']: undecodable wrapper (Inline)",
-    headerMalformedItem(),
+    [headerMalformedItem()],
     fee,
   );
 
 export const wideMaximumShape = () =>
   shapeOf(
     "32,768-byte field 6; all[1,020 sig, 38 after] = 1,059 nodes, 2,119 primitive steps over nine bounded-item chunks (Certified)",
-    wideCanonicalMaximumItem(),
+    [wideCanonicalMaximumItem()],
     1_006n,
   );
 
 export const deepShape = () =>
   shapeOf(
     `${scriptWitnessField([deepCanonicalItem(DEEP_DEPTH)]).length.toString()}-byte field 6; ${DEEP_DEPTH.toString()} nested all containers over one sig, ${(2 * DEEP_DEPTH + 2).toString()} primitive steps (Certified)`,
-    deepCanonicalItem(DEEP_DEPTH),
+    [deepCanonicalItem(DEEP_DEPTH)],
     1_007n,
   );
 
@@ -126,7 +130,7 @@ export const acceptedEvidence = (shape: Shape, scriptIndex = 0) =>
       witnessSetHash: shape.carriage.witnessSetHash,
       scriptIndex,
     },
-    fieldPreimage: scriptWitnessField([shape.item]),
+    fieldPreimage: scriptWitnessField(shape.items),
     committedFieldHashHex: shape.carriage.witnessSet.script_tx_wits_hash,
   });
 
@@ -146,7 +150,7 @@ export const forcedEvidence = (
       witnessSetHash: shape.carriage.witnessSetHash,
       scriptIndex,
     },
-    fieldPreimage: scriptWitnessField([shape.item]),
+    fieldPreimage: scriptWitnessField(shape.items),
     committedFieldHashHex: shape.carriage.witnessSet.script_tx_wits_hash,
   });
 

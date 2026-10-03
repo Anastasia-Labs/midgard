@@ -1074,49 +1074,13 @@ pub fn authenticated_output_material(
       ledger_output_proof_v1.LedgerOutputProofNoWitness,
     ),
   )
-  expect Some(cardano_tx_out) = ledger_output_proof_v1.cardano_tx_out_summary_v1(
+  expect Some(descriptor) = ledger_output_proof_v1.terminal_descriptor_v1(
     terminal,
   )
-  expect Some(midgard_tx_out) = ledger_output_proof_v1.midgard_tx_out_summary_v1(
-    terminal,
-  )
-  expect Some(cardano_spend_datum) = ledger_output_proof_v1.cardano_spend_datum_summary_v1(
-    terminal,
-  )
-  let descriptor = ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
-    version: ledger_output_commitment_v1.version,
-    output_index: terminal.output_index,
-    total_length: terminal.total_length,
-    item_commitment: terminal.item_commitment,
-    address: terminal.output_scan.address,
-    lovelace: terminal.output_scan.lovelace,
-    asset_count: terminal.output_scan.asset_count,
-    asset_frontier_commitment: validation_merkle_v1.frontier_commitment(
-      terminal.output_scan.asset_count,
-      terminal.output_scan.asset_peaks,
-    ),
-    cardano_value_size: terminal.output_scan.cardano_value_size,
-    reference_script_language: -1,
-    reference_script_hash: #"",
-    reference_script_total_length: 0,
-    reference_script_item_commitment: #"",
-    cardano_tx_out,
-    midgard_tx_out,
-    cardano_spend_datum,
-  }
   let descriptor_cbor = ledger_output_commitment_v1.encode(descriptor)
-  expect Some(facts_one) = ledger_output_proof_v1.fact_attach_v1(
-    terminal,
-    descriptor_cbor,
-  )
-  expect Some(facts_two) = ledger_output_proof_v1.fact_attach_v1(
-    facts_one,
-    descriptor_cbor,
-  )
-  expect Some(facts_terminal) = ledger_output_proof_v1.fact_attach_v1(
-    facts_two,
-    descriptor_cbor,
-  )
+  expect Some(facts_one) = ledger_output_proof_v1.fact_attach_v1(terminal)
+  expect Some(facts_two) = ledger_output_proof_v1.fact_attach_v1(facts_one)
+  expect Some(facts_terminal) = ledger_output_proof_v1.fact_attach_v1(facts_two)
   AuthenticatedOutputMaterialV1 {
     item_commitment,
     chunk_proof,
@@ -1639,7 +1603,8 @@ pub fn cek_state_fixture(
 pub fn empty_cek_context_control_fixture(
   stage: Int,
 ) -> vm_machine_types.CekContextControlV1 {
-  let redeemer_context = vm_witness.initial_cek_redeemer_context_control_v1()
+  // One purpose, as in `cek_context_native_control_fixture`.
+  let redeemer_context = vm_witness.initial_cek_redeemer_context_control_v1(1)
   vm_machine_types.CekContextControlV1 {
     stage,
     language_tag: 3,

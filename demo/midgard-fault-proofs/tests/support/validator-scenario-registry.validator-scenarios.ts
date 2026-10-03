@@ -232,4 +232,30 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
     ],
   },
+  "fraud_proofs/transition_trace/withdrawal_v1.main": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-withdrawal-branch.test.ts",
+        test: "convicts a wrong withdrawal step with an honest delete that opens a lone neighbour group",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-withdrawal-branch.test.ts",
+        test: "convicts a step that commits the all-zero root for the empty ledger",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-withdrawal-branch.test.ts",
+        test: "defends an honest withdrawal step against a Branch standing in for the spent output's lone neighbour",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-withdrawal-branch.test.ts",
+        test: "defends an honest withdrawal step against a terminal Leaf whose skipped nibble is rewritten",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-withdrawal-branch.test.ts",
+        test: "defends an honest step that commits the empty ledger root",
+      },
+    ],
+  },
 };

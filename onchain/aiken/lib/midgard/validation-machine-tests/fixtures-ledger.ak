@@ -40,6 +40,85 @@ use midgard/validation_machine_tests/fixtures_phase_a.{
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
+const singleton_ledger_key = #"696e736572742d6b6579"
+
+const singleton_ledger_value = #"696e736572742d76616c7565"
+
+/// The root of a ledger holding only the entry `ledger_delta_singleton_finalize`
+/// inserts or deletes.
+pub fn ledger_delta_singleton_entry_root() -> ByteArray {
+  singleton_root(singleton_ledger_key, singleton_ledger_value)
+}
+
+/// Finalizes a pending mutation of `operation_kind` whose fold has no frames
+/// (the only entry, or the first one), from `current_ledger_root` to the
+/// claimed `next_ledger_root`.
+pub fn ledger_delta_singleton_finalize(
+  operation_kind: Int,
+  current_ledger_root: ByteArray,
+  next_ledger_root: ByteArray,
+) -> Bool {
+  let key = singleton_ledger_key
+  let value = singleton_ledger_value
+  let descriptor = empty_mpf_proof_descriptor()
+  expect Some(fold_control) = mpf_proof_fold_v1.initial_fold_control_v1(
+    key,
+    value,
+    descriptor,
+  )
+  let pending = vm_machine_types.LedgerDeltaPendingMutationV1 {
+    authorization_stage: 1,
+    operation_kind,
+    key,
+    value,
+    descriptor,
+    fold_control,
+  }
+  let operation_value = if operation_kind == 0 {
+    #""
+  } else {
+    value
+  }
+  let operation_leaf = vm_shared.ledger_delta_operation_leaf_hash(
+    operation_kind,
+    key,
+    operation_value,
+    descriptor,
+  )
+  let operation_frontier = validation_merkle_v1.build_frontier([operation_leaf])
+  let control = vm_machine_types.LedgerDeltaControlV1 {
+    ..compact_ledger_delta_control(1),
+    current_ledger_root,
+    pending_mutation_cbor: vm_witness.encode_ledger_delta_pending_mutation_v1(
+      pending,
+    ),
+  }
+  let pre = compact_ledger_delta_state(
+    control,
+    56,
+    validation_merkle_v1.frontier_commitment(
+      operation_frontier.count,
+      operation_frontier.peaks,
+    ),
+  )
+  vm_ledger_delta.verify_ledger_delta_finalize_semantics_v1(
+    pre,
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor: vm_witness.encode_ledger_delta_control_v1(control),
+      claimed_successor: compact_ledger_delta_successor(
+        pre,
+        vm_machine_types.LedgerDeltaControlV1 {
+          ..control,
+          current_ledger_root: next_ledger_root,
+          operation_count: 1,
+          operation_peaks: operation_frontier.peaks,
+          pending_mutation_cbor: #"",
+        },
+      ),
+    },
+  )
+}
+
 pub fn ledger_delta_operation_authentication_fixture(
   operation_kind: Int,
 ) -> Bool {

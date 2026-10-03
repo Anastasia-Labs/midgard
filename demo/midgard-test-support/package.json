@@ -13,6 +13,10 @@
       "midgard-source": "./src/hex.ts",
       "types": "./src/hex.ts"
     },
+    "./plutus-data-fuzz": {
+      "midgard-source": "./src/plutus-data-fuzz.ts",
+      "types": "./src/plutus-data-fuzz.ts"
+    },
     "./l1-recordings": {
       "midgard-source": "./src/l1-recordings.ts",
       "types": "./src/l1-recordings.ts"

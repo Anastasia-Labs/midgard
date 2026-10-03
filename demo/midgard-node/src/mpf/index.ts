@@ -66,7 +66,7 @@ export {
 export {
   type DecodedMempoolTxForCommit,
   establishEffectiveEndTimeFromDecodedMempool,
-  orderDecodedMempoolTxsForLedgerApplication,
+  refuseMalformedMempoolCandidates,
 } from "./mempool-order.js";
 export {
   applyLedgerOpsToUtxoPayloadAggregateFromFullValues,

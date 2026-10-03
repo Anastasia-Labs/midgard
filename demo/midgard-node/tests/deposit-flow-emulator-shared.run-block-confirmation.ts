@@ -5,7 +5,10 @@ import {
   toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { verifyDaPayloadAgainstHeader } from "da-committee-node/da/payload";
+import {
+  resolvePreBlockUtxos,
+  verifyDaPayloadAgainstHeader,
+} from "da-committee-node/da/payload";
 import { Effect, Option, Ref } from "effect";
 import { expect } from "vitest";
 
@@ -188,11 +191,35 @@ export const expectDaCommitteeAcceptsPersistedPayload = async ({
   );
   if (Option.isNone(row))
     throw new Error(`Missing persisted DA payload for ${headerHash}`);
+  // The committee's own parent-state rule: the parent payload the node
+  // retained, bound by the header's prev_utxos_root; no peers here.
+  const preBlockUtxos = await resolvePreBlockUtxos({
+    header: l1Header,
+    getDaPayload: async (parentHeaderHash) => {
+      const parent = await runNodeDatabaseEffect(
+        DaPayloadsDB.retrieveByHeaderHash(Buffer.from(parentHeaderHash, "hex")),
+      );
+      return Option.isNone(parent)
+        ? undefined
+        : {
+            payloadCborHex: Buffer.from(
+              parent.value[DaPayloadsDB.Columns.PAYLOAD_CBOR],
+            ).toString("hex"),
+          };
+    },
+    payloadSource: {
+      fetchPayloadCandidates: async () => ({ ok: false, attempts: [] }),
+    },
+  });
   return verifyDaPayloadAgainstHeader(
     row.value[DaPayloadsDB.Columns.PAYLOAD_CBOR],
     headerHash,
     l1Header,
-    { payloadSchemaVersion: 1, stateQueueOutRef: `emulator:${headerHash}` },
+    {
+      payloadSchemaVersion: 1,
+      stateQueueOutRef: `emulator:${headerHash}`,
+      preBlockUtxos,
+    },
   );
 };
 

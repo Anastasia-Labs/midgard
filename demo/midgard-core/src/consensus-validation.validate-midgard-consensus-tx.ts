@@ -1,5 +1,5 @@
 import { decodeMidgardCekProgramEnvelope } from "./cek-proof.js";
-import { asArray, asBytes, asMap, decodeSingleCbor } from "./codec/cbor.js";
+import { asArray, decodeSingleCbor } from "./codec/cbor.js";
 import {
   decodeMidgardForcedTxFullFromCanonicalCbor,
   type MidgardForcedTxFull,
@@ -17,7 +17,6 @@ import { decodeMidgardTxOutput } from "./codec/output.js";
 import { midgardValueToCmlValue } from "./codec/value.js";
 import { decodeMidgardVersionedScriptListPreimage } from "./codec/versioned-script.js";
 import { MIDGARD_CONSENSUS_LIMITS } from "./consensus-profile.js";
-import { nativeScriptBoundViolation } from "./consensus-validation.native-script-complexity.js";
 import {
   enforceCount,
   enforcePreimageSize,
@@ -199,13 +198,9 @@ export const validateMidgardConsensusTx = (
   );
   for (let index = 0; index < scripts.length; index += 1) {
     const script = scripts[index]!;
-    if (script.language === "NativeCardano") {
-      const nativeBound = nativeScriptBoundViolation(
-        script.nativeScript,
-        `script_witnesses[${index.toString()}]`,
-      );
-      if (nativeBound !== null) return nativeBound;
-    } else {
+    // Decoding a native script enforces the V1 depth and node-count bounds,
+    // so only program envelopes are checked here.
+    if (script.language !== "NativeCardano") {
       try {
         decodeMidgardCekProgramEnvelope(script.scriptBytes);
       } catch (error) {
@@ -218,7 +213,6 @@ export const validateMidgardConsensusTx = (
     }
   }
 
-  const distinctAssets = new Set<string>();
   for (let index = 0; index < outputCbors.length; index += 1) {
     if (outputCbors[index]!.length > limits.maxLedgerOutputPreimageBytes) {
       return violation(
@@ -238,18 +232,11 @@ export const validateMidgardConsensusTx = (
         `output[${index.toString()}] Cardano Value ${cardanoValueBytes.toString()} > ${limits.maxOutputValueCborBytes.toString()}`,
       );
     }
-    for (const [policyId, assets] of output.value.assets) {
-      for (const assetName of assets.keys()) {
-        distinctAssets.add(`${policyId}.${assetName}`);
-      }
-    }
-    if (output.script_ref?.language === "NativeCardano") {
-      const nativeBound = nativeScriptBoundViolation(
-        output.script_ref.nativeScript,
-        `reference_scripts[${index.toString()}]`,
-      );
-      if (nativeBound !== null) return nativeBound;
-    } else if (output.script_ref !== undefined) {
+    // As for witnesses, decoding the output bounded a native reference script.
+    if (
+      output.script_ref !== undefined &&
+      output.script_ref.language !== "NativeCardano"
+    ) {
       try {
         decodeMidgardCekProgramEnvelope(output.script_ref.scriptBytes);
       } catch (error) {
@@ -260,31 +247,6 @@ export const validateMidgardConsensusTx = (
         );
       }
     }
-  }
-  const mintValue = decodeSingleCbor(tx.body.mintPreimageCbor);
-  if (!Array.isArray(mintValue)) {
-    for (const [policyValue, assetsValue] of asMap(mintValue, "native.mint")) {
-      const policyId = asBytes(policyValue, "native.mint.policy").toString(
-        "hex",
-      );
-      for (const assetNameValue of asMap(
-        assetsValue,
-        "native.mint.assets",
-      ).keys()) {
-        const assetName = asBytes(
-          assetNameValue,
-          "native.mint.asset_name",
-        ).toString("hex");
-        distinctAssets.add(`${policyId}.${assetName}`);
-      }
-    }
-  }
-  if (distinctAssets.size > limits.maxDistinctAssetCount) {
-    return violation(
-      "E_ASSET_COUNT",
-      "distinct_assets",
-      `${distinctAssets.size.toString()} > ${limits.maxDistinctAssetCount.toString()}`,
-    );
   }
   return null;
 };

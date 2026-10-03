@@ -4,6 +4,7 @@ import {
   type ContentSegment,
   definiteBytesHeader,
   definiteHeaderLength,
+  indefiniteMidgardCekDataBytesLength,
   isWellFormedMidgardCekDataBytesControl,
   MIDGARD_CEK_DATA_BYTES_MAX_SOURCE_SPAN,
   MIDGARD_CEK_DATA_BYTES_SYNTAX_BYTES,
@@ -148,8 +149,34 @@ const extractContent = ({
   return cursor === source.length ? Buffer.concat(content) : null;
 };
 
+/**
+ * The next chunk-header window of a measuring control: two bytes (a chunk
+ * header, or the 0xff break and whatever follows it), or the single last byte
+ * of the enclosing source.
+ */
+const measureSpan = (
+  control: MidgardCekDataBytesControl,
+  sourceEnd: number,
+): MidgardCekSourceBlobSpan | null => {
+  const absoluteStart = control.sourceStart + control.sourceLength;
+  return absoluteStart < sourceEnd
+    ? {
+        absoluteStart,
+        length: Math.min(
+          MIDGARD_CEK_DATA_BYTES_SYNTAX_BYTES,
+          sourceEnd - absoluteStart,
+        ),
+      }
+    : null;
+};
+
+/**
+ * `sourceEnd` is the absolute end of the enclosing authenticated source; only
+ * the measuring stage reads it, to bound its chunk-header window.
+ */
 export const nextMidgardCekDataBytesSpan = (
   control: MidgardCekDataBytesControl,
+  sourceEnd: number,
 ): MidgardCekSourceBlobSpan | null => {
   if (!isWellFormedMidgardCekDataBytesControl(control)) {
     return null;
@@ -163,28 +190,83 @@ export const nextMidgardCekDataBytesSpan = (
       ),
     };
   }
-  if (control.stage === MidgardCekDataBytesStages.Break) {
-    return {
-      absoluteStart: control.sourceStart + control.sourceLength - 1,
-      length: 1,
-    };
+  if (control.stage === MidgardCekDataBytesStages.Measure) {
+    return measureSpan(control, sourceEnd);
   }
   return contentPlan(control)?.span ?? null;
+};
+
+/**
+ * One measuring step: the authenticated window at the measured end is either
+ * the 0xff break, which fixes the encoding length and starts the content pass,
+ * or one definite chunk header, which extends the measured length by that
+ * whole chunk. The chunk layout itself is checked by the content pass.
+ */
+const advanceMeasure = (
+  control: MidgardCekDataBytesControl,
+  sourceEnd: number,
+  sourceBytes: Uint8Array | null | undefined,
+): MidgardCekDataBytesControl | null => {
+  const span = measureSpan(control, sourceEnd);
+  if (
+    span === null ||
+    sourceBytes === null ||
+    sourceBytes === undefined ||
+    sourceBytes.length !== span.length
+  ) {
+    return null;
+  }
+  const first = sourceBytes[0]!;
+  if (first === 0xff) {
+    const sourceLength = control.sourceLength + 1;
+    const bytesLength = indefiniteMidgardCekDataBytesLength(sourceLength);
+    if (bytesLength === null) return null;
+    const next = {
+      ...control,
+      stage: MidgardCekDataBytesStages.Blob,
+      sourceLength,
+      bytesLength,
+      blob: initialMidgardCekSourceBlobControl({
+        sourceStart: 0,
+        sourceLength: bytesLength,
+      }),
+    } satisfies MidgardCekDataBytesControl;
+    return isWellFormedMidgardCekDataBytesControl(next) ? next : null;
+  }
+  const chunkLength =
+    first >= 0x41 && first <= 0x57
+      ? first - 0x3f
+      : first === 0x58 &&
+          span.length === 2 &&
+          sourceBytes[1]! >= 24 &&
+          sourceBytes[1]! <= CARDANO_DATA_BYTES_CHUNK
+        ? sourceBytes[1]! + 2
+        : null;
+  if (chunkLength === null || span.absoluteStart + chunkLength >= sourceEnd) {
+    return null;
+  }
+  const next = {
+    ...control,
+    sourceLength: control.sourceLength + chunkLength,
+  } satisfies MidgardCekDataBytesControl;
+  return isWellFormedMidgardCekDataBytesControl(next) ? next : null;
 };
 
 export const advanceMidgardCekDataBytes = ({
   control,
   sourceBytes,
+  sourceEnd,
 }: {
   readonly control: MidgardCekDataBytesControl;
   readonly sourceBytes?: Uint8Array | null;
+  readonly sourceEnd: number;
 }): MidgardCekDataBytesControl | null => {
   try {
     if (!isWellFormedMidgardCekDataBytesControl(control)) {
       return null;
     }
     if (control.stage === MidgardCekDataBytesStages.Syntax) {
-      const span = nextMidgardCekDataBytesSpan(control)!;
+      const span = nextMidgardCekDataBytesSpan(control, sourceEnd)!;
       if (
         sourceBytes === null ||
         sourceBytes === undefined ||
@@ -208,20 +290,8 @@ export const advanceMidgardCekDataBytes = ({
       } satisfies MidgardCekDataBytesControl;
       return isWellFormedMidgardCekDataBytesControl(next) ? next : null;
     }
-    if (control.stage === MidgardCekDataBytesStages.Break) {
-      if (
-        sourceBytes === null ||
-        sourceBytes === undefined ||
-        sourceBytes.length !== 1 ||
-        sourceBytes[0] !== 0xff
-      ) {
-        return null;
-      }
-      const next = {
-        ...control,
-        stage: MidgardCekDataBytesStages.Terminal,
-      } satisfies MidgardCekDataBytesControl;
-      return isWellFormedMidgardCekDataBytesControl(next) ? next : null;
+    if (control.stage === MidgardCekDataBytesStages.Measure) {
+      return advanceMeasure(control, sourceEnd, sourceBytes);
     }
     if (
       control.stage !== MidgardCekDataBytesStages.Blob ||
@@ -235,10 +305,7 @@ export const advanceMidgardCekDataBytes = ({
       }
       const next = {
         ...control,
-        stage:
-          control.bytesLength > CARDANO_DATA_BYTES_CHUNK
-            ? MidgardCekDataBytesStages.Break
-            : MidgardCekDataBytesStages.Terminal,
+        stage: MidgardCekDataBytesStages.Terminal,
       } satisfies MidgardCekDataBytesControl;
       return isWellFormedMidgardCekDataBytesControl(next) ? next : null;
     }

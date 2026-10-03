@@ -84,7 +84,11 @@ export const deriveTransitionTraceReplayEvidence = async ({
   // Structural faults already have complete authenticated evidence in the block.
   if ((await detectTransitionTraceFaults(current)).some((d) => d.buildable))
     return evidence;
-  for (let index = 0n; index < current.counts.transitionStepCount; index++) {
+  for (
+    let index = 0n;
+    index < BigInt(current.transitionTrace.length);
+    index++
+  ) {
     // Preserve a buildable finding from the already replayed prefix before a
     // later event can leave the semantic proof's domain.
     if (

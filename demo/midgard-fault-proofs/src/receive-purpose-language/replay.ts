@@ -1,6 +1,7 @@
 import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
+import { acceptedTransactionSubject } from "../workflow/detection-subject.js";
 import {
   prepareReceivePurposeLanguageEvidence,
   RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID,
@@ -43,6 +44,7 @@ export const detectReceivePurposeLanguageAcceptedReplay = ({
           Object.freeze({
             evidence,
             detection: Object.freeze({
+              ...acceptedTransactionSubject(entry.transactionId),
               detectionId: `${RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID}:${entry.position.toString()}:${entry.transactionId}:${entry.executionIndex.toString()}`,
               headerHash,
               violationId: RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID,

@@ -50,6 +50,8 @@ export const buildDecodingBlockFixture = async ({
   subject,
   decoyTransactionCount = 0,
   additionalTransactions = [],
+  commitEventToStep = (entries) => entries,
+  orderEvents = (events) => events,
 }: {
   readonly operatorVkey: string;
   readonly startTime: bigint;
@@ -63,6 +65,18 @@ export const buildDecodingBlockFixture = async ({
   readonly decoyTransactionCount?: number;
   /** Caller-supplied normal transactions committed beside the subject. */
   readonly additionalTransactions?: readonly MidgardNativeTxFull[];
+  /**
+   * The `event_to_step` entries the block commits, derived from the honest
+   * ones. The header and payload commit whatever this returns.
+   */
+  readonly commitEventToStep?: (
+    entries: readonly SDK.DaPayloadEntry[],
+  ) => readonly SDK.DaPayloadEntry[];
+  /**
+   * The order the trace steps the events in (subject first, then the L2
+   * transactions). The event_to_step entries follow the same order.
+   */
+  readonly orderEvents?: <T>(events: readonly T[]) => readonly T[];
 }): Promise<DecodingBlockFixture> => {
   const submitted = materializeMidgardForcedTxFromCanonical(subject.nativeTx);
   const canonicalCbor =
@@ -197,7 +211,7 @@ export const buildDecodingBlockFixture = async ({
   const transitionTrace: SDK.DaPayloadEntry[] = [];
   const eventToStep: SDK.DaPayloadEntry[] = [];
   const validationTraces: SDK.DaPayloadEntry[] = [];
-  for (const [stepIndex, event] of events.entries()) {
+  for (const [stepIndex, event] of orderEvents(events).entries()) {
     const step: SDK.TransitionStep = {
       schema_version: SDK.TRANSITION_STEP_SCHEMA_VERSION,
       step_index: BigInt(stepIndex),
@@ -244,6 +258,7 @@ export const buildDecodingBlockFixture = async ({
     );
   }
 
+  const committedEventToStep = commitEventToStep(eventToStep);
   const utxoRoot = await keyValuePhasRootWithCount([]);
   const roots = {
     withdrawals: await buildCountedRoot(SDK.ROOT_DOMAINS.withdrawals, []),
@@ -262,7 +277,7 @@ export const buildDecodingBlockFixture = async ({
     ),
     eventToStep: await buildCountedRoot(
       SDK.ROOT_DOMAINS.eventToStep,
-      bufferEntries(eventToStep),
+      bufferEntries(committedEventToStep),
     ),
     validationTraces: await buildCountedRoot(
       SDK.ROOT_DOMAINS.validationTraces,
@@ -311,7 +326,7 @@ export const buildDecodingBlockFixture = async ({
       transactions: sorted(transactions),
       deposits: [],
       transition_trace: sorted(transitionTrace),
-      event_to_step: sorted(eventToStep),
+      event_to_step: sorted(committedEventToStep),
       transaction_preimages: sorted(transactionPreimages),
       forced_transaction_preimages: sorted(forcedTransactionPreimages),
       cek_program_material: [],

@@ -5,6 +5,7 @@ import { afterAll, expect, it } from "vitest";
 import {
   buildForgedOperatorSuccessorValidationDisputeFixture,
   runForcedValidationDisputeScenario as runScenario,
+  withLateNativeDonorChunk,
 } from "./support/submit-init-emulator-shared.js";
 
 /**
@@ -34,16 +35,16 @@ const CPU_UNIT_CEILING = 8_000_000_000n;
 const VALIDATION_TRACE_DISPUTE_CATEGORY_ID = "00000006";
 
 /**
- * Every scenario this file is required to execute, split by outcome: ten
- * forged-successor journeys are started, of which exactly six reach award and
- * removal and four are refused at semantic resolution. `afterAll` checks both
+ * Every scenario this file is required to execute, split by outcome: twelve
+ * forged-successor journeys are started, of which exactly seven reach award
+ * and removal and five are refused at semantic resolution. `afterAll` checks both
  * numbers, so a scenario that stops being discovered — renamed away, filtered
  * out by a shared helper, or lost to an `it.each` that generated nothing —
  * fails the file instead of shrinking it silently (§14), and an
  * always-refusing implementation cannot satisfy the six accepting cases (§5).
  * A deliberately filtered run (`vitest -t …`) is expected to trip this gate.
  */
-const REQUIRED_SCENARIO_OUTCOMES = { started: 10, completed: 6 } as const;
+const REQUIRED_SCENARIO_OUTCOMES = { started: 12, completed: 7 } as const;
 
 let started = 0;
 let completed = 0;
@@ -162,6 +163,64 @@ it("resumes the exact late native continuation through permanent proof and remov
     { phaseANativeItemYieldKind: "native" },
   );
   expectAwardedAndRemoved(result);
+}, 180_000);
+
+/** The observer's late entry follows the mint script's in execution order. */
+const LATE_OBSERVER_MATCH_ORDINAL = 1;
+
+/**
+ * The late walk of a native script opens chunks at the script's own source
+ * coordinate. The observer script here is inline item 1, so its late token
+ * head proves chunks of field 6 item 1 while the late control counts one
+ * script from 0.
+ */
+const lateObserverFixture = async ({
+  operatorVkey,
+  now,
+  dishonestChallenger = false,
+}: {
+  readonly operatorVkey: string;
+  readonly now: number;
+  readonly dishonestChallenger?: boolean;
+}) => {
+  const fixture = await buildForgedOperatorSuccessorValidationDisputeFixture({
+    operatorVkey,
+    now,
+    disputedPhase: "phaseANativeScripts",
+    lateNativeItem: true,
+    observerCount: 1,
+    disputedMatchOrdinal: LATE_OBSERVER_MATCH_ORDINAL,
+    dishonestChallenger,
+  });
+  const honest = dishonestChallenger
+    ? fixture.operatorTrace
+    : fixture.challengerTrace;
+  const auxiliary = honest.witnesses[fixture.disputedLowIndex]!.auxiliary;
+  if (auxiliary?.kind !== "nativeScriptToken")
+    throw new Error("the disputed late state does not open a token head");
+  expect([
+    auxiliary.chunkProof.fieldIndex,
+    auxiliary.chunkProof.itemIndex,
+  ]).toEqual([6, 1]);
+  return dishonestChallenger ? withLateNativeDonorChunk(fixture, now) : fixture;
+};
+
+it("resumes the late native continuation of a script at inline item one through removal", async () => {
+  const result = await runForcedValidationDisputeScenario(
+    ({ operatorVkey, now }) => lateObserverFixture({ operatorVkey, now }),
+    { phaseANativeItemYieldKind: "native" },
+  );
+  expectAwardedAndRemoved(result);
+}, 180_000);
+
+it("refuses another native item's chunk of the late item's length at the late token head", async () => {
+  await expect(
+    runForcedValidationDisputeScenario(
+      ({ operatorVkey, now }) =>
+        lateObserverFixture({ operatorVkey, now, dishonestChallenger: true }),
+      { phaseANativeItemYieldKind: "native" },
+    ),
+  ).rejects.toThrow(/semantic-resolution/);
 }, 180_000);
 
 it.each(["native", "foreign"] as const)(

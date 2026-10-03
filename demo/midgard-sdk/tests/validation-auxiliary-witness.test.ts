@@ -51,20 +51,20 @@ const canonicalRawWitnesses = (): Constr<unknown>[] => {
  * lists, which had to be hand-edited on any legitimate rename.
  */
 describe("ValidationAuxiliaryWitnessSchema", () => {
-  it("round-trips the canonical 40-constructor V1 corpus exactly", () => {
+  it("round-trips the canonical 41-constructor V1 corpus exactly", () => {
     const decoded = Data.from(auxiliaryFixture.corpusCbor, CorpusSchema);
     expect(Data.to(decoded, CorpusSchema)).toBe(auxiliaryFixture.corpusCbor);
 
     const raw = canonicalRawWitnesses();
     expect(raw).toHaveLength(auxiliaryFixture.constructors.length);
-    expect(raw).toHaveLength(40);
+    expect(raw).toHaveLength(41);
     raw.forEach((witness, tag) => {
       const declared = auxiliaryFixture.constructors[tag]!;
       expect(witness.index).toBe(tag);
       expect(witness.fields).toHaveLength(declared.arity);
       // The generator records each constructor's own bytes as well as the
       // concatenated corpus; comparing per tag localises a divergence to the
-      // constructor that moved instead of reporting one 40-element mismatch.
+      // constructor that moved instead of reporting one 41-element mismatch.
       expect(Data.to(witness as never), `tag ${tag.toString()}`).toBe(
         declared.cbor,
       );
@@ -73,7 +73,7 @@ describe("ValidationAuxiliaryWitnessSchema", () => {
 
   it("holds every constructor to its exact declared arity", () => {
     // What the deleted source-text field lists were protecting: no witness
-    // constructor may quietly grow or lose a field. Stated over all 40 tags,
+    // constructor may quietly grow or lose a field. Stated over all 41 tags,
     // this needs no hand edit when a field is legitimately renamed, and still
     // fails when one is added or dropped.
     const raw = canonicalRawWitnesses();
@@ -174,10 +174,11 @@ describe("ValidationAuxiliaryWitnessSchema", () => {
       ).toThrow();
     };
 
-    rejects(new Constr(40, []));
+    rejects(new Constr(41, []));
     rejects(new Constr(1, ["01"]));
 
     const raw = canonicalRawWitnesses();
+    rejects(new Constr(40, raw[40]!.fields.slice(0, -1)));
     rejects(new Constr(1, [0n, raw[1]!.fields[1]!]));
     rejects(
       new Constr(3, [

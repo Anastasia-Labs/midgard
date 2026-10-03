@@ -15,6 +15,10 @@ import { projectMidgardRawEnvelopeForPhaseAV1 } from "@al-ft/midgard-validation"
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import {
+  acceptedTransactionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
+import {
   observeUnusedRedeemerSelection,
   UNUSED_REDEEMER_VIOLATION_ID,
 } from "./family.js";
@@ -54,6 +58,7 @@ export const detectUnusedRedeemerCanonicalViolations = async (
         });
       if (!observation.unused) continue;
       detections.push({
+        ...acceptedTransactionSubject(transaction.nodeTxId),
         detectionId: `${UNUSED_REDEEMER_VIOLATION_ID}:accepted:${position.toString()}:${transaction.nodeTxId}:${redeemerIndex.toString()}`,
         headerHash: block.headerHash,
         violationId: UNUSED_REDEEMER_VIOLATION_ID,
@@ -86,6 +91,7 @@ export const detectUnusedRedeemerCanonicalViolations = async (
     });
     if (observation.unused) continue;
     detections.push({
+      ...forcedTransactionSubject(transaction.key),
       detectionId: `${UNUSED_REDEEMER_VIOLATION_ID}:forced:${position.toString()}:${transaction.value.tx_id}:${redeemerIndex.toString()}`,
       headerHash: block.headerHash,
       violationId: UNUSED_REDEEMER_VIOLATION_ID,

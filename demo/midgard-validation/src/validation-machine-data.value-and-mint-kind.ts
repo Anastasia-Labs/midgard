@@ -7,7 +7,7 @@ import {
   readCborArrayHeader,
   readCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
-import { Data } from "@lucid-evolution/lucid";
+import { lucidDataFromCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
 
 import {
   emptyMidgardInputResolutionSchedule,
@@ -112,7 +112,7 @@ export const nativeScanCursor = (
   readonly cursor: number;
 } => {
   const control = asArray(
-    Data.from(Buffer.from(witness.cbor).toString("hex")),
+    lucidDataFromCborIterative(witness.cbor),
     "phase_a_native_control",
   );
   if (control.length !== 18) {

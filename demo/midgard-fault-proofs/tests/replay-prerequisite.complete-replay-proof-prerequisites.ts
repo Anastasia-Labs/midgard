@@ -20,6 +20,11 @@ import {
 } from "../src/workflow/classification.js";
 import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import {
+  acceptedTransactionSubject,
+  BLOCK_SUBJECT,
+  forcedTransactionSubject,
+} from "../src/workflow/detection-subject.js";
+import {
   assertReplayPrerequisiteCovered,
   CanonicalReplayPrerequisiteError,
   collectReplayFindings,
@@ -35,7 +40,7 @@ import {
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import { transitionTraceAcceptedRetainedFixture } from "./support/transition-trace-retained.js";
 
-const evidenceFor = async (
+export const evidenceFor = async (
   block: Pick<
     Awaited<ReturnType<typeof buildCanonicalBlockFixture>>,
     "header" | "headerHash" | "payloadEnvelopeCbor"
@@ -61,20 +66,29 @@ const fixture = async () => {
   const event = (position: number) => ({
     L2TransactionEventKey: { tx_id: evidence.transactions[position]!.nodeTxId },
   });
+  /** A finding whose declared subject is the normal transaction at `at`. */
   const finding = (
     violationId: string,
-    position: bigint,
+    at: number,
   ): CanonicalViolationDetection => ({
+    ...acceptedTransactionSubject(evidence.transactions[at]!.nodeTxId),
     headerHash: evidence.headerHash,
-    detectionId: `${violationId}:${position}`,
+    detectionId: `${violationId}:${at}`,
     violationId,
-    position,
+    position: BigInt(at),
   });
   return { evidence, event, finding };
 };
 
+/**
+ * An advisory the complete replay emits when predecessor context is
+ * unavailable. It has no classification rule, so it never discharges.
+ */
+export const ADVISORY_VIOLATION_ID =
+  "authenticated-predecessor-context-unavailable";
+
 describe("complete replay proof prerequisites", () => {
-  it("requires exact semantic transition provenance for an unavailable prior effect", async () => {
+  it("covers an unavailable prior effect with a registered finding at or before its step", async () => {
     const { evidence, event, finding } = await fixture();
     const failure = replayPrerequisiteFailure(
       evidence.headerHash,
@@ -82,23 +96,70 @@ describe("complete replay proof prerequisites", () => {
       "prior_transition_effect",
     ).failures[0]!;
     const proof = {
-      ...finding("transition-trace", 0n),
+      ...finding("transition-trace", 0),
       provenTransitionEventKeyCbor: Data.to(event(0), EventKey),
     };
-    expect(() =>
-      assertReplayPrerequisiteCovered(evidence, failure, [proof]),
-    ).not.toThrow();
+    for (const covering of [
+      proof,
+      // Any registered family at the same step makes the block removable.
+      finding("invalid-signature", 0),
+      // A block-level finding precedes every event.
+      { ...proof, ...BLOCK_SUBJECT },
+    ])
+      expect(() =>
+        assertReplayPrerequisiteCovered(evidence, failure, [covering]),
+      ).not.toThrow();
     for (const unrelated of [
-      finding("transition-trace", 0n),
-      { ...proof, provenTransitionEventKeyCbor: Data.to(event(1), EventKey) },
-      { ...proof, violationId: "invalid-signature" },
+      finding("transition-trace", 1),
+      { ...proof, violationId: ADVISORY_VIOLATION_ID },
       { ...proof, headerHash: "99".repeat(32) },
     ])
       expect(() =>
         assertReplayPrerequisiteCovered(evidence, failure, [unrelated]),
       ).toThrow(CanonicalReplayPrerequisiteError);
   });
-  it("requires a direct finding for the same event and the exact failed domain", async () => {
+
+  it("covers a blocked event with any registered finding at or before its step", async () => {
+    const { evidence, event, finding } = await fixture();
+    const failure = (position: number) =>
+      replayPrerequisiteFailure(
+        evidence.headerHash,
+        event(position),
+        "present_spend_input",
+      ).failures[0]!;
+    expect(() =>
+      assertReplayPrerequisiteCovered(evidence, failure(0), []),
+    ).toThrow(CanonicalReplayPrerequisiteError);
+    for (const covering of [
+      finding("non-existent-input", 0),
+      finding("invalid-signature", 0),
+    ])
+      expect(() =>
+        assertReplayPrerequisiteCovered(evidence, failure(0), [covering]),
+      ).not.toThrow();
+    // A finding at an earlier step covers a later blocked event.
+    expect(() =>
+      assertReplayPrerequisiteCovered(evidence, failure(1), [
+        finding("invalid-signature", 0),
+      ]),
+    ).not.toThrow();
+  });
+
+  it("does not let a finding at a later step cover an earlier blocked event", async () => {
+    const { evidence, event, finding } = await fixture();
+    const failure = replayPrerequisiteFailure(
+      evidence.headerHash,
+      event(0),
+      "present_spend_input",
+    ).failures[0]!;
+    // Reported at position 0, but its subject is the later transaction.
+    const later = { ...finding("non-existent-input", 1), position: 0n };
+    expect(() =>
+      assertReplayPrerequisiteCovered(evidence, failure, [later]),
+    ).toThrow(CanonicalReplayPrerequisiteError);
+  });
+
+  it("does not let an unregistered finding at the same step cover", async () => {
     const { evidence, event, finding } = await fixture();
     const failure = replayPrerequisiteFailure(
       evidence.headerHash,
@@ -106,43 +167,48 @@ describe("complete replay proof prerequisites", () => {
       "present_spend_input",
     ).failures[0]!;
     expect(() =>
-      assertReplayPrerequisiteCovered(evidence, failure, []),
-    ).toThrow(CanonicalReplayPrerequisiteError);
-    expect(() =>
       assertReplayPrerequisiteCovered(evidence, failure, [
-        finding("non-existent-input", 1n),
+        finding(ADVISORY_VIOLATION_ID, 0),
       ]),
     ).toThrow(CanonicalReplayPrerequisiteError);
-    expect(() =>
-      assertReplayPrerequisiteCovered(evidence, failure, [
-        finding("invalid-signature", 0n),
-      ]),
-    ).toThrow(CanonicalReplayPrerequisiteError);
-    expect(() =>
-      assertReplayPrerequisiteCovered(evidence, failure, [
-        finding("non-existent-input", 0n),
-      ]),
-    ).not.toThrow();
   });
 
-  it("recognizes both authenticated subjects of a double-spend proof", async () => {
+  it("orders a double-spend proof at its later spender", async () => {
     const { evidence, event } = await fixture();
     const decision =
       await DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY.replay(evidence);
     expect(decision.detections).toHaveLength(1);
-    for (const position of [0, 1]) {
-      const failure = replayPrerequisiteFailure(
+    expect(decision.detections[0]).toMatchObject({
+      frontier: "accepted",
+      subjectEventKeyCbors: [0, 1].map((position) =>
+        Data.to(event(position), EventKey),
+      ),
+    });
+    const failure = (position: number) =>
+      replayPrerequisiteFailure(
         evidence.headerHash,
         event(position),
         "present_spend_input",
       ).failures[0]!;
-      expect(() =>
-        assertReplayPrerequisiteCovered(evidence, failure, decision.detections),
-      ).not.toThrow();
-    }
+    // The proof convicts the second spender's transition, so it covers that
+    // event, but not the first spender's, which precedes it.
+    expect(() =>
+      assertReplayPrerequisiteCovered(
+        evidence,
+        failure(1),
+        decision.detections,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertReplayPrerequisiteCovered(
+        evidence,
+        failure(0),
+        decision.detections,
+      ),
+    ).toThrow(CanonicalReplayPrerequisiteError);
   });
 
-  it("fails closed when normal and forced findings share an ambiguous ordinal", async () => {
+  it("decides a normal-transaction fault when a forced transaction shares its ordinal", async () => {
     const normal = buildFixtureTransaction({
       spendInputs: [outRefCbor(0x41, 0n)],
       fee: 1n,
@@ -151,6 +217,7 @@ describe("complete replay proof prerequisites", () => {
       spendInputs: [outRefCbor(0x42, 0n)],
       fee: 2n,
     });
+    const orderKey = { transactionId: "31".repeat(32), outputIndex: 0n };
     const block = await buildDecodingBlockFixture({
       operatorVkey: "b1".repeat(28),
       startTime: 10n,
@@ -160,7 +227,7 @@ describe("complete replay proof prerequisites", () => {
         nativeTx: decodeMidgardNativeTxFullFromCanonicalCbor(
           forced.canonicalCbor,
         ),
-        orderKey: { transactionId: "31".repeat(32), outputIndex: 0n },
+        orderKey,
         verdict: "ForcedTxValid",
       },
       additionalTransactions: [
@@ -168,27 +235,62 @@ describe("complete replay proof prerequisites", () => {
       ],
     });
     const evidence = await evidenceFor(block);
-    const failure = replayPrerequisiteFailure(
+    // Both frontiers hold an event at ordinal 0.
+    expect(evidence.transactions[0]!.nodeTxId).toBe(normal.txId);
+    expect(evidence.reconstruction.forcedTransactions).toHaveLength(1);
+    const normalFailure = replayPrerequisiteFailure(
       evidence.headerHash,
       { L2TransactionEventKey: { tx_id: normal.txId } },
       "accepted_terminal",
     ).failures[0]!;
+    const normalFinding: CanonicalViolationDetection = {
+      ...acceptedTransactionSubject(normal.txId),
+      detectionId: `invalid-range:accepted:0:${normal.txId}`,
+      headerHash: evidence.headerHash,
+      violationId: "invalid-range",
+      position: 0n,
+    };
+    const forcedFinding: CanonicalViolationDetection = {
+      ...forcedTransactionSubject(orderKey),
+      detectionId: "invalid-range:forced:0",
+      headerHash: evidence.headerHash,
+      violationId: "invalid-range",
+      position: 0n,
+    };
     expect(() =>
-      assertReplayPrerequisiteCovered(evidence, failure, [
-        {
-          detectionId: "invalid-range:forced:0",
-          headerHash: evidence.headerHash,
-          violationId: "invalid-range",
-          position: 0n,
-        },
-      ]),
+      assertReplayPrerequisiteCovered(evidence, normalFailure, [normalFinding]),
+    ).not.toThrow();
+    // Forced transactions precede normal ones, so a forced finding also
+    // covers the normal event...
+    expect(() =>
+      assertReplayPrerequisiteCovered(evidence, normalFailure, [forcedFinding]),
+    ).not.toThrow();
+    // ...but a normal finding never covers the earlier forced event.
+    const forcedFailure = replayPrerequisiteFailure(
+      evidence.headerHash,
+      { ForcedTransactionEventKey: { tx_order_id: orderKey } },
+      "accepted_terminal",
+    ).failures[0]!;
+    expect(() =>
+      assertReplayPrerequisiteCovered(evidence, forcedFailure, [normalFinding]),
     ).toThrow(CanonicalReplayPrerequisiteError);
+    await expect(
+      classifyCanonicalBlockViolations({
+        evidence,
+        detections: [normalFinding],
+        minimumConfirmationDepth: 1,
+      }),
+    ).resolves.toMatchObject({
+      decision: "fault_detected",
+      category: "invalidRange",
+      selected: normalFinding,
+    });
   });
 
   it("preserves an earlier transition finding when a later direct event blocks replay", async () => {
     const { evidence, event, finding } = await fixture();
-    const earlier = finding("transition-trace", 0n);
-    const later = finding("non-existent-input", 1n);
+    const earlier = finding("transition-trace", 0);
+    const later = finding("non-existent-input", 1);
     const blocked = replayPrerequisiteFailure(
       evidence.headerHash,
       event(1),
@@ -228,7 +330,10 @@ describe("complete replay proof prerequisites", () => {
       FABRICATED_DEPOSIT_VIOLATION_ID,
       FABRICATED_WITHDRAWAL_VIOLATION_ID,
     ]) {
+      // The fixture commits no deposit or withdrawal, so this synthetic
+      // finding is block-level.
       const detection = {
+        ...BLOCK_SUBJECT,
         headerHash: evidence.headerHash,
         detectionId: `${violationId}:0`,
         violationId,

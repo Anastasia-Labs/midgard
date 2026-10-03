@@ -2,7 +2,7 @@ import "./tx-queue-processor.classify-plutus-evaluation-failure.js";
 
 import type { MidgardCekProgramEnvelope } from "@al-ft/midgard-core/cek-proof";
 import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec";
-import { collectMidgardReferencedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
+import { collectMidgardEventProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import {
   LedgerColumns,
   type PhaseAResult,
@@ -92,7 +92,7 @@ export const admissionToQueuedTx = (
   createdAt: admission.first_seen_at,
 });
 
-type AcceptedReferenceProgramCandidate = {
+type AcceptedProgramCandidate = {
   readonly ledgerTx: { readonly txId: Uint8Array };
   readonly submission: { readonly txCbor: Uint8Array };
   readonly graph: {
@@ -104,12 +104,14 @@ type AcceptedReferenceProgramCandidate = {
 };
 
 /**
- * Reconstructs only the reference-input program envelopes already resolved by
- * successful Phase B. This is persistence metadata, not a second validation
- * decision: missing or malformed state fails the acceptance transaction.
+ * Reconstructs each accepted transaction's program set, the one Phase B
+ * resolved: every input resolves against the state before its own
+ * transaction, and an out-ref is never re-created, so the batch pre-state
+ * plus every accepted output holds each accepted reference input's output.
+ * This is persistence metadata, not a second validation decision.
  */
-export const collectAcceptedReferenceProgramEnvelopes = (
-  accepted: readonly AcceptedReferenceProgramCandidate[],
+export const collectAcceptedProgramEnvelopes = (
+  accepted: readonly AcceptedProgramCandidate[],
   preState: ReadonlyMap<string, Buffer>,
 ): ReadonlyMap<string, readonly MidgardCekProgramEnvelope[]> => {
   const resolvedOutputs = new Map<string, Uint8Array>(preState);
@@ -128,7 +130,9 @@ export const collectAcceptedReferenceProgramEnvelopes = (
       );
       return [
         Buffer.from(candidate.ledgerTx.txId).toString("hex"),
-        collectMidgardReferencedProgramEnvelopes(canonicalTx, resolvedOutputs),
+        collectMidgardEventProgramEnvelopes(canonicalTx, (outRefHex) =>
+          resolvedOutputs.get(outRefHex),
+        ),
       ] as const;
     }),
   );

@@ -243,14 +243,15 @@ export const SourceMembershipMismatchWitness =
 export const LedgerDeleteWitnessSchema = Data.Object({
   key: Data.Bytes(),
   value: Data.Bytes(),
-  membership_proof: ProofSchema,
+  opening: Data.Bytes(),
   delete_proof: ProofSchema,
 });
 
 export type LedgerDeleteWitness = {
   readonly key: string;
   readonly value: string;
-  readonly membership_proof: Proof;
+  /** The terminal-Branch group opening of the delete (`#""` if unused). */
+  readonly opening: string;
   readonly delete_proof: Proof;
 };
 

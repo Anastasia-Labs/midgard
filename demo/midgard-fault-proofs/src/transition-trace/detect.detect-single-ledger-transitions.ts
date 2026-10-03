@@ -20,6 +20,7 @@ import {
   detectAcceptedTransactionTransitionMismatches,
   mpfProofFromWitness,
   normalizedMpfRoot,
+  requireDeletionKeepsTwoChildren,
 } from "./detect.mpf-proof-from-witness.js";
 import { detectL2TransactionTransitions } from "./detect.replay-l2-transaction-transition.js";
 import {
@@ -97,16 +98,24 @@ const detectSingleLedgerTransitions = async (
             : mutation.delete_proof,
         label: `${kind} transition mutation`,
       });
-      const membership = mpfProofFromWitness({
-        key,
-        value: inserting ? undefined : Buffer.from(mutation.value, "hex"),
-        proof:
-          "non_membership_proof" in mutation
-            ? mutation.non_membership_proof
-            : mutation.membership_proof,
-        label: `${kind} transition membership`,
-      });
-      for (const candidate of [proof, membership]) {
+      const candidates = [proof];
+      if ("non_membership_proof" in mutation) {
+        candidates.push(
+          mpfProofFromWitness({
+            key,
+            value: undefined,
+            proof: mutation.non_membership_proof,
+            label: `${kind} transition membership`,
+          }),
+        );
+      } else {
+        requireDeletionKeepsTwoChildren({
+          proof: mutation.delete_proof,
+          opening: mutation.opening,
+          label: `${kind} transition mutation`,
+        });
+      }
+      for (const candidate of candidates) {
         if (
           normalizedMpfRoot(
             candidate.verify(!inserting),

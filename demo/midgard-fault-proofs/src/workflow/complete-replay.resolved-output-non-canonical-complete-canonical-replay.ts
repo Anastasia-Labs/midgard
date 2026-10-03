@@ -47,6 +47,7 @@ import {
   type CompleteCanonicalReplay,
   requireReplayHistoricalCorpus,
 } from "./complete-replay.replay-context-identity.js";
+import { subjectOf, verdictDetectionSubject } from "./detection-subject.js";
 import {
   type FabricatedDepositEvidenceAuthority,
   requireFabricatedDepositEvidenceAuthority,
@@ -79,6 +80,7 @@ export const INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
     ...(await detectInvalidSignatures(evidence)),
     ...detectInvalidSignatureWrongfulRejections({ block: evidence }).map(
       (detection) => ({
+        ...subjectOf(detection),
         detectionId: detection.detectionId,
         headerHash: detection.headerHash,
         violationId: detection.violationId,
@@ -263,6 +265,7 @@ export const RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY =
         block: evidence,
         priorLedger,
       }).map((finding) => ({
+        ...verdictDetectionSubject(finding.subject),
         detectionId: `resolved-output-non-canonical:${resolvedOutputEvidenceIdentity(finding)}`,
         headerHash: evidence.headerHash,
         violationId: "resolved-output-non-canonical",
@@ -315,6 +318,7 @@ export const SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY =
       block: evidence,
       priorLedger,
     }).map((finding) => ({
+      ...verdictDetectionSubject(finding.subject),
       detectionId: `spend-input-signer-missing:${spendInputSignerWorkflowEvidenceIdentity(finding)}`,
       headerHash: evidence.headerHash,
       violationId: "spend-input-signer-missing",
@@ -328,6 +332,7 @@ export const PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["protectedOutputSignerMissing"], async (evidence) =>
     detectProtectedOutputSignerMissingCompleteReplay(evidence).map(
       (finding) => ({
+        ...verdictDetectionSubject(finding.subject),
         detectionId: `protected-output-signer-missing:${protectedOutputSignerEvidenceIdentity(finding)}`,
         headerHash: evidence.headerHash,
         violationId: "protected-output-signer-missing",

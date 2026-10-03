@@ -28,7 +28,7 @@ export const validationDisputeBlueprint = JSON.parse(
 // every consumer reads it as `Data` through the yield dispatchers'
 // builtin decodes, so Aiken emits no definition for
 // `midgard/validation_machine/machine_types/ValidationAuxiliaryWitnessV1`.
-// The wire pin therefore lives in the generated 40-arm tag/arity corpus
+// The wire pin therefore lives in the generated 41-arm tag/arity corpus
 // (`validation-controls-abi.test.ts` freezes its bytes and blake2b digest)
 // plus the cross-language producer vectors in
 // `onchain/aiken/lib/midgard/validation-one-step-cross-language.test.ak`;

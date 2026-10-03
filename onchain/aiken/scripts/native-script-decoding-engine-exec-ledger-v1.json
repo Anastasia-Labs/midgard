@@ -69,18 +69,18 @@
       ],
       "rows": {
         "decoding_step_01_binds_an_accepted_normal_transaction": {
-          "mem": 2560304,
-          "cpu": 956361130,
+          "mem": 2559404,
+          "cpu": 956217130,
           "basisFit": "within"
         },
         "decoding_step_01_binds_a_published_chunk_membership_proof": {
-          "mem": 3710386,
-          "cpu": 1394614128,
+          "mem": 3686070,
+          "cpu": 1390103376,
           "basisFit": "within"
         },
         "decoding_step_01_records_a_forced_source_for_either_direction": {
-          "mem": 2319700,
-          "cpu": 1033946864,
+          "mem": 2318700,
+          "cpu": 1033786864,
           "basisFit": "within"
         }
       }
@@ -94,18 +94,18 @@
       ],
       "rows": {
         "decoding_step_02_opens_a_normal_claim": {
-          "mem": 1462145,
-          "cpu": 749339936,
+          "mem": 1461345,
+          "cpu": 749211936,
           "basisFit": "within"
         },
         "decoding_step_02_opens_a_forced_acceptance": {
-          "mem": 2986649,
-          "cpu": 1390334183,
+          "mem": 2985849,
+          "cpu": 1390206183,
           "basisFit": "within"
         },
         "decoding_step_02_copies_a_malformed_accusation_verbatim": {
-          "mem": 2994295,
-          "cpu": 1399480662,
+          "mem": 2993695,
+          "cpu": 1399384662,
           "basisFit": "within"
         }
       }
@@ -119,13 +119,13 @@
       ],
       "rows": {
         "open_subject_commits_the_authenticated_outpoint": {
-          "mem": 3688021,
-          "cpu": 1626727703,
+          "mem": 3687621,
+          "cpu": 1626663703,
           "basisFit": "within"
         },
         "open_subject_closes_an_out_of_domain_direction_b_ordinal": {
-          "mem": 3812673,
-          "cpu": 1672403401,
+          "mem": 3812073,
+          "cpu": 1672307401,
           "basisFit": "within"
         }
       }
@@ -140,13 +140,13 @@
       ],
       "rows": {
         "bind_descriptor_authenticates_and_starts_the_machine": {
-          "mem": 3647194,
-          "cpu": 1480818089,
+          "mem": 3646894,
+          "cpu": 1480770089,
           "basisFit": "within"
         },
         "bind_descriptor_closes_a_non_native_direction_b_descriptor": {
-          "mem": 2720814,
-          "cpu": 1105636518,
+          "mem": 2720514,
+          "cpu": 1105588518,
           "basisFit": "within"
         }
       }
@@ -161,18 +161,18 @@
       ],
       "rows": {
         "advance_or_close_commits_a_partial_advance": {
-          "mem": 3652787,
-          "cpu": 1523721514,
+          "mem": 3652387,
+          "cpu": 1523657514,
           "basisFit": "within"
         },
         "advance_or_close_closes_direction_b_at_the_exact_terminal": {
-          "mem": 3902639,
-          "cpu": 1593600518,
+          "mem": 3902239,
+          "cpu": 1593536518,
           "basisFit": "within"
         },
         "advance_or_close_closes_a_direction_a_refusal": {
-          "mem": 3031303,
-          "cpu": 1274296670,
+          "mem": 3030903,
+          "cpu": 1274232670,
           "basisFit": "within"
         }
       }
@@ -186,13 +186,13 @@
       ],
       "rows": {
         "decoding_step_04_finalizes_a_wrongful_acceptance": {
-          "mem": 1215110,
-          "cpu": 537360253,
+          "mem": 1214510,
+          "cpu": 537264253,
           "basisFit": "within"
         },
         "decoding_step_04_finalizes_a_wrongful_rejection": {
-          "mem": 1224115,
-          "cpu": 540854391,
+          "mem": 1223515,
+          "cpu": 540758391,
           "basisFit": "within"
         }
       }
