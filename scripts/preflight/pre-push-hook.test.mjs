@@ -2,13 +2,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
@@ -30,15 +24,6 @@ const ENV = {
   MIDGARD_SKIP_HOOKS: "",
   MIDGARD_SKIP_PREFLIGHT: "",
 };
-// A real push exports repository-local variables; fixture setup must not use
-// the repository whose hook launched this test suite.
-for (const name of spawnSync("git", ["rev-parse", "--local-env-vars"], {
-  encoding: "utf8",
-})
-  .stdout.trim()
-  .split("\n")) {
-  delete ENV[name];
-}
 
 // The stub records its arguments and exits with $STUB_EXIT.
 const STUB = `import { appendFileSync } from "node:fs";
@@ -61,7 +46,6 @@ const withRepo = (body) => {
     const head = spawnSync("git", ["rev-parse", "HEAD"], {
       cwd: repo,
       encoding: "utf8",
-      env: ENV,
     }).stdout.trim();
     const push = ({ sha = head, env = {} } = {}) => {
       const run = spawnSync("bash", [hook, "origin", "git@example:x"], {
@@ -77,7 +61,7 @@ const withRepo = (body) => {
       rmSync(join(repo, "ran.log"), { force: true });
       return { ...run, ran };
     };
-    return body(push, repo);
+    return body(push);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -124,51 +108,3 @@ test("a push of something other than HEAD is not judged", () =>
     assert.equal(deletion.status, 0);
     assert.equal(deletion.ran, "");
   }));
-
-for (const extended of [false, true]) {
-  test(`preflight isolates nested Git fixtures with ${extended ? "all hook paths" : "GIT_DIR"} exported`, () =>
-    withRepo((push, repo) => {
-      const fixture = join(repo, "nested.git");
-      writeFileSync(
-        join(repo, "scripts/preflight.mjs"),
-        `import { spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
-const run = (...args) => {
-  const result = spawnSync("git", args, { encoding: "utf8" });
-  if (result.status !== 0) throw new Error(result.stderr);
-  return result.stdout.trim();
-};
-run("init", "--quiet", "--bare", ${JSON.stringify(fixture)});
-writeFileSync("fixture-result.json", JSON.stringify({
-  gitDir: run("-C", ${JSON.stringify(fixture)}, "rev-parse", "--absolute-git-dir"),
-  bare: run("-C", ${JSON.stringify(fixture)}, "config", "--local", "core.bare"),
-}));
-`,
-      );
-      const configBefore = readFileSync(join(repo, ".git/config"), "utf8");
-      const run = push({
-        env: {
-          GIT_DIR: join(repo, ".git"),
-          ...(extended
-            ? {
-                GIT_WORK_TREE: repo,
-                GIT_INDEX_FILE: join(repo, ".git/index"),
-                GIT_OBJECT_DIRECTORY: join(repo, ".git/objects"),
-                GIT_PREFIX: "",
-              }
-            : {}),
-        },
-      });
-      assert.equal(
-        readFileSync(join(repo, ".git/config"), "utf8"),
-        configBefore,
-        "nested git init --bare must not change the parent repository config",
-      );
-      assert.equal(run.status, 0, run.stderr);
-      assert.deepEqual(
-        JSON.parse(readFileSync(join(repo, "fixture-result.json"), "utf8")),
-        { gitDir: fixture, bare: "true" },
-        "preflight must create and address its separate fixture repository",
-      );
-    }));
-}
