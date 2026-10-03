@@ -274,10 +274,6 @@ export const submitRemoveFraudulentBlock = async ({
   if (initialTarget === undefined) {
     throw new Error(`State queue does not contain block ${headerHash}.`);
   }
-  const fraudulentHeader = await Effect.runPromise(
-    getHeaderFromStateQueueDatum(initialTarget.datum),
-  );
-  const fraudulentOperator = fraudulentHeader.operatorVkey;
   const initialStateQueueRootOutRef = outRefLabel(topology.root.utxo);
   const initialTargetOutRef = outRefLabel(initialTarget.utxo);
   const initialTargetHasSuccessor =
@@ -334,6 +330,10 @@ export const submitRemoveFraudulentBlock = async ({
       }),
     );
     const removedHeaderHash = await requireStateQueueHeaderHash(removed);
+    const removedHeader = await Effect.runPromise(
+      getHeaderFromStateQueueDatum(removed.datum),
+    );
+    const fraudulentOperator = removedHeader.operatorVkey;
     const currentSchedulerUtxo = await requireSingletonUtxo({
       lucid,
       address: contracts.schedulerAddress,
