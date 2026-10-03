@@ -491,7 +491,7 @@ jobs:
           blueprint: "true"
           prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation
       - name: Build, typecheck, and test fault-proof tooling
-        run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs test --shard=${{ matrix.shard }}/3
+        run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs run test --shard=${{ matrix.shard }}/3
 
   # The watcher's TypeScript surface. Its eslint pass is the workspace-wide one
   # in the `lint` job; the Go helper, compose stack and image are covered by
