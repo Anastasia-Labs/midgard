@@ -58,6 +58,7 @@ export type MissingScriptSourceActuatorAction =
   | Readonly<{ stage: "finalize"; threadOutRef: string }>
   | Readonly<{
       stage: "remove";
+      stateQueueBlockOutRef: string;
       nextRemovalOutRef: string;
       fraudProofOutRef: string;
     }>;
@@ -260,6 +261,7 @@ export const createMissingScriptSourceActuator = (
           schemaVersion: "midgard-production-cursor-family-action-v1",
           category: "missingScriptSource" as never,
           stage: "remove",
+          stateQueueBlockOutRef: action.stateQueueBlockOutRef,
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
         } as CursorFamilyActionInput,

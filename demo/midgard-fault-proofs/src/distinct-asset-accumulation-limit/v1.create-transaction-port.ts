@@ -78,6 +78,10 @@ const createTransactionPort = (
       else if (input.stage === "remove")
         selected = {
           stage: "remove",
+          stateQueueBlockOutRef: cursorStringField(
+            input,
+            "stateQueueBlockOutRef",
+          ),
           nextRemovalOutRef: cursorStringField(input, "nextRemovalOutRef"),
           fraudProofOutRef: cursorStringField(input, "fraudProofOutRef"),
         };

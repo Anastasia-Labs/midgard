@@ -61,6 +61,7 @@ export type ObserversForbiddenActuatorAction =
   | Readonly<{ stage: "step_02"; threadOutRef: string }>
   | Readonly<{
       stage: "remove";
+      stateQueueBlockOutRef: string;
       nextRemovalOutRef: string;
       fraudProofOutRef: string;
     }>;
@@ -240,6 +241,7 @@ export const createObserversForbiddenActuator = (
           schemaVersion: "midgard-production-cursor-family-action-v1",
           category: OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY,
           stage: "remove",
+          stateQueueBlockOutRef: action.stateQueueBlockOutRef,
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
         } as CursorFamilyActionInput,

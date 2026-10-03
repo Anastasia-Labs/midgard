@@ -58,6 +58,7 @@ export type UnusedScriptWitnessActuatorAction =
   | Readonly<{ stage: "step_06"; threadOutRef: string }>
   | Readonly<{
       stage: "remove";
+      stateQueueBlockOutRef: string;
       nextRemovalOutRef: string;
       fraudProofOutRef: string;
     }>;
@@ -258,6 +259,7 @@ export const createUnusedScriptWitnessActuator = (
           schemaVersion: "midgard-production-cursor-family-action-v1",
           category: "unusedScriptWitness" as never,
           stage: "remove",
+          stateQueueBlockOutRef: action.stateQueueBlockOutRef,
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
         } as CursorFamilyActionInput,

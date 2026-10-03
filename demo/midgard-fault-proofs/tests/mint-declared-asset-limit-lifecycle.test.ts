@@ -895,7 +895,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
     expect(zOpenedDatum.data.assets_remaining).toBe(
       BigInt(MINT_DECLARED_ASSET_LIMIT_MAX_ASSETS - 1),
     );
-
     // --- Removal of the fraudulent block through X's permanent proof -----
     const removalReferences = await publishRemovalReferenceScripts({
       lucid: harness.proverLucid,
@@ -948,6 +947,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       const captured = await removalActuator.capture({
         action: {
           stage: "remove",
+          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
           nextRemovalOutRef: setup.fraudulentBlockOutRef,
           fraudProofOutRef: xProof,
         },

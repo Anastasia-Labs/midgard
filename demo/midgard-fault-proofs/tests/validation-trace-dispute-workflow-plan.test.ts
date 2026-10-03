@@ -74,6 +74,7 @@ describe("validationTraceDispute workflow planning (ruling R6)", () => {
       { kind: "award_pending", threadOutRef: thread },
       {
         kind: "proof_token",
+        stateQueueBlockOutRef: thread,
         fraudProofOutRef: thread,
         nextRemovalOutRef: thread,
       },
@@ -135,6 +136,7 @@ describe("validationTraceDispute workflow planning (ruling R6)", () => {
     const removal = planValidationTraceDisputeMove({
       stage: {
         kind: "proof_token",
+        stateQueueBlockOutRef: "aa".repeat(32) + "#0",
         fraudProofOutRef: "bb".repeat(32) + "#1",
         nextRemovalOutRef: "cc".repeat(32) + "#0",
       },
@@ -143,6 +145,7 @@ describe("validationTraceDispute workflow planning (ruling R6)", () => {
       kind: "act",
       action: {
         stage: "remove",
+        stateQueueBlockOutRef: "aa".repeat(32) + "#0",
         nextRemovalOutRef: "cc".repeat(32) + "#0",
         fraudProofOutRef: "bb".repeat(32) + "#1",
       },

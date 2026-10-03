@@ -71,6 +71,7 @@ export type MintDeclaredAssetLimitActuatorAction =
   | Readonly<{ stage: "step_04"; threadOutRef: string }>
   | Readonly<{
       stage: "remove";
+      stateQueueBlockOutRef: string;
       nextRemovalOutRef: string;
       fraudProofOutRef: string;
     }>;
@@ -280,6 +281,7 @@ export const createMintDeclaredAssetLimitActuator = (
           schemaVersion: "midgard-production-cursor-family-action-v1",
           category: MINT_DECLARED_ASSET_LIMIT_CATEGORY,
           stage: "remove",
+          stateQueueBlockOutRef: action.stateQueueBlockOutRef,
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
         } as CursorFamilyActionInput,

@@ -270,7 +270,6 @@ describe("unusedScriptWitness real lifecycle", () => {
     const seamThread05 = (await step04All(await walking())).threadOutRef;
     await refuseEveryStep05Seam(h, seamThread05, artifact);
     await h.cancel(seamThread05, 4);
-
     progress("actuator lifecycle");
     const deploymentInfo = await h.removalDeployment();
     const actuatorConfig = {
@@ -464,6 +463,7 @@ describe("unusedScriptWitness real lifecycle", () => {
       "accepted-remove",
       {
         stage: "remove",
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
         nextRemovalOutRef: setup.fraudulentBlockOutRef,
         fraudProofOutRef: s6.next!,
       },

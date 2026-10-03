@@ -65,6 +65,7 @@ export type ValidationTraceDisputeActuatorAction =
   | Readonly<{ stage: "award"; threadOutRef: string }>
   | Readonly<{
       stage: "remove";
+      stateQueueBlockOutRef: string;
       nextRemovalOutRef: string;
       fraudProofOutRef: string;
     }>;
@@ -204,6 +205,7 @@ export const planValidationTraceDisputeMove = ({
         kind: "act",
         action: {
           stage: "remove",
+          stateQueueBlockOutRef: stage.stateQueueBlockOutRef,
           nextRemovalOutRef: stage.nextRemovalOutRef,
           fraudProofOutRef: stage.fraudProofOutRef,
         },

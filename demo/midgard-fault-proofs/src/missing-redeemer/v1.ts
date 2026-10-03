@@ -246,6 +246,10 @@ const bindFamily = (context: BoundContext) => {
     if (input.stage === "remove")
       return {
         stage: "remove",
+        stateQueueBlockOutRef: cursorStringField(
+          input,
+          "stateQueueBlockOutRef",
+        ),
         nextRemovalOutRef: cursorStringField(input, "nextRemovalOutRef"),
         fraudProofOutRef: cursorStringField(input, "fraudProofOutRef"),
       };
