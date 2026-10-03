@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM golang:1.25.7-bookworm AS native-chain-sync
+FROM golang:1.26.0-bookworm AS native-chain-sync
 WORKDIR /src/native-chain-sync
 COPY midgard-watcher/native-chain-sync/go.mod midgard-watcher/native-chain-sync/go.sum ./
 RUN --mount=type=cache,id=midgard-watcher-go-mod,target=/go/pkg/mod \
@@ -10,7 +10,7 @@ COPY midgard-watcher/native-chain-sync ./
 COPY midgard-watcher/tests/support/conway-block.hex ../tests/support/conway-block.hex
 RUN --mount=type=cache,id=midgard-watcher-go-mod,target=/go/pkg/mod \
   --mount=type=cache,id=midgard-watcher-go-build,target=/root/.cache/go-build \
-  test "$(go version | awk '{print $3}')" = "go1.25.7" \
+  test "$(go version | awk '{print $3}')" = "go1.26.0" \
   && go test ./... \
   && CGO_ENABLED=0 go build -trimpath \
     -ldflags="-s -w -buildid=" \
