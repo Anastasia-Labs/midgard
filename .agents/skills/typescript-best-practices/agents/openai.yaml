@@ -1,0 +1,6 @@
+interface:
+  display_name: "Typescript Best Practices"
+  short_description: "TypeScript best practices. Use when reading or editing any .ts o"
+  default_prompt: "Use $typescript-best-practices for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false
