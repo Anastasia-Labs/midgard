@@ -1,5 +1,6 @@
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
+  applySingleCborEncoding,
   CML,
   coreToTxOutput,
   type TxSigned,
@@ -70,10 +71,8 @@ export const assertRuntimeTransactionBound = async ({
         ? 0n
         : BigInt(economics.inactivitySlashingPenaltyLovelace));
     const reward = BigInt(economics.fraudProverRewardLovelace);
-    // The removal action names the out-refs it spends and references under
-    // the shared `nextRemovalOutRef` / `fraudProofOutRef` vocabulary; its kind
-    // is read through `actionKind` (either `actionKind` or `stage`). A refusal
-    // names the differing checks so an operator can act on it.
+    // Removal binds nextRemovalOutRef/fraudProofOutRef; actionKind also
+    // accepts stage. Each refusal names the failed binding.
     const differing = (
       [
         ["current action kind", state.currentActionKind === "remove"],
@@ -206,7 +205,9 @@ export const assertRuntimeTransactionBound = async ({
       throw new Error(
         "funding transaction uses an ungoverned reference script",
       );
-    referenceScriptBytes += BigInt(reference.scriptRef.script.length / 2);
+    const { type, script } = reference.scriptRef;
+    const cbor = type === "Native" ? script : applySingleCborEncoding(script);
+    referenceScriptBytes += BigInt(cbor.length / 2);
   }
   if (
     referenceScriptBytes >
@@ -343,8 +344,7 @@ export const assertRuntimeTransactionBound = async ({
         "fraud slash operator bond differs from its authenticated tranche",
       );
     }
-    // Slashing always reacquires live protocol authority, even for an output
-    // whose earlier transaction already appears in this workflow's lineage.
+    // Slashes reacquire live authority even for confirmed workflow lineage.
     const lineage =
       slash === null
         ? await state.port.resolveConfirmedInput({ outRef })
@@ -426,8 +426,7 @@ export const assertRuntimeTransactionBound = async ({
       protocolMinimum += minimum;
     } else {
       custody += raw.amount().coin();
-      // Operator stake and slashing rewards never authorize prover topups.
-      // Existing custody is accounted from exact confirmed lineage above.
+      // Stake and rewards cannot top up funding; confirmed lineage binds custody.
       custodyAllocation += minimum;
     }
   }
