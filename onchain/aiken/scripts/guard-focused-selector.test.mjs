@@ -65,6 +65,13 @@ test("rejects unusable selector arguments", () => {
   assert.throws(() => parseSelectors(["../escape"]), /usage/u);
   assert.throws(() => parseSelectors(["Not_Lowercase"]), /usage/u);
   assert.throws(
+    () =>
+      parseSelectors(
+        Array.from({ length: 65 }, (_, index) => `midgard/module_${index}`),
+      ),
+    /usage/u,
+  );
+  assert.throws(
     () => parseSelectors(["state_queue", "state_queue"]),
     /unique/u,
   );
@@ -130,6 +137,15 @@ test("accepts a selector that collects and passes every test", () => {
       ok: true,
     },
   );
+});
+
+test("refuses a signalled compiler even after it emitted a green report", () => {
+  const outcome = evaluateSelectorReport("midgard/state_queue", {
+    stdout: JSON.stringify({ summary: { total: 1, passed: 1, failed: 0 } }),
+    status: null,
+    signal: "SIGTERM",
+  });
+  assert.equal(outcome.ok, false, "a signal cannot establish compiler success");
 });
 
 // The negative self-test the guard exists for: a zero-collecting selector that
