@@ -1,5 +1,6 @@
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
+  applySingleCborEncoding,
   CML,
   coreToTxOutput,
   type TxSigned,
@@ -67,10 +68,8 @@ export const assertRuntimeTransactionBound = async ({
         ? 0n
         : BigInt(economics.inactivitySlashingPenaltyLovelace));
     const reward = BigInt(economics.fraudProverRewardLovelace);
-    // The removal action names the out-refs it spends and references under
-    // the shared `nextRemovalOutRef` / `fraudProofOutRef` vocabulary; its kind
-    // is read through `actionKind` (either `actionKind` or `stage`). A refusal
-    // names the differing checks so an operator can act on it.
+    // The removal action names the out-refs it spends and references under the shared `nextRemovalOutRef` / `fraudProofOutRef` vocabulary; its kind
+    // is read through `actionKind` (either `actionKind` or `stage`). A refusal names the differing checks so an operator can act on it.
     const differing = (
       [
         ["current action kind", state.currentActionKind === "remove"],
@@ -200,7 +199,9 @@ export const assertRuntimeTransactionBound = async ({
       throw new Error(
         "funding transaction uses an ungoverned reference script",
       );
-    referenceScriptBytes += BigInt(reference.scriptRef.script.length / 2);
+    const { type, script } = reference.scriptRef;
+    const cbor = type === "Native" ? script : applySingleCborEncoding(script);
+    referenceScriptBytes += BigInt(cbor.length / 2);
   }
   if (
     referenceScriptBytes >
@@ -337,8 +338,7 @@ export const assertRuntimeTransactionBound = async ({
         "fraud slash operator bond differs from its authenticated tranche",
       );
     }
-    // Slashing always reacquires live protocol authority, even for an output
-    // whose earlier transaction already appears in this workflow's lineage.
+    // Slashing always reacquires live protocol authority, even for an output whose earlier transaction already appears in this workflow's lineage.
     const lineage =
       slash === null
         ? await state.port.resolveConfirmedInput({ outRef })
