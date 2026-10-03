@@ -105,6 +105,7 @@ export const captureCursorRemoval = async <
       return acquired;
     },
   };
+  const targetOutRef = cursorStringField(input, "stateQueueBlockOutRef");
   const nextRemovalOutRef = cursorStringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = cursorStringField(input, "fraudProofOutRef");
   const transaction = await captureLocallyEvaluatedTransaction(
@@ -122,6 +123,9 @@ export const captureCursorRemoval = async <
         fraudProverRewardLovelace,
         preSubmitBoundary: async (built) => {
           if (
+            !workflowTransactionInputOutRefs(built.signed).includes(
+              targetOutRef,
+            ) ||
             !workflowTransactionInputOutRefs(built.signed).includes(
               nextRemovalOutRef,
             ) ||

@@ -71,6 +71,7 @@ export type ObserverOrderInvalidActuatorAction =
   | Readonly<{ stage: "step_04"; threadOutRef: string }>
   | Readonly<{
       stage: "remove";
+      stateQueueBlockOutRef: string;
       nextRemovalOutRef: string;
       fraudProofOutRef: string;
     }>;
@@ -277,6 +278,7 @@ export const createObserverOrderInvalidActuator = (
           schemaVersion: "midgard-production-cursor-family-action-v1",
           category: OBSERVER_ORDER_INVALID_CATEGORY,
           stage: "remove",
+          stateQueueBlockOutRef: action.stateQueueBlockOutRef,
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
         } as CursorFamilyActionInput,

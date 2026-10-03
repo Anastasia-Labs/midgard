@@ -77,7 +77,6 @@ import {
   type ManifestBoundValueConservationWorkflowConfig,
   text,
 } from "./workflow.value-conservation-references.js";
-
 /** Fixed manifest, raw-L1 and retained-DA authority; runtime config admits no callbacks. */
 export const createManifestBoundValueConservationWorkflow = async (
   config: ManifestBoundValueConservationWorkflowConfig,
@@ -302,6 +301,7 @@ export const createManifestBoundValueConservationWorkflow = async (
           actionId: `remove:${stage.nextRemovalOutRef}`,
           input: {
             stage: "remove",
+            stateQueueBlockOutRef: stage.stateQueueBlockOutRef,
             nextRemovalOutRef: stage.nextRemovalOutRef,
             fraudProofOutRef: stage.fraudProofOutRef,
           },

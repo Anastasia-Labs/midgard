@@ -327,10 +327,11 @@ export const createCursorFamilyWorkflowAdapter = <
                           await authorizeResubmission(signed);
                         },
                 }),
-        transactionConfirmed: async (hash) =>
+        transactionConfirmed: async (hash, removal) =>
           await l1.transactionConfirmed({
             headerHash,
             txHash: hash,
+            ...(removal === undefined ? {} : { removal }),
           }),
       });
       // Canonical reconciliation remains possible after a removal has made its

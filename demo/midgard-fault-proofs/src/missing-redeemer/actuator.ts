@@ -91,6 +91,7 @@ export type MissingRedeemerActuatorAction =
     }
   | {
       readonly stage: "remove";
+      readonly stateQueueBlockOutRef: string;
       readonly nextRemovalOutRef: string;
       readonly fraudProofOutRef: string;
     };
@@ -320,6 +321,7 @@ export const createMissingRedeemerActuator = (
           schemaVersion: "midgard-production-cursor-family-action-v1",
           category: MISSING_REDEEMER_CATEGORY,
           stage: "remove",
+          stateQueueBlockOutRef: action.stateQueueBlockOutRef,
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
         } as CursorFamilyActionInput,

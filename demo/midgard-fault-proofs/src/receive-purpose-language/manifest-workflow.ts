@@ -211,6 +211,10 @@ const createTransactionPort = (
           artifact: restored,
           action: {
             stage: "remove",
+            stateQueueBlockOutRef: cursorStringField(
+              input,
+              "stateQueueBlockOutRef",
+            ),
             nextRemovalOutRef: cursorStringField(input, "nextRemovalOutRef"),
             fraudProofOutRef: cursorStringField(input, "fraudProofOutRef"),
           },

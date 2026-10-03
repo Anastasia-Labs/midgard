@@ -69,6 +69,7 @@ export type ScriptIntegrityHashMismatchLucidAction =
     }>
   | Readonly<{
       stage: "remove";
+      stateQueueBlockOutRef: string;
       nextRemovalOutRef: string;
       fraudProofOutRef: string;
     }>;
@@ -263,6 +264,7 @@ export const createScriptIntegrityHashMismatchLucidActuator = (
           schemaVersion: "midgard-production-cursor-family-action-v1",
           category: "scriptIntegrityHashMismatch",
           stage: "remove",
+          stateQueueBlockOutRef: action.stateQueueBlockOutRef,
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
         } as CursorFamilyActionInput,

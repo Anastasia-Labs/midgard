@@ -82,8 +82,9 @@ jobs:
         working-directory: demo
         run: docker build --file midgard-watcher/Dockerfile --tag midgard-watcher:ci .
       # The only check of the image's `authority` path: start the compose
-      # service from the built image with throwaway secrets and the shipped
-      # template, then require 401 without the bearer and 200 with it.
+      # service from the built image with throwaway secrets and a profile-bound
+      # copy of the shipped templates, then require 401 without the bearer
+      # and 200 with it.
       - name: Smoke the trusted-head authority service from the built image
         working-directory: demo/midgard-watcher
         env:
@@ -95,7 +96,34 @@ jobs:
           openssl rand -hex 32 | tr -d '\n' >"$secrets/record_key"
           bearer="$(openssl rand -hex 24)"
           printf '%s' "$bearer" >"$secrets/bearer"
-          cp authority.example.json config/authority.json
+          # Public templates retain depth 30; bind this throwaway smoke sample
+          # to the profile compiled into the image and recompute its policy.
+          docker run --rm --interactive --entrypoint node \
+            --mount "type=bind,src=$PWD,dst=/watcher-template,readonly" \
+            midgard-watcher:ci --input-type=module - <<'JS' >config/authority.json
+          import { readFileSync } from "node:fs";
+          import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+          import { makeWatcherFinalityPolicy, parseWatcherTrustedHeadAuthorityProcessConfig } from "./dist/index.js";
+          const read = (name) => JSON.parse(readFileSync(`/watcher-template/${name}`, "utf8"));
+          const authority = read("authority.example.json");
+          const { watcherConfig } = read("watcher-process.example.json");
+          const depth = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
+          watcherConfig.l1.finality.depth = depth;
+          watcherConfig.l1.finality.rollback.maxDepth = depth;
+          const manifestId = authority.policy.deploymentMarker.manifestId;
+          const policy = makeWatcherFinalityPolicy(watcherConfig, {
+            manifestId,
+            network: authority.policy.network,
+            trustRootId: manifestId,
+            fundingProfileBundleDigest: manifestId,
+            blueprintHash: authority.policy.blueprintHash,
+            ruleBundleCommitment: manifestId,
+            programCommitments: {},
+            durableMarker: authority.policy.deploymentMarker,
+          });
+          if (policy === null) throw new Error("invalid profile-bound smoke policy");
+          console.log(JSON.stringify(parseWatcherTrustedHeadAuthorityProcessConfig({ ...authority, policy })));
+          JS
           export WATCHER_RECORD_KEY_FILE="$secrets/record_key"
           export WATCHER_BEARER_FILE="$secrets/bearer"
           compose() { docker compose --env-file .env.example -f compose.yaml "$@"; }

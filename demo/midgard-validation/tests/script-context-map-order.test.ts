@@ -374,23 +374,47 @@ describe("script context map order", () => {
     }
   });
 
-  it("proves the verdict over the datum and redeemer maps the node evaluated", async () => {
-    const accepted: readonly Scenario[] = [
-      { program: identity, spentDatum: UNSORTED_MAP },
-      { program: identity, spentDatum: DUPLICATE_KEY_MAP },
-      { program: identity, spendRedeemer: UNSORTED_MAP },
-      { program: identity, spendRedeemer: DUPLICATE_KEY_MAP },
-    ];
-    for (const scenario of accepted) {
+  it.each([
+    {
+      name: "an unsorted spent datum",
+      scenario: { program: identity, spentDatum: UNSORTED_MAP },
+    },
+    {
+      name: "duplicate keys in a spent datum",
+      scenario: { program: identity, spentDatum: DUPLICATE_KEY_MAP },
+    },
+    {
+      name: "an unsorted spend redeemer",
+      scenario: { program: identity, spendRedeemer: UNSORTED_MAP },
+    },
+    {
+      name: "duplicate keys in a spend redeemer",
+      scenario: { program: identity, spendRedeemer: DUPLICATE_KEY_MAP },
+    },
+  ])(
+    "proves the verdict over $name as the node evaluated it",
+    async ({ scenario }) => {
       await expect(nodeVerdict(scenario)).resolves.toBe("accepted");
       await expect(proofVerdict(scenario, "accepted")).resolves.toBe(
         "accepted",
       );
-    }
-    for (const [outputDatum, expected] of [
-      [UNSORTED_MAP, "rejected"],
-      [SORTED_MAP, "accepted"],
-    ] as const) {
+    },
+  );
+
+  it.each([
+    {
+      name: "an unsorted output datum",
+      outputDatum: UNSORTED_MAP,
+      expected: "rejected",
+    },
+    {
+      name: "a sorted output datum",
+      outputDatum: SORTED_MAP,
+      expected: "accepted",
+    },
+  ] as const)(
+    "proves the verdict over $name as the node evaluated it",
+    async ({ outputDatum, expected }) => {
       const scenario = { program: firstOutputDatumKeyIsTwoBytes, outputDatum };
       await expect(nodeVerdict(scenario)).resolves.toBe(
         expected === "accepted"
@@ -398,11 +422,12 @@ describe("script context map order", () => {
           : `rejected ${RejectCodes.PlutusScriptInvalid}`,
       );
       await expect(proofVerdict(scenario, expected)).resolves.toBe(expected);
-    }
-  });
+    },
+  );
 
-  it("orders the redeemer map by the witness list", async () => {
-    for (const mint of ["spend-first", "mint-first"] as const) {
+  it.each(["spend-first", "mint-first"] as const)(
+    "orders the redeemer map by the %s witness list",
+    async (mint) => {
       const expected = mint === "spend-first" ? "accepted" : "rejected";
       const scenario = { program: firstRedeemerIsSpend, mint };
       await expect(nodeVerdict(scenario)).resolves.toBe(
@@ -414,6 +439,6 @@ describe("script context map order", () => {
       await expect(
         proofVerdict({ program: identity, mint }, "accepted"),
       ).resolves.toBe("accepted");
-    }
-  });
+    },
+  );
 });

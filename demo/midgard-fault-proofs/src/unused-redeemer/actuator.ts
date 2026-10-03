@@ -70,6 +70,7 @@ export type UnusedRedeemerActuatorAction =
     }>
   | Readonly<{
       stage: "remove";
+      stateQueueBlockOutRef: string;
       nextRemovalOutRef: string;
       fraudProofOutRef: string;
     }>;
@@ -330,6 +331,7 @@ export const createUnusedRedeemerActuator = (
           schemaVersion: "midgard-production-cursor-family-action-v1",
           category: "unusedRedeemer" as never,
           stage: "remove",
+          stateQueueBlockOutRef: action.stateQueueBlockOutRef,
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
         } as CursorFamilyActionInput,

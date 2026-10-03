@@ -9,6 +9,7 @@ import {
   createManifestBoundValueConservationWorkflow,
   type ManifestBoundValueConservationWorkflowConfig,
 } from "../src/value-not-preserved/workflow.js";
+import * as cursorRuntime from "../src/workflow/cursor-family-runtime.js";
 import * as deployment from "../src/workflow/deployment-manifest-binding.js";
 import * as observations from "../src/workflow/family-l1-observation.js";
 import * as fieldCarriage from "../src/workflow/field-carriage-prerequisite.js";
@@ -54,7 +55,7 @@ it("derives the conservation cursor and datum from one snapshot while the pendin
     },
     cardanoProtocolParameters: { maxTxSize: 16_384 },
     releaseFinality: {},
-    releaseEconomics: {},
+    releaseEconomics: { policy: { fraudProverRewardLovelace: "1500000" } },
   } as unknown as Awaited<
     ReturnType<typeof deployment.bindFraudProofWorkflowDeployment>
   >);
@@ -195,4 +196,34 @@ it("derives the conservation cursor and datum from one snapshot while the pendin
     after,
   ]);
   expect(observe).not.toHaveBeenCalled();
+
+  // Continue through the actual factory and adapter from an admitted proof
+  // checkpoint. The capture spy ends this unit before signing or evaluation.
+  const currentTarget = `${"bb".repeat(32)}#0`;
+  const child = `${"cc".repeat(32)}#1`;
+  const proof = `${"dd".repeat(32)}#2`;
+  derive.mockResolvedValue({
+    kind: "proof_token",
+    stateQueueBlockOutRef: currentTarget,
+    nextRemovalOutRef: child,
+    fraudProofOutRef: proof,
+  });
+  const removal = await workflow.adapter.observe(context);
+  expect(removal.kind).toBe("action_required");
+  if (removal.kind !== "action_required") throw new Error("missing removal");
+  expect(removal.action.input).toEqual({
+    stage: "remove",
+    stateQueueBlockOutRef: currentTarget,
+    nextRemovalOutRef: child,
+    fraudProofOutRef: proof,
+  });
+  const removalCapture = vi
+    .spyOn(cursorRuntime, "captureCursorRemoval")
+    .mockRejectedValue(new Error("removal capture boundary"));
+  await expect(
+    workflow.adapter.preflight({ ...context, action: removal.action }),
+  ).rejects.toThrow("removal capture boundary");
+  expect(removalCapture).toHaveBeenCalledOnce();
+  expect(removalCapture.mock.calls[0]![0].input).toEqual(removal.action.input);
+  expect(capture).toHaveBeenCalledTimes(4);
 });
