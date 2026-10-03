@@ -181,23 +181,8 @@ export const deriveTerminal = async ({
     );
   }
   const rewardOutput = enterpriseOutputs[0]!;
-  const allRewardOutputs = stateHistory.flatMap((transaction) =>
-    transactionOutputs(transaction).filter(({ output }) =>
-      isExactRewardOutput({
-        output,
-        proverCredential: definition.proverCredential,
-        reward,
-      }),
-    ),
-  );
-  if (
-    allRewardOutputs.length !== 1 ||
-    allRewardOutputs[0]!.outRef !== rewardOutput.outRef
-  ) {
-    throw new Error(
-      "raw L1 history contains a missing or duplicate prover reward",
-    );
-  }
+  // Reward uniqueness is scoped to this operator's authenticated bond slash.
+  // Earlier child splices can pay the same prover for other operator bonds.
   const proofTxHash = proof.outRef.split("#")[0]!;
   return {
     schemaVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,

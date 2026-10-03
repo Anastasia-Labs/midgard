@@ -181,7 +181,6 @@ export const createFieldPreimageLengthRecoveryPorts = (
                 ? await resolveFieldPreimageLengthCarriage({
                     workflow,
                     evidence,
-                    allowPublication: false,
                   })
                 : undefined;
               return {

@@ -5,6 +5,10 @@ import type {
 } from "@al-ft/midgard-sdk";
 
 import {
+  confirmRemoval,
+  type RemovalConfirmation,
+} from "./family-l1-observation.confirm-removal.js";
+import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowTerminal,
 } from "./journal.js";
@@ -82,6 +86,7 @@ export interface FraudProofFamilyL1ObservationPort<
   transactionConfirmed(input: {
     readonly headerHash: string;
     readonly txHash: string;
+    readonly removal?: RemovalConfirmation;
   }): Promise<boolean>;
   observe(input: { readonly headerHash: string }): Promise<{
     readonly provenance: EvidenceProvenance;
@@ -173,10 +178,22 @@ export const createFraudProofFamilyRawL1ObservationPort = <
       authority,
       releaseFinality,
     }),
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      (await capture(headerHash)).transactions.some(
-        (transaction) => transaction.txHash === txHash,
-      ),
+    transactionConfirmed: async ({ headerHash, txHash, removal }) => {
+      const snapshot = await capture(headerHash);
+      const transaction = snapshot.transactions.find(
+        (entry) => entry.txHash === txHash,
+      );
+      return (
+        transaction !== undefined &&
+        (removal === undefined ||
+          (await confirmRemoval({
+            transaction,
+            removal,
+            definition,
+            snapshot,
+          })))
+      );
+    },
     observeHeader: async ({ headerHash }) =>
       await deriveAuthenticatedStateQueueHeaderObservationFromRawL1({
         snapshot: await capture(headerHash),
