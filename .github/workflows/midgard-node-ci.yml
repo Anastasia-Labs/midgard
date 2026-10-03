@@ -620,6 +620,8 @@ jobs:
         run: pnpm --dir demo/midgard-node run typecheck
       - name: Build Midgard node and migrate isolated CI database
         if: ${{ !cancelled() }}
+        env:
+          MIDGARD_DEPLOYMENT_PROFILE: preprod-testing
         run: pnpm --dir demo/midgard-node run db:migrate
       - name: Test Midgard node
         if: ${{ !cancelled() }}
