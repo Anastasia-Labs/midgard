@@ -25,7 +25,7 @@ import { NodeConfig } from "../src/services/config.js";
 import { AdmissionSql, Database } from "../src/services/database.js";
 import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
 import { WriteBehindLive } from "../src/services/write-behind.js";
-import { applyMidgardNodeTestEnv } from "./test-env.js";
+import { applyMidgardNodeTestEnv, testDatabaseName } from "./test-env.js";
 
 // Importing this module is what pins a test file to its worker's database
 // shard; see tests/test-env.ts for why the shard is assigned rather than read
@@ -99,6 +99,28 @@ const truncateApplicationTablesSql = `TRUNCATE TABLE ${APPLICATION_TABLE_NAMES.m
  */
 export const resetApplicationTables = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
+  const database = yield* sql<{
+    name: string;
+  }>`SELECT current_database() AS name`;
+  if (database[0]?.name !== testDatabaseName()) {
+    return yield* Effect.dieMessage(
+      "Refusing application reset outside this invocation's disposable test shard",
+    );
+  }
+  const tables = yield* sql<{
+    name: string;
+  }>`SELECT tablename AS name FROM pg_tables WHERE schemaname = 'public'`;
+  const registered = new Set<string>([
+    ...APPLICATION_TABLE_NAMES,
+    "schema_migrations",
+    "schema_migration_events",
+  ]);
+  const unknown = tables.filter(({ name }) => !registered.has(name));
+  if (unknown.length > 0) {
+    return yield* Effect.dieMessage(
+      `Application reset inventory is incomplete: ${unknown.map(({ name }) => name).join(", ")}; register the new migration tables before testing`,
+    );
+  }
   yield* sql.withTransaction(
     Effect.gen(function* () {
       yield* sql.unsafe(truncateApplicationTablesSql);

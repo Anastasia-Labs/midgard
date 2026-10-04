@@ -5,6 +5,13 @@ description: Launch, relaunch, redeploy, and wait on a local Midgard devnet (the
 
 # Running the devnet
 
+Before assembling allocation, process cleanup or status scripts, read
+[the deterministic devnet and diagnostics commands](../../../docs/agents/contrib.md#devnets-acceptance-and-read-only-diagnostics).
+`contrib devnet plan` derives an invocation identity and ports; `generate`
+checks ownership/availability and calls the existing generator. Inspect
+`contrib resources list` and `workspace inspect` for other owners. Diagnosis
+collects redacted observations without opening/migrating protocol stores.
+
 A local devnet is **three stacks**, and the first job is naming which one you
 mean. Live Preprod acceptance is a different job: use
 [midgard-e2e-acceptance](../midgard-e2e-acceptance/SKILL.md) for it, and do
@@ -31,7 +38,9 @@ probe.
    `run.env` (`require_run_dir` in
    `demo/midgard-node-tools/devnet/phase4-process/scripts/common.sh`). Work
    only on a run directory you generated. [review]
-2. **Pick your own ports and run id.** The generator
+2. **Pick your own ports and run id.** Prefer `node scripts/contrib.mjs devnet generate --run-id <id>`.
+   It derives all three ports from checkout plus invocation and refuses occupied
+   ports. The underlying generator
    (`demo/midgard-node-tools/devnet/phase4-process/scripts/generate.sh`)
    keeps the main checkout on Ogmios 2337, Kupo 2442, Postgres 5544 and
    project `midgard_phase4_process_<run id>`; a linked worktree gets

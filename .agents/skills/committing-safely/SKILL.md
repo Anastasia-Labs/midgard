@@ -15,6 +15,11 @@ does; those are the ones that need you.
 
 ## The default: `commit-paths`
 
+When integrating another checkout's work, read [verified integration packets](../../../docs/agents/contrib.md#integration-and-program-resumes)
+before copying files or writing hash scripts. `contrib packet verify` checks
+the exact base and destination identities; `apply` changes only the declared
+working-tree paths. Continue through `commit-paths` below for the commit.
+
 ```bash
 node .agents/skills/committing-safely/scripts/commit-paths.mjs \
   -m "Imperative subject line" -m "Body paragraph explaining why." \

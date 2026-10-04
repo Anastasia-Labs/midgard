@@ -19,7 +19,7 @@
   "scripts": {
     "clean": "rimraf dist",
     "reset": "rimraf dist node_modules *.tgz",
-    "build": "tsup src/index.ts --minify --format esm,cjs --dts --clean",
+    "build": "node ../../scripts/contrib.mjs build --package @al-ft/midgard-sdk",
     "fixtures:native-tx-carriage-wire-v1:sync": "pnpm run build && node scripts/generate-native-tx-carriage-wire-v1-goldens.mjs",
     "fixtures:native-tx-carriage-wire-v1:check": "pnpm run build && node scripts/generate-native-tx-carriage-wire-v1-goldens.mjs --check",
     "fixtures:canonical-decodability-v1:sync": "pnpm run build && node scripts/generate-canonical-decodability-v1-goldens.mjs",
@@ -39,7 +39,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "ts-node": "ts-node",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:contrib-raw": "tsup src/index.ts --minify --format esm,cjs --dts --clean"
   },
   "keywords": [],
   "author": "",

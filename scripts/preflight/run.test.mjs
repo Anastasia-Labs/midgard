@@ -9,6 +9,7 @@ import { createProbeSet, probeNix } from "./probes.mjs";
 import {
   changedFiles,
   collectChanges,
+  DEFAULT_BASE,
   EXIT,
   planPreflight,
   resolveBase,
@@ -17,6 +18,38 @@ import {
 } from "./run.mjs";
 
 // --- temporary repositories -------------------------------------------------
+
+test("interrupted preflight stops dispatching later checks and never reports a pass", async () => {
+  const controller = new AbortController();
+  const checks = ["first", "later"].map((id) => ({
+    id,
+    title: id,
+    triggers: ["x"],
+    capabilities: [],
+    plan: () => [{ argv: ["node", "probe.mjs"], cwd: "." }],
+  }));
+  const plan = planPreflight({ checks }, ["x"]);
+  const dispatched = [];
+  const report = await runPreflight({
+    root: ".",
+    base: "HEAD",
+    plan,
+    signal: controller.signal,
+    probes: { get: async () => ({ status: "available" }), invalidate() {} },
+    log() {},
+    runStep: async (_root, step) => {
+      dispatched.push(step.argv);
+      controller.abort();
+      return { status: 0, output: "", durationMs: 1 };
+    },
+  });
+  assert.equal(dispatched.length, 1);
+  assert.equal(report.exitCode, EXIT.failed);
+  assert.equal(
+    report.results.some((entry) => entry.id === "later"),
+    false,
+  );
+});
 
 const GIT_ENV = {
   ...process.env,
@@ -94,6 +127,61 @@ test("a base that names no commit is a usage error, never an empty diff", () =>
     assert.equal(resolveBase(repo, "base"), "base");
     // No upstream and no checkpoint branch in this repository.
     assert.throws(() => resolveBase(repo, undefined), UsageError);
+  }));
+
+test("the integration target wins over a feature branch tracking its own pushed head", () =>
+  withRepo((repo) => {
+    git(repo, "update-ref", `refs/remotes/${DEFAULT_BASE}`, "base");
+    write(repo, { "feature.txt": "change\n" });
+    git(repo, "add", "feature.txt");
+    git(repo, "commit", "--quiet", "-m", "feature");
+    git(repo, "remote", "add", "origin", "/nonexistent/preflight-fixture");
+    git(repo, "update-ref", "refs/remotes/origin/main", "HEAD");
+    git(repo, "config", "branch.main.remote", "origin");
+    git(repo, "config", "branch.main.merge", "refs/heads/main");
+    assert.equal(resolveBase(repo), DEFAULT_BASE);
+    assert.deepEqual(
+      collectChanges(repo, { base: resolveBase(repo), strict: true }).changed,
+      ["feature.txt"],
+    );
+    git(repo, "update-ref", "-d", `refs/remotes/${DEFAULT_BASE}`);
+    assert.throws(() => resolveBase(repo), /no base/u);
+  }));
+
+test("selection excludes equivalent already-landed changes without dropping new or dirty work", () =>
+  withRepo((repo) => {
+    write(repo, { "foundation.txt": "shared\n" });
+    git(repo, "add", "foundation.txt");
+    git(repo, "commit", "--quiet", "-m", "feature foundation");
+    write(repo, { "feature.txt": "new\n" });
+    git(repo, "add", "feature.txt");
+    git(repo, "commit", "--quiet", "-m", "new work");
+    git(repo, "checkout", "--quiet", "-b", "target", "base");
+    write(repo, {
+      "foundation.txt": "shared\n",
+      "target-only.txt": "retain\n",
+    });
+    git(repo, "add", "foundation.txt", "target-only.txt");
+    git(repo, "commit", "--quiet", "-m", "independently landed foundation");
+    git(repo, "checkout", "--quiet", "main");
+    assert.deepEqual(
+      collectChanges(repo, { base: "target", strict: true }).changed,
+      ["feature.txt"],
+    );
+    write(repo, { "a.txt": "dirty\n", "untracked.txt": "new\n" });
+    assert.deepEqual(
+      collectChanges(repo, { base: "target", strict: false }).changed,
+      ["a.txt", "feature.txt", "untracked.txt"],
+    );
+  }));
+
+test("an old explicit target ancestor is refused rather than selecting landed work", () =>
+  withRepo((repo) => {
+    write(repo, { "a.txt": "landed\n" });
+    git(repo, "commit", "--quiet", "-am", "landed");
+    git(repo, "update-ref", `refs/remotes/${DEFAULT_BASE}`, "HEAD");
+    assert.throws(() => resolveBase(repo, "base"), /stale.*target/u);
+    assert.equal(resolveBase(repo, DEFAULT_BASE), DEFAULT_BASE);
   }));
 
 test("a moved compiler pin forces a full run; another workflow edit does not", () =>
@@ -179,6 +267,56 @@ test("everything passing exits 0 with the stable result schema", async () => {
     ]);
     assert.equal(result.command, `run ${result.id}`);
   }
+});
+
+test("preflight check durations remain nonnegative when UTC moves backwards", async () => {
+  const original = Date.now;
+  let observations = 0;
+  Date.now = () => (observations++ === 0 ? 2000 : 1000);
+  try {
+    const result = await run([check("clock")]);
+    assert.ok(
+      result.results[0].durationMs >= 0,
+      "UTC correction must not reverse elapsed check duration",
+    );
+  } finally {
+    Date.now = original;
+  }
+});
+
+test("verified equivalent CI records coverage and avoids dispatch; changed commands still run", async () => {
+  let dispatched = 0;
+  const checks = [check("required-checks-doc"), check("other")];
+  const result = await runPreflight({
+    root: "/nonexistent",
+    base: "base",
+    plan: planPreflight({ checks }, ["x"]),
+    probes: probes({}),
+    log() {},
+    ciEvidence: new Map([
+      [
+        "required-checks-doc",
+        {
+          command: "run required-checks-doc",
+          run: "verified-run",
+          coverage: "completed declared validator",
+        },
+      ],
+      ["other", { command: "old command", run: "old-run" }],
+    ]),
+    runStep: async () => {
+      dispatched += 1;
+      return { status: 0, output: "" };
+    },
+  });
+  assert.equal(result.exitCode, 0);
+  assert.equal(dispatched, 1);
+  assert.match(result.results[0].reason, /reused verified CI/u);
+  assert.equal(
+    result.results[0].evidence.coverage,
+    "completed declared validator",
+  );
+  assert.equal(result.results[1].evidence, undefined);
 });
 
 test("a missing capability skips with the probe's reason and exits 3", async () => {

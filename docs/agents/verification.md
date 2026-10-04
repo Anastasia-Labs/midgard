@@ -1,8 +1,7 @@
 # Verification
 
-The per-change checks that `AGENTS.md` refers to: what to run for each kind of
-change before finishing, and the local environment they need. Commands run from the
-repository root unless a row says otherwise.
+Required checks by change type and their local environment. Commands run from
+the repository root unless a row says otherwise. [review]
 
 ## Required checks
 
@@ -17,8 +16,8 @@ report each command with its result. A smoke test does not replace a required
 check. Blind spot: selection is by path, so a check whose trigger is too narrow
 is silently skipped; CI is the final gate. [hook: pre-push]
 
-These checks are not in the preflight registry yet; run them by hand when you
-change their paths. [review]
+Deployment parameter checks below still need a manual invocation. Transaction
+preparation lanes are selected by preflight and listed here for direct use. [review]
 
 | Change                                                                   | Checks                                                                                                                                                                              |
 | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -27,6 +26,36 @@ change their paths. [review]
 
 `docs/exec-plans/GOAL_SPEC.md` §13 lists the full verification for Goal
 completion, which is wider than this table.
+
+## Merge checklist
+
+1. Fetch the intended target, preserve foreign work, and run preflight against
+   that target. A feature branch's own upstream is not its acceptance base.
+   Review the actual proposed merge tree; a historical ancestor does not
+   describe work still unmerged. [script: scripts/preflight/run.mjs]
+2. Run the selected local checks and the narrow regressions proving changed
+   behavior once on frozen inputs. Preflight-only modules select tooling tests;
+   shared probes, derivation and execution helpers retain full scope. Required
+   hosted jobs follow the actual workflow path filters; check their census,
+   exact head and conclusions, not just a green summary. [review]
+3. Reuse completed CI only through `--strict --ci-run <Repo-Tools-run-id>` for
+   the two admitted file-only validators: required-checks generation and build
+   guard enrollment. It verifies merge tree/parents, source/discovered inputs,
+   current remote target, Node profile, commands and completed steps; dirty,
+   stale, absent or different evidence is refused. Record run and coverage as
+   reused. Runtime failures, database/native suites, transaction preparation and
+   live acceptance retain their gates. [script: scripts/preflight/ci-evidence.mjs]
+4. Complete genuinely distinct gates: deployment parameters and both emulator
+   polarities when changed; all three transaction-preparation lanes for L1
+   builder changes; applicable installed/runtime, retained-data and live
+   devnet/Preprod acceptance. Unproven suite overlaps leave these lanes intact.
+   Preserve failures; distinguish confirmed environment refusals from source
+   defects. An unexplained failure is not a waiver. [review]
+5. Obtain required reviews and branch checks, then merge the authorized target
+   using the reviewed head. Record PR/head/remote merge SHA. Reverify only when
+   inputs, target, environment or uncovered behavior materially change; a target
+   advance needs composition/overlap assessment, not an automatic whole-suite
+   or review restart. [review]
 
 ## Local environment
 

@@ -14,16 +14,19 @@ node scripts/preflight.mjs --json     # machine-readable verdict on stdout
 node scripts/doctor.mjs               # environment problems, each with its fix
 ```
 
-The base is `--base <ref>`, else the branch's upstream, else
+The base is `--base <target-ref>`, otherwise
 `origin/colll78/canonical-v1-watcher-l1-source-checkpoint`.
+Fetch origin first. Missing targets and old target ancestors are refused.
+A clean merge is selected by its changes relative to the target, excluding
+equivalent already-landed work. Conflicts retain conservative selection.
 
 ## Selection is never the final gate
 
-- CI runs every check on every pull request before merge. Preflight exists
-  to catch a red build before the push, not to decide what CI may skip.
+- CI's declared path filters determine the required hosted jobs. Preflight
+  cannot waive those jobs or distinct integration/acceptance checks.
 - Selection favours recall over precision. When in doubt, add a trigger or a
   full-run entry.
-- A change to any full-run path below, a moved Aiken compiler pin, `--full`,
+- A shared full-run path below (except the listed verification-only modules), a moved Aiken compiler pin, `--full`,
   or `MIDGARD_PREFLIGHT_FULL=1` selects every check at full scope.
 - A check whose capability is missing is skipped with a reason and the run
   exits 3. Could not look is never passed.
@@ -64,6 +67,37 @@ pre-push hook. It blocks the push only on a failed check. Skip it once with
 - `demo/midgard-test-support/**`
 - `scripts/preflight.mjs`
 - `scripts/preflight/**`
+- `scripts/contrib.mjs`
+- `scripts/contrib/**`
+- `scripts/pnpm.mjs`
+- `scripts/bin/**`
+
+### Verification-only exceptions
+
+These modules serve preflight only. They select tooling self-tests instead
+of repeating unchanged protocol suites; Repo Tools CI remains required.
+Shared probes, artifact derivation, package execution and unknown new
+preflight helpers retain full scope. `--full` still selects every check.
+- `scripts/preflight.mjs`
+- `scripts/preflight/run.mjs`
+- `scripts/preflight/registry.mjs`
+- `scripts/preflight/registry.demo-checks.mjs`
+- `scripts/preflight/registry.select-checks.mjs`
+- `scripts/preflight/registry.tooling-checks.mjs`
+- `scripts/preflight/docs.mjs`
+- `scripts/preflight/ci-evidence.mjs`
+- `scripts/preflight/*.test.mjs`
+
+## Verified CI reuse
+
+`node scripts/preflight.mjs --strict --ci-run <Repo-Tools-run-id>` can reuse
+only `required-checks-doc` and `contributor-build-guards`. It verifies the
+actual checkout tree and merge parents, current remote target, Node profile,
+exact validator commands and successful completed steps against the retained
+`repo-validator-identity` artifact. Dirty, stale, missing or different
+evidence fails closed. Other selected checks still execute. `--list` never
+verifies or claims reuse. Read the [merge checklist](verification.md#merge-checklist)
+before treating hosted evidence as acceptance.
 
 ## Capabilities
 
@@ -85,6 +119,28 @@ pre-push hook. It blocks the push only on a failed check. Skip it once with
 - `git-merge-tree`: git 2.38 or later.
 
 ## Checks
+
+### `contributor-build-guards`
+
+Workspace builds use the resource and provenance guard.
+
+- Command: `node scripts/contrib/enroll-builds.mjs`
+- Fix: `node scripts/contrib/enroll-builds.mjs --write`
+- Runs on:
+  - `scripts/contrib/**`
+  - `scripts/contrib.mjs`
+  - `demo/*/package.json`
+- Mode: runs in the pre-push hook
+
+### `contributor-causal-controls`
+
+Artifact and boundary guards reject their causal mutants.
+
+- Command: `node scripts/contrib/review-controls.mjs`
+- Runs on:
+  - `scripts/contrib/**`
+  - `scripts/contrib.mjs`
+- Mode: runs in the pre-push hook
 
 ### `merge-conflicts`
 
@@ -672,6 +728,48 @@ Blueprint rebuild into a temporary file (never the tracked plutus.json).
   - `onchain/aiken/**/*.ak`
 - Needs: `aiken`
 
+### `tx-preparation:sdk`
+
+Transaction preparation sdk acceptance lane.
+
+- Command: `pnpm --dir demo run test:tx-prep:sdk`
+- Runs on:
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-node/src/fibers/**`
+  - `demo/midgard-node/src/workers/**`
+  - `demo/midgard-node/src/utils/commit-submission*.ts`
+  - `demo/midgard-node-tools/src/**`
+- Needs: `node-modules`, `blueprint`
+
+### `tx-preparation:node`
+
+Transaction preparation node acceptance lane.
+
+- Command: `pnpm --dir demo run test:tx-prep:node`
+- Runs on:
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-node/src/fibers/**`
+  - `demo/midgard-node/src/workers/**`
+  - `demo/midgard-node/src/utils/commit-submission*.ts`
+  - `demo/midgard-node-tools/src/**`
+- Needs: `node-modules`, `blueprint`, `postgres`, `db-prefix`
+
+### `tx-preparation:emulator`
+
+Transaction preparation emulator acceptance lane.
+
+- Command: `pnpm --dir demo run test:tx-prep:emulator`
+- Runs on:
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-node/src/fibers/**`
+  - `demo/midgard-node/src/workers/**`
+  - `demo/midgard-node/src/utils/commit-submission*.ts`
+  - `demo/midgard-node-tools/src/**`
+- Needs: `node-modules`, `blueprint`, `postgres`, `db-prefix`
+
 ### `docs-site-links`
 
 Repository-local Markdown and MDX links resolve.
@@ -691,7 +789,7 @@ Repository-local Markdown and MDX links resolve.
 
 Build the documentation site and its SDK examples.
 
-- Command: `pnpm --dir docs-site run build`
+- Command: `(cd docs-site && corepack pnpm run build)`
 - Runs on:
   - `docs-site/**`
   - `**/*.md`
@@ -705,7 +803,7 @@ Build the documentation site and its SDK examples.
 
 Generate and typecheck the documentation site's types.
 
-- Command: `pnpm --dir docs-site run types:check`
+- Command: `(cd docs-site && corepack pnpm run types:check)`
 - Runs on:
   - `docs-site/**`
   - `**/*.md`

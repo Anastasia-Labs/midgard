@@ -4,6 +4,10 @@ on:
   push:
     branches: ["main"]
     paths:
+      - "scripts/contrib.mjs"
+      - "scripts/contrib/**"
+      - "scripts/pnpm.mjs"
+      - "scripts/bin/**"
       - "demo/**"
       - "onchain/aiken/**"
       - "config/deployments/**"
@@ -15,6 +19,10 @@ on:
       - ".github/workflows/midgard-node-ci.yml"
   pull_request:
     paths:
+      - "scripts/contrib.mjs"
+      - "scripts/contrib/**"
+      - "scripts/pnpm.mjs"
+      - "scripts/bin/**"
       - "demo/**"
       - "onchain/aiken/**"
       - "config/deployments/**"

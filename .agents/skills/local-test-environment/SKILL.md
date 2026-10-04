@@ -11,21 +11,24 @@ missing prerequisite or two checkouts touching the same resource.
 
 ## Start with `doctor`
 
+For a focused run, first read [the deterministic contributor workflow](../../../docs/agents/contrib.md#focused-tests-and-builds)
+and use `node scripts/contrib.mjs prepare --package <name> --plan`, then
+`node scripts/contrib.mjs test --package <name> --file <package-relative path>`.
+This owns preparation, compiled-input identity, invocation database naming,
+resource exclusion, selected-test counts and the execution receipt. Keep raw
+Vitest for deliberately diagnosed exceptions, with that limitation in the report.
+
 `node scripts/doctor.mjs` (`--json` for machine-readable output) is
 read-only: it starts, installs and writes nothing, and prints a fix under each
 failure. It checks the pinned Aiken, the test Postgres, the test-database prefix, `demo/node_modules`, the
 blueprint stamp, the `midgard-core`, `midgard-sdk` and `midgard-validation`
 dist, the installed hooks, and the Node and pnpm versions.
 
-| Exit | Meaning                                                                   |
-| ---- | ------------------------------------------------------------------------- |
-| 0    | Nothing failed. Warnings (another checkout's hook copy, Node ≠ CI's) pass |
-| 1    | Something failed; run the `fix:` line under it                            |
-| 3    | Nothing failed, but something could not be checked. Never a pass          |
+Exit 0 passes, 1 names a failure and its fix, and 3 means unknown. [script: scripts/doctor.mjs]
 
-Blind spot: only `midgard-core` stamps its dist with a source digest; the
-other dist checks compare timestamps, so sources moved backwards in time read
-as fresh. `scripts/doctor.test.mjs` covers the exit codes.
+Dist verdicts use the guarded build's input and emitted-content digests;
+sources moved backwards in time still invalidate them. Raw builds without a
+stamp are unavailable. `scripts/doctor.test.mjs` covers the exit codes.
 
 ## Test Postgres on 5433
 
@@ -82,17 +85,14 @@ export condition (`midgardSourceSsr` in `demo/midgard-test-support/vitest.js`).
 Plain `node` does not: it follows the `import` condition to `dist/`. So
 anything a suite runs outside vitest needs dist built first.
 
-| Package              | `pretest` builds                                | What runs outside vitest                                                                       |
-| -------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `midgard-node`       | `lucid-midgard`, `midgard-sdk`, the node itself | the bundled worker `dist/validation.js` (`tests/validation-worker-pool.test.ts`), crash probes |
-| `midgard-node-tools` | `lucid-midgard`, `midgard-sdk`                  | the `node --test` files its `test` script runs before vitest                                   |
+`contrib prepare` expands declared pretest builds and their runtime dependency
+closure in order. Node suites need their bundled workers; tooling also needs
+plain-Node imports. `contrib test` owns these artifacts until the run joins.
 
-- **A focused `vitest run` skips `pretest`.** `pnpm test` runs it; after a
-  source edit, run `pnpm --dir demo/midgard-node run pretest` (or the
-  node-tools one) before a focused run, or the children run old code. Nothing
-  compares dist with src at test time. [review]
-- **Build dist in each checkout; never copy it from another.** Nothing checks a
-  copied dist against this checkout's sources. [review]
+- **A raw focused `vitest run` skips `pretest`.** Use `contrib test` so stale
+  compiled consumers fail or rebuild before execution. [script: scripts/contrib.mjs]
+- **Build dist in each checkout; never copy it from another.** Guarded stamps
+  authenticate checkout, source closure and emitted dependencies. [script: scripts/contrib/build.mjs]
 
 ## The blueprint stamp
 
