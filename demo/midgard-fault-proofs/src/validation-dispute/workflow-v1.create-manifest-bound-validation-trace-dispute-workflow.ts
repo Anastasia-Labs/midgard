@@ -10,15 +10,22 @@ import {
 } from "../workflow/challenge-authority.js";
 import {
   assertManifestBoundWorkflowSigner,
+  releaseFinalityAuthorityFromDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
 import {
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type {
+  FraudProofFamilyWorkflowAdapter,
+  FraudProofWorkflowTerminalVerifier,
+} from "../workflow/orchestrator.js";
 import { fraudProofRawL1SnapshotRequestForFamily } from "../workflow/raw-l1-family-derivation.js";
 import { admitFraudProofRawL1Snapshot } from "../workflow/raw-l1-snapshot.js";
+import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import {
   bindValidationTraceDisputeWorkflowDeployment,
   type ValidationTraceDisputeWorkflowDeploymentBinding,
@@ -40,6 +47,7 @@ import {
   VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES,
 } from "./workflow-family.js";
 import { createValidationTraceFieldCarriageProvider } from "./workflow-field-carriage.js";
+import { createValidationTraceDisputeRecoveryAdapter } from "./workflow-v1.recovery-adapter.js";
 
 export const VALIDATION_TRACE_DISPUTE_WORKFLOW =
   "midgard-validation-trace-dispute-production-workflow-v1" as const;
@@ -127,6 +135,9 @@ export type ManifestBoundValidationTraceDisputeWorkflow = Readonly<{
   l1: FraudProofFamilyL1ObservationPort<"validationTraceDispute">;
   actuator: ReturnType<typeof createValidationTraceDisputeActuator>;
   fieldCarriage: ReturnType<typeof createValidationTraceFieldCarriageProvider>;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   deriveStage: (
     currentTime: number,
   ) => Promise<ValidationTraceDisputeChainStage>;
@@ -322,7 +333,7 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
       headerHash: config.headerHash,
       currentTime,
     });
-  return Object.freeze({
+  const mechanics = {
     binding,
     lucid: config.lucid,
     signer: config.signer,
@@ -333,5 +344,16 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
     actuator,
     fieldCarriage,
     deriveStage,
+  };
+  return Object.freeze({
+    ...mechanics,
+    adapter: createValidationTraceDisputeRecoveryAdapter({
+      workflow: mechanics,
+      stateQueueMutationLeaseCoordinator:
+        config.stateQueueMutationLeaseCoordinator,
+    }),
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
+    releaseFinalityAuthority:
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
   });
 };

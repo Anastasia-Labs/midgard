@@ -1,61 +1,28 @@
 import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import { type ValidationTraceChallenge } from "../workflow/challenge-authority.js";
+import {
+  workflowActuationAuthorizingDecisionDigest,
+  workflowJournalIsReconciliationOnly,
+} from "../workflow/actuation-permit.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import {
-  computeFraudProofWorkflowId,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEvent,
   type FraudProofWorkflowJournalStore,
   journalJsonDigest,
-  type JournalJsonObject,
 } from "../workflow/journal.js";
-import { type FraudProofWorkflowAction } from "../workflow/orchestrator.js";
-import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
+import { verifiedReleaseFinality } from "../workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import {
-  planValidationTraceDisputeMove,
-  type ValidationTraceDisputeRetainedRouteInput,
-} from "./workflow-engine.js";
-import { type ValidationTraceDisputeCapturedAction } from "./workflow-engine.plan-validation-trace-dispute-move.js";
+  createFraudProofWorkflowRegistry,
+  resumeRecordedFraudProofWorkflow,
+} from "../workflow/orchestrator.js";
+import { runAdmittedFraudProofWorkflow } from "../workflow/orchestrator.run-admitted-fraud-proof-workflow.js";
 import { VALIDATION_TRACE_DISPUTE_CATEGORY } from "./workflow-family.js";
-import { validationTraceFieldCarriageAction } from "./workflow-field-carriage.js";
 import { type ManifestBoundValidationTraceDisputeWorkflow } from "./workflow-v1.create-manifest-bound-validation-trace-dispute-workflow.js";
+import {
+  preparedValidationTraceChallengeArtifact,
+  VALIDATION_TRACE_COUNTERPARTY_WAIT,
+} from "./workflow-v1.recovery-adapter.js";
 
-const appendEvent = async (
-  journal: FraudProofWorkflowJournalStore,
-  workflowId: string,
-  identity: FraudProofWorkflowIdentity,
-  event: FraudProofWorkflowJournalEvent,
-) => {
-  const sequence = (await journal.load(workflowId)).length;
-  await journal.append(
-    {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-      workflowId,
-      identity,
-      sequence,
-      recordedAt: new Date().toISOString(),
-      event,
-    },
-    sequence,
-  );
-};
-
-const preparedChallengeArtifact = (challenge: ValidationTraceChallenge) =>
-  Object.freeze({
-    schemaVersion: "midgard-validation-trace-dispute-prepared-v1" as const,
-    challengeDigest: challenge.challengeDigest,
-    claimCbor: challenge.claimCbor,
-    challengerDescriptorCbor: challenge.challengerDescriptorCbor,
-  });
-
-/**
- * One chain-state-derived, locally evaluated, intent-journaled dispute move —
- * or the deliberate decision to wait on the operator's response clock.
- */
+/** Run the interactive grammar through the common funding and recovery lifecycle. */
 export const executeManifestBoundValidationTraceDisputeWorkflow = async ({
   workflow,
   journal,
@@ -63,258 +30,89 @@ export const executeManifestBoundValidationTraceDisputeWorkflow = async ({
   workflow: ManifestBoundValidationTraceDisputeWorkflow;
   journal: FraudProofWorkflowJournalStore;
 }) => {
-  const headerHash = workflow.binding.definition.headerHash;
+  const { binding, adapter, terminalVerifier, releaseFinalityAuthority } =
+    workflow;
+  const category = VALIDATION_TRACE_DISPUTE_CATEGORY;
+  const headerHash = binding.definition.headerHash;
+  const authorizingDecision =
+    workflowActuationAuthorizingDecisionDigest(journal);
+  if (
+    authorizingDecision !== undefined &&
+    authorizingDecision !== workflow.decisionDigest
+  )
+    throw new Error(
+      "validationTraceDispute journal changed its authorizing decision",
+    );
+  if (workflowJournalIsReconciliationOnly(journal)) {
+    const recovered = await resumeRecordedFraudProofWorkflow({
+      deploymentFingerprint: binding.deploymentFingerprint,
+      category,
+      headerHash,
+      journal,
+      adapter,
+      terminalVerifier,
+      releaseFinalityAuthority,
+    });
+    if (!("workflowId" in recovered))
+      throw new Error(
+        "validationTraceDispute recovery lost its admitted workflow",
+      );
+    return recovered;
+  }
   const challenge = workflow.challenge;
-  const material = workflow.material;
-  if (challenge === undefined || material === undefined)
+  if (challenge === undefined || workflow.material === undefined)
     throw new Error(
       "validationTraceDispute execution requires the freshly admitted validation-trace challenge; construction without one serves startup readiness only",
     );
-  const identity: FraudProofWorkflowIdentity = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    category: VALIDATION_TRACE_DISPUTE_CATEGORY,
-    target: { kind: "state_queue_header", headerHash },
-    decisionDigest: workflow.decisionDigest,
-  };
-  const workflowId = computeFraudProofWorkflowId(identity);
-  const preparedArtifact = preparedChallengeArtifact(challenge);
-  const artifactDigest = journalJsonDigest(preparedArtifact);
-  let entries = await journal.load(workflowId);
-  if (entries.length === 0) {
-    await appendEvent(journal, workflowId, identity, { kind: "started" });
-    await appendEvent(journal, workflowId, identity, {
-      kind: "prepared",
-      artifact: preparedArtifact,
-      artifactDigest,
-    });
-    entries = await journal.load(workflowId);
-  }
-  if (entries.length === 1) {
-    await appendEvent(journal, workflowId, identity, {
-      kind: "prepared",
-      artifact: preparedArtifact,
-      artifactDigest,
-    });
-    entries = await journal.load(workflowId);
-  }
-  const prepared = entries.find(({ event }) => event.kind === "prepared");
-  if (
-    prepared?.event.kind !== "prepared" ||
-    prepared.event.artifactDigest !== artifactDigest
-  )
-    throw new Error(
-      "validationTraceDispute journal was prepared for a different admitted challenge",
-    );
-  const pending = [...entries]
-    .reverse()
-    .find(({ event }) => event.kind === "submission_intent");
-  const intent =
-    pending?.event.kind === "submission_intent" ? pending.event : undefined;
-  if (
-    intent !== undefined &&
-    !entries.some(
-      ({ event }) =>
-        event.kind === "confirmed" && event.actionId === intent.actionId,
-    )
-  ) {
-    const prerequisiteAction = intent.actionInput.fieldCarriageAction;
-    const reconciled =
-      prerequisiteAction === undefined
-        ? (await workflow.l1.transactionConfirmed({
-            headerHash,
-            txHash: intent.txHash,
-          }))
-          ? "confirmed"
-          : "pending"
-        : (
-            await workflow.fieldCarriage.prerequisite.reconcile({
-              headerHash,
-              txHash: intent.txHash,
-              action: prerequisiteAction as unknown as FraudProofWorkflowAction,
-              artifact: preparedArtifact,
-              durableRecovery: intent.durableRecovery?.fieldCarriageRecovery as
-                | JournalJsonObject
-                | undefined,
-            })
-          ).kind;
-    if (reconciled !== "confirmed" && reconciled !== "not_found") {
-      if (reconciled === "conflict")
-        throw new Error(
-          "validation field publication receipt conflicts with its durable intent",
-        );
-      return { kind: "pending" as const, workflowId, txHash: intent.txHash };
-    }
-    if (reconciled === "not_found") {
-      await appendEvent(journal, workflowId, identity, {
-        kind: "reconciled",
-        actionId: intent.actionId,
-        txHash: intent.txHash,
-        outcome: "not_found",
-      });
-    } else {
-      await appendEvent(journal, workflowId, identity, {
-        kind: "reconciled",
-        actionId: intent.actionId,
-        txHash: intent.txHash,
-        outcome: "confirmed",
-      });
-      await appendEvent(journal, workflowId, identity, {
-        kind: "confirmed",
-        actionId: intent.actionId,
-        txHash: intent.txHash,
-      });
-    }
-  }
-  const now = Date.now();
-  const stage = await workflow.deriveStage(now);
-  const retainedInput =
-    intent !== undefined &&
-    typeof intent.actionInput === "object" &&
-    intent.actionInput !== null &&
-    "durableRouteInput" in intent.actionInput
-      ? ((
-          intent.actionInput as {
-            durableRouteInput?: ValidationTraceDisputeRetainedRouteInput;
-          }
-        ).durableRouteInput ?? undefined)
-      : undefined;
-  let move = planValidationTraceDisputeMove({
-    stage,
-    ...(retainedInput === undefined ? {} : { retained: retainedInput }),
-  });
-  if (move.kind === "completed")
-    return { kind: "completed" as const, workflowId };
-  if (move.kind === "await_counterparty")
-    return {
-      kind: "awaiting_counterparty" as const,
-      workflowId,
-      responseDeadline: move.responseDeadline,
-    };
-  let prerequisiteAction: FraudProofWorkflowAction | undefined;
-  let prerequisiteRecovery: JournalJsonObject | undefined;
-  let captured: ValidationTraceDisputeCapturedAction;
-  const inspection = await workflow.fieldCarriage.prerequisite.inspect({
+  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
     headerHash,
-    baseAction: validationTraceFieldCarriageAction(move.action),
-    artifact: preparedArtifact,
-    entries,
   });
-  if (inspection.kind === "pending")
-    return { kind: "pending" as const, workflowId, reason: inspection.reason };
-  if (
-    inspection.kind === "required" &&
-    move.action.stage === "semantic_resolution" &&
-    retainedInput?.fieldCarriageBinding !== undefined
-  ) {
-    // Its prepared evidence names references that are no longer available.
-    // Cancel the legal semantic route; a fresh dispute can bind new receipts.
-    move = {
-      kind: "act",
-      action: {
-        stage: "cancel_semantic_route",
-        threadOutRef: move.action.threadOutRef,
-        group: "proof_item",
-      },
-    };
-  } else if (inspection.kind === "required") {
-    prerequisiteAction = inspection.action;
-  }
-  if (prerequisiteAction !== undefined) {
-    const publication = await workflow.fieldCarriage.prerequisite.capture({
+  const artifact = preparedValidationTraceChallengeArtifact(challenge);
+  const verified = await verifiedReleaseFinality({
+    deploymentFingerprint: binding.deploymentFingerprint,
+    authority: releaseFinalityAuthority,
+  });
+  const result = await runAdmittedFraudProofWorkflow({
+    deploymentFingerprint: binding.deploymentFingerprint,
+    category,
+    headerHash,
+    evidenceBinding: {
+      route: "canonical_block",
       headerHash,
-      action: prerequisiteAction,
-      artifact: preparedArtifact,
-    });
-    prerequisiteRecovery = publication.durableRecovery;
-    captured = {
-      transaction: publication.transaction,
-      ...(retainedInput === undefined
-        ? {}
-        : { durableRouteInput: retainedInput }),
-    };
-  } else {
-    try {
-      captured = await workflow.actuator.capture({
-        action: move.action,
-        material,
-        ...(retainedInput === undefined ? {} : { retained: retainedInput }),
-      });
-    } catch (cause) {
-      if (
-        !(cause instanceof WorkflowActionChangedError) ||
-        move.action.stage !== "semantic_resolution" ||
-        retainedInput?.fieldCarriageBinding === undefined
-      )
-        throw cause;
-      move = {
-        kind: "act",
-        action: {
-          stage: "cancel_semantic_route",
-          threadOutRef: move.action.threadOutRef,
-          group: "proof_item",
-        },
-      };
-      captured = await workflow.actuator.capture({
-        action: move.action,
-        material,
-      });
-    }
-  }
-  const recordedStage = prerequisiteAction?.input.stage ?? move.action.stage;
-  if (typeof recordedStage !== "string")
-    throw new Error("validation field action omitted its exact stage");
-  const actionId = `${recordedStage}:${captured.transaction.txHash}`;
-  await appendEvent(journal, workflowId, identity, {
-    kind: "preflight_passed",
-    actionId,
-    txHash: captured.transaction.txHash,
-    localEvaluator: "lucid-evolution-local-uplc-v1",
-    referenceScripts: captured.transaction.referenceScripts,
-  });
-  await appendEvent(journal, workflowId, identity, {
-    kind: "submission_intent",
-    actionId,
-    actionInput: {
-      schemaVersion: "midgard-validation-trace-dispute-action-v1",
-      stage: recordedStage,
-      ...(prerequisiteAction === undefined
-        ? {}
-        : {
-            fieldCarriageAction:
-              prerequisiteAction as unknown as JournalJsonObject,
-          }),
-      challengeDigest: challenge.challengeDigest,
-      ...(captured.durableRouteInput === undefined
-        ? {}
-        : { durableRouteInput: captured.durableRouteInput }),
+      payloadEnvelopeSha256: challenge.coordinate.payloadEnvelopeSha256,
+      payloadSha256: challenge.coordinate.payloadSha256,
+      l1BlockHash: observation.chainPoint.blockHash,
+      l1Slot: observation.chainPoint.slot.toString(),
     },
-    ...(prerequisiteRecovery === undefined
-      ? {}
-      : { durableRecovery: { fieldCarriageRecovery: prerequisiteRecovery } }),
-    ...(captured.mutationLease === undefined
-      ? {}
-      : {
-          durableRecovery: {
-            stateQueueMutationLease: {
-              token: captured.mutationLease.token,
-              source: captured.mutationLease.source,
-            },
-          },
-        }),
-    attempt: 1,
-    txHash: captured.transaction.txHash,
+    prepareFamilyArtifact: async () => artifact,
+    validateFamilyArtifact: async (_adapter, recorded) => {
+      if (journalJsonDigest(recorded) !== journalJsonDigest(artifact))
+        throw new Error(
+          "validationTraceDispute journal was prepared for a different admitted challenge",
+        );
+    },
+    registry: createFraudProofWorkflowRegistry({
+      adapters: [adapter],
+      launchScope: [category],
+    }),
+    journal,
+    terminalVerifier,
+    releaseFinality: verified.releaseFinality,
   });
-  const submitted = await submitCapturedTransaction(captured.transaction);
-  if (submitted !== captured.transaction.txHash)
-    throw new Error("validationTraceDispute provider substituted transaction");
-  await appendEvent(journal, workflowId, identity, {
-    kind: "submitted",
-    actionId,
-    attempt: 1,
-    txHash: submitted,
-  });
-  return { kind: "pending" as const, workflowId, txHash: submitted };
+  if (!("workflowId" in result))
+    throw new Error("validationTraceDispute runner lost its admitted workflow");
+  if (
+    result.kind === "pending" &&
+    result.reason.startsWith(VALIDATION_TRACE_COUNTERPARTY_WAIT)
+  )
+    return {
+      ...result,
+      kind: "awaiting_counterparty" as const,
+      responseDeadline: Number(
+        result.reason.slice(VALIDATION_TRACE_COUNTERPARTY_WAIT.length),
+      ),
+    };
+  return result;
 };
 
 /**
@@ -362,7 +160,8 @@ export const runOrResumeManifestBoundValidationTraceDisputeWorkflow =
       throw new Error(
         "validationTraceDispute runner rejects caller-authored evidence",
       );
-    await assertValidationTraceDisputeChallengeCurrent(input);
+    if (!workflowJournalIsReconciliationOnly(input.journal))
+      await assertValidationTraceDisputeChallengeCurrent(input);
     return await executeManifestBoundValidationTraceDisputeWorkflow({
       workflow: input.workflow,
       journal: input.journal,

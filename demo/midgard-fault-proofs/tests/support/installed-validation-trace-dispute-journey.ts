@@ -66,6 +66,7 @@ import { submitSetupTx } from "./emulator/setup-tx.js";
 import { buildAcceptedClaimOverMinAdaRejectingTransactionFixture } from "./emulator/validation-dispute-fixtures.js";
 import { buildInstalledSignatureFixture } from "./installed-signature-fixture.js";
 import { stageInstalledValidationResolutionReferences } from "./installed-validation-resolution-references.js";
+import { useCanonicalValidationDisputeCursorReads } from "./validation-trace-dispute-canonical-cursor.js";
 const DEPLOYMENT = "11".repeat(32);
 const PAYLOAD_ENVELOPE_SHA = "ab".repeat(32);
 const PAYLOAD_SHA = "cd".repeat(32);
@@ -206,6 +207,10 @@ export const stageInstalledValidationTraceDisputeJourney = async (
     referenceScriptPublisherLucid,
     validationDisputePublication,
   });
+  const restoreCursorReads = useCanonicalValidationDisputeCursorReads(
+    targetChallengerLucid,
+    emulator,
+  );
   const challenge = await admitValidationTraceChallenge({
     coordinate: {
       schemaVersion: "midgard-production-w25-challenge-coordinate-v1",
@@ -477,6 +482,7 @@ export const stageInstalledValidationTraceDisputeJourney = async (
     honestOperatorMove,
     cleanup: async () => {
       clock.mockRestore();
+      restoreCursorReads();
       recorder.restore();
       await rm(directory, { recursive: true, force: true });
     },

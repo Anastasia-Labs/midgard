@@ -21,6 +21,10 @@ import {
   createRawCommittedFieldCarriagePlan,
   type FieldCarriagePrerequisitePort,
 } from "../workflow/field-carriage-prerequisite.js";
+import {
+  journalJsonDigest,
+  normalizeJournalJson,
+} from "../workflow/journal.js";
 import { type FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import { validationSemanticResolverGlobalIndex } from "./submit/reference-scripts.js";
 import { selectValidationCompleteItemCarriage } from "./submit/validity.js";
@@ -35,10 +39,19 @@ import { recoverValidationTraceStateIndex } from "./workflow-engine.recover-vali
 
 export const validationTraceFieldCarriageAction = (
   action: ValidationTraceDisputeActuatorAction,
-): FraudProofWorkflowAction => ({
-  actionId: `${action.stage}:${"threadOutRef" in action ? action.threadOutRef : ""}`,
-  input: { ...action, category: "validationTraceDispute" },
-});
+): FraudProofWorkflowAction => {
+  const input = normalizeJournalJson({
+    ...action,
+    category: "validationTraceDispute",
+    ...(action.stage === "remove"
+      ? {
+          requiresMutationLease:
+            action.nextRemovalOutRef !== action.stateQueueBlockOutRef,
+        }
+      : {}),
+  }) as FraudProofWorkflowAction["input"];
+  return { actionId: `${action.stage}:${journalJsonDigest(input)}`, input };
+};
 
 export const validationResolutionFromUtxo = (utxo: UTxO) => {
   if (utxo.datum == null)

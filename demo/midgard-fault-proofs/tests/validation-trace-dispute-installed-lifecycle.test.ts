@@ -86,6 +86,7 @@ const runToCompletion = async (
 ) => {
   let restarts = 0;
   let { result } = await journey.runCold();
+  if (result.kind === "stalled") throw new Error(result.reason);
   for (let hop = 0; hop < 200 && result.kind !== "completed"; hop++) {
     restarts++;
     journey.emulator.awaitBlock();
@@ -94,6 +95,7 @@ const runToCompletion = async (
       journey.emulator.awaitBlock();
     }
     ({ result } = await journey.runCold());
+    if (result.kind === "stalled") throw new Error(result.reason);
   }
   return { result, restarts };
 };
@@ -130,6 +132,7 @@ describe("validation trace dispute installed production workflow", () => {
     const runObserved = () =>
       withLifecycleDeadline(async () => {
         const run = await journey.runCold();
+        if (run.result.kind === "stalled") throw new Error(run.result.reason);
         const entries = await journal.load(run.result.workflowId);
         const intents = entries.flatMap(({ event }) =>
           event.kind === "submission_intent" ? [event] : [],
@@ -174,7 +177,8 @@ describe("validation trace dispute installed production workflow", () => {
     try {
       let observedAward = false;
       let { result } = await runObserved();
-      for (let hop = 0; hop < 20 && result.kind !== "completed"; hop++) {
+      // Included removal remains reversible until the manifest's finality depth.
+      for (let hop = 0; hop < 60 && result.kind !== "completed"; hop++) {
         expect(result.kind).not.toBe("awaiting_counterparty");
         journey.emulator.awaitBlock();
         const awardUtxos = await journey.config.lucid.utxosAtWithUnit(
@@ -257,7 +261,7 @@ describe("validation trace dispute installed production workflow", () => {
         }
         await journey.operatorResponds();
       });
-      expect(result.kind, "txHash" in result ? result.txHash : undefined).toBe(
+      expect(result.kind, "reason" in result ? result.reason : undefined).toBe(
         "completed",
       );
       expect(refusalExercised).toBe(true);
@@ -286,7 +290,7 @@ describe("validation trace dispute installed production workflow", () => {
           );
         },
       );
-      expect(result.kind, "txHash" in result ? result.txHash : undefined).toBe(
+      expect(result.kind, "reason" in result ? result.reason : undefined).toBe(
         "completed",
       );
       expect(stalls).toBe(1);
@@ -321,6 +325,7 @@ describe("validation trace dispute installed production workflow", () => {
       // reuses any workflow object, plan, or in-memory cursor from before
       // this point.
       let { result } = await journey.runCold();
+      if (result.kind === "stalled") throw new Error(result.reason);
       for (
         let hop = 0;
         hop < 50 && result.kind !== "awaiting_counterparty";
@@ -328,6 +333,7 @@ describe("validation trace dispute installed production workflow", () => {
       ) {
         journey.emulator.awaitBlock();
         ({ result } = await journey.runCold());
+        if (result.kind === "stalled") throw new Error(result.reason);
       }
       if (result.kind !== "awaiting_counterparty") {
         throw new Error("dispute never reached the counterparty turn");
@@ -363,7 +369,7 @@ describe("validation trace dispute installed production workflow", () => {
       );
       expect(
         finalResult.kind,
-        "txHash" in finalResult ? finalResult.txHash : undefined,
+        "reason" in finalResult ? finalResult.reason : undefined,
       ).toBe("completed");
       await expectRemoved(journey);
     } finally {
