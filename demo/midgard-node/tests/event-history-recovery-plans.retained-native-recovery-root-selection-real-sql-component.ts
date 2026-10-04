@@ -28,7 +28,6 @@ import {
   start,
 } from "./event-history-recovery-plans.registration.js";
 import { retainedIntent } from "./event-history-recovery-plans.retained-intent.js";
-
 describe("retained native recovery root selection (real SQL component)", () => {
   it.each(["unpromoted", "promoted"] as const)(
     "records %s baseline selection before repair",
@@ -71,7 +70,6 @@ describe("retained native recovery root selection (real SQL component)", () => {
       expect(await probes()).toEqual([{ label: "repaired" }]);
     },
   );
-
   it("preserves the original operation after modeled native CAS, checkpoint append and actual owner restart", async () => {
     const { token, checkpoint } = await start();
     const { value, candidateRoot } = retainedIntent();
@@ -398,6 +396,7 @@ describe("retained native recovery root selection (real SQL component)", () => {
       kind: "signed_header",
       headerHash: value.headerHash,
       expectedRoot: value.expectedRoot,
+      journalDigest: value.journalDigest,
     });
     // The identical intent under the release's domain is another operation:
     // it never adopts the retained signed-header plan as its own.
@@ -436,6 +435,7 @@ describe("retained native recovery root selection (real SQL component)", () => {
       kind: "signed_intent_release",
       headerHash: value.headerHash,
       expectedRoot: value.expectedRoot,
+      journalDigest: value.journalDigest,
     });
     await run(
       Authority.withRecovery(
@@ -485,8 +485,7 @@ describe("retained native recovery root selection (real SQL component)", () => {
       "A different durable native recovery must be resolved first",
     );
     // Neither a signed-header discard of that header nor a release discard of
-    // another header may delete it: its native CAS may have run. (Kills "drop
-    // the domain/header refusal".)
+    // Another header cannot delete it: its native CAS may have run.
     await refusal(
       discard(SIGNED_HEADER_RECOVERY_DOMAIN, value.headerHash),
       "The prepared native recovery is not the operation to discard",
@@ -499,6 +498,7 @@ describe("retained native recovery root selection (real SQL component)", () => {
       kind: "signed_intent_release",
       headerHash: value.headerHash,
       expectedRoot: value.expectedRoot,
+      journalDigest: value.journalDigest,
     });
     await run(discard(SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN, value.headerHash));
     expect(await rows()).toEqual([]);

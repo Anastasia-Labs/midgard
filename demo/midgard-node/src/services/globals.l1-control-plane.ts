@@ -1,3 +1,5 @@
+import { performance } from "node:perf_hooks";
+
 import {
   Cause,
   Duration,
@@ -29,6 +31,7 @@ import {
   L1ControlPlaneTimeoutError,
   l1ControlPlaneWaitTimer,
 } from "./globals.next-l1-provider-health-evidence.js";
+import { raceL1ControlPlaneHold } from "./globals.race-l1-control-plane-hold.js";
 
 export {
   initialL1ControlPlaneActivity,
@@ -45,11 +48,17 @@ export {
   l1ControlPlaneWedgedGauge,
 } from "./globals.l1-control-plane.activity.js";
 
+type HoldDeadline = {
+  readonly budgetMs: number;
+  readonly atMonotonicMs: number;
+};
+
 type HoldHandle = {
   readonly globals: Globals;
   readonly scope: string;
   readonly startedAtMs: number;
-  readonly deadlineMs: Ref.Ref<number>;
+  readonly startedAtMonotonicMs: number;
+  readonly deadline: Ref.Ref<HoldDeadline>;
 };
 
 const CurrentL1ControlPlaneHold = FiberRef.unsafeMake<HoldHandle | undefined>(
@@ -69,20 +78,22 @@ export const extendL1ControlPlaneHold = (
   Effect.gen(function* () {
     const hold = yield* FiberRef.get(CurrentL1ControlPlaneHold);
     if (hold === undefined) return undefined;
-    const requested =
-      hold.startedAtMs +
-      Math.min(Math.max(0, totalHoldMs), L1_CONTROL_PLANE_HOLD_CEILING_MS);
-    const deadlineMs = yield* Ref.updateAndGet(hold.deadlineMs, (current) =>
-      Math.max(current, requested),
+    const requestedBudget = Math.min(
+      Math.max(0, totalHoldMs),
+      L1_CONTROL_PLANE_HOLD_CEILING_MS,
     );
+    const deadline = yield* Ref.updateAndGet(hold.deadline, (current) => {
+      const budgetMs = Math.max(current.budgetMs, requestedBudget);
+      return { budgetMs, atMonotonicMs: hold.startedAtMonotonicMs + budgetMs };
+    });
+    const budgetMs = deadline.budgetMs;
     yield* Ref.update(hold.globals.L1_CONTROL_PLANE_ACTIVITY, (activity) => ({
-      ...noteHoldBudget(activity, deadlineMs - hold.startedAtMs),
+      ...noteHoldBudget(activity, budgetMs),
       holder:
         activity.holder?.sinceMs === hold.startedAtMs
-          ? { ...activity.holder, deadlineMs }
+          ? { ...activity.holder, deadlineMs: hold.startedAtMs + budgetMs }
           : activity.holder,
     }));
-    const budgetMs = deadlineMs - hold.startedAtMs;
     yield* Metric.tagged(
       l1ControlPlaneHoldBudgetGauge,
       "scope",
@@ -91,10 +102,11 @@ export const extendL1ControlPlaneHold = (
     return budgetMs;
   });
 
-const awaitDeadline = (deadlineMs: Ref.Ref<number>): Effect.Effect<void> =>
+const awaitDeadline = (deadline: Ref.Ref<HoldDeadline>): Effect.Effect<void> =>
   Effect.gen(function* () {
     while (true) {
-      const remainingMs = (yield* Ref.get(deadlineMs)) - Date.now();
+      const remainingMs =
+        (yield* Ref.get(deadline)).atMonotonicMs - performance.now();
       if (remainingMs <= 0) return;
       yield* Effect.sleep(Duration.millis(remainingMs));
     }
@@ -158,15 +170,21 @@ const recordHoldExit = (
  * deadline. The hold itself keeps waiting for its interruption to finish:
  * the permit is never released under a holder that may still be running.
  */
-const holderOverrunWatchdog = (scope: string, deadlineMs: Ref.Ref<number>) =>
+const holderOverrunWatchdog = (
+  scope: string,
+  deadline: Ref.Ref<HoldDeadline>,
+) =>
   Effect.gen(function* () {
     while (true) {
-      yield* awaitDeadline(deadlineMs);
+      yield* awaitDeadline(deadline);
       yield* Effect.sleep(
         Duration.millis(L1_CONTROL_PLANE_HOLDER_OVERRUN_GRACE_MS),
       );
-      const deadline = yield* Ref.get(deadlineMs);
-      if (Date.now() >= deadline + L1_CONTROL_PLANE_HOLDER_OVERRUN_GRACE_MS) {
+      const current = yield* Ref.get(deadline);
+      if (
+        performance.now() >=
+        current.atMonotonicMs + L1_CONTROL_PLANE_HOLDER_OVERRUN_GRACE_MS
+      ) {
         break;
       }
     }
@@ -187,13 +205,14 @@ const waiterWedgeWatchdog = (
   globals: Globals,
   waiterId: number,
   scope: string,
+  startedAtMonotonicMs: number,
 ) =>
   Effect.gen(function* () {
     while (true) {
       const activity = yield* Ref.get(globals.L1_CONTROL_PLANE_ACTIVITY);
       const waiter = activity.waiters.get(waiterId);
       if (waiter === undefined) return;
-      const waitedMs = Date.now() - waiter.sinceMs;
+      const waitedMs = performance.now() - startedAtMonotonicMs;
       const limitMs = l1ControlPlaneWaiterWedgeLimitMs(activity, waiter);
       if (waitedMs > limitMs) {
         const holder =
@@ -254,7 +273,11 @@ export const runRegisteredL1ControlPlaneHold = <A, E, R>(
     Effect.gen(function* () {
       if (waiter !== undefined) yield* Fiber.interrupt(waiter.watchdog);
       const holdStartedAtMs = Date.now();
-      const deadlineMs = yield* Ref.make(holdStartedAtMs + maxHoldMs);
+      const holdStartedAtMonotonicMs = performance.now();
+      const deadline = yield* Ref.make<HoldDeadline>({
+        budgetMs: maxHoldMs,
+        atMonotonicMs: holdStartedAtMonotonicMs + maxHoldMs,
+      });
       yield* updateActivity(globals, (activity) => ({
         ...noteHoldBudget(
           waiter === undefined ? activity : withoutWaiter(activity, waiter.id),
@@ -269,7 +292,7 @@ export const runRegisteredL1ControlPlaneHold = <A, E, R>(
       // Forked here it would inherit the mask, and interrupting it would
       // wait out its whole grace period.
       const watchdog = yield* Effect.forkDaemon(
-        Effect.interruptible(holderOverrunWatchdog(scope, deadlineMs)),
+        Effect.interruptible(holderOverrunWatchdog(scope, deadline)),
       );
       const body = Effect.gen(function* () {
         yield* waitTimer(
@@ -281,18 +304,15 @@ export const runRegisteredL1ControlPlaneHold = <A, E, R>(
           "scope",
           scope,
         )(Effect.succeed(maxHoldMs));
-        return yield* Effect.raceFirst(
+        return yield* raceL1ControlPlaneHold(
           effect,
-          awaitDeadline(deadlineMs).pipe(
+          awaitDeadline(deadline).pipe(
             Effect.zipRight(
               Effect.suspend(() =>
-                Ref.get(deadlineMs).pipe(
+                Ref.get(deadline).pipe(
                   Effect.flatMap((deadline) =>
                     Effect.fail(
-                      new L1ControlPlaneTimeoutError(
-                        scope,
-                        deadline - holdStartedAtMs,
-                      ),
+                      new L1ControlPlaneTimeoutError(scope, deadline.budgetMs),
                     ),
                   ),
                 ),
@@ -305,7 +325,8 @@ export const runRegisteredL1ControlPlaneHold = <A, E, R>(
           globals,
           scope,
           startedAtMs: holdStartedAtMs,
-          deadlineMs,
+          startedAtMonotonicMs: holdStartedAtMonotonicMs,
+          deadline,
         }),
       );
       return yield* restore(body).pipe(
@@ -318,7 +339,7 @@ export const runRegisteredL1ControlPlaneHold = <A, E, R>(
           Effect.gen(function* () {
             yield* Fiber.interrupt(watchdog);
             yield* l1ControlPlaneWedgedGauge(Effect.succeed(0));
-            const holdBudgetMs = (yield* Ref.get(deadlineMs)) - holdStartedAtMs;
+            const holdBudgetMs = (yield* Ref.get(deadline)).budgetMs;
             yield* updateActivity(globals, (activity) =>
               recordHoldExit(
                 activity,
@@ -330,7 +351,9 @@ export const runRegisteredL1ControlPlaneHold = <A, E, R>(
               ),
             );
             yield* holdTimer(
-              Effect.succeed(Duration.millis(Date.now() - holdStartedAtMs)),
+              Effect.succeed(
+                Duration.millis(performance.now() - holdStartedAtMonotonicMs),
+              ),
             );
           }),
         ),
@@ -351,6 +374,7 @@ export const withL1ControlPlane = <A, E, R>(
   return Effect.uninterruptibleMask((restore) =>
     Effect.gen(function* () {
       const waitStartedAtMs = Date.now();
+      const waitStartedAtMonotonicMs = performance.now();
       const waiterId = nextWaiterId++;
       yield* updateActivity(globals, (activity) => {
         const waiters = new Map(activity.waiters);
@@ -366,7 +390,14 @@ export const withL1ControlPlane = <A, E, R>(
       });
       // Forked here it would inherit the mask; see the holder watchdog.
       const waiterWatchdog = yield* Effect.forkDaemon(
-        Effect.interruptible(waiterWedgeWatchdog(globals, waiterId, scope)),
+        Effect.interruptible(
+          waiterWedgeWatchdog(
+            globals,
+            waiterId,
+            scope,
+            waitStartedAtMonotonicMs,
+          ),
+        ),
       );
       return yield* restore(
         globals.L1_CONTROL_PLANE.withPermits(1)(

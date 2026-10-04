@@ -27,13 +27,26 @@ export const seeds = {
   userC: generateMnemonic(256),
 };
 
-/** Only what the journey reads of a deployment. */
+/** Synthetic deployment with a complete, valid service-port inventory. */
 export const fakeContext = () => {
   const dir = mkdtempSync(join(tmpdir(), "devnet-journey-"));
   dirs.push(dir);
   return {
     layout: { journeyDir: join(dir, "journey"), nodeRoot: dir },
-    run: { runId: "run1", kupoPort: 1442, portOffset: 0 },
+    run: {
+      runId: "run1",
+      composeProject: "synthetic-journey",
+      networkMagic: 42,
+      ogmiosPort: 2337,
+      kupoPort: 1442,
+      postgresPort: 5432,
+      postgresUser: "unused",
+      postgresPassword: "unused-synthetic",
+      postgresDatabase: "unused",
+      cardanoImage: "unused",
+      postgresImage: "unused",
+      portOffset: 0,
+    },
     identities: { seeds },
   } as unknown as DeployContext;
 };

@@ -1,5 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Option } from "effect";
+import { Effect, Option, Ref } from "effect";
 
 import * as Pending from "../database/pendingBlockFinalizations.js";
 import {
@@ -13,13 +12,16 @@ import {
   sameBaseJournals,
 } from "./history-expired-intent-release.base-spend.js";
 import {
+  displacement,
+  observedRemoval,
+} from "./history-expired-intent-release.displacement.js";
+import {
   chainOrder,
   replacedBlockLanding,
   replacedSiblings,
 } from "./history-expired-intent-release.replaced-block-landing.js";
 import {
   type Decision,
-  type QueueNode,
   type ReleaseEvidence,
   signedCommitNode,
 } from "./history-expired-intent-release.signed-commit-node.js";
@@ -29,14 +31,13 @@ import {
 } from "./history-expired-intent-release.table.js";
 import {
   clearLivenessIncident,
+  HISTORY_SIGNED_INTENT_RELEASE_SOURCE as UNDECIDED_SOURCE,
   raiseLivenessIncident,
 } from "./liveness-halt.js";
 import {
   SIGNED_INTENT_UNDECIDED,
   SIGNED_INTENT_UNDECIDED_ESCALATION_MS,
 } from "./signed-intent-undecided.js";
-import { LOCALLY_FINALIZED_STATUSES } from "./state-queue-correction-recovery.js";
-import { nonAbandonedChildren } from "./state-queue-correction-rewind.admitted-removals.js";
 import { loadStateQueueCorrectionObserverState } from "./state-queue-correction-rewind.js";
 
 /** Reads which block holds the active journal's base slot (see the module
@@ -57,14 +58,17 @@ export const decide = (record: Pending.Record, evidence: ReleaseEvidence) =>
               `signed intent of block ${record[C.HEADER_HASH].toString("hex")}: ${decision.reason}`,
               { escalateAfterMs: SIGNED_INTENT_UNDECIDED_ESCALATION_MS },
             )
-          : clearLivenessIncident(globals, UNDECIDED_SOURCE),
+          : // Only its own reason: an integrity hold raised under the same
+            // source (see `heldOnIntegrityFailure`) clears when its
+            // preparation next completes.
+            Effect.flatMap(Ref.get(globals.LIVENESS_REASONS), (reasons) =>
+              reasons.get(UNDECIDED_SOURCE) === SIGNED_INTENT_UNDECIDED
+                ? clearLivenessIncident(globals, UNDECIDED_SOURCE)
+                : Effect.void,
+            ),
       ),
     ),
   );
-
-/** The readiness source of an undecided release. The history gate, which an
- * undecided release keeps closed, is what holds block production. */
-const UNDECIDED_SOURCE = "history_signed_intent_release";
 
 /** A replaced block of this node holds the base slot while a sibling on the
  * same base is already locally finalized: until L1 evidence shows that
@@ -103,19 +107,8 @@ const decideRelease = (record: Pending.Record, evidence: ReleaseEvidence) =>
       true,
     );
     /** The observed removal of `hash` of one kind, an admitted one first. */
-    const removing = (hash: string, merge: boolean) => {
-      if (observer.kind !== "observed") return undefined;
-      const matches = (transition: SDK.StateQueueAuthenticatedTransition) =>
-        (transition.transitionKind === "merge") === merge &&
-        transition.removedHeaderHashes.includes(hash);
-      const admitted = observer.state.admitted.find(matches);
-      if (admitted !== undefined)
-        return { transition: admitted, admitted: true };
-      const pending = observer.state.pending.find(matches);
-      return pending === undefined
-        ? undefined
-        : { transition: pending, admitted: false };
-    };
+    const removing = (hash: string, merge: boolean) =>
+      observedRemoval(observer, hash, merge);
     /** Only an admitted correction is resolved by the correction path, so
      * only it makes the deferral sticky. A pending one may be retracted; the
      * next change of the observer's view decides again. */
@@ -221,97 +214,23 @@ const decideRelease = (record: Pending.Record, evidence: ReleaseEvidence) =>
             node,
             displaced: [],
           } satisfies Decision;
-        const displaced = yield* displacement(
-          blocking.map(({ header_hash }) => header_hash.toString("hex")),
+        const displaced = yield* displacement({
+          blocking: blocking.map(({ header_hash }) =>
+            header_hash.toString("hex"),
+          ),
           node,
           queued,
-          revived,
-        );
+          winner: revived,
+          base,
+          baseRoot: record[C.BASE_UTXOS_ROOT],
+          queue,
+          observer,
+          depth: evidence.canonicalDepth!,
+          required: evidence.rewindAuthority.requiredFinalityDepth,
+        });
         if (typeof displaced === "string")
           return undecided(winner, `${finalized.join("; ")}, and ${displaced}`);
         return { kind: "revive", revived, node, displaced } satisfies Decision;
-      });
-
-    /** The locally finalized blocks `blocking` (siblings on the active
-     * journal's base) and their descendants, earliest first, once L1
-     * evidence alone shows an L1 rollback displaced them: `winner`'s commit
-     * holds the base's slot at the confirmation depth, so none of them is on
-     * the chain or can return without a deeper rollback. Each must have
-     * changed no ledger state (only then could the active block be journaled
-     * on the base after the rollback, and only then does the repair's native
-     * restoration cover it), be absent from the queue and the canonical
-     * history, and have no recorded removal. Otherwise why not, and the
-     * release waits; a displaced block shown landed beside the winner is the
-     * integrity failure of two landed siblings. */
-    const displacement = (
-      blocking: readonly string[],
-      node: QueueNode,
-      queued: boolean,
-      winner: Pending.Record,
-    ) =>
-      Effect.gen(function* () {
-        const depth = evidence.canonicalDepth!;
-        const required = evidence.rewindAuthority.requiredFinalityDepth;
-        // A node output on the exact-point queue was created by a transaction
-        // canonical at the checkpoint, at or after the winner's commit; absent
-        // from the complete retained chain, it lies deeper than all of it.
-        const held =
-          depth.of(node.node.utxo.txHash) ??
-          (queued ? depth.retained + 1n : undefined);
-        if (held === undefined || held < required)
-          return `the commit holding the slot is ${held === undefined ? "not in the journaled canonical history" : `${held.toString()} blocks deep`}, short of the confirmation depth ${required.toString()}`;
-        const landedBeside = (header: string, how: string) =>
-          Effect.fail(
-            new SignedIntentReplacementIntegrityError(
-              header,
-              `it ${how} while block ${winner[C.HEADER_HASH].toString("hex")} of this node holds the slot of its base ${base} at depth ${held.toString()}`,
-            ),
-          );
-        const displaced: Pending.Record[] = [];
-        const pending = [...blocking];
-        const seen = new Set<string>();
-        for (
-          let next = pending.shift();
-          next !== undefined;
-          next = pending.shift()
-        ) {
-          if (seen.has(next)) continue;
-          seen.add(next);
-          const found = yield* Pending.retrieveByHeaderHash(
-            Buffer.from(next, "hex"),
-          );
-          if (Option.isNone(found)) return `block ${next} has no journal`;
-          const block = found.value;
-          const status = block[C.STATUS];
-          if (!LOCALLY_FINALIZED_STATUSES.includes(status))
-            return `block ${next} built over it has journal status ${status}, not locally finalized`;
-          if (
-            block[C.EXPECTED_UTXOS_ROOT] !== block[C.BASE_UTXOS_ROOT] ||
-            block[C.BASE_UTXOS_ROOT] !== record[C.BASE_UTXOS_ROOT]
-          )
-            return `block ${next} moved the ledger root from ${block[C.BASE_UTXOS_ROOT]} to ${block[C.EXPECTED_UTXOS_ROOT]}, which this release does not restore`;
-          if (find(next) !== undefined)
-            return yield* landedBeside(next, "is on the queue");
-          const merge = removing(next, true);
-          if (merge?.admitted === true)
-            return yield* landedBeside(next, "was merged");
-          if (merge !== undefined)
-            return `pending state-queue merge ${merge.transition.transactionHash} names block ${next}; it is not admitted yet`;
-          const signed = block[C.INTENDED_TX_HASH]?.toString("hex");
-          const signedDepth =
-            signed === undefined ? undefined : depth.of(signed);
-          if (signedDepth !== undefined)
-            return yield* landedBeside(
-              next,
-              `has its signed commit ${signedDepth.toString()} blocks deep in the canonical history`,
-            );
-          const correction = removing(next, false);
-          if (correction !== undefined)
-            return `${correction.admitted ? "admitted" : "pending"} state-queue correction ${correction.transition.transactionHash} removed block ${next}, which the correction path reconciles`;
-          displaced.push(block);
-          pending.push(...(yield* nonAbandonedChildren(next)));
-        }
-        return displaced;
       });
 
     const tail = find(base);

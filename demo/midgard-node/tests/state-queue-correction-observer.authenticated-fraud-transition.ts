@@ -10,6 +10,7 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
+import { fetchTip } from "../src/services/state-queue-correction-observer.decode-kupo-correction-lock-match.js";
 import {
   makeLocalKupmiosStateQueueCorrectionSource,
   type StateQueueCorrectionObserverSource,
@@ -72,8 +73,16 @@ export const tipOnlySource = (
 ): {
   readonly source: StateQueueCorrectionObserverSource;
   readonly methods: string[];
+  readonly readTip: () => ReturnType<typeof fetchTip>;
 } => {
   const methods: string[] = [];
+  const fetchImpl = async (_url: string, init?: RequestInit) => {
+    const { method } = JSON.parse(String(init?.body)) as { method: string };
+    methods.push(method);
+    return new Response(
+      JSON.stringify({ result: answer(method, methods.length) }),
+    );
+  };
   const source = makeLocalKupmiosStateQueueCorrectionSource({
     deploymentIdentityDigest: deployment,
     stateQueuePolicyId: policy,
@@ -85,15 +94,13 @@ export const tipOnlySource = (
     kupoUrl: "http://kupo.test",
     ogmiosUrl: "ws://ogmios.test",
     readQueue: async () => before,
-    fetchImpl: async (_url: string, init?: RequestInit) => {
-      const { method } = JSON.parse(String(init?.body)) as { method: string };
-      methods.push(method);
-      return new Response(
-        JSON.stringify({ result: answer(method, methods.length) }),
-      );
-    },
+    fetchImpl,
   });
-  return { source, methods };
+  return {
+    source,
+    methods,
+    readTip: () => fetchTip("http://ogmios.test", fetchImpl),
+  };
 };
 
 export const before: readonly StateQueueTransitionNode[] = [

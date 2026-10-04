@@ -188,7 +188,7 @@ export const parseFinalityTransition = (
   if (
     result.action === "quarantine_incident" &&
     result.protocolDecision === "quarantined" &&
-    previous.phase === "finalized" &&
+    (previous.phase === "finalized" || previous.phase === "pending") &&
     previous.finalized !== null &&
     next.phase === "quarantined" &&
     next.pending === null &&

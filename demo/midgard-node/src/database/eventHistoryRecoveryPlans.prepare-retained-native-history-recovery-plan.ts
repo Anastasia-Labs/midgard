@@ -4,11 +4,16 @@ import { Effect } from "effect";
 import { eventHistoryCanonicalJson } from "../l1-event-history-source.js";
 import type { Checkpoint } from "./eventHistoryJournal.js";
 import {
+  DISPLACEMENT_COMPENSATION_RECOVERY_DOMAIN,
+  parseDisplacementCompensationIntent,
+} from "./eventHistoryRecoveryPlans.displacement-compensation.js";
+import {
   CORRECTION_REWIND_RECOVERY_DOMAIN,
   type CorrectionRewindIntent,
   type CorrectionRewindRecoveryPlan,
   type DependentRecoveryPlan,
   digest,
+  DISPLACED_BLOCK_REVIVAL_RECOVERY_DOMAIN,
   fail,
   freezeRewindIntent,
   type HistoryRecoveryDomain,
@@ -74,18 +79,37 @@ export const prepareRetainedNativeHistoryRecoveryPlan = (
       if (
         prior === null ||
         typeof prior.expectedRoot !== "string" ||
+        !isHash(prior.expectedRoot)
+      )
+        return yield* fail("Malformed retained native recovery identity");
+      if (
         (prior.expectedRoot !== captured.targetRoot &&
           prior.expectedRoot !== observed.candidateRoot) ||
         (observed.durableRoot !== prior.expectedRoot &&
-          observed.durableRoot !== captured.targetRoot) ||
+          observed.durableRoot !== captured.targetRoot)
+      )
+        return yield* Effect.fail(
+          new DatabaseError({
+            table,
+            message:
+              "Retained native recovery requires a different disposition",
+            cause: { nativeRecoveryRefusal: "root" },
+          }),
+        );
+      if (
         eventHistoryCanonicalJson({
           domain,
           ...captured,
           expectedRoot: prior.expectedRoot,
         }) !== retained[0]!.intent
       )
-        return yield* fail(
-          "Retained native recovery requires a different disposition",
+        return yield* Effect.fail(
+          new DatabaseError({
+            table,
+            message:
+              "Retained native recovery requires a different disposition",
+            cause: { nativeRecoveryRefusal: "identity" },
+          }),
         );
       expectedRoot = prior.expectedRoot;
     }
@@ -134,14 +158,15 @@ export const discardPreparedHistoryRecoveryPlan = (
 
 /** The single prepared native recovery of this binding, if any, decoded by
  * domain. A signed-header or signed-intent release plan is reported by kind,
- * header and the native root its CAS moves from: the service that prepared it
+ * header, the native root its CAS moves from and the journal digest it binds: the service that prepared it
  * for that header resumes it. An undecodable retained identity fails closed. */
 export const retainedPreparedRecoveryPlan = (bindingDigest: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<{
       intent: string;
-    }>`SELECT intent FROM event_history_recovery_plans
+      recovery_id: Buffer;
+    }>`SELECT intent, recovery_id FROM event_history_recovery_plans
       WHERE binding_digest = ${Buffer.from(bindingDigest, "hex")}
         AND state = 'prepared'`;
     if (rows.length === 0) return undefined;
@@ -156,6 +181,21 @@ export const retainedPreparedRecoveryPlan = (bindingDigest: string) =>
           cause: undefined,
         }),
     });
+    if (decoded?.domain === DISPLACEMENT_COMPENSATION_RECOVERY_DOMAIN) {
+      const { domain: _domain, ...fields } = decoded;
+      const intent = parseDisplacementCompensationIntent(fields);
+      if (
+        intent === undefined ||
+        eventHistoryCanonicalJson(decoded) !== rows[0]!.intent ||
+        digest(rows[0]!.intent) !== rows[0]!.recovery_id.toString("hex")
+      )
+        return yield* fail("Malformed retained displacement compensation");
+      return {
+        kind: "displacement_compensation" as const,
+        recoveryId: rows[0]!.recovery_id.toString("hex"),
+        intent,
+      };
+    }
     const historyKind = historyRecoveryKind(decoded?.domain);
     if (historyKind !== undefined) {
       if (
@@ -166,10 +206,47 @@ export const retainedPreparedRecoveryPlan = (bindingDigest: string) =>
         return yield* fail(
           "Malformed retained signed-header recovery identity",
         );
+      if (
+        decoded.domain === DISPLACED_BLOCK_REVIVAL_RECOVERY_DOMAIN &&
+        (typeof decoded.operationNonce !== "string" ||
+          !isHash(decoded.operationNonce) ||
+          !Array.isArray(decoded.displacedHeaderHashes) ||
+          decoded.displacedHeaderHashes.length === 0 ||
+          !decoded.displacedHeaderHashes.every(isHeaderHash) ||
+          new Set(decoded.displacedHeaderHashes).size !==
+            decoded.displacedHeaderHashes.length ||
+          typeof decoded.targetRoot !== "string" ||
+          !isHash(decoded.targetRoot) ||
+          typeof decoded.journalDigest !== "string" ||
+          !isHash(decoded.journalDigest) ||
+          digest(rows[0]!.intent) !== rows[0]!.recovery_id.toString("hex"))
+      )
+        return yield* fail("Malformed retained displacement recovery identity");
       return {
         kind: historyKind,
         headerHash: decoded.headerHash,
         expectedRoot: decoded.expectedRoot,
+        // The journal it binds, for the service that resumes it.
+        journalDigest:
+          typeof decoded.journalDigest === "string" &&
+          isHash(decoded.journalDigest)
+            ? decoded.journalDigest
+            : undefined,
+        ...(decoded.domain === DISPLACED_BLOCK_REVIVAL_RECOVERY_DOMAIN && {
+          recoveryId: rows[0]!.recovery_id.toString("hex"),
+          operationNonce: decoded.operationNonce as string,
+          displacementIntent: Object.freeze({
+            ...Object.fromEntries(
+              Object.entries(decoded).filter(([key]) => key !== "domain"),
+            ),
+            displacedHeaderHashes: Object.freeze([
+              ...(decoded.displacedHeaderHashes as string[]),
+            ]),
+          }) as unknown as HistoryRecoveryIntent,
+          targetRoot: decoded.targetRoot as string,
+          displacedHeaderHashes:
+            decoded.displacedHeaderHashes as readonly string[],
+        }),
       };
     }
     if (decoded?.domain !== CORRECTION_REWIND_RECOVERY_DOMAIN)
@@ -282,7 +359,7 @@ export const applyHistoryRecoveryPlan = <A, E, R>(
  * a correction rewind or a signed-header recovery in state `applied`. */
 export type AppliedNativeRecovery = Readonly<{
   recoveryId: string;
-  kind: "correction_rewind" | HistoryRecoveryKind;
+  kind: "correction_rewind" | "displacement_compensation" | HistoryRecoveryKind;
   targetRoot: string;
 }>;
 

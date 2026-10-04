@@ -142,6 +142,7 @@ export const availabilityResponderOperations = (input: {
   const context: SDK.DaAvailabilityOperationContext = {
     ...input.context,
     assertActuationCurrent,
+    readBoundary,
     observe: SDK.createDaAvailabilityOperationObserver({
       lucid: input.lucid,
       readBoundary,
@@ -154,16 +155,23 @@ export const availabilityResponderOperations = (input: {
         }),
     }),
   };
-  const reconcile = async (): Promise<"ready" | "pending"> => {
+  const reconcile = async (): Promise<
+    "ready" | "pending" | Readonly<{ held: string }>
+  > => {
     // A new tick may adopt a recovered generation only for reconciliation;
     // no new action is selected until every durable intent is checked.
     expectedRollbackGeneration = (await readers.currentCursor())
       .rollbackGeneration;
     const results = await SDK.reconcileDaAvailabilityOperations(context);
-    if (results.some((result) => result.status === "conflict"))
-      throw new Error(
-        "Availability responder journal contains a conflicting transaction; authenticated recovery is required",
-      );
+    // A held or conflicting intent stops new signing with its reason; it is
+    // read afresh on every pass, so evidence that clears it clears the hold.
+    const held = results.find(
+      (result) => result.status === "held" || result.status === "conflict",
+    );
+    if (held !== undefined)
+      return {
+        held: `${held.txHash}: ${held.detail ?? "A conflicting transaction spends this intent's inputs"}`,
+      };
     return results.some(
       (result) =>
         result.status !== "confirmed" &&

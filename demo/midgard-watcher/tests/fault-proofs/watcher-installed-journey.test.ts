@@ -52,7 +52,8 @@ import { serveEmulatorRetainedDa } from "../support/emulator-retained-da.js";
 import { operationsVerifiedHeader } from "../support/operations-verified-header.js";
 import { createPublishedWatcherDeploymentAuthority } from "../support/published-deployment-authority.js";
 import { stagePublishedDepositTrace } from "../support/published-deposit-trace.js";
-import { startWatcherTrustedHeadAuthorityChildForTest } from "../support/trusted-head-process-fixture.js";
+import { createTerminalRelease } from "../support/terminal-release.js";
+import { startPublishedWatcherJourneyAuthorityFixture } from "../support/trusted-head-process-fixture.js";
 import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
 
 const transport = vi.hoisted(() => ({
@@ -80,7 +81,6 @@ vi.mock("@al-ft/midgard-fault-proofs", async (loadOriginal) => {
     },
   };
 });
-
 // Every proof submission reaches the actual Lucid emulator. Only the external
 // chain transport is simulated; the watcher application, decision bridge,
 // supervisor, journals and validators execute their normal implementations.
@@ -317,7 +317,6 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     // block. Background growth matches the fixture's 20-second block interval
     // so durable ingestion need not race a chain accelerated fourfold.
     chain.start({ intervalMs: 20_000, blocksPerTick: 1 });
-
     const provider = deployment.emulator;
     transport.provider = provider;
     vi.spyOn(Kupmios.prototype, "getProtocolParameters").mockImplementation(
@@ -351,7 +350,6 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     vi.spyOn(Kupmios.prototype, "awaitTx").mockImplementation((hash) =>
       provider.awaitTx(hash),
     );
-
     vi.stubEnv("MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY", "17".repeat(32));
     vi.stubEnv("MIDGARD_WATCHER_PROVER_KEY", accounts.publisher.seedPhrase);
     vi.stubEnv("WATCHER_AVAILABILITY_KEY", availabilityAccount.seedPhrase);
@@ -369,27 +367,9 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     );
     if (policy === null)
       throw new Error("Fixture finality policy was not admitted");
-    const trusted = await startWatcherTrustedHeadAuthorityChildForTest({
-      config: {
-        schemaVersion:
-          "midgard-watcher-trusted-head-authority-process-config-v1",
-        directory: join(directory, "trusted-head"),
-        endpoint: "http://127.0.0.1:0",
-        policy,
-        recordAuthenticationKeySource: {
-          kind: "environment",
-          variable: "MIDGARD_TEST_RECORD_KEY",
-        },
-        httpBearerSecretSource: {
-          kind: "environment",
-          variable: "MIDGARD_WATCHER_TRUSTED_HEAD_BEARER",
-        },
-      },
-      unsafeEnvironmentForTest: {
-        MIDGARD_TEST_RECORD_KEY: "5c".repeat(32),
-        MIDGARD_WATCHER_TRUSTED_HEAD_BEARER: "39".repeat(32),
-      },
-      unsafeAllowEphemeralPortForTest: true,
+    const trusted = await startPublishedWatcherJourneyAuthorityFixture({
+      directory: join(directory, "trusted-head"),
+      policy,
     });
     cleanup.push(trusted.close);
     const config = parseWatcherProcessConfig({
@@ -555,6 +535,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       return ids.length === 0 ? [] : await workflowJournal.load(ids[0]!);
     };
     let reportedWorkflowSequence = -1;
+    const terminalRelease = createTerminalRelease(chain);
     const completion = await stage(
       "confirmed proof and correction",
       async () => {
@@ -570,6 +551,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
             reportedWorkflowSequence = sequence;
           }
           const lastEvent = entries.at(-1)?.event;
+          await terminalRelease.observe(entries);
           if (lastEvent?.kind === "stalled") {
             throw new Error(`Workflow stalled: ${lastEvent.reason}`);
           }
@@ -596,6 +578,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
             .filter(({ event }) => event.kind === "completed")
             .at(-1)?.event;
           if (terminal?.kind === "completed") {
+            terminalRelease.assertCompleted(terminal.terminal);
             expect(submitted.map(({ txHash }) => txHash)).toEqual(
               intents.map(({ txHash }) => txHash),
             );
@@ -770,7 +753,6 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
             console.info(`watcher successor: ${successor.headerHash} healthy`);
             return;
           }
-
           requireLiveRuntime();
           await pause(50);
         }

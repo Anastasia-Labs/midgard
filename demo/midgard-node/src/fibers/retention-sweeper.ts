@@ -1,27 +1,47 @@
-import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
+import {
+  MIDGARD_RETENTION_WINDOW,
+  RETENTION_MS_PER_DAY,
+} from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Cause, Duration, Effect, Exit, Metric, Ref, Schedule } from "effect";
+import {
+  Cause,
+  Clock,
+  Duration,
+  Effect,
+  Exit,
+  Metric,
+  Option,
+  Ref,
+  Schedule,
+} from "effect";
 
 import {
   AddressHistoryDB,
   DaPayloadsDB,
-  DepositsDB,
   MempoolTxDeltasDB,
+  StateQueueMutationLeasesDB,
   TxRejectionsDB,
-  WithdrawalsDB,
 } from "../database/index.js";
+import { pruneFinalizedBeyondChallengeability } from "../database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
 import {
   computeChallengeableCutoff,
-  computeRetentionCutoff,
+  computeHousekeepingCutoff,
+  resolveHousekeepingRetentionDays,
   shouldPruneRetention,
 } from "../database/retention-policy.js";
 import { DatabaseError } from "../database/utils/common.js";
+import {
+  isHistoryProducerGateClosed,
+  runHistoryProducer,
+  UnownedHistoryFixture,
+} from "../services/event-history-producer.js";
 import {
   ContractDeploymentIdentity,
   Database,
   Globals,
   Lucid,
+  makeLocalKupmiosStateQueueCorrectionSource,
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
@@ -30,6 +50,7 @@ import {
   raiseLivenessIncident,
 } from "../services/liveness-halt.js";
 import { fetchCanonicalStateQueueNodesProgram } from "../services/state-queue-topology.js";
+import { fetchDaPayloadRetirementProofs } from "./retention-sweeper.da-retirement-view.js";
 
 /**
  * Executable deadline signal (GOAL_SPEC 9.4 / Q54): milliseconds remaining
@@ -69,6 +90,8 @@ const publishDaPayloadRetentionDeadline = (
           ])} AND NOT ${DaPayloadsDB.finalityHeldPayload(
             sql,
             deploymentIdentityDigest,
+            "da_payloads.header_hash",
+            view.retirementProofs,
           )}`;
     const rows = yield* sql<{
       readonly oldest_block_end_time: Date | null;
@@ -168,13 +191,112 @@ export const fetchRetentionL1View: Effect.Effect<
   };
 });
 
+/** Production view includes fresh retirement evidence; topology-only readers stay unchanged. */
+export const fetchRetentionL1ViewWithRetirement = Effect.gen(function* () {
+  const view = yield* fetchRetentionL1View;
+  const contracts = yield* MidgardContracts;
+  const config = yield* NodeConfig;
+  const identity = yield* ContractDeploymentIdentity;
+  const retirement =
+    identity.manifest === undefined || identity.manifestId === undefined
+      ? { proofs: [], unavailable: false }
+      : yield* fetchDaPayloadRetirementProofs({
+          deploymentIdentityDigest: identity.manifestId,
+          stateQueuePolicyId: contracts.stateQueue.policyId,
+          automaticRecoveryMaxDepth:
+            identity.manifest.l1Finality.automaticRecoveryMaxDepth,
+          source: makeLocalKupmiosStateQueueCorrectionSource({
+            deploymentIdentityDigest: identity.manifestId,
+            stateQueuePolicyId: contracts.stateQueue.policyId,
+            stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+            hubOraclePolicyId: contracts.hubOracle.policyId,
+            correctionLockAddress:
+              contracts.correctionLock.spendingScriptAddress,
+            fraudProofPolicyId: contracts.fraudProof.policyId,
+            fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
+            kupoUrl: config.L1_KUPO_KEY,
+            ogmiosUrl: config.L1_OGMIOS_KEY,
+            readQueue: async () => [],
+          }),
+        }).pipe(
+          Effect.catchAll(() =>
+            Effect.succeed({ proofs: [], unavailable: true }),
+          ),
+        );
+  return {
+    confirmedHeadHash: view.confirmedHeadHash,
+    liveQueueHeaderHashes: view.liveQueueHeaderHashes,
+    retirementProofs: retirement.proofs,
+    retirementProofUnavailable: retirement.unavailable,
+  };
+});
+
+/**
+ * How long one sweep's history prunes may keep starting batches under the
+ * history producer permit. No batch starts past it, and each batch is one
+ * short transaction, so a recovery that drains producers waits at most this
+ * plus one batch.
+ */
+export const RETENTION_HISTORY_PRUNE_BUDGET_MS = 10_000;
+
+/** The hard bound on the whole permit-held history prune, should one batch
+ * stall: past it the work is interrupted (its open batch rolls back), the
+ * permit is returned, and the next sweep retries. */
+export const RETENTION_HISTORY_PRUNE_TIMEOUT_MS =
+  3 * RETENTION_HISTORY_PRUNE_BUDGET_MS;
+
+/**
+ * Runs `work` as a history producer: it takes the permit without waiting
+ * (registration is refused at once while the owner recovers, lags or is not
+ * up) and holds it for at most RETENTION_HISTORY_PRUNE_TIMEOUT_MS. A refused
+ * or timed-out run deletes nothing more, is logged, and returns `undefined`;
+ * the next sweep retries. Standalone database fixtures without an owner run
+ * the work directly under their explicit fixture capability.
+ */
+export const withRetentionHistoryProducer = (
+  work: Effect.Effect<number, DatabaseError, Database>,
+): Effect.Effect<number | undefined, never, Globals | Database> =>
+  Effect.gen(function* () {
+    const globals = yield* Globals;
+    const owner = yield* Ref.get(globals.EVENT_HISTORY_OWNER);
+    const fixture = yield* Effect.serviceOption(UnownedHistoryFixture);
+    const run: Effect.Effect<number, DatabaseError, Globals | Database> =
+      owner === undefined && Option.isSome(fixture)
+        ? work
+        : runHistoryProducer(work);
+    const exit = yield* Effect.exit(
+      run.pipe(Effect.timeout(RETENTION_HISTORY_PRUNE_TIMEOUT_MS)),
+    );
+    if (Exit.isSuccess(exit)) return exit.value;
+    const refused = [...Cause.failures(exit.cause)].some(
+      isHistoryProducerGateClosed,
+    );
+    yield* Effect.logWarning(
+      `retention_history_prune_skipped: ${refused ? "the history owner is recovering" : "the history producer permit or a prune batch failed"}; journals are kept until the next sweep`,
+      exit.cause,
+    );
+    return undefined;
+  });
+
 /**
  * One retention sweep.
  *
  * DA payloads are pruned on the consensus-derived challengeability horizon and
  * the L1 exemption sets whenever an L1 view is available, regardless of
- * RETENTION_DAYS. The wall-clock tables are pruned only when RETENTION_DAYS
- * enables it.
+ * RETENTION_DAYS. Housekeeping runs only while the window
+ * `resolveHousekeepingRetentionDays` derives from the verified manifest (or
+ * an explicit longer RETENTION_DAYS) is non-zero, never inside the DA
+ * challenge horizon (`computeHousekeepingCutoff`):
+ *  - tx rejections and address history past the window (address history of a
+ *    transaction still in the mempool is kept);
+ *  - ended state-queue mutation leases past the window;
+ *  - with an L1 view and a verified deployment, finalized journals past the
+ *    window, under the history producer permit
+ *    (`withRetentionHistoryProducer`), each kept while challenge-relevant.
+ * Deposit and withdrawal rows are retained: settlement proofs recompute the
+ * whole header's root, and a completed job records confirmation, without the
+ * block identity/depth needed to prove payout finality. Local consumed/finalized
+ * status cannot authorize deleting either unpaid events or their proof siblings.
  */
 export const retentionSweepAction = (
   view: DaPayloadsDB.RetentionL1View | undefined,
@@ -182,7 +304,7 @@ export const retentionSweepAction = (
 ): Effect.Effect<
   void,
   DatabaseError,
-  Database | NodeConfig | ContractDeploymentIdentity
+  Database | NodeConfig | ContractDeploymentIdentity | Globals
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
@@ -206,31 +328,58 @@ export const retentionSweepAction = (
       view,
       deploymentIdentityDigest,
     );
-    if (!shouldPruneRetention(nodeConfig.RETENTION_DAYS)) {
+    // Startup already refused a window shorter than the manifest's
+    // (assertDeploymentManifestMatchesConfig); should it still not resolve,
+    // nothing is pruned.
+    const retentionDays = yield* Effect.try(() =>
+      resolveHousekeepingRetentionDays({
+        configured: nodeConfig.RETENTION_DAYS,
+        manifestRetentionDays:
+          deploymentIdentity.manifest?.da.transportProfile.retentionDays,
+      }),
+    ).pipe(
+      Effect.tapError((error) =>
+        Effect.logWarning(`retention_housekeeping_skipped: ${error.message}`),
+      ),
+      Effect.orElseSucceed(() => 0),
+    );
+    if (!shouldPruneRetention(retentionDays)) {
       yield* Effect.logInfo(
-        `🧹 Retention sweep done (challengeableCutoff=${challengeableCutoff.toISOString()}, wall-clock tables disabled by RETENTION_DAYS=0): da_payloads=${prunedDaPayloads}, mempool_tx_deltas=${prunedOrphanDeltas}`,
+        `🧹 Retention sweep done (challengeableCutoff=${challengeableCutoff.toISOString()}, housekeeping disabled: no verified manifest window and RETENTION_DAYS unset, or RETENTION_DAYS=0): da_payloads=${prunedDaPayloads}, mempool_tx_deltas=${prunedOrphanDeltas}`,
       );
       return;
     }
 
-    const cutoff = computeRetentionCutoff(sweptAt, nodeConfig.RETENTION_DAYS);
-    const [
-      prunedTxRejections,
-      prunedAddressHistory,
-      prunedDeposits,
-      prunedWithdrawals,
-    ] = yield* Effect.all(
+    const cutoff = computeHousekeepingCutoff(sweptAt, retentionDays);
+    const [prunedTxRejections, prunedAddressHistory] = yield* Effect.all(
       [
         TxRejectionsDB.pruneOlderThan(cutoff),
         AddressHistoryDB.pruneOlderThan(cutoff),
-        DepositsDB.pruneOlderThan(cutoff),
-        WithdrawalsDB.pruneOlderThan(cutoff),
       ],
       { concurrency: "unbounded" },
     );
+    const prunedLeases = yield* StateQueueMutationLeasesDB.pruneSettledLeases({
+      olderThanMs: retentionDays * RETENTION_MS_PER_DAY,
+    });
+    const prunedJournals =
+      view === undefined || deploymentIdentityDigest === undefined
+        ? undefined
+        : yield* withRetentionHistoryProducer(
+            Effect.gen(function* () {
+              const deadlineMs =
+                (yield* Clock.currentTimeMillis) +
+                RETENTION_HISTORY_PRUNE_BUDGET_MS;
+              return yield* pruneFinalizedBeyondChallengeability({
+                challengeableCutoff: cutoff,
+                view,
+                deploymentIdentityDigest,
+                deadlineMs,
+              });
+            }),
+          );
 
     yield* Effect.logInfo(
-      `🧹 Retention sweep done (cutoff=${cutoff.toISOString()}, challengeableCutoff=${challengeableCutoff.toISOString()}): da_payloads=${prunedDaPayloads}, tx_rejections=${prunedTxRejections}, address_history=${prunedAddressHistory}, deposits_utxos=${prunedDeposits}, withdrawal_utxos=${prunedWithdrawals}, mempool_tx_deltas=${prunedOrphanDeltas}`,
+      `🧹 Retention sweep done (retentionDays=${retentionDays.toString()}, cutoff=${cutoff.toISOString()}, challengeableCutoff=${challengeableCutoff.toISOString()}): da_payloads=${prunedDaPayloads}, tx_rejections=${prunedTxRejections}, address_history=${prunedAddressHistory}, state_queue_mutation_leases=${prunedLeases}, pending_block_finalizations=${prunedJournals ?? "skipped"}, mempool_tx_deltas=${prunedOrphanDeltas}`,
     );
   });
 
@@ -239,7 +388,11 @@ export type RetentionSweeperOptions = {
   readonly fetchL1View?: Effect.Effect<
     DaPayloadsDB.RetentionL1View,
     unknown,
-    Lucid | MidgardContracts
+    | Lucid
+    | MidgardContracts
+    | NodeConfig
+    | ContractDeploymentIdentity
+    | Database
   >;
   readonly nowMs?: () => number;
 };
@@ -271,7 +424,8 @@ export const retentionSweeperFiber = (
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
     const globals = yield* Globals;
-    const fetchL1View = options.fetchL1View ?? fetchRetentionL1View;
+    const fetchL1View =
+      options.fetchL1View ?? fetchRetentionL1ViewWithRetirement;
     const nowMs = options.nowMs ?? (() => Date.now());
     const l1ViewFatalMs = nodeConfig.L1_VIEW_FATAL_MS;
     const sweepMs = nodeConfig.WAIT_BETWEEN_RETENTION_SWEEPS;
@@ -328,6 +482,16 @@ export const retentionSweeperFiber = (
       });
       yield* Ref.set(lastL1ViewAtMs, startedAtMs);
       yield* clearLivenessIncident(globals, RETENTION_L1_VIEW_SOURCE);
+      if (view.retirementProofUnavailable === true) {
+        yield* raiseLivenessIncident(
+          globals,
+          "retention_da_recovery",
+          "retention_da_recovery_proof_unavailable",
+          "terminal DA payloads remain retained: canonical recovery proof is unavailable; the next sweep retries",
+        );
+      } else {
+        yield* clearLivenessIncident(globals, "retention_da_recovery");
+      }
       yield* retentionSweepAction(view, new Date(startedAtMs)).pipe(
         Effect.catchAllCause(Effect.logWarning),
       );

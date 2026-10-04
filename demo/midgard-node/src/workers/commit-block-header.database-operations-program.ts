@@ -61,8 +61,10 @@ import {
   pendingUserEventCountUpTo,
   shouldHydrateCommitBaseEntries,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
+import { recordSuccessfulBuildCalibration as recordBuildCalibration } from "./commit-block-header.record-successful-build-calibration.js";
 import { resolveCommitBaseLedgerEntries } from "./commit-block-header.resolve-commit-base-ledger-entries.js";
 import { revalidateAndPersistSpeculativeCandidateSources } from "./commit-block-header.revalidate-and-persist-speculative-candidate-sources.js";
+import * as DaPrefix from "./commit-block-header/commit-da-prefix-search.js";
 import {
   resolveDepositsRoot,
   resolveForcedTransactionsRoot,
@@ -72,7 +74,6 @@ import {
   getLatestBlockDatumEndTime,
   resolveCommitAppendFenceEndTimeCapLocal,
 } from "./commit-block-header/state-queue.js";
-import { measureCommitDaPayloadUpperBound } from "./commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 import {
   deferProcessedCommitPayloadUntilConfirmation,
   recoverLocalFinalizationAgainstConfirmedBlock,
@@ -87,12 +88,12 @@ import {
   WorkerInput,
   WorkerOutput,
 } from "./utils/commit-block-header.js";
+import { COMMIT_DA_FRAME_FITS_NOTICE } from "./utils/commit-block-planner.commit-da-frame-notice.js";
 import {
   calibratedCommitBuildMsPerTx,
   type CommitSchedulerStateQueueEvidence,
   type CurrentOperatorSchedulerWindow,
   DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
-  emptyBlockDaPayloadUpperBoundBytes,
   establishEndTimeFromTxRequests,
   planCommitBatchBudgets,
   planSchedulerAwareCommitSelection,
@@ -101,7 +102,6 @@ import {
   shouldDeferCommitSubmission,
   shouldSkipIdleCommitBehindUnmergedTail,
   stepDownCommitSelectionToDaFrame,
-  updateCommitBuildEwma,
 } from "./utils/commit-block-planner.js";
 import {
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
@@ -535,7 +535,7 @@ export const databaseOperationsProgram = (
       historyCommitEndTimeFit === undefined
         ? schedulerAwareCommitSelection.blockEndTimeCapMs
         : historyCommitEndTimeFit.maximumEndTimeMs;
-    const fixedHistoryEndTime =
+    let fixedHistoryEndTime =
       historyCommitEndTimeFit === undefined
         ? undefined
         : new Date(historyCommitEndTimeFit.resolvedEndTime - 1);
@@ -699,17 +699,15 @@ export const databaseOperationsProgram = (
       limits: commitBatchBudgetLimits,
       baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
     });
-    if (daFramePlan.prunedTxCount > 0) {
-      yield* Effect.logInfo(
-        `🔹 Commit batch planner trimmed the selection to the base ledger's DA frame tx_count=${daFramePlan.plan.selectedTxCount.toString()}, estimated_da_payload_bytes=${daFramePlan.plan.estimatedDaPayloadBytes.toString()}, base_utxo_entry_count=${commitBase.utxoPayloadAggregate.entryCount.toString()}, pruned_tx_count=${daFramePlan.prunedTxCount.toString()}.`,
-      );
-    }
+    yield* DaPrefix.logDaPrefixPreselection(
+      daFramePlan,
+      commitBase.utxoPayloadAggregate.entryCount,
+    );
     const daFrameBuild = yield* stepDownCommitSelectionToDaFrame({
       candidateSelection: daFramePlan.candidateSelection,
-      baseEmptyBlockInnerBytes: emptyBlockDaPayloadUpperBoundBytes(
-        commitBase.utxoPayloadAggregate,
-      ),
+      baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
       maxInnerBytes: daFrameInnerLimit,
+      notify: notifyParent,
       process: (selection) => {
         mpfProcessingStartedAtMs = Date.now();
         mpfProcessingPasses += 1;
@@ -767,13 +765,21 @@ export const databaseOperationsProgram = (
             MEMPOOL_LEDGER_REVERTED_NOTICE,
           ),
           nativeMpf: nativeMpfContext,
-        });
+        }).pipe(
+          Effect.tap((built) =>
+            Effect.sync(() => {
+              fixedHistoryEndTime ??= built.effectiveBlockEndTime;
+            }),
+          ),
+        );
       },
       measure: (built) =>
-        measureCommitDaPayloadUpperBound({
-          ...built,
-          rejectedTxIds: built.rejectedMempoolTxHashes,
-        }),
+        DaPrefix.measureBuiltCommitDaPrefixes(
+          built,
+          commitBase.root,
+          deploymentIdentity.consensusProfile,
+          nodeConfig,
+        ),
       // A superseded pass's ledger fork and transactions trie never reach
       // commit; the next pass rebuilds both from the same base.
       rebase: Effect.gen(function* () {
@@ -790,11 +796,11 @@ export const databaseOperationsProgram = (
         nativeMpfContext = yield* forkNativeMpfContext;
       }),
     });
+    yield* DaPrefix.assertCompleteDaPrefixSearch(daFrameBuild.outcome);
     const processed = daFrameBuild.processed;
     candidateSelection = daFrameBuild.candidateSelection;
-    const mpfProcessingFinishedAtMs = Date.now();
-    yield* Effect.logInfo(
-      `pipeline_trace phase=mpf_processing_finished at_ms=${mpfProcessingFinishedAtMs.toString()} duration_ms=${Math.max(0, mpfProcessingFinishedAtMs - mpfProcessingStartedAtMs).toString()}`,
+    const mpfProcessingFinishedAtMs = yield* DaPrefix.logMpfProcessingFinished(
+      mpfProcessingStartedAtMs,
     );
 
     const {
@@ -868,21 +874,11 @@ export const databaseOperationsProgram = (
         ) {
           return;
         }
-        const measuredBuildMs = Math.max(
-          0,
-          mpfProcessingFinishedAtMs - mpfProcessingStartedAtMs,
-        );
-        const nextEwma = updateCommitBuildEwma({
-          previousMsPerTx: calibration.msPerTxEwma,
-          measuredBuildMs,
-          processedTxCount: processedMempoolTxs.length,
-          alpha: nodeConfig.COMMIT_BUILD_EWMA_ALPHA,
-        });
-        const updated = yield* CommitBuildCalibrationDB.update(nextEwma);
-        yield* Effect.logInfo(
-          `commit_build_calibration measured_ms_per_tx=${(
-            measuredBuildMs / processedMempoolTxs.length
-          ).toString()} ewma_ms_per_tx=${updated.msPerTxEwma.toString()} sample_count=${updated.sampleCount.toString()}`,
+        yield* recordBuildCalibration(
+          calibration,
+          processedMempoolTxs.length,
+          Math.max(0, mpfProcessingFinishedAtMs - mpfProcessingStartedAtMs),
+          nodeConfig.COMMIT_BUILD_EWMA_ALPHA,
         );
       });
     if (candidateSelection.sourceTable === "processed_mempool") {
@@ -1186,7 +1182,6 @@ export const databaseOperationsProgram = (
 
     const submissionContracts = yield* MidgardContracts;
     const submissionLucid = yield* acquireCommitLucidOnce;
-
     if (submitAvailableConfirmedBlock === "") {
       // The tx confirmation worker has not yet confirmed a previously
       // submitted tx, so the root we have found can not be used yet.
@@ -1258,6 +1253,7 @@ export const databaseOperationsProgram = (
             commitBase.source === "genesis" ? initialLedgerEntries : [],
           beforePendingJournalInsert,
           afterPendingJournalPrepared,
+          afterDaFrameAccepted: notifyParent?.(COMMIT_DA_FRAME_FITS_NOTICE),
           nativeMpfReplay,
         }).pipe(Effect.provideService(Lucid, submissionLucid));
         return attachNativeMpfPromotion(
@@ -1308,6 +1304,7 @@ export const databaseOperationsProgram = (
           blockEndTimeCapMs,
           beforePendingJournalInsert,
           afterPendingJournalPrepared,
+          afterDaFrameAccepted: notifyParent?.(COMMIT_DA_FRAME_FITS_NOTICE),
           nativeMpfReplay,
         }).pipe(Effect.provideService(Lucid, submissionLucid));
         yield* recordSuccessfulBuildCalibration(output);

@@ -1,4 +1,5 @@
 export * from "./assets.js";
+export * from "./availability-response-admission.js";
 export * from "./blake2b-224-trace.js";
 export * from "./blake2b-256-trace.js";
 export * from "./bounded-blob.js";

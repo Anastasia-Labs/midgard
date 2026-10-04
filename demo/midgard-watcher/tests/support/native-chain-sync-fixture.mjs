@@ -142,12 +142,21 @@ if (
   emit({
     kind: "roll_backward",
     point: {
-      blockHash:
-        mode === "unknown_rollback" ? "dd".repeat(32) : "aa".repeat(32),
+      blockHash: ["unknown_rollback", "below_intersection"].includes(mode)
+        ? "dd".repeat(32)
+        : "aa".repeat(32),
       kind: "point",
-      slot: "100",
+      slot: mode === "below_intersection" ? "90" : "100",
     },
     schemaVersion: startup.schemaVersion,
     tip,
   });
+  if (mode === "below_intersection")
+    emit({
+      ...forward,
+      blockHash: "ee".repeat(32),
+      prevHash: "dd".repeat(32),
+      slot: "91",
+      blockNo: "9",
+    });
 }

@@ -1,4 +1,5 @@
 import { SqlClient } from "@effect/sql";
+import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect, Schema } from "effect";
 import JSONBig from "json-bigint";
 
@@ -78,6 +79,7 @@ export const sameBaseJournals = (
 ) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const pg = sql as PgClient;
     return yield* sql<{
       header_hash: Buffer;
       status: Pending.Status;
@@ -88,7 +90,7 @@ export const sameBaseJournals = (
           OR (${!base.headerHash.equals(ROOT_TAIL_HEADER_HASH)}
             AND base_tail_header_hash = ${base.headerHash}
             AND base_utxos_root = ${base.utxosRoot}))
-        AND header_hash NOT IN ${sql.in(excluded)}
+        AND NOT (header_hash = ANY(${pg.array(excluded.map((hash) => `\\x${hash.toString("hex")}`))}::bytea[]))
       ORDER BY created_at, header_hash`;
   });
 
@@ -100,6 +102,7 @@ export const replacedSameBaseJournals = (
 ) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const pg = sql as PgClient;
     const abandoned = (yield* sameBaseJournals(base, excluded)).flatMap(
       (row) =>
         row.status === Pending.Status.Abandoned ? [row.header_hash] : [],
@@ -113,7 +116,7 @@ export const replacedSameBaseJournals = (
     }>`SELECT header_hash, intended_tx_hash, signed_tx_cbor,
         correction_transition_digest
       FROM pending_block_finalizations
-      WHERE header_hash IN ${sql.in(abandoned)}
+      WHERE header_hash = ANY(${pg.array(abandoned.map((hash) => `\\x${hash.toString("hex")}`))}::bytea[])
       ORDER BY created_at, header_hash`;
     // As `journalAbandonment`: abandoned under its own replacement digest.
     return rows.filter(
@@ -140,7 +143,12 @@ export const describeBaseSpend = (spend: BaseSpend, outRef: string) =>
 /** The first evidence in `receipts` (ordered by height), for a signed commit
  * `intended` on base output `outRef` with sibling commits `siblings`, other
  * than evidence by a transaction in `declined` (already declined before the
- * TTL). A receipt that does not decode is no evidence. */
+ * TTL). A receipt that does not decode is no evidence. Only receipts at or
+ * after the base are read: when a receipt shows the valid transaction that
+ * created the base output, nothing below its height can have spent it (or
+ * included a sibling's commit, which spends it too), so a receipt there that
+ * says otherwise is no evidence. When none shows it, the base output is
+ * older than every receipt read. */
 export const findBaseSpend = (
   receipts: readonly Readonly<{ height: number; receipt: string }>[],
   binding: string,
@@ -150,17 +158,24 @@ export const findBaseSpend = (
   declined: ReadonlySet<string> = new Set(),
 ): BaseSpend | undefined => {
   const [outTx, outIndex] = outRef.split("#");
-  for (const { height, receipt } of receipts) {
-    let decoded: typeof receiptSchema.Type;
+  const decoded = receipts.flatMap(({ height, receipt }) => {
     try {
-      decoded = Schema.decodeUnknownSync(receiptSchema)(
+      const block = Schema.decodeUnknownSync(receiptSchema)(
         lossless.parse(receipt),
       );
+      return block.bindingDigest === binding
+        ? [{ height, transactions: block.block.transactions }]
+        : [];
     } catch {
-      continue;
+      return [];
     }
-    if (decoded.bindingDigest !== binding) continue;
-    for (const tx of decoded.block.transactions) {
+  });
+  const base = decoded.find(({ transactions }) =>
+    transactions.some((tx) => tx.spends === "inputs" && tx.txHash === outTx),
+  )?.height;
+  for (const { height, transactions } of decoded) {
+    if (base !== undefined && height < base) continue;
+    for (const tx of transactions) {
       if (
         tx.spends !== "inputs" ||
         tx.txHash === intended ||
@@ -206,7 +221,12 @@ export const scanBaseSpend = (input: {
       ),
     );
     const outTx = input.base.outRef.split("#")[0] ?? "";
-    // Hex only: every alternative is a 64-digit transaction hash.
+    // The receipt bytes read here are hints only: the pattern selects the
+    // receipts naming the base output's transaction (which include the one
+    // that created it, bounding the evidence to heights at or after the
+    // base, see `findBaseSpend`) or a sibling's commit, and the evidence they
+    // give only opens the recovery gate (see the module comment). Hex only:
+    // every alternative is a 64-digit transaction hash.
     const pattern = [outTx, ...siblings]
       .filter((value) => /^[0-9a-f]{64}$/u.test(value))
       .join("|");

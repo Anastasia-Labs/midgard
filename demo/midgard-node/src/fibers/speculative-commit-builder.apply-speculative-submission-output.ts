@@ -92,7 +92,11 @@ export const spawnSpeculativeSessionForTest = (
   afterTermination?: () => Promise<void>,
   takeOutput: (message: CommitWorkerMessage) => WorkerOutput | undefined = (
     message,
-  ) => (message.type === "MempoolLedgerRevertedNotice" ? undefined : message),
+  ) =>
+    message.type === "MempoolLedgerRevertedNotice" ||
+    message.type === "CommitDaFrameNotice"
+      ? undefined
+      : message,
 ): Effect.Effect<SpeculativeCandidateSummary, WorkerError> =>
   spawnSpeculativeSessionWithWorker(() => worker, takeOutput, afterTermination);
 

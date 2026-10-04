@@ -7,7 +7,10 @@ import {
   EntryWithTimeStamp,
 } from "../../database/utils/tx.js";
 import {
-  COMMIT_DA_FRAME_STEP_DOWN_SAFETY,
+  type CommitDaFrameNotice,
+  commitDaFrameNoticeForOutcome,
+} from "./commit-block-planner.commit-da-frame-notice.js";
+import {
   type CommitBatchBudgetLimits,
   type CommitBatchPlan,
   type CommitBatchStopReason,
@@ -242,9 +245,9 @@ export const planCommitBatchBudgets = ({
   /** The commit base's UTxO aggregate, once the base is resolved. */
   readonly baseUtxoPayloadAggregate?: SDK.DaPayloadEntrySizeAggregate;
 }): PlannedCommitBatchSelection => {
-  // Every block carries the whole base ledger. When even its empty block
-  // exceeds the frame no selection fits, and the DA budget stands aside so the
-  // pre-submit check refuses that block by its ledger, exactly as before.
+  // An empty base-ledger upper bound does not rule out ledger-consuming work.
+  // Stand aside when it exceeds the frame; complete-prefix accounting and
+  // final-header admission decide the selected family.
   const baseDaPayloadBytes =
     baseUtxoPayloadAggregate === undefined
       ? 0
@@ -315,81 +318,73 @@ export const planCommitBatchBudgets = ({
   };
 };
 
-/**
- * Decides the next pass after a built block was measured. A block that fits
- * stands. Otherwise the selection shrinks to the transaction count the
- * measured per-transaction cost says fits, and from the second step-down on
- * to at most half, so a selection of `n` reaches the empty floor in at most
- * `3 + log2(n)` passes. A base ledger whose empty block exceeds the frame goes
- * straight to the floor: only withdrawals can shrink the ledger the block
- * carries, so a block without transactions is the one that may still fit. An
- * overflow with no transaction left to drop goes on to the pre-submit check,
- * which refuses it exactly as before.
- */
-export const planCommitDaFrameStepDown = ({
-  measurement,
-  baseEmptyBlockInnerBytes,
-  maxInnerBytes,
-  pass,
-}: {
-  readonly measurement: CommitDaFrameMeasurement;
-  readonly baseEmptyBlockInnerBytes: number;
-  readonly maxInnerBytes: number;
-  /** Zero-based index of the pass that was measured. */
-  readonly pass: number;
-}): CommitDaFrameStepDown => {
-  if (measurement.innerBytesUpperBound <= maxInnerBytes) {
-    return { status: "fits" };
-  }
-  const txCount = measurement.acceptedTxCount;
-  if (txCount === 0) {
-    return { status: "no_transactions_to_drop" };
-  }
-  if (baseEmptyBlockInnerBytes >= maxInnerBytes) {
-    return { status: "step_down", nextTxCount: 0 };
-  }
-  const proportional = Math.floor(
-    (txCount *
-      COMMIT_DA_FRAME_STEP_DOWN_SAFETY *
-      (maxInnerBytes - baseEmptyBlockInnerBytes)) /
-      Math.max(1, measurement.innerBytesUpperBound - baseEmptyBlockInnerBytes),
-  );
-  return {
-    status: "step_down",
-    nextTxCount: Math.max(
-      0,
-      Math.min(
-        txCount - 1,
-        proportional,
-        pass === 0 ? txCount : Math.floor(txCount / 2),
-      ),
-    ),
-  };
+/** Preserves the existing conservative event-work budget. The complete-prefix
+ * search now needs at most two processing passes, below this bound. */
+export const commitDaFrameStepDownPassBound = (txCount: number): number => {
+  let passes = 2;
+  for (let reach = 1; reach < txCount; reach *= 2) passes += 1;
+  return txCount <= 0 ? 1 : passes;
 };
 
-/**
- * Builds a block from `candidateSelection` and, while its measured DA payload
- * cannot fit the frame, rebuilds it from a shorter prefix of the transactions
- * the previous pass accepted. Every pass is a pure function of the previous
- * pass's measurement, so the same mempool steps down to the same block. Only
- * the final pass reaches commit; `rebase` discards a superseded pass's
- * speculative state before the next one is built.
- */
+export const planCommitDaFrameStepDown = ({
+  measurement,
+  maxInnerBytes,
+}: {
+  readonly measurement: CommitDaFrameMeasurement;
+  readonly maxInnerBytes: number;
+}): CommitDaFrameStepDown => {
+  const n = measurement.acceptedTxCount;
+  if (
+    !Number.isSafeInteger(n) ||
+    n < 0 ||
+    measurement.acceptedTxIds.length !== n ||
+    new Set(measurement.acceptedTxIds.map((id) => id.toString("hex"))).size !==
+      n ||
+    measurement.prefixes.length !== n + 1 ||
+    measurement.prefixes.some(
+      (prefix) =>
+        !Number.isSafeInteger(prefix.innerBytesUpperBound) ||
+        prefix.innerBytesUpperBound < 0 ||
+        !/^[0-9a-f]{64}$/.test(prefix.materialDigest),
+    ) ||
+    measurement.prefixes[n]?.innerBytesUpperBound !==
+      measurement.innerBytesUpperBound
+  )
+    return { status: "incomplete" };
+  const first = measurement.hasMandatoryWork ? 0 : 1;
+  if (first > n) return { status: "exact_check_required" };
+  let minimum = first;
+  let fitting: number | undefined;
+  for (let prefix = first; prefix <= n; prefix += 1) {
+    const bytes = measurement.prefixes[prefix]!.innerBytesUpperBound;
+    if (bytes <= maxInnerBytes) fitting = prefix;
+    if (bytes <= measurement.prefixes[minimum]!.innerBytesUpperBound)
+      minimum = prefix;
+  }
+  const chosen = fitting ?? minimum;
+  return chosen === n
+    ? { status: fitting === undefined ? "exact_check_required" : "fits" }
+    : { status: "step_down", nextTxCount: chosen };
+};
+
+/** Enumerates all accepted prefixes once, then rebuilds at most one chosen
+ * prefix from actual accepted order. Changed material is held before signing. */
 export const stepDownCommitSelectionToDaFrame = <P, E, R, E2, R2>({
   candidateSelection,
-  baseEmptyBlockInnerBytes,
+  baseUtxoPayloadAggregate,
   maxInnerBytes,
+  notify,
   process,
   measure,
   rebase,
 }: {
   readonly candidateSelection: CommitTxCandidateSelection;
-  readonly baseEmptyBlockInnerBytes: number;
+  readonly baseUtxoPayloadAggregate: SDK.DaPayloadEntrySizeAggregate;
   readonly maxInnerBytes: number;
+  readonly notify?: (notice: CommitDaFrameNotice) => Effect.Effect<void>;
   readonly process: (
-    candidateSelection: CommitTxCandidateSelection,
+    selection: CommitTxCandidateSelection,
   ) => Effect.Effect<P, E, R>;
-  /** Undefined leaves the block to the pre-submit check unmeasured. */
   readonly measure: (
     processed: P,
   ) => Effect.Effect<CommitDaFrameMeasurement | undefined, E2, R2>;
@@ -399,46 +394,96 @@ export const stepDownCommitSelectionToDaFrame = <P, E, R, E2, R2>({
     readonly processed: P;
     readonly candidateSelection: CommitTxCandidateSelection;
     readonly passes: number;
+    readonly outcome:
+      | "fits"
+      | "exact_check_required"
+      | "incomplete"
+      | "unmeasured";
   },
   E | E2,
   R | R2
 > =>
   Effect.gen(function* () {
+    const baseEmptyBlockInnerBytes = emptyBlockDaPayloadUpperBoundBytes(
+      baseUtxoPayloadAggregate,
+    );
     let selection = candidateSelection;
-    for (let pass = 0; ; pass += 1) {
-      if (pass > 0) yield* rebase;
-      const processed = yield* process(selection);
-      const measurement = yield* measure(processed);
-      const decision =
-        measurement === undefined
-          ? undefined
-          : planCommitDaFrameStepDown({
-              measurement,
-              baseEmptyBlockInnerBytes,
-              maxInnerBytes,
-              pass,
-            });
-      if (decision?.status !== "step_down") {
-        if (decision !== undefined && decision.status !== "fits") {
-          yield* Effect.logWarning(
-            `commit_da_frame_step_down=refused reason=${decision.status} pass=${pass.toString()} inner_bytes_upper_bound=${measurement!.innerBytesUpperBound.toString()} base_empty_block_inner_bytes=${baseEmptyBlockInnerBytes.toString()} effective_inner_limit=${maxInnerBytes.toString()}`,
-          );
-        }
-        return { processed, candidateSelection: selection, passes: pass + 1 };
+    let processed = yield* process(selection);
+    const initial = yield* measure(processed);
+    let measurement = initial;
+    let passes = 1;
+    let decision =
+      measurement === undefined
+        ? undefined
+        : planCommitDaFrameStepDown({ measurement, maxInnerBytes });
+    if (decision?.status === "step_down" && initial !== undefined) {
+      const rows = new Map(
+        selection.candidateTxs.map((entry) => [
+          entry[TxColumns.TX_ID].toString("hex"),
+          entry,
+        ]),
+      );
+      const selectedIds = initial.acceptedTxIds.slice(0, decision.nextTxCount);
+      const selectedRows = selectedIds.map((id) =>
+        rows.get(id.toString("hex")),
+      );
+      if (
+        rows.size !== selection.candidateTxs.length ||
+        selectedRows.some((row) => row === undefined)
+      )
+        decision = { status: "incomplete" };
+      else {
+        selection = buildCommitTxCandidateSelection(
+          selectedRows.filter(
+            (row): row is EntryWithTimeStamp => row !== undefined,
+          ),
+          selection.sourceTable,
+        );
+        yield* rebase;
+        processed = yield* process(selection);
+        passes = 2;
+        measurement = yield* measure(processed);
+        const expected = initial.prefixes[decision.nextTxCount]!;
+        const actual = measurement?.prefixes[measurement.acceptedTxCount];
+        const rebuiltDecision =
+          measurement === undefined
+            ? undefined
+            : planCommitDaFrameStepDown({ measurement, maxInnerBytes });
+        const same =
+          measurement !== undefined &&
+          measurement.acceptedTxCount === selectedIds.length &&
+          measurement.rejectedTxIds.length === 0 &&
+          measurement.acceptedTxIds.every((id, index) =>
+            id.equals(selectedIds[index]!),
+          ) &&
+          measurement.hasMandatoryWork === initial.hasMandatoryWork &&
+          actual?.materialDigest === expected.materialDigest &&
+          actual.innerBytesUpperBound === expected.innerBytesUpperBound;
+        decision =
+          same &&
+          measurement !== undefined &&
+          rebuiltDecision?.status !== "incomplete"
+            ? {
+                status:
+                  measurement.innerBytesUpperBound <= maxInnerBytes
+                    ? "fits"
+                    : "exact_check_required",
+              }
+            : { status: "incomplete" };
       }
-      yield* Effect.logWarning(
-        `commit_da_frame_step_down=stepping pass=${pass.toString()} inner_bytes_upper_bound=${measurement!.innerBytesUpperBound.toString()} base_empty_block_inner_bytes=${baseEmptyBlockInnerBytes.toString()} effective_inner_limit=${maxInnerBytes.toString()} accepted_tx_count=${measurement!.acceptedTxCount.toString()} next_tx_count=${decision.nextTxCount.toString()}`,
-      );
-      const rejected = new Set(
-        measurement!.rejectedTxIds.map((txId) => txId.toString("hex")),
-      );
-      selection = buildCommitTxCandidateSelection(
-        selection.candidateTxs
-          .filter(
-            (entry) => !rejected.has(entry[TxColumns.TX_ID].toString("hex")),
-          )
-          .slice(0, decision.nextTxCount),
-        selection.sourceTable,
-      );
     }
+    const outcome =
+      decision?.status === "step_down"
+        ? "incomplete"
+        : (decision?.status ?? "unmeasured");
+    const notice = commitDaFrameNoticeForOutcome({
+      outcome,
+      passes,
+      measurement,
+      initialCandidateInnerBytesUpperBound: initial?.innerBytesUpperBound,
+      baseEmptyBlockInnerBytes,
+      maxInnerBytes,
+    });
+    if (notice !== undefined && notify !== undefined) yield* notify(notice);
+    return { processed, candidateSelection: selection, passes, outcome };
   });

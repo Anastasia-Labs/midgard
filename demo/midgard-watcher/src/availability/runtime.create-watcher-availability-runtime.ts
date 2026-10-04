@@ -217,7 +217,6 @@ export const createWatcherAvailabilityRuntime = async (input: {
   const assertCurrent = (epoch: number): void => {
     if (closed || epoch !== generation || current === null)
       throw new Error("Availability actuation generation was revoked");
-    journal.assertRunning();
   };
   const commitmentOf = async (
     observation: WatcherAuthenticatedStateQueueObservation,
@@ -574,6 +573,9 @@ export const createWatcherAvailabilityRuntime = async (input: {
             deployment.parameters,
           ),
           assertActuationCurrent: () => assertCurrent(epoch),
+          readBoundary: async () => ({
+            blockNo: Number(observation.nativePoint.blockNo),
+          }),
           observe: (intent) => intake.operation(observation, intent),
           submit: (cbor) =>
             required(lucid.config().provider, "local provider").submitTx(cbor),
@@ -595,13 +597,20 @@ export const createWatcherAvailabilityRuntime = async (input: {
             status !== "expired" &&
             status !== "included",
         );
-        if (unresolved !== undefined) {
-          report = {
-            phase: unresolved.status === "conflict" ? "blocked" : "waiting",
-            pendingHeaders: [...pending],
-            txHash: unresolved.txHash,
-          };
-        }
+        // A held intent fails readiness with its reason until fresh evidence
+        // clears it; it never latches the journal or other intents.
+        const unresolvedReport = unresolved && {
+          phase:
+            unresolved.status === "conflict" || unresolved.status === "held"
+              ? ("blocked" as const)
+              : ("waiting" as const),
+          pendingHeaders: [...pending],
+          txHash: unresolved.txHash,
+          ...(unresolved.detail === undefined
+            ? {}
+            : { detail: unresolved.detail }),
+        };
+        if (unresolvedReport !== undefined) report = unresolvedReport;
         const snapshots = await settleLocalKupmiosReads(
           observation.finalizedHeaders
             .filter(({ headerHash }) => pending.has(headerHash))
@@ -682,14 +691,9 @@ export const createWatcherAvailabilityRuntime = async (input: {
         };
         assertCurrent(epoch);
         report =
-          unresolved === undefined
+          unresolvedReport === undefined
             ? { phase: "ready", pendingHeaders: [...pending], ...alerts }
-            : {
-                phase: unresolved.status === "conflict" ? "blocked" : "waiting",
-                pendingHeaders: [...pending],
-                txHash: unresolved.txHash,
-                ...alerts,
-              };
+            : { ...unresolvedReport, ...alerts };
         if (!actuate || unresolved !== undefined) return;
         // The journal keeps one workflow per header and admits every header of
         // this deployment. A step it refuses, or an Open the wallet cannot
@@ -739,10 +743,14 @@ export const createWatcherAvailabilityRuntime = async (input: {
           ...operation,
         });
         report = {
-          phase: result.status === "conflict" ? "blocked" : "waiting",
+          phase:
+            result.status === "conflict" || result.status === "held"
+              ? "blocked"
+              : "waiting",
           pendingHeaders: [...pending],
           action: operation.action,
           txHash: result.txHash,
+          ...(result.detail === undefined ? {} : { detail: result.detail }),
           ...alerts,
         };
       } catch (cause) {
@@ -827,21 +835,12 @@ export const createWatcherAvailabilityRuntime = async (input: {
       assertCurrentClassification();
       return result;
     },
-    invalidateForRollback: (point) => {
+    invalidateForRollback: () => {
       generation += 1;
       retry.cancel();
-      if (
-        current !== null &&
-        point !== undefined &&
-        (point.kind === "origin" ||
-          BigInt(point.slot) < BigInt(current.nativePoint.slot) ||
-          (point.slot === current.nativePoint.slot &&
-            point.blockHash !== current.nativePoint.blockHash))
-      ) {
-        journal.halt(
-          "Finalized availability observation rolled back; authenticated recovery required",
-        );
-      }
+      // Even a rollback through the finalized observation only rewinds it:
+      // the next observation re-derives every intent, and reconciliation
+      // rebroadcasts the same bytes of any confirmation the fork dropped.
       current = null;
       pending = new Set();
       report = { phase: "waiting", pendingHeaders: [] };

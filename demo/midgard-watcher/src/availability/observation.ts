@@ -413,6 +413,8 @@ export const createWatcherAvailabilityObservation = (input: {
             txHash: intent.txHash,
             inclusionPoint: inclusion.pointId,
             confirmationDepth: transaction.confirmationDepth,
+            currentSlot: Number(observation.nativePoint.slot),
+            currentBlockNo: Number(observation.nativePoint.blockNo),
           };
         }
         const consumed = [...intent.spentOutRefs, ...intent.collateralOutRefs];

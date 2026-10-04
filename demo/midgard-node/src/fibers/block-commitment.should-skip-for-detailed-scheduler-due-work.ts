@@ -41,6 +41,7 @@ import {
   BLOCK_COMMITMENT_DUE_WORK_KIND,
   publishFullMempoolLedgerReload,
 } from "./block-commitment.promote-or-recover-native-mpf.js";
+import { clearCommitWorkerFailure } from "./block-commitment.worker-readiness.js";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
 import {
   checkSlotAwareDueWork,
@@ -258,6 +259,7 @@ export const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment = Effect.gen(
       return false;
     }
     yield* Ref.set(globals.COMMIT_PIPELINE_IDLE, true);
+    yield* clearCommitWorkerFailure(globals);
     yield* logOnStateChange(
       globals,
       COMMIT_PIPELINE_SKIP_LOG_KEY,

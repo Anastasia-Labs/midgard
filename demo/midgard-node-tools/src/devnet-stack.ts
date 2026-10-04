@@ -3,6 +3,7 @@ import { isAbsolute, resolve } from "node:path";
 
 import { Command } from "commander";
 
+import { registerAcceptanceCommands } from "./devnet-stack/acceptance-payout-commands.js";
 import {
   compose,
   ensureChainGenerated,
@@ -43,12 +44,14 @@ import {
 } from "./devnet-stack/fresh-controller.js";
 import type { FundingRecord } from "./devnet-stack/funding.js";
 import { ensureFunded } from "./devnet-stack/funding.js";
+import { runHistoryRoleCommand } from "./devnet-stack/history-role-command.js";
 import { loadIdentities, walletInfos } from "./devnet-stack/identities.js";
 import { Journal } from "./devnet-stack/journal.js";
 import { Journey, runScenario } from "./devnet-stack/journey.js";
 import { type Layout, makeLayout, readRunEnv } from "./devnet-stack/layout.js";
 import { acquireLock, lockOwner } from "./devnet-stack/lock.js";
 import { provisionReserveFloat } from "./devnet-stack/reserve-float-chain.js";
+import { registerServiceRecovery } from "./devnet-stack/service-recovery-cli.js";
 import {
   enduranceReport,
   serviceSpecs,
@@ -70,14 +73,7 @@ import {
 } from "./devnet-stack/stack.js";
 import { superviseWithMaintainers } from "./devnet-stack/supervisor.js";
 import { ensureWatcherRelease } from "./devnet-stack/watcher.js";
-import {
-  HISTORY_ROLES,
-  type HistoryRole,
-  startHistoryArchive,
-  startHistoryTunnel,
-  untilSignalled,
-} from "./devnet-stack/watcher-history.js";
-import { runHistoryRecorder } from "./devnet-stack/watcher-history-recorder.js";
+import { HISTORY_ROLES } from "./devnet-stack/watcher-history.js";
 
 const layoutFor = (runDir: string) => {
   if (!isAbsolute(runDir))
@@ -100,6 +96,7 @@ const resumeUp = async (
   layout: Layout,
   readyTimeoutMs: number,
   code: LoadedCode,
+  initializeWatcherAuthority = false,
 ) => {
   const run = await ensureChainGenerated(layout);
   holdRunForResume(layout, code);
@@ -132,7 +129,7 @@ const resumeUp = async (
   await provisionReserveFloat(layout, run, journal);
   await ensureCommitteeDatabases(layout, run);
   await ensureDaManifests(context, oneShot);
-  await ensureWatcherRelease(context, oneShot);
+  await ensureWatcherRelease(context, oneShot, initializeWatcherAuthority);
   console.log(`watcher: release ready under ${layout.watcher}`);
   const specs = serviceSpecs(context, oneShot);
   const supervisor = await ensureSupervisor({
@@ -192,7 +189,7 @@ const supervise = async (options: { runDir: string }) => {
   try {
     await superviseWithMaintainers(
       specs,
-      supervisorPaths(context),
+      supervisorPaths(context, specs),
       abort.signal,
       supervisorMaintainers(context),
     );
@@ -326,32 +323,12 @@ const drill = async (options: DrillOptions) => {
   if (summary.failures.length > 0) process.exitCode = 1;
 };
 
-const historyArchive = async (options: {
-  runDir: string;
-  provider: string;
-}) => {
-  if (!(HISTORY_ROLES as readonly string[]).includes(options.provider))
-    throw new Error(`--provider must be one of ${HISTORY_ROLES.join(", ")}`);
-  const layout = layoutFor(options.runDir);
-  await untilSignalled(
-    await startHistoryArchive(
-      layout,
-      readRunEnv(layout),
-      options.provider as HistoryRole,
-    ),
-  );
-};
-
-const historyTunnel = async (options: { runDir: string }) => {
-  await untilSignalled(
-    await startHistoryTunnel(readRunEnv(layoutFor(options.runDir))),
-  );
-};
-
-const historyRecorder = async (options: { runDir: string }) => {
-  const { context } = runningContext(layoutFor(options.runDir));
-  await runHistoryRecorder(context);
-};
+const historyArchive = (options: { runDir: string; provider: string }) =>
+  runHistoryRoleCommand({ ...options, role: "archive" });
+const historyTunnel = (options: { runDir: string }) =>
+  runHistoryRoleCommand({ ...options, role: "tunnel" });
+const historyRecorder = (options: { runDir: string }) =>
+  runHistoryRoleCommand({ ...options, role: "recorder" });
 
 const program = new Command()
   .name("midgard-devnet-stack")
@@ -363,7 +340,12 @@ registerUp(program, (options) => {
   const layout = layoutFor(options.runDir);
   return {
     deps: upDeps(layout, (code) =>
-      resumeUp(layout, options.readyTimeoutMs, code),
+      resumeUp(
+        layout,
+        options.readyTimeoutMs,
+        code,
+        options.initializeWatcherAuthority === true,
+      ),
     ),
     launch: {
       execPath: process.execPath,
@@ -403,6 +385,13 @@ program
     "300",
   )
   .action(journey);
+
+registerAcceptanceCommands(program, (runDir) => {
+  const layout = layoutFor(runDir);
+  startRunUser(layout, "journey");
+  startRunUser(layout, "drill");
+  return runningContext(layout);
+});
 
 program
   .command("drill")
@@ -472,6 +461,8 @@ program
   .action(async (options: { runDir: string; l1?: boolean }) => {
     await down({ runDir: options.runDir, l1: options.l1 === true });
   });
+
+registerServiceRecovery(program);
 
 program.parseAsync().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));

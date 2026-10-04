@@ -5,6 +5,10 @@ import { cardanoCli } from "./chain.js";
 import { writeDurableJson } from "./durable.js";
 import { requireSuccess } from "./exec.js";
 import {
+  ROLE_COLLATERAL_LOVELACE,
+  roleBudgetLovelace,
+} from "./funding-budget.js";
+import {
   USER_ROLES,
   WALLET_ROLES,
   type WalletInfo,
@@ -13,25 +17,6 @@ import {
 import type { Journal } from "./journal.js";
 import type { Layout, RunEnv } from "./layout.js";
 
-const ADA = 1_000_000n;
-
-/** Main balance per role; every role also gets a 10 ADA collateral output. */
-const ROLE_BUDGET_ADA: Record<WalletRole, bigint> = {
-  operator: 200_000n,
-  merge: 50_000n,
-  referenceScript: 100_000n,
-  settlement: 50_000n,
-  daCosigner: 1_000n,
-  daSubmitter0: 20_000n,
-  daSubmitter1: 20_000n,
-  daAvailability0: 20_000n,
-  daAvailability1: 20_000n,
-  watcherProver: 50_000n,
-  watcherAvailability: 20_000n,
-  userA: 50_000n,
-  userB: 50_000n,
-  userC: 50_000n,
-};
 /**
  * A role whose wallet holds less than this share of its budget is reported:
  * nothing refills a wallet, and every L1 fee it pays is gone for good.
@@ -40,7 +25,7 @@ const LOW_BALANCE_DIVISOR = 5n;
 
 /** The balance below which a role's wallet is reported low. */
 export const lowBalanceFloorLovelace = (role: WalletRole): bigint =>
-  (ROLE_BUDGET_ADA[role] * ADA) / LOW_BALANCE_DIVISOR;
+  roleBudgetLovelace(role) / LOW_BALANCE_DIVISOR;
 
 /** One reason per role whose wallet is below its floor. */
 export const lowBalanceReasons = (
@@ -59,6 +44,29 @@ export const lowBalanceReasons = (
 /** Users get several outputs so concurrent submissions do not share one. */
 const USER_OUTPUTS = 5n;
 const USER_TOKEN_AMOUNT = 1_000_000n;
+
+/** Exact bootstrap outputs; keeping this pure lets the role coverage be
+ * checked without genesis keys, a running chain or a submission. */
+export const initialFundingOutputs = (
+  wallets: Record<WalletRole, Pick<WalletInfo, "address">>,
+  perUser: string,
+): string[] => {
+  const outputs: string[] = [];
+  for (const role of WALLET_ROLES) {
+    const address = wallets[role].address;
+    const budget = roleBudgetLovelace(role);
+    if ((USER_ROLES as readonly string[]).includes(role)) {
+      const share = budget / USER_OUTPUTS;
+      outputs.push("--tx-out", `${address}+${share}+${perUser}`);
+      for (let index = 1n; index < USER_OUTPUTS; index += 1n)
+        outputs.push("--tx-out", `${address}+${share}`);
+    } else {
+      outputs.push("--tx-out", `${address}+${budget}`);
+    }
+    outputs.push("--tx-out", `${address}+${ROLE_COLLATERAL_LOVELACE}`);
+  }
+  return outputs;
+};
 
 export type TestAsset = {
   readonly policyId: string;
@@ -194,20 +202,7 @@ export const ensureFunded = async (
     if (input === undefined)
       throw new Error("the genesis UTxO is not available");
 
-    const outputs: string[] = [];
-    for (const role of WALLET_ROLES) {
-      const address = wallets[role].address;
-      const budget = ROLE_BUDGET_ADA[role] * ADA;
-      if ((USER_ROLES as readonly string[]).includes(role)) {
-        const share = budget / USER_OUTPUTS;
-        outputs.push("--tx-out", `${address}+${share}+${perUser}`);
-        for (let index = 1n; index < USER_OUTPUTS; index += 1n)
-          outputs.push("--tx-out", `${address}+${share}`);
-      } else {
-        outputs.push("--tx-out", `${address}+${budget}`);
-      }
-      outputs.push("--tx-out", `${address}+${10n * ADA}`);
-    }
+    const outputs = initialFundingOutputs(wallets, perUser);
     const body = join(work, "funding.txbody");
     const signed = join(work, "funding.signed");
     await cli(

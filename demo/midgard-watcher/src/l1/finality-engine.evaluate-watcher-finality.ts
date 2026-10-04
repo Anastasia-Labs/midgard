@@ -213,6 +213,16 @@ export const evaluateWatcherFinality = (
   }
 
   const pending = state.pending as WatcherFinalityBoundObservation;
+  if (
+    state.finalized !== null &&
+    BigInt(agreement.blockNo) <= BigInt(state.finalized.blockNo)
+  ) {
+    return quarantineFinalized(
+      state,
+      "post_finality_point_changed",
+      agreement.consistencyDigest,
+    );
+  }
   let rewindReason: WatcherFinalityRewindInstruction["kind"] | null = null;
   if (
     agreement.pointDigest !== pending.pointDigest ||
@@ -253,7 +263,7 @@ export const evaluateWatcherFinality = (
       deploymentMarker: policy.deploymentMarker,
       phase: "pending",
       pending: replacement,
-      finalized: null,
+      finalized: state.finalized,
       incident: null,
     });
     return result(
@@ -313,7 +323,7 @@ export const evaluateWatcherFinality = (
     deploymentMarker: policy.deploymentMarker,
     phase: "pending",
     pending: nextBound,
-    finalized: null,
+    finalized: state.finalized,
     incident: null,
   });
   return result(

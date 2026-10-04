@@ -1,9 +1,10 @@
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
 import { SqlClient } from "@effect/sql";
 import { Effect, Logger, Option } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
+import { readDaHardeningConfig } from "../src/da/hardening-config.js";
 import { TxUtils as TxTable } from "../src/database/index.js";
 import type { EntryWithTimeStamp } from "../src/database/utils/tx.js";
 import {
@@ -17,16 +18,25 @@ import {
   NodeConfig,
 } from "../src/services/index.js";
 import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.js";
-import type {
-  SpeculativeCandidateReadyOutput,
-  WorkerInput,
-} from "../src/workers/utils/commit-block-header.js";
+import { captureCommitWorkerFailure } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
+import type { SpeculativeCandidateReadyOutput } from "../src/workers/utils/commit-block-header.js";
+import { type CommitDaFrameNotice } from "../src/workers/utils/commit-block-planner.commit-da-frame-notice.js";
+import {
+  DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
+  estimatedTxDaPayloadBytes,
+} from "../src/workers/utils/commit-block-planner.js";
 import {
   blockContentFor,
   type BlockShape,
   CANONICAL_TX,
   LC1_BASE_LEDGER,
 } from "./helpers/commit-da-frame-fixtures.js";
+import {
+  deploymentIdentity,
+  fakeSql,
+  nodeConfig,
+  workerInput,
+} from "./helpers/commit-da-frame-worker-fixture.js";
 
 // The worker reads its candidates, its speculative base journal and the
 // native owner through these seams; the block build itself is faked below.
@@ -185,78 +195,6 @@ const candidateTx = (seed: number): EntryWithTimeStamp => ({
   [TxTable.Columns.TIMESTAMPTZ]: new Date(BLOCK_TIME + seed),
 });
 
-const nodeConfig = {
-  MPF_PAYLOAD_ROOT_CHECK: "off",
-  MPF_RECORD_CORPUS: "",
-  MEMPOOL_RETRIEVE_PAGE_SIZE: 100,
-  COMMIT_BUILD_COST_MODEL: "static",
-  COMMIT_MAX_L2_TX_COUNT: 100,
-  COMMIT_MAX_LEDGER_OP_COUNT: 1_000,
-  COMMIT_MAX_TRANSITION_STEP_COUNT: 1_000,
-  NETWORK: "Testnet",
-  MIN_FEE_A: 0n,
-  MIN_FEE_B: 0n,
-  VALIDATION_G4_BUCKET_CONCURRENCY: 1,
-} as never;
-const deploymentIdentity = ContractDeploymentIdentity.make({
-  kind: "derived",
-  deploymentMarker: {
-    schemaVersion: "midgard-deployment-marker-v1",
-    manifestId: "test-manifest",
-  } as never,
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-});
-const fakeSql = Object.assign(
-  ((..._args: readonly unknown[]) =>
-    Effect.succeed([])) as unknown as SqlClient.SqlClient,
-  {
-    array: vi.fn((values: readonly unknown[]) => values),
-    withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) => effect,
-  },
-) as unknown as SqlClient.SqlClient;
-const watermark = Date.parse("2026-01-01T00:07:00.999Z");
-const workerInput = {
-  nativeMpf: {
-    port: {} as MessagePort,
-    durableRoot: "33".repeat(32),
-    ownerBinarySha256: "ab".repeat(32),
-  },
-  data: {
-    availableConfirmedBlock: "",
-    availableLocalFinalizationBlock: "",
-    currentBlockStartTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
-    forcedValidationSlotConfig: {
-      zeroTime: Date.parse("2026-01-01T00:06:50.999Z"),
-      zeroSlot: 100,
-      slotLength: 1_000,
-    },
-    ledgerStoreLeaseOwner: "commit:12345678-1234-4123-8123-123456789abc",
-    localFinalizationPending: false,
-    mempoolTxsCountSoFar: 0,
-    sizeOfProcessedTxsSoFar: 0,
-    baseSnapshotId: "test",
-    stateQueueHasUnmergedTail: false,
-    speculativeBuild: {
-      base: {
-        headerHash: "aa".repeat(28),
-        utxosRoot: "33".repeat(32),
-        blockEndTimeMs: Date.parse("2026-01-01T00:05:00.000Z"),
-        submittedTxHash: "bb".repeat(32),
-      },
-      watermarks: {
-        depositMs: watermark,
-        withdrawalMs: watermark,
-        txOrderMs: watermark,
-        refreshedAtMs: watermark,
-      },
-      excludedMempoolTxIds: [],
-      excludedDepositEventIds: [],
-      excludedForcedTransactionEventIds: [],
-      excludedWithdrawalEventIds: [],
-    },
-  },
-} as unknown as WorkerInput;
-
 /**
  * One commit worker run over `txCount` transactions of `shape`, from a base
  * ledger of `baseAggregate`. Each build returns the DA content its selection
@@ -266,6 +204,7 @@ const runWorker = async (
   txCount: number,
   shape: BlockShape,
   baseAggregate: UtxoPayloadSizeAggregate = LC1_BASE_LEDGER,
+  invalidateOnRebuild = false,
 ) => {
   seams.candidates = Array.from({ length: txCount }, (_, index) =>
     candidateTx(index + 1),
@@ -273,20 +212,34 @@ const runWorker = async (
   seams.baseAggregate = baseAggregate;
   seams.owner = [];
   const builds: string[][] = [];
+  const sourceWindows: (number | undefined)[] = [];
   vi.mocked(processMpfs).mockReset();
   vi.mocked(processMpfs).mockImplementation(((
     _transactionsMpf: unknown,
     txs: readonly EntryWithTimeStamp[],
-    config: { readonly nativeMpf?: NativeMpfBuildContext },
+    config: {
+      readonly nativeMpf?: NativeMpfBuildContext;
+      readonly fixedBlockEndTime?: Date;
+    },
   ) =>
     Effect.sync(() => {
+      sourceWindows.push(config.fixedBlockEndTime?.getTime());
       const handle = config.nativeMpf?.handle as unknown as { id: number };
       seams.owner.push(`build:${handle.id.toString()}`);
       builds.push(
         txs.map((entry) => entry[TxTable.Columns.TX_ID].toString("hex")),
       );
       return {
-        ...blockContentFor(txs, { ...shape, base: baseAggregate }),
+        ...blockContentFor(txs, {
+          ...shape,
+          base: baseAggregate,
+          ...(invalidateOnRebuild && builds.length > 1
+            ? { witnessValueBytes: (shape.witnessValueBytes ?? 1470) + 1 }
+            : {}),
+        }),
+        effectiveBlockEndTime:
+          config.fixedBlockEndTime ??
+          txs[txs.length - 1]?.[TxTable.Columns.TIMESTAMPTZ],
         utxoRoot: "33".repeat(32),
         rawTxRoot: "44".repeat(32),
         txRoot: "44".repeat(32),
@@ -313,22 +266,40 @@ const runWorker = async (
       };
     })) as unknown as typeof processMpfs);
   const candidates: SpeculativeCandidateReadyOutput["candidate"][] = [];
+  const notices: unknown[] = [];
   const output = await Effect.runPromise(
-    runCommitBlockHeaderWorkerProgram(workerInput, (candidate) => {
-      candidates.push(candidate);
-      return Effect.succeed({
-        type: "InvalidateSpeculativeCandidate",
-        reason: "T1",
-      });
-    }).pipe(
+    captureCommitWorkerFailure(
+      runCommitBlockHeaderWorkerProgram(
+        workerInput,
+        (candidate) => {
+          candidates.push(candidate);
+          return Effect.succeed({
+            type: "InvalidateSpeculativeCandidate",
+            reason: "T1",
+          });
+        },
+        (message) => Effect.sync(() => notices.push(message)),
+      ),
+    ).pipe(
       Effect.provideService(NodeConfig, nodeConfig),
       Effect.provideService(ContractDeploymentIdentity, deploymentIdentity),
       Effect.provideService(UnownedHistoryFixture, true),
       Effect.provideService(SqlClient.SqlClient, fakeSql),
       Effect.provide(Logger.remove(Logger.defaultLogger)),
-    ) as Effect.Effect<unknown, unknown, never>,
+    ) as unknown as Effect.Effect<unknown, unknown, never>,
   );
-  return { output, builds, candidates, owner: seams.owner };
+  const daFrameNotices = notices.filter(
+    (notice): notice is CommitDaFrameNotice =>
+      (notice as { type?: string }).type === "CommitDaFrameNotice",
+  );
+  return {
+    output,
+    builds,
+    candidates,
+    owner: seams.owner,
+    daFrameNotices,
+    sourceWindows,
+  };
 };
 
 // About 925 KB of retained validation trace per transaction: a hundred of them
@@ -342,6 +313,8 @@ describe("commit worker DA frame step-down", () => {
       type: "SpeculativeCandidateInvalidatedOutput",
     });
     expect(run.builds).toHaveLength(2);
+    expect(run.sourceWindows[0]).toBeUndefined();
+    expect(run.sourceWindows[1]).toBe(BLOCK_TIME + 100);
     const [first, second] = run.builds;
     expect(first).toHaveLength(100);
     expect(second!.length).toBeGreaterThan(0);
@@ -358,6 +331,20 @@ describe("commit worker DA frame step-down", () => {
     ]);
     expect(run.candidates).toHaveLength(1);
     expect(run.candidates[0]?.expectedL2TransactionCount).toBe(second!.length);
+    expect(run.daFrameNotices[0]?.pressure).toMatchObject({
+      passes: 2,
+      requiredWorkInnerBytesUpperBound: null,
+    });
+    expect(
+      run.daFrameNotices[0]?.pressure?.initialCandidateInnerBytesUpperBound,
+    ).toBeGreaterThan(
+      maxDaPayloadInnerBytes(readDaHardeningConfig().envelopeMode),
+    );
+    expect(
+      run.daFrameNotices[0]?.pressure?.candidateInnerBytesUpperBound,
+    ).toBeLessThanOrEqual(
+      maxDaPayloadInnerBytes(readDaHardeningConfig().envelopeMode),
+    );
   });
 
   it("builds a block that fits once", async () => {
@@ -369,7 +356,7 @@ describe("commit worker DA frame step-down", () => {
     expect(run.candidates[0]?.expectedL2TransactionCount).toBe(3);
   });
 
-  it("drops every transaction when the base ledger alone cannot fit", async () => {
+  it("keeps a legal ordinary candidate for final exact authority when its base ledger upper bound overflows", async () => {
     const run = await runWorker(
       3,
       {},
@@ -378,7 +365,99 @@ describe("commit worker DA frame step-down", () => {
         encodedTupleBytes: 500_000 * 148,
       },
     );
-    expect(run.builds.map((build) => build.length)).toEqual([3, 0]);
-    expect(run.candidates[0]?.expectedL2TransactionCount).toBe(0);
+    expect(run.builds.map((build) => build.length)).toEqual([3, 1]);
+    expect(run.candidates[0]?.expectedL2TransactionCount).toBe(1);
   });
+
+  it("plans the selection against the base ledger before the first build", async () => {
+    // A base ledger that leaves the planner room for about forty plain
+    // transfers of the hundred the base-free plan admits.
+    const limit = maxDaPayloadInnerBytes(readDaHardeningConfig().envelopeMode);
+    const perTx = estimatedTxDaPayloadBytes(
+      CANONICAL_TX.length,
+      DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
+    );
+    const entryCount = Math.floor((limit - 40.5 * perTx) / 148);
+    const run = await runWorker(
+      100,
+      {},
+      {
+        entryCount,
+        encodedTupleBytes: entryCount * 148,
+      },
+    );
+    expect(run.builds).toHaveLength(1);
+    const [only] = run.builds;
+    expect(only!.length).toBeGreaterThan(0);
+    expect(only!.length).toBeLessThan(100);
+    expect(run.candidates[0]?.expectedL2TransactionCount).toBe(only!.length);
+    expect(run.daFrameNotices.map((notice) => notice.status)).toEqual(["fits"]);
+  });
+});
+
+describe("commit worker DA frame notices", () => {
+  it("posts fits for a block the frame admits", async () => {
+    const run = await runWorker(3, {});
+    expect(run.daFrameNotices).toEqual([
+      expect.objectContaining({
+        type: "CommitDaFrameNotice",
+        status: "fits",
+        pressure: expect.objectContaining({
+          candidateStagePercent: 0,
+          acceptedTxCount: 3,
+          requiredWorkInnerBytesUpperBound: null,
+          effectiveInnerLimit: maxDaPayloadInnerBytes(
+            readDaHardeningConfig().envelopeMode,
+          ),
+        }),
+      }),
+    ]);
+  });
+
+  it("posts provisional exact_check_required when mandatory event upper bounds overflow", async () => {
+    const mode = readDaHardeningConfig().envelopeMode;
+    const run = await runWorker(3, {
+      eventBytes: maxDaPayloadInnerBytes(mode),
+    });
+    expect(run.builds.at(-1)).toEqual([]);
+    expect(run.daFrameNotices.map((notice) => notice.status)).toEqual([
+      "exact_check_required",
+    ]);
+    expect(run.daFrameNotices[0]?.detail).toContain(
+      `effective_inner_limit=${maxDaPayloadInnerBytes(mode).toString()}`,
+    );
+    expect(run.daFrameNotices[0]?.pressure).toMatchObject({
+      acceptedTxCount: 0,
+      requiredWorkStagePercent: 90,
+    });
+    expect(
+      run.daFrameNotices[0]?.pressure?.requiredWorkInnerBytesUpperBound,
+    ).toBe(run.daFrameNotices[0]?.pressure?.candidateInnerBytesUpperBound);
+  });
+
+  it("does not infer an exact ledger ceiling from a maximum-header overflow", async () => {
+    const run = await runWorker(
+      3,
+      {},
+      { entryCount: 500_000, encodedTupleBytes: 500_000 * 148 },
+    );
+    expect(run.daFrameNotices.map((notice) => notice.status)).toEqual([
+      "exact_check_required",
+    ]);
+  });
+});
+
+// Production caller must hold a changed rebuild before publishing a candidate.
+it("fails the production worker and discards its forks when rebuilt validation material changes", async () => {
+  const run = await runWorker(100, DEEP_LEDGER_TRANSFER, LC1_BASE_LEDGER, true);
+  expect(run.output).toMatchObject({ type: "FailureOutput" });
+  expect(run.builds).toHaveLength(2);
+  expect(run.candidates).toEqual([]);
+  expect(run.daFrameNotices.map((notice) => notice.status)).toEqual([
+    "incomplete",
+  ]);
+  expect(run.owner.filter((entry) => entry.startsWith("discard:"))).toEqual([
+    "discard:1",
+    "discard:2",
+  ]);
 });

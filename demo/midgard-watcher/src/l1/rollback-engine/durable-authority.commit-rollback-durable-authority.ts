@@ -265,7 +265,7 @@ export const storeWithAuthenticatedObservations = (
 const frontierBlockNo = (state: WatcherFinalityState): bigint | null => {
   const frontier =
     state.phase === "pending"
-      ? state.pending
+      ? (state.finalized ?? state.pending)
       : state.phase === "finalized"
         ? state.finalized
         : null;
@@ -277,15 +277,13 @@ const frontierBlockNo = (state: WatcherFinalityState): bigint | null => {
  * retires the evidence that has fallen out of the recovery horizon.
  *
  * Every reader of this evidence looks at most
- * `WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth` blocks below the durable
- * frontier: a pre-finality rewind removes only points at or above its
+ * `WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth` blocks below released
+ * finality (or the pending frontier before the first release): a rewind removes only points at or above its
  * replacement, a post-finality recovery path is at most that many blocks
  * long, and a pending restart replays only the pending block's predecessor.
- * Under Praos chain selection the tip block number never decreases across a
- * reorg, so no rollback within k = 2160 can fork below the horizon taken from
- * any frontier this authority has held. Evidence below it is unreadable by
- * construction; keeping it made the history grow with uptime until the bound
- * below refused every durable write.
+ * A newer pending successor cannot prune the released predecessor's recovery
+ * ancestry. Surviving dependent records
+ * retain their chain points even when their depth snapshots are compacted.
  *
  * The new input, every retained history entry's observations, and every chain
  * point another record still references are never retired.
@@ -316,30 +314,47 @@ export const nextAuthenticatedEvidenceWithinRecoveryHorizon = (input: {
     anchor === null
       ? null
       : anchor - WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth;
-  const retained =
-    horizon === null || horizon <= 0n
-      ? appendedHistory
-      : appendedHistory.filter(
-          (consistency) =>
-            consistency === input.consistency ||
-            consistency.agreement === null ||
-            BigInt(consistency.agreement.blockNo) >= horizon,
-        );
+  // Depth changes do not change a block's point/content. Retain the newest
+  // evidence for that identity plus the exact snapshots finality references.
+  // Reconnects can supply arbitrarily many distinct depths at one height.
+  const protectedDigests = new Set([
+    input.frontier.pending?.firstSeenConsistencyDigest,
+    input.frontier.pending?.lastSeenConsistencyDigest,
+    input.frontier.finalized?.firstSeenConsistencyDigest,
+    input.frontier.finalized?.lastSeenConsistencyDigest,
+    input.frontier.incident?.triggerConsistencyDigest,
+    input.consistency.consistencyDigest,
+  ]);
+  const latestByPoint = new Map<string, WatcherMultiProviderConsistency>();
+  for (const consistency of appendedHistory) {
+    const agreement = consistency.agreement;
+    if (agreement === null) continue;
+    const identity = `${agreement.pointDigest}:${agreement.blockContentDigest}`;
+    const latest = latestByPoint.get(identity);
+    if (
+      latest === undefined ||
+      BigInt(agreement.minimumDepth) >= BigInt(latest.agreement!.minimumDepth)
+    )
+      latestByPoint.set(identity, consistency);
+  }
+  const latest = new Set(latestByPoint.values());
+  const retained = appendedHistory.filter(
+    (consistency) =>
+      protectedDigests.has(consistency.consistencyDigest) ||
+      ((horizon === null ||
+        horizon <= 0n ||
+        consistency.agreement === null ||
+        BigInt(consistency.agreement.blockNo) >= horizon) &&
+        (consistency.agreement === null || latest.has(consistency))),
+  );
   let store = appended;
-  if (horizon !== null && retained.length !== appendedHistory.length) {
+  if (retained.length !== appendedHistory.length) {
     const kept = new Set([
       ...input.observations.map(({ observationDigest }) => observationDigest),
       ...retained.flatMap(
         ({ observationEvidenceDigests }) => observationEvidenceDigests,
       ),
     ]);
-    const points = new Map(
-      appended.chainPoints.map((point) => [point.chainPointId, point]),
-    );
-    const belowHorizon = (chainPointId: string): boolean => {
-      const point = points.get(chainPointId);
-      return point !== undefined && BigInt(point.blockNo) < horizon;
-    };
     const retainedEntries = new Set(retained);
     const retired = new Set(
       appendedHistory
@@ -348,9 +363,8 @@ export const nextAuthenticatedEvidenceWithinRecoveryHorizon = (input: {
         .filter((digest) => !kept.has(digest)),
     );
     const retiredObservations = new Set(
-      appended.l1Observations.filter(
-        ({ observationId, chainPointId }) =>
-          retired.has(observationId) && belowHorizon(chainPointId),
+      appended.l1Observations.filter(({ observationId }) =>
+        retired.has(observationId),
       ),
     );
     const l1Observations = appended.l1Observations.filter(
@@ -385,8 +399,8 @@ export const nextAuthenticatedEvidenceWithinRecoveryHorizon = (input: {
       },
     });
   }
-  // The horizon spans 2,161 heights and the bound admits three retained
-  // agreements per height, so this is an invariant assertion.
+  // The horizon spans 2,161 heights; equivalent depth snapshots are compacted.
+  // Competing block identities retain their evidence and fail closed at this cap.
   if (retained.length > WATCHER_ROLLBACK_CONSISTENCY_HISTORY_BOUND) {
     throw new Error(
       "watcher authenticated consistency history exceeds its bound",

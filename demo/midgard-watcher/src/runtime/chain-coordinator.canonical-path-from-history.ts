@@ -8,9 +8,13 @@ import type {
   WatcherNativeChainSyncEvent,
   WatcherNativeChainSyncPoint,
 } from "../l1/native-chain-sync.js";
+import { indexPersistedObservations } from "../l1/rollback-engine/state.verify-persisted-consistency-evidence.js";
 import type { WatcherBlockProgressStore } from "../storage/block-progress-store.js";
 import type { WatcherDurableRuntime } from "../storage/durable-runtime.js";
+import { WatcherDurableAuthorityConflict } from "../storage/durable-runtime.load-published-authority.js";
+import type { WatcherDurableStore } from "../storage/durable-store.js";
 import type { WatcherBlockRelevance } from "./block-relevance.js";
+import type { WatcherCoordinatorHoldReason } from "./chain-coordinator.integrity-hold.js";
 
 export const WATCHER_CHAIN_COORDINATOR_SCHEMA_VERSION =
   "midgard-watcher-production-chain-coordinator-v1" as const;
@@ -24,6 +28,7 @@ export type WatcherChainCoordinator = Readonly<{
   status(): Readonly<{
     rollbackPoint: WatcherNativeChainSyncPoint | null;
     quarantined: boolean;
+    integrityHold: WatcherCoordinatorHoldReason | null;
     deliveryHeld: boolean;
     bufferedBlockCount: number;
     processedThrough: WatcherProcessedHead | null;
@@ -46,7 +51,8 @@ export const WATCHER_AUTHORITY_CHECKPOINT_INTERVAL_BLOCKS = 2_160n;
 export type WatcherChainCoordinatorDependencies = Readonly<{
   /**
    * Cheap local answer to "did this block touch anything the watcher tracks".
-   * Quiet blocks skip the network observation and the durable authority.
+   * Quiet blocks retain authenticated recovery evidence without advancing
+   * the sparse durable finality checkpoint.
    */
   relevance?: (block: WatcherNativeBlockAdmission) => WatcherBlockRelevance;
   /** "Processed through block N", written once every finalized block. */
@@ -73,7 +79,7 @@ export type WatcherChainCoordinatorHooks = Readonly<{
   onFinalized(
     input: Readonly<{
       nativeBlock: WatcherNativeBlockAdmission;
-      /** Absent for quiet blocks, which are never observed over the network. */
+      /** Absent when a quiet block's observation is retained only for recovery. */
       localObservation: WatcherLocalKupmiosNativeObservation | null;
       relevance: WatcherBlockRelevance;
     }>,
@@ -111,6 +117,7 @@ export const pointKey = (blockHash: string, slot: string): string =>
 
 export const canonicalPathFromHistory = (input: {
   readonly history: readonly WatcherMultiProviderConsistency[];
+  readonly store?: WatcherDurableStore;
   readonly ancestor: Extract<
     WatcherNativeChainSyncPoint,
     { readonly kind: "point" }
@@ -133,6 +140,55 @@ export const canonicalPathFromHistory = (input: {
     terminalAgreement.blockHash !== input.terminal.blockHash ||
     terminalAgreement.blockNo !== input.terminal.blockNo
   ) {
+    return null;
+  }
+  if (input.store !== undefined) {
+    const index = indexPersistedObservations(input.store);
+    const predecessors = new Map<string, WatcherMultiProviderConsistency>();
+    for (const candidate of input.history) {
+      const agreement = candidate.agreement;
+      if (
+        candidate.status !== "agreed" ||
+        candidate.protocolDecision !== "allowed" ||
+        agreement === null
+      )
+        continue;
+      const prior = predecessors.get(agreement.blockHash);
+      if (
+        prior === undefined ||
+        BigInt(prior.agreement!.minimumDepth) < BigInt(agreement.minimumDepth)
+      )
+        predecessors.set(agreement.blockHash, candidate);
+    }
+    const reversed: WatcherMultiProviderConsistency[] = [];
+    let current = terminal;
+    for (let remaining = 2_161; remaining > 0; remaining -= 1) {
+      const agreement = current.agreement!;
+      reversed.push(current);
+      if (
+        agreement.blockHash === input.ancestor.blockHash &&
+        agreement.slot === input.ancestor.slot
+      )
+        return reversed.length >= 2 ? Object.freeze(reversed.reverse()) : null;
+      const observationId =
+        current.chainAuthorityObservationDigest ??
+        current.observationEvidenceDigests[0];
+      const parentHash =
+        observationId === undefined
+          ? undefined
+          : index.get(observationId)?.observation.chainPoint.parentBlockHash;
+      if (parentHash === undefined || parentHash === null) return null;
+      const predecessor = predecessors.get(parentHash);
+      if (
+        predecessor?.agreement === null ||
+        predecessor === undefined ||
+        BigInt(predecessor.agreement.blockNo) + 1n !==
+          BigInt(agreement.blockNo) ||
+        BigInt(predecessor.agreement.slot) >= BigInt(agreement.slot)
+      )
+        return null;
+      current = predecessor;
+    }
     return null;
   }
   const candidates = new Map<string, WatcherMultiProviderConsistency>();
@@ -177,6 +233,7 @@ export const canonicalPathFromHistory = (input: {
 export const recoverWatcherCoordinatorAfterRestart = async (input: {
   readonly durable: WatcherDurableRuntime;
   readonly restartIntersection?: WatcherNativeChainSyncPoint;
+  readonly assertCurrent?: () => void;
 }): Promise<boolean> => {
   let quarantined = input.durable.readFinality().phase === "quarantined";
   if (!quarantined) return false;
@@ -195,6 +252,7 @@ export const recoverWatcherCoordinatorAfterRestart = async (input: {
   }
   const previousPath = canonicalPathFromHistory({
     history: state.authenticatedConsistencyHistory,
+    store: state.currentStore,
     ancestor,
     terminal: finalized,
   });
@@ -210,12 +268,15 @@ export const recoverWatcherCoordinatorAfterRestart = async (input: {
     return true;
   }
   const recovery = await input.durable.persistPostFinalityRecovery({
+    assertCurrent: input.assertCurrent,
     previousCanonicalPath: previousPath,
     replacementCanonicalPath: Object.freeze([ancestorConsistency, trigger]),
     transportAttestations: Object.freeze([]),
   });
   if (recovery.persistence === "conflict") {
-    throw new Error("watcher restart recovery persistence conflicted");
+    throw new WatcherDurableAuthorityConflict(
+      "watcher restart recovery persistence conflicted",
+    );
   }
   quarantined = recovery.result.protocolDecision !== "resume_replay";
   return quarantined;

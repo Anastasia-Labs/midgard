@@ -3,6 +3,10 @@ import { Effect } from "effect";
 
 import { Database } from "../services/database.js";
 import {
+  Columns as JournalColumns,
+  tableName as JournalTable,
+} from "./pendingBlockFinalizations.columns.js";
+import {
   Columns,
   SCOPE,
   Status,
@@ -16,8 +20,10 @@ export const INSPECTABLE_LEASE_ROWS = 100;
 /**
  * Deletes ended leases (released or failed) that ended more than
  * `olderThanMs` ago, `batchLimit` rows per statement until a batch comes up
- * short or `maxBatches` ran. An active lease is never removed, nor any of the
- * newest INSPECTABLE_LEASE_ROWS rows. No table references a lease row.
+ * short or `maxBatches` ran. Never removed: an active lease, any of the
+ * newest INSPECTABLE_LEASE_ROWS rows, and any lease a retained journal names
+ * by `state_queue_lease_token` (recovery and replacement paths settle a
+ * journal's lease by that token). No foreign key references a lease row.
  * Returns the number of rows removed.
  */
 export const pruneSettledLeases = ({
@@ -47,6 +53,10 @@ export const pruneSettledLeases = ({
               WHERE ${sql(Columns.SCOPE)} = ${SCOPE}
               ORDER BY ${sql(Columns.ACQUIRED_AT)} DESC
               LIMIT ${INSPECTABLE_LEASE_ROWS})
+            AND NOT EXISTS (
+              SELECT 1 FROM ${sql(JournalTable)} AS journal
+              WHERE journal.${sql(JournalColumns.STATE_QUEUE_LEASE_TOKEN)} =
+                ${sql(tableName)}.${sql(Columns.TOKEN)})
           ORDER BY ${sql(Columns.RELEASED_AT)} ASC
           LIMIT ${limit})
         RETURNING ${sql(Columns.TOKEN)}`;

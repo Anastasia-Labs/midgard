@@ -453,7 +453,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
           if (expected !== epoch) return;
           if (pendingReconciliation !== undefined) {
             pendingBackoff.arm(pendingReconciliation.reason);
-            return;
+            return outage.held();
           }
           clearPendingBackoff();
         }
@@ -837,7 +837,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
     // first re-validates this owner's live lease (a new recovery generation),
     // then reloads the journal, re-authenticates the source and re-intersects
     // at the journal's retained points; readiness reopens only through
-    // convergence at the source tip. A sustained outage stops the owner.
+    // convergence at the tip; outages escalate while gated retries continue.
     const supervise = async () => {
       while (true) {
         const owned = signal;

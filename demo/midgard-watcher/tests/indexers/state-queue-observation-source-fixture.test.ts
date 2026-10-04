@@ -10,9 +10,15 @@ import {
 import {
   assertWatcherLocalKupmiosNativeObservation,
   createWatcherLocalKupmiosNativeObservationRuntime,
+  guardWatcherLocalKupmiosNativeObservation,
 } from "../../src/l1/local-kupmios-native-observation.js";
 import { createWatcherLocalKupmiosRawSource } from "../../src/l1/local-kupmios-raw-source.js";
 import { readWatcherNativeChainSyncEventReceipt } from "../../src/l1/native-chain-sync.js";
+import { createWatcherResolvedBlockObservationSource } from "../../src/l1/resolved-block-observation.js";
+import {
+  type CapturedWatcherObservation,
+  observeCapturedBlock,
+} from "../../src/runtime/chain-coordinator.observe-captured-block.js";
 import {
   createSyntheticStateQueueHeader,
   createSyntheticStateQueueObservationFixture,
@@ -165,6 +171,166 @@ describe("real state-queue observation source with synthetic local transports", 
       expect(second.localObservation).not.toBe(first.localObservation);
       expect(second.nativeEventReceipt).not.toBe(first.nativeEventReceipt);
       await second.close();
+    } finally {
+      await fixture.close();
+    }
+  }, 60_000);
+
+  it("preserves real native admission through fresh, cached and deeper coordinator captures", async () => {
+    const fixture = await createSyntheticStateQueueObservationFixture();
+    try {
+      const first = await fixture.observeFresh();
+      const firstEvent = readWatcherNativeChainSyncEventReceipt(
+        first.nativeEventReceipt,
+      ).event;
+      if (firstEvent.kind !== "roll_forward" || firstEvent.tip.kind !== "point")
+        throw new Error("Expected the actual Commit roll-forward receipt");
+      let generation = 0;
+      let stopped = false;
+      const read = vi.fn(
+        (input: Parameters<typeof first.localRuntime.observe>[0]) =>
+          first.localRuntime.observe(input),
+      );
+      const capture = observeCapturedBlock({
+        captured: new Map<string, CapturedWatcherObservation>(),
+        observation: { ...first.localRuntime, observe: read },
+        generation: () => generation,
+        stopped: () => stopped,
+      });
+      const resolvedSource = createWatcherResolvedBlockObservationSource({
+        deploymentIdentity: fixture.transport.deploymentIdentity,
+        rawSource: first.localRuntime.rawSource,
+      });
+      const fresh = await capture(first.nativeBlock, firstEvent);
+      assertWatcherLocalKupmiosNativeObservation(fresh, first.nativeBlock);
+      await expect(
+        resolvedSource.observe({
+          nativeBlock: first.nativeBlock,
+          localObservation: fresh,
+        }),
+      ).resolves.toBeDefined();
+      const cached = await capture(first.nativeBlock, firstEvent);
+      assertWatcherLocalKupmiosNativeObservation(cached, first.nativeBlock);
+      await expect(
+        resolvedSource.observe({
+          nativeBlock: first.nativeBlock,
+          localObservation: cached,
+        }),
+      ).resolves.toBeDefined();
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(cached.block).toBe(fresh.block);
+
+      // This fixture issues another real native query at its advanced synthetic
+      // canonical tip; the receipt supplies the changed depth, not a scalar patch.
+      const later = await fixture.observeFresh();
+      const laterEvent = readWatcherNativeChainSyncEventReceipt(
+        later.nativeEventReceipt,
+      ).event;
+      if (laterEvent.kind !== "roll_forward" || laterEvent.tip.kind !== "point")
+        throw new Error(
+          "Expected the later actual Commit roll-forward receipt",
+        );
+      expect(BigInt(laterEvent.tip.blockNo)).toBeGreaterThan(
+        BigInt(firstEvent.tip.blockNo),
+      );
+      const deeper = await capture(first.nativeBlock, laterEvent);
+      expect(read).toHaveBeenCalledTimes(2);
+      expect(BigInt(deeper.block.chainPoint.depth)).toBeGreaterThan(
+        BigInt(fresh.block.chainPoint.depth),
+      );
+      assertWatcherLocalKupmiosNativeObservation(deeper, first.nativeBlock);
+      await expect(
+        resolvedSource.observe({
+          nativeBlock: first.nativeBlock,
+          localObservation: deeper,
+        }),
+      ).resolves.toBeDefined();
+
+      const scope = SDK.createDaAvailabilityReadScope({
+        attemptTimeoutMs: 10_000,
+      });
+      const scopedSource = createWatcherResolvedBlockObservationSource({
+        deploymentIdentity: fixture.transport.deploymentIdentity,
+        rawSource: first.localRuntime.rawSource,
+        assertCurrent: scope.assertCurrent,
+      });
+      try {
+        await expect(
+          scopedSource.observe({
+            nativeBlock: first.nativeBlock,
+            localObservation: cached,
+          }),
+        ).resolves.toBeDefined();
+      } finally {
+        scope.close();
+      }
+      await expect(
+        scopedSource.observe({
+          nativeBlock: first.nativeBlock,
+          localObservation: cached,
+        }),
+      ).rejects.toThrow("Availability read scope closed");
+
+      for (const candidate of [fresh, cached, deeper]) {
+        expect(() =>
+          assertWatcherLocalKupmiosNativeObservation(
+            { ...candidate },
+            first.nativeBlock,
+          ),
+        ).toThrow("is not admitted for the native block");
+        expect(() =>
+          assertWatcherLocalKupmiosNativeObservation(candidate, {
+            ...first.nativeBlock,
+            rawBlockCbor: "80",
+          }),
+        ).toThrow("is not admitted for the native block");
+      }
+      expect(() =>
+        guardWatcherLocalKupmiosNativeObservation({
+          observation: { ...first.localObservation },
+          nativeBlock: first.nativeBlock,
+          assertCurrent: () => undefined,
+        }),
+      ).toThrow("is not admitted for the native block");
+
+      const child = guardWatcherLocalKupmiosNativeObservation({
+        observation: cached,
+        nativeBlock: first.nativeBlock,
+        assertCurrent: () => undefined,
+      });
+      generation += 1;
+      for (const candidate of [fresh, cached, deeper, child])
+        expect(() =>
+          assertWatcherLocalKupmiosNativeObservation(
+            candidate,
+            first.nativeBlock,
+          ),
+        ).toThrow("native observation generation changed");
+      await expect(
+        resolvedSource.observe({
+          nativeBlock: first.nativeBlock,
+          localObservation: child,
+        }),
+      ).rejects.toThrow("native observation generation changed");
+      await expect(capture(first.nativeBlock, laterEvent)).rejects.toThrow(
+        "native observation generation changed",
+      );
+      const afterRollback = observeCapturedBlock({
+        captured: new Map<string, CapturedWatcherObservation>(),
+        observation: first.localRuntime,
+        generation: () => generation,
+        stopped: () => stopped,
+      });
+      const live = await afterRollback(first.nativeBlock, laterEvent);
+      stopped = true;
+      expect(() =>
+        assertWatcherLocalKupmiosNativeObservation(live, first.nativeBlock),
+      ).toThrow("native observation generation changed");
+      stopped = false;
+      first.localRuntime.close();
+      expect(() =>
+        assertWatcherLocalKupmiosNativeObservation(live, first.nativeBlock),
+      ).toThrow("native source attestation expired");
     } finally {
       await fixture.close();
     }

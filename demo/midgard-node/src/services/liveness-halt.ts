@@ -296,3 +296,37 @@ export const restartedAcrossHalts = <A, E, R>(
       );
     }
   });
+
+/** The source a replaced-block revival with no journal active raises under.
+ * Like `HISTORY_SIGNED_INTENT_RELEASE_SOURCE` it holds no fiber: the history
+ * gate, which the revival keeps closed, holds block production. Its
+ * disposition clears it once no revival is in question. */
+export const HISTORY_REPLACED_BLOCK_REVIVAL_SOURCE =
+  "history_replaced_block_revival";
+
+/** A signed-intent release or replaced-block revival met a
+ * `SignedIntentReplacementIntegrityError`: L1 evidence shows two of this
+ * node's blocks on one base landed, or a landed sibling beside the winner
+ * (or the release's retained plan binds another journal). The history owner
+ * holds (the intent stays, nothing is written, no winner is
+ * chosen) and re-derives it at every evaluation; it clears once the evidence
+ * no longer shows it. */
+export const SIGNED_INTENT_REPLACEMENT_INTEGRITY =
+  "signed_intent_replacement_integrity";
+
+/** The source the commit worker's DA frame notices raise under. It holds no
+ * fiber: the pre-submit frame check already refuses the block on every tick,
+ * so the reason only makes that refusal visible on /readyz. The next measured
+ * tick whose block fits the frame, or the next tick with nothing to commit
+ * (its `NothingToCommitOutput`), clears it; a block left unmeasured leaves it
+ * as it is. */
+export const COMMIT_DA_FRAME_SOURCE = "commit_da_frame";
+
+/** A block's events alone overflow the DA frame although its empty block
+ * fits: the step-down has no transaction left to drop. */
+export const COMMIT_DA_FRAME_EVENTS_OVERFLOW =
+  "commit_da_frame_events_overflow";
+
+/** The base ledger's empty block alone exceeds the DA frame (every payload
+ * carries the full post-block ledger). */
+export const COMMIT_DA_FRAME_LEDGER_CEILING = "commit_da_frame_ledger_ceiling";

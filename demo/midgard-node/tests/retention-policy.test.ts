@@ -6,10 +6,11 @@ import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-prof
 import { describe, expect, it } from "vitest";
 
 import {
-  assertRetentionDaysMatchesDeployment,
   computeChallengeableCutoff,
+  computeHousekeepingCutoff,
   computeRetentionCutoff,
   MIN_DA_PAYLOAD_RETENTION_DAYS,
+  resolveHousekeepingRetentionDays,
   shouldPruneRetention,
   validateRetentionDays,
 } from "../src/database/retention-policy.js";
@@ -34,22 +35,12 @@ describe("retention policy", () => {
     );
   });
 
-  it("requires positive retention to cover DA payload availability", () => {
-    expect(validateRetentionDays(MIN_DA_PAYLOAD_RETENTION_DAYS)).toBe(
-      MIN_DA_PAYLOAD_RETENTION_DAYS,
-    );
-    expect(() => validateRetentionDays(1)).toThrow(
-      "RETENTION_DAYS must be 0 or at least 15 days",
-    );
+  it("checks only the shape of RETENTION_DAYS: the deployment's window decides the floor", () => {
+    expect(validateRetentionDays(0)).toBe(0);
+    expect(validateRetentionDays(1)).toBe(1);
+    expect(validateRetentionDays(15)).toBe(15);
     expect(() => validateRetentionDays(-5)).toThrow(
       "RETENTION_DAYS must be a non-negative safe integer",
-    );
-  });
-
-  it("accepts 15 days at the boundary and rejects 14", () => {
-    expect(validateRetentionDays(15)).toBe(15);
-    expect(() => validateRetentionDays(14)).toThrow(
-      "RETENTION_DAYS must be 0 or at least 15 days",
     );
   });
 
@@ -95,39 +86,75 @@ describe("retention policy", () => {
   });
 });
 
-describe("assertRetentionDaysMatchesDeploymentV1", () => {
-  it("accepts an env window at or above the manifest window", () => {
-    expect(assertRetentionDaysMatchesDeployment(15, 15)).toBe(15);
-    expect(assertRetentionDaysMatchesDeployment(30, 15)).toBe(30);
+describe("resolveHousekeepingRetentionDays (B5)", () => {
+  const resolve = (
+    configured: number | undefined,
+    manifestRetentionDays: number | undefined,
+  ) => resolveHousekeepingRetentionDays({ configured, manifestRetentionDays });
+
+  it("uses the verified manifest's window when RETENTION_DAYS is unset, never a compiled constant", () => {
+    expect(resolve(undefined, 15)).toBe(15);
+    // A manifest declaring a window other than the compiled one wins.
+    expect(resolve(undefined, 21)).toBe(21);
+    expect(21).not.toBe(MIN_DA_PAYLOAD_RETENTION_DAYS);
   });
 
-  it("throws when the env window is shorter than the manifest window", () => {
-    expect(() => assertRetentionDaysMatchesDeployment(15, 16)).toThrow(
-      /shorter than the deployment manifest/u,
+  it("honours an explicit window at or above the manifest's", () => {
+    expect(resolve(21, 21)).toBe(21);
+    expect(resolve(30, 21)).toBe(30);
+  });
+
+  it("refuses an explicit window shorter than the manifest's, with the fix in the message", () => {
+    expect(() => resolve(20, 21)).toThrow(
+      /RETENTION_DAYS=20 is shorter than the verified deployment manifest da\.transportProfile\.retentionDays=21/u,
+    );
+    // The compiled window would admit 15; the manifest's 21 refuses it.
+    expect(() => resolve(15, 21)).toThrow(/shorter than the verified/u);
+  });
+
+  it("keeps everything for an explicit 0, which retains longer than any window", () => {
+    expect(resolve(0, 21)).toBe(0);
+    expect(resolve(0, undefined)).toBe(0);
+  });
+
+  it("prunes nothing without a manifest unless RETENTION_DAYS covers the compiled profile's window", () => {
+    expect(resolve(undefined, undefined)).toBe(0);
+    expect(resolve(MIN_DA_PAYLOAD_RETENTION_DAYS, undefined)).toBe(
+      MIN_DA_PAYLOAD_RETENTION_DAYS,
+    );
+    expect(() => resolve(MIN_DA_PAYLOAD_RETENTION_DAYS - 1, undefined)).toThrow(
+      /shorter than the derived deployment's retention window/u,
     );
   });
 
-  it("accepts retentionDays=0, which disables only wall-clock table pruning", () => {
-    expect(assertRetentionDaysMatchesDeployment(0, 15)).toBe(0);
-  });
-
-  it("defaults the manifest window to the derived deployment value", () => {
-    expect(assertRetentionDaysMatchesDeployment(15)).toBe(15);
-    expect(() => assertRetentionDaysMatchesDeployment(14)).toThrow(
-      "RETENTION_DAYS must be 0 or at least 15 days",
-    );
-  });
-
-  it("rejects a malformed manifest window", () => {
+  it("rejects a malformed manifest window or RETENTION_DAYS", () => {
     for (const bad of [
+      0,
       Number.NaN,
       -1,
       1.5,
       "15" as unknown as number,
       null as unknown as number,
     ]) {
-      expect(() => assertRetentionDaysMatchesDeployment(15, bad)).toThrow(
+      expect(() => resolve(15, bad)).toThrow(
         /Deployment manifest da\.transportProfile\.retentionDays/u,
+      );
+    }
+    expect(() => resolve(-1, 15)).toThrow(
+      "RETENTION_DAYS must be a non-negative safe integer",
+    );
+  });
+});
+
+describe("computeHousekeepingCutoff", () => {
+  it("never reaches inside the DA challenge horizon", () => {
+    const now = new Date("2026-02-24T00:00:00.000Z");
+    const challengeable = computeChallengeableCutoff(now);
+    for (const days of [1, 15, 30]) {
+      const cutoff = computeHousekeepingCutoff(now, days);
+      expect(cutoff.getTime()).toBeLessThanOrEqual(challengeable.getTime());
+      expect(cutoff.getTime()).toBeLessThanOrEqual(
+        computeRetentionCutoff(now, days).getTime(),
       );
     }
   });

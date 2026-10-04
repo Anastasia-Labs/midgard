@@ -1,3 +1,4 @@
+import { readWatcherLocalUserEventValidation } from "../indexers/user-event-indexer.js";
 import {
   makeWatcherFinalityBootstrapState,
   type WatcherFinalityPolicy,
@@ -29,6 +30,7 @@ import {
   publishDirectSuccessor,
   type PublishedAuthority,
   WATCHER_DURABLE_RUNTIME_SCHEMA_VERSION,
+  WatcherDurableAuthorityConflict,
   type WatcherDurableRuntime,
   type WatcherProtectedUserEventCheckpoint,
 } from "./durable-runtime.load-published-authority.js";
@@ -54,8 +56,48 @@ export const createWatcherDurableRuntime = async (input: {
   readonly client: WatcherTrustedHeadAuthorityClient;
   readonly userEventArchive?: WatcherUserEventArchive;
 }): Promise<WatcherDurableRuntime> => {
-  let externallyProtectedHead = await input.client.readCurrent();
+  let writeGuard: (() => void) | undefined;
+  let writeFailure: Error | undefined;
+  const readWriteFailure = (): Error | undefined => writeFailure;
+  let publishedHead: WatcherRollbackDurableTrustedHead | undefined;
   let authority: WatcherRollbackDurableAuthority;
+  const backend: WatcherDurableAtomicBackend = Object.freeze({
+    ...input.backend,
+    read: () => input.backend.read(),
+    compareAndSwap: async (expectedSha256, next, canonicalValue) => {
+      try {
+        // The authority may have changed while observations or archive reads awaited.
+        if (publishedHead !== undefined) {
+          try {
+            await loadPublishedAuthority({
+              ...input,
+              expectedHead: publishedHead,
+              admittedAuthority: authority,
+            });
+          } catch (error) {
+            throw new WatcherDurableAuthorityConflict(
+              "watcher published authority changed at CAS",
+              { cause: error },
+            );
+          }
+        }
+        writeGuard?.();
+        return await input.backend.compareAndSwap(
+          expectedSha256,
+          next,
+          canonicalValue,
+        );
+      } catch (error) {
+        writeFailure =
+          error instanceof Error
+            ? error
+            : new Error("watcher durable backend failed", { cause: error });
+        throw writeFailure;
+      }
+    },
+  });
+  const runtimeInput = { ...input, backend };
+  let externallyProtectedHead = await input.client.readCurrent();
   const stored = await input.backend.read();
   if (stored === null) {
     if (externallyProtectedHead !== null) {
@@ -70,7 +112,7 @@ export const createWatcherDurableRuntime = async (input: {
       throw new Error("watcher production finality bootstrap is invalid");
     }
     const initialized = await initializeWatcherRollbackDurableAuthority({
-      backend: input.backend,
+      backend,
       policy: input.policy,
       bootstrapStore: makeEmptyWatcherDurableStore(
         input.policy.deploymentMarker,
@@ -80,7 +122,7 @@ export const createWatcherDurableRuntime = async (input: {
       trustedHead: null,
     });
     const published = await publishDirectSuccessor({
-      ...input,
+      ...runtimeInput,
       expectedHead: null,
       nextHead: initialized.trustedHead,
     });
@@ -89,14 +131,14 @@ export const createWatcherDurableRuntime = async (input: {
   } else {
     const reconciliation =
       await prepareWatcherRollbackDurableTrustedHeadReconciliation({
-        backend: input.backend,
+        backend,
         policy: input.policy,
         authenticationKey: input.authenticationKey,
         trustedHead: externallyProtectedHead,
       });
     if (reconciliation.action === "publish_direct_successor") {
       const published = await publishDirectSuccessor({
-        ...input,
+        ...runtimeInput,
         expectedHead: reconciliation.expectedTrustedHead,
         nextHead: reconciliation.nextTrustedHead,
       });
@@ -104,7 +146,7 @@ export const createWatcherDurableRuntime = async (input: {
       externallyProtectedHead = published.trustedHead;
     } else {
       const loaded = await loadPublishedAuthority({
-        ...input,
+        ...runtimeInput,
         expectedHead: reconciliation.trustedHead,
       });
       authority = loaded.authority;
@@ -115,8 +157,7 @@ export const createWatcherDurableRuntime = async (input: {
   if (externallyProtectedHead === null) {
     throw new Error("watcher trusted-head authority remained empty");
   }
-  let publishedHead: WatcherRollbackDurableTrustedHead =
-    externallyProtectedHead;
+  publishedHead = externallyProtectedHead;
 
   let serial = Promise.resolve();
   let checkpointFailureGeneration = 0;
@@ -147,77 +188,162 @@ export const createWatcherDurableRuntime = async (input: {
     result: Result,
   ): Promise<Readonly<{ result: Result; published: PublishedAuthority }>> => {
     if (result.persistence === "conflict") {
-      throw new Error("watcher durable snapshot CAS conflicted");
+      throw new WatcherDurableAuthorityConflict(
+        "watcher durable snapshot CAS conflicted",
+      );
     }
-    const published =
-      result.persistence === "committed"
-        ? await publishDirectSuccessor({
-            ...input,
-            expectedHead: publishedHead,
-            nextHead: result.trustedHead,
-            admittedAuthority: result.authority,
-          })
-        : await loadPublishedAuthority({
-            ...input,
-            expectedHead: publishedHead,
-            admittedAuthority: authority,
-          });
+    if (publishedHead === undefined)
+      throw new Error("watcher authority is unpublished");
+    let published: PublishedAuthority;
+    try {
+      published =
+        result.persistence === "committed"
+          ? await publishDirectSuccessor({
+              ...runtimeInput,
+              expectedHead: publishedHead,
+              nextHead: result.trustedHead,
+              admittedAuthority: result.authority,
+            })
+          : await loadPublishedAuthority({
+              ...runtimeInput,
+              expectedHead: publishedHead,
+              admittedAuthority: authority,
+            });
+    } catch (error) {
+      throw new WatcherDurableAuthorityConflict(
+        `watcher durable publication could not be authenticated: ${error instanceof Error ? error.message : "publication failed"}`,
+        { cause: error },
+      );
+    }
     authority = published.authority;
     publishedHead = published.trustedHead;
     return Object.freeze({ result, published });
   };
 
+  const guarded = async <Result>(
+    guard: (() => void) | undefined,
+    work: () => Promise<Result>,
+  ): Promise<Result> => {
+    if (publishedHead === undefined)
+      throw new Error("watcher authority is unpublished");
+    try {
+      await loadPublishedAuthority({
+        ...runtimeInput,
+        expectedHead: publishedHead,
+        admittedAuthority: authority,
+      });
+    } catch (error) {
+      throw new WatcherDurableAuthorityConflict(
+        "watcher published authority changed before write",
+        { cause: error },
+      );
+    }
+    guard?.();
+    writeGuard = guard;
+    writeFailure = undefined;
+    try {
+      const result = await work();
+      guard?.();
+      return result;
+    } catch (error) {
+      const backendFailure = readWriteFailure();
+      if (backendFailure !== undefined) throw backendFailure;
+      throw error;
+    } finally {
+      writeGuard = undefined;
+      writeFailure = undefined;
+    }
+  };
   const runtime: WatcherDurableRuntime = Object.freeze({
+    reconcile: () =>
+      serialized(async () => {
+        const head = await input.client.readCurrent();
+        const plan =
+          await prepareWatcherRollbackDurableTrustedHeadReconciliation({
+            ...runtimeInput,
+            trustedHead: head,
+          });
+        const loaded =
+          plan.action === "publish_direct_successor"
+            ? await publishDirectSuccessor({
+                ...runtimeInput,
+                expectedHead: plan.expectedTrustedHead,
+                nextHead: plan.nextTrustedHead,
+              })
+            : await loadPublishedAuthority({
+                ...runtimeInput,
+                expectedHead: plan.trustedHead,
+              });
+        authority = loaded.authority;
+        publishedHead = loaded.trustedHead;
+        checkpointFailureGeneration += 1;
+      }),
     schemaVersion: WATCHER_DURABLE_RUNTIME_SCHEMA_VERSION,
     read: () => readWatcherRollbackDurableAuthority(authority),
     readFinality: () => readWatcherRollbackDurableFinalityState(authority),
     persistObservation: async (operationInput) =>
       await serialized(
         async () =>
-          (
-            await admitResult(
-              await persistWatcherRollbackDurableObservation({
-                authority,
-                ...operationInput,
-              }),
-            )
-          ).result,
+          await guarded(
+            operationInput.assertCurrent,
+            async () =>
+              (
+                await admitResult(
+                  await persistWatcherRollbackDurableObservation({
+                    authority,
+                    ...operationInput,
+                  }),
+                )
+              ).result,
+          ),
       ),
     persistCanonicalProgress: async (operationInput) =>
       await serialized(
         async () =>
-          (
-            await admitResult(
-              await persistWatcherRollbackDurableCanonicalProgress({
-                authority,
-                ...operationInput,
-              }),
-            )
-          ).result,
+          await guarded(
+            operationInput.assertCurrent,
+            async () =>
+              (
+                await admitResult(
+                  await persistWatcherRollbackDurableCanonicalProgress({
+                    authority,
+                    ...operationInput,
+                  }),
+                )
+              ).result,
+          ),
       ),
     persistRollback: async (operationInput) =>
       await serialized(
         async () =>
-          (
-            await admitResult(
-              await evaluateAndPersistWatcherRollback({
-                authority,
-                ...operationInput,
-              }),
-            )
-          ).result,
+          await guarded(
+            operationInput.assertCurrent,
+            async () =>
+              (
+                await admitResult(
+                  await evaluateAndPersistWatcherRollback({
+                    authority,
+                    ...operationInput,
+                  }),
+                )
+              ).result,
+          ),
       ),
     persistPostFinalityRecovery: async (operationInput) =>
       await serialized(
         async () =>
-          (
-            await admitResult(
-              await evaluateAndPersistWatcherPostFinalityRecovery({
-                authority,
-                ...operationInput,
-              }),
-            )
-          ).result,
+          await guarded(
+            operationInput.assertCurrent,
+            async () =>
+              (
+                await admitResult(
+                  await evaluateAndPersistWatcherPostFinalityRecovery({
+                    authority,
+                    ...operationInput,
+                  }),
+                )
+              ).result,
+          ),
       ),
   });
 
@@ -263,8 +389,10 @@ export const createWatcherDurableRuntime = async (input: {
   };
   const protectedRead =
     async (): Promise<WatcherProtectedUserEventCheckpoint> => {
+      if (publishedHead === undefined)
+        throw new Error("watcher authority is unpublished");
       const loaded = await loadPublishedAuthority({
-        ...input,
+        ...runtimeInput,
         expectedHead: publishedHead,
         admittedAuthority: authority,
       });
@@ -297,31 +425,46 @@ export const createWatcherDurableRuntime = async (input: {
           expectedCheckpointDigest: operationInput.expectedCheckpointDigest,
           expectedCheckpointSequence: operationInput.expectedCheckpointSequence,
         });
-        return await serialized(async () => {
-          if (input.userEventArchive === undefined) {
-            throw new Error(
-              "watcher user-event checkpoint persistence requires its archive",
-            );
-          }
-          const { result, published } = await admitResult(
-            await persistWatcherRollbackDurableUserEventCheckpoint({
-              authority,
-              archive: input.userEventArchive,
-              ...expectation,
-              nextCheckpoint,
-              validationCandidate,
-            }),
-          );
-          if (result.persistence === "conflict") {
-            throw new Error("watcher user-event checkpoint CAS conflicted");
-          }
-          return Object.freeze({
-            persistence: result.persistence,
-            // Publication already validated the archive and both durable owners.
-            // Mint synchronously while this operation still holds the serializer.
-            protectedCheckpoint: protectPublication(published),
-          });
-        });
+        return await serialized(
+          async () =>
+            await guarded(
+              validationCandidate === undefined
+                ? undefined
+                : () => {
+                    readWatcherLocalUserEventValidation(
+                      validationCandidate,
+                      nextCheckpoint,
+                    );
+                  },
+              async () => {
+                if (input.userEventArchive === undefined) {
+                  throw new Error(
+                    "watcher user-event checkpoint persistence requires its archive",
+                  );
+                }
+                const { result, published } = await admitResult(
+                  await persistWatcherRollbackDurableUserEventCheckpoint({
+                    authority,
+                    archive: input.userEventArchive,
+                    ...expectation,
+                    nextCheckpoint,
+                    validationCandidate,
+                  }),
+                );
+                if (result.persistence === "conflict") {
+                  throw new Error(
+                    "watcher user-event checkpoint CAS conflicted",
+                  );
+                }
+                return Object.freeze({
+                  persistence: result.persistence,
+                  // Publication already validated the archive and both durable owners.
+                  // Mint synchronously while this operation still holds the serializer.
+                  protectedCheckpoint: protectPublication(published),
+                });
+              },
+            ),
+        );
       },
     }),
   );

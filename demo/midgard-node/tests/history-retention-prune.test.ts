@@ -1,124 +1,38 @@
 import "./utils.js";
 
-import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  MutationJobsDB,
-  StateQueueMutationLeasesDB,
-} from "../src/database/index.js";
-import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
+import { StateQueueMutationLeasesDB } from "../src/database/index.js";
 import { pruneFinalizedBeyondChallengeability } from "../src/database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
 import {
-  header,
-  journalFixture,
-} from "./local-mutation-job-abandonment.journal-fixture.js";
-import { provideDatabaseLayers } from "./utils.js";
+  DAY_MS,
+  DEPLOYMENT,
+  insertLease,
+  journals,
+  leaseTokens,
+  recordMergedOutcome,
+  recordMergeJob,
+  recordObserverState,
+  remainingLabels,
+  run,
+} from "./history-retention-prune.fixtures.js";
+import { header } from "./local-mutation-job-abandonment.journal-fixture.js";
 
-const DAY_MS = 24 * 60 * 60_000;
-const DEPLOYMENT = Buffer.alloc(32, 7);
-
-/** The journal prune with no authenticated deployment unless one is given:
- * nothing is then held for finality. */
+/** The journal prune under the test deployment; it never runs without one. */
 const prune = (
   args: Omit<
     Parameters<typeof pruneFinalizedBeyondChallengeability>[0],
     "deploymentIdentityDigest"
-  > & { readonly deploymentIdentityDigest?: Buffer },
+  >,
 ) =>
   pruneFinalizedBeyondChallengeability({
-    deploymentIdentityDigest: undefined,
+    deploymentIdentityDigest: DEPLOYMENT,
     ...args,
   });
 
-/** An authenticated `merged` terminal outcome for `headerHash`, at `blockNo`. */
-const recordMergedOutcome = (headerHash: Buffer, blockNo: number) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const bytes = (fill: number, length: number) =>
-      Buffer.alloc(length, fill + blockNo);
-    yield* sql`INSERT INTO da_payload_terminal_outcomes (
-        header_hash, terminal_outcome, transition_kind,
-        deployment_identity_digest, state_queue_policy_id,
-        transaction_hash, block_hash, slot, block_no,
-        transaction_index, chain_point_id, finality_depth,
-        transition_digest, transition_record
-      ) VALUES (
-        ${headerHash}, 'merged', 'merge', ${DEPLOYMENT}, ${bytes(1, 28)},
-        ${bytes(2, 32)}, ${bytes(3, 32)}, ${blockNo}, ${blockNo}, 0,
-        ${bytes(4, 32)}, 3, ${bytes(5, 32)}, ${"{}"}
-      )`;
-  });
-
-const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-  Effect.runPromise(
-    provideDatabaseLayers(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        const clear = sql`TRUNCATE TABLE pending_block_finalizations,
-          state_queue_mutation_leases, event_history_authority,
-          local_mutation_jobs, da_payload_terminal_outcomes
-          RESTART IDENTITY CASCADE`;
-        yield* clear;
-        // Never leave a seeded active lease behind for a later file on
-        // this shard to find busy.
-        return yield* effect.pipe(Effect.ensuring(Effect.orDie(clear)));
-      }),
-    ) as Effect.Effect<A, unknown, never>,
-  );
-
-type JournalSpec = {
-  readonly label: string;
-  readonly status: "finalized" | "abandoned" | "pending_submission";
-  readonly endedAgoMs: number;
-  /** The journal's confirmed-merge finalization job; a finalized journal's
-   * merge has completed unless said otherwise. */
-  readonly mergeJob?: "completed" | "running" | "none";
-};
-
-const recordMergeJob = (headerHash: Buffer, status: "completed" | "running") =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const jobId = MutationJobsDB.confirmedMergeFinalizationJobId(
-      headerHash.toString("hex"),
-    );
-    yield* sql`INSERT INTO local_mutation_jobs (job_id, kind, status, completed_at)
-      VALUES (${jobId}, 'confirmed_merge_finalization', ${status},
-        ${status === "completed" ? sql`NOW()` : null})
-      ON CONFLICT (job_id) DO UPDATE SET status = EXCLUDED.status,
-        completed_at = EXCLUDED.completed_at`;
-  });
-
-/** One journal per spec, each moved to its status before the next is
- * prepared, ending `endedAgoMs` before now. */
-const journals = (specs: readonly JournalSpec[]) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    for (const spec of specs) {
-      const headerHash = header(spec.label);
-      yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-        journalFixture(headerHash),
-      );
-      yield* sql`UPDATE pending_block_finalizations
-        SET status = ${spec.status},
-          block_end_time = NOW() - make_interval(secs => ${spec.endedAgoMs / 1000})
-        WHERE header_hash = ${headerHash}`;
-      const mergeJob =
-        spec.mergeJob ?? (spec.status === "finalized" ? "completed" : "none");
-      if (mergeJob !== "none") yield* recordMergeJob(headerHash, mergeJob);
-    }
-  });
-
-const remainingLabels = (labels: readonly string[]) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<{
-      header_hash: Buffer;
-    }>`SELECT header_hash FROM pending_block_finalizations`;
-    const present = new Set(rows.map((row) => row.header_hash.toString("hex")));
-    return labels.filter((label) => present.has(header(label).toString("hex")));
-  });
+/** The manifest-derived housekeeping window (15 days today). */
+const MANIFEST_WINDOW_MS = 15 * DAY_MS;
 
 const ALL = [
   "old-plain",
@@ -295,29 +209,12 @@ describe("pruning finalized journals beyond challengeability", () => {
         );
         yield* recordMergedOutcome(header("older-merge"), 10);
         yield* recordMergedOutcome(header("latest-final-merge"), 11);
-        const held = yield* prune({
-          challengeableCutoff: cutoff,
-          view,
-          deploymentIdentityDigest: DEPLOYMENT,
-        });
-        const keptUnderDeployment = yield* remainingLabels(labels);
-        const unheld = yield* prune({ challengeableCutoff: cutoff, view });
-        return {
-          held,
-          keptUnderDeployment,
-          unheld,
-          remaining: yield* remainingLabels(labels),
-        };
+        const held = yield* prune({ challengeableCutoff: cutoff, view });
+        return { held, remaining: yield* remainingLabels(labels) };
       }),
     );
     expect(result.held).toBe(1);
-    expect(result.keptUnderDeployment).toEqual([
-      "latest-final-merge",
-      "newest",
-    ]);
-    // Without an authenticated deployment nothing is held for finality.
-    expect(result.unheld).toBe(1);
-    expect(result.remaining).toEqual(["newest"]);
+    expect(result.remaining).toEqual(["latest-final-merge", "newest"]);
   });
 
   it("removes nothing inside the challengeability horizon", async () => {
@@ -346,32 +243,94 @@ describe("pruning finalized journals beyond challengeability", () => {
   });
 });
 
-const insertLease = (lease: {
-  readonly token: string;
-  readonly status: "active" | "released" | "failed";
-  readonly acquiredAgoMs: number;
-  readonly releasedAgoMs: number | null;
-}) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`INSERT INTO state_queue_mutation_leases
-      (token, scope, holder, status, acquired_at, expires_at, released_at)
-      VALUES (${lease.token}, 'state_queue', 'test', ${lease.status},
-        NOW() - make_interval(secs => ${lease.acquiredAgoMs / 1000}),
-        NOW() + INTERVAL '1 hour',
-        ${
-          lease.releasedAgoMs === null
-            ? null
-            : sql`NOW() - make_interval(secs => ${lease.releasedAgoMs / 1000})`
-        })`;
+describe("journals a recorded correction transition names", () => {
+  const view = {
+    confirmedHeadHash: header("not-journaled"),
+    liveQueueHeaderHashes: [],
+  };
+  const labels = ["admitted-merge", "pending-removal", "unnamed", "newest"];
+
+  it("keeps a journal named by an admitted or a pending observer transition, past every horizon", async () => {
+    const result = await run(
+      Effect.gen(function* () {
+        yield* journals(
+          labels.map((label, index) => ({
+            label,
+            status: "finalized" as const,
+            endedAgoMs: (40 - index) * DAY_MS,
+          })),
+        );
+        // Admitted at confirmation depth is not finality (k = 2160): the
+        // observer still records it, so the journal is kept.
+        yield* recordObserverState({
+          admitted: [header("admitted-merge")],
+          pending: [header("pending-removal")],
+        });
+        const removed = yield* prune({
+          challengeableCutoff: new Date(Date.now() - DAY_MS),
+          view,
+        });
+        return { removed, remaining: yield* remainingLabels(labels) };
+      }),
+    );
+    expect(result.removed).toBe(1);
+    expect(result.remaining).toEqual([
+      "admitted-merge",
+      "pending-removal",
+      "newest",
+    ]);
   });
 
-const leaseTokens = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const rows = yield* sql<{
-    token: string;
-  }>`SELECT token FROM state_queue_mutation_leases ORDER BY token`;
-  return rows.map((row) => row.token);
+  it("reads an observer record stored unwrapped as well as string-wrapped", async () => {
+    const result = await run(
+      Effect.gen(function* () {
+        yield* journals(
+          labels.map((label, index) => ({
+            label,
+            status: "finalized" as const,
+            endedAgoMs: (40 - index) * DAY_MS,
+          })),
+        );
+        yield* recordObserverState({
+          admitted: [header("admitted-merge"), header("pending-removal")],
+          wrapped: false,
+        });
+        const removed = yield* prune({
+          challengeableCutoff: new Date(Date.now() - DAY_MS),
+          view,
+        });
+        return { removed, remaining: yield* remainingLabels(labels) };
+      }),
+    );
+    expect(result.removed).toBe(1);
+    expect(result.remaining).toEqual([
+      "admitted-merge",
+      "pending-removal",
+      "newest",
+    ]);
+  });
+
+  it("starts no batch once the permit budget's deadline has passed", async () => {
+    const result = await run(
+      Effect.gen(function* () {
+        yield* journals(
+          labels.map((label, index) => ({
+            label,
+            status: "finalized" as const,
+            endedAgoMs: (40 - index) * DAY_MS,
+          })),
+        );
+        const removed = yield* prune({
+          challengeableCutoff: new Date(Date.now() - DAY_MS),
+          view,
+          deadlineMs: Date.now() - 1,
+        });
+        return { removed, remaining: yield* remainingLabels(labels) };
+      }),
+    );
+    expect(result.removed).toBe(0);
+    expect(result.remaining).toEqual(labels);
+  });
 });
 
 describe("pruning ended state-queue mutation leases", () => {
@@ -397,7 +356,7 @@ describe("pruning ended state-queue mutation leases", () => {
         token: `recent-${index.toString().padStart(3, "0")}`,
         status: "released",
         acquiredAgoMs: 20 * DAY_MS - index * 1_000,
-        releasedAgoMs: 15 * DAY_MS,
+        releasedAgoMs: 16 * DAY_MS,
       });
     yield* insertLease({
       token: "active",
@@ -412,7 +371,7 @@ describe("pruning ended state-queue mutation leases", () => {
       Effect.gen(function* () {
         yield* seed;
         const removed = yield* StateQueueMutationLeasesDB.pruneSettledLeases({
-          olderThanMs: 7 * DAY_MS,
+          olderThanMs: MANIFEST_WINDOW_MS,
           batchLimit: 2,
         });
         return { removed, tokens: yield* leaseTokens };
@@ -443,5 +402,29 @@ describe("pruning ended state-queue mutation leases", () => {
     );
     expect(result.removed).toBe(0);
     expect(result.tokens).toHaveLength(105);
+  });
+
+  it("keeps an ended lease past the window while a retained journal names it", async () => {
+    const result = await run(
+      Effect.gen(function* () {
+        yield* seed;
+        // The journal fixture names "lease-token".
+        yield* insertLease({
+          token: "lease-token",
+          status: "released",
+          acquiredAgoMs: 40 * DAY_MS,
+          releasedAgoMs: 40 * DAY_MS,
+        });
+        yield* journals([
+          { label: "named", status: "finalized", endedAgoMs: DAY_MS },
+        ]);
+        const removed = yield* StateQueueMutationLeasesDB.pruneSettledLeases({
+          olderThanMs: MANIFEST_WINDOW_MS,
+        });
+        return { removed, tokens: yield* leaseTokens };
+      }),
+    );
+    expect(result.tokens).toContain("lease-token");
+    expect(result.removed).toBe(4);
   });
 });

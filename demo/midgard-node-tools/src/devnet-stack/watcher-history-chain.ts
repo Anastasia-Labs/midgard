@@ -17,6 +17,12 @@ import type {
 
 import { createJourneyNativeScriptArchive } from "../../devnet/watcher-journeys/history-archives.js";
 import { writeDurableFile } from "./durable.js";
+import { HistoryConfigurationRefusal } from "./history-configuration-refusal.js";
+import {
+  admitRetainedHistory,
+  knownRetainedRollback,
+  retainedHistoryPresent,
+} from "./history-retained-admission.js";
 
 export type BlockPoint = {
   readonly blockHash: string;
@@ -235,8 +241,12 @@ export const createHistoryChainFollower = (input: {
   const { directories } = input;
   const archive = createJourneyNativeScriptArchive(directories);
   const commits = createCommitIndex(input.commitsDirectory);
-  // An archive retained before commits were indexed is rebuilt once from origin.
-  const resume = commits.exists() ? resumePoints(directories) : [];
+  const admission = admitRetainedHistory({
+    directories,
+    commitsDirectory: input.commitsDirectory,
+    resume: () => resumePoints(directories),
+  });
+  const resume = admission.resume;
   let acknowledged = false;
   let latestBlockNo: bigint | undefined;
 
@@ -249,8 +259,34 @@ export const createHistoryChainFollower = (input: {
   const onEvent = async (event: WatcherNativeChainSyncEvent) => {
     if (event.kind === "roll_backward") {
       const opening = !acknowledged;
-      acknowledged = true;
       const { point } = event;
+      if (
+        point.kind === "origin" &&
+        (admission.held || retainedHistoryPresent(directories))
+      )
+        throw new HistoryConfigurationRefusal(
+          "retained history refuses Origin rollback before mutation",
+        );
+      if (
+        opening &&
+        point.kind === "point" &&
+        !resume.some(
+          (each) =>
+            each.blockHash === point.blockHash && each.slot === point.slot,
+        )
+      )
+        throw new HistoryConfigurationRefusal(
+          "native intersection does not match an admitted retained checkpoint",
+        );
+      if (
+        !opening &&
+        point.kind === "point" &&
+        !knownRetainedRollback(directories, point)
+      )
+        throw new HistoryConfigurationRefusal(
+          "native rollback has no known retained checkpoint",
+        );
+      acknowledged = true;
       commits.rollback(point);
       if (opening) {
         const at =
@@ -274,7 +310,10 @@ export const createHistoryChainFollower = (input: {
       await archive.rollbackNativeBlocks(point);
       return;
     }
-    acknowledged = true;
+    if (!acknowledged)
+      throw new Error(
+        "native intersection acknowledgement is required before history writes",
+      );
     const block = input.admit(event);
     const point = {
       blockHash: block.blockHash,
@@ -303,7 +342,7 @@ export const createHistoryChainFollower = (input: {
   };
 
   return {
-    /** Newest retained blocks first; origin only as the last fallback. */
+    /** Retained candidates only; Origin is reserved for proved empty bootstrap. */
     intersectionCandidates: [
       ...resume.map(
         (point): RollbackPoint => ({
@@ -312,7 +351,7 @@ export const createHistoryChainFollower = (input: {
           slot: point.slot,
         }),
       ),
-      { kind: "origin" } as const,
+      ...(!admission.held ? [{ kind: "origin" } as const] : []),
     ],
     onEvent,
     latestBlockNo: () => latestBlockNo,

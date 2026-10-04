@@ -29,7 +29,10 @@ export type AvailabilityResponseLoop = {
    * drain in flight may have read the cursor before the scan moved it.
    */
   readonly nudge: () => Promise<void>;
-  /** One readiness reason per challenge whose response deadline passed. */
+  /**
+   * One readiness reason per challenge whose response deadline passed, and
+   * one for a held operation intent.
+   */
   readonly reasons: () => readonly string[];
   readonly stop: () => void;
 };
@@ -66,6 +69,15 @@ export const createAvailabilityResponseLoop = (
   let followUp: Promise<void> | undefined;
   let interval: unknown;
   let missed = new Map<string, AvailabilityResponderMissedDeadline>();
+  let held: string | undefined;
+
+  // A held intent fails readiness until a drain reconciles without it. A
+  // drain that never got past reconciliation (a lagging cursor, a throw)
+  // proves nothing and keeps it.
+  const noteHeld = (report: AvailabilityResponderReport): void => {
+    if (report.status === "held") held = report.detail;
+    else if (report.status !== "awaiting_scan") held = undefined;
+  };
 
   const noteMissedDeadlines = (report: AvailabilityResponderReport): void => {
     const seen = new Map(
@@ -90,6 +102,7 @@ export const createAvailabilityResponseLoop = (
       const logged = availabilityResponderReportLine(report);
       if (logged !== undefined) deps.write(logged.stream, logged.line);
       noteMissedDeadlines(report);
+      noteHeld(report);
     } catch (error) {
       deps.write(
         "stderr",
@@ -125,10 +138,12 @@ export const createAvailabilityResponseLoop = (
       });
       return Promise.resolve();
     },
-    reasons: () =>
-      [...missed.keys()].map(
+    reasons: () => [
+      ...[...missed.keys()].map(
         (headerHash) => `availability_challenge_deadline_missed:${headerHash}`,
       ),
+      ...(held === undefined ? [] : [`availability_operation_held:${held}`]),
+    ],
     stop: () => {
       if (interval !== undefined) timers.clearInterval(interval);
       interval = undefined;

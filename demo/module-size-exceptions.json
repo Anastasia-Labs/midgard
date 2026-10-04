@@ -131,8 +131,8 @@
   },
   {
     "file": "midgard-core/src/availability-operation-journal.ts",
-    "max": 602,
-    "reason": "The synchronous SQLite journal is loaded directly from this .ts source by Node strip-types in the killed-process durability test. One 466-line constructor owns database transactions and lifecycle cleanup. Retain the self-contained source boundary; moving it behind .js facet imports breaks that runtime contract."
+    "max": 601,
+    "reason": "The lease-fenced SQLite journal constructor owns mutation ordering and lifecycle cleanup. Shared storage queries and retention operations are extracted through a native package import so both Node strip-types durability and bundled ESM/CJS consumers resolve the helper. Further reduction requires a separately verified behavioral refactor of transaction-local mutation ordering."
   },
   {
     "file": "midgard-core/src/cek-proof.verify-one-program-material.ts",
@@ -156,7 +156,7 @@
   },
   {
     "file": "midgard-core/tests/availability-operation-journal.test.ts",
-    "max": 584,
+    "max": 581,
     "reason": "Retained test registration “availability operation journal durability and fencing” (541 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1581,7 +1581,7 @@
   },
   {
     "file": "midgard-watcher/src/availability/runtime.create-watcher-availability-runtime.ts",
-    "max": 872,
+    "max": 871,
     "reason": "createWatcherAvailabilityRuntime is the dominant indivisible declaration (809 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1646,8 +1646,8 @@
   },
   {
     "file": "midgard-watcher/tests/availability/concurrent-challenges.test.ts",
-    "max": 1361,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+    "max": 962,
+    "reason": "Retained concurrent challenge registrations share the imported hoisted mock fixture. Fixture setup and independent held workflow regression were extracted and verified separately; further division needs a fixture lifetime refactor."
   },
   {
     "file": "midgard-watcher/tests/availability/source-capture.test.ts",

@@ -69,28 +69,24 @@ export type PlannedCommitBatchSelection = {
   readonly prunedTxCount: number;
 };
 
-/** The post-build DA measurement of one commit pass. */
+/** Complete accepted-prefix accounting; maximum-header bytes are provisional. */
 export type CommitDaFrameMeasurement = {
-  /** Inner DaPayloadV1 bytes, sized with a maximum-width header. */
   readonly innerBytesUpperBound: number;
   readonly acceptedTxCount: number;
+  readonly acceptedTxIds: readonly Buffer[];
   readonly rejectedTxIds: readonly Buffer[];
+  readonly hasMandatoryWork: boolean;
+  readonly prefixes: readonly {
+    readonly innerBytesUpperBound: number;
+    readonly materialDigest: string;
+  }[];
 };
 
 export type CommitDaFrameStepDown =
   | { readonly status: "fits" }
-  /**
-   * The overflow comes from the ledger and events alone; there is no
-   * transaction to drop.
-   */
-  | { readonly status: "no_transactions_to_drop" }
+  | { readonly status: "exact_check_required" }
+  | { readonly status: "incomplete" }
   | { readonly status: "step_down"; readonly nextTxCount: number };
-
-/**
- * Share of the measured per-transaction cost that a step-down assumes still
- * fits, so the first smaller pass usually lands under the frame.
- */
-export const COMMIT_DA_FRAME_STEP_DOWN_SAFETY = 0.9;
 
 export const DEFAULT_COMMIT_BATCH_BUDGET_LIMITS: CommitBatchBudgetLimits = {
   maxL2TxCount: MIDGARD_CONSENSUS_LIMITS.maxL2TransactionCount,

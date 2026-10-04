@@ -23,14 +23,16 @@ const ceiling = async (fits: (entryCount: number) => Promise<boolean>) => {
 describe("DA frame ledger ceiling", () => {
   it("costs each UTxO aggregate entry its encoded tuple bytes", () => {
     // lc1 outrefs are 38 bytes; its outputs were 69, 108, 109 and 110 bytes.
+    // 1,000, 5,000 and 16,384 bytes are larger outputs, the last one the
+    // maximum output size.
     expect(
-      [69, 108, 109, 110].map((outputBytes) =>
+      [69, 108, 109, 110, 1_000, 5_000, 16_384].map((outputBytes) =>
         utxoPayloadEntryEncodedSize({
           outref: Buffer.alloc(38, 1),
           output: Buffer.alloc(outputBytes, 2),
         }),
       ),
-    ).toEqual([116, 156, 157, 158]);
+    ).toEqual([116, 156, 157, 158, 1_076, 5_201, 16_940]);
     expect(
       emptyBlockDaPayloadUpperBoundBytes({
         entryCount: 0,
@@ -39,14 +41,32 @@ describe("DA frame ledger ceiling", () => {
     ).toBe(1_010);
   });
 
+  // The measured ceiling: the L2 UTxO count past which an empty block stops
+  // fitting the frame (inner limits identity 67,108,710 / zstd 66,847,587; an
+  // empty block with no UTxOs is 1,010 bytes). Planner upper bound:
+  //
+  //   output bytes | entry bytes | identity | zstd
+  //   69           | 116         | 578,514  | 576,263
+  //   110          | 158         | 424,732  | 423,079
+  //   lc1 mean     | 148         | 453,430  | 451,666
+  //   1,000        | 1,076       | 62,367   | 62,125
+  //   5,000        | 5,201       | 12,902   | 12,852
+  //   16,384 (max) | 16,940      | 3,961    | 3,946
+  //
   // [mode, entry bytes, planner upper-bound ceiling, pre-submit ceiling]
   const CEILINGS = [
     ["identity", 116, 578_514, 578_519],
     ["identity", 148, 453_430, 453_434],
     ["identity", 158, 424_732, 424_735],
+    ["identity", 1_076, 62_367, 62_368],
+    ["identity", 5_201, 12_902, 12_902],
+    ["identity", 16_940, 3_961, 3_961],
     ["zstd", 116, 576_263, 576_268],
     ["zstd", 148, 451_666, 451_669],
     ["zstd", 158, 423_079, 423_082],
+    ["zstd", 1_076, 62_125, 62_125],
+    ["zstd", 5_201, 12_852, 12_852],
+    ["zstd", 16_940, 3_946, 3_946],
   ] as const;
 
   it.each(CEILINGS)(

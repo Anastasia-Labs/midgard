@@ -358,7 +358,7 @@ describe.skipIf(!dbEnabled)(
 
     it("prunes DA payloads with RETENTION_DAYS=0 but leaves the wall-clock tables alone", async () => {
       const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
-      const sweep = (retentionDays: number) =>
+      const sweep = (retentionDays: number | undefined) =>
         run(
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
@@ -386,6 +386,11 @@ describe.skipIf(!dbEnabled)(
         );
       expect(await sweep(0)).toEqual({ daPayloads: 0, txRejections: 1 });
       expect(await sweep(15)).toEqual({ daPayloads: 0, txRejections: 0 });
+      // Unset: the verified manifest's 15-day window applies.
+      expect(await sweep(undefined)).toEqual({
+        daPayloads: 0,
+        txRejections: 0,
+      });
     });
 
     it("prunes no DA payload in a sweep without an L1 view", async () => {

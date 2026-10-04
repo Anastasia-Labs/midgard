@@ -1,0 +1,395 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  buildDaAvailabilityFundingPreparationTx,
+  type DaAvailabilityOperationContext,
+  type DaAvailabilityOperationObservation,
+  reconcileDaAvailabilityOperations,
+  runDaAvailabilityOperation,
+} from "@al-ft/midgard-sdk";
+import {
+  CML,
+  Emulator,
+  generateEmulatorAccount,
+  Lucid,
+  paymentCredentialOf,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+/**
+ * Confirmation depth is not finality. A confirmed intent that a rollback
+ * deeper than the confirmation depth contradicts is rewound and its exact
+ * signed bytes land again; nothing is re-signed, nothing it reserved is
+ * released early, and evidence about one intent never stops another. The
+ * emulator cannot roll back, so the canonical observation is injected at the
+ * provider seam while the journal and signed transactions are real.
+ */
+const MIN_DEPTH = 30;
+const dirs: string[] = [];
+afterEach(() =>
+  dirs
+    .splice(0)
+    .forEach((dir) => rmSync(dir, { recursive: true, force: true })),
+);
+const hashOf = (cbor: string) =>
+  CML.hash_transaction(CML.Transaction.from_cbor_hex(cbor).body()).to_hex();
+
+const fixture = async () => {
+  const account = generateEmulatorAccount({ lovelace: 100_000_000n });
+  // Two genesis coins of one wallet, so two intents share no input.
+  const emulator = new Emulator([account, account]);
+  emulator.awaitBlock(5);
+  const lucid = await Lucid(emulator, "Custom");
+  lucid.selectWallet.fromSeed(account.seedPhrase);
+  const dir = mkdtempSync(join(tmpdir(), "availability-rollback-"));
+  dirs.push(dir);
+  const journal = openAvailabilityOperationJournal(join(dir, "journal.sqlite"));
+  const coins = await lucid.wallet().getUtxos();
+  expect(coins).toHaveLength(2);
+  let observation: (
+    txHash: string,
+  ) => DaAvailabilityOperationObservation = () => ({
+    status: "unknown",
+    reason: "unobserved",
+  });
+  const submitted: string[] = [];
+  let blockNo = 100;
+  const context: DaAvailabilityOperationContext = {
+    deploymentIdentity: "aa".repeat(32),
+    actor: paymentCredentialOf(account.address).hash,
+    journal,
+    stateQueuePolicyId: "cc".repeat(28),
+    minimumConfirmationDepth: MIN_DEPTH,
+    transactionLimits: {
+      maxTxSize: 16384,
+      maxTxExMem: 16500000n,
+      maxTxExSteps: 10000000000n,
+      coinsPerUtxoByte: 4310n,
+      feeCeilings: { prepare: 1000000n },
+    },
+    assertActuationCurrent: () => {},
+    readBoundary: async () => ({ blockNo }),
+    observe: async (intent) => observation(intent.txHash),
+    submit: async (bytes) => {
+      submitted.push(bytes);
+      return hashOf(bytes);
+    },
+  };
+  const build = vi.fn();
+  const prepare = async (
+    headerHash: string,
+    fundingInput: UTxO,
+    outputLovelace = 50_000_000n,
+  ) => {
+    const result = await runDaAvailabilityOperation(context, {
+      action: "prepare",
+      headerHash,
+      build: async () => {
+        build(headerHash);
+        return buildDaAvailabilityFundingPreparationTx(lucid, {
+          fundingInput,
+          outputLovelace,
+          feeLovelace: 1_000_000n,
+          validFrom: BigInt(emulator.now() - 60_000),
+          validTo: BigInt(emulator.now() + 60_000),
+        });
+      },
+    });
+    return journal.findTransaction(result.txHash)!;
+  };
+  return {
+    lucid,
+    emulator,
+    context,
+    journal,
+    coins,
+    build,
+    submitted,
+    prepare,
+    boundary: (height: number) => {
+      blockNo = height;
+    },
+    observe: (next: (txHash: string) => DaAvailabilityOperationObservation) => {
+      observation = next;
+    },
+  };
+};
+type Fixture = Awaited<ReturnType<typeof fixture>>;
+const included = (
+  txHash: string,
+  confirmationDepth: number,
+  currentSlot?: number,
+): DaAvailabilityOperationObservation => ({
+  status: "included",
+  txHash,
+  inclusionPoint: `${txHash.slice(0, 8)}-block`,
+  confirmationDepth,
+  currentBlockNo: 100,
+  ...(currentSlot === undefined ? {} : { currentSlot }),
+});
+const confirm = async (f: Fixture) => {
+  f.observe((txHash) => included(txHash, MIN_DEPTH, 0));
+  await reconcileDaAvailabilityOperations(f.context);
+};
+
+describe("availability reconciliation after a rollback deeper than the confirmation depth", () => {
+  it("rewinds a confirmed intent within recovery depth and rebroadcasts its identical bytes, never a replacement", async () => {
+    const f = await fixture();
+    try {
+      const record = await f.prepare("bb".repeat(28), f.coins[0]!);
+      await confirm(f);
+      expect(f.journal.get(record.intent.id)?.state).toBe("confirmed");
+      // Confirmation depth releases no reservation.
+      expect(f.journal.reservedOutRefs(f.context.actor)).toEqual(
+        record.intent.spentOutRefs,
+      );
+      f.submitted.splice(0);
+      // The block holding it is gone and its inputs are back, before validity.
+      f.observe(() => ({ status: "unspent", currentSlot: 0 }));
+      await expect(
+        reconcileDaAvailabilityOperations(f.context),
+      ).resolves.toMatchObject([
+        { status: "submitted", txHash: record.intent.txHash },
+      ]);
+      expect(f.submitted).toEqual([record.intent.signedCbor]);
+      expect(f.journal.get(record.intent.id)?.state).toBe("pending");
+      expect(f.journal.reservedOutRefs(f.context.actor)).toEqual(
+        record.intent.spentOutRefs,
+      );
+      // The next operation reconciles the original; nothing new is signed.
+      f.observe(() => ({ status: "unknown", reason: "mempool" }));
+      await expect(
+        runDaAvailabilityOperation(f.context, {
+          action: "prepare",
+          headerHash: "bb".repeat(28),
+          build: async () => {
+            throw new Error("A replacement must never be built");
+          },
+        }),
+      ).resolves.toMatchObject({
+        status: "waiting",
+        txHash: record.intent.txHash,
+      });
+      expect(f.build).toHaveBeenCalledTimes(1);
+      // The same bytes land again and confirm again.
+      f.observe((txHash) => included(txHash, 2));
+      await reconcileDaAvailabilityOperations(f.context);
+      expect(f.journal.get(record.intent.id)?.state).toBe("included");
+      await confirm(f);
+      expect(f.journal.get(record.intent.id)?.state).toBe("confirmed");
+      // Rolled back once more, now past validity: it can never land, so it
+      // expires and only then frees its inputs.
+      f.submitted.splice(0);
+      f.observe(() => ({
+        status: "unspent",
+        currentSlot: record.intent.validUntilSlot,
+      }));
+      await expect(
+        reconcileDaAvailabilityOperations(f.context),
+      ).resolves.toMatchObject([{ status: "expired" }]);
+      expect(f.submitted).toEqual([]);
+      expect(f.journal.reservedOutRefs(f.context.actor)).toEqual([]);
+    } finally {
+      f.journal.close();
+    }
+  });
+
+  it("holds only the intent whose evidence does not authenticate, and the hold clears itself", async () => {
+    const f = await fixture();
+    try {
+      const a = await f.prepare("a1".repeat(28), f.coins[0]!);
+      await confirm(f);
+      const b = await f.prepare("b2".repeat(28), f.coins[1]!);
+      await confirm(f);
+      expect(f.journal.get(a.intent.id)?.state).toBe("confirmed");
+      expect(f.journal.get(b.intent.id)?.state).toBe("confirmed");
+      const heldRecord = f.journal.get(a.intent.id);
+      f.submitted.splice(0);
+      // A's source names some other transaction; B was rolled back.
+      f.observe((txHash) =>
+        txHash === a.intent.txHash
+          ? included("ee".repeat(32), MIN_DEPTH)
+          : { status: "unspent", currentSlot: 0 },
+      );
+      const results = await reconcileDaAvailabilityOperations(f.context);
+      expect(results).toHaveLength(2);
+      expect(results).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            status: "held",
+            txHash: a.intent.txHash,
+            detail: expect.stringMatching(/does not authenticate/),
+          }),
+          expect.objectContaining({
+            status: "submitted",
+            txHash: b.intent.txHash,
+          }),
+        ]),
+      );
+      expect(f.submitted).toEqual([b.intent.signedCbor]);
+      // The hold changed nothing about A.
+      expect(f.journal.get(a.intent.id)).toEqual(heldRecord);
+      expect(f.journal.reservedOutRefs(f.context.actor)).toEqual(
+        [...a.intent.spentOutRefs, ...b.intent.spentOutRefs].sort(),
+      );
+      // Authenticated evidence clears it, and past recovery depth the record
+      // and its reservations are pruned.
+      f.observe((txHash) =>
+        txHash === a.intent.txHash
+          ? included(
+              txHash,
+              DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth + 1,
+              a.intent.validUntilSlot,
+            )
+          : included(txHash, 2),
+      );
+      const cleared = await reconcileDaAvailabilityOperations(f.context);
+      expect(cleared).toHaveLength(2);
+      expect(cleared).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            status: "confirmed",
+            txHash: a.intent.txHash,
+          }),
+          expect.objectContaining({
+            status: "included",
+            txHash: b.intent.txHash,
+          }),
+        ]),
+      );
+      expect(f.journal.get(a.intent.id)).toBeNull();
+      expect(f.journal.reservedOutRefs(f.context.actor)).toEqual(
+        b.intent.spentOutRefs,
+      );
+    } finally {
+      f.journal.close();
+    }
+  });
+
+  it("frees a confirmed intent's inputs only past its validity, and a shallow re-inclusion is only included", async () => {
+    const f = await fixture();
+    try {
+      const a = await f.prepare("d4".repeat(28), f.coins[0]!);
+      await confirm(f);
+      expect(f.journal.reservedOutRefs(f.context.actor)).toEqual(
+        a.intent.spentOutRefs,
+      );
+      // Still included past validity: the audit frees its inputs.
+      f.observe((txHash) =>
+        included(txHash, MIN_DEPTH, a.intent.validUntilSlot),
+      );
+      await expect(
+        reconcileDaAvailabilityOperations(f.context),
+      ).resolves.toMatchObject([{ status: "confirmed" }]);
+      expect(f.journal.reservedOutRefs(f.context.actor)).toEqual([]);
+      // A first confirmation already past validity frees them at once.
+      f.observe((txHash) =>
+        txHash === a.intent.txHash
+          ? included(txHash, MIN_DEPTH, a.intent.validUntilSlot)
+          : { status: "unknown", reason: "mempool" },
+      );
+      const b = await f.prepare("e5".repeat(28), f.coins[1]!);
+      expect(f.journal.get(b.intent.id)?.state).toBe("pending");
+      f.observe((txHash) =>
+        txHash === b.intent.txHash
+          ? included(txHash, MIN_DEPTH, b.intent.validUntilSlot)
+          : included(txHash, MIN_DEPTH, a.intent.validUntilSlot),
+      );
+      await reconcileDaAvailabilityOperations(f.context);
+      expect(f.journal.get(b.intent.id)?.state).toBe("confirmed");
+      expect(f.journal.reservedOutRefs(f.context.actor)).toEqual([]);
+      // Re-included shallower than the confirmation depth after a rollback:
+      // it is included again, not still confirmed.
+      f.observe((txHash) => included(txHash, 2));
+      const shallow = await reconcileDaAvailabilityOperations(f.context);
+      expect(shallow.map(({ status }) => status)).toEqual([
+        "included",
+        "included",
+      ]);
+      expect(f.journal.get(a.intent.id)?.state).toBe("included");
+    } finally {
+      f.journal.close();
+    }
+  });
+
+  it("expires a confirmed chain rolled back past validity in one pass, child after parent", async () => {
+    const f = await fixture();
+    try {
+      const header = "c3".repeat(28);
+      const parent = await f.prepare(header, f.coins[0]!);
+      await confirm(f);
+      await f.lucid.config().provider!.submitTx(parent.intent.signedCbor);
+      f.emulator.awaitBlock();
+      const fundingInput = (await f.lucid.wallet().getUtxos()).find(
+        (utxo) =>
+          utxo.txHash === parent.intent.txHash && utxo.outputIndex === 0,
+      )!;
+      const child = await f.prepare(header, fundingInput, 25_000_000n);
+      await confirm(f);
+      expect(f.journal.get(child.intent.id)?.state).toBe("confirmed");
+      // Rolled back past validity: the parent's inputs are back and the
+      // child's input never existed. The child is visited first, before
+      // anything proves its parent expired.
+      const slot = child.intent.validUntilSlot + 1_000;
+      f.observe((txHash) =>
+        txHash === parent.intent.txHash
+          ? { status: "unspent", currentSlot: slot }
+          : {
+              status: "inputs_missing",
+              currentSlot: slot,
+              missingOutRefs: child.intent.spentOutRefs,
+            },
+      );
+      const results = await reconcileDaAvailabilityOperations(f.context);
+      expect(results.map(({ status }) => status)).toEqual([
+        "expired",
+        "expired",
+      ]);
+      expect(f.submitted).not.toContain(child.intent.signedCbor);
+      expect(f.journal.reservedOutRefs(f.context.actor)).toEqual([]);
+      expect(f.build).toHaveBeenCalledTimes(2);
+    } finally {
+      f.journal.close();
+    }
+  });
+});
+
+describe("availability expiry history pruning in the production reconciliation path", () => {
+  it("prunes an expired signed intent only beyond an authenticated recovery horizon", async () => {
+    const f = await fixture();
+    try {
+      const record = await f.prepare("bb".repeat(28), f.coins[0]!);
+      f.observe(() => ({
+        status: "unspent",
+        currentSlot: record.intent.validUntilSlot,
+      }));
+      await expect(
+        reconcileDaAvailabilityOperations(f.context),
+      ).resolves.toMatchObject([{ status: "expired" }]);
+      expect(f.journal.get(record.intent.id)?.retentionBlockNo).toBe(100);
+      f.boundary(
+        100 + DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth,
+      );
+      await expect(
+        reconcileDaAvailabilityOperations(f.context),
+      ).resolves.toEqual([]);
+      expect(f.journal.get(record.intent.id)?.state).toBe("expired");
+      f.boundary(
+        101 + DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth,
+      );
+      await expect(
+        reconcileDaAvailabilityOperations(f.context),
+      ).resolves.toEqual([]);
+      expect(f.journal.get(record.intent.id)).toBeNull();
+      expect(f.submitted).toEqual([]);
+      expect(f.build).toHaveBeenCalledTimes(1);
+    } finally {
+      f.journal.close();
+    }
+  });
+});

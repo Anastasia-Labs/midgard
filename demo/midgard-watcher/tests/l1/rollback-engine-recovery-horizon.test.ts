@@ -1,13 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
+  evaluateWatcherFinality,
   makeWatcherFinalityBootstrapState,
   type WatcherFinalityState,
 } from "../../src/l1/finality-engine.js";
+import { retainReleasedFinality } from "../../src/l1/finality-engine.retain-released-finality.js";
 import { type WatcherMultiProviderConsistency } from "../../src/l1/multi-provider-consistency.js";
 import { nextAuthenticatedEvidenceWithinRecoveryHorizon } from "../../src/l1/rollback-engine/durable-authority.commit-rollback-durable-authority.js";
 import { freezeRollbackSnapshotJson } from "../../src/l1/rollback-engine/durable-authority.rollback-authority-canonical.js";
 import { indexPersistedObservations } from "../../src/l1/rollback-engine/state.verify-persisted-consistency-evidence.js";
+import { canonicalPathFromHistory } from "../../src/runtime/chain-coordinator.canonical-path-from-history.js";
 import {
   makeEmptyWatcherDurableStore,
   makeWatcherDurableStore,
@@ -69,6 +72,102 @@ const pointHeights = (store: WatcherDurableStore) =>
   );
 
 describe("rollback durable evidence recovery horizon", () => {
+  it("keeps the released predecessor's full horizon while a sparse successor is pending", () => {
+    const released = harness.finalized({ ...at(5000), depth: "4" }, "5");
+    const pending = retainReleasedFinality(
+      evaluateWatcherFinality(
+        harness.policy,
+        null,
+        harness.agreement(at(7160)),
+      ),
+      released.finalized,
+    ).state;
+    if (pending === null) throw new Error("Expected retained pending state");
+    const evidence = append(
+      append(
+        append(empty(), at(2840), released),
+        { ...at(5000), depth: "4" },
+        released,
+      ),
+      { ...at(5000), depth: "5" },
+      released,
+    );
+    expect(heights(append(evidence, at(7160), pending))).toContain("2840");
+  });
+  it.each([true, false])(
+    "reconstructs the previous branch across quiet heights after an offline fork (complete=%s)",
+    (complete) => {
+      const points: Point[] = [100, 101, 102, 103].map((height) => ({
+        ...at(height),
+        parentBlockHash: at(height - 1).blockHash,
+        depth: "5",
+      }));
+      const replacement: Point = {
+        ...points[1]!,
+        blockHash: "ee".repeat(32),
+        depth: "99",
+      };
+      const history = [
+        ...points.map((point) => harness.agreement(point)),
+        harness.agreement(replacement),
+      ];
+      if (!complete) history.splice(2, 1);
+      const store = combine(
+        harness.policy.deploymentMarker,
+        "0",
+        [],
+        undefined,
+        [
+          ...points.flatMap((point) => harness.observations(point)),
+          ...harness.observations(replacement),
+        ],
+      );
+      const path = canonicalPathFromHistory({
+        history,
+        store,
+        ancestor: {
+          kind: "point",
+          blockHash: points[0]!.blockHash,
+          slot: points[0]!.slot,
+        },
+        terminal: {
+          blockHash: points[3]!.blockHash,
+          blockNo: points[3]!.blockNo,
+          lastSeenConsistencyDigest: harness.agreement(points[3]!)
+            .consistencyDigest,
+        },
+      });
+      expect(
+        path?.map(({ agreement }) => agreement?.blockHash) ?? null,
+      ).toEqual(complete ? points.map(({ blockHash }) => blockHash) : null);
+    },
+  );
+
+  it("compacts repeated authenticated reconnect depths without dropping frontier bindings", () => {
+    const point = at(100);
+    const frontier = harness.finalized({ ...point, depth: "4" }, "5");
+    let evidence = append(
+      append(empty(), { ...point, depth: "4" }, frontier),
+      { ...point, depth: "5" },
+      frontier,
+    );
+    for (let depth = 6; depth < 40; depth += 1) {
+      evidence = append(evidence, { ...point, depth: String(depth) }, frontier);
+      expect(evidence.history.length).toBeLessThanOrEqual(3);
+      expect(evidence.store.l1Observations.length).toBeLessThanOrEqual(6);
+      expect(evidence.store.chainPoints.length).toBeLessThanOrEqual(6);
+    }
+    expect(
+      evidence.history.map(({ consistencyDigest }) => consistencyDigest),
+    ).toEqual(
+      expect.arrayContaining([
+        frontier.finalized!.firstSeenConsistencyDigest,
+        frontier.finalized!.lastSeenConsistencyDigest,
+      ]),
+    );
+    expect(evidence.history.at(-1)?.agreement?.minimumDepth).toBe("39");
+  });
+
   it("keeps the evidence bounded however long the watcher runs", () => {
     let evidence = empty();
     for (let index = 0; index < 30; index += 1) {

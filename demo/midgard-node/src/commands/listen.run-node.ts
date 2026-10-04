@@ -1,14 +1,10 @@
-import { createServer } from "node:http";
-
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { NodeSdk } from "@effect/opentelemetry";
-import { HttpServer } from "@effect/platform";
-import { NodeHttpServer } from "@effect/platform-node";
 import { SqlClient } from "@effect/sql";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { Cause, Effect, Layer, Option, pipe, Ref } from "effect";
+import { Cause, Effect, Option, pipe, Ref } from "effect";
 
 import { closeDaLibp2pPublicationTransport } from "../da/libp2p-producer.js";
 import {
@@ -54,6 +50,7 @@ import {
   retainedPayloadServerThread,
   runStartupProviderStepWithRetry,
 } from "./listen.retained-payload-server-thread.js";
+import type { StartupHttp } from "./listen.startup-http.js";
 import { buildListenRouter } from "./listen-router.js";
 import {
   assertStartupMutationJobsRecoverable,
@@ -73,6 +70,7 @@ import { shouldRunGenesisOnStartup } from "./startup-policy.js";
  * the node progressing.
  */
 export const runNode = (
+  startup: StartupHttp,
   withMonitoring?: boolean,
 ): Effect.Effect<
   void,
@@ -95,6 +93,7 @@ export const runNode = (
     const nodeConfig = yield* NodeConfig;
     const globals = yield* Globals;
 
+    yield* startup.setStage("local_preflight");
     yield* Effect.try({
       try: () => settlementWalletAddress(nodeConfig),
       catch: (cause) =>
@@ -137,18 +136,30 @@ export const runNode = (
           logStartupFailure("Startup DA identity preflight failed"),
         ),
       ),
-      initializeDatabase: InitDB.program.pipe(Effect.provide(Database.layer)),
-      initializeProtocol: ensureProtocolInitializedOnStartup,
-      providerAssertions: (preflight) =>
-        runStartupProviderStepWithRetry(
-          "Startup DA provider assertions",
-          assertDaHardeningProviderStartup(preflight),
-          startupProviderRetry,
-        ).pipe(
-          Effect.tapError(
-            logStartupFailure("Startup DA provider assertions failed"),
-          ),
+      initializeDatabase: startup
+        .setStage("database_initialization")
+        .pipe(
+          Effect.zipRight(InitDB.program.pipe(Effect.provide(Database.layer))),
         ),
+      initializeProtocol: startup
+        .setStage("protocol_initialization")
+        .pipe(Effect.zipRight(ensureProtocolInitializedOnStartup)),
+      providerAssertions: (preflight) =>
+        startup
+          .setStage("provider_assertions")
+          .pipe(
+            Effect.zipRight(
+              runStartupProviderStepWithRetry(
+                "Startup DA provider assertions",
+                assertDaHardeningProviderStartup(preflight),
+                startupProviderRetry,
+              ).pipe(
+                Effect.tapError(
+                  logStartupFailure("Startup DA provider assertions failed"),
+                ),
+              ),
+            ),
+          ),
     });
 
     let startupPrepared = false;
@@ -161,6 +172,7 @@ export const runNode = (
         }
       }),
     );
+    yield* startup.setStage("history_initialization");
     const historyOwner = yield* makeProductionEventHistoryOwner({
       expectedGenesisLosslessSha256:
         nodeConfig.L1_HISTORY_GENESIS_LOSSLESS_SHA256,
@@ -180,6 +192,7 @@ export const runNode = (
         Effect.gen(function* () {
           yield* preparation.assertCurrent;
           if (startupPrepared) return;
+          yield* startup.setStage("recovery_preparation");
           yield* runStartupProviderStepWithRetry(
             "Startup state-queue boundary seed",
             seedLatestLocalBlockBoundaryOnStartup,
@@ -269,6 +282,7 @@ export const runNode = (
       ),
     );
     yield* Ref.set(globals.EVENT_HISTORY_OWNER, historyOwner);
+    yield* startup.setStage("history_sync");
     yield* historyOwner.awaitReady.pipe(
       Effect.mapError(
         (cause) =>
@@ -306,15 +320,6 @@ export const runNode = (
 
     yield* refreshAdmissionBacklogGauge;
 
-    const httpApplicationLayer = HttpServer.serve(
-      buildListenRouter(withMonitoring),
-    ).pipe(Layer.provide(admissionAsDefaultSqlLayer));
-    const appThread = Layer.launch(
-      Layer.provide(
-        httpApplicationLayer,
-        NodeHttpServer.layer(createServer, { port: nodeConfig.PORT }),
-      ),
-    );
     const sql = yield* SqlClient.SqlClient;
     const retrieveRetainedDaPayload = (headerHash: Buffer) =>
       Effect.runPromise(
@@ -326,21 +331,28 @@ export const runNode = (
         ),
       );
 
-    const program = Effect.all(
-      runNodeFiberSet({
-        nodeConfig,
-        withMonitoring,
-        startupFibers: {
-          historyOwnerStopped: historyOwner.awaitStopped,
-          appThread,
-          retainedPayloadServer: retainedPayloadServerThread(
-            retrieveRetainedDaPayload,
-          ),
-        },
-      }),
-      {
-        concurrency: "unbounded",
-      },
+    const publishHttp = startup
+      .publish(buildListenRouter(withMonitoring))
+      .pipe(Effect.provide(admissionAsDefaultSqlLayer));
+
+    const program = publishHttp.pipe(
+      Effect.zipRight(
+        Effect.all(
+          runNodeFiberSet({
+            nodeConfig,
+            withMonitoring,
+            startupFibers: {
+              historyOwnerStopped: historyOwner.awaitStopped,
+              retainedPayloadServer: retainedPayloadServerThread(
+                retrieveRetainedDaPayload,
+              ),
+            },
+          }),
+          {
+            concurrency: "unbounded",
+          },
+        ),
+      ),
     );
 
     if (withMonitoring) {

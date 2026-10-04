@@ -327,6 +327,74 @@ describe("base-spend helpers", () => {
     expect(found).toEqual({ kind: "spent", txHash: FOREIGN, height: 2 });
   });
 
+  it("reads no evidence below the receipt that created the base output, and reads it at or after that height", async () => {
+    const SIBLING = hex("sibling-commit");
+    const LATE = hex("late-spend");
+    const scan = (toHeight: number) =>
+      scanBaseSpend({
+        binding,
+        headerHash: E_HEADER,
+        intendedTxHash: Buffer.from(E.hash, "hex"),
+        base: { outRef: BASE_OUT, headerHash: BASE_HEADER, utxosRoot: "" },
+        fromHeight: -1,
+        toHeight,
+      });
+    const results = await run(
+      Effect.gen(function* () {
+        // A receipt below the base's creation that says its output was
+        // spent is no evidence.
+        yield* applyBlock(1, [{ txHash: FOREIGN, inputs: [BASE_OUT] }]);
+        yield* applyBlock(2, [{ txHash: BASE_TX, inputs: [] }]);
+        const created = yield* scan(2);
+        yield* applyBlock(3, [{ txHash: LATE, inputs: [BASE_OUT] }]);
+        const spent = yield* scan(3);
+        return { created, spent };
+      }),
+    );
+    expect(results.created).toBeUndefined();
+    expect(results.spent).toEqual({ kind: "spent", txHash: LATE, height: 3 });
+    const block = (height: number, txs: Parameters<typeof receipt>[0]) => ({
+      height,
+      receipt: receipt(txs),
+    });
+    // Nor is a sibling's commit below it; a spend in the block that created
+    // the base output is at the base.
+    const sameBlock = [
+      block(1, [{ txHash: SIBLING, inputs: [BASE_OUT] }]),
+      block(2, [
+        { txHash: BASE_TX, inputs: [] },
+        { txHash: FOREIGN, inputs: [BASE_OUT] },
+      ]),
+    ];
+    expect(
+      findBaseSpend(sameBlock, BINDING, BASE_OUT, E.hash, new Set([SIBLING])),
+    ).toEqual({ kind: "spent", txHash: FOREIGN, height: 2 });
+    // Without the creating receipt, the base output is older than every
+    // receipt read, and the first evidence counts.
+    expect(
+      findBaseSpend(
+        sameBlock.slice(0, 1),
+        BINDING,
+        BASE_OUT,
+        E.hash,
+        new Set([SIBLING]),
+      ),
+    ).toEqual({ kind: "sibling", txHash: SIBLING, height: 1 });
+    // An invalid transaction of that hash (collaterals) created nothing.
+    expect(
+      findBaseSpend(
+        [
+          block(1, [{ txHash: FOREIGN, inputs: [BASE_OUT] }]),
+          block(2, [{ txHash: BASE_TX, spends: "collaterals", inputs: [] }]),
+        ],
+        BINDING,
+        BASE_OUT,
+        E.hash,
+        new Set(),
+      ),
+    ).toEqual({ kind: "spent", txHash: FOREIGN, height: 1 });
+  });
+
   it("declines before the TTL, on any evidence, while the exact-point queue still holds the base output", () => {
     const queue = {
       nodes: [{ node: { utxo: { txHash: BASE_TX, outputIndex: 0 } } }],

@@ -19,6 +19,11 @@ import {
 import { decodePendingBlockFinalizationRow } from "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
 import { type Record } from "./pendingBlockFinalizations.parse-ledger-delta.js";
 import { retrieveRecord } from "./pendingBlockFinalizations.retrieve-record.js";
+import {
+  challengeRelevantHeader,
+  pruneInBatches,
+  recoveryRelevantJournal,
+} from "./retention-holds.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 import * as WithdrawalsDB from "./withdrawals.js";
 
@@ -205,17 +210,22 @@ export const withdrawalMemberToAssignment = (
 
 /**
  * Deletes finalized journals whose block ended before `challengeableCutoff`,
- * `batchLimit` rows per statement until a batch comes up short or
- * `maxBatches` ran; each journal's member rows go with it by cascade. Never
- * removed: any journal not finalized (an abandoned one may still be revived),
- * the confirmed head and every header live in the L1 state queue, every
- * header DA retention still holds for finality (`finalityHeldPayload`, the
- * exemption set the DA payload prune applies), the newest
- * finalized journal (the local block boundary), and any journal whose
- * confirmed-merge finalization job has not completed: the landed-merge walk
- * stops at a header with no journal, so pruning one before its merge is
- * folded locally would skip that merge silently. Runs as a history write,
- * so it needs the history producer permit. Returns the number removed.
+ * `batchLimit` rows per statement until a batch comes up short, `maxBatches`
+ * ran, or the clock passes `deadlineMs`; each journal's member rows go with it
+ * by cascade. Never removed: any journal not finalized (an abandoned one may
+ * still be revived), the newest finalized journal (the local block boundary),
+ * any journal whose confirmed-merge finalization job has not completed (the
+ * landed-merge walk stops at a header with no journal, so pruning one before
+ * its merge is folded locally would skip that merge silently), and any
+ * journal whose header is still challenge-relevant (`challengeRelevantHeader`:
+ * the confirmed head, a live queue header, a header DA retention holds for
+ * finality, or one any recorded correction-observer transition, pending or
+ * admitted, merged or removed, so a merge admitted at confirmation depth
+ * keeps its journal until it is final at k). Recovery dependencies are also
+ * kept: unfinished/abandoned journals' bases, same-base siblings and descendants,
+ * and every retained native recovery plan's primary/member headers. Each batch
+ * is its own history write, so it needs the history producer permit and holds
+ * it for one statement at a time. Returns the number removed.
  */
 export const pruneFinalizedBeyondChallengeability = ({
   challengeableCutoff,
@@ -223,28 +233,31 @@ export const pruneFinalizedBeyondChallengeability = ({
   deploymentIdentityDigest,
   batchLimit = 500,
   maxBatches = 100,
+  deadlineMs,
 }: {
   readonly challengeableCutoff: Date;
   readonly view: DaPayloadsDB.RetentionL1View;
-  readonly deploymentIdentityDigest: Buffer | undefined;
+  readonly deploymentIdentityDigest: Buffer;
   readonly batchLimit?: number;
   readonly maxBatches?: number;
+  readonly deadlineMs?: number;
 }): Effect.Effect<number, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const exempt = [view.confirmedHeadHash, ...view.liveQueueHeaderHashes];
-    const limit = Math.max(1, Math.floor(batchLimit));
-    let removed = 0;
-    for (let batch = 0; batch < Math.max(1, maxBatches); batch++) {
-      const rows = yield* sql<{ header_hash: Buffer }>`DELETE FROM ${sql(
-        tableName,
-      )}
+  pruneInBatches({
+    batchLimit,
+    maxBatches,
+    deadlineMs,
+    batch: (limit) =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const rows = yield* sql<{ header_hash: Buffer }>`DELETE FROM ${sql(
+          tableName,
+        )}
         WHERE ${sql(Columns.HEADER_HASH)} IN (
           SELECT ${sql(Columns.HEADER_HASH)} FROM ${sql(tableName)}
           WHERE ${sql(Columns.STATUS)} = ${Status.Finalized}
             AND ${sql(Columns.BLOCK_END_TIME)} < ${challengeableCutoff}
-            AND NOT ${sql.in(Columns.HEADER_HASH, exempt)}
-            AND NOT ${DaPayloadsDB.finalityHeldPayload(sql, deploymentIdentityDigest)}
+            AND NOT ${challengeRelevantHeader(sql, `${tableName}.${Columns.HEADER_HASH}`, { view, deploymentIdentityDigest })}
+            AND NOT ${recoveryRelevantJournal(sql, `${tableName}.${Columns.HEADER_HASH}`, deploymentIdentityDigest)}
             AND EXISTS (
               SELECT 1 FROM ${sql(MutationJobsDB.tableName)} AS job
               WHERE job.${sql(MutationJobsDB.Columns.JOB_ID)} =
@@ -262,15 +275,58 @@ export const pruneFinalizedBeyondChallengeability = ({
           ORDER BY ${sql(Columns.BLOCK_END_TIME)} ASC
           LIMIT ${limit})
         RETURNING ${sql(Columns.HEADER_HASH)}`;
-      removed += rows.length;
-      if (rows.length < limit) break;
-    }
-    return removed;
-  }).pipe(
-    withHistoryWrite,
-    Effect.withLogSpan(`pruneFinalizedBeyondChallengeability ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to prune finalized journals beyond challengeability",
-    ),
-  );
+        return rows.length;
+      }).pipe(
+        withHistoryWrite,
+        Effect.withLogSpan(`pruneFinalizedBeyondChallengeability ${tableName}`),
+        sqlErrorToDatabaseError(
+          tableName,
+          "Failed to prune finalized journals beyond challengeability",
+        ),
+      ),
+  });
+
+/** Retained journals recovery still reads, plus merges not finalized locally.
+ * Finalized same-base siblings/descendants and recovery-plan members need
+ * recorded landing evidence too. Settled finalized journals alone do not hold
+ * their observer transition forever: that would cycle with journal retention. */
+export const retrieveCorrectionObserverJournalDependencies: Effect.Effect<
+  readonly Readonly<{
+    headerHash: string;
+    baseTailHeaderHash: string;
+    baseTailOutRef: string;
+    abandoned: boolean;
+  }>[],
+  DatabaseError,
+  Database
+> = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{
+    readonly header_hash: Buffer;
+    readonly base_tail_header_hash: Buffer;
+    readonly base_tail_out_ref: string;
+    readonly status: Status;
+  }>`SELECT ${sql(Columns.HEADER_HASH)}, ${sql(Columns.BASE_TAIL_HEADER_HASH)},
+      ${sql(Columns.BASE_TAIL_OUT_REF)}, ${sql(Columns.STATUS)}
+    FROM ${sql(tableName)}
+    WHERE ${sql(Columns.STATUS)} <> ${Status.Finalized}
+      OR ${recoveryRelevantJournal(sql, `${tableName}.${Columns.HEADER_HASH}`)}
+      OR NOT EXISTS (
+        SELECT 1 FROM ${sql(MutationJobsDB.tableName)} AS job
+        WHERE job.${sql(MutationJobsDB.Columns.JOB_ID)} =
+            ${MutationJobsDB.confirmedMergeFinalizationJobId("")}::text ||
+            encode(${sql(tableName)}.${sql(Columns.HEADER_HASH)}, 'hex')
+          AND job.${sql(MutationJobsDB.Columns.STATUS)} = ${MutationJobsDB.Status.Completed})
+    ORDER BY ${sql(Columns.HEADER_HASH)}`;
+  return rows.map((row) => ({
+    headerHash: row.header_hash.toString("hex"),
+    baseTailHeaderHash: row.base_tail_header_hash.toString("hex"),
+    baseTailOutRef: row.base_tail_out_ref,
+    abandoned: row.status === Status.Abandoned,
+  }));
+}).pipe(
+  sqlErrorToDatabaseError(
+    tableName,
+    "Failed to read the journals the correction observer depends on",
+  ),
+);

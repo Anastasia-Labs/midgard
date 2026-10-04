@@ -1,3 +1,5 @@
+import { performance } from "node:perf_hooks";
+
 /**
  * The scheduled merge (`withL1ControlPlaneWaitTimeout`) and the signed-intent
  * rebroadcast (`withL1ControlPlaneIfAvailable`) hold the same permit as every
@@ -6,11 +8,12 @@
  * overrun their deadline, counted in the hold-timeout streak, and able to
  * extend their own budget.
  */
-import { Deferred, Effect, Exit, Fiber, Ref } from "effect";
-import { describe, expect, it } from "vitest";
+import { Deferred, Effect, Exit, Fiber, Option, Ref } from "effect";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   Globals,
+  withL1ControlPlane,
   withL1ControlPlaneIfAvailable,
   withL1ControlPlaneWaitTimeout,
 } from "../src/services/globals.js";
@@ -138,4 +141,216 @@ describe.each(holds)("the %s hold", (scope, hold) => {
     );
     expect(granted).toBe(5_000);
   });
+});
+
+const withWallStep = async <A>(
+  offset: number,
+  run: (started: () => void) => Promise<A>,
+): Promise<A> => {
+  const realNow = Date.now;
+  let startedAt = Infinity;
+  const wall = vi
+    .spyOn(Date, "now")
+    .mockImplementation(
+      () => realNow() + (performance.now() - startedAt >= 5 ? offset : 0),
+    );
+  try {
+    return await run(() => {
+      startedAt = performance.now();
+    });
+  } finally {
+    wall.mockRestore();
+  }
+};
+
+const clockHolds: ReadonlyArray<readonly [string, Hold]> = [
+  [
+    "ordinary",
+    (globals, maxHoldMs, work) =>
+      withL1ControlPlane(globals, { scope: "ordinary", maxHoldMs }, work),
+  ],
+  ...holds,
+];
+
+describe.each(clockHolds)("monotonic %s hold", (_scope, hold) => {
+  it.each([-60_000, 0, 60_000])(
+    "times out its actual20ms hold and admits the waiter despite wall step%s",
+    async (offset) => {
+      const result = await withWallStep(offset, (started) =>
+        runWithGlobals(
+          Effect.gen(function* () {
+            const globals = yield* Globals;
+            const entered = yield* Deferred.make<void>();
+            let ended = false,
+              competitorEntered = false;
+            const start = performance.now();
+            const holder = yield* Effect.fork(
+              hold(
+                globals,
+                20,
+                Effect.sync(started).pipe(
+                  Effect.zipRight(Deferred.succeed(entered, undefined)),
+                  Effect.zipRight(Effect.never),
+                ),
+              ).pipe(
+                Effect.exit,
+                Effect.tap(() =>
+                  Effect.sync(() => {
+                    ended = true;
+                  }),
+                ),
+              ),
+            );
+            yield* Deferred.await(entered);
+            const registered = (yield* Ref.get(
+              globals.L1_CONTROL_PLANE_ACTIVITY,
+            )).holder;
+            const waiter = yield* Effect.fork(
+              withL1ControlPlane(
+                globals,
+                { scope: "clock_waiter", maxHoldMs: 1000 },
+                Effect.sync(() => {
+                  competitorEntered = true;
+                }),
+              ),
+            );
+            yield* Effect.sleep(150);
+            const trace = {
+              ended,
+              competitorEntered,
+              elapsed: performance.now() - start,
+              diagnosticBudget:
+                registered === null
+                  ? undefined
+                  : registered.deadlineMs - registered.sinceMs,
+            };
+            yield* Fiber.interrupt(waiter);
+            yield* Fiber.interrupt(holder);
+            const reacquired = yield* withL1ControlPlane(
+              globals,
+              { scope: "clock_retry", maxHoldMs: 1000 },
+              Effect.succeed(true),
+            );
+            return {
+              ...trace,
+              reacquired,
+              after: (yield* Ref.get(globals.L1_CONTROL_PLANE_ACTIVITY)).holder,
+            };
+          }),
+        ),
+      );
+      expect(result.ended).toBe(true);
+      expect(result.competitorEntered).toBe(true);
+      expect(result.elapsed).toBeLessThan(700);
+      expect(result.diagnosticBudget).toBe(20);
+      expect(result.reacquired).toBe(true);
+      expect(result.after).toBeNull();
+    },
+  );
+
+  it.each([-60_000, 60_000])(
+    "retains the extended budget under wall step%s",
+    async (offset) => {
+      const result = await withWallStep(offset, (started) =>
+        runWithGlobals(
+          Effect.gen(function* () {
+            const globals = yield* Globals;
+            let granted: number | undefined,
+              finished = false;
+            const start = performance.now();
+            const exit = yield* Effect.exit(
+              hold(
+                globals,
+                20,
+                Effect.gen(function* () {
+                  started();
+                  yield* Effect.sleep(10);
+                  granted = yield* extendL1ControlPlaneHold(100);
+                  yield* Effect.sleep(50);
+                  finished = true;
+                }),
+              ),
+            );
+            return {
+              exit,
+              granted,
+              finished,
+              elapsed: performance.now() - start,
+            };
+          }),
+        ),
+      );
+      expect(Exit.isSuccess(result.exit)).toBe(true);
+      expect(result.granted).toBe(100);
+      expect(result.finished).toBe(true);
+      expect(result.elapsed).toBeGreaterThanOrEqual(45);
+    },
+  );
+});
+
+it("keeps the waiter excluded until timed-out work finishes its cleanup", async () => {
+  const result = await withWallStep(-60_000, (started) =>
+    runWithGlobals(
+      Effect.gen(function* () {
+        const globals = yield* Globals;
+        const entered = yield* Deferred.make<void>();
+        const cleanupEntered = yield* Deferred.make<void>();
+        const releaseCleanup = yield* Deferred.make<void>();
+        let cleanupFinished = false,
+          waiterEntered = false;
+        const holder = yield* Effect.fork(
+          withL1ControlPlane(
+            globals,
+            { scope: "cleanup_holder", maxHoldMs: 20 },
+            Effect.sync(started).pipe(
+              Effect.zipRight(Deferred.succeed(entered, undefined)),
+              Effect.zipRight(Effect.never),
+              Effect.ensuring(
+                Deferred.succeed(cleanupEntered, undefined).pipe(
+                  Effect.zipRight(Deferred.await(releaseCleanup)),
+                  Effect.tap(() =>
+                    Effect.sync(() => {
+                      cleanupFinished = true;
+                    }),
+                  ),
+                ),
+              ),
+            ),
+          ).pipe(Effect.exit),
+        );
+        yield* Deferred.await(entered);
+        const waiter = yield* Effect.fork(
+          withL1ControlPlane(
+            globals,
+            { scope: "cleanup_waiter", maxHoldMs: 1000 },
+            Effect.sync(() => {
+              waiterEntered = true;
+            }),
+          ),
+        );
+        const cleanupStarted = yield* Deferred.await(cleanupEntered).pipe(
+          Effect.timeoutOption(150),
+        );
+        const during = {
+          cleanupFinished,
+          waiterEntered,
+          holder: (yield* Ref.get(globals.L1_CONTROL_PLANE_ACTIVITY)).holder
+            ?.scope,
+        };
+        // Always release our own cleanup before joining/interruption, including RED.
+        yield* Deferred.succeed(releaseCleanup, undefined);
+        yield* Fiber.interrupt(holder);
+        yield* Fiber.join(waiter);
+        return { cleanupStarted, during, cleanupFinished, waiterEntered };
+      }),
+    ),
+  );
+  expect(Option.isSome(result.cleanupStarted)).toBe(true);
+  expect(result.during).toMatchObject({
+    cleanupFinished: false,
+    waiterEntered: false,
+    holder: "cleanup_holder",
+  });
+  expect(result.cleanupFinished).toBe(true);
+  expect(result.waiterEntered).toBe(true);
 });

@@ -7,6 +7,7 @@ import {
   COMMIT_HOLD_MAX_COUNTED_USER_EVENTS,
   COMMIT_HOLD_PER_TX_MS,
   COMMIT_HOLD_PER_USER_EVENT_MS,
+  COMMIT_HOLD_STEP_DOWN_TX_WORK_FACTOR,
   commitHoldBudgetMs,
   extendCommitmentHoldForBacklog,
 } from "../src/fibers/block-commitment.commit-hold-budget.js";
@@ -15,6 +16,7 @@ import {
   extendL1ControlPlaneHold,
   L1_CONTROL_PLANE_HOLD_CEILING_MS,
 } from "../src/services/globals.l1-control-plane.js";
+import { commitDaFrameStepDownPassBound } from "../src/workers/utils/commit-block-planner.js";
 
 /** The consensus cap on one block's L2 transactions (config refuses more). */
 const CONSENSUS_MAX_L2_TX_COUNT =
@@ -43,9 +45,19 @@ describe("commitment hold budget", () => {
       consecutiveHoldTimeouts: 0,
     });
     expect(budget).toBeGreaterThan(180_000);
+    // Every step-down pass rebuilds the events (15 passes at most for 8,000
+    // transactions), and all passes build under 3 * 8,000 transactions.
+    expect(commitDaFrameStepDownPassBound(8_000)).toBe(15);
     expect(budget).toBe(
-      COMMIT_HOLD_BASE_MS + COMMIT_HOLD_PER_TX_MS * 8_000 + 50 * 500,
+      COMMIT_HOLD_BASE_MS +
+        COMMIT_HOLD_PER_TX_MS * COMMIT_HOLD_STEP_DOWN_TX_WORK_FACTOR * 8_000 +
+        COMMIT_HOLD_PER_USER_EVENT_MS * 500 * 15,
     );
+    expect(budget).toBe(1_035_000);
+    // The control-plane ceiling clips what this asks for: with 500 events the
+    // budget passes 900 s above 5,750 transactions, so the step-down worst
+    // case at the largest backlogs gets 900 s, not its full budget.
+    expect(budget).toBeGreaterThan(L1_CONTROL_PLANE_HOLD_CEILING_MS);
   });
 
   it("counts a backlog only up to what one block can carry", () => {
@@ -177,8 +189,11 @@ describe("sizing the commitment hold from the counted backlog", () => {
     const backlog = { mempoolTxCount: 5_000, pendingUserEventCount: 200 };
     const expected =
       COMMIT_HOLD_BASE_MS +
-      COMMIT_HOLD_PER_TX_MS * 5_000 +
-      COMMIT_HOLD_PER_USER_EVENT_MS * 200;
+      COMMIT_HOLD_PER_TX_MS * COMMIT_HOLD_STEP_DOWN_TX_WORK_FACTOR * 5_000 +
+      COMMIT_HOLD_PER_USER_EVENT_MS *
+        200 *
+        commitDaFrameStepDownPassBound(5_000);
+    expect(expected).toBe(630_000);
     const outcome = await holdForBacklog(backlog, COMMIT_HOLD_BASE_MS);
     expect(outcome.holdBudgetMs).toBe(expected);
     expect(outcome.grantedHoldMs).toBe(expected);

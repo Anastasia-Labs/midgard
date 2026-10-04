@@ -22,6 +22,9 @@ export type L1ProviderPreflightConfig = {
   readonly L1_OGMIOS_KEY: string;
   readonly L1_KUPO_KEY: string;
   readonly NETWORK: "Mainnet" | "Preprod" | "Preview" | "Custom";
+  /** Runtime callers share the genesis-derived submit bound. Standalone
+   * preflight keeps the slot reader's default until a mapping is resolved. */
+  readonly L1_OGMIOS_TIP_MAX_AGE_MS?: number;
 };
 
 export type L1ProviderHealth = {
@@ -259,6 +262,7 @@ const checkKupmios = async (
         fetchImpl,
         nowMs,
         timeoutMs: config.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
+        maxHealthAgeMs: config.L1_OGMIOS_TIP_MAX_AGE_MS,
         signal,
       }),
     );

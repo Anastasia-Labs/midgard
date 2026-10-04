@@ -10,6 +10,7 @@ import { Effect, type Either, Ref, Runtime } from "effect";
 
 import { ATTESTATION_TIMEOUT_CORRECTION_FAILURE_THRESHOLD } from "../commands/readiness.js";
 import { DaPayloadTerminalOutcomesDB } from "../database/index.js";
+import { retrieveCorrectionObserverJournalDependencies } from "../database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
 import {
   type AttestationTimeoutObservation,
   observeAttestationTimeoutQueue,
@@ -228,6 +229,8 @@ export const reconcileStateQueueCorrections = ({
               ),
             );
           },
+          journalDependencies: () =>
+            run(retrieveCorrectionObserverJournalDependencies),
         }),
       catch: (cause) => cause,
     });

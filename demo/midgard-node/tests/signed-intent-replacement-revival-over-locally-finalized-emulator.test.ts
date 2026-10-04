@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 
+import * as MutationJobs from "../src/database/mutationJobs.js";
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { signedIntentReplacementDigest } from "../src/services/canonical-journal-recovery.js";
 import { advanceEmulatorPastLatestBlockEndTime } from "./deposit-flow-emulator-shared.js";
@@ -13,10 +14,10 @@ import {
   submitDeposit,
 } from "./helpers/correction-rewind-scenario.js";
 import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { createSignedIntentReplacementFork } from "./helpers/signed-intent-replacement.canonical-fork.js";
 import {
   admitTwoFundedTransfers,
   expectReplaced,
-  landSignedCommitAsFork,
   moveToExactSlot,
   nativeRoot,
   nextPoint,
@@ -30,44 +31,53 @@ import {
 } from "./signed-intent-replacement-revival-emulator.signed-commit-node.js";
 
 /**
- * A replaced commit E wins its base slot after all while its replacement N,
- * built on the same base with the same members, has already written its local
- * finalization (submitted_unconfirmed) without ever landing. The release
- * reverses N's local finalization and revives E; E is then locally finalized
- * once and every member is committed once. Before this, the release stayed
- * undecided while N was locally finalized, and the history gate stayed
- * closed for as long as E held the slot.
+ * A replaced commit E wins its base slot on an alternative emulator branch
+ * after its replacement N was included and locally finalized on the prior branch.
+ * A fresh correction observer bootstraps from E's actual queue; the running
+ * history owner reverses N's local effects and revives E. E is then finalized
+ * once and every member is committed once. Included bodies and ledger outputs
+ * come from the private emulator; branch rollback RPCs use a controlled transport.
  */
-it("revives a replaced commit that won its slot over a locally finalized unlanded replacement, and finalizes each member once", async () => {
-  const h = await openHistoryProductionOwnerLifecycle();
+it("revives a replaced commit after a fork rolls back its canonically included locally finalized replacement, and finalizes each member once", async () => {
+  const branch = createSignedIntentReplacementFork();
+  const initial = await openHistoryProductionOwnerLifecycle({
+    transportFactory: branch.transportFactory,
+  });
+  let h = initial;
   try {
     await resetSharedRows();
     await advanceEmulatorPastLatestBlockEndTime(h.fixture);
     const { first, second, txIds } = await admitTwoFundedTransfers(h);
     const depositInclusion = await submitDeposit(h, 12_000_000n);
     const E = await loseNextCommit(h, depositInclusion);
+    branch.captureAncestor(h);
     const depositId = E.journal.depositEventIds[0]!;
     moveToExactSlot(h, E.ttl);
     await h.synchronize();
     await expectReplaced(E.journal, { handle: h });
 
-    // N: the same members on the same base, handed to L1 and lost, and then
-    // locally finalized (see the revival suite for why the scheduler
-    // alignment is skipped: it keeps E landable below).
+    // N lands on the first fork and is confirmed and locally finalized.
+    // Skip scheduler alignment so E retains the same references on its fork.
     const N = await loseNextCommit(h, undefined, { alignScheduler: false });
     expect(N.journal[C.BASE_TAIL_OUT_REF]).toBe(E.journal[C.BASE_TAIL_OUT_REF]);
     expect(N.journal.depositEventIds).toEqual(E.journal.depositEventIds);
+    expect(await readImmutableCounts(txIds)).toEqual(
+      Object.fromEntries(txIds.map((id) => [id, 0])),
+    );
+    await branch.includeReplacement(h, N.journal);
     await finalizeLocally(h, N.header);
     expect((await readJournal(N.header))[C.STATUS]).toBe(
-      Pending.Status.SubmittedUnconfirmed,
+      Pending.Status.Finalized,
     );
+    const completedJob = await readLocalFinalizationJob(N.header);
+    expect(completedJob?.status).toBe(MutationJobs.Status.Completed);
     expect(await nativeRoot(h)).toBe(N.journal[C.EXPECTED_UTXOS_ROOT]);
     expect(await readImmutableCounts(txIds)).toEqual(
       Object.fromEntries(txIds.map((id) => [id, 1])),
     );
 
     // A shallow rollback: the chain now followed included E before its TTL.
-    await landSignedCommitAsFork(h, E.journal[C.SIGNED_TX_CBOR]!);
+    h = await branch.followOriginalFork(h, E.journal, N.journal);
     await expect(
       h.fixture.emulator.submitTx(N.journal[C.SIGNED_TX_CBOR]!.toString("hex")),
     ).rejects.toBeDefined();
@@ -81,10 +91,13 @@ it("revives a replaced commit that won its slot over a locally finalized unlande
     expect(abandoned[C.CORRECTION_TRANSITION_DIGEST]).toBe(
       signedIntentReplacementDigest(N.journal),
     );
-    expect(await readLocalFinalizationJob(N.header)).toBeUndefined();
+    // Completed mutation receipts remain audit evidence after branch reversal.
+    expect(await readLocalFinalizationJob(N.header)).toEqual(completedJob);
     // N's local finalization is reversed: its members left ImmutableDB and
     // the deposit is E's again.
-    expect(await readImmutableCounts(txIds)).toEqual({});
+    expect(await readImmutableCounts(txIds)).toEqual(
+      Object.fromEntries(txIds.map((id) => [id, 0])),
+    );
     expect(await readDepositHeader(depositId)).toBe(E.header);
     expect((await readSqlLedgerRoot()).root_hex).toBe(
       E.journal[C.EXPECTED_UTXOS_ROOT],
@@ -100,6 +113,7 @@ it("revives a replaced commit that won its slot over a locally finalized unlande
     await outputOf(h, first, 5_000_000n);
     await outputOf(h, second, 4_000_000n);
   } finally {
-    await closeLifecycle(h);
+    branch.close();
+    await closeLifecycle(initial);
   }
 }, 900_000);

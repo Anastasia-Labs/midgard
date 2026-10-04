@@ -4,7 +4,6 @@ import * as AddressFromSeed from "./commands/address-from-seed.js";
 import {
   failCli,
   provideDatabaseServices,
-  provideNodeRuntimeServices,
   runCliEffect,
   writeJson,
 } from "./commands/cli-runtime.js";
@@ -14,7 +13,7 @@ import * as DaBondFiles from "./commands/da-bond-files.js";
 import * as HistoryGenesisPinCommand from "./commands/history-genesis-pin.js";
 import * as L1ProviderPreflightCommand from "./commands/l1-provider-preflight.js";
 import * as L1UtxosCommand from "./commands/l1-utxos.js";
-import { runNode } from "./commands/listen.js";
+import { runListen } from "./commands/listen.cli-runtime.js";
 import * as MigrationRunner from "./database/migrations/runner.js";
 import {
   daBond,
@@ -287,7 +286,7 @@ program
     console.log("🌳 Midgard");
 
     const { withMonitoring } = options.opts();
-    const mainEffect = provideNodeRuntimeServices(runNode(withMonitoring));
+    const mainEffect = runListen(withMonitoring);
 
     runCliEffect(mainEffect);
   });

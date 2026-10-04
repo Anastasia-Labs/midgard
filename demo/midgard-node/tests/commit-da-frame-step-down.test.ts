@@ -14,6 +14,7 @@ import type { UtxoPayloadSizeAggregate } from "../src/mpf/index.js";
 import { measureCommitDaPayloadUpperBound } from "../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 import {
   type CommitDaFrameMeasurement,
+  commitDaFrameStepDownPassBound,
   type CommitTxCandidateSelection,
   emptyBlockDaPayloadUpperBoundBytes,
   planCommitBatchBudgets,
@@ -79,9 +80,7 @@ const stepDown = async (
   const result = await quiet(
     stepDownCommitSelectionToDaFrame({
       candidateSelection,
-      baseEmptyBlockInnerBytes: emptyBlockDaPayloadUpperBoundBytes(
-        shape.base ?? LC1_BASE_LEDGER,
-      ),
+      baseUtxoPayloadAggregate: shape.base ?? LC1_BASE_LEDGER,
       maxInnerBytes: maxDaPayloadInnerBytes(mode),
       process: (selection) =>
         Effect.sync(() => {
@@ -112,6 +111,53 @@ const threeTransfers = () =>
 const HEAVY_TRANSFER: BlockShape = { witnessValueBytes: 3_000 };
 
 describe("commit DA frame step-down", () => {
+  it("finds an interior-only fitting prefix without discarding unvisited counts", async () => {
+    // A robustness vector, not a claimed production serialization witness.
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: Array.from({ length: 10 }, (_, index) =>
+        mkCandidate(index + 1),
+      ),
+      processedMempoolTxs: [],
+    });
+    const prefixBytes = Array.from({ length: 11 }, (_, count) =>
+      count === 8 ? 900 : 2_000,
+    );
+    const built: number[] = [];
+    const result = await quiet(
+      stepDownCommitSelectionToDaFrame({
+        candidateSelection: selection,
+        baseUtxoPayloadAggregate: { entryCount: 1, encodedTupleBytes: 2_000 },
+        maxInnerBytes: 1_000,
+        process: (candidate) =>
+          Effect.sync(() => {
+            built.push(candidate.candidateTxs.length);
+            return candidate;
+          }),
+        measure: (candidate) =>
+          Effect.succeed({
+            innerBytesUpperBound: prefixBytes[candidate.candidateTxs.length]!,
+            acceptedTxCount: candidate.candidateTxs.length,
+            rejectedTxIds: [],
+            acceptedTxIds: candidate.candidateTxHashes,
+            hasMandatoryWork: false,
+            prefixes: prefixBytes
+              .slice(0, candidate.candidateTxs.length + 1)
+              .map((innerBytesUpperBound, index) => ({
+                innerBytesUpperBound,
+                materialDigest: index.toString(16).padStart(64, "0"),
+              })),
+          }),
+        rebase: Effect.void,
+      }),
+    );
+    expect(result.outcome).toBe("fits");
+    expect(result.candidateSelection.candidateTxs).toHaveLength(8);
+    expect(built).toEqual([10, 8]);
+    expect(built.reduce((sum, count) => sum + count, 0)).toBeLessThanOrEqual(
+      30,
+    );
+  });
+
   it.each(MODES)(
     "steps an overflowing selection down once and commits the smaller block (%s)",
     async (mode) => {
@@ -189,7 +235,7 @@ describe("commit DA frame step-down", () => {
   );
 
   it.each(MODES)(
-    "drops every transaction from a ledger whose empty block cannot fit, and the commit is still refused (%s)",
+    "chooses the least expensive legal ordinary prefix for an over-frame ledger, and the commit is still refused (%s)",
     async (mode) => {
       const limit = maxDaPayloadInnerBytes(mode);
       const base: UtxoPayloadSizeAggregate = {
@@ -198,10 +244,11 @@ describe("commit DA frame step-down", () => {
       };
       const selection = threeTransfers();
       const run = await stepDown(selection, mode, { base });
-      // The floor is reached in one step and never below it.
+      // An empty/no-op block cannot replace a legal ordinary candidate.
       expect(run.processed).toHaveLength(2);
       expect(run.rebases).toBe(1);
-      expect(run.result.candidateSelection.candidateTxs).toEqual([]);
+      expect(run.result.candidateSelection.candidateTxs).toHaveLength(1);
+      expect(run.result.outcome).toBe("exact_check_required");
       for (const txs of [selection.candidateTxs, []]) {
         const result = await preSubmit(txs, mode, { base });
         expect(Either.isLeft(result)).toBe(true);
@@ -254,7 +301,9 @@ describe("commit DA frame step-down", () => {
       });
       const run = await stepDown(selection, mode, shape);
       expect(run.result.candidateSelection.candidateTxs).toEqual([]);
-      expect(run.processed.length).toBeLessThanOrEqual(3 + Math.log2(5));
+      expect(run.processed.length).toBeLessThanOrEqual(
+        commitDaFrameStepDownPassBound(5),
+      );
       expect(run.rebases).toBe(run.processed.length - 1);
       const result = await preSubmit([], mode, shape);
       expect(Either.isLeft(result)).toBe(true);
@@ -264,68 +313,187 @@ describe("commit DA frame step-down", () => {
   );
 });
 
-describe("commit DA frame step-down decision", () => {
-  const decide = (
-    innerBytesUpperBound: number,
-    acceptedTxCount: number,
-    pass: number,
-    baseEmptyBlockInnerBytes = 1_000,
-  ) =>
-    planCommitDaFrameStepDown({
-      measurement: { innerBytesUpperBound, acceptedTxCount, rejectedTxIds: [] },
-      baseEmptyBlockInnerBytes,
-      maxInnerBytes: 100_000,
-      pass,
-    });
-
-  it("keeps a block that fits, at the limit exactly", () => {
-    expect(decide(100_000, 10, 0)).toEqual({ status: "fits" });
+describe("complete commit DA prefix selection", () => {
+  const measurement = (
+    bytes: readonly number[],
+    mandatory = false,
+  ): CommitDaFrameMeasurement => ({
+    innerBytesUpperBound: bytes.at(-1)!,
+    acceptedTxCount: bytes.length - 1,
+    acceptedTxIds: bytes
+      .slice(1)
+      .map((_, index) => mkCandidate(index + 1)[TxColumns.TX_ID]),
+    rejectedTxIds: [],
+    hasMandatoryWork: mandatory,
+    prefixes: bytes.map((innerBytesUpperBound, index) => ({
+      innerBytesUpperBound,
+      materialDigest: index.toString(16).padStart(64, "0"),
+    })),
   });
-
-  it("goes straight to the floor for an over-frame ledger and stops there", () => {
-    expect(decide(200_000, 10, 0, 100_001)).toEqual({
-      status: "step_down",
-      nextTxCount: 0,
-    });
-    expect(decide(200_000, 0, 3)).toEqual({
-      status: "no_transactions_to_drop",
-    });
+  it("selects the greatest fitting prefix even if its predecessors and successors overflow", () => {
+    expect(
+      planCommitDaFrameStepDown({
+        measurement: measurement([1, 200, 99, 200, 100, 200]),
+        maxInnerBytes: 100,
+      }),
+    ).toEqual({ status: "step_down", nextTxCount: 4 });
   });
-
-  it("scales by measured cost on the first pass and halves after", () => {
-    // 10 transactions cost 198,000 over the base: 4 fit with the safety margin.
-    expect(decide(199_000, 10, 0)).toEqual({
-      status: "step_down",
-      nextTxCount: 4,
-    });
-    // A barely overflowing block still drops a transaction.
-    expect(decide(100_001, 10, 0)).toEqual({
-      status: "step_down",
-      nextTxCount: 8,
-    });
-    expect(decide(100_001, 10, 1)).toEqual({
-      status: "step_down",
-      nextTxCount: 5,
-    });
-    expect(decide(100_001, 1, 1)).toEqual({
-      status: "step_down",
-      nextTxCount: 0,
-    });
+  it("selects the global minimum when every upper bound overflows, preferring greater ties", () => {
+    expect(
+      planCommitDaFrameStepDown({
+        measurement: measurement([1, 200, 150, 200, 150, 201]),
+        maxInnerBytes: 100,
+      }),
+    ).toEqual({ status: "step_down", nextTxCount: 4 });
+    expect(
+      planCommitDaFrameStepDown({
+        measurement: measurement([300, 200, 150]),
+        maxInnerBytes: 100,
+      }),
+    ).toEqual({ status: "exact_check_required" });
   });
-
-  it("reaches the empty floor within 3 + log2(n) passes", () => {
-    for (const n of [1, 2, 3, 7, 100, 10_000]) {
-      let count = n;
-      let passes = 0;
-      for (;;) {
-        const decision = decide(100_001, count, passes);
-        passes += 1;
-        if (decision.status !== "step_down") break;
-        expect(decision.nextTxCount).toBeLessThan(count);
-        count = decision.nextTxCount;
-      }
-      expect(count).toBe(0);
-      expect(passes).toBeLessThanOrEqual(3 + Math.log2(n));
-    }
+  it("never infers an empty-ledger ceiling or chooses a zero/no-op candidate while legal ordinary prefixes remain", () => {
+    expect(
+      planCommitDaFrameStepDown({
+        measurement: measurement([1, 200]),
+        maxInnerBytes: 100,
+      }),
+    ).toEqual({ status: "exact_check_required" });
+    expect(
+      planCommitDaFrameStepDown({
+        measurement: measurement([101, 200], true),
+        maxInnerBytes: 100,
+      }),
+    ).toEqual({ status: "step_down", nextTxCount: 0 });
+    expect(
+      planCommitDaFrameStepDown({
+        measurement: measurement([101], true),
+        maxInnerBytes: 100,
+      }),
+    ).toEqual({ status: "exact_check_required" });
+  });
+  it("holds missing, duplicated and unsafe accounting instead of guessing unseen prefix bytes", () => {
+    const good = measurement([1, 2, 3]);
+    for (const bad of [
+      { ...good, prefixes: good.prefixes.slice(1) },
+      {
+        ...good,
+        acceptedTxIds: [good.acceptedTxIds[0]!, good.acceptedTxIds[0]!],
+      },
+      measurement([1, NaN, 3]),
+    ])
+      expect(
+        planCommitDaFrameStepDown({ measurement: bad, maxInnerBytes: 100 }),
+      ).toEqual({ status: "incomplete" });
   });
 });
+
+describe("commit DA frame step-down over rejected transactions", () => {
+  it("steps down over the transactions the measured pass accepted, never a rejected one", async () => {
+    const candidateSelection = selectCommitTxCandidates({
+      mempoolTxs: Array.from({ length: 6 }, (_, index) =>
+        mkCandidate(index + 1),
+      ),
+      processedMempoolTxs: [],
+    });
+    const ids = txIdsOf(candidateSelection.candidateTxs);
+    const rejectedTxIds = [ids[1], ids[3]].map((id) => Buffer.from(id, "hex"));
+    const result = await quiet(
+      stepDownCommitSelectionToDaFrame({
+        candidateSelection,
+        // An empty ledger: its empty block is 1,010 bytes.
+        baseUtxoPayloadAggregate: { entryCount: 0, encodedTupleBytes: 0 },
+        maxInnerBytes: 100_000,
+        process: (selection) => Effect.succeed(selection.candidateTxs),
+        // Actual accepted order can differ from the submitted source rows.
+        measure: (built) => {
+          const accepted =
+            built.length === 6
+              ? [built[4]!, built[0]!, built[2]!, built[5]!]
+              : built;
+          const bytes = [1_000, 30_000, 40_000, 50_000, 100_001].slice(
+            0,
+            accepted.length + 1,
+          );
+          return Effect.succeed({
+            innerBytesUpperBound: bytes.at(-1)!,
+            acceptedTxCount: accepted.length,
+            acceptedTxIds: accepted.map((entry) => entry[TxColumns.TX_ID]),
+            rejectedTxIds: built.length === 6 ? rejectedTxIds : [],
+            hasMandatoryWork: false,
+            prefixes: bytes.map((innerBytesUpperBound, index) => ({
+              innerBytesUpperBound,
+              materialDigest: index.toString(16).padStart(64, "0"),
+            })),
+          });
+        },
+        rebase: Effect.void,
+      }),
+    );
+    expect(result.passes).toBe(2);
+    expect(result.outcome).toBe("fits");
+    expect(txIdsOf(result.candidateSelection.candidateTxs)).toEqual([
+      ids[4],
+      ids[0],
+      ids[2],
+    ]);
+  });
+});
+
+it.each(["digest", "bytes", "ids", "rejection", "unavailable"] as const)(
+  "holds %s invalidation after at most one rebuild",
+  async (change) => {
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: Array.from({ length: 4 }, (_, index) =>
+        mkCandidate(index + 1),
+      ),
+      processedMempoolTxs: [],
+    });
+    let pass = 0;
+    const result = await quiet(
+      stepDownCommitSelectionToDaFrame({
+        candidateSelection: selection,
+        baseUtxoPayloadAggregate: { entryCount: 0, encodedTupleBytes: 0 },
+        maxInnerBytes: 100,
+        process: (candidate) =>
+          Effect.sync(() => {
+            pass += 1;
+            return candidate;
+          }),
+        rebase: Effect.void,
+        measure: (candidate) => {
+          if (pass === 2 && change === "unavailable")
+            return Effect.succeed(undefined);
+          const bytes = [1, 80, 90, 150, 200].slice(
+            0,
+            candidate.candidateTxs.length + 1,
+          );
+          const prefixes = bytes.map((innerBytesUpperBound, index) => ({
+            innerBytesUpperBound,
+            materialDigest: index.toString(16).padStart(64, "0"),
+          }));
+          if (pass === 2 && change === "digest")
+            prefixes[prefixes.length - 1]!.materialDigest = "ff".repeat(32);
+          if (pass === 2 && change === "bytes")
+            prefixes[prefixes.length - 1]!.innerBytesUpperBound += 1;
+          return Effect.succeed({
+            innerBytesUpperBound:
+              prefixes[prefixes.length - 1]!.innerBytesUpperBound,
+            acceptedTxCount: candidate.candidateTxs.length,
+            acceptedTxIds:
+              pass === 2 && change === "ids"
+                ? [...candidate.candidateTxHashes].reverse()
+                : candidate.candidateTxHashes,
+            rejectedTxIds:
+              pass === 2 && change === "rejection" ? [Buffer.alloc(32)] : [],
+            hasMandatoryWork: false,
+            prefixes,
+          });
+        },
+      }),
+    );
+    expect(result.outcome).toBe("incomplete");
+    expect(result.passes).toBe(2);
+    expect(pass).toBe(2);
+  },
+);

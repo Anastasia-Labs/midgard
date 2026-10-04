@@ -145,6 +145,14 @@ export const ROOT_TAIL_HEADER_HASH = Buffer.alloc(28);
 export const REPLACEMENT_EVIDENCE_DOMAIN =
   "midgard-signed-intent-replacement-evidence-v1";
 
+/** The statuses of the one active journal. Its unlanded statuses include
+ * submitted_unconfirmed, which no production code writes any more (its only
+ * writer, `markLocalFinalizationComplete`, has no caller; pinned by
+ * history-expired-intent-release-submitted-unconfirmed.test.ts): only a row
+ * persisted by an earlier version reads it, and the release reopens it as a
+ * locally finalized journal (its withdrawals' ledger effects restored, see
+ * `reincludeStateQueueCorrectedBlocks`). The fatal guard that once refused it is gone, so a new
+ * writer must re-establish that it is safe to replace. */
 const ACTIVE_STATUSES: readonly Pending.Status[] = [
   ...UNLANDED_STATUSES,
   Pending.Status.ObservedWaitingStability,

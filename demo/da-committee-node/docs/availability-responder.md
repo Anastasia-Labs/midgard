@@ -53,9 +53,15 @@ query uses `CARDANO_LOCAL_NODE_AUTHORITY_ID` when set, otherwise
 `--once` executes one responder cycle. The normal service continues on each
 poll. The `availability_responder` event reports pending, included, confirmed,
 unavailable or failed work. Canonically included transactions allow the next
-chunk to proceed while the journal keeps reservations until finality. Restart
+chunk to proceed while the journal keeps reservations until the transaction can
+no longer land (past validity or a provable conflicting spend). Restart
 reconciles the exact persisted signed transaction before constructing new work;
-uncertain inclusion or a changed canonical boundary pauses actuation.
+uncertain inclusion or a changed canonical boundary pauses actuation. Evidence
+about a confirmed transaction that neither confirms nor contradicts it, or a
+conflicting transaction, holds that intent: the event reports `held` with the
+transaction and reason on stderr, nothing new is signed, and readiness fails
+with `availability_operation_held:<tx>: <reason>` until a reconciliation finds
+no hold.
 
 Publication, settlement and close spend only protocol outputs, so another member,
 a watcher or anyone copying the transaction can land the same step first. Once

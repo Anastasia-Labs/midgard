@@ -11,6 +11,7 @@ import {
   WithdrawalValidator,
 } from "@lucid-evolution/lucid";
 
+import { resolveHousekeepingRetentionDays } from "../database/retention-policy.js";
 import {
   type LegacyFaultProofFamily,
   recordedFaultProofStepContractNames,
@@ -64,7 +65,8 @@ export const assertDeploymentManifestMatchesConfig = (
     | "DEPLOYMENT_ECONOMICS_PROFILE"
     | "OPERATOR_REQUIRED_BOND_LOVELACE"
     | "OPERATOR_SLASHING_PENALTY_LOVELACE"
-  >,
+  > &
+    Partial<Pick<NodeConfigDep, "RETENTION_DAYS">>,
 ): void => {
   const mismatches: string[] = [];
   const manifestNetwork = requireManifestString(
@@ -132,6 +134,18 @@ export const assertDeploymentManifestMatchesConfig = (
   ) {
     mismatches.push(
       `economics.slashingPenaltyLovelace manifest=${manifest.economics.slashingPenaltyLovelace.toString()} config=${nodeConfig.OPERATOR_SLASHING_PENALTY_LOVELACE.toString()}`,
+    );
+  }
+  // B5: a housekeeping window shorter than the manifest's declared retention
+  // is a config fault, refused here at startup rather than pruned against.
+  try {
+    resolveHousekeepingRetentionDays({
+      configured: nodeConfig.RETENTION_DAYS,
+      manifestRetentionDays: manifest.da.transportProfile.retentionDays,
+    });
+  } catch (cause) {
+    mismatches.push(
+      `da.transportProfile.retentionDays: ${cause instanceof Error ? cause.message : String(cause)}`,
     );
   }
   if (mismatches.length > 0) {

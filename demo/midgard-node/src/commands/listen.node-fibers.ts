@@ -25,6 +25,7 @@ import { signedIntentRebroadcastFiber } from "../fibers/signed-intent-rebroadcas
 import { Globals } from "../services/globals.js";
 import { type NodeConfigDep, writeBehindFiber } from "../services/index.js";
 import {
+  awaitHaltCleared,
   FIBER_HALT_SOURCES,
   type HeldFiber,
   pausedWhileHalted,
@@ -37,19 +38,22 @@ import {
 const mkSchedule = (millisBetweenRuns: number) =>
   Schedule.spaced(Duration.millis(millisBetweenRuns));
 
-/** `makeFiber` on `mkSchedule(millisBetweenRuns)`, held between ticks while
- * a source `FIBER_HALT_SOURCES[name]` names has a raised liveness reason. */
+/** `makeFiber` on `mkSchedule(millisBetweenRuns)`, held before its first action
+ * and between ticks while a source `FIBER_HALT_SOURCES[name]` names has a
+ * raised liveness reason. */
 const heldSchedule = <A, E, R>(
   name: HeldFiber,
   millisBetweenRuns: number,
   makeFiber: (schedule: Schedule.Schedule<number>) => Effect.Effect<A, E, R>,
 ) =>
   Effect.flatMap(Globals, (globals) =>
-    makeFiber(
-      pausedWhileHalted(
-        mkSchedule(millisBetweenRuns),
-        globals,
-        FIBER_HALT_SOURCES[name],
+    Effect.flatMap(awaitHaltCleared(globals, FIBER_HALT_SOURCES[name]), () =>
+      makeFiber(
+        pausedWhileHalted(
+          mkSchedule(millisBetweenRuns),
+          globals,
+          FIBER_HALT_SOURCES[name],
+        ),
       ),
     ),
   );
@@ -64,7 +68,8 @@ const heldRestart = <A, E, R>(name: HeldFiber, fiber: Effect.Effect<A, E, R>) =>
 /**
  * The scheduled background fibers `runNode` runs for the node's lifetime,
  * keyed by name. `runNodeFiberSet` adds the fibers that need its startup
- * state (the HTTP server, the retained-payload server, the history owner).
+ * state (the retained-payload server and history owner). The HTTP listener is
+ * scoped at the CLI boundary so local probes are available during startup.
  * None of them fails: a condition a fiber cannot resolve raises a liveness
  * reason instead, and the fibers whose effects that condition must stop are
  * held here until it clears (see `liveness-halt.ts`).
@@ -133,11 +138,12 @@ export const nodeFibers = ({
 });
 
 /**
- * The startup fibers whose failure still ends the process: the history owner
- * stopping and the HTTP server failing. Every other fiber `runNodeFiberSet`
- * returns, startup or scheduled, has error channel `never`.
+ * The startup fiber whose failure still ends the process: the history owner
+ * stopping. HTTP acquisition failure propagates at the CLI boundary. Every
+ * other fiber `runNodeFiberSet` returns, startup or scheduled, has error channel
+ * `never`.
  */
-export type ProcessEndingStartupFiber = "historyOwnerStopped" | "appThread";
+export type ProcessEndingStartupFiber = "historyOwnerStopped";
 
 /**
  * Every fiber `runNode` runs for the node's lifetime: the ones built from its

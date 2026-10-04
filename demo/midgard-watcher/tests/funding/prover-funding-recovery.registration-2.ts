@@ -19,6 +19,10 @@ import {
   setupFundingRecoveryFixture as setup,
   walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
+import {
+  assertConfirmedFundingHistoryRetained,
+  authorizeConfirmedFundingRefill,
+} from "./prover-funding-recovery.authenticated-confirmed-refill.js";
 
 it.each([
   "fraudProofValueNotPreservedUnionMint",
@@ -191,6 +195,7 @@ describe("additive deployed funding roster recovery", () => {
         (utxo) => `${utxo.txHash}#${utxo.outputIndex}` !== spent,
       ),
     );
+    await authorizeConfirmedFundingRefill(test, journal);
     await beginWorkflowFundingReservationAction({
       journal,
       action: { actionId: "next", input: { actionKind: "proof.init" } },
@@ -204,5 +209,6 @@ describe("additive deployed funding roster recovery", () => {
       "reservationBasisDigest",
     ] as const)
       expect(after[field]).toBe(before[field]);
+    await assertConfirmedFundingHistoryRetained(test);
   });
 });

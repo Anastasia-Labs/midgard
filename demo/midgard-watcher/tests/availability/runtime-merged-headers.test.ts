@@ -18,10 +18,9 @@ const io = vi.hoisted(() => ({
 }));
 vi.mock("@al-ft/midgard-core/availability-operation-journal", () => ({
   openAvailabilityOperationJournal: () => ({
-    assertRunning() {},
     workflows: () => [],
+    unsettledReleases: () => [],
     close() {},
-    halt() {},
   }),
 }));
 vi.mock("@al-ft/midgard-sdk", async (original) => ({

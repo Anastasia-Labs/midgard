@@ -535,7 +535,7 @@ describe("availability operation signed recovery", () => {
     }
   });
 
-  it("recovers ancestors from canonical children and durably halts if a finalized frontier rolls back", async () => {
+  it("recovers ancestors from canonical children and rebroadcasts the same bytes if a finalized frontier rolls back", async () => {
     const f = await fixture();
     try {
       const parent = await runDaAvailabilityOperation(f.context, f.operation);
@@ -617,23 +617,23 @@ describe("availability operation signed recovery", () => {
         ).status,
       ).toBe("waiting");
       expect(f.build).toHaveBeenCalledTimes(1);
+      // Every input observed unspent: both left the chain, so both bytes land
+      // again, child first; a restart reconciles them and signs nothing.
+      const submit = vi.fn(f.context.submit);
+      const chain = [child, parent].map(
+        ({ txHash }) => f.context.journal.findTransaction(txHash)!.intent,
+      );
       await expect(
-        reconcileDaAvailabilityOperations({
-          ...f.context,
-          observe: async () => ({ status: "unspent", currentSlot: 0 }),
-        }),
-      ).rejects.toThrow(/Finalized availability transaction rolled back/);
+        reconcileDaAvailabilityOperations({ ...f.context, submit }),
+      ).resolves.toMatchObject(chain.map(({ txHash }) => ({ txHash })));
+      expect(submit.mock.calls.flat()).toEqual(chain.map((i) => i.signedCbor));
       const restarted = openAvailabilityOperationJournal(f.path);
-      try {
-        await expect(
-          runDaAvailabilityOperation(
-            { ...f.context, journal: restarted },
-            f.operation,
-          ),
-        ).rejects.toThrow(/halted/);
-      } finally {
-        restarted.close();
-      }
+      const rerun = { ...f.context, journal: restarted };
+      await expect(
+        runDaAvailabilityOperation(rerun, f.operation),
+      ).resolves.toMatchObject({ status: "submitted" });
+      restarted.close();
+      expect(f.build).toHaveBeenCalledTimes(1);
     } finally {
       f.context.journal.close();
     }

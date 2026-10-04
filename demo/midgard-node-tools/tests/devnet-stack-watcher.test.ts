@@ -24,7 +24,7 @@ import {
   type ReferenceScriptAuthPolicyDeploymentInfo,
 } from "@al-ft/midgard-sdk";
 import { h32ForOrdinal } from "@al-ft/midgard-test-support/hex";
-import { validatorToScriptHash } from "@lucid-evolution/lucid";
+import { type Network, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import {
   buildContractDeploymentInfoFromContracts,
@@ -70,13 +70,11 @@ import {
   releasePaths,
 } from "../src/devnet-stack/watcher-release.js";
 
-// The watcher's configuration parsers refuse paths under /tmp, so the scratch
-// run lives inside this package's own cache directory.
+// An isolated /tmp checkout supplies its owned canonical test-storage root.
 const toolsRoot = join(dirname(new URL(import.meta.url).pathname), "..");
-const scratchRoot = join(
-  toolsRoot,
-  "node_modules/.cache/devnet-stack-watcher-test",
-);
+const scratchRoot =
+  process.env.MIDGARD_TEST_STORAGE_ROOT ??
+  join(toolsRoot, "node_modules/.cache/devnet-stack-watcher-test");
 const runDir = join(scratchRoot, `run-${randomBytes(4).toString("hex")}`);
 const PEER_ID = "12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
 
@@ -204,8 +202,10 @@ const snapshot = (directory: string) =>
     }),
   );
 
+const isCustomNetwork = (network: Network): boolean => network === "Custom";
+
 beforeAll(async () => {
-  if (SELECTED_DEPLOYMENT_PROFILE.network !== "Custom") return;
+  if (!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network)) return;
   layout = makeLayout(runDir);
   // Every shifted service port (the highest base is 39006) must stay a valid port.
   const portOffset = 20_000 + Math.floor(Math.random() * 6_000);
@@ -231,7 +231,7 @@ beforeAll(async () => {
     artifacts: {
       nativeOwnerBinary: join(layout.bin, "native-owner"),
       nativeOwnerSha256: "00".repeat(32),
-      chainSyncBinary: join(layout.bin, "watcher-chain-sync"),
+      chainSyncBinary: join(layout.bin, "midgard-chain-sync"),
     },
   };
 
@@ -271,11 +271,11 @@ afterAll(() => {
 // A devnet release is a `Custom`-network release, and a manifest can only be
 // built on the compiled deployment profile's network: this suite needs the
 // profile the controller builds (`deployment:build local-devnet-testing`).
-describe.skipIf(SELECTED_DEPLOYMENT_PROFILE.network !== "Custom")(
+describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
   "devnet watcher release (needs the local-devnet-testing profile compiled)",
   () => {
     it("generates a release and configurations the watcher's own loaders accept", async () => {
-      await ensureWatcherRelease(context, oneShot);
+      await ensureWatcherRelease(context, oneShot, true);
       const watcher = await loadWatcherModule(layout);
       const paths = releasePaths(layout);
 
@@ -407,6 +407,10 @@ describe.skipIf(SELECTED_DEPLOYMENT_PROFILE.network !== "Custom")(
       expect(watcher!.healthUrl).toBe(
         `http://127.0.0.1:${servicePorts(context.run).watcherOperations}/v1/status`,
       );
+      expect(watcher!.readyUrl).toBe(
+        `http://127.0.0.1:${servicePorts(context.run).watcherOperations}/readyz`,
+      );
+      expect(watcher!.readyProbe).toBeUndefined();
       expect(watcher!.env).toMatchObject(
         historyTransportEnvironment(layout, context.run),
       );

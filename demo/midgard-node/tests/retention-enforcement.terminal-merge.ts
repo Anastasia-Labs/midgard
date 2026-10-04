@@ -10,8 +10,10 @@ import {
   DaPayloadTerminalOutcomesDB,
 } from "../src/database/index.js";
 import { computeChallengeableCutoff } from "../src/database/retention-policy.js";
+import { fetchDaPayloadRetirementProofs } from "../src/fibers/retention-sweeper.da-retirement-view.js";
 import {
   ContractDeploymentIdentity,
+  Globals,
   NodeConfig,
 } from "../src/services/index.js";
 import {
@@ -20,6 +22,7 @@ import {
   h32,
   NOW,
 } from "./retention-enforcement.q54-executable-retention-deadline-alert.js";
+import { terminalRemoval } from "./retention-enforcement.terminal-removal.js";
 import { deterministicFixtureBytes } from "./utils.js";
 
 export const terminalMerge = (
@@ -147,7 +150,7 @@ export const seedTerminal = (
 export const manifestDigest = (): Buffer =>
   Buffer.from(deploymentManifest.manifestId, "hex");
 
-/** Records an authenticated-looking `removed` outcome under `digest`. */
+/** Records an SDK-authenticated `removed` outcome under `digest`. */
 export const seedRemoved = (
   headerHash: Buffer,
   sequence: number,
@@ -155,7 +158,11 @@ export const seedRemoved = (
 ): Effect.Effect<void, unknown, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const transition = terminalMerge(headerHash, sequence);
+    const transition = terminalRemoval(
+      headerHash,
+      sequence,
+      digest.toString("hex"),
+    );
     yield* sql`
       INSERT INTO da_payload_terminal_outcomes (
         header_hash, terminal_outcome, transition_kind,
@@ -164,7 +171,7 @@ export const seedRemoved = (
         transaction_index, chain_point_id, finality_depth,
         transition_digest, transition_record
       ) VALUES (
-        ${headerHash}, 'removed', 'fraud_removal', ${digest},
+        ${headerHash}, 'removed', ${transition.transitionKind}, ${digest},
         ${Buffer.from(deploymentManifest.contracts.stateQueueMint.scriptHash, "hex")},
         ${Buffer.from(transition.transactionHash, "hex")},
         ${Buffer.from(transition.blockHash, "hex")}, ${transition.slot},
@@ -188,11 +195,26 @@ export const prune = (
     readonly digest?: Buffer | undefined;
   } = {},
 ) =>
-  DaPayloadsDB.pruneBeyondRetention({
-    challengeableCutoff: computeChallengeableCutoff(NOW),
-    view: options.view ?? unrelatedView,
-    deploymentIdentityDigest:
-      "digest" in options ? options.digest : manifestDigest(),
+  Effect.gen(function* () {
+    const retirement = yield* fetchDaPayloadRetirementProofs({
+      deploymentIdentityDigest: deploymentManifest.manifestId,
+      stateQueuePolicyId:
+        deploymentManifest.contracts.stateQueueMint.scriptHash,
+      automaticRecoveryMaxDepth:
+        deploymentManifest.l1Finality.automaticRecoveryMaxDepth,
+      // Old broad fixtures assume terminal history has since crossed k; the
+      // focused proof suite pins real depth boundaries independently.
+      source: { canonicalDepth: async () => 2162n },
+    });
+    return yield* DaPayloadsDB.pruneBeyondRetention({
+      challengeableCutoff: computeChallengeableCutoff(NOW),
+      view: {
+        ...(options.view ?? unrelatedView),
+        retirementProofs: retirement.proofs,
+      },
+      deploymentIdentityDigest:
+        "digest" in options ? options.digest : manifestDigest(),
+    });
   });
 
 export const remainingHashes = Effect.gen(function* () {
@@ -203,10 +225,12 @@ export const remainingHashes = Effect.gen(function* () {
   return rows.map((row) => row.header_hash.toString("hex")).sort();
 });
 
-/** Runs a sweep with RETENTION_DAYS overridden and this deployment's identity. */
+/** Runs a sweep with RETENTION_DAYS overridden (undefined: unset) under this
+ * deployment's verified manifest, on fresh node globals (no history owner, so
+ * the history prunes run under the database fixture capability). */
 export const withSweepServices = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
-  retentionDays: number,
+  retentionDays: number | undefined,
 ) =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
@@ -221,8 +245,10 @@ export const withSweepServices = <A, E, R>(
           kind: "manifest",
           manifestId: deploymentManifest.manifestId,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+          manifest: deploymentManifest,
         }),
       ),
+      Effect.provide(Globals.Default),
     );
   });
 

@@ -41,16 +41,20 @@ export const watcherNativeChainSyncStartupTimeoutMs = (
 
 export const startWatcherNativeChainSyncWithRetry = async (input: {
   readonly binaryPath: string;
+  readonly signal?: AbortSignal;
   readonly watcherConfig: WatcherConfig;
   readonly intersectionCandidates: readonly WatcherNativeChainSyncPoint[];
   readonly startupTimeoutMs: number;
   readonly onEvent: (event: WatcherNativeChainSyncEvent) => Promise<void>;
+  readonly onAuthorityRevoked?: () => void;
   readonly unsafeSpawnForTest?: SpawnProcess;
   readonly unsafeReadIdentityFileForTest?: ReadIdentityFile;
   /** Defaults to one JSON line on stderr when the node first does not answer. */
   readonly warn?: (warning: WatcherNativeNodeWait) => void;
   readonly retryDelayMs?: (retry: number) => number;
 }): Promise<WatcherNativeChainSyncRuntime> => {
+  const signal = input.signal;
+  signal?.throwIfAborted();
   if (
     input.intersectionCandidates.length === 0 ||
     input.intersectionCandidates.length > MAX_INTERSECTIONS
@@ -76,35 +80,57 @@ export const startWatcherNativeChainSyncWithRetry = async (input: {
   });
   // An unanswering node restarts the whole walk, newest candidate first, after
   // a capped backoff; it never ends startup.
-  return await retryWatcherL1Transient(() => walk(input, candidates), {
-    transient: isWatcherNativeNodeUnavailable,
-    onRetry: (error, retry, retryAfterMs) => {
-      if (retry === 1)
-        (input.warn ?? writeNodeWait)({
-          event: "native_node_unavailable",
-          code: (error as NativeChainSyncStartupFailure).code,
-          retryAfterMs,
-        });
-    },
-    ...(input.retryDelayMs === undefined
-      ? {}
-      : { delayMs: input.retryDelayMs }),
-  });
+  let waiting: { readonly error: unknown } | undefined;
+  try {
+    return await retryWatcherL1Transient(
+      () => {
+        waiting = undefined;
+        signal?.throwIfAborted();
+        return walk(input, candidates, signal);
+      },
+      {
+        signal,
+        transient: isWatcherNativeNodeUnavailable,
+        onRetry: (error, retry, retryAfterMs) => {
+          if (retry === 1)
+            (input.warn ?? writeNodeWait)({
+              event: "native_node_unavailable",
+              code: (error as NativeChainSyncStartupFailure).code,
+              retryAfterMs,
+            });
+          // The generic retry preserves its prior transient on an aborted wait.
+          // Bind only that wait, after its warning callback actually succeeded.
+          waiting = { error };
+        },
+        ...(input.retryDelayMs === undefined
+          ? {}
+          : { delayMs: input.retryDelayMs }),
+      },
+    );
+  } catch (error) {
+    if (waiting?.error === error && signal?.aborted === true)
+      signal.throwIfAborted();
+    throw error;
+  }
 };
 
 const walk = async (
   input: Parameters<typeof startWatcherNativeChainSyncWithRetry>[0],
   candidates: readonly WatcherNativeChainSyncPoint[],
+  signal?: AbortSignal,
 ): Promise<WatcherNativeChainSyncRuntime> => {
   let lastIntersectionFailure: NativeChainSyncStartupFailure | undefined;
   for (const intersection of candidates) {
+    signal?.throwIfAborted();
     try {
-      return await startWatcherNativeChainSync({
+      const runtime = await startWatcherNativeChainSync({
         binaryPath: input.binaryPath,
+        signal,
         watcherConfig: input.watcherConfig,
         intersection,
         startupTimeoutMs: input.startupTimeoutMs,
         onEvent: input.onEvent,
+        onAuthorityRevoked: input.onAuthorityRevoked,
         ...(input.unsafeSpawnForTest === undefined
           ? {}
           : { unsafeSpawnForTest: input.unsafeSpawnForTest }),
@@ -115,6 +141,11 @@ const walk = async (
                 input.unsafeReadIdentityFileForTest,
             }),
       });
+      if (signal?.aborted === true) {
+        await runtime.close();
+        signal.throwIfAborted();
+      }
+      return runtime;
     } catch (error) {
       if (
         !(error instanceof NativeChainSyncStartupFailure) ||

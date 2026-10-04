@@ -26,10 +26,14 @@ vi.mock("../src/devnet-stack/stack.js", () => ({
     probes.waits.push(options);
     return [];
   },
-  serviceReport: async (_layout: unknown, spec: { name: string }) => {
-    if (spec.name === "watcher") probes.onWatcherProbe?.();
-    return { name: spec.name, pid: 1, alive: true, ready: true };
-  },
+  serviceReports: async (
+    _layout: unknown,
+    specs: readonly { name: string }[],
+  ) =>
+    specs.map((spec) => {
+      if (spec.name === "watcher") probes.onWatcherProbe?.();
+      return { name: spec.name, pid: 1, alive: true, ready: true };
+    }),
   runningSupervisor: () => undefined,
 }));
 vi.mock("../src/devnet-stack/services.js", async (importOriginal) => ({

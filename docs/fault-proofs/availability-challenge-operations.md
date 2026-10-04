@@ -20,12 +20,16 @@ it does not change the protocol, bonds, deadlines, or reference roles.
    immutable signed CBOR before submission. Atomic resource reservations and
    fenced leases prevent conflicting work. Restart reconciles the same tx hash,
    inputs and canonical inclusion; ambiguous submission never creates a new
-   transaction. Keep reservations until finality or proven expiration: past
-   validity with all inputs still unspent, with one normal input spent and
-   another still unspent, or with a normal input spent at finality depth by a
-   valid transaction of another hash, verified from its raw bytes. Absence of
-   our transaction is never proof. Rollback reopens reconciliation and blocks
-   mutation when canonical evidence is uncertain.
+   transaction. Reservations are released only once the signed transaction's
+   validity has passed: an unlanded intent then expires on evidence that it
+   cannot land (one normal input spent and another still unspent, a normal
+   input spent by a valid transaction of another hash, verified from its raw
+   bytes, or every input back unspent), and a confirmed one frees its inputs
+   once the canonical tip is past that validity. Otherwise a record keeps them
+   until it is pruned beyond `automaticRecoveryMaxDepth` (2160). Confirmation
+   depth never releases them. Absence of our transaction is never proof.
+   Rollback reopens reconciliation and holds that intent while canonical
+   evidence is uncertain.
 3. Wire the accountable responder into the committee process. Discover live
    challenges, load retained payloads and verify the entire frozen commitment
    before publishing the next required chunk. Rotation changes neither the
@@ -101,12 +105,19 @@ unanswered challenges as soon as they are due.
 
 The journal distinguishes canonical inclusion from finality so response chains
 can advance without waiting the finality depth after every chunk. It preserves
-resources until finality, shares collateral only between the same actor's
-compatible operations, and reconciles causal descendants before ancestors. A
-canonical child proves inclusion of its ancestors; a finalized child becomes the
-persistent audit anchor. Uncertain evidence pauses work. Positive loss of a
-finalized anchor persists an incident halt; deleting the journal is not recovery.
+resources until the transaction can no longer land, shares collateral only
+between the same actor's compatible operations, and reconciles causal
+descendants before ancestors. A canonical child proves inclusion of its
+ancestors; a confirmed child becomes the audit anchor. Confirmed records and
+their workflow rows are retired, not deleted, and pruned only beyond the
+manifest's `automaticRecoveryMaxDepth` (2160). Uncertain evidence holds the
+affected intent: until fresh evidence resolves it, readiness fails with its
+reason and the same actor signs no new transaction, while its other intents
+still reconcile on every pass. The committee responder reports such a hold as
+`held` and fails readiness with `availability_operation_held:<tx>: <reason>`. A confirmed intent the chain no longer
+carries is rewound to pending and its identical signed bytes are rebroadcast.
 Ordinary rollback and expired orphan chains reconcile without replacement bytes.
+A `halt` row left by an older journal is cleared on open with one log line.
 
 Each opened challenge is its own journal workflow, keyed by actor, deployment and
 header. The workflow ends when the actor's own terminal transaction is finalized
@@ -122,16 +133,31 @@ policy. Consuming the record alone never releases the row: a Timeout with a
 descendant consumes it while the header's removal chain still needs the
 wallet's reserve. Released rows are reported under `workflowReleased`; a failed
 check keeps the row, is reported under `workflowReleaseDeferred` and is retried
-on the next reconciliation. One actor may run challenges on several headers of
-one deployment at once. While any of them is live, the journal refuses every
-step for another deployment, because the wallet's removal reserve is computed
+on the next reconciliation. A release stays reversible until its terminal
+transaction exceeds `automaticRecoveryMaxDepth`: the journal keeps the evidence,
+each reconciliation verifies it again, and a terminal transaction that is no
+longer canonical makes the row live again, reported under
+`workflowReleaseDeferred`. One actor may run challenges on several headers of
+one deployment at once. While any of them is live or its terminal step remains within the rollback
+recovery horizon, the journal refuses every step for another deployment, because the wallet's removal reserve is computed
 from one deployment's queue, and it refuses a new challenger-coin preparation
 for a header whose own Open landed. The watcher reports each refused step under
 `workflowRefused`, naming the deployment and header of the live workflow that
 blocks it. A challenge still live in a deployment nobody drives any more keeps
 refusing other deployments until someone terminates it. Actor processes must
 share one journal; it migrates a schema-1 journal (one
-workflow per actor) in place. Wallet funding excludes resources reserved under
+workflow per actor) in place. A provisional terminal permits progress in the
+same deployment while keeping the capital guard against another deployment;
+a failed terminal re-verification keeps that guard. A verified foreign
+terminal beyond recovery depth clears the capital guard even while its Open
+history remains. An Open proved never landed after TTL expiry also clears
+its capital guard without deleting its historical progress. Confirmed
+ancestor history is pruned independently using authenticated block heights,
+so continuous activity does not retain the entire ancestry. Expired progress
+is kept through 2160 blocks after its first authenticated post-expiry boundary
+and while an unresolved child still needs it. Older journals start this
+conservative retention clock on their first authenticated observation.
+Wallet funding excludes resources reserved under
 any deployment. Both watcher and CLI check the
 remaining live queue suffix before timeout; the transaction references that
 queue's tail to prevent appends from invalidating the checked removal budget.

@@ -7,6 +7,10 @@ import { eventHistoryCanonicalJson } from "../l1-event-history-source.js";
 import type { NativeMpfCanonicalRootRecovery } from "../services/mpf-native-owner/protocol.js";
 import { requireRecoveryTransaction } from "./eventHistoryAuthority.js";
 import type { Checkpoint } from "./eventHistoryJournal.js";
+import {
+  DISPLACEMENT_COMPENSATION_RECOVERY_DOMAIN,
+  type DisplacementCompensationPlan,
+} from "./eventHistoryRecoveryPlans.displacement-compensation.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const table = "event_history_recovery_plans";
@@ -32,6 +36,11 @@ export type HistoryRecoveryIntent = Readonly<{
   targetRoot: string;
   /** Digest of the exact retained journal and incarnation-bound memberships. */
   journalDigest: string;
+  /** Exact journals retained for a displaced-block revival; the digest above
+   * binds their signed content and native roots. Other domains omit it. */
+  displacedHeaderHashes?: readonly string[];
+  /** Fresh durable attempt, reused only while its operation is prepared. */
+  operationNonce?: string;
 }>;
 
 export type HistoryRecoveryPlan = Readonly<{
@@ -56,20 +65,28 @@ export const SIGNED_HEADER_RECOVERY_DOMAIN =
 export const SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN =
   "midgard-history-signed-intent-release-intent-v1";
 
+/** Rewind locally finalized blocks displaced by a canonical replacement,
+ * then revive that replacement. Its service resumes it while no journal is active. */
+export const DISPLACED_BLOCK_REVIVAL_RECOVERY_DOMAIN =
+  "midgard-history-displaced-block-revival-intent-v1";
+
 export const CORRECTION_REWIND_RECOVERY_DOMAIN =
   "midgard-history-correction-rewind-intent-v1";
 
 export type HistoryRecoveryDomain =
   | typeof SIGNED_HEADER_RECOVERY_DOMAIN
-  | typeof SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN;
+  | typeof SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN
+  | typeof DISPLACED_BLOCK_REVIVAL_RECOVERY_DOMAIN;
 
 type RecoveryPlanDomain =
   | HistoryRecoveryDomain
-  | typeof CORRECTION_REWIND_RECOVERY_DOMAIN;
+  | typeof CORRECTION_REWIND_RECOVERY_DOMAIN
+  | typeof DISPLACEMENT_COMPENSATION_RECOVERY_DOMAIN;
 
 const HISTORY_RECOVERY_KIND = {
   [SIGNED_HEADER_RECOVERY_DOMAIN]: "signed_header",
   [SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN]: "signed_intent_release",
+  [DISPLACED_BLOCK_REVIVAL_RECOVERY_DOMAIN]: "displaced_block_revival",
 } as const;
 
 export type HistoryRecoveryKind =
@@ -77,7 +94,8 @@ export type HistoryRecoveryKind =
 
 export const historyRecoveryKind = (domain: unknown) =>
   domain === SIGNED_HEADER_RECOVERY_DOMAIN ||
-  domain === SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN
+  domain === SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN ||
+  domain === DISPLACED_BLOCK_REVIVAL_RECOVERY_DOMAIN
     ? HISTORY_RECOVERY_KIND[domain]
     : undefined;
 
@@ -123,7 +141,8 @@ export type CorrectionRewindRecoveryPlan = Readonly<{
 
 export type DependentRecoveryPlan =
   | HistoryRecoveryPlan
-  | CorrectionRewindRecoveryPlan;
+  | CorrectionRewindRecoveryPlan
+  | DisplacementCompensationPlan;
 
 export const isHeaderHash = (value: unknown): value is string =>
   typeof value === "string" && /^[0-9a-f]{56}$/u.test(value);
@@ -174,7 +193,10 @@ export const validRewindIntent = (intent: CorrectionRewindIntent) =>
 export const planIdentity = (plan: DependentRecoveryPlan) =>
   "kind" in plan
     ? eventHistoryCanonicalJson({
-        domain: CORRECTION_REWIND_RECOVERY_DOMAIN,
+        domain:
+          plan.kind === "correction_rewind"
+            ? CORRECTION_REWIND_RECOVERY_DOMAIN
+            : DISPLACEMENT_COMPENSATION_RECOVERY_DOMAIN,
         ...plan.intent,
       })
     : eventHistoryCanonicalJson({
@@ -259,14 +281,32 @@ export const prepareHistoryRecoveryPlan = (
   domain: HistoryRecoveryDomain,
 ) =>
   Effect.gen(function* () {
-    intent = Object.freeze({ ...intent });
+    intent = Object.freeze({
+      ...intent,
+      ...(intent.displacedHeaderHashes !== undefined && {
+        displacedHeaderHashes: Object.freeze([...intent.displacedHeaderHashes]),
+      }),
+    });
     if (
       intent.bindingDigest !== checkpoint.bindingDigest ||
       intent.manifestId !== checkpoint.manifestId ||
       !/^[0-9a-f]{56}$/u.test(intent.headerHash) ||
       !Object.entries(intent).every(
-        ([key, value]) => key === "headerHash" || isHash(value),
+        ([key, value]) =>
+          key === "headerHash" ||
+          key === "displacedHeaderHashes" ||
+          (typeof value === "string" && isHash(value)),
       ) ||
+      (domain === DISPLACED_BLOCK_REVIVAL_RECOVERY_DOMAIN
+        ? intent.operationNonce === undefined ||
+          !isHash(intent.operationNonce) ||
+          intent.displacedHeaderHashes === undefined ||
+          intent.displacedHeaderHashes.length === 0 ||
+          !intent.displacedHeaderHashes.every(isHeaderHash) ||
+          new Set(intent.displacedHeaderHashes).size !==
+            intent.displacedHeaderHashes.length
+        : intent.displacedHeaderHashes !== undefined ||
+          intent.operationNonce !== undefined) ||
       !isHash(evidenceDigest) ||
       historyRecoveryKind(domain) === undefined
     ) {

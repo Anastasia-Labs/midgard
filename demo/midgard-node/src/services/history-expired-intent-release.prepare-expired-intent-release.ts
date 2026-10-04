@@ -1,19 +1,13 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import { Effect, Queue, Ref } from "effect";
 
-import * as Authority from "../database/eventHistoryAuthority.js";
 import type { Checkpoint } from "../database/eventHistoryJournal.js";
 import {
-  discardPreparedHistoryRecoveryPlan,
   prepareRetainedNativeHistoryRecoveryPlan,
   retainedPreparedRecoveryPlan,
   SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN,
 } from "../database/eventHistoryRecoveryPlans.js";
-import * as MutationJobsDB from "../database/mutationJobs.js";
-import * as StateQueueLeases from "../database/stateQueueMutationLeases.js";
-import { recordConfirmedPendingBlock } from "../fibers/block-confirmation.js";
 import { invalidateSpeculativeCommitCandidate } from "../fibers/speculative-commit-builder.js";
 import {
   eventHistoryCanonicalJson,
@@ -26,10 +20,6 @@ import {
   type SerializedStateQueueUTxO,
   serializeStateQueueUTxO,
 } from "../workers/utils/commit-block-header.js";
-import {
-  reviveReplacedCanonicalJournal,
-  signedIntentReplacementDigest,
-} from "./canonical-journal-recovery.js";
 import type { NodeConfigDep } from "./config.js";
 import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
 import { Globals } from "./globals.js";
@@ -40,16 +30,23 @@ import {
   heldBaseOutput,
 } from "./history-expired-intent-release.before-ttl.js";
 import { decide } from "./history-expired-intent-release.decide.js";
+import { heldOnIntegrityFailure } from "./history-expired-intent-release.integrity-hold.js";
 import {
   effective,
   openRetainedNativeOwner,
-  persistedReplay,
 } from "./history-expired-intent-release.open-retained-native-owner.js";
+import { ownedBy } from "./history-expired-intent-release.owned.js";
+import { recordLandedRelease } from "./history-expired-intent-release.record-landed-release.js";
 import { rederiveDecision } from "./history-expired-intent-release.rederive-decision.js";
 import {
-  includedInCanonicalHistory,
+  canonicalEvidence,
   replacedSiblings,
 } from "./history-expired-intent-release.replaced-block-landing.js";
+import { replacementRepair } from "./history-expired-intent-release.replacement-repair.js";
+import {
+  heldRootRefusal,
+  retainedJournalDigest,
+} from "./history-expired-intent-release.retained-journal-digest.js";
 import {
   authenticateQueue,
   type Decision,
@@ -71,7 +68,7 @@ import {
   type SignedIntentDeferral,
   signedTtl,
 } from "./history-expired-intent-release.table.js";
-import { reincludeStateQueueCorrectedBlocks } from "./state-queue-correction-recovery.js";
+import { HISTORY_SIGNED_INTENT_RELEASE_SOURCE } from "./liveness-halt.js";
 import {
   type StateQueueCorrectionRewindAuthority,
   stateQueueCorrectionRewindDisposition,
@@ -100,14 +97,7 @@ export const prepareExpiredIntentRelease = (input: {
   Effect.gen(function* () {
     const { checkpoint, preparation, config } = input;
     const reportKey = `${input.binding.digest}:decision`;
-    const owned = <A, E, R>(work: Effect.Effect<A, E, R>) =>
-      Authority.withRecovery(
-        preparation.token,
-        preparation.assertCurrent.pipe(
-          Effect.zipRight(work),
-          Effect.tap(() => preparation.assertCurrent),
-        ),
-      );
+    const owned = ownedBy(preparation);
     yield* preparation.assertCurrent;
     const derived = yield* owned(
       Effect.gen(function* () {
@@ -138,6 +128,8 @@ export const prepareExpiredIntentRelease = (input: {
         const baseSpend = yield* scanBaseSpend({
           ...intent,
           binding: input.binding,
+          // The whole journaled history; `findBaseSpend` reads evidence only
+          // at or after the base output's creation.
           fromHeight: -1,
           toHeight: checkpoint.head.height,
           declined: declinedBeforeTtl(input.deferral, deferralKey(intent)),
@@ -206,22 +198,29 @@ export const prepareExpiredIntentRelease = (input: {
       });
     const held = heldBaseOutput(derived, queue, record[C.BASE_TAIL_OUT_REF]);
     if (held !== undefined && (yield* decline(held))) return;
+    // One read of the canonical history: which of these signed commits it
+    // includes, and how deep each transaction in it is (which decides whether
+    // a winner holding the slot displaced a locally finalized sibling).
+    const canonical = yield* owned(
+      replacedSiblings(record).pipe(
+        Effect.flatMap((siblings) =>
+          canonicalEvidence(input.binding, checkpoint, [
+            signedTx,
+            ...siblings.flatMap((sibling) => {
+              const hash = sibling[C.INTENDED_TX_HASH];
+              return hash == null ? [] : [hash.toString("hex")];
+            }),
+          ]),
+        ),
+      ),
+    );
     const evidence: ReleaseEvidence = {
       queue,
       baseSpend: baseSpend?.kind === "spent" ? baseSpend.txHash : undefined,
-      canonicalHistory: yield* owned(
-        replacedSiblings(record).pipe(
-          Effect.flatMap((siblings) =>
-            includedInCanonicalHistory(input.binding, checkpoint, [
-              signedTx,
-              ...siblings.flatMap((sibling) => {
-                const hash = sibling[C.INTENDED_TX_HASH];
-                return hash == null ? [] : [hash.toString("hex")];
-              }),
-            ]),
-          ),
-        ),
-      ),
+      canonicalHistory: canonical.canonicalHistory,
+      ...(canonical.canonicalDepth !== undefined && {
+        canonicalDepth: canonical.canonicalDepth,
+      }),
       contracts: input.contracts,
       rewindAuthority: input.rewindAuthority,
     };
@@ -274,100 +273,26 @@ export const prepareExpiredIntentRelease = (input: {
       );
       return;
     }
-    if (decision.kind === "landed") {
-      const serialized = yield* serializeStateQueueUTxO(decision.node.node);
-      if (derived.replayRetained) {
-        // A replacement prepared from the candidate root before the block was
-        // seen to land may already have restored the base root natively (its
-        // CAS ran, its SQL repair did not), so the journal is intact but the
-        // native root may be at its base. Replay it to the candidate first (a
-        // no-op when the CAS never ran): a locally finalized journal is not
-        // replayed again at local finalization. The native root stays within
-        // the retained plan's two roots, so the plan can still be resumed if
-        // this attempt stops before it is discarded. A plan prepared from the
-        // base root (a journal never promoted) is base to base: the native
-        // root never left the base, local finalization replays the journal,
-        // and replaying here would strand the plan outside its roots.
-        const owner = yield* openOwner;
-        if (owner === undefined) return;
-        yield* preparation.assertCurrent;
-        yield* Effect.tryPromise({
-          try: () => owner.recover(persistedReplay(record.nativeMpfReplay!)),
-          catch: (cause) =>
-            failure(
-              `Native replay of landed block ${header} over its discarded replacement failed`,
-              cause,
-            ),
-        }).pipe(Effect.uninterruptible);
-        yield* preparation.assertCurrent;
-      }
-      const requiresLocalFinalization = yield* owned(
-        current("landed").pipe(
-          Effect.tap(() =>
-            // The native root is where the journal's status says it is again;
-            // the replacement is discarded, not resumed. The plan must still
-            // be the one the replay choice was made for.
-            derived.retainedPlan
-              ? retainedPreparedRecoveryPlan(input.binding.digest)
-                  .pipe(
-                    Effect.flatMap((retained) =>
-                      retained?.kind === "signed_intent_release" &&
-                      retained.headerHash === header &&
-                      (retained.expectedRoot ===
-                        record[C.EXPECTED_UTXOS_ROOT]) ===
-                        derived.replayRetained
-                        ? discardPreparedHistoryRecoveryPlan(
-                            checkpoint,
-                            SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN,
-                            header,
-                          )
-                        : Effect.fail(
-                            failure(
-                              `The retained replacement plan of landed block ${header} changed`,
-                            ),
-                          ),
-                    ),
-                  )
-                  .pipe(
-                    Effect.zipRight(
-                      Effect.logWarning(
-                        `Discarded the prepared replacement of block ${header}: it landed.`,
-                      ),
-                    ),
-                  )
-              : Effect.void,
-          ),
-          Effect.flatMap((journal) =>
-            recordConfirmedPendingBlock(
-              journal.record,
-              Buffer.from(decision.node.node.utxo.txHash, "hex"),
-            ),
-          ),
-        ),
-      );
-      yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
-      yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
-      yield* Ref.set(
-        globals.LOCAL_FINALIZATION_PENDING,
-        requiresLocalFinalization,
-      );
-      yield* Ref.set(
-        globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-        requiresLocalFinalization ? serialized : "",
-      );
-      yield* reportOnce(reportKey, undefined);
-      yield* Effect.logInfo(
-        `Recorded the L1 observation of ${context}: ${decision.evidence}.`,
-      );
-      return;
-    }
+    if (decision.kind === "landed")
+      return yield* recordLandedRelease({
+        decision,
+        record,
+        derived,
+        bindingDigest: input.binding.digest,
+        checkpoint,
+        preparation,
+        globals,
+        openOwner,
+        current,
+        reportKey,
+        context,
+      });
 
     const revived = decision.kind === "revive" ? decision.revived : undefined;
     const revivedBlock: SerializedStateQueueUTxO | undefined =
       decision.kind === "revive"
         ? yield* serializeStateQueueUTxO(decision.node.node)
         : undefined;
-    const replacementDigest = signedIntentReplacementDigest(record)!;
     const targetRoot = record[C.BASE_UTXOS_ROOT];
     const evidenceDigest = sha(
       eventHistoryCanonicalJson({
@@ -392,11 +317,20 @@ export const prepareExpiredIntentRelease = (input: {
       try: () => owner.diagnostics(),
       catch: (cause) => failure("Retained native diagnostics failed", cause),
     });
-    // The plan binds only the replaced journal, so a crash between native
-    // restoration and the SQL repair resumes it whichever block then wins.
+    // The plan binds only the replaced journal (by a digest the
+    // acknowledgement of its submission does not change; see
+    // `retainedJournalDigest`), so a crash between native restoration and the
+    // SQL repair resumes it whichever block then wins.
     const plan = yield* owned(
       current(decision.kind).pipe(
-        Effect.zipRight(
+        Effect.flatMap((now) =>
+          retainedJournalDigest(
+            input.binding.digest,
+            now.record,
+            journalIdentity(now.record),
+          ),
+        ),
+        Effect.flatMap((journalDigest) =>
           prepareRetainedNativeHistoryRecoveryPlan(
             checkpoint,
             {
@@ -406,7 +340,7 @@ export const prepareExpiredIntentRelease = (input: {
               signedTransactionHash: signedTx,
               signedTransactionCborSha256: sha(record[C.SIGNED_TX_CBOR]!),
               targetRoot,
-              journalDigest: derived.identity,
+              journalDigest,
             },
             evidenceDigest,
             {
@@ -414,6 +348,15 @@ export const prepareExpiredIntentRelease = (input: {
               candidateRoot: record[C.EXPECTED_UTXOS_ROOT],
             },
             SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN,
+          ).pipe(
+            // Refused before anything is written; held, not fatal.
+            Effect.mapError(
+              heldRootRefusal(header, {
+                durableRoot: diagnostics.durableRoot,
+                targetRoot,
+                candidateRoot: record[C.EXPECTED_UTXOS_ROOT],
+              }),
+            ),
           ),
         ),
       ),
@@ -423,56 +366,7 @@ export const prepareExpiredIntentRelease = (input: {
       preparation,
       plan,
       owner,
-      repair: Effect.gen(function* () {
-        const { parentAggregate } = yield* current(decision.kind);
-        const sql = yield* SqlClient.SqlClient;
-        // Abandons the journal under its replacement digest and reopens every
-        // member (L2 transactions, deposits, withdrawals, forced
-        // transactions), restoring the speculative ledger, in this
-        // transaction. Its signed content is kept.
-        const results = yield* reincludeStateQueueCorrectedBlocks([
-          {
-            headerHash: header,
-            transitionDigest: replacementDigest,
-            kind: "unlanded",
-          },
-        ]);
-        if (
-          results.length !== 1 ||
-          !results[0]!.journalFound ||
-          results[0]!.abandonedFromStatus === undefined
-        )
-          return yield* Effect.fail(
-            failure(`Signed-intent replacement did not abandon ${header}`),
-          );
-        yield* MutationJobsDB.abandonLocalBlockFinalization(
-          headerHash,
-          `${context} can no longer land: ${decision.kind === "replace" ? decision.cause : `replaced block ${revived![C.HEADER_HASH].toString("hex")} holds its base's slot`}`,
-        );
-        // A replaced block can never be continued; retire only its lease.
-        yield* StateQueueLeases.release(record[C.STATE_QUEUE_LEASE_TOKEN]);
-        // The SQL marker follows the native root the plan's CAS proved, from
-        // the replaced journal's candidate root (or already at its target
-        // when a resumed plan re-runs this repair) and nothing else.
-        const engine = yield* sql`UPDATE mpf_engine_state
-          SET root_hex = ${targetRoot},
-            utxo_payload_entry_count = ${parentAggregate?.entryCount ?? null},
-            utxo_payload_encoded_tuple_bytes = ${parentAggregate?.encodedTupleBytes ?? null},
-            updated_at = NOW()
-          WHERE store_name = 'ledger'
-            AND root_hex IN (${record[C.EXPECTED_UTXOS_ROOT]}, ${targetRoot})
-          RETURNING store_name`;
-        if (engine.length !== 1)
-          return yield* Effect.fail(
-            failure(
-              "Native SQL marker changed before the signed-intent replacement",
-            ),
-          );
-        // The winner takes its members back; its SQL marker moves to its
-        // candidate root and native replay follows at local finalization.
-        if (revived !== undefined)
-          yield* reviveReplacedCanonicalJournal(revived[C.HEADER_HASH]);
-      }),
+      repair: replacementRepair({ decision, record, current, context }),
       afterSqlCommit: Effect.gen(function* () {
         yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
         yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
@@ -495,6 +389,6 @@ export const prepareExpiredIntentRelease = (input: {
     yield* Effect.logWarning(
       decision.kind === "replace"
         ? `Replaced ${context}: ${decision.cause}. Restored native root ${targetRoot} and reopened its members for recommit.`
-        : `Revived replaced block ${revived![C.HEADER_HASH].toString("hex")}: it holds the base slot of ${context}, which was abandoned; local finalization replays the winner.`,
+        : `Revived replaced block ${revived![C.HEADER_HASH].toString("hex")}: it holds the base slot of ${context}, which was abandoned${decision.displaced.length === 0 ? "" : `, and displaced locally finalized block ${decision.displaced.map((block) => block[C.HEADER_HASH].toString("hex")).join(", ")}`}; local finalization replays the winner.`,
     );
-  });
+  }).pipe(heldOnIntegrityFailure(HISTORY_SIGNED_INTENT_RELEASE_SOURCE));

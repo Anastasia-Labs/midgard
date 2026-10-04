@@ -22,3 +22,4 @@ import "./retention-enforcement.q54-executable-retention-deadline-alert.js";
 import "./retention-enforcement.terminal-merge.js";
 import "./retention-enforcement.registration.js";
 import "./retention-enforcement.finality-hold.js";
+import "./retention-enforcement.recovery-proof.js";

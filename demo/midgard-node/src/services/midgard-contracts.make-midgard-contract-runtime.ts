@@ -10,6 +10,7 @@ import {
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Effect, Layer } from "effect";
 
+import { resolveHousekeepingRetentionDays } from "../database/retention-policy.js";
 import {
   defaultDeploymentRunStatePath,
   loadDeploymentRunState,
@@ -140,6 +141,19 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
     };
     return runtime;
   }
+  // Without a manifest the compiled bundle owns the transport window. Refuse
+  // an invalid explicit override now, before a sweep would disable pruning.
+  yield* Effect.try({
+    try: () =>
+      resolveHousekeepingRetentionDays({
+        configured: nodeConfig.RETENTION_DAYS,
+        manifestRetentionDays: undefined,
+      }),
+    catch: (cause) =>
+      new Error(
+        `Derived contract bundle cannot use housekeeping retention: ${formatUnknownError(cause)}`,
+      ),
+  });
   const oneShotOutRef: HubOracleOneShotOutRef = {
     txHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
     outputIndex: nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,

@@ -234,3 +234,13 @@ Run static tests with:
 ```bash
 node --test devnet/phase4-process/tests/assets.test.mjs
 ```
+
+The fresh-chain funding policy is shared with `devnet-stack` in
+[`preprod/funding-policy.json`](../preprod/funding-policy.json). The legacy
+seven-wallet bootstrap now allocates 78 million ADA per wallet plus a separate
+50 ADA pure collateral output, from a 1-billion-ADA spendable genesis UTxO
+(2 billion total, 1 billion delegated). This is local test funding only. The
+180-day, fivefold-margin fee model, observed evidence, all fourteen stack roles,
+and limitations are documented in the [tools README](../../README.md#devnet-wallet-fee-runway).
+Neither flow refills role wallets online; an existing run keeps its recorded
+funding transaction.

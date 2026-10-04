@@ -67,12 +67,30 @@ It is responsible for:
   deleted once its block end time is past the challengeability horizon (10.5
   days) or its header was removed from the state queue under this deployment.
   The payload of the L1 confirmed head and the payload of every header live in
-  the L1 state queue are never deleted. `RETENTION_DAYS` governs only the
-  wall-clock tables (`tx_rejections`, `address_history`, `deposits_utxos`,
-  `withdrawal_utxos`): `0` keeps them forever, any other value must be at least
-  the manifest's `da.transportProfile.retentionDays`. That manifest value is
-  validated at load but does not govern DA payload pruning; it currently only
-  feeds the `retainUntilMs` field of retention reports.
+  the L1 state queue are never deleted. Housekeeping follows a window derived
+  from the verified deployment manifest's `da.transportProfile.retentionDays`
+  (15 days today) when `RETENTION_DAYS` is unset. An explicit `RETENTION_DAYS`
+  shorter than that window refuses startup, a longer one is honoured, and `0`
+  keeps the housekeeping tables forever. The window never reaches inside the
+  DA challengeability horizon. It prunes `tx_rejections`, `address_history`
+  (except entries of a transaction still in the mempool or processed
+  mempool), ended `state_queue_mutation_leases` that no retained journal
+  names, and finalized `pending_block_finalizations` journals whose confirmed
+  merge has completed locally. A journal is kept while its header is the L1
+  confirmed head, live in the L1 state queue, held for finality, or named by
+  a pending or admitted correction transition, and the newest finalized
+  journal is always kept. Unfinished and abandoned journals retain their bases,
+  same-base siblings and descendants; retained recovery plans retain all their
+  journal members. The journal prune runs under the history-producer
+  permit. It takes no permit while the history owner is recovering, holds the
+  permit for a bounded time, and skips to the next sweep when refused.
+  `deposits_utxos` and `withdrawal_utxos` are retained because settlement proofs
+  recompute the whole header's root, including completed siblings of unpaid
+  events. Local consumed/finalized status and a completed settlement job do not
+  prove L1 payout finality: confirmed settlement receipts currently retain no
+  block identity or depth. Bounded event retirement requires durable canonical
+  terminal receipts beyond the manifest recovery depth and whole-header proof
+  material retirement after every event exit and recovery obligation completes.
 - Each sweep reads the state queue from L1 first. If that read fails, the
   sweeper logs `retention_pass_skipped` and deletes no DA payload. Once the last
   successful read is older than `L1_VIEW_FATAL_MS`, the node exits non-zero.

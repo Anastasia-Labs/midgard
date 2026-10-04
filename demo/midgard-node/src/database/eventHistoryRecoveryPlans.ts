@@ -14,6 +14,7 @@ export {
   type CorrectionRewindMemberKind,
   type CorrectionRewindRecoveryPlan,
   type DependentRecoveryPlan,
+  DISPLACED_BLOCK_REVIVAL_RECOVERY_DOMAIN,
   type HistoryRecoveryDomain,
   type HistoryRecoveryIntent,
   type HistoryRecoveryKind,

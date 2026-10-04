@@ -213,7 +213,7 @@ describe("a Finalized sibling displaced by a rollback, with canonical depth evid
     ]);
   });
 
-  it("keeps waiting when the sibling moved the ledger root", async () => {
+  it("is the integrity failure, never an undecided wait, when the sibling moved the ledger root", async () => {
     await run(seedDisplaced(Pending.Status.Finalized));
     await run(
       Effect.flatMap(
@@ -223,12 +223,15 @@ describe("a Finalized sibling displaced by a rollback, with canonical depth evid
           WHERE header_hash = ${S_HEADER}`,
       ),
     );
-    const [round] = await decideInTurn([atDepth(10n)]);
-    expect(round?.kind).toBe("wait");
-    expect(round?.reason).toContain(
-      `block ${S_HEADER.toString("hex")} moved the ledger root from ${UTXOS_ROOT} to ${"11".repeat(32)}`,
+    // Short of the depth it still waits: the winner may yet roll back.
+    const [short] = await decideInTurn([atDepth(1n)]);
+    expect(short?.kind).toBe("wait");
+    expect(short?.raised).toBe(SIGNED_INTENT_UNDECIDED);
+    // At the depth the altered root has no authenticated retained replay.
+    const message = integrityFailure(await decideOnce(atDepth(10n)));
+    expect(message).toContain(
+      `has no contiguous retained replay from its parent's root ${UTXOS_ROOT} through ${UTXOS_ROOT} to ${"11".repeat(32)}`,
     );
-    expect(round?.raised).toBe(SIGNED_INTENT_UNDECIDED);
   });
 
   it("is the integrity failure when the sibling's signed commit is in the canonical history too", async () => {

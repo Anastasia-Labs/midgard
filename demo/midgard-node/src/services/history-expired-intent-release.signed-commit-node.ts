@@ -42,6 +42,15 @@ export const journalIdentity = (record: Pending.Record) => {
   );
 };
 
+/** The only mutable identity evolution accepted by an already prepared
+ * release: acknowledgement of its exact retained signed transaction. */
+export const journalIdentityBeforeSubmissionAck = (record: Pending.Record) =>
+  record[C.SUBMITTED_TX_HASH] != null &&
+  record[C.INTENDED_TX_HASH] != null &&
+  record[C.SUBMITTED_TX_HASH]!.equals(record[C.INTENDED_TX_HASH]!)
+    ? journalIdentity({ ...record, [C.SUBMITTED_TX_HASH]: null })
+    : undefined;
+
 /** The active journal and the aggregate of its replay base (its retained
  * parent journal's, or none, which makes the commit base recompute it). A
  * journal whose roots or parent do not prove its replay base cannot be

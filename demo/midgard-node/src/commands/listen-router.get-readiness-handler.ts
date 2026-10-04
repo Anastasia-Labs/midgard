@@ -122,6 +122,7 @@ export const getReadinessHandler = Effect.gen(function* () {
       ? 0
       : nowMillis - unconfirmedSubmittedBlockSinceMs;
 
+  const lucidService = yield* Effect.serviceOption(Lucid);
   const providerHealthBefore = yield* Ref.get(globals.L1_PROVIDER_HEALTH);
   const cachedProviderEvidenceIsFresh = l1ProviderReadinessEvidenceIsFresh({
     evidence: providerHealthBefore,
@@ -154,6 +155,8 @@ export const getReadinessHandler = Effect.gen(function* () {
                 L1_OGMIOS_KEY: nodeConfig.L1_OGMIOS_KEY,
                 L1_KUPO_KEY: nodeConfig.L1_KUPO_KEY,
                 NETWORK: nodeConfig.NETWORK,
+                L1_OGMIOS_TIP_MAX_AGE_MS:
+                  Option.getOrUndefined(lucidService)?.ogmiosTipMaxAgeMs,
               },
               signal,
             }),
@@ -262,7 +265,26 @@ export const getReadinessHandler = Effect.gen(function* () {
     reasons.push("native_mpf_owner_unhealthy");
   }
   const details: string[] = [];
-  const lucidService = yield* Effect.serviceOption(Lucid);
+  const daFramePressure = yield* Ref.get(globals.COMMIT_DA_FRAME_PRESSURE);
+  const commitDaFramePressure =
+    daFramePressure === null
+      ? null
+      : {
+          ...daFramePressure,
+          ageMs: Math.max(0, nowMillis - daFramePressure.observedAtMs),
+        };
+  if (daFramePressure !== null) {
+    for (const [kind, stage] of [
+      ["candidate", daFramePressure.candidateStagePercent],
+      ["initial_candidate", daFramePressure.initialCandidateStagePercent],
+      ["base_ledger", daFramePressure.baseLedgerStagePercent],
+      ["required_work", daFramePressure.requiredWorkStagePercent],
+    ] as const) {
+      if (stage !== null && stage > 0)
+        details.push(`commit_da_frame_pressure:${kind}:${stage.toString()}`);
+    }
+  }
+
   const providerReadiness = l1ProviderReadiness({
     healthy: providerProbe.healthy,
     lastSuccessAtMs: providerHealthAfter.lastSuccessAtMs,
@@ -380,6 +402,7 @@ export const getReadinessHandler = Effect.gen(function* () {
     eventHistoryRetentionHold,
     eventHistoryFrontier,
     livenessReasons,
+    commitDaFramePressure,
     mergeReadiness,
   };
 

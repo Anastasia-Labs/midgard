@@ -5,6 +5,7 @@ import {
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import {
   type DaPayloadEmissionMode,
+  daPayloadFramePressureStage,
   maxDaPayloadInnerBytes,
   projectDaPayloadSizes,
 } from "@al-ft/midgard-core/da-payload-sizing";
@@ -38,18 +39,9 @@ import {
   DA_PAYLOAD_UPPER_BOUND_HEADER,
   DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,
 } from "../utils/commit-block-planner.js";
+import { measureDaPayloadPrefixes } from "./submission.measure-da-prefixes.js";
 
 export const COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES = 1;
-
-/**
- * Share of the V1 submit frame past which every commit logs frame pressure.
- * The payload carries the whole L2 UTxO set, so it grows with the ledger, not
- * with the work a block does. When the UTxO list dominates the payload, at one
- * half the ledger can still grow as much as it already has before the
- * pre-submit refusal halts block production; a block heavy with its own
- * content can cross this point, and the frame, on a much smaller ledger.
- */
-export const DA_PAYLOAD_FRAME_PRESSURE_RATIO = 0.5;
 
 const daEntry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
   key.toString("hex"),
@@ -82,7 +74,8 @@ export const daProgramMaterialFromSidecars = (
     ),
   );
 
-type DaPayloadBlockContent = {
+export type DaPayloadBlockContent = {
+  readonly utxoPayloadAggregatesByPrefix?: readonly UtxoPayloadSizeAggregate[];
   readonly utxoPayloadAggregate: UtxoPayloadSizeAggregate;
   readonly includedDepositEntries: readonly DepositsDB.Entry[];
   readonly includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[];
@@ -94,10 +87,9 @@ type DaPayloadBlockContent = {
 };
 
 /** Exact inner DaPayloadV1 bytes of the block the node submits. */
-const daPayloadInnerBytes = ({
+export const commitDaPayloadForSizing = ({
   headerHash,
   header,
-  utxoPayloadAggregate,
   includedDepositEntries,
   includedForcedTransactionEntries,
   includedWithdrawalEntries,
@@ -110,7 +102,7 @@ const daPayloadInnerBytes = ({
   readonly headerHash: string;
   readonly header: SDK.Header;
   readonly cekProgramMaterial: readonly SDK.DaPayloadEntry[];
-}): Effect.Effect<number, DatabaseError> =>
+}): Effect.Effect<SDK.DaPayload, DatabaseError> =>
   Effect.gen(function* () {
     const transactionSources = yield* Effect.try({
       try: () =>
@@ -182,34 +174,43 @@ const daPayloadInnerBytes = ({
         (entry) => entry.witnesses,
       ),
     };
-    return SDK.daPayloadEncodedSizeFromUtxoAggregate(
-      {
-        version: SDK.DA_PAYLOAD_VERSION,
-        block_body: {
-          ...commonBody,
-          header,
-          transaction_preimages: processedMempoolTxs.map((entry) =>
-            daEntry(entry[TxColumns.TX_ID], entry[TxColumns.TX]),
-          ),
-          forced_transaction_preimages: forcedTransactionPreimages,
-          cek_program_material: [...cekProgramMaterial],
-          validation_traces: validationTraceMembers.map((entry) =>
-            daEntry(entry.keyCbor, entry.valueCbor),
-          ),
-          counts: {
-            withdrawalCount: header.withdrawalCount,
-            forcedTransactionCount: header.forcedTransactionCount,
-            l2TransactionCount: header.l2TransactionCount,
-            depositCount: header.depositCount,
-            totalEventCount: header.totalEventCount,
-            transitionStepCount: header.transitionStepCount,
-            validationTraceCount: header.validationTraceCount,
-          },
+    return {
+      version: SDK.DA_PAYLOAD_VERSION,
+      block_body: {
+        ...commonBody,
+        header,
+        transaction_preimages: processedMempoolTxs.map((entry) =>
+          daEntry(entry[TxColumns.TX_ID], entry[TxColumns.TX]),
+        ),
+        forced_transaction_preimages: forcedTransactionPreimages,
+        cek_program_material: [...cekProgramMaterial],
+        validation_traces: validationTraceMembers.map((entry) =>
+          daEntry(entry.keyCbor, entry.valueCbor),
+        ),
+        counts: {
+          withdrawalCount: header.withdrawalCount,
+          forcedTransactionCount: header.forcedTransactionCount,
+          l2TransactionCount: header.l2TransactionCount,
+          depositCount: header.depositCount,
+          totalEventCount: header.totalEventCount,
+          transitionStepCount: header.transitionStepCount,
+          validationTraceCount: header.validationTraceCount,
         },
       },
-      utxoPayloadAggregate,
-    );
+    };
   });
+
+const daPayloadInnerBytes = (
+  content: Parameters<typeof commitDaPayloadForSizing>[0],
+) =>
+  commitDaPayloadForSizing(content).pipe(
+    Effect.map((payload) =>
+      SDK.daPayloadEncodedSizeFromUtxoAggregate(
+        payload,
+        content.utxoPayloadAggregate,
+      ),
+    ),
+  );
 
 export const assertPreSubmitDaPayloadSize = ({
   headerHash,
@@ -300,7 +301,11 @@ export const assertPreSubmitDaPayloadSize = ({
     yield* Effect.logInfo(
       `da_payload_pre_submit_inner_bytes=${encodedBytes.toString()} da_payload_stored_bytes_upper_bound=${projection.storedBytesUpperBound.toString()} da_payload_request_bytes_upper_bound=${projection.requestBytesUpperBound.toString()} da_payload_effective_inner_limit=${effectiveInnerLimit.toString()} da_payload_envelope_mode=${envelopeMode} da_payload_frame_limit_bytes=${DA_TRANSPORT_LIMITS.maxPayloadBytes.toString()} da_payload_frame_utilisation=${utilisation} utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()} utxo_encoded_tuple_bytes=${utxoPayloadAggregate.encodedTupleBytes.toString()}`,
     );
-    if (encodedBytes >= effectiveInnerLimit * DA_PAYLOAD_FRAME_PRESSURE_RATIO) {
+    const pressureStage = daPayloadFramePressureStage(
+      encodedBytes,
+      effectiveInnerLimit,
+    );
+    if (pressureStage > 0) {
       const headroomBytes = effectiveInnerLimit - encodedBytes;
       const entriesUntilFrame =
         utxoPayloadAggregate.entryCount === 0
@@ -311,7 +316,7 @@ export const assertPreSubmitDaPayloadSize = ({
                   utxoPayloadAggregate.entryCount),
             ).toString();
       yield* Effect.logWarning(
-        `da_payload_frame_pressure=high header_hash=${headerHash} da_payload_frame_utilisation=${utilisation} da_payload_pressure_ratio=${DA_PAYLOAD_FRAME_PRESSURE_RATIO.toString()} da_payload_pre_submit_inner_bytes=${encodedBytes.toString()} da_payload_effective_inner_limit=${effectiveInnerLimit.toString()} da_payload_headroom_bytes=${headroomBytes.toString()} utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()} utxo_list_bytes=${utxoListBytes.toString()} utxo_entries_until_frame_at_mean_size=${entriesUntilFrame}`,
+        `da_payload_frame_pressure=high header_hash=${headerHash} da_payload_frame_utilisation=${utilisation} da_payload_pressure_stage_percent=${pressureStage.toString()} da_payload_pre_submit_inner_bytes=${encodedBytes.toString()} da_payload_effective_inner_limit=${effectiveInnerLimit.toString()} da_payload_headroom_bytes=${headroomBytes.toString()} utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()} utxo_list_bytes=${utxoListBytes.toString()} utxo_entries_until_frame_at_mean_size=${entriesUntilFrame}`,
       );
     }
     return encodedBytes;
@@ -325,38 +330,53 @@ export const assertPreSubmitDaPayloadSize = ({
  */
 export const measureCommitDaPayloadUpperBound = ({
   rejectedTxIds,
+  identityContext = Buffer.alloc(0),
   ...content
 }: DaPayloadBlockContent & {
   readonly rejectedTxIds: readonly Buffer[];
+  readonly identityContext?: Buffer;
 }): Effect.Effect<CommitDaFrameMeasurement | undefined, never, Database> =>
   Effect.gen(function* () {
     const sidecars = yield* TxAdmissionsDB.retrieveProgramMaterialSidecars(
       content.processedMempoolTxs.map((entry) => entry[TxColumns.TX_ID]),
     );
-    if (sidecars.length !== content.processedMempoolTxs.length) {
-      return yield* Effect.fail(
-        `transactions=${content.processedMempoolTxs.length.toString()},program_material_sidecars=${sidecars.length.toString()}`,
-      );
-    }
-    const cekProgramMaterial = yield* Effect.try(() =>
-      daProgramMaterialFromSidecars([
-        ...sidecars.map((entry) => entry.sidecarCbor),
-        ...forcedProgramMaterialSidecars(
-          content.includedForcedTransactionEntries,
-        ),
-      ]),
+    const byId = new Map(
+      sidecars.map((entry) => [entry.txId.toString("hex"), entry.sidecarCbor]),
     );
-    const innerBytesUpperBound = yield* daPayloadInnerBytes({
+    if (
+      sidecars.length !== content.processedMempoolTxs.length ||
+      byId.size !== sidecars.length
+    )
+      return yield* Effect.fail(
+        "DA prefix program material identities are incomplete or duplicated",
+      );
+    const ordinarySidecars = yield* Effect.try(() =>
+      content.processedMempoolTxs.map((entry) => {
+        const sidecar = byId.get(entry[TxColumns.TX_ID].toString("hex"));
+        if (sidecar === undefined)
+          throw new Error("DA prefix program material identity is missing");
+        return sidecar;
+      }),
+    );
+    const forcedSidecars = yield* Effect.try(() =>
+      forcedProgramMaterialSidecars(content.includedForcedTransactionEntries),
+    );
+    const payload = yield* commitDaPayloadForSizing({
       ...content,
       headerHash: DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,
       header: DA_PAYLOAD_UPPER_BOUND_HEADER,
-      cekProgramMaterial,
+      cekProgramMaterial: [],
     });
-    return {
-      innerBytesUpperBound,
-      acceptedTxCount: content.processedMempoolTxs.length,
-      rejectedTxIds,
-    } satisfies CommitDaFrameMeasurement;
+    return yield* Effect.try(() =>
+      measureDaPayloadPrefixes({
+        payload,
+        content,
+        ordinarySidecars,
+        forcedSidecars,
+        identityContext,
+        rejectedTxIds,
+      }),
+    );
   }).pipe(
     Effect.catchAll((cause) =>
       Effect.as(

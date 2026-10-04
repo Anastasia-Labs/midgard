@@ -130,6 +130,12 @@ export type ReconnectScenarioOptions = Readonly<{
     checkpoint: Journal.Checkpoint,
     preparation: HistoryRecoveryPreparation,
   ) => Effect.Effect<void>;
+  /** A pending reconciliation's reason while one holds the gate. */
+  pending?: () => string | undefined;
+  preparePendingReconciliation?: (
+    checkpoint: Journal.Checkpoint,
+    preparation: HistoryRecoveryPreparation,
+  ) => Effect.Effect<void>;
 }>;
 
 export const scenario =
@@ -217,6 +223,8 @@ export const scenario =
                   ...options.sourceReconnect,
                 },
                 prepareCompletion: options.prepareCompletion,
+                preparePendingReconciliation:
+                  options.preparePendingReconciliation,
                 ownerToken: randomUUID(),
                 expectedInitializationTransactionHash:
                   h.deployment.initialization.txHash,
@@ -224,6 +232,10 @@ export const scenario =
                 reconcile: (change) =>
                   Effect.sync(() => {
                     changes.push(change);
+                    const reason = options.pending?.();
+                    return reason === undefined
+                      ? undefined
+                      : { status: "pending" as const, reason };
                   }),
               });
               yield* owner.awaitReady.pipe(Effect.timeout("30 seconds"));

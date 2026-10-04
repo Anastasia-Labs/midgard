@@ -191,6 +191,7 @@ export const l1ProviderReadinessRefresherFiber = (
         readLocalOgmiosSubmitSlot({
           ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
           timeoutMs: probeTimeoutMs,
+          maxHealthAgeMs: lucid.ogmiosTipMaxAgeMs,
         }),
       ),
       maxHoldMs: probeTimeoutMs,

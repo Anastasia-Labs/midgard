@@ -35,6 +35,7 @@ import {
   type SuccessfulLocalFinalizationRecoveryOutput,
   WorkerOutput,
 } from "./utils/commit-block-header.js";
+import { type CommitDaFrameNotice } from "./utils/commit-block-planner.commit-da-frame-notice.js";
 import { type EarliestCommitSchedulerPlan } from "./utils/commit-block-planner.js";
 import { resolveExplicitCommitCandidateEndTimeMs } from "./utils/commit-end-time.js";
 
@@ -324,7 +325,8 @@ export type AwaitSpeculativeCommitInstruction = (
 export type NotifyCommitWorkerParent = (
   message:
     | SuccessfulLocalFinalizationRecoveryOutput
-    | MempoolLedgerRevertedNotice,
+    | MempoolLedgerRevertedNotice
+    | CommitDaFrameNotice,
 ) => Effect.Effect<void>;
 
 export const MEMPOOL_LEDGER_REVERTED_NOTICE: MempoolLedgerRevertedNotice = {

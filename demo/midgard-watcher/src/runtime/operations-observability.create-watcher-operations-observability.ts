@@ -1,9 +1,12 @@
 import type { WatcherFaultProofSupervisor } from "../fault-proofs/fault-proof-supervisor.js";
 import type { WatcherRetainedDaTransportStatus } from "../storage/retained-da-runtime.js";
+import { coordinatorHoldsReadiness } from "./chain-coordinator.integrity-hold.js";
+import type { WatcherChainCoordinator } from "./chain-coordinator.js";
 import {
   createWatcherAlertBook,
   WATCHER_DA_FETCH_ALERT_MAXIMUM_AGE_MS,
 } from "./operations-observability.alert-book.js";
+import { handleWatcherOperationsHttpRequest } from "./operations-observability.handle-http-request.js";
 import { hash32, percentile } from "./operations-observability.percentile.js";
 import {
   MAXIMUM_PAGE_SIZE,
@@ -22,7 +25,6 @@ import {
   type WatcherOperationsDaBondPool,
   type WatcherOperationsDaBondPoolReadFailure,
   type WatcherOperationsDiagnostic,
-  type WatcherOperationsDiagnosticKind,
   type WatcherOperationsMetrics,
   type WatcherOperationsObservability,
   type WatcherOperationsSink,
@@ -45,6 +47,9 @@ export const createWatcherOperationsObservability = (input: {
   }>;
   /** Live state of the application's shared retained-DA transport. */
   readonly retainedDaTransportStatus: () => WatcherRetainedDaTransportStatus;
+  readonly coordinatorStatus?: () => ReturnType<
+    WatcherChainCoordinator["status"]
+  > | null;
   readonly nowMs?: () => bigint;
   readonly monotonicNowMs?: () => number;
   readonly l1FreshnessMaximumAgeMs?: number;
@@ -300,6 +305,9 @@ export const createWatcherOperationsObservability = (input: {
     if (latestL1Sources.size === 0) reasons.push("l1_source_unavailable");
     else if (sources.stale > 0 || sources.disagreement > 0)
       reasons.push("l1_source_stale");
+    const coordinator = input.coordinatorStatus?.() ?? null;
+    if (coordinatorHoldsReadiness(coordinator))
+      reasons.push("coordinator_recovery_hold");
     const retainedDaTransport = input.retainedDaTransportStatus();
     if (retainedDaTransport.state === "failed")
       reasons.push("retained_da_transport_failed");
@@ -320,6 +328,7 @@ export const createWatcherOperationsObservability = (input: {
       readiness: reasons.length === 0 ? "ready" : "not_ready",
       readinessReasons: Object.freeze(reasons),
       retainedDaTransport,
+      coordinator,
       launchScope: scope,
       supervisor,
       activeAlerts: active,
@@ -452,65 +461,8 @@ export const createWatcherOperationsObservability = (input: {
     },
   });
 
-  const jsonResponse = (statusCode: number, value: unknown): Response =>
-    new Response(JSON.stringify(value), {
-      status: statusCode,
-      headers: Object.freeze({
-        "cache-control": "no-store",
-        "content-type": "application/json; charset=utf-8",
-        "x-content-type-options": "nosniff",
-      }),
-    });
-
-  const handleHttpRequest = async (request: Request): Promise<Response> => {
-    if (request.method !== "GET") {
-      return new Response(null, {
-        status: 405,
-        headers: Object.freeze({ allow: "GET", "cache-control": "no-store" }),
-      });
-    }
-    let url: URL;
-    try {
-      url = new URL(request.url);
-    } catch {
-      return jsonResponse(400, { error: "invalid_request" });
-    }
-    try {
-      if (url.pathname === "/v1/status" && url.search === "") {
-        return jsonResponse(200, api.status());
-      }
-      if (url.pathname === "/v1/metrics" && url.search === "") {
-        return jsonResponse(200, api.metrics());
-      }
-      if (url.pathname === "/v1/diagnostics") {
-        const keys = [...url.searchParams.keys()];
-        if (
-          keys.some(
-            (key) => key !== "kind" && key !== "cursor" && key !== "limit",
-          ) ||
-          new Set(keys).size !== keys.length
-        ) {
-          throw new Error("invalid diagnostics query");
-        }
-        const kind = url.searchParams.get("kind");
-        const cursor = url.searchParams.get("cursor") ?? undefined;
-        const rawLimit = url.searchParams.get("limit");
-        const limit = rawLimit === null ? undefined : Number(rawLimit);
-        if (kind === null) throw new Error("diagnostic kind is required");
-        return jsonResponse(
-          200,
-          api.diagnostics({
-            kind: kind as WatcherOperationsDiagnosticKind,
-            ...(cursor === undefined ? {} : { cursor }),
-            ...(limit === undefined ? {} : { limit }),
-          }),
-        );
-      }
-      return jsonResponse(404, { error: "not_found" });
-    } catch {
-      return jsonResponse(400, { error: "invalid_request" });
-    }
-  };
+  const handleHttpRequest = (request: Request): Promise<Response> =>
+    handleWatcherOperationsHttpRequest(request, api);
 
   return Object.freeze({
     schemaVersion: WATCHER_OPERATIONS_OBSERVABILITY,

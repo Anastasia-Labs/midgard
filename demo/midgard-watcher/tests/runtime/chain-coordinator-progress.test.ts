@@ -1,3 +1,5 @@
+import "../support/chain-coordinator-unit-fixture.js";
+
 import { DatabaseSync } from "node:sqlite";
 
 import { describe, expect, it, vi } from "vitest";
@@ -110,6 +112,7 @@ const harness = (
   }[] = [];
   const rollbacks: unknown[] = [];
   const persistRollback = vi.fn();
+  const persistObservation = vi.fn(async () => ({ persistence: "committed" }));
   const observation = {
     observe: async ({
       block: candidate,
@@ -161,6 +164,7 @@ const harness = (
       };
     },
     persistRollback,
+    persistObservation,
   } as unknown as WatcherDurableRuntime;
   const database = options?.database ?? new DatabaseSync(":memory:");
   const progress = createWatcherSqliteBlockProgressStore({
@@ -224,11 +228,12 @@ const harness = (
     finalized,
     rollbacks,
     persistRollback,
+    persistObservation,
   };
 };
 
 describe("coordinator progress ring over quiet blocks", () => {
-  it("finalizes quiet blocks at confirmation depth with no observation or authority persist", async () => {
+  it("retains authenticated quiet history without advancing sparse finality", async () => {
     const h = harness();
     await h.start(11);
     await h.feed(block(11), 11);
@@ -236,7 +241,8 @@ describe("coordinator progress ring over quiet blocks", () => {
     expect(h.finalized).toEqual([
       { blockNo: "11", relevance: "quiet", observation: null },
     ]);
-    expect(h.observed).toEqual([]);
+    expect(h.observed).toEqual(["11:30"]);
+    expect(h.persistObservation).toHaveBeenCalledTimes(1);
     expect(h.persisted).toEqual([]);
     expect(h.progress.readHead()).toMatchObject({
       blockNo: "11",
@@ -259,7 +265,8 @@ describe("coordinator progress ring over quiet blocks", () => {
     expect(
       h.finalized.map(({ blockNo, relevance: seen }) => `${blockNo}:${seen}`),
     ).toEqual(["11:quiet", "12:quiet", "13:touched"]);
-    expect(h.observed).toEqual(["13:33"]);
+    expect(h.observed).toEqual(["11:35", "12:34", "13:33"]);
+    expect(h.persistObservation).toHaveBeenCalledTimes(2);
     expect(h.persisted).toEqual([{ blockNo: "13", ancestry: ["11", "12"] }]);
     expect(h.finalized[2]!.observation).not.toBeNull();
     expect(h.progress.readHead()).toMatchObject({

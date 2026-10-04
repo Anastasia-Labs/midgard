@@ -7,6 +7,7 @@ import {
 } from "../../src/runtime/startup-progress.js";
 import { attemptWatcherRestartQuarantineRecovery } from "../../src/runtime/watcher-runtime.restart-quarantine.js";
 import type { WatcherDurableRuntime } from "../../src/storage/durable-runtime.js";
+import { WatcherDurableAuthorityConflict } from "../../src/storage/durable-runtime.load-published-authority.js";
 import {
   config,
   INTERSECTION,
@@ -54,6 +55,7 @@ const recoverAt = (
     attemptWatcherRestartQuarantineRecovery({
       durable: {
         readFinality: () => ({ finalized: null }),
+        read: () => ({ currentStore: undefined }),
       } as unknown as WatcherDurableRuntime,
       blockProgress: { readHead: () => null, readCandidates: () => [] },
       stateQueueCursor: {
@@ -110,10 +112,8 @@ describe("restart into a post-finality quarantine", () => {
     ]);
   });
 
-  it("still fails startup on a recovery persistence conflict", async () => {
-    const conflict = new Error(
-      "watcher restart recovery persistence conflicted",
-    );
+  it("does not absorb an unrelated recovery failure", async () => {
+    const conflict = new Error("unexpected recovery failure");
     const recover = vi.fn().mockRejectedValue(conflict);
     const { events, helper, outcome } = recoverAt("10", recover);
     await expect(outcome).rejects.toBe(conflict);
@@ -127,6 +127,78 @@ describe("restart into a post-finality quarantine", () => {
         error: conflict.message,
       },
     ]);
+  });
+
+  it("holds a recovery publication conflict and resumes after a fresh native attempt", async () => {
+    const recover = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new WatcherDurableAuthorityConflict(
+          "watcher restart recovery persistence conflicted",
+        ),
+      )
+      .mockResolvedValue(false);
+    const { events, helper, outcome } = recoverAt("10", recover);
+    await expect(outcome).resolves.toBeUndefined();
+    expect(recover).toHaveBeenCalledTimes(2);
+    expect(helper.counts).toEqual({ started: 2, closed: 2 });
+    expect(shape(events)).toEqual([
+      { stage: "post_finality_recovery", outcome: "started" },
+      {
+        stage: "post_finality_recovery",
+        outcome: "pending",
+        error:
+          "Watcher restart recovery held: durable authority publication conflicted",
+        retryAfterMs: 1,
+      },
+      { stage: "post_finality_recovery", outcome: "completed" },
+    ]);
+  });
+
+  it("reacquires a native source whose lease expires before recovery persistence", async () => {
+    const helper = nativeHelper();
+    const events: WatcherStartupProgress[] = [];
+    const startup = createWatcherStartupProgress(
+      (event) => events.push(event),
+      () => 1,
+    );
+    let active:
+      | Awaited<ReturnType<typeof startWatcherNativeChainSyncWithRetry>>
+      | undefined;
+    let attempts = 0;
+    await startup("post_finality_recovery", () =>
+      attemptWatcherRestartQuarantineRecovery({
+        durable: {
+          readFinality: () => ({ finalized: null }),
+          read: () => ({ currentStore: undefined }),
+        } as unknown as WatcherDurableRuntime,
+        blockProgress: { readHead: () => null, readCandidates: () => [] },
+        stateQueueCursor: {
+          blockHash: INTERSECTION.blockHash,
+          blockNo: "10",
+          slot: INTERSECTION.slot,
+        },
+        binaryPath: "/test/native-chain-sync",
+        watcherConfig: config(),
+        start: async (input) => {
+          active = await helper.start(input);
+          return active;
+        },
+        recover: async (input) => {
+          attempts += 1;
+          if (attempts === 1) await active!.close();
+          input.assertCurrent?.();
+          return false;
+        },
+      }),
+    );
+    expect(attempts).toBe(2);
+    expect(events.map(({ outcome }) => outcome)).toEqual([
+      "started",
+      "pending",
+      "completed",
+    ]);
+    expect(helper.counts).toEqual({ started: 2, closed: 3 });
   });
 
   it("still fails startup when the node's tip is behind the recorded resume point", async () => {
@@ -146,6 +218,7 @@ describe("restart into a post-finality quarantine", () => {
     await attemptWatcherRestartQuarantineRecovery({
       durable: {
         readFinality: () => ({ finalized: null }),
+        read: () => ({ currentStore: undefined }),
       } as unknown as WatcherDurableRuntime,
       blockProgress: { readHead: () => null, readCandidates: () => [] },
       stateQueueCursor: {

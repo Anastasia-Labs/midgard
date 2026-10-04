@@ -8,6 +8,8 @@ import {
   evaluateAndPersistWatcherRollback,
   evaluateWatcherRollback,
   initializeWatcherRollbackDurableAuthority,
+  loadWatcherRollbackDurableAuthority,
+  readWatcherRollbackDurableAuthority,
 } from "../../src/l1/rollback-engine.js";
 import {
   type ExternalAgreementHarness,
@@ -82,6 +84,70 @@ const evaluate = (
   );
 
 describe("an already-applied rewind re-delivered by the chain-sync source", () => {
+  it("holds a historical lower-height pending rewind without a retained released binding", async () => {
+    const prior = harness.pending({
+      ...frontier,
+      blockNo: "107",
+      slot: "1007",
+    });
+    const replacement: Point = {
+      ...frontier,
+      blockHash: hex32("ee"),
+      blockNo: "101",
+      slot: "1002",
+    };
+    const backend = new MemoryRollbackAuthorityBackend();
+    const stored = await initializeWatcherRollbackDurableAuthority({
+      backend,
+      policy: harness.policy,
+      authenticationKey: rollbackAuthorityKey,
+      trustedHead: null,
+      bootstrapStore: combine(
+        harness.policy.deploymentMarker,
+        "0",
+        [],
+        undefined,
+        [
+          ...harness.observations({
+            ...frontier,
+            blockNo: "107",
+            slot: "1007",
+          }),
+          ...harness.observations(replacement),
+        ],
+      ),
+      bootstrapFinalityState: prior,
+    });
+    const consistency = harness.agreement(replacement);
+    const result = await evaluateAndPersistWatcherRollback({
+      authority: stored.authority,
+      previousFinalityState: prior,
+      consistency,
+      finalityResult: evaluateWatcherFinality(
+        harness.policy,
+        prior,
+        consistency,
+      ),
+      transportAttestations: harness.attestations,
+    });
+    if (result.persistence === "conflict")
+      throw new Error("Unexpected recovery CAS conflict");
+    expect(result.result).toMatchObject({
+      action: "reject",
+      reasonCodes: ["replacement_evidence_missing"],
+    });
+    expect(result.persistence).toBe("unchanged");
+    const reopened = await loadWatcherRollbackDurableAuthority({
+      backend,
+      policy: harness.policy,
+      authenticationKey: rollbackAuthorityKey,
+      trustedHead: result.trustedHead,
+    });
+    expect(readWatcherRollbackDurableAuthority(reopened)).toEqual(
+      readWatcherRollbackDurableAuthority(stored.authority),
+    );
+  });
+
   it.each([
     ["the same depth", "1", "duplicate"],
     ["a deeper pending depth", "2", "advance_pending"],

@@ -110,7 +110,9 @@ export const prepareStateQueueCorrectionRewind = (input: {
         // own plan; the rewind waits for it.
         if (
           retained?.kind === "signed_header" ||
-          retained?.kind === "signed_intent_release"
+          retained?.kind === "signed_intent_release" ||
+          retained?.kind === "displaced_block_revival" ||
+          retained?.kind === "displacement_compensation"
         )
           return undefined;
         if (retained?.kind === "correction_rewind") {

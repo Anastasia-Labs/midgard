@@ -1,5 +1,4 @@
 import {
-  LocalKupmiosCheckpointChangedError,
   type LocalKupmiosFraudProofRawSource,
   localKupmiosHttpOgmiosRawSourceDetails,
   readAdmittedLocalKupmiosAddressUtxosAtPoint,
@@ -8,7 +7,6 @@ import {
   readAdmittedLocalKupmiosRawTransaction,
   readAdmittedLocalKupmiosUnitHistoryAtPoint,
   readAdmittedLocalKupmiosUtxosByOutRefAtPoint,
-  withLocalKupmiosSourceCapture,
 } from "@al-ft/midgard-fault-proofs";
 
 import {
@@ -27,6 +25,7 @@ import {
   type VerifiedWatcherDeploymentIdentity,
   watcherDeploymentProtocolScriptAuthority,
 } from "../runtime/deployment-identity.js";
+import { captureWatcherStateQueueRead } from "./authenticated-state-queue-observation.capture-read.js";
 import { deriveObservation } from "./authenticated-state-queue-observation.derive-observation.js";
 import { resolveMergedHeadersAtBoundary } from "./authenticated-state-queue-observation.merged-headers.js";
 import {
@@ -40,6 +39,7 @@ import {
 } from "./authenticated-state-queue-observation.parse-persisted-header.js";
 import { admitObservation } from "./authenticated-state-queue-observation.parse-persisted-observation.js";
 import { candidateRawBlockTransactions } from "./authenticated-state-queue-observation.queue-output.js";
+import type { WatcherStateQueueReadScopes } from "./authenticated-state-queue-observation.read-scopes.js";
 import {
   resolveRetainedHeaderAtBoundary,
   restoreTrustedPersistedObservationChain,
@@ -53,8 +53,10 @@ export const createWatcherStateQueueObservationSource = ({
   deploymentIdentity,
   rawSource,
   inclusionRawSource,
+  readScopes,
 }: {
   inclusionRawSource?: LocalKupmiosFraudProofRawSource;
+  readScopes?: WatcherStateQueueReadScopes;
   deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   rawSource: LocalKupmiosFraudProofRawSource;
 }): WatcherStateQueueObservationSource => {
@@ -85,7 +87,9 @@ export const createWatcherStateQueueObservationSource = ({
           rawSource: inclusionRawSource,
           minimumConfirmationDepth: 1,
         });
-  const readers: PersistedRestoreReaders = {
+  const readersFor = (
+    rawSource: LocalKupmiosFraudProofRawSource,
+  ): PersistedRestoreReaders => ({
     readBlock: (point) =>
       readAdmittedLocalKupmiosRawBlockAtPoint({
         source: rawSource,
@@ -110,26 +114,41 @@ export const createWatcherStateQueueObservationSource = ({
         unit,
         point,
       }),
-  };
+  });
+  const resolvedFor = (
+    source: LocalKupmiosFraudProofRawSource,
+    included = false,
+    assertCurrent?: () => void,
+  ) =>
+    source === rawSource && !included
+      ? resolvedBlockSource
+      : source === inclusionRawSource && included
+        ? includedBlockSource!
+        : createWatcherResolvedBlockObservationSource({
+            deploymentIdentity,
+            rawSource: source,
+            assertCurrent,
+            ...(included ? { minimumConfirmationDepth: 1 } : {}),
+          });
   // All four entry points begin by pinning a new boundary and publish their
   // observation only after acquisition succeeds. A moving provider head can
   // therefore retry the whole read while retaining exclusive source ownership.
   const capture = <T>(
-    read: () => Promise<T>,
+    read: (
+      attempt: Readonly<{
+        rawSource: LocalKupmiosFraudProofRawSource;
+        assertCurrent(): void;
+      }>,
+    ) => Promise<T>,
     captureSource = rawSource,
+    structural = false,
   ): Promise<T> =>
-    withLocalKupmiosSourceCapture(captureSource, async () => {
-      for (let attempt = 0; ; attempt += 1) {
-        try {
-          return await read();
-        } catch (error) {
-          if (
-            !(error instanceof LocalKupmiosCheckpointChangedError) ||
-            attempt >= 2
-          )
-            throw error;
-        }
-      }
+    captureWatcherStateQueueRead({
+      queueSource: captureSource,
+      observationDepth:
+        captureSource === inclusionRawSource ? "inclusion" : "release_finality",
+      readScopes: structural ? undefined : readScopes,
+      read,
     });
   let latestFinalized: WatcherAuthenticatedStateQueueObservation | null = null;
   const source = Object.freeze({
@@ -145,58 +164,72 @@ export const createWatcherStateQueueObservationSource = ({
             localObservation: WatcherLocalKupmiosNativeObservation;
             previous: WatcherAuthenticatedStateQueueObservation;
           }) =>
-            capture(async () => {
-              assertWatcherStateQueueObservation(previous);
-              if (
-                previous.deploymentIdentityDigest !==
-                  deploymentIdentity.manifestId ||
-                previous.protocolScriptAuthorityDigest !==
-                  authority.authorityDigest ||
-                BigInt(previous.nativePoint.blockNo) >=
-                  BigInt(nativeBlock.blockNo)
-              )
-                throw new Error(
-                  "included queue predecessor is foreign or non-monotone",
-                );
-              await readAdmittedLocalKupmiosBoundary({
-                source: inclusionRawSource,
-                observationDepth: "inclusion",
-              });
-              const resolvedBlock = await includedBlockSource.observe({
-                nativeBlock,
-                localObservation,
-              });
-              const { rawBlock } =
-                readWatcherResolvedBlockObservation(resolvedBlock);
-              const candidates = candidateRawBlockTransactions({
-                rawBlock,
-                queue: previous.finalizedQueue,
-                currentLock: previous.finalizedCorrectionLock,
-                stateQueuePolicyId:
-                  authority.protocolScriptHashes.stateQueueMint,
-                hubOraclePolicyId: authority.protocolScriptHashes.hubOracleMint,
-              });
-              const rawTransactions =
-                await resolveWatcherBlockObservationTransactions(
-                  resolvedBlock,
-                  candidates.map(({ txHash }) => txHash),
-                );
-              return admitObservation(
-                deriveObservation({
+            capture(
+              async ({ rawSource: inclusionRawSource, assertCurrent }) => {
+                assertCurrent();
+                assertWatcherStateQueueObservation(previous);
+                if (
+                  previous.deploymentIdentityDigest !==
+                    deploymentIdentity.manifestId ||
+                  previous.protocolScriptAuthorityDigest !==
+                    authority.authorityDigest ||
+                  BigInt(previous.nativePoint.blockNo) >=
+                    BigInt(nativeBlock.blockNo)
+                )
+                  throw new Error(
+                    "included queue predecessor is foreign or non-monotone",
+                  );
+                await readAdmittedLocalKupmiosBoundary({
+                  source: inclusionRawSource,
+                  observationDepth: "inclusion",
+                });
+                const resolvedBlock = await resolvedFor(
+                  inclusionRawSource,
+                  true,
+                  assertCurrent,
+                ).observe({
                   nativeBlock,
                   localObservation,
-                  authority,
-                  sourceId: sourceDetails.sourceId,
-                  previous,
-                  rawTransactions,
-                  minimumConfirmationDepth: 1,
-                }),
-              );
-            }, inclusionRawSource),
+                });
+                const { rawBlock } =
+                  readWatcherResolvedBlockObservation(resolvedBlock);
+                const candidates = candidateRawBlockTransactions({
+                  rawBlock,
+                  queue: previous.finalizedQueue,
+                  currentLock: previous.finalizedCorrectionLock,
+                  stateQueuePolicyId:
+                    authority.protocolScriptHashes.stateQueueMint,
+                  hubOraclePolicyId:
+                    authority.protocolScriptHashes.hubOracleMint,
+                });
+                const rawTransactions =
+                  await resolveWatcherBlockObservationTransactions(
+                    resolvedBlock,
+                    candidates.map(({ txHash }) => txHash),
+                  );
+                assertCurrent();
+                assertWatcherLocalKupmiosNativeObservation(
+                  localObservation,
+                  nativeBlock,
+                );
+                return admitObservation(
+                  deriveObservation({
+                    nativeBlock,
+                    localObservation,
+                    authority,
+                    sourceId: sourceDetails.sourceId,
+                    previous,
+                    rawTransactions,
+                    minimumConfirmationDepth: 1,
+                  }),
+                );
+              },
+              inclusionRawSource,
+            ),
         }),
     latestFinalizedObservation: () => latestFinalized,
     observe: ({ nativeBlock, localObservation, previous }) =>
-      capture(async () => {
+      capture(async ({ rawSource, assertCurrent }) => {
         if (!admittedSources.has(source)) {
           throw new Error("state-queue observation source is not admitted");
         }
@@ -222,7 +255,11 @@ export const createWatcherStateQueueObservationSource = ({
         // boundary makes later finalized transactions appear under-confirmed.
         // Keep the refreshed boundary pinned until all reads finish.
         await readAdmittedLocalKupmiosBoundary({ source: rawSource });
-        const resolvedBlock = await resolvedBlockSource.observe({
+        const resolvedBlock = await resolvedFor(
+          rawSource,
+          false,
+          assertCurrent,
+        ).observe({
           nativeBlock,
           localObservation,
         });
@@ -239,6 +276,11 @@ export const createWatcherStateQueueObservationSource = ({
             resolvedBlock,
             candidates.map(({ txHash }) => txHash),
           );
+        assertCurrent();
+        assertWatcherLocalKupmiosNativeObservation(
+          localObservation,
+          nativeBlock,
+        );
         const result = deriveObservation({
           nativeBlock,
           localObservation,
@@ -247,6 +289,7 @@ export const createWatcherStateQueueObservationSource = ({
           previous,
           rawTransactions,
         });
+        assertCurrent();
         latestFinalized = admitObservation(result);
         if (result.checkpoints.length > 0) return latestFinalized;
         // A quiet queue still moves the durable cursor forward periodically,
@@ -258,7 +301,7 @@ export const createWatcherStateQueueObservationSource = ({
           : previous;
       }),
     bootstrap: () =>
-      capture(async () => {
+      capture(async ({ rawSource, assertCurrent }) => {
         if (!admittedSources.has(source)) {
           throw new Error("state-queue observation source is not admitted");
         }
@@ -270,14 +313,14 @@ export const createWatcherStateQueueObservationSource = ({
           blockNo: admittedBoundary.kupoCheckpoint.blockNo,
           slot: admittedBoundary.kupoCheckpoint.slot,
         });
-        const previous = admitObservation(
-          await snapshotObservationAtBoundary({
-            intersection,
-            authority,
-            sourceId: sourceDetails.sourceId,
-            readers,
-          }),
-        );
+        const snapshot = await snapshotObservationAtBoundary({
+          intersection,
+          authority,
+          sourceId: sourceDetails.sourceId,
+          readers: readersFor(rawSource),
+        });
+        assertCurrent();
+        const previous = admitObservation(snapshot);
         return Object.freeze({
           previous,
           discardedObservationCount: 0,
@@ -296,28 +339,32 @@ export const createWatcherStateQueueObservationSource = ({
         });
       }),
     restore: ({ persistedObservations }) =>
-      capture(async () => {
-        if (!admittedSources.has(source)) {
-          throw new Error("state-queue observation source is not admitted");
-        }
-        // Recorded final history is fact. A rollback below any row is
-        // handled by the dedicated rollback path before restore runs again,
-        // so the store is verified structurally and never re-read from Kupo.
-        const restored = restoreTrustedPersistedObservationChain({
-          persistedObservations,
-          authority,
-          sourceId: sourceDetails.sourceId,
-          maximumObservations: sourceDetails.automaticRecoveryMaxDepth,
-        });
-        return Object.freeze({
-          previous: admitObservation(restored.previous),
-          discardedObservationCount: restored.discardedObservationCount,
-          replayIntersection: restored.replayIntersection,
-          catchupBoundary: restored.catchupBoundary,
-        });
-      }),
+      capture(
+        async () => {
+          if (!admittedSources.has(source)) {
+            throw new Error("state-queue observation source is not admitted");
+          }
+          // Recorded final history is fact. A rollback below any row is
+          // handled by the dedicated rollback path before restore runs again,
+          // so the store is verified structurally and never re-read from Kupo.
+          const restored = restoreTrustedPersistedObservationChain({
+            persistedObservations,
+            authority,
+            sourceId: sourceDetails.sourceId,
+            maximumObservations: sourceDetails.automaticRecoveryMaxDepth,
+          });
+          return Object.freeze({
+            previous: admitObservation(restored.previous),
+            discardedObservationCount: restored.discardedObservationCount,
+            replayIntersection: restored.replayIntersection,
+            catchupBoundary: restored.catchupBoundary,
+          });
+        },
+        rawSource,
+        true,
+      ),
     resolveRetainedHeader: ({ headerHash }) =>
-      capture(async () => {
+      capture(async ({ rawSource, assertCurrent }) => {
         if (!admittedSources.has(source)) {
           throw new Error("state-queue observation source is not admitted");
         }
@@ -327,7 +374,7 @@ export const createWatcherStateQueueObservationSource = ({
           readers: {
             readBoundary: () =>
               readAdmittedLocalKupmiosBoundary({
-                source: inclusionRawSource ?? rawSource,
+                source: rawSource,
                 observationDepth:
                   inclusionRawSource === undefined
                     ? "release_finality"
@@ -335,13 +382,13 @@ export const createWatcherStateQueueObservationSource = ({
               }),
             readHistory: (unit, point) =>
               readAdmittedLocalKupmiosUnitHistoryAtPoint({
-                source: inclusionRawSource ?? rawSource,
+                source: rawSource,
                 unit,
                 point,
               }),
             readTransaction: (txHash, point) =>
               readAdmittedLocalKupmiosRawTransaction({
-                source: inclusionRawSource ?? rawSource,
+                source: rawSource,
                 txHash,
                 expectedInclusionPoint: point,
                 minimumConfirmationDepth:
@@ -349,12 +396,14 @@ export const createWatcherStateQueueObservationSource = ({
               }),
           },
         });
+        assertCurrent();
         admittedHeaders.add(header);
         return header;
       }, inclusionRawSource ?? rawSource),
     // Merge evidence is read at release finality even for an inclusion view.
     resolveMergedHeaders: ({ observation }) =>
-      capture(async () => {
+      capture(async ({ rawSource, assertCurrent }) => {
+        assertCurrent();
         assertWatcherStateQueueObservation(observation);
         return await resolveMergedHeadersAtBoundary({
           observation,
@@ -368,7 +417,7 @@ export const createWatcherStateQueueObservationSource = ({
                 point,
                 outRefs,
               }),
-            readTransaction: readers.readTransaction,
+            readTransaction: readersFor(rawSource).readTransaction,
           },
         });
       }),

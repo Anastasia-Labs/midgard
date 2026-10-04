@@ -3,7 +3,7 @@
 Status: Active — no-go for an open public testnet.
 
 Last full readiness review: 2026-09-01. Consolidated: 2026-09-07. Updated
-2026-09-12 for the forced-submission merge and watcher journey status.
+2026-10-02 for the unattended lifecycle reliability program.
 This edit does not rerun launch acceptance or close any release gate.
 
 This is the release acceptance checklist for an externally reachable deployment.
@@ -344,6 +344,26 @@ Previously implemented portions of a combined gate still need release verificati
       confirmation, merge, and payout; apply the crash cases above. Set pass/fail
       thresholds for spam, valid/invalid throughput, provider throttling, DB
       saturation, and API latency. Retain live proof acceptance evidence.
+- [ ] Complete the unattended lifecycle reliability program (#696) on the final
+      built revision. Keep the live testing confirmation depth at 10 and record
+      the response-budget decision for both testing and public profiles. The
+      original combined-role formula exceeds 720 seconds (at least 1,000 seconds
+      with the operator cooldown); separate causal role budgets require explicit
+      reviewed acceptance, including source/cursor catch-up, signed-attempt expiry,
+      retry and full response completion. Do not close this gate with the current
+      provider-only calibration or change protocol windows silently.
+- [ ] Retain one final fresh-deploy automatic deposit/transfer/merge/withdrawal
+      journey with exact all-asset L1 payout proof. On those same artifacts, run
+      four independent unattended recovery drills: restart Cardano, stop Kupo,
+      stop Ogmios, and lose public retained-DA retrieval. Show readiness becoming
+      held and recovering, with no manual commit, merge, live reset, or forced
+      quarantine clear. Record every actor's durable state and pending signed
+      attempts across recovery; a smoke test cannot replace this evidence.
+- [ ] Verify history readiness against the full configured recovery window and
+      live native lineage, including fresh process/run/deployment/code bindings.
+      A controller being alive, cached status file, or one matching endpoint row
+      is insufficient. Explicit quarantine recovery must first prove its cause
+      gone and enumerate retained residue; automatic timer-based clear is forbidden.
 - [ ] Build public artifacts from a tagged revision with immutable SHAs/digests
       for actions, base/service/compose images, and release inputs. Fail release CI
       on mutable runner/image/action selections, including `ubuntu-latest` and tags.

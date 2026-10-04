@@ -1,7 +1,5 @@
 import {
   computeFraudProofRawL1PointId,
-  isLocalKupmiosPointBehindKupoHead,
-  LocalKupmiosCheckpointChangedError,
   type LocalKupmiosFraudProofRawSource,
   localKupmiosHttpOgmiosRawSourceDetails,
   type LocalKupmiosRawBlockAtPoint,
@@ -24,6 +22,7 @@ import {
   watcherL1TransportAttestationDetails,
   type WatcherNormalizedL1Block,
 } from "./l1-adapter.js";
+import { captureExactBlockWithKupoLag } from "./local-kupmios-native-observation.capture-exact-block-with-kupo-lag.js";
 import { createWatcherLocalKupmiosRawSource } from "./local-kupmios-raw-source.js";
 import { evaluateWatcherMultiProviderConsistency } from "./multi-provider-consistency.js";
 import type { WatcherNativeBlockAdmission } from "./native-block-admission.js";
@@ -31,6 +30,8 @@ import {
   type WatcherNativeChainSyncAuthority,
   watcherNativeChainSyncAuthorityDetails,
 } from "./native-chain-sync.js";
+
+export { captureExactBlockWithKupoLag } from "./local-kupmios-native-observation.capture-exact-block-with-kupo-lag.js";
 
 export const WATCHER_LOCAL_KUPMIOS_NATIVE_OBSERVATION_SCHEMA_VERSION =
   "midgard-watcher-local-kupmios-native-observation-v1" as const;
@@ -57,7 +58,15 @@ export type WatcherLocalKupmiosNativeObservationRuntime = Readonly<{
   close(): void;
 }>;
 
-const nativeBindingByLocalObservation = new WeakMap<object, string>();
+type NativeObservationAdmission = Readonly<{
+  nativeBinding: string;
+  assertCurrent?: () => void;
+}>;
+
+const nativeBindingByLocalObservation = new WeakMap<
+  object,
+  NativeObservationAdmission
+>();
 
 const nativeObservationBinding = (block: WatcherNativeBlockAdmission): string =>
   watcherSha256CanonicalJson({
@@ -78,18 +87,56 @@ const nativeObservationBinding = (block: WatcherNativeBlockAdmission): string =>
  * Proves this exact observation was produced after native/Kupo/Ogmios byte and
  * point agreement for the supplied native block. Structural copies reject.
  */
-export const assertWatcherLocalKupmiosNativeObservation = (
+const readNativeObservationAdmission = (
   observation: WatcherLocalKupmiosNativeObservation,
   nativeBlock: WatcherNativeBlockAdmission,
-): void => {
+): NativeObservationAdmission => {
+  const admission = nativeBindingByLocalObservation.get(observation);
   if (
-    nativeBindingByLocalObservation.get(observation) !==
-    nativeObservationBinding(nativeBlock)
+    admission === undefined ||
+    admission.nativeBinding !== nativeObservationBinding(nativeBlock)
   ) {
     throw new Error(
       "watcher local Kupo/Ogmios observation is not admitted for the native block",
     );
   }
+  admission.assertCurrent?.();
+  return admission;
+};
+
+export const assertWatcherLocalKupmiosNativeObservation = (
+  observation: WatcherLocalKupmiosNativeObservation,
+  nativeBlock: WatcherNativeBlockAdmission,
+): void => {
+  readNativeObservationAdmission(observation, nativeBlock);
+};
+
+/** Derives a generation-fenced capability only from an admitted native observation. */
+export const guardWatcherLocalKupmiosNativeObservation = ({
+  observation,
+  nativeBlock,
+  assertCurrent,
+}: {
+  readonly observation: WatcherLocalKupmiosNativeObservation;
+  readonly nativeBlock: WatcherNativeBlockAdmission;
+  readonly assertCurrent: () => void;
+}): WatcherLocalKupmiosNativeObservation &
+  Readonly<{ assertCurrent: () => void }> => {
+  const admission = readNativeObservationAdmission(observation, nativeBlock);
+  const guard = () => {
+    admission.assertCurrent?.();
+    assertCurrent();
+  };
+  guard();
+  const guarded = Object.freeze({ ...observation, assertCurrent: guard });
+  nativeBindingByLocalObservation.set(
+    guarded,
+    Object.freeze({
+      nativeBinding: admission.nativeBinding,
+      assertCurrent: guard,
+    }),
+  );
+  return guarded;
 };
 
 const sameStrings = (
@@ -131,55 +178,6 @@ const assertNativeKupmiosAgreement = (
 /** Test-only direct exercise of the deterministic comparison above. */
 /** Kupo indexes a block a little after the native chain-sync delivers it. */
 const KUPO_LAG_BUDGET_MS = 180_000;
-const KUPO_LAG_POLL_MS = 2_000;
-
-/**
- * Reads the exact native block from the local Kupo/Ogmios source. A moving
- * provider head forces a fresh source (its pinned head belongs to the
- * interrupted capture) for at most three attempts. Kupo lagging behind the
- * native chain-sync is not a divergence: the read waits, within a bounded
- * budget, for Kupo's checkpoint to reach the requested slot, and every wait
- * starts a fresh source so its pinned head can move forward. A checkpoint that
- * reached the slot and still differs fails closed at once.
- */
-export const captureExactBlockWithKupoLag = async <T>({
-  read,
-  recreateSource,
-  isClosed,
-  lagBudgetMs,
-  pollMs = KUPO_LAG_POLL_MS,
-  sleep = (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
-  now = () => Date.now(),
-}: {
-  read: () => Promise<T>;
-  recreateSource: () => void;
-  isClosed: () => boolean;
-  lagBudgetMs: number;
-  pollMs?: number;
-  sleep?: (ms: number) => Promise<void>;
-  now?: () => number;
-}): Promise<T> => {
-  const startedAt = now();
-  for (let headMoves = 0; ; ) {
-    if (isClosed()) throw new Error("local Kupo/Ogmios runtime is closed");
-    // One source serves every observation so immutable checkpoints and
-    // blocks stay cached.
-    try {
-      return await read();
-    } catch (error) {
-      if (error instanceof LocalKupmiosCheckpointChangedError) {
-        if (headMoves >= 2) throw error;
-        headMoves += 1;
-      } else if (isLocalKupmiosPointBehindKupoHead(error)) {
-        if (now() - startedAt + pollMs > lagBudgetMs) throw error;
-        await sleep(pollMs);
-      } else {
-        throw error;
-      }
-      recreateSource();
-    }
-  }
-};
 
 export const unsafeAssertNativeKupmiosAgreementForTest = (
   native: WatcherNativeBlockAdmission,
@@ -448,7 +446,7 @@ export const createWatcherLocalKupmiosNativeObservationRuntime = async (
         });
         nativeBindingByLocalObservation.set(
           observation,
-          nativeObservationBinding(block),
+          Object.freeze({ nativeBinding: nativeObservationBinding(block) }),
         );
         return observation;
       },

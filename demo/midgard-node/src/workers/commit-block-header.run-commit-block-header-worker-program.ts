@@ -1,4 +1,3 @@
-import { parseCommitLeaseOwner } from "@al-ft/midgard-core/commit-lease-owner";
 import { Cause, Effect } from "effect";
 import { parentPort, workerData } from "worker_threads";
 
@@ -56,7 +55,11 @@ export const runCommitBlockHeaderWorkerProgram = (
       yield* StateQueueMutationLeasesDB.revalidate(stateQueueLeaseToken);
     }
     const leaseOwner = workerInput.data.ledgerStoreLeaseOwner;
-    if (parseCommitLeaseOwner(leaseOwner) === undefined) {
+    if (
+      !/^(?:node-)?commit:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+        leaseOwner,
+      )
+    ) {
       return yield* Effect.fail(
         new CommitWorkerInvariantError({
           message:

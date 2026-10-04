@@ -51,6 +51,7 @@ export type AvailabilityResponderReport = Readonly<{
     | "confirmed"
     | "unavailable"
     | "awaiting_scan"
+    | "held"
     | "failed";
   detail?: string;
   /**
@@ -106,7 +107,9 @@ export const availabilityResponderReportLine = (
     ? undefined
     : {
         stream:
-          report.status === "failed" || report.status === "unavailable"
+          report.status === "failed" ||
+          report.status === "unavailable" ||
+          report.status === "held"
             ? "stderr"
             : "stdout",
         line: `${JSON.stringify({ event: "availability_responder", ...report })}\n`,
@@ -118,8 +121,11 @@ export type AvailabilityResponderDeps = Readonly<{
   store: Pick<CommitteeStore, "getDaPayload">;
   /** The concrete adapter authenticates policy units and all linked datums. */
   discover: () => Promise<readonly AvailabilityResponderChallenge[]>;
-  /** Called before discovery so an ambiguous submission never creates new work. */
-  reconcile: () => Promise<"ready" | "pending">;
+  /**
+   * Called before discovery so an ambiguous submission never creates new
+   * work. A held intent carries its reason, and nothing new is signed.
+   */
+  reconcile: () => Promise<"ready" | "pending" | Readonly<{ held: string }>>;
   execute: (
     action: AvailabilityResponderAction,
   ) => Promise<"confirmed" | "included" | "pending">;
@@ -173,9 +179,10 @@ export class AvailabilityResponder {
   }
 
   private async step(): Promise<AvailabilityResponderReport> {
-    if ((await this.deps.reconcile()) === "pending") {
-      return { challenges: 0, status: "pending" };
-    }
+    const reconciled = await this.deps.reconcile();
+    if (reconciled === "pending") return { challenges: 0, status: "pending" };
+    if (reconciled !== "ready")
+      return { challenges: 0, status: "held", detail: reconciled.held };
     const challenges = [...(await this.deps.discover())].sort((a, b) =>
       a.record.datum.response_deadline < b.record.datum.response_deadline
         ? -1

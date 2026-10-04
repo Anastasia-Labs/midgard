@@ -8,7 +8,6 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   canonicalCommittedWithdrawalTransitionEffect,
-  canonicalDepositTransitionEffect,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
   type ValidationMachineLedgerEntry,
@@ -73,12 +72,15 @@ import {
   orderDecodedMempoolTxsForLedgerApplication,
 } from "./mempool-order.js";
 import {
-  applyLedgerOpsToUtxoPayloadAggregateFromFullValues,
   computeUtxoPayloadRoot,
   ledgerPayloadAggregateFromEntries,
   materializeUtxoPayloadEntries,
   type UtxoPayloadSizeAggregate,
 } from "./payload-size.js";
+import {
+  buildDepositPrefixSources,
+  buildLedgerPayloadPrefixAccounting,
+} from "./payload-size.prefix-aggregates.js";
 import {
   hexOf,
   logCommitMpfPhaseTiming,
@@ -91,7 +93,6 @@ import {
 } from "./replay-corpus.js";
 import { MidgardMpf } from "./store.js";
 import {
-  depositTraceEventKey,
   eventKeyCbor,
   forcedTransactionTraceEventKey,
   l2TransactionTraceEventKey,
@@ -125,6 +126,7 @@ export const processMpfs = (
   config: ProcessMpfsConfig,
 ): Effect.Effect<
   {
+    effectiveBlockEndTime: Date | undefined;
     utxoRoot: string;
     rawTxRoot: string;
     txRoot: string;
@@ -140,6 +142,7 @@ export const processMpfs = (
     utxoPayloadEntries: readonly UtxoPayloadEntry[];
     ledgerDelta: LedgerDelta;
     utxoPayloadAggregate: UtxoPayloadSizeAggregate;
+    utxoPayloadAggregatesByPrefix: readonly UtxoPayloadSizeAggregate[];
     mempoolTxHashes: Buffer[];
     processedMempoolTxs: readonly Tx.EntryWithTimeStamp[];
     sizeOfProcessedTxs: number;
@@ -1053,22 +1056,10 @@ export const processMpfs = (
           } satisfies TransitionTraceSourceEvent;
         }),
     );
-    const depositSourceEvents = yield* Effect.forEach(
-      includedDepositEntries,
-      (entry) =>
-        Effect.gen(function* () {
-          const ledgerEntry = yield* DepositsDB.toLedgerEntry(entry);
-          const effect = canonicalDepositTransitionEffect({
-            outRefCbor: ledgerEntry[Ledger.Columns.OUTREF],
-            outputCbor: ledgerEntry[Ledger.Columns.OUTPUT],
-          });
-          return {
-            eventKey: yield* depositTraceEventKey(entry),
-            phase: "Deposit" as const,
-            ledgerOps: transitionEffectToLedgerOps(effect),
-          } satisfies TransitionTraceSourceEvent;
-        }),
-    );
+    const {
+      sourceEvents: depositSourceEvents,
+      outputs: depositFinalOutputsByOutRef,
+    } = yield* buildDepositPrefixSources(includedDepositEntries);
     const sourceEvents = [
       ...withdrawalSourceEvents,
       ...forcedTransactionSourceEvents,
@@ -1081,18 +1072,15 @@ export const processMpfs = (
     const baseUtxoPayloadAggregate =
       config.baseUtxoPayloadAggregate ??
       ledgerPayloadAggregateFromEntries(initialLedgerEntries);
-    const utxoPayloadAggregate =
-      yield* applyLedgerOpsToUtxoPayloadAggregateFromFullValues(
-        baseUtxoPayloadAggregate,
-        transitionLedgerOps,
-        new Map(
-          initialLedgerEntries.map((entry) => [
-            entry[Ledger.Columns.OUTREF].toString("hex"),
-            Buffer.from(entry[Ledger.Columns.OUTPUT]),
-          ]),
-        ),
-        rawInsertedLedgerOutputsByOutRef,
-      );
+    const { utxoPayloadAggregate, utxoPayloadAggregatesByPrefix } =
+      yield* buildLedgerPayloadPrefixAccounting({
+        base: baseUtxoPayloadAggregate,
+        sourceEvents,
+        initialLedgerEntries,
+        insertedValues: rawInsertedLedgerOutputsByOutRef,
+        depositValues: depositFinalOutputsByOutRef,
+        acceptedTxCount: processedMempoolTxs.length,
+      });
     const txRootFiber = yield* buildTransactionsSourceRoot(
       transactionSourceOps,
       SDK.ROOT_DOMAINS.transactionsV1,
@@ -1556,6 +1544,7 @@ export const processMpfs = (
     };
 
     return {
+      effectiveBlockEndTime: effectiveEndTime,
       utxoRoot,
       rawTxRoot,
       txRoot,
@@ -1574,6 +1563,7 @@ export const processMpfs = (
         rawInsertedLedgerOutputsByOutRef,
       ),
       utxoPayloadAggregate,
+      utxoPayloadAggregatesByPrefix,
       mempoolTxHashes,
       processedMempoolTxs,
       sizeOfProcessedTxs,

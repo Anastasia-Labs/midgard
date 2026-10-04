@@ -99,6 +99,7 @@ export const createSyntheticStateQueueObservationFixture = async (
   input: Readonly<{
     header?: SDK.Header;
     ruleBundleCommitment?: string;
+    nativeTipMode?: "query_counter" | "controlled";
     composeCommitBlock?: (
       input: Readonly<{
         transport: SyntheticUserEventOriginFixture;
@@ -153,6 +154,9 @@ export const createSyntheticStateQueueObservationFixture = async (
         ogmios: `ws://127.0.0.1:${ogmios.port}`,
       },
       nativeTipBaseDepth: 40,
+      ...(input.nativeTipMode === undefined
+        ? {}
+        : { nativeTipMode: input.nativeTipMode }),
       ...(ruleBundleCommitment === undefined ? {} : { ruleBundleCommitment }),
     });
     const fixtureTransport = transport;

@@ -6,6 +6,7 @@ import {
   extendL1ControlPlaneHold,
   l1ControlPlaneHoldTimeoutStreak,
 } from "../services/globals.l1-control-plane.js";
+import { commitDaFrameStepDownPassBound } from "../workers/utils/commit-block-planner.js";
 
 /**
  * The L1 control-plane hold a commitment needs, derived from the work queued
@@ -19,8 +20,16 @@ import {
  * doubles its budget, twice at most, and `extendL1ControlPlaneHold` caps the
  * result at the control-plane ceiling.
  *
- * The per-entry allowances are estimates, not measurements, and a block at
- * the user-event cap asks for more than the ceiling grants.
+ * The worker may build the block several times, stepping its transactions
+ * down until the DA frame admits it (`stepDownCommitSelectionToDaFrame`).
+ * Every pass rebuilds the block's events, so they count once per pass the
+ * step-down can take (`commitDaFrameStepDownPassBound`), and the
+ * transactions all passes build together stay under
+ * `COMMIT_HOLD_STEP_DOWN_TX_WORK_FACTOR` times the selection.
+ *
+ * The per-entry allowances are estimates, not measurements, and the ceiling
+ * (900 s) clips the largest asks: a block at the user-event cap, and with 500
+ * pending events any selection above 5,750 transactions.
  */
 export const COMMIT_HOLD_BASE_MS = 180_000;
 export const COMMIT_HOLD_PER_TX_MS = 20;
@@ -30,6 +39,7 @@ export const COMMIT_HOLD_MAX_COUNTED_USER_EVENTS =
   MIDGARD_CONSENSUS_LIMITS.maxForcedTransactionCount +
   MIDGARD_CONSENSUS_LIMITS.maxWithdrawalCount;
 export const COMMIT_HOLD_MAX_TIMEOUT_DOUBLINGS = 2;
+export const COMMIT_HOLD_STEP_DOWN_TX_WORK_FACTOR = 3;
 
 export const commitHoldBudgetMs = ({
   mempoolTxCount,
@@ -49,8 +59,10 @@ export const commitHoldBudgetMs = ({
   );
   const workMs =
     COMMIT_HOLD_BASE_MS +
-    COMMIT_HOLD_PER_TX_MS * countedTxs +
-    COMMIT_HOLD_PER_USER_EVENT_MS * countedEvents;
+    COMMIT_HOLD_PER_TX_MS * COMMIT_HOLD_STEP_DOWN_TX_WORK_FACTOR * countedTxs +
+    COMMIT_HOLD_PER_USER_EVENT_MS *
+      countedEvents *
+      commitDaFrameStepDownPassBound(countedTxs);
   return (
     workMs *
     2 **

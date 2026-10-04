@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { generateSeedPhrase } from "@lucid-evolution/lucid";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DeployContext } from "../src/devnet-stack/deploy.js";
 import {
@@ -14,9 +14,34 @@ import {
   WALLET_ROLES,
 } from "../src/devnet-stack/identities.js";
 import { Journal } from "../src/devnet-stack/journal.js";
-import { makeLayout, type RunEnv } from "../src/devnet-stack/layout.js";
+import {
+  makeLayout,
+  type RunEnv,
+  servicePorts,
+} from "../src/devnet-stack/layout.js";
 import { serviceSpecs } from "../src/devnet-stack/services.js";
 import { waitForServices } from "../src/devnet-stack/stack.js";
+import type { ServiceSpec } from "../src/devnet-stack/supervisor.js";
+
+// These cases exercise ordinary URL waits and start grace, not authenticated
+// history readiness. The real history cohort has its own native/FD3 suites.
+vi.mock("../src/devnet-stack/watcher.js", () => ({
+  watcherServiceSpecs: ({ layout, run }: DeployContext): ServiceSpec[] => {
+    const operations = `http://127.0.0.1:${servicePorts(run).watcherOperations}`;
+    return [
+      {
+        name: "watcher",
+        command: process.execPath,
+        args: [],
+        cwd: layout.toolsRoot,
+        env: {},
+        healthUrl: `${operations}/v1/status`,
+        readyUrl: `${operations}/readyz`,
+        startGraceMs: 60 * 60_000,
+      },
+    ];
+  },
+}));
 
 const dirs: string[] = [];
 const pids: number[] = [];
@@ -38,9 +63,9 @@ const context = (): DeployContext => {
     runId: "t",
     composeProject: "p",
     networkMagic: 42,
-    ogmiosPort: 1,
-    kupoPort: 2,
-    postgresPort: 3,
+    ogmiosPort: 22_337,
+    kupoPort: 21_442,
+    postgresPort: 25_432,
     postgresUser: "u",
     postgresPassword: "pw",
     postgresDatabase: "d",
@@ -121,9 +146,16 @@ describe("the node's start grace", () => {
 describe("waitForServices inside a start grace", () => {
   it("waits past its bound while every pending service is graced, and says so", async () => {
     const base = context();
+    const portOffset = 20_000 + (process.pid % 3_000);
     const ctx = {
       ...base,
-      run: { ...base.run, portOffset: 30_000 + (process.pid % 3_000) },
+      run: {
+        ...base.run,
+        portOffset,
+        ogmiosPort: 2337 + portOffset,
+        kupoPort: 1442 + portOffset,
+        postgresPort: 5432 + portOffset,
+      },
     };
     const specs = serviceSpecs(ctx, oneShot);
     const sleeper = spawn(

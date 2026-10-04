@@ -6,6 +6,7 @@ import { effective } from "./history-expired-intent-release.open-retained-native
 import {
   type Decision,
   journalIdentity,
+  journalIdentityBeforeSubmissionAck,
   type ReleaseEvidence,
   replaceableJournal,
 } from "./history-expired-intent-release.signed-commit-node.js";
@@ -40,7 +41,10 @@ export const rederiveDecision = (input: {
         ),
       ),
     );
-    if (journalIdentity(journal.record) !== input.identity)
+    if (
+      journalIdentity(journal.record) !== input.identity &&
+      journalIdentityBeforeSubmissionAck(journal.record) !== input.identity
+    )
       return yield* superseded(
         `Signed-intent journal ${header} identity changed`,
       );

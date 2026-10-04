@@ -9,7 +9,7 @@ import { enduranceReporter } from "../src/devnet-stack/reserve-float-chain.js";
 describe("lowBalanceReasons", () => {
   it("names every role below a fifth of its budget, and only those", () => {
     const floor = lowBalanceFloorLovelace("operator");
-    expect(floor).toBe(40_000n * 1_000_000n);
+    expect(floor).toBe(15_592_000n * 1_000_000n);
     expect(
       lowBalanceReasons({
         operator: floor - 1n,

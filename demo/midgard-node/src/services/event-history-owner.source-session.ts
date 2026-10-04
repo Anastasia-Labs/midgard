@@ -5,7 +5,6 @@ import {
   readBoundEventHistoryNetworkTip,
 } from "../l1-event-history-source.js";
 import type { HistoryTransportOptions } from "../l1-event-history-transport.js";
-import { HistoryOwnerUnavailable } from "./event-history-owner.history-owner-change.js";
 import { isRecoverableHistorySourceFailure } from "./event-history-owner.source-failure.js";
 import type { makeHistorySourceOutage } from "./event-history-owner.source-outage.js";
 
@@ -88,8 +87,8 @@ export const makeHistoryLeaseKeeper = (input: {
 
 /** Wait out the reconnect schedule until the lease re-validates. True means
  * a new session may start. False means the owner stops: it closed, the
- * re-validation was refused (fail was called), or the outage outlived its
- * limit without progress (fail was called with that). */
+ * re-validation was refused (fail was called). Elapsed outage time only
+ * escalates diagnostics; it never admits production or stops recovery. */
 export const awaitHistorySourceReconnect = async (input: {
   readonly outage: HistorySourceOutage;
   readonly signal: AbortSignal;
@@ -100,20 +99,21 @@ export const awaitHistorySourceReconnect = async (input: {
 }): Promise<boolean> => {
   while (!input.stopped()) {
     const elapsed = input.outage.exceeded();
-    if (elapsed !== undefined) {
-      input.fail(
-        new HistoryOwnerUnavailable({
-          cause: `History source unavailable for ${Math.round(elapsed / 1000).toString()} s: ${input.outage.status().lastError ?? "no answer"}`,
-        }),
-      );
-      return false;
-    }
     const retryInMs = input.outage.nextDelayMs();
-    input.warn("History source unavailable; reconnecting", {
-      event: "history_source_reconnect",
-      ...input.outage.status(),
-      retryInMs,
-    });
+    input.warn(
+      elapsed === undefined
+        ? "History source unavailable; reconnecting"
+        : "History source outage exceeded escalation threshold; continuing bounded reconnects",
+      {
+        event:
+          elapsed === undefined
+            ? "history_source_reconnect"
+            : "history_source_outage_escalated",
+        ...input.outage.status(),
+        retryInMs,
+        ...(elapsed === undefined ? {} : { outageMs: Math.round(elapsed) }),
+      },
+    );
     try {
       await delay(retryInMs, undefined, { signal: input.signal });
     } catch {

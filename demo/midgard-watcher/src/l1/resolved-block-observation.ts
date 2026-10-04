@@ -51,6 +51,7 @@ type ResolvedBlockRuntime = Readonly<{
   localObservation: WatcherLocalKupmiosNativeObservation;
   rawSource: LocalKupmiosFraudProofRawSource;
   minimumConfirmationDepth: number;
+  assertCurrent?: () => void;
   sourceDetails: NonNullable<
     ReturnType<typeof localKupmiosHttpOgmiosRawSourceDetails>
   >;
@@ -74,13 +75,16 @@ const assertLiveObservation = ({
   localObservation,
   sourceDetails,
   minimumConfirmationDepth,
+  assertCurrent,
 }: Pick<
   ResolvedBlockRuntime,
   | "nativeBlock"
   | "localObservation"
   | "sourceDetails"
   | "minimumConfirmationDepth"
+  | "assertCurrent"
 >): void => {
+  assertCurrent?.();
   assertWatcherLocalKupmiosNativeObservation(localObservation, nativeBlock);
   const transportDetails = localObservation.transportAttestations
     .map(watcherL1TransportAttestationDetails)
@@ -214,7 +218,9 @@ export const createWatcherResolvedBlockObservationSource = ({
   deploymentIdentity,
   rawSource,
   minimumConfirmationDepth: requestedConfirmationDepth,
+  assertCurrent,
 }: {
+  readonly assertCurrent?: () => void;
   /** Inclusion depth 1, or the source's release depth (the default). */
   readonly minimumConfirmationDepth?: number;
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
@@ -249,6 +255,7 @@ export const createWatcherResolvedBlockObservationSource = ({
         localObservation,
         sourceDetails,
         minimumConfirmationDepth,
+        assertCurrent,
       };
       assertLiveObservation(live);
       const point = Object.freeze({

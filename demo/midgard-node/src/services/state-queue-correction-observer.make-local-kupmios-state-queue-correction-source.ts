@@ -13,10 +13,10 @@ import {
   readOgmiosBlockTransaction,
   type WebSocketFactory,
 } from "../l1-tx-order-carriage.js";
+import { canonicalOgmiosBlockDepth } from "./state-queue-correction-observer.canonical-block-depth.js";
 import { sameQueue } from "./state-queue-correction-observer.create-database-state-queue-correction-observer-store.js";
 import {
   fetchKupoTransactionCorrectionLockOutputs,
-  fetchTip,
   sameSpend,
   STATE_QUEUE_CORRECTION_REQUEST_TIMEOUT_MS,
   withRequestTimeout,
@@ -81,11 +81,14 @@ export const makeLocalKupmiosStateQueueCorrectionSource = ({
     ) {
       return null;
     }
-    const tip = await fetchTip(ogmiosUrl, fetchImpl);
-    const blockNo = BigInt(transition.blockNo);
-    return BigInt(tip.blockNo) < blockNo
-      ? null
-      : BigInt(tip.blockNo) - blockNo + 1n;
+    return await canonicalOgmiosBlockDepth({
+      ogmiosUrl,
+      blockHash: transition.blockHash,
+      slot: Number(transition.slot),
+      blockNo: BigInt(transition.blockNo),
+      timeoutMs: requestTimeoutMs,
+      webSocketFactory,
+    });
   };
   return {
     readQueue,
@@ -93,7 +96,6 @@ export const makeLocalKupmiosStateQueueCorrectionSource = ({
     observeTransitions: async (previousQueue, nextQueue) => {
       let workingQueue = previousQueue;
       const observations: StateQueueAuthenticatedReplayCheckpoint[] = [];
-      const tip = await fetchTip(ogmiosUrl, fetchImpl);
       for (let replayed = 0; replayed < 1_000; replayed += 1) {
         if (sameQueue(workingQueue, nextQueue)) return observations;
         const spends = await Promise.all(
@@ -173,12 +175,23 @@ export const makeLocalKupmiosStateQueueCorrectionSource = ({
           spentInputOutRefs,
           outputs: historicalOutputs,
         });
-        if (tip.blockNo < transaction.blockPoint.blockNo) {
+        const selectedTip = transaction.selectedChainTip;
+        if (
+          selectedTip === undefined ||
+          selectedTip.slot < transaction.blockPoint.slot ||
+          selectedTip.height < transaction.blockPoint.blockNo ||
+          (selectedTip.height === transaction.blockPoint.blockNo
+            ? selectedTip.id !== transaction.blockPoint.headerHash ||
+              selectedTip.slot !== transaction.blockPoint.slot
+            : selectedTip.id === transaction.blockPoint.headerHash ||
+              selectedTip.slot <= transaction.blockPoint.slot)
+        ) {
           throw new Error(
-            "Ogmios tip precedes an authenticated state-queue transaction",
+            "State-queue checkpoint lacks the selected-chain tip from its raw block response",
           );
         }
-        const observedDepth = tip.blockNo - transaction.blockPoint.blockNo + 1;
+        const observedDepth =
+          selectedTip.height - transaction.blockPoint.blockNo + 1;
         const localChainPointId = digest({
           source: "midgard-node-local-kupmios-ordered-v1",
           blockHash: transaction.blockPoint.headerHash,

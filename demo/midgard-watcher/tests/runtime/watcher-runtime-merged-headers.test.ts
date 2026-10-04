@@ -44,6 +44,9 @@ const boundary = vi.hoisted(() => ({
         ) => Promise<ReadonlyMap<string, unknown>>;
       }>
     | undefined,
+  assertMerged: undefined as
+    | ((proof: ReadonlyMap<string, unknown>) => void)
+    | undefined,
   records: [] as WatcherVerificationDiagnostic[],
   classifyHeader: vi.fn(async () => {
     throw new Error("classifier reached");
@@ -95,7 +98,8 @@ vi.mock("../../src/l1/local-kupmios-raw-source.js", () => ({
     observationDepth,
   }: {
     observationDepth?: string;
-  }) => Object.freeze({ observationDepth }),
+  }) =>
+    Object.freeze({ observationDepth: observationDepth ?? "release_finality" }),
 }));
 vi.mock("../../src/runtime/state-queue-runtime.js", () => ({
   createWatcherStateQueueRuntime: async () =>
@@ -208,7 +212,10 @@ vi.mock("../../src/availability/runtime.js", async (load) => ({
   ): Promise<Partial<WatcherAvailabilityRuntime>> => {
     boundary.availabilityInput = input;
     return {
-      reconcile: async () => undefined,
+      reconcile: async (current) => {
+        const proof = await input.mergedHeaders!(current);
+        boundary.assertMerged?.(proof);
+      },
       pendingAvailabilityHeaders: async () => new Set<string>(),
       invalidateForShutdown: () => undefined,
       close: async () => undefined,
@@ -273,6 +280,7 @@ afterEach(async () => {
   boundary.readers = undefined;
   boundary.observation = undefined;
   boundary.availabilityInput = undefined;
+  boundary.assertMerged = undefined;
   boundary.records.length = 0;
   boundary.classifyHeader.mockClear();
   boundary.readUnitHistory.mockClear();
@@ -292,6 +300,13 @@ describe("production runtime over a merged state-queue header", () => {
       [root, merge],
       [header.queueOutRef, merge],
     ]);
+    const assertMerged = vi.fn((released: ReadonlyMap<string, unknown>) => {
+      expect([...released.keys()]).toEqual([header.headerHash]);
+      expect(released.get(header.headerHash)).toMatchObject({
+        mergeTransactionHash: merge.txHash,
+      });
+    });
+    boundary.assertMerged = assertMerged;
     const stderr = vi
       .spyOn(process.stderr, "write")
       .mockImplementation(() => true);
@@ -330,11 +345,10 @@ describe("production runtime over a merged state-queue header", () => {
         mergeTransactionHash: merge.txHash,
       },
     ]);
-    const released = await boundary.availabilityInput!.mergedHeaders!(current);
-    expect([...released.keys()]).toEqual([header.headerHash]);
-    expect(released.get(header.headerHash)).toMatchObject({
-      mergeTransactionHash: merge.txHash,
-    });
+    expect(assertMerged).toHaveBeenCalledTimes(1);
+    await expect(
+      boundary.availabilityInput!.mergedHeaders!(current),
+    ).rejects.toThrow("state-queue read scopes are closed");
   });
 
   it("proves consecutive merges that each spend the root and the head's node", async () => {
@@ -388,6 +402,10 @@ describe("production runtime over a merged state-queue header", () => {
   it("classifies an unmerged header and hands availability no proof", async () => {
     const { current, root } = queued();
     boundary.readers = chain([]);
+    const assertMerged = vi.fn((proof: ReadonlyMap<string, unknown>) => {
+      expect(proof.size).toBe(0);
+    });
+    boundary.assertMerged = assertMerged;
     // Classification starts by re-authenticating the predecessor header.
     await expect(start()).rejects.toThrow("predecessor reader reached");
     expect(boundary.stop).not.toHaveBeenCalled();
@@ -396,8 +414,9 @@ describe("production runtime over a merged state-queue header", () => {
       [root, `${"17".repeat(32)}#0`],
       expect.anything(),
     );
-    expect(
-      (await boundary.availabilityInput!.mergedHeaders!(current)).size,
-    ).toBe(0);
+    expect(assertMerged).toHaveBeenCalledTimes(1);
+    await expect(
+      boundary.availabilityInput!.mergedHeaders!(current),
+    ).rejects.toThrow("state-queue read scopes are closed");
   });
 });

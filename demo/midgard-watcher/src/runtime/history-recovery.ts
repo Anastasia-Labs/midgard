@@ -4,6 +4,7 @@ import {
   type WatcherFaultDecisionBridge,
   WatcherFaultDecisionRetired,
 } from "../fault-proofs/fault-decision-bridge.js";
+import { WatcherStateQueueReadRetired } from "../indexers/authenticated-state-queue-observation.read-scopes.js";
 import type { WatcherNativeBlockAdmission } from "../l1/native-block-admission.js";
 import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.js";
 import {
@@ -193,7 +194,10 @@ export const createWatcherHistoryRecovery = (input: {
     try {
       await work();
     } catch (error) {
-      if (error instanceof WatcherFaultDecisionRetired) {
+      if (
+        error instanceof WatcherFaultDecisionRetired ||
+        error instanceof WatcherStateQueueReadRetired
+      ) {
         lastError = asError(error);
         requestResume();
         throw new WatcherConsumerDeliveryHeld();

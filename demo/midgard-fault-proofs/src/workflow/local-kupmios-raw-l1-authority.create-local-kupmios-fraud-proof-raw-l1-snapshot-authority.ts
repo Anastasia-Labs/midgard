@@ -1,3 +1,5 @@
+import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+
 import {
   array,
   assertLoopback,
@@ -17,6 +19,7 @@ import {
   type UnitHistoryTransaction,
   withLocalKupmiosSourceCapture,
 } from "./local-kupmios-raw-l1-authority.scan-all-address-utxos.js";
+import { withLocalKupmiosReadOperation } from "./local-kupmios-read-operation.js";
 import {
   admitFraudProofRawL1Point,
   admitFraudProofRawL1Snapshot,
@@ -30,6 +33,14 @@ import {
   type FraudProofRawL1Transaction,
 } from "./raw-l1-snapshot.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
+
+export interface LocalKupmiosFraudProofRawL1SnapshotAuthority
+  extends FraudProofRawL1SnapshotAuthority {
+  capture(
+    request: FraudProofRawL1SnapshotRequest,
+    options?: Readonly<{ scope: DaAvailabilityReadScope }>,
+  ): Promise<unknown>;
+}
 
 const scanCompleteUnitHistory = async ({
   source,
@@ -182,7 +193,7 @@ export const createLocalKupmiosFraudProofRawL1SnapshotAuthority = ({
   readonly source: LocalKupmiosFraudProofRawSource;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
   readonly observationDepth?: FraudProofL1ObservationDepth;
-}): FraudProofRawL1SnapshotAuthority => {
+}): LocalKupmiosFraudProofRawL1SnapshotAuthority => {
   if (source.sourceVersion !== LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE) {
     throw new Error("local Kupmios raw source has an unsupported version");
   }
@@ -296,21 +307,41 @@ export const createLocalKupmiosFraudProofRawL1SnapshotAuthority = ({
   };
   return {
     authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
-    capture: (request: FraudProofRawL1SnapshotRequest) =>
-      withLocalKupmiosSourceCapture(source, async () => {
+    capture: (
+      request: FraudProofRawL1SnapshotRequest,
+      options?: Readonly<{ scope: DaAvailabilityReadScope }>,
+    ) => {
+      // Share the existing two checkpoint retries across transport retries too;
+      // no nested retry resets this allowance or the operation deadline.
+      let checkpointRetries = 0;
+      const capture = async () => {
         // Each readBoundary discards source caches and pins a fresh authenticated
         // boundary. Failed attempt data never escapes this exclusive capture.
-        for (let attempt = 0; ; attempt += 1) {
+        for (;;) {
           try {
             return await captureOnce(request);
           } catch (error) {
             if (
               !(error instanceof LocalKupmiosCheckpointChangedError) ||
-              attempt >= 2
+              checkpointRetries >= 2
             )
               throw error;
+            checkpointRetries += 1;
           }
         }
-      }),
+      };
+      return options === undefined
+        ? withLocalKupmiosSourceCapture(source, capture)
+        : withLocalKupmiosReadOperation(
+            source,
+            async (attempt) => {
+              attempt.assertCurrent();
+              const result = await capture();
+              attempt.assertCurrent();
+              return result;
+            },
+            options,
+          );
+    },
   };
 };

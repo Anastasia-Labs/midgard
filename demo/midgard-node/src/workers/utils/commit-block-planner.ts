@@ -12,7 +12,6 @@ import "./commit-block-planner.select-commit-tx-candidates.js";
 export {
   calibratedCommitBuildMsPerTx,
   clampCommitBuildMsPerTx,
-  COMMIT_DA_FRAME_STEP_DOWN_SAFETY,
   type CommitBatchBudgetLimits,
   type CommitBatchPlan,
   type CommitBatchStopReason,
@@ -51,6 +50,7 @@ export {
 } from "./commit-block-planner.plan-scheduler-aware-commit-selection.js";
 export {
   buildCommitTxCandidateSelection,
+  commitDaFrameStepDownPassBound,
   DA_PAYLOAD_UPPER_BOUND_HEADER,
   DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,
   emptyBlockDaPayloadUpperBoundBytes,

@@ -12,11 +12,18 @@ import {
   Columns as TxColumns,
   type EntryWithTimeStamp,
 } from "../../src/database/utils/tx.js";
+import * as WithdrawalsDB from "../../src/database/withdrawals.js";
 import type {
   RetainedTransitionTraceMember,
   RetainedValidationTraceMember,
   UtxoPayloadSizeAggregate,
 } from "../../src/mpf/index.js";
+import {
+  encodeEventToStepValueCbor,
+  encodeTransitionEventKeyCbor,
+  encodeTransitionIntegerCbor,
+  encodeTransitionStepCbor,
+} from "../../src/mpf/transition-cbor.js";
 import { assertPreSubmitDaPayloadSize } from "../../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 import {
   type CommitBatchBudgetLimits,
@@ -109,6 +116,9 @@ export const traceFor = (
 ): RetainedValidationTraceMember => {
   const key = seed.toString(16).padStart(80, "0");
   return {
+    eventKey: {
+      L2TransactionEventKey: { tx_id: seed.toString(16).padStart(64, "0") },
+    },
     keyCbor: Buffer.from(key, "hex"),
     valueCbor: Buffer.alloc(220, 7),
     witnesses: Array.from(
@@ -127,6 +137,18 @@ export const eventContentOf = (
 ): RetainedTransitionTraceMember =>
   ({
     stepIndex: 0n,
+    value: {
+      schema_version: 1n,
+      step_index: 0n,
+      phase: "Withdrawal",
+      event_key: {
+        WithdrawalEventKey: {
+          withdrawal_id: { transactionId: "fe".repeat(32), outputIndex: 0n },
+        },
+      },
+      pre_utxos_root: "aa".repeat(32),
+      post_utxos_root: "aa".repeat(32),
+    },
     keyCbor: Buffer.alloc(8, 1),
     valueCbor: Buffer.alloc(valueBytes, 2),
   }) as unknown as RetainedTransitionTraceMember;
@@ -155,21 +177,72 @@ export const blockContentFor = (
   }: BlockShape = {},
 ) => {
   const witnessValue = "ab".repeat(witnessValueBytes);
-  const entryDelta = txs.length - withdrawnEntryCount;
-  return {
-    utxoPayloadAggregate: {
-      entryCount: base.entryCount + entryDelta,
+  const before = eventBytes > 0 || withdrawnEntryCount > 0 ? 1 : 0;
+  const normal = txs.map((tx, index): RetainedTransitionTraceMember => {
+    const value: SDK.TransitionStep = {
+      schema_version: 1n,
+      step_index: BigInt(before + index),
+      event_key: {
+        L2TransactionEventKey: { tx_id: tx[TxColumns.TX_ID].toString("hex") },
+      },
+      phase: "L2Transaction",
+      pre_utxos_root: "aa".repeat(32),
+      post_utxos_root: "aa".repeat(32),
+    };
+    return {
+      stepIndex: value.step_index,
+      value,
+      keyCbor: encodeTransitionIntegerCbor(value.step_index),
+      valueCbor: encodeTransitionStepCbor(value),
+    };
+  });
+  const transitionTraceMembers = [
+    ...(before > 0 ? [eventContentOf(eventBytes)] : []),
+    ...normal,
+  ];
+  const utxoPayloadAggregatesByPrefix = Array.from(
+    { length: txs.length + 1 },
+    (_, prefix) => ({
+      entryCount: base.entryCount + prefix - withdrawnEntryCount,
       encodedTupleBytes:
-        base.encodedTupleBytes + entryDelta * LC1_MEAN_ENTRY_BYTES,
-    },
+        base.encodedTupleBytes +
+        (prefix - withdrawnEntryCount) * LC1_MEAN_ENTRY_BYTES,
+    }),
+  );
+  return {
+    utxoPayloadAggregate: utxoPayloadAggregatesByPrefix[txs.length]!,
+    utxoPayloadAggregatesByPrefix,
     includedDepositEntries: [],
     includedForcedTransactionEntries: [],
-    includedWithdrawalEntries: [],
+    includedWithdrawalEntries:
+      before > 0
+        ? [
+            {
+              [WithdrawalsDB.Columns.ID]: Buffer.from("fe".repeat(32), "hex"),
+              [WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]: Buffer.from([1]),
+            } as unknown as WithdrawalsDB.Entry,
+          ]
+        : [],
     processedMempoolTxs: txs,
-    transitionTraceMembers: eventBytes > 0 ? [eventContentOf(eventBytes)] : [],
-    eventToStepMembers: [],
-    validationTraceMembers: txs.map((_, index) =>
-      traceFor(index, witnessCount, witnessValue),
+    transitionTraceMembers,
+    eventToStepMembers: transitionTraceMembers.map((member) => {
+      const value: SDK.EventToStepValue = {
+        step_index: member.stepIndex,
+        phase: member.value.phase,
+      };
+      return {
+        eventKey: member.value.event_key,
+        keyCbor: encodeTransitionEventKeyCbor(member.value.event_key),
+        valueCbor: encodeEventToStepValueCbor(value),
+        value,
+      };
+    }),
+    validationTraceMembers: txs.map((tx) =>
+      traceFor(
+        Number.parseInt(tx[TxColumns.TX_ID].toString("hex"), 16),
+        witnessCount,
+        witnessValue,
+      ),
     ),
   } as const;
 };
@@ -202,3 +275,36 @@ export const REFUSAL =
   "Refusing to prepare or submit a block whose DA payload cannot fit the V1 submit frame";
 
 export const MODES = ["identity", "zstd"] as const;
+
+/** Explicit synthetic vectors for planner/state-write composition tests. */
+export const syntheticCommitPrefixMeasurement = (
+  acceptedIds: readonly (Buffer | string)[],
+  prefixBytes: readonly number[],
+  hasMandatoryWork = false,
+) => {
+  const acceptedTxIds = acceptedIds.map((id) =>
+    typeof id === "string" ? Buffer.from(id, "hex") : id,
+  );
+  return {
+    acceptedTxCount: acceptedTxIds.length,
+    acceptedTxIds,
+    rejectedTxIds: [],
+    hasMandatoryWork,
+    innerBytesUpperBound: prefixBytes[acceptedTxIds.length]!,
+    prefixes: prefixBytes
+      .slice(0, acceptedTxIds.length + 1)
+      .map((innerBytesUpperBound, index) => ({
+        innerBytesUpperBound,
+        materialDigest: index.toString(16).padStart(64, "0"),
+      })),
+  };
+};
+
+export const syntheticStepDownStateWriteMeasurement = (
+  accepted: readonly string[],
+) =>
+  syntheticCommitPrefixMeasurement(
+    accepted,
+    [1_000, 30_000, 50_000, 110_000, 150_000],
+    true,
+  );

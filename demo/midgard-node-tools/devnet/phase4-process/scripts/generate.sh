@@ -62,12 +62,15 @@ done
 # The run directory is private (0700); only its Postgres bind must be writable by the container UID.
 chmod 0777 "$MIDGARD_PHASE4_RUN_DIR/postgres"
 
+funding_policy="$script_dir/../../preprod/funding-policy.json"
+total_supply=$(jq -er '.totalSupplyLovelace' "$funding_policy")
+delegated_supply=$(jq -er '.delegatedSupplyLovelace' "$funding_policy")
 docker run --rm --user "$(id -u):$(id -g)" \
   --volume "$MIDGARD_PHASE4_RUN_DIR:/run" \
   --entrypoint cardano-cli "$cardano_image" \
   latest genesis create-testnet-data \
   --genesis-keys 1 --pools 1 --stake-delegators 1 --utxo-keys 1 --committee-keys 1 --drep-keys 1 \
-  --total-supply 100000000000000 --delegated-supply 50000000000000 \
+  --total-supply "$total_supply" --delegated-supply "$delegated_supply" \
   --testnet-magic "$network_magic" --start-time "$genesis_start" --out-dir /run/genesis
 
 # Use the verified Preprod consensus and active ledger configuration. Local

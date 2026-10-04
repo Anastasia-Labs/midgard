@@ -129,24 +129,3 @@ export const delEntries = (
       Columns.ID,
     )} IN ${sql.in(ids)}`;
   }).pipe(sqlErrorToDatabaseError(tableName, "Failed to delete given UTxOs"));
-
-/**
- * Deletes events older than `cutoff` and returns how many rows were pruned.
- */
-export const pruneOlderThan = (
-  tableName: string,
-  cutoff: Date,
-): Effect.Effect<number, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const deleted = yield* sql`DELETE FROM ${sql(tableName)}
-      WHERE ${sql(Columns.INCLUSION_TIME)} < ${cutoff}
-      RETURNING ${sql(Columns.ID)}`;
-    return deleted.length;
-  }).pipe(
-    Effect.withLogSpan(`pruneOlderThan ${tableName}`),
-    Effect.tapErrorTag("SqlError", (e) =>
-      logDatabaseError(tableName, "pruneOlderThan", e),
-    ),
-    sqlErrorToDatabaseError(tableName, "Failed to prune old user events"),
-  );

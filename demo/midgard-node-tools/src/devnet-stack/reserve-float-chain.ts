@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   type Script,
@@ -18,7 +18,7 @@ import {
 import type { WalletInfo, WalletRole } from "./identities.js";
 import { Journal } from "./journal.js";
 import type { Layout, RunEnv } from "./layout.js";
-import { acquireLock } from "./lock.js";
+import { acquireLock, ControllerLockBusy } from "./lock.js";
 import {
   type ChainOutput,
   ensureReserveFloatRetrying,
@@ -229,19 +229,9 @@ export const productionFloatDeps = (layout: Layout, run: RunEnv): FloatDeps => {
 const floatLock = (layout: Layout) => join(layout.state, "reserve-float.lock");
 const LOCK_POLL_MS = 2_000;
 
-/**
- * Whether a failed acquire is worth trying again, judged on its error alone:
- * whatever the lock holds by now, a free or stale lock is taken on the next
- * try. acquireLock's own refusals (a live holder, or a lock that changed
- * hands under both its tries) carry no errno; an ENOENT means the lock file
- * went away under it, its holder having released it. Any other errno, or an
- * ENOENT for a missing state directory, is a genuine failure to write it.
- */
-const lockRetryable = (lock: string, error: unknown) => {
-  const code = (error as NodeJS.ErrnoException).code;
-  if (code === undefined) return true;
-  return code === "ENOENT" && existsSync(dirname(lock));
-};
+/** Only explicit kernel/legacy-owner contention is retried; storage and other
+ * failures keep their original classification and refuse immediately. */
+const lockRetryable = (error: unknown) => error instanceof ControllerLockBusy;
 
 /**
  * Runs `step` holding the run's float lock. A live holder (the maintainer
@@ -263,7 +253,7 @@ export const withFloatLock = async <T>(
       release = acquireLock(lock);
       break;
     } catch (error) {
-      if (!lockRetryable(lock, error) || clock.now() > deadline) throw error;
+      if (!lockRetryable(error) || clock.now() > deadline) throw error;
       await clock.sleep(LOCK_POLL_MS);
     }
   }

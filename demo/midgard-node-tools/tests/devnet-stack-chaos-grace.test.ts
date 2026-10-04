@@ -65,11 +65,20 @@ const scratch = () => {
 
 describe("productionChaosDeps.waitReady", () => {
   const deps = () => {
-    const run = {
+    const run: RunEnv = {
       runId: "t",
       composeProject: "p",
+      networkMagic: 42,
+      ogmiosPort: 22_337,
+      kupoPort: 21_442,
+      postgresPort: 25_432,
+      postgresUser: "unused",
+      postgresPassword: "unused-synthetic",
+      postgresDatabase: "unused",
+      cardanoImage: "unused",
+      postgresImage: "unused",
       portOffset: 20_000,
-    } as RunEnv;
+    };
     const context = { layout: makeLayout(scratch()), run } as DeployContext;
     return productionChaosDeps(context, {
       txHash: "00".repeat(32),

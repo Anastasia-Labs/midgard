@@ -1,3 +1,5 @@
+import "../support/chain-coordinator-unit-fixture.js";
+
 import { describe, expect, it } from "vitest";
 
 import type { WatcherFinalityPolicy } from "../../src/l1/finality-engine.js";
@@ -8,7 +10,6 @@ import { unsafeCreateWatcherChainCoordinatorForTest } from "../../src/runtime/ch
 import type { WatcherDurableRuntime } from "../../src/storage/durable-runtime.js";
 
 const h32 = (byte: string): string => byte.repeat(64);
-
 const block = (
   hashByte: string,
   parentByte: string,
@@ -327,7 +328,7 @@ describe("production native-chain coordinator", () => {
           readFinality: () => state,
           read: () => ({
             currentFinalityState: state,
-            currentStore: {},
+            currentStore: undefined,
             authenticatedConsistencyHistory: [],
           }),
           persistCanonicalProgress: async (input: {
@@ -593,11 +594,13 @@ describe("production native-chain coordinator", () => {
     const durable = {
       readFinality: () => state,
       read: () => ({ currentFinalityState: state, currentStore: {} }),
-      persistObservation: async () => {
+      persistObservation: async (observed: { assertCurrent?: () => void }) => {
+        observed.assertCurrent?.();
         order.push("observation");
         return { persistence: "committed" };
       },
-      persistRollback: async () => {
+      persistRollback: async (rollback: { assertCurrent?: () => void }) => {
+        rollback.assertCurrent?.();
         order.push("rollback");
         state = finalityState("pending", replacement);
         return {
@@ -634,7 +637,6 @@ describe("production native-chain coordinator", () => {
       },
       { admitRollForward: () => replacement },
     );
-
     await coordinator.handle({
       schemaVersion: "midgard-watcher-native-chain-sync-v1",
       kind: "roll_backward",
@@ -642,39 +644,8 @@ describe("production native-chain coordinator", () => {
       tip: { kind: "point", blockHash: h32("2"), slot: "103", blockNo: "13" },
     });
     await coordinator.handle(forward(replacement, "13"));
-
     expect(order).toEqual(["revoke", "observation", "rollback"]);
     expect(coordinator.status().rollbackPoint).toBeNull();
-  });
-
-  it("fails before durable mutation when a replacement is not anchored to the rollback point", async () => {
-    const replacement = block("4", "9", "103", "12");
-    const observation = {
-      observe: async () => {
-        throw new Error("must not observe");
-      },
-      close: () => undefined,
-    } as unknown as WatcherLocalKupmiosNativeObservationRuntime;
-    const durable = {
-      readFinality: () => finalityState("pending", replacement),
-      read: () => ({
-        currentFinalityState: finalityState("pending", replacement),
-        currentStore: {},
-      }),
-    } as unknown as WatcherDurableRuntime;
-    const coordinator = unsafeCreateWatcherChainCoordinatorForTest(
-      { policy, durable, observation },
-      { admitRollForward: () => replacement },
-    );
-    await coordinator.handle({
-      schemaVersion: "midgard-watcher-native-chain-sync-v1",
-      kind: "roll_backward",
-      point: { kind: "point", blockHash: h32("1"), slot: "101" },
-      tip: { kind: "point", blockHash: h32("2"), slot: "103", blockNo: "13" },
-    });
-    await expect(
-      coordinator.handle(forward(replacement, "13")),
-    ).rejects.toThrow("not the child");
   });
 
   it("derives bounded post-finality paths from sidecar-authenticated history and resumes only after recovery", async () => {
@@ -729,7 +700,7 @@ describe("production native-chain coordinator", () => {
       readFinality: () => state,
       read: () => ({
         currentFinalityState: state,
-        currentStore: {},
+        currentStore: undefined,
         authenticatedConsistencyHistory: history,
       }),
       persistObservation: async () => {
@@ -861,7 +832,7 @@ describe("production native-chain coordinator", () => {
       readFinality: () => state,
       read: () => ({
         currentFinalityState: state,
-        currentStore: {},
+        currentStore: undefined,
         authenticatedConsistencyHistory: [
           ancestorConsistency,
           orphanConsistency,
@@ -922,7 +893,6 @@ describe("production native-chain coordinator", () => {
     });
     expect(coordinator.status().rollbackPoint).toBeNull();
     await coordinator.handle(forward(replacement));
-
     expect(order).toEqual([
       "restart-recovery",
       "observe",

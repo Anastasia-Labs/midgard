@@ -1,3 +1,5 @@
+import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+
 import {
   admitFraudProofRawL1Point,
   admitFraudProofRawL1Utxo,
@@ -73,9 +75,10 @@ const sourceCaptures = new WeakMap<
 /** Own the source's mutable boundary through the final read and admission.
  * Call only at the outer capture boundary; nested reads use the held source.
  */
-export const withLocalKupmiosSourceCapture = async <T>(
+export const withLocalKupmiosSourceCapture = <T>(
   source: LocalKupmiosFraudProofRawSource,
   capture: () => Promise<T>,
+  scope?: DaAvailabilityReadScope,
 ): Promise<T> => {
   const previous = sourceCaptures.get(source) ?? Promise.resolve();
   let release!: () => void;
@@ -83,13 +86,24 @@ export const withLocalKupmiosSourceCapture = async <T>(
     release = resolve;
   });
   sourceCaptures.set(source, held);
-  await previous;
-  try {
-    return await capture();
-  } finally {
-    release();
-    if (sourceCaptures.get(source) === held) sourceCaptures.delete(source);
-  }
+  // Caller cancellation fences its result. Queue ownership follows completion
+  // of the actual callback, not the outer cancellation race: a late read may
+  // never mutate this source alongside the next capture.
+  const completion = previous
+    .then(async () => {
+      scope?.assertCurrent();
+      const result = await capture();
+      scope?.assertCurrent();
+      return result;
+    })
+    .finally(() => {
+      release();
+      if (sourceCaptures.get(source) === held) sourceCaptures.delete(source);
+    });
+  // An already-expired caller can reject before read() attaches its race.
+  // Observe the owned completion without replacing its original error/result.
+  void completion.catch(() => {});
+  return scope === undefined ? completion : scope.read(() => completion);
 };
 
 /** A failed branch must not leave sibling reads using a released source. */

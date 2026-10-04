@@ -13,6 +13,12 @@ import {
   type SerializedStateQueueUTxO,
   WorkerOutput,
 } from "../workers/utils/commit-block-header.js";
+import {
+  COMMIT_DA_FRAME_IDLE_NOTICE,
+  type CommitDaFrameNotice,
+} from "../workers/utils/commit-block-planner.commit-da-frame-notice.js";
+import { applyCommitDaFrameNotice } from "./block-commitment.commit-da-frame-readiness.js";
+import { applyCommitWorkerReadiness } from "./block-commitment.worker-readiness.js";
 
 /**
  * Background block-commitment loop that packages processed L2 transactions into
@@ -272,21 +278,39 @@ export const publishFullMempoolLedgerReload = (
   ).pipe(Effect.asVoid);
 
 /** A message the commit worker posts: its output, or a notice ahead of it. */
-export type CommitWorkerMessage = WorkerOutput | MempoolLedgerRevertedNotice;
+export type CommitWorkerMessage =
+  | WorkerOutput
+  | MempoolLedgerRevertedNotice
+  | CommitDaFrameNotice;
 
 /**
  * Applies a notice the commit worker posts while it still runs and returns
  * undefined; any other message is the worker's output and is returned. A
  * commit-stage rejection rewrites mempool_ledger rows (reverted outputs,
  * restored inputs, rejected descendants) without a delta, so its notice
- * reloads the cache from the durable table.
+ * reloads the cache from the durable table. A DA frame notice raises or
+ * clears the commit DA frame liveness reason. A tick with nothing to commit
+ * returns before the step-down, so it posts no notice; its output clears the
+ * reason, since no block is being refused.
  */
 export const takeCommitWorkerOutput = (
   globals: Globals,
   message: CommitWorkerMessage,
   deltaLogMax: number,
 ): WorkerOutput | undefined => {
-  if (message.type !== "MempoolLedgerRevertedNotice") return message;
+  if (message.type === "CommitDaFrameNotice") {
+    Effect.runSync(applyCommitDaFrameNotice(globals, message));
+    return undefined;
+  }
+  if (message.type === "NothingToCommitOutput") {
+    Effect.runSync(
+      applyCommitDaFrameNotice(globals, COMMIT_DA_FRAME_IDLE_NOTICE),
+    );
+  }
+  if (message.type !== "MempoolLedgerRevertedNotice") {
+    Effect.runSync(applyCommitWorkerReadiness(globals, message));
+    return message;
+  }
   Effect.runSync(publishFullMempoolLedgerReload(globals, deltaLogMax));
   return undefined;
 };

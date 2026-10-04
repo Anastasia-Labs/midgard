@@ -97,6 +97,26 @@ const staleReason = (reasons: ReadonlyMap<string, string>) =>
   [...reasons.values()].filter((reason) => reason === RETENTION_L1_VIEW_STALE);
 
 describe("retention sweeper L1-view deadline", () => {
+  it("reports unavailable DA recovery proof and clears it after the next successful proof read", async () => {
+    const seen: string[][] = [];
+    const result = await runSweeper({
+      clock: [START],
+      sweeps: 2,
+      read: (index, reasons) => {
+        seen.push([...reasons().values()]);
+        return Effect.succeed({
+          ...VIEW,
+          retirementProofUnavailable: index === 0,
+        });
+      },
+    });
+    expect(seen).toEqual([[], ["retention_da_recovery_proof_unavailable"]]);
+    expect([...result.reasons.values()]).not.toContain(
+      "retention_da_recovery_proof_unavailable",
+    );
+    expect(result.reads()).toBe(2);
+  });
+
   it("past L1_VIEW_FATAL_MS raises retention_l1_view_stale, sweeps nothing and keeps reading", async () => {
     // Ref init; sweep 1 reads at the deadline (a sweep without DA pruning);
     // sweeps 2-5 read 1 ms past it.

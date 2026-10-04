@@ -7,6 +7,7 @@ import {
   type UserEventBarrierWatermarks,
 } from "../fibers/speculative-commit-state.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
+import type { CommitDaFramePressureSnapshot } from "../workers/utils/commit-block-planner.commit-da-frame-notice.js";
 import type { EventHistoryOwner } from "./event-history-owner.js";
 import type { IdleBackoffState } from "./globals.idle-backoff.js";
 import {
@@ -47,6 +48,11 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
 
     // Prevents overlapping commitment workers (periodic + manual trigger).
     const COMMIT_WORKER_ACTIVE = yield* Ref.make<boolean>(false);
+
+    // Latest measured worker candidate, separate from liveness holds. Null is
+    // unmeasured/idle, not evidence that the ledger has zero frame pressure.
+    const COMMIT_DA_FRAME_PRESSURE =
+      yield* Ref.make<CommitDaFramePressureSnapshot | null>(null);
 
     // Serializes pre-worker scheduler alignment with actual mutation workers.
     // COMMIT_WORKER_ACTIVE intentionally remains true only for the worker phase.
@@ -222,6 +228,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
       RESET_IN_PROGRESS,
       COMMIT_WORKER_ACTIVE,
+      COMMIT_DA_FRAME_PRESSURE,
       COMMIT_PIPELINE_PHASE,
       L1_CONTROL_PLANE,
       SETTLEMENT_HEALTH,

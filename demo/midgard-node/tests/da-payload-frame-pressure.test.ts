@@ -8,10 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { DatabaseError } from "../src/database/utils/common.js";
 import type { UtxoPayloadSizeAggregate } from "../src/mpf/index.js";
-import {
-  assertPreSubmitDaPayloadSize,
-  DA_PAYLOAD_FRAME_PRESSURE_RATIO,
-} from "../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
+import { assertPreSubmitDaPayloadSize } from "../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 
 const header: SDK.Header = {
   prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -119,6 +116,37 @@ const field = (text: string, name: string): string | undefined =>
 const MODES = ["identity", "zstd"] as const;
 
 describe("pre-submit DA payload frame pressure", () => {
+  it.each(
+    MODES.flatMap((mode) => [50, 75, 90].map((stage) => ({ mode, stage }))),
+  )(
+    "reports measured pressure stage $stage at the usable $mode boundary",
+    async ({ mode, stage }) => {
+      const limit = maxDaPayloadInnerBytes(mode);
+      const boundary = Math.ceil((limit * stage) / 100);
+      for (const target of [boundary - 1, boundary]) {
+        const aggregate = await aggregateForInnerBytes(target, 10_000, mode);
+        const { result, logs } = await Effect.runPromise(
+          assertSize(aggregate, mode),
+        );
+        expect(Either.getOrUndefined(result)).toBe(target);
+        const expected =
+          target === boundary
+            ? stage
+            : stage === 90
+              ? 75
+              : stage === 75
+                ? 50
+                : 0;
+        const warnings = pressureWarnings(logs);
+        if (expected === 0) expect(warnings).toEqual([]);
+        else
+          expect(
+            field(warnings[0]?.text ?? "", "da_payload_pressure_stage_percent"),
+          ).toBe(expected.toString());
+      }
+    },
+  );
+
   it.each(MODES)("stays quiet well below the frame (%s)", async (mode) => {
     const limit = maxDaPayloadInnerBytes(mode);
     const target = Math.floor(limit * 0.2);
@@ -135,7 +163,7 @@ describe("pre-submit DA payload frame pressure", () => {
     "starts warning exactly at the pressure ratio (%s)",
     async (mode) => {
       const limit = maxDaPayloadInnerBytes(mode);
-      const atRatio = Math.ceil(limit * DA_PAYLOAD_FRAME_PRESSURE_RATIO);
+      const atRatio = Math.ceil(limit * 0.5);
       for (const [target, warnings] of [
         [atRatio - 1, 0],
         [atRatio, 1],

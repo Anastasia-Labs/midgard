@@ -37,8 +37,11 @@ const leaseDb = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   isolatedDb(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE TABLE state_queue_mutation_leases`;
-      return yield* effect;
+      const clear = sql`TRUNCATE TABLE state_queue_mutation_leases`;
+      yield* clear;
+      // Assertions still observe intentionally abandoned leases. No test owner
+      // survives this synchronous lease fixture when its effect completes.
+      return yield* effect.pipe(Effect.ensuring(Effect.orDie(clear)));
     }),
   );
 

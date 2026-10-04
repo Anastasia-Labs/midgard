@@ -5,6 +5,7 @@ import {
   type WatcherStateQueueRemovalKind,
 } from "../indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import type { WatcherRetainedDaTransportStatus } from "../storage/retained-da-runtime.js";
+import type { WatcherChainCoordinator } from "./chain-coordinator.js";
 
 export const WATCHER_OPERATIONS_OBSERVABILITY =
   "midgard-watcher-production-operations-observability-v1" as const;
@@ -200,8 +201,10 @@ export type WatcherOperationsStatus = Readonly<{
     | "l1_source_stale"
     | "retained_da_transport_failed"
     | "active_alert"
+    | "coordinator_recovery_hold"
   )[];
   retainedDaTransport: WatcherRetainedDaTransportStatus;
+  coordinator: ReturnType<WatcherChainCoordinator["status"]> | null;
   launchScope: Readonly<{
     installedCategoryCount: string;
     requiredCategoryCount: string;

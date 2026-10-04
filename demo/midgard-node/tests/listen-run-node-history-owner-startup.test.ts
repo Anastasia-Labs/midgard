@@ -109,11 +109,10 @@ describe("runNode history-owner startup wiring", () => {
     const program = Effect.gen(function* () {
       const nativeOwner = yield* Ref.make<unknown>(undefined);
       return yield* (
-        runNode(false) as unknown as Effect.Effect<
-          void,
-          unknown,
-          NodeConfig | Globals
-        >
+        runNode(
+          { setStage: () => Effect.void, publish: () => Effect.void },
+          false,
+        ) as unknown as Effect.Effect<void, unknown, NodeConfig | Globals>
       ).pipe(
         Effect.provideService(NodeConfig, {
           STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS: 1,

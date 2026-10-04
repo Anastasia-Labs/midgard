@@ -2,8 +2,8 @@ import { Effect, Fiber } from "effect";
 import { expect, it } from "vitest";
 
 import { L1SourceUnavailable } from "../src/l1-source-unavailable.js";
-import { HistoryOwnerUnavailable } from "../src/services/event-history-owner.history-owner-change.js";
 import {
+  applications,
   authorityRow,
   eventually,
   produces,
@@ -20,35 +20,63 @@ const bounds = {
   },
 };
 
-/** The owner's own stop: the outage limit, not any other refusal. */
-const outageStop = (stopped: unknown) => {
-  expect(stopped).toBeInstanceOf(HistoryOwnerUnavailable);
-  const outer = (stopped as HistoryOwnerUnavailable).cause;
-  expect(outer).toBeInstanceOf(HistoryOwnerUnavailable);
-  return String((outer as HistoryOwnerUnavailable).cause);
-};
-
 it(
-  "stops once the source stays unreachable past the outage limit",
+  "keeps its gated owner and lease beyond outage escalation, then resumes the same checkpoint and appends exactly once",
   scenario(
-    ({ owner, link }) =>
+    ({ owner, link, advance, forwards }) =>
       Effect.gen(function* () {
+        const head = yield* advance;
+        yield* owner.awaitReadyAt(head).pipe(Effect.timeout("15 seconds"));
+        const before = yield* authorityRow;
+        const beforeApplications = yield* applications(head.id);
+        const stopped = yield* Effect.fork(Effect.either(owner.awaitStopped));
         link.state.down = true;
-        const from = performance.now();
         link.drop();
-        const stopped = yield* owner.awaitStopped.pipe(
-          Effect.flip,
-          Effect.timeout("20 seconds"),
+        yield* eventually(
+          owner.sourceStatus.pipe(
+            Effect.filterOrFail(({ state }) => state === "reconnecting"),
+          ),
         );
-        const elapsed = performance.now() - from;
-        expect(outageStop(stopped)).toMatch(
-          /^History source unavailable for \d+ s: .*Ogmios chain-sync socket/u,
-        );
-        expect(elapsed).toBeGreaterThanOrEqual(OUTAGE_LIMIT_MS);
-        // One more backoff, one failed open, and the stop itself.
-        expect(elapsed).toBeLessThan(OUTAGE_LIMIT_MS + MAX_BACKOFF_MS + 3_000);
+        yield* Effect.sleep(OUTAGE_LIMIT_MS + MAX_BACKOFF_MS);
+        expect(stopped.unsafePoll()).toBeNull();
+        expect(yield* owner.sourceStatus).toMatchObject({
+          state: "reconnecting",
+          escalated: true,
+        });
         expect((yield* owner.frontier).ready).toBe(false);
         expect(yield* produces(owner)).toBe("Left");
+        const down = yield* authorityRow;
+        const attempts = (yield* owner.sourceStatus).attempts;
+        yield* Effect.sleep("350 millis");
+        const stillDown = yield* authorityRow;
+        expect(stillDown.lease_until.getTime()).toBeGreaterThan(
+          down.lease_until.getTime(),
+        );
+        expect(stillDown.owner_token).toBe(before.owner_token);
+        expect(stillDown.state).toBe("recovering");
+        expect(stillDown.point_hash).toEqual(before.point_hash);
+        expect((yield* owner.sourceStatus).attempts).toBeGreaterThan(attempts);
+        expect(yield* applications(head.id)).toEqual(beforeApplications);
+        expect(yield* produces(owner)).toBe("Left");
+
+        link.state.down = false;
+        yield* owner.awaitReadyAt(head).pipe(Effect.timeout("15 seconds"));
+        expect(yield* owner.sourceStatus).toMatchObject({
+          state: "following",
+          escalated: false,
+          since: null,
+        });
+        const next = yield* advance;
+        yield* owner.awaitReadyAt(next).pipe(Effect.timeout("15 seconds"));
+        expect(yield* applications(next.id)).toEqual({
+          total: beforeApplications.total + 1,
+          block: 1,
+        });
+        expect(forwards().filter((id) => id === next.id)).toHaveLength(1);
+        expect((yield* authorityRow).owner_token).toBe(before.owner_token);
+        expect(yield* produces(owner)).toBe("Right");
+        expect(stopped.unsafePoll()).toBeNull();
+        yield* Fiber.interrupt(stopped);
       }),
     bounds,
   ),
@@ -59,10 +87,11 @@ it(
 // same way before its gate can reopen. Those appends are not progress.
 const completion = { failing: false, failures: 0 };
 it(
-  "stops when a recoverable failure recurs before its gate reopens, however many blocks it journals",
+  "keeps the gate closed through recurrent recoverable completion failures beyond escalation until completion succeeds",
   scenario(
     ({ owner, link, advance, forwards }) =>
       Effect.gen(function* () {
+        const stopped = yield* Effect.fork(Effect.either(owner.awaitStopped));
         const journaled = forwards().length;
         // An open gate appends without completing; a reconnect completes.
         completion.failing = true;
@@ -72,18 +101,21 @@ it(
             advance.pipe(Effect.zipRight(Effect.sleep("150 millis"))),
           ),
         );
-        const stopped = yield* owner.awaitStopped.pipe(
-          Effect.flip,
-          Effect.timeout("20 seconds"),
-        );
+        yield* Effect.sleep(OUTAGE_LIMIT_MS + 500);
         yield* Fiber.interrupt(advancing);
-        expect(outageStop(stopped)).toMatch(
-          /^History source unavailable for \d+ s: Kupo has not indexed/u,
-        );
+        expect(stopped.unsafePoll()).toBeNull();
         expect(completion.failures).toBeGreaterThan(1);
         // Reconnected sessions kept journaling new blocks behind the gate.
         expect(forwards().length - journaled).toBeGreaterThan(1);
         expect((yield* owner.frontier).ready).toBe(false);
+        expect(yield* produces(owner)).toBe("Left");
+        completion.failing = false;
+        yield* eventually(
+          owner.frontier.pipe(Effect.filterOrFail(({ ready }) => ready)),
+        );
+        expect(yield* produces(owner)).toBe("Right");
+        expect(stopped.unsafePoll()).toBeNull();
+        yield* Fiber.interrupt(stopped);
       }),
     {
       ...bounds,
@@ -144,6 +176,65 @@ it(
         yield* Fiber.interrupt(stopped);
       }),
     { timeoutMs: 1_500 },
+  ),
+  180_000,
+);
+
+// A pending reconciliation holds the gate across two recoverable failures
+// further apart than the outage limit. Each session the source answers
+// re-prepares the hold, which is the owner waiting on evidence, not on the
+// source: the clock restarts, the owner never stops, and the gate reopens only
+// once the evidence clears the hold.
+const hold = { reason: undefined as string | undefined, prepared: 0 };
+it(
+  "keeps a pending reconciliation held over an answering source across failures further apart than the outage limit",
+  scenario(
+    ({ owner, link }) =>
+      Effect.gen(function* () {
+        const stopped = yield* Effect.fork(Effect.either(owner.awaitStopped));
+        hold.reason = "Awaiting evidence the hold is gone";
+        link.drop();
+        yield* eventually(
+          Effect.suspend(() =>
+            hold.prepared > 0 ? Effect.void : Effect.fail("not held"),
+          ),
+        );
+        expect((yield* owner.frontier).ready).toBe(false);
+        yield* Effect.sleep(OUTAGE_LIMIT_MS + 500);
+        // The second failure, past the limit since the first.
+        const prepared = hold.prepared;
+        link.drop();
+        yield* eventually(
+          Effect.suspend(() =>
+            hold.prepared > prepared ? Effect.void : Effect.fail("not held"),
+          ),
+        );
+        yield* Effect.sleep(MAX_BACKOFF_MS);
+        expect(stopped.unsafePoll()).toBeNull();
+        expect(yield* owner.reconciliationStatus).toEqual({
+          status: "pending",
+          reason: hold.reason,
+        });
+        expect((yield* owner.frontier).ready).toBe(false);
+        expect(yield* produces(owner)).toBe("Left");
+        // Only the evidence clears it.
+        hold.reason = undefined;
+        yield* eventually(
+          owner.frontier.pipe(Effect.filterOrFail(({ ready }) => ready)),
+        );
+        expect(yield* produces(owner)).toBe("Right");
+        expect(stopped.unsafePoll()).toBeNull();
+        yield* Fiber.interrupt(stopped);
+      }),
+    {
+      ...bounds,
+      reset: () => Object.assign(hold, { reason: undefined, prepared: 0 }),
+      pending: () => hold.reason,
+      preparePendingReconciliation: () =>
+        Effect.sync(() => {
+          hold.prepared += 1;
+        }),
+    },
   ),
   180_000,
 );

@@ -2,137 +2,30 @@ import { mkdirSync } from "node:fs";
 import { dirname, isAbsolute, normalize } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-export type AvailabilityOperationIntent = Readonly<{
-  id: string;
-  deploymentIdentity: string;
-  actor: string;
-  headerHash: string;
-  action: string;
-  signedCbor: string;
-  txHash: string;
-  spentOutRefs: readonly string[];
-  collateralOutRefs: readonly string[];
-  expectedOutRefs: readonly string[];
-  validUntilSlot: number;
-  completesWorkflow: boolean;
-}>;
+import { availabilityJournalStorage } from "#availability-operation-journal-storage";
 
-export type AvailabilityOperationRecord = Readonly<{
-  intent: AvailabilityOperationIntent;
-  state: "pending" | "included" | "confirmed" | "expired" | "conflict";
-  inclusionPoint: string | null;
-  detail: string | null;
-}>;
+import type {
+  AvailabilityOperationIntent,
+  AvailabilityOperationJournal,
+  AvailabilityOperationLease,
+  AvailabilityOperationRecord,
+} from "./availability-operation-journal.types.js";
 
-export type AvailabilityOperationLease = Readonly<{
-  scope: string;
-  owner: string;
-  generation: number;
-}>;
+// Native strip-types loads the storage source; tsup bundles it for consumers.
+export type * from "./availability-operation-journal.types.js";
 
-/** One live challenge workflow row of an actor (P9), as listed for release. */
-export type AvailabilityOperationWorkflow = Readonly<{
-  deploymentIdentity: string;
-  headerHash: string;
-  /** The actor's confirmed Opens for this header, oldest first. */
-  confirmedOpens: readonly AvailabilityOperationRecord[];
-}>;
-
-/**
- * Why a workflow row ended in a terminal step someone else landed (P20): a
- * finalized, verified transaction burned the header's queue node or closed
- * its challenge. The journal checks only its own facts; the L1 evidence is
- * the caller's to verify.
- */
-export type AvailabilityWorkflowReleaseEvidence = Readonly<{
-  openIntentId: string;
-  reason: "header-node-burned" | "challenge-closed";
-  txHash: string;
-  spendPoint: string;
-  confirmationDepth: number;
-}>;
-
-export interface AvailabilityOperationJournal {
-  acquire(
-    scope: string,
-    owner: string,
-    nowMs: number,
-    durationMs: number,
-  ): AvailabilityOperationLease;
-  assertLease(lease: AvailabilityOperationLease, nowMs: number): void;
-  release(lease: AvailabilityOperationLease): void;
-  pending(
-    deploymentIdentity: string,
-    actor: string,
-  ): readonly AvailabilityOperationRecord[];
-  unfinalized(
-    deploymentIdentity: string,
-    actor: string,
-  ): readonly AvailabilityOperationRecord[];
-  finalizedAnchors(
-    deploymentIdentity: string,
-    actor: string,
-  ): readonly AvailabilityOperationRecord[];
-  /** All unresolved wallet resources, including intents for other deployments. */
-  reservedOutRefs(actor: string): readonly string[];
-  /**
-   * Refuses every step while the actor has a live challenge workflow in a
-   * different deployment, and a 'prepare' for a header whose own Open landed.
-   * Any other header's step in the same deployment is admitted.
-   */
-  assertWorkflow(
-    lease: AvailabilityOperationLease,
-    deploymentIdentity: string,
-    headerHash: string,
-    action: string,
-    nowMs: number,
-  ): void;
-  /** The actor's live workflow rows in every deployment. */
-  workflows(actor: string): readonly AvailabilityOperationWorkflow[];
-  /**
-   * Deletes the lease actor's workflow row for (deployment, header) once its
-   * challenge ended in someone else's terminal step (P20). Refuses unless the
-   * actor has no pending, included or conflicting intent for that header and
-   * `evidence.openIntentId` is its confirmed Open for it. Only the row goes:
-   * reservations, intents and leases are untouched.
-   */
-  releaseWorkflow(
-    lease: AvailabilityOperationLease,
-    deploymentIdentity: string,
-    headerHash: string,
-    evidence: AvailabilityWorkflowReleaseEvidence,
-    nowMs: number,
-  ): void;
-  get(id: string): AvailabilityOperationRecord | null;
-  findTransaction(txHash: string): AvailabilityOperationRecord | null;
-  persist(
-    lease: AvailabilityOperationLease,
-    intent: AvailabilityOperationIntent,
-    nowMs: number,
-  ): void;
-  transition(
-    lease: AvailabilityOperationLease,
-    id: string,
-    state: AvailabilityOperationRecord["state"],
-    inclusionPoint: string | null,
-    detail: string | null,
-    nowMs: number,
-  ): void;
-  halt(reason: string): void;
-  assertRunning(): void;
-  close(): void;
-}
-
-/**
- * One live challenge workflow per (actor, deployment, header). Schema 2; a
- * schema-1 journal (one workflow per actor) is migrated in place on open.
- */
+/** Schema 3 retains provisional workflows; schemas 1 and 2 migrate on open. */
 const WORKFLOW_COLUMNS = `actor TEXT NOT NULL, deployment TEXT NOT NULL,
-  header_hash TEXT NOT NULL, PRIMARY KEY(actor, deployment, header_hash)`;
+  header_hash TEXT NOT NULL, retired_by TEXT, release TEXT,
+  PRIMARY KEY(actor, deployment, header_hash)`;
 
 /** One durable database must be shared by every process using an actor wallet. */
 export const openAvailabilityOperationJournal = (
   path: string,
+  options: Readonly<{
+    /** Told once when a halt row left by an older release is cleared. */
+    onLegacyHaltCleared?: (reason: string) => void;
+  }> = {},
 ): AvailabilityOperationJournal => {
   if (!isAbsolute(path) || normalize(path) !== path) {
     throw new Error(
@@ -156,6 +49,8 @@ export const openAvailabilityOperationJournal = (
       id TEXT PRIMARY KEY, deployment TEXT NOT NULL, actor TEXT NOT NULL,
       record TEXT NOT NULL, state TEXT NOT NULL, tx_hash TEXT NOT NULL
     );
+    CREATE INDEX IF NOT EXISTS availability_operation_intents_tx_hash
+      ON availability_operation_intents(tx_hash);
     CREATE TABLE IF NOT EXISTS availability_operation_resources (
       resource TEXT NOT NULL, intent_id TEXT NOT NULL, kind TEXT NOT NULL,
       actor TEXT NOT NULL, PRIMARY KEY(resource, intent_id)
@@ -165,25 +60,30 @@ export const openAvailabilityOperationJournal = (
       PRIMARY KEY(parent_tx_hash, child_id)
     );
   `);
-  const transaction = <T>(run: () => T): T => {
-    db.exec("BEGIN IMMEDIATE");
-    try {
-      const result = run();
-      db.exec("COMMIT");
-      return result;
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
-  };
+  const {
+    transaction,
+    records,
+    get,
+    write,
+    stamp,
+    remove,
+    pruneExpired,
+    workflows,
+    unsettledReleases,
+    restoreWorkflow,
+    assertRetirementEvidence,
+  } = availabilityJournalStorage(db);
+  let legacyHalt: string | undefined;
   try {
-    transaction(() => {
-      const schema = db
-        .prepare(
-          "SELECT value FROM availability_journal_metadata WHERE key = 'schema'",
-        )
-        .get()?.value;
-      if (schema !== undefined && schema !== "1" && schema !== "2")
+    legacyHalt = transaction(() => {
+      const meta = (key: string) =>
+        db
+          .prepare(
+            "SELECT value FROM availability_journal_metadata WHERE key = ?",
+          )
+          .get(key)?.value;
+      const schema = meta("schema");
+      if (schema !== undefined && !["1", "2", "3"].includes(String(schema)))
         throw new Error("Unsupported availability operation journal schema");
       if (schema === "1") {
         // Schema 1 keyed workflows on the actor alone. Its rows map 1:1 onto
@@ -194,35 +94,48 @@ export const openAvailabilityOperationJournal = (
             SELECT actor, deployment, header_hash FROM availability_operation_workflows;
           DROP TABLE availability_operation_workflows;
           ALTER TABLE availability_operation_workflows_v2 RENAME TO availability_operation_workflows;
-          UPDATE availability_journal_metadata SET value = '2' WHERE key = 'schema';
         `);
-        return;
       }
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS availability_operation_workflows (${WORKFLOW_COLUMNS});
-        INSERT OR IGNORE INTO availability_journal_metadata VALUES ('schema', '2');
-      `);
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS availability_operation_workflows (${WORKFLOW_COLUMNS})`,
+      );
+      // Schema 2 deleted a terminal step's workflow row at confirmation.
+      for (const column of ["retired_by", "release"])
+        if (
+          !db
+            .prepare(
+              "SELECT 1 FROM pragma_table_info('availability_operation_workflows') WHERE name = ?",
+            )
+            .get(column)
+        )
+          db.exec(
+            `ALTER TABLE availability_operation_workflows ADD COLUMN ${column} TEXT`,
+          );
+      db.exec(
+        "INSERT INTO availability_journal_metadata VALUES ('schema', '3') ON CONFLICT(key) DO UPDATE SET value = '3'",
+      );
+      // Older releases latched all work behind this row on a lost finalized
+      // observation; reconciliation now rewinds and rebroadcasts instead.
+      const halt = meta("halt");
+      db.exec("DELETE FROM availability_journal_metadata WHERE key = 'halt'");
+      return halt === undefined ? undefined : String(halt);
     });
   } catch (error) {
     db.close();
     throw error;
   }
-  const assertRunning = (): void => {
-    const halt = db
-      .prepare(
-        "SELECT value FROM availability_journal_metadata WHERE key = 'halt'",
-      )
-      .get();
-    if (halt)
-      throw new Error(
-        `Availability operation journal halted: ${String(halt.value)}`,
-      );
-  };
+  if (legacyHalt !== undefined)
+    (
+      options.onLegacyHaltCleared ??
+      ((reason) =>
+        process.stderr.write(
+          `${JSON.stringify({ event: "availability_journal_legacy_halt_cleared", reason })}\n`,
+        ))
+    )(legacyHalt);
   const assertLease = (
     lease: AvailabilityOperationLease,
     nowMs: number,
   ): void => {
-    assertRunning();
     const row = db
       .prepare("SELECT * FROM availability_operation_leases WHERE scope = ?")
       .get(lease.scope);
@@ -237,14 +150,6 @@ export const openAvailabilityOperationJournal = (
       );
     }
   };
-  const get = (id: string): AvailabilityOperationRecord | null => {
-    const row = db
-      .prepare("SELECT record FROM availability_operation_intents WHERE id = ?")
-      .get(id);
-    return row
-      ? (JSON.parse(String(row.record)) as AvailabilityOperationRecord)
-      : null;
-  };
   const assertWorkflow = (
     lease: AvailabilityOperationLease,
     deployment: string,
@@ -255,13 +160,18 @@ export const openAvailabilityOperationJournal = (
     assertLease(lease, nowMs);
     const live = db
       .prepare(
-        "SELECT deployment, header_hash FROM availability_operation_workflows WHERE actor = ?",
+        "SELECT deployment, header_hash, retired_by, release FROM availability_operation_workflows WHERE actor = ?",
       )
       .all(lease.scope);
     // The wallet's removal reserve is computed from one deployment's queue, so
-    // a second deployment would count the same balance twice.
+    // a second deployment would count the same balance twice. Provisional
+    // terminal progress can roll back, so its capital guard stays until finality.
     const blocking = live.find(
-      (workflow) => workflow.deployment !== deployment,
+      (workflow) =>
+        workflow.deployment !== deployment &&
+        (workflow.retired_by === null ||
+          workflow.release !== null ||
+          get(String(workflow.retired_by))?.intent.completesWorkflow),
     );
     if (blocking !== undefined) {
       throw new Error(
@@ -272,7 +182,10 @@ export const openAvailabilityOperationJournal = (
     // Open landed needs no new challenger coin.
     if (
       action === "prepare" &&
-      live.some((workflow) => workflow.header_hash === header)
+      live.some(
+        (workflow) =>
+          workflow.header_hash === header && workflow.retired_by === null,
+      )
     ) {
       throw new Error(
         "Availability header already has a live challenge workflow",
@@ -289,6 +202,24 @@ export const openAvailabilityOperationJournal = (
       kind: "collateral",
     })),
   ];
+  const confirmedOf = (
+    lease: AvailabilityOperationLease,
+    id: string,
+    nowMs: number,
+    step: string,
+  ): AvailabilityOperationRecord => {
+    assertLease(lease, nowMs);
+    const record = get(id);
+    if (record && record.intent.actor !== lease.scope)
+      throw new Error(
+        `Availability operation ${step} belongs to a different actor`,
+      );
+    if (record?.state !== "confirmed")
+      throw new Error(
+        `Availability operation ${step} requires a confirmed intent`,
+      );
+    return record;
+  };
   return {
     acquire(scope, owner, nowMs, durationMs) {
       if (
@@ -301,7 +232,6 @@ export const openAvailabilityOperationJournal = (
         throw new Error("Invalid availability operation lease");
       }
       return transaction(() => {
-        assertRunning();
         const row = db
           .prepare(
             "SELECT * FROM availability_operation_leases WHERE scope = ?",
@@ -320,7 +250,6 @@ export const openAvailabilityOperationJournal = (
     },
     assertLease,
     reservedOutRefs(actor) {
-      assertRunning();
       return db
         .prepare(
           "SELECT DISTINCT resource FROM availability_operation_resources WHERE actor = ? ORDER BY resource",
@@ -334,34 +263,22 @@ export const openAvailabilityOperationJournal = (
       ).run(lease.scope, lease.owner, lease.generation);
     },
     pending(deployment, actor) {
-      assertRunning();
-      return db
-        .prepare(
-          "SELECT record FROM availability_operation_intents WHERE deployment = ? AND actor = ? AND state IN ('pending', 'conflict') ORDER BY id",
-        )
-        .all(deployment, actor)
-        .map(
-          (row) =>
-            JSON.parse(String(row.record)) as AvailabilityOperationRecord,
-        );
+      return records(
+        "SELECT record FROM availability_operation_intents WHERE deployment = ? AND actor = ? AND state IN ('pending', 'conflict') ORDER BY id",
+        deployment,
+        actor,
+      );
     },
     unfinalized(deployment, actor) {
-      assertRunning();
-      return db
-        .prepare(
-          "SELECT record FROM availability_operation_intents WHERE deployment = ? AND actor = ? AND state = 'included' ORDER BY id",
-        )
-        .all(deployment, actor)
-        .map(
-          (row) =>
-            JSON.parse(String(row.record)) as AvailabilityOperationRecord,
-        );
+      return records(
+        "SELECT record FROM availability_operation_intents WHERE deployment = ? AND actor = ? AND state = 'included' ORDER BY id",
+        deployment,
+        actor,
+      );
     },
     finalizedAnchors(deployment, actor) {
-      assertRunning();
-      return db
-        .prepare(
-          `SELECT parent.record FROM availability_operation_intents AS parent
+      return records(
+        `SELECT parent.record FROM availability_operation_intents AS parent
         WHERE parent.deployment = ? AND parent.actor = ? AND parent.state = 'confirmed'
         AND NOT EXISTS (
           SELECT 1 FROM availability_operation_dependencies AS edge
@@ -369,55 +286,29 @@ export const openAvailabilityOperationJournal = (
           WHERE edge.parent_tx_hash = parent.tx_hash AND child.state = 'confirmed'
           AND child.deployment = parent.deployment AND child.actor = parent.actor
         ) ORDER BY parent.id`,
-        )
-        .all(deployment, actor)
-        .map(
-          (row) =>
-            JSON.parse(String(row.record)) as AvailabilityOperationRecord,
-        );
+        deployment,
+        actor,
+      );
     },
     assertWorkflow,
-    workflows(actor) {
-      assertRunning();
-      const opens = db
-        .prepare(
-          "SELECT record FROM availability_operation_intents WHERE actor = ? AND state = 'confirmed' ORDER BY rowid",
-        )
-        .all(actor)
-        .map(
-          (row) =>
-            JSON.parse(String(row.record)) as AvailabilityOperationRecord,
-        )
-        .filter((record) => record.intent.action === "open");
-      return db
-        .prepare(
-          "SELECT deployment, header_hash FROM availability_operation_workflows WHERE actor = ? ORDER BY deployment, header_hash",
-        )
-        .all(actor)
-        .map((row) => ({
-          deploymentIdentity: String(row.deployment),
-          headerHash: String(row.header_hash),
-          confirmedOpens: opens.filter(
-            ({ intent }) =>
-              intent.deploymentIdentity === row.deployment &&
-              intent.headerHash === row.header_hash,
-          ),
-        }));
-    },
+    workflows,
+    unsettledReleases,
     releaseWorkflow(lease, deployment, header, evidence, nowMs) {
+      const { confirmationDepth, recoveryDepth } = evidence;
+      if (
+        !Number.isSafeInteger(confirmationDepth) ||
+        !Number.isSafeInteger(recoveryDepth) ||
+        recoveryDepth <= 0
+      )
+        throw new Error("Invalid availability workflow release evidence");
       transaction(() => {
         assertLease(lease, nowMs);
         const actor = lease.scope;
-        const unresolved = db
-          .prepare(
-            "SELECT record FROM availability_operation_intents WHERE deployment = ? AND actor = ? AND state IN ('pending', 'included', 'conflict')",
-          )
-          .all(deployment, actor)
-          .map(
-            (row) =>
-              JSON.parse(String(row.record)) as AvailabilityOperationRecord,
-          )
-          .filter(({ intent }) => intent.headerHash === header);
+        const unresolved = records(
+          "SELECT record FROM availability_operation_intents WHERE deployment = ? AND actor = ? AND state IN ('pending', 'included', 'conflict')",
+          deployment,
+          actor,
+        ).filter(({ intent }) => intent.headerHash === header);
         if (unresolved.length > 0)
           throw new Error(
             "Availability workflow release requires no unresolved intent for the header",
@@ -434,27 +325,50 @@ export const openAvailabilityOperationJournal = (
           throw new Error(
             "Availability workflow release requires the actor's confirmed Open for the header",
           );
-        const deleted = db
+        // Retired by the Open; retained evidence makes a foreign release reversible.
+        const { reason, txHash, spendPoint } = evidence;
+        const retired = db
           .prepare(
-            "DELETE FROM availability_operation_workflows WHERE actor = ? AND deployment = ? AND header_hash = ?",
+            "UPDATE availability_operation_workflows SET retired_by = ?, release = ? WHERE actor = ? AND deployment = ? AND header_hash = ? AND (retired_by IS NULL OR (retired_by = ? AND release IS NOT NULL))",
           )
-          .run(actor, deployment, header);
-        if (Number(deleted.changes) !== 1)
+          .run(
+            open.intent.id,
+            confirmationDepth > recoveryDepth
+              ? null
+              : JSON.stringify({ reason, txHash, spendPoint }),
+            actor,
+            deployment,
+            header,
+            open.intent.id,
+          );
+        if (Number(retired.changes) !== 1)
           throw new Error(
             "Availability workflow release names no live workflow",
           );
       });
     },
+    reviveWorkflow(lease, deployment, header, nowMs) {
+      transaction(() => {
+        assertLease(lease, nowMs);
+        const revived = db
+          .prepare(
+            "UPDATE availability_operation_workflows SET retired_by = NULL, release = NULL WHERE actor = ? AND deployment = ? AND header_hash = ? AND release IS NOT NULL",
+          )
+          .run(lease.scope, deployment, header);
+        if (Number(revived.changes) !== 1)
+          throw new Error(
+            "Availability workflow revival names no unsettled release",
+          );
+      });
+    },
     get,
     findTransaction(txHash) {
-      const row = db
-        .prepare(
+      return (
+        records(
           "SELECT record FROM availability_operation_intents WHERE tx_hash = ? LIMIT 1",
-        )
-        .get(txHash);
-      return row
-        ? (JSON.parse(String(row.record)) as AvailabilityOperationRecord)
-        : null;
+          txHash,
+        )[0] ?? null
+      );
     },
     persist(lease, intent, nowMs) {
       transaction(() => {
@@ -533,14 +447,8 @@ export const openAvailabilityOperationJournal = (
             "INSERT INTO availability_operation_dependencies VALUES (?, ?)",
           ).run(parent, intent.id);
         }
-        // Preparation has no live challenge yet. Opening starts this header's
-        // workflow; it ends when the header's terminal step confirms or its
-        // Open expires. Other headers in the same deployment keep their own.
-        if (intent.action === "open") {
-          db.prepare(
-            "INSERT OR IGNORE INTO availability_operation_workflows VALUES (?, ?, ?)",
-          ).run(intent.actor, intent.deploymentIdentity, intent.headerHash);
-        }
+        // An Open starts this header's workflow; preparation does not.
+        if (intent.action === "open") restoreWorkflow(intent);
       });
     },
     transition(lease, id, state, inclusionPoint, detail, nowMs) {
@@ -569,34 +477,125 @@ export const openAvailabilityOperationJournal = (
           inclusionPoint,
           detail,
         };
-        db.prepare(
-          "UPDATE availability_operation_intents SET state = ?, record = ? WHERE id = ?",
-        ).run(state, JSON.stringify(next), id);
-        if (state === "confirmed" || state === "expired") {
+        write(next);
+        // Expiry frees inputs whose bytes can never land. A confirmation can
+        // still roll back, so it keeps them and only retires its workflow row.
+        if (state === "expired")
           db.prepare(
             "DELETE FROM availability_operation_resources WHERE intent_id = ?",
           ).run(id);
-        }
-        if (
-          (state === "confirmed" && record.intent.completesWorkflow) ||
-          (state === "expired" && record.intent.action === "open")
-        ) {
+        const key = [
+          record.intent.actor,
+          record.intent.deploymentIdentity,
+          record.intent.headerHash,
+        ];
+        if (state === "confirmed" && record.intent.completesWorkflow)
+          db.prepare(
+            "UPDATE availability_operation_workflows SET retired_by = ?, release = NULL WHERE actor = ? AND deployment = ? AND header_hash = ? AND (retired_by IS NULL OR release IS NOT NULL)",
+          ).run(id, ...key);
+        if (state === "expired" && record.intent.action === "open")
           db.prepare(
             "DELETE FROM availability_operation_workflows WHERE actor = ? AND deployment = ? AND header_hash = ?",
-          ).run(
-            record.intent.actor,
-            record.intent.deploymentIdentity,
-            record.intent.headerHash,
+          ).run(...key);
+      });
+    },
+    rewind(lease, id, detail, nowMs) {
+      transaction(() => {
+        const record = confirmedOf(lease, id, nowMs, "rewind");
+        const next: AvailabilityOperationRecord = {
+          intent: record.intent,
+          state: "pending",
+          inclusionPoint: null,
+          detail,
+        };
+        write(next);
+        // A journal from before retention lost these at confirmation.
+        for (const { resource, kind } of resources(record.intent))
+          db.prepare(
+            "INSERT OR IGNORE INTO availability_operation_resources VALUES (?, ?, ?, ?)",
+          ).run(resource, id, kind, record.intent.actor);
+        // Restore even a workflow row deleted before schema 3.
+        if (record.intent.action === "open" || record.intent.completesWorkflow)
+          restoreWorkflow(record.intent);
+      });
+    },
+    retire(lease, id, evidence, nowMs) {
+      const { confirmationDepth, currentSlot, currentBlockNo, recoveryDepth } =
+        evidence;
+      assertRetirementEvidence(evidence);
+      transaction(() => {
+        // Every confirmed ancestor is at least as deep as its descendant.
+        const closure = [confirmedOf(lease, id, nowMs, "retirement")];
+        for (let index = 0; index < closure.length; index++)
+          for (const ref of closure[index]!.intent.spentOutRefs) {
+            const [record] = records(
+              "SELECT record FROM availability_operation_intents WHERE tx_hash = ? AND actor = ? AND deployment = ? AND state = 'confirmed'",
+              ref.split("#")[0]!,
+              lease.scope,
+              closure[0]!.intent.deploymentIdentity,
+            );
+            if (
+              record &&
+              !closure.some((seen) => seen.intent.id === record.intent.id)
+            )
+              closure.push(record);
+          }
+        const reIncluded =
+          evidence.inclusionPoint !== undefined &&
+          evidence.inclusionPoint !== closure[0]!.inclusionPoint;
+        for (const record of closure) {
+          const retained = stamp(
+            record,
+            currentBlockNo,
+            record.intent.id === id
+              ? (evidence.inclusionPoint ?? record.inclusionPoint)
+              : record.inclusionPoint,
+            reIncluded,
           );
+          const { intent } = retained;
+          const depth =
+            currentBlockNo === undefined ||
+            retained.retentionBlockNo === undefined
+              ? confirmationDepth
+              : Math.max(
+                  confirmationDepth,
+                  currentBlockNo - retained.retentionBlockNo,
+                );
+          const live =
+            intent.action === "open" &&
+            db
+              .prepare(
+                "SELECT 1 FROM availability_operation_workflows WHERE actor = ? AND deployment = ? AND header_hash = ? AND (retired_by IS NULL OR release IS NOT NULL OR retired_by != ?)",
+              )
+              .get(
+                intent.actor,
+                intent.deploymentIdentity,
+                intent.headerHash,
+                intent.id,
+              );
+          const prune = depth > recoveryDepth && !live;
+          if (prune || (currentSlot ?? -1) >= intent.validUntilSlot)
+            db.prepare(
+              "DELETE FROM availability_operation_resources WHERE intent_id = ?",
+            ).run(intent.id);
+          if (!prune) continue;
+          remove(intent.id);
         }
       });
     },
-    halt(reason) {
-      db.prepare(
-        "INSERT INTO availability_journal_metadata VALUES ('halt', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-      ).run(reason);
+    pruneExpired(lease, currentBlockNo, recoveryDepth, nowMs) {
+      if (
+        !Number.isSafeInteger(currentBlockNo) ||
+        currentBlockNo < 0 ||
+        !Number.isSafeInteger(recoveryDepth) ||
+        recoveryDepth <= 0
+      )
+        throw new Error("Invalid availability expired-retention evidence");
+      transaction(() => {
+        assertLease(lease, nowMs);
+        pruneExpired(lease.scope, currentBlockNo, recoveryDepth);
+      });
     },
-    assertRunning,
     close: () => db.close(),
   };
 };

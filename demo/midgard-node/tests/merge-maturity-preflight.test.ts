@@ -1,5 +1,7 @@
 import "./utils.js";
 
+import { performance } from "node:perf_hooks";
+
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Duration, Effect, Either, Exit, Option, Ref } from "effect";
@@ -65,9 +67,7 @@ vi.mock("../src/transactions/state-queue/merge-to-confirmed-state.js", () => ({
   }),
 }));
 
-// Spread the real module so load-time reads elsewhere in the import graph
-// (table names, column and status enums) keep resolving; only the members the
-// merge preflight calls are replaced.
+// Preserve real table/status exports; replace only merge preflight members.
 vi.mock("../src/database/index.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../src/database/index.js")>();
@@ -428,11 +428,7 @@ describe("merge maturity semantic preflight", () => {
 
     expect(result).toMatchObject({
       status: "skipped_oldest_block_unattested",
-      // The state-queue node's `da_attestation` is the
-      // `DaAvailabilityStateQueueStatus` enum now, so
-      // `classifyOldestQueuedBlockReadiness` reports the decoded availability
-      // kind under `current_da_availability=` (see `makeCandidate` above,
-      // which already builds the wave-current reason string).
+      // The decoded enum reason is current_da_availability (see makeCandidate).
       reason: expect.stringContaining("current_da_availability="),
     });
     expect(tryWithLeaseMock).not.toHaveBeenCalled();
@@ -745,8 +741,7 @@ describe("merge history producer permit", () => {
       readonly txHash: string;
       readonly exit: Exit.Exit<void, unknown>;
     }) => Effect.Effect<void>;
-    /** A builder whose uninterruptible post-confirmation finalization takes
-     * 190 s, past the 180 s hold, and ends with `exit`. */
+    /** Protected finalization takes 190 s, past the 180 s hold, then `exit`. */
     const slowConfirmedFinalization =
       (exit: Exit.Exit<void, unknown>) =>
       (
@@ -777,6 +772,10 @@ describe("merge history producer permit", () => {
         );
     const runPastHold = async (force: boolean) => {
       vi.useFakeTimers();
+      // Production uses perf_hooks; Vitest replaces only global performance.
+      const monotonicClock = vi
+        .spyOn(performance, "now")
+        .mockImplementation(() => globalThis.performance.now());
       try {
         const outcome = Effect.runPromise(
           Effect.either(mergeActionProgram(force)),
@@ -784,6 +783,7 @@ describe("merge history producer permit", () => {
         await vi.advanceTimersByTimeAsync(200_000);
         return await outcome;
       } finally {
+        monotonicClock.mockRestore();
         vi.useRealTimers();
       }
     };

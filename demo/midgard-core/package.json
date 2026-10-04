@@ -6,6 +6,9 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "type": "module",
+  "imports": {
+    "#availability-operation-journal-storage": "./src/availability-operation-journal.storage.ts"
+  },
   "files": [
     "dist",
     "scripts/golden-channel.mjs"
@@ -311,6 +314,18 @@
       "types": "./dist/native-reward-account.d.ts",
       "import": "./dist/native-reward-account.js",
       "require": "./dist/native-reward-account.cjs"
+    },
+    "./availability-operation-journal-inventory": {
+      "midgard-source": "./src/availability-operation-journal-inventory.ts",
+      "types": "./dist/availability-operation-journal-inventory.d.ts",
+      "import": "./dist/availability-operation-journal-inventory.js",
+      "require": "./dist/availability-operation-journal-inventory.cjs"
+    },
+    "./sqlite-process-mutex": {
+      "midgard-source": "./src/sqlite-process-mutex.ts",
+      "types": "./dist/sqlite-process-mutex.d.ts",
+      "import": "./dist/sqlite-process-mutex.js",
+      "require": "./dist/sqlite-process-mutex.cjs"
     }
   },
   "scripts": {
@@ -328,7 +343,7 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build:contrib-raw": "tsup src/index.ts src/commit-lease-owner.ts src/deployment-profile.ts src/runtime-config.ts src/availability-operation-journal.ts src/native-reward-account.ts src/ogmios-slot.ts src/ogmios-json-rpc-error.ts src/assets.ts src/blake2b-224-trace.ts src/blake2b-256-trace.ts src/bounded-blob.ts src/bounded-collection.ts src/bounded-item.ts src/capability-parity.ts src/cek-proof.ts src/cek-semantic.ts src/cek-source-blob.ts src/consensus-profile.ts src/consensus-validation.ts src/da-libp2p-identity.ts src/deployment-manifest-identity.ts src/ledger-output-commitment.ts src/ledger-output-proof.ts src/ledger-output-scan.ts src/mpf-proof-fold.ts src/native-script-decoding-engine.ts src/native-script-scan.ts src/script-proof.ts src/validation-dispute.ts src/validation-trace.ts src/validation-merkle.ts src/error-format.ts src/canonical-json.ts src/hex.ts src/lucid-data.ts src/narrowing.ts src/out-ref.ts src/plutus-data-cbor.ts src/retention-window.ts src/da-compression.ts src/da-payload-envelope.ts src/da-payload-sizing.ts src/da-request-deadline.ts src/da-transport.ts src/da-stream-codec.ts src/codec/index.ts src/codec/address.ts src/codec/cbor.ts src/codec/datum.ts src/codec/errors.ts src/codec/hash.ts src/codec/native.ts src/codec/forced.ts src/codec/native-constants.ts src/codec/native-tx-carriage.ts src/codec/native-tx-field-access.ts src/codec/native-tx-field-items.ts src/codec/native-script.ts src/codec/output.ts src/codec/script-language-views.ts src/codec/value.ts src/codec/versioned-script.ts --format esm,cjs --dts --clean && node scripts/write-dist-source-digest.mjs"
+    "build:contrib-raw": "tsup src/index.ts src/sqlite-process-mutex.ts src/commit-lease-owner.ts src/deployment-profile.ts src/runtime-config.ts src/availability-operation-journal.ts src/availability-operation-journal-inventory.ts src/native-reward-account.ts src/ogmios-slot.ts src/ogmios-json-rpc-error.ts src/assets.ts src/blake2b-224-trace.ts src/blake2b-256-trace.ts src/bounded-blob.ts src/bounded-collection.ts src/bounded-item.ts src/capability-parity.ts src/cek-proof.ts src/cek-semantic.ts src/cek-source-blob.ts src/consensus-profile.ts src/consensus-validation.ts src/da-libp2p-identity.ts src/deployment-manifest-identity.ts src/ledger-output-commitment.ts src/ledger-output-proof.ts src/ledger-output-scan.ts src/mpf-proof-fold.ts src/native-script-decoding-engine.ts src/native-script-scan.ts src/script-proof.ts src/validation-dispute.ts src/validation-trace.ts src/validation-merkle.ts src/error-format.ts src/canonical-json.ts src/hex.ts src/lucid-data.ts src/narrowing.ts src/out-ref.ts src/plutus-data-cbor.ts src/retention-window.ts src/da-compression.ts src/da-payload-envelope.ts src/da-payload-sizing.ts src/da-request-deadline.ts src/da-transport.ts src/da-stream-codec.ts src/codec/index.ts src/codec/address.ts src/codec/cbor.ts src/codec/datum.ts src/codec/errors.ts src/codec/hash.ts src/codec/native.ts src/codec/forced.ts src/codec/native-constants.ts src/codec/native-tx-carriage.ts src/codec/native-tx-field-access.ts src/codec/native-tx-field-items.ts src/codec/native-script.ts src/codec/output.ts src/codec/script-language-views.ts src/codec/value.ts src/codec/versioned-script.ts --format esm,cjs --dts --clean && node scripts/write-dist-source-digest.mjs"
   },
   "keywords": [
     "cardano",
