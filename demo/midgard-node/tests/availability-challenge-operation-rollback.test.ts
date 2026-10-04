@@ -173,7 +173,9 @@ describe("availability reconciliation after a rollback deeper than the confirmat
           ? included(txHash, MIN_DEPTH, 0)
           : { status: "unknown", reason: "mempool" },
       );
-      const b = await f.prepare("b8".repeat(28), f.coins[0]!);
+      // A different output, so B is not A's transaction byte for byte.
+      const b = await f.prepare("b8".repeat(28), f.coins[0]!, 40_000_000n);
+      expect(b.intent.txHash).not.toBe(a.intent.txHash);
       expect(b.intent.spentOutRefs).toEqual(a.intent.spentOutRefs);
       f.submitted.splice(0);
       // A itself left the chain: its input is back, before its validity.
