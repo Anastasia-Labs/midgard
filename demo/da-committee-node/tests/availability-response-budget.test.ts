@@ -4,6 +4,10 @@ import {
   AVAILABILITY_RESPONDER_VALIDITY_BACKDATE_MS,
   AVAILABILITY_RESPONDER_VALIDITY_SPAN_MS,
 } from "../src/availability/factory.discover-availability-responder-challenges.js";
+import {
+  AVAILABILITY_RESPONDER_RETRY_POLICY,
+  availabilityResponderRetryBoundMs,
+} from "../src/availability-response-loop.js";
 
 /**
  * The full availability response budget (owner ruling B1, 2026-10-01): a
@@ -12,9 +16,9 @@ import {
  *   (confirmation depth + chained publications + one poll block)
  *     x mean L1 block time x 2
  *
- * plus every other bounded wait on the way to its answer: the A1 retrieval
- * cooldown, the A7 one bounded rebuild, the B6 bounded retries at the owning
- * operation and the A5 rebroadcast-before-replace wait. All of it must fit the
+ * plus every other bounded wait on the way to its answer: the A7 one bounded
+ * rebuild, the B6 bounded retries at the owning operation and the A5
+ * rebroadcast-before-replace wait. All of it must fit the
  * profile's small response window, for both live testing profiles and both
  * public profiles. Each wait is read from the code that enforces it. A wait
  * with no time bound in this tree is listed as unbounded and fails the budget;
@@ -62,7 +66,7 @@ const BUDGETED_PROFILES = [
 
 type BoundedWait = Readonly<{
   /** The public-testnet decision item that introduces the wait. */
-  item: "A1" | "A5" | "A7" | "B6";
+  item: "A5" | "A7" | "B6";
   name: string;
 }> &
   (
@@ -86,24 +90,28 @@ const A5_VALIDITY_REMAINING_MS =
   AVAILABILITY_RESPONDER_VALIDITY_BACKDATE_MS;
 const A5_EXPIRY_BLOCK_MS = script.l1BlocksBudgetMs(1);
 
+const B6_RETRY_BOUND_MS = availabilityResponderRetryBoundMs();
+
+// A1's retrieval cooldown is not counted: it is the operator node's wait for
+// foreign payloads, not on the committee responder's path
+// (docs/exec-plans/public-testnet-decisions-2026-10-01/B1.md).
 const BOUNDED_WAITS: readonly BoundedWait[] = [
-  {
-    item: "A1",
-    name: "foreign payload retrieval cooldown",
-    unbounded:
-      "no bounded foreign payload retriever or retrieval cooldown exists in this tree",
-  },
   {
     item: "A7",
     name: "one bounded rebuild after a protocol-parameter refresh",
-    unbounded:
-      "no refresh-and-rebuild-once wrapper exists in this tree; the responder neither refreshes protocol parameters nor rebuilds",
+    ms: 0,
+    derivation:
+      "no separate wait: the responder builds each action once per drain, so a " +
+      "rebuild is the next drain, a B6 retry, already counted there",
   },
   {
     item: "B6",
     name: "bounded retries at the owning operation",
-    unbounded:
-      "the responder has no retry budget: a failed drain is retried on the next poll, with no limit (availability-response-loop.ts)",
+    ms: B6_RETRY_BOUND_MS,
+    derivation:
+      `${AVAILABILITY_RESPONDER_RETRY_POLICY.retries.toString()} retries x backoff ceiling ` +
+      `${AVAILABILITY_RESPONDER_RETRY_POLICY.backoffCeilingMs.toString()} ms ` +
+      `(AVAILABILITY_RESPONDER_RETRY_POLICY, availability-response-loop.ts)`,
   },
   {
     item: "A5",
@@ -206,15 +214,15 @@ describe("availability response budget (B1)", () => {
 
   it("counts each named wait exactly once", () => {
     expect(BOUNDED_WAITS.map(({ item }) => item).sort()).toEqual([
-      "A1",
       "A5",
       "A7",
       "B6",
     ]);
     for (const wait of BOUNDED_WAITS) {
       if (wait.ms === undefined) continue;
-      expect(Number.isSafeInteger(wait.ms) && wait.ms > 0).toBe(true);
+      expect(Number.isSafeInteger(wait.ms) && wait.ms >= 0).toBe(true);
     }
+    expect(B6_RETRY_BOUND_MS).toBeGreaterThan(0);
   });
 
   it("every named wait has a time bound in the code", () => {

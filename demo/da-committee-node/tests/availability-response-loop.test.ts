@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import type { AvailabilityResponderReport } from "../src/availability/responder.js";
-import { createAvailabilityResponseLoop } from "../src/availability-response-loop.js";
+import {
+  AVAILABILITY_RESPONDER_RETRY_POLICY,
+  availabilityResponderRetryBoundMs,
+  createAvailabilityResponseLoop,
+} from "../src/availability-response-loop.js";
 
 const headerHash = "33".repeat(28);
 
 describe("availability response loop", () => {
   const manualInterval = () => {
     const handles: (() => void)[] = [];
+    const timeouts: { run: () => void; ms: number }[] = [];
     return {
       timers: {
         setInterval: (run: () => void) => {
@@ -17,8 +22,25 @@ describe("availability response loop", () => {
         clearInterval: (handle: unknown) => {
           handles.splice(handles.indexOf(handle as () => void), 1);
         },
+        setTimeout: (run: () => void, ms: number) => {
+          const entry = { run, ms };
+          timeouts.push(entry);
+          return entry;
+        },
+        clearTimeout: (handle: unknown) => {
+          const index = timeouts.indexOf(handle as (typeof timeouts)[number]);
+          if (index >= 0) timeouts.splice(index, 1);
+        },
       },
       handles,
+      timeouts,
+      /** Fires the one pending retry timer and returns its delay. */
+      fireRetry: () => {
+        expect(timeouts).toHaveLength(1);
+        const entry = timeouts.shift()!;
+        entry.run();
+        return entry.ms;
+      },
     };
   };
 
@@ -146,5 +168,106 @@ describe("availability response loop", () => {
       `${JSON.stringify({ event: "availability_responder_failed", error: "kupmios read failed" })}\n`,
     ]);
     expect(calls).toBe(2);
+  });
+
+  it("retries a failing drain on a capped backoff, then holds unready on the poll interval until a drain succeeds", async () => {
+    const lines: string[] = [];
+    const clock = manualInterval();
+    let failing = true;
+    let drains = 0;
+    const loop = createAvailabilityResponseLoop({
+      drain: async () => {
+        drains += 1;
+        if (!failing) return { challenges: 0, status: "idle" };
+        // Alternate the two failure shapes: a throw and a failed step.
+        if (drains % 2 === 1) throw new Error("kupmios read failed");
+        return { challenges: 1, status: "failed", detail: "build failed" };
+      },
+      write: (_stream, line) => lines.push(line),
+      pollIntervalMs: 60_000,
+      timers: clock.timers,
+    });
+    const exhaustedEvents = () =>
+      lines.filter((line) =>
+        line.includes('"event":"availability_responder_retries_exhausted"'),
+      );
+
+    loop.start();
+    await settle();
+    expect(drains).toBe(1);
+    // The burst: one retry per failure, doubling and capped at the ceiling,
+    // with readiness still clear.
+    const delays: number[] = [];
+    for (
+      let retry = 0;
+      retry < AVAILABILITY_RESPONDER_RETRY_POLICY.retries;
+      retry += 1
+    ) {
+      expect(loop.reasons()).toEqual([]);
+      delays.push(clock.fireRetry());
+      await settle();
+    }
+    expect(delays).toEqual([5_000, 10_000, 10_000]);
+    expect(delays.reduce((sum, ms) => sum + ms, 0)).toBeLessThanOrEqual(
+      availabilityResponderRetryBoundMs(),
+    );
+    expect(availabilityResponderRetryBoundMs()).toBe(30_000);
+    expect(drains).toBe(1 + AVAILABILITY_RESPONDER_RETRY_POLICY.retries);
+    // Exhausted: no fast retry is left, readiness names the last failure,
+    // and the event is written once.
+    expect(clock.timeouts).toHaveLength(0);
+    expect(loop.reasons()).toEqual([
+      "availability_responder_retries_exhausted:build failed",
+    ]);
+    expect(exhaustedEvents()).toHaveLength(1);
+    // The loop keeps draining on its poll interval while it holds.
+    clock.handles[0]!();
+    await settle();
+    expect(drains).toBe(2 + AVAILABILITY_RESPONDER_RETRY_POLICY.retries);
+    expect(clock.timeouts).toHaveLength(0);
+    expect(exhaustedEvents()).toHaveLength(1);
+    expect(loop.reasons()).toEqual([
+      "availability_responder_retries_exhausted:kupmios read failed",
+    ]);
+    // The dependency recovers: the next poll clears the hold.
+    failing = false;
+    clock.handles[0]!();
+    await settle();
+    expect(loop.reasons()).toEqual([]);
+    // A later failure starts a fresh burst.
+    failing = true;
+    clock.handles[0]!();
+    await settle();
+    expect(clock.timeouts.map(({ ms }) => ms)).toEqual([5_000]);
+    expect(loop.reasons()).toEqual([]);
+    loop.stop();
+    expect(clock.timeouts).toHaveLength(0);
+    expect(clock.handles).toHaveLength(0);
+  });
+
+  it("ends a retry burst at the first drain that does not fail", async () => {
+    const clock = manualInterval();
+    const reports: AvailabilityResponderReport[] = [
+      { challenges: 1, status: "failed", detail: "build failed" },
+      { challenges: 0, status: "awaiting_scan" },
+      { challenges: 1, status: "failed", detail: "build failed" },
+    ];
+    const loop = createAvailabilityResponseLoop({
+      drain: async () => reports.shift()!,
+      write: () => undefined,
+      pollIntervalMs: 60_000,
+      timers: clock.timers,
+    });
+    loop.start();
+    await settle();
+    expect(clock.fireRetry()).toBe(5_000);
+    await settle();
+    // The awaiting-scan drain ended the burst, so the next failure restarts
+    // the backoff from its first step.
+    expect(clock.timeouts).toHaveLength(0);
+    clock.handles[0]!();
+    await settle();
+    expect(clock.timeouts.map(({ ms }) => ms)).toEqual([5_000]);
+    loop.stop();
   });
 });

@@ -114,7 +114,11 @@ manifest's `automaticRecoveryMaxDepth` (2160). Uncertain evidence holds the
 affected intent: until fresh evidence resolves it, readiness fails with its
 reason and the same actor signs no new transaction, while its other intents
 still reconcile on every pass. The committee responder reports such a hold as
-`held` and fails readiness with `availability_operation_held:<tx>: <reason>`. A confirmed intent the chain no longer
+`held` and fails readiness with `availability_operation_held:<tx>: <reason>`.
+A responder drain that fails is retried at most three times on a 5 s, 10 s,
+10 s backoff (`AVAILABILITY_RESPONDER_RETRY_POLICY`); once that burst is spent
+readiness fails with `availability_responder_retries_exhausted:<error>` and the
+responder keeps draining on its poll interval until a drain no longer fails. A confirmed intent the chain no longer
 carries is rewound to pending and its identical signed bytes are rebroadcast.
 Ordinary rollback and expired orphan chains reconcile without replacement bytes.
 A `halt` row left by an older journal is cleared on open with one log line.
