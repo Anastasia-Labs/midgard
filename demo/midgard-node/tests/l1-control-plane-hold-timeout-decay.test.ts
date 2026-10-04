@@ -40,9 +40,23 @@ describe("L1 control-plane hold-timeout streak decay", () => {
         const globals = yield* Globals;
         yield* timedOutHold(globals);
         yield* timedOutHold(globals);
+        // The third timeout is recorded at some instant in
+        // [thirdStartedAt + HOLD_MS, thirdAt]; the quiet window runs QUIET_MS
+        // from it. Sampling just inside the window from its earliest possible
+        // start and just past it from its latest possible start pins its
+        // length without depending on scheduler timing.
+        const thirdStartedAt = Date.now();
         yield* timedOutHold(globals);
         const thirdAt = Date.now();
         const recent = yield* currentLivenessReasons(globals, thirdAt);
+        const quietWindowEnd = yield* currentLivenessReasons(
+          globals,
+          thirdStartedAt + HOLD_MS + QUIET_MS - 1,
+        );
+        const quietWindowPassed = yield* currentLivenessReasons(
+          globals,
+          thirdAt + QUIET_MS + 1,
+        );
         const quiet = yield* currentLivenessReasons(
           globals,
           thirdAt + QUIET_MS + 1_000,
@@ -54,12 +68,23 @@ describe("L1 control-plane hold-timeout streak decay", () => {
         );
         yield* timedOutHold(globals);
         const again = yield* currentLivenessReasons(globals, Date.now());
-        return { recent, quiet, streakWhileQuiet, again };
+        return {
+          recent,
+          quietWindowEnd,
+          quietWindowPassed,
+          quiet,
+          streakWhileQuiet,
+          again,
+        };
       }),
     );
     expect(timeoutReasons(outcome.recent)).toEqual([
       "l1_control_plane_hold_timeouts:slow_scope:3",
     ]);
+    expect(timeoutReasons(outcome.quietWindowEnd)).toEqual([
+      "l1_control_plane_hold_timeouts:slow_scope:3",
+    ]);
+    expect(timeoutReasons(outcome.quietWindowPassed)).toEqual([]);
     expect(timeoutReasons(outcome.quiet)).toEqual([]);
     expect(outcome.streakWhileQuiet).toBe(3);
     expect(timeoutReasons(outcome.again)).toEqual([

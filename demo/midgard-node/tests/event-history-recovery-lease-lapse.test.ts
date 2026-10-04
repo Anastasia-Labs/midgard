@@ -3,16 +3,17 @@
  * longer than the lease: a paused event loop, a slow database) and that
  * nobody else claimed is re-taken as a new Recovering generation, and the
  * lapsed work is superseded, so the owner reconnects into a fresh recovery
- * instead of stopping. A lease another owner claimed is never taken back, and
- * a live lease is never re-taken.
+ * instead of stopping. A lease another owner claimed is never taken back, a
+ * suspended lease is never re-taken, and a live lease is never re-taken.
  */
 import { randomUUID } from "node:crypto";
 
 import { SqlClient } from "@effect/sql";
-import { Effect, Either, type Scope } from "effect";
+import { Effect, Either, Option, type Scope } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import * as Authority from "../src/database/eventHistoryAuthority.js";
+import { reclaimLapsedLease } from "../src/database/eventHistoryAuthority.reclaim-lapsed-lease.js";
 import { MempoolLedgerDB } from "../src/database/index.js";
 import { sqlErrorToDatabaseError } from "../src/database/utils/common.js";
 import {
@@ -76,11 +77,13 @@ const authority = Effect.gen(function* () {
     FROM event_history_authority WHERE singleton = true`;
   return current!;
 });
-const fixture = (ownerToken: string) =>
+/** Counts every canonical-epoch retirement the owner asks of its cache. */
+type Retirements = { count: number };
+const fixture = (ownerToken: string, retirements?: Retirements) =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     const sql = yield* SqlClient.SqlClient;
-    const cache = yield* makeMempoolLedgerCacheService(
+    const service = yield* makeMempoolLedgerCacheService(
       globals,
       sql<{
         id: number;
@@ -89,6 +92,12 @@ const fixture = (ownerToken: string) =>
         sqlErrorToDatabaseError("history_lease_lapse_probe", "load probe"),
       ),
     );
+    const cache = {
+      ...service,
+      retireCanonicalEpoch: Effect.sync(() => {
+        if (retirements !== undefined) retirements.count += 1;
+      }).pipe(Effect.zipRight(service.retireCanonicalEpoch)),
+    };
     return yield* makeEventHistoryRecovery({
       deploymentIdentity,
       ownerToken,
@@ -129,12 +138,16 @@ describe("history lease that lapsed while this process held it", () => {
     await run(
       Effect.gen(function* () {
         const ownerToken = randomUUID();
-        const owner = yield* fixture(ownerToken);
+        const retirements = { count: 0 };
+        const owner = yield* fixture(ownerToken, retirements);
         yield* owner.startup.complete(capture, replace(1));
         const before = yield* authority;
         yield* lapse;
+        const retiredBefore = retirements.count;
         const renewal = yield* Effect.either(owner.renew);
         expect(superseded(renewal)).toBe(true);
+        // One retirement for the reclaim, one for the failed renewal itself.
+        expect(retirements.count - retiredBefore).toBe(2);
         const after = yield* authority;
         expect(after.owner_token).toBe(ownerToken);
         expect(BigInt(after.generation)).toBe(BigInt(before.generation) + 1n);
@@ -158,12 +171,15 @@ describe("history lease that lapsed while this process held it", () => {
     await run(
       Effect.gen(function* () {
         const ownerToken = randomUUID();
-        const owner = yield* fixture(ownerToken);
+        const retirements = { count: 0 };
+        const owner = yield* fixture(ownerToken, retirements);
         const before = yield* authority;
         yield* lapse;
+        const retiredBefore = retirements.count;
         expect(
           superseded(yield* Effect.either(owner.startup.persist(write(1)))),
         ).toBe(true);
+        expect(retirements.count - retiredBefore).toBe(1);
         expect(yield* probe).toEqual([]);
         const after = yield* authority;
         expect(after.owner_token).toBe(ownerToken);
@@ -201,12 +217,15 @@ describe("history lease that lapsed while this process held it", () => {
   it("supersedes a Ready append whose lease lapsed, committing nothing", async () => {
     await run(
       Effect.gen(function* () {
-        const owner = yield* fixture(randomUUID());
+        const retirements = { count: 0 };
+        const owner = yield* fixture(randomUUID(), retirements);
         yield* owner.startup.complete(capture, replace(1));
         yield* lapse;
+        const retiredBefore = retirements.count;
         expect(superseded(yield* Effect.either(owner.append(write(2))))).toBe(
           true,
         );
+        expect(retirements.count - retiredBefore).toBe(1);
         expect(yield* probe).toEqual([1]);
         expect((yield* authority).state).toBe("recovering");
       }),
@@ -246,6 +265,38 @@ describe("history lease that lapsed while this process held it", () => {
       );
     },
   );
+
+  it("never re-takes a lapsed lease that is suspended at the same generation", async () => {
+    await run(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const token = yield* Authority.acquire({
+          deploymentIdentity,
+          ownerToken: randomUUID(),
+          leaseDurationMs: 30_000,
+        });
+        yield* lapse;
+        // suspend() and release() both advance the generation; only the
+        // state clause refuses a suspended row that still names `token`.
+        yield* sql`UPDATE event_history_authority SET state = 'suspended'`;
+        const suspended = yield* authority;
+        expect(suspended.generation).toBe(token.generation);
+        expect(
+          Option.isNone(
+            yield* reclaimLapsedLease(token, 30_000, "history lease lapsed"),
+          ),
+        ).toBe(true);
+        expect(yield* authority).toEqual(suspended);
+        // The same lapsed row, not suspended, is re-taken.
+        yield* sql`UPDATE event_history_authority SET state = 'recovering'`;
+        expect(
+          Option.isSome(
+            yield* reclaimLapsedLease(token, 30_000, "history lease lapsed"),
+          ),
+        ).toBe(true);
+      }),
+    );
+  });
 
   it("never re-takes a live lease when recovery work fails", async () => {
     await run(
