@@ -203,14 +203,12 @@ export const generateOwnedProcessRunToken = (): string =>
 export const readBootId = (): string =>
   readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
 
-export const readProcIdentity = (
+export const readProcCoreIdentity = (
   pid: number,
 ): {
   readonly pgid: number;
   readonly state: string;
   readonly startTicks: string;
-  readonly procCmdlineSha256: string;
-  readonly cwd: string;
 } => {
   const stat = readFileSync(`/proc/${pid.toString()}/stat`, "utf8");
   const commEnd = stat.lastIndexOf(")");
@@ -221,9 +219,15 @@ export const readProcIdentity = (
     .slice(commEnd + 2)
     .trim()
     .split(/\s+/u);
-  const pgid = Number(fieldsFromState[2]);
+  const pgidField = fieldsFromState[2];
+  const pgid = Number(pgidField);
   const startTicks = fieldsFromState[19];
-  if (!Number.isSafeInteger(pgid) || pgid <= 0 || startTicks === undefined) {
+  if (
+    !Number.isSafeInteger(pgid) ||
+    pgid < 0 ||
+    (pgid === 0 && pgidField !== "0") ||
+    startTicks === undefined
+  ) {
     throw new Error(`incomplete /proc identity for pid ${pid.toString()}`);
   }
   const state = fieldsFromState[0] ?? "";
@@ -231,11 +235,23 @@ export const readProcIdentity = (
     pgid,
     state,
     startTicks,
+  };
+};
+
+export const readProcIdentity = (
+  pid: number,
+): ReturnType<typeof readProcCoreIdentity> & {
+  readonly procCmdlineSha256: string;
+  readonly cwd: string;
+} => {
+  const core = readProcCoreIdentity(pid);
+  return {
+    ...core,
     procCmdlineSha256:
-      state === "Z"
+      core.state === "Z"
         ? ""
         : sha256Hex(readFileSync(`/proc/${pid.toString()}/cmdline`)),
-    cwd: state === "Z" ? "" : readlinkSync(`/proc/${pid.toString()}/cwd`),
+    cwd: core.state === "Z" ? "" : readlinkSync(`/proc/${pid.toString()}/cwd`),
   };
 };
 
