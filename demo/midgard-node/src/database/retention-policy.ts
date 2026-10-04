@@ -79,9 +79,9 @@ export const resolveHousekeepingRetentionDays = ({
 
 /**
  * Whether the housekeeping prunes run at all: the wall-clock tables (tx
- * rejections, address history, deposits, withdrawals), finalized journals and
- * settled lease rows. DA payload pruning is not governed by this switch and
- * always runs.
+ * rejections, address history), finalized journals and ended lease rows.
+ * Deposit and withdrawal rows are never pruned. DA payload pruning is not
+ * governed by this switch and always runs.
  */
 export const shouldPruneRetention = (retentionDays: number): boolean =>
   validateRetentionDays(retentionDays) > 0;

@@ -27,8 +27,11 @@ export type HousekeepingHolds = Readonly<{
  * finality (k = 2160): an admitted merge or removal can still roll back, and
  * a removal reopens the events it carried. The observer keeps an admitted
  * merge until it is proven canonical deeper than k and nothing depends on
- * it, and never drops a timeout correction or fraud removal; so while a
- * header is named here, a prune keeps every record it reaches.
+ * it, and never drops a timeout correction or fraud removal. A header in its
+ * cursor queue may already have left L1's queue in a transition the observer
+ * has not replayed yet; holding it covers that gap, since the replay names
+ * it before the cursor moves past it. So while a header is named here, a
+ * prune keeps every record it reaches.
  */
 export const observerRecordedHeader = (
   sql: SqlClient.SqlClient,
@@ -73,7 +76,7 @@ export const observerCursorHeader = (
  * The SQL condition true when a row whose header is `headerColumn` is still
  * challenge-relevant and must be kept: the header is the L1 confirmed head,
  * live in the L1 state queue, held by DA retention for finality
- * (`finalityHeldPayload`), or named by any recorded observer transition
+ * (`finalityHeldPayload`), or still held by the correction observer
  * (`observerRecordedHeader`). A NULL header is never matched as kept, so
  * callers that may see one must also require it to be NOT NULL.
  */
@@ -155,6 +158,33 @@ export const recoveryRelevantJournal = (
   UNION SELECT journal.base_tail_header_hash
     FROM pending_block_finalizations AS journal
     JOIN plan_headers AS plan ON journal.header_hash = plan.header_hash)`;
+
+/**
+ * The SQL condition true when the journal whose header is `headerColumn` has
+ * a deposit or withdrawal member bound to an event-history incarnation L1 no
+ * longer holds as canonical (an orphan). Such a journal is incomplete: signed
+ * header recovery still classifies its header
+ * (`signedHeaderRecoveryCandidates`), and ledger repair refuses to undo an
+ * orphan's admission while a retained header names it as a member, so
+ * deleting the journal would turn that refusal into a repair.
+ */
+export const orphanMemberJournal = (
+  sql: SqlClient.SqlClient,
+  headerColumn: string,
+) => sql`(EXISTS (
+    SELECT 1 FROM pending_block_finalization_deposits AS member
+    JOIN event_history_incarnations AS incarnation
+      ON incarnation.binding_digest = member.history_binding_digest
+        AND incarnation.incarnation_id = member.history_incarnation_id
+    WHERE member.header_hash = ${sql(headerColumn)}
+      AND NOT incarnation.origin_canonical)
+  OR EXISTS (
+    SELECT 1 FROM pending_block_finalization_withdrawals AS member
+    JOIN event_history_incarnations AS incarnation
+      ON incarnation.binding_digest = member.history_binding_digest
+        AND incarnation.incarnation_id = member.history_incarnation_id
+    WHERE member.header_hash = ${sql(headerColumn)}
+      AND NOT incarnation.origin_canonical))`;
 
 /**
  * Runs `batch(limit)` until a batch deletes fewer than `limit` rows,

@@ -21,6 +21,7 @@ import { type Record } from "./pendingBlockFinalizations.parse-ledger-delta.js";
 import { retrieveRecord } from "./pendingBlockFinalizations.retrieve-record.js";
 import {
   challengeRelevantHeader,
+  orphanMemberJournal,
   pruneInBatches,
   recoveryRelevantJournal,
 } from "./retention-holds.js";
@@ -220,9 +221,13 @@ export const withdrawalMemberToAssignment = (
  * journal whose header is still challenge-relevant (`challengeRelevantHeader`:
  * the confirmed head, a live queue header, a header DA retention holds for
  * finality, or one any recorded correction-observer transition, pending or
- * admitted, merged or removed, so a merge admitted at confirmation depth
- * keeps its journal until it is final at k). Recovery dependencies are also
- * kept: unfinished/abandoned journals' bases, same-base siblings and descendants,
+ * admitted, merged or removed, or the observer's durable cursor still names,
+ * so a merge admitted at confirmation depth keeps its journal until it is
+ * final at k), any journal whose merge the observer has not recorded since it
+ * was folded locally (or every journal, while the deployment has no observer
+ * record), and any journal with an orphaned event member
+ * (`orphanMemberJournal`). Recovery dependencies are also kept:
+ * unfinished/abandoned journals' bases, same-base siblings and descendants,
  * and every retained native recovery plan's primary/member headers. Each batch
  * is its own history write, so it needs the history producer permit and holds
  * it for one statement at a time. Returns the number removed.
@@ -231,7 +236,9 @@ export const pruneFinalizedBeyondChallengeability = ({
   challengeableCutoff,
   view,
   deploymentIdentityDigest,
-  batchLimit = 500,
+  // Each batch cascades into the journal's tx, trace and witness rows while
+  // holding the history write lock, so batches stay small.
+  batchLimit = 50,
   maxBatches = 100,
   deadlineMs,
 }: {
@@ -258,12 +265,23 @@ export const pruneFinalizedBeyondChallengeability = ({
             AND ${sql(Columns.BLOCK_END_TIME)} < ${challengeableCutoff}
             AND NOT ${challengeRelevantHeader(sql, `${tableName}.${Columns.HEADER_HASH}`, { view, deploymentIdentityDigest })}
             AND NOT ${recoveryRelevantJournal(sql, `${tableName}.${Columns.HEADER_HASH}`, deploymentIdentityDigest)}
+            AND NOT ${orphanMemberJournal(sql, `${tableName}.${Columns.HEADER_HASH}`)}
             AND EXISTS (
               SELECT 1 FROM ${sql(MutationJobsDB.tableName)} AS job
               WHERE job.${sql(MutationJobsDB.Columns.JOB_ID)} =
                   ${MutationJobsDB.confirmedMergeFinalizationJobId("")}::text ||
                   encode(${sql(tableName)}.${sql(Columns.HEADER_HASH)}, 'hex')
-                AND job.${sql(MutationJobsDB.Columns.STATUS)} = ${MutationJobsDB.Status.Completed})
+                AND job.${sql(MutationJobsDB.Columns.STATUS)} = ${MutationJobsDB.Status.Completed}
+                -- The observer saved its record after the merge was folded
+                -- locally. The journal is past the retention window, so its
+                -- header was committed long before that save: the record
+                -- still queues the header, names its merge, or dropped the
+                -- merge as final beyond k. No record (NULL) keeps every
+                -- journal.
+                AND job.${sql(MutationJobsDB.Columns.COMPLETED_AT)} < (
+                  SELECT observer.updated_at
+                  FROM state_queue_terminal_observer_states AS observer
+                  WHERE observer.deployment_identity_digest = ${deploymentIdentityDigest}))
             AND ${sql(Columns.HEADER_HASH)} <> (
               SELECT newest.${sql(Columns.HEADER_HASH)} FROM ${sql(
                 tableName,

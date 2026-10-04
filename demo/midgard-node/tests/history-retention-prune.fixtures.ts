@@ -7,7 +7,7 @@ import {
   header,
   journalFixture,
 } from "./local-mutation-job-abandonment.journal-fixture.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { deterministicFixtureBytes, provideDatabaseLayers } from "./utils.js";
 
 export const DAY_MS = 24 * 60 * 60_000;
 export const DEPLOYMENT = Buffer.alloc(32, 7);
@@ -39,7 +39,8 @@ export const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
         const clear = sql`TRUNCATE TABLE pending_block_finalizations,
           state_queue_mutation_leases, event_history_authority,
           local_mutation_jobs, da_payload_terminal_outcomes,
-          state_queue_terminal_observer_states, event_history_recovery_plans
+          state_queue_terminal_observer_states, event_history_recovery_plans,
+          event_history_cursor
           RESTART IDENTITY CASCADE`;
         yield* clear;
         // Never leave a seeded active lease behind for a later file on
@@ -138,18 +139,23 @@ export const leaseTokens = Effect.gen(function* () {
   return rows.map((row) => row.token);
 });
 
-/** A correction-observer record under `DEPLOYMENT` whose `pending` and
- * `admitted` transitions name `pending` and `admitted` headers as removed,
- * stored string-wrapped when `wrapped` (as JSON.stringify writes it). */
+/** Saves the correction-observer record under `DEPLOYMENT` (replacing any
+ * earlier one, as each reconcile does) whose `pending` and `admitted`
+ * transitions name `pending` and `admitted` headers as removed and whose
+ * cursor queue holds `cursorQueue` after the root, stored string-wrapped when
+ * `wrapped` (as JSON.stringify writes it). Its `updated_at` is the save time,
+ * so a merge folded before this call counts as observed. */
 export const recordObserverState = ({
   pending = [],
   admitted = [],
+  cursorQueue = [],
   wrapped = true,
 }: {
   readonly pending?: readonly Buffer[];
   readonly admitted?: readonly Buffer[];
+  readonly cursorQueue?: readonly Buffer[];
   readonly wrapped?: boolean;
-}) =>
+} = {}) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const transition = (headers: readonly Buffer[]) => ({
@@ -157,6 +163,13 @@ export const recordObserverState = ({
       removedHeaderHashes: headers.map((hash) => hash.toString("hex")),
     });
     const record = {
+      cursorQueue: [
+        { headerHash: null, outRef: `${"00".repeat(32)}#0` },
+        ...cursorQueue.map((hash, index) => ({
+          headerHash: hash.toString("hex"),
+          outRef: `${"00".repeat(32)}#${(index + 1).toString()}`,
+        })),
+      ],
       pending: pending.length === 0 ? [] : [transition(pending)],
       admitted: admitted.length === 0 ? [] : [transition(admitted)],
     };
@@ -168,7 +181,9 @@ export const recordObserverState = ({
         deployment_identity_digest, state_queue_policy_id, state_digest,
         state_record
       ) VALUES (${DEPLOYMENT}, ${Buffer.alloc(28, 1)}, ${Buffer.alloc(32, 2)},
-        ${stored})`;
+        ${stored})
+      ON CONFLICT (deployment_identity_digest) DO UPDATE SET
+        state_record = EXCLUDED.state_record, updated_at = NOW()`;
     const [shape] = yield* sql<{ kind: string }>`
       SELECT jsonb_typeof(state_record) AS kind
       FROM state_queue_terminal_observer_states`;
@@ -176,4 +191,37 @@ export const recordObserverState = ({
       return yield* Effect.die(
         new Error(`observer record stored as ${String(shape?.kind)}`),
       );
+  });
+
+/** Gives the journal `label` one deposit member bound to its own
+ * event-history incarnation, canonical or orphaned (L1 rolled its origin
+ * back). Creates the history cursor the incarnation hangs off on first use. */
+export const recordDepositMember = (label: string, canonical: boolean) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const bytes = (tag: string, length = 32) =>
+      deterministicFixtureBytes(`history-retention-prune:${tag}`, length);
+    const binding = bytes("binding");
+    yield* sql`INSERT INTO event_history_cursor (
+        binding_digest, manifest_id, origin_receipt, origin_receipt_digest,
+        anchor_hash, anchor_slot, anchor_height, anchor_snapshot_digest,
+        head_hash, head_slot, head_height, snapshot_digest, revision, addresses
+      ) VALUES (${binding}, ${DEPLOYMENT}, 'retention fixture', ${bytes("receipt")},
+        ${bytes("anchor")}, 1, 1, ${bytes("snapshot")}, ${bytes("anchor")}, 1, 1,
+        ${bytes("snapshot")}, 0, '[]'::jsonb)
+      ON CONFLICT (binding_digest) DO NOTHING`;
+    const incarnation = bytes(`incarnation:${label}`);
+    const eventId = bytes(`event:${label}`, 36);
+    yield* sql`INSERT INTO event_history_incarnations (
+        binding_digest, incarnation_id, kind, event_id, event_key,
+        origin_canonical, incarnation_record, incarnation_digest
+      ) VALUES (${binding}, ${incarnation}, 'deposit', ${eventId},
+        ${bytes(`key:${label}`)}, ${canonical}, 'retention fixture',
+        ${bytes(`digest:${label}`)})`;
+    yield* sql`INSERT INTO pending_block_finalization_deposits (
+        header_hash, member_id, ordinal, payload_cbor, payload_sha256,
+        source_table, source_id, source_time_stamp_tz,
+        history_binding_digest, history_incarnation_id
+      ) VALUES (${header(label)}, ${eventId}, 0, '\\x00', ${bytes(`payload:${label}`)},
+        'deposits_utxos', ${eventId}, NOW(), ${binding}, ${incarnation})`;
   });

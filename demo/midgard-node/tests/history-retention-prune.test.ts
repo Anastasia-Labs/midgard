@@ -3,14 +3,12 @@ import "./utils.js";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { StateQueueMutationLeasesDB } from "../src/database/index.js";
 import { pruneFinalizedBeyondChallengeability } from "../src/database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
 import {
   DAY_MS,
   DEPLOYMENT,
-  insertLease,
   journals,
-  leaseTokens,
+  recordDepositMember,
   recordMergedOutcome,
   recordMergeJob,
   recordObserverState,
@@ -30,9 +28,6 @@ const prune = (
     deploymentIdentityDigest: DEPLOYMENT,
     ...args,
   });
-
-/** The manifest-derived housekeeping window (15 days today). */
-const MANIFEST_WINDOW_MS = 15 * DAY_MS;
 
 const ALL = [
   "old-plain",
@@ -79,6 +74,7 @@ describe("pruning finalized journals beyond challengeability", () => {
             mergeJob: "completed",
           },
         ]);
+        yield* recordObserverState();
         const removed = yield* prune({
           challengeableCutoff: new Date(Date.now() - DAY_MS),
           view: {
@@ -104,6 +100,7 @@ describe("pruning finalized journals beyond challengeability", () => {
             endedAgoMs: (20 - index) * DAY_MS,
           })),
         );
+        yield* recordObserverState();
         const view = {
           confirmedHeadHash: header("not-journaled"),
           liveQueueHeaderHashes: [],
@@ -166,6 +163,7 @@ describe("pruning finalized journals beyond challengeability", () => {
           },
           { label: "newest", status: "finalized", endedAgoMs: 8 * DAY_MS },
         ]);
+        yield* recordObserverState();
         const whileUnmerged = yield* prune({
           challengeableCutoff: cutoff,
           view,
@@ -173,6 +171,13 @@ describe("pruning finalized journals beyond challengeability", () => {
         const keptWhileUnmerged = yield* remainingLabels(labels);
         yield* recordMergeJob(header("merge-running"), "completed");
         yield* recordMergeJob(header("merge-unstarted"), "completed");
+        // Folded locally after the observer last saved: kept until it has
+        // seen the queue again.
+        const beforeObserved = yield* prune({
+          challengeableCutoff: cutoff,
+          view,
+        });
+        yield* recordObserverState();
         const onceMerged = yield* prune({
           challengeableCutoff: cutoff,
           view,
@@ -180,6 +185,7 @@ describe("pruning finalized journals beyond challengeability", () => {
         return {
           whileUnmerged,
           keptWhileUnmerged,
+          beforeObserved,
           onceMerged,
           remaining: yield* remainingLabels(labels),
         };
@@ -187,6 +193,7 @@ describe("pruning finalized journals beyond challengeability", () => {
     );
     expect(result.whileUnmerged).toBe(0);
     expect(result.keptWhileUnmerged).toEqual(labels);
+    expect(result.beforeObserved).toBe(0);
     expect(result.onceMerged).toBe(2);
     expect(result.remaining).toEqual(["newest"]);
   });
@@ -209,6 +216,7 @@ describe("pruning finalized journals beyond challengeability", () => {
         );
         yield* recordMergedOutcome(header("older-merge"), 10);
         yield* recordMergedOutcome(header("latest-final-merge"), 11);
+        yield* recordObserverState();
         const held = yield* prune({ challengeableCutoff: cutoff, view });
         return { held, remaining: yield* remainingLabels(labels) };
       }),
@@ -228,6 +236,7 @@ describe("pruning finalized journals beyond challengeability", () => {
             endedAgoMs: DAY_MS / 2,
           })),
         );
+        yield* recordObserverState();
         const removed = yield* prune({
           challengeableCutoff: new Date(Date.now() - DAY_MS),
           view: {
@@ -310,6 +319,84 @@ describe("journals a recorded correction transition names", () => {
     ]);
   });
 
+  it("keeps a journal the observer's cursor still queues: its merge is not replayed yet", async () => {
+    const result = await run(
+      Effect.gen(function* () {
+        yield* journals(
+          labels.map((label, index) => ({
+            label,
+            status: "finalized" as const,
+            endedAgoMs: (40 - index) * DAY_MS,
+          })),
+        );
+        yield* recordObserverState({ cursorQueue: [header("unnamed")] });
+        const whileQueued = yield* prune({
+          challengeableCutoff: new Date(Date.now() - DAY_MS),
+          view,
+        });
+        const keptWhileQueued = yield* remainingLabels(labels);
+        // The next reconcile replays the merge and admits it.
+        yield* recordObserverState({ admitted: [header("unnamed")] });
+        const whileAdmitted = yield* prune({
+          challengeableCutoff: new Date(Date.now() - DAY_MS),
+          view,
+        });
+        // Proven final beyond k and dropped from the admitted list.
+        yield* recordObserverState();
+        const oncePastK = yield* prune({
+          challengeableCutoff: new Date(Date.now() - DAY_MS),
+          view,
+        });
+        return {
+          whileQueued,
+          keptWhileQueued,
+          whileAdmitted,
+          oncePastK,
+          remaining: yield* remainingLabels(labels),
+        };
+      }),
+    );
+    expect(result.whileQueued).toBe(2);
+    expect(result.keptWhileQueued).toEqual(["unnamed", "newest"]);
+    expect(result.whileAdmitted).toBe(0);
+    expect(result.oncePastK).toBe(1);
+    expect(result.remaining).toEqual(["newest"]);
+  });
+
+  it("removes no journal while the deployment has no correction-observer record", async () => {
+    const result = await run(
+      Effect.gen(function* () {
+        yield* journals(
+          labels.map((label, index) => ({
+            label,
+            status: "finalized" as const,
+            endedAgoMs: (40 - index) * DAY_MS,
+          })),
+        );
+        const unobserved = yield* prune({
+          challengeableCutoff: new Date(Date.now() - DAY_MS),
+          view,
+        });
+        const keptUnobserved = yield* remainingLabels(labels);
+        yield* recordObserverState();
+        const observed = yield* prune({
+          challengeableCutoff: new Date(Date.now() - DAY_MS),
+          view,
+        });
+        return {
+          unobserved,
+          keptUnobserved,
+          observed,
+          remaining: yield* remainingLabels(labels),
+        };
+      }),
+    );
+    expect(result.unobserved).toBe(0);
+    expect(result.keptUnobserved).toEqual(labels);
+    expect(result.observed).toBe(3);
+    expect(result.remaining).toEqual(["newest"]);
+  });
+
   it("starts no batch once the permit budget's deadline has passed", async () => {
     const result = await run(
       Effect.gen(function* () {
@@ -320,6 +407,7 @@ describe("journals a recorded correction transition names", () => {
             endedAgoMs: (40 - index) * DAY_MS,
           })),
         );
+        yield* recordObserverState();
         const removed = yield* prune({
           challengeableCutoff: new Date(Date.now() - DAY_MS),
           view,
@@ -333,98 +421,32 @@ describe("journals a recorded correction transition names", () => {
   });
 });
 
-describe("pruning ended state-queue mutation leases", () => {
-  const seed = Effect.gen(function* () {
-    // Three long-ended leases, the oldest by acquisition.
-    for (const index of [0, 1, 2])
-      yield* insertLease({
-        token: `old-${index.toString()}`,
-        status: index === 1 ? "failed" : "released",
-        acquiredAgoMs: 30 * DAY_MS + index * 1_000,
-        releasedAgoMs: 30 * DAY_MS,
-      });
-    // Ended inside the window: kept though it is not among the newest.
-    yield* insertLease({
-      token: "recently-ended",
-      status: "released",
-      acquiredAgoMs: 29 * DAY_MS,
-      releasedAgoMs: 60_000,
-    });
-    // One hundred ended leases, newer by acquisition, all past the window.
-    for (let index = 0; index < 100; index++)
-      yield* insertLease({
-        token: `recent-${index.toString().padStart(3, "0")}`,
-        status: "released",
-        acquiredAgoMs: 20 * DAY_MS - index * 1_000,
-        releasedAgoMs: 16 * DAY_MS,
-      });
-    yield* insertLease({
-      token: "active",
-      status: "active",
-      acquiredAgoMs: 1_000,
-      releasedAgoMs: null,
-    });
-  });
-
-  it("removes ended leases past the window outside the newest inspectable rows, never the active one", async () => {
+describe("journals with an orphaned event member", () => {
+  it("keeps a journal whose deposit member's L1 origin rolled back, and removes one whose member is canonical", async () => {
+    const labels = ["orphan-member", "canonical-member", "newest"];
     const result = await run(
       Effect.gen(function* () {
-        yield* seed;
-        const removed = yield* StateQueueMutationLeasesDB.pruneSettledLeases({
-          olderThanMs: MANIFEST_WINDOW_MS,
-          batchLimit: 2,
+        yield* journals(
+          labels.map((label, index) => ({
+            label,
+            status: "finalized" as const,
+            endedAgoMs: (40 - index) * DAY_MS,
+          })),
+        );
+        yield* recordDepositMember("orphan-member", false);
+        yield* recordDepositMember("canonical-member", true);
+        yield* recordObserverState();
+        const removed = yield* prune({
+          challengeableCutoff: new Date(Date.now() - DAY_MS),
+          view: {
+            confirmedHeadHash: header("not-journaled"),
+            liveQueueHeaderHashes: [],
+          },
         });
-        return { removed, tokens: yield* leaseTokens };
+        return { removed, remaining: yield* remainingLabels(labels) };
       }),
     );
-    // The newest 100 are the active lease and recent-001..recent-099, so
-    // recent-000 falls out with the three old ones.
-    expect(StateQueueMutationLeasesDB.INSPECTABLE_LEASE_ROWS).toBe(100);
-    expect(result.removed).toBe(4);
-    expect(result.tokens).toHaveLength(101);
-    expect(result.tokens).toContain("active");
-    expect(result.tokens).toContain("recently-ended");
-    expect(result.tokens).not.toContain("recent-000");
-    expect(result.tokens).toContain("recent-001");
-    for (const old of ["old-0", "old-1", "old-2"])
-      expect(result.tokens).not.toContain(old);
-  });
-
-  it("removes nothing when every ended lease is inside the window", async () => {
-    const result = await run(
-      Effect.gen(function* () {
-        yield* seed;
-        const removed = yield* StateQueueMutationLeasesDB.pruneSettledLeases({
-          olderThanMs: 60 * DAY_MS,
-        });
-        return { removed, tokens: yield* leaseTokens };
-      }),
-    );
-    expect(result.removed).toBe(0);
-    expect(result.tokens).toHaveLength(105);
-  });
-
-  it("keeps an ended lease past the window while a retained journal names it", async () => {
-    const result = await run(
-      Effect.gen(function* () {
-        yield* seed;
-        // The journal fixture names "lease-token".
-        yield* insertLease({
-          token: "lease-token",
-          status: "released",
-          acquiredAgoMs: 40 * DAY_MS,
-          releasedAgoMs: 40 * DAY_MS,
-        });
-        yield* journals([
-          { label: "named", status: "finalized", endedAgoMs: DAY_MS },
-        ]);
-        const removed = yield* StateQueueMutationLeasesDB.pruneSettledLeases({
-          olderThanMs: MANIFEST_WINDOW_MS,
-        });
-        return { removed, tokens: yield* leaseTokens };
-      }),
-    );
-    expect(result.tokens).toContain("lease-token");
-    expect(result.removed).toBe(4);
+    expect(result.removed).toBe(1);
+    expect(result.remaining).toEqual(["orphan-member", "newest"]);
   });
 });
