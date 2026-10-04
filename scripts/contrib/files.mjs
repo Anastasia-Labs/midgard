@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
+import { NATIVE_RECIPES } from "./native-recipes.mjs";
 
 export const sha256 = (value) =>
   createHash("sha256").update(value).digest("hex");
@@ -318,6 +319,12 @@ export const outputIdentity = (root, directory) =>
     root,
     filesUnder(resolve(root, directory), { outputs: true }).filter(
       (path) =>
+        // The watcher Go owner shares dist, but has its own binary receipt.
+        // Other packages' directories named native remain compiled outputs.
+        !Object.entries(NATIVE_RECIPES).some(
+          ([name, recipe]) =>
+            path === resolve(root, "demo", name, recipe.output),
+        ) &&
         !path.endsWith(".contrib-build-v1.json") &&
         !path.endsWith(".contrib-native-v1.json"),
     ),

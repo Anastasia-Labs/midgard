@@ -6,9 +6,9 @@ import {
   runArtifact,
   withScratchCheckout,
 } from "./artifacts.mjs";
-import { runDirectory } from "./build.mjs";
-import { atomicJson, inputIdentity } from "./files.mjs";
-import { buildNative, NATIVE_RECIPES } from "./native.mjs";
+import { checkBuild, runDirectory } from "./build.mjs";
+import { atomicJson, inputIdentity, workspacePackages } from "./files.mjs";
+import { buildNative, checkNative, NATIVE_RECIPES } from "./native.mjs";
 import { runProcess } from "./process.mjs";
 import { writeReceipt } from "./receipts.mjs";
 import { git } from "./workspace.mjs";
@@ -91,6 +91,23 @@ export const reproduce = async (
         steps.push(...receipt.steps);
         if (receipt.exitCode)
           throw new Error(`clean artifact validation failed: ${receipt.path}`);
+      }
+      // A later generator or compiler must not invalidate an earlier owner.
+      for (const name of plan.nativePackages) {
+        const verdict = checkNative(scratch, name);
+        if (verdict.status !== "fresh")
+          throw new Error(
+            `final native output ${name} is ${verdict.status}: ${verdict.reason}`,
+          );
+      }
+      for (const pkg of workspacePackages(scratch).filter(
+        (entry) => entry.scripts?.["build:contrib-raw"],
+      )) {
+        const verdict = checkBuild(scratch, pkg.name);
+        if (verdict.status !== "fresh")
+          throw new Error(
+            `final compiled output ${pkg.name} is ${verdict.status}: ${verdict.reason}`,
+          );
       }
     });
   } catch (caught) {

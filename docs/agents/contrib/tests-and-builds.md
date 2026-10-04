@@ -36,6 +36,10 @@ fixtures, so some unrelated edits can require an extra rebuild.
 The Go helper disables ambient Git stamping with `-buildvcs=false`: linked
 worktrees and source archives must not discover an unrelated ancestor repository.
 Its native receipt records source, compiler and binary identities instead.
+Watcher TypeScript rebuilds preserve `dist/native`; only the declared Go binary
+is excluded from JavaScript output identities. Native receipts still bind its
+bytes. Clean reproduction rechecks both owners after all artifact checks, so
+a later build or generator cannot silently erase an earlier native result.
 
 Guarded children use Corepack to select each project's declared package manager,
 including bare `pnpm --dir ...` inside nested recipes. The demo pins pnpm 9 and

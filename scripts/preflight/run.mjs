@@ -237,6 +237,9 @@ export const spawnStep = async (root, step, env, log, signal) =>
           signal: controller.signal,
           logPath: resolve(directory, "preflight.log"),
           maxBytes: 128 * 1024 * 1024,
+          // Aggregate acceptance commands include sequential emulator suites;
+          // hosted fault-proof shards alone can exceed the focused 30m limit.
+          timeoutMs: 7_200_000,
           echo: true,
         });
         const receipt = writeReceipt({

@@ -29,3 +29,11 @@ namespace, a legacy record or an unfinished launch remains unknown and cannot
 be reclaimed. Child output and elapsed time are bounded; cancellation joins
 the invocation's process groups before releasing its lease. Killed orphan
 processes can remain zombies until the host reaps them.
+
+Cancel through the owning invocation and await its exit before starting a
+replacement. Then inspect `resources list`; reclaim only a recorded abandoned
+owner. Forced termination can leave descendants or an unfinished launch whose
+state requires investigation. Never clear lease directories to unblock a run.
+Focused children default to 30 minutes and 16 MiB of output. Aggregate preflight
+steps allow two hours and 128 MiB because full emulator suites run sequentially;
+both paths still terminate and join their owned groups at the limit.

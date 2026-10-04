@@ -5,6 +5,7 @@ import {
   utimesSync,
   mkdirSync,
   cpSync,
+  renameSync,
 } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -150,6 +151,55 @@ test("copying an identical dist from another checkout is refused", (t) => {
     { recursive: true },
   );
   assert.match(checkBuild(second, "example").reason, /another.*checkout/u);
+});
+
+test("watcher native outputs have separate ownership from compiled JavaScript", (t) => {
+  const root = fixture(t);
+  const directory = "demo/midgard-watcher/dist";
+  renameSync(
+    resolve(root, "demo/example"),
+    resolve(root, "demo/midgard-watcher"),
+  );
+  atomicJson(resolve(root, "demo/midgard-watcher/package.json"), {
+    name: "midgard-watcher",
+  });
+  const before = outputIdentity(root, directory).sha256;
+  mkdirSync(resolve(root, directory, "native"));
+  writeFileSync(
+    resolve(root, directory, "native/midgard-chain-sync"),
+    "Go binary",
+  );
+  assert.equal(
+    outputIdentity(root, directory).sha256,
+    before,
+    "adding the separately guarded Go binary must not invalidate TypeScript",
+  );
+  writeFileSync(
+    resolve(root, directory, "native/unowned.js"),
+    "another output",
+  );
+  assert.notEqual(
+    outputIdentity(root, directory).sha256,
+    before,
+    "unowned siblings in the native directory remain compiled outputs",
+  );
+  const withSibling = outputIdentity(root, directory).sha256;
+  writeFileSync(resolve(root, directory, "index.js"), "tampered JavaScript");
+  assert.notEqual(outputIdentity(root, directory).sha256, withSibling);
+  renameSync(
+    resolve(root, "demo/midgard-watcher"),
+    resolve(root, "demo/example"),
+  );
+  const ordinary = outputIdentity(root, "demo/example/dist").sha256;
+  writeFileSync(
+    resolve(root, "demo/example/dist/native/midgard-chain-sync"),
+    "changed",
+  );
+  assert.notEqual(
+    outputIdentity(root, "demo/example/dist").sha256,
+    ordinary,
+    "a native directory in another package remains a compiled output",
+  );
 });
 
 test("build enrollment is idempotent and refuses unknown wrappers", (t) => {

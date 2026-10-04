@@ -14,22 +14,8 @@ import { runProcess } from "./process.mjs";
 import { pinnedPnpm } from "./pnpm.mjs";
 import { writeReceipt } from "./receipts.mjs";
 import { withResource } from "./resources.mjs";
-
-export const NATIVE_RECIPES = {
-  "midgard-node": {
-    recipe: "native:mpf-owner:build",
-    output: "native/mpf-event-flat-wasm/target/release/architecture-g-owner",
-    tools: [
-      ["cargo", "--version"],
-      ["rustc", "--version"],
-    ],
-  },
-  "midgard-watcher": {
-    recipe: "native:build",
-    output: "dist/native/midgard-chain-sync",
-    tools: [["go", "version"]],
-  },
-};
+import { NATIVE_RECIPES } from "./native-recipes.mjs";
+export { NATIVE_RECIPES } from "./native-recipes.mjs";
 
 const versions = (commands) =>
   commands.map((argv) => ({

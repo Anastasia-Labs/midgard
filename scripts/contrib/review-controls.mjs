@@ -18,6 +18,30 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 const directory = runDirectory();
 const controls = [
   {
+    name: "native-output-partition",
+    file: "files.mjs",
+    change: (text) =>
+      text.replace(
+        /!Object\.entries\(NATIVE_RECIPES\)\.some\([\s\S]*?\) &&/u,
+        "true &&",
+      ),
+    match: "watcher native outputs have separate ownership",
+    failure: /adding the separately guarded Go binary/u,
+    testFile: "identity.test.mjs",
+  },
+  {
+    name: "reproduction-final-native",
+    file: "reproduction.mjs",
+    change: (text) =>
+      text.replace(
+        /      for \(const name of plan\.nativePackages\) \{\n        const verdict = checkNative[\s\S]*?\n      \}/u,
+        "",
+      ),
+    match: "reproduction refuses a native output deleted",
+    failure: /deleted native output cannot earn a reproduction pass/u,
+    testFile: "operations.test.mjs",
+  },
+  {
     name: "workspace-missing-registration",
     file: "workspace.mjs",
     change: (text) =>
@@ -268,6 +292,7 @@ try {
                 "scripts/contrib/artifacts.test.mjs",
                 "scripts/contrib/boundary.test.mjs",
                 "scripts/contrib/operations.test.mjs",
+                "scripts/contrib/identity.test.mjs",
               ]
             : [`scripts/contrib/${control.testFile ?? "boundary.test.mjs"}`]),
         ],
