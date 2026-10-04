@@ -77,7 +77,13 @@ export const ciIdentity = (root) => ({
   schema: "midgard-repo-validator-ci/v1",
   commit: git(root, "rev-parse", "HEAD"),
   tree: git(root, "rev-parse", "HEAD^{tree}"),
-  parents: git(root, "show", "-s", "--format=%P", "HEAD").split(" "),
+  // A shallow Actions checkout suppresses parents in revision-walker output.
+  // The raw commit header still contains the actual ordered merge parents.
+  parents: git(root, "cat-file", "-p", "HEAD")
+    .split("\n\n")[0]
+    .split("\n")
+    .filter((line) => line.startsWith("parent "))
+    .map((line) => line.slice("parent ".length)),
   profile: nodeProfile(),
   inputs: validatorInputs(root),
 });

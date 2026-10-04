@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
   CI_VALIDATORS,
+  ciIdentity,
   validateCiEvidence,
   validatorInputs,
 } from "./ci-evidence.mjs";
@@ -131,7 +132,7 @@ test("stale or incomplete CI never satisfies a local validator", () => {
   }
 });
 
-test("ignored unlisted manifests that enrollment discovers invalidate evidence", () => {
+test("shallow checkout parents and ignored discovered manifests retain complete identity", () => {
   const directory = mkdtempSync(join(tmpdir(), "midgard-ci-inputs-"));
   const root = join(directory, "checkout");
   try {
@@ -150,6 +151,35 @@ test("ignored unlisted manifests that enrollment discovers invalidate evidence",
     }
     execFileSync("git", ["init", "--quiet"], { cwd: root });
     execFileSync("git", ["add", "."], { cwd: root });
+    const git = (...args) =>
+      execFileSync(
+        "git",
+        [
+          "-c",
+          "user.name=test",
+          "-c",
+          "user.email=test@example.invalid",
+          ...args,
+        ],
+        { cwd: root, encoding: "utf8" },
+      ).trim();
+    const tree = git("write-tree");
+    const target = git("commit-tree", tree, "-m", "target");
+    const head = git("commit-tree", tree, "-m", "head");
+    const merge = git(
+      "commit-tree",
+      tree,
+      "-p",
+      target,
+      "-p",
+      head,
+      "-m",
+      "CI checkout",
+    );
+    git("update-ref", "HEAD", merge);
+    writeFileSync(resolve(root, ".git/shallow"), `${merge}\n`);
+    assert.equal(git("show", "-s", "--format=%P", "HEAD"), "");
+    assert.deepEqual(ciIdentity(root).parents, [target, head]);
     writeFileSync(
       resolve(root, ".git/info/exclude"),
       "demo/private-validator-input/\n",
