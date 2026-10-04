@@ -82,16 +82,26 @@ export const createFieldPreimageLengthRecoveryPorts = (
   const transactions: CursorFamilyTransactionPort<typeof CATEGORY> = {
     portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
     category: CATEGORY,
-    prepare: async ({ evidence }) => {
+    prepare: async ({ evidence, classification }) => {
       current = undefined;
       return admit(
-        await fieldPreimageLengthEvidenceFromCanonicalBlock(evidence),
+        await fieldPreimageLengthEvidenceFromCanonicalBlock(
+          evidence,
+          classification.selected,
+        ),
       );
     },
-    validatePreparedArtifact: async ({ evidence, artifact }) => {
+    validatePreparedArtifact: async ({
+      evidence,
+      classification,
+      artifact,
+    }) => {
       current = undefined;
       admit(
-        await fieldPreimageLengthEvidenceFromCanonicalBlock(evidence),
+        await fieldPreimageLengthEvidenceFromCanonicalBlock(
+          evidence,
+          classification.selected,
+        ),
         artifact,
       );
     },
@@ -144,17 +154,15 @@ export const createFieldPreimageLengthRecoveryPorts = (
                   })();
       if (
         (input.stage === "step_02" &&
-          evidence.prepared.direction !== "wrongfulAcceptance") ||
-        (input.stage === "step_03" &&
-          evidence.prepared.direction !== "wrongfulRejection")
+          evidence.prepared.sourceKind !== "normal") ||
+        (input.stage === "step_03" && evidence.prepared.sourceKind !== "forced")
       )
         throw new Error(
           `${CATEGORY} authenticated thread changed proof direction`,
         );
       const needsCarriage =
         selected === "authenticate" ||
-        (selected === "dispatch" &&
-          evidence.prepared.direction === "wrongfulAcceptance");
+        (selected === "dispatch" && evidence.prepared.sourceKind === "normal");
       const transaction = await captureLocallyEvaluatedTransaction(
         async (boundary) => {
           const builders = createConcreteFieldPreimageLengthLucidBuilders({
@@ -194,7 +202,7 @@ export const createFieldPreimageLengthRecoveryPorts = (
                 ...evidence.stageEvidence,
                 ...(carriage === undefined
                   ? {}
-                  : evidence.prepared.direction === "wrongfulAcceptance"
+                  : evidence.prepared.sourceKind === "normal"
                     ? {
                         acceptedClaimResolver: carriage.claimResolver,
                         acceptedCarriageReferenceInputs:
@@ -257,7 +265,7 @@ export const createFieldPreimageLengthRecoveryPorts = (
       action.input.stage !== "step_03" &&
       !(
         action.input.stage === "step_01" &&
-        evidence.prepared.direction === "wrongfulAcceptance"
+        evidence.prepared.sourceKind === "normal"
       )
     )
       return null;

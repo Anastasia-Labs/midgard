@@ -272,8 +272,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
         }),
     );
     emitFit("accepted-certified-dispatch", dispatch.measurement);
-    // The certificate seam: the same certificate and chunks, concatenated in
-    // a substituted order, no longer hash to the committed field.
+    // Reordering the same certified chunks no longer hashes to the committed field.
     if (!("Certified" in carriage))
       throw new Error("maximum carriage is not certified");
     const reordered = [...carriage.Certified.chunk_ref_input_indices];
@@ -326,14 +325,13 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
     emitFit("accepted-certified-remove", removal.measurement);
     coverage.reason(REASON, "accepted_invalid");
     coverage.scenario("maximum_supported_evidence");
-    // The adjacent shape has no admissible carriage: the family refuses it
-    // before any transaction exists, and the applied reducer's own bound is
-    // exercised by the `authenticated.{..}` Aiken selectors.
+    // No admissible carriage; refusal precedes transaction construction.
     expect(() =>
       prepareFieldPreimageLengthWorkflow({
         headerHash: fixture.fraudulent.headerHash,
         transactionId: fixture.scenario.nativeTxId,
         direction: "wrongfulAcceptance",
+        sourceKind: "normal",
         fieldIndex: fixture.scenario.fieldIndex,
         fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths([
           32_768, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -509,6 +507,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
         headerHash: fixture.fraudulent.headerHash,
         transactionId: fixture.scenario.nativeTxId,
         direction: "wrongfulAcceptance",
+        sourceKind: "normal",
         fieldIndex: fixture.scenario.fieldIndex,
         fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths(
           fixture.scenario.lengths,
@@ -521,6 +520,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
       headerHash: fixture.fraudulent.headerHash,
       transactionId: fixture.scenario.nativeTxId,
       direction: "wrongfulAcceptance",
+      sourceKind: "normal",
       fieldIndex: fixture.scenario.fieldIndex,
       declaredLength,
       actualLength: preimage.length,

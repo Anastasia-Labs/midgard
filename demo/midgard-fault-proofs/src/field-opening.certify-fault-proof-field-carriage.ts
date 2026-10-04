@@ -50,7 +50,7 @@ export const resolveFaultProofFieldPreimageCertificate = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
-  readonly planned: FaultProofFieldOpeningPlan;
+  readonly planned: Pick<FaultProofFieldOpeningPlan, "plan">;
   readonly certificatePolicyId: string;
 }): Promise<UTxO | undefined> => {
   if (planned.plan.tier !== "Certified") return undefined;

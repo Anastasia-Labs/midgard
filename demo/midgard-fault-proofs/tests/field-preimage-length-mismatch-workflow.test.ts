@@ -10,6 +10,7 @@ const prepared = prepareFieldPreimageLengthWorkflow({
   headerHash: "11".repeat(28),
   transactionId: "22".repeat(32),
   direction: "wrongfulAcceptance",
+  sourceKind: "normal",
   fieldIndex: 2,
   fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths([
     1, 1, 2, 1, 1, 1, 1, 1, 1,
@@ -40,6 +41,7 @@ describe("field-preimage-length proof preparation", () => {
           headerHash: "11".repeat(28),
           transactionId: "22".repeat(32),
           direction,
+          sourceKind: "forced",
           fieldIndex: 2,
           fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths([
             1,
@@ -69,6 +71,7 @@ describe("field-preimage-length proof preparation", () => {
         headerHash: "11".repeat(28),
         transactionId: "22".repeat(32),
         direction: "wrongfulAcceptance",
+        sourceKind: "normal",
         fieldIndex: 2,
         fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths([
           1, 1, 1, 1, 1, 1, 1, 1, 1,
@@ -83,6 +86,7 @@ describe("field-preimage-length proof preparation", () => {
       headerHash: "11".repeat(28),
       transactionId: "22".repeat(32),
       direction: "wrongfulRejection" as const,
+      sourceKind: "forced" as const,
       fieldIndex: 2,
       fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths([
         1, 1, 1, 1, 1, 1, 1, 1, 1,

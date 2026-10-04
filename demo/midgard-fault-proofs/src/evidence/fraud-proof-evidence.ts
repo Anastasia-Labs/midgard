@@ -99,7 +99,8 @@ const isAuthenticatedFieldPreimageLengthDefect = (
 ): cause is TransitionTraceChallengerError =>
   cause instanceof TransitionTraceChallengerError &&
   cause.code === "malformedPayload" &&
-  cause.message.startsWith("Failed to authenticate transactions[");
+  (cause.message.startsWith("Failed to authenticate transactions[") ||
+    cause.message.startsWith("Failed to authenticate forced_transactions["));
 
 /**
  * Exact production evidence branches for Q44 source-leaf faults and Q17

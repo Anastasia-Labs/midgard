@@ -200,6 +200,7 @@ export async function prepareAcceptedFieldPreimageLengthMismatch({
     headerHash,
     transactionId: normalizedId,
     direction: "wrongfulAcceptance",
+    sourceKind: "normal",
     fieldIndex,
     fieldPreimageLengthsCbor: Buffer.from(
       source.source.field_preimage_lengths_cbor,

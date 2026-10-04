@@ -269,7 +269,7 @@ export const resolveFaultProofFieldCarriagePublications = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly publisherAddress: string;
-  readonly planned: FaultProofFieldOpeningPlan;
+  readonly planned: Pick<FaultProofFieldOpeningPlan, "plan">;
 }): Promise<readonly UTxO[] | undefined> => {
   const candidates = await lucid.utxosAt(publisherAddress);
   const claimed = new Set<string>();

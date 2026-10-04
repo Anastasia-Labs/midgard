@@ -276,6 +276,7 @@ export const prepareJourneyTransactionProof = async (input: {
         headerHash: block.headerHash,
         transactionId: forced.value.tx_id,
         direction: "wrongfulRejection",
+        sourceKind: "forced",
         fieldIndex: 0,
         fieldPreimageLengthsCbor: Buffer.from(
           forced.value.submitted_source.field_preimage_lengths_cbor,
