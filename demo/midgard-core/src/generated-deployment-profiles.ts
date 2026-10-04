@@ -104,11 +104,11 @@ export const DEPLOYMENT_PROFILES = {
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
       da_attestation_timeout_ms: 600000,
-      da_small_response_window_ms: 720000,
-      da_full_response_window_ms: 840000,
+      da_small_response_window_ms: 880000,
+      da_full_response_window_ms: 880000,
       da_challenge_window_ms: 720000,
       da_slash_grace_ms: 300000,
-      da_bond_withdraw_delay_ms: 2340000,
+      da_bond_withdraw_delay_ms: 2380000,
     },
     da_bond: {
       da_bond_lovelace: 500000000,
@@ -148,11 +148,11 @@ export const DEPLOYMENT_PROFILES = {
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
       da_attestation_timeout_ms: 600000,
-      da_small_response_window_ms: 720000,
-      da_full_response_window_ms: 840000,
+      da_small_response_window_ms: 880000,
+      da_full_response_window_ms: 880000,
       da_challenge_window_ms: 720000,
       da_slash_grace_ms: 300000,
-      da_bond_withdraw_delay_ms: 2340000,
+      da_bond_withdraw_delay_ms: 2380000,
     },
     da_bond: {
       da_bond_lovelace: 500000000,
@@ -226,9 +226,9 @@ export const DEPLOYMENT_PROFILE_DIGESTS = {
   "preprod-public":
     "b2660905760a27e23fdcccc7adb25a7991a1cf16caa806283fa29621622b3ea2",
   "preprod-testing":
-    "fbcb47384c0a18383634fe8bc3ea701c96b77e542bbdee1e915e1d0dba08760b",
+    "8290001b338095102b661d18b6ff56cd400662be81e69c8914c2c953e5a7f86b",
   "local-devnet-testing":
-    "1c9d94796c4cc2a2c9ca1f7b9d85083823b8a783f9ca2f4d38a8b50c07c86347",
+    "b0d358480e8fd36680bae8d24cbc9746409344f20eeb0adea5dfe4f31995d786",
   "preprod-emulator-testing":
     "482c50df9e885112e61c445def8f410db4770ea7683fcea86353b067182a50f3",
 } as const;

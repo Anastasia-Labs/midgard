@@ -96,6 +96,9 @@ const B6_RETRY_BOUND_MS = availabilityResponderRetryBoundMs();
 // foreign payloads, not on the committee responder's path
 // (docs/exec-plans/public-testnet-decisions-2026-10-01/B1.md).
 const BOUNDED_WAITS: readonly BoundedWait[] = [
+  // The committee responder has no protocol-parameter refresh yet; adding it
+  // is the separate committee A7 protocol-parameter refresh follow-up ticket,
+  // which must count its own bound here if it adds a wait.
   {
     item: "A7",
     name: "one bounded rebuild after a protocol-parameter refresh",
@@ -147,6 +150,13 @@ const countedWaitsMs = BOUNDED_WAITS.reduce(
 const unboundedWaits = BOUNDED_WAITS.filter(
   (wait) => wait.unbounded !== undefined,
 );
+
+/** What the small response window leaves after the counted budget. The
+ * small window is the binding one: the profile generator keeps it at most
+ * the full window. */
+const responseMarginMs = (selected: Profile): number =>
+  selected.timing.da_small_response_window_ms -
+  (baseTermMs(selected) + countedWaitsMs);
 
 /** Every term of a profile's budget, for the failure message. */
 const budgetTable = (selected: Profile): string => {
@@ -249,4 +259,30 @@ describe("availability response budget (B1)", () => {
       ).toBe(true);
     },
   );
+
+  it.each(BUDGETED_PROFILES)(
+    "%s: the small response window leaves a positive margin over the counted budget",
+    (name) => {
+      const selected = profile(name);
+      expect(responseMarginMs(selected), budgetTable(selected)).toBeGreaterThan(
+        0,
+      );
+    },
+  );
+
+  it("the margins are the ruled ones: 110 s at depth 10, 2,030 s at depth 30", () => {
+    expect(
+      Object.fromEntries(
+        BUDGETED_PROFILES.map((name) => [
+          name,
+          responseMarginMs(profile(name)),
+        ]),
+      ),
+    ).toEqual({
+      "local-devnet-testing": 110_000,
+      "preprod-testing": 110_000,
+      "preprod-public": 2_030_000,
+      mainnet: 2_030_000,
+    });
+  });
 });

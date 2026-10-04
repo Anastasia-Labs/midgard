@@ -55,15 +55,15 @@ pub const max_validity_range_length: Int = 480_000
 
 pub const da_attestation_timeout_v1: Int = 600_000
 
-pub const small_response_window_ms_v1: Int = 720_000
+pub const small_response_window_ms_v1: Int = 880_000
 
-pub const full_response_window_ms_v1: Int = 840_000
+pub const full_response_window_ms_v1: Int = 880_000
 
 pub const da_challenge_window_ms_v1: Int = 720_000
 
 pub const da_slash_grace_ms_v1: Int = 300_000
 
-pub const da_bond_withdraw_delay_ms_v1: Int = 2_340_000
+pub const da_bond_withdraw_delay_ms_v1: Int = 2_380_000
 
 pub const da_bond_lovelace_v1: Int = 500_000_000
 

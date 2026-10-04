@@ -13,11 +13,11 @@ timing:
   new_shift_inactivity_grace_period_ms: 300000
   max_validity_range_ms: 480000
   da_attestation_timeout_ms: 600000
-  da_small_response_window_ms: 720000
-  da_full_response_window_ms: 840000
+  da_small_response_window_ms: 880000
+  da_full_response_window_ms: 880000
   da_challenge_window_ms: 720000
   da_slash_grace_ms: 300000
-  da_bond_withdraw_delay_ms: 2340000 # validity + max(window + full response, maturity) + grace
+  da_bond_withdraw_delay_ms: 2380000 # validity + max(window + full response, maturity) + grace
 da_bond:
   da_bond_lovelace: 500000000
   da_slash_penalty_lovelace: 100000000

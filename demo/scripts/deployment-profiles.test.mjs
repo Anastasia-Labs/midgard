@@ -91,11 +91,11 @@ test("fast testing profiles exclude interactive disputes without weakening publi
     assert.equal(testing.timing.da_attestation_timeout_ms, 600_000);
     assert.equal(testing.timing.operator_shift_ms, 1_800_000);
     assert.equal(testing.timing.registration_ms, 30_000);
-    assert.equal(testing.timing.da_small_response_window_ms, 720_000);
-    assert.equal(testing.timing.da_full_response_window_ms, 840_000);
+    assert.equal(testing.timing.da_small_response_window_ms, 880_000);
+    assert.equal(testing.timing.da_full_response_window_ms, 880_000);
     assert.equal(testing.timing.da_challenge_window_ms, 720_000);
     assert.equal(testing.timing.da_slash_grace_ms, 300_000);
-    assert.equal(testing.timing.da_bond_withdraw_delay_ms, 2_340_000);
+    assert.equal(testing.timing.da_bond_withdraw_delay_ms, 2_380_000);
     assert.equal(testing.limits.max_bisection_rounds, 32);
     validateProfile(testing, name);
     testing.timing.dispute_response_window_ms = 1_000;
@@ -386,7 +386,7 @@ test("every profile carries the pooled DA bond amounts and timing, rendered into
       timing: {
         da_challenge_window_ms: 720_000,
         da_slash_grace_ms: 300_000,
-        da_bond_withdraw_delay_ms: 2_340_000,
+        da_bond_withdraw_delay_ms: 2_380_000,
       },
     },
   };
@@ -465,9 +465,9 @@ test("every profile's withdrawal delay meets the spec relation and the head-remo
     // 480,000 + 259,200,000 + 172,800,000 + 172,800,000 (spec) and
     // 480,000 + max(432,000,000, 604,800,000) + 172,800,000 (enforced).
     public: { spec: 605_280_000, enforced: 778_080_000 },
-    // 480,000 + 720,000 + 840,000 + 300,000; the challenge path dominates
+    // 480,000 + 720,000 + 880,000 + 300,000; the challenge path dominates
     // the 900,000 maturity, so the two forms coincide.
-    testing: { spec: 2_340_000, enforced: 2_340_000 },
+    testing: { spec: 2_380_000, enforced: 2_380_000 },
   };
   for (const [name, original] of Object.entries(profiles)) {
     const want =
@@ -491,7 +491,7 @@ test("every profile's withdrawal delay meets the spec relation and the head-remo
     assert.throws(
       () => validateProfile(profile, name),
       want.enforced === want.spec
-        ? /slash grace, at least 2340000 ms/u
+        ? /slash grace, at least 2380000 ms/u
         : new RegExp(
             `the later of the challenge response deadline and block maturity, and the slash grace, at least ${want.enforced} ms`,
             "u",
@@ -514,7 +514,7 @@ test("every profile's withdrawal delay meets the spec relation and the head-remo
   for (const name of testingProfiles) {
     const profile = structuredClone(profiles[name]);
     profile.timing.block_maturity_ms = 2_000_000;
-    assert.equal(specDaBondWithdrawDelayFloorMs(profile.timing), 2_340_000);
+    assert.equal(specDaBondWithdrawDelayFloorMs(profile.timing), 2_380_000);
     assert.equal(daBondWithdrawDelayFloorMs(profile.timing), 2_780_000);
     assert.throws(
       () => validateProfile(profile, name),

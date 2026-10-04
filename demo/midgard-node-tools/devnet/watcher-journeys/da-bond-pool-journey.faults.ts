@@ -1,7 +1,11 @@
+import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
+
 import {
   type DaBondPoolJourneyBlockStatus,
   type DaBondPoolJourneyParams,
 } from "./da-bond-pool-journey.js";
+
+const PREPROD_TESTING_TIMING = DEPLOYMENT_PROFILES["preprod-testing"].timing;
 
 // The preprod-testing profile's DA bond values.
 export const PARAMS: DaBondPoolJourneyParams = {
@@ -11,11 +15,12 @@ export const PARAMS: DaBondPoolJourneyParams = {
   minTopUp: 5_000_000n,
   maxTimeoutFee: 2_000_000n,
   challengeRecordLovelace: 27_000_000n,
-  withdrawDelayMs: 2_340_000,
-  attestationTimeoutMs: 600_000,
+  withdrawDelayMs: PREPROD_TESTING_TIMING.da_bond_withdraw_delay_ms,
+  attestationTimeoutMs: PREPROD_TESTING_TIMING.da_attestation_timeout_ms,
 };
 
-export const RESPONSE_WINDOW_MS = 840_000;
+export const RESPONSE_WINDOW_MS =
+  PREPROD_TESTING_TIMING.da_full_response_window_ms;
 
 export const TX_MS = 20_000;
 
