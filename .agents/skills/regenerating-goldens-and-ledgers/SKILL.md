@@ -46,12 +46,20 @@ measured-module closures that a reader would miss.
    `manual` goes on your list of unchecked artifacts, with the reason the script
    printed.
 
+   For an executable channel, use `node scripts/contrib.mjs artifacts check --channel <id>`.
+   Read [the guarded regeneration contract](../../../docs/agents/contrib.md#artifact-regeneration-and-clean-reproducibility)
+   before generating: it prepares compiled prerequisites, records identities
+   and validates output ownership. The channel table remains the owner.
+
 4. **On a red check, decide which side is wrong.** If you changed the producer
    on purpose, the artifact is stale: go to step 5. If you did not mean to change
    what the producer emits, the producer is wrong: fix the source, not the
    artifact.
 
-5. **Sync with the generator, then check again.** Use the printed sync command.
+5. **Sync with the generator, then check again.** Prefer
+   `node scripts/contrib.mjs artifacts sync --channel <id>` for executable
+   channels: it generates and checks in a disposable checkout before applying
+   an allowlisted packet. A manual channel retains its printed owner recipe.
    Re-run the check; it must pass with no further edits. For ledgers, triage the
    drift before re-taking: [references/ledgers.md](references/ledgers.md). [review]
 

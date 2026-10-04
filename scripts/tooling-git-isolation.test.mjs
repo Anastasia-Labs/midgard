@@ -26,7 +26,8 @@ const runsGitInit = (source) => /["']init["']/u.test(source);
 
 const isolatesGit = (source) =>
   /key\.startsWith\(["']GIT_["']\)/u.test(source) ||
-  /\bisolateGit\(/u.test(source);
+  /\bisolateGit\(/u.test(source) ||
+  /["']--local-env-vars["']/u.test(source);
 
 test("every tooling test that creates a repository drops the hook's GIT_* environment", () => {
   const offenders = testFiles(scripts)
@@ -38,7 +39,7 @@ test("every tooling test that creates a repository drops the hook's GIT_* enviro
   assert.deepEqual(offenders, []);
 });
 
-test("the guard recognises a git init and both isolation forms", () => {
+test("the guard recognises a git init and each isolation form", () => {
   assert.equal(runsGitInit('git(repo, "init", "--quiet")'), true);
   assert.equal(runsGitInit('spawnSync("git", ["status"])'), false);
   assert.equal(
@@ -46,5 +47,9 @@ test("the guard recognises a git init and both isolation forms", () => {
     true,
   );
   assert.equal(isolatesGit("const { git } = isolateGit();"), true);
+  assert.equal(
+    isolatesGit('spawnSync("git", ["rev-parse", "--local-env-vars"])'),
+    true,
+  );
   assert.equal(isolatesGit("const env = { ...process.env };"), false);
 });

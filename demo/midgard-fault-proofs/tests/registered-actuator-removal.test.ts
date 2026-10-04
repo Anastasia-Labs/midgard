@@ -53,6 +53,7 @@ const hash = "cd".repeat(28);
 const reward = 400_000_000n;
 const action = {
   stage: "remove" as const,
+  stateQueueBlockOutRef: `${"11".repeat(32)}#0`,
   nextRemovalOutRef: `${"11".repeat(32)}#0`,
   fraudProofOutRef: `${"22".repeat(32)}#0`,
 };

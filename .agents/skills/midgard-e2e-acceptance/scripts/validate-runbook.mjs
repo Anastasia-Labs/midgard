@@ -1,42 +1,62 @@
 #!/usr/bin/env node
+// Checks that the e2e acceptance runbook still matches the code it drives: the
+// `e2e-stack` command, its flags and package script, the steps the stack runs
+// and the node commands they call, the stack's stop messages, and the
+// release-readiness gates the runbook says the stack does not produce.
+//
+// Usage: node validate-runbook.mjs [--skill-dir <dir>]
+// `--skill-dir` validates a copy of the skill against this repository's
+// sources; the tests use it to prove each check fails on a stale document.
 import { spawnSync } from "node:child_process";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readSourceFacets } from "../../../../scripts/lib/source-facets.mjs";
+import { HELP as contributorHelp } from "../../../../scripts/contrib.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const skillDir = resolve(scriptDir, "..");
-const repoRoot = resolve(skillDir, "../../..");
+const repoRoot = resolve(scriptDir, "../../../..");
+const skillDirFlag = process.argv.indexOf("--skill-dir");
+const skillDir =
+  skillDirFlag >= 0
+    ? resolve(process.argv[skillDirFlag + 1] ?? "")
+    : resolve(scriptDir, "..");
 
+const tools = join(repoRoot, "demo/midgard-node-tools");
+const fullStack = join(tools, "src/full-stack");
 const paths = {
   skill: join(skillDir, "SKILL.md"),
   live: join(skillDir, "references/live-acceptance.md"),
   recovery: join(skillDir, "references/recovery.md"),
   benchmark: join(skillDir, "references/benchmark.md"),
+  releaseReadiness: join(skillDir, "references/release-readiness.md"),
+  preprodStack: join(tools, "docs/PREPROD_STACK.md"),
   cli: join(repoRoot, "demo/midgard-node/src/index.ts"),
-  // The e2e step runner, service supervisor, finalizer, and stress commands
-  // are registered in the tooling binary, not the operator binary.
-  toolsCli: join(repoRoot, "demo/midgard-node-tools/src/index.ts"),
-  finalizer: join(
+  // The stack, finalizer and stress commands are registered in the tooling
+  // binary, not the operator binary.
+  toolsCli: join(tools, "src/index.ts"),
+  toolsPackage: join(tools, "package.json"),
+  nonceResume: join(
     repoRoot,
-    "demo/midgard-node-tools/src/commands/e2e-finalize-summary.ts",
+    "demo/midgard-node/src/commands/prepare-hub-oracle-nonce.resume-signed.ts",
   ),
+  finalizer: join(tools, "src/commands/e2e-finalize-summary.ts"),
   stateCorrection: join(
-    repoRoot,
-    "demo/midgard-node-tools/src/commands/e2e-state-correction-acceptance.ts",
+    tools,
+    "src/commands/e2e-state-correction-acceptance.ts",
   ),
   stateCorrectionTest: join(
-    repoRoot,
-    "demo/midgard-node-tools/tests/e2e-state-correction-acceptance.test.ts",
+    tools,
+    "tests/e2e-state-correction-acceptance.test.ts",
   ),
   stateCorrectionAuthority: join(
-    repoRoot,
-    "demo/midgard-node-tools/src/commands/e2e-state-correction-local-authority.ts",
+    tools,
+    "src/commands/e2e-state-correction-local-authority.ts",
   ),
   stateCorrectionAuthorityTest: join(
-    repoRoot,
-    "demo/midgard-node-tools/tests/e2e-state-correction-local-authority.test.ts",
+    tools,
+    "tests/e2e-state-correction-local-authority.test.ts",
   ),
 };
 
@@ -52,13 +72,15 @@ const read = (path) => {
 };
 
 const documents = Object.fromEntries(
-  ["skill", "live", "recovery", "benchmark"].map((name) => [
+  ["skill", "live", "recovery", "benchmark", "releaseReadiness"].map((name) => [
     name,
     read(paths[name]),
   ]),
 );
+const preprodStackDoc = read(paths.preprodStack);
 const cliSource = read(paths.cli);
 const toolsCliSource = read(paths.toolsCli);
+const nonceResumeSource = read(paths.nonceResume);
 const finalizerSource = read(paths.finalizer);
 const stateCorrectionSource = read(paths.stateCorrection);
 const stateCorrectionTestSource = read(paths.stateCorrectionTest);
@@ -66,17 +88,40 @@ const stateCorrectionAuthoritySource = read(paths.stateCorrectionAuthority);
 const stateCorrectionAuthorityTestSource = read(
   paths.stateCorrectionAuthorityTest,
 );
+const stackSources = Object.fromEntries(
+  (() => {
+    try {
+      return readdirSync(fullStack)
+        .filter((name) => name.endsWith(".ts"))
+        .sort()
+        .map((name) => [name, readFileSync(join(fullStack, name), "utf8")]);
+    } catch (error) {
+      fail(`cannot read ${fullStack}: ${error.message}`);
+      return [];
+    }
+  })(),
+);
+const stackSource = Object.values(stackSources).join("\n");
+let toolsScripts = {};
+try {
+  toolsScripts = JSON.parse(readFileSync(paths.toolsPackage, "utf8")).scripts;
+} catch (error) {
+  fail(`cannot read ${paths.toolsPackage}: ${error.message}`);
+}
 const allDocs = Object.values(documents).join("\n");
 
 const requireText = (text, needle, label) => {
   if (!text.includes(needle)) fail(`missing ${label}: ${needle}`);
 };
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const backticked = (text) =>
+  [...text.matchAll(/`([^`\n]+)`/g)].map((match) => match[1]);
 
+// Shape: size, fences, line endings, contents tables, routes.
 const skillLines = documents.skill.split("\n").length;
 if (skillLines > 500) {
   fail(`SKILL.md has ${skillLines} lines; keep the entrypoint at or below 500`);
 }
-
 for (const [name, text] of Object.entries(documents)) {
   const fences = text.match(/^```/gm)?.length ?? 0;
   if (fences % 2 !== 0) fail(`${name} has an unmatched fenced code block`);
@@ -84,20 +129,31 @@ for (const [name, text] of Object.entries(documents)) {
     fail(`${name} has a dangling shell continuation before a closing fence`);
   }
   if (text.includes("\r")) fail(`${name} contains CRLF line endings`);
-  if (name !== "skill" && text.split("\n").length > 100) {
+  const lines = text.split("\n").length;
+  if (name !== "skill" && lines > 100) {
     requireText(text, "## Contents", `${name} table of contents`);
   }
+  if (name !== "skill" && lines > 400) {
+    fail(`${name} has ${lines} lines; keep each reference at or below 400`);
+  }
+}
+for (const route of [
+  "references/live-acceptance.md",
+  "references/recovery.md",
+  "references/benchmark.md",
+  "references/release-readiness.md",
+]) {
+  requireText(documents.skill, route, "reference route");
 }
 
-requireText(
-  documents.skill,
-  "references/live-acceptance.md",
-  "live runbook route",
-);
-requireText(documents.skill, "references/recovery.md", "recovery route");
-requireText(documents.skill, "references/benchmark.md", "benchmark route");
-
+// Retired instructions. The hand-driven flow was replaced by `e2e-stack`;
+// naming its commands again would recreate a second way to run acceptance.
 for (const forbidden of [
+  "e2e-run-step",
+  "e2e-start-service",
+  "STEP_SUMMARY_ARGS",
+  "append_tx_arg",
+  "attest-state-queue-once",
   "logs/phase-1-full-corpus-",
   "logs/phase-1-live-acceptance/",
   "preprod-da-2of3/secrets/l1-submitter.seed",
@@ -107,6 +163,7 @@ for (const forbidden of [
     fail(`forbidden stale instruction: ${forbidden}`);
 }
 
+// Commands named in the documents are declared by the binary that runs them.
 const commandsDeclaredIn = (source) =>
   new Set(
     [...source.matchAll(/\.command\("([a-zA-Z0-9:_-]+)"\)/g)].map(
@@ -115,29 +172,23 @@ const commandsDeclaredIn = (source) =>
   );
 const declaredOperatorCommands = commandsDeclaredIn(cliSource);
 const declaredToolsCommands = commandsDeclaredIn(toolsCliSource);
-// Operator commands are invoked as `node dist/index.js <command>` from the
-// node directory; tooling commands as `node "$TOOLS_CLI" <command>`.
 const referencedOperatorCommands = new Set(
   [...allDocs.matchAll(/node dist\/index\.js\s+([a-zA-Z0-9:_-]+)/g)].map(
     (match) => match[1],
   ),
 );
 const referencedToolsCommands = new Set(
-  [...allDocs.matchAll(/node "\$TOOLS_CLI"\s+([a-zA-Z0-9:_-]+)/g)].map(
-    (match) => match[1],
-  ),
+  [
+    ...allDocs.matchAll(
+      /node (?:"\$TOOLS_CLI"|demo\/midgard-node-tools\/dist\/index\.js)\s+([a-zA-Z0-9:_-]+)/g,
+    ),
+  ].map((match) => match[1]),
 );
 for (const command of referencedOperatorCommands) {
-  const dynamicReferenceScriptCommand =
-    command.startsWith("deploy-reference-script-") &&
-    cliSource.includes("deploy-reference-script-${commandName}");
-  if (
-    !declaredOperatorCommands.has(command) &&
-    !dynamicReferenceScriptCommand
-  ) {
+  if (!declaredOperatorCommands.has(command)) {
     fail(
       declaredToolsCommands.has(command)
-        ? `documented as an operator command but declared by midgard-node-tools; invoke it through "$TOOLS_CLI": ${command}`
+        ? `documented as an operator command but declared by midgard-node-tools: ${command}`
         : `documented Midgard CLI command is not declared: ${command}`,
     );
   }
@@ -147,7 +198,179 @@ for (const command of referencedToolsCommands) {
     fail(`documented midgard-node-tools command is not declared: ${command}`);
   }
 }
+const referencedToolsScripts = new Set(
+  [
+    ...[...allDocs, preprodStackDoc]
+      .join("")
+      .matchAll(
+        /pnpm --dir (?:"\$TOOLS_DIR"|demo\/midgard-node-tools) run ([a-zA-Z0-9:_-]+)/g,
+      ),
+  ].map((match) => match[1]),
+);
+if (!referencedToolsScripts.has("e2e-stack")) {
+  fail("the runbook no longer shows the e2e-stack package script invocation");
+}
+for (const script of referencedToolsScripts) {
+  if (typeof toolsScripts?.[script] !== "string") {
+    fail(`documented midgard-node-tools package script is missing: ${script}`);
+  }
+}
 
+// `e2e-stack` flags: an invocation may pass only options the command declares.
+const stackCommandBlock = (() => {
+  const start = toolsCliSource.indexOf('.command("e2e-stack")');
+  if (start < 0) {
+    fail('cannot find .command("e2e-stack") in the tooling CLI');
+    return "";
+  }
+  const end = toolsCliSource.indexOf(".action(", start);
+  return toolsCliSource.slice(start, end < 0 ? undefined : end);
+})();
+const stackFlags = new Set(
+  [...stackCommandBlock.matchAll(/"(--[a-z][a-z-]*)/g)].map(
+    (match) => match[1],
+  ),
+);
+const declaredFlags = new Set([
+  ...[
+    ...`${cliSource}\n${toolsCliSource}`.matchAll(/"(--[a-z][a-z0-9-]*)/g),
+  ].map((match) => match[1]),
+  ...[...contributorHelp.matchAll(/--[a-z][a-z0-9-]*/g)].map(
+    (match) => match[0],
+  ),
+]);
+const documentedStackFlags = new Set();
+for (const [name, text] of [
+  ...Object.entries(documents),
+  ["PREPROD_STACK.md", preprodStackDoc],
+]) {
+  const joined = text.replace(/\\\n\s*/g, " ");
+  for (const line of joined.split("\n")) {
+    const at = line.search(/\be2e-stack\b(?![-\w])/);
+    if (at < 0) continue;
+    // Stop at the end of a backticked span so prose after it is not read as
+    // flags of the invocation.
+    const rest = line.slice(at);
+    const invocation = rest.split("`")[0];
+    for (const [flag] of invocation.matchAll(/--[a-z][a-z-]*/g)) {
+      documentedStackFlags.add(flag);
+      if (!stackFlags.has(flag))
+        fail(`${name} passes an undeclared e2e-stack flag: ${flag}`);
+    }
+  }
+  // Standalone flags may belong to the contributor frontdoor or either binary.
+  // The invocation check above still refuses contributor flags on e2e-stack.
+  for (const span of backticked(text)) {
+    if (/^--[a-z][a-z0-9-]*$/.test(span) && !declaredFlags.has(span))
+      fail(`${name} names a flag no CLI declares: ${span}`);
+  }
+}
+for (const flag of stackFlags) {
+  if (!documentedStackFlags.has(flag) && !allDocs.includes(`\`${flag}\``))
+    fail(`e2e-stack flag is undocumented in the runbook: ${flag}`);
+}
+
+// The step table names every step the stack runs, and only those.
+const sourceStepIds = new Set([
+  ...[...stackSource.matchAll(/^\s*id: "([a-z0-9-]+)",$/gm)].map((m) => m[1]),
+  ...[...stackSource.matchAll(/^\s*id: `\$\{prefix\}-([a-z0-9-]+)`,$/gm)].map(
+    (m) => `cycle-N-${m[1]}`,
+  ),
+]);
+if (sourceStepIds.size < 10) {
+  fail(`found only ${sourceStepIds.size} stack step ids in ${fullStack}`);
+}
+const tableRows = (text, heading) => {
+  const start = text.indexOf(heading);
+  if (start < 0) {
+    fail(`cannot find section ${heading}`);
+    return [];
+  }
+  const next = text.indexOf("\n## ", start + heading.length);
+  return text
+    .slice(start, next < 0 ? undefined : next)
+    .split("\n")
+    .filter((line) => line.startsWith("| ") && !/^\| -/.test(line))
+    .slice(1)
+    .map((line) => line.split(" | ").map((cell) => cell.replace(/^\| ?/, "")));
+};
+const stepRows = tableRows(documents.live, "## What each step does");
+const documentedStepIds = new Set(
+  stepRows.map(([first]) => backticked(first)[0]).filter(Boolean),
+);
+for (const id of sourceStepIds) {
+  if (!documentedStepIds.has(id)) fail(`stack step is undocumented: ${id}`);
+}
+for (const id of documentedStepIds) {
+  if (!sourceStepIds.has(id))
+    fail(`documented stack step does not exist: ${id}`);
+}
+// Node commands the step table says the stack runs are ones it does run.
+const stackNodeCommands = new Set(
+  [
+    ...stackSource.matchAll(
+      /\.node\(\s*(?:"[^"]*"|`[^`]*`)\s*,\s*\[\s*"([a-z0-9:-]+)"/g,
+    ),
+  ].map((match) => match[1]),
+);
+for (const [, ...cells] of stepRows) {
+  for (const span of backticked(cells.join(" "))) {
+    const command = span.split(" ")[0];
+    if (!/^[a-z][a-z0-9:-]*$/.test(command) || sourceStepIds.has(command))
+      continue;
+    if (!declaredOperatorCommands.has(command)) continue;
+    if (!stackNodeCommands.has(command))
+      fail(
+        `step table names a node command the stack does not run: ${command}`,
+      );
+  }
+}
+
+// DA order: the committee is ready before the producer preflight, and the node
+// starts only after it. The runbook states that order; the source must keep it.
+const runtimeSource = stackSources["runtime.ts"] ?? "";
+const order = [
+  '"committee-start"',
+  '"committee readiness"',
+  '"producer-da-preflight"',
+  '"runtime-start"',
+].map((marker) => [marker, runtimeSource.indexOf(marker)]);
+if (
+  order.some(([, at]) => at < 0) ||
+  !order.every(([, at], index) => index === 0 || order[index - 1][1] < at)
+) {
+  fail(
+    `stack DA order changed in runtime.ts (${order.map(([marker, at]) => `${marker}@${at}`).join(", ")}); update the runbook`,
+  );
+}
+requireText(
+  documents.live,
+  "producer's DA preflight, and the node starts only after that preflight",
+  "DA order statement",
+);
+
+// Every stop message the recovery table routes is one the stack can print.
+const messageSource = `${stackSource}\n${nonceResumeSource}`;
+for (const [first] of tableRows(
+  documents.recovery,
+  "## Route the stop message",
+)) {
+  for (const span of backticked(first)) {
+    for (const fragment of span.replace(/\.\.\./g, "<>").split(/<[^>]*>/)) {
+      if (fragment.trim().length >= 8 && !messageSource.includes(fragment))
+        fail(
+          `recovery routes a stop message the stack does not print: ${span}`,
+        );
+    }
+  }
+}
+for (const marker of ["SignedNonceConflictError", "SignedNonceRejectedError"]) {
+  requireText(nonceResumeSource, marker, "node nonce error");
+  requireText(documents.recovery, marker, "nonce error route");
+}
+
+// Release readiness: the gates exist, and what the runbook says the finalizer
+// reads from a stack run is still what it reads.
 const parseConstStringArray = (source, name, sourceLabel) => {
   const match = source.match(
     new RegExp(`export const ${name} = \\[([\\s\\S]*?)\\] as const`),
@@ -158,17 +381,6 @@ const parseConstStringArray = (source, name, sourceLabel) => {
   }
   return [...match[1].matchAll(/"([^"]+)"/g)].map((entry) => entry[1]);
 };
-
-const requiredStepIds = parseConstStringArray(
-  finalizerSource,
-  "REQUIRED_FRESH_E2E_STEP_IDS",
-  "e2e-finalize-summary.ts",
-);
-const requiredTransactionLabels = parseConstStringArray(
-  finalizerSource,
-  "REQUIRED_FRESH_TRANSACTION_LABELS",
-  "e2e-finalize-summary.ts",
-);
 const stateCorrectionGateLabels = parseConstStringArray(
   stateCorrectionSource,
   "REQUIRED_STATE_CORRECTION_GATE_LABELS",
@@ -179,56 +391,92 @@ const stateCorrectionRecoveryDrills = parseConstStringArray(
   "REQUIRED_STATE_CORRECTION_RECOVERY_DRILL_IDS",
   "e2e-state-correction-acceptance.ts",
 );
-
+const readiness = documents.releaseReadiness;
+requireText(
+  readiness,
+  "REQUIRED_STATE_CORRECTION_RECOVERY_DRILL_IDS",
+  "release-readiness source reference",
+);
+// The finalizer reads an e2e-stack run: its configuration flag, the gates it
+// derives from the run's records and database, and the deployment-creating
+// commands fresh mode requires are the ones the runbook documents.
+requireText(
+  toolsCliSource,
+  '"--stack-config <path>"',
+  "finalizer stack configuration option",
+);
+requireText(readiness, "`--stack-config`", "finalizer stack input");
+const stackGateLabels = new Set(
+  [
+    ...finalizerSource.matchAll(/(?:label: |cycleGate\()"(stack_[a-z_]+)"/g),
+  ].map((match) => match[1]),
+);
+if (stackGateLabels.size < 8) {
+  fail(`found only ${stackGateLabels.size} stack gate labels in the finalizer`);
+}
+for (const gate of stackGateLabels) {
+  requireText(readiness, `\`${gate}\``, `finalizer stack gate ${gate}`);
+}
+for (const span of backticked(readiness)) {
+  if (/^stack_[a-z_]+$/.test(span) && !stackGateLabels.has(span))
+    fail(`release-readiness names a stack gate the finalizer dropped: ${span}`);
+}
+const deploymentCommandIds = parseConstStringArray(
+  finalizerSource,
+  "STACK_DEPLOYMENT_COMMAND_IDS",
+  "e2e-finalize-summary.ts",
+);
+if (deploymentCommandIds.length === 0) {
+  fail("the finalizer names no deployment-creating stack command");
+}
+for (const id of deploymentCommandIds) {
+  if (!stackSource.includes(`.node("${id}"`))
+    fail(`fresh mode requires a command the stack no longer runs: ${id}`);
+}
+// Without the state-correction sources the gates are blocked as not run, so a
+// stack run never reads as release-ready.
+requireText(
+  stateCorrectionSource,
+  'reason: "not run"',
+  "state-correction gates blocked as not run",
+);
+requireText(readiness, '"not run"', "not-run state-correction statement");
+for (const gate of stateCorrectionGateLabels) {
+  requireText(readiness, gate, `state-correction gate ${gate}`);
+}
+for (const test of [
+  "tests/e2e-state-correction-acceptance.test.ts",
+  "tests/e2e-state-correction-reconciliation.test.ts",
+  "tests/e2e-state-correction-local-authority.test.ts",
+]) {
+  requireText(readiness, test, "non-state-changing rehearsal");
+}
+if (stateCorrectionRecoveryDrills.length !== 22) {
+  fail(
+    `state-correction recovery matrix must have 22 cases; found ${stateCorrectionRecoveryDrills.length}`,
+  );
+}
+requireText(readiness, "22 cases", "recovery matrix size");
+for (const flag of [
+  "--state-correction-evidence <path>",
+  "--state-correction-deployment-manifest <path>",
+  "--state-correction-blueprint <path>",
+  "--state-correction-catalogue <path>",
+  "--state-correction-parameters <path>",
+  "--state-correction-workflow-journal <directory>",
+  "--state-correction-l1-observation <path>",
+  "--state-correction-recovery-observation <path>",
+  "--state-correction-final-snapshot <path>",
+]) {
+  requireText(toolsCliSource, flag, "finalizer state-correction option");
+  requireText(readiness, `\`${flag.split(" ")[0]}\``, "finalizer input");
+}
 for (const [text, needle, label] of [
-  [
-    toolsCliSource,
-    "--state-correction-evidence <path>",
-    "state-correction CLI option",
-  ],
-  ...[
-    "--state-correction-deployment-manifest <path>",
-    "--state-correction-blueprint <path>",
-    "--state-correction-catalogue <path>",
-    "--state-correction-parameters <path>",
-    "--state-correction-workflow-journal <directory>",
-    "--state-correction-l1-observation <path>",
-    "--state-correction-recovery-observation <path>",
-    "--state-correction-final-snapshot <path>",
-  ].map((flag) => [
-    toolsCliSource,
-    flag,
-    `independent source CLI option ${flag}`,
-  ]),
-  [
-    finalizerSource,
-    "stateCorrectionAcceptanceEvidence",
-    "state-correction finalizer gate",
-  ],
+  [finalizerSource, "stateCorrectionAcceptanceEvidence", "finalizer gate"],
   [
     stateCorrectionSource,
     "FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER",
     "canonical launch-scope source",
-  ],
-  [
-    documents.live,
-    '--state-correction-evidence "$STATE_CORRECTION_EVIDENCE"',
-    "state-correction dashboard argument",
-  ],
-  [
-    documents.live,
-    "tests/e2e-state-correction-acceptance.test.ts",
-    "non-state-changing state-correction rehearsal",
-  ],
-  [
-    documents.live,
-    "tests/e2e-state-correction-reconciliation.test.ts",
-    "non-state-changing independent reconciliation rehearsal",
-  ],
-  [
-    documents.live,
-    "tests/e2e-state-correction-local-authority.test.ts",
-    "non-state-changing local Kupmios authority rehearsal",
   ],
   [
     stateCorrectionAuthoritySource,
@@ -245,26 +493,8 @@ for (const [text, needle, label] of [
     "stateCorrectionValueDigest",
     "canonical live Q57 value digest",
   ],
-  [
-    stateCorrectionAuthoritySource,
-    "live Kupo/Ogmios output disagreement",
-    "live Q57 cross-source economic comparison",
-  ],
-  [
-    documents.live,
-    "REQUIRED_STATE_CORRECTION_RECOVERY_DRILL_IDS",
-    "recovery matrix source",
-  ],
 ]) {
   requireText(text, needle, label);
-}
-
-for (const gate of stateCorrectionGateLabels) {
-  requireText(
-    documents.skill,
-    gate,
-    `state-correction acceptance gate ${gate}`,
-  );
 }
 for (const marker of [
   "omitted family",
@@ -276,15 +506,9 @@ for (const marker of [
   requireText(
     stateCorrectionTestSource,
     marker,
-    `state-correction negative rehearsal ${marker}`,
+    `negative rehearsal ${marker}`,
   );
 }
-if (stateCorrectionRecoveryDrills.length !== 22) {
-  fail(
-    `state-correction recovery matrix must have 22 cases; found ${stateCorrectionRecoveryDrills.length}`,
-  );
-}
-
 for (const marker of [
   "live Kupo/Ogmios output disagreement",
   "fee does not equal the exact removal fee",
@@ -297,66 +521,7 @@ for (const marker of [
   );
 }
 
-const summaryStart = documents.live.indexOf("STEP_SUMMARY_ARGS=()");
-const summaryEnd = documents.live.indexOf("TX_ARGS=()", summaryStart);
-if (summaryStart < 0 || summaryEnd < 0) {
-  fail("cannot find final STEP_SUMMARY_ARGS block");
-} else {
-  const summaryBlock = documents.live.slice(summaryStart, summaryEnd);
-  for (const stepId of requiredStepIds) {
-    const escaped = stepId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const stepMatch = documents.live.match(
-      new RegExp(
-        `--id\\s+${escaped}[\\s\\S]{0,500}?--summary-out\\s+"\\$([A-Z0-9_]+)"`,
-      ),
-    );
-    if (!stepMatch) {
-      fail(
-        `required fresh step lacks a documented structured runner: ${stepId}`,
-      );
-      continue;
-    }
-    const variable = stepMatch[1];
-    if (!summaryBlock.includes(`"$${variable}"`)) {
-      fail(`required fresh step summary is omitted from dashboard: ${stepId}`);
-    }
-  }
-}
-
-for (const label of requiredTransactionLabels) {
-  if (!documents.live.includes(`append_tx_arg ${label} `)) {
-    fail(`required transaction label is omitted from dashboard: ${label}`);
-  }
-}
-
-for (const marker of [
-  "--target producer",
-  "--profile producer-container-committee-host",
-  "--profile host",
-  "--target committee",
-  "$PRODUCER_PREFLIGHT_MANIFEST",
-  "DA_L1_SUBMITTER_KEY_SOURCE",
-]) {
-  requireText(documents.live, marker, "DA workflow marker");
-}
-
-const daSection = documents.live.slice(
-  documents.live.indexOf("## DA manifests and committee node"),
-);
-const committeeStart = daSection.indexOf("e2e-start-service");
-const bindPreflight = daSection.indexOf("--id da-libp2p-bind-listen-preflight");
-const nodeStart = daSection.indexOf("$COMPOSE up -d midgard-node");
-if (
-  committeeStart < 0 ||
-  bindPreflight < 0 ||
-  nodeStart < 0 ||
-  !(committeeStart < bindPreflight && bindPreflight < nodeStart)
-) {
-  fail(
-    "DA order must be committee node start, bind/listen preflight, then node start",
-  );
-}
-
+// Every shell block parses.
 const bashBlocks = [];
 for (const [name, text] of Object.entries(documents)) {
   for (const match of text.matchAll(/```bash\n([\s\S]*?)\n```/g)) {
@@ -394,8 +559,11 @@ process.stdout.write(
       skillLines,
       referencedCommandCount:
         referencedOperatorCommands.size + referencedToolsCommands.size,
-      requiredStepIds,
-      requiredTransactionLabels,
+      stackFlags: [...stackFlags],
+      stackStepIds: [...sourceStepIds],
+      stackNodeCommands: [...stackNodeCommands],
+      finalizerStackGateLabels: [...stackGateLabels],
+      finalizerDeploymentCommandIds: deploymentCommandIds,
       stateCorrectionGateLabels,
       stateCorrectionRecoveryDrillCount: stateCorrectionRecoveryDrills.length,
       bashBlockCount: bashBlocks.length,

@@ -37,16 +37,16 @@ plain `grep -r` find them (plan task W2.8).
 
 ## Loaded on demand
 
-| File                                                      | Lines       | Proposed budget                                                             |
-| --------------------------------------------------------- | ----------- | --------------------------------------------------------------------------- |
-| `CONTEXT.md`                                              | 163         | 250 lines                                                                   |
-| `docs/agents/*.md` (largest: `withdraw-zero-yielding.md`) | 10–146      | 150 lines each                                                              |
-| `.agents/skills/*/SKILL.md`                               | 68–234      | 250 lines aimed, 500 enforced `[script: scripts/ci/check-agent-skills.mjs]` |
-| `.agents/skills/*/references/*.md`                        | up to 1,002 | 400 lines each                                                              |
+| File                                                      | Lines     | Proposed budget                                                             |
+| --------------------------------------------------------- | --------- | --------------------------------------------------------------------------- |
+| `CONTEXT.md`                                              | 163       | 250 lines                                                                   |
+| `docs/agents/*.md` (largest: `withdraw-zero-yielding.md`) | 10–146    | 150 lines each                                                              |
+| `.agents/skills/*/SKILL.md`                               | 68–234    | 250 lines aimed, 500 enforced `[script: scripts/ci/check-agent-skills.mjs]` |
+| `.agents/skills/*/references/*.md`                        | up to 385 | 400 lines each                                                              |
 
-One file already exceeds its proposed budget:
-`midgard-e2e-acceptance/references/live-acceptance.md` at 1,002 lines. Split
-it by branch of the runbook when next edited, not in a drive-by change.
+No file exceeds its proposed budget. The e2e acceptance runbook, once 1,002
+lines, now enforces 400 lines per reference in its own validator
+`[script: .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs]`.
 
 ## Out of scope
 

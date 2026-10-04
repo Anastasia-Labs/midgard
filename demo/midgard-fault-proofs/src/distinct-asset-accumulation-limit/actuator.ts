@@ -77,6 +77,7 @@ export type DistinctAssetAccumulationActuatorAction =
   | Readonly<{ stage: "step06"; threadOutRef: string }>
   | Readonly<{
       stage: "remove";
+      stateQueueBlockOutRef: string;
       nextRemovalOutRef: string;
       fraudProofOutRef: string;
     }>;
@@ -279,6 +280,7 @@ export const createDistinctAssetAccumulationActuator = (
           schemaVersion: "midgard-production-cursor-family-action-v1",
           category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
           stage: "remove",
+          stateQueueBlockOutRef: action.stateQueueBlockOutRef,
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
         } as CursorFamilyActionInput,

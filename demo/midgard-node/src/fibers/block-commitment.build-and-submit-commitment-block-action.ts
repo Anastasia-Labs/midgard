@@ -469,7 +469,6 @@ export const buildAndSubmitCommitmentBlockAction = (
         break;
       }
     }
-
     const awaitingForeignTipReconciliations =
       yield* ForeignTipReconciliationsDB.countAwaiting;
     yield* foreignTipReconciliationAwaitingGauge(

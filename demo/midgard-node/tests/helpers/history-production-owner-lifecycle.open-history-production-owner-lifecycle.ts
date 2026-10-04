@@ -43,6 +43,7 @@ import {
   type ProductionHistoryFixtureRuntime,
 } from "../deposit-flow-emulator-shared.js";
 import { testDatabaseName } from "../test-env.js";
+import { resetApplicationTables } from "../utils.js";
 import {
   awaitHistoryAuthorityReleased,
   GATE_CLOSED_SETTLE_MS,
@@ -56,7 +57,6 @@ import {
   type RecordedHistoryBatch,
 } from "./history-source-owner-emulator.js";
 import { nativeOwnerBinaryPath } from "./native-owner-binary.js";
-
 export const openHistoryProductionOwnerLifecycle = async (
   options: ProductionOwnerFixtureOptions = {},
 ) => {
@@ -192,7 +192,7 @@ export const openHistoryProductionOwnerLifecycle = async (
             name: string;
           }>`SELECT current_database() AS name`;
           expect(rows[0]?.name).toBe(testDatabaseName());
-          yield* sql`TRUNCATE event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_replay_receipts, event_history_authority`;
+          yield* resetApplicationTables;
         }),
       );
     }

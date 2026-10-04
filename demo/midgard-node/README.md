@@ -350,7 +350,7 @@ pnpm listen
 - `pnpm submit:l2-transfer`: build and submit a Midgard-native user transfer.
 - `pnpm audit:blocks-immutable`: inspect immutable block state and related
   persistence.
-- The e2e step runner, service supervisor, run finalizer, stress-wallet
+- The one-command e2e stack, service supervisor, run finalizer, stress-wallet
   tooling, corpus generator/verifier, bounded L2 stress harness, and the Phase
   4 local-devnet acceptance gate are `midgard-node-tools` commands
   (`../midgard-node-tools/dist/index.js`); see

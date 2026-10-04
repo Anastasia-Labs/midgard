@@ -214,10 +214,19 @@ export type WatcherDurableStore = WatcherDurableRecords &
 
 export type RecordParser<T> = (value: unknown, path: string) => T;
 
+// Only detached, deeply immutable outputs belong to these parser-specific maps.
+const parsedChainPoints = new WeakMap<object, WatcherL1ChainPoint>();
+const parsedL1Observations = new WeakMap<object, WatcherL1Observation>();
+
 export const parseChainPoint: RecordParser<WatcherL1ChainPoint> = (
   value,
   path,
 ) => {
+  const prior =
+    typeof value === "object" && value !== null
+      ? parsedChainPoints.get(value)
+      : undefined;
+  if (prior !== undefined) return prior;
   const record = exactRecord(value, path, [
     "chainPointId",
     "providerId",
@@ -226,7 +235,7 @@ export const parseChainPoint: RecordParser<WatcherL1ChainPoint> = (
     "blockNo",
     "depth",
   ]);
-  return {
+  const parsed = Object.freeze({
     chainPointId: exactString(
       record.chainPointId,
       `${path}.chainPointId`,
@@ -241,7 +250,9 @@ export const parseChainPoint: RecordParser<WatcherL1ChainPoint> = (
     slot: exactString(record.slot, `${path}.slot`, CANONICAL_NATURAL),
     blockNo: exactString(record.blockNo, `${path}.blockNo`, CANONICAL_NATURAL),
     depth: exactString(record.depth, `${path}.depth`, CANONICAL_NATURAL),
-  };
+  });
+  parsedChainPoints.set(parsed, parsed);
+  return parsed;
 };
 
 export const compareChainPointOrder = (
@@ -265,13 +276,18 @@ export const parseL1Observation: RecordParser<WatcherL1Observation> = (
   value,
   path,
 ) => {
+  const prior =
+    typeof value === "object" && value !== null
+      ? parsedL1Observations.get(value)
+      : undefined;
+  if (prior !== undefined) return prior;
   const record = exactRecord(value, path, [
     "observationId",
     "providerId",
     "chainPointId",
     "payload",
   ]);
-  return {
+  const parsed = Object.freeze({
     observationId: exactString(
       record.observationId,
       `${path}.observationId`,
@@ -287,8 +303,10 @@ export const parseL1Observation: RecordParser<WatcherL1Observation> = (
       `${path}.chainPointId`,
       HEX_32,
     ),
-    payload: parsePayload(record.payload, `${path}.payload`),
-  };
+    payload: Object.freeze(parsePayload(record.payload, `${path}.payload`)),
+  });
+  parsedL1Observations.set(parsed, parsed);
+  return parsed;
 };
 
 export const parseProtocolUtxo: RecordParser<WatcherProtocolUtxo> = (

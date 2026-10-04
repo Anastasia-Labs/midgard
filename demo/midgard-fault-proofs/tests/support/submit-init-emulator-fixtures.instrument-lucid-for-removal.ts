@@ -1,3 +1,4 @@
+import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type FraudProofCatalogueDeploymentInfo,
   Header,
@@ -39,7 +40,9 @@ export type ProvedDoubleSpendFixture = {
   readonly headerHash: string;
   readonly setup: Awaited<ReturnType<typeof submitSetupTx>>;
   readonly successors: readonly SuccessorBlockFixture[];
-  readonly deploymentInfo: ReturnType<typeof buildRemovalDeploymentInfo>;
+  readonly deploymentInfo:
+    | ReturnType<typeof buildRemovalDeploymentInfo>
+    | DeploymentManifest;
   readonly removalReferenceScriptPublications: Awaited<
     ReturnType<typeof publishRemovalReferenceScripts>
   >;

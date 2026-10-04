@@ -11,12 +11,13 @@
 // with (the per-worktree test database prefix).
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { connect } from "node:net";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { assertPinnedAiken } from "../../onchain/aiken/scripts/pinned-compiler.mjs";
+import { checkBuild } from "../contrib/build.mjs";
 
 // The local test server. The live end-to-end stack runs its own Postgres on
 // 55433; nothing here may ever point a test suite at it.
@@ -193,50 +194,18 @@ export const probeCoreDist = ({ root }) => {
       );
 };
 
-// Packages without a source-digest stamp can only be judged by timestamps: a
-// source file newer than every emitted file proves the dist is stale.
+// Use the same closure and compiled-content identity as guarded consumers.
 export const probePackageDist = ({ root, directory, name }) => {
-  const dist = resolve(root, directory, "dist");
   const probeName = `dist:${name}`;
   const build = `pnpm --dir demo --filter ${name} run build`;
-  if (!existsSync(dist)) {
-    return result(probeName, "missing", `${directory}/dist is absent`, build);
+  try {
+    const checked = checkBuild(root, name);
+    return checked.status === "fresh"
+      ? result(probeName, "available", `${directory}/dist matches its complete input and output digests`)
+      : result(probeName, "missing", checked.reason, build);
+  } catch (error) {
+    return result(probeName, "unknown", `could not check: ${error.message}`, build);
   }
-  const newest = (path) => {
-    let latest = 0;
-    for (const entry of readdirSync(path, { recursive: true })) {
-      const stats = statSync(join(path, String(entry)));
-      if (stats.isFile() && stats.mtimeMs > latest) {
-        latest = stats.mtimeMs;
-      }
-    }
-    return latest;
-  };
-  const source = resolve(root, directory, "src");
-  if (!existsSync(source)) {
-    return result(
-      probeName,
-      "unknown",
-      `could not check: ${directory}/src is absent`,
-      undefined,
-    );
-  }
-  if (newest(source) > newest(dist)) {
-    return result(
-      probeName,
-      "missing",
-      `${directory}/src has files newer than its dist`,
-      build,
-    );
-  }
-  // A timestamp check: it catches an edit after the last build, not a
-  // checkout that moved sources backwards in time. Only midgard-core stamps
-  // its dist with a source digest.
-  return result(
-    probeName,
-    "available",
-    `no file in ${directory}/src is newer than its dist (timestamp check)`,
-  );
 };
 
 export const probeNodeModules = ({

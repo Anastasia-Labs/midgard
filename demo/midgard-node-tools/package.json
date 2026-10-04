@@ -20,12 +20,13 @@
   },
   "scripts": {
     "clean": "rimraf dist node_modules",
-    "build": "tsup",
+    "build": "node ../../scripts/contrib.mjs build --package midgard-node-tools",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
+    "e2e-stack": "pnpm run build && node dist/index.js e2e-stack",
     "quick-test": "pnpm run build && node dist/index.js --help",
     "create-l2-wallet": "pnpm run build && node dist/index.js create-l2-wallet",
     "stress-wallets:prepare": "pnpm run build && node dist/index.js stress-wallets:prepare",
@@ -39,7 +40,8 @@
     "test:phase4:devnet-assets": "node --test devnet/phase4-process/tests/assets.test.mjs devnet/phase4-process/tests/custom-chain-config.test.mjs",
     "test:e2e-reliability": "export NODE_ENV='emulator' && vitest run tests/e2e-da-gates.test.ts tests/e2e-service-supervisor.test.ts tests/e2e-runner.test.ts tests/e2e-summary.test.ts --reporter=basic --disableConsoleIntercept",
     "pretest": "pnpm --dir ../lucid-midgard run build && pnpm --dir ../midgard-sdk run build",
-    "test": "pnpm run test:phase4:pipelined-process-summary-verifier && pnpm run test:phase4:devnet-assets && export NODE_ENV='emulator' && vitest run --disableConsoleIntercept"
+    "test": "pnpm run test:phase4:pipelined-process-summary-verifier && pnpm run test:phase4:devnet-assets && export NODE_ENV='emulator' && vitest run --disableConsoleIntercept",
+    "build:contrib-raw": "tsup"
   },
   "keywords": [
     "cardano",

@@ -7,18 +7,9 @@ import {
   FraudProofComputationThreadStepDatum,
   FraudProofTokenDatum,
 } from "@al-ft/midgard-sdk";
-import {
-  Data,
-  Emulator,
-  generateEmulatorAccount,
-  getAddressDetails,
-  Lucid,
-  toUnit,
-} from "@lucid-evolution/lucid";
+import { Data, getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { resolveProverSigner } from "../../src/index.js";
-import { createReferenceScriptPublisher } from "./emulator/reference-script-publisher.js";
 import {
   parseSpendInputCbors,
   parseSubmitStep01TxInclusion,
@@ -30,6 +21,11 @@ import {
 } from "./legacy-submit-emulator.js";
 import { countedTransactionsRoot } from "./submit-init-emulator-fixtures.build-non-existent-input-fixture.js";
 import { buildTransactionInclusionFixture } from "./submit-init-emulator-fixtures.build-transaction-inclusion-fixture.js";
+import {
+  bindCanonicalFixtureHeader,
+  buildProvedFixtureDeploymentContext,
+  commitInitializedProvedFixtureHeader,
+} from "./submit-init-emulator-fixtures.deployment-context.js";
 import {
   expectStateQueueHeaderOrder,
   midgardTxInput,
@@ -47,23 +43,14 @@ import {
 } from "./submit-init-emulator-fixtures.submit-successor-block-tx.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  alwaysSucceedsBlueprintPath,
-  buildCatalogueDeploymentInfo,
-  buildMinimalFaultProofContracts,
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
-  EMULATOR_PROTOCOL_PARAMETERS,
   expectSingleUtxoWithUnit,
-  fundedProverEmulatorAccount,
   makeHeader,
   network,
   publishFaultProofWitnessReferenceScripts,
   publishFraudProofChainReferenceScripts,
-  publishOperatorLifecycleReferenceScripts,
   publishRemovalReferenceScripts,
-  readBlueprint,
-  realBlueprintPath,
-  registerPhasMembershipRewardAccount,
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
 
@@ -71,6 +58,7 @@ export const buildProvedDoubleSpendFixture = async ({
   successorCount = 0,
   successorsAfterProofCount = 0,
   headerMinimumFee = 0n,
+  coherentCanonicalEvidence = false,
 }: {
   /** Successors committed before `submitInit` mints the computation thread. */
   readonly successorCount?: number;
@@ -82,54 +70,31 @@ export const buildProvedDoubleSpendFixture = async ({
   readonly successorsAfterProofCount?: number;
   /** Optional second violation used by cross-family Q53 idempotency tests. */
   readonly headerMinimumFee?: bigint;
-} = {}): Promise<ProvedDoubleSpendFixture> => {
-  const realBlueprint = readBlueprint(realBlueprintPath);
-  const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
-  const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
-  const prover = fundedProverEmulatorAccount(20_000_000_000n);
-  const emulator = new Emulator([funder, prover], EMULATOR_PROTOCOL_PARAMETERS);
-  const funderLucid = await Lucid(emulator, "Custom");
-  const proverLucid = await Lucid(emulator, "Custom");
-  funderLucid.selectWallet.fromSeed(funder.seedPhrase);
-  const proverSigner = resolveProverSigner({
-    network,
-    walletSeedPhrase: prover.seedPhrase,
-  });
-  // Selected through the signer so the prover Lucid instance and every
-  // `signer.selectWallet(lucid)` call site address the same funded wallet.
-  proverSigner.selectWallet(proverLucid);
-
-  await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
-  const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
-    await createReferenceScriptPublisher(funderLucid, emulator.now());
-  const baseContracts = {
-    ...(await buildMinimalFaultProofContracts(
-      realBlueprint,
-      alwaysBlueprint,
-      nonceUtxo,
-      {
-        realMinFee: headerMinimumFee > 0n,
-        referenceScriptAuthPolicyId: referenceScriptAuth.policyId,
-      },
-    )),
-    referenceScriptAuth,
-    referenceScriptPublisher,
-  };
-  // Operator registration and activation source their four directory
-  // validators from published reference scripts. Published from the prover
-  // wallet before the header clock is sampled so the funder's nonce UTxO
-  // survives and the whole fixture timeline shifts uniformly.
-  const contracts = {
-    ...baseContracts,
-    operatorLifecycleReferenceScripts:
-      await publishOperatorLifecycleReferenceScripts({
-        lucid: proverLucid,
-        contracts: baseContracts,
-      }),
-  };
-  const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+  readonly coherentCanonicalEvidence?: boolean;
+} = {}): Promise<
+  ProvedDoubleSpendFixture & {
+    readonly canonicalEvidence?: Awaited<
+      ReturnType<typeof bindCanonicalFixtureHeader>
+    >;
+  }
+> => {
+  const {
+    realBlueprint,
+    emulator,
+    funderLucid,
+    proverLucid,
+    proverSigner,
+    nonceUtxo,
+    contracts,
+    catalogue,
+    canonical,
+  } = await buildProvedFixtureDeploymentContext(
+    headerMinimumFee,
+    coherentCanonicalEvidence,
+  );
   const transactionInclusion = await buildTransactionInclusionFixture({
     emptyAddressWitnesses: headerMinimumFee > 0n,
+    canonicalTransactions: canonical?.nativeTransactions,
   });
   // Removal needs the state-queue, operator-directory and scheduler validators.
   // Publishing them as reference-script UTxOs is what the deployed node does and
@@ -139,28 +104,31 @@ export const buildProvedDoubleSpendFixture = async ({
   // the header clock is sampled so the funder's nonce UTxO survives and the
   // whole fixture timeline shifts uniformly.
   const removalReferenceScriptPublications =
-    await publishRemovalReferenceScripts({
+    canonical?.removalReferenceScriptPublications ??
+    (await publishRemovalReferenceScripts({
       lucid: proverLucid,
       contracts,
-    });
+    }));
   // Owner ruling 2026-08-26: every script a fault-proof transaction executes
   // is consumed from a published reference script, never inline-attached. The
   // four double-spend step validators and the shared witness scripts are
   // published from the prover wallet alongside the removal roster above.
   const doubleSpendStepReferenceScripts =
-    await publishFraudProofChainReferenceScripts({
+    canonical?.doubleSpendStepReferenceScripts ??
+    (await publishFraudProofChainReferenceScripts({
       lucid: proverLucid,
       steps: contracts.fraudProofContracts.doubleSpend.steps,
       entryNames: DOUBLE_SPEND_STEP_REFERENCE_NAMES,
       familyLabel: "double-spend",
-    });
+    }));
   const witnessReferenceScripts =
-    await publishFaultProofWitnessReferenceScripts({
+    canonical?.witnessReferenceScripts ??
+    (await publishFaultProofWitnessReferenceScripts({
       lucid: proverLucid,
       realBlueprint,
       computationThreadMintingScript: contracts.computationThread.mintingScript,
       fraudProofMintingScript: contracts.fraudProof.mintingScript,
-    });
+    }));
   const headerStartTime =
     alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
     1;
@@ -183,20 +151,45 @@ export const buildProvedDoubleSpendFixture = async ({
       ),
       transactionInclusion.l2TransactionCount,
     ),
+    ...(canonical === undefined
+      ? {}
+      : {
+          ...canonical.header,
+          operatorVkey: funderPaymentCredential.hash,
+          startTime: canonical.genesisEndTime,
+        }),
     minFeeA: 0n,
     minFeeB: headerMinimumFee,
     endTime:
       BigInt(headerStartTime) + BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS),
   };
-  const setup = await submitSetupTx({
-    lucid: funderLucid,
-    contracts,
-    nonceUtxo,
-    catalogue,
-    header: fraudulentHeader,
-  });
+  const setup =
+    canonical !== undefined
+      ? await commitInitializedProvedFixtureHeader({
+          lucid: funderLucid,
+          contracts,
+          header: fraudulentHeader,
+          schedulerStartTime: BigInt(headerStartTime),
+        })
+      : nonceUtxo !== undefined
+        ? await submitSetupTx({
+            lucid: funderLucid,
+            contracts,
+            nonceUtxo,
+            catalogue,
+            header: fraudulentHeader,
+          })
+        : (() => {
+            throw new Error("Legacy setup omitted its actual nonce");
+          })();
+  if (canonical !== undefined)
+    expect(fraudulentHeader.transactionsRoot).toBe(
+      await countedTransactionsRoot(
+        transactionInclusion.transactionsRoot,
+        transactionInclusion.l2TransactionCount,
+      ),
+    );
   const { headerHash } = setup;
-
   const successors: SuccessorBlockFixture[] = [];
   let anchorBlockUnit = setup.stateQueueBlockUnit;
   let activeOperatorNode = setup.activeOperatorNode;
@@ -250,7 +243,6 @@ export const buildProvedDoubleSpendFixture = async ({
       previousHeader = successorHeader;
       previousHeaderHash = successor.successorHeaderHash;
     }
-
     await expectStateQueueHeaderOrder({
       lucid: funderLucid,
       contracts,
@@ -261,13 +253,13 @@ export const buildProvedDoubleSpendFixture = async ({
     });
   };
   await appendSuccessors(successorCount, false);
-
-  const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
-    removalReferenceScripts: removalReferenceScriptPublications.published,
-  });
+  const deploymentInfo =
+    canonical?.manifest ??
+    buildRemovalDeploymentInfo(contracts, catalogue, {
+      removalReferenceScripts: removalReferenceScriptPublications.published,
+    });
   const fraudulentBlockOutRef =
     successors[0]?.continuedAnchorOutRef ?? setup.fraudulentBlockOutRef;
-
   const submitInitCapture = await captureEmulatorSubmission(emulator, () =>
     submitInit({
       lucid: proverLucid,
@@ -282,7 +274,6 @@ export const buildProvedDoubleSpendFixture = async ({
   );
   const submitInitResult = submitInitCapture.result;
   const submitInitMeasurement = submitInitCapture.measurement;
-
   expect(submitInitResult.txHash).toHaveLength(64);
   expect(submitInitResult.fraudulentHeaderHash).toBe(headerHash);
   expect(submitInitResult.computationThreadAssetName).toBe(
@@ -546,5 +537,14 @@ export const buildProvedDoubleSpendFixture = async ({
     witnessReferenceScripts,
     fraudProofUtxo,
     proverPaymentKeyHash,
+    ...(canonical === undefined
+      ? {}
+      : {
+          canonicalEvidence: await bindCanonicalFixtureHeader(
+            canonical,
+            fraudulentHeader,
+            headerHash,
+          ),
+        }),
   };
 };

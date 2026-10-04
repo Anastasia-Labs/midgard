@@ -65,6 +65,9 @@ const scenarios = {
       "aiken-ci:deployment-profiles",
       "aiken-ci:guard-self-tests",
       "aiken-ci:aiken",
+      "aiken-ci:shard-plan",
+      "aiken-ci:aiken-tests",
+      "aiken-ci:shard-collector",
       "aiken-ci:gate",
       ...[
         "aiken-fork",
@@ -107,6 +110,22 @@ const scenarios = {
     runs: [
       "midgard-node-ci:*",
       "midgard-watcher-ci:watcher",
+      "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
+    ],
+  },
+  "shared contributor runner pull request": {
+    event: "pull_request",
+    branch: "main",
+    files: [
+      "scripts/contrib/process.mjs",
+      "scripts/pnpm.mjs",
+      "scripts/bin/pnpm",
+    ],
+    runs: [
+      "midgard-node-ci:*",
+      "midgard-watcher-ci:watcher",
+      "docs-site-ci:build",
       "repo-tools-ci:repo-tools",
       "agent-skills-ci:skills",
     ],

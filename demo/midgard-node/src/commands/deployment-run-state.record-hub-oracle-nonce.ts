@@ -29,7 +29,11 @@ export type PendingHubOracleNonceAttempt = {
   readonly address: string;
   readonly lovelace: string;
   readonly inlineDatum: string;
+  readonly signedTxCbor?: string;
 };
+
+/** Run-state step holding the nonce transaction signed before submission. */
+export const HUB_ORACLE_NONCE_SIGNED_STEP = "hubOracleNonceSigned";
 
 export const resolveDeploymentRunCliOptions = (
   input: DeploymentRunCliOptionInput,
@@ -282,6 +286,52 @@ export const recordHubOracleNonceTxHashConfirmed = async ({
             confirmationStatus,
             outputStatus: "pending",
           },
+        },
+      ),
+  );
+
+/**
+ * Write-ahead record of the signed nonce transaction, persisted before any
+ * submission. It is its own step so readers of `hubOracleNonce` are unchanged;
+ * a later run resumes it by resubmitting exactly these bytes.
+ */
+export const recordHubOracleNonceSigned = async ({
+  options,
+  network,
+  txHash,
+  signedTxCbor,
+  address,
+  lovelace,
+  inlineDatum,
+}: {
+  readonly options: DeploymentRunCliOptions;
+  readonly network: string;
+  readonly txHash: string;
+  readonly signedTxCbor: string;
+  readonly address: string;
+  readonly lovelace: string;
+  readonly inlineDatum: string;
+}): Promise<DeploymentRunState> =>
+  mutateDeploymentRunState(
+    options.runStatePath,
+    () =>
+      createDeploymentRunState({
+        mode: options.freshRedeploy ? "fresh" : "resume",
+        identity: { network },
+      }),
+    (state) =>
+      transitionDeploymentStep(
+        {
+          ...state,
+          mode: options.freshRedeploy ? "fresh" : state.mode,
+          identity: { ...state.identity, network },
+        },
+        HUB_ORACLE_NONCE_SIGNED_STEP,
+        "submitted",
+        {
+          txHashes: [txHash],
+          message: "signed_before_submission",
+          details: { address, lovelace, inlineDatum, signedTxCbor },
         },
       ),
   );

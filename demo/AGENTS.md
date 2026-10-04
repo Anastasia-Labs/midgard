@@ -17,6 +17,8 @@ repository root.
 
 ## When Relevant
 
+- Focused tests, build freshness, artifact generation, handoffs or diagnostics:
+  read `docs/agents/contrib.md` before assembling commands or temporary scripts.
 - L1 transaction construction, evaluation, or submission: read
   `docs/agents/transaction-finalization.md` before changing or running that flow.
 - Operator runtime or CLI placement: read `demo/midgard-node/AGENTS.md` before

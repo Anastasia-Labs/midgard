@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { nodeProcessCommitLeaseOwner as coreNodeProcessCommitLeaseOwner } from "@al-ft/midgard-core/commit-lease-owner";
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Fiber } from "effect";
 
@@ -145,7 +146,7 @@ export const NODE_PROCESS_LEDGER_LEASE_OWNER_PREFIXES: readonly string[] = [
 ];
 
 export const nodeProcessCommitLeaseOwner = (): string =>
-  `${NODE_PROCESS_COMMIT_LEASE_OWNER_PREFIX}${randomUUID()}`;
+  coreNodeProcessCommitLeaseOwner(randomUUID());
 
 export const nodeProcessAuditLeaseOwner = (): string =>
   `${NODE_PROCESS_AUDIT_LEASE_OWNER_PREFIX}${randomUUID()}`;

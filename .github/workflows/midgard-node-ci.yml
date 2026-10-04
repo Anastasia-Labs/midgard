@@ -4,6 +4,10 @@ on:
   push:
     branches: ["main"]
     paths:
+      - "scripts/contrib.mjs"
+      - "scripts/contrib/**"
+      - "scripts/pnpm.mjs"
+      - "scripts/bin/**"
       - "demo/**"
       - "onchain/aiken/**"
       - "config/deployments/**"
@@ -15,6 +19,10 @@ on:
       - ".github/workflows/midgard-node-ci.yml"
   pull_request:
     paths:
+      - "scripts/contrib.mjs"
+      - "scripts/contrib/**"
+      - "scripts/pnpm.mjs"
+      - "scripts/bin/**"
       - "demo/**"
       - "onchain/aiken/**"
       - "config/deployments/**"
@@ -473,10 +481,17 @@ jobs:
         run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test
 
   midgard-fault-proofs:
-    name: midgard-fault-proofs
+    name: midgard-fault-proofs (${{ matrix.shard }}/3)
     needs: [aiken-fork, blueprint]
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    # Bound evaluator parallelism on the standard hosted runner.
+    env:
+      MIDGARD_FAULT_PROOF_FORKS: "2"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/demo-setup
@@ -484,7 +499,7 @@ jobs:
           blueprint: "true"
           prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation
       - name: Build, typecheck, and test fault-proof tooling
-        run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs test
+        run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs run test --shard=${{ matrix.shard }}/3
 
   # The watcher's TypeScript surface. Its eslint pass is the workspace-wide one
   # in the `lint` job; the Go helper, compose stack and image are covered by
@@ -620,6 +635,8 @@ jobs:
         run: pnpm --dir demo/midgard-node run typecheck
       - name: Build Midgard node and migrate isolated CI database
         if: ${{ !cancelled() }}
+        env:
+          MIDGARD_DEPLOYMENT_PROFILE: preprod-testing
         run: pnpm --dir demo/midgard-node run db:migrate
       - name: Test Midgard node
         if: ${{ !cancelled() }}

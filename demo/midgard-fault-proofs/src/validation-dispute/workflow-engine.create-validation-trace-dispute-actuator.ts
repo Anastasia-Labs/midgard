@@ -478,6 +478,7 @@ export const createValidationTraceDisputeActuator = (
               schemaVersion: "midgard-production-cursor-family-action-v1",
               category: VALIDATION_TRACE_DISPUTE_CATEGORY,
               stage: "remove",
+              stateQueueBlockOutRef: action.stateQueueBlockOutRef,
               nextRemovalOutRef: action.nextRemovalOutRef,
               fraudProofOutRef: action.fraudProofOutRef,
             } as CursorFamilyActionInput,

@@ -76,6 +76,7 @@ import {
   fundingReferenceOutRef,
   fundingReferenceScript,
 } from "./workflow-runtime.admitted-actuation.js";
+import { assertOrdinaryMissingChange } from "./workflow-runtime.ordinary-change-control.js";
 import {
   retainedDaSource,
   runtimeFunding,
@@ -91,6 +92,10 @@ import {
 } from "./workflow-runtime.slash-funding-fixture.js";
 
 describe("compiled manifest-bound production runtime V1", () => {
+  it(
+    "requires reserved-wallet change for ordinary funding",
+    assertOrdinaryMissingChange,
+  );
   it.each(["full", "partially-inactivity-slashed"] as const)(
     "admits exact signed %s slash economics without spending ordinary wallet funds",
     async (tranche) => {
@@ -130,7 +135,6 @@ describe("compiled manifest-bound production runtime V1", () => {
       }
     },
   );
-
   it.each([
     { label: "fee below tranche", feeDelta: -1n },
     { label: "fee above tranche", feeDelta: 1n },
@@ -153,7 +157,6 @@ describe("compiled manifest-bound production runtime V1", () => {
       }
     },
   );
-
   it("rechecks the exact signed slash bytes before submission", async () => {
     const runtime = await slashFundingFixture();
     try {
@@ -173,7 +176,6 @@ describe("compiled manifest-bound production runtime V1", () => {
       runtime.close();
     }
   });
-
   it("prepares the exact signed wire and original body digest used by default submission", async () => {
     const runtime = await runtimeFunding("step-one");
     const signed = signedFundingTransaction({
@@ -197,7 +199,6 @@ describe("compiled manifest-bound production runtime V1", () => {
       }),
     );
   });
-
   it("reserves the consumed signed subset while leaving unused leased candidates intact", async () => {
     const runtime = await runtimeFunding("step-one");
     const input = `${"73".repeat(32)}#0`;
@@ -214,7 +215,6 @@ describe("compiled manifest-bound production runtime V1", () => {
       }),
     );
   });
-
   it("defers live input resolution until after the durable pending intent can reconcile", async () => {
     const runtime = await runtimeFunding("step-one", { begin: false });
     expect(runtime.resolveInputs).not.toHaveBeenCalled();

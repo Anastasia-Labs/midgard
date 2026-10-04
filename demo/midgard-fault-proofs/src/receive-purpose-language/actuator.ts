@@ -52,6 +52,7 @@ export type ReceivePurposeLanguageActuatorAction =
   | Readonly<{ stage: "step_03"; threadOutRef: string }>
   | Readonly<{
       stage: "remove";
+      stateQueueBlockOutRef: string;
       nextRemovalOutRef: string;
       fraudProofOutRef: string;
     }>;
@@ -198,6 +199,7 @@ export const createReceivePurposeLanguageActuator = (
           schemaVersion: "midgard-production-cursor-family-action-v1",
           category: "receivePurposeLanguage",
           stage: "remove",
+          stateQueueBlockOutRef: action.stateQueueBlockOutRef,
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
         } as CursorFamilyActionInput,

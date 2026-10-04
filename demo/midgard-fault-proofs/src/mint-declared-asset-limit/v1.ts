@@ -331,6 +331,7 @@ const currentAction = async ({
   if (stage.kind === "proof_token")
     return {
       stage: "remove",
+      stateQueueBlockOutRef: stage.stateQueueBlockOutRef,
       nextRemovalOutRef: stage.nextRemovalOutRef,
       fraudProofOutRef: stage.fraudProofOutRef,
     };

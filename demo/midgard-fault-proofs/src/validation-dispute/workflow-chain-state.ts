@@ -82,6 +82,7 @@ export type ValidationTraceDisputeChainStage =
   | Readonly<{ kind: "award_pending"; threadOutRef: string }>
   | Readonly<{
       kind: "proof_token";
+      stateQueueBlockOutRef: string;
       fraudProofOutRef: string;
       nextRemovalOutRef: string;
     }>
@@ -373,6 +374,7 @@ export const deriveValidationTraceDisputeChainStage = async ({
   if (proof !== undefined) {
     return {
       kind: "proof_token",
+      stateQueueBlockOutRef: topology.target,
       fraudProofOutRef: outRef(proof),
       nextRemovalOutRef: topology.successor ?? topology.target,
     };

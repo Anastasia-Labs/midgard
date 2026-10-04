@@ -28,3 +28,4 @@ import "./workflow-runtime.runtime-funding.js";
 import "./workflow-runtime.slash-funding-fixture.js";
 import "./workflow-runtime.compiled-manifest-bound-production-runtime-v1.js";
 import "./workflow-runtime.additive-reservation-policy-admission.js";
+import "./workflow-runtime.permissionless-slash-funding.js";

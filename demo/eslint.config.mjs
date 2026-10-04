@@ -85,6 +85,7 @@ export default tseslint.config(
             "midgard-node-tools/vitest.config.ts",
             "midgard-sdk/tsup.config.ts",
             "midgard-sdk/vitest.config.ts",
+            "midgard-watcher/tsup.config.ts",
             "midgard-validation/vitest.config.ts",
           ],
           maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 32,

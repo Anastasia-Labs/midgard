@@ -36,6 +36,9 @@ COPY midgard-node/package.json ./midgard-node/package.json
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
   pnpm install --frozen-lockfile --filter midgard-node...
 
+# This isolated image owns its copied source and output tree. Use the same
+# compiler recipes directly; shared-checkout leases and Git receipts belong to
+# contributor builds, and the repository tooling is outside this demo context.
 FROM workspace AS build
 COPY lucid-midgard ./lucid-midgard
 COPY midgard-core ./midgard-core
@@ -45,12 +48,12 @@ COPY midgard-sdk ./midgard-sdk
 COPY midgard-node ./midgard-node
 # midgard-node's build compiles only itself, and its runtime imports each of
 # these packages' dist, so every one is built here, dependencies first.
-RUN pnpm --filter @al-ft/lucid-midgard build
-RUN pnpm --filter @al-ft/midgard-core build
-RUN pnpm --filter @al-ft/midgard-sdk build
-RUN pnpm --filter @al-ft/midgard-validation build
-RUN pnpm --filter @al-ft/midgard-fault-proofs build
-RUN pnpm --filter midgard-node build
+RUN pnpm --filter @al-ft/lucid-midgard run build:contrib-raw
+RUN pnpm --filter @al-ft/midgard-core run build:contrib-raw
+RUN pnpm --filter @al-ft/midgard-sdk run build:contrib-raw
+RUN pnpm --filter @al-ft/midgard-validation run build:contrib-raw
+RUN pnpm --filter @al-ft/midgard-fault-proofs run build:contrib-raw
+RUN pnpm --filter midgard-node run build:contrib-raw
 # Same store as the install step: `deploy --prod` re-resolves the git-hosted
 # merkle-patricia-forestry dependency, and only a store that already holds the
 # prepared package avoids re-running its `prepare` build (which needs the

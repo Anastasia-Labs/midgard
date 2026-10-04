@@ -12,6 +12,7 @@ import {
 import { formatJson } from "./commands/command-utils.js";
 import * as DeploymentRunStateCommand from "./commands/deployment-run-state.js";
 import * as PrepareHubOracleNonce from "./commands/prepare-hub-oracle-nonce.js";
+import { hubOracleNonceRunStateHooks } from "./commands/prepare-hub-oracle-nonce.run-state-hooks.js";
 import { program } from "./index.registration.js";
 import * as Services from "./services/index.js";
 import * as PhasMembershipRegistration from "./transactions/phas-membership-registration.js";
@@ -80,27 +81,10 @@ program
             yield* PrepareHubOracleNonce.reconcileHubOracleOneShotNonceAttemptProgram(
               attempt,
               {
-                onTxHashConfirmed: (confirmedAttempt, confirmationStatus) =>
-                  Effect.tryPromise({
-                    try: () =>
-                      DeploymentRunStateCommand.recordHubOracleNonceTxHashConfirmed(
-                        {
-                          options: runOptions,
-                          network: nodeConfig.NETWORK,
-                          txHash: confirmedAttempt.txHash,
-                          address: confirmedAttempt.address,
-                          lovelace: confirmedAttempt.lovelace,
-                          inlineDatum: confirmedAttempt.inlineDatum,
-                          confirmationStatus,
-                        },
-                      ),
-                    catch: (cause) =>
-                      cause instanceof Error
-                        ? cause
-                        : new Error(
-                            `Failed to record confirmed hub-oracle nonce tx in run state: ${String(cause)}`,
-                          ),
-                  }),
+                onTxHashConfirmed: hubOracleNonceRunStateHooks(
+                  runOptions,
+                  nodeConfig.NETWORK,
+                ).onTxHashConfirmed,
               },
             );
           yield* Effect.tryPromise({
@@ -189,47 +173,7 @@ program
         const result =
           yield* PrepareHubOracleNonce.prepareHubOracleOneShotNonceProgram(
             amountLovelace,
-            {
-              onSubmitted: (attempt) =>
-                Effect.tryPromise({
-                  try: () =>
-                    DeploymentRunStateCommand.recordHubOracleNonceSubmitted({
-                      options: runOptions,
-                      network: nodeConfig.NETWORK,
-                      txHash: attempt.txHash,
-                      address: attempt.address,
-                      lovelace: attempt.lovelace,
-                      inlineDatum: attempt.inlineDatum,
-                    }),
-                  catch: (cause) =>
-                    cause instanceof Error
-                      ? cause
-                      : new Error(
-                          `Failed to record submitted hub-oracle nonce in run state: ${String(cause)}`,
-                        ),
-                }),
-              onTxHashConfirmed: (attempt, confirmationStatus) =>
-                Effect.tryPromise({
-                  try: () =>
-                    DeploymentRunStateCommand.recordHubOracleNonceTxHashConfirmed(
-                      {
-                        options: runOptions,
-                        network: nodeConfig.NETWORK,
-                        txHash: attempt.txHash,
-                        address: attempt.address,
-                        lovelace: attempt.lovelace,
-                        inlineDatum: attempt.inlineDatum,
-                        confirmationStatus,
-                      },
-                    ),
-                  catch: (cause) =>
-                    cause instanceof Error
-                      ? cause
-                      : new Error(
-                          `Failed to record confirmed hub-oracle nonce tx in run state: ${String(cause)}`,
-                        ),
-                }),
-            },
+            hubOracleNonceRunStateHooks(runOptions, nodeConfig.NETWORK),
           );
         yield* Effect.tryPromise({
           try: () =>

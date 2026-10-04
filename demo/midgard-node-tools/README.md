@@ -9,7 +9,7 @@ options still require their explicit configuration gates.
 
 - `src/index.ts`: the `midgard-node-tools` CLI (`dist/index.js`).
 - `src/commands/`: the e2e finalizer and state-correction acceptance, the
-  managed-service and step-runner commands, stress wallets, the corpus
+  managed-service commands, stress wallets, the corpus
   generator/verifier, the bounded L2 stress harness, the Phase 4 genesis-ledger
   and T1 recovery gates, and the Phase 4 pipelined-commit process acceptance
   controller.
@@ -46,22 +46,36 @@ Runtime configuration is the node's: the CLI loads the same dotenv and
 `NodeConfig` the operator binary does, so run it from (or point it at) the node
 checkout whose `.env`, `logs/`, and `dist/index.js` a command should use.
 
+## Persistent Preprod setup and wallet tests
+
+Run `pnpm --dir demo/midgard-node-tools run e2e-stack --config /absolute/path/stack.json`
+from the repository root. It saves confirmed progress, resumes the deployment,
+starts the existing Compose stack and checks deposits, transfers and automatic
+withdrawal payments. See [configuration and recovery](docs/PREPROD_STACK.md).
+This is the only live acceptance flow; the operating runbook is
+`.agents/skills/midgard-e2e-acceptance` at the repository root.
+
 ## Commands
 
-| Command                                                              | Purpose                                                                    |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `e2e-run-step`, `e2e-start-service`, `e2e-clean-owned-process-group` | Structured step runner, managed service start, fail-closed process cleanup |
-| `e2e-finalize-summary`                                               | Collect endpoint/database evidence and write `summary.json` + `summary.md` |
-| `e2e-stress-l2-throughput`                                           | Opt-in bounded L2 transfer stress with SQL-grounded stage metrics          |
-| `create-l2-wallet`, `stress-wallets:*`                               | Persisted stress wallets: create, prepare, fan-out, consolidate, drain     |
-| `stress-corpus-generate`, `stress-corpus-verify`                     | Signed NDJSON transaction corpus for repeatable benchmarks                 |
-| `phase4-genesis-ledger`, `phase4-t1-probe`, `phase4-t1-advance`      | Gated Phase 4 local-devnet genesis and T1 recovery commands                |
-| `e2e-pipelined-commit-process-acceptance`                            | The Phase 4 crash/restart and two-node process acceptance matrix           |
+| Command                                                         | Purpose                                                                                            |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `e2e-stack`                                                     | One-command persistent Preprod setup, resume and wallet journeys                                   |
+| `e2e-start-service`, `e2e-clean-owned-process-group`            | Managed service start, fail-closed process cleanup                                                 |
+| `e2e-finalize-summary`                                          | Re-derives an `e2e-stack` run into the release-readiness dashboard (`summary.json` + `summary.md`) |
+| `e2e-stress-l2-throughput`                                      | Opt-in bounded L2 transfer stress with SQL-grounded stage metrics                                  |
+| `create-l2-wallet`, `stress-wallets:*`                          | Persisted stress wallets: create, prepare, fan-out, consolidate, drain                             |
+| `stress-corpus-generate`, `stress-corpus-verify`                | Signed NDJSON transaction corpus for repeatable benchmarks                                         |
+| `phase4-genesis-ledger`, `phase4-t1-probe`, `phase4-t1-advance` | Gated Phase 4 local-devnet genesis and T1 recovery commands                                        |
+| `e2e-pipelined-commit-process-acceptance`                       | The Phase 4 crash/restart and two-node process acceptance matrix                                   |
 
-The operator-facing runbook that sequences these is
-`.agents/skills/midgard-e2e-acceptance` at the repository root; it invokes them
-as `node "$TOOLS_CLI" <command>` and operator commands as
-`node dist/index.js <command>` from `demo/midgard-node`.
+`e2e-stack` records every command it runs through the structured step runner
+in its run directory's `attempts/`. `e2e-start-service` supervises
+hand-started devnet processes (see `.agents/skills/running-the-devnet`).
+`e2e-finalize-summary --stack-config <path>` re-derives an `e2e-stack` run's
+functional evidence from its journal, receipts, node and database. Its
+state-correction gates stay blocked as not run, because the stack produces no
+fault-proof evidence; see
+`.agents/skills/midgard-e2e-acceptance/references/release-readiness.md`.
 
 ## Parallel Fanout Stress Wallets
 

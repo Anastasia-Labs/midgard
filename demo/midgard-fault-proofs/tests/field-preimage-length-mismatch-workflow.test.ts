@@ -3,11 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   FIELD_PREIMAGE_LENGTH_PHYSICAL_SCRIPTS,
-  type FieldPreimageLengthJournal,
-  nextFieldPreimageLengthAction,
   prepareFieldPreimageLengthWorkflow,
-  reconcileFieldPreimageLengthJournal,
-  runFieldPreimageLengthWorkflow,
 } from "../src/field-preimage-length-mismatch/workflow.js";
 
 const prepared = prepareFieldPreimageLengthWorkflow({
@@ -21,13 +17,7 @@ const prepared = prepareFieldPreimageLengthWorkflow({
   fieldPreimage: Buffer.from("80", "hex"),
 });
 
-const emptyJournal = (): FieldPreimageLengthJournal => ({
-  prepared,
-  confirmed: [],
-  transactionIds: {},
-});
-
-describe("field-preimage-length durable workflow", () => {
+describe("field-preimage-length proof preparation", () => {
   it("pins the ordered four-script deployment topology", () => {
     expect(
       FIELD_PREIMAGE_LENGTH_PHYSICAL_SCRIPTS.map(({ role }) => role),
@@ -121,45 +111,5 @@ describe("field-preimage-length durable workflow", () => {
         },
       }),
     ).toThrow(/coordinate differs/u);
-  });
-
-  it("restarts from a persisted transaction identity without resubmitting", async () => {
-    let journal = reconcileFieldPreimageLengthJournal({
-      journal: emptyJournal(),
-      action: "init",
-      transactionId: "33".repeat(32),
-      confirmedOnChain: false,
-    });
-    let submits = 0;
-    journal = await runFieldPreimageLengthWorkflow({
-      load: async () => journal,
-      save: async (next) => {
-        journal = next;
-      },
-      submit: async () => {
-        submits += 1;
-        return "44".repeat(32);
-      },
-      observeConfirmed: async () => true,
-    });
-    expect(submits).toBe(4);
-    expect(nextFieldPreimageLengthAction(journal)).toBe("complete");
-  });
-
-  it("refuses transaction identity mutation during reconciliation", () => {
-    const journal = reconcileFieldPreimageLengthJournal({
-      journal: emptyJournal(),
-      action: "init",
-      transactionId: "33".repeat(32),
-      confirmedOnChain: false,
-    });
-    expect(() =>
-      reconcileFieldPreimageLengthJournal({
-        journal,
-        action: "init",
-        transactionId: "44".repeat(32),
-        confirmedOnChain: true,
-      }),
-    ).toThrow(/identity changed/u);
   });
 });

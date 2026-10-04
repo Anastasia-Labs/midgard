@@ -376,7 +376,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/field-preimage-length-mismatch-lifecycle.test.ts",
-    "max": 949,
+    "max": 907,
     "reason": "Retained test registration “field-preimage-length-mismatch registered-chain lifecycle” (853 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -911,8 +911,8 @@
   },
   {
     "file": "midgard-node-tools/tests/e2e-summary.test.ts",
-    "max": 940,
-    "reason": "Retained test registration “e2e run summary” (898 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 608,
+    "reason": "Retained test registration “e2e run summary” (593 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node-tools/tests/phase4-pipelined-process-summary-verifier.test.mjs",
@@ -1606,7 +1606,7 @@
   },
   {
     "file": "midgard-watcher/src/index.ts",
-    "max": 753,
+    "max": 759,
     "reason": "Public export surface only. Splitting this facade adds barrel indirection without separating implementation."
   },
   {

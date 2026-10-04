@@ -4,7 +4,7 @@
     "allowUnusedLabels": false,
     "declaration": true,
     "forceConsistentCasingInFileNames": true,
-    "lib": ["es2020"],
+    "lib": ["es2022"],
     "esModuleInterop": true,
     "module": "NodeNext",
     "moduleResolution": "nodenext",
@@ -15,12 +15,13 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "pretty": true,
+    "resolveJsonModule": true,
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
     "target": "es2020",
     "outDir": "dist"
   },
-  "include": ["src", "tests"],
+  "include": ["src", "tests", "../midgard-node/src/types"],
   "exclude": ["node_modules", "dist"]
 }

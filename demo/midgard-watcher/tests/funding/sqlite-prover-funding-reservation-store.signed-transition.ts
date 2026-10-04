@@ -102,12 +102,15 @@ export const signedTransition = ({
   });
 };
 
-export const openStore = async () => {
-  const directory = await mkdtemp(
-    join(process.cwd(), ".watcher-funding-reservation-test-"),
-  );
-  temporaryDirectories.push(directory);
-  const path = join(directory, "watcher.sqlite");
+export const openStore = async (explicitPath?: string) => {
+  let path = explicitPath;
+  if (path === undefined) {
+    const directory = await mkdtemp(
+      join(process.cwd(), ".watcher-funding-reservation-test-"),
+    );
+    temporaryDirectories.push(directory);
+    path = join(directory, "watcher.sqlite");
+  }
   return {
     path,
     runtime: await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(

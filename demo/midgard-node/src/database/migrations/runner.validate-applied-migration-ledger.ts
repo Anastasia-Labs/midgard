@@ -5,7 +5,7 @@ import {
   APPLICATION_INDEX_NAMES,
   APPLICATION_TABLE_NAMES,
   EXPECTED_SCHEMA_VERSION,
-  MIGRATION_MANIFEST_HASH,
+  MIGRATION_PREFIX_MANIFEST_HASHES,
   migrationByVersion,
 } from "./index.js";
 import {
@@ -56,7 +56,12 @@ export const validateAppliedMigrationLedger = (
         `Checksum mismatch for schema version ${row.version}`,
       );
     }
-    if (row.manifest_hash_sha256 !== MIGRATION_MANIFEST_HASH) {
+    // A row applied by an earlier release carries that release's manifest,
+    // the hash of a MIGRATIONS prefix that includes the row.
+    const coveredVersion = MIGRATION_PREFIX_MANIFEST_HASHES.get(
+      row.manifest_hash_sha256,
+    );
+    if (coveredVersion === undefined || coveredVersion < row.version) {
       throw migrationError(
         "schema_manifest_hash_mismatch",
         `Manifest hash mismatch for schema version ${row.version}`,

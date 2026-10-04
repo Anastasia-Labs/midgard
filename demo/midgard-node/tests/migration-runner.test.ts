@@ -1,5 +1,7 @@
 import "./utils.js";
 
+import { createHash } from "node:crypto";
+
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -64,13 +66,17 @@ describe("splitSqlStatements", () => {
     expect(statements[1]).toBe("SELECT 1");
   });
 
-  it("exposes one fresh-install baseline with no historical migrations", () => {
-    expect(MIGRATIONS).toHaveLength(1);
-    expect(MIGRATIONS[0]).toMatchObject({
-      version: 1,
-      name: "initial_schema",
-      transactional: true,
-    });
+  it("keeps v1 as the single fresh-install baseline with contiguous transactional successors", () => {
+    expect(
+      MIGRATIONS.map(({ version, name, transactional }) => ({
+        version,
+        name,
+        transactional,
+      })),
+    ).toEqual([
+      { version: 1, name: "initial_schema", transactional: true },
+      { version: 2, name: "automatic_settlement", transactional: true },
+    ]);
   });
 
   it("splits the real baseline into statements that re-split identically", () => {
@@ -88,10 +94,53 @@ describe("splitSqlStatements", () => {
     );
   });
 
-  it("accepts the exact fresh baseline ledger row", () => {
+  it("accepts the exact ledger of every migration", () => {
     expect(() =>
-      validateAppliedMigrationLedger([appliedMigrationRow()], "exact"),
+      validateAppliedMigrationLedger(
+        MIGRATIONS.map((migration) => appliedMigrationRow(migration)),
+        "exact",
+      ),
     ).not.toThrow();
+  });
+
+  it("lets a baseline-only ledger stamped by the baseline-era manifest migrate forward but not serve", () => {
+    const baselineOnly = [
+      {
+        ...appliedMigrationRow(),
+        manifest_hash_sha256: manifestHashThrough(1),
+      },
+    ];
+    expect(() =>
+      validateAppliedMigrationLedger(baselineOnly, "allowBehind"),
+    ).not.toThrow();
+    expect(() => validateAppliedMigrationLedger(baselineOnly, "exact")).toThrow(
+      expect.objectContaining({ code: "schema_version_behind" }),
+    );
+  });
+
+  it("accepts each row stamped by the manifest it was applied under, and no older one", () => {
+    const [first, second] = MIGRATIONS;
+    const stamped = (
+      migration: (typeof MIGRATIONS)[number],
+      through: number,
+    ): AppliedMigrationRow => ({
+      ...appliedMigrationRow(migration),
+      manifest_hash_sha256: manifestHashThrough(through),
+    });
+    expect(() =>
+      validateAppliedMigrationLedger(
+        [stamped(first!, 1), stamped(second!, 2)],
+        "exact",
+      ),
+    ).not.toThrow();
+    expect(() =>
+      validateAppliedMigrationLedger(
+        [stamped(first!, 1), stamped(second!, 1)],
+        "allowBehind",
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: "schema_manifest_hash_mismatch" }),
+    );
   });
 
   it("rejects adjacent, renamed, checksum-drifted, and manifest-drifted ledgers", () => {
@@ -146,10 +195,22 @@ describe("splitSqlStatements", () => {
   });
 });
 
-const appliedMigrationRow = (): AppliedMigrationRow => ({
-  version: 1,
-  name: "initial_schema",
-  checksum_sha256: MIGRATIONS[0]!.checksumSha256,
+/** Recomputed here, not imported, so the test pins the stamping format. */
+const manifestHashThrough = (version: number): string =>
+  createHash("sha256")
+    .update(
+      MIGRATIONS.filter((migration) => migration.version <= version)
+        .map((m) => `${m.version}:${m.name}:${m.checksumSha256}`)
+        .join("\n"),
+    )
+    .digest("hex");
+
+const appliedMigrationRow = (
+  migration: (typeof MIGRATIONS)[number] = MIGRATIONS[0]!,
+): AppliedMigrationRow => ({
+  version: migration.version,
+  name: migration.name,
+  checksum_sha256: migration.checksumSha256,
   manifest_hash_sha256: MIGRATION_MANIFEST_HASH,
   applied_at: new Date("2026-07-27T00:00:00.000Z"),
   app_version: "test",
@@ -311,6 +372,63 @@ describe("applied fresh-install schema", () => {
               );
           });
           expect(unsatisfied).toEqual([]);
+        }),
+      ),
+    );
+  });
+});
+
+describe("upgrading a database migrated by an earlier release", () => {
+  it("migrates a baseline stamped with the baseline-era manifest and serves it", async () => {
+    const [baseline] = MIGRATIONS;
+    const baselineManifest = manifestHashThrough(baseline!.version);
+    await Effect.runPromise(
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          const sql = yield* BatchSql;
+          yield* sql.unsafe("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
+          const withSql = <A, E>(
+            effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+          ) => effect.pipe(Effect.provideService(SqlClient.SqlClient, sql));
+          // The state a baseline-only release left: its ledger tables, the
+          // baseline schema, and one row stamped with its own manifest.
+          yield* withSql(MigrationRunner.getStatus);
+          yield* sql.withTransaction(
+            Effect.gen(function* () {
+              for (const statement of splitSqlStatements(baseline!.sql)) {
+                yield* sql.unsafe(statement);
+              }
+              yield* sql`INSERT INTO schema_migrations
+                (version, name, checksum_sha256, manifest_hash_sha256,
+                 app_version, execution_ms, applied_by)
+                VALUES (${baseline!.version}, ${baseline!.name},
+                        ${baseline!.checksumSha256}, ${baselineManifest},
+                        'baseline-release', 1, 'baseline-release')`;
+            }),
+          );
+
+          const status = yield* withSql(
+            MigrationRunner.migrate({
+              appVersion: "migration-runner-test",
+              actor: "upgrade",
+            }),
+          );
+          expect(status.actualVersion).toBe(MIGRATIONS.at(-1)!.version);
+          yield* withSql(MigrationRunner.assertCompatible);
+          const rows = yield* sql<{
+            readonly version: number;
+            readonly manifest_hash_sha256: string;
+          }>`SELECT version, manifest_hash_sha256
+               FROM schema_migrations ORDER BY version`;
+          expect(rows).toEqual(
+            MIGRATIONS.map((migration) => ({
+              version: migration.version,
+              manifest_hash_sha256:
+                migration.version === baseline!.version
+                  ? baselineManifest
+                  : MIGRATION_MANIFEST_HASH,
+            })),
+          );
         }),
       ),
     );

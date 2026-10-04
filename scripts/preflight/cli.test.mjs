@@ -65,6 +65,8 @@ test("usage errors exit 2", async () => {
     ["--bogus"],
     ["--base"],
     ["--base", "--json"],
+    ["--ci-run"],
+    ["--ci-run", "--json"],
     ["--write-docs", "--check-docs"],
     ["--check-docs", "--json"],
     ["--strict", "--base", "refs/heads/no-such-branch-for-preflight"],
