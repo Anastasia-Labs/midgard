@@ -22,7 +22,7 @@ import { expect } from "vitest";
 
 import { resolveProverSigner } from "../../src/index.js";
 import {
-  buildCanonicalBlockFixture,
+  buildCanonicalL2BlockFixture,
   buildFixtureTransaction,
 } from "../helpers/canonical-block-evidence-fixture.js";
 import { requireUtxoWithUnit } from "./emulator/emulator-context.js";
@@ -52,7 +52,6 @@ import {
   registerPhasMembershipRewardAccount,
 } from "./submit-init-emulator-shared.js";
 
-// This test-fixture refactor preserves the original setup statement order.
 export const buildProvedFixtureDeploymentContext = async (
   headerMinimumFee: bigint,
   coherentCanonicalEvidence = false,
@@ -73,7 +72,6 @@ export const buildProvedFixtureDeploymentContext = async (
   // Selected through the signer so the prover Lucid instance and every
   // `signer.selectWallet(lucid)` call site address the same funded wallet.
   proverSigner.selectWallet(proverLucid);
-
   await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
   const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
     await createReferenceScriptPublisher(funderLucid, emulator.now());
@@ -311,6 +309,8 @@ const buildCanonicalDeploymentContext = async () => {
     fraudProofMint: reference("fraudProofMint"),
     phasMembershipWithdraw: reference("phasMembershipWithdraw"),
   };
+  // Release the confirmed deployment chain’s wallet view before onboarding.
+  funderLucid.clearUTxOOverride();
   await onboardEmulatorOperator({
     lucid: funderLucid,
     contracts,
@@ -320,6 +320,19 @@ const buildCanonicalDeploymentContext = async () => {
       while (BigInt(emulator.now()) <= time) emulator.awaitSlot(1);
     },
   });
+  const initializedRoot = await requireUtxoWithUnit(
+    funderLucid,
+    contracts.stateQueue.spendingScriptAddress,
+    contracts.stateQueue.policyId + SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+    "canonical initialized state queue",
+  );
+  const genesis = await Effect.runPromise(
+    SDK.getConfirmedStateFromStateQueueDatum(
+      await Effect.runPromise(
+        SDK.getLinkedListNodeViewFromUTxO(initializedRoot),
+      ),
+    ),
+  );
   const canonicalTransactions = [tx1InputsPreimage, tx2InputsPreimage].map(
     (inputs, index) =>
       buildFixtureTransaction({
@@ -327,10 +340,11 @@ const buildCanonicalDeploymentContext = async () => {
         fee: BigInt(index),
       }),
   );
-  const canonical = await buildCanonicalBlockFixture({
-    transactions: canonicalTransactions,
-    prevHeaderHash: SDK.GENESIS_HEADER_HASH,
-  });
+  while (BigInt(emulator.now()) <= genesis.data.endTime) emulator.awaitSlot(1);
+  const canonical = await buildCanonicalL2BlockFixture(
+    canonicalTransactions,
+    genesis.data,
+  );
   const nativeTransactions: readonly [
     MidgardNativeTxFull,
     MidgardNativeTxFull,
@@ -353,6 +367,7 @@ const buildCanonicalDeploymentContext = async () => {
     catalogue: await buildCatalogueDeploymentInfo(contracts.fraudProofs),
     canonical: {
       ...canonical,
+      genesisEndTime: genesis.data.endTime,
       manifest: deployment.manifest,
       nativeTransactions,
       removalReferenceScriptPublications,
@@ -366,7 +381,9 @@ export const commitInitializedProvedFixtureHeader = async ({
   lucid,
   contracts,
   header,
+  schedulerStartTime,
 }: {
+  readonly schedulerStartTime: bigint;
   readonly lucid: Parameters<typeof submitHeaderCommitTx>[0]["lucid"];
   readonly contracts: Parameters<typeof submitHeaderCommitTx>[0]["contracts"];
   readonly header: SDK.Header;
@@ -377,6 +394,9 @@ export const commitInitializedProvedFixtureHeader = async ({
     >
   >
 > => {
+  await Effect.runPromise(
+    SDK.validateHeaderTransitionCommitmentsProgram(header),
+  );
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const units = setupUnits(contracts, header, headerHash);
   const snapshot = await Effect.runPromise(
@@ -416,7 +436,7 @@ export const commitInitializedProvedFixtureHeader = async ({
   const appointedScheduler = await submitSchedulerAppointmentTx({
     lucid,
     contracts,
-    header,
+    header: { ...header, startTime: schedulerStartTime },
     units,
     schedulerUtxo: scheduler,
     activeOperatorNode,

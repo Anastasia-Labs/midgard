@@ -128,7 +128,7 @@ export const preparePermissionlessSlashSqlite = async ({
           ok: true as const,
           provenance: {
             trustClass: "public_or_permissionless_da" as const,
-            sourceId: "permissionless-retained-canonical-pair",
+            sourceId: "permissionless-retained-canonical-pair/fixture",
             grade: "security" as const,
           },
           sourceId: "permissionless-retained-canonical-pair",

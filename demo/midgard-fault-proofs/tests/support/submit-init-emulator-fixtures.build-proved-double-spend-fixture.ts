@@ -156,7 +156,7 @@ export const buildProvedDoubleSpendFixture = async ({
       : {
           ...canonical.header,
           operatorVkey: funderPaymentCredential.hash,
-          startTime: BigInt(headerStartTime),
+          startTime: canonical.genesisEndTime,
         }),
     minFeeA: 0n,
     minFeeB: headerMinimumFee,
@@ -169,6 +169,7 @@ export const buildProvedDoubleSpendFixture = async ({
           lucid: funderLucid,
           contracts,
           header: fraudulentHeader,
+          schedulerStartTime: BigInt(headerStartTime),
         })
       : nonceUtxo !== undefined
         ? await submitSetupTx({
@@ -273,7 +274,6 @@ export const buildProvedDoubleSpendFixture = async ({
   );
   const submitInitResult = submitInitCapture.result;
   const submitInitMeasurement = submitInitCapture.measurement;
-
   expect(submitInitResult.txHash).toHaveLength(64);
   expect(submitInitResult.fraudulentHeaderHash).toBe(headerHash);
   expect(submitInitResult.computationThreadAssetName).toBe(
