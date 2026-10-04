@@ -13,6 +13,7 @@ import type {
 } from "../l1-event-history-source.js";
 import { eventHistoryCanonicalJson } from "../l1-event-history-source.js";
 import { requireSourceTransaction } from "./eventHistoryAuthority.js";
+import { serialise as serialiseApplicationReceipt } from "./eventHistoryJournal.validate-live-coverage.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 const table = "event_history_census_frontier";
@@ -92,10 +93,19 @@ export const append = (input: {
           "midgard-node-authenticated-history-block-v1",
           "midgard-history-ledger-application-v1",
         ].includes(String(raw.domain)) ||
-        raw.bindingDigest !== input.binding.digest ||
-        eventHistoryCanonicalJson(raw) !== input.receipt ||
-        eventHistoryCanonicalJson(raw.block) !==
-          eventHistoryCanonicalJson(input.block)
+        raw.bindingDigest !== input.binding.digest
+      )
+        throw new Error("Census receipt is not the exact admitted full block");
+      // Each authenticated domain retains its own pinned integer encoding.
+      // Application receipts encode bigints as { integer: string }; source
+      // receipts encode integer JSON tokens. Compare with the issuing codec.
+      const encodeReceipt =
+        raw.domain === "midgard-history-ledger-application-v1"
+          ? serialiseApplicationReceipt
+          : eventHistoryCanonicalJson;
+      if (
+        encodeReceipt(raw) !== input.receipt ||
+        encodeReceipt(raw.block) !== encodeReceipt(input.block)
       )
         throw new Error("Census receipt is not the exact admitted full block");
       if (frontier === undefined) {
