@@ -131,8 +131,8 @@
   },
   {
     "file": "midgard-core/src/availability-operation-journal.ts",
-    "max": 601,
-    "reason": "The lease-fenced SQLite journal constructor owns mutation ordering and lifecycle cleanup. Shared storage queries and retention operations are extracted through a native package import so both Node strip-types durability and bundled ESM/CJS consumers resolve the helper. Further reduction requires a separately verified behavioral refactor of transaction-local mutation ordering."
+    "max": 502,
+    "reason": "One constructor closure owns the journal's leases, reservations, transitions and retention over a single SQLite connection; its methods share that connection. Opening and migrating the database live in availability-operation-journal.schema.ts and the shared SQL operations and transaction helper in availability-operation-journal.storage.ts, both loaded through the package's subpath imports so Node strip-types and bundled ESM/CJS consumers resolve them."
   },
   {
     "file": "midgard-core/src/cek-proof.verify-one-program-material.ts",

@@ -7,19 +7,22 @@ import type {
   AvailabilityOperationUnsettledRelease,
 } from "./availability-operation-journal.types.js";
 
+/** Runs `run` inside one immediate SQLite transaction on `db`. */
+export const journalTransaction = <T>(db: DatabaseSync, run: () => T): T => {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const result = run();
+    db.exec("COMMIT");
+    return result;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+};
+
 /** Shared SQL operations; callers hold the journal's actor lease and transaction. */
 export const availabilityJournalStorage = (db: DatabaseSync) => {
-  const transaction = <T>(run: () => T): T => {
-    db.exec("BEGIN IMMEDIATE");
-    try {
-      const result = run();
-      db.exec("COMMIT");
-      return result;
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
-  };
+  const transaction = <T>(run: () => T): T => journalTransaction(db, run);
   const records = (sql: string, ...args: string[]) =>
     db
       .prepare(sql)
