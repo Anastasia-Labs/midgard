@@ -29,6 +29,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildCountedRoot,
+  detectTransitionTraceFaults,
   eventKeyFingerprint,
   reconstructDaPayload,
 } from "../src/transition-trace/index.js";
@@ -357,46 +358,61 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       fixture.header.validationTraceCount,
     );
 
-    // No arm proves a validation_traces count, so an authenticated member
-    // list that disagrees with the header count still aborts.
+    // N2 authenticates the trie with the header count; the missing-run proof
+    // then establishes the absent source member without rejecting its evidence.
     const fewerTraces = fixture.payload.block_body.validation_traces.slice(1);
+    const fewerTracesRoot = await buildCountedRoot(
+      SDK.ROOT_DOMAINS.validationTraces,
+      fewerTraces.map(([key, value]) => ({
+        key: Buffer.from(key, "hex"),
+        value: Buffer.from(value, "hex"),
+      })),
+    );
     const fewerTracesHeader: SDK.Header = {
       ...fixture.header,
-      validationTracesRoot: (
-        await buildCountedRoot(
-          SDK.ROOT_DOMAINS.validationTraces,
-          fewerTraces.map(([key, value]) => ({
-            key: Buffer.from(key, "hex"),
-            value: Buffer.from(value, "hex"),
-          })),
-        )
-      ).root,
+      validationTracesRoot: await Effect.runPromise(
+        SDK.commitCountedRootProgram({
+          domain: SDK.ROOT_DOMAINS.validationTraces,
+          phasRoot: fewerTracesRoot.phasRoot,
+          count: fixture.header.validationTraceCount,
+        }),
+      ),
     };
-    const fewerTracesHeaderHash = await Effect.runPromise(
+    const headerHash = await Effect.runPromise(
       SDK.hashBlockHeader(fewerTracesHeader),
     );
-    const fewerTracesPayload: SDK.DaPayload = {
+    const payload: SDK.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
-        header_hash: fewerTracesHeaderHash,
+        header_hash: headerHash,
         header: fewerTracesHeader,
         validation_traces: fewerTraces,
       },
     };
-    await expect(
-      reconstructDaPayload({
-        payloadEnvelopeCbor: await wrapDaPayload(
-          SDK.encodeDaPayload(fewerTracesPayload),
-          { mode: "identity" },
-        ),
-        expectedHeaderHash: fewerTracesHeaderHash,
-        committedHeader: fewerTracesHeader,
+    const missingRun = await reconstructDaPayload({
+      payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+        mode: "identity",
       }),
-    ).rejects.toMatchObject({
-      code: "countMismatch",
-      message: expect.stringContaining("validation_traces member count"),
+      expectedHeaderHash: headerHash,
+      committedHeader: fewerTracesHeader,
     });
+    expect(missingRun.counts.validationTraceCount).toBe(
+      fixture.header.validationTraceCount,
+    );
+    expect(await detectTransitionTraceFaults(missingRun)).toEqual([
+      expect.objectContaining({
+        kind: "sourceMembershipMismatch",
+        buildable: true,
+        fault: {
+          SourceMembershipMismatch: {
+            witness: {
+              SourceEventMissingValidationRun: expect.any(Object),
+            },
+          },
+        },
+      }),
+    ]);
 
     const alternateCanonicalCborHex = corpus.entries.find(
       ({ label }) => label === "mixed-size-balanced",

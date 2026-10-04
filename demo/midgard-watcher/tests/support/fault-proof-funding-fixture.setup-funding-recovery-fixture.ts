@@ -233,8 +233,7 @@ export const setupFundingRecoveryFixture = async (
     };
     let permit;
     if (priorRoster && capturedPlan === undefined) {
-      // Reproduce the actual pre-fix admission policy, then use the current
-      // production factory for every subsequent restart/recovery.
+      // Admit the prior roster, retaining immutable proof-item custody.
       const contracts = Object.entries(
         watcherDeploymentAppliedScriptHashes(deploymentIdentity),
       )
@@ -250,6 +249,7 @@ export const setupFundingRecoveryFixture = async (
                     "fraudProofCatalogueSpend",
                     "fieldPreimageCertificateSpend",
                     "cekProgramMaterialSpend",
+                    "validationTraceDisputeProofItem",
                   ].includes(name)
                 ? ("field_carrier" as const)
                 : (name.startsWith("fraudProof") &&
