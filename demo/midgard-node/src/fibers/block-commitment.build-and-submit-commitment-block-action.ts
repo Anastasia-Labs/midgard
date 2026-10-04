@@ -14,6 +14,7 @@ import {
   HistoryProducer,
   runHistoryProducer,
 } from "../services/event-history-producer.js";
+import type { ForeignBaseVerificationScope } from "../services/foreign-base-verification.js";
 import {
   Database,
   Globals,
@@ -31,6 +32,13 @@ import {
   WorkerOutput,
 } from "../workers/utils/commit-block-header.js";
 import { WorkerError } from "../workers/utils/common.js";
+import { promoteCommitWorkerNativeResult } from "./block-commitment.native-result.js";
+import {
+  applyCommitForeignVerification,
+  beginCommitForeignVerification,
+  notifyForeignNativeAdoptionRequested,
+  prepareForeignBaseForCommitment,
+} from "./block-commitment.prepare-foreign-base.js";
 import {
   commitBlockCounter,
   commitBlockNumTxGauge,
@@ -39,7 +47,6 @@ import {
   commitWorkerDurationTimer,
   type CommitWorkerMessage,
   foreignTipReconciliationAwaitingGauge,
-  promoteOrRecoverNativeMpf,
   publishFullMempoolLedgerReload,
   recoverNativeMpfFromActiveJournalAfterWorkerFailure,
   resolveAuthoritativeLocalFinalizationPreflight,
@@ -55,14 +62,12 @@ import { registerSlotAwareDueWork } from "./slot-aware-due-work.js";
 import { reduceSpeculativeCommitState } from "./speculative-commit-state.js";
 import { makeAwaitedWorkerTerminator } from "./worker-lifecycle.js";
 
-/**
- * Launches one commitment worker, applies its result to global node state, and
- * updates the block-commitment metrics.
- */
+/** Run a commitment worker and publish its node state and metrics. */
 export const buildAndSubmitCommitmentBlockAction = (
   stateQueueLeaseToken?: string,
-) =>
-  Effect.gen(function* () {
+) => {
+  let adoptionRequested = false;
+  return Effect.gen(function* () {
     const history = yield* HistoryProducer;
     const workerStartedAt = Date.now();
     const globals = yield* Globals;
@@ -78,6 +83,7 @@ export const buildAndSubmitCommitmentBlockAction = (
     let CURRENT_BLOCK_START_TIME_MS = yield* Ref.get(
       globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
     );
+    let foreignVerificationScope: ForeignBaseVerificationScope | undefined;
     let BASE_SNAPSHOT_ID: string | undefined;
     let STATE_QUEUE_HAS_UNMERGED_TAIL = false;
     if (!LOCAL_FINALIZATION_PENDING) {
@@ -90,6 +96,13 @@ export const buildAndSubmitCommitmentBlockAction = (
       AVAILABLE_CONFIRMED_BLOCK = snapshot.tailCommitBase.utxo;
       CURRENT_BLOCK_START_TIME_MS = snapshot.tailCommitBase.blockEndTimeMs;
       BASE_SNAPSHOT_ID = snapshot.snapshotId;
+      foreignVerificationScope = yield* beginCommitForeignVerification(
+        globals,
+        {
+          ...history.token,
+          baseHeaderHash: snapshot.tailCommitBase.headerHash,
+        },
+      );
       STATE_QUEUE_HAS_UNMERGED_TAIL =
         snapshot.root.outRef !== snapshot.tailCommitBase.outRef;
       const activePending = yield* PendingBlockFinalizationsDB.retrieveActive();
@@ -154,7 +167,6 @@ export const buildAndSubmitCommitmentBlockAction = (
       );
     }
     if (
-      nativeMpfOwner !== undefined &&
       LOCAL_FINALIZATION_PENDING &&
       AVAILABLE_LOCAL_FINALIZATION_BLOCK !== ""
     ) {
@@ -163,14 +175,22 @@ export const buildAndSubmitCommitmentBlockAction = (
         AVAILABLE_LOCAL_FINALIZATION_BLOCK,
       );
     }
-    const nativeMpfInput =
-      nativeMpfOwner === undefined
-        ? undefined
-        : yield* nativeMpfWorkerInput(
-            nativeMpfOwner,
-            "commit-block-header",
-            nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
-          );
+    const foreignBase = yield* prepareForeignBaseForCommitment({
+      localFinalizationPending: LOCAL_FINALIZATION_PENDING,
+      availableConfirmedBlock: AVAILABLE_CONFIRMED_BLOCK,
+      owner: nativeMpfOwner,
+      globals,
+      scope: foreignVerificationScope,
+    });
+    if (foreignBase !== undefined) {
+      adoptionRequested = foreignBase.adoptionRequested;
+      return foreignBase.output;
+    }
+    const nativeMpfInput = yield* nativeMpfWorkerInput(
+      nativeMpfOwner,
+      "commit-block-header",
+      nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
+    );
     const ledgerStoreLeaseOwner = commitLeaseOwner(randomUUID());
     const databaseRuntime = yield* Effect.runtime<Database>();
     const releaseTerminatedWorkerLedgerLease = () =>
@@ -210,8 +230,7 @@ export const buildAndSubmitCommitmentBlockAction = (
               stateQueueHasUnmergedTail: STATE_QUEUE_HAS_UNMERGED_TAIL,
             },
           } as WorkerInput, // TODO: Consider other approaches to avoid type assertion here.
-          transferList:
-            nativeMpfInput === undefined ? [] : [nativeMpfInput.port],
+          transferList: [nativeMpfInput.port],
         },
       );
       const terminate = makeAwaitedWorkerTerminator(
@@ -314,61 +333,32 @@ export const buildAndSubmitCommitmentBlockAction = (
         ),
       ),
       Effect.catchAll((workerError) =>
-        nativeMpfOwner === undefined
-          ? Effect.fail(workerError)
-          : recoverNativeMpfFromActiveJournalAfterWorkerFailure(
-              nativeMpfOwner,
-            ).pipe(
-              Effect.tap((recovered) =>
-                recovered
-                  ? Effect.logWarning(
-                      "Architecture G recovered the submitted native generation from the durable journal after the commit worker failed before returning its promotion handle.",
-                    )
-                  : Effect.void,
+        recoverNativeMpfFromActiveJournalAfterWorkerFailure(
+          nativeMpfOwner,
+        ).pipe(
+          Effect.tap((recovered) =>
+            recovered
+              ? Effect.logWarning(
+                  "Architecture G recovered the submitted native generation from the durable journal after the commit worker failed before returning its promotion handle.",
+                )
+              : Effect.void,
+          ),
+          Effect.matchEffect({
+            onFailure: (recoveryError) =>
+              Effect.fail(
+                new WorkerError({
+                  worker: "commit-block-header",
+                  message:
+                    "Commit worker failed and live Architecture G journal recovery also failed",
+                  cause: { workerError, recoveryError },
+                }),
               ),
-              Effect.matchEffect({
-                onFailure: (recoveryError) =>
-                  Effect.fail(
-                    new WorkerError({
-                      worker: "commit-block-header",
-                      message:
-                        "Commit worker failed and live Architecture G journal recovery also failed",
-                      cause: { workerError, recoveryError },
-                    }),
-                  ),
-                onSuccess: () => Effect.fail(workerError),
-              }),
-            ),
+            onSuccess: () => Effect.fail(workerError),
+          }),
+        ),
       ),
     );
-    const nativeMpfPromotion =
-      "nativeMpfPromotion" in workerOutput
-        ? workerOutput.nativeMpfPromotion
-        : undefined;
-    if (nativeMpfPromotion !== undefined) {
-      if (nativeMpfOwner === undefined) {
-        return yield* Effect.fail(
-          new WorkerError({
-            worker: "commit-block-header",
-            message: "Native MPF promotion returned without an owner",
-            cause: nativeMpfPromotion.handle.baseRoot,
-          }),
-        );
-      }
-      yield* promoteOrRecoverNativeMpf({
-        owner: nativeMpfOwner,
-        handle: nativeMpfPromotion.handle,
-      }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new WorkerError({
-              worker: "commit-block-header",
-              message: "Architecture G post-submit promotion failed",
-              cause,
-            }),
-        ),
-      );
-    }
+    yield* promoteCommitWorkerNativeResult(nativeMpfOwner, workerOutput);
     yield* commitWorkerDurationTimer(
       Effect.succeed(Duration.millis(Date.now() - workerStartedAt)),
     );
@@ -376,6 +366,12 @@ export const buildAndSubmitCommitmentBlockAction = (
       globals,
       workerOutput,
       nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
+    );
+
+    yield* applyCommitForeignVerification(
+      globals,
+      foreignVerificationScope,
+      workerOutput,
     );
 
     switch (workerOutput.type) {
@@ -542,4 +538,8 @@ export const buildAndSubmitCommitmentBlockAction = (
     );
     yield* emitQueueStateMetrics;
     return workerOutput;
-  }).pipe(runHistoryProducer);
+  }).pipe(
+    runHistoryProducer,
+    Effect.tap(() => notifyForeignNativeAdoptionRequested(adoptionRequested)),
+  );
+};

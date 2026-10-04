@@ -15,10 +15,8 @@ import {
 } from "../mpf/index.js";
 import { Database, NodeConfig } from "../services/index.js";
 import { materializeConfirmedLedgerSnapshot } from "../transactions/state-queue/confirmed-ledger-snapshot.js";
-import {
-  type ResolvedCommitBaseLedgerEntries,
-  selectAuthenticatedForeignBaseCandidate,
-} from "./commit-block-header.select-authenticated-foreign-base-candidate.js";
+import { type ResolvedCommitBaseLedgerEntries } from "./commit-block-header.select-authenticated-foreign-base-candidate.js";
+import { resolveVerifiedCommitBase } from "./commit-block-header.resolve-verified-commit-base.js";
 import {
   deserializeStateQueueUTxO,
   type SerializedStateQueueUTxO,
@@ -205,97 +203,17 @@ export const resolveCommitBaseLedgerEntries = ({
               ledgerPayloadAggregateFromEntries(snapshot.entries),
           } satisfies ResolvedCommitBaseLedgerEntries;
         }
-        if (!requireEntries && currentLedgerRootHex === header.utxosRoot) {
-          const aggregate =
-            yield* MpfEngineStateDB.retrieveLedgerPayloadAggregate(
-              currentLedgerRootHex,
-            );
-          if (aggregate !== undefined) {
-            return {
-              source: "persistent-ledger-mpf",
-              root: header.utxosRoot,
-              utxoPayloadAggregate: aggregate,
-            } satisfies ResolvedCommitBaseLedgerEntries;
-          }
-        }
-
-        const parentJournal =
-          yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
-            Buffer.from(header.prevHeaderHash, "hex"),
-          );
-        const parentSnapshot = Option.isSome(parentJournal)
-          ? yield* materializeConfirmedLedgerSnapshot(parentJournal.value)
-          : undefined;
-        const confirmedEntries = yield* ConfirmedLedgerDB.retrieve;
-        const confirmedRoot =
-          yield* computeLedgerMpfRootFromLedgerEntries(confirmedEntries);
-        const selection = selectAuthenticatedForeignBaseCandidate({
-          foreignUtxosRoot: header.utxosRoot,
-          requireEntries,
-          candidates: [
-            ...(parentSnapshot === undefined
-              ? []
-              : [
-                  {
-                    source: `foreign-parent-journal:${header.prevHeaderHash}`,
-                    root: parentSnapshot.root,
-                    hasEntries: true,
-                  },
-                ]),
-            {
-              source: "confirmed_ledger",
-              root: confirmedRoot,
-              hasEntries: true,
-            },
-            {
-              source: "persistent-ledger-mpf",
-              root: currentLedgerRootHex,
-              hasEntries: false,
-            },
-          ],
-        });
-        if (selection.type === "Ready") {
-          if (selection.source.startsWith("foreign-parent-journal:")) {
-            return {
-              source: selection.source,
-              entries: parentSnapshot!.entries,
-              root: parentSnapshot!.root,
-              utxoPayloadAggregate:
-                parentJournal._tag === "Some" &&
-                parentJournal.value.utxoPayloadAggregate !== undefined
-                  ? parentJournal.value.utxoPayloadAggregate
-                  : ledgerPayloadAggregateFromEntries(parentSnapshot!.entries),
-            } satisfies ResolvedCommitBaseLedgerEntries;
-          }
-          if (selection.source === "confirmed_ledger") {
-            return {
-              source: selection.source,
-              entries: confirmedEntries,
-              root: confirmedRoot,
-              utxoPayloadAggregate:
-                ledgerPayloadAggregateFromEntries(confirmedEntries),
-            } satisfies ResolvedCommitBaseLedgerEntries;
-          }
-          const aggregate =
-            yield* MpfEngineStateDB.retrieveLedgerPayloadAggregate(
-              currentLedgerRootHex,
-            );
-          if (aggregate !== undefined) {
-            return {
-              source: selection.source,
-              root: currentLedgerRootHex,
-              utxoPayloadAggregate: aggregate,
-            } satisfies ResolvedCommitBaseLedgerEntries;
-          }
-        }
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: PendingBlockFinalizationsDB.tableName,
-            message:
-              "Awaiting authenticated foreign ledger finalization before rebuilding",
-            cause: `foreign_header_hash=${headerHash},foreign_utxos_root=${header.utxosRoot},current_mpf_root=${currentLedgerRootHex},parent_journal_root=${parentSnapshot?.root ?? "missing"},confirmed_ledger_root=${confirmedRoot},reason=${selection.type === "AwaitingForeignLedger" ? selection.reason : "missing persistent aggregate"}`,
-          }),
-        );
+        // A root match cannot authenticate a foreign block. Preflight's
+        // complete-prefix verifier is mandatory even for unchanged UTxO roots.
+        const verified = yield* resolveVerifiedCommitBase(latestBlock);
+        return {
+          source: `verified-foreign:${verified.headerHash}`,
+          entries: verified.entries,
+          root: verified.root,
+          utxoPayloadAggregate: ledgerPayloadAggregateFromEntries(
+            verified.entries,
+          ),
+        } satisfies ResolvedCommitBaseLedgerEntries;
       }
     }
 

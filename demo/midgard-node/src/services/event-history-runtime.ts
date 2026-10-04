@@ -1,18 +1,23 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Effect, Option } from "effect";
+import { Effect, Option, Ref } from "effect";
 
 import * as Authority from "../database/eventHistoryAuthority.js";
+import type { Checkpoint } from "../database/eventHistoryJournal.js";
 import { pendingHistoryLedgerDisposition } from "../database/eventHistoryLedgerRepair.js";
 import { materializeCanonicalHistory } from "../database/eventHistoryMaterialization.js";
+import * as ForeignAdoptions from "../database/foreignNativeAdoptions.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { reconcileDepositProjection } from "../fibers/project-deposits-to-mempool-ledger.js";
 import { makeEventHistorySourceBinding } from "../l1-event-history-source.js";
 import type { HistoryTransportOptions } from "../l1-event-history-transport.js";
 import { NodeConfig } from "./config.js";
 import { makeEventHistoryOwner } from "./event-history-owner.js";
+import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
 import { HistoryPreparation } from "./event-history-recovery.js";
+import { recoverForeignNativeAdoptions } from "./foreign-native-adoption.js";
+import { Globals } from "./globals.js";
 import {
   expiredIntentReleaseDisposition,
   makeSignedIntentDeferral,
@@ -27,6 +32,7 @@ import {
   ContractDeploymentIdentity,
   MidgardContracts,
 } from "./midgard-contracts.js";
+import { initializeArchitectureGOwner } from "./native-mpf-startup.js";
 import {
   prepareStateQueueCorrectionRewind,
   stateQueueCorrectionRewindDisposition,
@@ -55,6 +61,7 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
     const lucid = yield* Lucid;
     const cache = yield* MempoolLedgerCache;
     const writeBehind = yield* WriteBehind;
+    const globals = yield* Globals;
     const binding = yield* makeEventHistorySourceBinding({
       contracts,
       identity,
@@ -71,6 +78,37 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
         }),
     });
     const prepareCompletion = input.prepareCompletion;
+    const prepareForeignAdoption = (
+      checkpoint: Checkpoint,
+      preparation: HistoryRecoveryPreparation,
+    ) =>
+      Effect.gen(function* () {
+        const coverage = {
+          bindingDigest: checkpoint.bindingDigest,
+          checkpointRevision: checkpoint.revision,
+          point: { id: checkpoint.head.id, slot: checkpoint.head.slot },
+          snapshotDigest: checkpoint.capture.snapshotDigest,
+          includedThroughMs: lucid.api.slotToUnixTime(checkpoint.head.slot),
+        };
+        const recover = (
+          owner: import("./mpf-native-owner/protocol.js").NativeMpfOwnerService,
+        ) =>
+          recoverForeignNativeAdoptions({
+            owner,
+            ownerBinarySha256: config.MPF_NATIVE_OWNER_BINARY_SHA256,
+            coverage,
+            preparation,
+          });
+        const owner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
+        if (owner === undefined) {
+          yield* initializeArchitectureGOwner(
+            globals,
+            config,
+            preparation,
+            recover,
+          );
+        } else yield* recover(owner);
+      }).pipe(Effect.provideService(HistoryPreparation, preparation));
     // A signed intent whose base a correction removed defers to the
     // correction path; this runtime remembers it until a rollback. A replaced
     // block without evidence it landed is re-read at the next source point.
@@ -95,7 +133,8 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
           ReturnType<typeof prepareStateQueueCorrectionRewind>
         >
       | Effect.Effect.Error<ReturnType<typeof prepareExpiredIntentRelease>>
-      | Effect.Effect.Error<ReturnType<typeof prepareReplacedBlockRevival>>,
+      | Effect.Effect.Error<ReturnType<typeof prepareReplacedBlockRevival>>
+      | Effect.Effect.Error<ReturnType<typeof recoverForeignNativeAdoptions>>,
       | R
       | SqlClient.SqlClient
       | Effect.Effect.Context<ReturnType<typeof prepareSignedHeaderRecovery>>
@@ -104,15 +143,16 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
         >
       | Effect.Effect.Context<ReturnType<typeof prepareExpiredIntentRelease>>
       | Effect.Effect.Context<ReturnType<typeof prepareReplacedBlockRevival>>
+      | Effect.Effect.Context<ReturnType<typeof recoverForeignNativeAdoptions>>
     >({
       ...input,
-      prepareCompletion:
-        prepareCompletion === undefined
-          ? undefined
-          : (checkpoint, preparation) =>
-              prepareCompletion(checkpoint, preparation).pipe(
-                Effect.provideService(HistoryPreparation, preparation),
-              ),
+      prepareCompletion: (checkpoint, preparation) =>
+        prepareForeignAdoption(checkpoint, preparation).pipe(
+          Effect.zipRight(
+            prepareCompletion?.(checkpoint, preparation) ?? Effect.void,
+          ),
+          Effect.provideService(HistoryPreparation, preparation),
+        ),
       preparePendingReconciliation: (checkpoint, preparation) =>
         identity.manifest === undefined
           ? Effect.fail(
@@ -184,6 +224,7 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
                       deferral: signedIntentDeferral,
                     }),
               ),
+              Effect.zipRight(prepareForeignAdoption(checkpoint, preparation)),
             ),
       binding,
       histories,
@@ -197,6 +238,10 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
         identity.manifest?.steps.initProtocol.txHash,
       reconcile: (change) =>
         Effect.gen(function* () {
+          const adoption = yield* ForeignAdoptions.pendingDisposition(
+            change.after.bindingDigest,
+          );
+          if (adoption !== undefined) return adoption;
           const pending = yield* pendingHistoryLedgerDisposition(change);
           if (pending !== undefined) return pending;
           if (rewindAuthority !== undefined) {

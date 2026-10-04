@@ -13,6 +13,8 @@ import {
   StateQueueMutationLeasesDB,
   TxAdmissionsDB,
 } from "../database/index.js";
+import * as HistoryAuthority from "../database/eventHistoryAuthority.js";
+import { foreignBaseVerificationForAuthority } from "../services/foreign-base-verification.js";
 import { attestationTimeoutCorrectionReadinessBounds } from "../fibers/index.js";
 import {
   localOgmiosSubmitSlotEvidence,
@@ -72,6 +74,14 @@ export const getReadinessHandler = Effect.gen(function* () {
   );
   const awaitingForeignTipReconciliations =
     yield* ForeignTipReconciliationsDB.countAwaiting;
+  const foreignVerificationAuthority = yield* HistoryAuthority.retrieve;
+  const foreignBaseVerification = foreignBaseVerificationForAuthority(
+    yield* Ref.get(globals.FOREIGN_BASE_VERIFICATION),
+    Option.isSome(foreignVerificationAuthority) &&
+      foreignVerificationAuthority.value.state === "ready"
+      ? HistoryAuthority.tokenFromRow(foreignVerificationAuthority.value)
+      : undefined,
+  );
   const mempoolTxCount = yield* MempoolDB.retrieveTxCount;
   const nowMillis = Date.now();
   const stateQueueBlocksInQueue = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
@@ -249,6 +259,7 @@ export const getReadinessHandler = Effect.gen(function* () {
     maxUnresolvedBlockSubmissionAgeMs: nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS,
     dbHealthy,
     awaitingForeignTipReconciliations,
+    foreignBaseVerification,
     validationPool: {
       configuredWorkers: validationPool.poolSize,
       liveWorkers: validationPoolStats.liveWorkers,
@@ -355,6 +366,15 @@ export const getReadinessHandler = Effect.gen(function* () {
     unfinishedLocalMutationJobs: unfinishedMutationJobs.toString(),
     daPublicationConflicts,
     awaitingForeignTipReconciliations,
+    foreignBaseVerification:
+      foreignBaseVerification.status === "unobserved"
+        ? foreignBaseVerification
+        : {
+            status: foreignBaseVerification.status,
+            foreignHeaderHash: foreignBaseVerification.foreignHeaderHash,
+            reason: foreignBaseVerification.reason,
+            generation: foreignBaseVerification.scope.generation,
+          },
     unresolvedBlockSubmissionAgeMs,
     providerQueryHealthy: providerProbe.healthy,
     providerQueryMode: providerProbe.mode,

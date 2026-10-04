@@ -18,6 +18,7 @@ import {
   type LocalScriptEvaluation,
   type QueuedTx,
   type RejectCode,
+  type RejectedTx,
 } from "../types.js";
 import {
   buildValidationMachineLedgerInsertOp,
@@ -52,6 +53,7 @@ export type ValidationMachineEventReplay = Readonly<{
   replayInput: ValidationMachineReplayInput;
   trace: DeterministicValidationMachineTrace;
   statePatch: UTxOStatePatch;
+  rejection?: RejectedTx;
 }>;
 
 /**
@@ -147,12 +149,14 @@ export const replayValidationMachineEvent = (
     );
     const scriptEvaluations: LocalScriptEvaluation[] = [];
     let rejectionCode: RejectCode | null;
+    let rejection: RejectedTx | undefined;
     let statePatch: UTxOStatePatch = {
       deletedOutRefs: [],
       upsertedOutRefs: [],
     };
     if ("code" in phaseA) {
       rejectionCode = phaseA.code;
+      rejection = phaseA;
     } else {
       const phaseB = yield* runPhaseBValidationWithPatch(
         [phaseA],
@@ -177,7 +181,8 @@ export const replayValidationMachineEvent = (
           new Error("event replay must produce exactly one canonical verdict"),
         );
       }
-      rejectionCode = phaseB.rejected[0]?.code ?? null;
+      rejection = phaseB.rejected[0];
+      rejectionCode = rejection?.code ?? null;
       statePatch = phaseB.statePatch;
     }
     const expectedVerdict = rejectionCode === null ? "accepted" : "rejected";
@@ -221,5 +226,5 @@ export const replayValidationMachineEvent = (
       postUtxosRoot,
     };
     const trace = yield* buildDeterministicValidationMachineTrace(replayInput);
-    return { replayInput, trace, statePatch };
+    return { replayInput, trace, statePatch, rejection };
   });
