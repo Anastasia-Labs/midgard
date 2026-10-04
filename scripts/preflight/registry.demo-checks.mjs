@@ -46,6 +46,22 @@ export const FULL_RUN = [
   "scripts/bin/**",
 ];
 
+// These modules are consumed only by preflight, not package builds, artifacts
+// or protocol runtimes. Their tests run in Repo Tools CI on every PR;
+// derive/probes/shared execution helpers remain FULL_RUN inputs. Protocol CI
+// keeps its existing source-path triggers, assertions and acceptance profile.
+export const VERIFICATION_ONLY = [
+  "scripts/preflight.mjs",
+  "scripts/preflight/run.mjs",
+  "scripts/preflight/registry.mjs",
+  "scripts/preflight/registry.demo-checks.mjs",
+  "scripts/preflight/registry.select-checks.mjs",
+  "scripts/preflight/registry.tooling-checks.mjs",
+  "scripts/preflight/docs.mjs",
+  "scripts/preflight/ci-evidence.mjs",
+  "scripts/preflight/*.test.mjs",
+];
+
 // The kill switch. It forces a full run; it never disables checks.
 export const FULL_RUN_ENV = "MIDGARD_PREFLIGHT_FULL";
 

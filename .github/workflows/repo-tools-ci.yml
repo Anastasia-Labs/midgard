@@ -78,3 +78,11 @@ jobs:
       - name: Check shared agent configuration
         if: ${{ !cancelled() }}
         run: node scripts/agents/check-agent-config.mjs
+      - name: Record actual repository validator checkout and Node profile
+        run: node scripts/preflight/ci-evidence.mjs --identity > "$RUNNER_TEMP/identity.json"
+      - name: Retain repository validator identity
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: repo-validator-identity
+          path: ${{ runner.temp }}/identity.json
+          if-no-files-found: error

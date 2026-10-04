@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -12,11 +13,13 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { globToRegExp, matchesAny, referencedFiles } from "./derive.mjs";
+import { loadYaml } from "../ci/lint-workflows.mjs";
 import {
   buildRegistry,
   FULL_RUN,
   IGNORED_PATHS,
   selectChecks,
+  VERIFICATION_ONLY,
 } from "./registry.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -139,7 +142,7 @@ test("a FULL_RUN path selects every check; the tracked blueprint selects nothing
   for (const path of [
     "onchain/aiken/aiken.toml",
     "demo/pnpm-lock.yaml",
-    "scripts/preflight/registry.mjs",
+    "scripts/preflight/derive.mjs",
   ]) {
     assert.ok(matchesAny(path, FULL_RUN), path);
     const selection = selectChecks(registry, [path]);
@@ -153,6 +156,52 @@ test("a FULL_RUN path selects every check; the tracked blueprint selects nothing
     blueprint.selected.map(({ check }) => check.id),
     registry.checks.filter((check) => check.always).map((check) => check.id),
   );
+});
+
+test("verification-only edits exercise their tooling without repeating unchanged protocol suites", () => {
+  const selection = selectChecks(registry, ["scripts/preflight/run.mjs"]);
+  assert.equal(selection.full, false);
+  const ids = selection.selected.map(({ check }) => check.id);
+  assert.ok(ids.includes("repo-tooling-tests"));
+  assert.ok(ids.includes("required-checks-doc"));
+  assert.ok(!ids.includes("demo-test"));
+  assert.ok(!ids.includes("tx-preparation:emulator"));
+  for (const shared of [
+    "scripts/preflight/derive.mjs",
+    "scripts/preflight/probes.mjs",
+    "scripts/contrib/process.mjs",
+  ])
+    assert.equal(selectChecks(registry, [shared]).full, true, shared);
+  assert.equal(
+    selectChecks(registry, ["scripts/preflight/run.mjs"], { full: true })
+      .selected.length,
+    registry.checks.length,
+  );
+});
+
+test("verification-only exceptions retain unconditional Repo Tools CI coverage", () => {
+  const yaml = loadYaml(root);
+  assert.ok(yaml, "install demo root dependencies to verify CI coverage");
+  const workflow = yaml.parse(
+    readFileSync(resolve(root, ".github/workflows/repo-tools-ci.yml"), "utf8"),
+  );
+  assert.ok(Object.hasOwn(workflow.on, "pull_request"));
+  assert.equal(
+    workflow.on.pull_request,
+    null,
+    "Repo Tools must cover every PR without path/branch filters",
+  );
+  assert.equal(workflow.jobs["repo-tools"].if, undefined);
+  assert.ok(
+    workflow.jobs["repo-tools"].steps.some((step) =>
+      step.run?.includes('node --test "scripts/**/*.test.mjs"'),
+    ),
+  );
+  for (const path of VERIFICATION_ONLY)
+    assert.ok(
+      path === "scripts/preflight.mjs" || path.startsWith("scripts/preflight/"),
+      path,
+    );
 });
 
 test("--full and the kill switch reason force a full run; pre-push keeps only its slice", () => {

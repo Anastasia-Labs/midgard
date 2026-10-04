@@ -9,6 +9,7 @@ import {
   aikenChecks,
   demoChecks,
   FULL_RUN,
+  VERIFICATION_ONLY,
   ledgerChecks,
 } from "./registry.demo-checks.mjs";
 import {
@@ -68,7 +69,10 @@ export const selectChecks = (
   const reasons = [
     ...fullReasons,
     ...relevant
-      .filter((path) => matchesAny(path, FULL_RUN))
+      .filter(
+        (path) =>
+          matchesAny(path, FULL_RUN) && !matchesAny(path, VERIFICATION_ONLY),
+      )
       .map((path) => `${path} is in FULL_RUN`),
   ];
   const isFull = full || reasons.length > 0;

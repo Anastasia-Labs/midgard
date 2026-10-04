@@ -3,7 +3,7 @@
 // --write-docs` writes it; `--check-docs` (and its test) fails when the
 // committed file differs.
 
-import { FULL_RUN, FULL_RUN_ENV } from "./registry.mjs";
+import { FULL_RUN, FULL_RUN_ENV, VERIFICATION_ONLY } from "./registry.mjs";
 
 export const REQUIRED_CHECKS_DOC = "docs/agents/required-checks.md";
 export const MISSES_LOG = "scripts/preflight/misses.jsonl";
@@ -57,16 +57,19 @@ export const renderRequiredChecks = (registry) =>
     "node scripts/doctor.mjs               # environment problems, each with its fix",
     "```",
     "",
-    "The base is `--base <ref>`, else the branch's upstream, else",
+    "The base is `--base <target-ref>`, otherwise",
     "`origin/colll78/canonical-v1-watcher-l1-source-checkpoint`.",
+    "Fetch origin first. Missing targets and old target ancestors are refused.",
+    "A clean merge is selected by its changes relative to the target, excluding",
+    "equivalent already-landed work. Conflicts retain conservative selection.",
     "",
     "## Selection is never the final gate",
     "",
-    "- CI runs every check on every pull request before merge. Preflight exists",
-    "  to catch a red build before the push, not to decide what CI may skip.",
+    "- CI's declared path filters determine the required hosted jobs. Preflight",
+    "  cannot waive those jobs or distinct integration/acceptance checks.",
     "- Selection favours recall over precision. When in doubt, add a trigger or a",
     "  full-run entry.",
-    `- A change to any full-run path below, a moved Aiken compiler pin, ${code("--full")},`,
+    `- A shared full-run path below (except the listed verification-only modules), a moved Aiken compiler pin, ${code("--full")},`,
     `  or ${code(`${FULL_RUN_ENV}=1`)} selects every check at full scope.`,
     "- A check whose capability is missing is skipped with a reason and the run",
     "  exits 3. Could not look is never passed.",
@@ -93,6 +96,25 @@ export const renderRequiredChecks = (registry) =>
     "## Full-run paths",
     "",
     ...FULL_RUN.map((glob) => `- ${code(glob)}`),
+    "",
+    "### Verification-only exceptions",
+    "",
+    "These modules serve preflight only. They select tooling self-tests instead",
+    "of repeating unchanged protocol suites; Repo Tools CI remains required.",
+    "Shared probes, artifact derivation, package execution and unknown new",
+    "preflight helpers retain full scope. `--full` still selects every check.",
+    ...VERIFICATION_ONLY.map((glob) => `- ${code(glob)}`),
+    "",
+    "## Verified CI reuse",
+    "",
+    "`node scripts/preflight.mjs --strict --ci-run <Repo-Tools-run-id>` can reuse",
+    "only `required-checks-doc` and `contributor-build-guards`. It verifies the",
+    "actual checkout tree and merge parents, current remote target, Node profile,",
+    "exact validator commands and successful completed steps against the retained",
+    "`repo-validator-identity` artifact. Dirty, stale, missing or different",
+    "evidence fails closed. Other selected checks still execute. `--list` never",
+    "verifies or claims reuse. Read the [merge checklist](verification.md#merge-checklist)",
+    "before treating hosted evidence as acceptance.",
     "",
     "## Capabilities",
     "",

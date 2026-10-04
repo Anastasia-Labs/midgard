@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { performance } from "node:perf_hooks";
 
 import { pinnedAikenVersion } from "../../onchain/aiken/scripts/pinned-compiler.mjs";
 import { runDirectory } from "../contrib/build.mjs";
@@ -50,32 +51,33 @@ const verifyCommit = (root, ref) =>
     allow: [0, 1, 128],
   }).status === 0;
 
-// The base a branch is judged against: `--base`, else the branch's upstream,
-// else the line of work's checkpoint branch. A named base that does not
-// resolve is a usage error, never an empty diff.
+// Judge integration into the target, not a feature branch's published copy.
+// An old target ancestor is historical evidence, not today's acceptance base.
 export const resolveBase = (root, explicit) => {
   if (explicit !== undefined) {
     if (!verifyCommit(root, explicit)) {
       throw new UsageError(`--base ${explicit} does not name a commit`);
     }
+    if (
+      verifyCommit(root, DEFAULT_BASE) &&
+      git(root, ["rev-parse", `${explicit}^{commit}`]).stdout.trim() !==
+        git(root, ["rev-parse", `${DEFAULT_BASE}^{commit}`]).stdout.trim() &&
+      git(root, ["merge-base", "--is-ancestor", explicit, DEFAULT_BASE], {
+        allow: [0, 1],
+      }).status === 0
+    ) {
+      throw new UsageError(
+        `--base ${explicit} is a stale target ancestor; fetch origin and use --base ${DEFAULT_BASE}`,
+      );
+    }
     return explicit;
   }
-  const upstream = git(
-    root,
-    ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
-    { allow: [0, 128] },
-  );
-  const candidates = [
-    ...(upstream.status === 0 ? [upstream.stdout.trim()] : []),
-    DEFAULT_BASE,
-  ];
-  const base = candidates.find((candidate) => verifyCommit(root, candidate));
-  if (base === undefined) {
+  if (!verifyCommit(root, DEFAULT_BASE)) {
     throw new UsageError(
-      `no base to diff against (tried ${candidates.join(", ")}); pass --base <ref>`,
+      `no base to diff against (${DEFAULT_BASE} is absent); fetch origin or pass --base <target-ref>`,
     );
   }
-  return base;
+  return DEFAULT_BASE;
 };
 
 const nulList = (output) => output.split("\0").filter(Boolean);
@@ -137,9 +139,29 @@ const pinAt = (root, revision) => {
 
 export const collectChanges = (root, { base, strict }) => {
   const mergeBase = git(root, ["merge-base", "HEAD", base]).stdout.trim();
-  const changed = changedFiles(root, mergeBase, { strict });
-  const before = pinAt(root, mergeBase);
-  const after = pinAt(root, strict ? "HEAD" : undefined);
+  // A separately landed/cherry-picked foundation need not share ancestry.
+  // Compare the actual clean merge result to the target. On conflicts retain
+  // conservative historical selection; never pretend a conflict is no work.
+  const merge = git(
+    root,
+    ["merge-tree", "--write-tree", "--no-messages", "HEAD", base],
+    { allow: [0, 1, 129] },
+  );
+  const tree =
+    merge.status === 0 ? merge.stdout.trim().split("\n")[0] : undefined;
+  const changed = tree
+    ? [
+        ...new Set([
+          ...nulList(
+            git(root, ["diff", "--name-only", "-z", "--no-renames", base, tree])
+              .stdout,
+          ),
+          ...(strict ? [] : changedFiles(root, "HEAD", { strict: false })),
+        ]),
+      ].sort()
+    : changedFiles(root, mergeBase, { strict });
+  const before = pinAt(root, tree ? base : mergeBase);
+  const after = pinAt(root, strict ? (tree ?? "HEAD") : undefined);
   const fullReasons =
     before === after
       ? []
@@ -153,7 +175,7 @@ export const collectChanges = (root, { base, strict }) => {
       "--porcelain",
       "--untracked-files=no",
     ]).stdout.trim() !== "";
-  return { mergeBase, changed, fullReasons, dirty };
+  return { mergeBase, integrationTree: tree, changed, fullReasons, dirty };
 };
 
 // Selection plus each selected check's concrete steps and the advisories the
@@ -328,11 +350,12 @@ export const runPreflight = async ({
   env = process.env,
   signal,
   exists = (path) => existsSync(resolve(root, path)),
+  ciEvidence = new Map(),
 }) => {
   const results = [];
   for (const { check, steps } of plan.planned) {
     if (signal?.aborted) break;
-    const started = Date.now();
+    const started = performance.now();
     const receipts = [];
     const command =
       check.internal === "merge-tree"
@@ -344,7 +367,7 @@ export const runPreflight = async ({
         status,
         reason,
         command,
-        durationMs: Date.now() - started,
+        durationMs: performance.now() - started,
         ...(receipts.length ? { receipts } : {}),
         ...(status === "failed" && check.fix !== undefined
           ? { fix: check.fix }
@@ -355,6 +378,16 @@ export const runPreflight = async ({
     const absent = (check.requiresFiles ?? []).filter((path) => !exists(path));
     if (absent.length > 0) {
       record("skipped", `could not check: ${absent.join(", ")} absent`);
+      continue;
+    }
+
+    const equivalent = ciEvidence.get(check.id);
+    if (equivalent && equivalent.command === command) {
+      record(
+        "passed",
+        `reused verified CI: ${equivalent.run}; coverage: ${equivalent.coverage}`,
+      );
+      results.at(-1).evidence = equivalent;
       continue;
     }
     const capabilityEnv = {};
