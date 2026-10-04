@@ -23,6 +23,14 @@ import { runProcess } from "../contrib/process.mjs";
 import { writeReceipt } from "../contrib/receipts.mjs";
 import { withResource } from "../contrib/resources.mjs";
 import { formatCommand, selectChecks } from "./registry.mjs";
+import {
+  SDK_SUITES,
+  sdkContext as currentSdkContext,
+  sdkLaneStep,
+  sdkSuiteStep,
+  sdkReportCounts,
+  sdkSelectedFiles,
+} from "./sdk-suite-evidence.mjs";
 
 export const DEFAULT_BASE =
   "origin/colll78/canonical-v1-watcher-l1-source-checkpoint";
@@ -245,6 +253,23 @@ export const spawnStep = async (root, step, env, log, signal) =>
     async (ownedEnv) => {
       const directory = runDirectory();
       const before = inputIdentity(root, "@repository");
+      const sdk =
+        sdkSuiteStep(step) &&
+        JSON.parse(
+          readFileSync(
+            resolve(root, SDK_SUITES[step.sdkSuite], "package.json"),
+            "utf8",
+          ),
+        ).scripts?.test === "vitest run";
+      const reportPath = sdk ? resolve(directory, "sdk-suite.json") : undefined;
+      let sdkBefore;
+      if (sdk) {
+        try {
+          sdkBefore = currentSdkContext(root, env);
+        } catch {
+          /* Unproven context cannot be reused. The suite still executes. */
+        }
+      }
       const controller = new AbortController();
       const abort = () => controller.abort();
       process.on("SIGINT", abort);
@@ -253,7 +278,15 @@ export const spawnStep = async (root, step, env, log, signal) =>
       if (signal?.aborted) abort();
       try {
         const run = await runProcess({
-          argv: step.argv,
+          argv: sdk
+            ? [
+                ...step.argv,
+                "--",
+                "--reporter=default",
+                "--reporter=json",
+                `--outputFile=${reportPath}`,
+              ]
+            : step.argv,
           cwd: resolve(root, step.cwd ?? "."),
           env: ownedEnv,
           signal: controller.signal,
@@ -272,14 +305,37 @@ export const spawnStep = async (root, step, env, log, signal) =>
           before,
           after: inputIdentity(root, "@repository"),
           steps: [run],
+          reportPath,
+          selectedFiles: sdk
+            ? sdkSelectedFiles(root, step.sdkSuite)
+            : undefined,
         });
         log(`execution receipt: ${receipt.path}\n`);
+        let sdkEvidence;
+        if (sdk && receipt.status === "passed" && sdkBefore) {
+          try {
+            sdkReportCounts(
+              root,
+              step.sdkSuite,
+              JSON.parse(readFileSync(reportPath, "utf8")),
+            );
+            if (sdkBefore === currentSdkContext(root, env))
+              sdkEvidence = {
+                name: step.sdkSuite,
+                identity: sdkBefore,
+                receipt: receipt.path,
+              };
+          } catch {
+            /* Missing or incomplete coverage is never admitted. */
+          }
+        }
         return {
           status:
             receipt.exitCode === 0 ? 0 : run.exitCode === 0 ? 1 : run.exitCode,
           output: readFileSync(run.logPath, "utf8"),
           durationMs: run.durationMs,
           receipt: receipt.path,
+          ...(sdkEvidence ? { sdkSuite: sdkEvidence } : {}),
           ...(run.reason ? { error: new Error(run.reason) } : {}),
         };
       } finally {
@@ -351,8 +407,10 @@ export const runPreflight = async ({
   signal,
   exists = (path) => existsSync(resolve(root, path)),
   ciEvidence = new Map(),
+  sdkContext = currentSdkContext,
 }) => {
   const results = [];
+  const completedSdk = new Map();
   for (const { check, steps } of plan.planned) {
     if (signal?.aborted) break;
     const started = performance.now();
@@ -407,7 +465,41 @@ export const runPreflight = async ({
       continue;
     }
 
+    if (
+      check.id === "tx-preparation:sdk" &&
+      sdkLaneStep(steps) &&
+      Object.keys(SDK_SUITES).every((name) => completedSdk.has(name))
+    ) {
+      let identity;
+      try {
+        identity = await withResource(
+          `workspace:${resolve(root)}`,
+          () => sdkContext(root, { ...env, ...capabilityEnv }),
+          { env, signal },
+        );
+      } catch {
+        /* Standalone execution remains required. */
+      }
+      if (
+        identity &&
+        Object.keys(SDK_SUITES).every(
+          (name) => completedSdk.get(name).identity === identity,
+        )
+      ) {
+        record(
+          "passed",
+          "reused same-run completed full Lucid and SDK suites on unchanged inputs/profile",
+        );
+        results.at(-1).evidence = {
+          kind: "same-run-sdk-suites",
+          suites: [...completedSdk.values()],
+        };
+        continue;
+      }
+    }
+
     let outcome;
+    const sdkPasses = [];
     if (check.internal === "merge-tree") {
       outcome = mergeTree(root, base);
     } else {
@@ -446,6 +538,12 @@ export const runPreflight = async ({
           };
           break;
         }
+        if (
+          check.id === "demo-test" &&
+          sdkSuiteStep(step) &&
+          run.sdkSuite?.name === step.sdkSuite
+        )
+          sdkPasses.push(run.sdkSuite);
       }
     }
     if (outcome.status === "failed" && check.warnOnly) {
@@ -456,6 +554,8 @@ export const runPreflight = async ({
     } else {
       record(outcome.status, outcome.reason);
     }
+    if (outcome.status === "passed")
+      for (const proof of sdkPasses) completedSdk.set(proof.name, proof);
     probes.invalidate(check.invalidates);
   }
   const exitCode =

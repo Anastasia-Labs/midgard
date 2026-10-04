@@ -86,6 +86,7 @@ preflight helpers retain full scope. `--full` still selects every check.
 - `scripts/preflight/registry.tooling-checks.mjs`
 - `scripts/preflight/docs.mjs`
 - `scripts/preflight/ci-evidence.mjs`
+- `scripts/preflight/sdk-suite-evidence.mjs`
 - `scripts/preflight/*.test.mjs`
 
 ## Verified CI reuse
@@ -98,6 +99,18 @@ exact validator commands and successful completed steps against the retained
 evidence fails closed. Other selected checks still execute. `--list` never
 verifies or claims reuse. Read the [merge checklist](verification.md#merge-checklist)
 before treating hosted evidence as acceptance.
+
+## Same-run SDK suite reuse
+
+The SDK transaction-preparation obligation follows the full workspace suites.
+Only completed full Lucid and SDK package scripts from this invocation can
+satisfy it: structured reports must cover every test file, with no failed,
+skipped, todo or setup-refused cases. Source, installed dependency bytes/link
+routing, compiled outputs, blueprint/stamp and runtime/environment must match
+before/after both suites and at reuse. Planned tests are never evidence.
+Absent or different evidence leaves the standalone `test:tx-prep:sdk` command
+required; failures remain failures. Node/Tools/emulator lanes and cross-run
+CI reuse retain their existing gates. No SDK evidence survives this run.
 
 ## Capabilities
 
@@ -728,20 +741,6 @@ Blueprint rebuild into a temporary file (never the tracked plutus.json).
   - `onchain/aiken/**/*.ak`
 - Needs: `aiken`
 
-### `tx-preparation:sdk`
-
-Transaction preparation sdk acceptance lane.
-
-- Command: `pnpm --dir demo run test:tx-prep:sdk`
-- Runs on:
-  - `demo/lucid-midgard/src/**`
-  - `demo/midgard-sdk/src/**`
-  - `demo/midgard-node/src/fibers/**`
-  - `demo/midgard-node/src/workers/**`
-  - `demo/midgard-node/src/utils/commit-submission*.ts`
-  - `demo/midgard-node-tools/src/**`
-- Needs: `node-modules`, `blueprint`
-
 ### `tx-preparation:node`
 
 Transaction preparation node acceptance lane.
@@ -938,6 +937,20 @@ Postgres-backed test suites (midgard-node, midgard-node-tools) of the touched pa
 - Command: `pnpm --dir demo --filter '<touched package and its dependents>' --workspace-concurrency=1 run --if-present test`
 - Runs on: any file of a workspace package; runs for it and every package that depends on it
 - Needs: `node-modules`, `blueprint`, `postgres`, `db-prefix`
+
+### `tx-preparation:sdk`
+
+Transaction preparation sdk acceptance lane.
+
+- Command: `pnpm --dir demo run test:tx-prep:sdk`
+- Runs on:
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-node/src/fibers/**`
+  - `demo/midgard-node/src/workers/**`
+  - `demo/midgard-node/src/utils/commit-submission*.ts`
+  - `demo/midgard-node-tools/src/**`
+- Needs: `node-modules`, `blueprint`
 
 ## Misses log
 

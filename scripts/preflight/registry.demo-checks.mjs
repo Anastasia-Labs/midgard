@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { basename, resolve } from "node:path";
 
 import { parseSelectors } from "../../onchain/aiken/scripts/guard-focused-selector.mjs";
+import { SDK_SUITES } from "./sdk-suite-evidence.mjs";
 import {
   AIKEN_PROJECT,
   aikenImportClosure,
@@ -59,6 +60,7 @@ export const VERIFICATION_ONLY = [
   "scripts/preflight/registry.tooling-checks.mjs",
   "scripts/preflight/docs.mjs",
   "scripts/preflight/ci-evidence.mjs",
+  "scripts/preflight/sdk-suite-evidence.mjs",
   "scripts/preflight/*.test.mjs",
 ];
 
@@ -262,6 +264,23 @@ export const demoChecks = (root, packages) => {
       const selected = ordered(names).filter(options.include ?? (() => true));
       if (selected.length === 0) {
         return null;
+      }
+      if (id === "demo-test") {
+        const singles = Object.keys(SDK_SUITES).filter((name) =>
+          selected.includes(name),
+        );
+        const others = selected.filter((name) => !singles.includes(name));
+        return [
+          ...(others.length
+            ? [step(pnpmRun(others, script, options.extra))]
+            : []),
+          ...singles.map((name) =>
+            step(["pnpm", "--filter", name, "test"], {
+              cwd: DEMO,
+              sdkSuite: name,
+            }),
+          ),
+        ];
       }
       return [
         step(
