@@ -131,8 +131,13 @@ export const buildTransactionInclusionFixture = async ({
   adversarialBranchLevels = 0,
   spendInputCardinality,
   emptyAddressWitnesses = false,
+  canonicalTransactions,
 }: {
   readonly adversarialBranchLevels?: number;
+  readonly canonicalTransactions?: readonly [
+    MidgardNativeTxFull,
+    MidgardNativeTxFull,
+  ];
   /**
    * Use canonical empty address-witness fields when this block also drives a
    * real field-opening family. The legacy 32-byte marker is useful only as a
@@ -178,20 +183,24 @@ export const buildTransactionInclusionFixture = async ({
           cardinality: spendInputCardinality,
           domain: 0x0a02,
         });
-  const tx1Native = makeNativeTx({
-    spendInputCbors: tx1Inputs.map(outputReferenceCbor),
-    fee: 0n,
-    referenceByte: "13",
-    outputByte: "14",
-    ...(emptyAddressWitnesses ? {} : { witnessByte: "20" }),
-  });
-  const tx2Native = makeNativeTx({
-    spendInputCbors: tx2Inputs.map(outputReferenceCbor),
-    fee: 1n,
-    referenceByte: "23",
-    outputByte: "24",
-    ...(emptyAddressWitnesses ? {} : { witnessByte: "30" }),
-  });
+  const tx1Native =
+    canonicalTransactions?.[0] ??
+    makeNativeTx({
+      spendInputCbors: tx1Inputs.map(outputReferenceCbor),
+      fee: 0n,
+      referenceByte: "13",
+      outputByte: "14",
+      ...(emptyAddressWitnesses ? {} : { witnessByte: "20" }),
+    });
+  const tx2Native =
+    canonicalTransactions?.[1] ??
+    makeNativeTx({
+      spendInputCbors: tx2Inputs.map(outputReferenceCbor),
+      fee: 1n,
+      referenceByte: "23",
+      outputByte: "24",
+      ...(emptyAddressWitnesses ? {} : { witnessByte: "30" }),
+    });
   const tx1 = compactTxEntry(tx1Native);
   const tx2 = compactTxEntry(tx2Native);
   const tx1SourceCbor = l2TransactionSourceCborV1(tx1Native);
