@@ -46,6 +46,7 @@ export const submitSuccessorBlockTx = async ({
   scheduler,
   activeOperatorNode,
   activeOperatorNodeUnit,
+  validFrom,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly emulator: Emulator;
@@ -58,6 +59,8 @@ export const submitSuccessorBlockTx = async ({
   readonly scheduler: UTxO;
   readonly activeOperatorNode: UTxO;
   readonly activeOperatorNodeUnit: string;
+  /** Short live window for successors committed after lifecycle transactions. */
+  readonly validFrom?: bigint;
 }): Promise<{
   readonly continuedAnchorOutRef: string;
   readonly successorOutRef: string;
@@ -84,7 +87,7 @@ export const submitSuccessorBlockTx = async ({
     lucid,
     "successor commit fee input",
   );
-  const commitValidFrom = header.startTime - 60_000n;
+  const commitValidFrom = validFrom ?? header.startTime - 60_000n;
   const commitValidTo = header.endTime + 1n;
   // Each successor starts where its predecessor ends, so its commit window
   // opens one header length after the previous commit's. The first successor

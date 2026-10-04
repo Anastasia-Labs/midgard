@@ -363,6 +363,33 @@ test state_queue_removal_prunes_transitive_descendant_from_rotated_operator() {
     inputs: [fraudulent_anchor, transitive_descendant],
     outputs: [continue_node(fraudulent_anchor, None)],
     mint: burn_node(descendant_header_hash),
+    fraudulent_operator: rotated_operator,
+    fraudulent_blocks_header_hash: faulty_header_hash,
+    fraudulent_node_input_outref: fraudulent_anchor.output_reference,
+    fraudulent_node_output_index: 0,
+  )
+}
+
+/// A link-removal slash must name the removed descendant, not the proof anchor.
+test state_queue_removal_rejects_wrong_descendant_operator() fail {
+  let fraudulent_anchor = node_input(
+    0,
+    faulty_header_hash,
+    header(faulty_operator, parent_header_hash),
+    Some(descendant_header_hash),
+  )
+  let transitive_descendant = node_input(
+    1,
+    descendant_header_hash,
+    header(rotated_operator, intermediate_header_hash),
+    None,
+  )
+  state_queue_validator.remove_fraudulent_blocks_link_v1(
+    state_queue_policy,
+    inputs: [fraudulent_anchor, transitive_descendant],
+    outputs: [continue_node(fraudulent_anchor, None)],
+    mint: burn_node(descendant_header_hash),
+    fraudulent_operator: faulty_operator,
     fraudulent_blocks_header_hash: faulty_header_hash,
     fraudulent_node_input_outref: fraudulent_anchor.output_reference,
     fraudulent_node_output_index: 0,
@@ -389,6 +416,7 @@ test state_queue_removal_rejects_wrong_fraud_proved_anchor() fail {
     inputs: [fraudulent_anchor, descendant],
     outputs: [continue_node(fraudulent_anchor, None)],
     mint: burn_node(descendant_header_hash),
+    fraudulent_operator: rotated_operator,
     fraudulent_blocks_header_hash: intermediate_header_hash,
     fraudulent_node_input_outref: fraudulent_anchor.output_reference,
     fraudulent_node_output_index: 0,
@@ -1710,6 +1738,7 @@ fn fraud_link_removal(rewrite: fn(Output) -> Output) -> Bool {
     inputs: [fraudulent_anchor, transitive_descendant],
     outputs: [rewrite(continue_node(fraudulent_anchor, None))],
     mint: burn_node(descendant_header_hash),
+    fraudulent_operator: rotated_operator,
     fraudulent_blocks_header_hash: faulty_header_hash,
     fraudulent_node_input_outref: fraudulent_anchor.output_reference,
     fraudulent_node_output_index: 0,
