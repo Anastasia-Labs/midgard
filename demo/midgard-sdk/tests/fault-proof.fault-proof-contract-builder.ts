@@ -32,6 +32,7 @@ import {
   ZERO_INPUT_FAULT_PROOF_TITLES,
 } from "../src/index.js";
 import { applyExpectedScriptParams } from "./fault-proof.expected-parameter-application.js";
+import { registerInvalidRangeBlueprintIsolationTest } from "./fault-proof.invalid-range-blueprint-isolation.js";
 import {
   blueprintPath,
   CEK_MATERIAL_TRAVERSAL_TITLES,
@@ -305,26 +306,7 @@ describe("fault-proof contract builder", () => {
     );
   });
 
-  it("builds invalid-range without requiring unrelated category validators", async () => {
-    const blueprint = filterBlueprint(loadBlueprint(), [
-      ...Object.values(FAULT_PROOF_SHARED_TITLES),
-      ...Object.values(INVALID_RANGE_FAULT_PROOF_TITLES),
-    ]);
-
-    const contracts = await Effect.runPromise(
-      buildInvalidRangeFaultProofContracts({
-        blueprint,
-        network: "Preprod",
-        hubOraclePolicyId: h28b,
-        fraudProofCataloguePolicyId: h28c,
-      }),
-    );
-
-    expect(contracts.invalidRange.firstStep).toBe(
-      contracts.invalidRange.steps[0],
-    );
-    expect(contracts.invalidRange.steps).toHaveLength(2);
-  });
+  registerInvalidRangeBlueprintIsolationTest();
 
   it("builds zero-input with the validator parameter order from the blueprint", async () => {
     const blueprint = loadBlueprint();

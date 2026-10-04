@@ -236,7 +236,7 @@
   },
   {
     "file": "midgard-fault-proofs/src/remove-fraudulent-block.submit-remove-fraudulent-block.ts",
-    "max": 764,
+    "max": 763,
     "reason": "submitRemoveFraudulentBlock is the dominant indivisible declaration (683 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -306,12 +306,12 @@
   },
   {
     "file": "midgard-fault-proofs/src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.ts",
-    "max": 556,
+    "max": 552,
     "reason": "createAuthenticatedFieldCarriagePrerequisitePort is the dominant indivisible declaration (506 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/workflow/funding-reservation-permit.assert-runtime-transaction-bound.ts",
-    "max": 507,
+    "max": 506,
     "reason": "assertRuntimeTransactionBound is the dominant indivisible declaration (479 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -636,7 +636,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/dispute-scenario.ts",
-    "max": 1711,
+    "max": 1706,
     "reason": "runForcedValidationDisputeScenario is the dominant indivisible declaration (1478 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Direct committed-step fixture: adds the source-only signer-refusal checkpoint with consistent trace indices, adjacent-proof handoff, and canonical-decode ItemObserve and source/proof/settlement reference publication. These stages share the lifecycle locals; extraction requires a separate function-body refactor. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count."
   },
   {
@@ -728,11 +728,6 @@
     "file": "midgard-fault-proofs/tests/validation-dispute-submit.test.ts",
     "max": 2331,
     "reason": "Retained test registration \u201cvalidation-dispute transaction validity\u201d (2231 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-fault-proofs/tests/validation-trace-dispute-installed-lifecycle.test.ts",
-    "max": 884,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
     "file": "midgard-fault-proofs/tests/value-conservation-lifecycle.test.ts",
@@ -1025,9 +1020,9 @@
     "reason": "buildAndSubmitMergeTx is the dominant indivisible declaration (495 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
-    "file": "midgard-node/src/workers/commit-block-header.database-operations-program.ts",
+    "file": "midgard-node/src/workers/commit-block-header.build-on-verified-base-program.ts",
     "max": 1263,
-    "reason": "databaseOperationsProgram is the dominant indivisible declaration (1153 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (1153 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-node/src/workers/commit-block-header.revalidate-and-persist-speculative-candidate-sources.ts",
@@ -1336,7 +1331,7 @@
   },
   {
     "file": "midgard-node/tests/midgard-contracts.test.ts",
-    "max": 571,
+    "max": 540,
     "reason": "Retained test registration \u201cmidgard contracts registry\u201d (486 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1476,7 +1471,7 @@
   },
   {
     "file": "midgard-sdk/tests/fault-proof.fault-proof-contract-builder.ts",
-    "max": 1244,
+    "max": 1227,
     "reason": "Retained test registration \u201cfault-proof contract builder\u201d (1186 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. Direct committed-step expectations and canonical test encoding: fully applies the boundary award hash and game resolver-hash list in their declared parameter order. Recomputes expected bindings with the pinned WASM API in the shared independent test oracle, avoiding the legacy encoder CBOR-major incompatibility. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count."
   },
   {
@@ -1521,7 +1516,7 @@
   },
   {
     "file": "midgard-validation/tests/complete-item-proof-fit.test.ts",
-    "max": 534,
+    "max": 512,
     "reason": "Retained test registration \u201ccomplete-item proof fit V1\u201d (484 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {

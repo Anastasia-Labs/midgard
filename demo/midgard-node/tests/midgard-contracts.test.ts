@@ -38,7 +38,6 @@ import {
   assertDeploymentManifestMatchesConfig,
   buildRealTxOrderContracts,
   eventHistoryBoundsFromExplicitEnvironment,
-  loadRealBlueprintSha256,
   readRuntimeDeploymentManifestFile,
   withRealStateQueueAndOperatorContracts,
 } from "../src/services/midgard-contracts.js";
@@ -56,44 +55,10 @@ import {
   collectScriptInventory,
   scriptInventoryId,
 } from "./helpers/script-inventory.js";
+import { registerBlueprintProfileBindingTests } from "./midgard-contracts.blueprint-binding.js";
 
 describe("midgard contracts registry", () => {
-  unitIt.each(["missing", "digest", "bytes"])(
-    "rejects a %s blueprint profile binding",
-    async (mutation) => {
-      const dir = await mkdtemp(join(tmpdir(), "midgard-profile-blueprint-"));
-      const blueprintPath = join(dir, "plutus.json");
-      const raw = await readFile(
-        new URL("../../../onchain/aiken/plutus.json", import.meta.url),
-      );
-      try {
-        await writeFile(blueprintPath, raw);
-        if (mutation !== "missing") {
-          await writeFile(
-            `${blueprintPath}.deployment.json`,
-            JSON.stringify({
-              profile: SELECTED_DEPLOYMENT_PROFILE,
-              profileDigest:
-                mutation === "digest"
-                  ? "00".repeat(32)
-                  : SELECTED_DEPLOYMENT_PROFILE_DIGEST,
-              blueprintHash:
-                mutation === "bytes"
-                  ? "00".repeat(32)
-                  : createHash("sha256").update(raw).digest("hex"),
-            }),
-          );
-        }
-        vi.stubEnv("MIDGARD_REAL_BLUEPRINT_PATH", blueprintPath);
-        await expect(
-          Effect.runPromise(loadRealBlueprintSha256()),
-        ).rejects.toThrow(/Failed to hash canonical real blueprint/u);
-      } finally {
-        vi.unstubAllEnvs();
-        await rm(dir, { recursive: true });
-      }
-    },
-  );
+  registerBlueprintProfileBindingTests();
   const oneShotOutRef = {
     txHash: "00".repeat(32),
     outputIndex: 0,
