@@ -186,6 +186,52 @@ describe("a foreign terminal's release stays reversible until it is final", () =
       journal.close();
     }
   });
+
+  it("keeps the header's row when that re-open expires, so the earlier Open is neither pruned nor forgotten", () => {
+    const { journal, lease } = released();
+    try {
+      journal.persist(lease, intent("reopen"), 5);
+      journal.transition(lease, "reopen", "expired", null, "never landed", 6);
+      // The re-open cleared the earlier Open's release evidence, so the row
+      // stays live and the release walk re-derives it from that Open.
+      expect(journal.workflows("actor")).toMatchObject([
+        { headerHash: "header", confirmedOpens: [{ intent: { id: "open" } }] },
+      ]);
+      live(journal, lease);
+      journal.retire(
+        lease,
+        "open",
+        {
+          confirmationDepth: RECOVERY,
+          currentSlot: 500,
+          recoveryDepth: RECOVERY,
+        },
+        7,
+      );
+      expect(journal.get("open")?.state).toBe("confirmed");
+      journal.releaseWorkflow(lease, "deployment", "header", CLOSE, 8);
+      expect(journal.unsettledReleases("actor")).toMatchObject([
+        { open: { intent: { id: "open" } } },
+      ]);
+    } finally {
+      journal.close();
+    }
+  });
+
+  it("drops the header's row when its only Open expires", () => {
+    const journal = openAvailabilityOperationJournal(path());
+    try {
+      const lease = journal.acquire("actor", "owner", 0, 1_000);
+      journal.persist(lease, intent("open"), 1);
+      journal.transition(lease, "open", "expired", null, "never landed", 2);
+      expect(journal.workflows("actor")).toEqual([]);
+      expect(() =>
+        journal.assertWorkflow(lease, "deployment", "header", "prepare", 3),
+      ).not.toThrow();
+    } finally {
+      journal.close();
+    }
+  });
 });
 
 describe("a rewound Open or terminal step restores its header's workflow", () => {

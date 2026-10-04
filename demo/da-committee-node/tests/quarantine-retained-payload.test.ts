@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
@@ -7,6 +9,7 @@ import {
   encodeDaPayloadSubmitRequestCbor,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
+import { Client } from "pg";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { availabilityResponderOperations } from "../src/availability/factory.js";
@@ -18,6 +21,7 @@ import { StoreBackedDaAttestationProtocol } from "../src/da/libp2p/attestations.
 import { DaLibp2pPayloadProtocolHandlers } from "../src/da/libp2p/payload-protocols.js";
 import { type CommitteeStore, JsonFileCommitteeStore } from "../src/store.js";
 import { PostgresCommitteeStore } from "../src/store/postgres.js";
+import { PostgresPublicRetainedDaStore } from "../src/store/public-retained-da.js";
 import { tempDir } from "./helpers.js";
 import {
   challengeFixture,
@@ -353,7 +357,9 @@ describe.each([
   it("refuses a response transaction while its journal authority is unresolved", async () => {
     const store = await quarantinedStore(open);
     const execute = vi.fn(async () => "confirmed" as const);
-    const withJournal = (reconcile: () => Promise<"ready" | "pending">) =>
+    const withJournal = (
+      reconcile: () => Promise<"ready" | "pending" | { held: string }>,
+    ) =>
       new AvailabilityResponder({
         deploymentFingerprint,
         deploymentIdentity,
@@ -367,13 +373,75 @@ describe.each([
       withJournal(async () => "pending").tick(),
     ).resolves.toMatchObject({ status: "pending" });
     await expect(
-      withJournal(async () => {
-        throw new Error(
-          "Availability responder journal contains a conflicting transaction; authenticated recovery is required",
-        );
-      }).tick(),
-    ).rejects.toThrow(/conflicting transaction/u);
+      withJournal(async () => ({ held: "ab: conflicting transaction" })).tick(),
+    ).resolves.toMatchObject({
+      status: "held",
+      detail: "ab: conflicting transaction",
+    });
     expect(execute).not.toHaveBeenCalled();
+  });
+});
+
+describe("the public retained-DA listener of a quarantined member", () => {
+  it("serves the verified bytes through its read-only store and refuses divergent ones", async () => {
+    const database = await databases.create();
+    await quarantinedStore(async () => {
+      const store = await PostgresCommitteeStore.open(database.url);
+      openStores.add(store);
+      return store;
+    });
+    const admin = new URL(database.url);
+    const reader = `fx_d3_reader_${randomBytes(6).toString("hex")}`;
+    const client = new Client({ connectionString: database.url });
+    await client.connect();
+    try {
+      await client.query(`CREATE ROLE ${reader} LOGIN PASSWORD '${reader}'`);
+      await client.query(
+        `GRANT CONNECT ON DATABASE ${database.name} TO ${reader}`,
+      );
+      await client.query(`GRANT USAGE ON SCHEMA public TO ${reader}`);
+      await client.query(
+        `GRANT SELECT ON committee_da_payloads, committee_state_queue_headers TO ${reader}`,
+      );
+      const publicStore = await PostgresPublicRetainedDaStore.open({
+        databaseUrl: `postgresql://${reader}:${reader}@${admin.host}/${database.name}`,
+        expectedRole: reader,
+      });
+      try {
+        const handlers = new DaLibp2pPayloadProtocolHandlers({
+          deploymentFingerprint,
+          store: publicStore,
+        });
+        const served = decodeDaPayloadByHeaderResponseCbor(
+          await handlers.handlePayloadByHeader(byHeader(signedHeader)),
+        );
+        expect(served.status).toBe("found_inline");
+        expect(served.payloadBytes?.equals(Buffer.from(payload))).toBe(true);
+        const refused = decodeDaPayloadByHeaderResponseCbor(
+          await handlers.handlePayloadByHeader(byHeader(divergentHeader)),
+        );
+        expect(refused.status).toBe("conflict");
+        expect(refused.payloadBytes ?? null).toBeNull();
+      } finally {
+        await publicStore.close();
+      }
+    } finally {
+      await client.query(`DROP OWNED BY ${reader}`);
+      await client.end();
+      await databases.dropAll();
+      const cluster = new Client({
+        connectionString: database.url.replace(
+          `/${database.name}`,
+          `/${process.env.POSTGRES_DB ?? "postgres"}`,
+        ),
+      });
+      await cluster.connect();
+      try {
+        await cluster.query(`DROP ROLE IF EXISTS ${reader}`);
+      } finally {
+        await cluster.end();
+      }
+    }
   });
 });
 

@@ -484,19 +484,18 @@ export const openAvailabilityOperationJournal = (
           db.prepare(
             "DELETE FROM availability_operation_resources WHERE intent_id = ?",
           ).run(id);
-        const key = [
-          record.intent.actor,
-          record.intent.deploymentIdentity,
-          record.intent.headerHash,
-        ];
+        const { actor, deploymentIdentity, headerHash } = record.intent;
         if (state === "confirmed" && record.intent.completesWorkflow)
           db.prepare(
             "UPDATE availability_operation_workflows SET retired_by = ?, release = NULL WHERE actor = ? AND deployment = ? AND header_hash = ? AND (retired_by IS NULL OR release IS NOT NULL)",
-          ).run(id, ...key);
+          ).run(id, actor, deploymentIdentity, headerHash);
+        // Re-opening cleared an earlier confirmed Open's retirement, so its row
+        // stays live for the release walk to re-derive, and that Open stays.
         if (state === "expired" && record.intent.action === "open")
           db.prepare(
-            "DELETE FROM availability_operation_workflows WHERE actor = ? AND deployment = ? AND header_hash = ?",
-          ).run(...key);
+            `DELETE FROM availability_operation_workflows AS w WHERE actor = ? AND deployment = ? AND header_hash = ? AND NOT EXISTS (SELECT 1 FROM availability_operation_intents AS i WHERE i.actor = w.actor AND i.deployment = w.deployment AND i.state = 'confirmed'
+            AND json_extract(i.record, '$.intent.action') = 'open' AND json_extract(i.record, '$.intent.headerHash') = w.header_hash)`,
+          ).run(actor, deploymentIdentity, headerHash);
       });
     },
     rewind(lease, id, detail, nowMs) {
