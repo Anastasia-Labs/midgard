@@ -12,6 +12,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   canonicalValidationTraceReferenceScripts,
   completeReferenceScriptPublicationTxProgram,
@@ -114,10 +115,16 @@ describe("ledger-output-proof publication", () => {
     expect(canonicalReferences).toHaveLength(8);
     const executorReferences = [
       ...sharedReferences,
-      ...canonicalReferences.map((spec) => ({
-        ...spec,
-        role: spec.deploymentEntry,
-      })),
+      ...canonicalReferences.map((spec) => {
+        const role = Object.entries(
+          DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+        ).find(([, contract]) => contract === spec.deploymentEntry)?.[0];
+        if (role === undefined)
+          throw new Error(
+            `${spec.deploymentEntry} has no authenticated publication role`,
+          );
+        return { ...spec, role };
+      }),
     ];
     const authPolicy = await createReferenceScriptAuthPolicy(
       lucid,
