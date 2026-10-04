@@ -1,7 +1,8 @@
 /**
  * Publication fit for the shared ledger-output-proof family: every one of
- * the thirty LOP yields (twenty-three stage yields, the three attestation
- * yields, the four descriptor yields) and the four step/finalize dispatchers
+ * the thirty LOP yields (twenty-four stage yields, two attestation
+ * yields, four descriptor yields), the four step/finalize dispatchers, and
+ * the shared redeemer item normalizers, authenticator and full executor roster
  * publishes as a reference script under the real 16,384-byte L1 envelope
  * with margin. With `MIDGARD_WRITE_FIT_LEDGER=1` the measurements are pinned
  * to `docs/fault-proofs/size-plans/validation-trace-ledger-output-proof-publication-fit-ledger.json`.
@@ -14,6 +15,8 @@ import {
   completeReferenceScriptPublicationTxProgram,
   createReferenceScriptAuthPolicy,
   type ValidationTraceDisputeFaultProofContracts,
+  REDEEMER_ITEM_EXECUTOR_REFERENCES,
+  sharedRedeemerItemReferenceScripts,
 } from "@al-ft/midgard-sdk";
 import {
   Emulator,
@@ -73,7 +76,7 @@ const LOP_DISPATCHERS = [
 ] as const;
 
 describe("ledger-output-proof publication", () => {
-  it("publishes every LOP yield and dispatcher under the real L1 limit", async () => {
+  it("publishes every LOP yield, dispatcher and shared executor under the real L1 limit", async () => {
     const real = readBlueprint(realBlueprintPath);
     const publisher = generateEmulatorAccount({ lovelace: 40_000_000_000n });
     const emulator = new Emulator([publisher], {
@@ -98,6 +101,12 @@ describe("ledger-output-proof publication", () => {
       LEDGER_OUTPUT_PROOF_ATTESTATION_YIELD_ROLES.scalarBytes,
       ...LEDGER_OUTPUT_DESCRIPTOR_YIELD_ROLES,
     ];
+    const shared = family.scriptSourcesStageOneRedeemerStages;
+    expect(shared.executors).toHaveLength(
+      REDEEMER_ITEM_EXECUTOR_REFERENCES.length,
+    );
+    const sharedReferences = sharedRedeemerItemReferenceScripts(shared);
+    expect(sharedReferences).toHaveLength(23);
     const authPolicy = await createReferenceScriptAuthPolicy(
       lucid,
       emulator.now(),
@@ -193,7 +202,27 @@ describe("ledger-output-proof publication", () => {
         512,
       );
     }
-    expect(rows).toHaveLength(34);
+    for (const spec of sharedReferences) {
+      const result = await publishAuthenticated(
+        spec.validator.spendingScript,
+        spec.role,
+      );
+      const measurement = result.publicationMeasurement;
+      rows.push({
+        name: spec.deploymentEntry,
+        maximumShape: "parameterized authenticated shared executor publication",
+        kind: "publication",
+        signedBytes: measurement.completeSignedBytes,
+        memoryUnits: measurement.executionMemory,
+        cpuUnits: measurement.executionSteps,
+      });
+      expect(
+        measurement.l1ByteMargin,
+        spec.deploymentEntry,
+      ).toBeGreaterThanOrEqual(512);
+    }
+    expect(rows).toHaveLength(57);
+    expect(new Set(rows.map(({ name }) => name)).size).toBe(rows.length);
     if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1")
       await writeVanRossemFitLedger(
         fileURLToPath(

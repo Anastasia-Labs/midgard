@@ -162,32 +162,36 @@ describe("midgard contracts registry", () => {
       // parameters changed (pool policy, commitment-bound challenges). MPF
       // fixes (leaf fold, terminal neighbour, deletion Branch, emptied ledger
       // root, disjoint leaf and branch node preimages) change proofs.
-      expect(
-        createHash("sha256")
-          .update(
-            JSON.stringify(normalizeDeploymentManifestJsonValue(resolved)),
-          )
-          .digest("hex"),
-      ).toBe(
-        "6502da347543448c8ff9e1fc937a006d5a0bada9ed11e4d4ed3f5131422a8958",
-      );
+      expect
+        .soft(
+          createHash("sha256")
+            .update(
+              JSON.stringify(normalizeDeploymentManifestJsonValue(resolved)),
+            )
+            .digest("hex"),
+        )
+        .toBe(
+          "6502da347543448c8ff9e1fc937a006d5a0bada9ed11e4d4ed3f5131422a8958",
+        );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
       // Re-pinned by #689: the state queue and correction lock are applied over
       // the availability-challenge policy, whose parameters now include the
       // pooled DA bond policy, and again for disjoint MPF node preimages.
-      expect(
-        createHash("sha256")
-          .update(
-            JSON.stringify({
-              stateQueue: resolved.stateQueue,
-              correctionLock: resolved.correctionLock,
-            }),
-          )
-          .digest("hex"),
-      ).toBe(
-        "6263d434d25ff3bf2b778ca4d1ed74a837bbf27fd4769d7fc49fc1cd60336bb8",
-      );
+      expect
+        .soft(
+          createHash("sha256")
+            .update(
+              JSON.stringify({
+                stateQueue: resolved.stateQueue,
+                correctionLock: resolved.correctionLock,
+              }),
+            )
+            .digest("hex"),
+        )
+        .toBe(
+          "6263d434d25ff3bf2b778ca4d1ed74a837bbf27fd4769d7fc49fc1cd60336bb8",
+        );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test
       // built on this registry. Rather than name a handful of roles and assert
