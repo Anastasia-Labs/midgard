@@ -16,8 +16,11 @@ import {
  * cooldown, the A7 one bounded rebuild, the B6 bounded retries at the owning
  * operation and the A5 rebroadcast-before-replace wait. All of it must fit the
  * profile's small response window, for both live testing profiles and both
- * public profiles. A wait that cannot be read from the code that enforces it
- * keeps the analysis incomplete, never an assumed number.
+ * public profiles. Each wait is read from the code that enforces it. A wait
+ * with no time bound in this tree is listed as unbounded and fails the budget;
+ * it is never given an assumed number. When the budget does not fit, the
+ * failure message carries every term, for the owner to rule on (B1); the depth
+ * is not changed to make it fit.
  *
  * Profiles are read from config/deployments through the profile generator
  * (demo/scripts/deployment-profiles.mjs), which is also the source of the
@@ -38,6 +41,7 @@ type Profile = Readonly<{
 type ProfileScript = Readonly<{
   readProfiles: () => Readonly<Record<string, Profile>>;
   minimumDaResponseBudgetMs: (profile: Profile) => number;
+  l1BlocksBudgetMs: (blocks: number) => number;
   L1_MEAN_BLOCK_MS: number;
   L1_BLOCK_SAFETY_FACTOR: number;
   DA_SMALL_PAYLOAD_CHAINED_PUBLICATIONS: number;
@@ -48,48 +52,6 @@ const script = (await import(
   new URL("../../scripts/deployment-profiles.mjs", import.meta.url).href
 )) as ProfileScript;
 
-type BudgetAnalysis = Readonly<{
-  accepted: boolean;
-  totalMs: number | undefined;
-  lowerBoundMs: number;
-  missing: readonly string[];
-  exceeded: readonly Readonly<{ name: string }>[];
-}>;
-const { analyzeAvailabilityResponseBudget: analyzeBudget } = (await import(
-  new URL("../../scripts/availability-response-budget.mjs", import.meta.url)
-    .href
-)) as Readonly<{
-  analyzeAvailabilityResponseBudget: (
-    profile: Profile,
-    waits: readonly BoundedWait[],
-  ) => BudgetAnalysis;
-}>;
-
-// Synthetic complete inputs test the analyzer, never stand in for runtime bounds.
-const completeWaits = (totalMs: number): readonly BoundedWait[] =>
-  (["A1", "A5", "A7", "B6"] as const).map((item, index) => ({
-    item,
-    name: "analyzer fixture",
-    ms: index === 0 ? totalMs : 0,
-    source: "synthetic analyzer input",
-  }));
-
-/**
- * The operator node's foreign payload retry policy. This package does not
- * depend on midgard-node, so its source is loaded by path, like the profile
- * script; the policy module has no imports.
- */
-const FOREIGN_PAYLOAD_RETRIEVER_SOURCE =
-  "demo/midgard-node/src/da/foreign-da-retry-policy.ts";
-const foreignPayloadRetriever = (await import(
-  new URL(
-    "../../midgard-node/src/da/foreign-da-retry-policy.ts",
-    import.meta.url,
-  ).href
-)) as Readonly<{
-  FOREIGN_DA_RETRY_POLICY: Readonly<{ cooldownMs: number }>;
-}>;
-
 /** Both live testing profiles and both public profiles. */
 const BUDGETED_PROFILES = [
   "local-devnet-testing",
@@ -99,45 +61,59 @@ const BUDGETED_PROFILES = [
 ] as const;
 
 type BoundedWait = Readonly<{
-  /** The REPORT.md item that introduces the wait. */
+  /** The public-testnet decision item that introduces the wait. */
   item: "A1" | "A5" | "A7" | "B6";
   name: string;
 }> &
   (
-    | Readonly<{ ms: number; source: string }>
-    | Readonly<{ unresolved: string; ms?: undefined }>
+    | Readonly<{ ms: number; derivation: string; unbounded?: undefined }>
+    | Readonly<{ unbounded: string; ms?: undefined }>
   );
+
+/**
+ * A5: a signed responder transaction that has not landed is rebroadcast with
+ * its exact bytes while it can still land, and is replaced only once the
+ * journal marks it expired. Reconciliation (midgard-sdk
+ * availability-challenge-operation.reconcile.ts) marks it expired when the
+ * canonical boundary's slot, the slot of the tip block, reaches the intent's
+ * validity upper bound. The transaction was built at most span minus backdate
+ * before that bound, and the tip passes the bound only with the next L1 block,
+ * which is counted like every other block: at the mean block time times the
+ * safety factor.
+ */
+const A5_VALIDITY_REMAINING_MS =
+  AVAILABILITY_RESPONDER_VALIDITY_SPAN_MS -
+  AVAILABILITY_RESPONDER_VALIDITY_BACKDATE_MS;
+const A5_EXPIRY_BLOCK_MS = script.l1BlocksBudgetMs(1);
 
 const BOUNDED_WAITS: readonly BoundedWait[] = [
   {
     item: "A1",
     name: "foreign payload retrieval cooldown",
-    ms: foreignPayloadRetriever.FOREIGN_DA_RETRY_POLICY.cooldownMs,
-    source: FOREIGN_PAYLOAD_RETRIEVER_SOURCE,
+    unbounded:
+      "no bounded foreign payload retriever or retrieval cooldown exists in this tree",
   },
   {
     item: "A7",
     name: "one bounded rebuild after a protocol-parameter refresh",
-    unresolved:
-      "B1-A7: buildWithWatcherProtocolParameterRefresh (demo/midgard-watcher/src/funding/protocol-parameter-retry.ts) allows one rebuild but puts no deadline on the parameter refresh or the rebuild; import its time bound here once it has one",
+    unbounded:
+      "no refresh-and-rebuild-once wrapper exists in this tree; the responder neither refreshes protocol parameters nor rebuilds",
   },
   {
     item: "B6",
     name: "bounded retries at the owning operation",
-    unresolved:
-      "B1-B6: the responder has no bounded retry budget on this branch (a failed drain is retried on the next poll, without a limit); import the owning operation's retry budget here when it lands",
+    unbounded:
+      "the responder has no retry budget: a failed drain is retried on the next poll, with no limit (availability-response-loop.ts)",
   },
   {
     item: "A5",
     name: "rebroadcast before replace",
-    // A signed responder transaction that has not landed is rebroadcast and
-    // replaced only once it can no longer land, that is once its validity
-    // has passed; it was built at most this long before then.
-    ms:
-      AVAILABILITY_RESPONDER_VALIDITY_SPAN_MS -
-      AVAILABILITY_RESPONDER_VALIDITY_BACKDATE_MS,
-    source:
-      "demo/da-committee-node/src/availability/factory.discover-availability-responder-challenges.ts",
+    ms: A5_VALIDITY_REMAINING_MS + A5_EXPIRY_BLOCK_MS,
+    derivation:
+      `validity span ${AVAILABILITY_RESPONDER_VALIDITY_SPAN_MS.toString()} ms - backdate ` +
+      `${AVAILABILITY_RESPONDER_VALIDITY_BACKDATE_MS.toString()} ms ` +
+      `(factory.discover-availability-responder-challenges.ts) + one expiry block ` +
+      `${A5_EXPIRY_BLOCK_MS.toString()} ms`,
   },
 ];
 
@@ -150,28 +126,47 @@ const profile = (name: string): Profile => {
 };
 
 const baseTermMs = (selected: Profile): number =>
-  (selected.l1_finality.confirmation_depth +
-    script.DA_SMALL_PAYLOAD_CHAINED_PUBLICATIONS +
-    script.DA_RESPONSE_POLL_AND_SUBMIT_BLOCKS) *
-  script.L1_MEAN_BLOCK_MS *
-  script.L1_BLOCK_SAFETY_FACTOR;
+  script.l1BlocksBudgetMs(
+    selected.l1_finality.confirmation_depth +
+      script.DA_SMALL_PAYLOAD_CHAINED_PUBLICATIONS +
+      script.DA_RESPONSE_POLL_AND_SUBMIT_BLOCKS,
+  );
 
+const countedWaitsMs = BOUNDED_WAITS.reduce(
+  (sum, wait) => sum + (wait.ms ?? 0),
+  0,
+);
+const unboundedWaits = BOUNDED_WAITS.filter(
+  (wait) => wait.unbounded !== undefined,
+);
+
+/** Every term of a profile's budget, for the failure message. */
 const budgetTable = (selected: Profile): string => {
   const base = baseTermMs(selected);
-  const known = BOUNDED_WAITS.reduce((sum, wait) => sum + (wait.ms ?? 0), 0);
+  const counted = base + countedWaitsMs;
+  const window = selected.timing.da_small_response_window_ms;
   return [
-    `${selected.name}: depth ${selected.l1_finality.confirmation_depth.toString()}, ` +
-      `${script.DA_SMALL_PAYLOAD_CHAINED_PUBLICATIONS.toString()} publications, ` +
-      `${script.DA_RESPONSE_POLL_AND_SUBMIT_BLOCKS.toString()} poll, ` +
-      `${script.L1_MEAN_BLOCK_MS.toString()} ms x ${script.L1_BLOCK_SAFETY_FACTOR.toString()} = ${base.toString()} ms`,
+    `${selected.name} availability response budget:`,
+    `  L1 path: (depth ${selected.l1_finality.confirmation_depth.toString()} + ` +
+      `${script.DA_SMALL_PAYLOAD_CHAINED_PUBLICATIONS.toString()} publications + ` +
+      `${script.DA_RESPONSE_POLL_AND_SUBMIT_BLOCKS.toString()} poll) x ` +
+      `${script.L1_MEAN_BLOCK_MS.toString()} ms x ${script.L1_BLOCK_SAFETY_FACTOR.toString()} = ` +
+      `${base.toString()} ms`,
     ...BOUNDED_WAITS.map((wait) =>
       wait.ms === undefined
-        ? `  + ${wait.item} ${wait.name}: unknown (${wait.unresolved})`
-        : `  + ${wait.item} ${wait.name}: ${wait.ms.toString()} ms (${wait.source})`,
+        ? `  + ${wait.item} ${wait.name}: UNBOUNDED (${wait.unbounded})`
+        : `  + ${wait.item} ${wait.name}: ${wait.ms.toString()} ms (${wait.derivation})`,
     ),
-    `  = ${(base + known).toString()} ms counted, against a small response window of ` +
-      `${selected.timing.da_small_response_window_ms.toString()} ms and block maturity of ` +
-      `${selected.timing.block_maturity_ms.toString()} ms`,
+    `  = ${counted.toString()} ms counted` +
+      (unboundedWaits.length === 0
+        ? ""
+        : ` plus ${unboundedWaits.length.toString()} unbounded wait(s)`) +
+      `; small response window ${window.toString()} ms ` +
+      (counted <= window
+        ? `(${(window - counted).toString()} ms left)`
+        : `(OVER by ${(counted - window).toString()} ms)`) +
+      `; full response window ${selected.timing.da_full_response_window_ms.toString()} ms; ` +
+      `block maturity ${selected.timing.block_maturity_ms.toString()} ms`,
   ].join("\n");
 };
 
@@ -192,19 +187,6 @@ describe("availability response budget (B1)", () => {
     });
   });
 
-  it("derives every counted wait from the code that enforces it", () => {
-    expect(new Set(BOUNDED_WAITS.map(({ item }) => item))).toEqual(
-      new Set(["A1", "A5", "A7", "B6"]),
-    );
-    for (const wait of BOUNDED_WAITS) {
-      if (wait.ms === undefined) {
-        expect(wait.unresolved.length).toBeGreaterThan(0);
-        continue;
-      }
-      expect(Number.isSafeInteger(wait.ms) && wait.ms > 0).toBe(true);
-    }
-  });
-
   it.each(BUDGETED_PROFILES)(
     "%s: the confirmation, publication and poll term is the profile generator's minimum response budget",
     (name) => {
@@ -212,91 +194,51 @@ describe("availability response budget (B1)", () => {
       expect(baseTermMs(selected)).toBe(
         script.minimumDaResponseBudgetMs(selected),
       );
-    },
-  );
-
-  it.each(BUDGETED_PROFILES)(
-    "%s: unresolved waits prevent full-budget acceptance",
-    (name) => {
-      const selected = profile(name);
-      const result = analyzeBudget(selected, BOUNDED_WAITS);
-      // This is an analyzer regression, not a claim that the profile is safe.
-      // #704 remains open until every wait is enforced and the total fits.
-      expect(result.accepted, budgetTable(selected)).toBe(false);
-      expect(result.totalMs).toBeUndefined();
-      expect(result.missing).toEqual(["A7", "B6"]);
-      expect(result.lowerBoundMs).toBe(
-        baseTermMs(selected) +
-          60_000 +
-          foreignPayloadRetriever.FOREIGN_DA_RETRY_POLICY.cooldownMs,
+      expect(baseTermMs(selected)).toBe(
+        (selected.l1_finality.confirmation_depth +
+          script.DA_SMALL_PAYLOAD_CHAINED_PUBLICATIONS +
+          script.DA_RESPONSE_POLL_AND_SUBMIT_BLOCKS) *
+          script.L1_MEAN_BLOCK_MS *
+          script.L1_BLOCK_SAFETY_FACTOR,
       );
     },
   );
 
-  it("rejects an omitted wait even when all counted waits fit", () => {
-    const result = analyzeBudget(profile("preprod-testing"), [
-      BOUNDED_WAITS[3]!,
+  it("counts each named wait exactly once", () => {
+    expect(BOUNDED_WAITS.map(({ item }) => item).sort()).toEqual([
+      "A1",
+      "A5",
+      "A7",
+      "B6",
     ]);
-    expect(result.accepted).toBe(false);
-    expect(result.missing).toEqual(["A1", "A7", "B6"]);
+    for (const wait of BOUNDED_WAITS) {
+      if (wait.ms === undefined) continue;
+      expect(Number.isSafeInteger(wait.ms) && wait.ms > 0).toBe(true);
+    }
   });
 
-  it("detects a full budget overrun instead of accepting its base term", () => {
-    const selected = profile("preprod-testing");
-    const headroom =
-      selected.timing.da_small_response_window_ms - baseTermMs(selected);
-    const waits = completeWaits(headroom + 1);
-    const result = analyzeBudget(selected, waits);
-    expect(result.missing).toEqual([]);
-    expect(result.totalMs).toBe(
-      selected.timing.da_small_response_window_ms + 1,
-    );
-    expect(result.accepted).toBe(false);
-    expect(result.exceeded.map(({ name }) => name)).toContain("small response");
+  it("every named wait has a time bound in the code", () => {
+    expect(
+      unboundedWaits.map(
+        (wait) => `${wait.item} ${wait.name}: ${wait.unbounded}`,
+      ),
+      "a wait with no bound cannot be counted, so the budget cannot be shown to fit",
+    ).toEqual([]);
   });
 
-  it("accepts an exactly fitting complete response budget before maturity", () => {
-    const selected = profile("preprod-testing");
-    const headroom =
-      selected.timing.da_small_response_window_ms - baseTermMs(selected);
-    const result = analyzeBudget(selected, completeWaits(headroom));
-    expect(result.totalMs).toBe(selected.timing.da_small_response_window_ms);
-    expect(result.accepted).toBe(true);
-  });
-
-  it("refuses equality with block maturity even if response windows fit", () => {
-    const selected = profile("preprod-testing");
-    const result = analyzeBudget(
-      {
-        ...selected,
-        timing: {
-          ...selected.timing,
-          block_maturity_ms: baseTermMs(selected),
-        },
-      },
-      completeWaits(0),
-    );
-    expect(result.accepted).toBe(false);
-    expect(result.exceeded.map(({ name }) => name)).toContain("block maturity");
-  });
-
-  it("rejects guessed, duplicate, negative or nonfinite wait durations", () => {
-    for (const ms of [-1, Infinity, NaN, 0.5])
-      expect(() =>
-        analyzeBudget(profile("preprod-testing"), [
-          { item: "A1", name: "fixture", ms, source: "fixture" },
-        ]),
-      ).toThrow(/enforced duration/u);
-    expect(() =>
-      analyzeBudget(profile("preprod-testing"), [
-        { item: "A1", name: "fixture", ms: 1, source: "" },
-      ]),
-    ).toThrow(/enforced duration/u);
-    expect(() =>
-      analyzeBudget(profile("preprod-testing"), [
-        BOUNDED_WAITS[3]!,
-        BOUNDED_WAITS[3]!,
-      ]),
-    ).toThrow(/duplicate/u);
-  });
+  it.each(BUDGETED_PROFILES)(
+    "%s: the response budget fits the response windows and block maturity",
+    (name) => {
+      const selected = profile(name);
+      // With unbounded waits this is a lower bound: if it already overruns a
+      // window, the full budget does too.
+      const counted = baseTermMs(selected) + countedWaitsMs;
+      expect(
+        counted <= selected.timing.da_small_response_window_ms &&
+          counted <= selected.timing.da_full_response_window_ms &&
+          counted < selected.timing.block_maturity_ms,
+        budgetTable(selected),
+      ).toBe(true);
+    },
+  );
 });
