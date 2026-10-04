@@ -1,0 +1,216 @@
+{
+  "schema": "midgard-work-program/v1",
+  "id": "deterministic-contributor-tools",
+  "observedAt": "2026-10-04T00:20:18.576Z",
+  "tasks": [
+    {
+      "id": "focused-test-execution",
+      "state": "reviewed",
+      "owner": "contributor-tooling",
+      "base": "1afce323e1db632ecc3b59d115cf726356e37661",
+      "candidate": "b76b81d6aee2e9dc1dd91992c8b98674a797eaff",
+      "dependsOn": [],
+      "paths": [
+        "scripts/contrib/tests.mjs",
+        "docs/agents/contrib/tests-and-builds.md"
+      ],
+      "requiredReceipts": [],
+      "issues": [],
+      "review": "Ten independent source passes and native-output follow-up closed all confirmed findings; REVIEW.md retains the lens ledger. Reviewed source snapshot, not live acceptance or measured DevEx."
+    },
+    {
+      "id": "resource-ownership",
+      "state": "reviewed",
+      "owner": "contributor-tooling",
+      "base": "1afce323e1db632ecc3b59d115cf726356e37661",
+      "candidate": "b76b81d6aee2e9dc1dd91992c8b98674a797eaff",
+      "dependsOn": [],
+      "paths": ["scripts/contrib/resources.mjs", "scripts/contrib/process.mjs"],
+      "requiredReceipts": [],
+      "issues": [],
+      "review": "Ten independent source passes and native-output follow-up closed all confirmed findings; REVIEW.md retains the lens ledger. Reviewed source snapshot, not live acceptance or measured DevEx."
+    },
+    {
+      "id": "cold-proof-deployment-fit",
+      "state": "reviewed",
+      "owner": "contributor-tooling",
+      "base": "1afce323e1db632ecc3b59d115cf726356e37661",
+      "candidate": "b76b81d6aee2e9dc1dd91992c8b98674a797eaff",
+      "dependsOn": [],
+      "paths": ["scripts/contrib/gates.mjs"],
+      "requiredReceipts": [],
+      "issues": [],
+      "review": "Ten independent source passes and native-output follow-up closed all confirmed findings; REVIEW.md retains the lens ledger. Reviewed source snapshot, not live acceptance or measured DevEx."
+    },
+    {
+      "id": "typed-protocol-fixtures",
+      "state": "reviewed",
+      "owner": "contributor-tooling",
+      "base": "1afce323e1db632ecc3b59d115cf726356e37661",
+      "candidate": "b76b81d6aee2e9dc1dd91992c8b98674a797eaff",
+      "dependsOn": [],
+      "paths": [
+        "demo/midgard-test-support/src/chain-fixture.ts",
+        "demo/midgard-test-support/src/witness-fixture.ts"
+      ],
+      "requiredReceipts": [],
+      "issues": [],
+      "review": "Ten independent source passes and native-output follow-up closed all confirmed findings; REVIEW.md retains the lens ledger. Reviewed source snapshot, not live acceptance or measured DevEx."
+    },
+    {
+      "id": "disposable-database-isolation",
+      "state": "reviewed",
+      "owner": "contributor-tooling",
+      "base": "1afce323e1db632ecc3b59d115cf726356e37661",
+      "candidate": "b76b81d6aee2e9dc1dd91992c8b98674a797eaff",
+      "dependsOn": [],
+      "paths": [
+        "demo/midgard-test-support/database-identity.js",
+        "demo/midgard-node/tests/utils.ts"
+      ],
+      "requiredReceipts": [],
+      "issues": [],
+      "review": "Ten independent source passes and native-output follow-up closed all confirmed findings; REVIEW.md retains the lens ledger. Reviewed source snapshot, not live acceptance or measured DevEx."
+    },
+    {
+      "id": "recovery-scenarios",
+      "state": "reviewed",
+      "owner": "contributor-tooling",
+      "base": "1afce323e1db632ecc3b59d115cf726356e37661",
+      "candidate": "b76b81d6aee2e9dc1dd91992c8b98674a797eaff",
+      "dependsOn": [],
+      "paths": [
+        "demo/midgard-test-support/src/recovery-scenarios.ts",
+        "scripts/contrib/gates.mjs"
+      ],
+      "requiredReceipts": [],
+      "issues": [],
+      "review": "Ten independent source passes and native-output follow-up closed all confirmed findings; REVIEW.md retains the lens ledger. Reviewed source snapshot, not live acceptance or measured DevEx."
+    },
+    {
+      "id": "parent-worker-owner-contract",
+      "state": "reviewed",
+      "owner": "contributor-tooling",
+      "base": "1afce323e1db632ecc3b59d115cf726356e37661",
+      "candidate": "b76b81d6aee2e9dc1dd91992c8b98674a797eaff",
+      "dependsOn": [],
+      "paths": [
+        "demo/midgard-core/src/commit-lease-owner.ts",
+        "demo/midgard-core/tests/commit-lease-owner.test.ts"
+      ],
+      "requiredReceipts": [],
+      "issues": [],
+      "review": "Ten independent source passes and native-output follow-up closed all confirmed findings; REVIEW.md retains the lens ledger. Reviewed source snapshot, not live acceptance or measured DevEx."
+    },
+    {
+      "id": "bounded-process-lifecycle",
+      "state": "reviewed",
+      "owner": "contributor-tooling",
+      "base": "1afce323e1db632ecc3b59d115cf726356e37661",
+      "candidate": "b76b81d6aee2e9dc1dd91992c8b98674a797eaff",
+      "dependsOn": [],
+      "paths": [
+        "scripts/contrib/process.mjs",
+        "scripts/contrib/lifecycle.test.mjs"
+      ],
+      "requiredReceipts": [],
+      "issues": [],
+      "review": "Ten independent source passes and native-output follow-up closed all confirmed findings; REVIEW.md retains the lens ledger. Reviewed source snapshot, not live acceptance or measured DevEx."
+    },
+    {
+      "id": "runtime-progress-diagnosis",
+      "state": "reviewed",
+      "owner": "contributor-tooling",
+      "base": "1afce323e1db632ecc3b59d115cf726356e37661",
+      "candidate": "b76b81d6aee2e9dc1dd91992c8b98674a797eaff",
+      "dependsOn": [],
+      "paths": ["scripts/contrib/diagnostics.mjs"],
+      "requiredReceipts": [],
+      "issues": [],
+      "review": "Ten independent source passes and native-output follow-up closed all confirmed findings; REVIEW.md retains the lens ledger. Reviewed source snapshot, not live acceptance or measured DevEx."
+    },
+    {
+      "id": "optional-policy-matrix",
+      "state": "reviewed",
+      "owner": "contributor-tooling",
+      "base": "1afce323e1db632ecc3b59d115cf726356e37661",
+      "candidate": "b76b81d6aee2e9dc1dd91992c8b98674a797eaff",
+      "dependsOn": [],
+      "paths": ["scripts/contrib/gates.mjs"],
+      "requiredReceipts": [],
+      "issues": [],
+      "review": "Ten independent source passes and native-output follow-up closed all confirmed findings; REVIEW.md retains the lens ledger. Reviewed source snapshot, not live acceptance or measured DevEx."
+    },
+    {
+      "id": "public-artifact-reproduction",
+      "state": "reviewed",
+      "owner": "contributor-tooling",
+      "base": "1afce323e1db632ecc3b59d115cf726356e37661",
+      "candidate": "b76b81d6aee2e9dc1dd91992c8b98674a797eaff",
+      "dependsOn": [],
+      "paths": [
+        "scripts/contrib/artifacts.mjs",
+        "scripts/contrib/native.mjs",
+        "scripts/contrib/reproduction.mjs"
+      ],
+      "requiredReceipts": [],
+      "issues": [],
+      "review": "Ten independent source passes and native-output follow-up closed all confirmed findings; REVIEW.md retains the lens ledger. Reviewed source snapshot, not live acceptance or measured DevEx."
+    },
+    {
+      "id": "module-boundary-discovery",
+      "state": "reviewed",
+      "owner": "contributor-tooling",
+      "base": "1afce323e1db632ecc3b59d115cf726356e37661",
+      "candidate": "b76b81d6aee2e9dc1dd91992c8b98674a797eaff",
+      "dependsOn": [],
+      "paths": ["scripts/contrib/discovery.mjs"],
+      "requiredReceipts": [],
+      "issues": [],
+      "review": "Ten independent source passes and native-output follow-up closed all confirmed findings; REVIEW.md retains the lens ledger. Reviewed source snapshot, not live acceptance or measured DevEx."
+    },
+    {
+      "id": "evidence-and-program-resumes",
+      "state": "reviewed",
+      "owner": "contributor-tooling",
+      "base": "1afce323e1db632ecc3b59d115cf726356e37661",
+      "candidate": "b76b81d6aee2e9dc1dd91992c8b98674a797eaff",
+      "dependsOn": [],
+      "paths": ["scripts/contrib/receipts.mjs", "scripts/contrib/program.mjs"],
+      "requiredReceipts": [],
+      "issues": [],
+      "review": "Ten independent source passes and native-output follow-up closed all confirmed findings; REVIEW.md retains the lens ledger. Reviewed source snapshot, not live acceptance or measured DevEx."
+    },
+    {
+      "id": "worktree-integration",
+      "state": "reviewed",
+      "owner": "contributor-tooling",
+      "base": "1afce323e1db632ecc3b59d115cf726356e37661",
+      "candidate": "b76b81d6aee2e9dc1dd91992c8b98674a797eaff",
+      "dependsOn": [],
+      "paths": ["scripts/contrib/workspace.mjs"],
+      "requiredReceipts": [],
+      "issues": [],
+      "review": "Ten independent source passes and native-output follow-up closed all confirmed findings; REVIEW.md retains the lens ledger. Reviewed source snapshot, not live acceptance or measured DevEx."
+    },
+    {
+      "id": "input-envelopes-and-fit",
+      "state": "reviewed",
+      "owner": "contributor-tooling",
+      "base": "1afce323e1db632ecc3b59d115cf726356e37661",
+      "candidate": "b76b81d6aee2e9dc1dd91992c8b98674a797eaff",
+      "dependsOn": [],
+      "paths": ["scripts/contrib/measure.mjs", "scripts/contrib/gates.mjs"],
+      "requiredReceipts": [],
+      "issues": [],
+      "review": "Ten independent source passes and native-output follow-up closed all confirmed findings; REVIEW.md retains the lens ledger. Reviewed source snapshot, not live acceptance or measured DevEx."
+    }
+  ],
+  "decisions": [
+    {
+      "id": "implementation",
+      "path": "docs/exec-plans/agent-workflow-improvements-2026-10-02/IMPLEMENTATION.md"
+    }
+  ],
+  "adoptionMeasurement": "Pending subsequent thread observation requested after delivery; publication is not measured DevEx acceptance."
+}
