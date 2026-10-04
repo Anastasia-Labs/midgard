@@ -59,6 +59,7 @@ it("adjudicates authenticated opaque forced bytes with the installed field-lengt
     SDK.getHeaderFromStateQueueDatum(queueState.datum),
   );
   expect(admittedHeader).toEqual(raw.header);
+  expect(admittedHeader.prevHeaderHash).toBe(SDK.GENESIS_HEADER_HASH);
   expect(await Effect.runPromise(SDK.hashBlockHeader(admittedHeader))).toBe(
     raw.headerHash,
   );
