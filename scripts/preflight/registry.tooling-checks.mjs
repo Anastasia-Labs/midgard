@@ -77,6 +77,33 @@ const docsSiteTriggers = [
 ];
 
 export const independentChecks = () => [
+  ...["sdk", "node", "emulator"].map((lane) => ({
+    id: `tx-preparation:${lane}`,
+    title: `Transaction preparation ${lane} acceptance lane`,
+    triggers: [
+      "demo/lucid-midgard/src/**",
+      "demo/midgard-sdk/src/**",
+      "demo/midgard-node/src/fibers/**",
+      "demo/midgard-node/src/workers/**",
+      "demo/midgard-node/src/utils/commit-submission*.ts",
+      "demo/midgard-node-tools/src/**",
+    ],
+    capabilities: [
+      "node-modules",
+      "blueprint",
+      ...(lane === "sdk" ? [] : ["postgres", "db-prefix"]),
+    ],
+    ...(lane === "sdk"
+      ? {
+          requiresFiles: [
+            "demo/lucid-midgard/package.json",
+            "demo/midgard-sdk/package.json",
+          ],
+        }
+      : {}),
+    display: `pnpm --dir demo run test:tx-prep:${lane}`,
+    plan: () => [step(["pnpm", "--dir", DEMO, "run", `test:tx-prep:${lane}`])],
+  })),
   {
     id: "docs-site-links",
     title: "Repository-local Markdown and MDX links resolve",
@@ -102,10 +129,12 @@ export const independentChecks = () => [
     title,
     triggers: docsSiteTriggers,
     capabilities: ["node-modules", "docs-site-node-modules"],
-    display: `pnpm --dir docs-site run ${script}`,
+    display: `(cd docs-site && corepack pnpm run ${script})`,
     // These scripts build their SDK dependencies in prebuild/pretypes:check.
     invalidates: ["core-dist"],
-    plan: () => [step(["pnpm", "--dir", "docs-site", "run", script])],
+    plan: () => [
+      step(["corepack", "pnpm", "run", script], { cwd: "docs-site" }),
+    ],
   })),
   {
     id: "spec-build",
@@ -146,6 +175,27 @@ export const independentChecks = () => [
 const E2E_SKILL = ".agents/skills/midgard-e2e-acceptance";
 
 export const toolingChecks = () => [
+  {
+    id: "contributor-build-guards",
+    title: "Workspace builds use the resource and provenance guard",
+    triggers: [
+      "scripts/contrib/**",
+      "scripts/contrib.mjs",
+      "demo/*/package.json",
+    ],
+    prePush: true,
+    display: "node scripts/contrib/enroll-builds.mjs",
+    fix: "node scripts/contrib/enroll-builds.mjs --write",
+    plan: () => [step(node("scripts/contrib/enroll-builds.mjs"))],
+  },
+  {
+    id: "contributor-causal-controls",
+    title: "Artifact and boundary guards reject their causal mutants",
+    triggers: ["scripts/contrib/**", "scripts/contrib.mjs"],
+    prePush: true,
+    display: "node scripts/contrib/review-controls.mjs",
+    plan: () => [step(node("scripts/contrib/review-controls.mjs"))],
+  },
   {
     id: "merge-conflicts",
     title:

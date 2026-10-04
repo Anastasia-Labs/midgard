@@ -5,6 +5,22 @@
   "description": "Test-only helpers shared across the Midgard workspace.",
   "type": "module",
   "exports": {
+    "./recovery-scenarios": {
+      "midgard-source": "./src/recovery-scenarios.ts",
+      "types": "./src/recovery-scenarios.ts"
+    },
+    "./chain-fixture": {
+      "midgard-source": "./src/chain-fixture.ts",
+      "types": "./src/chain-fixture.ts"
+    },
+    "./witness-fixture": {
+      "midgard-source": "./src/witness-fixture.ts",
+      "types": "./src/witness-fixture.ts"
+    },
+    "./database-identity": {
+      "types": "./database-identity.d.ts",
+      "default": "./database-identity.js"
+    },
     "./vitest": {
       "types": "./vitest.d.ts",
       "default": "./vitest.js"
@@ -32,7 +48,9 @@
     "vitest.js",
     "vitest.d.ts",
     "blueprint-stamp-setup.js",
-    "interactive-emulator.js"
+    "interactive-emulator.js",
+    "database-identity.js",
+    "database-identity.d.ts"
   ],
   "scripts": {
     "capture:l1-recordings": "node scripts/capture-l1-recordings.mjs",

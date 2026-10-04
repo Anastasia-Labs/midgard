@@ -9,6 +9,7 @@ import {
   aikenChecks,
   demoChecks,
   FULL_RUN,
+  VERIFICATION_ONLY,
   ledgerChecks,
 } from "./registry.demo-checks.mjs";
 import {
@@ -25,6 +26,7 @@ export const buildRegistry = (root) => {
   const ciText = workflowText(root);
   const demo = demoChecks(root, packages);
   const [fmt, focused, blueprint] = aikenChecks(root, index);
+  const independent = independentChecks();
   const checks = [
     ...toolingChecks(),
     fmt,
@@ -34,10 +36,12 @@ export const buildRegistry = (root) => {
     ...goldenChecks(root, packages, ciText),
     focused,
     blueprint,
-    ...independentChecks(),
+    ...independent.filter((check) => check.id !== "tx-preparation:sdk"),
     ...ledgerChecks(root, index, ciText),
     demo.test,
     demo.testDb,
+    // This obligation can reuse only suites that have actually completed.
+    ...independent.filter((check) => check.id === "tx-preparation:sdk"),
   ].map((check) => ({
     triggers: [],
     capabilities: [],
@@ -68,7 +72,10 @@ export const selectChecks = (
   const reasons = [
     ...fullReasons,
     ...relevant
-      .filter((path) => matchesAny(path, FULL_RUN))
+      .filter(
+        (path) =>
+          matchesAny(path, FULL_RUN) && !matchesAny(path, VERIFICATION_ONLY),
+      )
       .map((path) => `${path} is in FULL_RUN`),
   ];
   const isFull = full || reasons.length > 0;

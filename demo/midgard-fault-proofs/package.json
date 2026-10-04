@@ -91,14 +91,15 @@
   ],
   "scripts": {
     "clean": "rimraf dist",
-    "build": "tsup src/index.ts --format esm --dts --clean && tsup src/bin.ts --format esm",
+    "build": "node ../../scripts/contrib.mjs build --package @al-ft/midgard-fault-proofs",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:traced-refusals": "node scripts/run-traced-refusals.mjs",
     "check:builder-exports": "node scripts/check-builder-exports.mjs",
-    "test:cardano-capability-p2-retained-da": "node tests/fixtures/verify-cardano-capability-p2-retained-da-v1.mjs"
+    "test:cardano-capability-p2-retained-da": "node tests/fixtures/verify-cardano-capability-p2-retained-da-v1.mjs",
+    "build:contrib-raw": "tsup src/index.ts --format esm --dts --clean && tsup src/bin.ts --format esm"
   },
   "keywords": [
     "cardano",
@@ -125,6 +126,8 @@
     "@lucid-evolution/uplc": "0.2.23",
     "@types/json-bigint": "1.0.4",
     "@types/node": "^22.17.0",
+    "midgard-node": "workspace:*",
+    "midgard-watcher": "workspace:*",
     "rimraf": "^6.0.1",
     "tsup": "^8.4.0",
     "vitest": "^3.0.7",

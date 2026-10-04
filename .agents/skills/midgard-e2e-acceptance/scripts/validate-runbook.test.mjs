@@ -67,6 +67,14 @@ test("an e2e-stack flag the command does not declare fails", () => {
   assert.match(result.stderr, /undeclared e2e-stack flag: --resume-from/);
 });
 
+test("contributor plan flags cannot be passed to the underlying e2e-stack command", () => {
+  const result = validateEdited(live, (text) =>
+    text.replace('"$STACK_CONFIG" --setup-only', '"$STACK_CONFIG" --plan'),
+  );
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /undeclared e2e-stack flag: --plan/);
+});
+
 test("a flag named on its own that no CLI declares fails", () => {
   const result = validateEdited(live, (text) =>
     text.replace("`--check` loads", "`--dry-check` loads"),

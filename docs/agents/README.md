@@ -5,6 +5,8 @@ single agent turn.
 
 ## Current Structure
 
+- `docs/agents/contrib.md`: deterministic test/build/artifact commands,
+  execution receipts, resource ownership, program resumes and diagnostics.
 - `docs/agents/production-l2.md`: repository-wide safety, correctness, and
   tradeoff policy.
 - `docs/agents/state-reset.md`: durable-state deletion and on-chain redeploy

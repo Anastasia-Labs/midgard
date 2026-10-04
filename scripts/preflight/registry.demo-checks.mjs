@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { basename, resolve } from "node:path";
 
 import { parseSelectors } from "../../onchain/aiken/scripts/guard-focused-selector.mjs";
+import { SDK_SUITES } from "./sdk-suite-evidence.mjs";
 import {
   AIKEN_PROJECT,
   aikenImportClosure,
@@ -38,6 +39,29 @@ export const FULL_RUN = [
   // Preflight itself: a selection bug cannot be allowed to select itself out.
   "scripts/preflight.mjs",
   "scripts/preflight/**",
+  // Contributor execution and package-manager dispatch are shared by builds,
+  // registered generators and all preflight children.
+  "scripts/contrib.mjs",
+  "scripts/contrib/**",
+  "scripts/pnpm.mjs",
+  "scripts/bin/**",
+];
+
+// These modules are consumed only by preflight, not package builds, artifacts
+// or protocol runtimes. Their tests run in Repo Tools CI on every PR;
+// derive/probes/shared execution helpers remain FULL_RUN inputs. Protocol CI
+// keeps its existing source-path triggers, assertions and acceptance profile.
+export const VERIFICATION_ONLY = [
+  "scripts/preflight.mjs",
+  "scripts/preflight/run.mjs",
+  "scripts/preflight/registry.mjs",
+  "scripts/preflight/registry.demo-checks.mjs",
+  "scripts/preflight/registry.select-checks.mjs",
+  "scripts/preflight/registry.tooling-checks.mjs",
+  "scripts/preflight/docs.mjs",
+  "scripts/preflight/ci-evidence.mjs",
+  "scripts/preflight/sdk-suite-evidence.mjs",
+  "scripts/preflight/*.test.mjs",
 ];
 
 // The kill switch. It forces a full run; it never disables checks.
@@ -240,6 +264,23 @@ export const demoChecks = (root, packages) => {
       const selected = ordered(names).filter(options.include ?? (() => true));
       if (selected.length === 0) {
         return null;
+      }
+      if (id === "demo-test") {
+        const singles = Object.keys(SDK_SUITES).filter((name) =>
+          selected.includes(name),
+        );
+        const others = selected.filter((name) => !singles.includes(name));
+        return [
+          ...(others.length
+            ? [step(pnpmRun(others, script, options.extra))]
+            : []),
+          ...singles.map((name) =>
+            step(["pnpm", "--filter", name, "test"], {
+              cwd: DEMO,
+              sdkSuite: name,
+            }),
+          ),
+        ];
       }
       return [
         step(

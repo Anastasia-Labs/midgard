@@ -5,6 +5,7 @@ import {
   interactiveEmulatorSetup,
   isolatedForksPool,
   midgardSourceSsr,
+  rawSqlLoaderPlugin,
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
 
@@ -42,6 +43,7 @@ const parseMaxForks = (raw: string | undefined): number => {
 const maxForks = parseMaxForks(process.env.MIDGARD_FAULT_PROOF_FORKS);
 
 export default defineConfig({
+  plugins: [rawSqlLoaderPlugin()],
   test: {
     // Refuses the run when onchain/aiken/plutus.json is stale.
     workspace: [

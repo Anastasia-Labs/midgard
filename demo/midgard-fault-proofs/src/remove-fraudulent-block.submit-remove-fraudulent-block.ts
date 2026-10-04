@@ -710,7 +710,6 @@ export const submitRemoveFraudulentBlock = async ({
       await stateQueueMutationLease.release();
       stateQueueMutationLeaseReleased = true;
     }
-
     return {
       txHash: finalTransaction.txHash,
       walletSource: signer.source,

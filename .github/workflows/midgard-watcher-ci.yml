@@ -4,6 +4,10 @@ on:
   push:
     branches: ["main"]
     paths:
+      - "scripts/contrib.mjs"
+      - "scripts/contrib/**"
+      - "scripts/pnpm.mjs"
+      - "scripts/bin/**"
       - "demo/midgard-watcher/**"
       - "demo/midgard-fault-proofs/**"
       - "demo/midgard-sdk/**"
@@ -19,6 +23,10 @@ on:
       - ".github/workflows/midgard-watcher-ci.yml"
   pull_request:
     paths:
+      - "scripts/contrib.mjs"
+      - "scripts/contrib/**"
+      - "scripts/pnpm.mjs"
+      - "scripts/bin/**"
       - "demo/midgard-watcher/**"
       - "demo/midgard-fault-proofs/**"
       - "demo/midgard-sdk/**"

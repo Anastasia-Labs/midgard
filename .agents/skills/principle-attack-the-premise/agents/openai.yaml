@@ -1,0 +1,6 @@
+interface:
+  display_name: "Principle Attack The Premise"
+  short_description: "Apply when two or more fixes that share one premise have failed "
+  default_prompt: "Use $principle-attack-the-premise for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

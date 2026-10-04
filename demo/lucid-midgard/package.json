@@ -20,7 +20,7 @@
   "scripts": {
     "clean": "rimraf dist",
     "prebuild": "pnpm --dir ../midgard-validation run build",
-    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "build": "node ../../scripts/contrib.mjs build --package @al-ft/lucid-midgard",
     "fixtures:native-high-cardinality:sync": "MIDGARD_SYNC_FIXTURES=1 vitest run tests/native-high-cardinality-fixture.test.ts",
     "fixtures:native-size-balanced:sync": "MIDGARD_SYNC_FIXTURES=1 vitest run tests/native-size-balanced-fixture.test.ts",
     "fixtures:native-ordinary:sync": "MIDGARD_SYNC_FIXTURES=1 vitest run tests/native-ordinary-fixture.test.ts",
@@ -29,7 +29,8 @@
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:contrib-raw": "tsup src/index.ts --format esm,cjs --dts --clean"
   },
   "keywords": [
     "cardano",

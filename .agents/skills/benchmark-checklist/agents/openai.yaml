@@ -1,0 +1,6 @@
+interface:
+  display_name: "Benchmark Checklist"
+  short_description: "Vet a perf measurement (limiter, tuning, limits, errors, repeata"
+  default_prompt: "Use $benchmark-checklist for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

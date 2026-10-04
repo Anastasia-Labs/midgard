@@ -9,6 +9,7 @@ import {
   type WatcherEncodedRecord,
 } from "../../src/storage/durable-record-codec.js";
 import * as stores from "../../src/storage/durable-store.js";
+import { expectStoreError } from "./durable-store.records-fixture.js";
 
 const hash = (value: number) => value.toString(16).padStart(64, "0");
 const marker = {
@@ -103,12 +104,16 @@ it("keeps validating frozen containers whose cache or payload children remain mu
 it.each(["payload", "cache"] as const)(
   "does not issue a receipt after failed immutable %s validation",
   (kind) => {
-    const value = fixture();
-    if (kind === "payload")
-      Reflect.set(value.l1Observations[0]!.payload, "sha256", hash(99));
-    else Reflect.set(value.caches, "sourceSha256", hash(99));
+    const value = structuredClone(fixture());
+    const target =
+      kind === "payload" ? value.l1Observations[0]!.payload : value.caches;
+    const field = kind === "payload" ? "sha256" : "sourceSha256";
+    expect(Reflect.set(target, field, hash(99))).toBe(true);
     freeze(value);
-    expect(() => stores.encodeWatcherDurableStore(value)).toThrow();
+    expectStoreError(
+      () => stores.encodeWatcherDurableStore(value),
+      kind === "payload" ? "integrity_mismatch" : "cache_mismatch",
+    );
     expect(
       stores.readValidatedWatcherDurableStoreCaches(value),
     ).toBeUndefined();

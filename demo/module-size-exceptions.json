@@ -371,8 +371,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/field-preimage-length-mismatch-lifecycle.test.ts",
-    "max": 949,
-    "reason": "Retained test registration \u201cfield-preimage-length-mismatch registered-chain lifecycle\u201d (853 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 907,
+    "reason": "Retained test registration “field-preimage-length-mismatch registered-chain lifecycle” (853 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/field-preimage-length-recovery.test.ts",
@@ -901,8 +901,8 @@
   },
   {
     "file": "midgard-node-tools/tests/e2e-summary.test.ts",
-    "max": 672,
-    "reason": "Retained test registration \u201ce2e run summary\u201d (898 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. Combined recovered source removes obsolete lines; cap reduced to the measured final source count."
+    "max": 608,
+    "reason": "Retained test registration “e2e run summary” (593 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node-tools/tests/phase4-pipelined-process-summary-verifier.test.mjs",

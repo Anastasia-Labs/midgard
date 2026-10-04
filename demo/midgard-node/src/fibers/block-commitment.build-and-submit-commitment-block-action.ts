@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { commitLeaseOwner } from "@al-ft/midgard-core/commit-lease-owner";
 import { Duration, Effect, Metric, Option, Queue, Ref, Runtime } from "effect";
 import { Worker } from "worker_threads";
 
@@ -170,7 +171,7 @@ export const buildAndSubmitCommitmentBlockAction = (
             "commit-block-header",
             nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
           );
-    const ledgerStoreLeaseOwner = `commit:${randomUUID()}`;
+    const ledgerStoreLeaseOwner = commitLeaseOwner(randomUUID());
     const databaseRuntime = yield* Effect.runtime<Database>();
     const releaseTerminatedWorkerLedgerLease = () =>
       Runtime.runPromise(databaseRuntime)(
@@ -534,7 +535,6 @@ export const buildAndSubmitCommitmentBlockAction = (
         break;
       }
     }
-
     const awaitingForeignTipReconciliations =
       yield* ForeignTipReconciliationsDB.countAwaiting;
     yield* foreignTipReconciliationAwaitingGauge(
