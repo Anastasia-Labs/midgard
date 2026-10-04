@@ -1,0 +1,26 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 4870b3b3d0f3e42b87f29d75c9b48095b6b463b0..041edcb0984a3a3aa5c3768bd0b8faafa3c8354b 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -430,7 +430,7 @@ function applyParamsToScript(plutusScript, params, type) {
+   }, program.body);
+   return applyDoubleCborEncoding(
+     (0, import_core_utils2.toHex)(
+-      (0, import_uplc.encodeUPLC)(new import_uplc.UPLCProgram(program.version, appliedProgram)).toBuffer().buffer
++      (0, import_uplc.encodeUPLC)(new import_uplc.UPLCProgram(program.version, appliedProgram))
+     )
+   );
+ }
+diff --git a/dist/index.js b/dist/index.js
+index 280d4edfb542a010dd708d1ea0464da81851e5f5..de760262a623a1dfa1363ca18315cf1226a2400c 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -341,7 +341,7 @@ function applyParamsToScript(plutusScript, params, type) {
+   }, program.body);
+   return applyDoubleCborEncoding(
+     toHex2(
+-      encodeUPLC(new UPLCProgram(program.version, appliedProgram)).toBuffer().buffer
++      encodeUPLC(new UPLCProgram(program.version, appliedProgram))
+     )
+   );
+ }
