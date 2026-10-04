@@ -45,7 +45,11 @@ const open = async (changedRoot = false) => {
         type: "Script",
         hash: "9a".repeat(28),
       }),
-      assets: { lovelace: 2_000_000n },
+      assets: {
+        lovelace: 2_000_000n,
+        ["9a".repeat(28) + SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash]:
+          1n,
+      },
     },
     datum: {
       key: { Key: { key: headerHash } },

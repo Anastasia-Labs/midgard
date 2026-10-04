@@ -16,6 +16,13 @@ import { makeRollbackHistoryTransport } from "./helpers/history-rollback-transpo
 import { historyOutputObservation } from "./helpers/history-projection-observations.js";
 import { provideDatabaseLayers } from "./utils.js";
 
+const diagnoseOwnerFailure = (cause: unknown): never => {
+  throw new Error(
+    `Forced census owner lifecycle failed: ${inspect(cause, { depth: 20, colors: false })}`,
+    { cause },
+  );
+};
+
 const openCensusOwner = (
   options: Parameters<typeof openHistoryProductionOwnerLifecycle>[0],
 ) =>
@@ -127,8 +134,10 @@ it("retains an actual forced NFT admission independently of ingestion rows and r
     const reacquired = await restarted.command(census());
     expect(reacquired.forced.map((entry) => entry.key)).toEqual([key]);
     expect(reacquired.forced[0]?.transactionHash).toBe(mintTxHash);
+  } catch (cause) {
+    diagnoseOwnerFailure(cause);
   } finally {
-    await current.close();
+    await current.close().catch(diagnoseOwnerFailure);
     vi.useRealTimers();
   }
 });
@@ -219,8 +228,10 @@ it("removes an orphaned forced admission from the complete census and revokes it
         admissions_record: expect.stringContaining(key),
       },
     ]);
+  } catch (cause) {
+    diagnoseOwnerFailure(cause);
   } finally {
-    await lifecycle.close();
+    await lifecycle.close().catch(diagnoseOwnerFailure);
     vi.useRealTimers();
   }
 });
