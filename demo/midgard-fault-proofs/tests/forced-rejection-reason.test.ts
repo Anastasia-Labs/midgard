@@ -224,7 +224,7 @@ describe("forced rejection reason", () => {
     }
     expect(
       forcedVerdictForRejection({
-        code: RejectCodes.DuplicateInputInTx,
+        code: SUBJECT_CASES[0]![0],
         subject: SUBJECT_CASES[0]![1],
       }),
     ).toStrictEqual({ ForcedTxInvalid: { reason: SUBJECT_CASES[0]![2] } });
