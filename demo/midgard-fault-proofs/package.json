@@ -130,7 +130,6 @@
     "midgard-watcher": "workspace:*",
     "rimraf": "^6.0.1",
     "tsup": "^8.4.0",
-    "vitest": "^3.0.7",
-    "midgard-node": "workspace:*"
+    "vitest": "^3.0.7"
   }
 }
