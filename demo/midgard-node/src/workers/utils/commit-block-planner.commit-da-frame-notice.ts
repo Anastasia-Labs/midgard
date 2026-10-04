@@ -2,7 +2,9 @@ import {
   type DaPayloadFramePressureStage,
   daPayloadFramePressureStage,
 } from "@al-ft/midgard-core/da-payload-sizing";
+import { Effect } from "effect";
 
+import type { NothingToCommitOutput } from "./commit-block-header.js";
 import type { CommitDaFrameMeasurement } from "./commit-block-planner.commit-scheduler-evidence-key.js";
 
 /** Measured diagnostics for a built candidate; all bytes use the header upper bound. */
@@ -29,15 +31,20 @@ export type CommitDaFramePressureSnapshot = CommitDaFramePressure & {
 /**
  * Posted by the commit worker once its DA frame step-down has decided, ahead
  * of its output. When a block's conservative size estimate overflows with no
- * transaction left to drop, the parent raises a liveness reason. Exact
- * pre-submit admission clears that reason immediately; the estimate can exceed
- * the frame while the final header fits. A tick with nothing to commit returns before
- * the step-down and posts no notice; the parent clears the reason on its
- * `NothingToCommitOutput` instead.
+ * transaction left to drop, the block is refused on every tick (by the
+ * pre-submit check, or, when only transactions were pending, by committing
+ * nothing while they stay in the mempool), so the parent raises a liveness
+ * reason. Exact pre-submit admission clears that reason immediately; the
+ * estimate can exceed the frame while the final header fits. A tick with no
+ * transaction or user event pending posts `COMMIT_DA_FRAME_IDLE_NOTICE`
+ * (`nothingToCommitWithNoWork`), since no block is refused. Every other tick
+ * that returns before the step-down posts nothing and leaves the reason as it
+ * is.
  */
 export type CommitDaFrameNotice = {
   readonly type: "CommitDaFrameNotice";
-  /** `fits`: the frame admits this tick's measured block.
+  /** `fits`: the frame admits this tick's measured block, or there is no
+   * work to build one.
    * `events_overflow`: the block's events alone overflow a frame whose empty
    * block fits. `ledger_ceiling`: the base ledger's empty block alone
    * exceeds the frame, and this block's withdrawals do not bring it under. */
@@ -149,3 +156,18 @@ export const commitDaFrameNoticeForOutcome = ({
         : `passes=${passes.toString()} base_empty_block_inner_bytes=${baseEmptyBlockInnerBytes.toString()} effective_inner_limit=${maxInnerBytes.toString()}`,
   };
 };
+
+/**
+ * The output of a tick with no transaction or user event pending. No block is
+ * refused then, so it posts `COMMIT_DA_FRAME_IDLE_NOTICE` first, clearing a
+ * standing DA frame reason and the frame diagnostics. Only these ticks do: the deposit-only path's
+ * "nothing to commit" also ends a step-down that dropped every transaction
+ * from an over-frame ledger, and must leave its reason standing.
+ */
+export const nothingToCommitWithNoWork = (
+  notify: ((notice: CommitDaFrameNotice) => Effect.Effect<void>) | undefined,
+): Effect.Effect<NothingToCommitOutput> =>
+  Effect.as(
+    notify === undefined ? Effect.void : notify(COMMIT_DA_FRAME_IDLE_NOTICE),
+    { type: "NothingToCommitOutput" } as const,
+  );

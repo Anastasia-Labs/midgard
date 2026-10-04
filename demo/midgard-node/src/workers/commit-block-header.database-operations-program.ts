@@ -88,7 +88,10 @@ import {
   WorkerInput,
   WorkerOutput,
 } from "./utils/commit-block-header.js";
-import { COMMIT_DA_FRAME_FITS_NOTICE } from "./utils/commit-block-planner.commit-da-frame-notice.js";
+import {
+  COMMIT_DA_FRAME_FITS_NOTICE,
+  nothingToCommitWithNoWork,
+} from "./utils/commit-block-planner.commit-da-frame-notice.js";
 import {
   calibratedCommitBuildMsPerTx,
   type CommitSchedulerStateQueueEvidence,
@@ -608,9 +611,7 @@ export const databaseOperationsProgram = (
       yield* Effect.logInfo(
         "🔹 State queue has an unmerged tail and no pending tx/user-event work; waiting for merge before the next commit attempt.",
       );
-      return {
-        type: "NothingToCommitOutput",
-      } satisfies WorkerOutput;
+      return yield* nothingToCommitWithNoWork(notifyParent);
     }
 
     if (
@@ -624,9 +625,7 @@ export const databaseOperationsProgram = (
       yield* Effect.logInfo(
         "🔹 No pending tx/user-event work for block commitment; skipping commit base hydration.",
       );
-      return {
-        type: "NothingToCommitOutput",
-      } satisfies WorkerOutput;
+      return yield* nothingToCommitWithNoWork(notifyParent);
     }
 
     const baseHydrationStartedAtMs = Date.now();

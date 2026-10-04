@@ -4,10 +4,13 @@ import { describe, expect, it } from "vitest";
 
 import type { UtxoPayloadSizeAggregate } from "../src/mpf/index.js";
 import {
+  emptyBlockDaPayloadUpperBoundBytes,
+  estimatedTxDaPayloadBytes,
   planCommitBatchBudgets,
   selectCommitTxCandidates,
 } from "../src/workers/utils/commit-block-planner.js";
 import {
+  CANONICAL_TX,
   LC1_BASE_LEDGER,
   LC1_MEAN_ENTRY_BYTES,
   mkCandidate,
@@ -59,6 +62,51 @@ describe("commit planner DA frame budget", () => {
       expect(tick?.innerBytes).toBeLessThanOrEqual(
         maxDaPayloadInnerBytes(mode),
       );
+    },
+  );
+
+  it.each(MODES)(
+    "budgets the base ledger's empty block before any transaction (%s)",
+    (mode) => {
+      // A base ledger that leaves room for exactly forty transactions'
+      // allowance: the base-free plan would admit all hundred.
+      const limits = PROGRAM_LIMITS(mode);
+      const perTx = estimatedTxDaPayloadBytes(CANONICAL_TX.length, limits);
+      const room = 40.5 * perTx;
+      let entryCount = Math.floor(
+        (limits.maxDaPayloadBytes - room) / LC1_MEAN_ENTRY_BYTES,
+      );
+      const aggregate = (count: number) => ({
+        entryCount: count,
+        encodedTupleBytes: count * LC1_MEAN_ENTRY_BYTES,
+      });
+      // The empty block also carries the ledger's list framing and header.
+      while (
+        emptyBlockDaPayloadUpperBoundBytes(aggregate(entryCount)) + room >
+        limits.maxDaPayloadBytes
+      )
+        entryCount -= 1;
+      const base = aggregate(entryCount);
+      const plan = (baseUtxoPayloadAggregate?: UtxoPayloadSizeAggregate) =>
+        planCommitBatchBudgets({
+          candidateSelection: selectCommitTxCandidates({
+            mempoolTxs: Array.from({ length: 100 }, (_, index) =>
+              mkCandidate(index + 1),
+            ),
+            processedMempoolTxs: [],
+          }),
+          limits,
+          baseUtxoPayloadAggregate,
+        });
+      expect(plan().plan.selectedTxCount).toBe(100);
+      const planned = plan(base);
+      expect(planned.plan).toMatchObject({
+        selectedTxCount: 40,
+        stopReason: "da_payload_budget",
+        estimatedDaPayloadBytes:
+          emptyBlockDaPayloadUpperBoundBytes(base) + 40 * perTx,
+      });
+      expect(planned.prunedTxCount).toBe(60);
     },
   );
 

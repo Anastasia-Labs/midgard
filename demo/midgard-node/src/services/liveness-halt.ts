@@ -315,11 +315,12 @@ export const SIGNED_INTENT_REPLACEMENT_INTEGRITY =
   "signed_intent_replacement_integrity";
 
 /** The source the commit worker's DA frame notices raise under. It holds no
- * fiber: the pre-submit frame check already refuses the block on every tick,
- * so the reason only makes that refusal visible on /readyz. The next measured
- * tick whose block fits the frame, or the next tick with nothing to commit
- * (its `NothingToCommitOutput`), clears it; a block left unmeasured leaves it
- * as it is. */
+ * fiber: the block is already refused on every tick (by the pre-submit frame
+ * check, or by committing nothing while the transactions stay pending), so
+ * the reason only makes that refusal visible on /readyz. The next measured
+ * tick whose block fits the frame, or the next tick with no transaction or
+ * user event pending, clears it; a block left unmeasured, or a tick that
+ * returns before the step-down for another reason, leaves it as it is. */
 export const COMMIT_DA_FRAME_SOURCE = "commit_da_frame";
 
 /** A block's events alone overflow the DA frame although its empty block

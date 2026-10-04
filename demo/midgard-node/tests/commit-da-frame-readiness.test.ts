@@ -21,6 +21,7 @@ import { submitDepositOnlyCommit } from "../src/workers/commit-block-header/subm
 import { submitTxBackedCommit } from "../src/workers/commit-block-header/submission.submit-tx-backed-commit.js";
 import {
   COMMIT_DA_FRAME_FITS_NOTICE,
+  COMMIT_DA_FRAME_IDLE_NOTICE,
   commitDaFrameNoticeForOutcome,
 } from "../src/workers/utils/commit-block-planner.commit-da-frame-notice.js";
 import {
@@ -129,7 +130,7 @@ vi.mock(
 /**
  * The commit worker's DA frame notices reach /readyz through the liveness
  * reason registry: a block the frame refuses raises a reason, and the next
- * measured tick that fits, or the next tick with nothing to commit, clears it.
+ * measured tick that fits, or the next tick with no work, clears it.
  * The reason holds no fiber, so the commit loop keeps ticking.
  */
 
@@ -428,14 +429,29 @@ describe("commit DA frame readiness", () => {
     },
   );
 
-  it("clears on a tick with nothing to commit, which posts no notice", () => {
+  it("keeps the reason through a nothing-to-commit output", () => {
     const globals = node();
-    takeCommitWorkerOutput(globals, refused(1_000), 0);
-    // An idle tick returns before the step-down, so only its output arrives;
-    // the output is still handed on.
-    const idle = { type: "NothingToCommitOutput" } as const;
-    expect(takeCommitWorkerOutput(globals, idle, 0)).toBe(idle);
+    // Only transactions were pending over an over-frame ledger: the step-down
+    // dropped them all, the empty block still overflows, and with no event
+    // left the worker commits nothing. The output is handed on and the
+    // transactions stay pending, so the reason must stay too.
+    takeCommitWorkerOutput(globals, refused(100_001), 0);
+    const nothing = { type: "NothingToCommitOutput" } as const;
+    expect(takeCommitWorkerOutput(globals, nothing, 0)).toBe(nothing);
+    expect(reasonsOf(globals)).toEqual([
+      {
+        source: COMMIT_DA_FRAME_SOURCE,
+        reason: COMMIT_DA_FRAME_LEDGER_CEILING,
+      },
+    ]);
+    // A tick with no work posts the idle notice ahead of its output, which
+    // clears the reason and the frame diagnostics.
+    takeCommitWorkerOutput(globals, COMMIT_DA_FRAME_IDLE_NOTICE, 0);
+    expect(takeCommitWorkerOutput(globals, nothing, 0)).toBe(nothing);
     expect(reasonsOf(globals)).toEqual([]);
+    expect(Effect.runSync(Ref.get(globals.COMMIT_DA_FRAME_PRESSURE))).toBe(
+      null,
+    );
   });
 
   it("moves between its two reasons without a fitting tick in between", () => {

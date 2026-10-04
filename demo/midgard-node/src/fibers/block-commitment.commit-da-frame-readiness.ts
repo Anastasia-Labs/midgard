@@ -33,9 +33,9 @@ const commitDaFrameMeasuredGauge = Metric.gauge(
 /**
  * Projects a commit worker's DA frame notice onto readiness. A block the frame
  * cannot admit raises a reason under `COMMIT_DA_FRAME_SOURCE`; a notice that
- * the frame admits this tick's block clears it, as does a tick with nothing
- * to commit (see `takeCommitWorkerOutput`).
- * The source holds no fiber, so the commit loop keeps ticking and the tick
+ * the frame admits this tick's block clears it. The worker posts that notice
+ * too for a tick with no transaction or user event pending, since no block is
+ * refused then. The source holds no fiber, so the commit loop keeps ticking and the tick
  * after the condition goes away clears the reason.
  */
 export const applyCommitDaFrameNotice = (

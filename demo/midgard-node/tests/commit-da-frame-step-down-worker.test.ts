@@ -20,7 +20,10 @@ import {
 import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.js";
 import { captureCommitWorkerFailure } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
 import type { SpeculativeCandidateReadyOutput } from "../src/workers/utils/commit-block-header.js";
-import { type CommitDaFrameNotice } from "../src/workers/utils/commit-block-planner.commit-da-frame-notice.js";
+import {
+  COMMIT_DA_FRAME_IDLE_NOTICE,
+  type CommitDaFrameNotice,
+} from "../src/workers/utils/commit-block-planner.commit-da-frame-notice.js";
 import {
   DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
   estimatedTxDaPayloadBytes,
@@ -433,6 +436,13 @@ describe("commit worker DA frame notices", () => {
     expect(
       run.daFrameNotices[0]?.pressure?.requiredWorkInnerBytesUpperBound,
     ).toBe(run.daFrameNotices[0]?.pressure?.candidateInnerBytesUpperBound);
+  });
+
+  it("posts the idle notice from a tick with no transaction or user event pending", async () => {
+    const run = await runWorker(0, {});
+    expect(run.output).toEqual({ type: "NothingToCommitOutput" });
+    expect(run.builds).toEqual([]);
+    expect(run.daFrameNotices).toEqual([COMMIT_DA_FRAME_IDLE_NOTICE]);
   });
 
   it("does not infer an exact ledger ceiling from a maximum-header overflow", async () => {
