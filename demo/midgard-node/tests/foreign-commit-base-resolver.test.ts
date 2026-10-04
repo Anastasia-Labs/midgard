@@ -57,6 +57,7 @@ const open = async (changedRoot = false) => {
     },
     assetName: SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash,
   };
+  node.utxo.datum = SDK.encodeLinkedListNodeView(node.datum);
   const serialized = await Effect.runPromise(serializeStateQueueUTxO(node));
   const base: VerifiedForeignCommitBase = {
     authority: "ready",

@@ -97,7 +97,7 @@ export const fixture = async (
           transactionId: computeMidgardNativeTxId(transaction),
           canonicalTransactionCbor: cbor,
           programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
-            [],
+            program === undefined ? [] : [...program.material.values()],
           ),
           sourceKind: "forced",
           priorUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,

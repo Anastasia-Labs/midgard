@@ -1,3 +1,5 @@
+import { inspect } from "node:util";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Data } from "@lucid-evolution/lucid";
@@ -13,6 +15,16 @@ import { openHistoryProductionOwnerLifecycle } from "./helpers/history-productio
 import { makeRollbackHistoryTransport } from "./helpers/history-rollback-transport.js";
 import { historyOutputObservation } from "./helpers/history-projection-observations.js";
 import { provideDatabaseLayers } from "./utils.js";
+
+const openCensusOwner = (
+  options: Parameters<typeof openHistoryProductionOwnerLifecycle>[0],
+) =>
+  openHistoryProductionOwnerLifecycle(options).catch((cause: unknown) => {
+    throw new Error(
+      `Forced census owner startup failed: ${inspect(cause, { depth: 20, colors: false })}`,
+      { cause },
+    );
+  });
 
 const mintForcedOrder = async (
   lifecycle: Awaited<ReturnType<typeof openHistoryProductionOwnerLifecycle>>,
@@ -67,7 +79,7 @@ const mintForcedOrder = async (
 };
 
 it("retains an actual forced NFT admission independently of ingestion rows and reacquires it through the same source owner after restart", async () => {
-  const initial = await openHistoryProductionOwnerLifecycle({
+  const initial = await openCensusOwner({
     rollbackHorizon: 1,
   });
   let current: Pick<typeof initial, "command" | "synchronize" | "close"> =
@@ -126,7 +138,7 @@ it("retains an actual forced NFT admission independently of ingestion rows and r
 // transport model; production journal undo and authority revocation run.
 it("removes an orphaned forced admission from the complete census and revokes its actual source permit after a journal rollback and fork", async () => {
   let source: ReturnType<typeof makeRollbackHistoryTransport> | undefined;
-  const lifecycle = await openHistoryProductionOwnerLifecycle({
+  const lifecycle = await openCensusOwner({
     rollbackHorizon: 16,
     transportFactory: (recorded) => {
       source = makeRollbackHistoryTransport(recorded);

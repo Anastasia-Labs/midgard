@@ -16,7 +16,9 @@ describe("normal foreign event identity", () => {
     if (result._tag === "Left")
       expect(result.left).toMatchObject({
         reason: "invalid",
-        detail: expect.stringContaining("normal source key differs"),
+        detail: expect.stringContaining(
+          "foreign normal transaction source key differs from canonical transaction id",
+        ),
       });
   });
 });
