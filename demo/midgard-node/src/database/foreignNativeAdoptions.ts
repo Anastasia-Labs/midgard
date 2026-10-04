@@ -80,7 +80,7 @@ const retainEventProjection = (adoptionId: Buffer, events: AdoptionEvents) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`UPDATE foreign_native_adoptions SET event_before = '{}'::jsonb,
-    event_after = ${JSON.stringify(events)}::jsonb WHERE adoption_id = ${adoptionId}`;
+    event_after = CAST(${JSON.stringify(events)} AS TEXT)::jsonb WHERE adoption_id = ${adoptionId}`;
     for (const table of eventTables) {
       const expected = events[table.key];
       const provenance =
@@ -91,7 +91,7 @@ const retainEventProjection = (adoptionId: Buffer, events: AdoptionEvents) =>
         AND EXISTS (SELECT 1 FROM event_history_incarnations i WHERE i.binding_digest = actual.history_binding_digest
           AND i.incarnation_id = actual.history_incarnation_id AND i.origin_canonical AND i.event_id = actual.${sql(table.id)})`;
       const rows = yield* sql`SELECT 1 FROM ${sql(table.name)} actual,
-      jsonb_to_recordset(${JSON.stringify(expected)}::jsonb) e(id text,header text)
+      jsonb_to_recordset(CAST(${JSON.stringify(expected)} AS TEXT)::jsonb) e(id text,header text)
       WHERE actual.${sql(table.id)} = decode(e.id,'hex')
         AND (actual.projected_header_hash IS NULL OR actual.projected_header_hash = decode(e.header,'hex'))
         AND actual.status <> 'finalized' AND ${provenance} FOR UPDATE OF actual`;
@@ -102,7 +102,7 @@ const retainEventProjection = (adoptionId: Buffer, events: AdoptionEvents) =>
       yield* sql`UPDATE foreign_native_adoptions SET event_before = event_before ||
       jsonb_build_object(${table.key},(SELECT COALESCE(jsonb_agg(to_jsonb(actual)),'[]'::jsonb)
         FROM ${sql(table.name)} actual WHERE actual.${sql(table.id)} IN
-          (SELECT decode(e.id,'hex') FROM jsonb_to_recordset(${JSON.stringify(expected)}::jsonb) e(id text))))
+          (SELECT decode(e.id,'hex') FROM jsonb_to_recordset(CAST(${JSON.stringify(expected)} AS TEXT)::jsonb) e(id text))))
       WHERE adoption_id = ${adoptionId}`;
     }
   });
@@ -211,7 +211,7 @@ export const hasAppliedForeignBase = (base: VerifiedForeignCommitBase) =>
       };
       for (const table of eventTables) {
         const matched = yield* sql`SELECT 1 FROM ${sql(table.name)} d,
-        jsonb_to_recordset(${JSON.stringify(members[table.key])}::jsonb) e(id text)
+        jsonb_to_recordset(CAST(${JSON.stringify(members[table.key])} AS TEXT)::jsonb) e(id text)
         WHERE d.${sql(table.id)} = decode(e.id,'hex') AND d.projected_header_hash = ${Buffer.from(block.headerHash, "hex")}
           AND d.status <> 'awaiting'`;
         if (matched.length !== members[table.key].length) return false;
@@ -261,7 +261,7 @@ export const request = (base: VerifiedForeignCommitBase) =>
     SELECT ${adoptionId}, ${binding}, manifest_id, ${Buffer.from(coverage.point.id, "hex")},
       ${coverage.point.slot}, head_height, ${Buffer.from(coverage.snapshotDigest, "hex")},
       ${coverage.checkpointRevision}::bigint, ${Buffer.from(base.headerHash, "hex")}, ${base.root},
-      'requested', ${JSON.stringify(base.observation)}::jsonb
+      'requested', CAST(${JSON.stringify(base.observation)} AS TEXT)::jsonb
     FROM event_history_cursor WHERE binding_digest = ${binding}
       AND manifest_id = ${Buffer.from(base.history.token.deploymentIdentity, "hex")}
       AND revision = ${coverage.checkpointRevision}::bigint
@@ -348,12 +348,12 @@ export const prepare = (input: {
     source_snapshot = ${Buffer.from(coverage.snapshotDigest, "hex")},
     checkpoint_revision = ${coverage.checkpointRevision}::bigint,
     header_hash = ${Buffer.from(input.base.headerHash, "hex")}, target_root = ${input.base.root},
-    source_observation = ${JSON.stringify(input.base.observation)}::jsonb,
-    replay_record = ${JSON.stringify({ ...replayRecord(input.replay), ...(input.nativeNoop ? { nativeNoop: true } : {}) })}::jsonb,
-    touched_outrefs = ARRAY(SELECT decode(value, 'hex') FROM jsonb_array_elements_text(${keys}::jsonb)),
+    source_observation = CAST(${JSON.stringify(input.base.observation)} AS TEXT)::jsonb,
+    replay_record = CAST(${JSON.stringify({ ...replayRecord(input.replay), ...(input.nativeNoop ? { nativeNoop: true } : {}) })} AS TEXT)::jsonb,
+    touched_outrefs = ARRAY(SELECT decode(value, 'hex') FROM jsonb_array_elements_text(CAST(${keys} AS TEXT)::jsonb)),
     ledger_before = (SELECT COALESCE(jsonb_agg(to_jsonb(l)), '[]'::jsonb) FROM mempool_ledger l
-      WHERE l.outref IN (SELECT decode(value,'hex') FROM jsonb_array_elements_text(${keys}::jsonb))),
-    ledger_after = ${JSON.stringify(input.rows)}::jsonb, updated_at = NOW()
+      WHERE l.outref IN (SELECT decode(value,'hex') FROM jsonb_array_elements_text(CAST(${keys} AS TEXT)::jsonb))),
+    ledger_after = CAST(${JSON.stringify(input.rows)} AS TEXT)::jsonb, updated_at = NOW()
     FROM event_history_cursor c WHERE p.adoption_id = ${input.request.adoption_id}
       AND p.state = 'requested' AND c.binding_digest = p.binding_digest
       AND c.binding_digest = ${Buffer.from(coverage.bindingDigest, "hex")}
@@ -464,7 +464,7 @@ export const foreignNativeAdoptionHoldSlot = (
     FROM event_history_cursor c WHERE p.binding_digest = ${Buffer.from(bindingDigest, "hex")}
       AND c.binding_digest = p.binding_digest AND p.state = 'applied'
       AND p.source_height < c.head_height - ${horizon}
-      AND p.adoption_id IN (SELECT decode(value,'hex') FROM jsonb_array_elements_text(${JSON.stringify(eligible)}::jsonb))
+      AND p.adoption_id IN (SELECT decode(value,'hex') FROM jsonb_array_elements_text(CAST(${JSON.stringify(eligible)} AS TEXT)::jsonb))
       AND (EXISTS (SELECT 1 FROM event_history_block_applications a WHERE a.binding_digest = p.binding_digest
         AND a.block_hash = p.source_hash AND a.after_snapshot_digest = p.source_snapshot AND a.canonical)
         OR (c.anchor_hash = p.source_hash AND c.anchor_snapshot_digest = p.source_snapshot))`;

@@ -330,7 +330,7 @@ export const reconcileForeignConfirmedLedger = (input: {
           return yield* fail(
             "Confirmed ancestry frontier changed before projection",
           );
-        if (!alreadyApplied) {
+        if (!alreadyApplied && changed.size !== 0) {
           yield* Confirmed.clearUTxOs(
             [...changed].map((key) => Buffer.from(key, "hex")),
           );
