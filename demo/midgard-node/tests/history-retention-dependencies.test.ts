@@ -9,21 +9,28 @@ import {
   DAY_MS,
   DEPLOYMENT,
   journals,
+  recordObserverState,
   remainingLabels,
   run,
 } from "./history-retention-prune.fixtures.js";
 import { header } from "./local-mutation-job-abandonment.journal-fixture.js";
 
+/** The observer records every merge folded so far first: with no record the
+ * prune keeps every journal. */
 const prune = () =>
-  pruneFinalizedBeyondChallengeability({
-    challengeableCutoff: new Date(Date.now() - 15 * DAY_MS),
-    view: {
-      confirmedHeadHash: header("foreign-head"),
-      liveQueueHeaderHashes: [],
-    },
-    deploymentIdentityDigest: DEPLOYMENT,
-    batchLimit: 1,
-  });
+  recordObserverState().pipe(
+    Effect.andThen(
+      pruneFinalizedBeyondChallengeability({
+        challengeableCutoff: new Date(Date.now() - 15 * DAY_MS),
+        view: {
+          confirmedHeadHash: header("foreign-head"),
+          liveQueueHeaderHashes: [],
+        },
+        deploymentIdentityDigest: DEPLOYMENT,
+        batchLimit: 1,
+      }),
+    ),
+  );
 
 /** Distinct bases unless a test explicitly links them. */
 const seed = (labels: readonly string[]) =>
