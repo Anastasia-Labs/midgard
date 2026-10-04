@@ -66,8 +66,12 @@ TypeScript now preserves the native directory, excludes only the declared
 binary from its own output identity, and leaves unowned siblings authenticated.
 Reproduction checks every native and compiled owner after the artifact phase.
 The original incorrect pass and the corrected deletion refusal were both
-observed. [The consolidated review](REVIEW.md) records closure and all twelve
-lenses; `review-controls.mjs` carries 21 deliberately broken implementations
+observed. Actual reproduction also exposed backward host UTC adjustments:
+receipt creation and verification now share finite timestamp and nonnegative
+monotonic-duration validation, preserve the raw observations, and flag clock
+adjustments. The unchanged historical 43-step receipt fails the old verifier
+and passes the corrected verifier; invalid timing remains refused. [The consolidated review](REVIEW.md) records closure and all twelve
+lenses; `review-controls.mjs` carries 23 deliberately broken implementations
 that must reach their named refusals, alongside the passing fixed controls.
 
 Author lens results: parameter trust, deployed script application, pinned
@@ -78,13 +82,13 @@ artifact, receipt and boundary controls. No protocol coverage gap is widened.
 
 ## Regression evidence and publication gates
 
-Observed on 2026-10-04 UTC, using Node 22.22.2, after the output-owner fix:
+Observed on 2026-10-04 UTC, using Node 22.22.2, after the output-owner and receipt timing fixes:
 
-- `node --test scripts/contrib/*.test.mjs`: 44 collected, 44 passed, zero
+- `node --test scripts/contrib/*.test.mjs`: 45 collected, 45 passed, zero
   skips, exit 0. Tiny compiler fixtures test orchestration, not real compilation.
 - `node --test scripts/preflight/run.test.mjs`: 18 collected and passed,
   zero skips, exit 0.
-- `node scripts/contrib/review-controls.mjs`: fixed cases passed; all 21
+- `node scripts/contrib/review-controls.mjs`: fixed cases passed; all 23
   mutants failed at their intended assertions, overall exit 0.
 - Canonical-foundation integration: workflow trigger, Git hook environment and
   complete-shard tests collected 23 assertions, all passed, zero skips, exit 0.
@@ -100,8 +104,10 @@ became an exit-0 build after disabling incidental Git stamping. Local Go was
 Publishing requires full `node scripts/preflight.mjs --base <canonical SHA>
 --json`, real `node scripts/contrib.mjs reproduce --execute`, and the latest
 PR head's selected hosted checks. The PR retains the exact final commands,
-counts, skipped assertions, head identity and outcomes. An interrupted earlier
-preflight and two superseded reproductions are not overall passes. Generated
+counts, skipped assertions, head identity and outcomes. Two interrupted, superseded
+preflights and two superseded reproductions are not overall passes. The actual
+43-step reproduction at the previous source snapshot is historical evidence;
+the corrected source still requires its own final reproduction and preflight. Generated
 `plutus.json` remains untracked. [PROGRAM.json](PROGRAM.json) is a reviewed
 source snapshot for all 15 items; it makes no live-acceptance or measured DevEx
 claim. Future observations must establish whether repeated side scripts decline.
