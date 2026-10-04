@@ -16,7 +16,12 @@ export const admitWatcherProofRunnerCompletion = async (input: {
   readonly actuationPermit: WorkflowActuationPermit | null;
   readonly verifyCompleted: SupervisorDependencies["verifyCompleted"];
   readonly outcome: unknown;
-  readonly onApplicable: (execution: WatcherProofExecution) => void;
+  readonly onApplicable: (
+    verified: Readonly<{
+      execution: WatcherProofExecution;
+      confirmationDepth: number;
+    }>,
+  ) => Promise<void>;
 }): Promise<unknown> => {
   const execution = input.execution;
   if (execution?.entries.at(-1)?.event.kind !== "completed")
@@ -39,7 +44,10 @@ export const admitWatcherProofRunnerCompletion = async (input: {
   });
   assertPermit();
   if (verification.kind === "applicable") {
-    input.onApplicable(execution);
+    await input.onApplicable({
+      execution,
+      confirmationDepth: verification.confirmationDepth,
+    });
     return input.outcome;
   }
   return verification.kind === "retryable"

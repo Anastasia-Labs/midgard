@@ -53,8 +53,9 @@ const execution: WatcherProofExecution = {
 };
 describe("fresh runner completion admission", () => {
   it("waits for canonical verification before caching completion", async () => {
-    let resolve!: (value: { kind: "applicable" }) => void;
-    const wait = new Promise<{ kind: "applicable" }>((done) => {
+    type Applicable = { kind: "applicable"; confirmationDepth: number };
+    let resolve!: (value: Applicable) => void;
+    const wait = new Promise<Applicable>((done) => {
       resolve = done;
     });
     const verifyCompleted = vi.fn(async () => await wait);
@@ -74,9 +75,12 @@ describe("fresh runner completion admission", () => {
       actuationPermit: null,
     });
     expect(onApplicable).not.toHaveBeenCalled();
-    resolve({ kind: "applicable" });
+    resolve({ kind: "applicable", confirmationDepth: 12 });
     expect(await completion).toBe(outcome);
-    expect(onApplicable).toHaveBeenCalledOnce();
+    expect(onApplicable).toHaveBeenCalledExactlyOnceWith({
+      execution,
+      confirmationDepth: 12,
+    });
   });
   it("keeps an inclusion-only terminal pending and propagates verifier failures", async () => {
     const onApplicable = vi.fn();

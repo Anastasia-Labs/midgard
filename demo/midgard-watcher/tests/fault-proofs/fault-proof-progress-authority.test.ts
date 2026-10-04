@@ -76,7 +76,7 @@ describe("supervisor historical progress authority", () => {
       first[0]!.actuationPermit,
     );
     expect(load).not.toHaveBeenCalled();
-    test.authority.markCompleted(test.fixture.old);
+    await test.authority.markCompleted(test.fixture.old);
     expect(
       await test.authority.admit({
         ...changed,
@@ -229,13 +229,13 @@ describe("supervisor historical progress authority", () => {
         DecisionJournal,
         "openWatcherFaultDecisionJournal",
       );
-      authority.markCompleted(fixture.old);
+      await authority.markCompleted(fixture.old);
       await admit(fixture.fresh);
       await expect(
         authority.updateExecution({ objective: fixture.old, execution }),
       ).resolves.toBeUndefined();
       for (let index = 0; index < 20; index++) {
-        authority.markCompleted(fixture.old);
+        await authority.markCompleted(fixture.old);
         await authority.updateExecution({ objective: fixture.old, execution });
       }
       expect(refresh).not.toHaveBeenCalled();
@@ -293,7 +293,7 @@ describe("supervisor historical progress authority", () => {
             authority.updateExecution(update),
           ).resolves.toBeUndefined();
           for (let index = 0; index < 20; index++) {
-            authority.markCompleted(fixture.old);
+            await authority.markCompleted(fixture.old);
             await authority.updateExecution(update);
           }
         } else {

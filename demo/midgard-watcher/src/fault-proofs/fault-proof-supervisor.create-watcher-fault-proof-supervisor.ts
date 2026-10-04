@@ -8,6 +8,7 @@ import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "./fault-proof-application
 import type { WatcherFaultProofExecution } from "./fault-proof-execution.js";
 import { createSupervisor } from "./fault-proof-supervisor.create-supervisor.js";
 import {
+  type SupervisorDependencies,
   type UnsafeWatcherFaultProofSupervisorForTest,
   type WatcherFaultProofJob,
   type WatcherFaultProofSupervisor,
@@ -47,12 +48,21 @@ export const createWatcherFaultProofSupervisor = (input: {
         const event = request.execution.entries.at(-1)?.event;
         if (event?.kind !== "completed")
           throw new Error("completion admission omitted its durable terminal");
-        return await input.execution.verifyCompleted({
+        const verification = await input.execution.verifyCompleted({
           job: request.job,
           entries: request.execution.entries,
           terminal: event.terminal,
           actuationPermit: request.actuationPermit,
         });
+        // The canonical depth of the correction decides whether the verified
+        // completion is beyond rollback recovery and may be marked durably.
+        return verification.kind === "applicable"
+          ? {
+              kind: "applicable",
+              confirmationDepth:
+                verification.terminal.observedAt.confirmationDepth,
+            }
+          : verification;
       },
       isActuationRevokedError: isWorkflowActuationRevokedError,
     }),
@@ -69,6 +79,7 @@ export const unsafeCreateWatcherFaultProofSupervisorForTest = (input: {
   readonly unsafeIsActuationRevokedErrorForTest?: (
     error: unknown,
   ) => error is WorkflowActuationRevokedError;
+  readonly unsafeVerifyCompletedForTest?: SupervisorDependencies["verifyCompleted"];
 }): UnsafeWatcherFaultProofSupervisorForTest =>
   createSupervisor({
     journalRoot: input.journalRoot,
@@ -84,7 +95,10 @@ export const unsafeCreateWatcherFaultProofSupervisorForTest = (input: {
     dependencies: Object.freeze({
       categories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
       run: async ({ job }) => await input.run(job),
-      verifyCompleted: async () => ({ kind: "applicable" as const }),
+      // Within rollback recovery by default, so nothing is marked.
+      verifyCompleted:
+        input.unsafeVerifyCompletedForTest ??
+        (async () => ({ kind: "applicable", confirmationDepth: 1 }) as const),
       isActuationRevokedError:
         input.unsafeIsActuationRevokedErrorForTest ??
         isWorkflowActuationRevokedError,

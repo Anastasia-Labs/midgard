@@ -187,12 +187,9 @@ export const createSupervisor = (input: {
     left: WatcherFaultProofJob,
     right: WatcherFaultProofJob,
   ): number => {
+    // Deadline work first; deadline-free work keeps arrival order behind it.
     if (left.deadline === null || right.deadline === null)
-      return left.deadline === right.deadline
-        ? 0
-        : left.deadline === null
-          ? -1
-          : 1;
+      return left.deadline === right.deadline ? 0 : left.deadline ? -1 : 1;
     const leftDeadline = BigInt(left.deadline.latestSafeStartAtMs);
     const rightDeadline = BigInt(right.deadline.latestSafeStartAtMs);
     if (leftDeadline !== rightDeadline) {
@@ -273,7 +270,7 @@ export const createSupervisor = (input: {
         const validationKey = `${job.rollbackGeneration}:${watcherSha256CanonicalJson(execution.entries)}`;
         const verification =
           completedValidations.get(key) === validationKey
-            ? { kind: "applicable" as const }
+            ? ({ kind: "applicable", confirmationDepth: 0 } as const)
             : await input.dependencies.verifyCompleted({
                 job,
                 execution,
@@ -287,7 +284,10 @@ export const createSupervisor = (input: {
           });
         if (verification.kind === "applicable") {
           rememberCompletion(key, validationKey);
-          progressAuthority.markCompleted(job);
+          await progressAuthority.markCompleted(job, {
+            execution,
+            confirmationDepth: verification.confirmationDepth,
+          });
           outcome = { kind: "completed", terminal: completed.event };
         } else {
           completedValidations.delete(key);
@@ -370,12 +370,12 @@ export const createSupervisor = (input: {
               actuationPermit,
               verifyCompleted: input.dependencies.verifyCompleted,
               outcome,
-              onApplicable: (completed) => {
+              onApplicable: async (verified) => {
                 rememberCompletion(
                   key,
-                  `${job.rollbackGeneration}:${watcherSha256CanonicalJson(completed.entries)}`,
+                  `${job.rollbackGeneration}:${watcherSha256CanonicalJson(verified.execution.entries)}`,
                 );
-                progressAuthority.markCompleted(job);
+                await progressAuthority.markCompleted(job, verified);
               },
             });
           }
