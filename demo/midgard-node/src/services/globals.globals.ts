@@ -7,8 +7,8 @@ import {
   type UserEventBarrierWatermarks,
 } from "../fibers/speculative-commit-state.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
-import type { ForeignBaseVerificationState } from "./foreign-base-verification.js";
 import type { EventHistoryOwner } from "./event-history-owner.js";
+import type { ForeignBaseVerificationState } from "./foreign-base-verification.js";
 import {
   type AdmissionBacklogGaugeState,
   type AttestationTimeoutCorrectionHealth,

@@ -1,8 +1,8 @@
+import { encodeCborArrayRaw, readCborBytes } from "@al-ft/midgard-core/codec";
 import {
   makeSpendingValidator as makeSdkSpendingValidator,
   parseFaultProofBlueprint,
 } from "@al-ft/midgard-sdk";
-import { encodeCborArrayRaw, readCborBytes } from "@al-ft/midgard-core/codec";
 import {
   applyDoubleCborEncoding,
   Data,

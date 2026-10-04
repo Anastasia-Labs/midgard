@@ -1,8 +1,8 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  replayValidationMachineEvent,
   type RejectedTx,
+  replayValidationMachineEvent,
   type ValidationMachineLedgerEntry,
 } from "@al-ft/midgard-validation";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -10,17 +10,16 @@ import { Effect } from "effect";
 
 import * as Ledger from "../database/utils/ledger.js";
 import {
-  encodeTransactionRootValue,
   computeLedgerMpfRootFromLedgerEntries,
+  encodeTransactionRootValue,
 } from "./ledger-hydration.js";
 import { eventKeyCbor } from "./trace-events.js";
 import {
+  encodeEventToStepValueCbor,
   encodeTransitionIntegerCbor,
   encodeTransitionStepCbor,
-  encodeEventToStepValueCbor,
 } from "./transition-cbor.js";
 import { assertCanonicalTransitionPhaseOrder } from "./transition-trace.apply-trace-ledger-ops-to-mpf.js";
-
 import {
   importedEventProgramSidecar,
   importedProgramMaterial,

@@ -1,7 +1,7 @@
 import {
   buildMidgardRedeemerItemProofTrace,
-  hashMidgardValidationMachineState,
   encodeCbor,
+  hashMidgardValidationMachineState,
   isMidgardRedeemerDataHeadRejection,
   nextMidgardRedeemerItemProofSpan,
   readMidgardRedeemerItemProofSource,

@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
 import { SqlClient } from "@effect/sql";
+import { Data } from "@lucid-evolution/lucid";
 import { Effect, Schema } from "effect";
 import JSONBig from "json-bigint";
 

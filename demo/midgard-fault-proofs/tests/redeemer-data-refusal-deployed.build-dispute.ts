@@ -6,8 +6,8 @@ import {
 import { validationTraceDescriptorDataFromCore } from "@al-ft/midgard-sdk";
 import { buildValidationDisputeEvidenceBundle } from "@al-ft/midgard-validation";
 
-import { buildForcedValidationDisputeCommitments } from "./support/emulator/validation-dispute-fixtures.build-forced-validation-dispute-commitments.js";
 import { buildDataRefusalTrace } from "./redeemer-data-refusal-deployed.build-trace.js";
+import { buildForcedValidationDisputeCommitments } from "./support/emulator/validation-dispute-fixtures.build-forced-validation-dispute-commitments.js";
 
 /** Commit an accepted operator successor at the exact authenticated refusal boundary. */
 export const buildDataRefusalDispute = async (

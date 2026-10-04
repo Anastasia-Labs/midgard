@@ -6,8 +6,8 @@ import { describe, expect, it, vi } from "vitest";
 import { ForeignBlockVerificationError } from "../src/mpf/verified-block-import.js";
 import { resolveCommitBaseLedgerEntries } from "../src/workers/commit-block-header.resolve-commit-base-ledger-entries.js";
 import {
-  type VerifiedForeignCommitBase,
   VerifiedForeignBase,
+  type VerifiedForeignCommitBase,
 } from "../src/workers/commit-block-header.verify-foreign-base.js";
 import { serializeStateQueueUTxO } from "../src/workers/utils/commit-block-header.js";
 import { fixture, verdict } from "./foreign-block-import.fixture.js";

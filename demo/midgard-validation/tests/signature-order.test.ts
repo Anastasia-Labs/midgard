@@ -17,9 +17,9 @@ import {
   deriveTxOrderMaterial,
   encodeRetainedValidationWitness,
   encodeRetainedValidationWitnessKey,
-  retainedValidationStateCoordinate,
   type RetainedValidationAuxiliaryWitness,
   RetainedValidationAuxiliaryWitnessSchema,
+  retainedValidationStateCoordinate,
   validationMachineStateDataFromCore,
   validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";

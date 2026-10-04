@@ -2,10 +2,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
+
 import {
-  encodeTransitionStepCbor,
   encodeEventToStepValueCbor,
   encodeTransitionIntegerCbor,
+  encodeTransitionStepCbor,
 } from "../src/mpf/transition-cbor.js";
 import { fixture, rebind, verdict } from "./foreign-block-import.fixture.js";
 

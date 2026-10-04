@@ -12,8 +12,8 @@ import { foreignEventCensus } from "../src/workers/commit-block-header.foreign-e
 import { ensureSeparateCollateralUtxo } from "./deposit-flow-emulator-shared.js";
 import { fixture as rejectedForcedFixture } from "./foreign-block-import.fixture.js";
 import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
-import { makeRollbackHistoryTransport } from "./helpers/history-rollback-transport.js";
 import { historyOutputObservation } from "./helpers/history-projection-observations.js";
+import { makeRollbackHistoryTransport } from "./helpers/history-rollback-transport.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 const diagnoseOwnerFailure = (cause: unknown): never => {

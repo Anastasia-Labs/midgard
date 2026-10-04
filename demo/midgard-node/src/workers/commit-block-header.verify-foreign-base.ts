@@ -4,26 +4,15 @@ import { Data } from "@lucid-evolution/lucid";
 import { Context, Effect, Option } from "effect";
 
 import {
+  fetchForeignRetainedDa,
+  foreignRetainedDaInsert,
+} from "../da/foreign-retained-da.js";
+import {
   ConfirmedLedgerDB,
   DaPayloadsDB,
   PendingBlockFinalizationsDB,
 } from "../database/index.js";
 import * as Ledger from "../database/utils/ledger.js";
-import {
-  fetchForeignRetainedDa,
-  foreignRetainedDaInsert,
-} from "../da/foreign-retained-da.js";
-import {
-  type HistoryProducerPermit,
-  withHistoryWrite,
-} from "../services/event-history-producer.js";
-import type { HistoryOwnerCoverage } from "../services/event-history-owner.js";
-import {
-  assertForeignVerificationSource,
-  currentForeignVerificationSource,
-  ForeignVerificationSource,
-} from "../services/foreign-verification-source.js";
-import type { ForeignBaseVerificationOutcome } from "../services/foreign-base-verification.js";
 import {
   canonicalSlotConfigForLucid,
   unixTimeToSlotForConfig,
@@ -36,6 +25,17 @@ import {
   ForeignBlockVerificationError,
   verifyAndImportBlock,
 } from "../mpf/verified-block-import.js";
+import type { HistoryOwnerCoverage } from "../services/event-history-owner.js";
+import {
+  type HistoryProducerPermit,
+  withHistoryWrite,
+} from "../services/event-history-producer.js";
+import type { ForeignBaseVerificationOutcome } from "../services/foreign-base-verification.js";
+import {
+  assertForeignVerificationSource,
+  currentForeignVerificationSource,
+  ForeignVerificationSource,
+} from "../services/foreign-verification-source.js";
 import {
   ContractDeploymentIdentity,
   Lucid,
@@ -48,6 +48,10 @@ import {
   materializeLedgerDeltaSuffix,
   pendingUtxoMemberToConfirmedLedgerEntry,
 } from "../transactions/state-queue/confirmed-ledger-snapshot.js";
+import {
+  canonicalObservation,
+  ledgerSegmentBefore,
+} from "./commit-block-header.foreign-base-material.js";
 import {
   foreignEventMaterial,
   type ForeignEventMemberships,
@@ -94,32 +98,6 @@ export const VerifiedForeignBase = Context.GenericTag<{
     import("../services/database.js").Database
   >;
 }>("midgard/VerifiedForeignCommitBase");
-const canonicalObservation = (nodes: readonly SDK.StateQueueUTxO[]) =>
-  nodes.map((node) => ({
-    txHash: node.utxo.txHash,
-    outputIndex: node.utxo.outputIndex,
-    datumCbor: SDK.encodeLinkedListNodeView(node.datum),
-  }));
-const ledgerSegmentBefore = (
-  keys: Iterable<string>,
-  entries: readonly Ledger.MinimalEntry[],
-) => {
-  const touched = new Set(keys);
-  return {
-    ledgerKeys: Object.freeze(
-      [...touched].map((key) => Buffer.from(key, "hex")),
-    ),
-    ledgerBefore: Object.freeze(
-      entries
-        .filter((entry) => touched.has(entry.outref.toString("hex")))
-        .map((entry) => ({
-          outref: Buffer.from(entry.outref),
-          output: Buffer.from(entry.output),
-        })),
-    ),
-  };
-};
-
 /** Revalidate current owner/generation, exact source prefix and the full queue.
  * A cached root or prior invocation never authorizes reuse after restart/rewind. */
 export const revalidateForeignCommitBase = (base: VerifiedForeignCommitBase) =>

@@ -17,9 +17,9 @@ import {
   canonicalValidationTraceReferenceScripts,
   completeReferenceScriptPublicationTxProgram,
   createReferenceScriptAuthPolicy,
-  type ValidationTraceDisputeFaultProofContracts,
   REDEEMER_ITEM_EXECUTOR_REFERENCES,
   sharedRedeemerItemReferenceScripts,
+  type ValidationTraceDisputeFaultProofContracts,
 } from "@al-ft/midgard-sdk";
 import {
   Emulator,

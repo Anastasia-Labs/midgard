@@ -1,6 +1,6 @@
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
-import { reconstructMidgardTransaction } from "@al-ft/midgard-core/consensus-validation";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { reconstructMidgardTransaction } from "@al-ft/midgard-core/consensus-validation";
 import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
@@ -12,9 +12,9 @@ import {
   WithdrawalsDB,
 } from "../database/index.js";
 import * as Ledger from "../database/utils/ledger.js";
+import { historyIncarnationEntry } from "../l1-event-history-entries.js";
 import { ForeignBlockVerificationError } from "../mpf/verified-block-import.js";
 import type { ImportedBlockReplayContext } from "../mpf/verified-block-import.replay-events.js";
-import { historyIncarnationEntry } from "../l1-event-history-entries.js";
 import { NodeConfig } from "../services/index.js";
 import {
   assertForeignEventCensusMatchesPayload,

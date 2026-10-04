@@ -4,6 +4,7 @@ import { HttpServerResponse } from "@effect/platform";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { Effect, Option, Ref } from "effect";
 
+import * as HistoryAuthority from "../database/eventHistoryAuthority.js";
 import {
   DaPayloadPublicationsDB,
   DaPayloadTerminalOutcomesDB,
@@ -13,13 +14,12 @@ import {
   StateQueueMutationLeasesDB,
   TxAdmissionsDB,
 } from "../database/index.js";
-import * as HistoryAuthority from "../database/eventHistoryAuthority.js";
-import { foreignBaseVerificationForAuthority } from "../services/foreign-base-verification.js";
 import { attestationTimeoutCorrectionReadinessBounds } from "../fibers/index.js";
 import {
   localOgmiosSubmitSlotEvidence,
   readLocalOgmiosSubmitSlot,
 } from "../local-ogmios-slot.js";
+import { foreignBaseVerificationForAuthority } from "../services/foreign-base-verification.js";
 import {
   DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
   ValidationPool,

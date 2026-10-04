@@ -9,10 +9,8 @@
       "sites": ["script: applyParamsToScript(validator.compiledCode, params),"]
     },
     "midgard-fault-proofs/tests/emulator-blueprint-boundary.test.ts": {
-      "reason": "Independent oracle: the test recomputes the applied script outside the blueprint module to check that module's output against it.",
-      "sites": [
-        "const expected = applyParamsToScript(entry.compiledCode, params);"
-      ]
+      "reason": "Independent oracle: the test recomputes the same applied script outside the blueprint module with the pinned WASM API and canonical Plutus Data, comparing the guarded module's output independently. The original Lucid helper spelling changed; this remains the same single test oracle and does not deploy a production script.",
+      "sites": ["apply_params_to_script("]
     },
     "midgard-fault-proofs/tests/runtime-blueprint-construction.test.ts": {
       "reason": "Independent oracle: the test recomputes the applied script outside the blueprint module to check that module's output against it.",

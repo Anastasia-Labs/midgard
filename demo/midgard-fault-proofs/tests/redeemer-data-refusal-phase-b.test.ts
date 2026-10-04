@@ -1,6 +1,6 @@
 import {
-  MIDGARD_CONSENSUS_PROFILE,
   inspectMidgardRedeemerSequenceHeads,
+  MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
 import {
   runPhaseAValidation,

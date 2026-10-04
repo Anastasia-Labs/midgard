@@ -9,17 +9,17 @@ import {
 } from "../database/eventHistoryForeignCensus.js";
 import { decodeJournalIncarnation } from "../database/eventHistoryJournalCodec.js";
 import {
-  historyIncarnationDigest,
   type HistoryIncarnation,
+  historyIncarnationDigest,
 } from "../l1-event-history-provenance.js";
 import { ForeignBlockVerificationError } from "../mpf/verified-block-import.js";
-import { historyEligibilityHorizon } from "../services/history-commit-window.js";
 import { withHistoryWrite } from "../services/event-history-producer.js";
 import {
   assertForeignVerificationSource,
   currentForeignVerificationSource,
   ForeignVerificationSource,
 } from "../services/foreign-verification-source.js";
+import { historyEligibilityHorizon } from "../services/history-commit-window.js";
 
 export type ForeignEventCensus = Readonly<{
   deposits: readonly HistoryIncarnation[];

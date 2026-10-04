@@ -15,8 +15,8 @@ import {
 } from "../mpf/index.js";
 import { Database, NodeConfig } from "../services/index.js";
 import { materializeConfirmedLedgerSnapshot } from "../transactions/state-queue/confirmed-ledger-snapshot.js";
-import { type ResolvedCommitBaseLedgerEntries } from "./commit-block-header.select-authenticated-foreign-base-candidate.js";
 import { resolveVerifiedCommitBase } from "./commit-block-header.resolve-verified-commit-base.js";
+import { type ResolvedCommitBaseLedgerEntries } from "./commit-block-header.select-authenticated-foreign-base-candidate.js";
 import {
   deserializeStateQueueUTxO,
   type SerializedStateQueueUTxO,

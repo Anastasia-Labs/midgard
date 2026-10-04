@@ -1,13 +1,12 @@
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
-import * as ForeignCensus from "./eventHistoryForeignCensus.js";
-
 import { reverseHistoryProvenance } from "../l1-event-history-provenance.js";
 import {
   decodeBoundEventHistoryLedgerSnapshot,
   type EventHistorySourceBinding,
 } from "../l1-event-history-source.js";
+import * as ForeignCensus from "./eventHistoryForeignCensus.js";
 import {
   lockCheckpoint,
   putIncarnation,
