@@ -100,7 +100,7 @@ const retainEventProjection = (adoptionId: Buffer, events: AdoptionEvents) =>
           "Foreign event projection is missing or assigned to another header",
         );
       yield* sql`UPDATE foreign_native_adoptions SET event_before = event_before ||
-      jsonb_build_object(${table.key},(SELECT COALESCE(jsonb_agg(to_jsonb(actual)),'[]'::jsonb)
+      jsonb_build_object(CAST(${table.key} AS TEXT),(SELECT COALESCE(jsonb_agg(to_jsonb(actual)),'[]'::jsonb)
         FROM ${sql(table.name)} actual WHERE actual.${sql(table.id)} IN
           (SELECT decode(e.id,'hex') FROM jsonb_to_recordset(CAST(${JSON.stringify(expected)} AS TEXT)::jsonb) e(id text))))
       WHERE adoption_id = ${adoptionId}`;
