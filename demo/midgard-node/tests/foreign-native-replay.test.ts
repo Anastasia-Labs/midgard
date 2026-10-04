@@ -2,8 +2,8 @@ import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  prepareForeignNativeReplay,
   type ForeignNativeReplayBlock,
+  prepareForeignNativeReplay,
 } from "../src/services/foreign-native-replay.js";
 import type { NativeMpfOwnerDiagnostics } from "../src/services/mpf-native-owner/protocol.js";
 import { encodeNativeMpfEventLog } from "../src/services/mpf-native-owner/service.js";
