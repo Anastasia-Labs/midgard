@@ -18,6 +18,30 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 const directory = runDirectory();
 const controls = [
   {
+    name: "receipt-wall-clock-order",
+    file: "receipts.mjs",
+    change: (text) =>
+      text.replace(
+        "  step.exitCode === 0 &&",
+        "  Date.parse(step.endedAt) >= Date.parse(step.startedAt) && step.exitCode === 0 &&",
+      ),
+    match: "receipt timing uses monotonic duration",
+    failure: /incomplete\/failed step|not a completed pass/u,
+    testFile: "receipts.test.mjs",
+  },
+  {
+    name: "receipt-monotonic-duration",
+    file: "receipts.mjs",
+    change: (text) =>
+      text.replace(
+        /Number\.isFinite\(step\.durationMs\) &&\s*step\.durationMs >= 0/u,
+        "true",
+      ),
+    match: "receipt timing uses monotonic duration",
+    failure: /invalid execution timing cannot earn a pass/u,
+    testFile: "receipts.test.mjs",
+  },
+  {
     name: "native-output-partition",
     file: "files.mjs",
     change: (text) =>
@@ -293,6 +317,7 @@ try {
                 "scripts/contrib/boundary.test.mjs",
                 "scripts/contrib/operations.test.mjs",
                 "scripts/contrib/identity.test.mjs",
+                "scripts/contrib/receipts.test.mjs",
               ]
             : [`scripts/contrib/${control.testFile ?? "boundary.test.mjs"}`]),
         ],

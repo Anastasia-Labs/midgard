@@ -12,6 +12,19 @@ import {
   sha256,
 } from "./files.mjs";
 
+// UTC observations can reverse when the host clock is corrected. Elapsed
+// execution is measured by runProcess's monotonic clock, not UTC subtraction.
+const completeStep = (step) =>
+  step.exitCode === 0 &&
+  !step.signal &&
+  !step.reason &&
+  typeof step.startedAt === "string" &&
+  Number.isFinite(Date.parse(step.startedAt)) &&
+  typeof step.endedAt === "string" &&
+  Number.isFinite(Date.parse(step.endedAt)) &&
+  Number.isFinite(step.durationMs) &&
+  step.durationMs >= 0;
+
 export const countsFromVitest = (report, testName, selectedFiles) => {
   if (!Array.isArray(report.testResults))
     throw new Error("missing vitest testResults array");
@@ -91,8 +104,7 @@ export const writeReceipt = ({
     }
   }
   const failedStep =
-    steps.length === 0 ||
-    steps.some((step) => step.exitCode !== 0 || step.signal || step.reason);
+    steps.length === 0 || steps.some((step) => !completeStep(step));
   const status =
     failedStep ||
     reportError ||
@@ -118,6 +130,7 @@ export const writeReceipt = ({
     reportError,
     steps: steps.map((step) => ({
       ...step,
+      wallClockAdjusted: Date.parse(step.endedAt) < Date.parse(step.startedAt),
       logSha256: sha256(readFileSync(step.logPath)),
     })),
     report: reportHash ? { path: reportPath, sha256: reportHash } : undefined,
@@ -229,15 +242,7 @@ export const verifyReceipt = (root, path) => {
   )
     throw new Error("generated output evidence changed");
   for (const step of receipt.steps) {
-    if (
-      step.exitCode !== 0 ||
-      step.signal ||
-      step.reason ||
-      !step.startedAt ||
-      !step.endedAt ||
-      Date.parse(step.endedAt) < Date.parse(step.startedAt)
-    )
-      throw new Error("incomplete/failed step");
+    if (!completeStep(step)) throw new Error("incomplete/failed step");
     if (
       !existsSync(step.logPath) ||
       sha256(readFileSync(step.logPath)) !== step.logSha256

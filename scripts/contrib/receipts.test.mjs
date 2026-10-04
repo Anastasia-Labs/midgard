@@ -69,6 +69,7 @@ test("receipt rejects zero tests, missing report, source edits and substituted l
     exitCode: 0,
     startedAt: "2026-10-03T00:00:00Z",
     endedAt: "2026-10-03T00:00:01Z",
+    durationMs: 1000,
     logPath,
   };
   const write = () =>
@@ -117,9 +118,62 @@ test("a compiler version probe cannot be reclassified as a build", (t) => {
         cwd: root,
         startedAt: "2026-10-03T00:00:00Z",
         endedAt: "2026-10-03T00:00:01Z",
+        durationMs: 1000,
         logPath,
       },
     ],
   });
   assert.throws(() => verifyReceipt(root, receipt.path), /version\/help/u);
+});
+
+test("receipt timing uses monotonic duration when the host wall clock moves backward", (t) => {
+  const root = fixture(t);
+  const logPath = resolve(root, "execution.log");
+  writeFileSync(logPath, "successful execution after clock adjustment");
+  const inputs = inputIdentity(root, "example");
+  const step = {
+    argv: ["git", "fetch"],
+    cwd: root,
+    exitCode: 0,
+    logPath,
+    startedAt: "2026-10-04T00:21:26.362Z",
+    endedAt: "2026-10-04T00:21:25.753Z",
+    durationMs: 966.151881,
+  };
+  const receipt = writeReceipt({
+    root,
+    pkg: { name: "example" },
+    directory: root,
+    kind: "reproduce",
+    before: inputs,
+    after: inputs,
+    steps: [step],
+  });
+  assert.equal(
+    verifyReceipt(root, receipt.path).status,
+    "passed",
+    "a real clock correction must not reject successful monotonic execution",
+  );
+  for (const invalid of [
+    { durationMs: -1 },
+    { durationMs: undefined },
+    { startedAt: "invalid" },
+    { endedAt: "invalid" },
+  ]) {
+    const bad = writeReceipt({
+      root,
+      pkg: { name: "example" },
+      directory: root,
+      kind: "reproduce",
+      before: inputs,
+      after: inputs,
+      steps: [{ ...step, ...invalid }],
+    });
+    assert.equal(
+      bad.status,
+      "failed",
+      "invalid execution timing cannot earn a pass",
+    );
+    assert.throws(() => verifyReceipt(root, bad.path), /not a completed pass/u);
+  }
 });

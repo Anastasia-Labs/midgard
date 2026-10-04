@@ -6,6 +6,9 @@ thousands of per-file digest entries; `--output FILE` saves the complete result.
 Receipts carry argv, cwd, times, duration, exit/signal, input identities, log
 hashes, actual assertion counts, filters, seed and database family. Preflight
 attaches its step receipt paths to its existing check ledger.
+Elapsed duration uses a monotonic clock. UTC observations are retained exactly;
+`wallClockAdjusted` records backward clock corrections. Invalid timestamps or
+missing/negative durations fail receipt creation and verification.
 
 ```sh
 node scripts/contrib.mjs receipts verify --input /absolute/run/receipt.json
