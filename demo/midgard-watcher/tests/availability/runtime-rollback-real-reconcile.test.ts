@@ -44,7 +44,12 @@ vi.mock("@lucid-evolution/lucid", async (original) => {
     Lucid: async () => ({
       selectWallet: { fromSeed() {} },
       wallet: () => ({ address: async () => "availability" }),
-      config: () => ({ provider: { submitTx: io.submit } }),
+      config: () => ({
+        protocolParameters: {},
+        provider: { submitTx: io.submit },
+      }),
+      // The parameter refresh re-reads the same provider: nothing changes.
+      switchProvider: async () => {},
     }),
     paymentCredentialOf: (address: string) =>
       address === "availability"
