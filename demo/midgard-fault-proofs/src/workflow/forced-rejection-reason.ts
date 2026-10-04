@@ -98,6 +98,13 @@ export const rejectionReasonOfSubject = (
   subject: RejectSubject,
 ): SDK.RejectionReason => {
   switch (subject.arm) {
+    case "FieldItemWidthIllegal":
+      return {
+        FieldItemWidthIllegal: {
+          field_index: subject.fieldIndex,
+          item_index: subject.itemIndex,
+        },
+      };
     case "DuplicateInput":
       return {
         DuplicateInput: {

@@ -30,6 +30,7 @@ export const REJECT_SOURCE_KIND_REFERENCE = 1n;
  * 0 spend, 1 mint, 2 observe, 3 receive).
  */
 export type RejectSubject =
+  | ({ readonly arm: "FieldItemWidthIllegal" } & RejectFieldItem)
   | {
       readonly arm: "DuplicateInput";
       readonly first: RejectFieldItem;

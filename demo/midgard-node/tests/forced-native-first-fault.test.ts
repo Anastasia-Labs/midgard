@@ -25,6 +25,8 @@ it.each([
   "invalidChildren",
   "invalidThresholdChildren",
   "exhaustedBoundary",
+  "mint",
+  "validKey",
 ] as const)(
   "classifies and retains the authentic %s native first fault",
   async (shape) => {
@@ -65,6 +67,15 @@ it.each([
       SDK.ForcedInclusionTxV1,
     );
     expect(leaf.verdict).toHaveProperty("ForcedTxInvalid");
+    if (shape === "mint" || shape === "validKey")
+      expect(leaf.verdict).toStrictEqual({
+        ForcedTxInvalid: {
+          reason:
+            shape === "mint"
+              ? { WitnessNativeScriptMalformed: { script_index: 0n } }
+              : { WitnessNativeScriptFalse: { script_index: 0n } },
+        },
+      });
     const eventKey: SDK.EventKey = {
       ForcedTransactionEventKey: {
         tx_order_id: Data.from(

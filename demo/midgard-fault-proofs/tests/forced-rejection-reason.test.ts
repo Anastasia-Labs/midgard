@@ -34,6 +34,11 @@ const SUBJECT_CASES: readonly (readonly [
   SDK.RejectionReason,
 ])[] = [
   [
+    RejectCodes.InvalidFieldType,
+    { arm: "FieldItemWidthIllegal", fieldIndex: 2n, itemIndex: 1n },
+    { FieldItemWidthIllegal: { field_index: 2n, item_index: 1n } },
+  ],
+  [
     RejectCodes.DuplicateInputInTx,
     {
       arm: "DuplicateInput",

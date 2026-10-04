@@ -212,7 +212,11 @@ export const validatePhaseASingle = (
       RejectCodes.InvalidFieldType,
       `output[${oversizedOutput}] exceeds the declared canonical output preimage bound`,
       "canonicalDecode",
-      { arm: "OutputNonCanonical", index: BigInt(oversizedOutput) },
+      {
+        arm: "FieldItemWidthIllegal",
+        fieldIndex: 2n,
+        itemIndex: BigInt(oversizedOutput),
+      },
     );
 
   if (!ledgerTx.txId.equals(queuedTx.txId)) {

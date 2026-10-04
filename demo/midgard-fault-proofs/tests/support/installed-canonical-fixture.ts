@@ -114,16 +114,6 @@ export const buildInstalledCanonicalFixture = async ({
     expect(phaseA).toMatchObject({
       code: RejectCodes.InvalidFieldType,
       consensusPhase: "canonicalDecode",
-      subject: {
-        arm: "OutputNonCanonical",
-        index: BigInt(
-          outputs.findIndex(
-            (output) =>
-              output.length >
-              MIDGARD_CONSENSUS_PROFILE.limits.maxLedgerOutputPreimageBytes,
-          ),
-        ),
-      },
     });
   else expect(phaseA).not.toHaveProperty("code");
   const ledgerOps = [
@@ -267,6 +257,7 @@ export const buildInstalledCanonicalFixture = async ({
     postUtxosRoot,
   });
   return {
+    phaseA,
     header,
     claim,
     operatorTrace,
