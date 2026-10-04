@@ -351,6 +351,27 @@ describe("a retained signed-intent release plan and the native durable root", ()
     }
   });
 
+  it("holds only the root refusals: any other failure of the plan's preparation propagates, writing nothing", async () => {
+    // The cursor moved under the decision: the plan's checkpoint lock
+    // refuses with a failure that says nothing about the native root.
+    const owner = ownerModel(ZERO_ROOT);
+    const result = await raced(
+      owner,
+      sql(
+        (sql) => sql`UPDATE event_history_cursor SET revision = revision + 1`,
+      ),
+    );
+    expect(result.first.failureTag).toBe("DatabaseError");
+    expect(result.first.failure).toBe("Recovery plan checkpoint changed");
+    expect(result.first.raised.get(SOURCE)).toBeUndefined();
+    expect(result.first.reasons).not.toContain(INTEGRITY);
+    expect(result.after).toEqual({
+      e: Pending.Status.PendingSubmission,
+      plans: [],
+      restores: 0,
+    });
+  });
+
   it("holds, and never plans, a first release whose durable root is outside its journal", async () => {
     const owner = ownerModel(FOREIGN_ROOT);
     const result = await onNode(

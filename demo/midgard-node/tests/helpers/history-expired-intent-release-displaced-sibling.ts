@@ -3,11 +3,7 @@ import { Cause, Effect, Exit, Option, Ref } from "effect";
 import { expect } from "vitest";
 
 import * as Pending from "../../src/database/pendingBlockFinalizations.js";
-import {
-  reviveReplacedCanonicalJournal,
-  signedIntentReplacementDigest,
-  SignedIntentReplacementIntegrityError,
-} from "../../src/services/canonical-journal-recovery.js";
+import { SignedIntentReplacementIntegrityError } from "../../src/services/canonical-journal-recovery.js";
 import { Globals } from "../../src/services/globals.js";
 import { decide } from "../../src/services/history-expired-intent-release.decide.js";
 import type {
@@ -15,7 +11,6 @@ import type {
   ReleaseEvidence,
 } from "../../src/services/history-expired-intent-release.signed-commit-node.js";
 import type { CanonicalDepth } from "../../src/services/history-expired-intent-release.table.js";
-import { reincludeStateQueueCorrectedBlocks } from "../../src/services/state-queue-correction-recovery.js";
 import {
   BASE_HEADER,
   BASE_OUT,
@@ -26,7 +21,6 @@ import {
   run,
   signedCommit,
   TTL,
-  UTXOS_ROOT,
 } from "./history-expired-intent-release-before-ttl.js";
 
 /**
@@ -238,36 +232,3 @@ export const integrityFailure = (exit: Exit.Exit<unknown, unknown>) => {
   expect(failure).toBeInstanceOf(SignedIntentReplacementIntegrityError);
   return (failure as Error).message;
 };
-
-/** The SQL steps of the release repair for a decision that names `displaced`
- * blocks: the active block and each displaced one reopened and abandoned
- * under its own replacement digest, then the winner revived. */
-export const repair = (displaced: readonly Buffer[]) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`INSERT INTO mpf_engine_state (store_name, migration_version, root_hex)
-      VALUES ('ledger', 0, ${UTXOS_ROOT})
-      ON CONFLICT (store_name) DO UPDATE SET root_hex = EXCLUDED.root_hex`;
-    const digest = (header: Buffer) =>
-      Effect.map(Pending.retrieveByHeaderHash(header), (found) =>
-        signedIntentReplacementDigest(Option.getOrThrow(found)),
-      );
-    const results = yield* reincludeStateQueueCorrectedBlocks([
-      {
-        headerHash: X_HEADER.toString("hex"),
-        transitionDigest: (yield* digest(X_HEADER))!,
-        kind: "unlanded",
-      },
-      ...(yield* Effect.forEach(displaced, (header) =>
-        Effect.map(digest(header), (transitionDigest) => ({
-          headerHash: header.toString("hex"),
-          transitionDigest: transitionDigest!,
-          kind: "displaced" as const,
-        })),
-      )),
-    ]);
-    return {
-      results,
-      revived: yield* reviveReplacedCanonicalJournal(W_HEADER),
-    };
-  });

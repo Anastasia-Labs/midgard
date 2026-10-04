@@ -3,8 +3,10 @@ import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
+import { hex } from "./helpers/history-expired-intent-release-before-ttl.js";
 import {
   journal,
+  queueNode,
   S_COMMIT,
   S_HEADER,
   seedDisplaced,
@@ -14,6 +16,7 @@ import {
   W_NODE_OUT,
   W_NODE_TX,
   wHoldsTheSlot,
+  X_COMMIT,
   X_HEADER,
 } from "./helpers/history-expired-intent-release-displaced-sibling.js";
 import {
@@ -274,6 +277,60 @@ describe("the replaced-block revival with no journal active", () => {
     });
     expect(result.settled.failure).toBeUndefined();
     expect(result.settled.raised.get(REVIVAL_SOURCE)).toBeUndefined();
+  });
+});
+
+describe("two replaced blocks of the revival with no journal active, both shown landed", () => {
+  it("are held as the integrity failure, never resolved by reviving either, and nothing is written", async () => {
+    const xNodeOut = `${hex("displaced:x-node-tx")}#0`;
+    fixture.queue = {
+      root: wHoldsTheSlot.root,
+      nodes: [
+        ...wHoldsTheSlot.nodes,
+        queueNode(
+          X_HEADER.toString("hex"),
+          W_HEADER.toString("hex"),
+          undefined,
+          xNodeOut,
+        ),
+      ],
+    } as never;
+    const result = await onNode(
+      undefined,
+      (node) =>
+        Effect.gen(function* () {
+          yield* journal(
+            W_HEADER,
+            Pending.Status.Abandoned,
+            W_COMMIT,
+            2_000_000,
+            { abandonment: "replacement" },
+          );
+          yield* journal(
+            X_HEADER,
+            Pending.Status.Abandoned,
+            X_COMMIT,
+            2_500_000,
+            { abandonment: "replacement" },
+          );
+          yield* observerSees([
+            { headerHash: W_HEADER.toString("hex"), outRef: W_NODE_OUT },
+            { headerHash: X_HEADER.toString("hex"), outRef: xNodeOut },
+          ]);
+          fixture.coverage = coverage(false);
+          const held = yield* revival(node);
+          return { held, after: yield* outcome([W_HEADER, X_HEADER]) };
+        }),
+      UTXOS_ROOT,
+    );
+    expect(result.held.failure).toBeUndefined();
+    expect(result.held.raised.get(REVIVAL_SOURCE)).toBe(INTEGRITY);
+    expect(result.held.reasons).toContain(INTEGRITY);
+    expect(result.after).toEqual({
+      statuses: [Pending.Status.Abandoned, Pending.Status.Abandoned],
+      plans: [],
+      ledger: UTXOS_ROOT,
+    });
   });
 });
 

@@ -1,9 +1,17 @@
+import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { journalAbandonment } from "../src/services/canonical-journal-recovery.js";
-import { UTXOS_ROOT } from "./helpers/history-expired-intent-release-before-ttl.js";
+import {
+  bytes,
+  hex,
+  insertJournal,
+  signedCommit,
+  TTL,
+  UTXOS_ROOT,
+} from "./helpers/history-expired-intent-release-before-ttl.js";
 import {
   S_HEADER,
   seedDisplaced,
@@ -120,6 +128,54 @@ describe("the production release over a locally finalized sibling an L1 rollback
     // finalization replays natively.
     expect(owner.durableRoot).toBe(UTXOS_ROOT);
     expect(result.after.ledger).toBe(ZERO_ROOT);
+    expect(owner.restores).toBe(1);
+  });
+
+  it("abandons a locally finalized descendant of the displaced sibling too, in the same repair", async () => {
+    fixture.queue = wHoldsTheSlot;
+    const owner = ownerModel(ZERO_ROOT);
+    const child = bytes("displaced:t-header", 28);
+    const result = await onNode(owner, (node) =>
+      Effect.gen(function* () {
+        yield* displacedState;
+        // T built on S, locally finalized, changing no ledger state.
+        yield* insertJournal({
+          header: child,
+          status: Pending.Status.Finalized,
+          commit: signedCommit(`${hex("displaced:s-node-tx")}#0`, TTL + 3),
+          baseOut: `${hex("displaced:s-node-tx")}#0`,
+          baseHeader: S_HEADER,
+          createdAt: new Date(3_500_000),
+        });
+        yield* Effect.flatMap(
+          SqlClient.SqlClient,
+          (sql) => sql`UPDATE pending_block_finalizations
+            SET block_end_time = block_start_time + INTERVAL '1 second',
+              expected_utxos_root = base_utxos_root
+            WHERE header_hash = ${child}`,
+        );
+        fixture.coverage = winnerAt(6);
+        const deep = yield* release(node);
+        return {
+          deep,
+          after: yield* outcome,
+          child: journalAbandonment(
+            Option.getOrThrow(yield* Pending.retrieveByHeaderHash(child, true)),
+          ),
+        };
+      }),
+    );
+    expect(result.deep.failure).toBeUndefined();
+    expect(result.deep.raised.get(SOURCE)).toBeUndefined();
+    expect(result.after).toMatchObject({
+      w: { status: Pending.Status.ObservedWaitingStability },
+      s: { status: Pending.Status.Abandoned },
+      x: { status: Pending.Status.Abandoned },
+      plans: ["applied"],
+      sibling: "replacement",
+    });
+    // T too is abandoned under its own replacement digest: revivable.
+    expect(result.child).toBe("replacement");
     expect(owner.restores).toBe(1);
   });
 

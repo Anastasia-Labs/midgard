@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import {
-  journalAbandonment,
+  reviveReplacedCanonicalJournal,
   signedIntentReplacementDigest,
 } from "../src/services/canonical-journal-recovery.js";
 import type { QueueView } from "../src/services/history-expired-intent-release.signed-commit-node.js";
@@ -22,7 +22,6 @@ import {
   journal,
   queueNode,
   readStatus,
-  repair,
   root,
   S_HEADER,
   seedDisplaced,
@@ -35,7 +34,9 @@ import {
 /**
  * The release of an expired signed intent X whose replaced sibling W holds
  * its base's slot, when X itself, or a displaced sibling S, was already
- * locally finalized: the decision, and the SQL steps of its repair.
+ * locally finalized: the decision, and the guards its production repair
+ * relies on (history-expired-intent-release-preparation-displaced.test.ts
+ * drives that repair end to end).
  */
 
 beforeEach(async () => {
@@ -98,36 +99,21 @@ describe("an active block already locally finalized when its replaced sibling ho
   });
 });
 
-describe("the release repair over a displaced sibling", () => {
-  it("abandons the displaced sibling as revivable, then revives the winner", async () => {
+describe("the release's reinclusion and revival over a displaced sibling", () => {
+  it("never revives the winner while the displaced sibling is still locally finalized", async () => {
+    // The production release abandons the displaced sibling in the revival's
+    // own transaction first (see
+    // history-expired-intent-release-preparation-displaced.test.ts); the
+    // revival itself still refuses a locally finalized sibling.
     await run(seedDisplaced(Pending.Status.Finalized));
-    const { results } = await run(repair([S_HEADER]));
-    expect(
-      results.map(({ abandonedFromStatus }) => abandonedFromStatus),
-    ).toEqual([Pending.Status.PendingSubmission, Pending.Status.Finalized]);
-    expect(await readStatus(W_HEADER)).toBe(
-      Pending.Status.ObservedWaitingStability,
+    const exit = await run(
+      Effect.exit(reviveReplacedCanonicalJournal(W_HEADER)),
     );
-    expect(await readStatus(X_HEADER)).toBe(Pending.Status.Abandoned);
-    const sibling = Option.getOrThrow(
-      await run(Pending.retrieveByHeaderHash(S_HEADER)),
-    );
-    expect(sibling[Pending.Columns.STATUS]).toBe(Pending.Status.Abandoned);
-    // Abandoned under its own replacement digest: should it ever land after
-    // all (a rollback deeper than the confirmation depth), it is revivable,
-    // and its reviver then meets the two landed siblings.
-    expect(journalAbandonment(sibling)).toBe("replacement");
-  });
-
-  it("still refuses the revival when the displaced sibling is not abandoned first", async () => {
-    await run(seedDisplaced(Pending.Status.Finalized));
-    const exit = await run(Effect.exit(repair([])));
     expect(failureMessage(exit)).toContain(
       `block ${S_HEADER.toString("hex")} built on the same base is already ${Pending.Status.Finalized}`,
     );
-    // The whole repair is one transaction in production; here the revival's
-    // refusal leaves the sibling as it was.
     expect(await readStatus(S_HEADER)).toBe(Pending.Status.Finalized);
+    expect(await readStatus(W_HEADER)).toBe(Pending.Status.Abandoned);
   });
 
   it("never reopens a block as displaced unless it was locally finalized", async () => {

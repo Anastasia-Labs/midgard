@@ -1,14 +1,20 @@
 import { SqlClient } from "@effect/sql";
-import { Cause, Effect, Exit, Option } from "effect";
+import { Cause, Effect, Exit, Option, Ref } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { signedIntentReplacementDigest } from "../src/services/canonical-journal-recovery.js";
+import { Globals } from "../src/services/globals.js";
+import { decide } from "../src/services/history-expired-intent-release.decide.js";
 import type { QueueView } from "../src/services/history-expired-intent-release.signed-commit-node.js";
 import {
   activeSignedIntent,
   makeSignedIntentDeferral,
 } from "../src/services/history-expired-intent-release.table.js";
+import {
+  raiseLivenessIncident,
+  SIGNED_INTENT_REPLACEMENT_INTEGRITY,
+} from "../src/services/liveness-halt.js";
 import { SIGNED_INTENT_UNDECIDED } from "../src/services/signed-intent-undecided.js";
 import { reincludeStateQueueCorrectedBlocks } from "../src/services/state-queue-correction-recovery.js";
 import {
@@ -38,6 +44,7 @@ import {
   S_COMMIT,
   S_HEADER,
   seedDisplaced,
+  SOURCE,
   W_COMMIT,
   W_HEADER,
   W_NODE_TX,
@@ -213,6 +220,38 @@ describe("a Finalized sibling displaced by a rollback, with canonical depth evid
     ]);
   });
 
+  it("is the integrity failure when a descendant keeps a ledger root other than the base's", async () => {
+    await run(seedDisplaced(Pending.Status.Finalized));
+    const child = bytes("displaced:t-header", 28);
+    const other = "22".repeat(32);
+    await run(
+      insertJournal({
+        header: child,
+        status: Pending.Status.Finalized,
+        commit: signedCommit(`${hex("displaced:s-node-tx")}#0`, TTL + 3),
+        baseOut: `${hex("displaced:s-node-tx")}#0`,
+        baseHeader: S_HEADER,
+        createdAt: new Date(3_500_000),
+      }).pipe(
+        Effect.zipRight(
+          Effect.flatMap(
+            SqlClient.SqlClient,
+            (sql) => sql`UPDATE pending_block_finalizations
+              SET block_end_time = block_start_time + INTERVAL '1 second',
+                base_utxos_root = ${other}, expected_utxos_root = ${other}
+              WHERE header_hash = ${child}`,
+          ),
+        ),
+      ),
+    );
+    // Root-preserving itself, but not over the root S kept: no retained
+    // replay connects it to its parent.
+    const message = integrityFailure(await decideOnce(atDepth(3n)));
+    expect(message).toContain(
+      `has no contiguous retained replay from its parent's root ${UTXOS_ROOT} through ${other} to ${other}`,
+    );
+  });
+
   it("is the integrity failure, never an undecided wait, when the sibling moved the ledger root", async () => {
     await run(seedDisplaced(Pending.Status.Finalized));
     await run(
@@ -264,5 +303,38 @@ describe("a Finalized sibling displaced by a rollback, with canonical depth evid
       ),
     );
     expect(message).toContain("is on the queue");
+  });
+});
+
+describe("a decided release and the reason raised under its source", () => {
+  /** The reason left under the release source after `raised` was raised
+   * there and X's release was decided (revived, at depth). */
+  const afterDecision = (raised: string) =>
+    run(
+      Effect.gen(function* () {
+        const globals = yield* Globals;
+        yield* raiseLivenessIncident(globals, SOURCE, raised, "earlier");
+        const record = Option.getOrThrow(
+          yield* Pending.retrieveByHeaderHash(X_HEADER),
+        );
+        const decision = yield* decide(record, atDepth(3n));
+        return {
+          kind: decision.kind,
+          raised: (yield* Ref.get(globals.LIVENESS_REASONS)).get(SOURCE),
+        };
+      }).pipe(Effect.provide(Globals.Default)),
+    );
+
+  it("clears its own undecided reason, never an integrity hold raised under the same source", async () => {
+    await run(seedDisplaced(Pending.Status.Finalized));
+    expect(await afterDecision(SIGNED_INTENT_UNDECIDED)).toEqual({
+      kind: "revive",
+      raised: undefined,
+    });
+    // Only the preparation's completion with no integrity failure clears it.
+    expect(await afterDecision(SIGNED_INTENT_REPLACEMENT_INTEGRITY)).toEqual({
+      kind: "revive",
+      raised: SIGNED_INTENT_REPLACEMENT_INTEGRITY,
+    });
   });
 });
