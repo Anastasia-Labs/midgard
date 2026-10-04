@@ -9,6 +9,13 @@ Treat this as production L2 acceptance. Preserve deployment identity, durable
 state and every saved record. One command, `e2e-stack`, deploys, attaches,
 resumes and runs the wallet journeys; there is no second, hand-driven flow.
 
+For guarded execution of that same command, read
+[the contributor acceptance wrapper](../../../docs/agents/contrib.md#devnets-acceptance-and-read-only-diagnostics).
+`node scripts/contrib.mjs acceptance --input /absolute/stack.json --plan`
+shows the existing command and owned resources; omit `--plan` to execute it
+with protected builds, process cleanup and an execution receipt. This receipt
+does not replace this skill's saved payout, finality and drill evidence.
+
 ## Required reading
 
 Before any state-changing command, read:

@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.11.0",
   "scripts": {
-    "build:sdk": "pnpm --dir ../demo/midgard-core run build && pnpm --dir ../demo/lucid-midgard run build",
+    "build:sdk": "node ../scripts/contrib.mjs build --package midgard-core && node ../scripts/contrib.mjs build --package lucid-midgard",
     "check:links": "node scripts/check-docs-links.mjs",
     "prebuild": "pnpm run build:sdk && pnpm run check:links",
     "build": "next build",

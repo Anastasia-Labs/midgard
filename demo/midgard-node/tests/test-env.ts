@@ -8,6 +8,8 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { disposableDatabaseName } from "@al-ft/midgard-test-support/database-identity";
+
 import { testDatabasePrefix, worktreeIdentity } from "./worktree-identity.js";
 
 /**
@@ -62,7 +64,7 @@ export const TEST_DATABASE_PREFIX =
   defaultTestDatabasePrefix("midgard_test");
 
 export const testDatabaseNameForShard = (shard: string | number): string =>
-  `${TEST_DATABASE_PREFIX}_w${shard}`;
+  disposableDatabaseName(TEST_DATABASE_PREFIX, shard);
 
 export const testDatabaseName = (): string =>
   testDatabaseNameForShard(process.env.VITEST_POOL_ID ?? "0");

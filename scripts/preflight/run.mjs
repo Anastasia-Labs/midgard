@@ -3,11 +3,12 @@
 // shell over this module; tests drive it directly with temporary repositories,
 // injected probes and a fake command runner.
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -15,6 +16,11 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { pinnedAikenVersion } from "../../onchain/aiken/scripts/pinned-compiler.mjs";
+import { runDirectory } from "../contrib/build.mjs";
+import { inputIdentity } from "../contrib/files.mjs";
+import { runProcess } from "../contrib/process.mjs";
+import { writeReceipt } from "../contrib/receipts.mjs";
+import { withResource } from "../contrib/resources.mjs";
 import { formatCommand, selectChecks } from "./registry.mjs";
 
 export const DEFAULT_BASE =
@@ -211,32 +217,57 @@ export const planPreflight = (registry, changed, options = {}) => {
 };
 
 // Runs one step, teeing its output to `log` and keeping it for the verdict.
-export const spawnStep = (root, step, env, log) =>
-  new Promise((done) => {
-    const started = Date.now();
-    let output = "";
-    const child = spawn(step.argv[0], step.argv.slice(1), {
-      cwd: resolve(root, step.cwd ?? "."),
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const collect = (chunk) => {
-      const text = chunk.toString();
-      output += text;
-      if (output.length > 4 * 1024 * 1024) {
-        output = output.slice(-2 * 1024 * 1024);
+export const spawnStep = async (root, step, env, log, signal) =>
+  withResource(
+    `workspace:${resolve(root)}`,
+    async (ownedEnv) => {
+      const directory = runDirectory();
+      const before = inputIdentity(root, "@repository");
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      process.on("SIGINT", abort);
+      process.on("SIGTERM", abort);
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) abort();
+      try {
+        const run = await runProcess({
+          argv: step.argv,
+          cwd: resolve(root, step.cwd ?? "."),
+          env: ownedEnv,
+          signal: controller.signal,
+          logPath: resolve(directory, "preflight.log"),
+          maxBytes: 128 * 1024 * 1024,
+          // Aggregate acceptance commands include sequential emulator suites;
+          // hosted fault-proof shards alone can exceed the focused 30m limit.
+          timeoutMs: 7_200_000,
+          echo: true,
+        });
+        const receipt = writeReceipt({
+          root,
+          pkg: { name: "@repository" },
+          directory,
+          kind: "preflight-step",
+          before,
+          after: inputIdentity(root, "@repository"),
+          steps: [run],
+        });
+        log(`execution receipt: ${receipt.path}\n`);
+        return {
+          status:
+            receipt.exitCode === 0 ? 0 : run.exitCode === 0 ? 1 : run.exitCode,
+          output: readFileSync(run.logPath, "utf8"),
+          durationMs: run.durationMs,
+          receipt: receipt.path,
+          ...(run.reason ? { error: new Error(run.reason) } : {}),
+        };
+      } finally {
+        process.off("SIGINT", abort);
+        process.off("SIGTERM", abort);
+        signal?.removeEventListener("abort", abort);
       }
-      log(text);
-    };
-    child.stdout.on("data", collect);
-    child.stderr.on("data", collect);
-    child.once("error", (error) =>
-      done({ status: null, output, error, durationMs: Date.now() - started }),
-    );
-    child.once("close", (status) =>
-      done({ status, output, durationMs: Date.now() - started }),
-    );
-  });
+    },
+    { env, signal },
+  );
 
 // Output that means a suite ran nothing, whatever its exit code says. Vitest
 // prints this when its global setup fails (Postgres unreachable) or a filter
@@ -295,11 +326,14 @@ export const runPreflight = async ({
   runStep = spawnStep,
   log = (text) => process.stderr.write(text),
   env = process.env,
+  signal,
   exists = (path) => existsSync(resolve(root, path)),
 }) => {
   const results = [];
   for (const { check, steps } of plan.planned) {
+    if (signal?.aborted) break;
     const started = Date.now();
+    const receipts = [];
     const command =
       check.internal === "merge-tree"
         ? check.display.replace("<base>", base)
@@ -311,6 +345,7 @@ export const runPreflight = async ({
         reason,
         command,
         durationMs: Date.now() - started,
+        ...(receipts.length ? { receipts } : {}),
         ...(status === "failed" && check.fix !== undefined
           ? { fix: check.fix }
           : {}),
@@ -346,12 +381,21 @@ export const runPreflight = async ({
       log(`\n==> ${check.id}: ${command}\n`);
       outcome = { status: "passed", reason: "" };
       for (const step of steps) {
+        if (signal?.aborted) {
+          outcome = {
+            status: "failed",
+            reason: "interrupted before execution",
+          };
+          break;
+        }
         const run = await runStep(
           root,
           step,
           { ...env, ...capabilityEnv, ...step.env },
           log,
+          signal,
         );
+        if (run.receipt) receipts.push(run.receipt);
         const empty = EMPTY_RUN_MARKERS.find(({ pattern }) =>
           pattern.test(run.output ?? ""),
         );
@@ -381,10 +425,11 @@ export const runPreflight = async ({
     }
     probes.invalidate(check.invalidates);
   }
-  const exitCode = results.some((r) => r.status === "failed")
-    ? EXIT.failed
-    : results.some((r) => r.status === "skipped")
-      ? EXIT.skipped
-      : EXIT.passed;
+  const exitCode =
+    signal?.aborted || results.some((r) => r.status === "failed")
+      ? EXIT.failed
+      : results.some((r) => r.status === "skipped")
+        ? EXIT.skipped
+        : EXIT.passed;
   return { results, exitCode };
 };

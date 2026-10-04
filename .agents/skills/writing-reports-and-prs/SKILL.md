@@ -17,6 +17,12 @@ rule below is `[review]` unless it says otherwise, and you are the review.
 
 ## The evidence ledger
 
+When a run emitted a receipt, read [receipt validation and rendering](../../../docs/agents/contrib.md#evidence-and-ownership)
+before reconstructing commands/counts with scripts. `contrib receipts verify`
+checks execution identity and freshness; `render` supplies evidence rows.
+Add interpretation and limitations yourself. A receipt is not a review of the
+assertions, and an execution receipt is not automatically live acceptance.
+
 Every PR description, commit body that claims verification, and hand-back
 report carries these five things. They are rules; each is `[review]`.
 

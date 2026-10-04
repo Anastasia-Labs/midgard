@@ -13,6 +13,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readSourceFacets } from "../../../../scripts/lib/source-facets.mjs";
+import { HELP as contributorHelp } from "../../../../scripts/contrib.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../../../..");
@@ -230,11 +231,14 @@ const stackFlags = new Set(
     (match) => match[1],
   ),
 );
-const declaredFlags = new Set(
-  [...`${cliSource}\n${toolsCliSource}`.matchAll(/"(--[a-z][a-z0-9-]*)/g)].map(
-    (match) => match[1],
+const declaredFlags = new Set([
+  ...[
+    ...`${cliSource}\n${toolsCliSource}`.matchAll(/"(--[a-z][a-z0-9-]*)/g),
+  ].map((match) => match[1]),
+  ...[...contributorHelp.matchAll(/--[a-z][a-z0-9-]*/g)].map(
+    (match) => match[0],
   ),
-);
+]);
 const documentedStackFlags = new Set();
 for (const [name, text] of [
   ...Object.entries(documents),
@@ -254,7 +258,8 @@ for (const [name, text] of [
         fail(`${name} passes an undeclared e2e-stack flag: ${flag}`);
     }
   }
-  // A flag named on its own must belong to some command of either binary.
+  // Standalone flags may belong to the contributor frontdoor or either binary.
+  // The invocation check above still refuses contributor flags on e2e-stack.
   for (const span of backticked(text)) {
     if (/^--[a-z][a-z0-9-]*$/.test(span) && !declaredFlags.has(span))
       fail(`${name} names a flag no CLI declares: ${span}`);

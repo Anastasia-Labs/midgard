@@ -18,6 +18,38 @@ import {
 
 // --- temporary repositories -------------------------------------------------
 
+test("interrupted preflight stops dispatching later checks and never reports a pass", async () => {
+  const controller = new AbortController();
+  const checks = ["first", "later"].map((id) => ({
+    id,
+    title: id,
+    triggers: ["x"],
+    capabilities: [],
+    plan: () => [{ argv: ["node", "probe.mjs"], cwd: "." }],
+  }));
+  const plan = planPreflight({ checks }, ["x"]);
+  const dispatched = [];
+  const report = await runPreflight({
+    root: ".",
+    base: "HEAD",
+    plan,
+    signal: controller.signal,
+    probes: { get: async () => ({ status: "available" }), invalidate() {} },
+    log() {},
+    runStep: async (_root, step) => {
+      dispatched.push(step.argv);
+      controller.abort();
+      return { status: 0, output: "", durationMs: 1 };
+    },
+  });
+  assert.equal(dispatched.length, 1);
+  assert.equal(report.exitCode, EXIT.failed);
+  assert.equal(
+    report.results.some((entry) => entry.id === "later"),
+    false,
+  );
+});
+
 const GIT_ENV = {
   ...process.env,
   GIT_CONFIG_NOSYSTEM: "1",
