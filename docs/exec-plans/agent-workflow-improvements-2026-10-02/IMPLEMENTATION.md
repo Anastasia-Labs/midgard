@@ -84,7 +84,7 @@ artifact, receipt and boundary controls. No protocol coverage gap is widened.
 
 Observed on 2026-10-04 UTC, using Node 22.22.2, after the output-owner and receipt timing fixes:
 
-- `node --test scripts/contrib/*.test.mjs`: 45 collected, 45 passed, zero
+- `node --test scripts/contrib/*.test.mjs`: 46 collected, 46 passed, zero
   skips, exit 0. Tiny compiler fixtures test orchestration, not real compilation.
 - `node --test scripts/preflight/run.test.mjs`: 18 collected and passed,
   zero skips, exit 0.
@@ -92,6 +92,14 @@ Observed on 2026-10-04 UTC, using Node 22.22.2, after the output-owner and recei
   mutants failed at their intended assertions, overall exit 0.
 - Canonical-foundation integration: workflow trigger, Git hook environment and
   complete-shard tests collected 23 assertions, all passed, zero skips, exit 0.
+
+Final focused watcher validation exposed a package runtime mismatch: ordinary
+tests require `NODE_ENV=test`, while node and node-tools recipes require emulator
+mode. A child-process regression failed before the correction and passed after;
+the same eight watcher recovery files then passed all 110 assertions with zero
+skips from a durable project worktree. The temporary-path production refusal
+remains intact. This regression belongs in the existing orchestration test:
+earlier receipt controls validated counts but never the child's runtime mode.
 
 The 2026-10-03 implementation checkpoint also ran actual compiled node CLI
 boundary checks, native-vector scratch synchronization, seven lease assertions,

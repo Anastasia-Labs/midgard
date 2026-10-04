@@ -15,6 +15,42 @@ import { fixture } from "./fixture.test-support.mjs";
 import { generateDevnet } from "./operations.mjs";
 import { verifyReceipt } from "./receipts.mjs";
 import { reproduce } from "./reproduction.mjs";
+import { runTests } from "./tests.mjs";
+
+test("focused tests preserve the ordinary test runtime despite an ambient emulator mode", async (t) => {
+  const root = fixture(t);
+  const runner = resolve(root, "demo/node_modules/vitest");
+  mkdirSync(runner, { recursive: true });
+  atomicJson(resolve(runner, "package.json"), { name: "vitest" });
+  mkdirSync(resolve(root, "demo/example/tests"));
+  writeFileSync(
+    resolve(root, "demo/example/tests/runtime.test.ts"),
+    "// runtime fixture\n",
+  );
+  // Drive the child environment, not an invented production assertion count.
+  writeFileSync(
+    resolve(runner, "vitest.mjs"),
+    `
+import assert from 'node:assert/strict';
+import {writeFileSync} from 'node:fs';
+import {resolve} from 'node:path';
+assert.equal(process.env.NODE_ENV, 'test', 'ordinary tests require NODE_ENV=test');
+const output = process.argv.find(arg => arg.startsWith('--outputFile=')).slice('--outputFile='.length);
+writeFileSync(output, JSON.stringify({success:true,numPassedTests:1,numFailedTests:0,testResults:[{name:resolve('tests/runtime.test.ts'),assertionResults:[{status:'passed',fullName:'runtime fixture'}]}]}));
+`,
+  );
+  const receipt = await runTests(root, "example", {
+    files: ["tests/runtime.test.ts"],
+    sourceOnly: true,
+    env: { ...process.env, NODE_ENV: "emulator" },
+  });
+  assert.equal(
+    receipt.status,
+    "passed",
+    readFileSync(receipt.steps[0].logPath, "utf8"),
+  );
+  assert.equal(receipt.counts.executed, 1);
+});
 
 test("devnet generation supplies a private fresh run directory and verifies produced assets", async (t) => {
   const root = fixture(t);

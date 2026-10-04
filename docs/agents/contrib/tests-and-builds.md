@@ -11,11 +11,16 @@ node scripts/contrib.mjs boundary --package midgard-core
 ```
 
 File selectors are package-relative explicit test paths. The runner resolves
-that package's Vitest, supplies emulator mode, derives the package's pretest
+that package's Vitest, supplies emulator mode for node/node-tools and test mode
+for other packages, derives the package's pretest
 builds, requires the selected blueprint stamp and local test Postgres where
 applicable, and assigns an invocation-specific disposable database family.
 Both file and test ordering use the recorded seed. A name selector records
 filtered assertions separately from skipped selected assertions.
+
+Place watcher test checkouts on the project filesystem outside `/tmp`: its
+funding recovery suites exercise the production guard against temporary durable
+stores. Keep that guard intact when choosing a worktree location.
 
 `--source-only` explicitly omits compiled prerequisites. Use it for a suite
 whose entire execution stays inside the source resolver; it cannot establish

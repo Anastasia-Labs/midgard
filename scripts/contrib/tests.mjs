@@ -153,7 +153,11 @@ export const runTests = async (
       );
       const runEnv = {
         ...ownedEnv,
-        NODE_ENV: "emulator",
+        // Match package test recipes: node suites use emulator configuration;
+        // other suites require Vitest's test runtime for test-only constructors.
+        NODE_ENV: ["midgard-node", "midgard-node-tools"].includes(pkg.name)
+          ? "emulator"
+          : "test",
         MIDGARD_TEST_DATABASE_PREFIX: `midgard_contrib_${suffix}`,
         POSTGRES_HOST: "127.0.0.1",
         POSTGRES_PORT: "5433",
