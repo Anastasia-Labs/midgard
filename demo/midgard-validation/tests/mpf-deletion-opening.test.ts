@@ -110,6 +110,8 @@ describe("MPF deletion terminal-Branch rule", () => {
     ).toBe(false);
   });
 
+  // These 31,056 shapes took 6.24s on CI and 1.98s locally; retain the complete
+  // matrix with a case-specific CPU budget rather than the 5s default.
   it("accepts exactly the honest shapes with two or more other children", () => {
     let checked = 0;
     for (let me = 0; me < 16; me += 1) {
@@ -132,7 +134,7 @@ describe("MPF deletion terminal-Branch rule", () => {
       }
     }
     expect(checked).toBe(16 * (1 + 15 + 105 + 455 + 1365));
-  });
+  }, 10_000);
 
   it("refuses a Branch standing in for a node with one other child, whatever the opening", () => {
     for (let me = 0; me < 16; me += 1) {

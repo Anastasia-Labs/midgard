@@ -248,11 +248,18 @@ export const validatePhaseASingle = (
   }
   // Forced orders retain only screens without a deployed total machine arm.
   // Normal-admission proof-fit bounds must not preempt a forced machine verdict.
-  const consensusViolation = (
+  // The raw projection is reject-only: its native payload cannot decode and
+  // must reach the ordered native scan after the earlier Phase A checks.
+  // Normal structured admission/material decoders would throw on that payload
+  // before the machine can name the first faulty witness. Forced admission
+  // parses native envelopes only, so its operator-stop screens still run.
+  // Every admissible candidate also passes the material screen below.
+  const consensusViolation =
     queuedTx.sourceKind === "forced"
-      ? validateMidgardConsensusForcedTxCbor
-      : validateMidgardConsensusTxCbor
-  )(queuedTx.txCbor);
+      ? validateMidgardConsensusForcedTxCbor(queuedTx.txCbor)
+      : rawProjection === null
+        ? validateMidgardConsensusTxCbor(queuedTx.txCbor)
+        : null;
   if (consensusViolation !== null) {
     return reject(
       ledgerTx.txId,
@@ -260,37 +267,39 @@ export const validatePhaseASingle = (
       `${consensusViolation.featureId}: ${consensusViolation.detail}`,
     );
   }
-  try {
-    const material = decodeMidgardCekProgramMaterialSidecar(
-      queuedTx.programMaterialSidecarCbor,
-    );
-    const canonicalTx = (
-      queuedTx.sourceKind === "forced"
-        ? decodeMidgardForcedTxFullFromCanonicalCbor
-        : decodeMidgardNativeTxFullFromCanonicalCbor
-    )(queuedTx.txCbor);
-    const envelopes = collectMidgardAttachedProgramEnvelopes(
-      canonicalTx,
-      queuedTx.sourceKind,
-    );
-    if (ledgerTx.referenceInputs.length > 0) {
-      // Phase A has not resolved reference-input outputs yet. Require complete
-      // attached programs now; Phase B checks the exact combined bundle once
-      // the referenced program envelopes are authoritative.
-      for (const envelope of envelopes) {
-        verifyMidgardCekProgramMaterial(envelope, material, {
-          allowUnreachable: true,
-        });
+  if (rawProjection === null) {
+    try {
+      const material = decodeMidgardCekProgramMaterialSidecar(
+        queuedTx.programMaterialSidecarCbor,
+      );
+      const canonicalTx = (
+        queuedTx.sourceKind === "forced"
+          ? decodeMidgardForcedTxFullFromCanonicalCbor
+          : decodeMidgardNativeTxFullFromCanonicalCbor
+      )(queuedTx.txCbor);
+      const envelopes = collectMidgardAttachedProgramEnvelopes(
+        canonicalTx,
+        queuedTx.sourceKind,
+      );
+      if (ledgerTx.referenceInputs.length > 0) {
+        // Phase A has not resolved reference-input outputs yet. Require complete
+        // attached programs now; Phase B checks the exact combined bundle once
+        // the referenced program envelopes are authoritative.
+        for (const envelope of envelopes) {
+          verifyMidgardCekProgramMaterial(envelope, material, {
+            allowUnreachable: true,
+          });
+        }
+      } else {
+        verifyMidgardCekProgramMaterialBundle(envelopes, material);
       }
-    } else {
-      verifyMidgardCekProgramMaterialBundle(envelopes, material);
+    } catch (cause) {
+      return reject(
+        ledgerTx.txId,
+        RejectCodes.CekProgramMaterial,
+        `invalid V1 program material: ${String(cause)}`,
+      );
     }
-  } catch (cause) {
-    return reject(
-      ledgerTx.txId,
-      RejectCodes.CekProgramMaterial,
-      `invalid V1 program material: ${String(cause)}`,
-    );
   }
 
   if (

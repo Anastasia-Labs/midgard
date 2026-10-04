@@ -11,6 +11,7 @@ import {
   DataList,
   DataMap,
 } from "@harmoniclabs/plutus-data";
+import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -58,13 +59,20 @@ describe("V1 semantic Data commitment", () => {
     expect(negative.subarray(0, 4).toString("hex")).toBe("c35f5840");
     expect(positive.length).toBe(267);
     expect(negative.length).toBe(267);
-    // The Data tree commitment keeps the deployed single-block form.
-    expect(
-      encodeMidgardCekDataTreeInteger(hugeMagnitude)
-        .subarray(0, 4)
-        .toString("hex"),
-    ).toBe("c2590100");
-    expect(encodeMidgardCekDataTreeInteger(hugeMagnitude).length).toBe(260);
+    // Integer leaves use the same Cardano wire form; CML independently checks
+    // the full signed magnitude, chunk headers, and terminator.
+    for (const value of [hugeMagnitude, -(1n << 2_048n)]) {
+      const integer = CML.BigInteger.from_str(value.toString());
+      const data = CML.PlutusData.new_integer(integer);
+      try {
+        expect(encodeMidgardCekDataTreeInteger(value).toString("hex")).toBe(
+          data.to_cbor_hex(),
+        );
+      } finally {
+        data.free();
+        integer.free();
+      }
+    }
     expect(midgardCekDataMemorySize(new DataI(hugeMagnitude))).toBe(261n);
     expect(midgardCekDataMemorySize(new DataI(-(1n << 2_048n)))).toBe(261n);
   });

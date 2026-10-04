@@ -22,6 +22,8 @@ import { buildMidgardCanonicalScriptArtifact } from "../src/cek-program.js";
 const DUPLICATE_KEY_MAP_CBOR = "a201020103";
 const DUPLICATE_KEY_MAP_ROOT =
   "aef1afbc4af14bed532f136ec0e9db7d1f297752cbe935c6af79d0f49b0817e5";
+// UPLC 1.1.0, Data constant tag, five-byte definite map, Flat terminator.
+const DUPLICATE_KEY_MAP_FLAT = "0101004c0105a2010201030001";
 
 describe("a CEK Data constant with a duplicate map key", () => {
   it("commits every entry to the on-chain root", () => {
@@ -38,14 +40,7 @@ describe("a CEK Data constant with a duplicate map key", () => {
   });
 
   it("builds program material the verifier accepts with the same root", () => {
-    const source = Buffer.from(
-      UPLCEncoder.compile(
-        new UPLCProgram(
-          [1, 1, 0],
-          UPLCConst.data(dataFromCbor(DUPLICATE_KEY_MAP_CBOR)),
-        ),
-      ),
-    );
+    const source = Buffer.from(DUPLICATE_KEY_MAP_FLAT, "hex");
     const artifact = buildMidgardCanonicalScriptArtifact({
       language: "PlutusV3",
       sourceRawFlatProgramBytes: source,
@@ -64,5 +59,23 @@ describe("a CEK Data constant with a duplicate map key", () => {
     expect(Buffer.from(constant!.payloadCbor).toString("hex")).toBe(
       DUPLICATE_KEY_MAP_CBOR,
     );
+  });
+
+  it("refuses the generic encoder's indefinite map without normalizing it", () => {
+    const source = Buffer.from(
+      UPLCEncoder.compile(
+        new UPLCProgram(
+          [1, 1, 0],
+          UPLCConst.data(dataFromCbor(DUPLICATE_KEY_MAP_CBOR)),
+        ),
+      ),
+    );
+    expect(source.toString("hex")).toBe("0101004c0106bf01020103ff0001");
+    expect(() =>
+      buildMidgardCanonicalScriptArtifact({
+        language: "PlutusV3",
+        sourceRawFlatProgramBytes: source,
+      }),
+    ).toThrow("V1 requires canonical Flat bytes");
   });
 });
