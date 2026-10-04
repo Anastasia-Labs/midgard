@@ -160,6 +160,18 @@ it("adjudicates authenticated opaque forced bytes with the installed field-lengt
   expect(removal.result.transactions.map(({ kind }) => kind)).toEqual([
     "remove-target",
   ]);
-  expect(await at(terminal.fraudProofOutRef)).toBeUndefined();
+  expect(removal.result.awaitedConfirmation).toBe(true);
+  expect(removal.result.stateQueueBlockOutRef).toBe(
+    fixture.fraudulent.fraudulentBlockOutRef,
+  );
+  expect(removal.result.fraudulentHeaderHash).toBe(raw.headerHash);
+  expect(removal.result.fraudProofOutRef).toBe(terminal.fraudProofOutRef);
+  expect(removal.result.layout.fraudProofRefInputIndex).not.toBeNull();
+  expect(
+    Number(removal.result.layout.fraudProofRefInputIndex),
+  ).toBeGreaterThanOrEqual(0);
   expect(await at(fixture.fraudulent.fraudulentBlockOutRef)).toBeUndefined();
+  // The protocol's fraud-proof spend validator always refuses consumption.
+  // Removal reads this permanent witness; only the computation thread is burnt.
+  expect(await at(terminal.fraudProofOutRef)).toEqual(proof);
 }, 120_000);
