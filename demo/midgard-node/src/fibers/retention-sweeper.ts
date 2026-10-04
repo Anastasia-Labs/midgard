@@ -9,9 +9,9 @@ import {
   Clock,
   Duration,
   Effect,
+  Either,
   Exit,
   Metric,
-  Option,
   Ref,
   Schedule,
 } from "effect";
@@ -32,11 +32,6 @@ import {
 } from "../database/retention-policy.js";
 import { DatabaseError } from "../database/utils/common.js";
 import {
-  isHistoryProducerGateClosed,
-  runHistoryProducer,
-  UnownedHistoryFixture,
-} from "../services/event-history-producer.js";
-import {
   ContractDeploymentIdentity,
   Database,
   Globals,
@@ -51,6 +46,11 @@ import {
 } from "../services/liveness-halt.js";
 import { fetchCanonicalStateQueueNodesProgram } from "../services/state-queue-topology.js";
 import { fetchDaPayloadRetirementProofs } from "./retention-sweeper.da-retirement-view.js";
+import { pruneForeignTipsBeyondRetention } from "./retention-sweeper.foreign-tips.js";
+import {
+  RETENTION_HISTORY_PRUNE_BUDGET_MS,
+  withRetentionHistoryProducer,
+} from "./retention-sweeper.history-producer.js";
 
 /**
  * Executable deadline signal (GOAL_SPEC 9.4 / Q54): milliseconds remaining
@@ -232,53 +232,6 @@ export const fetchRetentionL1ViewWithRetirement = Effect.gen(function* () {
 });
 
 /**
- * How long one sweep's history prunes may keep starting batches under the
- * history producer permit. No batch starts past it, and each batch is one
- * short transaction, so a recovery that drains producers waits at most this
- * plus one batch.
- */
-export const RETENTION_HISTORY_PRUNE_BUDGET_MS = 10_000;
-
-/** The hard bound on the whole permit-held history prune, should one batch
- * stall: past it the work is interrupted (its open batch rolls back), the
- * permit is returned, and the next sweep retries. */
-export const RETENTION_HISTORY_PRUNE_TIMEOUT_MS =
-  3 * RETENTION_HISTORY_PRUNE_BUDGET_MS;
-
-/**
- * Runs `work` as a history producer: it takes the permit without waiting
- * (registration is refused at once while the owner recovers, lags or is not
- * up) and holds it for at most RETENTION_HISTORY_PRUNE_TIMEOUT_MS. A refused
- * or timed-out run deletes nothing more, is logged, and returns `undefined`;
- * the next sweep retries. Standalone database fixtures without an owner run
- * the work directly under their explicit fixture capability.
- */
-export const withRetentionHistoryProducer = (
-  work: Effect.Effect<number, DatabaseError, Database>,
-): Effect.Effect<number | undefined, never, Globals | Database> =>
-  Effect.gen(function* () {
-    const globals = yield* Globals;
-    const owner = yield* Ref.get(globals.EVENT_HISTORY_OWNER);
-    const fixture = yield* Effect.serviceOption(UnownedHistoryFixture);
-    const run: Effect.Effect<number, DatabaseError, Globals | Database> =
-      owner === undefined && Option.isSome(fixture)
-        ? work
-        : runHistoryProducer(work);
-    const exit = yield* Effect.exit(
-      run.pipe(Effect.timeout(RETENTION_HISTORY_PRUNE_TIMEOUT_MS)),
-    );
-    if (Exit.isSuccess(exit)) return exit.value;
-    const refused = [...Cause.failures(exit.cause)].some(
-      isHistoryProducerGateClosed,
-    );
-    yield* Effect.logWarning(
-      `retention_history_prune_skipped: ${refused ? "the history owner is recovering" : "the history producer permit or a prune batch failed"}; journals are kept until the next sweep`,
-      exit.cause,
-    );
-    return undefined;
-  });
-
-/**
  * One retention sweep.
  *
  * DA payloads are pruned on the consensus-derived challengeability horizon and
@@ -293,6 +246,14 @@ export const withRetentionHistoryProducer = (
  *  - with an L1 view and a verified deployment, finalized journals past the
  *    window, under the history producer permit
  *    (`withRetentionHistoryProducer`), each kept while challenge-relevant.
+ * Foreign-tip evidence is pruned on the challengeability horizon plus checked
+ * complete history coverage, the retained rollback anchor and dependency pins
+ * (see `ForeignTipReconciliationsDB.pruneBeyondRetention`); it also needs the
+ * tx-order ingestion watermark (`Globals.TX_ORDERS_INGESTED_THROUGH_MS`, which
+ * the tx-order reconciles advance), and is skipped until the first reconcile
+ * sets it. Reading it takes no L1 call and no L1 control-plane hold. The DA
+ * and foreign-tip prunes run independently: a failed DA prune still lets the
+ * foreign-tip prune run before the sweep fails.
  * Deposit and withdrawal rows are retained: settlement proofs recompute the
  * whole header's root, and a completed job records confirmation, without the
  * block identity/depth needed to prove payout finality. Local consumed/finalized
@@ -309,25 +270,43 @@ export const retentionSweepAction = (
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
     const deploymentIdentity = yield* ContractDeploymentIdentity;
+    const txOrdersIngestedThroughMs = yield* Ref.get(
+      (yield* Globals).TX_ORDERS_INGESTED_THROUGH_MS,
+    );
     const prunedOrphanDeltas = yield* MempoolTxDeltasDB.deleteOrphans;
     const challengeableCutoff = computeChallengeableCutoff(sweptAt);
     const deploymentIdentityDigest =
       deploymentIdentity.manifestId === undefined
         ? undefined
         : Buffer.from(deploymentIdentity.manifestId, "hex");
-    const prunedDaPayloads =
+    const daPayloadsPruned =
       view === undefined
+        ? Either.right(0)
+        : yield* Effect.either(
+            DaPayloadsDB.pruneBeyondRetention({
+              challengeableCutoff,
+              view,
+              deploymentIdentityDigest,
+            }),
+          );
+    const prunedForeignTips =
+      view === undefined || txOrdersIngestedThroughMs === undefined
         ? 0
-        : yield* DaPayloadsDB.pruneBeyondRetention({
+        : yield* pruneForeignTipsBeyondRetention({
             challengeableCutoff,
             view,
-            deploymentIdentityDigest,
+            deploymentManifestId: deploymentIdentity.manifestId,
+            consensusProfileId: deploymentIdentity.consensusProfile.profileId,
+            txOrdersIngestedThrough: new Date(txOrdersIngestedThroughMs),
           });
     yield* publishDaPayloadRetentionDeadline(
       sweptAt,
       view,
       deploymentIdentityDigest,
     );
+    if (Either.isLeft(daPayloadsPruned))
+      return yield* Effect.fail(daPayloadsPruned.left);
+    const prunedDaPayloads = daPayloadsPruned.right;
     // Startup already refused a window shorter than the manifest's
     // (assertDeploymentManifestMatchesConfig); should it still not resolve,
     // nothing is pruned.
@@ -345,7 +324,7 @@ export const retentionSweepAction = (
     );
     if (!shouldPruneRetention(retentionDays)) {
       yield* Effect.logInfo(
-        `🧹 Retention sweep done (challengeableCutoff=${challengeableCutoff.toISOString()}, housekeeping disabled: no verified manifest window and RETENTION_DAYS unset, or RETENTION_DAYS=0): da_payloads=${prunedDaPayloads}, mempool_tx_deltas=${prunedOrphanDeltas}`,
+        `🧹 Retention sweep done (challengeableCutoff=${challengeableCutoff.toISOString()}, housekeeping disabled: no verified manifest window and RETENTION_DAYS unset, or RETENTION_DAYS=0): da_payloads=${prunedDaPayloads}, foreign_tip_reconciliations=${prunedForeignTips}, mempool_tx_deltas=${prunedOrphanDeltas}`,
       );
       return;
     }
@@ -379,7 +358,7 @@ export const retentionSweepAction = (
           );
 
     yield* Effect.logInfo(
-      `🧹 Retention sweep done (retentionDays=${retentionDays.toString()}, cutoff=${cutoff.toISOString()}, challengeableCutoff=${challengeableCutoff.toISOString()}): da_payloads=${prunedDaPayloads}, tx_rejections=${prunedTxRejections}, address_history=${prunedAddressHistory}, state_queue_mutation_leases=${prunedLeases}, pending_block_finalizations=${prunedJournals ?? "skipped"}, mempool_tx_deltas=${prunedOrphanDeltas}`,
+      `🧹 Retention sweep done (retentionDays=${retentionDays.toString()}, cutoff=${cutoff.toISOString()}, challengeableCutoff=${challengeableCutoff.toISOString()}): da_payloads=${prunedDaPayloads}, foreign_tip_reconciliations=${prunedForeignTips}, tx_rejections=${prunedTxRejections}, address_history=${prunedAddressHistory}, state_queue_mutation_leases=${prunedLeases}, pending_block_finalizations=${prunedJournals ?? "skipped"}, mempool_tx_deltas=${prunedOrphanDeltas}`,
     );
   });
 

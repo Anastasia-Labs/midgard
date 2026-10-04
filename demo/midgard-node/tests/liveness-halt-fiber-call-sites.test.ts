@@ -81,6 +81,8 @@ vi.mock("../src/fibers/index.js", async (importOriginal) => {
     blockCommitmentFiber: (schedule: Schedule.Schedule<number>) =>
       scheduled(schedule),
     mergeFiber: (schedule: Schedule.Schedule<number>) => scheduled(schedule),
+    operatorWatchdogFiber: (schedule: Schedule.Schedule<number>) =>
+      scheduled(schedule),
   };
 });
 

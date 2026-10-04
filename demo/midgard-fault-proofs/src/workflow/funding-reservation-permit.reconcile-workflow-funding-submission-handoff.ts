@@ -248,7 +248,7 @@ export const parseStateSnapshot = (
   const snapshot = parseSnapshot(value);
   assertSnapshotInputBounds({
     snapshot,
-    maximumCollateralInputs: state.maximumCollateralInputs,
+    maximumCollateralInputs: state.reservationMaximumCollateralInputs,
   });
   return snapshot;
 };

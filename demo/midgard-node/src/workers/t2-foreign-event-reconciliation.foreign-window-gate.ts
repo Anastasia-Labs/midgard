@@ -6,7 +6,6 @@ import {
   ForeignTipReconciliationsDB,
   WithdrawalsDB,
 } from "../database/index.js";
-import { computeChallengeableCutoff } from "../database/retention-policy.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { ContractDeploymentIdentity, Database } from "../services/index.js";
 import {
@@ -35,7 +34,8 @@ export type Unresolved = {
 
 /**
  * Verdicts no window can lift. Each refuses every commit, as before the window
- * gate existed, and the prune keeps a row while it holds one.
+ * gate existed, and the pruner (`pruneBeyondRetention`) keeps a row while it
+ * holds one.
  * - `invalid`: the foreign header is malformed on its face, or a DA payload
  *   this node held for it failed verification against it. The replay keeps a
  *   stored `invalid` until a payload verifies against the header, so neither
@@ -217,69 +217,4 @@ export const undecodableUnresolved = (
         unconditional: storedVerdictRefusesUnconditionally(row.verdict),
       }),
     );
-  });
-
-/**
- * Deletes rows that can no longer affect any block: their foreign block ended
- * before the challengeability horizon, measured from both now and the
- * ingestion barrier, and they either belong to another deployment or hold a
- * verdict the window can lift with no event the build would carry remaining
- * inside their window. Run after the replay pass, so every replayable row of
- * the active deployment carries this pass's verdict.
- */
-export const pruneSettledForeignTipReconciliations = ({
-  now,
-  eventsIngestedThrough,
-}: {
-  readonly now: Date;
-  readonly eventsIngestedThrough: Date;
-}): Effect.Effect<
-  number,
-  DatabaseError,
-  Database | ContractDeploymentIdentity
-> =>
-  Effect.gen(function* () {
-    const scope = yield* activeEvidenceScope;
-    // Measured from the earlier of now and the ingestion barrier, so a row
-    // leaves only once its window has also been ingested for the whole
-    // challengeability horizon.
-    const cutoff = computeChallengeableCutoff(
-      new Date(Math.min(now.getTime(), eventsIngestedThrough.getTime())),
-    );
-    // Unbatched: a batch of kept rows could starve the settled ones behind
-    // it, and only rows whose window still holds an event, or whose verdict
-    // no window lifts, survive a pass.
-    const candidates =
-      yield* ForeignTipReconciliationsDB.retrievePruneCandidates(cutoff);
-    const inScope = (candidate: ForeignTipReconciliationsDB.PruneCandidate) =>
-      candidate.consensusProfileId === scope.consensusProfileId &&
-      (scope.manifestId === undefined ||
-        candidate.manifestId === scope.manifestId);
-    const windowed = candidates.filter(
-      (candidate) =>
-        inScope(candidate) &&
-        !storedVerdictRefusesUnconditionally(candidate.verdict),
-    );
-    const causes = yield* windowBlockingCauses(
-      windowed.map((candidate) => ({
-        foreignHeaderHash: candidate.foreignHeaderHash.toString("hex"),
-        blockStartTime: candidate.blockStartTime,
-        blockEndTime: candidate.blockEndTime,
-      })),
-      eventsIngestedThrough,
-    );
-    const settled = [
-      ...candidates.filter((candidate) => !inScope(candidate)),
-      ...windowed.filter((_, index) => causes[index] === undefined),
-    ].map((candidate) => candidate.foreignHeaderHash);
-    const deleted = yield* ForeignTipReconciliationsDB.deleteSettled({
-      foreignHeaderHashes: settled,
-      cutoff,
-    });
-    if (deleted > 0) {
-      yield* Effect.logInfo(
-        `🔹 Pruned ${deleted.toString()} settled foreign-tip reconciliation(s) past the challengeability horizon (cutoff=${cutoff.toISOString()}).`,
-      );
-    }
-    return deleted;
   });

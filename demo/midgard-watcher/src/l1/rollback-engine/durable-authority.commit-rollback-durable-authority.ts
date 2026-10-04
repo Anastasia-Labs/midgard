@@ -286,7 +286,11 @@ const frontierBlockNo = (state: WatcherFinalityState): bigint | null => {
  * retain their chain points even when their depth snapshots are compacted.
  *
  * The new input, every retained history entry's observations, and every chain
- * point another record still references are never retired.
+ * point another record still references are never retired. Below the
+ * horizon, while any observation of a block hash is kept, every other
+ * observation of that block stays with it, so provider agreement on that block
+ * remains checkable; above it, an observation retires with its compacted depth
+ * snapshot.
  */
 export const nextAuthenticatedEvidenceWithinRecoveryHorizon = (input: {
   readonly source: WatcherDurableStore;
@@ -362,9 +366,40 @@ export const nextAuthenticatedEvidenceWithinRecoveryHorizon = (input: {
         .flatMap(({ observationEvidenceDigests }) => observationEvidenceDigests)
         .filter((digest) => !kept.has(digest)),
     );
-    const retiredObservations = new Set(
+    const points = new Map(
+      appended.chainPoints.map((point) => [point.chainPointId, point]),
+    );
+    const belowHorizon = (chainPointId: string): boolean => {
+      const point = points.get(chainPointId);
+      return (
+        horizon !== null &&
+        point !== undefined &&
+        BigInt(point.blockNo) < horizon
+      );
+    };
+    // Above the horizon an observation retires with its compacted depth
+    // snapshot. Below it, an observation leaves only with every other
+    // observation of its block.
+    const retirable = new Set(
       appended.l1Observations.filter(({ observationId }) =>
         retired.has(observationId),
+      ),
+    );
+    const belowHorizonRetirable = new Set(
+      [...retirable].filter(({ chainPointId }) => belowHorizon(chainPointId)),
+    );
+    const blockHash = (chainPointId: string) =>
+      points.get(chainPointId)?.blockHash;
+    const retainedBlockHashes = new Set(
+      appended.l1Observations
+        .filter((observation) => !retirable.has(observation))
+        .map(({ chainPointId }) => blockHash(chainPointId)),
+    );
+    const retiredObservations = new Set(
+      [...retirable].filter(
+        (observation) =>
+          !belowHorizonRetirable.has(observation) ||
+          !retainedBlockHashes.has(blockHash(observation.chainPointId)),
       ),
     );
     const l1Observations = appended.l1Observations.filter(

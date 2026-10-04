@@ -62,7 +62,6 @@ describe("additive reservation policy admission", () => {
     "removed",
     "role",
     "key",
-    "protocol",
     "economics",
     "references",
     "runner",
@@ -99,14 +98,6 @@ describe("additive reservation policy admission", () => {
               ...(change === "key"
                 ? { fundingPaymentKeyHash: "dc".repeat(28) }
                 : {}),
-              ...(change === "protocol"
-                ? {
-                    protocolParameters: {
-                      ...input.protocolParameters,
-                      minFeeB: "155382",
-                    },
-                  }
-                : {}),
               ...(change === "economics"
                 ? {
                     economics: {
@@ -139,7 +130,7 @@ describe("additive reservation policy admission", () => {
             }),
         }),
       ).rejects.toThrow(
-        change === "runner" ? /runner/ : /additive contract roster extension/,
+        change === "runner" ? /runner/ : /funding reservation policy/,
       );
     },
   );

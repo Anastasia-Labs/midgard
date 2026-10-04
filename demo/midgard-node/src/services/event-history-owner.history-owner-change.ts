@@ -82,6 +82,13 @@ export type HistoryOwnerCoverage = Readonly<{
   point: LedgerSnapshotPoint;
   snapshotDigest: string;
   includedThroughMs: number;
+  /** The complete canonical prefix strictly before this retained rollback
+   * anchor can no longer be rewound automatically. Absent on model permits
+   * that do not establish retention authority. */
+  retention?: Readonly<{
+    anchor: LedgerSnapshotPoint;
+    includedThroughMs: number;
+  }>;
 }>;
 
 export const samePoint = (a: LedgerSnapshotPoint, b: LedgerSnapshotPoint) =>

@@ -17,19 +17,14 @@ import {
 
 test("confirmation policy is explicit, validated, and bound into profile identity", () => {
   const profiles = readProfiles();
-  assert.equal(
-    profiles["local-devnet-testing"].l1_finality.confirmation_depth,
-    10,
-  );
-  assert.equal(profiles["preprod-testing"].l1_finality.confirmation_depth, 10);
-  assert.equal(
-    profiles["preprod-emulator-testing"].l1_finality.confirmation_depth,
-    3,
-  );
+  const depth = (name) => profiles[name].l1_finality.confirmation_depth;
+  assert.equal(depth("local-devnet-testing"), 10);
+  assert.equal(depth("preprod-testing"), 10);
+  assert.equal(depth("preprod-emulator-testing"), 3);
   for (const name of ["mainnet", "preprod-public"]) {
-    assert.equal(profiles[name].l1_finality.confirmation_depth, 30);
+    assert.equal(depth(name), 30);
   }
-  const profile = structuredClone(profiles["preprod-testing"]);
+  const profile = structuredClone(profiles.mainnet);
   const originalDigest = profileDigest(profile);
   profile.l1_finality.confirmation_depth += 1;
   assert.notEqual(profileDigest(profile), originalDigest);

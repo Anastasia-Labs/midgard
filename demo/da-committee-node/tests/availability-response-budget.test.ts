@@ -74,6 +74,22 @@ const completeWaits = (totalMs: number): readonly BoundedWait[] =>
     source: "synthetic analyzer input",
   }));
 
+/**
+ * The operator node's foreign payload retry policy. This package does not
+ * depend on midgard-node, so its source is loaded by path, like the profile
+ * script; the policy module has no imports.
+ */
+const FOREIGN_PAYLOAD_RETRIEVER_SOURCE =
+  "demo/midgard-node/src/da/foreign-da-retry-policy.ts";
+const foreignPayloadRetriever = (await import(
+  new URL(
+    "../../midgard-node/src/da/foreign-da-retry-policy.ts",
+    import.meta.url,
+  ).href
+)) as Readonly<{
+  FOREIGN_DA_RETRY_POLICY: Readonly<{ cooldownMs: number }>;
+}>;
+
 /** Both live testing profiles and both public profiles. */
 const BUDGETED_PROFILES = [
   "local-devnet-testing",
@@ -96,14 +112,14 @@ const BOUNDED_WAITS: readonly BoundedWait[] = [
   {
     item: "A1",
     name: "foreign payload retrieval cooldown",
-    unresolved:
-      "B1-A1: the bounded payload-by-header client and its retry cooldown are not on this branch (no demo/midgard-node/src/da/foreign-payload-retriever.ts); import its cooldown here when it lands",
+    ms: foreignPayloadRetriever.FOREIGN_DA_RETRY_POLICY.cooldownMs,
+    source: FOREIGN_PAYLOAD_RETRIEVER_SOURCE,
   },
   {
     item: "A7",
     name: "one bounded rebuild after a protocol-parameter refresh",
     unresolved:
-      "B1-A7: the refresh-and-rebuild-once wrapper is not on this branch (no demo/midgard-watcher/src/funding/protocol-parameter-retry.ts); import its time bound here when it lands",
+      "B1-A7: buildWithWatcherProtocolParameterRefresh (demo/midgard-watcher/src/funding/protocol-parameter-retry.ts) allows one rebuild but puts no deadline on the parameter refresh or the rebuild; import its time bound here once it has one",
   },
   {
     item: "B6",
@@ -208,8 +224,12 @@ describe("availability response budget (B1)", () => {
       // #704 remains open until every wait is enforced and the total fits.
       expect(result.accepted, budgetTable(selected)).toBe(false);
       expect(result.totalMs).toBeUndefined();
-      expect(result.missing).toEqual(["A1", "A7", "B6"]);
-      expect(result.lowerBoundMs).toBe(baseTermMs(selected) + 60_000);
+      expect(result.missing).toEqual(["A7", "B6"]);
+      expect(result.lowerBoundMs).toBe(
+        baseTermMs(selected) +
+          60_000 +
+          foreignPayloadRetriever.FOREIGN_DA_RETRY_POLICY.cooldownMs,
+      );
     },
   );
 

@@ -48,6 +48,8 @@ const runSweeper = (options: {
   readonly sweeps: number;
   readonly sweepMs?: number;
   readonly fatalMs?: number;
+  /** Holds the L1 control-plane permit for the whole run. */
+  readonly holdControlPlane?: boolean;
 }) => {
   let reads = 0;
   let tick = 0;
@@ -65,11 +67,18 @@ const runSweeper = (options: {
     Effect.gen(function* () {
       const globals = yield* Globals;
       const reasons = () => Effect.runSync(Ref.get(globals.LIVENESS_REASONS));
+      if (options.holdControlPlane === true)
+        yield* globals.L1_CONTROL_PLANE.take(1);
       const exit = yield* Effect.exit(
         retentionSweeperFiber(Schedule.recurs(options.sweeps - 1), {
           fetchL1View: Effect.suspend(() => options.read(reads++, reasons)),
           nowMs,
-        }),
+        }).pipe(
+          Effect.timeoutFail({
+            duration: "2 seconds",
+            onTimeout: () => new Error("sweeper blocked"),
+          }),
+        ),
       );
       return { exit, reasons: reasons() };
     }).pipe(
@@ -197,6 +206,20 @@ describe("retention sweeper L1-view deadline", () => {
     },
     5_000,
   );
+});
+
+describe("retention sweeper tx-order watermark", () => {
+  it("never takes the L1 control plane, so a held permit does not delay a sweep", async () => {
+    const { exit, reads, sweeps } = await runSweeper({
+      clock: [START],
+      read: () => Effect.succeed(VIEW),
+      sweeps: 2,
+      holdControlPlane: true,
+    });
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(reads()).toBe(2);
+    expect(sweeps()).toBe(2);
+  });
 });
 
 describe("retention sweeper L1 read timeout", () => {

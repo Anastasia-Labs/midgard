@@ -179,6 +179,8 @@ export const unsafeCreateWorkflowFundingReservationPermitForTest = ({
     actuationPermit,
     port,
     maximumCollateralInputs: 0,
+    reservationMaximumCollateralInputs: 0,
+    requiresParameterRefresh: false,
     idleReleaseAuthorized: false,
     snapshot,
     resolvedInputs: new Map(),

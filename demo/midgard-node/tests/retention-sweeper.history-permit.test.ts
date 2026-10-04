@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   RETENTION_HISTORY_PRUNE_TIMEOUT_MS,
   withRetentionHistoryProducer,
-} from "../src/fibers/retention-sweeper.js";
+} from "../src/fibers/retention-sweeper.history-producer.js";
 import {
   HistoryProducer,
   UnownedHistoryFixture,

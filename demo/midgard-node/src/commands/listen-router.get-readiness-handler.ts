@@ -56,6 +56,7 @@ import { evaluateReadiness } from "./readiness.js";
  */
 export const getReadinessHandler = Effect.gen(function* () {
   const globals = yield* Globals;
+  const operatorMembership = yield* Ref.get(globals.OPERATOR_MEMBERSHIP);
   const nodeConfig = yield* NodeConfig;
   const validationPool = yield* ValidationPool;
   const validationPoolStats = yield* validationPool.stats;
@@ -200,6 +201,7 @@ export const getReadinessHandler = Effect.gen(function* () {
     maxUnresolvedBlockSubmissionAgeMs: nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS,
     dbHealthy: true,
     awaitingForeignTipReconciliations,
+    operatorMembership,
     validationPool: {
       configuredWorkers: validationPool.poolSize,
       liveWorkers: validationPoolStats.liveWorkers,
@@ -285,6 +287,10 @@ export const getReadinessHandler = Effect.gen(function* () {
     }
   }
 
+  // No membership check has authenticated yet (or none can): duties run, so
+  // this is reported but leaves the node ready. Removal is a liveness reason.
+  if (operatorMembership === "unknown")
+    details.push("operator_membership_unavailable");
   const providerReadiness = l1ProviderReadiness({
     healthy: providerProbe.healthy,
     lastSuccessAtMs: providerHealthAfter.lastSuccessAtMs,

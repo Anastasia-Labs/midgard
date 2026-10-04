@@ -1,13 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
-import {
-  DepositsDB,
-  ForcedTransactionsDB,
-  ForeignTipReconciliationsDB,
-  WithdrawalsDB,
-} from "../database/index.js";
+import { ForeignTipReconciliationsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { isHistoryProducerGateClosed } from "../services/event-history-producer.js";
 import { ContractDeploymentIdentity, Database } from "../services/index.js";
@@ -17,7 +11,6 @@ import {
   entryVerdict,
   entryWindow,
   firstBlocking,
-  pruneSettledForeignTipReconciliations,
   refusesUnconditionally,
   storedVerdictRefusesUnconditionally,
   undecodableUnresolved,
@@ -80,140 +73,125 @@ export const reconcileOverdueAwaitingEventsAgainstForeignTip = ({
     ),
   );
 
-const resolvedWindowHasAwaitingEvents = (
-  entry: ForeignTipReconciliationsDB.Entry,
-): Effect.Effect<boolean, unknown, Database> =>
+/**
+ * Every actionable retained window of the active deployment, page by page:
+ * awaiting rows, resolved rows whose window holds a late awaiting event, and
+ * every row that no longer decodes, whatever its status (see
+ * `retrieveActionableEvidencePage`).
+ */
+const forEachActionableEvidencePage = <E, R>(
+  visit: (
+    page: ForeignTipReconciliationsDB.ForeignTipEvidencePage,
+  ) => Effect.Effect<boolean, E, R>,
+): Effect.Effect<
+  void,
+  E | DatabaseError,
+  R | Database | ContractDeploymentIdentity
+> =>
   Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const startTime =
-      entry[ForeignTipReconciliationsDB.Columns.BLOCK_START_TIME];
-    const endTime = entry[ForeignTipReconciliationsDB.Columns.BLOCK_END_TIME];
-    const rows = yield* sql<{ readonly actionable: boolean }>`
-      SELECT (
-        EXISTS (
-          SELECT 1 FROM ${sql(DepositsDB.tableName)}
-          WHERE ${sql(DepositsDB.Columns.STATUS)} = ${DepositsDB.Status.Awaiting}
-            AND ${sql(DepositsDB.Columns.PROJECTED_HEADER_HASH)} IS NULL
-            AND ${sql(DepositsDB.Columns.INCLUSION_TIME)} > ${startTime}
-            AND ${sql(DepositsDB.Columns.INCLUSION_TIME)} <= ${endTime}
-        )
-        OR EXISTS (
-          SELECT 1 FROM ${sql(ForcedTransactionsDB.tableName)}
-          WHERE ${sql(ForcedTransactionsDB.Columns.STATUS)} = ${ForcedTransactionsDB.Status.Awaiting}
-            AND ${sql(ForcedTransactionsDB.Columns.PROJECTED_HEADER_HASH)} IS NULL
-            AND ${sql(ForcedTransactionsDB.Columns.INCLUSION_TIME)} > ${startTime}
-            AND ${sql(ForcedTransactionsDB.Columns.INCLUSION_TIME)} <= ${endTime}
-        )
-        OR EXISTS (
-          SELECT 1 FROM ${sql(WithdrawalsDB.tableName)}
-          WHERE ${sql(WithdrawalsDB.Columns.STATUS)} = ${WithdrawalsDB.Status.Awaiting}
-            AND ${sql(WithdrawalsDB.Columns.PROJECTED_HEADER_HASH)} IS NULL
-            AND ${sql(WithdrawalsDB.Columns.INCLUSION_TIME)} > ${startTime}
-            AND ${sql(WithdrawalsDB.Columns.INCLUSION_TIME)} <= ${endTime}
-        )
-      ) AS actionable
-    `;
-    return rows[0]?.actionable === true;
+    const scope = yield* activeEvidenceScope;
+    let cursor:
+      | ForeignTipReconciliationsDB.ForeignTipEvidencePageCursor
+      | undefined;
+    do {
+      const page =
+        yield* ForeignTipReconciliationsDB.retrieveActionableEvidencePage(
+          scope,
+          cursor,
+        );
+      if (!(yield* visit(page))) return;
+      cursor = page.next;
+    } while (cursor !== undefined);
   });
 
 /**
- * Replays every retained foreign window of the active deployment, including
- * resolved evidence, so indexer-late Awaiting rows remain recoverable after
- * restart or after the live state-queue tip advances beyond the foreign
- * header. Each row is replayed on its own: one that fails is logged and
- * treated as unverified rather than failing the commit. An unverified row
- * refuses the commit only while its own window can still collide with the
- * block (see `windowBlockingCauses` in the window-gate module), unless its
- * verdict is one no window lifts; it is never marked resolved without
- * verified DA. Settled rows are pruned after the pass.
+ * Replays every actionable retained foreign window of the active deployment,
+ * so indexer-late Awaiting rows remain recoverable after restart or after the
+ * live state-queue tip advances beyond the foreign header. Each row is
+ * replayed on its own: one that fails is logged and treated as unverified
+ * rather than failing the commit. An unverified row refuses the commit only
+ * while its own window can still collide with the block (see
+ * `windowBlockingCauses` in the window-gate module), unless its verdict is one
+ * no window lifts; it is never marked resolved without verified DA. Settled
+ * rows are pruned by the retention sweeper (`pruneBeyondRetention`).
  */
 export const reconcileOverdueAwaitingEventsAgainstRetainedForeignTips = ({
   eventsIngestedThrough,
-  now = new Date(),
 }: {
   readonly eventsIngestedThrough: Date;
-  readonly now?: Date;
 }): Effect.Effect<
   T2ForeignEventResolution,
   DatabaseError,
   Database | ContractDeploymentIdentity
 > =>
   Effect.gen(function* () {
-    const history = yield* ForeignTipReconciliationsDB.retrieveEvidenceHistory(
-      yield* activeEvidenceScope,
-    );
-    const unresolved: Unresolved[] = [
-      ...(yield* undecodableUnresolved(history.undecodable)),
-    ];
+    const unresolved: Unresolved[] = [];
     const combinedAbsent = {
       deposits: [] as string[],
       forcedTransactions: [] as string[],
       withdrawals: [] as string[],
     };
-    for (const entry of history.entries) {
-      if (
-        entry[ForeignTipReconciliationsDB.Columns.STATUS] ===
-          ForeignTipReconciliationsDB.Status.Resolved &&
-        !(yield* resolvedWindowHasAwaitingEvents(entry))
-      ) {
-        continue;
-      }
-      const window = entryWindow(entry);
-      const replayed = yield* Effect.either(
-        reconcileRetainedForeignTipEntry(entry).pipe(
-          Effect.catchAllDefect((defect) =>
-            Effect.fail(
-              new DatabaseError({
-                table: ForeignTipReconciliationsDB.tableName,
-                message: "Foreign-tip reconciliation replay died",
-                cause: String(defect),
-              }),
+    yield* forEachActionableEvidencePage((page) =>
+      Effect.gen(function* () {
+        unresolved.push(...(yield* undecodableUnresolved(page.undecodable)));
+        for (const entry of page.entries) {
+          const window = entryWindow(entry);
+          const replayed = yield* Effect.either(
+            reconcileRetainedForeignTipEntry(entry).pipe(
+              Effect.catchAllDefect((defect) =>
+                Effect.fail(
+                  new DatabaseError({
+                    table: ForeignTipReconciliationsDB.tableName,
+                    message: "Foreign-tip reconciliation replay died",
+                    cause: String(defect),
+                  }),
+                ),
+              ),
             ),
-          ),
-        ),
-      );
-      if (
-        replayed._tag === "Left" &&
-        isHistoryProducerGateClosed(replayed.left)
-      ) {
-        // A recovery the history owner is running, not a fault of this row.
-        return yield* Effect.fail(replayed.left);
-      }
-      if (replayed._tag === "Left") {
-        yield* Effect.logWarning(
-          `🔹 Foreign-tip reconciliation replay failed header_hash=${window.foreignHeaderHash}; its window still gates the commit: ${replayed.left.message}`,
-          replayed.left,
-        );
-        unresolved.push({
-          window,
-          resolution: awaiting(window, "replay_failed", replayed.left.message),
-          unconditional: storedVerdictRefusesUnconditionally(
-            entryVerdict(entry),
-          ),
-        });
-      } else if (replayed.right.type === "AwaitingForeignDa") {
-        unresolved.push({
-          window,
-          resolution: replayed.right,
-          unconditional: refusesUnconditionally(replayed.right.reason),
-        });
-      } else {
-        combinedAbsent.deposits.push(...replayed.right.absent.deposits);
-        combinedAbsent.forcedTransactions.push(
-          ...replayed.right.absent.forcedTransactions,
-        );
-        combinedAbsent.withdrawals.push(...replayed.right.absent.withdrawals);
-      }
-    }
-    const blocking = yield* firstBlocking(unresolved, eventsIngestedThrough);
-    const pruned = yield* Effect.either(
-      pruneSettledForeignTipReconciliations({ now, eventsIngestedThrough }),
+          );
+          if (
+            replayed._tag === "Left" &&
+            isHistoryProducerGateClosed(replayed.left)
+          ) {
+            // A recovery the history owner is running, not a fault of this row.
+            return yield* Effect.fail(replayed.left);
+          }
+          if (replayed._tag === "Left") {
+            yield* Effect.logWarning(
+              `🔹 Foreign-tip reconciliation replay failed header_hash=${window.foreignHeaderHash}; its window still gates the commit: ${replayed.left.message}`,
+              replayed.left,
+            );
+            unresolved.push({
+              window,
+              resolution: awaiting(
+                window,
+                "replay_failed",
+                replayed.left.message,
+              ),
+              unconditional: storedVerdictRefusesUnconditionally(
+                entryVerdict(entry),
+              ),
+            });
+          } else if (replayed.right.type === "AwaitingForeignDa") {
+            unresolved.push({
+              window,
+              resolution: replayed.right,
+              unconditional: refusesUnconditionally(replayed.right.reason),
+            });
+          } else {
+            combinedAbsent.deposits.push(...replayed.right.absent.deposits);
+            combinedAbsent.forcedTransactions.push(
+              ...replayed.right.absent.forcedTransactions,
+            );
+            combinedAbsent.withdrawals.push(
+              ...replayed.right.absent.withdrawals,
+            );
+          }
+        }
+        return true;
+      }),
     );
-    if (pruned._tag === "Left") {
-      yield* Effect.logWarning(
-        `🔹 Foreign-tip reconciliation prune failed; retrying next pass: ${pruned.left.message}`,
-      );
-    }
+    const blocking = yield* firstBlocking(unresolved, eventsIngestedThrough);
     if (blocking !== undefined) return blocking;
     if (unresolved.length > 0) {
       yield* Effect.logInfo(
@@ -261,39 +239,43 @@ export const assessRetainedForeignTipWindows = ({
   Database | ContractDeploymentIdentity
 > =>
   Effect.gen(function* () {
-    const history = yield* ForeignTipReconciliationsDB.retrieveEvidenceHistory(
-      yield* activeEvidenceScope,
-    );
-    const unresolved: Unresolved[] = [
-      ...(yield* undecodableUnresolved(history.undecodable)),
-    ];
-    for (const entry of history.entries) {
-      const window = entryWindow(entry);
-      if (
-        entry[ForeignTipReconciliationsDB.Columns.STATUS] ===
-        ForeignTipReconciliationsDB.Status.Awaiting
-      ) {
-        unresolved.push({
-          window,
-          resolution: awaiting(
+    const unresolved: Unresolved[] = [];
+    let lateEvent: T2ForeignEventResolution | undefined;
+    yield* forEachActionableEvidencePage((page) =>
+      Effect.gen(function* () {
+        unresolved.push(...(yield* undecodableUnresolved(page.undecodable)));
+        for (const entry of page.entries) {
+          const window = entryWindow(entry);
+          if (
+            entry[ForeignTipReconciliationsDB.Columns.STATUS] !==
+            ForeignTipReconciliationsDB.Status.Awaiting
+          ) {
+            // An actionable resolved row holds a late event.
+            lateEvent = awaiting(
+              window,
+              "replay_required",
+              "late_event_in_resolved_window",
+            );
+            return false;
+          }
+          unresolved.push({
             window,
-            "replay_required",
-            entry[ForeignTipReconciliationsDB.Columns.BLOCKING_REASON] ??
-              "awaiting",
-          ),
-          unconditional: storedVerdictRefusesUnconditionally(
-            entryVerdict(entry),
-          ),
-        });
-      } else if (yield* resolvedWindowHasAwaitingEvents(entry)) {
-        return awaiting(
-          window,
-          "replay_required",
-          "late_event_in_resolved_window",
-        );
-      }
-    }
+            resolution: awaiting(
+              window,
+              "replay_required",
+              entry[ForeignTipReconciliationsDB.Columns.BLOCKING_REASON] ??
+                "awaiting",
+            ),
+            unconditional: storedVerdictRefusesUnconditionally(
+              entryVerdict(entry),
+            ),
+          });
+        }
+        return true;
+      }),
+    );
     return (
+      lateEvent ??
       (yield* firstBlocking(unresolved, eventsIngestedThrough)) ??
       ({ type: "Ready", absent: emptyIds() } as const)
     );

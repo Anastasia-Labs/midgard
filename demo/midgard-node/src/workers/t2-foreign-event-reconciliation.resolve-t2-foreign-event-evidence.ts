@@ -63,7 +63,7 @@ const countsMatchHeader = (
   );
 };
 
-const verifyForeignPayload = ({
+export const verifyForeignPayload = ({
   foreignHeaderHash,
   header,
   payload,

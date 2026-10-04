@@ -248,6 +248,7 @@ export const withSweepServices = <A, E, R>(
           manifest: deploymentManifest,
         }),
       ),
+      // No history owner: foreign-tip retention skips, as before startup.
       Effect.provide(Globals.Default),
     );
   });

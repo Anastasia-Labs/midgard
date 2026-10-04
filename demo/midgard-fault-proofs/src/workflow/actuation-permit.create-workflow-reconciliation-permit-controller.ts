@@ -215,7 +215,6 @@ export const createWorkflowReconciliationPermitController = (input: {
     first === undefined ||
     prepared?.event.kind !== "prepared" ||
     !input.entries.some(({ event }) => event.kind === "submission_intent") ||
-    input.entries.some(({ event }) => event.kind === "completed") ||
     input.decision.decision !== "fault_detected" ||
     journalJsonDigest(normalizeJournalJson(unsealed)) !== decisionDigest ||
     input.decision.deploymentFingerprint !== input.deploymentFingerprint ||

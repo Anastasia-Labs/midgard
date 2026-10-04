@@ -1,0 +1,416 @@
+{
+  "date": "2026-10-01",
+  "base": "3027be19cb3bc740f83af0e155e34ab38c7cf894",
+  "overallStatus": "failed",
+  "note": "Combined observed check statuses; broad package failures remain failed despite passing focused diagnostics. This is not a passing preflight or live acceptance record.",
+  "firstRunLog": "/tmp/midgard-root-preflight.log",
+  "correctedRunResult": "/tmp/midgard-root-preflight-rerun.json",
+  "checks": [
+    {
+      "id": "merge-conflicts",
+      "status": "passed",
+      "reason": "merges cleanly into HEAD (0 commit(s) behind HEAD)",
+      "command": "git merge-tree --write-tree --name-only --no-messages HEAD HEAD",
+      "durationMs": 10
+    },
+    {
+      "id": "required-checks-doc",
+      "status": "passed",
+      "reason": "",
+      "command": "node scripts/preflight.mjs --check-docs",
+      "durationMs": 121
+    },
+    {
+      "id": "repo-tooling-tests",
+      "status": "passed",
+      "reason": "",
+      "command": "node --test 'scripts/**/*.test.mjs'",
+      "durationMs": 6328
+    },
+    {
+      "id": "demo-lint",
+      "status": "passed",
+      "reason": "Final-source parent follow-up exited 0",
+      "command": "pnpm --dir demo run lint",
+      "durationMs": 294969,
+      "evidenceLog": "/tmp/midgard-root-final-lint.log"
+    },
+    {
+      "id": "demo-script-tests",
+      "status": "passed",
+      "reason": "",
+      "command": "node --test 'demo/scripts/lib/*.test.mjs'",
+      "durationMs": 666
+    },
+    {
+      "id": "aiken-script-tests",
+      "status": "passed",
+      "reason": "",
+      "command": "node --test 'onchain/aiken/scripts/*.test.mjs'",
+      "durationMs": 270132
+    },
+    {
+      "id": "workflow-lint",
+      "status": "passed",
+      "reason": "",
+      "command": "node scripts/ci/lint-workflows.mjs",
+      "durationMs": 110
+    },
+    {
+      "id": "workflow-triggers",
+      "status": "passed",
+      "reason": "",
+      "command": "node --test scripts/ci/workflow-triggers.test.mjs",
+      "durationMs": 323
+    },
+    {
+      "id": "agent-doc-links",
+      "status": "passed",
+      "reason": "",
+      "command": "node scripts/agents/check-doc-links.mjs",
+      "durationMs": 250
+    },
+    {
+      "id": "agent-enforcement-tags",
+      "status": "passed",
+      "reason": "",
+      "command": "node scripts/agents/check-enforcement-tags.mjs",
+      "durationMs": 7743
+    },
+    {
+      "id": "agent-config",
+      "status": "passed",
+      "reason": "",
+      "command": "node scripts/agents/check-agent-config.mjs",
+      "durationMs": 76
+    },
+    {
+      "id": "e2e-runbook",
+      "status": "passed",
+      "reason": "",
+      "command": "node .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs",
+      "durationMs": 131
+    },
+    {
+      "id": "aiken-fmt",
+      "status": "passed",
+      "reason": "",
+      "command": "node scripts/preflight/aiken-fmt-check.mjs --all",
+      "durationMs": 29987
+    },
+    {
+      "id": "demo-format",
+      "status": "passed",
+      "reason": "Final-source parent follow-up exited 0",
+      "command": "pnpm --dir demo run format-check",
+      "durationMs": 42325,
+      "fix": "(cd demo && node_modules/.bin/prettier --write <files>)",
+      "evidenceLog": "/tmp/midgard-root-final-format.log"
+    },
+    {
+      "id": "demo-build",
+      "status": "passed",
+      "reason": "Final-source parent follow-up exited 0",
+      "command": "pnpm --dir demo -r run --if-present build",
+      "durationMs": 143591,
+      "evidenceLog": "/tmp/midgard-root-final-build.log"
+    },
+    {
+      "id": "demo-typecheck",
+      "status": "passed",
+      "reason": "Final-source parent follow-up exited 0",
+      "command": "pnpm --dir demo -r run --if-present typecheck",
+      "durationMs": 105013,
+      "evidenceLog": "/tmp/midgard-root-final-typecheck.log"
+    },
+    {
+      "id": "golden:native-compact",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/lucid-midgard run fixtures:native-compact:check",
+      "durationMs": 359
+    },
+    {
+      "id": "docs:consensus-profile-v1",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/midgard-core run docs:consensus-profile-v1:check",
+      "durationMs": 9693
+    },
+    {
+      "id": "golden:native-tx-field-access-v1",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/midgard-core run fixtures:native-tx-field-access-v1:check",
+      "durationMs": 8480
+    },
+    {
+      "id": "golden:native-tx-field-items-v1",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/midgard-core run fixtures:native-tx-field-items-v1:check",
+      "durationMs": 8982
+    },
+    {
+      "id": "golden:native-tx-vector-v1",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/midgard-core run fixtures:native-tx-vector-v1:check",
+      "durationMs": 6868
+    },
+    {
+      "id": "golden:ordered-collection-boundary-aiken",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/midgard-validation run fixtures:ordered-collection-boundary-aiken:check",
+      "durationMs": 41605
+    },
+    {
+      "id": "golden:validation-auxiliary-witness-v1",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/midgard-validation run fixtures:validation-auxiliary-witness-v1:check",
+      "durationMs": 16610
+    },
+    {
+      "id": "golden:nested-boundary-aiken",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/midgard-validation run fixtures:nested-boundary-aiken:check",
+      "durationMs": 48562
+    },
+    {
+      "id": "golden:cek-core-step-v1",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/midgard-validation run fixtures:cek-core-step-v1:check",
+      "durationMs": 17356
+    },
+    {
+      "id": "golden:transition-trace-abi",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/midgard-node run fixtures:transition-trace-abi:check",
+      "durationMs": 339
+    },
+    {
+      "id": "golden:transaction-root-v1",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/midgard-node run fixtures:transaction-root-v1:check",
+      "durationMs": 93923
+    },
+    {
+      "id": "golden:native-tx-carriage-wire-v1",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/midgard-sdk run fixtures:native-tx-carriage-wire-v1:check",
+      "durationMs": 17437
+    },
+    {
+      "id": "golden:canonical-decodability-v1",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/midgard-sdk run fixtures:canonical-decodability-v1:check",
+      "durationMs": 18365
+    },
+    {
+      "id": "golden:committed-field-shape-v1",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/midgard-sdk run fixtures:committed-field-shape-v1:check",
+      "durationMs": 20511
+    },
+    {
+      "id": "golden:da-commitment-v1",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/midgard-sdk run fixtures:da-commitment-v1:check",
+      "durationMs": 492
+    },
+    {
+      "id": "golden:da-bond-pool-v1",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/midgard-sdk run fixtures:da-bond-pool-v1:check",
+      "durationMs": 484
+    },
+    {
+      "id": "golden:da-attestation-capacity-v1",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir demo/midgard-sdk run fixtures:da-attestation-capacity-v1:check",
+      "durationMs": 360
+    },
+    {
+      "id": "aiken-focused",
+      "status": "passed",
+      "reason": "",
+      "command": "node onchain/aiken/scripts/pinned-compiler.mjs && node onchain/aiken/scripts/guard-focused-selector.mjs --all",
+      "durationMs": 602360
+    },
+    {
+      "id": "aiken-blueprint",
+      "status": "passed",
+      "reason": "",
+      "command": "node scripts/preflight/aiken-build-check.mjs",
+      "durationMs": 43563
+    },
+    {
+      "id": "docs-site-links",
+      "status": "passed",
+      "reason": "",
+      "command": "node docs-site/scripts/check-docs-links.mjs",
+      "durationMs": 1006
+    },
+    {
+      "id": "docs-site-build",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir docs-site run build",
+      "durationMs": 57062
+    },
+    {
+      "id": "docs-site-typecheck",
+      "status": "passed",
+      "reason": "",
+      "command": "pnpm --dir docs-site run types:check",
+      "durationMs": 29390
+    },
+    {
+      "id": "spec-build",
+      "status": "passed",
+      "reason": "",
+      "command": "make spec",
+      "durationMs": 8921
+    },
+    {
+      "id": "devnet-assets",
+      "status": "passed",
+      "reason": "",
+      "command": "node --test demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",
+      "durationMs": 1180
+    },
+    {
+      "id": "exec-ledger:canonical-decodability",
+      "status": "passed",
+      "reason": "",
+      "command": "node onchain/aiken/scripts/verify-canonical-decodability-exec-ledger-v1.mjs",
+      "durationMs": 11423
+    },
+    {
+      "id": "exec-ledger:carriage",
+      "status": "passed",
+      "reason": "",
+      "command": "node onchain/aiken/scripts/verify-carriage-exec-ledger-v1.mjs",
+      "durationMs": 20674
+    },
+    {
+      "id": "exec-ledger:committed-field-shape",
+      "status": "passed",
+      "reason": "",
+      "command": "node onchain/aiken/scripts/verify-committed-field-shape-exec-ledger-v1.mjs",
+      "durationMs": 10740
+    },
+    {
+      "id": "exec-ledger:native-script-decoding-engine",
+      "status": "passed",
+      "reason": "",
+      "command": "node onchain/aiken/scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs",
+      "durationMs": 82877
+    },
+    {
+      "id": "exec-ledger:native-script-scan",
+      "status": "passed",
+      "reason": "",
+      "command": "node onchain/aiken/scripts/verify-native-script-scan-exec-ledger-v1.mjs",
+      "durationMs": 34454
+    },
+    {
+      "id": "exec-ledger:q1x",
+      "status": "passed",
+      "reason": "",
+      "command": "node onchain/aiken/scripts/verify-q1x-exec-ledger-v1.mjs",
+      "durationMs": 11568
+    },
+    {
+      "id": "exec-ledger:q21",
+      "status": "passed",
+      "reason": "",
+      "command": "node onchain/aiken/scripts/verify-q21-exec-ledger-v1.mjs",
+      "durationMs": 12155
+    },
+    {
+      "id": "exec-ledger:q31",
+      "status": "passed",
+      "reason": "",
+      "command": "node onchain/aiken/scripts/verify-q31-exec-ledger-v1.mjs",
+      "durationMs": 21344
+    },
+    {
+      "id": "exec-ledger:transition-trace-descriptor",
+      "status": "passed",
+      "reason": "",
+      "command": "MIDGARD_AIKEN_ENV=testnet node onchain/aiken/scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs",
+      "durationMs": 45956
+    },
+    {
+      "id": "exec-ledger:tx-order-mint",
+      "status": "passed",
+      "reason": "",
+      "command": "node onchain/aiken/scripts/verify-tx-order-mint-exec-ledger-v1.mjs",
+      "durationMs": 11277
+    },
+    {
+      "id": "demo-test",
+      "status": "failed",
+      "reason": "pnpm --dir demo --filter @al-ft/lucid-midgard --filter @al-ft/midgard-core --filter @al-ft/midgard-fault-proofs --filter @al-ft/midgard-validation --filter @al-ft/midgard-sdk --filter midgard-watcher --filter da-committee-node --filter @al-ft/midgard-test-support --workspace-concurrency=1 run --if-present test exited 1",
+      "command": "pnpm --dir demo --filter @al-ft/lucid-midgard --filter @al-ft/midgard-core --filter @al-ft/midgard-fault-proofs --filter @al-ft/midgard-validation --filter @al-ft/midgard-sdk --filter midgard-watcher --filter da-committee-node --filter @al-ft/midgard-test-support --workspace-concurrency=1 run --if-present test",
+      "durationMs": 2403523
+    },
+    {
+      "id": "demo-test-db",
+      "status": "failed",
+      "reason": "pnpm --dir demo --filter midgard-node --filter midgard-node-tools --workspace-concurrency=1 run --if-present test exited 1",
+      "command": "pnpm --dir demo --filter midgard-node --filter midgard-node-tools --workspace-concurrency=1 run --if-present test",
+      "durationMs": 2149951
+    }
+  ],
+  "followUpChecks": [
+    {
+      "name": "tooling full package after B1 expectation correction",
+      "command": "pnpm --dir demo/midgard-node-tools run test",
+      "status": "passed",
+      "exitCode": 0,
+      "vitestFiles": 26,
+      "vitestPassed": 301,
+      "vitestSkipped": 0,
+      "scriptPassed": 30,
+      "evidenceLog": "/tmp/midgard-root-final-tools-green.log"
+    },
+    {
+      "name": "final funding and authority regressions",
+      "status": "passed",
+      "files": 14,
+      "testsPassed": 125,
+      "skipped": 0,
+      "evidenceLog": "/tmp/midgard-root-final-funding.log"
+    },
+    {
+      "name": "final funding policy and completed permit regressions",
+      "status": "passed",
+      "files": 3,
+      "testsPassed": 98,
+      "skipped": 0,
+      "evidenceLog": "/tmp/midgard-root-final-policy.log"
+    },
+    {
+      "name": "final archive application and supervisor regressions",
+      "status": "passed",
+      "files": 12,
+      "testsPassed": 91,
+      "skipped": 0,
+      "evidenceLog": "/tmp/midgard-root-final-archive.log"
+    }
+  ]
+}

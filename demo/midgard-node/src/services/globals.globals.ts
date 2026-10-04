@@ -1,6 +1,7 @@
 import { TxHash } from "@lucid-evolution/lucid";
-import { Effect, Queue, Ref } from "effect";
+import { Deferred, Effect, Queue, Ref } from "effect";
 
+import type { OperatorMembershipState } from "../fibers/operator-membership.js";
 import {
   idleSpeculativeCommitState,
   type SpeculativeCommitState,
@@ -45,6 +46,12 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     // Needed for development to prevent other actions triggering while spending
     // all UTxOs at state queue.
     const RESET_IN_PROGRESS = yield* Ref.make<boolean>(false);
+    const OPERATOR_MEMBERSHIP_MISSING_HEIGHT = yield* Ref.make<
+      number | undefined
+    >(undefined);
+    const OPERATOR_MEMBERSHIP =
+      yield* Ref.make<OperatorMembershipState>("unknown");
+    const OPERATOR_REMOVAL_SHUTDOWN = yield* Deferred.make<void>();
 
     // Prevents overlapping commitment workers (periodic + manual trigger).
     const COMMIT_WORKER_ACTIVE = yield* Ref.make<boolean>(false);
@@ -96,6 +103,14 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
         txOrderMs: 0,
         refreshedAtMs: 0,
       });
+
+    // The instant through which every forced transaction is known ingested,
+    // advanced only by a successful tx-order reconcile on this thread (see
+    // `reconcileVisibleTxOrderUTxOs`); undefined until the first one.
+    // Foreign-tip retention reads it instead of reconciling itself.
+    const TX_ORDERS_INGESTED_THROUGH_MS = yield* Ref.make<number | undefined>(
+      undefined,
+    );
 
     // The state queue UTxO confirmed by the confirmation worker, unused for
     // block commitment.
@@ -227,6 +242,9 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       BLOCKS_IN_QUEUE,
       LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
       RESET_IN_PROGRESS,
+      OPERATOR_MEMBERSHIP,
+      OPERATOR_MEMBERSHIP_MISSING_HEIGHT,
+      OPERATOR_REMOVAL_SHUTDOWN,
       COMMIT_WORKER_ACTIVE,
       COMMIT_DA_FRAME_PRESSURE,
       COMMIT_PIPELINE_PHASE,
@@ -239,6 +257,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       SPECULATIVE_BUILD_WAKE_QUEUE,
       COMMIT_SUBMIT_WAKE_QUEUE,
       USER_EVENT_BARRIER_WATERMARKS,
+      TX_ORDERS_INGESTED_THROUGH_MS,
       AVAILABLE_CONFIRMED_BLOCK,
       AVAILABLE_LOCAL_FINALIZATION_BLOCK,
       PROCESSED_UNSUBMITTED_TXS_COUNT,

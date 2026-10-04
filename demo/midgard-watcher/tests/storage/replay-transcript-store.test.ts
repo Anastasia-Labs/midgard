@@ -2,8 +2,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
+import type { CorrectionLockDatum } from "@al-ft/midgard-sdk";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { unsafeAdmitWatcherReplayTranscriptCompletionForTest } from "../../src/storage/replay-transcript-completion.js";
 import {
   createWatcherSqliteReplayTranscriptStore,
   type WatcherReplayTranscriptStorageLimits,
@@ -48,7 +51,6 @@ afterEach(async () => {
       .map((path) => rm(path, { recursive: true, force: true })),
   );
 });
-
 const open = async (path?: string) => {
   if (path === undefined) {
     const directory = await mkdtemp("/var/tmp/midgard-replay-transcripts-");
@@ -59,8 +61,212 @@ const open = async (path?: string) => {
   resources.add(backend);
   return { backend, path };
 };
-
 describe("durable authenticated replay transcript archive", () => {
+  it("reclaims a whole completed identity after restart and both horizons while retaining every pending dependency", async () => {
+    const { createInput, retentionWindow, retirementObservation } =
+      await makeWatcherTranscriptArchiveFixture();
+    const { backend, path } = await open();
+    const database = new DatabaseSync(path);
+    resources.add(database);
+    const store = createWatcherSqliteReplayTranscriptStore(database, {
+      maximumRows: 2,
+    });
+    const operations = ["a1".repeat(32), "a2".repeat(32)];
+    await store.compareAndSwap({
+      expectedTranscriptDigest: null,
+      transcript: first,
+      lifecycle: {
+        header: createInput.header,
+        operationDigest: operations[0]!,
+        retentionWindow,
+        deploymentIdentity: createInput.deploymentIdentity,
+      },
+    });
+    await store.compareAndSwap({
+      expectedTranscriptDigest: first.transcriptDigest,
+      transcript: second,
+      lifecycle: {
+        header: createInput.header,
+        operationDigest: operations[1]!,
+        retentionWindow,
+        deploymentIdentity: createInput.deploymentIdentity,
+      },
+    });
+    const completedAtSlot = "4300";
+    const completion = (operationDigest: string) =>
+      unsafeAdmitWatcherReplayTranscriptCompletionForTest({
+        deploymentFingerprint: first.deploymentFingerprint,
+        headerHash: first.headerHash,
+        operationDigest,
+        completedAtSlot,
+      });
+    const lateSlot = (
+      BigInt(completedAtSlot) +
+      BigInt(MIDGARD_RETENTION_WINDOW.retentionDays * 86400) +
+      1n
+    ).toString();
+    let sweepBlockNo = "12000";
+    const sweep = (
+      slot = lateSlot,
+      live = false,
+      lock: CorrectionLockDatum | null = "Idle",
+    ) => ({
+      observation: retirementObservation({
+        slot,
+        live,
+        lock,
+        blockNo: sweepBlockNo,
+      }),
+      network: "Preprod" as const,
+    });
+    expect(await store.retireExpired(sweep())).toBe(0);
+    await store.completeOperation(completion(operations[0]!));
+    backend.close();
+    resources.delete(backend);
+    database.close();
+    resources.delete(database);
+    const reopened = new DatabaseSync(path);
+    resources.add(reopened);
+    const restarted = createWatcherSqliteReplayTranscriptStore(reopened, {
+      maximumRows: 2,
+    });
+    expect(await restarted.retireExpired(sweep())).toBe(0);
+    expect((await restarted.read(first))?.chainLength).toBe(2);
+    await expect(
+      restarted.compareAndSwap({
+        expectedTranscriptDigest: second.transcriptDigest,
+        transcript: third,
+      }),
+    ).rejects.toThrow("storage limits");
+    await restarted.completeOperation(completion(operations[1]!));
+    expect(await restarted.retireExpired(sweep(completedAtSlot))).toBe(0);
+    expect(await restarted.retireExpired(sweep(lateSlot, true))).toBe(0);
+    expect(
+      await restarted.retireExpired(
+        sweep(lateSlot, false, {
+          Locked: {
+            target_header_hash: first.headerHash,
+            correction_identity: {
+              AvailabilityChallenge: {
+                challenge_asset_name: `44414348${"c7".repeat(28)}`,
+              },
+            },
+          },
+        }),
+      ),
+    ).toBe(0);
+    expect(await restarted.retireExpired(sweep(lateSlot, false, null))).toBe(0);
+    expect(await restarted.retireExpired(sweep())).toBe(0);
+    sweepBlockNo = "14161";
+    await expect(
+      restarted.completeOperation({ ...completion(operations[0]!) }),
+    ).rejects.toThrow("not admitted");
+    const pin = reopened
+      .prepare(
+        "SELECT * FROM watcher_replay_transcript_operation WHERE operation_digest = ?",
+      )
+      .get(operations[0]!) as {
+      identity: string;
+      operation_digest: string;
+      end_time: string;
+      retention_days: number;
+      network: string;
+      completed_slot: string;
+      checksum: string;
+      classification_complete: number;
+      proof_started: number;
+    };
+    reopened
+      .prepare(
+        "DELETE FROM watcher_replay_transcript_operation WHERE operation_digest = ?",
+      )
+      .run(operations[0]!);
+    await expect(restarted.retireExpired(sweep())).rejects.toThrow(
+      "incomplete or corrupt",
+    );
+    expect((await restarted.read(first))?.chainLength).toBe(2);
+    reopened
+      .prepare(
+        "INSERT INTO watcher_replay_transcript_operation VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        pin.identity,
+        pin.operation_digest,
+        pin.end_time,
+        pin.retention_days,
+        pin.network,
+        pin.completed_slot,
+        pin.checksum,
+        pin.classification_complete,
+        pin.proof_started,
+      );
+    reopened
+      .prepare(
+        "UPDATE watcher_replay_transcript_operation SET completed_slot = '0' WHERE operation_digest = ?",
+      )
+      .run(operations[0]!);
+    await expect(restarted.retireExpired(sweep())).rejects.toThrow(
+      "lifecycle is corrupt",
+    );
+    reopened
+      .prepare(
+        "UPDATE watcher_replay_transcript_operation SET completed_slot = ? WHERE operation_digest = ?",
+      )
+      .run(pin.completed_slot, operations[0]!);
+    reopened.exec(
+      "CREATE TRIGGER refuse_retirement BEFORE DELETE ON watcher_replay_transcript_head BEGIN SELECT RAISE(ABORT, 'retirement failure'); END;",
+    );
+    await expect(restarted.retireExpired(sweep())).rejects.toThrow(
+      "retirement failure",
+    );
+    expect((await restarted.read(first))?.chainLength).toBe(2);
+    expect(
+      reopened
+        .prepare(
+          "SELECT count(*) AS count FROM watcher_replay_transcript_operation",
+        )
+        .get(),
+    ).toMatchObject({ count: 2 });
+    reopened.exec("DROP TRIGGER refuse_retirement");
+    const allocatedPages = reopened.prepare("PRAGMA page_count").get() as {
+      page_count: number;
+    };
+    expect(await restarted.retireExpired(sweep())).toBe(1);
+    expect(await restarted.read(first)).toBeNull();
+    expect(
+      reopened
+        .prepare("SELECT count(*) AS count FROM watcher_replay_transcript")
+        .get(),
+    ).toMatchObject({ count: 0 });
+    expect(
+      await restarted.compareAndSwap({
+        expectedTranscriptDigest: null,
+        transcript: third,
+      }),
+    ).toBe(true);
+    expect(
+      (reopened.prepare("PRAGMA page_count").get() as { page_count: number })
+        .page_count,
+    ).toBeLessThanOrEqual(allocatedPages.page_count);
+    expect(await restarted.retireExpired(sweep())).toBe(0);
+    const legacyOperation = "a3".repeat(32);
+    expect(
+      await restarted.compareAndSwap({
+        expectedTranscriptDigest: third.transcriptDigest,
+        transcript: third,
+        lifecycle: {
+          header: createInput.header,
+          deploymentIdentity: createInput.deploymentIdentity,
+          retentionWindow,
+          operationDigest: legacyOperation,
+        },
+      }),
+    ).toBe(true);
+    await restarted.completeOperation(completion(legacyOperation));
+    expect(await restarted.retireExpired(sweep())).toBe(0);
+    expect((await restarted.read(third))?.chainLength).toBe(1);
+  });
+
   it("archives admitted fresh replays across restart while keeping the original bytes and link", async () => {
     const { backend, path } = await open();
     expect(await backend.replayTranscripts.read(first)).toBeNull();

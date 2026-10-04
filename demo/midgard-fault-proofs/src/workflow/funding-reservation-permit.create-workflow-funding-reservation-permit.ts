@@ -194,6 +194,7 @@ export const createWorkflowFundingReservationPermit = async ({
   runner,
   policy,
   reservationPolicy = policy,
+  capacityPolicy = reservationPolicy,
   actuationPermit,
   rollbackGeneration,
   port,
@@ -201,8 +202,10 @@ export const createWorkflowFundingReservationPermit = async ({
   readonly category: FraudProofCatalogueCategoryName;
   readonly runner: WorkflowAdapterRunner;
   readonly policy: WorkflowRuntimeFundingPolicy;
-  /** Existing leases retain their original identity under an additive roster correction. */
+  /** Existing leases retain their original identity through live parameter updates and additive roster corrections. */
   readonly reservationPolicy?: WorkflowRuntimeFundingPolicy;
+  /** Authenticated historical capacity may admit recovery snapshots, never fresh spending. */
+  readonly capacityPolicy?: WorkflowRuntimeFundingPolicy;
   readonly actuationPermit: WorkflowActuationPermit;
   readonly rollbackGeneration: string;
   readonly port: WorkflowFundingReservationPort;
@@ -220,29 +223,44 @@ export const createWorkflowFundingReservationPermit = async ({
     category,
   });
   const reservedFunding = readWorkflowRuntimeFundingPolicy(reservationPolicy);
-  if (
+  assertWorkflowRuntimeFundingPolicyRunner({
+    policy: capacityPolicy,
+    runner,
+    category,
+  });
+  const capacityFunding = readWorkflowRuntimeFundingPolicy(capacityPolicy);
+  // Only L1 parameters and their derived bounds may change. The admitted
+  // original policy still pins every durable lease and signed journal intent.
+  const stableIdentity = (value: typeof funding) =>
     computeDeploymentManifestJsonDigest({
-      ...funding,
+      ...value,
       contracts: [],
       policyDigest: "",
-    }) !==
-      computeDeploymentManifestJsonDigest({
-        ...reservedFunding,
-        contracts: [],
-        policyDigest: "",
-      }) ||
-    reservedFunding.contracts.some(
-      (prior) =>
-        !funding.contracts.some(
-          (current) =>
-            current.address === prior.address &&
-            current.scriptHash === prior.scriptHash &&
-            current.role === prior.role,
-        ),
+      protocolParameters: null,
+      protocolParametersDigest: "",
+      maximumFeeLovelace: "",
+      maximumCollateralLovelace: "",
+      maximumSlashCollateralLovelace: "",
+      maximumCollateralInputs: "",
+    });
+  if (
+    [reservedFunding, capacityFunding].some(
+      (prior) => stableIdentity(funding) !== stableIdentity(prior),
+    ) ||
+    [reservedFunding, capacityFunding].some((priorPolicy) =>
+      priorPolicy.contracts.some(
+        (prior) =>
+          !funding.contracts.some(
+            (current) =>
+              current.address === prior.address &&
+              current.scriptHash === prior.scriptHash &&
+              current.role === prior.role,
+          ),
+      ),
     )
   )
     throw new Error(
-      "funding reservation policy is not an additive contract roster extension",
+      "funding reservation policy changed nonparameter authority or removed a contract",
     );
   const snapshot = parseSnapshot(await port.load());
   const maximumCollateralInputs = Number(funding.maximumCollateralInputs);
@@ -286,7 +304,15 @@ export const createWorkflowFundingReservationPermit = async ({
     throw new Error(
       "production funding reservation has a foreign wallet credential",
     );
-  assertSnapshotInputBounds({ snapshot, maximumCollateralInputs });
+  const reservationMaximumCollateralInputs = Math.max(
+    Number(reservedFunding.maximumCollateralInputs),
+    maximumCollateralInputs,
+    Number(capacityFunding.maximumCollateralInputs),
+  );
+  assertSnapshotInputBounds({
+    snapshot,
+    maximumCollateralInputs: reservationMaximumCollateralInputs,
+  });
   const permit: WorkflowFundingReservationPermit = Object.freeze({
     permitVersion: WORKFLOW_FUNDING_RESERVATION_PERMIT,
   });
@@ -296,6 +322,10 @@ export const createWorkflowFundingReservationPermit = async ({
     actuationPermit,
     port,
     maximumCollateralInputs,
+    reservationMaximumCollateralInputs,
+    requiresParameterRefresh:
+      funding.protocolParametersDigest !==
+      reservedFunding.protocolParametersDigest,
     snapshot,
     // A restarted workflow must first reconcile its durable pending intent.
     // Its inputs may already be consumed by that exact confirmed transaction.

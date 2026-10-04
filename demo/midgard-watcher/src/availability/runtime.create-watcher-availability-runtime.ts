@@ -6,7 +6,6 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  calculateMinLovelaceFromUTxO,
   Data,
   Lucid,
   paymentCredentialOf,
@@ -43,6 +42,7 @@ import {
   type WatcherDaBondPoolObservation,
 } from "./pool-observation.js";
 import { createWatcherL1AvailabilityPayloadSource } from "./published-payload.js";
+import { createWatcherAvailabilityProtocolRuntime } from "./runtime.protocol-parameter-refresh.js";
 import {
   createWatcherAvailabilityReconcileRetry,
   watcherAvailabilityStatusDetail,
@@ -120,6 +120,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
       slotConfig: input.config.watcherConfig.customNetwork?.slotConfig,
     },
   );
+  const protocolRuntime = createWatcherAvailabilityProtocolRuntime(lucid);
   const secret = await loadWatcherSecretText(
     input.config.availability.keySource,
   );
@@ -256,17 +257,6 @@ export const createWatcherAvailabilityRuntime = async (input: {
     }
     return false;
   };
-  const minimumChange = (
-    protocol: NonNullable<
-      ReturnType<typeof lucid.config>["protocolParameters"]
-    >,
-  ): bigint =>
-    calculateMinLovelaceFromUTxO(protocol.coinsPerUtxoByte, {
-      address: walletAddress,
-      assets: { lovelace: 2_000_000n },
-      txHash: "00".repeat(32),
-      outputIndex: 0,
-    });
   // Open spends one exact coin: challenger bond + record lovelace + the fee,
   // which is pinned to the Open fee ceiling.
   const openingLovelace =
@@ -323,7 +313,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
         );
       }
     }
-    const minChange = minimumChange(protocol);
+    const minChange = protocolRuntime.minimumChange(protocol, walletAddress);
     const removalReserve =
       BigInt(liveQueue?.length ?? observation.finalizedHeaders.length + 1) *
         parameters.max_timeout_fee_lovelace +
@@ -540,6 +530,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
       let poolRead: WatcherDaBondPoolObservation | undefined;
       let poolReadFailure: string | undefined;
       try {
+        await protocolRuntime.refresh();
         await dropReleasedHeaders(pending, observation, input.mergedHeaders);
         report = { phase: "waiting", pendingHeaders: [...pending] };
         assertCurrent(epoch);
@@ -568,10 +559,9 @@ export const createWatcherAvailabilityRuntime = async (input: {
           journal,
           stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
           minimumConfirmationDepth: intake.confirmationDepth,
-          transactionLimits: SDK.daAvailabilityOperationLimits(
-            lucid,
-            deployment.parameters,
-          ),
+          get transactionLimits() {
+            return protocolRuntime.transactionLimits(deployment.parameters);
+          },
           assertActuationCurrent: () => assertCurrent(epoch),
           readBoundary: async () => ({
             blockNo: Number(observation.nativePoint.blockNo),
@@ -740,7 +730,17 @@ export const createWatcherAvailabilityRuntime = async (input: {
         const { operation } = selected;
         const result = await SDK.runDaAvailabilityOperation(context, {
           headerHash: selected.step.snapshot.headerHash,
-          ...operation,
+          ...protocolRuntime.refreshedOperation(
+            operation,
+            build,
+            [
+              selected.step.snapshot,
+              selected.step.action,
+              observation,
+              commitments.get(selected.step.snapshot.headerHash),
+            ] as const,
+            () => assertCurrent(epoch),
+          ),
         });
         report = {
           phase:

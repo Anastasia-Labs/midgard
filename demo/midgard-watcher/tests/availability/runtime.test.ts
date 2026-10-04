@@ -18,6 +18,7 @@ const io = vi.hoisted(() => ({
   reconcile: vi.fn(),
   snapshot: vi.fn(),
   payload: vi.fn(),
+  refresh: vi.fn(),
 }));
 vi.mock("@al-ft/midgard-core/availability-operation-journal", () => ({
   openAvailabilityOperationJournal: () => ({
@@ -36,6 +37,8 @@ vi.mock("@lucid-evolution/lucid", async (original) => ({
   Lucid: async () => ({
     selectWallet: { fromSeed() {} },
     wallet: () => ({ address: async () => "availability" }),
+    config: () => ({ protocolParameters: {}, provider: {} }),
+    switchProvider: io.refresh,
   }),
   paymentCredentialOf: (address: string) => ({ hash: address }),
 }));
@@ -135,6 +138,7 @@ const fixture = (
   });
 
 beforeEach(() => {
+  io.refresh.mockReset().mockResolvedValue(undefined);
   io.reconcile.mockReset().mockResolvedValue([]);
   io.payload.mockReset().mockResolvedValue({ ok: true });
 });
@@ -472,6 +476,17 @@ it("rejects inclusion classification revoked during public DA lookup", async () 
   });
   await expect(runtime.pendingAvailabilityHeaders(included)).rejects.toThrow(
     "current authenticated observation",
+  );
+  await runtime.close();
+});
+
+it("refreshes local balancing parameters before every availability reconciliation", async () => {
+  const runtime = await fixture();
+  await runtime.reconcile(observation(1), false);
+  await runtime.reconcile(observation(2), false);
+  expect(io.refresh).toHaveBeenCalledTimes(2);
+  expect(io.refresh.mock.invocationCallOrder[0]).toBeLessThan(
+    io.reconcile.mock.invocationCallOrder[0]!,
   );
   await runtime.close();
 });

@@ -121,8 +121,17 @@ export const planWatcherProverFundingReservation = (input: {
   readonly decisionDigest: string;
   readonly walletAddress: string;
   readonly utxos: readonly UTxO[];
+  readonly selectionCalculation?: WatcherRuntimeProverFundingCalculation;
 }): WatcherProverFundingReservationPlan => {
   const identity = reservationIdentity(input);
+  const selection = input.selectionCalculation ?? input.calculation;
+  assertWatcherRuntimeProverFundingCalculation(selection);
+  if (
+    selection.deploymentFingerprint !== identity.deploymentFingerprint ||
+    selection.fundingPaymentKeyHash !== identity.fundingPaymentKeyHash ||
+    selection.economicsPolicyDigest !== input.calculation.economicsPolicyDigest
+  )
+    throw new Error("prover funding selection changed reservation authority");
   const seen = new Set<string>();
   const candidates: Candidate[] = [];
   for (const utxo of input.utxos) {
@@ -134,9 +143,7 @@ export const planWatcherProverFundingReservation = (input: {
     seen.add(candidate.outRef);
     candidates.push(candidate);
   }
-  const maximumCollateralInputs = Number(
-    input.calculation.maximumCollateralInputs,
-  );
+  const maximumCollateralInputs = Number(selection.maximumCollateralInputs);
   if (
     !Number.isSafeInteger(maximumCollateralInputs) ||
     maximumCollateralInputs < 1
@@ -144,9 +151,9 @@ export const planWatcherProverFundingReservation = (input: {
     throw new Error("prover funding maximum collateral inputs is invalid");
   }
   const collateralRequired = [
-    input.calculation.collateralFloorLovelace,
-    input.calculation.maximumCollateralLovelace,
-    input.calculation.maximumSlashCollateralLovelace,
+    selection.collateralFloorLovelace,
+    selection.maximumCollateralLovelace,
+    selection.maximumSlashCollateralLovelace,
   ].reduce((maximum, value) => {
     const required = BigInt(value);
     return required > maximum ? required : maximum;

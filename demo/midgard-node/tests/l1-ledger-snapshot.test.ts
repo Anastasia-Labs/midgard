@@ -8,89 +8,16 @@ import {
   readAcquiredLedgerSnapshot,
 } from "../src/l1-ledger-snapshot.js";
 import { L1SourceUnavailable } from "../src/l1-source-unavailable.js";
-import type { WebSocketLike } from "../src/l1-tx-order-carriage.js";
 import { isRecoverableHistorySourceFailure } from "../src/services/event-history-owner.source-failure.js";
 import { captureRecoveryQueueAtPoint } from "../src/services/history-signed-header-recovery.js";
-
-const point = { slot: 123, id: "ab".repeat(32) };
-const fork = { slot: 123, id: "cd".repeat(32) };
-const policy = "ef".repeat(28);
-const addresses = ["deposit", "withdrawal", "retention", "hub"];
-const output = {
-  transaction: { id: "01".repeat(32) },
-  index: 0,
-  address: "deposit",
-  value: { ada: { lovelace: 2_000_000 }, [policy]: { "": 1 } },
-  datum: "d87980",
-};
-
-type Request = { id: number; method: string; params: Record<string, unknown> };
-type Reply = (request: Request) => unknown;
-
-/** Wire-level transport seam: real request framing, IDs, lossless JSON parsing
- * and session lifecycle; no Cardano node or branch authority is simulated. */
-class Socket implements WebSocketLike {
-  readonly requests: Request[] = [];
-  readonly listeners = new Map<string, ((event: never) => void)[]>();
-  closed = false;
-  connect = () => this.emit("open");
-  rawReply: ((request: Request) => string) | undefined;
-  reply: Reply = ({ method }) => {
-    switch (method) {
-      case "queryLedgerState/tip":
-        return point;
-      case "acquireLedgerState":
-        return { acquired: "ledgerState", point };
-      case "queryLedgerState/utxo":
-        return [output];
-      case "releaseLedgerState":
-        return { released: "ledgerState" };
-      default:
-        throw new Error(`Unexpected method ${method}`);
-    }
-  };
-  emit(type: string, event?: unknown) {
-    for (const listener of this.listeners.get(type) ?? [])
-      listener(event as never);
-  }
-  addEventListener(type: string, listener: (event: never) => void) {
-    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
-  }
-  send(data: string) {
-    const request = JSON.parse(data) as Request;
-    this.requests.push(request);
-    queueMicrotask(() => {
-      if (this.closed) return;
-      const data =
-        this.rawReply?.(request) ??
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: request.id,
-          result: this.reply(request),
-        });
-      this.emit("message", { data });
-    });
-  }
-  close() {
-    if (this.closed) return;
-    this.closed = true;
-    this.emit("close");
-  }
-  read(signal?: AbortSignal, timeoutMs = 200, at?: LedgerSnapshotPoint) {
-    return readAcquiredLedgerSnapshot({
-      ogmiosUrl: "http://localhost:1337/ogmios",
-      addresses,
-      at,
-      timeoutMs,
-      signal,
-      webSocketFactory: (url) => {
-        expect(url).toBe("ws://localhost:1337/ogmios");
-        queueMicrotask(() => this.connect());
-        return this;
-      },
-    });
-  }
-}
+import {
+  addresses,
+  fork,
+  output,
+  point,
+  policy,
+  Socket,
+} from "./helpers/ledger-snapshot-socket.js";
 
 describe("acquired node ledger snapshot", () => {
   it("captures every address at one exact acquired point, then releases and closes", async () => {
@@ -117,6 +44,29 @@ describe("acquired node ledger snapshot", () => {
     });
     expect(Object.isFrozen(snapshot.outputs[0]!.assets)).toBe(true);
     expect(socket.closed).toBe(true);
+  });
+
+  it("queries bounded exact references and rejects a missing candidate", async () => {
+    const references = [
+      { txHash: output.transaction.id, outputIndex: output.index },
+    ];
+    const socket = new Socket();
+    await socket.read(undefined, 200, point, references);
+    expect(
+      socket.requests.find(({ method }) => method === "queryLedgerState/utxo")!
+        .params,
+    ).toEqual({
+      outputReferences: [
+        { transaction: { id: output.transaction.id }, index: output.index },
+      ],
+    });
+    const missing = new Socket();
+    missing.reply = (request) =>
+      request.method === "queryLedgerState/utxo" ? [] : socket.reply(request);
+    await expect(
+      missing.read(undefined, 200, point, references),
+    ).rejects.toThrow("omitted or substituted");
+    expect(missing.closed).toBe(true);
   });
 
   it("acquires an explicit historical point without querying or substituting the current tip", async () => {

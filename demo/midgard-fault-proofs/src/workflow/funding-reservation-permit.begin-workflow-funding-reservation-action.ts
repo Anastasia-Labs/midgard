@@ -56,6 +56,18 @@ export const assertFundingSubmissionAuthority = (state: PermitState): void => {
     );
 };
 
+export const assertCurrentFundingCollateralLimit = (
+  state: PermitState,
+): void => {
+  // Recovery reads and confirmation use the original admitted bounds. A new
+  // action must use the current limit even if its old inputs still exist.
+  if (
+    state.snapshot.activeInputs.filter(({ role }) => role === "collateral")
+      .length > state.maximumCollateralInputs
+  )
+    throw new WorkflowFundingReservationUnavailableError();
+};
+
 export const beginWorkflowFundingReservationAction = async ({
   journal,
   action,
@@ -81,7 +93,11 @@ export const beginWorkflowFundingReservationAction = async ({
     staleInputs = true;
   }
   if (
-    (staleInputs || state.snapshot.activeInputs.length === 0) &&
+    (staleInputs ||
+      state.snapshot.activeInputs.length === 0 ||
+      state.requiresParameterRefresh ||
+      state.snapshot.activeInputs.filter(({ role }) => role === "collateral")
+        .length > state.maximumCollateralInputs) &&
     state.port.refreshIdle !== undefined
   ) {
     const refreshed = await state.port.refreshIdle({
@@ -92,12 +108,14 @@ export const beginWorkflowFundingReservationAction = async ({
       throw new WorkflowFundingReservationUnavailableError();
     state.snapshot = parseStateSnapshot(state, refreshed);
     await refresh(state);
+    state.requiresParameterRefresh = false;
   } else if (staleInputs) {
     throw new WorkflowFundingReservationUnavailableError();
   }
   assertFundingSubmissionAuthority(state);
   if (state.snapshot.state !== "active")
     throw new Error("production funding reservation is not active");
+  assertCurrentFundingCollateralLimit(state);
   state.currentActionKind = actionKind(action);
   state.currentActionDigest = computeDeploymentManifestJsonDigest(action);
   // The real builder selects from durable leased candidates; admission below

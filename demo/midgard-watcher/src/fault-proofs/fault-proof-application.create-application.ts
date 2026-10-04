@@ -28,7 +28,6 @@ import {
   requireHistoricalNativeScriptHistoryAuthority,
   resolveFamilyApplicationReferences,
   runFraudProofWorkflowCli,
-  verifyCompletedFraudProofWorkflow,
   type WorkflowAdapterRunner,
 } from "@al-ft/midgard-fault-proofs";
 import {
@@ -61,10 +60,15 @@ import {
 } from "../runtime/deployment-identity.js";
 import { assertWatcherUserEventRuntime } from "../runtime/user-event-runtime.js";
 import {
+  verifyCompletedWatcherReplayTranscriptWorkflow,
+  watcherReplayTranscriptClassification,
+} from "../storage/replay-transcript-completion.js";
+import {
   createWatcherRetainedDaRuntimeOwner,
   createWatcherWorkflowRuntimeLoader,
   readAdmittedWatcherRuntimeConfig,
 } from "../storage/retained-da-runtime.js";
+import { archiveWatcherValidationCapture } from "./fault-proof-application.archive-validation-capture.js";
 import {
   admitInfrastructure,
   bindWatcherDeploymentAuthority,
@@ -257,6 +261,12 @@ export function createApplication({
           "validation decision authority was retired during workflow loading",
         );
       }
+      if (replayTranscriptStore === undefined)
+        throw new Error("validation challenge has no transcript lifecycle");
+      await replayTranscriptStore.beginProofOperation(
+        watcherReplayTranscriptClassification(capture),
+      );
+      assertWatcherValidationReplayCaptureCurrent(capture);
       return capture.challenge;
     },
   });
@@ -617,42 +627,14 @@ export function createApplication({
               "validation classification requires live deployment authority and transcript storage",
             );
           }
-          const identity = {
-            deploymentFingerprint: deploymentIdentity.manifestId,
-            headerHash: input.header.headerHash,
-            inclusionPoint: {
-              transactionHash: input.header.observedTransactionHash,
-              blockHash: input.header.observedBlockHash,
-              blockNo: input.header.observedBlockNo,
-              slot: input.header.observedSlot,
-              chainPointId: input.header.observedChainPointId,
-            },
-          };
-          const archived = await replayTranscriptStore.read(identity);
-          const capture = await captureWatcherValidationReplayTranscript({
+          pendingCapture = await archiveWatcherValidationCapture({
             deploymentAuthority,
+            replayTranscriptStore,
             stateQueueObservation: input.stateQueueObservation,
             header: input.header,
             decision,
             userEventRuntime,
-            ...(archived === null
-              ? {}
-              : {
-                  persistedTranscriptCborHex:
-                    archived.persistedTranscriptCborHex,
-                }),
           });
-          if (
-            !(await replayTranscriptStore.compareAndSwap({
-              expectedTranscriptDigest: archived?.headTranscriptDigest ?? null,
-              transcript: capture.transcript,
-            }))
-          ) {
-            throw new Error(
-              "validation transcript head changed during capture; classify again",
-            );
-          }
-          pendingCapture = capture;
         }
         completedDecision = decision;
       } finally {
@@ -668,6 +650,14 @@ export function createApplication({
         );
       }
       if (pendingCapture !== undefined) {
+        if (replayTranscriptStore === undefined)
+          throw new Error(
+            "validation classification has no transcript lifecycle",
+          );
+        await replayTranscriptStore.completeClassification(
+          watcherReplayTranscriptClassification(pendingCapture),
+        );
+        assertWatcherValidationReplayCaptureCurrent(pendingCapture);
         validationCaptures.set(
           completedDecision.decisionDigest,
           pendingCapture,
@@ -794,7 +784,10 @@ export function createApplication({
         observationDepth: "inclusion",
       });
       try {
-        return await verifyCompletedFraudProofWorkflow({
+        return await verifyCompletedWatcherReplayTranscriptWorkflow({
+          ...(replayTranscriptStore === undefined
+            ? {}
+            : { replayTranscriptStore }),
           binding,
           authority,
           entries: input.entries,

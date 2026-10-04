@@ -26,6 +26,10 @@ export const HaltSource = {
    * base slot that a sibling on the same base already finalized locally or
    * landed (see `SignedIntentReplacementIntegrityError`). */
   blockConfirmationSignedIntent: "block_confirmation_signed_intent",
+  /** Authenticated evidence that this operator left the active set: absence
+   * at the head after past activity, or removal at a finalized point (see
+   * `publishOperatorMembership`). Holds every operator duty. */
+  operatorMembership: "operator_membership",
 } as const;
 
 export type HaltSource = (typeof HaltSource)[keyof typeof HaltSource];
@@ -34,16 +38,24 @@ export type HaltSource = (typeof HaltSource)[keyof typeof HaltSource];
 export const COMMIT_HALT_SOURCES: readonly HaltSource[] = [
   HaltSource.stateQueueCorrectionRewind,
   HaltSource.blockConfirmationSignedIntent,
+  HaltSource.operatorMembership,
 ];
 
 /** The settlement worker. */
 export const SETTLEMENT_HALT_SOURCES: readonly HaltSource[] = [
   HaltSource.stateQueueCorrectionRewind,
+  HaltSource.operatorMembership,
 ];
 
 /** The merge fiber, which folds the state queue into the confirmed state. */
 export const MERGE_HALT_SOURCES: readonly HaltSource[] = [
   HaltSource.stateQueueCorrectionRewind,
+  HaltSource.operatorMembership,
+];
+
+/** The operator watchdog, which takes over other operators' slots. */
+export const WATCHDOG_HALT_SOURCES: readonly HaltSource[] = [
+  HaltSource.operatorMembership,
 ];
 
 /**
@@ -57,6 +69,7 @@ export const FIBER_HALT_SOURCES = {
   speculativeCommitBuilder: COMMIT_HALT_SOURCES,
   speculativeCommitSubmitter: COMMIT_HALT_SOURCES,
   merge: MERGE_HALT_SOURCES,
+  operatorWatchdog: WATCHDOG_HALT_SOURCES,
 } as const satisfies Record<string, readonly HaltSource[]>;
 
 export type HeldFiber = keyof typeof FIBER_HALT_SOURCES;

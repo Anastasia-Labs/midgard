@@ -428,6 +428,8 @@ export const operatorWatchdogFiber = (
       yield* Effect.logInfo(
         "🐕 Operator watchdog disabled (OPERATOR_WATCHDOG_ENABLED=false); missed shifts must be struck by hand.",
       );
+      // Membership monitoring is a separate mandatory fiber. Disabling
+      // takeover never disables removal detection.
       return;
     }
     // Every lifecycle verb verifies the deployment manifest before it acts;

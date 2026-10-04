@@ -6,7 +6,6 @@ import "@effect/sql";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../database/index.js";
-import "../database/retention-policy.js";
 import "../database/utils/common.js";
 import "../services/event-history-producer.js";
 import "../services/index.js";
@@ -16,7 +15,6 @@ import "./t2-foreign-event-reconciliation.decode-retained-header.js";
 import "./t2-foreign-event-reconciliation.reconcile-retained-foreign-tip-entry.js";
 import "./t2-foreign-event-reconciliation.foreign-window-gate.js";
 import "./t2-foreign-event-reconciliation.reconcile-overdue-awaiting-events-against-retained-foreign-tips.js";
-export { pruneSettledForeignTipReconciliations } from "./t2-foreign-event-reconciliation.foreign-window-gate.js";
 export {
   assessRetainedForeignTipWindows,
   gateCommitOnRetainedForeignTips,

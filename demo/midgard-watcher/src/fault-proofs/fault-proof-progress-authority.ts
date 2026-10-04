@@ -206,8 +206,6 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           );
         const objective: Objective = { decision: candidate };
         await loadExecution(objective);
-        if (objective.entries?.some(({ event }) => event.kind === "completed"))
-          continue;
         if (objective.entries !== undefined) {
           objectives.set(keyOf(candidate), objective);
           if (objectives.size > MAX_OBJECTIVES)
@@ -387,13 +385,6 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           // historical observation. Already restored identities stay indexed.
           if (objective.entries === undefined) await loadExecution(objective);
           if (epoch !== startedEpoch) return [];
-          if (
-            objective.entries?.some(({ event }) => event.kind === "completed")
-          ) {
-            // Only the supervisor's canonical terminal verification can retire
-            // an indexed objective; a durable marker alone grants no acceptance.
-            continue;
-          }
           if (
             objective.entries === undefined ||
             !objective.entries.some(

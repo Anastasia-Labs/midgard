@@ -8,7 +8,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DatabaseError } from "../src/database/utils/common.js";
 import {
   assessRetainedForeignTipWindows,
-  pruneSettledForeignTipReconciliations,
   reconcileOverdueAwaitingEventsAgainstRetainedForeignTips,
 } from "../src/workers/t2-foreign-event-reconciliation.js";
 import {
@@ -239,24 +238,5 @@ describe("a refusing row refuses on every path that cannot replay it", () => {
       foreignHeaderHash: recent.hash,
       reason: "replay_failed",
     });
-  });
-
-  it("honours a stored invalid verdict on a row consistent on its face, under the prune", async () => {
-    const stale = await onNode(
-      Effect.gen(function* () {
-        const { hash } = yield* recordPayloadInvalidTip(staleWindow);
-        yield* gate();
-        // A pass whose replay fails leaves the stored verdict to the prune.
-        yield* failReplays();
-        yield* gate();
-        const pruned = yield* pruneSettledForeignTipReconciliations({
-          now: new Date(),
-          eventsIngestedThrough: INGESTED_PAST_WINDOW,
-        });
-        return { pruned, row: yield* reconciliationRow(hash) };
-      }),
-    );
-    expect(stale.pruned).toBe(0);
-    expect(stale.row?.blocking_reason).toBe(`invalid:${PAYLOAD_INVALID}`);
   });
 });

@@ -56,7 +56,9 @@ import {
   HistoryPreparation,
   HistoryRecoverySuperseded,
 } from "../src/services/event-history-recovery.js";
+import { registerForeignTipRetentionTests } from "./helpers/foreign-tip-retention.js";
 import { retainEverything } from "./helpers/history-journal-retention.js";
+import { seedHistoryJournalFixture } from "./helpers/history-journal-start.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { provideDatabaseLayers } from "./utils.js";
 
@@ -113,23 +115,13 @@ const read = async () => {
   if (result === null) throw new Error("Missing test checkpoint");
   return result;
 };
-const start = async () => {
-  const token = await run(acquire());
-  await run(
-    Authority.withRecovery(
-      token,
-      Journal.seed({
-        binding,
-        capture: initial,
-        height: 1,
-        originReceipt: modelOriginReceipt,
-        originReceiptDigest: sha(modelOriginReceipt),
-        incarnations: [],
-      }),
-    ),
-  );
-  return { token, checkpoint: await read() };
-};
+const start = () =>
+  seedHistoryJournalFixture({
+    binding,
+    initial,
+    modelOriginReceipt,
+    run,
+  });
 const probe = (id: number) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -2214,4 +2206,12 @@ describe("bounded journal retention", () => {
       /Canonical application ancestry disagrees/,
     );
   });
+});
+
+registerForeignTipRetentionTests({
+  start,
+  run,
+  binding: () => binding,
+  prepare,
+  admit,
 });

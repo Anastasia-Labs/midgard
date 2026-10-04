@@ -15,6 +15,7 @@ import {
   createWorkflowFundingReservationPermit,
   prepareWorkflowFundingReservationTransaction,
   unsafeWorkflowFundingReservationSelectedOutRefsForTest,
+  type WorkflowFundingReservationPort,
   type WorkflowFundingReservationSnapshot,
 } from "../src/workflow/funding-reservation-permit.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
@@ -38,12 +39,16 @@ export const runtimeFunding = async (
     amendPolicy?: (
       input: ReturnType<typeof runtimeFundingPolicyFixture>["constructorInput"],
     ) => ReturnType<typeof createWorkflowRuntimeFundingPolicy>;
+    amendCapacityPolicy?: (
+      input: ReturnType<typeof runtimeFundingPolicyFixture>["constructorInput"],
+    ) => ReturnType<typeof createWorkflowRuntimeFundingPolicy>;
     governedReference?: Script;
     referenceOutRefs?: readonly string[];
     resolvedReference?: Script;
     useStage?: boolean;
-    collateral?: boolean;
+    collateral?: boolean | number;
     begin?: boolean;
+    recovery?: Parameters<WorkflowFundingReservationPort["prepare"]>[0];
     additionalInputs?: readonly UTxO[];
     confirmedInput?: UTxO;
     changedLineage?: boolean;
@@ -75,7 +80,14 @@ export const runtimeFunding = async (
     [`${"72".repeat(32)}#0`, 2_000_000n],
     [`${"73".repeat(32)}#0`, 10_000_000n],
   ]);
-  if (options.collateral) values.set(`${"76".repeat(32)}#0`, 5_000_000n);
+  const collateralCount =
+    typeof options.collateral === "number"
+      ? options.collateral
+      : options.collateral
+        ? 1
+        : 0;
+  for (let index = 0; index < collateralCount; index++)
+    values.set(`${"76".repeat(32)}#${index}`, 5_000_000n);
   const activeInputs = Object.freeze(
     [...values].map(([outRef, lovelace]) =>
       Object.freeze({
@@ -102,7 +114,11 @@ export const runtimeFunding = async (
     activeInputs,
   });
   let currentSnapshot: WorkflowFundingReservationSnapshot = snapshot;
-  const prepare = vi.fn(async () => currentSnapshot);
+  const prepare = vi.fn(
+    async (_input: Parameters<WorkflowFundingReservationPort["prepare"]>[0]) =>
+      currentSnapshot,
+  );
+  const confirm = vi.fn(async () => currentSnapshot);
   const resolveInputs = vi.fn(async (outRefs: readonly string[]) =>
     outRefs.map((outRef) => {
       const additional = options.additionalInputs?.find(
@@ -132,6 +148,7 @@ export const runtimeFunding = async (
     runner,
     policy: options.amendPolicy?.(constructorInput) ?? policy,
     reservationPolicy: policy,
+    capacityPolicy: options.amendCapacityPolicy?.(constructorInput),
     actuationPermit: actuation.actuationPermit,
     rollbackGeneration: "7",
     port: {
@@ -164,8 +181,14 @@ export const runtimeFunding = async (
             .to_canonical_cbor_hex(),
         };
       },
-      readPendingTransition: async () => null,
-      readPendingHandoff: async () => null,
+      readPendingTransition: async () => options.recovery?.transition ?? null,
+      readPendingHandoff: async () =>
+        options.recovery === undefined
+          ? null
+          : {
+              transition: options.recovery.transition,
+              handoff: options.recovery.handoff,
+            },
       readCompletionHandoff: async () => null,
       readAbandonmentHandoff: async () => null,
       acknowledgeAbandonment: async () => snapshot,
@@ -173,7 +196,7 @@ export const runtimeFunding = async (
         throw new Error("test action has no protocol input");
       },
       prepare,
-      confirm: async () => currentSnapshot,
+      confirm,
       abandon: async () => snapshot,
       markConflict: async () => snapshot,
       release: async () => snapshot,
@@ -199,6 +222,7 @@ export const runtimeFunding = async (
     journal,
     permit,
     prepare,
+    confirm,
     prepareTransaction: (input: {
       action: FraudProofWorkflowAction;
       preflight: object;

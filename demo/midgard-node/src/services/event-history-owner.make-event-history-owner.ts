@@ -33,6 +33,7 @@ import {
   type LedgerSnapshotPoint,
 } from "../l1-ledger-snapshot.js";
 import type { Database } from "./database.js";
+import { historyOwnerCoverage } from "./event-history-owner.coverage.js";
 import {
   HISTORY_READY_MAXIMUM_LAG_BLOCKS,
   HistoryAppendNeedsRecovery,
@@ -191,19 +192,8 @@ export const makeEventHistoryOwner = <E, R>(input: {
     const notifyReadiness = () => {
       for (const notify of [...readinessWaiters]) notify();
     };
-    const coverage = (): HistoryOwnerCoverage => {
-      if (checkpoint === null) throw new Error("History checkpoint is missing");
-      const includedThroughMs = input.slotToUnixTime(checkpoint.head.slot);
-      if (!Number.isSafeInteger(includedThroughMs))
-        throw new Error("History checkpoint has an invalid time mapping");
-      return Object.freeze({
-        bindingDigest: checkpoint.bindingDigest,
-        checkpointRevision: checkpoint.revision,
-        point: Object.freeze({ ...checkpoint.head }),
-        snapshotDigest: checkpoint.capture.snapshotDigest,
-        includedThroughMs,
-      });
-    };
+    const coverage = () =>
+      historyOwnerCoverage(checkpoint, input.slotToUnixTime);
     let activation:
       | Awaited<ReturnType<typeof locateEventHistoryActivation>>
       | undefined;

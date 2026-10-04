@@ -15,14 +15,10 @@ import "./foreignTipReconciliations.mark-resolved.js";
 export {
   clear,
   countAwaiting,
-  deleteSettled,
   type EvidenceScope,
   markAwaiting,
   markResolved,
-  type PruneCandidate,
   retrieveByForeignHeaderHash,
-  retrieveEvidenceHistory,
-  retrievePruneCandidates,
   type StoredVerdict,
   type UndecodableEvidence,
 } from "./foreignTipReconciliations.mark-resolved.js";
@@ -47,3 +43,11 @@ export {
   recordMismatch,
   retrieveAwaitingByForeignHeaderHash,
 } from "./foreignTipReconciliations.record-mismatch.js";
+export {
+  FOREIGN_TIP_RECONCILIATION_PAGE_SIZE,
+  FOREIGN_TIP_RETENTION_BATCH_SIZE,
+  type ForeignTipEvidencePage,
+  type ForeignTipEvidencePageCursor,
+  pruneBeyondRetention,
+  retrieveActionableEvidencePage,
+} from "./foreignTipReconciliations.retention.js";

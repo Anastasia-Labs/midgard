@@ -159,6 +159,8 @@ const readyz = ({
               }),
             );
           yield* Ref.set(globals.NATIVE_MPF_OWNER, responsiveOwner);
+          // A serving node has authenticated its own active membership.
+          yield* Ref.set(globals.OPERATOR_MEMBERSHIP, "active");
           const request = buildListenRouter().pipe(
             Effect.provideService(
               HttpServerRequest.HttpServerRequest,

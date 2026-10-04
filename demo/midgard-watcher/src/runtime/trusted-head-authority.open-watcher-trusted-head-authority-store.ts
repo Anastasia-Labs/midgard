@@ -4,6 +4,8 @@ import { mkdir, readdir, realpath, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { setImmediate as yieldScan } from "node:timers/promises";
 
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+
 import {
   parseWatcherFinalityPolicy,
   type WatcherFinalityPolicy,
@@ -21,6 +23,7 @@ import {
   stagedRecordPath,
   syncDirectory,
 } from "../storage/exclusive-record-file.js";
+import { WATCHER_PACKAGE_NAME } from "./scaffold.js";
 import {
   canonicalDirectory,
   exactRecord,
@@ -43,19 +46,26 @@ import {
   WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_SCHEMA_VERSION,
   type WatcherTrustedHeadAuthorityStore,
 } from "./trusted-head-authority.exact-record.js";
+import {
+  compactTrustedHeadRecords,
+  readRetentionFloor,
+  RETENTION_FLOOR_FILE,
+} from "./trusted-head-authority.retention-floor.js";
 
 /**
- * Opens the operationally independent append-only freshness store. Every
- * startup replays the complete directory and rejects gaps, substitutions,
- * malformed/HMAC-invalid records, and non-canonical bytes. Opening first
- * removes staging files and one torn final record that a crashed writer left
- * (see `scan`); every later read stays strict.
+ * Opens the operationally independent monotonic freshness store. Every
+ * startup verifies its authenticated retention floor and the complete retained
+ * suffix, and rejects gaps, substitutions, malformed/HMAC-invalid records, and
+ * non-canonical bytes. Opening first removes staging files and one torn final
+ * record that a crashed writer left (see `scan`); every later read stays strict.
  */
 export const openWatcherTrustedHeadAuthorityStore = async (input: {
   readonly directory: string;
   readonly policy: WatcherFinalityPolicy;
   /** Independently authenticates the append-only sidecar record chain. */
   readonly recordAuthenticationKey: Uint8Array;
+  /** May lower, never widen, the operational suffix bound. Revisions are not L1 blocks. */
+  readonly maxRetainedRecords?: number;
 }): Promise<WatcherTrustedHeadAuthorityStore> => {
   const directory = canonicalDirectory(input.directory);
   const policy = parseWatcherFinalityPolicy(input.policy);
@@ -68,6 +78,13 @@ export const openWatcherTrustedHeadAuthorityStore = async (input: {
   if (recordAuthenticationKey.byteLength !== 32) {
     throw new Error("trusted-head authority authentication key is invalid");
   }
+  const maxRetainedRecords = input.maxRetainedRecords ?? MAX_CACHED_RECORDS;
+  if (
+    !Number.isSafeInteger(maxRetainedRecords) ||
+    maxRetainedRecords < 2 ||
+    maxRetainedRecords > MAX_CACHED_RECORDS
+  )
+    throw new Error("trusted-head authority retention bound is invalid");
   await mkdir(directory, { recursive: true, mode: 0o700 });
   if ((await realpath(directory)) !== directory) {
     throw new Error("trusted-head authority directory traverses a symlink");
@@ -174,6 +191,10 @@ export const openWatcherTrustedHeadAuthorityStore = async (input: {
     }) as TrustedHeadAuthorityRecord;
   };
 
+  /** The record names of the last scan's chain, oldest first. */
+  let retainedSuffix: readonly string[] = [];
+  /** Record files the last scan found below its floor. */
+  let belowFloor: readonly string[] = [];
   const admittedRecords = new Map<
     string,
     Readonly<{
@@ -203,45 +224,58 @@ export const openWatcherTrustedHeadAuthorityStore = async (input: {
   }> | null> => {
     const entries = await readdir(directory, { withFileTypes: true });
     const names = entries.flatMap((entry) => {
-      // A compare-and-swap in flight stages its record here before linking.
+      // A compare-and-swap or floor publication in flight stages its bytes here.
       if (entry.isFile() && STAGED_RECORD_FILE.test(entry.name)) return [];
-      if (!entry.isFile() || !RECORD_FILE.test(entry.name)) {
+      if (
+        !entry.isFile() ||
+        (!RECORD_FILE.test(entry.name) && entry.name !== RETENTION_FLOOR_FILE)
+      ) {
         throw new Error(
           "trusted-head authority directory has an unknown entry",
         );
       }
-      return [entry.name];
+      return RECORD_FILE.test(entry.name) ? [entry.name] : [];
     });
+    const floor = entries.some(({ name }) => name === RETENTION_FLOOR_FILE)
+      ? readRetentionFloor(directory, recordAuthenticationKey, admitRecord)
+      : null;
+    const firstRevision = floor === null ? 0n : revision(floor.head) + 1n;
     names.sort();
-    const finalName = names.at(-1);
+    // Files below the floor are a prefix whose cleanup was interrupted.
+    const suffix = names.filter((name) => name >= recordName(firstRevision));
+    if (floor !== null && suffix.length === 0)
+      throw new Error("trusted-head authority retention floor has no suffix");
+    const finalName = suffix.at(-1);
     const tornFinal =
       dropTornFinal &&
       finalName !== undefined &&
-      finalName === recordName(BigInt(names.length - 1)) &&
+      finalName === recordName(firstRevision + BigInt(suffix.length - 1)) &&
       isTornJsonRecord(readFileSync(join(directory, finalName)))
-        ? names.pop()!
+        ? suffix.pop()!
         : null;
-    const retainedNames = new Set(names.slice(-MAX_CACHED_RECORDS));
+    retainedSuffix = suffix;
+    belowFloor = names.filter((name) => name < recordName(firstRevision));
+    const retainedNames = new Set(suffix.slice(-MAX_CACHED_RECORDS));
     for (const name of admittedRecords.keys()) {
       if (!retainedNames.has(name)) admittedRecords.delete(name);
     }
     let previous: Readonly<{
       head: WatcherRollbackDurableTrustedHead;
       recordSha256: string;
-    }> | null = null;
+    }> | null = floor;
     for (
       let offset = 0;
-      offset < names.length;
+      offset < suffix.length;
       offset += RECORD_SCAN_BATCH_SIZE
     ) {
-      const batch = names.slice(offset, offset + RECORD_SCAN_BATCH_SIZE);
+      const batch = suffix.slice(offset, offset + RECORD_SCAN_BATCH_SIZE);
       // This independent service owns tiny local records. Synchronous reads
       // avoid thread-pool round trips per file; yield between bounded batches
       // so another request can run. Every scan still reads every record.
       if (offset !== 0) await yieldScan();
       for (let index = 0; index < batch.length; index += 1) {
         const name = batch[index]!;
-        const expectedRevision = BigInt(offset + index);
+        const expectedRevision = firstRevision + BigInt(offset + index);
         if (name !== recordName(expectedRevision)) {
           throw new Error("trusted-head authority revision chain has a gap");
         }
@@ -291,47 +325,77 @@ export const openWatcherTrustedHeadAuthorityStore = async (input: {
     return previous;
   };
 
+  // The independent service has one owner; serialize scans with append/compaction
+  // so no reader observes a partially published record or changing floor.
+  let operation: Promise<unknown> = Promise.resolve();
+  const serialize = <T>(run: () => Promise<T>): Promise<T> => {
+    const next = operation.then(run);
+    operation = next.catch(() => undefined);
+    return next;
+  };
+
   await removeStagedRecordFiles(directory);
   await scan(true);
 
   return Object.freeze({
     readRecordAuthenticationKeyId: async () =>
       recordKeyId(recordAuthenticationKey),
-    readCurrent: async () => (await scan())?.head ?? null,
-    compareAndSwap: async ({ expectedTrustedHead, nextTrustedHead }) => {
-      const expected =
-        expectedTrustedHead === null
-          ? null
-          : admitHead(expectedTrustedHead, true);
-      const next = admitHead(nextTrustedHead, true);
-      const nextRevision = revision(next);
-      if (
-        (expected === null && nextRevision !== 0n) ||
-        (expected !== null && nextRevision !== revision(expected) + 1n)
-      ) {
-        return false;
-      }
-      const current = await scan();
-      if (!sameHead(current?.head ?? null, expected)) return false;
-      const sidecarRecord = makeAuthorityRecord({
-        head: next,
-        priorRecordSha256: current?.recordSha256 ?? null,
-        recordAuthenticationKey,
-      });
-
-      try {
-        await publishExclusiveFile({
-          stagingPath: stagedRecordPath(directory),
-          path: join(directory, recordName(nextRevision)),
-          bytes: watcherCanonicalJson(sidecarRecord),
+    readCurrent: async () =>
+      serialize(async () => (await scan())?.head ?? null),
+    compareAndSwap: async ({ expectedTrustedHead, nextTrustedHead }) =>
+      serialize(async () => {
+        const expected =
+          expectedTrustedHead === null
+            ? null
+            : admitHead(expectedTrustedHead, true);
+        const next = admitHead(nextTrustedHead, true);
+        const nextRevision = revision(next);
+        if (
+          (expected === null && nextRevision !== 0n) ||
+          (expected !== null && nextRevision !== revision(expected) + 1n)
+        ) {
+          return false;
+        }
+        const current = await scan();
+        if (!sameHead(current?.head ?? null, expected)) return false;
+        const sidecarRecord = makeAuthorityRecord({
+          head: next,
+          priorRecordSha256: current?.recordSha256 ?? null,
+          recordAuthenticationKey,
         });
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
-        throw error;
-      }
-      await syncDirectory(directory);
-      return sameHead((await scan())?.head ?? null, next);
-    },
+
+        try {
+          await publishExclusiveFile({
+            stagingPath: stagedRecordPath(directory),
+            path: join(directory, recordName(nextRevision)),
+            bytes: watcherCanonicalJson(sidecarRecord),
+          });
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+          throw error;
+        }
+        await syncDirectory(directory);
+        if (!sameHead((await scan())?.head ?? null, next)) return false;
+        try {
+          await compactTrustedHeadRecords(
+            directory,
+            retainedSuffix,
+            belowFloor,
+            maxRetainedRecords,
+            recordAuthenticationKey,
+            admitRecord,
+          );
+        } catch (error) {
+          // The swap is already durable and read back. Compaction only bounds
+          // disk use, and the next swap's compaction retries it from the
+          // authenticated floor, so its failure must not fail the swap.
+          process.stderr.write(
+            `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, level: "warn", event: "trusted_head_compaction_failed", error: formatUnknownError(error) })}\n`,
+          );
+          return true;
+        }
+        return sameHead((await scan())?.head ?? null, next);
+      }),
   });
 };
 

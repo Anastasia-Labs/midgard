@@ -11,17 +11,17 @@
   },
   {
     "file": "da-committee-node/src/store.json-file-committee-store.ts",
-    "max": 1099,
+    "max": 1058,
     "reason": "JsonFileCommitteeStore is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
   },
   {
     "file": "da-committee-node/src/store/postgres.postgres-committee-store.ts",
-    "max": 1234,
+    "max": 1096,
     "reason": "PostgresCommitteeStore is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
   },
   {
     "file": "da-committee-node/tests/committee-service.test/l1-finality.ts",
-    "max": 1859,
+    "max": 1843,
     "reason": "registerL1FinalityTests is the dominant indivisible declaration (1826 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -975,11 +975,6 @@
     "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (961 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
-    "file": "midgard-node/src/fibers/block-commitment.build-and-submit-commitment-block-action.ts",
-    "max": 545,
-    "reason": "buildAndSubmitCommitmentBlockAction is the dominant indivisible declaration (490 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
     "file": "midgard-node/src/mpf/process.process-mpfs.ts",
     "max": 1597,
     "reason": "processMpfs is the dominant indivisible declaration (1477 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
@@ -1011,7 +1006,7 @@
   },
   {
     "file": "midgard-node/src/services/event-history-owner.make-event-history-owner.ts",
-    "max": 1010,
+    "max": 1000,
     "reason": "makeEventHistoryOwner is the dominant indivisible declaration (952 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1371,7 +1366,7 @@
   },
   {
     "file": "midgard-node/tests/mpf-native-owner-service.test.ts",
-    "max": 818,
+    "max": 682,
     "reason": "Retained test registration (731 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1591,7 +1586,7 @@
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-application.create-application.ts",
-    "max": 837,
+    "max": 830,
     "reason": "createApplication is the dominant indivisible declaration (734 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1636,12 +1631,12 @@
   },
   {
     "file": "midgard-watcher/src/runtime/watcher-runtime.create-watcher-runtime.ts",
-    "max": 780,
+    "max": 782,
     "reason": "createWatcherRuntime is the dominant indivisible declaration (680 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-watcher/src/storage/public-da-client.watcher-public-da-client.ts",
-    "max": 829,
+    "max": 823,
     "reason": "WatcherPublicDaClient is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
   },
   {
@@ -1786,7 +1781,7 @@
   },
   {
     "file": "midgard-watcher/tests/support/fault-proof-funding-fixture.setup-funding-recovery-fixture.ts",
-    "max": 669,
+    "max": 659,
     "reason": "setupFundingRecoveryFixture is the dominant indivisible declaration (599 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1821,7 +1816,7 @@
   },
   {
     "file": "scripts/deployment-profiles.test.mjs",
-    "max": 627,
+    "max": 626,
     "reason": "Retained test registration “every profile carries the pooled DA bond amounts and timing, rendered into env” (71 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {

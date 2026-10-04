@@ -15,7 +15,6 @@ import { DatabaseError } from "../src/database/utils/common.js";
 import { HistoryRecoverySuperseded } from "../src/services/event-history-recovery.js";
 import {
   assessRetainedForeignTipWindows,
-  pruneSettledForeignTipReconciliations,
   reconcileOverdueAwaitingEventsAgainstRetainedForeignTips,
   resolveT2ForeignEventEvidence,
 } from "../src/workers/t2-foreign-event-reconciliation.js";
@@ -164,40 +163,16 @@ describe("foreign-tip verdicts the window cannot lift", () => {
     }
   });
 
-  it("never prunes a header its commitment columns show is malformed, even before any replay, nor lets a speculative build past it", async () => {
+  it("never lets a speculative build past a header its commitment columns show is malformed, even before any replay", async () => {
     const malformed = { depositCount: 1n, totalEventCount: 1n };
     const result = await onNode(
       Effect.gen(function* () {
-        const staleMalformed = yield* recordForeignTip(
-          headerFor({ ...staleWindow, ...malformed }),
-        );
-        const staleHonest = yield* recordForeignTip(
-          headerFor({ ...staleWindow, prevHeaderHash: "44".repeat(28) }),
-        );
-        const pruned = yield* pruneSettledForeignTipReconciliations({
-          now: new Date(),
-          eventsIngestedThrough: INGESTED_PAST_WINDOW,
-        });
-        const kept = yield* reconciliationRow(staleMalformed);
-        const gone = yield* reconciliationRow(staleHonest);
-        const recent = yield* recordForeignTip(
-          headerFor({ ...recentWindow, ...malformed }),
-        );
+        yield* recordForeignTip(headerFor({ ...recentWindow, ...malformed }));
         const beforeReplay = yield* assess();
         yield* gate();
-        return {
-          recent,
-          pruned,
-          kept,
-          gone,
-          beforeReplay,
-          afterReplay: yield* assess(),
-        };
+        return { beforeReplay, afterReplay: yield* assess() };
       }),
     );
-    expect(result.pruned).toBe(1);
-    expect(result.kept?.status).toBe("awaiting");
-    expect(result.gone).toBeUndefined();
     for (const refusal of [result.beforeReplay, result.afterReplay]) {
       expect(refusal).toMatchObject({
         type: "AwaitingForeignDa",
@@ -266,9 +241,14 @@ describe("foreign window occupancy for every event kind", () => {
 });
 
 describe("known residual: an honest peer block whose events this node also indexed", () => {
-  it("refuses the whole commit on every pass and is never pruned, even past the horizon, until its DA is available", async () => {
+  it("refuses the whole commit on every pass until its DA is available, even past the horizon and once an L2 transaction consumed the deposit", async () => {
     // Pinned on purpose: without the peer's payload the node cannot tell which
-    // of its in-window events the peer block already carries.
+    // of its in-window events the peer block already carries. Consumed only
+    // means an L2 transaction spent the deposit's mempool output; no header
+    // carries it yet. The pruner keeps such a row for the same reason (its
+    // sweep needs authenticated history, so that half is asserted in the
+    // retention suite: "retains awaiting evidence while an event no header
+    // carries yet occupies its window, even once consumed").
     const result = await onNode(
       Effect.gen(function* () {
         const hash = yield* recordForeignTip(nonEmptyWindowHeader(staleWindow));
@@ -277,6 +257,8 @@ describe("known residual: an honest peer block whose events this node also index
             STALE_WINDOW_START_MS + 5_000,
           ),
         });
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE deposits_utxos SET status = ${DepositsDB.Status.Consumed}`;
         const passes = [yield* gate(), yield* gate(), yield* gate()];
         return { hash, passes, row: yield* reconciliationRow(hash) };
       }),
@@ -340,6 +322,50 @@ describe("foreign-tip gate isolation", () => {
     });
   });
 
+  it("keeps a resolved row that no longer decodes gating on its own window, on both the ordinary and the speculative path", async () => {
+    const result = await onNode(
+      Effect.gen(function* () {
+        const { header, payload } = yield* Effect.promise(() =>
+          oneDepositPayload("aa".repeat(32), recentWindow),
+        );
+        const hash = yield* recordForeignTip(header);
+        yield* storeForeignDa(header, payload);
+        const resolved = yield* gate();
+        const row = yield* reconciliationRow(hash);
+        const sql = yield* SqlClient.SqlClient;
+        // Passes the table's checks, fails the V1 decoder.
+        yield* sql`UPDATE foreign_tip_reconciliations
+          SET verified_da_payload_sha256 = ${Buffer.alloc(32, 0x5a)}
+          WHERE foreign_header_hash = ${Buffer.from(hash, "hex")}`;
+        const empty = { gate: yield* gate(), assess: yield* assess() };
+        // Consumed by an L2 transaction but carried by no header: the gate
+        // counts it, though it is no late awaiting event.
+        yield* indexDeposit({ [DepositsDB.Columns.INCLUSION_TIME]: IN_WINDOW });
+        yield* sql`UPDATE deposits_utxos SET status = ${DepositsDB.Status.Consumed}`;
+        return {
+          hash,
+          resolved,
+          status: row?.status,
+          empty,
+          occupied: { gate: yield* gate(), assess: yield* assess() },
+        };
+      }),
+    );
+    expect(result.resolved.type).toBe("Ready");
+    expect(result.status).toBe("resolved");
+    expect(result.empty.gate.type).toBe("Ready");
+    expect(result.empty.assess.type).toBe("Ready");
+    for (const refusal of [result.occupied.gate, result.occupied.assess]) {
+      expect(refusal).toMatchObject({
+        type: "AwaitingForeignDa",
+        foreignHeaderHash: result.hash,
+        reason: "replay_failed",
+      });
+      if (refusal.type === "AwaitingForeignDa")
+        expect(refusal.detail).toContain("gate=pending_event_in_window");
+    }
+  });
+
   it("hands a speculative build back when a late event lands in a resolved window, and the ordinary replay then releases it", async () => {
     const result = await onNode(
       Effect.gen(function* () {
@@ -376,43 +402,6 @@ describe("foreign-tip gate isolation", () => {
         withdrawals: [],
       },
     });
-  });
-
-  it("still answers when the prune fails, and prunes exactly once when it recovers", async () => {
-    const result = await onNode(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        const hash = yield* recordForeignTip(headerFor(staleWindow));
-        yield* sql.unsafe(`
-          CREATE OR REPLACE FUNCTION foreign_tip_gate_refuse_delete()
-          RETURNS trigger LANGUAGE plpgsql AS $$
-          BEGIN RAISE EXCEPTION 'injected prune failure'; END $$;
-          CREATE TRIGGER foreign_tip_gate_refuse_delete
-          BEFORE DELETE ON foreign_tip_reconciliations
-          FOR EACH ROW EXECUTE FUNCTION foreign_tip_gate_refuse_delete();
-        `);
-        const dropTrigger = sql.unsafe(`
-          DROP TRIGGER IF EXISTS foreign_tip_gate_refuse_delete
-            ON foreign_tip_reconciliations;
-          DROP FUNCTION IF EXISTS foreign_tip_gate_refuse_delete();
-        `);
-        const failing = yield* gate().pipe(
-          Effect.ensuring(dropTrigger.pipe(Effect.orDie)),
-        );
-        const retained = yield* reconciliationRow(hash);
-        const recovered = yield* gate();
-        return {
-          failing,
-          retained,
-          recovered,
-          gone: yield* reconciliationRow(hash),
-        };
-      }),
-    );
-    expect(result.failing.type).toBe("Ready");
-    expect(result.retained).toBeDefined();
-    expect(result.recovered.type).toBe("Ready");
-    expect(result.gone).toBeUndefined();
   });
 
   it("propagates a closed history-producer gate but isolates any other replay failure or defect", async () => {

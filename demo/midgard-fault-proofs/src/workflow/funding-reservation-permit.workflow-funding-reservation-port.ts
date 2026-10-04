@@ -162,6 +162,8 @@ export type PermitState = {
   readonly actuationPermit: WorkflowActuationPermit;
   readonly port: WorkflowFundingReservationPort;
   readonly maximumCollateralInputs: number;
+  readonly reservationMaximumCollateralInputs: number;
+  requiresParameterRefresh: boolean;
   snapshot: WorkflowFundingReservationSnapshot;
   resolvedInputs: ReadonlyMap<string, UTxO>;
   boundJournal: object | undefined;

@@ -19,6 +19,7 @@ import {
   watcherFaultProofQueueIdentityDigest,
   type WatcherFaultProofQueueJournal,
 } from "./fault-proof-queue-journal.js";
+import { admitWatcherProofRunnerCompletion } from "./fault-proof-supervisor.admit-runner-completion.js";
 import {
   CANONICAL_NATURAL,
   DEPLOYMENT_FINGERPRINT,
@@ -363,21 +364,20 @@ export const createSupervisor = (input: {
             "kind" in outcome &&
             outcome.kind === "completed"
           ) {
-            if (updated?.entries.at(-1)?.event.kind !== "completed")
-              throw new Error(
-                "proof runner reported completion without a completed journal",
-              );
-            if (actuationPermit !== null)
-              assertWorkflowActuationPermitIdentity({
-                permit: actuationPermit,
-                category: job.category,
-                rollbackGeneration: job.rollbackGeneration,
-              });
-            rememberCompletion(
-              key,
-              `${job.rollbackGeneration}:${watcherSha256CanonicalJson(updated.entries)}`,
-            );
-            progressAuthority.markCompleted(job);
+            outcome = await admitWatcherProofRunnerCompletion({
+              job,
+              execution: updated,
+              actuationPermit,
+              verifyCompleted: input.dependencies.verifyCompleted,
+              outcome,
+              onApplicable: (completed) => {
+                rememberCompletion(
+                  key,
+                  `${job.rollbackGeneration}:${watcherSha256CanonicalJson(completed.entries)}`,
+                );
+                progressAuthority.markCompleted(job);
+              },
+            });
           }
         }
       }

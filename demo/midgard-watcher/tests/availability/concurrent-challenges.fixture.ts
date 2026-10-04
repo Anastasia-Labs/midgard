@@ -54,13 +54,9 @@ const io = vi.hoisted(() => ({
   limits: undefined as SDK.DaAvailabilityOperationLimits | undefined,
   timeoutTx: undefined as ((input: TimeoutInput) => unknown) | undefined,
 }));
-export type TimeoutInput = Readonly<{
-  pool: UTxO;
-  record: UTxO;
-  terminal: UTxO;
-  queue: UTxO;
-  collateralInputs: readonly UTxO[];
-}>;
+export type TimeoutInput = Parameters<
+  typeof SDK.buildTimeoutDaAvailabilityChallengeTxProgram
+>[2];
 vi.mock("@al-ft/midgard-sdk", async (original) => {
   const { Effect } = await import("effect");
   const actual = await original<typeof import("@al-ft/midgard-sdk")>();
@@ -119,6 +115,7 @@ vi.mock("@lucid-evolution/lucid", async (original) => ({
       address: async () => io.walletAddress,
       getUtxos: async () => io.utxos,
     }),
+    switchProvider: async () => {},
     config: () => ({
       protocolParameters: { coinsPerUtxoByte: 1n, collateralPercentage: 150 },
       provider: { submitTx: io.submitTx },

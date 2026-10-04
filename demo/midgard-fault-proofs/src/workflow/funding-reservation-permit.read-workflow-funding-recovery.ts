@@ -4,6 +4,7 @@ import { CML, coreToUtxo, type TxSigned } from "@lucid-evolution/lucid";
 import { readFraudSlashFundingAuthority } from "../remove-fraudulent-block.js";
 import { assertRuntimeTransactionBound } from "./funding-reservation-permit.assert-runtime-transaction-bound.js";
 import {
+  assertCurrentFundingCollateralLimit,
   assertFundingSubmissionAuthority,
   bodySha256,
 } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
@@ -198,6 +199,7 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
   const expectedRevision = state.snapshot.revision;
   const expectedPending = state.pendingTransactionHash;
   await refresh(state);
+  assertCurrentFundingCollateralLimit(state);
   if (state.preparedTransaction !== undefined) {
     const { signed, cborHex } = state.preparedTransaction;
     if (

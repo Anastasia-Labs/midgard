@@ -8,6 +8,9 @@ export const runtimeAuthority = async (
   deploymentIdentity: ReturnType<
     typeof makeWatcherDeploymentAuthorityFixture
   >["result"],
+  minFeeCoefficient = 44,
+  maxCollateralInputs = 3,
+  collateralPercentage = 150,
 ) =>
   await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
     deploymentIdentity,
@@ -21,7 +24,12 @@ export const runtimeAuthority = async (
         JSON.stringify({
           jsonrpc: "2.0",
           id: request.id,
-          result: ogmiosParameters(),
+          result: {
+            ...ogmiosParameters(),
+            minFeeCoefficient,
+            maxCollateralInputs,
+            collateralPercentage,
+          },
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       );

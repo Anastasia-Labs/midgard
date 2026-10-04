@@ -24,7 +24,7 @@ import {
 } from "./t2-foreign-event-reconciliation.resolve-t2-foreign-event-evidence.js";
 
 /** How the `markAwaiting` call below stores an `invalid` verdict. */
-const STORED_INVALID_PREFIX = "invalid:";
+export const STORED_INVALID_PREFIX = "invalid:";
 
 export const reconcileRetainedForeignTipEntry = (
   initialEntry: ForeignTipReconciliationsDB.Entry,

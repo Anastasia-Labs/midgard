@@ -249,6 +249,33 @@ describe("rollback durable evidence recovery horizon", () => {
   });
 });
 
+describe("rollback durable evidence block siblings", () => {
+  it("keeps every observation of a block while any one of them is retained", () => {
+    const seeded = append(empty(), at(100));
+    const [kept, sibling] = harness.observations(at(100));
+    if (kept === undefined || sibling === undefined)
+      throw new Error("Expected two provider observations");
+    // A retained entry that names only one provider's observation of block 100.
+    const partial: WatcherMultiProviderConsistency = {
+      ...harness.agreement(at(100)),
+      agreement: null,
+      consistencyDigest: "ab".repeat(32),
+      observationEvidenceDigests: [kept.observationDigest],
+    };
+    const next = append(
+      { ...seeded, history: [...seeded.history, partial] },
+      at(2_261),
+    );
+    expect(next.history).toContain(partial);
+    const observationIds = next.store.l1Observations.map(
+      ({ observationId }) => observationId,
+    );
+    expect(observationIds).toContain(kept.observationDigest);
+    expect(observationIds).toContain(sibling.observationDigest);
+    expect(pointHeights(next.store)).toEqual(["100", "2261"]);
+  });
+});
+
 describe("persisted observation index", () => {
   it("decodes a process-owned store once and re-indexes a caller-owned one", () => {
     const observations = [

@@ -1,5 +1,6 @@
 import { Duration, Effect, Schedule } from "effect";
 
+import { foreignDaReconciliationFiber } from "../fibers/foreign-da-reconciliation.js";
 import {
   admissionBacklogGaugeFiber,
   attestationTimeoutCorrectionFiber,
@@ -20,6 +21,7 @@ import {
   txQueueProcessorFiber,
   userEventBarrierRefresherFiber,
 } from "../fibers/index.js";
+import { operatorMembershipFiber } from "../fibers/operator-membership.js";
 import { settlementFiber } from "../fibers/settlement.js";
 import { signedIntentRebroadcastFiber } from "../fibers/signed-intent-rebroadcast.js";
 import { Globals } from "../services/globals.js";
@@ -89,6 +91,9 @@ export const nodeFibers = ({
   daPublicationReconciler: daPublicationReconcilerFiber(
     mkSchedule(nodeConfig.MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS),
   ),
+  foreignDaReconciliation: foreignDaReconciliationFiber(
+    mkSchedule(nodeConfig.MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS),
+  ),
   blockCommitment: heldSchedule(
     "blockCommitment",
     nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
@@ -98,9 +103,12 @@ export const nodeFibers = ({
     mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
   ),
   signedIntentRebroadcast: signedIntentRebroadcastFiber(mkSchedule(1_000)),
-  operatorWatchdog: operatorWatchdogFiber(
-    mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
+  operatorWatchdog: heldSchedule(
+    "operatorWatchdog",
+    nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
+    operatorWatchdogFiber,
   ),
+  operatorMembership: operatorMembershipFiber,
   l1ProviderReadinessRefresher: l1ProviderReadinessRefresherFiber(
     mkSchedule(L1_PROVIDER_EXACT_REFRESH_INTERVAL_MS),
   ),

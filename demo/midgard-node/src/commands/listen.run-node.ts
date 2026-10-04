@@ -20,6 +20,7 @@ import {
   fetchAndInsertTxOrderUTxOs,
   refreshAdmissionBacklogGauge,
 } from "../fibers/index.js";
+import { untilOperatorRemoved } from "../fibers/operator-membership.js";
 import * as Genesis from "../genesis.js";
 import { makeProductionEventHistoryOwner } from "../services/event-history-runtime.js";
 import {
@@ -335,22 +336,27 @@ export const runNode = (
       .publish(buildListenRouter(withMonitoring))
       .pipe(Effect.provide(admissionAsDefaultSqlLayer));
 
+    // Membership starts with the node's other fibers; no duty waits on its
+    // first check. Authenticated removal holds the operator duties through
+    // `HaltSource.operatorMembership`; confirmed removal ends the process.
     const program = publishHttp.pipe(
       Effect.zipRight(
-        Effect.all(
-          runNodeFiberSet({
-            nodeConfig,
-            withMonitoring,
-            startupFibers: {
-              historyOwnerStopped: historyOwner.awaitStopped,
-              retainedPayloadServer: retainedPayloadServerThread(
-                retrieveRetainedDaPayload,
-              ),
+        untilOperatorRemoved(
+          Effect.all(
+            runNodeFiberSet({
+              nodeConfig,
+              withMonitoring,
+              startupFibers: {
+                historyOwnerStopped: historyOwner.awaitStopped,
+                retainedPayloadServer: retainedPayloadServerThread(
+                  retrieveRetainedDaPayload,
+                ),
+              },
+            }),
+            {
+              concurrency: "unbounded",
             },
-          }),
-          {
-            concurrency: "unbounded",
-          },
+          ),
         ),
       ),
     );

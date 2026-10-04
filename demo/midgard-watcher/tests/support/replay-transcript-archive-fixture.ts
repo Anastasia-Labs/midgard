@@ -6,6 +6,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.js";
+import { resolveWatcherCanonicalRetentionWindow } from "../../src/storage/canonical-block-store.js";
 import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import { watcherBlockReplayPriorState } from "../../src/verification/block-replay.js";
 import {
@@ -139,7 +140,16 @@ export const makeWatcherTranscriptArchiveFixture = async () => {
       { headerHash, outRef: headerObservation.queueOutRef },
     ],
     finalizedHeaders: [headerObservation],
-    finalizedCorrectionLock: null,
+    finalizedCorrectionLock: {
+      outRef: `${h32("41")}#2`,
+      datum: "Idle" as const,
+      observedTransactionHash: h32("42"),
+      observedBlockHash: h32("43"),
+      observedSlot: "4242",
+      observedBlockNo: "9000",
+      observedChainPointId: h32("44"),
+      finalityDepth: "30",
+    },
     correctionLockWitnesses: [],
   };
   const stateQueueObservation =
@@ -165,5 +175,45 @@ export const makeWatcherTranscriptArchiveFixture = async () => {
     ruleBundleCommitment,
     eventAuthorities: Object.freeze([]),
   });
-  return Object.freeze({ createInput });
+  const retentionWindow = resolveWatcherCanonicalRetentionWindow({
+    signedIdentity: authority.signedIdentity,
+    policy: authority.policy,
+    trustRoots: authority.trustRoots,
+    durableMarker: authority.marker,
+  }).window;
+  const retirementObservation = (input: {
+    slot: string;
+    blockNo?: string;
+    live?: boolean;
+    lock?: SDK.CorrectionLockDatum | null;
+  }) => {
+    const { observationDigest: _digest, ...base } = stateQueueObservation;
+    const lock = input.lock === undefined ? "Idle" : input.lock;
+    const candidate = {
+      ...base,
+      nativePoint: {
+        ...base.nativePoint,
+        slot: input.slot,
+        blockNo: input.blockNo ?? "12000",
+        blockHash: BigInt(input.blockNo ?? "12000")
+          .toString(16)
+          .padStart(64, "0"),
+        chainPointId: h32("4a"),
+      },
+      finalizedHeaders: [],
+      finalizedQueue:
+        input.live === true
+          ? base.finalizedQueue
+          : base.finalizedQueue.slice(0, 1),
+      finalizedCorrectionLock:
+        lock === null
+          ? null
+          : { ...base.finalizedCorrectionLock!, datum: lock },
+    };
+    return unsafeAdmitWatcherStateQueueObservationForReplayTest({
+      ...candidate,
+      observationDigest: watcherSha256CanonicalJson(candidate),
+    });
+  };
+  return Object.freeze({ createInput, retentionWindow, retirementObservation });
 };

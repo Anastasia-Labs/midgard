@@ -146,6 +146,7 @@ export const readAcquiredLedgerSnapshot = async ({
   ogmiosUrl,
   addresses,
   at,
+  outputReferences,
   timeoutMs,
   signal,
   verifySession,
@@ -156,6 +157,12 @@ export const readAcquiredLedgerSnapshot = async ({
   /** Acquire this exact retained point or fail; never fall back to the tip.
    * Successful acquisition alone does not establish canonical ancestry. */
   readonly at?: LedgerSnapshotPoint;
+  /** Bounded exact-reference query. Consumers must prove list completeness
+   * from authenticated root links; these candidates alone prove no absence. */
+  readonly outputReferences?: readonly {
+    readonly txHash: string;
+    readonly outputIndex: number;
+  }[];
   /** Required: an address-scope scan walks the whole UTxO set, so no
    * per-request default fits it. Production captures pass
    * LEDGER_SCAN_TIMEOUT_MS. */
@@ -175,6 +182,12 @@ export const readAcquiredLedgerSnapshot = async ({
   )
     throw new Error("Ledger snapshot requires nonempty addresses");
   const selectedPoint = at === undefined ? undefined : point(at);
+  const selectedReferences = outputReferences?.map((ref) => ({
+    transaction: { id: bytes(ref.txHash, "Requested transaction id", 32) },
+    index: natural(ref.outputIndex, "Requested output index"),
+  }));
+  if (selectedReferences?.length === 0)
+    throw new Error("Exact-reference snapshot requires candidates");
   signal?.throwIfAborted();
   const deadline = AbortSignal.timeout(timeoutMs);
   const captureSignal =
@@ -210,9 +223,14 @@ export const readAcquiredLedgerSnapshot = async ({
       throw new LedgerPointUnavailable(
         "Ogmios acquired a different ledger point",
       );
-    const rawOutputs = await session.request("queryLedgerState/utxo", {
-      addresses: requested,
-    });
+    const rawOutputs = await session.request(
+      "queryLedgerState/utxo",
+      selectedReferences === undefined
+        ? {
+            addresses: requested,
+          }
+        : { outputReferences: selectedReferences },
+    );
     if (!Array.isArray(rawOutputs))
       throw new Error("Ogmios UTxO response must be a complete array");
     const addressSet = new Set(requested);
@@ -224,6 +242,20 @@ export const readAcquiredLedgerSnapshot = async ({
         .size !== outputs.length
     )
       throw new Error("Ogmios ledger snapshot repeats an output reference");
+    if (selectedReferences !== undefined) {
+      const references = new Set(
+        selectedReferences.map((ref) => `${ref.transaction.id}#${ref.index}`),
+      );
+      if (
+        outputs.length !== references.size ||
+        outputs.some(
+          (entry) => !references.has(`${entry.txHash}#${entry.outputIndex}`),
+        )
+      )
+        throw new Error(
+          "Ogmios exact-reference snapshot omitted or substituted a candidate",
+        );
+    }
     // This query is deliberately still acquired. It checks the state queried,
     // not whether this point remains on the current selected branch.
     // A different answer means the acquired state was lost under the scan

@@ -19,11 +19,7 @@ import {
   type WatcherFaultProofSupervisor,
 } from "../fault-proofs/fault-proof-supervisor.js";
 import { createWatcherProtocolParameterRuntimeAuthority } from "../funding/prover-funding.js";
-import { createWatcherProverFundingAuthorityFactory } from "../funding/prover-funding-authority.js";
-import {
-  openWatcherSqliteProverFundingReservationStore,
-  type WatcherSqliteProverFundingReservationStoreRuntime,
-} from "../funding/sqlite-prover-funding-reservation-store.js";
+import type { WatcherSqliteProverFundingReservationStoreRuntime } from "../funding/sqlite-prover-funding-reservation-store.js";
 import { createWatcherLocalKupmiosNativeObservationRuntime } from "../l1/local-kupmios-native-observation.js";
 import {
   startWatcherNativeChainSyncWithRetry,
@@ -53,6 +49,7 @@ import {
   loadWatcherSecretText,
   type WatcherProcessConfig,
 } from "./process-config.js";
+import { watcherReplayTranscriptRetirementHooks } from "./replay-transcript-retirement.js";
 import {
   createWatcherStartupProgress,
   type WatcherStartupProgress,
@@ -61,6 +58,7 @@ import {
   createWatcherUserEventRuntime,
   type WatcherUserEventRuntime,
 } from "./user-event-runtime.js";
+import { openWatcherProverFundingRuntime } from "./watcher-prover-funding-runtime.js";
 import { closeWatcherAllocatedResources } from "./watcher-runtime.close-allocated-resources.js";
 import {
   createWatcherRuntimeLifecycle,
@@ -242,30 +240,25 @@ export const createWatcherRuntime = async (input: {
         "watcher production runtime omitted its Kupo or Ogmios query authority",
       );
     }
-    proverFundingStore = await openWatcherSqliteProverFundingReservationStore({
+    const fundingRuntime = await openWatcherProverFundingRuntime({
       path: input.config.watcherConfig.storage.path,
-    });
-    const proverFundingProtocolParameters = await startup(
-      "protocol_parameters",
-      ({ retryL1Read }) =>
-        retryL1Read(() =>
-          createWatcherProtocolParameterRuntimeAuthority({
-            deploymentIdentity,
-            ogmiosUrl: ogmiosService.endpoint,
-            timeoutMs: input.config.watcherConfig.l1.requestTimeoutMs,
-          }),
+      authenticationKey: trusted.rollbackAuthenticationKey,
+      deploymentIdentity,
+      createProtocolParameters: () =>
+        startup("protocol_parameters", ({ retryL1Read }) =>
+          retryL1Read(() =>
+            createWatcherProtocolParameterRuntimeAuthority({
+              deploymentIdentity,
+              ogmiosUrl: ogmiosService.endpoint,
+              timeoutMs: input.config.watcherConfig.l1.requestTimeoutMs,
+            }),
+          ),
         ),
-    );
-    const proverFundingAuthorityFactory =
-      createWatcherProverFundingAuthorityFactory({
-        launchScope: faultProofApplication.installedCategories,
-        journalRoot: input.config.workflowJournalDirectory,
-        deploymentIdentity,
-        protocolParameters: proverFundingProtocolParameters,
-        store: proverFundingStore.store,
-      });
-    // No supervisor jobs exist yet; reclaim reservations left before any signed attempt.
-    await proverFundingAuthorityFactory.releaseUnused();
+      launchScope: faultProofApplication.installedCategories,
+      journalRoot: input.config.workflowJournalDirectory,
+    });
+    proverFundingStore = fundingRuntime.store;
+    const proverFundingAuthorityFactory = fundingRuntime.factory;
 
     // Address derivation only; the runtime never holds a live signer. The
     // executing runner re-resolves the same secret source itself.
@@ -452,7 +445,16 @@ export const createWatcherRuntime = async (input: {
             : [current.finalizedCorrectionLock.outRef]),
         ]);
       },
-      hooks: recovery.hooks,
+      hooks: watcherReplayTranscriptRetirementHooks({
+        recovery,
+        durable,
+        supervisor: faultProofSupervisor,
+        localObservationRuntime: observation,
+        stateQueueSource,
+        stateQueueRuntime,
+        store: sqlite.replayTranscripts,
+        config: input.config.watcherConfig,
+      }),
     });
     activeCoordinator = coordinator;
     resolveCoordinator(coordinator);

@@ -8,6 +8,15 @@ import {
   type WatcherAuthenticatedReplayTranscript,
   watcherAuthenticatedReplayTranscriptCborHex,
 } from "../verification/authenticated-replay-transcript.js";
+import type {
+  WatcherReplayTranscriptClassification,
+  WatcherReplayTranscriptCompletion,
+} from "./replay-transcript-completion.js";
+import {
+  createWatcherReplayTranscriptLifecycle,
+  type WatcherReplayTranscriptLifecycle,
+  type WatcherReplayTranscriptRetirementInput,
+} from "./replay-transcript-lifecycle.js";
 
 export type WatcherReplayTranscriptIdentity = Readonly<{
   deploymentFingerprint: string;
@@ -32,16 +41,37 @@ export type WatcherReplayTranscriptStore = Readonly<{
   compareAndSwap(input: {
     readonly expectedTranscriptDigest: string | null;
     readonly transcript: WatcherAuthenticatedReplayTranscript;
+    readonly lifecycle?: WatcherReplayTranscriptLifecycle;
   }): Promise<boolean>;
+  completeOperation(
+    completion: WatcherReplayTranscriptCompletion,
+  ): Promise<void>;
+  completeClassification(
+    authority: WatcherReplayTranscriptClassification,
+  ): Promise<void>;
+  beginProofOperation(
+    authority: WatcherReplayTranscriptClassification,
+  ): Promise<void>;
+  retireExpired(input: WatcherReplayTranscriptRetirementInput): Promise<number>;
+  resetRetirementWitnesses(): Promise<void>;
 }>;
 
-/** Operational ceilings fail closed; the archive never prunes an original. */
+/** Operational ceilings fail closed; active originals remain retained. */
 export type WatcherReplayTranscriptStorageLimits = Readonly<{
   maximumTranscriptBytes: number;
   maximumChainLength: number;
   maximumRows: number;
   maximumTotalBytes: number;
 }>;
+
+/** Evidence stays intact; the operator must free safe capacity or provision it. */
+export class WatcherReplayTranscriptCapacityError extends Error {
+  readonly code = "capacity_intervention_required" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "WatcherReplayTranscriptCapacityError";
+  }
+}
 
 export const WATCHER_REPLAY_TRANSCRIPT_STORAGE_LIMITS: WatcherReplayTranscriptStorageLimits =
   Object.freeze({
@@ -155,7 +185,7 @@ export const createWatcherSqliteReplayTranscriptStore = (
       value.count > limits.maximumRows ||
       value.bytes > limits.maximumTotalBytes
     ) {
-      throw new Error(
+      throw new WatcherReplayTranscriptCapacityError(
         "watcher replay transcript archive exceeds storage limits",
       );
     }
@@ -285,10 +315,26 @@ export const createWatcherSqliteReplayTranscriptStore = (
       throw error;
     }
   };
+  const lifecycleStore = createWatcherReplayTranscriptLifecycle({
+    database,
+    identityKey,
+    audit,
+    transaction,
+    maximumPins: limits.maximumChainLength,
+  });
   const store: WatcherReplayTranscriptStore = Object.freeze({
+    completeOperation: lifecycleStore.completeOperation,
+    completeClassification: lifecycleStore.completeClassification,
+    beginProofOperation: lifecycleStore.beginProofOperation,
+    retireExpired: lifecycleStore.retireExpired,
+    resetRetirementWitnesses: lifecycleStore.resetRetirementWitnesses,
     read: async (identity) =>
       transaction("BEGIN", () => audit(identityKey(identity))),
-    compareAndSwap: async ({ expectedTranscriptDigest, transcript }) => {
+    compareAndSwap: async ({
+      expectedTranscriptDigest,
+      transcript,
+      lifecycle,
+    }) => {
       assertWatcherAuthenticatedReplayTranscript(transcript);
       const cborHex = watcherAuthenticatedReplayTranscriptCborHex(transcript);
       if (
@@ -314,6 +360,7 @@ export const createWatcherSqliteReplayTranscriptStore = (
         if (current?.headTranscriptDigest === digest) {
           if (current.persistedTranscriptCborHex !== cborHex)
             throw new Error("watcher replay transcript digest was substituted");
+          lifecycleStore.register(transcript, lifecycle, true);
           return true;
         }
         if (row.get(key, digest) !== undefined)
@@ -326,10 +373,11 @@ export const createWatcherSqliteReplayTranscriptStore = (
           retained.count >= limits.maximumRows ||
           retained.bytes + bytes.length > limits.maximumTotalBytes
         ) {
-          throw new Error(
+          throw new WatcherReplayTranscriptCapacityError(
             "watcher replay transcript append exceeds storage limits",
           );
         }
+        lifecycleStore.register(transcript, lifecycle, current !== null);
         insert.run(
           key,
           digest,

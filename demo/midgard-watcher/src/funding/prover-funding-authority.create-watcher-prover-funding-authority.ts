@@ -41,8 +41,10 @@ export const createWatcherProverFundingAuthority = async (input: {
   readonly rollbackGeneration: string;
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly calculation: WatcherRuntimeProverFundingCalculation;
+  readonly selectionCalculation?: WatcherRuntimeProverFundingCalculation;
   readonly policy: WorkflowRuntimeFundingPolicy;
   readonly reservationPolicy?: WorkflowRuntimeFundingPolicy;
+  readonly capacityPolicy?: WorkflowRuntimeFundingPolicy;
   readonly decisionDigest: string;
   readonly walletAddress: string;
   readonly walletUtxos: readonly UTxO[];
@@ -95,6 +97,7 @@ export const createWatcherProverFundingAuthority = async (input: {
       ? planWatcherProverFundingReservation({
           deploymentIdentity: input.deploymentIdentity,
           calculation: input.calculation,
+          selectionCalculation: input.selectionCalculation,
           decisionDigest: input.decisionDigest,
           walletAddress: input.walletAddress,
           utxos: input.walletUtxos.filter(
@@ -302,6 +305,7 @@ export const createWatcherProverFundingAuthority = async (input: {
         const refreshedPlan = planWatcherProverFundingReservation({
           deploymentIdentity: input.deploymentIdentity,
           calculation: input.calculation,
+          selectionCalculation: input.selectionCalculation,
           decisionDigest: input.decisionDigest,
           walletAddress: input.walletAddress,
           utxos: walletUtxos.filter(
@@ -473,6 +477,7 @@ export const createWatcherProverFundingAuthority = async (input: {
     runner: input.runner,
     policy: input.policy,
     reservationPolicy: input.reservationPolicy,
+    capacityPolicy: input.capacityPolicy,
     actuationPermit: input.actuationPermit,
     rollbackGeneration: input.rollbackGeneration,
     port,
