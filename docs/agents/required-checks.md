@@ -591,10 +591,15 @@ Golden channel cek-builtin-cardano-v1 (@al-ft/midgard-validation).
   - `demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.edges.mjs`
   - `demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.generated.json`
   - `onchain/aiken/scripts/pinned-compiler.mjs`
+  - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
   - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
   - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
