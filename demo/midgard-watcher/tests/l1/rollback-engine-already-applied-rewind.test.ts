@@ -232,6 +232,32 @@ describe("an already-applied rewind re-delivered by the chain-sync source", () =
     });
   });
 
+  it("never absorbs a recomputed rewind of the frontier or a finality result that is not the recomputed one", () => {
+    // The frontier re-delivered shallower than journaled: the recomputed
+    // result is a rewind_pending whose replacement is the frontier's point.
+    const deeper = harness.pending({ ...frontier, depth: "2" });
+    const shallower = redelivered(deeper, { ...frontier, depth: "1" });
+    expect(shallower.finalityResult.action).toBe("rewind_pending");
+    // It is parsed as a rewind, which finds nothing to discard.
+    expect(evaluate(deeper, shallower)).toMatchObject({
+      action: "reject",
+      reasonCodes: ["unknown_rewind_target"],
+    });
+
+    // An already-applied replay whose finality result is not the one the
+    // engine recomputes from the previous state and the consistency.
+    const previous = harness.pending(frontier);
+    const input = redelivered(previous, { ...frontier, depth: "2" });
+    const tampered = evaluate(previous, {
+      ...input,
+      finalityResult: { ...input.finalityResult, alertCodes: [] },
+    });
+    expect(tampered).toMatchObject({
+      action: "reject",
+      reasonCodes: ["finality_provenance_mismatch"],
+    });
+  });
+
   it("keeps a genuine replacement on the rewind path", () => {
     const previous = harness.pending(frontier);
     const replacement: Point = {

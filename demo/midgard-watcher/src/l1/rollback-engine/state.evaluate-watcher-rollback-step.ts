@@ -87,6 +87,11 @@ const alreadyAppliedRewind = (
         : null;
   const consistency = consistencyInput as WatcherMultiProviderConsistency;
   const agreement = consistency.agreement;
+  // The result-equality and action clauses restate what the caller already
+  // proved: parseFinalityTransition refuses a result that is not the
+  // recomputed one as finality_provenance_mismatch before this is reached,
+  // parses every recomputed rewind_pending as a rewind (the rewind path, not
+  // this one), and a recomputed quarantine_incident is always quarantined.
   if (
     !watcherSameCanonicalJson(finalityResult, finalityResultInput) ||
     finalityResult.protocolDecision === "quarantined" ||
