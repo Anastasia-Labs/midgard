@@ -85,9 +85,25 @@ const listSize = (entries: readonly DaPayloadEntry[]): number =>
 const constructorSize = (fieldSizes: readonly number[]): number =>
   4 + fieldSizes.reduce((total, size) => total + size, 0);
 
+/** The DaPayloadV1 block-body fields that are `[key, value]` entry lists. */
+export type DaPayloadEntryField =
+  | "utxos"
+  | "withdrawals"
+  | "forced_transactions"
+  | "transactions"
+  | "transaction_preimages"
+  | "forced_transaction_preimages"
+  | "cek_program_material"
+  | "deposits"
+  | "transition_trace"
+  | "event_to_step"
+  | "validation_traces"
+  | "validation_trace_witnesses";
+
 const encodedPayloadSize = (
   payload: DaPayload,
-  utxoEncodedListSize = listSize(payload.block_body.utxos),
+  entryListSize: (field: DaPayloadEntryField) => number = (field) =>
+    listSize(payload.block_body[field]),
 ): number => {
   const body = payload.block_body;
   const header = body.header;
@@ -131,18 +147,18 @@ const encodedPayloadSize = (
   const bodySize = constructorSize([
     bytesSize(body.header_hash),
     headerSize,
-    utxoEncodedListSize,
-    listSize(body.withdrawals),
-    listSize(body.forced_transactions),
-    listSize(body.transactions),
-    listSize(body.transaction_preimages),
-    listSize(body.forced_transaction_preimages),
-    listSize(body.cek_program_material),
-    listSize(body.deposits),
-    listSize(body.transition_trace),
-    listSize(body.event_to_step),
-    listSize(body.validation_traces),
-    listSize(body.validation_trace_witnesses),
+    entryListSize("utxos"),
+    entryListSize("withdrawals"),
+    entryListSize("forced_transactions"),
+    entryListSize("transactions"),
+    entryListSize("transaction_preimages"),
+    entryListSize("forced_transaction_preimages"),
+    entryListSize("cek_program_material"),
+    entryListSize("deposits"),
+    entryListSize("transition_trace"),
+    entryListSize("event_to_step"),
+    entryListSize("validation_traces"),
+    entryListSize("validation_trace_witnesses"),
     countsSize,
   ]);
   return constructorSize([integerSize(payload.version), bodySize]);
@@ -161,7 +177,26 @@ export const daPayloadEncodedSizeFromUtxoAggregate = (
   payload: DaPayload,
   utxos: DaPayloadEntrySizeAggregate,
 ): number =>
-  encodedPayloadSize(payload, daPayloadEntriesEncodedSizeFromAggregate(utxos));
+  encodedPayloadSize(payload, (field) =>
+    field === "utxos"
+      ? daPayloadEntriesEncodedSizeFromAggregate(utxos)
+      : listSize(payload.block_body[field]),
+  );
+
+/**
+ * Exact encoded inner size when every entry list is represented by its
+ * entry-count/tuple-byte aggregate. Every `payload.block_body` entry list is
+ * ignored; the header, counts and header hash are read from `payload`.
+ */
+export const daPayloadEncodedSizeFromEntryAggregates = (
+  payload: DaPayload,
+  aggregates: Readonly<
+    Record<DaPayloadEntryField, DaPayloadEntrySizeAggregate>
+  >,
+): number =>
+  encodedPayloadSize(payload, (field) =>
+    daPayloadEntriesEncodedSizeFromAggregate(aggregates[field]),
+  );
 
 /**
  * Encodes the canonical V1 Plutus-Data wire format directly into byte chunks.

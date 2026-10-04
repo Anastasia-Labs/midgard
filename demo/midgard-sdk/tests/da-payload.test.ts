@@ -14,10 +14,13 @@ import {
   DaPayload,
   type DaPayload as DaPayloadType,
   daPayloadEncodedSize,
+  daPayloadEncodedSizeFromEntryAggregates,
   daPayloadEncodedSizeFromUtxoAggregate,
   daPayloadEntriesEncodedSizeFromAggregate,
   type DaPayloadEntry,
   daPayloadEntryEncodedSize,
+  type DaPayloadEntryField,
+  type DaPayloadEntrySizeAggregate,
   decodeDaPayload,
   decodeRetainedValidationWitness,
   decodeRetainedValidationWitnessKey,
@@ -260,6 +263,48 @@ describe("DaPayloadV1 canonical codec", () => {
         encodedTupleBytes: 1,
       }),
     ).toThrow("must have zero tuple bytes");
+  });
+
+  it("sizes every entry list from its aggregate exactly", () => {
+    const fields: readonly DaPayloadEntryField[] = [
+      "utxos",
+      "withdrawals",
+      "forced_transactions",
+      "transactions",
+      "transaction_preimages",
+      "forced_transaction_preimages",
+      "cek_program_material",
+      "deposits",
+      "transition_trace",
+      "event_to_step",
+      "validation_traces",
+      "validation_trace_witnesses",
+    ];
+    for (let seed = 0; seed < 20; seed += 1) {
+      const value = payload(seed);
+      const aggregates = Object.fromEntries(
+        fields.map((field) => [
+          field,
+          {
+            entryCount: value.block_body[field].length,
+            encodedTupleBytes: value.block_body[field].reduce(
+              (sum, entry) => sum + daPayloadEntryEncodedSize(entry),
+              0,
+            ),
+          },
+        ]),
+      ) as Record<DaPayloadEntryField, DaPayloadEntrySizeAggregate>;
+      const emptied = {
+        ...value,
+        block_body: {
+          ...value.block_body,
+          ...Object.fromEntries(fields.map((field) => [field, []])),
+        },
+      } as DaPayloadType;
+      expect(daPayloadEncodedSizeFromEntryAggregates(emptied, aggregates)).toBe(
+        encodeDaPayload(value).length,
+      );
+    }
   });
 
   it("fails closed on every version other than 1", () => {

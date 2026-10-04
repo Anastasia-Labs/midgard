@@ -14,9 +14,11 @@ export {
 } from "./da-payload.da-payload-reader.js";
 export {
   daPayloadEncodedSize,
+  daPayloadEncodedSizeFromEntryAggregates,
   daPayloadEncodedSizeFromUtxoAggregate,
   daPayloadEntriesEncodedSizeFromAggregate,
   daPayloadEntryEncodedSize,
+  type DaPayloadEntryField,
   type DaPayloadEntrySizeAggregate,
   encodeDaPayload,
 } from "./da-payload.encode-da-payload.js";
