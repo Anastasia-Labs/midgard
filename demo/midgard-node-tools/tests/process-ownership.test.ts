@@ -73,6 +73,8 @@ describe.skipIf(process.platform !== "linux")("owned process groups", () => {
     "unreadable-leader",
     "gone-live-child",
     "gone-unreadable-entry",
+    "gone-zero-group-entry",
+    "gone-malformed-zero-entry",
   ] as const)("observes post-SIGTERM exit safely: %s", async (scenario) => {
     const dir = await makeTempDir();
     const pid = 42_001;
@@ -113,8 +115,10 @@ describe.skipIf(process.platform !== "linux")("owned process groups", () => {
     let postSignalCwdReads = 0;
     let disappeared = false;
     const shouldSucceed =
-      scenario === "gone-empty" || scenario === "same-core-then-gone";
-    const stat = (pgid: number, ticks: string, state = "S") =>
+      scenario === "gone-empty" ||
+      scenario === "same-core-then-gone" ||
+      scenario === "gone-zero-group-entry";
+    const stat = (pgid: number | string, ticks: string, state = "S") =>
       `${pid.toString()} (synthetic-owned) ${[state, "1", pgid.toString(), ...Array<string>(16).fill("0"), ticks].join(" ")}\n`;
     const procError = (code: string, path: string) =>
       Object.assign(new Error(`synthetic ${code} reading ${path}`), {
@@ -152,6 +156,8 @@ describe.skipIf(process.platform !== "linux")("owned process groups", () => {
         throw procError("ENOENT", path);
       }
       if (path === `/proc/${sentinelPid.toString()}/stat`) {
+        if (scenario === "gone-zero-group-entry") return stat(0, "0");
+        if (scenario === "gone-malformed-zero-entry") return stat("00", "0");
         if (scenario === "gone-unreadable-entry")
           throw procError("EACCES", path);
         return stat(sentinelPid, "100");

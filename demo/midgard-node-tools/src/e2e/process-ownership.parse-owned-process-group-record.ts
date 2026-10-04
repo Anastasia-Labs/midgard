@@ -219,9 +219,15 @@ export const readProcCoreIdentity = (
     .slice(commEnd + 2)
     .trim()
     .split(/\s+/u);
-  const pgid = Number(fieldsFromState[2]);
+  const pgidField = fieldsFromState[2];
+  const pgid = Number(pgidField);
   const startTicks = fieldsFromState[19];
-  if (!Number.isSafeInteger(pgid) || pgid <= 0 || startTicks === undefined) {
+  if (
+    !Number.isSafeInteger(pgid) ||
+    pgid < 0 ||
+    (pgid === 0 && pgidField !== "0") ||
+    startTicks === undefined
+  ) {
     throw new Error(`incomplete /proc identity for pid ${pid.toString()}`);
   }
   const state = fieldsFromState[0] ?? "";
