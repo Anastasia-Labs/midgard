@@ -18,6 +18,7 @@ import {
   type JournalJsonObject,
 } from "../workflow/journal.js";
 import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import { latestSubmissionIntent } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -28,6 +29,7 @@ import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transacti
 import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
 import {
   planValidationTraceDisputeMove,
+  type ValidationTraceDisputeActuatorAction,
   type ValidationTraceDisputeCapturedAction,
   type ValidationTraceDisputeRetainedRouteInput,
 } from "./workflow-engine.plan-validation-trace-dispute-move.js";
@@ -133,6 +135,43 @@ export const createValidationTraceDisputeRecoveryAdapter = ({
       | ValidationTraceDisputeRetainedRouteInput
       | undefined;
   };
+  const workflowAction = async (
+    context: FraudProofWorkflowAdapterContext,
+    action: ValidationTraceDisputeActuatorAction,
+  ): Promise<FraudProofWorkflowAction> => {
+    if (action.stage === "init") {
+      // A cancelled route consumes the old init's effects without rolling back
+      // its inclusion. Bind the next init to that exact completed cancellation.
+      for (const { event } of [...context.entries].reverse()) {
+        if (event.kind !== "confirmed") continue;
+        const intent = latestSubmissionIntent(context.entries, event.actionId);
+        if (
+          intent?.actionInput.stage !== "cancel_semantic_route" ||
+          intent.txHash !== event.txHash ||
+          !(await workflow.l1.transactionConfirmed({
+            headerHash,
+            txHash: event.txHash,
+          }))
+        )
+          continue;
+        assertRecovery(
+          intent.durableRecovery,
+          { actionId: intent.actionId, input: intent.actionInput },
+          context.artifact,
+        );
+        const threadOutRef = intent.actionInput.threadOutRef;
+        if (typeof threadOutRef !== "string")
+          throw new Error(
+            "validationTraceDispute cancellation omitted its thread",
+          );
+        return validationTraceFieldCarriageAction(action, {
+          txHash: event.txHash,
+          threadOutRef,
+        });
+      }
+    }
+    return validationTraceFieldCarriageAction(action);
+  };
   const current = async (context: FraudProofWorkflowAdapterContext) => {
     assertContext(context);
     const retained = retainedRoute(context);
@@ -150,7 +189,7 @@ export const createValidationTraceDisputeRecoveryAdapter = ({
       assertFreshArtifact(context.artifact);
       const inspection = await workflow.fieldCarriage.prerequisite.inspect({
         headerHash,
-        baseAction: validationTraceFieldCarriageAction(move.action),
+        baseAction: await workflowAction(context, move.action),
         artifact: context.artifact,
         entries: context.entries,
       });
@@ -199,7 +238,7 @@ export const createValidationTraceDisputeRecoveryAdapter = ({
         assertFreshArtifact(context.artifact);
       return {
         kind: "action_required",
-        action: validationTraceFieldCarriageAction(move.action),
+        action: await workflowAction(context, move.action),
       };
     },
     preflight: async (context) => {
@@ -207,10 +246,7 @@ export const createValidationTraceDisputeRecoveryAdapter = ({
       const { move, retained } = await current(context);
       if (
         move.kind !== "act" ||
-        !sameJson(
-          validationTraceFieldCarriageAction(move.action),
-          context.action,
-        )
+        !sameJson(await workflowAction(context, move.action), context.action)
       )
         throw new WorkflowActionChangedError(
           "validationTraceDispute action changed before capture",
@@ -362,7 +398,7 @@ export const createValidationTraceDisputeRecoveryAdapter = ({
                       if (
                         move.kind !== "act" ||
                         !sameJson(
-                          validationTraceFieldCarriageAction(move.action),
+                          await workflowAction(context, move.action),
                           context.action,
                         )
                       )

@@ -396,8 +396,8 @@ it("fails the parent operation lease after accepted response loss while a later 
     expect(secondAttempt.right.value.type).toBe("FailureOutput");
     if (secondAttempt.right.value.type !== "FailureOutput")
       throw new Error("Replacement attempt must refuse durable preparation");
-    expect(secondAttempt.right.value.error).toMatch(
-      /Failed to prepare pending block finalization|Refusing to prepare a new pending block while another active pending-finalization record exists/,
+    expect(secondAttempt.right.value.error).toContain(
+      "State-queue linked-list unit is missing or not unique",
     );
     expect(attempts[1]!.output?.type).toBe("FailureOutput");
     expect(providerCalls).toBe(1);

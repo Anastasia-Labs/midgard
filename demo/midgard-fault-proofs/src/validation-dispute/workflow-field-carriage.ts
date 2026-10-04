@@ -39,10 +39,14 @@ import { recoverValidationTraceStateIndex } from "./workflow-engine.recover-vali
 
 export const validationTraceFieldCarriageAction = (
   action: ValidationTraceDisputeActuatorAction,
+  restartAfterCancellation?: Readonly<{ txHash: string; threadOutRef: string }>,
 ): FraudProofWorkflowAction => {
   const input = normalizeJournalJson({
     ...action,
     category: "validationTraceDispute",
+    ...(action.stage !== "init" || restartAfterCancellation === undefined
+      ? {}
+      : { restartAfterCancellation }),
     ...(action.stage === "remove"
       ? {
           requiresMutationLease:
