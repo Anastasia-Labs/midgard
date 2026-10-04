@@ -2,7 +2,7 @@
   "measurement": "native-script-decoding-engine-exec-ledger",
   "issue": "#635 — the standalone native-script decoding-fault computation-thread family (originating divergence #633). Rows pinned with the family's first commit, because the design's §6 throughput figures were derived from the SCAN ledger's one-shot rates rather than measured on this thread's own fold, and a step family whose scan step cannot fit an L1 transaction adjudicates nothing.",
   "spec": "docs/fault-proofs/native-script-decoding-fault-thread-design-v1.md §3 (contract set), §5 (byte authentication — option (a), reference_script_item_commitment as the anchor), §6 (budget math, derived-from-pinned-rates and now compared against these rows), §7 (adversarial selectors the neutralisation entries keep live); GOAL_SPEC §3.3 for the basis.",
-  "note": "2026-09-29: remeasured with the pinned v1.1.23+5adf783 compiler against current sources, including the authoritative forced-source representation introduced by 742df026e. Existing budget limits and fit requirements are unchanged.\n\nHistorical measurement notes:\n**What the rows are.** Two groups. (1) The engine fold group (module `exec_measure_v1.test`) drives `engine.budgeted_scan_v1` — bind the canonical `[0, payload]` wrapper, fold to the exact terminal through the frozen scan primitives — over the same programmatic worst-shape vectors the scan ledger's curves use (`midgard/native_script_payload_vectors_v1`), at 9 and 17 nodes per shape with a fixture-only twin beside every measured row, so the realized mem-per-node rate is a slope of whole-test readings with the harness share measured rather than argued. (2) The step groups pin one whole-L1-step reading per validator arm of the thread (bind subject, open claim, bind outpoint, scan, verdict, finalize) from the family's own positive selectors, which is what prices the per-step thread envelope the fold rows exclude.\n\n**The headline finding: the realized fold rate is ≈3.5× the design's §6 rates.** §6 derived its throughput from the PINNED one-shot rates of `native-script-scan-exec-ledger-v1.json` — ≈197,726 mem/node deep, ≈174,338 wide — and predicted ≈61–69 nodes per scan transaction and a ≈100-transaction worst case. The staged fold measured here costs more per node than the one-shot: the deep slope between the 9- and 17-node rows is ≈746K mem/node (fixture share ≈66K) and the wide slope ≈655K (fixture share ≈11K), i.e. ≈680K/≈644K net — the per-step price of the hash-chained control/frame commitments (`hash_machine_control_v1` re-encode + `hash_frame_v1` per push/pop) that the one-shot predicate's in-memory stack never pays. CPU shows the same multiple (deep ≈302M cpu/node against §6's ≈66.1M) and stays non-binding. At the §3.3 basis minus the ≈1.0M step envelope the step rows price, that is ≈16–18 nodes per scan transaction, so the 5,447-node reachable worst case takes ≈320–340 scan steps ≈ 330–350 L1 transactions in either direction, ≈480–510 ADA at §6's stated fee assumption — still under 0.7% of the 75,000-ADA fraud_prover_reward and, at 1 tx/block, ≈2 hours against the half-of-seven-days maturity fit, so §6's CONCLUSIONS survive with ≈3.5× the transaction count and none of its decisions flip. §6 itself anticipated only the favourable direction of this delta (\"if re-measurement comes in materially better\"); the unfavourable one is recorded here and in the wave report rather than silently absorbed. 65-node vectors were measured once during row selection (deep 48.44M mem / 19.55B cpu, wide 42.74M / 16.61B) and are OVER the basis on both axes — which is exactly the §6 staged-machine premise, one transaction cannot carry a big scan — so they are not pinnable as `within` rows and are recorded here as readings instead.\n\n**What the rows do NOT claim.** (1) That any single L1 transaction scans a worst-case payload — the family is a staged machine precisely because none can. (2) That the fold's per-node rate is optimal; it prices the commitment discipline §7.4/§7.5 require (cursor replay and payload substitution die on the hash chain), and an owner who wants the §6 count back can weigh cheaper state commitments against those selectors. (3) That the step rows are worst-case L1 steps — they are the family's positive selectors at fixture cardinalities; the fold rows are what scale.\n\nRegenerate with `MIDGARD_AIKEN_BIN=<fork> node scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs --update`, and move any reported number in the same commit. `--update` rewrites the raw mem/cpu rows and nothing else; a selector that did not run, a row that did not run, or a fresh reading that contradicts a `within` judgement fails in update mode too, and the ledger is not rewritten when it does.",
+  "note": "2026-09-29: remeasured with the pinned v1.1.23+5adf783 compiler against current sources, including the authoritative forced-source representation introduced by 742df026e. Existing budget limits and fit requirements are unchanged.\n\nHistorical measurement notes:\n**What the rows are.** Two groups. (1) The engine fold group (module `exec_measure_v1.test`) drives `engine.budgeted_scan_v1` — bind the canonical `[0, payload]` wrapper, fold to the exact terminal through the frozen scan primitives — over the same programmatic worst-shape vectors the scan ledger's curves use (`midgard/native_script_payload_vectors_v1`), at 9 and 17 nodes per shape with a fixture-only twin beside every measured row, so the realized mem-per-node rate is a slope of whole-test readings with the harness share measured rather than argued. (2) The step groups pin one whole-L1-step reading per validator arm of the thread (bind subject, open claim, bind outpoint, scan, verdict, finalize) from the family's own positive selectors, which is what prices the per-step thread envelope the fold rows exclude.\n\n**The headline finding: the realized fold rate is ≈3.5× the design's §6 rates.** §6 derived its throughput from the PINNED one-shot rates of `native-script-scan-exec-ledger-v1.json` — ≈197,726 mem/node deep, ≈174,338 wide — and predicted ≈61–69 nodes per scan transaction and a ≈100-transaction worst case. The staged fold measured here costs more per node than the one-shot: the deep slope between the 9- and 17-node rows is ≈746K mem/node (fixture share ≈66K) and the wide slope ≈655K (fixture share ≈11K), i.e. ≈680K/≈644K net — the per-step price of the hash-chained control/frame commitments (`hash_machine_control_v1` re-encode + `hash_frame_v1` per push/pop) that the one-shot predicate's in-memory stack never pays. CPU shows the same multiple (deep ≈302M cpu/node against §6's ≈66.1M) and stays non-binding. At the §3.3 basis minus the ≈1.0M step envelope the step rows price, that is ≈16–18 nodes per scan transaction, so the 5,447-node reachable worst case takes ≈320–340 scan steps ≈ 330–350 L1 transactions in either direction, ≈480–510 ADA at §6's stated fee assumption — still under 0.7% of the 75,000-ADA fraud_prover_reward and, at 1 tx/block, ≈2 hours against the half-of-seven-days maturity fit, so §6's CONCLUSIONS survive with ≈3.5× the transaction count and none of its decisions flip. §6 itself anticipated only the favourable direction of this delta (\"if re-measurement comes in materially better\"); the unfavourable one is recorded here and in the wave report rather than silently absorbed. 65-node vectors were measured once during row selection (deep 48.44M mem / 19.55B cpu, wide 42.74M / 16.61B) and are OVER the basis on both axes — which is exactly the §6 staged-machine premise, one transaction cannot carry a big scan — so they are not pinnable as `within` rows and are recorded here as readings instead.\n\n**What the rows do NOT claim.** (1) That any single L1 transaction scans a worst-case payload — the family is a staged machine precisely because none can. (2) That the fold's per-node rate is optimal; it prices the commitment discipline §7.4/§7.5 require (cursor replay and payload substitution die on the hash chain), and an owner who wants the §6 count back can weigh cheaper state commitments against those selectors. (3) That the step rows are worst-case L1 steps — they are the family's positive selectors at fixture cardinalities; the fold rows are what scale.\n\nRegenerate with `MIDGARD_AIKEN_BIN=<fork> node scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs --update`, and move any reported number in the same commit. `--update` rewrites the raw mem/cpu rows and nothing else; a selector that did not run, a row that did not run, or a fresh reading that contradicts a `within` judgement fails in update mode too, and the ledger is not rewritten when it does.\n\n2026-10-04 remeasurement with pinned aiken v1.1.23+5adf783 on 57fc702c. The computation-thread ADA-preservation guard in 2c1c2274a changes fifteen step-envelope readings. Engine-fold controls remain unchanged; execution basis, selector coverage and within-basis judgments remain unchanged.",
   "compiler": "Readings re-taken 2026-09-29 with the canonical patched fork `aiken v1.1.23+5adf783` (md5 ea9b39054f166e94771f838a662712f7). The earlier readings used the fork's +6801f62 build (md5 d3b909a22ad3b29dfb4079cf416a5021); the rev is recorded so a re-take under a different build reads as a re-take. Stock aiken is never a reading source. Rows are env-independent: no module measured here reads `env`.",
   "basis": {
     "memoryUnits": 13200000,
@@ -69,18 +69,18 @@
       ],
       "rows": {
         "decoding_step_01_binds_an_accepted_normal_transaction": {
-          "mem": 2559404,
-          "cpu": 956217130,
+          "mem": 2585350,
+          "cpu": 963704462,
           "basisFit": "within"
         },
         "decoding_step_01_binds_a_published_chunk_membership_proof": {
-          "mem": 3686070,
-          "cpu": 1390103376,
+          "mem": 3712016,
+          "cpu": 1397590708,
           "basisFit": "within"
         },
         "decoding_step_01_records_a_forced_source_for_either_direction": {
-          "mem": 2318700,
-          "cpu": 1033786864,
+          "mem": 2370792,
+          "cpu": 1048793528,
           "basisFit": "within"
         }
       }
@@ -94,18 +94,18 @@
       ],
       "rows": {
         "decoding_step_02_opens_a_normal_claim": {
-          "mem": 1461345,
-          "cpu": 749211936,
+          "mem": 1487891,
+          "cpu": 756795268,
           "basisFit": "within"
         },
         "decoding_step_02_opens_a_forced_acceptance": {
-          "mem": 2985849,
-          "cpu": 1390206183,
+          "mem": 3012195,
+          "cpu": 1397757515,
           "basisFit": "within"
         },
         "decoding_step_02_copies_a_malformed_accusation_verbatim": {
-          "mem": 2993695,
-          "cpu": 1399384662,
+          "mem": 3020041,
+          "cpu": 1406935994,
           "basisFit": "within"
         }
       }
@@ -119,13 +119,13 @@
       ],
       "rows": {
         "open_subject_commits_the_authenticated_outpoint": {
-          "mem": 3687621,
-          "cpu": 1626663703,
+          "mem": 3717567,
+          "cpu": 1634791035,
           "basisFit": "within"
         },
         "open_subject_closes_an_out_of_domain_direction_b_ordinal": {
-          "mem": 3812073,
-          "cpu": 1672307401,
+          "mem": 3842019,
+          "cpu": 1680434733,
           "basisFit": "within"
         }
       }
@@ -140,13 +140,13 @@
       ],
       "rows": {
         "bind_descriptor_authenticates_and_starts_the_machine": {
-          "mem": 3646894,
-          "cpu": 1480770089,
+          "mem": 3673440,
+          "cpu": 1488353421,
           "basisFit": "within"
         },
         "bind_descriptor_closes_a_non_native_direction_b_descriptor": {
-          "mem": 2720514,
-          "cpu": 1105588518,
+          "mem": 2747060,
+          "cpu": 1113171850,
           "basisFit": "within"
         }
       }
@@ -161,18 +161,18 @@
       ],
       "rows": {
         "advance_or_close_commits_a_partial_advance": {
-          "mem": 3652387,
-          "cpu": 1523657514,
+          "mem": 3678933,
+          "cpu": 1531240846,
           "basisFit": "within"
         },
         "advance_or_close_closes_direction_b_at_the_exact_terminal": {
-          "mem": 3902239,
-          "cpu": 1593536518,
+          "mem": 3928785,
+          "cpu": 1601119850,
           "basisFit": "within"
         },
         "advance_or_close_closes_a_direction_a_refusal": {
-          "mem": 3030903,
-          "cpu": 1274232670,
+          "mem": 3057449,
+          "cpu": 1281816002,
           "basisFit": "within"
         }
       }
@@ -186,13 +186,13 @@
       ],
       "rows": {
         "decoding_step_04_finalizes_a_wrongful_acceptance": {
-          "mem": 1214510,
-          "cpu": 537264253,
+          "mem": 1241056,
+          "cpu": 544847585,
           "basisFit": "within"
         },
         "decoding_step_04_finalizes_a_wrongful_rejection": {
-          "mem": 1223515,
-          "cpu": 540758391,
+          "mem": 1250061,
+          "cpu": 548341723,
           "basisFit": "within"
         }
       }
