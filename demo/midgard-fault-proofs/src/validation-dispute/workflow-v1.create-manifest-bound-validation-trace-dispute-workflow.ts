@@ -39,6 +39,7 @@ import {
   VALIDATION_TRACE_DISPUTE_REMOVAL_CONTRACT_NAMES,
   VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES,
 } from "./workflow-family.js";
+import { createValidationTraceFieldCarriageProvider } from "./workflow-field-carriage.js";
 
 export const VALIDATION_TRACE_DISPUTE_WORKFLOW =
   "midgard-validation-trace-dispute-production-workflow-v1" as const;
@@ -125,6 +126,7 @@ export type ManifestBoundValidationTraceDisputeWorkflow = Readonly<{
   material: ValidationTraceDisputeActuationMaterial | undefined;
   l1: FraudProofFamilyL1ObservationPort<"validationTraceDispute">;
   actuator: ReturnType<typeof createValidationTraceDisputeActuator>;
+  fieldCarriage: ReturnType<typeof createValidationTraceFieldCarriageProvider>;
   deriveStage: (
     currentTime: number,
   ) => Promise<ValidationTraceDisputeChainStage>;
@@ -272,7 +274,15 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
       );
     },
   });
+  const fieldCarriage = createValidationTraceFieldCarriageProvider({
+    binding,
+    lucid: config.lucid,
+    signer: config.signer,
+    l1,
+    material,
+  });
   const actuator = createValidationTraceDisputeActuator({
+    fieldCarriage,
     lucid: config.lucid,
     blueprint: binding.blueprint,
     deploymentInfo: binding.deploymentInfo,
@@ -321,6 +331,7 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
     material,
     l1,
     actuator,
+    fieldCarriage,
     deriveStage,
   });
 };

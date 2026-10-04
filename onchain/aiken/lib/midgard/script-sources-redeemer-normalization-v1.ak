@@ -314,7 +314,13 @@ pub fn canonical_item_action_hash(
         next_chunk_proof_data,
       )
     } else if action_family == invalid_family {
-      ( item_tag == 0 || item_tag == 1 ) && item_fields == []
+      if item_tag == 0 || item_tag == 1 {
+        item_fields == []
+      } else {
+        expect [traversal_action_data] = item_fields
+        let Pair(tag, fields) = builtin.un_constr_data(traversal_action_data)
+        item_tag == 2 && tag == 0 && fields == []
+      }
     } else {
       expect [traversal_action_data] = item_fields
       let Pair(tag, fields) = builtin.un_constr_data(traversal_action_data)
@@ -863,7 +869,7 @@ pub fn execution_attestation_is_bound_to_envelope_v1(
     6 -> Pair(10, 10)
     7 -> Pair(11, 15)
     8 -> Pair(16, 16)
-    9 -> Pair(17, 18)
+    9 -> Pair(17, 19)
     _ -> fail
   }
   let selected_executor_is_exact = and {

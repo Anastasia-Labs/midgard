@@ -12,6 +12,7 @@ import {
   advanceMidgardCekDataInteger,
   finalizeMidgardCekDataInteger,
   initialMidgardCekDataIntegerControl,
+  initialMidgardCekDataIntegerMeasureControl,
   MidgardCekDataIntegerStages,
   parseMidgardCekDataLargeConstructorSyntax,
 } from "./cek-data-integer.js";
@@ -50,6 +51,16 @@ const stepHeadLargeConstructor = ({
     !bytes.subarray(0, 3).equals(Buffer.from("d86682", "hex"))
   ) {
     return null;
+  }
+  if (bytes[3] === 0xc2 && bytes[4] === 0x5f) {
+    return advanced({
+      ...control,
+      stage: MidgardCekDataTraverseStages.LargeConstructor,
+      offset: control.offset + 3,
+      integer: initialMidgardCekDataIntegerMeasureControl({
+        sourceStart: control.sourceStart + control.offset + 3,
+      }),
+    });
   }
   const constructorCborLength = integerItemLength(bytes, 3);
   const offset = control.offset + 3;
@@ -128,6 +139,7 @@ export const stepInteger = ({
   const nextInteger = advanceMidgardCekDataInteger({
     control: integer,
     sourceBytes,
+    sourceEnd: control.sourceStart + control.sourceLength,
   });
   return nextInteger === null
     ? null
@@ -208,6 +220,7 @@ export const stepLargeConstructor = ({
   const nextInteger = advanceMidgardCekDataInteger({
     control: integer,
     sourceBytes,
+    sourceEnd: control.sourceStart + control.sourceLength,
   });
   return nextInteger === null
     ? null

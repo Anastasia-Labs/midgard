@@ -4,6 +4,7 @@ import {
   validateCanonicalPlutusDataCbor,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
+import { assertMidgardPlutusDataWellFormed } from "@al-ft/midgard-core/plutus-data-cbor";
 import { CML, Constr } from "@lucid-evolution/lucid";
 
 import { txOutRefData } from "./tx-out-ref.js";
@@ -43,16 +44,24 @@ const ensureSupportedTag = (tag: number, fieldName: string): void => {
   }
 };
 
-/**
- * §6.2: redeemer data must be exactly the bytes `serialiseData` emits for its
- * value — the `redeemerCanonicity` fault proof rejects any other spelling, so
- * a decodable but non-canonical encoding is rejected here too.
- */
-const decodeRedeemerDataCborHex = (value: unknown, fieldName: string): string =>
-  validateCanonicalPlutusDataCbor(
-    value instanceof Uint8Array ? value : encodeCbor(value),
-    fieldName,
-  ).toString("hex");
+/** Preserve forced-order Data bytes; only normal admission requires §6.2 canonicity. */
+const decodeRedeemerDataCborHex = (
+  value: unknown,
+  fieldName: string,
+  requireCanonicalData: boolean,
+): string => {
+  const bytes =
+    value instanceof Uint8Array ? Buffer.from(value) : encodeCbor(value);
+  if (requireCanonicalData) {
+    return validateCanonicalPlutusDataCbor(bytes, fieldName).toString("hex");
+  }
+  try {
+    assertMidgardPlutusDataWellFormed(bytes);
+  } catch (cause) {
+    throw new Error(`${fieldName} must encode Plutus Data: ${String(cause)}`);
+  }
+  return bytes.toString("hex");
+};
 
 /**
  * §5.1/§5.3: field 8 is the enveloped list of `enc_8` items. The §5.3 decoder
@@ -60,7 +69,8 @@ const decodeRedeemerDataCborHex = (value: unknown, fieldName: string): string =>
  * `index`/`ex_units` uints, and trailing bytes after the execution units all
  * reject there — and this function only adapts the result into the shape the
  * validation machine consumes, re-checking the narrower Midgard builder tag set
- * and that the redeemer payload is canonical Plutus `Data`.
+ * and that the redeemer payload is Plutus `Data`. Normal admission additionally
+ * checks its exact `serialiseData` spelling; forced evaluation keeps the bytes.
  *
  * The retired counted scheme accepted two spellings here (a raw array of
  * four-element arrays, or a CBOR map keyed by pointer). §6.1 admits one byte
@@ -68,6 +78,7 @@ const decodeRedeemerDataCborHex = (value: unknown, fieldName: string): string =>
  */
 export const decodeMidgardRedeemers = (
   preimageCbor: Uint8Array,
+  requireCanonicalData = false,
 ): readonly DecodedMidgardRedeemer[] =>
   decodeMidgardRedeemerWitnessFieldPreimage(preimageCbor).map(
     (witness, index) => {
@@ -80,6 +91,7 @@ export const decodeMidgardRedeemers = (
         dataCborHex: decodeRedeemerDataCborHex(
           witness.redeemerCbor,
           `${fieldName}.data`,
+          requireCanonicalData,
         ),
         exUnits: {
           memory: witness.executionUnits.memory,

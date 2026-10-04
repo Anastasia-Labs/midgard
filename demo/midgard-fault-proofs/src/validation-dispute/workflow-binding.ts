@@ -6,7 +6,10 @@ import {
   parseDeploymentManifestEconomics,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
+import {
+  canonicalValidationTraceReferenceScripts,
+  FraudProofComputationThreadStepDatum,
+} from "@al-ft/midgard-sdk";
 import {
   type Script,
   validatorToAddress,
@@ -223,6 +226,19 @@ export const bindValidationTraceDisputeWorkflowDeployment = async ({
       requireFraudProofSpend: true,
     });
   const chain = resolvedContracts.contracts.validationTraceDispute;
+  const certificate = resolvedContracts.contracts.fieldPreimageCertificate;
+  const certificateEntry = manifestContract(
+    manifest,
+    "fieldPreimageCertificateMint",
+  );
+  if (
+    certificate.policyId !== certificateEntry.scriptHash ||
+    validatorToScriptHash(certificate.mintingScript) !==
+      certificateEntry.scriptHash
+  )
+    throw new Error(
+      "field-preimage certificate differs from the finalized manifest",
+    );
   const categoryIdentity = manifestContract(manifest, "fraudProofCatalogueMint")
     .fraudProofCatalogue?.categories[VALIDATION_TRACE_DISPUTE_CATEGORY];
   if (
@@ -265,6 +281,18 @@ export const bindValidationTraceDisputeWorkflowDeployment = async ({
       throw new Error(
         `deployment manifest ${label} script bytes/hash disagree`,
       );
+    }
+  }
+  for (const {
+    deploymentEntry,
+    validator,
+  } of canonicalValidationTraceReferenceScripts(chain)) {
+    const entry = manifestContract(manifest, deploymentEntry);
+    if (
+      entry.scriptHash !== validator.spendingScriptHash ||
+      validatorToScriptHash(validator.spendingScript) !== entry.scriptHash
+    ) {
+      throw new Error(`${deploymentEntry} differs from the finalized manifest`);
     }
   }
   const policies = releasePolicies(manifest);
@@ -333,7 +361,7 @@ export const bindValidationTraceDisputeWorkflowDeployment = async ({
       root: manifestContract(manifest, "fraudProofCatalogueMint")
         .fraudProofCatalogue!.root,
     },
-    fieldPreimageCertificate: null,
+    fieldPreimageCertificate: certificate,
     referenceScriptsByContract: Object.freeze(
       Object.fromEntries(
         Object.entries(manifest.contracts).flatMap(([name, entry]) =>

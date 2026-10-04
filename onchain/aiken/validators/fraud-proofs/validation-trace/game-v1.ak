@@ -1,11 +1,14 @@
+use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/validation_direct_step_v1
 use midgard/validation_dispute_v1
 use midgard/validation_game_v1
+use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
 
 pub type Datum =
@@ -24,6 +27,12 @@ pub type GameActionV1 {
   }
   EnterResolution { input_index: Int, output_index: Int }
   EnterChallengerTimeout { input_index: Int, output_index: Int }
+  DirectCommittedStep {
+    input_index: Int,
+    output_index: Int,
+    resolver_index: Int,
+    evidence: validation_direct_step_v1.CommittedStepEvidenceV1,
+  }
 }
 
 pub type SpendRedeemer =
@@ -32,6 +41,7 @@ pub type SpendRedeemer =
 validator main(
   boundary_validator_script_hash: ScriptHash,
   timeout_validator_script_hash: ScriptHash,
+  one_step_resolver_script_hashes: List<ScriptHash>,
   computation_thread_token_policy_id: PolicyId,
 ) {
   spend(
@@ -69,12 +79,14 @@ validator main(
             RevealChallenger { input_index, .. } -> input_index
             EnterResolution { input_index, .. } -> input_index
             EnterChallengerTimeout { input_index, .. } -> input_index
+            DirectCommittedStep { input_index, .. } -> input_index
           },
           when action is {
             RevealOperator { output_index, .. } -> output_index
             RevealChallenger { output_index, .. } -> output_index
             EnterResolution { output_index, .. } -> output_index
             EnterChallengerTimeout { output_index, .. } -> output_index
+            DirectCommittedStep { output_index, .. } -> output_index
           },
           own_out_ref,
           inputs,
@@ -90,6 +102,24 @@ validator main(
             expect Some(state) = input_state
             let same_state: Data = state
             when action is {
+              DirectCommittedStep { resolver_index, evidence, .. } -> {
+                expect fraud_prover |> utils.has_signed(extra_signatories)
+                expect Some(resolver_hash) = list.at(
+                  one_step_resolver_script_hashes,
+                  resolver_index,
+                )
+                let expected_state: Data = validation_direct_step_v1.prepare(
+                  state.dispute.operator_descriptor,
+                  evidence,
+                )
+                and {
+                  resolver_index == validation_resolution_v1.resolver_index(
+                    evidence.pre_state.phase,
+                  ),
+                  output_script_hash == resolver_hash,
+                  output_state == expected_state,
+                }
+              }
               RevealOperator { proof, .. } -> {
                 let (_, current_time_upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
                   validity_range,

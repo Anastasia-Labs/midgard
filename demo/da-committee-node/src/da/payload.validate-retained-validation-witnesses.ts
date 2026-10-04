@@ -45,6 +45,10 @@ export const validateRetainedValidationWitnesses = (
   rawTransactions: ReadonlyMap<string, Buffer>,
 ): void => {
   const coordinates = new Set<string>();
+  const fieldsByEvent = new Map<
+    string,
+    ReturnType<typeof SDK.retainedValidationTransactionSource>
+  >();
   for (const [index, [keyHex, valueHex]] of entries.entries()) {
     let key: SDK.RetainedValidationWitnessKey;
     let value: SDK.RetainedValidationWitness;
@@ -85,6 +89,42 @@ export const validateRetainedValidationWitnesses = (
     }
     coordinates.add(coordinate);
     const auxiliary = value.auxiliary;
+    try {
+      if (SDK.retainedValidationFieldSource(auxiliary) !== undefined) {
+        let fields = fieldsByEvent.get(fingerprint);
+        if (fields === undefined) {
+          const transaction = rawTransactions.get(fingerprint);
+          if (transaction === undefined)
+            throw new Error(
+              "Retained field source has no authenticated transaction",
+            );
+          fields = SDK.retainedValidationTransactionSource(
+            transaction,
+            "ForcedTransactionEventKey" in key.event_key ? "forced" : "normal",
+          );
+          fieldsByEvent.set(fingerprint, fields);
+        }
+        SDK.validateRetainedValidationTransactionIdentity(
+          fields,
+          Buffer.from(value.machine_state.transaction_id, "hex"),
+          Buffer.from(value.machine_state.transaction_commitment, "hex"),
+        );
+        if (
+          value.machine_state.source_kind !==
+          ("ForcedTransactionEventKey" in key.event_key ? "Forced" : "Normal")
+        )
+          throw new Error(
+            "Retained field source kind differs from its authenticated event",
+          );
+        SDK.validateRetainedValidationFieldSource(auxiliary, fields.fields);
+      }
+    } catch (cause) {
+      throw new DaPayloadValidationError(
+        "malformed_trace",
+        "Retained field source does not match its authenticated transaction",
+        { cause },
+      );
+    }
     const native =
       typeof auxiliary === "object" &&
       "NativeExecutionDescriptorWitness" in auxiliary
@@ -327,6 +367,20 @@ export const validateRetainedValidationWitnesses = (
         "coverage_mismatch",
         "retained validation signer frontier is invalid",
       );
+    }
+  }
+  for (const [fingerprint, { descriptor }] of descriptors) {
+    for (const endpoint of ["initial", "terminal"] as const) {
+      const coordinate = SDK.retainedValidationEndpointCoordinate(
+        BigInt(descriptor.stepCount),
+        endpoint,
+      );
+      if (!coordinates.has(`${fingerprint}:${coordinate.toString()}`)) {
+        throw new DaPayloadValidationError(
+          "coverage_mismatch",
+          `validation trace omits its retained ${endpoint} endpoint`,
+        );
+      }
     }
   }
 };

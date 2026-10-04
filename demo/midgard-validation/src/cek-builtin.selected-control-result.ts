@@ -179,6 +179,15 @@ export const midgardCekDirectBuiltinCostSizes = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): readonly bigint[] => {
+  if (tag === 21n) {
+    // Match Cardano ByteString ExMemoryUsage without changing rooted constants.
+    return Object.freeze(
+      arguments_.map((argument) => {
+        const length = BigInt(directByteLength(argument));
+        return length === 0n ? 1n : (length + 7n) / 8n;
+      }),
+    );
+  }
   if (tag === 26n) {
     if (arguments_.length !== 3) {
       throw new Error("ifThenElse requires three arguments");

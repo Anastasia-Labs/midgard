@@ -292,6 +292,9 @@ importers:
       vitest:
         specifier: ^3.0.7
         version: 3.0.7(@types/node@22.19.17)(yaml@2.9.0)
+      midgard-node:
+        specifier: workspace:*
+        version: link:../midgard-node
 
   midgard-node:
     dependencies:

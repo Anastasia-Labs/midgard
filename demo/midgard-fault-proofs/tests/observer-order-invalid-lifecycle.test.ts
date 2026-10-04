@@ -488,7 +488,6 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
       honest.label,
       (await h.cancel(honestDecided.result.nextThreadOutRef, 3)).measurement,
     );
-
     // Removal last, through the actuator's mutation-leased stage: it consumes
     // the fraudulent block every thread above bound.
     const removalActuator = actuator(await h.removalDeploymentInfo());
@@ -499,6 +498,7 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
         const captured = await removalActuator.capture({
           action: {
             stage: "remove",
+            stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
             nextRemovalOutRef: setup.fraudulentBlockOutRef,
             fraudProofOutRef: proven.result.nextThreadOutRef,
           },

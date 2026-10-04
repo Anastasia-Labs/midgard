@@ -12,6 +12,7 @@ import {
   type MidgardForcedTxCanonical,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { type MidgardForcedTxAdmissionStopped } from "@al-ft/midgard-core/consensus-validation";
 import * as SDK from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import { Data } from "@lucid-evolution/lucid";
@@ -76,7 +77,10 @@ const forcedEntry = ({
   readonly txOrderId: SDK.OutputReference;
   readonly verdict: SDK.OperatorVerdict;
   readonly inclusionTime: Date;
-}): Effect.Effect<ForcedTransactionsDB.Entry, DatabaseError> =>
+}): Effect.Effect<
+  ForcedTransactionsDB.Entry,
+  DatabaseError | MidgardForcedTxAdmissionStopped
+> =>
   Effect.gen(function* () {
     const nativeTxCbor = encodeMidgardForcedTxCanonical(
       materializeMidgardForcedTxFromCanonical(canonicalTransaction()),

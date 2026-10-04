@@ -1,4 +1,7 @@
-import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
+import {
+  inspectMidgardRedeemerSequenceHeads,
+  type MidgardValidationPhaseName,
+} from "@al-ft/midgard-core";
 import {
   decodeMidgardAddressBytes,
   decodeMidgardTxOutput,
@@ -20,7 +23,6 @@ import {
   REJECT_SOURCE_KIND_SPEND,
   type RejectSubject,
 } from "./reject-subject.js";
-import { sortTxOutRefHexes } from "./tx-out-ref.js";
 import {
   PhaseAValidatedTx,
   PhaseBConfig,
@@ -175,12 +177,6 @@ export const validateCandidateAgainstState = (
     let sawScriptInput = false;
 
     const witnessKeyHashes = new Set(candidate.derived.witnessKeyHashHexes);
-    const inlineNativeScriptHashes = new Set(
-      candidate.derived.nativeScriptHashHexes,
-    );
-    const inlinePlutusScriptHashes = new Set(
-      candidate.derived.plutusScriptHashHexes,
-    );
     const resolvedReferenceInputs = resolveReferenceInputs(node, stateValue);
     if ("code" in resolvedReferenceInputs) {
       return {
@@ -190,65 +186,6 @@ export const validateCandidateAgainstState = (
       };
     }
 
-    const hasSatisfiedScriptMaterial = (
-      scriptHash: string,
-      context: string,
-      purposeKind: bigint,
-      purposeIndex: number,
-    ): CandidateDecision | true => {
-      if (inlineNativeScriptHashes.has(scriptHash)) {
-        return true;
-      }
-
-      if (
-        inlinePlutusScriptHashes.has(scriptHash) ||
-        resolvedReferenceInputs.scriptHashes.has(scriptHash)
-      ) {
-        return true;
-      }
-
-      return fail(
-        RejectCodes.MissingRequiredWitness,
-        `missing script witness ${scriptHash} for ${context}`,
-        "scriptSources",
-        {
-          arm: "ScriptSourceMissing",
-          purposeKind,
-          purposeIndex: BigInt(purposeIndex),
-        },
-      );
-    };
-
-    // Purpose ordinals follow the redeemer-pointer namespace: observers in
-    // their (Phase-A enforced, strictly ascending) field order, mint policies
-    // in mint order, spends in sorted out-ref order.
-    const observers = candidate.derived.requiredObserverHashHexes;
-    for (let index = 0; index < observers.length; index += 1) {
-      const observerSatisfied = hasSatisfiedScriptMaterial(
-        observers[index]!,
-        `required observer ${observers[index]!}`,
-        2n,
-        index,
-      );
-      if (observerSatisfied !== true) {
-        return observerSatisfied;
-      }
-    }
-
-    const mintPolicies = candidate.derived.mintPolicyHashHexes;
-    for (let index = 0; index < mintPolicies.length; index += 1) {
-      const mintSatisfied = hasSatisfiedScriptMaterial(
-        mintPolicies[index]!,
-        `mint policy ${mintPolicies[index]!}`,
-        1n,
-        index,
-      );
-      if (mintSatisfied !== true) {
-        return mintSatisfied;
-      }
-    }
-
-    const sortedSpent = sortTxOutRefHexes(node.spentOutRefs);
     for (const inputOutRefHex of node.spentOutRefs) {
       if (spentByAccepted.has(inputOutRefHex)) {
         return fail(RejectCodes.DoubleSpend, inputOutRefHex);
@@ -282,16 +219,6 @@ export const validateCandidateAgainstState = (
           }
         } else {
           sawScriptInput = true;
-          const inputScriptHash = paymentCred.hash.toString("hex");
-          const inputScriptSatisfied = hasSatisfiedScriptMaterial(
-            inputScriptHash,
-            `outref ${inputOutRefHex}`,
-            0n,
-            sortedSpent.indexOf(inputOutRefHex),
-          );
-          if (inputScriptSatisfied !== true) {
-            return inputScriptSatisfied;
-          }
         }
 
         spentValues.set(inputOutRefHex, output.value);
@@ -303,6 +230,22 @@ export const validateCandidateAgainstState = (
           spendSubject("InputSpentOutputNonCanonical", inputOutRefHex),
         );
       }
+    }
+
+    // Stage1 Data audit precedes all purpose/source discovery (including missing sources).
+    for (const [index, redeemer] of ledgerTx.redeemers.entries()) {
+      const inspection = inspectMidgardRedeemerSequenceHeads(redeemer.dataCbor);
+      if (inspection.kind === "refusal") {
+        return fail(
+          RejectCodes.InvalidFieldType,
+          `noncanonical redeemer Data at ${index}:${inspection.offset}`,
+          "scriptSources",
+          { arm: "RedeemerMalformed", index: BigInt(index) },
+        );
+      }
+      // An unsupported earlier prefix cannot be skipped to cite a later Data fault.
+      // Keep its existing classification/mandatory-trace prerequisite behavior.
+      if (inspection.kind === "unsupported") break;
     }
 
     if (sawScriptInput || candidate.derived.requiresLocalScriptDiscovery) {

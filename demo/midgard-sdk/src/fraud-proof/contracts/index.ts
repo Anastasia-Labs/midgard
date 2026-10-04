@@ -337,6 +337,7 @@ export {
   UNUSED_SCRIPT_WITNESS_FAULT_PROOF_TITLES,
   type UnusedScriptWitnessFaultProofContracts,
 } from "./families/unused-script-witness.js";
+export { canonicalValidationTraceReferenceScripts } from "./families/validation-trace-dispute.canonical-references.js";
 export {
   buildValidationTraceDisputeFaultProofContracts,
   type BuildValidationTraceDisputeFaultProofContractsParams,

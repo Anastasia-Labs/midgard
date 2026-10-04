@@ -16,7 +16,7 @@ export const VALIDATION_TRACE_RESOLVER_COUNT = 14;
  * never drift from the real composition; downstream deployment tooling must
  * derive its expectations from this constant rather than re-pinning a number.
  */
-export const VALIDATION_TRACE_DISPUTE_STEP_COUNT = 175;
+export const VALIDATION_TRACE_DISPUTE_STEP_COUNT = 176;
 
 export const FAULT_PROOF_SHARED_TITLES = {
   computationThreadMint: "computation_thread.mint.mint",

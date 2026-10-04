@@ -19,7 +19,9 @@ import {
 } from "@al-ft/midgard-sdk";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
+import { boundDataPublicationPlan } from "./bound-data-publication.js";
 import {
+  BOUND_DATA_PUBLICATION_PREREQUISITE,
   exact,
   FIELD_CARRIAGE_PREREQUISITE,
   type FieldCarriageRequirement,
@@ -30,7 +32,7 @@ import {
   type Requirement,
   sha256,
 } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
-import type { JournalJsonObject } from "./journal.js";
+import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import { rawDatumPreimagePublicationPlan } from "./raw-datum-preimage.js";
 
@@ -38,14 +40,24 @@ export const requirementIdentity = (
   requirement: PreimageCarriageRequirement,
 ): Requirement => {
   if ("kind" in requirement) {
-    const planned = rawDatumPreimagePublicationPlan(requirement);
+    const planned =
+      requirement.kind === "bound_data_publication"
+        ? boundDataPublicationPlan(requirement)
+        : rawDatumPreimagePublicationPlan(requirement);
     return Object.freeze({
       ...requirement,
       planned,
       identitySha256: sha256(
         JSON.stringify({
           kind: requirement.kind,
-          preimageHex: requirement.preimageHex,
+          ...(requirement.kind === "bound_data_publication"
+            ? {
+                publicationAddress: requirement.publicationAddress,
+                sourceIdentity: normalizeJournalJson(
+                  requirement.sourceIdentity,
+                ),
+              }
+            : { preimageHex: requirement.preimageHex }),
           publicationDatums: planned.publicationDatums,
           publicationDigests: planned.publicationDigests,
         }),
@@ -198,7 +210,9 @@ export const PUBLICATION_ENCODINGS = [
 export type PublicationEncoding = (typeof PUBLICATION_ENCODINGS)[number];
 
 const publicationEncoding = (requirement: Requirement): PublicationEncoding =>
-  "kind" in requirement && requirement.kind === "structured_data_preimage"
+  "kind" in requirement &&
+  (requirement.kind === "structured_data_preimage" ||
+    requirement.kind === "bound_data_publication")
     ? "structured_data"
     : "nothing_but_bytes";
 
@@ -226,11 +240,13 @@ export const publicationAction = <
   readonly publicationIndex: number;
 }): FraudProofWorkflowAction =>
   Object.freeze({
-    actionId: `publish-${"kind" in requirement ? "raw-datum-preimage" : "field-carriage"}:${baseAction.actionId}:${requirement.identitySha256}:${publicationIndex.toString()}`,
+    actionId: `publish-${"kind" in requirement ? (requirement.kind === "bound_data_publication" ? "bound-data" : "raw-datum-preimage") : "field-carriage"}:${baseAction.actionId}:${requirement.identitySha256}:${publicationIndex.toString()}`,
     input: Object.freeze({
       schemaVersion:
         "kind" in requirement
-          ? RAW_DATUM_PREIMAGE_PREREQUISITE
+          ? requirement.kind === "bound_data_publication"
+            ? BOUND_DATA_PUBLICATION_PREREQUISITE
+            : RAW_DATUM_PREIMAGE_PREREQUISITE
           : FIELD_CARRIAGE_PREREQUISITE,
       category,
       stage: "publish_field_carriage",
@@ -240,6 +256,12 @@ export const publicationAction = <
       publicationEncoding: publicationEncoding(requirement),
       publicationDigest: requirement.publicationDigests[publicationIndex]!,
       datumCborSha256: sha256(requirement.publicationDatums[publicationIndex]!),
+      ...("kind" in requirement && requirement.kind === "bound_data_publication"
+        ? {
+            publicationAddress: requirement.publicationAddress,
+            sourceIdentity: requirement.sourceIdentity,
+          }
+        : {}),
     }),
   });
 
@@ -271,10 +293,11 @@ export const isCarriagePrerequisiteAction = (
   action: FraudProofWorkflowAction,
   rawDatum: boolean,
 ): boolean =>
-  action.input.schemaVersion ===
-    (rawDatum
-      ? RAW_DATUM_PREIMAGE_PREREQUISITE
-      : FIELD_CARRIAGE_PREREQUISITE) &&
+  (action.input.schemaVersion === BOUND_DATA_PUBLICATION_PREREQUISITE ||
+    action.input.schemaVersion ===
+      (rawDatum
+        ? RAW_DATUM_PREIMAGE_PREREQUISITE
+        : FIELD_CARRIAGE_PREREQUISITE)) &&
   (action.input.stage === "publish_field_carriage" ||
     action.input.stage === "certify_field_carriage");
 
@@ -291,3 +314,32 @@ export const parseBaseAction = (
     input: record(parsed.input, `${label} input`) as JournalJsonObject,
   };
 };
+
+/** Exact journal action shape, including the explicit bound-publication context. */
+export const carriageActionInputKeys = (
+  action: FraudProofWorkflowAction,
+): readonly string[] =>
+  action.input.stage === "publish_field_carriage"
+    ? [
+        "schemaVersion",
+        "category",
+        "stage",
+        "forAction",
+        "requirementSha256",
+        "publicationIndex",
+        "publicationEncoding",
+        "publicationDigest",
+        "datumCborSha256",
+        ...(action.input.schemaVersion === BOUND_DATA_PUBLICATION_PREREQUISITE
+          ? ["publicationAddress", "sourceIdentity"]
+          : []),
+      ]
+    : [
+        "schemaVersion",
+        "category",
+        "stage",
+        "forAction",
+        "requirementSha256",
+        "certificateDatumCborSha256",
+        "certificateUnit",
+      ];

@@ -9,7 +9,9 @@ import { describe, expect, it } from "vitest";
 import {
   FORCED_REJECTION_NO_ARM_CODES,
   forcedRejectionReason,
+  ForcedRejectionStopped,
   ForcedRejectionSubjectMissing,
+  ForcedRejectionUnsupported,
   forcedVerdictForRejection,
 } from "../src/workflow/forced-rejection-reason.js";
 
@@ -109,6 +111,11 @@ const SUBJECT_CASES: readonly (readonly [
   ],
   [
     RejectCodes.InvalidFieldType,
+    { arm: "RedeemerMalformed", index: 11n },
+    { RedeemerMalformed: { redeemer_index: 11n } },
+  ],
+  [
+    RejectCodes.InvalidFieldType,
     { arm: "UnusedRedeemer", index: 10n },
     { UnusedRedeemer: { redeemer_index: 10n } },
   ],
@@ -184,22 +191,6 @@ const LOCATED_CODES = ARM_CODES.filter(
   (code) => !SIMPLE_FAULTS.some(([simple]) => simple === code),
 );
 
-/** The reason recorded for a canonical-decode rejection that has no subject. */
-const UNCOMMITTED_DECODE_REASONS: readonly (readonly [
-  RejectCode,
-  SDK.RejectionReason,
-])[] = [
-  [
-    RejectCodes.InvalidFieldType,
-    { FieldItemWidthIllegal: { field_index: 0n, item_index: 0n } },
-  ],
-  [RejectCodes.InvalidOutput, { OutputNonCanonical: { output_index: 0n } }],
-  [
-    RejectCodes.FieldPreimageSize,
-    { FieldPreimageLengthMismatch: { field_index: 0n } },
-  ],
-];
-
 describe("forced rejection reason", () => {
   it("round-trips the rejection code of every code an arm covers", () => {
     expect(ARM_CODES).toHaveLength(19);
@@ -213,9 +204,6 @@ describe("forced rejection reason", () => {
         SDK.rejectionCodeOf(forcedRejectionReason({ code, subject })),
         subject.arm,
       ).toBe(codeHex(code));
-    }
-    for (const [code, reason] of UNCOMMITTED_DECODE_REASONS) {
-      expect(SDK.rejectionCodeOf(reason), code).toBe(codeHex(code));
     }
   });
 
@@ -266,18 +254,13 @@ describe("forced rejection reason", () => {
     ).toThrow(ForcedRejectionSubjectMissing);
   });
 
-  it("records only the three canonical-decode codes that can lack a subject", () => {
-    const recorded = new Map(UNCOMMITTED_DECODE_REASONS);
+  it("never guesses canonical-decode coordinates when the subject is absent", () => {
     for (const code of LOCATED_CODES) {
-      const rejection = { code, consensusPhase: "canonicalDecode" } as const;
-      const expected = recorded.get(code);
-      if (expected === undefined) {
-        expect(() => forcedRejectionReason(rejection), code).toThrow(
-          ForcedRejectionSubjectMissing,
-        );
-      } else {
-        expect(forcedRejectionReason(rejection), code).toStrictEqual(expected);
-      }
+      expect(
+        () =>
+          forcedRejectionReason({ code, consensusPhase: "canonicalDecode" }),
+        code,
+      ).toThrow(ForcedRejectionSubjectMissing);
     }
   });
 });
@@ -293,20 +276,41 @@ describe("rejection codes without an arm", () => {
     expect(FORCED_REJECTION_NO_ARM_CODES).toHaveLength(31);
   });
 
-  it("keep the verdict the node has always written for them", () => {
+  it("stops every unsupported code without writing a guessed verdict", () => {
     for (const code of FORCED_REJECTION_NO_ARM_CODES) {
-      const expected: SDK.RejectionReason =
-        code === RejectCodes.PlutusEvaluationUnavailable
-          ? { PlutusExecutionFailed: { execution_index: 0n } }
-          : "ValueNotPreserved";
-      expect(forcedRejectionReason({ code }), code).toStrictEqual(expected);
-      expect(
-        forcedRejectionReason({
+      for (const subject of [
+        undefined,
+        { arm: "UnusedRedeemer", index: 2n } as const,
+      ]) {
+        expect(
+          () => forcedVerdictForRejection({ code, subject }),
           code,
-          subject: { arm: "UnusedRedeemer", index: 2n },
-        }),
-        code,
-      ).toStrictEqual(expected);
+        ).toThrow(ForcedRejectionUnsupported);
+      }
+    }
+  });
+
+  it("marks only unavailable evaluation as a retryable stop", () => {
+    for (const code of ALL_CODES) {
+      try {
+        const reason = forcedRejectionReason({
+          code,
+          consensusPhase: "canonicalDecode",
+        });
+        // Only the six actual coordinate-free machine faults may be written
+        // without a subject. This pins every RejectCodes value's disposition.
+        expect(
+          SIMPLE_FAULTS.some(([simple]) => simple === code),
+          code,
+        ).toBe(true);
+        expect(SDK.rejectionCodeOf(reason), code).toBe(codeHex(code));
+      } catch (error) {
+        expect(error, code).toBeInstanceOf(ForcedRejectionStopped);
+        expect((error as ForcedRejectionStopped).code, code).toBe(code);
+        expect((error as ForcedRejectionStopped).retryable, code).toBe(
+          code === RejectCodes.PlutusEvaluationUnavailable,
+        );
+      }
     }
   });
 });

@@ -18,7 +18,7 @@ import {
   transitionProofHistorySource,
 } from "../src/transition-trace/proof-material.js";
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
-import { buildSourceMembershipProof } from "../src/transition-trace/witnesses.js";
+import { membershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { buildCanonicalBlockFixture } from "./helpers/canonical-block-evidence-fixture.js";
 
 const id = { transactionId: "11".repeat(32), outputIndex: 0n };
@@ -168,18 +168,14 @@ beforeAll(async () => {
     expectedHeaderHash: headerHash,
     committedHeader: header,
   });
-  const d = await buildSourceMembershipProof({
-    reconstruction,
-    eventKey: { DepositEventKey: { deposit_id: id } },
+  deposit = await membershipProof({
+    root: reconstruction.rootData.deposits,
+    entry: reconstruction.deposits[0]!,
   });
-  const w = await buildSourceMembershipProof({
-    reconstruction,
-    eventKey: { WithdrawalEventKey: { withdrawal_id: id } },
+  withdrawal = await membershipProof({
+    root: reconstruction.rootData.withdrawals,
+    entry: reconstruction.withdrawals[0]!,
   });
-  if (!("DepositSourceMembership" in d) || !("WithdrawalSourceMembership" in w))
-    throw new Error("Missing fixture memberships");
-  deposit = d.DepositSourceMembership.membership;
-  withdrawal = w.WithdrawalSourceMembership.membership;
   // These are serialization cases, not valid fault claims: source membership
   // is genuine; unrelated trace/mutation witnesses are schema-valid placeholders.
   const trace: SDK.IndexedTraceProof = {
@@ -206,14 +202,6 @@ beforeAll(async () => {
     key: trace.value.event_key,
     value: { step_index: 0n, phase: "Deposit" },
     proof: [],
-  };
-  const absent: SDK.EventToStepNonMembershipProof = {
-    domain: eventToStep.domain,
-    root: eventToStep.root,
-    phas_root: eventToStep.phas_root,
-    count: eventToStep.count,
-    key: eventToStep.key,
-    proof: eventToStep.proof,
   };
   const shared = { trace_proof: trace, event_to_step: eventToStep };
   cases = [
@@ -275,9 +263,9 @@ beforeAll(async () => {
       raw: rawWithdrawal,
     },
   ];
-  for (const [kind, wrapped, member, raw] of [
-    ["Deposit", d, deposit, rawDeposit],
-    ["Withdrawal", w, withdrawal, rawWithdrawal],
+  for (const [kind, member, raw] of [
+    ["Deposit", deposit, rawDeposit],
+    ["Withdrawal", withdrawal, rawWithdrawal],
   ] as const) {
     const window: SDK.OutOfWindowSourceEventWitness =
       kind === "Deposit"
@@ -291,50 +279,18 @@ beforeAll(async () => {
               source_membership: member as SDK.WithdrawalSourceMembershipProof,
             },
           };
-    cases.push(
-      {
-        name: `${kind} window`,
-        fault: { OutOfWindowSourceEvent: { witness: window } },
-        path: [2, 0, 0, 5],
-        raw,
-      },
-      {
-        name: `${kind} missing trace`,
-        fault: {
-          SourceMembershipMismatch: {
-            witness: {
-              SourceEventMissingTrace: {
-                source_membership: wrapped,
-                event_to_step_non_membership: absent,
-              },
-            },
-          },
-        },
-        path: [2, 0, 0, 0, 5],
-        raw,
-      },
-      {
-        name: `${kind} phase`,
-        fault: {
-          SourceMembershipMismatch: {
-            witness: {
-              SourcePhaseMismatch: {
-                trace_proof: trace,
-                source_membership: wrapped,
-              },
-            },
-          },
-        },
-        path: [2, 0, 1, 0, 5],
-        raw,
-      },
-    );
+    cases.push({
+      name: `${kind} window`,
+      fault: { OutOfWindowSourceEvent: { witness: window } },
+      path: [2, 0, 0, 5],
+      raw,
+    });
   }
 });
 
 describe("transition raw proof material", () => {
-  it("retains all nine history source branches across decoding, JSON and compact carriage", () => {
-    expect(cases).toHaveLength(9);
+  it("retains all five full-leaf history source branches across decoding, JSON and compact carriage", () => {
+    expect(cases).toHaveLength(5);
     for (const item of cases) {
       const proof = SDK.makeTransitionFaultProof({
         challengedHeaderHash: reconstruction.headerHash,

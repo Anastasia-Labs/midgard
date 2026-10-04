@@ -371,7 +371,6 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
       h.step02Raw(honestEmptyThread, honestEmptyEvidence, honestEmpty),
     );
     await h.cancel(honestEmptyThread, 1);
-
     // Removal last, through the actuator's mutation-leased stage: it consumes
     // the fraudulent block every thread above bound.
     const removalActuator = actuator(await h.removalDeploymentInfo());
@@ -382,6 +381,7 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
         const captured = await removalActuator.capture({
           action: {
             stage: "remove",
+            stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
             nextRemovalOutRef: setup.fraudulentBlockOutRef,
             fraudProofOutRef: proven.result.fraudProofOutRef,
           },

@@ -22,57 +22,13 @@
       "reason": "Test builds a sized always-succeeds filler script for a reference-script sweep; it is not a Midgard validator and has no blueprint entry.",
       "sites": ["applyParamsToScript(alwaysSucceedsCode, ["]
     },
-    "midgard-sdk/tests/user-event-contracts.test.ts": {
-      "reason": "Independent oracle (independentlyApply): the test recomputes applied scripts outside the blueprint module to check that module's output against it.",
-      "sites": [": applyParamsToScript(entry.compiledCode, parameters);"]
-    },
-    "midgard-sdk/tests/validation-resolver-applied-hashes.test.ts": {
-      "reason": "Independent oracle: the test recomputes applied script hashes outside the blueprint module to check the resolver's hashes against them.",
-      "sites": ["script: applyParamsToScript("]
-    },
-    "midgard-sdk/tests/fault-proof.fault-proof-contract-builder.ts": {
-      "reason": "Independent oracles: expected CBOR for applied fault-proof steps is recomputed outside the blueprint module and compared against the SDK's result.",
-      "sites": [
-        "applyParamsToScript(",
-        "const expectedStep02Cbor = applyParamsToScript(",
-        "const expectedStep01Cbor = applyParamsToScript(",
-        "const expectedStep02Cbor = applyParamsToScript(",
-        "const expectedStep01Cbor = applyParamsToScript(",
-        "const expectedStep02Cbor = applyParamsToScript(",
-        "const expectedStep01Cbor = applyParamsToScript(",
-        "const expectedStep04Cbor = applyParamsToScript(",
-        "const expectedStep03Cbor = applyParamsToScript(",
-        "const expectedStep02Cbor = applyParamsToScript(",
-        "const expectedStep01Cbor = applyParamsToScript(",
-        "applyParamsToScript(",
-        "applyParamsToScript(",
-        "applyParamsToScript(",
-        "const expectedRouteCbor = applyParamsToScript(",
-        "const expectedAward = applyParamsToScript(",
-        "const expectedStageOneRedeemerFoldMapExecutor = applyParamsToScript(",
-        "const expectedStageOneRedeemerFinalizeFrameExecutor = applyParamsToScript(",
-        "const expectedStageOneRedeemerSourceAuthenticator = applyParamsToScript(",
-        "applyParamsToScript(compiledScript(blueprint, title), [",
-        "const expectedStageOneRedeemerOuterNormalizer = applyParamsToScript(",
-        "const expectedStageOneRedeemerTraversalNormalizer = applyParamsToScript(",
-        "const expectedStageOneRedeemerSettlement = applyParamsToScript(",
-        "const expectedStageOneRedeemerEnvelope = applyParamsToScript(",
-        "return applyParamsToScript(",
-        "applyParamsToScript(compiledScript(blueprint, title), [",
-        "const expectedBoundaryCbor = applyParamsToScript(",
-        "const expectedTimeoutCbor = applyParamsToScript(",
-        "const expectedGameCbor = applyParamsToScript(",
-        "const expectedSourceCbor = applyParamsToScript(",
-        "const expectedCbor = applyParamsToScript("
-      ]
-    },
-    "midgard-sdk/tests/state-queue.state-queue-operator-funding-inputs.ts": {
-      "reason": "Test helper applies parameters directly to exercise its own arity check against the raw validator; it is test material, not a deployed script.",
-      "sites": ["return applyParamsToScript(validator.compiledCode, params);"]
-    },
     "midgard-validation/tests/complete-item-carriage-tiers-emulator.test.ts": {
       "reason": "Test rebuilds the applied observer script to recompute its hash independently for the carriage-tier emulator check.",
       "sites": ["script: applyParamsToScript(compiledScript(OBSERVE_TITLE), ["]
+    },
+    "midgard-sdk/tests/fault-proof.expected-parameter-application.ts": {
+      "reason": "Independent test oracle migrated from the two resolver and contract-builder expectation files: encodes independently specified bindings with the supported pinned WASM API and canonical Plutus Data. Intentionally supports strict parameter prefixes to prove that underapplied hashes differ; it never deploys a production script.",
+      "sites": ["apply_params_to_script("]
     }
   },
   "midgard/exact-fee-no-change-output": {

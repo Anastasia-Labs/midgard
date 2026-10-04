@@ -1,35 +1,15 @@
 import "@aiken-lang/merkle-patricia-forestry";
-import "@al-ft/midgard-core";
-import "@al-ft/midgard-sdk";
-import "@lucid-evolution/lucid";
 import "effect";
-import "vitest";
-import "../src/field-opening.js";
-import "../src/field-preimage-length-mismatch/prepare-accepted.js";
-import "../src/field-preimage-length-mismatch/submit-lucid.js";
-import "../src/field-preimage-length-mismatch/workflow.js";
 import "../src/prepare-double-spend.js";
 import "../src/remove-fraudulent-block.js";
-import "../src/step-support.js";
-import "../src/testing/complete-lifecycle.js";
-import "../src/transition-trace/witnesses.js";
 import "./support/committed-field-shape-emulator.js";
-import "./support/emulator/blueprints.js";
 import "./support/emulator/emulator-context.js";
 import "./support/emulator/harness.js";
-import "./support/emulator/header-fixtures.js";
-import "./support/emulator/measurement.js";
-import "./support/emulator/reference-scripts.js";
 import "./support/emulator/registered-chain.js";
 import "./support/emulator/setup-tx.js";
-import "./support/field-preimage-length-mismatch-forced-fixture.js";
 import "./support/lifecycle-coverage.js";
 import "./support/measured-fit-ledger.js";
-import "./support/submit-init-emulator-fixtures.js";
 import "./support/submit-init-emulator-shared.js";
-import "./field-preimage-length-mismatch-lifecycle.registered-contracts.js";
-import "./field-preimage-length-mismatch-lifecycle.setup.js";
-import "./field-preimage-length-mismatch-lifecycle.forced-prepared.js";
 
 import {
   encodeMidgardNativeTxProofFieldLengths,
@@ -84,16 +64,16 @@ import {
   removeFraudulentBlock,
   setup,
 } from "./field-preimage-length-mismatch-lifecycle.setup.js";
+import {
+  appendFieldRecoverySuccessor,
+  createFieldRecoveryRecorder,
+  removeThroughSharedFieldRecovery,
+} from "./field-preimage-length-mismatch-lifecycle.shared-removal.js";
 import { network } from "./support/emulator/blueprints.js";
-import { makeHeader } from "./support/emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { FIELD_PREIMAGE_LENGTH_FORCED_FIELD_INDEX } from "./support/field-preimage-length-mismatch-forced-fixture.js";
-import {
-  countedTransactionsRoot,
-  emulatorSuccessorHeaderStart,
-  submitSuccessorBlockTx,
-} from "./support/submit-init-emulator-fixtures.js";
+import { countedTransactionsRoot } from "./support/submit-init-emulator-fixtures.js";
 
 describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
   it.each([
@@ -374,6 +354,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
   }, 180_000);
 
   it("starts at generic Init, refuses every mutated accepted seam on chain, convicts the accepted source, mints proof, and removes the descendant chain", async () => {
+    const recorder = createFieldRecoveryRecorder();
     const fixture = await setup();
     if (fixture.scenario.canonicalTx === null) {
       throw new Error("accepted fixture is not canonical");
@@ -382,43 +363,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
       throw new Error("missing directly prepared accepted evidence");
     const prepared = fixture.acceptedPrepared;
     const claim = prepared.claim;
-    const successorValidFrom = Number(
-      fixture.fraudulentHeader.endTime - 60_000n,
-    );
-    const millisecondsToAdvance =
-      successorValidFrom - fixture.harness.emulator.now() + 1_000;
-    if (millisecondsToAdvance > 0) {
-      fixture.harness.emulator.awaitSlot(
-        Math.ceil(millisecondsToAdvance / 1_000),
-      );
-    }
-    const successorStart = emulatorSuccessorHeaderStart({
-      predecessorEndTime: fixture.fraudulentHeader.endTime,
-      emulator: fixture.harness.emulator,
-    });
-    const successorHeader = {
-      ...makeHeader(
-        fixture.fraudulentHeader.operatorVkey,
-        successorStart,
-        await countedTransactionsRoot(fixture.transactionsRoot, 1n),
-        1n,
-      ),
-      prevHeaderHash: fixture.fraudulent.headerHash,
-      prevUtxosRoot: fixture.fraudulentHeader.utxosRoot,
-      utxosRoot: fixture.fraudulentHeader.utxosRoot,
-    };
-    const successor = await submitSuccessorBlockTx({
-      lucid: fixture.harness.funderLucid,
-      emulator: fixture.harness.emulator,
-      contracts: fixture.harness.contracts,
-      anchorBlockUnit: fixture.fraudulent.stateQueueBlockUnit,
-      header: successorHeader,
-      hubOracle: fixture.fraudulent.hubOracle,
-      scheduler: fixture.fraudulent.scheduler,
-      activeOperatorNode: fixture.fraudulent.activeOperatorNode,
-      activeOperatorNodeUnit: fixture.fraudulent.activeOperatorNodeUnit,
-    });
-    const targetOutRef = successor.continuedAnchorOutRef;
+    const targetOutRef = await appendFieldRecoverySuccessor(fixture);
     const init = await captureEmulatorSubmission(fixture.harness.emulator, () =>
       submitFieldPreimageLengthInit({
         config: fixture.config,
@@ -530,8 +475,13 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
         }),
     );
     emitFit("accepted-inline-final-mint", terminal.measurement);
-    const removal = await removeFraudulentBlock(fixture, { leased: true });
+    const removal = await removeThroughSharedFieldRecovery(fixture, recorder, [
+      true,
+      false,
+      false,
+    ]);
     expect(removal.result.transactions.map(({ kind }) => kind)).toEqual([
+      "remove-successor",
       "remove-successor",
       "remove-target",
     ]);
@@ -622,14 +572,16 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
   }, 120_000);
 
   it("starts at generic Init, refuses the mutated forced seams on chain, and resolves wrongful forced rejection", async () => {
+    const recorder = createFieldRecoveryRecorder();
     const fixture = await setup({ forced: true });
+    const targetOutRef = await appendFieldRecoverySuccessor(fixture);
     if (fixture.forcedFixture === undefined)
       throw new Error("missing forced fixture");
     const forcedFixture = fixture.forcedFixture;
     const init = await captureEmulatorSubmission(fixture.harness.emulator, () =>
       submitFieldPreimageLengthInit({
         config: fixture.config,
-        fraudulentBlockOutRef: fixture.fraudulent.fraudulentBlockOutRef,
+        fraudulentBlockOutRef: targetOutRef,
       }),
     );
     emitFit("forced-init", init.measurement);
@@ -735,8 +687,14 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
         }),
     );
     emitFit("forced-final-mint", terminal.measurement);
-    const removal = await removeFraudulentBlock(fixture);
+    const removal = await removeThroughSharedFieldRecovery(fixture, recorder, [
+      true,
+      false,
+      false,
+    ]);
     expect(removal.result.transactions.map(({ kind }) => kind)).toEqual([
+      "remove-successor",
+      "remove-successor",
       "remove-target",
     ]);
     expect(removal.result.fraudCategoryId).toBe("00000020");

@@ -2,6 +2,7 @@ import "vitest";
 import "../src/index.js";
 import "./cek-data-traverse.fold-list.js";
 
+import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -21,6 +22,7 @@ import {
   initialMidgardCekDataListFrame,
   initialMidgardCekDataSmallConstrFrame,
   MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN,
+  midgardCekDataBytesCborLength,
   type MidgardCekDataSummary,
   MidgardCekDataTraverseStages,
   nextMidgardCekDataTraverseSpan,
@@ -35,13 +37,58 @@ import {
 } from "./cek-data-traverse.fold-list.js";
 
 describe("authenticated CEK Data traversal V1", () => {
-  it("streams a maximum-transaction-sized scalar root", () => {
-    const magnitude = Buffer.alloc(16_380);
-    magnitude[0] = 1;
+  it("accepts the Cardano canonical 65-byte bignum scalar", () => {
     const source = Buffer.concat([
-      Buffer.from([0xc2, 0x59, 0x3f, 0xfc]),
-      magnitude,
+      Buffer.from("c25f584001", "hex"),
+      Buffer.alloc(63),
+      Buffer.from("4100ff", "hex"),
     ]);
+    const trace = harness(source);
+    transition(trace, { kind: "headScalar" });
+    const summary = finishScalar(trace, null);
+    expect(summary).toMatchObject({ cborLength: 71n, memory: 69n });
+    expect(Buffer.from(summary.root).toString("hex")).toBe(
+      "2245ce3c839885a8e667481cec15cbe0e91df8a04f816859ae3bb38a8217b6aa",
+    );
+    expect(trace.control.offset).toBe(71);
+  });
+
+  it("automatically traces a chunked integer in a constructor and scalar child", () => {
+    const constructor = 1n << 512n;
+    const source = Buffer.concat([
+      Buffer.from("d8668218809f", "hex"),
+      Buffer.from(Data.to(-constructor - 1n), "hex"),
+      Buffer.from("ff", "hex"),
+    ]);
+    const trace = buildMidgardCekDataTraverseTrace({ sourceStart: 17, source });
+    expect(finalizeMidgardCekDataTraverse(trace.terminal)).not.toBeNull();
+    // A bignum constructor alternative exercises the same measuring machine.
+    const largeSource = Buffer.concat([
+      Buffer.from("d86682", "hex"),
+      Buffer.from(Data.to(constructor), "hex"),
+      Buffer.from("80", "hex"),
+    ]);
+    expect(
+      finalizeMidgardCekDataTraverse(
+        buildMidgardCekDataTraverseTrace({
+          sourceStart: 17,
+          source: largeSource,
+        }).terminal,
+      ),
+    ).not.toBeNull();
+  });
+
+  it("streams a maximum-transaction-sized scalar root", () => {
+    let magnitudeLength = 16_384;
+    while (
+      1n + midgardCekDataBytesCborLength(BigInt(magnitudeLength)) >
+      16_384n
+    )
+      magnitudeLength -= 1;
+    const source = Buffer.from(
+      Data.to(1n << BigInt((magnitudeLength - 1) * 8)),
+      "hex",
+    );
     const trace = harness(source);
 
     transition(trace, { kind: "headScalar" });

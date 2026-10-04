@@ -1,11 +1,20 @@
+import { decodeMidgardCekProgramMaterialDaEntry } from "@al-ft/midgard-core/cek-proof";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
+import { pinRetainedStateScriptRefs } from "../../database/cekProgramMaterial.pin-retained-state.js";
 import {
   DaPayloadsDB,
   PendingBlockFinalizationsDB,
 } from "../../database/index.js";
-import { DatabaseError } from "../../database/utils/common.js";
+import {
+  DatabaseError,
+  sqlErrorToDatabaseError,
+} from "../../database/utils/common.js";
 import { type Database } from "../../services/database.js";
 import { materializeConfirmedLedgerSnapshot } from "../../transactions/state-queue/confirmed-ledger-snapshot.js";
 import { buildDaPayloadInsert } from "./da-payload.js";
@@ -53,7 +62,56 @@ const defaultDeps: BackfillDeps<Database> = {
   retrieveMissingRecords:
     PendingBlockFinalizationsDB.retrieveFinalizedMissingDaPayloads,
   retrieveJournalByHeaderHash: PendingBlockFinalizationsDB.retrieveByHeaderHash,
-  upsertAvailable: DaPayloadsDB.upsertAvailable,
+  upsertAvailable: (input) =>
+    Effect.gen(function* () {
+      const body = yield* Effect.tryPromise({
+        try: async () =>
+          SDK.decodeDaPayload(
+            (
+              await unwrapDaPayload(input.payload_cbor, {
+                maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+              })
+            ).innerBytes,
+          ).block_body,
+        catch: (cause) =>
+          new DatabaseError({
+            table: "da_payloads",
+            message: "Failed to decode backfilled state for script retention",
+            cause,
+          }),
+      });
+      const material = yield* Effect.try({
+        try: () =>
+          body.cek_program_material.map((entry) =>
+            decodeMidgardCekProgramMaterialDaEntry(
+              Buffer.from(entry[0], "hex"),
+              Buffer.from(entry[1], "hex"),
+            ),
+          ),
+        catch: (cause) =>
+          new DatabaseError({
+            table: "da_payloads",
+            message: "Malformed backfilled script material",
+            cause,
+          }),
+      });
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql.withTransaction(
+        Effect.gen(function* () {
+          yield* DaPayloadsDB.upsertAvailable(input);
+          yield* pinRetainedStateScriptRefs({
+            headerHash: input.header_hash,
+            outputs: body.utxos.map((entry) => Buffer.from(entry[1], "hex")),
+            material,
+          });
+        }),
+      );
+    }).pipe(
+      sqlErrorToDatabaseError(
+        "da_payloads",
+        "Failed to persist retained backfill state",
+      ),
+    ),
   materializeUtxos: (record) =>
     materializeConfirmedLedgerSnapshot(record).pipe(
       Effect.map((snapshot) =>

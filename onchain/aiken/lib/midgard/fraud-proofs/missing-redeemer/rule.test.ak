@@ -308,6 +308,7 @@ fn stage_ten_authentication(
     ledger_delta_root: h32,
   }
   let state_hash = validation_trace_v1.hash_machine_state(machine_state)
+  let terminal_hash = validation_trace_v1.trace_leaf_hash(state_hash)
   let correct_verdict = if direction == substrate.direction_wrongful_acceptance {
     validation_trace_v1.Accepted
   } else {
@@ -316,10 +317,13 @@ fn stage_ten_authentication(
   let descriptor = validation_trace_v1.ValidationTraceDescriptorV1 {
     schema_version: validation_trace_v1.descriptor_version,
     machine_version: validation_trace_v1.machine_version,
-    trace_root: validation_trace_v1.trace_leaf_hash(state_hash),
-    step_count: 0,
+    trace_root: validation_trace_v1.trace_branch_hash(
+      validation_trace_v1.trace_leaf_hash(state_hash),
+      validation_trace_v1.trace_leaf_hash(terminal_hash),
+    ),
+    step_count: 1,
     initial_state_hash: state_hash,
-    terminal_state_hash: state_hash,
+    terminal_state_hash: terminal_hash,
     verdict: if wrong_descriptor_verdict {
       validation_trace_v1.Rejected
     } else {
@@ -367,7 +371,7 @@ fn stage_ten_authentication(
       } else {
         state_hash
       },
-      siblings: [],
+      siblings: [validation_trace_v1.trace_leaf_hash(terminal_hash)],
     },
     supplied_control,
     if wrong_purpose_coordinate {

@@ -93,13 +93,15 @@ export const makePrepareResolutionRedeemer = ({
       {
         Continue: [
           {
-            input_index: layout.inputIndex,
-            output_index: layout.outputIndex,
-            resolver_index: resolverIndex,
-            evidence: {
-              pre_state: preState,
-              operator_post: operatorPost,
-              challenger_post: challengerPost,
+            PrepareResolution: {
+              input_index: layout.inputIndex,
+              output_index: layout.outputIndex,
+              resolver_index: resolverIndex,
+              evidence: {
+                pre_state: preState,
+                operator_post: operatorPost,
+                challenger_post: challengerPost,
+              },
             },
           },
         ],

@@ -1415,6 +1415,24 @@ pub fn verify_phase_a_native_timelock_payload_semantics_v1(
   )
 }
 
+/// Without a signer proof, only an authenticated malformed signature payload
+/// has a successor. A well-formed key hash always returns None and is refused.
+pub fn verify_phase_a_native_signature_no_proof_payload_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  verify_phase_a_native_signature_payload_with_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+    fn(_, _) { None },
+  )
+}
+
 pub fn verify_phase_a_native_signature_membership_payload_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,

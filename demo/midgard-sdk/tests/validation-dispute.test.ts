@@ -10,6 +10,8 @@ import {
   type PreparedValidationResolutionDatum as PreparedValidationResolutionDatumData,
   ValidationAwardSpendRedeemer,
   type ValidationAwardSpendRedeemer as ValidationAwardSpendRedeemerData,
+  ValidationBoundarySpendRedeemer,
+  type ValidationBoundarySpendRedeemer as ValidationBoundarySpendRedeemerData,
   ValidationCanonicalDecodePrepareSelectedSpendRedeemer,
   type ValidationCanonicalDecodePrepareSelectedSpendRedeemer as ValidationCanonicalDecodePrepareSelectedSpendRedeemerData,
   ValidationCekMaterialRoute,
@@ -172,6 +174,32 @@ describe("validation dispute ABI", () => {
       rejection_code_hash: "00".repeat(32),
       ledger_delta_root: "07".repeat(32),
     };
+    const terminalAward: ValidationBoundarySpendRedeemerData = {
+      Continue: [
+        {
+          AwardTerminalPadding: {
+            input_index: 2n,
+            output_index: 3n,
+            terminal_state: {
+              ...state,
+              phase: "Terminal",
+              verdict: "Accepted",
+            },
+          },
+        },
+      ],
+    };
+    const terminalCbor = Data.to(
+      terminalAward,
+      ValidationBoundarySpendRedeemer,
+    );
+    expect(Data.from(terminalCbor, ValidationBoundarySpendRedeemer)).toEqual(
+      terminalAward,
+    );
+    const rawTerminal = Data.from(terminalCbor) as Constr<Constr<unknown>>;
+    expect(rawTerminal.index).toBe(1); // Continue
+    expect(rawTerminal.fields[0]!.index).toBe(1); // AwardTerminalPadding
+    expect(rawTerminal.fields[0]!.fields).toHaveLength(3);
     const resolution: ValidationResolutionState = {
       version: 1n,
       pre_state: state,

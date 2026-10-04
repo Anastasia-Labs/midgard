@@ -9,7 +9,7 @@ import {
   buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  validationAuxiliaryWitnessData,
+  retainedValidationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -139,9 +139,11 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
       ),
     );
     const auxiliary = Data.from(
-      Data.to(validationAuxiliaryWitnessData(witness.auxiliary) as never),
-      SDK.ValidationAuxiliaryWitnessSchema,
-    ) as unknown as SDK.ValidationAuxiliaryWitness;
+      Data.to(
+        retainedValidationAuxiliaryWitnessData(witness.auxiliary) as never,
+      ),
+      SDK.RetainedValidationAuxiliaryWitnessSchema,
+    ) as unknown as SDK.RetainedValidationAuxiliaryWitness;
     const retainedKey: SDK.RetainedValidationWitnessKey = {
       event_key: eventKey,
       execution_index: BigInt(witness.auxiliary.executionIndex),

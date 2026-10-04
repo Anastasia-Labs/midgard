@@ -1,4 +1,8 @@
 import {
+  commitMidgardCekBlob,
+  hashMidgardCekDataNode,
+} from "@al-ft/midgard-core";
+import {
   type Data,
   DataB,
   DataConstr,
@@ -19,6 +23,7 @@ import {
   encodeMidgardCekCanonicalConstant,
   encodeMidgardCekPlutusData,
   midgardCekConstantWitnessFromUplc,
+  midgardCekIntegerMemorySize,
 } from "../src/cek-constant.js";
 import { buildMidgardCekDataScanTrace } from "../src/cek-data-scan.js";
 import {
@@ -126,52 +131,29 @@ describe("Cardano integer layout in Data CBOR", () => {
     const trace = buildMidgardCekDataScanTrace(chunked);
     expect(trace.terminal.offset).toBe(chunked.length);
 
-    const singleBlock = encodeMidgardCekDataTreeInteger(MAGNITUDE_65);
+    const singleBlock = Buffer.from(`c25841${hexRange(1, 65)}`, "hex");
     expect(singleBlock.length).toBe(68);
     expect(() => buildMidgardCekDataScanTrace(singleBlock)).toThrow(
       "V1 Data scan source is not canonical Data CBOR",
     );
   });
 
-  it("keeps Data tree roots for integers over 64 bytes unchanged", () => {
-    // Roots recorded from 8548b1960, before serialiseData and constant
-    // payloads switched to the chunked form.
-    const pinned = [
-      [
-        new DataI(MAGNITUDE_65),
-        "070000d0bf539f244914ca89acbb89eb1a436a97e8517dba65829e45a66354f6",
-        68n,
-        69n,
-      ],
-      [
-        new DataI(-MAGNITUDE_65 - 1n),
-        "a0fb7417edbbff3cfa53acc61525c3ecb237ebd1da237b6c4b8ee9bfa5953224",
-        68n,
-        69n,
-      ],
-      [
-        new DataI(MAGNITUDE_129),
-        "51fc462c28acd3c5034be00f7245fe05db25903063ac5bad9bf7c0179287a406",
-        132n,
-        134n,
-      ],
-      [
-        new DataConstr(0n, [
-          new DataI(MAGNITUDE_65),
-          new DataList([new DataI(-MAGNITUDE_65 - 1n)]),
-        ]),
-        "42ddbdf3015800405f36b3122c5a75c9be71a5249aec6d69655386aaf98c08a4",
-        142n,
-        146n,
-      ],
-    ] as const;
-    for (const [data, root, cborLength, memory] of pinned) {
-      const tree = commitMidgardCekDataTree(data);
-      expect(Buffer.from(tree.root).toString("hex")).toBe(root);
-      expect(tree.cborLength).toBe(cborLength);
-      expect(tree.memory).toBe(memory);
-    }
-  });
+  it.each(CASES)(
+    "commits %s with Cardano integer leaf bytes",
+    (name, value) => {
+      const tree = commitMidgardCekDataTree(new DataI(value));
+      const raw = Buffer.from(AIKEN_SERIALISE_DATA[name], "hex");
+      const expectedNode = {
+        kind: "integer" as const,
+        cborRoot: commitMidgardCekBlob(raw).root,
+        cborLength: BigInt(raw.length),
+        memory: 4n + midgardCekIntegerMemorySize(value),
+      };
+      expect(tree.root).toEqual(hashMidgardCekDataNode(expectedNode));
+      expect(tree.cborLength).toBe(BigInt(raw.length));
+      expect(encodeMidgardCekDataTreeInteger(value)).toEqual(raw);
+    },
+  );
 
   it("writes a 64-byte magnitude identically in both layouts", () => {
     for (const value of [MAGNITUDE_64, -MAGNITUDE_64 - 1n]) {

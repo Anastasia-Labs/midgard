@@ -4,6 +4,7 @@ import {
   encodeCbor,
   encodeMidgardCekDataTraverseControl,
   hashMidgardRedeemerItemProofControl,
+  isMidgardRedeemerDataHeadRejection,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   type MidgardRedeemerItemProofControl,
   type MidgardRedeemerItemProofWitness,
@@ -183,7 +184,8 @@ export const deriveScriptSourcesRedeemerItemPlan = ({
     next === null &&
     !(
       (control.stage === 0 && coreWitness.action.kind === "openHeader") ||
-      (control.stage === 1 && coreWitness.action.kind === "openTail")
+      (control.stage === 1 && coreWitness.action.kind === "openTail") ||
+      isMidgardRedeemerDataHeadRejection(control, coreWitness)
     )
   )
     throw new Error(
@@ -245,7 +247,11 @@ const deriveItemPlan = ({
   const witnessHash = rawHash(witness);
   const coreWitness = decodeRedeemerItemWitnessData(witness);
   const { family, index } = invalid
-    ? { family: 9, index: plan.control.stage === 0 ? 17 : 18 }
+    ? {
+        family: 9,
+        index:
+          plan.control.stage === 0 ? 17 : plan.control.stage === 1 ? 18 : 19,
+      }
     : redeemerItemExecutor(plan.control, coreWitness);
   const executor = stages.executors[index];
   if (executor === undefined)
@@ -393,7 +399,7 @@ const deriveItemPlan = ({
     source = some(joined.subarray(start, start + span.length).toString("hex"));
   }
   const execution =
-    traversalAction === null
+    traversalAction === null || invalid
       ? c([output, current, invalid ? current : claimedNext, action, source])
       : c([
           output,

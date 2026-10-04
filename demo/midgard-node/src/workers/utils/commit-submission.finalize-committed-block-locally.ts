@@ -24,6 +24,7 @@ import { withHistoryWrite } from "../../services/event-history-producer.js";
 import { type Database } from "../../services/index.js";
 import { materializeConfirmedLedgerSnapshot } from "../../transactions/state-queue/confirmed-ledger-snapshot.js";
 import { buildDaPayloadInsert } from "../commit-block-header/da-payload.js";
+import { pinFinalizedStateScriptRefs } from "../commit-block-header/da-payload.pin-finalized-state.js";
 import {
   buildSuccessfulCommitBatches,
   type SuccessfulCommitBatch,
@@ -131,13 +132,17 @@ export const finalizeCommittedBlockLocally = (
         : yield* Effect.gen(function* () {
             const record = options.daPayloadRecord!;
             const snapshot = yield* materializeConfirmedLedgerSnapshot(record);
-            return yield* buildDaPayloadInsert({
+            const insert = yield* buildDaPayloadInsert({
               record,
               utxos: snapshot.entries.map((entry) => ({
                 outref: entry.outref,
                 output: entry.output,
               })),
             });
+            return {
+              insert,
+              outputs: snapshot.entries.map((entry) => entry.output),
+            };
           });
     if (persistedDaPayload !== undefined) {
       yield* daPayloadBuildDurationTimer(
@@ -206,7 +211,11 @@ export const finalizeCommittedBlockLocally = (
               includedWithdrawalEventIds,
             );
           if (persistedDaPayload !== undefined) {
-            yield* DaPayloadsDB.upsertAvailable(persistedDaPayload);
+            yield* DaPayloadsDB.upsertAvailable(persistedDaPayload.insert);
+            yield* pinFinalizedStateScriptRefs(
+              options.daPayloadRecord!,
+              persistedDaPayload.outputs,
+            );
           }
           yield* CekProgramMaterialDB.releaseAdmissionOwnership(
             finalizedTxHashes,
@@ -227,7 +236,7 @@ export const finalizeCommittedBlockLocally = (
         ),
       );
     if (persistedDaPayload !== undefined) {
-      yield* seedDaPayloadPublicationOutboxFromEnv(persistedDaPayload);
+      yield* seedDaPayloadPublicationOutboxFromEnv(persistedDaPayload.insert);
     }
     if (options.beforeTransactionsMpfReset !== undefined) {
       yield* options.beforeTransactionsMpfReset;

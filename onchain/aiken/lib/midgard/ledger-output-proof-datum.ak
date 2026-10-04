@@ -809,19 +809,22 @@ pub fn advance_integer(
 ) -> Option<stages.StepResult> {
   expect raw.integer(control, 1) == proof.stage_datum_traversal
   expect stages.facts_empty(control)
-  let integer = unchecked_integer_scalar(claimed_scalar_payload(claimed_scalar))
+  let (source_start, source_length, _offset, _root, scalar_data) = claimed_scalar_fields(
+    claimed_scalar,
+  )
+  let integer = unchecked_integer_scalar(scalar_data)
+  let source_end = source_start + source_length
   expect integer.stage != integer_control.stage_terminal
   let (action, bytes) = source(
     control,
-    integer_control.prevalidated_next_source_span(integer),
+    integer_control.prevalidated_next_source_span(integer, source_end),
     witness,
   )
   expect Pair(0, []) = builtin.un_constr_data(action)
-  when integer_control.prevalidated_step_v1(integer, bytes) is {
+  when integer_control.prevalidated_step_v1(integer, source_end, bytes) is {
     None -> None
     Some(next) -> {
-      expect
-        next.source_start == integer.source_start && next.source_length == integer.source_length
+      expect next.source_start == integer.source_start
       replace_scalar(control, 6, integer_control.control_data_v1(next))
     }
   }
@@ -953,8 +956,8 @@ fn large_transition(
 /// prefix (traverse stage 3). This restates
 /// `cek_data_traverse_v1.prevalidated_advance_large_constructor` with the
 /// direct splice successors: the streaming branch touches only the integer
-/// slot (its `source_start`/`source_length` preservation is checked, so every
-/// `nested_integer_fits` clause carries over from the validated pre control),
+/// slot. Its source start stays fixed and its measured extent must leave room
+/// for the fields header, preserving the stage-3 nested-range clauses,
 /// and the completion branch touches only the stage and offset (its
 /// large-fields clauses — terminal integer, `offset < source_length` — follow
 /// from the pre control's stage-3 clauses).
@@ -976,7 +979,10 @@ pub fn advance_large_constructor(
   } else {
     let (action, bytes) = source(
       control,
-      integer_control.prevalidated_next_source_span(integer),
+      integer_control.prevalidated_next_source_span(
+        integer,
+        current.source_start + current.source_length,
+      ),
       witness,
     )
     expect Pair(0, []) = builtin.un_constr_data(action)
@@ -995,12 +1001,21 @@ pub fn advance_large_constructor(
     if !syntax_is_valid {
       None
     } else {
-      when integer_control.prevalidated_step_v1(integer, bytes) is {
+      when
+        integer_control.prevalidated_step_v1(
+          integer,
+          current.source_start + current.source_length,
+          bytes,
+        )
+      is {
         None -> None
         Some(next) -> {
-          expect
-            next.source_start == integer.source_start && next.source_length == integer.source_length
-          replace_scalar(control, 6, integer_control.control_data_v1(next))
+          expect next.source_start == integer.source_start
+          if current.offset + next.source_length < current.source_length {
+            replace_scalar(control, 6, integer_control.control_data_v1(next))
+          } else {
+            None
+          }
         }
       }
     }

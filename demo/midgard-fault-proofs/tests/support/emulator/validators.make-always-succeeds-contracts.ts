@@ -131,6 +131,7 @@ export const makeAlwaysSucceedsContracts = (
     zeroInput: scaffoldChain(zeroInputFirstStep, 2),
     validationTraceDispute: {
       ...scaffoldChain(alwaysValidationTraceDispute, 1),
+      canonicalDecodePrepare: alwaysValidationTraceDispute,
       yields: {
         scriptSourcesStageTwoAdvance: reserve,
         scriptSourcesStageThreeReplay: reserve,
@@ -285,7 +286,7 @@ export const makeAlwaysSucceedsContracts = (
         outerNormalizer: alwaysValidationTraceDispute,
         sourceAuthenticator: alwaysValidationTraceDispute,
         executors: Array.from(
-          { length: 19 },
+          { length: 20 },
           () => alwaysValidationTraceDispute,
         ),
         foldMapExecutor: alwaysValidationTraceDispute,

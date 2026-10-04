@@ -13,7 +13,10 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/consensus-profile";
-import { validateMidgardConsensusForcedTxCbor } from "@al-ft/midgard-core/consensus-validation";
+import {
+  MidgardForcedTxAdmissionStopped,
+  validateMidgardConsensusForcedTxCbor,
+} from "@al-ft/midgard-core/consensus-validation";
 import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -124,6 +127,9 @@ export const validateDaPayloadConsensus = (body: SDK.DaPayloadBody): void => {
         : validateMidgardConsensusTxCbor
     )(txCbor);
     if (violation !== null) {
+      if (sourceKind === "forced") {
+        throw new MidgardForcedTxAdmissionStopped(violation);
+      }
       throw new DaPayloadValidationError(
         violation.code === "E_TX_SIZE" ||
         violation.code === "E_FIELD_PREIMAGE_SIZE" ||

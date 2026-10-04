@@ -5,7 +5,7 @@ import {
 import {
   type ForcedRejection,
   forcedRejectionReason,
-  ForcedRejectionSubjectMissing,
+  ForcedRejectionStopped,
 } from "@al-ft/midgard-fault-proofs";
 import { makeReturn, rejectionReasonArmOf } from "@al-ft/midgard-sdk";
 import {
@@ -36,14 +36,22 @@ import {
 } from "./block-replay.watcher-block-replay-result.js";
 
 /**
- * The arm the node would record for a canonical rejection, or null when the
- * rejection carries no exact subject, which the node refuses to commit.
+ * The arm the node would record for a canonical rejection, when the
+ * rejection can be proved exactly. Unsupported or unavailable evaluation stops
+ * replay with a typed local failure and produces no forced-validation fact.
  */
-const canonicalRejectionArm = (rejection: ForcedRejection): string | null => {
+export const canonicalRejectionArm = (rejection: ForcedRejection): string => {
   try {
     return rejectionReasonArmOf(forcedRejectionReason(rejection));
   } catch (error) {
-    if (error instanceof ForcedRejectionSubjectMissing) return null;
+    if (error instanceof ForcedRejectionStopped) {
+      return fail(
+        error.retryable
+          ? "forced_evaluation_unavailable"
+          : "forced_rejection_unsupported",
+        `$.forced.${rejection.consensusPhase ?? "unknown"}.${rejection.code}`,
+      );
+    }
     throw error;
   }
 };
@@ -120,8 +128,6 @@ export const replayForcedTransitionEffect = async (input: {
     phaseAStatus = "rejected";
     phaseARejectCode = phaseA.code;
     const arm = canonicalRejectionArm(phaseA);
-    if (arm === null)
-      return fail("canonical_validation_threw", "$.phaseA.forced");
     canonicalOperatorValidity = arm;
   } else {
     const phaseB = await makeReturn(
@@ -143,8 +149,6 @@ export const replayForcedTransitionEffect = async (input: {
       phaseBStatus = "rejected";
       phaseBRejectCode = phaseB.rejected[0]!.code;
       const arm = canonicalRejectionArm(phaseB.rejected[0]!);
-      if (arm === null)
-        return fail("canonical_validation_threw", "$.phaseB.forced");
       canonicalOperatorValidity = arm;
     } else {
       if (phaseB.accepted.length !== 1) {

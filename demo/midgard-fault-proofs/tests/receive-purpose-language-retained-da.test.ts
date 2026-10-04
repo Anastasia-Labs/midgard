@@ -12,7 +12,7 @@ import {
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   MidgardRedeemerTag,
-  validationAuxiliaryWitnessData,
+  retainedValidationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -151,9 +151,11 @@ describe("receivePurposeLanguage retained DA", () => {
       { key: eventKeyCbor, value: descriptorCbor },
     ]);
     const auxiliary = Data.from(
-      Data.to(validationAuxiliaryWitnessData(witness.auxiliary) as never),
-      SDK.ValidationAuxiliaryWitnessSchema,
-    ) as unknown as SDK.ValidationAuxiliaryWitness;
+      Data.to(
+        retainedValidationAuxiliaryWitnessData(witness.auxiliary) as never,
+      ),
+      SDK.RetainedValidationAuxiliaryWitnessSchema,
+    ) as unknown as SDK.RetainedValidationAuxiliaryWitness;
     const retainedValue: SDK.RetainedValidationWitness = {
       machine_state: SDK.validationMachineStateDataFromCore(
         trace.states[stateIndex]!,

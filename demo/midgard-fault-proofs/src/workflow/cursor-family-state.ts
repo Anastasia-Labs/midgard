@@ -4,6 +4,7 @@ import {
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
 
+import type { RemovalConfirmation } from "./family-l1-observation.confirm-removal.js";
 import type {
   FraudProofWorkflowAction,
   FraudProofWorkflowObservation,
@@ -217,6 +218,7 @@ type ParsedAction = Readonly<{
   ordinal?: CursorFamilyStep;
   inputOutRef: string;
   proofOutRef?: string;
+  targetOutRef?: string;
 }>;
 
 const parsedAction = <Category extends FraudProofCatalogueCategoryName>(
@@ -264,6 +266,10 @@ const parsedAction = <Category extends FraudProofCatalogueCategoryName>(
       inputOutRef: canonicalOutRef(
         input.nextRemovalOutRef,
         `${spec.category} removal queue outRef`,
+      ),
+      targetOutRef: canonicalOutRef(
+        input.stateQueueBlockOutRef,
+        `${spec.category} removal target outRef`,
       ),
       proofOutRef: canonicalOutRef(
         input.fraudProofOutRef,
@@ -314,6 +320,16 @@ const exactSuccessor = <Category extends FraudProofCatalogueCategoryName>({
     );
   }
   if (parsed.stage === "remove") {
+    if (stage.kind === "proof_token") {
+      // Removing the immediate child recreates the authenticated target.
+      // Its next child may be an existing output, or the target itself when
+      // no descendants remain. The raw receipt authenticates that exact link.
+      return (
+        parsed.inputOutRef !== parsed.targetOutRef &&
+        stage.fraudProofOutRef === parsed.proofOutRef &&
+        outputBelongsToTransaction(stage.stateQueueBlockOutRef, txHash)
+      );
+    }
     return (
       stage.kind === "removed" &&
       stage.terminal.correction.removalTxHash === txHash &&
@@ -376,7 +392,10 @@ export const reconcileCursorFamilyAction = async <
   readonly txHash?: string;
   readonly provenance: EvidenceProvenance;
   readonly stage: FraudProofRawL1FamilyStage;
-  readonly transactionConfirmed: (txHash: string) => Promise<boolean>;
+  readonly transactionConfirmed: (
+    txHash: string,
+    removal?: RemovalConfirmation,
+  ) => Promise<boolean>;
   readonly recoverUnconfirmedTransaction?: () => Promise<FraudProofWorkflowReconcileResult>;
 }): Promise<FraudProofWorkflowReconcileResult> => {
   const spec = validateSpec(inputSpec);
@@ -402,7 +421,24 @@ export const reconcileCursorFamilyAction = async <
   if (!TX_HASH.test(txHash)) {
     throw new Error(`${spec.category} reconciliation tx hash is invalid`);
   }
-  const included = await transactionConfirmed(txHash);
+  const included = await transactionConfirmed(
+    txHash,
+    parsed.stage === "remove"
+      ? {
+          inputOutRef: parsed.inputOutRef,
+          targetOutRef: parsed.targetOutRef!,
+          proofOutRef: parsed.proofOutRef!,
+          ...(admittedStage.kind === "proof_token"
+            ? {
+                continuation: {
+                  targetOutRef: admittedStage.stateQueueBlockOutRef,
+                  nextRemovalOutRef: admittedStage.nextRemovalOutRef,
+                },
+              }
+            : {}),
+        }
+      : undefined,
+  );
   if (
     included &&
     exactSuccessor({ spec, parsed, stage: admittedStage, txHash })

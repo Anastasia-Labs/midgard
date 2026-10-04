@@ -27,10 +27,12 @@ import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
   type FraudProofRawL1FamilyDefinition,
   type FraudProofRawL1Snapshot,
+  type FraudProofRawL1Utxo,
   type VerifiedFraudProofReleaseEconomicsPolicy,
   type VerifiedFraudProofReleaseFinalityPolicy,
 } from "../../src/workflow/index.js";
 import { makeHeader } from "./emulator/header-fixtures.js";
+import { finalDescendantRemoval } from "./raw-l1-terminal-fixture.final-descendant-removal.js";
 import {
   DEPLOYMENT,
   PROVER,
@@ -57,6 +59,7 @@ export const fixture = async ({
   verifiedEconomics = releaseEconomics,
   proofCreation = false,
   descendant = false,
+  descendantOperatorCredential,
   partial = false,
   duplicateReward = false,
   bondStatus = "active",
@@ -71,6 +74,7 @@ export const fixture = async ({
   verifiedEconomics?: VerifiedFraudProofReleaseEconomicsPolicy;
   proofCreation?: boolean;
   descendant?: boolean;
+  descendantOperatorCredential?: string;
   partial?: boolean;
   duplicateReward?: boolean;
   bondStatus?: "active" | "retired";
@@ -103,7 +107,7 @@ export const fixture = async ({
   const proofUnit = toUnit(proofPolicy, assetName);
   const bondUnit = toUnit(
     bondStatus === "active" ? activePolicy : retiredPolicy,
-    `${bondStatus === "active" ? ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX : RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX}${OPERATOR}`,
+    `${bondStatus === "active" ? ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX : RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX}${descendantOperatorCredential ?? OPERATOR}`,
   );
   const targetDatum = encodeLinkedListNodeView({
     key: { Key: { key: headerHash } },
@@ -269,32 +273,29 @@ export const fixture = async ({
   let removalBody = slashBody;
   let removalTxHash = slashTxHash;
   let root = continuedTarget;
+  let finalTargetBond: FraudProofRawL1Utxo | undefined;
   if (descendant) {
-    const finalInputs = CML.TransactionInputList.new();
-    finalInputs.add(input(continuedTarget.outRef));
-    const finalOutputs = CML.TransactionOutputList.new();
-    finalOutputs.add(
-      output({
-        address: stateAddress,
-        assets: { lovelace: 3_000_000n, [rootUnit]: 1n },
-        datum: rootDatum,
-      }),
-    );
-    removalBody = CML.TransactionBody.new(finalInputs, finalOutputs, 200_000n);
-    const finalReferences = CML.TransactionInputList.new();
-    finalReferences.add(input(proofOutRef));
-    removalBody.set_reference_inputs(finalReferences);
-    const finalMint = CML.Mint.new();
-    finalMint.set(
-      CML.ScriptHash.from_hex(statePolicy),
-      CML.AssetName.from_hex(stateUnit.slice(56)),
-      -1n,
-    );
-    removalBody.set_mint(finalMint);
+    const final = finalDescendantRemoval({
+      continuedTargetOutRef: continuedTarget.outRef,
+      stateAddress,
+      rootUnit,
+      rootDatum,
+      proofOutRef,
+      stateUnit,
+      verifiedEconomics,
+      activePolicy,
+      activeAddress,
+      operatorCredential: OPERATOR,
+      rewardAddress,
+      distinctOperator: descendantOperatorCredential !== undefined,
+      duplicateReward,
+    });
+    removalBody = final.body;
+    finalTargetBond = final.targetBond;
     removalTxHash = CML.hash_transaction(
       CML.TransactionBody.from_cbor_hex(removalBody.to_canonical_cbor_hex()),
     ).to_hex();
-    root = raw(`${removalTxHash}#0`, finalOutputs.get(0));
+    root = raw(`${removalTxHash}#0`, final.rootOutput);
   }
   const pointInput = {
     slot: "1000",
@@ -431,7 +432,10 @@ export const fixture = async ({
               isValid: true as const,
               inclusionPoint: point,
               confirmationDepth: 30,
-              resolvedInputs: [continuedTarget],
+              resolvedInputs: [
+                continuedTarget,
+                ...(finalTargetBond === undefined ? [] : [finalTargetBond]),
+              ],
               resolvedReferenceInputs: [proof],
             },
           ]
@@ -474,7 +478,7 @@ export const fixture = async ({
     snapshot,
     definition,
     removalTxHash,
-    rewardOutRef: `${slashTxHash}#1`,
+    rewardOutRef: `${descendantOperatorCredential === undefined ? slashTxHash : removalTxHash}#1`,
     binding: {
       deploymentFingerprint,
       definition,

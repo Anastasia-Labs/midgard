@@ -2,7 +2,9 @@ import {
   hashMidgardCekBlsExpressionNode,
   hashMidgardCekValueNode,
 } from "@al-ft/midgard-core";
-import { CEKConst, CEKError } from "@harmoniclabs/plutus-machine";
+import { DataB } from "@harmoniclabs/plutus-data";
+import { CEKConst } from "@harmoniclabs/plutus-machine";
+import { UPLCConst } from "@harmoniclabs/uplc";
 
 import {
   type Bytes,
@@ -12,10 +14,15 @@ import {
   sameBytes,
 } from "./cek-builtin.argument-kinds.js";
 import {
+  cardanoBlsFinalVerify,
+  cardanoBlsMillerLoop,
+  cardanoBlsMulMlResult,
+  type CardanoMlResult,
+} from "./cek-builtin.cardano-exact-bls.js";
+import {
   directConstantToReferenceValue,
   evaluateMidgardCekDirectBuiltin,
   referenceConstantToDirectWitness,
-  runPinnedReferenceBuiltin,
 } from "./cek-builtin.evaluate-reference-builtin.js";
 import {
   hashMidgardCekDirectArguments,
@@ -124,7 +131,7 @@ export type MidgardCekBlsExpressionWitness =
 
 type EvaluatedBlsExpression = {
   readonly root: Bytes;
-  readonly value: CEKConst;
+  readonly value: CardanoMlResult;
   readonly leaves: number;
   readonly depth: number;
 };
@@ -137,12 +144,19 @@ const evaluateBlsLeaf = (
   if (g1Decoded.type.kind !== "blsG1" || g2Decoded.type.kind !== "blsG2") {
     throw new Error("BLS expression leaf requires G1 and G2 constants");
   }
-  const g1 = directConstantToReferenceValue(expression.g1);
-  const g2 = directConstantToReferenceValue(expression.g2);
-  const value = runPinnedReferenceBuiltin(68, [g1, g2]);
-  if (value instanceof CEKError) {
-    throw new Error("reference evaluator rejected a BLS expression leaf");
+  // Both points must uncompress under the L1 rule before the loop runs.
+  directConstantToReferenceValue(expression.g1);
+  directConstantToReferenceValue(expression.g2);
+  if (
+    !(g1Decoded.payload instanceof DataB) ||
+    !(g2Decoded.payload instanceof DataB)
+  ) {
+    throw new Error("BLS expression leaf points are not bytes");
   }
+  const value = cardanoBlsMillerLoop(
+    Uint8Array.from(g1Decoded.payload.bytes),
+    Uint8Array.from(g2Decoded.payload.bytes),
+  );
   return Object.freeze({
     root: hashMidgardCekBlsExpressionNode({
       kind: "millerLoop",
@@ -159,10 +173,7 @@ const evaluateBlsProduct = (
   left: EvaluatedBlsExpression,
   right: EvaluatedBlsExpression,
 ): EvaluatedBlsExpression => {
-  const value = runPinnedReferenceBuiltin(69, [left.value, right.value]);
-  if (value instanceof CEKError) {
-    throw new Error("reference evaluator rejected a BLS expression product");
-  }
+  const value = cardanoBlsMulMlResult(left.value, right.value);
   return Object.freeze({
     root: hashMidgardCekBlsExpressionNode({
       kind: "multiply",
@@ -256,10 +267,9 @@ export const evaluateMidgardCekBlsFinal = (
       "BLS finalVerify expression exceeds the ten-leaf L1 proof reserve",
     );
   }
-  const result = runPinnedReferenceBuiltin(70, [left.value, right.value]);
-  if (result instanceof CEKError) {
-    throw new Error("reference evaluator rejected BLS finalVerify");
-  }
+  const result = CEKConst.fromUplc(
+    UPLCConst.bool(cardanoBlsFinalVerify(left.value, right.value)),
+  );
   const arguments_: readonly MidgardCekDirectValueWitness[] = [
     { kind: "blsMillerLoop", expressionRoot: left.root },
     { kind: "blsMillerLoop", expressionRoot: right.root },

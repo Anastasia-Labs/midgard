@@ -51,6 +51,8 @@ const REFERENCE_EVALUATOR_NAMES = new Set([
   "CEKConst",
   "CEKError",
   "ExBudget",
+  // Scalar bigint cost functions do not traverse Plutus Data.
+  "Linear3InY",
   "PartialBuiltin",
   "costModelV3ToBuiltinCosts",
 ]);
@@ -72,7 +74,7 @@ export default defineRule({
       recursiveHarmonic:
         "`{{name}}` from @harmoniclabs/plutus-data walks Data recursively and overflows the stack on deep values that the carriers admit. Fix: decode with `plutusDataFromCborIterative` (midgard-validation/src/plutus-data-iterative.decode.ts) and encode with `encodeMidgardCekPlutusData` (plutus-data-iterative.encode.ts); compare or copy with an explicit-stack walk.",
       machine:
-        "`{{name}}` from @harmoniclabs/plutus-machine is outside the pinned reference evaluator; `Machine` evaluates over recursive Data. Fix: evaluate through the structural CEK executor (cek-executor.ts); only BnCEK, CEKConst, CEKError, ExBudget, PartialBuiltin and costModelV3ToBuiltinCosts may be imported.",
+        "`{{name}}` from @harmoniclabs/plutus-machine is outside the pinned reference evaluator; `Machine` evaluates over recursive Data. Fix: evaluate through the structural CEK executor (cek-executor.ts); only BnCEK, CEKConst, CEKError, ExBudget, Linear3InY, PartialBuiltin and costModelV3ToBuiltinCosts may be imported.",
       harmonicCbor:
         "`Cbor` from @harmoniclabs/cbor parses and encodes recursively. Fix: use the iterative readers in midgard-core (`plutus-data-lucid-iterative`) or midgard-validation (`plutus-data-iterative.decode.ts`).",
       cborg:

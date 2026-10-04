@@ -1,12 +1,8 @@
 import {
-  asArray,
-  asBytes,
   buildMidgardValidationTraceTree,
-  decodeSingleCbor,
-  encodeCbor,
   hashMidgardValidationMachineState,
-  hashMidgardValidationWorkWitness,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
+  type MidgardValidationPhaseName,
 } from "@al-ft/midgard-core";
 import {
   decodeCekContextCborArray,
@@ -24,7 +20,7 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { redeemerItemExecutor } from "../../../src/redeemer-item-plan.js";
 import { scriptSourcesMiddleYieldIndex } from "../../../src/validation-dispute/script-sources-yields.js";
-import { forgeDirectMapConversionSuccessor } from "./cek-direct-map-conversion-forgery.js";
+import { forgeCekCoreSuccessor } from "./cek-builtin-failure-forgery.js";
 import { type ForcedValidationDisputeFixture } from "./validation-dispute-fixtures.build-accepted-claim-over-rejecting-transaction-fixture.js";
 import { buildForcedValidationDisputeCommitments } from "./validation-dispute-fixtures.build-forced-validation-dispute-commitments.js";
 import { buildNativeTransactionTrace } from "./validation-dispute-fixtures.build-native-transaction-trace.js";
@@ -56,6 +52,7 @@ import { withMaximumValueAssetProof } from "./value-asset-maximum.js";
 export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   operatorVkey,
   now,
+  addressWitnessCount,
   disputedPhase,
   disputedValueKind,
   cekSelection = false,
@@ -78,6 +75,8 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   cekBlsFinal = false,
   cekMaximumDirect = false,
   cekSemanticTag,
+  cekBuiltinFailureTag,
+  cekBuiltinFailureBudgetForgery,
   cekDirectMapConversion = false,
   assetCount = 0,
   dishonestChallenger = false,
@@ -107,14 +106,9 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   prepareFieldCarriage,
 }: {
   readonly operatorVkey: string;
+  readonly addressWitnessCount?: number;
   readonly now: number;
-  readonly disputedPhase:
-    | "cek"
-    | "valueAndMint"
-    | "phaseANativeScripts"
-    | "phaseAScriptPreconditions"
-    | "resolveInputs"
-    | "scriptSources";
+  readonly disputedPhase: Exclude<MidgardValidationPhaseName, "terminal">;
   readonly disputedValueKind?: ValueAndMintStepKind;
   readonly cekSelection?: boolean;
   readonly cekCoreArm?: string;
@@ -157,6 +151,8 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   readonly cekBlsFinal?: boolean;
   readonly cekMaximumDirect?: boolean;
   readonly cekSemanticTag?: number;
+  readonly cekBuiltinFailureTag?: 12 | 21 | 52 | 82 | 83;
+  readonly cekBuiltinFailureBudgetForgery?: "cpu" | "memory";
   /** With `dishonestChallenger`: see {@link forgeDirectMapConversionSuccessor}. */
   readonly cekDirectMapConversion?: boolean;
   readonly assetCount?: number;
@@ -255,13 +251,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   >;
 }): Promise<
   ForcedValidationDisputeFixture & {
-    readonly disputedPhase:
-      | "cek"
-      | "valueAndMint"
-      | "phaseANativeScripts"
-      | "phaseAScriptPreconditions"
-      | "resolveInputs"
-      | "scriptSources";
+    readonly disputedPhase: Exclude<MidgardValidationPhaseName, "terminal">;
     readonly disputedLowIndex: number;
   }
 > => {
@@ -274,6 +264,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     postUtxosRoot,
   } = await buildNativeTransactionTrace({
     now,
+    addressWitnessCount,
     txOrderSeed: disputedPhase === "cek" ? "e4" : "e5",
     assetCount:
       cekSelection ||
@@ -300,6 +291,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     cekBlsFinal,
     cekMaximumDirect,
     cekSemanticTag,
+    cekBuiltinFailureTag,
     observerCount,
     preconditionsRejection,
     rejectAfterPreconditions,
@@ -471,8 +463,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
         disputedMatchesSeen++ === disputedMatchOrdinal)
     );
   };
-  // A maximum-shape claim has to adjudicate the most expensive matching step,
-  // not merely the first one the honest trace happens to reach.
+  // Adjudicate the largest matching auxiliary when a maximum is requested.
   const disputedLowIndex = worstCaseWitness
     ? challengerTrace.states.reduce(
         (best, state, index) => {
@@ -606,46 +597,23 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
         : forgedTerminal,
   );
   const operatorWitnesses = [...challengerTrace.witnesses];
-  if (dishonestChallenger && cekDirectMapConversion)
-    forgeDirectMapConversionSuccessor(
-      challengerTrace,
-      disputedLowIndex,
-      operatorStates,
-      operatorWitnesses,
-    );
-  if (dishonestChallenger && cekContextStage !== undefined) {
-    const successorIndex = disputedLowIndex + 1;
-    const adjacent = operatorWitnesses[successorIndex]!;
-    const work = asArray(decodeSingleCbor(adjacent.cbor), "context successor");
-    const nextContext = asArray(
-      decodeSingleCbor(asBytes(work[1], "context control")),
-      "context control",
-    );
-    // Supply a well-encoded dishonest continuation, so refusal reaches the
-    // physical context verifier instead of the host's missing-evidence gate.
-    nextContext[20] = 1n;
-    work[1] = encodeCbor(nextContext);
-    const cbor = encodeCbor(work);
-    operatorWitnesses[successorIndex] = { ...adjacent, cbor };
-    operatorStates[successorIndex] = {
-      ...operatorStates[successorIndex]!,
-      workRoot: hashMidgardValidationWorkWitness({
-        phase: adjacent.phase,
-        programCounter: adjacent.programCounter,
-        witnessCbor: cbor,
-      }),
-    };
-  }
+  forgeCekCoreSuccessor({
+    challengerTrace,
+    disputedLowIndex,
+    operatorStates,
+    operatorWitnesses,
+    dishonestChallenger,
+    cekBuiltinFailureBudgetForgery,
+    cekDirectMapConversion,
+    cekContextStage,
+  });
   if (
     dishonestChallenger &&
     (ledgerOutputProofForgery !== undefined ||
       resolveInputsKind === "membershipStep" ||
       (disputedPhase === "scriptSources" && scriptSourcesSemanticIndex === 2))
   ) {
-    // Ledger-output-proof step: the evidence builder demands the exact
-    // adjacent successor work witness, so a bare forged work root dies
-    // locally. Supply a well-encoded dishonest continuation instead, so
-    // refusal reaches the on-chain step.
+    // Supply the adjacent work witness so refusal reaches the on-chain step.
     forgeLedgerOutputProofSuccessor({
       trace: challengerTrace,
       disputedLowIndex,
@@ -712,7 +680,22 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     now,
     txOrderId,
     eventKey,
-    forcedTransaction,
+    forcedTransaction:
+      cekBuiltinFailureTag === undefined
+        ? forcedTransaction
+        : {
+            ...forcedTransaction,
+            verdict:
+              claimedOperatorTrace.verdict === "accepted"
+                ? "ForcedTxValid"
+                : {
+                    ForcedTxInvalid: {
+                      reason: {
+                        PlutusExecutionFailed: { execution_index: 0n },
+                      },
+                    },
+                  },
+          },
     operatorTrace: claimedOperatorTrace,
     preUtxosRoot,
     postUtxosRoot,

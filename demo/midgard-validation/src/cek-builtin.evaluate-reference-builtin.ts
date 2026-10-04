@@ -17,6 +17,11 @@ import {
   type MidgardCekDirectValueWitness,
 } from "./cek-builtin.argument-kinds.js";
 import {
+  type CardanoExactValue,
+  evaluateCardanoExactBuiltin,
+  MIDGARD_CEK_CARDANO_EXACT_BUILTIN_TAGS,
+} from "./cek-builtin.cardano-exact.js";
+import {
   directByteLength,
   hashMidgardCekDirectValueWitness,
   midgardCekDirectBuiltinBudget,
@@ -91,6 +96,38 @@ export const directConstantToReferenceValue = (
   }
   return uncompressed;
 };
+
+const cardanoExactArgument = (
+  argument: MidgardCekDirectValueWitness,
+): CardanoExactValue => {
+  if (argument.kind !== "constant") {
+    throw new Error("non-control V1 builtin arguments must be constants");
+  }
+  const reference = directConstantToReferenceValue(argument.witness);
+  const type = reference.type[0];
+  if (type === ConstTyTag.int) {
+    return { kind: "integer", value: reference.value as bigint };
+  }
+  if (type === ConstTyTag.byteStr) {
+    return {
+      kind: "bytes",
+      value: Uint8Array.from(reference.value as Uint8Array),
+    };
+  }
+  if (type === ConstTyTag.bool) {
+    return { kind: "bool", value: reference.value as boolean };
+  }
+  throw new Error("V1 builtin argument has the wrong constant type");
+};
+
+const cardanoExactResult = (value: CardanoExactValue): CEKConst =>
+  CEKConst.fromUplc(
+    value.kind === "integer"
+      ? UPLCConst.int(value.value)
+      : value.kind === "bytes"
+        ? UPLCConst.byteString(value.value)
+        : UPLCConst.bool(value.value),
+  );
 
 const semanticConstantFromCanonical = (
   canonical: ReturnType<typeof encodeMidgardCekCanonicalConstant>,
@@ -256,6 +293,15 @@ const evaluateReferenceBuiltin = (
       true,
     );
   }
+  if (MIDGARD_CEK_CARDANO_EXACT_BUILTIN_TAGS.has(Number(tag))) {
+    const result = evaluateCardanoExactBuiltin(
+      Number(tag),
+      arguments_.map(cardanoExactArgument),
+    );
+    return result === "failure"
+      ? "failure"
+      : referenceConstantToDirectWitness(cardanoExactResult(result));
+  }
   const referenceArguments: CEKConst[] = [];
   for (const argument of arguments_) {
     if (argument.kind !== "constant") {
@@ -275,7 +321,7 @@ const directFailureIsCharged = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean =>
-  [4n, 5n, 6n, 52n, 53n, 58n, 65n, 73n].includes(tag) ||
+  [4n, 5n, 6n, 21n, 52n, 53n, 58n, 65n, 73n].includes(tag) ||
   (tag === 60n && directByteLength(arguments_[0]!) === 48) ||
   (tag === 67n && directByteLength(arguments_[0]!) === 96);
 

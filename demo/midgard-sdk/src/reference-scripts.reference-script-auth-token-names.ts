@@ -98,6 +98,8 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
     "V1VtRiInvalidHeader",
   "V1 validation-trace redeemer item invalid tail executor":
     "V1VtRiInvalidTail",
+  "V1 validation-trace redeemer item invalid data executor":
+    "V1VtRiInvalidData",
   "V1 validation-trace redeemer item settlement": "V1VtRiSettlement",
   "V1 validation-trace script-sources RedeemerNormalization semantic":
     "V1VtSsRedeemerNorm",
@@ -257,6 +259,15 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 validation-trace boundary": "V1ValidationTraceBoundary",
   "V1 validation-trace timeout": "V1ValidationTraceTimeout",
   "V1 validation-trace award": "V1ValidationTraceAward",
+  "V1 validation-trace canonical-decode prepare": "V1VtdCanonicalPrepare",
+  "V1 validation-trace canonical-decode empty semantic": "V1VtdCanonicalEmpty",
+  "V1 validation-trace canonical-decode item semantic": "V1VtdCanonicalItem",
+  "V1 validation-trace canonical-decode item source": "V1VtdCanonicalSource",
+  "V1 validation-trace canonical-decode item observe": "V1VtdCanonicalObserve",
+  "V1 validation-trace canonical-decode item proof": "V1VtdCanonicalProof",
+  "V1 validation-trace canonical-decode item settlement":
+    "V1VtdCanonicalSettle",
+  "V1 validation-trace proof-item publication": "V1VtdProofItem",
   "V1 validation-trace CEK direct resolver": "V1ValidationTraceCekResolver0",
   "V1 fraud-proof transition-trace route": "V1FpTransitionTraceRoute",
   "V1 fraud-proof transition-trace final-0": "V1FpTransitionTraceFinal0",

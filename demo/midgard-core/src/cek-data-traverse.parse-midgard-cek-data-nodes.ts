@@ -10,7 +10,10 @@ import {
   initialMidgardCekDataSmallConstrFrame,
   type MidgardCekDataFrame,
 } from "./cek-data-frame.js";
-import { initialMidgardCekDataIntegerControl } from "./cek-data-integer.js";
+import {
+  initialMidgardCekDataIntegerControl,
+  initialMidgardCekDataIntegerMeasureControl,
+} from "./cek-data-integer.js";
 import {
   isWellFormedMidgardCekDataTraverseControl,
   type MidgardCekDataTraverseControl,
@@ -19,6 +22,7 @@ import {
   summaryIsWellFormed,
   UINT32_MAX,
 } from "./cek-data-traverse.is-well-formed-midgard-cek-data-traverse-control.js";
+import { hasNonCanonicalDataHead } from "./cek-data-traverse.noncanonical-sequence-head.js";
 import { parseDataNodeHead } from "./cek-data-traverse.parse-data-node-head.js";
 import {
   type DataParserFrame,
@@ -29,16 +33,29 @@ import {
 } from "./cek-data-traverse.read-canonical-cbor-argument-wide.js";
 import { type MidgardCekDataSummary } from "./cek-semantic.js";
 
-export const parseMidgardCekDataNodes = (
+const parseDataNodes = (
   source: Buffer,
-): readonly ParsedDataNode[] => {
+  stopAtSequenceRefusal: boolean,
+): {
+  readonly nodes: readonly ParsedDataNode[];
+  readonly refusalOffset: number | null;
+} => {
   if (source.length === 0 || source.length > UINT32_MAX) {
     throw new Error("V1 CEK Data traversal source must fit uint32");
   }
   const nodes: ParsedDataNode[] = [];
   const frames: DataParserFrame[] = [];
-  const root = parseDataNodeHead(source, 0);
+  if (stopAtSequenceRefusal && hasNonCanonicalDataHead(source)) {
+    return { nodes, refusalOffset: 0 };
+  }
+  const root = parseDataNodeHead(source, 0, stopAtSequenceRefusal);
   nodes.push(root.node);
+  if (
+    root.node.kind !== "scalar" &&
+    "refusalOffset" in root &&
+    root.refusalOffset !== undefined
+  )
+    return { nodes, refusalOffset: root.refusalOffset };
   let cursor = root.nextOffset;
   if (root.remainingChildren !== 0) {
     frames.push({
@@ -79,10 +96,27 @@ export const parseMidgardCekDataNodes = (
     if (cursor >= source.length || source[cursor] === 0xff) {
       throw new Error("V1 CEK Data traversal rejected an incomplete container");
     }
-    const child = parseDataNodeHead(source, cursor);
+    if (
+      stopAtSequenceRefusal &&
+      hasNonCanonicalDataHead(source.subarray(cursor))
+    ) {
+      const refusalOffset = cursor;
+      // The next operation names the refusal cursor rather than a parsed Data node.
+      node.children.push(nodes.length);
+      // Open-ended ancestor frames derive their arity from authenticated traversal,
+      // so unvisited suffix nodes need not be parsed or assigned invented summaries.
+      return { nodes, refusalOffset };
+    }
+    const child = parseDataNodeHead(source, cursor, stopAtSequenceRefusal);
     const childIndex = nodes.length;
     nodes.push(child.node);
     node.children.push(childIndex);
+    if (
+      child.node.kind !== "scalar" &&
+      "refusalOffset" in child &&
+      child.refusalOffset !== undefined
+    )
+      return { nodes, refusalOffset: child.refusalOffset };
     if (frame.remainingChildren !== null) {
       frame.remainingChildren -= 1;
     }
@@ -103,8 +137,15 @@ export const parseMidgardCekDataNodes = (
   if (cursor !== source.length) {
     throw new Error("V1 CEK Data traversal rejected trailing source bytes");
   }
-  return nodes;
+  return { nodes, refusalOffset: null };
 };
+
+export const parseMidgardCekDataNodes = (
+  source: Buffer,
+): readonly ParsedDataNode[] => parseDataNodes(source, false).nodes;
+
+export const parseMidgardCekDataNodesPrefix = (source: Buffer) =>
+  parseDataNodes(source, true);
 
 export const exactSourceBytes = ({
   control,
@@ -209,7 +250,7 @@ export const integerItemLength = (
   }
   if (first !== 0xc2 && first !== 0xc3) return null;
   const magnitude = readCanonicalCborArgument(bytes, offset + 1);
-  return magnitude === null || magnitude.major !== 2
+  return magnitude === null || magnitude.major !== 2 || magnitude.value > 64
     ? null
     : magnitude.nextOffset - offset + magnitude.value;
 };
@@ -247,6 +288,13 @@ export const stepHeadScalar = ({
         sourceStart,
         sourceLength: itemLength,
       }),
+    });
+  }
+  if ((first === 0xc2 || first === 0xc3) && bytes[1] === 0x5f) {
+    return advanced({
+      ...control,
+      stage: MidgardCekDataTraverseStages.Integer,
+      integer: initialMidgardCekDataIntegerMeasureControl({ sourceStart }),
     });
   }
   const itemLength = integerItemLength(bytes, 0);

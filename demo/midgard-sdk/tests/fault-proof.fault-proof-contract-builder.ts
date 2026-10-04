@@ -3,11 +3,7 @@ import "./fault-proof.double-spend-fault-proof-contract-builder.js";
 import { readFileSync } from "node:fs";
 
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import {
-  applyParamsToScript,
-  Data,
-  validatorToAddress,
-} from "@lucid-evolution/lucid";
+import { Data, validatorToAddress } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -35,6 +31,7 @@ import {
   VALIDATION_TRACE_RESOLVER_COUNT,
   ZERO_INPUT_FAULT_PROOF_TITLES,
 } from "../src/index.js";
+import { applyExpectedScriptParams } from "./fault-proof.expected-parameter-application.js";
 import {
   blueprintPath,
   CEK_MATERIAL_TRAVERSAL_TITLES,
@@ -153,7 +150,7 @@ describe("fault-proof contract builder", () => {
       contracts.transitionTrace.yields.depositProjection.withdrawalScript
         .script,
     ).toBe(
-      applyParamsToScript(
+      applyExpectedScriptParams(
         compiledScript(
           blueprint,
           SDK.TRANSITION_TRACE_YIELD_TITLES.depositProjection,
@@ -274,7 +271,7 @@ describe("fault-proof contract builder", () => {
         AddressData,
       ),
     );
-    const expectedStep02Cbor = applyParamsToScript(
+    const expectedStep02Cbor = applyExpectedScriptParams(
       compiledScript(blueprint, INVALID_RANGE_FAULT_PROOF_TITLES.step02),
       [
         contracts.fraudProof.policyId,
@@ -282,7 +279,7 @@ describe("fault-proof contract builder", () => {
         contracts.computationThread.policyId,
       ],
     );
-    const expectedStep01Cbor = applyParamsToScript(
+    const expectedStep01Cbor = applyExpectedScriptParams(
       compiledScript(blueprint, INVALID_RANGE_FAULT_PROOF_TITLES.step01),
       [
         spendingScriptHash(expectedStep02Cbor),
@@ -356,7 +353,7 @@ describe("fault-proof contract builder", () => {
         AddressData,
       ),
     );
-    const expectedStep02Cbor = applyParamsToScript(
+    const expectedStep02Cbor = applyExpectedScriptParams(
       compiledScript(blueprint, ZERO_INPUT_FAULT_PROOF_TITLES.step02),
       [
         contracts.fraudProof.policyId,
@@ -365,7 +362,7 @@ describe("fault-proof contract builder", () => {
         certificatePolicyId(blueprint),
       ],
     );
-    const expectedStep01Cbor = applyParamsToScript(
+    const expectedStep01Cbor = applyExpectedScriptParams(
       compiledScript(blueprint, ZERO_INPUT_FAULT_PROOF_TITLES.step01),
       [
         spendingScriptHash(expectedStep02Cbor),
@@ -437,7 +434,7 @@ describe("fault-proof contract builder", () => {
     // Note the parameter order differs from zero-input/invalid-range: this
     // chain's final step takes the computation-thread policy first, matching
     // the aiken `validator main(...)` signature.
-    const expectedStep02Cbor = applyParamsToScript(
+    const expectedStep02Cbor = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         SDK.INVALID_SIGNATURE_FAULT_PROOF_TITLES.step02,
@@ -449,7 +446,7 @@ describe("fault-proof contract builder", () => {
         certificatePolicyId(blueprint),
       ],
     );
-    const expectedStep01Cbor = applyParamsToScript(
+    const expectedStep01Cbor = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         SDK.INVALID_SIGNATURE_FAULT_PROOF_TITLES.step01,
@@ -526,7 +523,7 @@ describe("fault-proof contract builder", () => {
       ),
     );
     // Same applied-parameter order as input-no-idx, taken from the blueprint.
-    const expectedStep04Cbor = applyParamsToScript(
+    const expectedStep04Cbor = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         SDK.REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step04,
@@ -538,7 +535,7 @@ describe("fault-proof contract builder", () => {
         certificatePolicyId(blueprint),
       ],
     );
-    const expectedStep03Cbor = applyParamsToScript(
+    const expectedStep03Cbor = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         SDK.REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step03,
@@ -549,7 +546,7 @@ describe("fault-proof contract builder", () => {
         h28b,
       ],
     );
-    const expectedStep02Cbor = applyParamsToScript(
+    const expectedStep02Cbor = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         SDK.REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step02,
@@ -560,7 +557,7 @@ describe("fault-proof contract builder", () => {
         certificatePolicyId(blueprint),
       ],
     );
-    const expectedStep01Cbor = applyParamsToScript(
+    const expectedStep01Cbor = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         SDK.REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step01,
@@ -668,7 +665,7 @@ describe("fault-proof contract builder", () => {
       "duplicate",
     ] as const;
     const expectedFinalCbors = finalNames.map((name) =>
-      applyParamsToScript(
+      applyExpectedScriptParams(
         compiledScript(blueprint, TRANSITION_TRACE_FAULT_PROOF_TITLES[name]),
         [
           contracts.computationThread.policyId,
@@ -688,7 +685,7 @@ describe("fault-proof contract builder", () => {
     expect(
       contracts.transitionTrace.yields.l1Event.withdrawalScript.script,
     ).toEqual(
-      applyParamsToScript(
+      applyExpectedScriptParams(
         compiledScript(blueprint, SDK.TRANSITION_TRACE_YIELD_TITLES.l1Event),
         [
           contracts.transitionTrace.finals[6].spendingScriptHash,
@@ -704,7 +701,7 @@ describe("fault-proof contract builder", () => {
     expect(
       contracts.transitionTrace.yields.forcedTiming.withdrawalScript.script,
     ).toEqual(
-      applyParamsToScript(
+      applyExpectedScriptParams(
         compiledScript(
           blueprint,
           SDK.TRANSITION_TRACE_YIELD_TITLES.forcedTiming,
@@ -725,7 +722,7 @@ describe("fault-proof contract builder", () => {
         FinalHashes,
       ),
     );
-    const expectedRouteCbor = applyParamsToScript(
+    const expectedRouteCbor = applyExpectedScriptParams(
       compiledScript(blueprint, TRANSITION_TRACE_FAULT_PROOF_TITLES.route),
       [finalHashesData, contracts.computationThread.policyId],
     );
@@ -781,7 +778,7 @@ describe("fault-proof contract builder", () => {
         AddressData,
       ),
     );
-    const expectedAward = applyParamsToScript(
+    const expectedAward = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
@@ -793,7 +790,7 @@ describe("fault-proof contract builder", () => {
       ],
     );
     const deploymentId = deriveValidationTraceDeploymentId(h28c);
-    const expectedStageOneRedeemerFoldMapExecutor = applyParamsToScript(
+    const expectedStageOneRedeemerFoldMapExecutor = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
@@ -801,20 +798,22 @@ describe("fault-proof contract builder", () => {
       ),
       [deploymentId, contracts.computationThread.policyId],
     );
-    const expectedStageOneRedeemerFinalizeFrameExecutor = applyParamsToScript(
-      compiledScript(
-        blueprint,
-        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-          .scriptSourcesStageOneRedeemerStages.finalizeFrameExecutor,
-      ),
-      [deploymentId, contracts.computationThread.policyId],
-    );
+    const expectedStageOneRedeemerFinalizeFrameExecutor =
+      applyExpectedScriptParams(
+        compiledScript(
+          blueprint,
+          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+            .scriptSourcesStageOneRedeemerStages.finalizeFrameExecutor,
+        ),
+        [deploymentId, contracts.computationThread.policyId],
+      );
     const sharedTitles =
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.scriptSourcesStageOneRedeemerStages;
-    const expectedStageOneRedeemerSourceAuthenticator = applyParamsToScript(
-      compiledScript(blueprint, sharedTitles.sourceAuthenticator),
-      [deploymentId, contracts.computationThread.policyId],
-    );
+    const expectedStageOneRedeemerSourceAuthenticator =
+      applyExpectedScriptParams(
+        compiledScript(blueprint, sharedTitles.sourceAuthenticator),
+        [deploymentId, contracts.computationThread.policyId],
+      );
     const expectedExecutorTitles = [
       sharedTitles.foldMapExecutor,
       sharedTitles.finalizeFrameExecutor,
@@ -835,15 +834,16 @@ describe("fault-proof contract builder", () => {
       sharedTitles.finishDataExecutor,
       sharedTitles.invalidHeaderExecutor,
       sharedTitles.invalidTailExecutor,
+      sharedTitles.invalidDataExecutor,
     ];
     const expectedExecutors = expectedExecutorTitles.map((title) =>
-      applyParamsToScript(compiledScript(blueprint, title), [
+      applyExpectedScriptParams(compiledScript(blueprint, title), [
         deploymentId,
         contracts.computationThread.policyId,
       ]),
     );
     const expectedExecutorHashes = expectedExecutors.map(spendingScriptHash);
-    const expectedStageOneRedeemerOuterNormalizer = applyParamsToScript(
+    const expectedStageOneRedeemerOuterNormalizer = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
@@ -855,15 +855,16 @@ describe("fault-proof contract builder", () => {
         spendingScriptHash(expectedStageOneRedeemerSourceAuthenticator),
       ],
     );
-    const expectedStageOneRedeemerTraversalNormalizer = applyParamsToScript(
-      compiledScript(
-        blueprint,
-        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-          .scriptSourcesStageOneRedeemerStages.traversalNormalizer,
-      ),
-      [deploymentId, contracts.computationThread.policyId],
-    );
-    const expectedStageOneRedeemerSettlement = applyParamsToScript(
+    const expectedStageOneRedeemerTraversalNormalizer =
+      applyExpectedScriptParams(
+        compiledScript(
+          blueprint,
+          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+            .scriptSourcesStageOneRedeemerStages.traversalNormalizer,
+        ),
+        [deploymentId, contracts.computationThread.policyId],
+      );
+    const expectedStageOneRedeemerSettlement = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
@@ -878,7 +879,7 @@ describe("fault-proof contract builder", () => {
         contracts.computationThread.policyId,
       ],
     );
-    const expectedStageOneRedeemerEnvelope = applyParamsToScript(
+    const expectedStageOneRedeemerEnvelope = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
@@ -925,7 +926,7 @@ describe("fault-proof contract builder", () => {
       if (declared === undefined) {
         throw new Error(`Missing declared parameters for ${title}`);
       }
-      return applyParamsToScript(
+      return applyExpectedScriptParams(
         compiledScript(blueprint, title),
         declared.map(({ title: parameterTitle }) => {
           const bound = semanticParameterBindings[parameterTitle];
@@ -1063,7 +1064,7 @@ describe("fault-proof contract builder", () => {
     const expectedPrepareResolvers = Object.values(
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares,
     ).map((title, index) =>
-      applyParamsToScript(compiledScript(blueprint, title), [
+      applyExpectedScriptParams(compiledScript(blueprint, title), [
         expectedSemanticResolverHashParams[index]!,
         contracts.computationThread.policyId,
       ]),
@@ -1095,14 +1096,18 @@ describe("fault-proof contract builder", () => {
         ResolverHashes,
       ),
     );
-    const expectedBoundaryCbor = applyParamsToScript(
+    const expectedBoundaryCbor = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
       ),
-      [resolverHashesData, contracts.computationThread.policyId],
+      [
+        resolverHashesData,
+        spendingScriptHash(expectedAward),
+        contracts.computationThread.policyId,
+      ],
     );
-    const expectedTimeoutCbor = applyParamsToScript(
+    const expectedTimeoutCbor = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
@@ -1113,7 +1118,7 @@ describe("fault-proof contract builder", () => {
         fraudProofTokenAddressData,
       ],
     );
-    const expectedGameCbor = applyParamsToScript(
+    const expectedGameCbor = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
@@ -1121,10 +1126,11 @@ describe("fault-proof contract builder", () => {
       [
         spendingScriptHash(expectedBoundaryCbor),
         spendingScriptHash(expectedTimeoutCbor),
+        resolverHashesData,
         contracts.computationThread.policyId,
       ],
     );
-    const expectedSourceCbor = applyParamsToScript(
+    const expectedSourceCbor = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
@@ -1135,7 +1141,7 @@ describe("fault-proof contract builder", () => {
         contracts.computationThread.policyId,
       ],
     );
-    const expectedCbor = applyParamsToScript(
+    const expectedCbor = applyExpectedScriptParams(
       compiledScript(
         blueprint,
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.dispute,

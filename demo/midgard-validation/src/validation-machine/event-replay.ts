@@ -14,7 +14,11 @@ import {
   runPhaseBValidationWithPatch,
   type UTxOStatePatch,
 } from "../phase-b.js";
-import { type QueuedTx, type RejectCode } from "../types.js";
+import {
+  type LocalScriptEvaluation,
+  type QueuedTx,
+  type RejectCode,
+} from "../types.js";
 import {
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
@@ -141,6 +145,7 @@ export const replayValidationMachineEvent = (
         strictnessProfile: "phase1_midgard",
       }),
     );
+    const scriptEvaluations: LocalScriptEvaluation[] = [];
     let rejectionCode: RejectCode | null;
     let statePatch: UTxOStatePatch = {
       deletedOutRefs: [],
@@ -161,6 +166,10 @@ export const replayValidationMachineEvent = (
           nowCardanoSlotNo: snapshot.blockSlot,
           bucketConcurrency: 1,
           enforceScriptBudget: true,
+          maxScriptExecutionSteps:
+            snapshot.consensusProfile.limits.maxValidationMachineStepCount,
+          onScriptEvaluated: (_txId, evaluation) =>
+            scriptEvaluations.push(evaluation),
         },
       );
       if (phaseB.accepted.length + phaseB.rejected.length !== 1) {
@@ -205,6 +214,7 @@ export const replayValidationMachineEvent = (
     const replayInput: ValidationMachineReplayInput = {
       ...snapshot,
       expectedVerdict,
+      scriptEvaluations,
       expectedRejectionCode: rejectionCode,
       expectedLedgerOps,
       ledgerMutationSteps,

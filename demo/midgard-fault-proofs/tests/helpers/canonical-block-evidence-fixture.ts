@@ -219,7 +219,7 @@ export const buildCanonicalBlockFixture = async ({
           initial_state_hash: h32(150 + index),
           terminal_state_hash: h32(160 + index),
           verdict: "Accepted",
-          rejection_code_hash: h32(170 + index),
+          rejection_code_hash: "00".repeat(32),
         } satisfies SDK.ValidationTraceDescriptor,
         SDK.ValidationTraceDescriptorSchema,
       ).toString("hex"),

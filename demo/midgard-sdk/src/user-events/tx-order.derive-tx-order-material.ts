@@ -15,6 +15,7 @@ import {
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import {
   deriveMidgardTxFieldPreimages,
+  MidgardForcedTxAdmissionStopped,
   validateMidgardConsensusForcedTxCbor,
 } from "@al-ft/midgard-core/consensus-validation";
 import { getAddressDetails, LucidEvolution } from "@lucid-evolution/lucid";
@@ -52,9 +53,7 @@ export const deriveTxOrderMaterial = ({
 }): TxOrderMaterial => {
   const violation = validateMidgardConsensusForcedTxCbor(submittedTxCbor);
   if (violation !== null) {
-    throw new Error(
-      `${violation.code} ${violation.featureId}: ${violation.detail}`,
-    );
+    throw new MidgardForcedTxAdmissionStopped(violation);
   }
   const tx = decodeMidgardForcedTxFullFromCanonicalCbor(submittedTxCbor);
   const transactionId = computeMidgardNativeTxId(tx.compact);

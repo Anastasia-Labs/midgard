@@ -5,12 +5,17 @@ import {
   EMPTY_NULL_ROOT,
   encodeCbor,
 } from "@al-ft/midgard-core/codec";
+import {
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import { Constr } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
   decodeMidgardLedgerTxFromCanonicalCbor,
   encodeMidgardLedgerTxToCanonicalCbor,
+  MidgardLedgerTxDecodeError,
   projectMidgardRawEnvelopeForPhaseAV1,
 } from "../src/ledger-tx.js";
 import { MidgardRedeemerTag } from "../src/midgard-redeemers.js";
@@ -103,6 +108,46 @@ describe("Midgard ledger transaction codec", () => {
     for (const mutation of mutations)
       expect(() => projectMidgardRawEnvelopeForPhaseAV1(mutation)).toThrow();
   });
+  it("keeps normal redeemer canonicity on the malformed field-6 projection and preserves forced bytes", () => {
+    const base = makeNativeTx();
+    const fixture = encodeRecomputedNativeTx({
+      ...base.tx,
+      witnessSet: {
+        ...base.tx.witnessSet,
+        scriptTxWitsPreimageCbor: encodeCbor([
+          Buffer.from("820043820700", "hex"),
+        ]),
+        redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+          { tag: 0, index: 0n, data: Buffer.from("d8798101", "hex") },
+        ]),
+      },
+    });
+    let refusal: unknown;
+    try {
+      projectMidgardRawEnvelopeForPhaseAV1(fixture.txCbor);
+    } catch (cause) {
+      refusal = cause;
+    }
+    expect(refusal).toBeInstanceOf(MidgardLedgerTxDecodeError);
+    if (!(refusal instanceof MidgardLedgerTxDecodeError))
+      throw new Error("expected a ledger decode refusal");
+    expect(refusal.stage).toBe("ledger");
+    expect(refusal.causeValue).toBeInstanceOf(Error);
+    if (!(refusal.causeValue instanceof Error))
+      throw new Error("expected the underlying canonical Data error");
+    expect(refusal.causeValue.message).toMatch(/canonical Plutus Data/u);
+    const forced = projectMidgardRawEnvelopeForPhaseAV1(
+      encodeMidgardForcedTxCanonical(
+        materializeMidgardForcedTxFromCanonical(fixture.tx),
+      ),
+      "forced",
+    );
+    expect(forced.canonicalSubmittedTx).toBeNull();
+    expect(forced.ledgerTx.redeemers[0]!.dataCbor.toString("hex")).toBe(
+      "d8798101",
+    );
+  });
+
   it("round-trips canonical native transaction CBOR through the semantic ledger type", () => {
     const spent = outRefFromByte(0x31, 2n);
     const referenceInput = outRefFromByte(0x32, 3n);

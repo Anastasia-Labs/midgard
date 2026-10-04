@@ -17,7 +17,6 @@ import {
   Force,
   Lambda,
   UPLCConst,
-  UPLCEncoder,
   UPLCProgram,
   type UPLCTerm,
   UPLCVar,
@@ -33,12 +32,13 @@ import {
   executeMidgardCekStructuralProgram,
 } from "../src/cek-executor.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
 
 const compileIdentity = (): Buffer => compile(new Lambda(new UPLCVar(0)));
 
 const compile = (term: UPLCTerm): Buffer =>
-  Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], term)));
+  encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], term));
 
 describe("V1 CEK trace generator", () => {
   it("derives the script-context application and proves every structural step", () => {

@@ -28,6 +28,7 @@ import {
   STORE_ADVISORY_LOCK_KEY,
   STORE_ADVISORY_LOCK_NAMESPACE,
 } from "./cekProgramMaterial.canonical-entries.js";
+import { collectUnownedMaterial } from "./cekProgramMaterial.collect-unowned.js";
 import { persistVerifiedBundles } from "./cekProgramMaterial.persist-verified-bundles.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
@@ -133,21 +134,7 @@ export const releaseAdmissionOwnership = (
         yield* sql`DELETE FROM ${sql(admissionOwnerTableName)}
           WHERE tx_id =
             ANY(${pg.array(postgresByteaArray(uniqueTxIds))}::bytea[])`;
-        yield* sql`DELETE FROM ${sql(membershipTableName)} AS membership
-          WHERE membership.durable_pin = false
-            AND NOT EXISTS (
-              SELECT 1
-              FROM ${sql(admissionOwnerTableName)} AS owner
-              WHERE owner.program_envelope_hash =
-                  membership.program_envelope_hash
-                AND owner.material_root = membership.material_root
-            )`;
-        yield* sql`DELETE FROM ${sql(entryTableName)} AS material
-          WHERE NOT EXISTS (
-            SELECT 1
-            FROM ${sql(membershipTableName)} AS membership
-            WHERE membership.material_root = material.material_root
-          )`;
+        yield* collectUnownedMaterial;
       }),
     );
   }).pipe(

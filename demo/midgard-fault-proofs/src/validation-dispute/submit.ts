@@ -66,6 +66,9 @@ export {
   type ValidationValueAndMintSemanticReferenceScriptIndex,
 } from "./submit/reference-scripts.js";
 export {
+  submitValidationDisputeAwardTerminalPadding,
+  type SubmitValidationDisputeAwardTerminalPaddingResult,
+  submitValidationDisputeDirectCommittedStep,
   submitValidationDisputeEnterResolution,
   type SubmitValidationDisputeEnterResolutionResult,
   submitValidationDisputePrepareResolution,

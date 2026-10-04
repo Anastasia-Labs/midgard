@@ -356,6 +356,22 @@ Golden channel native-tx-vector-v1 (@al-ft/midgard-core).
   - `demo/midgard-test-support/src/**`
 - Needs: `node-modules`, `aiken`
 
+### `golden:mpf-node-encoding-v1`
+
+Golden channel mpf-node-encoding-v1 (@al-ft/midgard-core).
+
+- Command: `pnpm --dir demo/midgard-core run fixtures:mpf-node-encoding-v1:check`
+- Fix: `pnpm --dir demo/midgard-core run fixtures:mpf-node-encoding-v1:sync`
+- Runs on:
+  - `demo/midgard-core/scripts/generate-mpf-node-encoding-v1-goldens.mjs`
+  - `demo/midgard-core/scripts/golden-channel.mjs`
+  - `demo/midgard-core/tests/fixtures/mpf-node-encoding-v1.generated.json`
+  - `onchain/aiken/lib/midgard/mpf-node-encoding-v1-golden.test.ak`
+  - `onchain/aiken/scripts/pinned-compiler.mjs`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-test-support/src/**`
+- Needs: `node-modules`, `aiken`
+
 ### `golden:ordered-collection-boundary-aiken`
 
 Golden channel ordered-collection-boundary-aiken (@al-ft/midgard-validation).
@@ -462,6 +478,26 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-constr-wrong-variant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-map-wrong-variant-constant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/unbound-variable.test.ak`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-test-support/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
+### `golden:cek-builtin-cardano-v1`
+
+Golden channel cek-builtin-cardano-v1 (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:cek-builtin-cardano-v1:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:cek-builtin-cardano-v1:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-cek-builtin-cardano-v1-goldens.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.arguments.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.cases.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.edges.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.generated.json`
+  - `onchain/aiken/scripts/pinned-compiler.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
   - `demo/midgard-validation/src/**`

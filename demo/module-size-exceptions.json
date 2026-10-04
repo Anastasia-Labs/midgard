@@ -141,18 +141,18 @@
   },
   {
     "file": "midgard-core/src/deployment-manifest-identity/catalogue-roles.deployment-manifest-contract-names.ts",
-    "max": 571,
-    "reason": "One frozen declarative contract-name catalogue (571 lines) owns the complete deployment-role universe and its literal type. Splitting it creates catalogue assembly and inferred-type indirection without separating implementation; retaining all names together supports completeness review."
+    "max": 580,
+    "reason": "One frozen declarative contract-name catalogue (571 lines) owns the complete deployment-role universe and its literal type. Splitting it creates catalogue assembly and inferred-type indirection without separating implementation; retaining all names together supports completeness review. Adds the single authenticated malformed-redeemer Data executor name to the same frozen catalogue. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes."
   },
   {
     "file": "midgard-core/src/deployment-manifest-identity/reference-script-contracts.ts",
-    "max": 965,
-    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (964 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 983,
+    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (964 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor binding to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes."
   },
   {
     "file": "midgard-core/src/deployment-manifest-identity/reference-script-tokens.ts",
-    "max": 762,
-    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES is the dominant indivisible declaration (761 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 773,
+    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES is the dominant indivisible declaration (761 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor token name to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes."
   },
   {
     "file": "midgard-core/tests/availability-operation-journal.test.ts",
@@ -636,8 +636,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/dispute-scenario.ts",
-    "max": 1577,
-    "reason": "runForcedValidationDisputeScenario is the dominant indivisible declaration (1478 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 1711,
+    "reason": "runForcedValidationDisputeScenario is the dominant indivisible declaration (1478 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Direct committed-step fixture: adds the source-only signer-refusal checkpoint with consistent trace indices, adjacent-proof handoff, and canonical-decode ItemObserve and source/proof/settlement reference publication. These stages share the lifecycle locals; extraction requires a separate function-body refactor. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count."
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/removal-deployment.build-removal-deployment-info.ts",
@@ -646,13 +646,13 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/validation-dispute-fixtures.build-forged-operator-successor-validation-dispute-fixture.ts",
-    "max": 733,
-    "reason": "buildForgedOperatorSuccessorValidationDisputeFixture is the dominant indivisible declaration (663 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated recovered DA branch source; exact measured line count."
+    "max": 716,
+    "reason": "buildForgedOperatorSuccessorValidationDisputeFixture is the dominant indivisible declaration (663 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated recovered DA branch source; exact measured line count. Direct committed-step fixture: uses the canonical nonterminal phase-name type for both argument and result, removing the duplicated phase unions. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count."
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/validators.make-always-succeeds-contracts.ts",
-    "max": 509,
-    "reason": "makeAlwaysSucceedsContracts is the dominant indivisible declaration (493 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 510,
+    "reason": "makeAlwaysSucceedsContracts is the dominant indivisible declaration (493 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes."
   },
   {
     "file": "midgard-fault-proofs/tests/support/invalid-signature-wrongful-emulator.run-invalid-signature-wrongful-rejection-scenario.ts",
@@ -686,8 +686,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/validator-scenario-registry.unmapped-validators.ts",
-    "max": 593,
-    "reason": "UNMAPPED_VALIDATORS: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern."
+    "max": 586,
+    "reason": "UNMAPPED_VALIDATORS: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Combined recovered source removes obsolete lines; cap reduced to the measured final source count. Registered Data executor coverage removes five obsolete unmapped entries; cap ratchets down."
   },
   {
     "file": "midgard-fault-proofs/tests/transaction-output-non-canonical-lifecycle.test.ts",
@@ -901,8 +901,8 @@
   },
   {
     "file": "midgard-node-tools/tests/e2e-summary.test.ts",
-    "max": 940,
-    "reason": "Retained test registration \u201ce2e run summary\u201d (898 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 672,
+    "reason": "Retained test registration \u201ce2e run summary\u201d (898 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. Combined recovered source removes obsolete lines; cap reduced to the measured final source count."
   },
   {
     "file": "midgard-node-tools/tests/phase4-pipelined-process-summary-verifier.test.mjs",
@@ -956,8 +956,8 @@
   },
   {
     "file": "midgard-node/src/deployment-manifest.deployment-manifest-reference-script-contract-by-role.ts",
-    "max": 962,
-    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (961 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 980,
+    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (961 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor binding to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes."
   },
   {
     "file": "midgard-node/src/fibers/block-commitment.build-and-submit-commitment-block-action.ts",
@@ -966,7 +966,7 @@
   },
   {
     "file": "midgard-node/src/mpf/process.process-mpfs.ts",
-    "max": 1612,
+    "max": 1610,
     "reason": "processMpfs is the dominant indivisible declaration (1477 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. T161 (+15): the block commits its normal transactions in exactly the order Phase B applied them, and an accepted transaction's ledger witnesses fail closed on a missing input; a split of this module is a separate proven pure move."
   },
   {
@@ -986,8 +986,8 @@
   },
   {
     "file": "midgard-node/src/services/always-succeeds.make-always-succeeds-service.ts",
-    "max": 541,
-    "reason": "makeAlwaysSucceedsService is the dominant indivisible declaration (529 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 542,
+    "reason": "makeAlwaysSucceedsService is the dominant indivisible declaration (529 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes."
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
@@ -1121,7 +1121,7 @@
   },
   {
     "file": "midgard-node/tests/contract-deployment-info.contract-deployment-info.ts",
-    "max": 1199,
+    "max": 1193,
     "reason": "Retained test registration \u201ccontract deployment info\u201d (1149 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1226,8 +1226,8 @@
   },
   {
     "file": "midgard-node/tests/forced-transactions.test.ts",
-    "max": 1172,
-    "reason": "Retained test registration \u201cV1 forced transaction material\u201d (866 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. T161 (+236): adds the separate registration \u201cforced transaction program material at its position\u201d (an absent reference judged InputNotFound, a live reference's program committed for a Phase A rejection, node and committee agreement)."
+    "max": 1170,
+    "reason": "Retained test registration \u201cV1 forced transaction material\u201d (866 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. T161 (+236): adds the separate registration \u201cforced transaction program material at its position\u201d (an absent reference judged InputNotFound, a live reference's program committed for a Phase A rejection, node and committee agreement). Combined recovered source removes obsolete lines; cap reduced to the measured final source count."
   },
   {
     "file": "midgard-node/tests/helpers/availability-challenge-emulator.create-fixture.ts",
@@ -1446,13 +1446,13 @@
   },
   {
     "file": "midgard-sdk/src/fraud-proof/contracts/families/validation-trace-dispute.build-validation-trace-dispute-chain.ts",
-    "max": 1614,
-    "reason": "buildValidationTraceDisputeChain is the dominant indivisible declaration (1577 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 1620,
+    "reason": "buildValidationTraceDisputeChain is the dominant indivisible declaration (1577 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Direct committed-step ABI: the game receives the ordered prepare-resolver hash list as its third parameter. The cap records the exact final line count. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes."
   },
   {
     "file": "midgard-sdk/src/reference-scripts.reference-script-auth-token-names.ts",
-    "max": 769,
-    "reason": "REFERENCE_SCRIPT_AUTH_TOKEN_NAMES: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern."
+    "max": 780,
+    "reason": "REFERENCE_SCRIPT_AUTH_TOKEN_NAMES: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Adds the authenticated malformed-redeemer Data executor token name to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes."
   },
   {
     "file": "midgard-sdk/src/reserve-payout.build-history-retirement-program.ts",
@@ -1476,8 +1476,8 @@
   },
   {
     "file": "midgard-sdk/tests/fault-proof.fault-proof-contract-builder.ts",
-    "max": 1239,
-    "reason": "Retained test registration \u201cfault-proof contract builder\u201d (1186 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 1244,
+    "reason": "Retained test registration \u201cfault-proof contract builder\u201d (1186 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. Direct committed-step expectations and canonical test encoding: fully applies the boundary award hash and game resolver-hash list in their declared parameter order. Recomputes expected bindings with the pinned WASM API in the shared independent test oracle, avoiding the legacy encoder CBOR-major incompatibility. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count."
   },
   {
     "file": "midgard-sdk/tests/tx-order.test.ts",
@@ -1501,13 +1501,13 @@
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-complete.ts",
-    "max": 2880,
+    "max": 2877,
     "reason": "completeValidationTrace is the dominant indivisible declaration (2717 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Combined F1/RLO source measured at integration."
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-prepare.prepare-validation-trace.ts",
-    "max": 3935,
-    "reason": "prepareValidationTrace is the dominant indivisible declaration (3805 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated deep-data, exact-reason and canonical-redeemer behavior; cap remeasured on the combined source. Combined F1/RLO source measured at integration."
+    "max": 4015,
+    "reason": "prepareValidationTrace is the dominant indivisible declaration (3805 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated deep-data, exact-reason and canonical-redeemer behavior; cap remeasured on the combined source. Combined F1/RLO source measured at integration. Authenticated forced redeemer refusal integrated; measured after combined formatting."
   },
   {
     "file": "midgard-validation/tests/cek-executor.test.ts",
@@ -1813,20 +1813,5 @@
     "file": "scripts/verify-canonical-v1-cg1-control-publication-fit.mjs",
     "max": 575,
     "reason": "Ordered module-level registration/CLI execution (55 lines in the largest statement) shares initialization state. Independent declarations were extracted; slicing the execution statement requires changing its control-flow boundary."
-  },
-  {
-    "file": "midgard-fault-proofs/src/workflow/header-classifier.classify-header.ts",
-    "max": 593,
-    "reason": "classifyHeader is the dominant indivisible declaration (541 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
-    "file": "midgard-fault-proofs/tests/missing-signature-wrongful-rejection-lifecycle.test.ts",
-    "max": 813,
-    "reason": "Retained test registration \u201cmissingSignature wrongful rejection real lifecycle\u201d (407 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-node/scripts/mpf-event-flat-wasm-prototype.mjs",
-    "max": 831,
-    "reason": "The retained benchmark executable loads its WASM artifact relative to this script and executes an ordered comparison using shared engine state and pinned timing/root expectations. Encoding helpers were extracted; changing the process/loading boundary needs a benchmark-specific refactor."
   }
 ]

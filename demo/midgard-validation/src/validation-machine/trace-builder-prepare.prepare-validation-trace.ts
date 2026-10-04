@@ -7,13 +7,13 @@ import {
   buildMidgardBoundedItem,
   buildMidgardBoundedItemChunkProof,
   buildMidgardLedgerOutputProofTrace,
+  buildMidgardRedeemerDataHeadRejectionTrace,
   buildMidgardRedeemerItemProofTrace,
   buildMidgardValidationLedgerDeltaFrontier,
   buildMidgardValidationMerkleFrontier,
   buildMidgardValidationMerkleMembership,
   commitMidgardValidationMerkleFrontier,
   computeMidgardNativeTxProofCommitment,
-  decodeMidgardCekProgramEnvelope,
   decodeMidgardCekProgramMaterialSidecar,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   deriveMidgardTxFieldPreimages,
@@ -38,6 +38,7 @@ import {
   hashMidgardValidationContext,
   hashMidgardValidationLedgerDelta,
   hashMidgardValidationLedgerDeltaOperation,
+  inspectMidgardRedeemerSequenceHeads,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   MIDGARD_CONSENSUS_LIMITS,
   type MidgardBlake2b224TraceControl,
@@ -79,12 +80,6 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 
 import {
-  buildMidgardCekExecutionGraph,
-  executeMidgardCekStructuralProgram,
-  type MidgardCekExecutionGraph,
-  type MidgardCekStructuralExecution,
-} from "../cek-executor.js";
-import {
   buildCanonicalMidgardLedgerEntryOutputMaterial,
   buildCanonicalMidgardLedgerOutputMaterial,
 } from "../ledger-output-descriptor.js";
@@ -95,7 +90,7 @@ import {
 import { decodeMidgardRedeemers } from "../midgard-redeemers.js";
 import { validatePhaseASingle } from "../phase-a.js";
 import { runPhaseBValidationWithPatch } from "../phase-b.js";
-import type { LocalScriptEvalResult } from "../types.js";
+import type { LocalScriptEvaluation } from "../types.js";
 import type { QueuedTx, RejectCode, RejectedTx } from "../types.js";
 import { RejectCodes } from "../types.js";
 import {
@@ -104,6 +99,7 @@ import {
   MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX,
   MIDGARD_SCRIPT_WITNESSES_FIELD_INDEX,
 } from "./canonical-field-item.js";
+import { oversizedCanonicalOutputIndex } from "./canonical-output-bound.js";
 import {
   encodeScriptDiscoveryControlCbor,
   encodeValidationControlList,
@@ -143,6 +139,7 @@ import {
   safeBlockEndTime,
   sameLedgerOps,
 } from "./trace-builder-prepare.ordered-phases.js";
+import { ValidationTraceStopped } from "./trace-builder-stop.js";
 import type {
   MintFoldTraceControl,
   PhaseANativeScriptsScanControl,
@@ -226,54 +223,20 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       });
       ledgerDescriptorState.set(outRefHex, outputMaterial.descriptorCbor);
     }
-    const rawExecutionProjection: MidgardRawEnvelopePhaseAProjection | null =
-      !("ledgerTx" in phaseA) &&
-      phaseA.consensusPhase === "canonicalDecode" &&
-      phaseA.subject?.arm === "WitnessNativeScriptMalformed"
-        ? (projectMidgardMalformedNativeWitnessEnvelopeV1(
-            queued.txCbor,
-            queued.sourceKind,
-          )?.projection ?? null)
-        : null;
+    const rawExecutionProjection: MidgardRawEnvelopePhaseAProjection | null = !(
+      "ledgerTx" in phaseA
+    )
+      ? (projectMidgardMalformedNativeWitnessEnvelopeV1(
+          queued.txCbor,
+          queued.sourceKind,
+        )?.projection ?? null)
+      : null;
     const phaseALedgerTx =
       "ledgerTx" in phaseA
         ? phaseA.ledgerTx
-        : rawExecutionProjection === null
-          ? null
-          : ({
-              ...rawExecutionProjection.ledgerTx,
-              scriptWitnesses: rawExecutionProjection.scriptWitnesses.map(
-                (witness) => ({
-                  index: witness.index,
-                  hash: witness.hash,
-                  script:
-                    witness.languageTag === 0
-                      ? {
-                          language: "NativeCardano" as const,
-                          scriptBytes: witness.scriptBytes,
-                          // Structural semantics consume the retained bytes;
-                          // this placeholder never reaches ledger evaluation.
-                          nativeScript: { type: "all" as const, scripts: [] },
-                        }
-                      : witness.languageTag === 3
-                        ? {
-                            language: "PlutusV3" as const,
-                            scriptBytes: witness.scriptBytes,
-                          }
-                        : {
-                            language: "MidgardV1" as const,
-                            scriptBytes: witness.scriptBytes,
-                          },
-                }),
-              ),
-            } as const);
-    const scriptEvaluations: {
-      readonly scriptBytes: Buffer;
-      readonly contextCbor: Buffer;
-      readonly result: LocalScriptEvalResult;
-      readonly graph: MidgardCekExecutionGraph | null;
-      readonly execution: MidgardCekStructuralExecution | null;
-    }[] = [];
+        : (rawExecutionProjection?.ledgerTx ?? null);
+    const scriptEvaluations: LocalScriptEvaluation[] = [];
+    let reusedEvaluationIndex = 0;
     const programMaterial = decodeMidgardCekProgramMaterialSidecar(
       queued.programMaterialSidecarCbor ??
         encodeMidgardCekProgramMaterialSidecar([]),
@@ -295,8 +258,6 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
     let ledgerOps: readonly ValidationMachineLedgerOp[] = [];
     if (!("ledgerTx" in phaseA)) {
       rejection = phaseA;
-      if (rawExecutionProjection !== null)
-        rejection = { ...phaseA, consensusPhase: "nativeScripts" };
     } else {
       const phaseB = yield* runPhaseBValidationWithPatch(
         [phaseA],
@@ -305,62 +266,54 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           nowCardanoSlotNo: input.blockSlot,
           bucketConcurrency: 1,
           enforceScriptBudget: true,
-          evaluateProofScript: (
-            scriptBytes,
-            scriptContextCbor,
-            executionBudget?: {
-              readonly cpu: bigint;
-              readonly memory: bigint;
-            },
-          ) =>
-            Effect.sync(() => {
-              let graph: MidgardCekExecutionGraph | null = null;
-              let execution: MidgardCekStructuralExecution | null = null;
-              let result: LocalScriptEvalResult;
-              try {
-                const envelope = decodeMidgardCekProgramEnvelope(scriptBytes);
-                graph = buildMidgardCekExecutionGraph(
-                  envelope,
-                  programMaterial,
-                  scriptContextCbor,
-                );
-                execution = executeMidgardCekStructuralProgram({
-                  root: graph.root,
-                  material: graph.material.values(),
-                  constantWitnesses: graph.constantWitnesses,
-                  maxSteps:
-                    input.consensusProfile.limits.maxValidationMachineStepCount,
-                  executionBudget,
-                });
-                result =
-                  execution.stopReason === "budgetExceeded" ||
-                  execution.terminalState.mode === "haltSuccess"
-                    ? {
-                        kind: "accepted",
-                        budget: {
-                          cpu: execution.terminalState.cpu,
-                          memory: execution.terminalState.memory,
-                        },
+          maxScriptExecutionSteps:
+            input.consensusProfile.limits.maxValidationMachineStepCount,
+          onScriptEvaluated: (_txId, evaluation) => {
+            if (input.scriptEvaluations === undefined)
+              scriptEvaluations.push(evaluation);
+          },
+          ...(input.scriptEvaluations === undefined
+            ? {}
+            : {
+                evaluateProofScript: (
+                  scriptBytes: Uint8Array,
+                  scriptContextCbor: Uint8Array,
+                  executionBudget:
+                    | { readonly cpu: bigint; readonly memory: bigint }
+                    | undefined,
+                  executionIndex?: bigint,
+                ) =>
+                  Effect.try({
+                    try: () => {
+                      const captured =
+                        input.scriptEvaluations![reusedEvaluationIndex++];
+                      if (
+                        captured === undefined ||
+                        !captured.scriptBytes.equals(
+                          Buffer.from(scriptBytes),
+                        ) ||
+                        !captured.contextCbor.equals(
+                          Buffer.from(scriptContextCbor),
+                        ) ||
+                        captured.executionIndex !== executionIndex ||
+                        captured.executionBudget?.cpu !==
+                          executionBudget?.cpu ||
+                        captured.executionBudget?.memory !==
+                          executionBudget?.memory
+                      ) {
+                        throw new ValidationTraceStopped(
+                          "unavailable",
+                          input,
+                          "Trace cannot reuse the evaluator capture for this script/context/budget/ordinal",
+                        );
                       }
-                    : {
-                        kind: "script_invalid",
-                        detail: `V1 CEK halted with error ${execution.terminalState.auxiliary.toString(10)}`,
-                      };
-              } catch (cause) {
-                result = {
-                  kind: "script_invalid",
-                  detail: `V1 CEK execution failed closed: ${String(cause)}`,
-                };
-              }
-              scriptEvaluations.push({
-                scriptBytes: Buffer.from(scriptBytes),
-                contextCbor: Buffer.from(scriptContextCbor),
-                result,
-                graph,
-                execution,
-              });
-              return result;
-            }),
+                      scriptEvaluations.push(captured);
+                      return captured.result;
+                    },
+                    catch: (cause) =>
+                      cause instanceof Error ? cause : new Error(String(cause)),
+                  }),
+              }),
         },
       );
       rejection = phaseB.rejected[0] ?? null;
@@ -380,6 +333,18 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       }
     }
 
+    if (
+      input.scriptEvaluations !== undefined &&
+      reusedEvaluationIndex !== input.scriptEvaluations.length
+    ) {
+      return yield* Effect.fail(
+        new ValidationTraceStopped(
+          "disagreement",
+          input,
+          "Trace replay did not consume every evaluator capture",
+        ),
+      );
+    }
     const verdict: "accepted" | "rejected" =
       rejection === null ? "accepted" : "rejected";
     const rejectionCode = rejection?.code ?? null;
@@ -388,14 +353,18 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       rejectionCode !== input.expectedRejectionCode
     ) {
       return yield* Effect.fail(
-        new Error(
+        new ValidationTraceStopped(
+          "disagreement",
+          input,
           `validation replay disagrees with operator classification: expected=${input.expectedVerdict}/${input.expectedRejectionCode ?? "none"},actual=${verdict}/${rejectionCode ?? "none"},detail=${rejection?.detail ?? "none"}`,
         ),
       );
     }
     if (!sameLedgerOps(ledgerOps, input.expectedLedgerOps)) {
       return yield* Effect.fail(
-        new Error(
+        new ValidationTraceStopped(
+          "disagreement",
+          input,
           "validation replay ledger delta differs from block transition",
         ),
       );
@@ -438,10 +407,15 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         new Error("a rejected transaction must commit an exact ledger no-op"),
       );
     }
-    // A canonicalDecode rejection has no bounded trace: the bytes the trace
-    // would decode below are exactly the ones phase A refused, so exit before
-    // any of them is decoded.
-    if (rejection !== null && rejectionPhase(rejection) === "canonicalDecode") {
+    const stopsAtCanonicalDecode =
+      rejection !== null && rejectionPhase(rejection) === "canonicalDecode";
+    if (
+      stopsAtCanonicalDecode &&
+      oversizedCanonicalOutputIndex(
+        input.canonicalTransactionCbor,
+        input.sourceKind,
+      ) === undefined
+    ) {
       if (
         rejection.code === RejectCodes.InvalidFieldType ||
         rejection.code === RejectCodes.IsValidFalseForbidden
@@ -663,7 +637,10 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         signerHash: Buffer.from(blake2b(verificationKey.value, { dkLen: 28 })),
       };
     };
-    const addressWitnessScanItems = addressWitnessesCollection.items
+    // Later semantic items remain unread after a canonical terminal; exact source bytes stay committed.
+    const addressWitnessScanItems = (
+      stopsAtCanonicalDecode ? [] : addressWitnessesCollection.items
+    )
       .map((item) => {
         const decoded = decodeAddressWitnessItem(item.bytes);
         return {
@@ -692,7 +669,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
     const signerFrontierCommitment =
       commitMidgardValidationMerkleFrontier(signerFrontier);
     const scriptSourceEntries: ScriptSourceProofEntry[] = (
-      phaseALedgerTx?.scriptWitnesses ?? []
+      "ledgerTx" in phaseA ? phaseA.ledgerTx.scriptWitnesses : []
     ).map((witness) => {
       const sourceKey = encodeCbor(BigInt(witness.index));
       const item = scriptWitnessesCollection.items[witness.index]!;
@@ -780,9 +757,9 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       buildMidgardValidationMerkleMembership(outputLeafHashes, outputIndex);
     const admittedOutputDescriptorCbors: Buffer[] = [];
     const admittedOutputDescriptorLeafHashes: Buffer[] = [];
-    const decodedProofRedeemers = decodeMidgardRedeemers(
-      fieldPreimages[8]!.preimageCbor,
-    );
+    const decodedProofRedeemers = stopsAtCanonicalDecode
+      ? []
+      : decodeMidgardRedeemers(fieldPreimages[8]!.preimageCbor);
     const canonicalRedeemerWitnessCbors = decodedProofRedeemers.map(
       (redeemer) =>
         encodeCbor([
@@ -1235,6 +1212,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
     let authenticatedNativeScriptsWitnessCbor: Buffer | null = null;
     let authenticatedNativeScriptsBaseFields: unknown[] | null = null;
     for (const field of fieldPreimages) {
+      if (stoppedAtRejection) break;
       const collection = countedMachineFieldTrace(
         field.fieldIndex,
         field.preimageCbor,
@@ -1260,8 +1238,12 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       let encodedLength = 0;
       for (const item of collection.items) {
         if (
+          // Output items use the deployed complete-item route at every supported
+          // size. Its content door resolves delivery at observe construction;
+          // the old publication-size heuristic cannot select a retired wire.
+          field.fieldIndex === 2 ||
           item.bytes.length <=
-          MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes
+            MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes
         ) {
           pushWitness(
             "canonicalDecode",
@@ -1286,10 +1268,24 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             itemCount = collection.items.length;
             encodedLength = canonicalCborArgumentHeaderSize(itemCount);
           }
-          encodedLength += canonicalFieldItemEncodedLength(
+          const itemEncodedLength = canonicalFieldItemEncodedLength(
             field.fieldIndex,
             item.bytes.length,
           );
+          if (itemEncodedLength === null) {
+            if (
+              terminalPhase !== "canonicalDecode" ||
+              rejectionCode !== RejectCodes.InvalidFieldType
+            )
+              return yield* Effect.fail(
+                new Error(
+                  "canonical item bound disagrees with authoritative rejection",
+                ),
+              );
+            stoppedAtRejection = true;
+            break;
+          }
+          encodedLength += itemEncodedLength;
           continue;
         }
         const chunkCount = midgardBoundedItemChunkCount(item.bytes.length);
@@ -1319,10 +1315,17 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             encodedLength = canonicalCborArgumentHeaderSize(itemCount);
           }
           if (chunkIndex + 1 === chunkCount) {
-            encodedLength += canonicalFieldItemEncodedLength(
+            const itemEncodedLength = canonicalFieldItemEncodedLength(
               field.fieldIndex,
               item.bytes.length,
             );
+            if (itemEncodedLength === null)
+              return yield* Effect.fail(
+                new Error(
+                  "canonical output must use the deployed complete-item rejection route",
+                ),
+              );
+            encodedLength += itemEncodedLength;
           }
         }
       }
@@ -1652,7 +1655,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
     }
 
     let phaseANativeControl = initialPhaseANativeScriptsScanControl;
-    if (!stoppedAtRejection && rawExecutionProjection === null) {
+    if (!stoppedAtRejection) {
       const nativeScriptFrames: ValidationMachineNativeScriptFrame[] = [];
       const expectedPhaseANativeRejection = (code: RejectCode): boolean =>
         rejection !== null &&
@@ -1723,12 +1726,18 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           };
           while (!stoppedAtRejection) {
             if (phaseANativeControl.stage === 1) {
-              const chunkIndex = Math.floor(
-                phaseANativeControl.cursor / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-              );
               const chunkCount = midgardBoundedItemChunkCount(
                 item.bytes.length,
               );
+              // An exhausted cursor authenticates an empty parser window on
+              // chain. Carry the real last chunk; there is no chunk after it.
+              const chunkIndex =
+                phaseANativeControl.cursor === item.bytes.length
+                  ? chunkCount - 1
+                  : Math.floor(
+                      phaseANativeControl.cursor /
+                        MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+                    );
               let head: ValidationMachineNativeScriptTokenHead | null = null;
               try {
                 head = readValidationMachineNativeScriptTokenHead(
@@ -1792,12 +1801,18 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 | 3
                 | 4
                 | 5;
-              const chunkIndex = Math.floor(
-                phaseANativeControl.cursor / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-              );
               const chunkCount = midgardBoundedItemChunkCount(
                 item.bytes.length,
               );
+              // An exhausted cursor authenticates an empty parser window on
+              // chain. Carry the real last chunk; there is no chunk after it.
+              const chunkIndex =
+                phaseANativeControl.cursor === item.bytes.length
+                  ? chunkCount - 1
+                  : Math.floor(
+                      phaseANativeControl.cursor /
+                        MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+                    );
               let token: ValidationMachineNativeScriptToken | null = null;
               let payloadParseFailure = "none";
               try {
@@ -1984,22 +1999,6 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           ),
         );
       }
-    }
-
-    if (!stoppedAtRejection && rawExecutionProjection !== null) {
-      phaseANativeControl = resetPhaseANativeScriptsScanControl({
-        scriptCount: rawExecutionProjection.scriptWitnesses.length,
-        scriptSeen: rawExecutionProjection.scriptWitnesses.length,
-        containsNonNativeScript: rawExecutionProjection.scriptWitnesses.some(
-          ({ languageTag }) => languageTag !== 0,
-        )
-          ? 1
-          : 0,
-      });
-      pushWitness(
-        "phaseANativeScripts",
-        phaseANativeScriptsScanWitnessCbor(phaseANativeControl),
-      );
     }
 
     if (!stoppedAtRejection) {
@@ -2479,6 +2478,57 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             if (redeemerTotalCount === 0) {
               redeemerTotalCount = redeemerWitnessesCollection.items.length;
             }
+            if (
+              inspectMidgardRedeemerSequenceHeads(
+                Buffer.from(redeemer.dataCborHex, "hex"),
+              ).kind === "refusal"
+            ) {
+              if (
+                rejectionCode !== RejectCodes.InvalidFieldType ||
+                terminalPhase !== "scriptSources" ||
+                rejection?.subject?.arm !== "RedeemerMalformed" ||
+                rejection.subject.index !== BigInt(item.itemIndex)
+              ) {
+                return yield* Effect.fail(
+                  new Error(
+                    "redeemer Data refusal differs from the first-fault verdict",
+                  ),
+                );
+              }
+              const refusal = buildMidgardRedeemerDataHeadRejectionTrace({
+                itemIndex: item.itemIndex,
+                itemCount: redeemerTotalCount,
+                itemBytes: item.bytes,
+              });
+              for (const step of refusal.steps) {
+                pushWitness(
+                  "scriptSources",
+                  currentRedeemerWitness(
+                    hashMidgardRedeemerItemProofControl(step.control),
+                  ),
+                  {
+                    kind: "redeemerItemStep",
+                    redeemerControl: null,
+                    control: step.control,
+                    witness: step.witness,
+                  },
+                );
+              }
+              pushWitness(
+                "scriptSources",
+                currentRedeemerWitness(
+                  hashMidgardRedeemerItemProofControl(refusal.control),
+                ),
+                {
+                  kind: "redeemerItemStep",
+                  redeemerControl: null,
+                  control: refusal.control,
+                  witness: refusal.witness,
+                },
+              );
+              stoppedAtRejection = true;
+              break;
+            }
             const itemTrace = buildMidgardRedeemerItemProofTrace({
               itemIndex: item.itemIndex,
               itemCount: redeemerTotalCount,
@@ -2525,58 +2575,183 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               );
             }
           }
-          pushWitness("scriptSources", currentRedeemerWitness());
-          if (
-            !commitMidgardValidationMerkleFrontier(
-              authenticatedRedeemerFrontier,
-            ).equals(commitMidgardValidationMerkleFrontier(redeemerFrontier))
-          ) {
-            return yield* Effect.fail(
-              new Error(
-                "authenticated redeemer fold diverged from the canonical redeemer frontier",
-              ),
-            );
-          }
-          {
-            pushWitness(
-              "scriptSources",
-              scriptSourcesWitnessCbor({
-                ...scriptSourceControl,
-                stage: 2,
-                sourceFrontier: inlineScriptSourceFrontier,
-                redeemerFrontier,
-              }),
-            );
-            let replayCursor = 0;
-            let replayAccumulator = initialMidgardResolvedInputsAccumulator();
-            let replayRemainingScheduleHash = resolutionScheduleHash;
-            let replaySpendIndex = 0;
-            let replaySourceFrontier = inlineScriptSourceFrontier;
-            let replayPurposeFrontier = emptyValidationFrontier;
-            for (const node of resolutionScheduleNodes) {
-              const outRefHex = node.key.toString("hex");
-              const outputCbor = ledgerState.get(outRefHex);
-              const descriptorCbor = ledgerDescriptorState.get(outRefHex);
-              if (outputCbor === undefined || descriptorCbor === undefined) {
-                return yield* Effect.fail(
-                  new Error(
-                    "resolved-input replay lost previously authenticated output material",
-                  ),
+          if (!stoppedAtRejection) {
+            pushWitness("scriptSources", currentRedeemerWitness());
+            if (
+              !commitMidgardValidationMerkleFrontier(
+                authenticatedRedeemerFrontier,
+              ).equals(commitMidgardValidationMerkleFrontier(redeemerFrontier))
+            ) {
+              return yield* Effect.fail(
+                new Error(
+                  "authenticated redeemer fold diverged from the canonical redeemer frontier",
+                ),
+              );
+            }
+            {
+              pushWitness(
+                "scriptSources",
+                scriptSourcesWitnessCbor({
+                  ...scriptSourceControl,
+                  stage: 2,
+                  sourceFrontier: inlineScriptSourceFrontier,
+                  redeemerFrontier,
+                }),
+              );
+              let replayCursor = 0;
+              let replayAccumulator = initialMidgardResolvedInputsAccumulator();
+              let replayRemainingScheduleHash = resolutionScheduleHash;
+              let replaySpendIndex = 0;
+              let replaySourceFrontier = inlineScriptSourceFrontier;
+              let replayPurposeFrontier = emptyValidationFrontier;
+              for (const node of resolutionScheduleNodes) {
+                const outRefHex = node.key.toString("hex");
+                const outputCbor = ledgerState.get(outRefHex);
+                const descriptorCbor = ledgerDescriptorState.get(outRefHex);
+                if (outputCbor === undefined || descriptorCbor === undefined) {
+                  return yield* Effect.fail(
+                    new Error(
+                      "resolved-input replay lost previously authenticated output material",
+                    ),
+                  );
+                }
+                const outputMaterial =
+                  buildCanonicalMidgardLedgerEntryOutputMaterial({
+                    outRef: node.key,
+                    outputCbor,
+                  });
+                if (!outputMaterial.descriptorCbor.equals(descriptorCbor)) {
+                  return yield* Effect.fail(
+                    new Error(
+                      "resolved-input replay descriptor differs from retained output material",
+                    ),
+                  );
+                }
+                const descriptor = outputMaterial.descriptor;
+                pushWitness(
+                  "scriptSources",
+                  scriptSourcesWitnessCbor({
+                    ...scriptSourceControl,
+                    stage: 3,
+                    sourceFrontier: replaySourceFrontier,
+                    redeemerFrontier,
+                    replayCursor,
+                    replayAccumulator,
+                    replayRemainingScheduleHash,
+                    spendIndex: replaySpendIndex,
+                    purposeFrontier: replayPurposeFrontier,
+                  }),
+                  {
+                    kind: "resolvedInputReplay",
+                    sourceKind: node.sourceKind,
+                    key: node.key,
+                    nextScheduleHash: node.nextScheduleHash,
+                    value: descriptorCbor,
+                  },
                 );
-              }
-              const outputMaterial =
-                buildCanonicalMidgardLedgerEntryOutputMaterial({
-                  outRef: node.key,
-                  outputCbor,
+                if (!replayRemainingScheduleHash.equals(node.scheduleHash)) {
+                  return yield* Effect.fail(
+                    new Error(
+                      "resolved-input replay schedule diverged from its committed hash chain",
+                    ),
+                  );
+                }
+                if (
+                  node.sourceKind === "reference" &&
+                  descriptor.referenceScriptLanguage !== -1
+                ) {
+                  const output = decodeMidgardTxOutput(outputCbor);
+                  if (output.script_ref === undefined) {
+                    return yield* Effect.fail(
+                      new Error(
+                        "reference-input descriptor commits a missing retained reference script",
+                      ),
+                    );
+                  }
+                  const leaf = hashMidgardReferenceScriptSourceLeaf({
+                    sourceKey: node.key,
+                    scriptLanguageTag: descriptor.referenceScriptLanguage,
+                    scriptHash: descriptor.referenceScriptHash,
+                    scriptTotalLength: descriptor.referenceScriptTotalLength,
+                    itemCommitment: descriptor.referenceScriptItemCommitment,
+                  });
+                  if (
+                    !leaf.equals(
+                      hashMidgardScriptSourceLeaf({
+                        originKind: "reference",
+                        sourceKey: node.key,
+                        script: output.script_ref,
+                      }),
+                    )
+                  ) {
+                    return yield* Effect.fail(
+                      new Error(
+                        "retained reference script differs from its authenticated descriptor facts",
+                      ),
+                    );
+                  }
+                  const sourceEntry: ScriptSourceProofEntry = {
+                    originKind: "reference",
+                    sourceKey: node.key,
+                    script: output.script_ref,
+                    authenticatedVersionedItemBytes:
+                      encodeMidgardVersionedScript(output.script_ref),
+                    scriptLanguageTag: descriptor.referenceScriptLanguage,
+                    scriptHash: descriptor.referenceScriptHash,
+                    scriptTotalLength: descriptor.referenceScriptTotalLength,
+                    scriptItemCommitment:
+                      descriptor.referenceScriptItemCommitment,
+                    leaf,
+                  };
+                  scriptSourceEntries.push(sourceEntry);
+                  replaySourceFrontier = appendMidgardValidationMerkleLeaf(
+                    replaySourceFrontier,
+                    sourceEntry.leaf,
+                  );
+                }
+                if (node.sourceKind === "spend") {
+                  const credential = decodeMidgardAddressBytes(
+                    descriptor.address,
+                  ).paymentCredential;
+                  if (credential.kind === "Script") {
+                    const purposeEntry: ScriptPurposeProofEntry = {
+                      purposeKind: 0,
+                      purposeIndex: BigInt(replaySpendIndex),
+                      scriptHash: Buffer.from(credential.hash),
+                      subject: node.key,
+                      leaf: hashMidgardScriptPurposeLeaf({
+                        purposeKind: 0,
+                        purposeIndex: BigInt(replaySpendIndex),
+                        scriptHash: credential.hash,
+                        subject: node.key,
+                      }),
+                    };
+                    scriptPurposeEntries.push(purposeEntry);
+                    replayPurposeFrontier = appendMidgardValidationMerkleLeaf(
+                      replayPurposeFrontier,
+                      purposeEntry.leaf,
+                    );
+                  }
+                  replaySpendIndex += 1;
+                }
+                resolvedItemFrontier = appendMidgardValidationMerkleLeaf(
+                  resolvedItemFrontier,
+                  hashMidgardResolvedContextItemLeaf({
+                    sourceKind: node.sourceKind,
+                    itemIndex: replayCursor,
+                    key: node.key,
+                    outputCbor: descriptorCbor,
+                  }),
+                );
+                replayAccumulator = advanceMidgardResolvedInputsAccumulator({
+                  accumulator: replayAccumulator,
+                  sourceKind: node.sourceKind,
+                  key: node.key,
+                  value: descriptorCbor,
                 });
-              if (!outputMaterial.descriptorCbor.equals(descriptorCbor)) {
-                return yield* Effect.fail(
-                  new Error(
-                    "resolved-input replay descriptor differs from retained output material",
-                  ),
-                );
+                replayRemainingScheduleHash = node.nextScheduleHash;
+                replayCursor += 1;
               }
-              const descriptor = outputMaterial.descriptor;
               pushWitness(
                 "scriptSources",
                 scriptSourcesWitnessCbor({
@@ -2590,261 +2765,13 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                   spendIndex: replaySpendIndex,
                   purposeFrontier: replayPurposeFrontier,
                 }),
-                {
-                  kind: "resolvedInputReplay",
-                  sourceKind: node.sourceKind,
-                  key: node.key,
-                  nextScheduleHash: node.nextScheduleHash,
-                  value: descriptorCbor,
-                },
               );
-              if (!replayRemainingScheduleHash.equals(node.scheduleHash)) {
-                return yield* Effect.fail(
-                  new Error(
-                    "resolved-input replay schedule diverged from its committed hash chain",
-                  ),
-                );
-              }
-              if (
-                node.sourceKind === "reference" &&
-                descriptor.referenceScriptLanguage !== -1
-              ) {
-                const output = decodeMidgardTxOutput(outputCbor);
-                if (output.script_ref === undefined) {
-                  return yield* Effect.fail(
-                    new Error(
-                      "reference-input descriptor commits a missing retained reference script",
-                    ),
-                  );
-                }
-                const leaf = hashMidgardReferenceScriptSourceLeaf({
-                  sourceKey: node.key,
-                  scriptLanguageTag: descriptor.referenceScriptLanguage,
-                  scriptHash: descriptor.referenceScriptHash,
-                  scriptTotalLength: descriptor.referenceScriptTotalLength,
-                  itemCommitment: descriptor.referenceScriptItemCommitment,
-                });
-                if (
-                  !leaf.equals(
-                    hashMidgardScriptSourceLeaf({
-                      originKind: "reference",
-                      sourceKey: node.key,
-                      script: output.script_ref,
-                    }),
-                  )
-                ) {
-                  return yield* Effect.fail(
-                    new Error(
-                      "retained reference script differs from its authenticated descriptor facts",
-                    ),
-                  );
-                }
-                const sourceEntry: ScriptSourceProofEntry = {
-                  originKind: "reference",
-                  sourceKey: node.key,
-                  script: output.script_ref,
-                  authenticatedVersionedItemBytes: encodeMidgardVersionedScript(
-                    output.script_ref,
-                  ),
-                  scriptLanguageTag: descriptor.referenceScriptLanguage,
-                  scriptHash: descriptor.referenceScriptHash,
-                  scriptTotalLength: descriptor.referenceScriptTotalLength,
-                  scriptItemCommitment:
-                    descriptor.referenceScriptItemCommitment,
-                  leaf,
-                };
-                scriptSourceEntries.push(sourceEntry);
-                replaySourceFrontier = appendMidgardValidationMerkleLeaf(
-                  replaySourceFrontier,
-                  sourceEntry.leaf,
-                );
-              }
-              if (node.sourceKind === "spend") {
-                const credential = decodeMidgardAddressBytes(
-                  descriptor.address,
-                ).paymentCredential;
-                if (credential.kind === "Script") {
-                  const purposeEntry: ScriptPurposeProofEntry = {
-                    purposeKind: 0,
-                    purposeIndex: BigInt(replaySpendIndex),
-                    scriptHash: Buffer.from(credential.hash),
-                    subject: node.key,
-                    leaf: hashMidgardScriptPurposeLeaf({
-                      purposeKind: 0,
-                      purposeIndex: BigInt(replaySpendIndex),
-                      scriptHash: credential.hash,
-                      subject: node.key,
-                    }),
-                  };
-                  scriptPurposeEntries.push(purposeEntry);
-                  replayPurposeFrontier = appendMidgardValidationMerkleLeaf(
-                    replayPurposeFrontier,
-                    purposeEntry.leaf,
-                  );
-                }
-                replaySpendIndex += 1;
-              }
-              resolvedItemFrontier = appendMidgardValidationMerkleLeaf(
-                resolvedItemFrontier,
-                hashMidgardResolvedContextItemLeaf({
-                  sourceKind: node.sourceKind,
-                  itemIndex: replayCursor,
-                  key: node.key,
-                  outputCbor: descriptorCbor,
-                }),
-              );
-              replayAccumulator = advanceMidgardResolvedInputsAccumulator({
-                accumulator: replayAccumulator,
-                sourceKind: node.sourceKind,
-                key: node.key,
-                value: descriptorCbor,
-              });
-              replayRemainingScheduleHash = node.nextScheduleHash;
-              replayCursor += 1;
-            }
-            pushWitness(
-              "scriptSources",
-              scriptSourcesWitnessCbor({
-                ...scriptSourceControl,
-                stage: 3,
-                sourceFrontier: replaySourceFrontier,
-                redeemerFrontier,
-                replayCursor,
-                replayAccumulator,
-                replayRemainingScheduleHash,
-                spendIndex: replaySpendIndex,
-                purposeFrontier: replayPurposeFrontier,
-              }),
-            );
-            let authenticatedOutputFrontier = emptyValidationFrontier;
-            let outputTotalCount = 0;
-            const currentOutputCommitmentWitness = (): Buffer =>
-              scriptSourcesWitnessCbor({
-                ...scriptSourceControl,
-                stage: 4,
-                sourceFrontier: replaySourceFrontier,
-                redeemerFrontier,
-                replayCursor,
-                replayAccumulator,
-                replayRemainingScheduleHash,
-                spendIndex: replaySpendIndex,
-                purposeFrontier: replayPurposeFrontier,
-                outputFrontier: authenticatedOutputFrontier,
-                outputTotalCount,
-              });
-            for (const item of outputsCollection.items) {
-              const outputCbor = outputCbors[item.itemIndex];
-              if (outputCbor === undefined || !item.bytes.equals(outputCbor)) {
-                return yield* Effect.fail(
-                  new Error(
-                    "bounded output item diverged from its canonical decoded output",
-                  ),
-                );
-              }
-              // Stage 4 folds only the authenticated
-              // (field_index, item_index, item_length, item_commitment) tuple,
-              // all four of which the door *derives* from the authenticated
-              // preimage. The item bytes are still not revealed here, and the
-              // reason is unchanged: revealing them re-proves only that an
-              // authenticated commitment has a preimage — which canonicalDecode
-              // and the stage-5 output traversal already establish — while
-              // making the one-step evidence grow with output size and exceed
-              // the L1 envelope for legal 16,384-byte outputs (C21-STAGE4-GAP,
-              // Option A).
-              //
-              // What *has* changed is where the size now comes from. The
-              // carriage keeps this redeemer O(1) in output size only under
-              // tiers 2-3, where the preimage rides reference inputs
-              // (`onchain/aiken/lib/midgard/validation-machine/`).
-              // The step therefore carries the *plan input* — which field, which
-              // bytes — and the tier is resolved at evidence commitment, where a
-              // transaction exists to index reference inputs into (#600). Above
-              // §8.3's 14,336-byte tier-1 cap the resolution is genuinely tier 2
-              // or 3 and this evidence is O(1); below it, tier-1 `Inline`. The
-              // producer itself never refuses and never names a tier.
-              pushWitness("scriptSources", currentOutputCommitmentWitness(), {
-                kind: "transactionRedeemerItemBegin",
-                fieldIndex: 2,
-                fieldPreimage: fieldPreimage(2),
-              });
-              if (outputTotalCount === 0) {
-                outputTotalCount = outputsCollection.items.length;
-              }
-              authenticatedOutputFrontier = appendMidgardValidationMerkleLeaf(
-                authenticatedOutputFrontier,
-                hashMidgardOutputItemLeaf({
-                  outputIndex: item.itemIndex,
-                  itemCommitment: item.commitment,
-                }),
-              );
-            }
-            pushWitness("scriptSources", currentOutputCommitmentWitness());
-            if (
-              !commitMidgardValidationMerkleFrontier(
-                authenticatedOutputFrontier,
-              ).equals(commitMidgardValidationMerkleFrontier(outputFrontier))
-            ) {
-              return yield* Effect.fail(
-                new Error(
-                  "authenticated output fold diverged from the canonical output frontier",
-                ),
-              );
-            }
-            let outputCursor = 0;
-            let receiveSourceFrontier = emptyValidationFrontier;
-            let outputDescriptorFrontier = emptyValidationFrontier;
-            const receiveSourceEntries: ScriptPurposeProofEntry[] = [];
-            const receiveSourceScan = () => ({
-              sourceFrontier: receiveSourceFrontier,
-              receiveCount: 0,
-              previousHash: Buffer.alloc(0),
-              candidateHash: Buffer.alloc(0),
-              descriptorFrontier: outputDescriptorFrontier,
-            });
-            const retainedOutputDescriptorScan = () => ({
-              sourceFrontier: emptyValidationFrontier,
-              receiveCount: 0,
-              previousHash: Buffer.alloc(0),
-              candidateHash: Buffer.alloc(0),
-              descriptorFrontier: outputDescriptorFrontier,
-            });
-            const protectedSignerRejection =
-              rejection !== null &&
-              terminalPhase === "scriptSources" &&
-              rejection.code === RejectCodes.MissingRequiredWitness &&
-              rejection.detail?.startsWith(
-                "missing witness for protected output signer ",
-              ) === true;
-            const outputNetworkRejection =
-              rejection !== null &&
-              terminalPhase === "scriptSources" &&
-              rejection.code === RejectCodes.NetworkIdMismatch;
-            for (const outputCbor of outputCbors) {
-              const outputItem = outputsCollection.items[outputCursor];
-              if (
-                outputItem === undefined ||
-                !outputItem.bytes.equals(outputCbor)
-              ) {
-                return yield* Effect.fail(
-                  new Error(
-                    "output admission lost its authenticated bounded item",
-                  ),
-                );
-              }
-              const outputProof = buildMidgardLedgerOutputProofTrace({
-                outputIndex: outputCursor,
-                outputCbor,
-              });
-              const outputMaterial = buildCanonicalMidgardLedgerOutputMaterial({
-                outputIndex: outputCursor,
-                outputCbor,
-              });
-              const signerProof = protectedOutputSignerProof(outputCbor);
-              pushWitness(
-                "scriptSources",
+              let authenticatedOutputFrontier = emptyValidationFrontier;
+              let outputTotalCount = 0;
+              const currentOutputCommitmentWitness = (): Buffer =>
                 scriptSourcesWitnessCbor({
                   ...scriptSourceControl,
-                  stage: 5,
+                  stage: 4,
                   sourceFrontier: replaySourceFrontier,
                   redeemerFrontier,
                   replayCursor,
@@ -2852,19 +2779,121 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                   replayRemainingScheduleHash,
                   spendIndex: replaySpendIndex,
                   purposeFrontier: replayPurposeFrontier,
-                  outputCursor,
-                  outputFrontier,
-                  receiveScan: receiveSourceScan(),
-                }),
-                {
-                  kind: "ledgerOutputProofBegin",
+                  outputFrontier: authenticatedOutputFrontier,
+                  outputTotalCount,
+                });
+              for (const item of outputsCollection.items) {
+                const outputCbor = outputCbors[item.itemIndex];
+                if (
+                  outputCbor === undefined ||
+                  !item.bytes.equals(outputCbor)
+                ) {
+                  return yield* Effect.fail(
+                    new Error(
+                      "bounded output item diverged from its canonical decoded output",
+                    ),
+                  );
+                }
+                // Stage 4 folds only the authenticated
+                // (field_index, item_index, item_length, item_commitment) tuple,
+                // all four of which the door *derives* from the authenticated
+                // preimage. The item bytes are still not revealed here, and the
+                // reason is unchanged: revealing them re-proves only that an
+                // authenticated commitment has a preimage — which canonicalDecode
+                // and the stage-5 output traversal already establish — while
+                // making the one-step evidence grow with output size and exceed
+                // the L1 envelope for legal 16,384-byte outputs (C21-STAGE4-GAP,
+                // Option A).
+                //
+                // What *has* changed is where the size now comes from. The
+                // carriage keeps this redeemer O(1) in output size only under
+                // tiers 2-3, where the preimage rides reference inputs
+                // (`onchain/aiken/lib/midgard/validation-machine/`).
+                // The step therefore carries the *plan input* — which field, which
+                // bytes — and the tier is resolved at evidence commitment, where a
+                // transaction exists to index reference inputs into (#600). Above
+                // §8.3's 14,336-byte tier-1 cap the resolution is genuinely tier 2
+                // or 3 and this evidence is O(1); below it, tier-1 `Inline`. The
+                // producer itself never refuses and never names a tier.
+                pushWitness("scriptSources", currentOutputCommitmentWitness(), {
+                  kind: "transactionRedeemerItemBegin",
+                  fieldIndex: 2,
+                  fieldPreimage: fieldPreimage(2),
+                });
+                if (outputTotalCount === 0) {
+                  outputTotalCount = outputsCollection.items.length;
+                }
+                authenticatedOutputFrontier = appendMidgardValidationMerkleLeaf(
+                  authenticatedOutputFrontier,
+                  hashMidgardOutputItemLeaf({
+                    outputIndex: item.itemIndex,
+                    itemCommitment: item.commitment,
+                  }),
+                );
+              }
+              pushWitness("scriptSources", currentOutputCommitmentWitness());
+              if (
+                !commitMidgardValidationMerkleFrontier(
+                  authenticatedOutputFrontier,
+                ).equals(commitMidgardValidationMerkleFrontier(outputFrontier))
+              ) {
+                return yield* Effect.fail(
+                  new Error(
+                    "authenticated output fold diverged from the canonical output frontier",
+                  ),
+                );
+              }
+              let outputCursor = 0;
+              let receiveSourceFrontier = emptyValidationFrontier;
+              let outputDescriptorFrontier = emptyValidationFrontier;
+              const receiveSourceEntries: ScriptPurposeProofEntry[] = [];
+              const receiveSourceScan = () => ({
+                sourceFrontier: receiveSourceFrontier,
+                receiveCount: 0,
+                previousHash: Buffer.alloc(0),
+                candidateHash: Buffer.alloc(0),
+                descriptorFrontier: outputDescriptorFrontier,
+              });
+              const retainedOutputDescriptorScan = () => ({
+                sourceFrontier: emptyValidationFrontier,
+                receiveCount: 0,
+                previousHash: Buffer.alloc(0),
+                candidateHash: Buffer.alloc(0),
+                descriptorFrontier: outputDescriptorFrontier,
+              });
+              const protectedSignerRejection =
+                rejection !== null &&
+                terminalPhase === "scriptSources" &&
+                rejection.code === RejectCodes.MissingRequiredWitness &&
+                rejection.detail?.startsWith(
+                  "missing witness for protected output signer ",
+                ) === true;
+              const outputNetworkRejection =
+                rejection !== null &&
+                terminalPhase === "scriptSources" &&
+                rejection.code === RejectCodes.NetworkIdMismatch;
+              for (const outputCbor of outputCbors) {
+                const outputItem = outputsCollection.items[outputCursor];
+                if (
+                  outputItem === undefined ||
+                  !outputItem.bytes.equals(outputCbor)
+                ) {
+                  return yield* Effect.fail(
+                    new Error(
+                      "output admission lost its authenticated bounded item",
+                    ),
+                  );
+                }
+                const outputProof = buildMidgardLedgerOutputProofTrace({
                   outputIndex: outputCursor,
-                  totalLength: outputItem.bytes.length,
-                  itemCommitment: outputItem.commitment,
-                  siblings: outputMembership(outputCursor).siblings,
-                },
-              );
-              for (const proofStep of outputProof.steps) {
+                  outputCbor,
+                });
+                const outputMaterial =
+                  buildCanonicalMidgardLedgerOutputMaterial({
+                    outputIndex: outputCursor,
+                    outputCbor,
+                  });
+                const signerProof = protectedOutputSignerProof(outputCbor);
                 pushWitness(
                   "scriptSources",
                   scriptSourcesWitnessCbor({
@@ -2880,21 +2909,79 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                     outputCursor,
                     outputFrontier,
                     receiveScan: receiveSourceScan(),
-                    outputProof: proofStep.control,
                   }),
                   {
-                    kind: "ledgerOutputProofStep",
-                    witness: proofStep.witness,
+                    kind: "ledgerOutputProofBegin",
+                    outputIndex: outputCursor,
+                    totalLength: outputItem.bytes.length,
+                    itemCommitment: outputItem.commitment,
+                    siblings: outputMembership(outputCursor).siblings,
                   },
                 );
-              }
-              // Chained descriptor-fact attachment: each canonical group is
-              // one checkpointed machine step over the same finalize witness
-              // shape, its commitments derived from the terminal control
-              // alone; the thin terminal finalize below requires the scan
-              // fact to commit exactly the output's descriptor.
-              let factsProof = outputProof.terminal;
-              while (!midgardLedgerOutputProofFactsComplete(factsProof)) {
+                for (const proofStep of outputProof.steps) {
+                  pushWitness(
+                    "scriptSources",
+                    scriptSourcesWitnessCbor({
+                      ...scriptSourceControl,
+                      stage: 5,
+                      sourceFrontier: replaySourceFrontier,
+                      redeemerFrontier,
+                      replayCursor,
+                      replayAccumulator,
+                      replayRemainingScheduleHash,
+                      spendIndex: replaySpendIndex,
+                      purposeFrontier: replayPurposeFrontier,
+                      outputCursor,
+                      outputFrontier,
+                      receiveScan: receiveSourceScan(),
+                      outputProof: proofStep.control,
+                    }),
+                    {
+                      kind: "ledgerOutputProofStep",
+                      witness: proofStep.witness,
+                    },
+                  );
+                }
+                // Chained descriptor-fact attachment: each canonical group is
+                // one checkpointed machine step over the same finalize witness
+                // shape, its commitments derived from the terminal control
+                // alone; the thin terminal finalize below requires the scan
+                // fact to commit exactly the output's descriptor.
+                let factsProof = outputProof.terminal;
+                while (!midgardLedgerOutputProofFactsComplete(factsProof)) {
+                  pushWitness(
+                    "scriptSources",
+                    scriptSourcesWitnessCbor({
+                      ...scriptSourceControl,
+                      stage: 5,
+                      sourceFrontier: replaySourceFrontier,
+                      redeemerFrontier,
+                      replayCursor,
+                      replayAccumulator,
+                      replayRemainingScheduleHash,
+                      spendIndex: replaySpendIndex,
+                      purposeFrontier: replayPurposeFrontier,
+                      outputCursor,
+                      outputFrontier,
+                      receiveScan: receiveSourceScan(),
+                      outputProof: factsProof,
+                    }),
+                    {
+                      kind: "ledgerOutputProofFinalize",
+                      signerProof: { kind: "none" },
+                    },
+                  );
+                  const attached =
+                    attachMidgardLedgerOutputProofFacts(factsProof);
+                  if (attached === null) {
+                    return yield* Effect.fail(
+                      new Error(
+                        "ledger output proof fact attachment failed closed",
+                      ),
+                    );
+                  }
+                  factsProof = attached;
+                }
                 pushWitness(
                   "scriptSources",
                   scriptSourcesWitnessCbor({
@@ -2914,205 +3001,90 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                   }),
                   {
                     kind: "ledgerOutputProofFinalize",
-                    signerProof: { kind: "none" },
+                    signerProof,
                   },
                 );
-                const attached =
-                  attachMidgardLedgerOutputProofFacts(factsProof);
-                if (attached === null) {
-                  return yield* Effect.fail(
-                    new Error(
-                      "ledger output proof fact attachment failed closed",
-                    ),
-                  );
+                const output = decodeMidgardTxOutput(outputCbor);
+                const address = decodeMidgardAddressBytes(output.address);
+                if (
+                  outputNetworkRejection &&
+                  BigInt(address.networkId) !== input.expectedNetworkId
+                ) {
+                  stoppedAtRejection = true;
+                  break;
                 }
-                factsProof = attached;
-              }
-              pushWitness(
-                "scriptSources",
-                scriptSourcesWitnessCbor({
-                  ...scriptSourceControl,
-                  stage: 5,
-                  sourceFrontier: replaySourceFrontier,
-                  redeemerFrontier,
-                  replayCursor,
-                  replayAccumulator,
-                  replayRemainingScheduleHash,
-                  spendIndex: replaySpendIndex,
-                  purposeFrontier: replayPurposeFrontier,
-                  outputCursor,
-                  outputFrontier,
-                  receiveScan: receiveSourceScan(),
-                  outputProof: factsProof,
-                }),
-                {
-                  kind: "ledgerOutputProofFinalize",
-                  signerProof,
-                },
-              );
-              const output = decodeMidgardTxOutput(outputCbor);
-              const address = decodeMidgardAddressBytes(output.address);
-              if (
-                outputNetworkRejection &&
-                BigInt(address.networkId) !== input.expectedNetworkId
-              ) {
-                stoppedAtRejection = true;
-                break;
-              }
-              if (
-                protectedSignerRejection &&
-                address.protected &&
-                address.paymentCredential.kind === "PubKey" &&
-                signerProof.kind !== "membership"
-              ) {
-                stoppedAtRejection = true;
-                break;
-              }
-              outputDescriptorFrontier = appendMidgardValidationMerkleLeaf(
-                outputDescriptorFrontier,
-                hashMidgardOutputDescriptorLeaf({
-                  outputIndex: outputCursor,
-                  descriptorCbor: outputMaterial.descriptorCbor,
-                }),
-              );
-              admittedOutputDescriptorCbors.push(outputMaterial.descriptorCbor);
-              admittedOutputDescriptorLeafHashes.push(
-                hashMidgardOutputDescriptorLeaf({
-                  outputIndex: outputCursor,
-                  descriptorCbor: outputMaterial.descriptorCbor,
-                }),
-              );
-              if (
-                address.protected &&
-                address.paymentCredential.kind === "Script"
-              ) {
-                const scriptHash = Buffer.from(address.paymentCredential.hash);
-                const purposeEntry: ScriptPurposeProofEntry = {
-                  purposeKind: 3,
-                  purposeIndex: BigInt(receiveSourceFrontier.count),
-                  scriptHash,
-                  subject: scriptHash,
-                  leaf: hashMidgardScriptPurposeLeaf({
+                if (
+                  protectedSignerRejection &&
+                  address.protected &&
+                  address.paymentCredential.kind === "PubKey" &&
+                  signerProof.kind !== "membership"
+                ) {
+                  stoppedAtRejection = true;
+                  break;
+                }
+                outputDescriptorFrontier = appendMidgardValidationMerkleLeaf(
+                  outputDescriptorFrontier,
+                  hashMidgardOutputDescriptorLeaf({
+                    outputIndex: outputCursor,
+                    descriptorCbor: outputMaterial.descriptorCbor,
+                  }),
+                );
+                admittedOutputDescriptorCbors.push(
+                  outputMaterial.descriptorCbor,
+                );
+                admittedOutputDescriptorLeafHashes.push(
+                  hashMidgardOutputDescriptorLeaf({
+                    outputIndex: outputCursor,
+                    descriptorCbor: outputMaterial.descriptorCbor,
+                  }),
+                );
+                if (
+                  address.protected &&
+                  address.paymentCredential.kind === "Script"
+                ) {
+                  const scriptHash = Buffer.from(
+                    address.paymentCredential.hash,
+                  );
+                  const purposeEntry: ScriptPurposeProofEntry = {
                     purposeKind: 3,
                     purposeIndex: BigInt(receiveSourceFrontier.count),
                     scriptHash,
                     subject: scriptHash,
-                  }),
-                };
-                receiveSourceEntries.push(purposeEntry);
-                receiveSourceFrontier = appendMidgardValidationMerkleLeaf(
-                  receiveSourceFrontier,
-                  purposeEntry.leaf,
-                );
+                    leaf: hashMidgardScriptPurposeLeaf({
+                      purposeKind: 3,
+                      purposeIndex: BigInt(receiveSourceFrontier.count),
+                      scriptHash,
+                      subject: scriptHash,
+                    }),
+                  };
+                  receiveSourceEntries.push(purposeEntry);
+                  receiveSourceFrontier = appendMidgardValidationMerkleLeaf(
+                    receiveSourceFrontier,
+                    purposeEntry.leaf,
+                  );
+                }
+                outputCursor += 1;
               }
-              outputCursor += 1;
-            }
-            if (!stoppedAtRejection) {
-              pushWitness(
-                "scriptSources",
-                scriptSourcesWitnessCbor({
-                  ...scriptSourceControl,
-                  stage: 5,
-                  sourceFrontier: replaySourceFrontier,
-                  redeemerFrontier,
-                  replayCursor,
-                  replayAccumulator,
-                  replayRemainingScheduleHash,
-                  spendIndex: replaySpendIndex,
-                  purposeFrontier: replayPurposeFrontier,
-                  outputCursor,
-                  outputFrontier,
-                  receiveScan: receiveSourceScan(),
-                }),
-              );
-              let mintPurposeFrontier = replayPurposeFrontier;
-              for (const policyItem of mintCollection.items) {
+              if (!stoppedAtRejection) {
                 pushWitness(
                   "scriptSources",
                   scriptSourcesWitnessCbor({
                     ...scriptSourceControl,
-                    stage: 6,
+                    stage: 5,
                     sourceFrontier: replaySourceFrontier,
                     redeemerFrontier,
                     replayCursor,
                     replayAccumulator,
                     replayRemainingScheduleHash,
                     spendIndex: replaySpendIndex,
-                    purposeFrontier: mintPurposeFrontier,
+                    purposeFrontier: replayPurposeFrontier,
                     outputCursor,
                     outputFrontier,
                     receiveScan: receiveSourceScan(),
                   }),
-                  {
-                    kind: "transactionFieldChunk",
-                    fieldIndex: 5,
-                    itemIndex: policyItem.itemIndex,
-                    fieldPreimage: fieldPreimage(5),
-                  },
                 );
-                const itemHeader = readCborArrayHeader(
-                  policyItem.bytes,
-                  0,
-                  `v1.mint.policy[${policyItem.itemIndex}]`,
-                );
-                if (itemHeader.length !== 2) {
-                  throw new Error(
-                    "V1 mint policy item must contain two fields",
-                  );
-                }
-                const policy = readCborBytes(
-                  policyItem.bytes,
-                  itemHeader.nextOffset,
-                  `v1.mint.policy[${policyItem.itemIndex}].id`,
-                );
-                const assets = readCborMapHeader(
-                  policyItem.bytes,
-                  policy.nextOffset,
-                  `v1.mint.policy[${policyItem.itemIndex}].assets`,
-                );
-                const policyId = Buffer.from(policy.value);
-                const purposeEntry: ScriptPurposeProofEntry = {
-                  purposeKind: 1,
-                  purposeIndex: BigInt(policyItem.itemIndex),
-                  scriptHash: policyId,
-                  subject: policyId,
-                  leaf: hashMidgardScriptPurposeLeaf({
-                    purposeKind: 1,
-                    purposeIndex: BigInt(policyItem.itemIndex),
-                    scriptHash: policyId,
-                    subject: policyId,
-                  }),
-                };
-                scriptPurposeEntries.push(purposeEntry);
-                mintPurposeFrontier = appendMidgardValidationMerkleLeaf(
-                  mintPurposeFrontier,
-                  purposeEntry.leaf,
-                );
-                mintFoldControl = {
-                  ...mintFoldControl,
-                  policyCount: mintCollection.items.length,
-                  activePolicy: policyId,
-                  itemLength: policyItem.bytes.length,
-                  itemCommitment: Buffer.from(policyItem.commitment),
-                  itemCursor: assets.nextOffset,
-                  assetsRemaining: assets.length,
-                  policyAssetCursor: 0,
-                  previousAsset: Buffer.alloc(0),
-                };
-                let assetCursor = assets.nextOffset;
-                for (
-                  let assetIndex = 0;
-                  assetIndex < assets.length;
-                  assetIndex += 1
-                ) {
-                  const expectedChunkIndex = Math.floor(
-                    assetCursor / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-                  );
-                  const nextChunkIndex =
-                    expectedChunkIndex + 1 <
-                    midgardBoundedItemChunkCount(policyItem.bytes.length)
-                      ? expectedChunkIndex + 1
-                      : null;
+                let mintPurposeFrontier = replayPurposeFrontier;
+                for (const policyItem of mintCollection.items) {
                   pushWitness(
                     "scriptSources",
                     scriptSourcesWitnessCbor({
@@ -3130,254 +3102,256 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                       receiveScan: receiveSourceScan(),
                     }),
                     {
-                      kind: "mintFoldAsset",
-                      chunkProof: buildMidgardBoundedItemChunkProof(
-                        policyItem,
-                        expectedChunkIndex,
-                      ),
-                      nextChunkProof:
-                        nextChunkIndex === null
-                          ? null
-                          : buildMidgardBoundedItemChunkProof(
-                              policyItem,
-                              nextChunkIndex,
-                            ),
+                      kind: "transactionFieldChunk",
+                      fieldIndex: 5,
+                      itemIndex: policyItem.itemIndex,
+                      fieldPreimage: fieldPreimage(5),
                     },
                   );
-                  const asset = readCborBytes(
+                  const itemHeader = readCborArrayHeader(
                     policyItem.bytes,
-                    assetCursor,
-                    `v1.mint.policy[${policyItem.itemIndex}].asset[${assetIndex}].name`,
+                    0,
+                    `v1.mint.policy[${policyItem.itemIndex}]`,
                   );
-                  const quantity = readCborInteger(
+                  if (itemHeader.length !== 2) {
+                    throw new Error(
+                      "V1 mint policy item must contain two fields",
+                    );
+                  }
+                  const policy = readCborBytes(
                     policyItem.bytes,
-                    asset.nextOffset,
-                    `v1.mint.policy[${policyItem.itemIndex}].asset[${assetIndex}].quantity`,
+                    itemHeader.nextOffset,
+                    `v1.mint.policy[${policyItem.itemIndex}].id`,
                   );
-                  assetCursor = quantity.nextOffset;
-                  const nextAssetFrontier = appendMidgardValidationMerkleLeaf(
-                    mintFoldControl.assetFrontier,
-                    hashMidgardMintAssetLeaf({
-                      policyId,
-                      assetName: asset.value,
-                      quantity: quantity.value,
+                  const assets = readCborMapHeader(
+                    policyItem.bytes,
+                    policy.nextOffset,
+                    `v1.mint.policy[${policyItem.itemIndex}].assets`,
+                  );
+                  const policyId = Buffer.from(policy.value);
+                  const purposeEntry: ScriptPurposeProofEntry = {
+                    purposeKind: 1,
+                    purposeIndex: BigInt(policyItem.itemIndex),
+                    scriptHash: policyId,
+                    subject: policyId,
+                    leaf: hashMidgardScriptPurposeLeaf({
+                      purposeKind: 1,
+                      purposeIndex: BigInt(policyItem.itemIndex),
+                      scriptHash: policyId,
+                      subject: policyId,
                     }),
+                  };
+                  scriptPurposeEntries.push(purposeEntry);
+                  mintPurposeFrontier = appendMidgardValidationMerkleLeaf(
+                    mintPurposeFrontier,
+                    purposeEntry.leaf,
                   );
-                  const finishedPolicy = assetIndex + 1 === assets.length;
-                  mintFoldControl = finishedPolicy
-                    ? {
-                        ...mintFoldControl,
-                        policyCursor: mintFoldControl.policyCursor + 1,
-                        previousPolicy: policyId,
-                        activePolicy: Buffer.alloc(0),
-                        itemLength: 0,
-                        itemCommitment: Buffer.alloc(0),
-                        itemCursor: 0,
-                        assetsRemaining: 0,
-                        policyAssetCursor: 0,
-                        previousAsset: Buffer.alloc(0),
-                        assetFrontier: nextAssetFrontier,
-                      }
-                    : {
-                        ...mintFoldControl,
-                        itemCursor: assetCursor,
-                        assetsRemaining: mintFoldControl.assetsRemaining - 1,
-                        policyAssetCursor:
-                          mintFoldControl.policyAssetCursor + 1,
-                        previousAsset: Buffer.from(asset.value),
-                        assetFrontier: nextAssetFrontier,
-                      };
+                  mintFoldControl = {
+                    ...mintFoldControl,
+                    policyCount: mintCollection.items.length,
+                    activePolicy: policyId,
+                    itemLength: policyItem.bytes.length,
+                    itemCommitment: Buffer.from(policyItem.commitment),
+                    itemCursor: assets.nextOffset,
+                    assetsRemaining: assets.length,
+                    policyAssetCursor: 0,
+                    previousAsset: Buffer.alloc(0),
+                  };
+                  let assetCursor = assets.nextOffset;
+                  for (
+                    let assetIndex = 0;
+                    assetIndex < assets.length;
+                    assetIndex += 1
+                  ) {
+                    const expectedChunkIndex = Math.floor(
+                      assetCursor / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+                    );
+                    const nextChunkIndex =
+                      expectedChunkIndex + 1 <
+                      midgardBoundedItemChunkCount(policyItem.bytes.length)
+                        ? expectedChunkIndex + 1
+                        : null;
+                    pushWitness(
+                      "scriptSources",
+                      scriptSourcesWitnessCbor({
+                        ...scriptSourceControl,
+                        stage: 6,
+                        sourceFrontier: replaySourceFrontier,
+                        redeemerFrontier,
+                        replayCursor,
+                        replayAccumulator,
+                        replayRemainingScheduleHash,
+                        spendIndex: replaySpendIndex,
+                        purposeFrontier: mintPurposeFrontier,
+                        outputCursor,
+                        outputFrontier,
+                        receiveScan: receiveSourceScan(),
+                      }),
+                      {
+                        kind: "mintFoldAsset",
+                        chunkProof: buildMidgardBoundedItemChunkProof(
+                          policyItem,
+                          expectedChunkIndex,
+                        ),
+                        nextChunkProof:
+                          nextChunkIndex === null
+                            ? null
+                            : buildMidgardBoundedItemChunkProof(
+                                policyItem,
+                                nextChunkIndex,
+                              ),
+                      },
+                    );
+                    const asset = readCborBytes(
+                      policyItem.bytes,
+                      assetCursor,
+                      `v1.mint.policy[${policyItem.itemIndex}].asset[${assetIndex}].name`,
+                    );
+                    const quantity = readCborInteger(
+                      policyItem.bytes,
+                      asset.nextOffset,
+                      `v1.mint.policy[${policyItem.itemIndex}].asset[${assetIndex}].quantity`,
+                    );
+                    assetCursor = quantity.nextOffset;
+                    const nextAssetFrontier = appendMidgardValidationMerkleLeaf(
+                      mintFoldControl.assetFrontier,
+                      hashMidgardMintAssetLeaf({
+                        policyId,
+                        assetName: asset.value,
+                        quantity: quantity.value,
+                      }),
+                    );
+                    const finishedPolicy = assetIndex + 1 === assets.length;
+                    mintFoldControl = finishedPolicy
+                      ? {
+                          ...mintFoldControl,
+                          policyCursor: mintFoldControl.policyCursor + 1,
+                          previousPolicy: policyId,
+                          activePolicy: Buffer.alloc(0),
+                          itemLength: 0,
+                          itemCommitment: Buffer.alloc(0),
+                          itemCursor: 0,
+                          assetsRemaining: 0,
+                          policyAssetCursor: 0,
+                          previousAsset: Buffer.alloc(0),
+                          assetFrontier: nextAssetFrontier,
+                        }
+                      : {
+                          ...mintFoldControl,
+                          itemCursor: assetCursor,
+                          assetsRemaining: mintFoldControl.assetsRemaining - 1,
+                          policyAssetCursor:
+                            mintFoldControl.policyAssetCursor + 1,
+                          previousAsset: Buffer.from(asset.value),
+                          assetFrontier: nextAssetFrontier,
+                        };
+                  }
+                  if (assetCursor !== policyItem.bytes.length) {
+                    throw new Error("V1 mint policy item has trailing bytes");
+                  }
                 }
-                if (assetCursor !== policyItem.bytes.length) {
-                  throw new Error("V1 mint policy item has trailing bytes");
+                pushWitness(
+                  "scriptSources",
+                  scriptSourcesWitnessCbor({
+                    ...scriptSourceControl,
+                    stage: 6,
+                    sourceFrontier: replaySourceFrontier,
+                    redeemerFrontier,
+                    replayCursor,
+                    replayAccumulator,
+                    replayRemainingScheduleHash,
+                    spendIndex: replaySpendIndex,
+                    purposeFrontier: mintPurposeFrontier,
+                    outputCursor,
+                    outputFrontier,
+                    receiveScan: receiveSourceScan(),
+                  }),
+                );
+                // The empty-mint normalization belongs to the stage-six
+                // transition. Its predecessor must retain the stage-five fold.
+                if (mintCollection.items.length === 0) {
+                  mintFoldControl = {
+                    ...mintFoldControl,
+                    policyCount: 0,
+                  };
                 }
-              }
-              pushWitness(
-                "scriptSources",
-                scriptSourcesWitnessCbor({
-                  ...scriptSourceControl,
-                  stage: 6,
-                  sourceFrontier: replaySourceFrontier,
-                  redeemerFrontier,
-                  replayCursor,
-                  replayAccumulator,
-                  replayRemainingScheduleHash,
-                  spendIndex: replaySpendIndex,
-                  purposeFrontier: mintPurposeFrontier,
-                  outputCursor,
-                  outputFrontier,
-                  receiveScan: receiveSourceScan(),
-                }),
-              );
-              // The empty-mint normalization belongs to the stage-six
-              // transition. Its predecessor must retain the stage-five fold.
-              if (mintCollection.items.length === 0) {
-                mintFoldControl = {
-                  ...mintFoldControl,
-                  policyCount: 0,
-                };
-              }
-              let observerPurposeFrontier = mintPurposeFrontier;
-              let observerTotalCount = 0;
-              let observerSeen = 0;
-              let previousObserverHash = Buffer.alloc(0);
-              const currentObserverPurposeWitness = (): Buffer =>
-                scriptSourcesWitnessCbor({
-                  ...scriptSourceControl,
-                  stage: 7,
-                  sourceFrontier: replaySourceFrontier,
-                  redeemerFrontier,
-                  replayCursor,
-                  replayAccumulator,
-                  replayRemainingScheduleHash,
-                  spendIndex: replaySpendIndex,
-                  purposeFrontier: observerPurposeFrontier,
-                  outputCursor: 0,
-                  outputFrontier,
-                  receiveScan: receiveSourceScan(),
-                  observerScan: {
-                    totalCount: observerTotalCount,
-                    seen: observerSeen,
-                    previousHash: previousObserverHash,
-                  },
-                });
-              for (const observer of requiredObserversCollection.items) {
-                pushWitness("scriptSources", currentObserverPurposeWitness(), {
-                  kind: "transactionFieldChunk",
-                  fieldIndex: 3,
-                  itemIndex: observer.itemIndex,
-                  fieldPreimage: fieldPreimage(3),
-                });
-                if (observerTotalCount === 0) {
-                  observerTotalCount = requiredObserversCollection.items.length;
-                }
-                const observerHash = observer.bytes;
-                const purposeEntry: ScriptPurposeProofEntry = {
-                  purposeKind: 2,
-                  purposeIndex: BigInt(observerSeen),
-                  scriptHash: observerHash,
-                  subject: observerHash,
-                  leaf: hashMidgardScriptPurposeLeaf({
+                let observerPurposeFrontier = mintPurposeFrontier;
+                let observerTotalCount = 0;
+                let observerSeen = 0;
+                let previousObserverHash = Buffer.alloc(0);
+                const currentObserverPurposeWitness = (): Buffer =>
+                  scriptSourcesWitnessCbor({
+                    ...scriptSourceControl,
+                    stage: 7,
+                    sourceFrontier: replaySourceFrontier,
+                    redeemerFrontier,
+                    replayCursor,
+                    replayAccumulator,
+                    replayRemainingScheduleHash,
+                    spendIndex: replaySpendIndex,
+                    purposeFrontier: observerPurposeFrontier,
+                    outputCursor: 0,
+                    outputFrontier,
+                    receiveScan: receiveSourceScan(),
+                    observerScan: {
+                      totalCount: observerTotalCount,
+                      seen: observerSeen,
+                      previousHash: previousObserverHash,
+                    },
+                  });
+                for (const observer of requiredObserversCollection.items) {
+                  pushWitness(
+                    "scriptSources",
+                    currentObserverPurposeWitness(),
+                    {
+                      kind: "transactionFieldChunk",
+                      fieldIndex: 3,
+                      itemIndex: observer.itemIndex,
+                      fieldPreimage: fieldPreimage(3),
+                    },
+                  );
+                  if (observerTotalCount === 0) {
+                    observerTotalCount =
+                      requiredObserversCollection.items.length;
+                  }
+                  const observerHash = observer.bytes;
+                  const purposeEntry: ScriptPurposeProofEntry = {
                     purposeKind: 2,
                     purposeIndex: BigInt(observerSeen),
                     scriptHash: observerHash,
                     subject: observerHash,
-                  }),
-                };
-                scriptPurposeEntries.push(purposeEntry);
-                observerPurposeFrontier = appendMidgardValidationMerkleLeaf(
-                  observerPurposeFrontier,
-                  purposeEntry.leaf,
-                );
-                observerSeen += 1;
-                previousObserverHash = observerHash;
-              }
-              let allPurposeFrontier = observerPurposeFrontier;
-              const receiveSourceLeaves = receiveSourceEntries.map(
-                (entry) => entry.leaf,
-              );
-              const receiveSourceMembership = (sourceIndex: number) =>
-                buildMidgardValidationMerkleMembership(
-                  receiveSourceLeaves,
-                  sourceIndex,
-                );
-              let receiveSourceCursor = 0;
-              let receiveCount = 0;
-              let receivePreviousHash = Buffer.alloc(0);
-              let receiveCandidateHash = Buffer.alloc(0);
-              const currentReceivePurposeWitness = (): Buffer =>
-                scriptSourcesWitnessCbor({
-                  ...scriptSourceControl,
-                  stage: 7,
-                  sourceFrontier: replaySourceFrontier,
-                  redeemerFrontier,
-                  replayCursor,
-                  replayAccumulator,
-                  replayRemainingScheduleHash,
-                  spendIndex: replaySpendIndex,
-                  purposeFrontier: allPurposeFrontier,
-                  outputCursor: receiveSourceCursor,
-                  outputFrontier,
-                  receiveScan: {
-                    sourceFrontier: receiveSourceFrontier,
-                    receiveCount,
-                    previousHash: receivePreviousHash,
-                    candidateHash: receiveCandidateHash,
-                    descriptorFrontier: outputDescriptorFrontier,
-                  },
-                  observerScan: {
-                    totalCount: observerTotalCount,
-                    seen: observerSeen,
-                    previousHash: previousObserverHash,
-                  },
-                });
-              while (true) {
-                if (receiveSourceCursor === receiveSourceEntries.length) {
-                  pushWitness("scriptSources", currentReceivePurposeWitness());
-                  if (receiveCandidateHash.length === 0) {
-                    break;
-                  }
-                  const scriptHash = receiveCandidateHash;
-                  const purposeEntry: ScriptPurposeProofEntry = {
-                    purposeKind: 3,
-                    purposeIndex: BigInt(receiveCount),
-                    scriptHash,
-                    subject: scriptHash,
                     leaf: hashMidgardScriptPurposeLeaf({
-                      purposeKind: 3,
-                      purposeIndex: BigInt(receiveCount),
-                      scriptHash,
-                      subject: scriptHash,
+                      purposeKind: 2,
+                      purposeIndex: BigInt(observerSeen),
+                      scriptHash: observerHash,
+                      subject: observerHash,
                     }),
                   };
                   scriptPurposeEntries.push(purposeEntry);
-                  allPurposeFrontier = appendMidgardValidationMerkleLeaf(
-                    allPurposeFrontier,
+                  observerPurposeFrontier = appendMidgardValidationMerkleLeaf(
+                    observerPurposeFrontier,
                     purposeEntry.leaf,
                   );
-                  receiveCount += 1;
-                  receivePreviousHash = scriptHash;
-                  receiveCandidateHash = Buffer.alloc(0);
-                  receiveSourceCursor = 0;
-                  continue;
+                  observerSeen += 1;
+                  previousObserverHash = observerHash;
                 }
-                const receiveSource =
-                  receiveSourceEntries[receiveSourceCursor]!;
-                pushWitness("scriptSources", currentReceivePurposeWitness(), {
-                  kind: "scriptPurposeScan",
-                  purposeKind: 3,
-                  purposeIndex: BigInt(receiveSourceCursor),
-                  scriptHash: receiveSource.scriptHash,
-                  subject: receiveSource.subject,
-                  siblings:
-                    receiveSourceMembership(receiveSourceCursor).siblings,
-                });
-                const scriptHash = receiveSource.scriptHash;
-                if (
-                  (receivePreviousHash.length === 0 ||
-                    Buffer.compare(receivePreviousHash, scriptHash) < 0) &&
-                  (receiveCandidateHash.length === 0 ||
-                    Buffer.compare(scriptHash, receiveCandidateHash) < 0)
-                ) {
-                  receiveCandidateHash = scriptHash;
-                }
-                receiveSourceCursor += 1;
-              }
-              {
-                const sourceLeaves = scriptSourceEntries.map(
+                let allPurposeFrontier = observerPurposeFrontier;
+                const receiveSourceLeaves = receiveSourceEntries.map(
                   (entry) => entry.leaf,
                 );
-                const purposeLeaves = scriptPurposeEntries.map(
-                  (entry) => entry.leaf,
-                );
-                const redeemerLeaves = redeemerLeafHashes;
-                const discoveryWitnessCbor = (
-                  stage: number,
-                  discovery: ScriptDiscoveryTraceControl,
-                ): Buffer =>
+                const receiveSourceMembership = (sourceIndex: number) =>
+                  buildMidgardValidationMerkleMembership(
+                    receiveSourceLeaves,
+                    sourceIndex,
+                  );
+                let receiveSourceCursor = 0;
+                let receiveCount = 0;
+                let receivePreviousHash = Buffer.alloc(0);
+                let receiveCandidateHash = Buffer.alloc(0);
+                const currentReceivePurposeWitness = (): Buffer =>
                   scriptSourcesWitnessCbor({
                     ...scriptSourceControl,
-                    stage,
+                    stage: 7,
                     sourceFrontier: replaySourceFrontier,
                     redeemerFrontier,
                     replayCursor,
@@ -3385,491 +3359,597 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                     replayRemainingScheduleHash,
                     spendIndex: replaySpendIndex,
                     purposeFrontier: allPurposeFrontier,
-                    outputCursor: outputFrontier.count,
+                    outputCursor: receiveSourceCursor,
                     outputFrontier,
-                    receiveScan: retainedOutputDescriptorScan(),
-                    discovery,
-                  });
-                const sourceMembership = (sourceIndex: number) =>
-                  buildMidgardValidationMerkleMembership(
-                    sourceLeaves,
-                    sourceIndex,
-                  );
-                const purposeMembership = (purposeIndex: number) =>
-                  buildMidgardValidationMerkleMembership(
-                    purposeLeaves,
-                    purposeIndex,
-                  );
-                const redeemerMembership = (redeemerIndex: number) =>
-                  buildMidgardValidationMerkleMembership(
-                    redeemerLeaves,
-                    redeemerIndex,
-                  );
-                const setDiscoveryBit = (
-                  bitmap: bigint,
-                  index: number,
-                ): bigint => bitmap | (1n << BigInt(index));
-                const resetCurrent = (
-                  discovery: ScriptDiscoveryTraceControl,
-                ): ScriptDiscoveryTraceControl => ({
-                  ...discovery,
-                  sourceCursor: 0,
-                  redeemerCursor: 0,
-                  currentPurposeKind: -1,
-                  currentPurposeIndex: -1n,
-                  currentScriptHash: Buffer.alloc(0),
-                  currentSubject: Buffer.alloc(0),
-                  matchedSourceIndex: -1,
-                  matchedLanguageTag: -1,
-                  matchedSourceLeaf: Buffer.alloc(0),
-                  redeemerItemControlHash: Buffer.alloc(0),
-                });
-
-                let discovery = emptyScriptDiscoveryControl;
-                for (
-                  let purposeCursor = 0;
-                  purposeCursor < scriptPurposeEntries.length;
-                  purposeCursor += 1
-                ) {
-                  const purpose = scriptPurposeEntries[purposeCursor]!;
-                  pushWitness(
-                    "scriptSources",
-                    discoveryWitnessCbor(8, discovery),
-                    {
-                      kind: "scriptPurposeScan",
-                      purposeKind: purpose.purposeKind,
-                      purposeIndex: purpose.purposeIndex,
-                      scriptHash: purpose.scriptHash,
-                      subject: purpose.subject,
-                      siblings: purposeMembership(purposeCursor).siblings,
+                    receiveScan: {
+                      sourceFrontier: receiveSourceFrontier,
+                      receiveCount,
+                      previousHash: receivePreviousHash,
+                      candidateHash: receiveCandidateHash,
+                      descriptorFrontier: outputDescriptorFrontier,
                     },
+                    observerScan: {
+                      totalCount: observerTotalCount,
+                      seen: observerSeen,
+                      previousHash: previousObserverHash,
+                    },
+                  });
+                while (true) {
+                  if (receiveSourceCursor === receiveSourceEntries.length) {
+                    pushWitness(
+                      "scriptSources",
+                      currentReceivePurposeWitness(),
+                    );
+                    if (receiveCandidateHash.length === 0) {
+                      break;
+                    }
+                    const scriptHash = receiveCandidateHash;
+                    const purposeEntry: ScriptPurposeProofEntry = {
+                      purposeKind: 3,
+                      purposeIndex: BigInt(receiveCount),
+                      scriptHash,
+                      subject: scriptHash,
+                      leaf: hashMidgardScriptPurposeLeaf({
+                        purposeKind: 3,
+                        purposeIndex: BigInt(receiveCount),
+                        scriptHash,
+                        subject: scriptHash,
+                      }),
+                    };
+                    scriptPurposeEntries.push(purposeEntry);
+                    allPurposeFrontier = appendMidgardValidationMerkleLeaf(
+                      allPurposeFrontier,
+                      purposeEntry.leaf,
+                    );
+                    receiveCount += 1;
+                    receivePreviousHash = scriptHash;
+                    receiveCandidateHash = Buffer.alloc(0);
+                    receiveSourceCursor = 0;
+                    continue;
+                  }
+                  const receiveSource =
+                    receiveSourceEntries[receiveSourceCursor]!;
+                  pushWitness("scriptSources", currentReceivePurposeWitness(), {
+                    kind: "scriptPurposeScan",
+                    purposeKind: 3,
+                    purposeIndex: BigInt(receiveSourceCursor),
+                    scriptHash: receiveSource.scriptHash,
+                    subject: receiveSource.subject,
+                    siblings:
+                      receiveSourceMembership(receiveSourceCursor).siblings,
+                  });
+                  const scriptHash = receiveSource.scriptHash;
+                  if (
+                    (receivePreviousHash.length === 0 ||
+                      Buffer.compare(receivePreviousHash, scriptHash) < 0) &&
+                    (receiveCandidateHash.length === 0 ||
+                      Buffer.compare(scriptHash, receiveCandidateHash) < 0)
+                  ) {
+                    receiveCandidateHash = scriptHash;
+                  }
+                  receiveSourceCursor += 1;
+                }
+                {
+                  const sourceLeaves = scriptSourceEntries.map(
+                    (entry) => entry.leaf,
                   );
-                  discovery = {
+                  const purposeLeaves = scriptPurposeEntries.map(
+                    (entry) => entry.leaf,
+                  );
+                  const redeemerLeaves = redeemerLeafHashes;
+                  const discoveryWitnessCbor = (
+                    stage: number,
+                    discovery: ScriptDiscoveryTraceControl,
+                  ): Buffer =>
+                    scriptSourcesWitnessCbor({
+                      ...scriptSourceControl,
+                      stage,
+                      sourceFrontier: replaySourceFrontier,
+                      redeemerFrontier,
+                      replayCursor,
+                      replayAccumulator,
+                      replayRemainingScheduleHash,
+                      spendIndex: replaySpendIndex,
+                      purposeFrontier: allPurposeFrontier,
+                      outputCursor: outputFrontier.count,
+                      outputFrontier,
+                      receiveScan: retainedOutputDescriptorScan(),
+                      discovery,
+                    });
+                  const sourceMembership = (sourceIndex: number) =>
+                    buildMidgardValidationMerkleMembership(
+                      sourceLeaves,
+                      sourceIndex,
+                    );
+                  const purposeMembership = (purposeIndex: number) =>
+                    buildMidgardValidationMerkleMembership(
+                      purposeLeaves,
+                      purposeIndex,
+                    );
+                  const redeemerMembership = (redeemerIndex: number) =>
+                    buildMidgardValidationMerkleMembership(
+                      redeemerLeaves,
+                      redeemerIndex,
+                    );
+                  const setDiscoveryBit = (
+                    bitmap: bigint,
+                    index: number,
+                  ): bigint => bitmap | (1n << BigInt(index));
+                  const resetCurrent = (
+                    discovery: ScriptDiscoveryTraceControl,
+                  ): ScriptDiscoveryTraceControl => ({
                     ...discovery,
                     sourceCursor: 0,
                     redeemerCursor: 0,
-                    currentPurposeKind: purpose.purposeKind,
-                    currentPurposeIndex: purpose.purposeIndex,
-                    currentScriptHash: purpose.scriptHash,
-                    currentSubject: purpose.subject,
+                    currentPurposeKind: -1,
+                    currentPurposeIndex: -1n,
+                    currentScriptHash: Buffer.alloc(0),
+                    currentSubject: Buffer.alloc(0),
                     matchedSourceIndex: -1,
                     matchedLanguageTag: -1,
                     matchedSourceLeaf: Buffer.alloc(0),
-                  };
+                    redeemerItemControlHash: Buffer.alloc(0),
+                  });
 
-                  let matchedSource:
-                    | {
-                        readonly entry: ScriptSourceProofEntry;
-                        readonly sourceIndex: number;
-                        readonly languageTag: 0 | 3 | 128;
-                      }
-                    | undefined;
+                  let discovery = emptyScriptDiscoveryControl;
                   for (
-                    let sourceIndex = 0;
-                    sourceIndex < scriptSourceEntries.length;
-                    sourceIndex += 1
+                    let purposeCursor = 0;
+                    purposeCursor < scriptPurposeEntries.length;
+                    purposeCursor += 1
                   ) {
-                    const source = scriptSourceEntries[sourceIndex]!;
+                    const purpose = scriptPurposeEntries[purposeCursor]!;
                     pushWitness(
                       "scriptSources",
-                      discoveryWitnessCbor(9, discovery),
+                      discoveryWitnessCbor(8, discovery),
                       {
-                        kind: "scriptSourceScan",
-                        sourceIndex,
-                        originKind: source.originKind,
-                        sourceKey: source.sourceKey,
-                        scriptLanguageTag: source.scriptLanguageTag,
-                        scriptHash: source.scriptHash,
-                        scriptTotalLength: source.scriptTotalLength,
-                        scriptItemCommitment: source.scriptItemCommitment,
-                        siblings: sourceMembership(sourceIndex).siblings,
+                        kind: "scriptPurposeScan",
+                        purposeKind: purpose.purposeKind,
+                        purposeIndex: purpose.purposeIndex,
+                        scriptHash: purpose.scriptHash,
+                        subject: purpose.subject,
+                        siblings: purposeMembership(purposeCursor).siblings,
                       },
                     );
-                    const sourceHash = source.scriptHash;
                     discovery = {
                       ...discovery,
-                      sourceCursor: sourceIndex + 1,
+                      sourceCursor: 0,
+                      redeemerCursor: 0,
+                      currentPurposeKind: purpose.purposeKind,
+                      currentPurposeIndex: purpose.purposeIndex,
+                      currentScriptHash: purpose.scriptHash,
+                      currentSubject: purpose.subject,
+                      matchedSourceIndex: -1,
+                      matchedLanguageTag: -1,
+                      matchedSourceLeaf: Buffer.alloc(0),
                     };
-                    if (sourceHash.equals(purpose.scriptHash)) {
-                      const exactLanguageTag = source.scriptLanguageTag;
+
+                    let matchedSource:
+                      | {
+                          readonly entry: ScriptSourceProofEntry;
+                          readonly sourceIndex: number;
+                          readonly languageTag: 0 | 3 | 128;
+                        }
+                      | undefined;
+                    for (
+                      let sourceIndex = 0;
+                      sourceIndex < scriptSourceEntries.length;
+                      sourceIndex += 1
+                    ) {
+                      const source = scriptSourceEntries[sourceIndex]!;
+                      pushWitness(
+                        "scriptSources",
+                        discoveryWitnessCbor(9, discovery),
+                        {
+                          kind: "scriptSourceScan",
+                          sourceIndex,
+                          originKind: source.originKind,
+                          sourceKey: source.sourceKey,
+                          scriptLanguageTag: source.scriptLanguageTag,
+                          scriptHash: source.scriptHash,
+                          scriptTotalLength: source.scriptTotalLength,
+                          scriptItemCommitment: source.scriptItemCommitment,
+                          siblings: sourceMembership(sourceIndex).siblings,
+                        },
+                      );
+                      const sourceHash = source.scriptHash;
                       discovery = {
                         ...discovery,
-                        matchedSourceIndex: sourceIndex,
-                        matchedLanguageTag: exactLanguageTag,
-                        matchedSourceLeaf: source.leaf,
-                        usedInlineBitmap:
-                          source.originKind === "inline"
-                            ? setDiscoveryBit(
-                                discovery.usedInlineBitmap,
-                                sourceIndex,
-                              )
-                            : discovery.usedInlineBitmap,
+                        sourceCursor: sourceIndex + 1,
                       };
-                      matchedSource = {
-                        entry: source,
-                        sourceIndex,
-                        languageTag: exactLanguageTag,
-                      };
+                      if (sourceHash.equals(purpose.scriptHash)) {
+                        const exactLanguageTag = source.scriptLanguageTag;
+                        discovery = {
+                          ...discovery,
+                          matchedSourceIndex: sourceIndex,
+                          matchedLanguageTag: exactLanguageTag,
+                          matchedSourceLeaf: source.leaf,
+                          usedInlineBitmap:
+                            source.originKind === "inline"
+                              ? setDiscoveryBit(
+                                  discovery.usedInlineBitmap,
+                                  sourceIndex,
+                                )
+                              : discovery.usedInlineBitmap,
+                        };
+                        matchedSource = {
+                          entry: source,
+                          sourceIndex,
+                          languageTag: exactLanguageTag,
+                        };
+                        break;
+                      }
+                    }
+                    if (matchedSource === undefined) {
+                      pushWitness(
+                        "scriptSources",
+                        discoveryWitnessCbor(9, discovery),
+                      );
+                      if (
+                        rejection === null ||
+                        terminalPhase !== "scriptSources" ||
+                        rejection.code !== RejectCodes.MissingRequiredWitness
+                      ) {
+                        return yield* Effect.fail(
+                          new Error(
+                            "V1 source scan reached an exact missing-source rejection that disagrees with validation",
+                          ),
+                        );
+                      }
+                      stoppedAtRejection = true;
                       break;
                     }
-                  }
-                  if (matchedSource === undefined) {
-                    pushWitness(
-                      "scriptSources",
-                      discoveryWitnessCbor(9, discovery),
-                    );
-                    if (
-                      rejection === null ||
-                      terminalPhase !== "scriptSources" ||
-                      rejection.code !== RejectCodes.MissingRequiredWitness
-                    ) {
-                      return yield* Effect.fail(
-                        new Error(
-                          "V1 source scan reached an exact missing-source rejection that disagrees with validation",
+
+                    if (matchedSource.languageTag === 0) {
+                      const executionLeaf = hashMidgardScriptExecutionLeaf({
+                        languageTag: 0,
+                        purposeLeaf: purpose.leaf,
+                        sourceLeaf: matchedSource.entry.leaf,
+                      });
+                      scriptExecutionEntries.push({
+                        purpose,
+                        source: matchedSource.entry,
+                        sourceIndex: matchedSource.sourceIndex,
+                        languageTag: 0,
+                        redeemerLeaf: Buffer.alloc(0),
+                        leaf: executionLeaf,
+                      });
+                      discovery = resetCurrent({
+                        ...discovery,
+                        purposeCursor: purposeCursor + 1,
+                        executionFrontier: appendMidgardValidationMerkleLeaf(
+                          discovery.executionFrontier,
+                          executionLeaf,
                         ),
-                      );
+                      });
+                      continue;
                     }
-                    stoppedAtRejection = true;
-                    break;
-                  }
 
-                  if (matchedSource.languageTag === 0) {
-                    const executionLeaf = hashMidgardScriptExecutionLeaf({
-                      languageTag: 0,
-                      purposeLeaf: purpose.leaf,
-                      sourceLeaf: matchedSource.entry.leaf,
-                    });
-                    scriptExecutionEntries.push({
-                      purpose,
-                      source: matchedSource.entry,
-                      sourceIndex: matchedSource.sourceIndex,
-                      languageTag: 0,
-                      redeemerLeaf: Buffer.alloc(0),
-                      leaf: executionLeaf,
-                    });
-                    discovery = resetCurrent({
-                      ...discovery,
-                      purposeCursor: purposeCursor + 1,
-                      executionFrontier: appendMidgardValidationMerkleLeaf(
-                        discovery.executionFrontier,
-                        executionLeaf,
-                      ),
-                    });
-                    continue;
-                  }
-
-                  let matchedRedeemerIndex = -1;
-                  for (
-                    let redeemerIndex = 0;
-                    redeemerIndex < decodedProofRedeemers.length;
-                    redeemerIndex += 1
-                  ) {
-                    const redeemer = decodedProofRedeemers[redeemerIndex]!;
-                    const item =
-                      redeemerWitnessesCollection.items[redeemerIndex]!;
-                    const itemTrace = buildMidgardRedeemerItemProofTrace({
-                      itemIndex: redeemerIndex,
-                      itemCount: decodedProofRedeemers.length,
-                      itemBytes: item.bytes,
-                      mode: MidgardRedeemerItemProofModes.Descriptor,
-                    });
-                    pushWitness(
-                      "scriptSources",
-                      discoveryWitnessCbor(10, discovery),
-                      {
-                        kind: "redeemerScanBegin",
+                    let matchedRedeemerIndex = -1;
+                    for (
+                      let redeemerIndex = 0;
+                      redeemerIndex < decodedProofRedeemers.length;
+                      redeemerIndex += 1
+                    ) {
+                      const redeemer = decodedProofRedeemers[redeemerIndex]!;
+                      const item =
+                        redeemerWitnessesCollection.items[redeemerIndex]!;
+                      const itemTrace = buildMidgardRedeemerItemProofTrace({
                         itemIndex: redeemerIndex,
                         itemCount: decodedProofRedeemers.length,
-                        totalLength: item.bytes.length,
-                        itemCommitment: item.commitment,
-                        siblings: redeemerMembership(redeemerIndex).siblings,
-                      },
-                    );
-                    discovery = {
-                      ...discovery,
-                      redeemerItemControlHash:
-                        hashMidgardRedeemerItemProofControl(itemTrace.initial),
-                    };
-                    for (const itemStep of itemTrace.steps) {
+                        itemBytes: item.bytes,
+                        mode: MidgardRedeemerItemProofModes.Descriptor,
+                      });
                       pushWitness(
                         "scriptSources",
                         discoveryWitnessCbor(10, discovery),
                         {
-                          kind: "redeemerItemStep",
-                          redeemerControl: null,
-                          control: itemStep.control,
-                          witness: itemStep.witness,
+                          kind: "redeemerScanBegin",
+                          itemIndex: redeemerIndex,
+                          itemCount: decodedProofRedeemers.length,
+                          totalLength: item.bytes.length,
+                          itemCommitment: item.commitment,
+                          siblings: redeemerMembership(redeemerIndex).siblings,
                         },
                       );
-                      if (
-                        itemStep.next.stage !==
-                        MidgardRedeemerItemProofStages.Terminal
-                      ) {
-                        discovery = {
-                          ...discovery,
-                          redeemerItemControlHash:
-                            hashMidgardRedeemerItemProofControl(itemStep.next),
-                        };
-                        continue;
+                      discovery = {
+                        ...discovery,
+                        redeemerItemControlHash:
+                          hashMidgardRedeemerItemProofControl(
+                            itemTrace.initial,
+                          ),
+                      };
+                      for (const itemStep of itemTrace.steps) {
+                        pushWitness(
+                          "scriptSources",
+                          discoveryWitnessCbor(10, discovery),
+                          {
+                            kind: "redeemerItemStep",
+                            redeemerControl: null,
+                            control: itemStep.control,
+                            witness: itemStep.witness,
+                          },
+                        );
+                        if (
+                          itemStep.next.stage !==
+                          MidgardRedeemerItemProofStages.Terminal
+                        ) {
+                          discovery = {
+                            ...discovery,
+                            redeemerItemControlHash:
+                              hashMidgardRedeemerItemProofControl(
+                                itemStep.next,
+                              ),
+                          };
+                          continue;
+                        }
+                        if (
+                          redeemerPointerMatchesPurpose({
+                            purposeKind: purpose.purposeKind,
+                            purposeIndex: purpose.purposeIndex,
+                            redeemerTag: redeemer.tag,
+                            redeemerIndex: redeemer.index,
+                          })
+                        ) {
+                          matchedRedeemerIndex = redeemerIndex;
+                          const executionLeaf = hashMidgardScriptExecutionLeaf({
+                            languageTag: matchedSource.languageTag,
+                            purposeLeaf: purpose.leaf,
+                            sourceLeaf: matchedSource.entry.leaf,
+                            redeemerLeaf: redeemerLeaves[redeemerIndex]!,
+                          });
+                          scriptExecutionEntries.push({
+                            purpose,
+                            source: matchedSource.entry,
+                            sourceIndex: matchedSource.sourceIndex,
+                            languageTag: matchedSource.languageTag,
+                            redeemerLeaf: redeemerLeaves[redeemerIndex]!,
+                            leaf: executionLeaf,
+                          });
+                          discovery = resetCurrent({
+                            ...discovery,
+                            purposeCursor: purposeCursor + 1,
+                            usedRedeemerBitmap: setDiscoveryBit(
+                              discovery.usedRedeemerBitmap,
+                              redeemerIndex,
+                            ),
+                            executionFrontier:
+                              appendMidgardValidationMerkleLeaf(
+                                discovery.executionFrontier,
+                                executionLeaf,
+                              ),
+                          });
+                        } else {
+                          discovery = {
+                            ...discovery,
+                            redeemerCursor: redeemerIndex + 1,
+                            redeemerItemControlHash: Buffer.alloc(0),
+                          };
+                        }
                       }
-                      if (
-                        redeemerPointerMatchesPurpose({
-                          purposeKind: purpose.purposeKind,
-                          purposeIndex: purpose.purposeIndex,
-                          redeemerTag: redeemer.tag,
-                          redeemerIndex: redeemer.index,
-                        })
-                      ) {
-                        matchedRedeemerIndex = redeemerIndex;
-                        const executionLeaf = hashMidgardScriptExecutionLeaf({
-                          languageTag: matchedSource.languageTag,
-                          purposeLeaf: purpose.leaf,
-                          sourceLeaf: matchedSource.entry.leaf,
-                          redeemerLeaf: redeemerLeaves[redeemerIndex]!,
-                        });
-                        scriptExecutionEntries.push({
-                          purpose,
-                          source: matchedSource.entry,
-                          sourceIndex: matchedSource.sourceIndex,
-                          languageTag: matchedSource.languageTag,
-                          redeemerLeaf: redeemerLeaves[redeemerIndex]!,
-                          leaf: executionLeaf,
-                        });
-                        discovery = resetCurrent({
-                          ...discovery,
-                          purposeCursor: purposeCursor + 1,
-                          usedRedeemerBitmap: setDiscoveryBit(
-                            discovery.usedRedeemerBitmap,
-                            redeemerIndex,
-                          ),
-                          executionFrontier: appendMidgardValidationMerkleLeaf(
-                            discovery.executionFrontier,
-                            executionLeaf,
-                          ),
-                        });
-                      } else {
-                        discovery = {
-                          ...discovery,
-                          redeemerCursor: redeemerIndex + 1,
-                          redeemerItemControlHash: Buffer.alloc(0),
-                        };
+                      if (matchedRedeemerIndex >= 0) {
+                        break;
                       }
                     }
-                    if (matchedRedeemerIndex >= 0) {
-                      break;
-                    }
-                  }
-                  if (matchedRedeemerIndex < 0) {
-                    pushWitness(
-                      "scriptSources",
-                      discoveryWitnessCbor(10, discovery),
-                    );
-                    if (
-                      rejection === null ||
-                      terminalPhase !== "scriptSources" ||
-                      rejection.code !== RejectCodes.MissingRequiredWitness
-                    ) {
-                      return yield* Effect.fail(
-                        new Error(
-                          "V1 redeemer scan reached an exact missing-redeemer rejection that disagrees with validation",
-                        ),
+                    if (matchedRedeemerIndex < 0) {
+                      pushWitness(
+                        "scriptSources",
+                        discoveryWitnessCbor(10, discovery),
                       );
-                    }
-                    stoppedAtRejection = true;
-                    break;
-                  }
-                }
-
-                if (!stoppedAtRejection) {
-                  pushWitness(
-                    "scriptSources",
-                    discoveryWitnessCbor(8, discovery),
-                  );
-                  discovery = resetCurrent({
-                    ...discovery,
-                    sourceCursor: 0,
-                  });
-                  for (
-                    let sourceIndex = 0;
-                    sourceIndex < scriptSourceEntries.length;
-                    sourceIndex += 1
-                  ) {
-                    const source = scriptSourceEntries[sourceIndex]!;
-                    pushWitness(
-                      "scriptSources",
-                      discoveryWitnessCbor(11, discovery),
-                      {
-                        kind: "scriptSourceScan",
-                        sourceIndex,
-                        originKind: source.originKind,
-                        sourceKey: source.sourceKey,
-                        scriptLanguageTag: source.scriptLanguageTag,
-                        scriptHash: source.scriptHash,
-                        scriptTotalLength: source.scriptTotalLength,
-                        scriptItemCommitment: source.scriptItemCommitment,
-                        siblings: sourceMembership(sourceIndex).siblings,
-                      },
-                    );
-                    if (
-                      source.originKind === "inline" &&
-                      (discovery.usedInlineBitmap &
-                        (1n << BigInt(sourceIndex))) ===
-                        0n
-                    ) {
                       if (
                         rejection === null ||
                         terminalPhase !== "scriptSources" ||
-                        rejection.code !== RejectCodes.InvalidFieldType
+                        rejection.code !== RejectCodes.MissingRequiredWitness
                       ) {
                         return yield* Effect.fail(
                           new Error(
-                            "V1 source audit found an extraneous inline script that disagrees with validation",
+                            "V1 redeemer scan reached an exact missing-redeemer rejection that disagrees with validation",
                           ),
                         );
                       }
                       stoppedAtRejection = true;
                       break;
                     }
-                    discovery = {
-                      ...discovery,
-                      sourceCursor: sourceIndex + 1,
-                    };
                   }
-                }
 
-                if (!stoppedAtRejection) {
-                  pushWitness(
-                    "scriptSources",
-                    discoveryWitnessCbor(11, discovery),
-                  );
-                  discovery = {
-                    ...discovery,
-                    redeemerCursor: 0,
-                  };
-                  for (
-                    let redeemerIndex = 0;
-                    redeemerIndex < decodedProofRedeemers.length;
-                    redeemerIndex += 1
-                  ) {
-                    const item =
-                      redeemerWitnessesCollection.items[redeemerIndex]!;
-                    const itemTrace = buildMidgardRedeemerItemProofTrace({
-                      itemIndex: redeemerIndex,
-                      itemCount: decodedProofRedeemers.length,
-                      itemBytes: item.bytes,
-                      mode: MidgardRedeemerItemProofModes.Descriptor,
-                    });
+                  if (!stoppedAtRejection) {
                     pushWitness(
                       "scriptSources",
-                      discoveryWitnessCbor(12, discovery),
-                      {
-                        kind: "redeemerScanBegin",
-                        itemIndex: redeemerIndex,
-                        itemCount: decodedProofRedeemers.length,
-                        totalLength: item.bytes.length,
-                        itemCommitment: item.commitment,
-                        siblings: redeemerMembership(redeemerIndex).siblings,
-                      },
+                      discoveryWitnessCbor(8, discovery),
+                    );
+                    discovery = resetCurrent({
+                      ...discovery,
+                      sourceCursor: 0,
+                    });
+                    for (
+                      let sourceIndex = 0;
+                      sourceIndex < scriptSourceEntries.length;
+                      sourceIndex += 1
+                    ) {
+                      const source = scriptSourceEntries[sourceIndex]!;
+                      pushWitness(
+                        "scriptSources",
+                        discoveryWitnessCbor(11, discovery),
+                        {
+                          kind: "scriptSourceScan",
+                          sourceIndex,
+                          originKind: source.originKind,
+                          sourceKey: source.sourceKey,
+                          scriptLanguageTag: source.scriptLanguageTag,
+                          scriptHash: source.scriptHash,
+                          scriptTotalLength: source.scriptTotalLength,
+                          scriptItemCommitment: source.scriptItemCommitment,
+                          siblings: sourceMembership(sourceIndex).siblings,
+                        },
+                      );
+                      if (
+                        source.originKind === "inline" &&
+                        (discovery.usedInlineBitmap &
+                          (1n << BigInt(sourceIndex))) ===
+                          0n
+                      ) {
+                        if (
+                          rejection === null ||
+                          terminalPhase !== "scriptSources" ||
+                          rejection.code !== RejectCodes.InvalidFieldType
+                        ) {
+                          return yield* Effect.fail(
+                            new Error(
+                              "V1 source audit found an extraneous inline script that disagrees with validation",
+                            ),
+                          );
+                        }
+                        stoppedAtRejection = true;
+                        break;
+                      }
+                      discovery = {
+                        ...discovery,
+                        sourceCursor: sourceIndex + 1,
+                      };
+                    }
+                  }
+
+                  if (!stoppedAtRejection) {
+                    pushWitness(
+                      "scriptSources",
+                      discoveryWitnessCbor(11, discovery),
                     );
                     discovery = {
                       ...discovery,
-                      redeemerItemControlHash:
-                        hashMidgardRedeemerItemProofControl(itemTrace.initial),
+                      redeemerCursor: 0,
                     };
-                    for (const itemStep of itemTrace.steps) {
+                    for (
+                      let redeemerIndex = 0;
+                      redeemerIndex < decodedProofRedeemers.length;
+                      redeemerIndex += 1
+                    ) {
+                      const item =
+                        redeemerWitnessesCollection.items[redeemerIndex]!;
+                      const itemTrace = buildMidgardRedeemerItemProofTrace({
+                        itemIndex: redeemerIndex,
+                        itemCount: decodedProofRedeemers.length,
+                        itemBytes: item.bytes,
+                        mode: MidgardRedeemerItemProofModes.Descriptor,
+                      });
                       pushWitness(
                         "scriptSources",
                         discoveryWitnessCbor(12, discovery),
                         {
-                          kind: "redeemerItemStep",
-                          redeemerControl: null,
-                          control: itemStep.control,
-                          witness: itemStep.witness,
+                          kind: "redeemerScanBegin",
+                          itemIndex: redeemerIndex,
+                          itemCount: decodedProofRedeemers.length,
+                          totalLength: item.bytes.length,
+                          itemCommitment: item.commitment,
+                          siblings: redeemerMembership(redeemerIndex).siblings,
                         },
                       );
-                      if (
-                        itemStep.next.stage !==
-                        MidgardRedeemerItemProofStages.Terminal
-                      ) {
-                        discovery = {
-                          ...discovery,
-                          redeemerItemControlHash:
-                            hashMidgardRedeemerItemProofControl(itemStep.next),
-                        };
-                      }
-                    }
-                    if (
-                      (discovery.usedRedeemerBitmap &
-                        (1n << BigInt(redeemerIndex))) ===
-                      0n
-                    ) {
-                      if (
-                        rejection === null ||
-                        terminalPhase !== "scriptSources" ||
-                        rejection.code !== RejectCodes.InvalidFieldType
-                      ) {
-                        return yield* Effect.fail(
-                          new Error(
-                            "V1 redeemer audit found an extraneous redeemer that disagrees with validation",
+                      discovery = {
+                        ...discovery,
+                        redeemerItemControlHash:
+                          hashMidgardRedeemerItemProofControl(
+                            itemTrace.initial,
                           ),
+                      };
+                      for (const itemStep of itemTrace.steps) {
+                        pushWitness(
+                          "scriptSources",
+                          discoveryWitnessCbor(12, discovery),
+                          {
+                            kind: "redeemerItemStep",
+                            redeemerControl: null,
+                            control: itemStep.control,
+                            witness: itemStep.witness,
+                          },
                         );
+                        if (
+                          itemStep.next.stage !==
+                          MidgardRedeemerItemProofStages.Terminal
+                        ) {
+                          discovery = {
+                            ...discovery,
+                            redeemerItemControlHash:
+                              hashMidgardRedeemerItemProofControl(
+                                itemStep.next,
+                              ),
+                          };
+                        }
                       }
-                      stoppedAtRejection = true;
-                      break;
+                      if (
+                        (discovery.usedRedeemerBitmap &
+                          (1n << BigInt(redeemerIndex))) ===
+                        0n
+                      ) {
+                        if (
+                          rejection === null ||
+                          terminalPhase !== "scriptSources" ||
+                          rejection.code !== RejectCodes.InvalidFieldType
+                        ) {
+                          return yield* Effect.fail(
+                            new Error(
+                              "V1 redeemer audit found an extraneous redeemer that disagrees with validation",
+                            ),
+                          );
+                        }
+                        stoppedAtRejection = true;
+                        break;
+                      }
+                      discovery = {
+                        ...discovery,
+                        redeemerCursor: redeemerIndex + 1,
+                        redeemerItemControlHash: Buffer.alloc(0),
+                      };
                     }
-                    discovery = {
-                      ...discovery,
-                      redeemerCursor: redeemerIndex + 1,
-                      redeemerItemControlHash: Buffer.alloc(0),
-                    };
                   }
-                }
 
-                if (!stoppedAtRejection) {
-                  const nativeScriptBaseFields: unknown[] = [
-                    proofSource.compactCbor,
-                    proofSource.witnessSetCompactCbor,
-                    proofSource.fieldPreimageLengthsCbor,
-                    contextCbor,
-                    BigInt(scriptSourceControl.resolvedInputCount),
-                    scriptSourceControl.resolvedInputsAccumulator,
-                    BigInt(replaySpendIndex),
-                    encodeFrontierPeaks(resolvedItemFrontier),
-                    BigInt(signerFrontier.count),
-                    signerFrontierCommitment,
-                    BigInt(replaySourceFrontier.count),
-                    encodeFrontierPeaks(replaySourceFrontier),
-                    BigInt(redeemerFrontier.count),
-                    encodeFrontierPeaks(redeemerFrontier),
-                    BigInt(allPurposeFrontier.count),
-                    encodeFrontierPeaks(allPurposeFrontier),
-                    BigInt(outputFrontier.count),
-                    encodeFrontierPeaks(outputFrontier),
-                    encodeFrontierPeaks(outputDescriptorFrontier),
-                    BigInt(mintFoldControl.assetFrontier.count),
-                    encodeFrontierPeaks(mintFoldControl.assetFrontier),
-                    BigInt(discovery.executionFrontier.count),
-                    encodeFrontierPeaks(discovery.executionFrontier),
-                  ];
-                  const nativeScriptFields: unknown[] = [
-                    ...nativeScriptBaseFields,
-                    0n,
-                    0n,
-                    resolutionScheduleHash,
-                  ];
-                  authenticatedNativeScriptsBaseFields = nativeScriptBaseFields;
-                  authenticatedNativeScriptsWitnessCbor =
-                    encodeCbor(nativeScriptFields);
-                  pushWitness(
-                    "scriptSources",
-                    discoveryWitnessCbor(12, discovery),
-                  );
-                  if (rejection !== null && terminalPhase === "scriptSources") {
-                    return yield* Effect.fail(
-                      new Error(
-                        "V1 validation reports a ScriptSources rejection but all exact discovery and audit instructions accepted",
-                      ),
+                  if (!stoppedAtRejection) {
+                    const nativeScriptBaseFields: unknown[] = [
+                      proofSource.compactCbor,
+                      proofSource.witnessSetCompactCbor,
+                      proofSource.fieldPreimageLengthsCbor,
+                      contextCbor,
+                      BigInt(scriptSourceControl.resolvedInputCount),
+                      scriptSourceControl.resolvedInputsAccumulator,
+                      BigInt(replaySpendIndex),
+                      encodeFrontierPeaks(resolvedItemFrontier),
+                      BigInt(signerFrontier.count),
+                      signerFrontierCommitment,
+                      BigInt(replaySourceFrontier.count),
+                      encodeFrontierPeaks(replaySourceFrontier),
+                      BigInt(redeemerFrontier.count),
+                      encodeFrontierPeaks(redeemerFrontier),
+                      BigInt(allPurposeFrontier.count),
+                      encodeFrontierPeaks(allPurposeFrontier),
+                      BigInt(outputFrontier.count),
+                      encodeFrontierPeaks(outputFrontier),
+                      encodeFrontierPeaks(outputDescriptorFrontier),
+                      BigInt(mintFoldControl.assetFrontier.count),
+                      encodeFrontierPeaks(mintFoldControl.assetFrontier),
+                      BigInt(discovery.executionFrontier.count),
+                      encodeFrontierPeaks(discovery.executionFrontier),
+                    ];
+                    const nativeScriptFields: unknown[] = [
+                      ...nativeScriptBaseFields,
+                      0n,
+                      0n,
+                      resolutionScheduleHash,
+                    ];
+                    authenticatedNativeScriptsBaseFields =
+                      nativeScriptBaseFields;
+                    authenticatedNativeScriptsWitnessCbor =
+                      encodeCbor(nativeScriptFields);
+                    pushWitness(
+                      "scriptSources",
+                      discoveryWitnessCbor(12, discovery),
                     );
+                    if (
+                      rejection !== null &&
+                      terminalPhase === "scriptSources"
+                    ) {
+                      return yield* Effect.fail(
+                        new Error(
+                          "V1 validation reports a ScriptSources rejection but all exact discovery and audit instructions accepted",
+                        ),
+                      );
+                    }
                   }
                 }
               }

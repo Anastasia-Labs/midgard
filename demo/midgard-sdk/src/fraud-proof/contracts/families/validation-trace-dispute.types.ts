@@ -15,6 +15,7 @@ import { type SharedRedeemerItemStages } from "./shared-redeemer-item.js";
 export type ValidationTraceDisputeFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
   readonly validationTraceDispute: FraudProofChain & {
     readonly cekProgramMaterial: SpendingValidator;
     readonly cekMaterialTraversal: SpendingValidator;
@@ -44,6 +45,7 @@ export type ValidationTraceDisputeFaultProofContracts = {
       readonly finalizeFrameExecutor: SpendingValidator;
       readonly settlement: SpendingValidator;
     };
+    readonly canonicalDecodePrepare: SpendingValidator;
     readonly prepareResolvers: readonly [
       SpendingValidator,
       SpendingValidator,

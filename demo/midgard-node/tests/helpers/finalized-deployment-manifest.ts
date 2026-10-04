@@ -6,6 +6,7 @@ import {
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
+  type MidgardValidators,
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   type ReferenceScriptAuthPolicyDeploymentInfo,
 } from "@al-ft/midgard-sdk";
@@ -66,14 +67,25 @@ const IDENTITY: DeploymentManifestIdentityContext = {
   artifacts: { blueprintHash: "55".repeat(32) },
 };
 
-export const makeFinalizedDeploymentManifestFixture =
-  async (): Promise<DeploymentManifest> => {
-    const contracts = await loadRealMidgardContractsForTest({
-      txHash: "ab".repeat(32),
-      outputIndex: 0,
-    });
-    const nativeScriptCbor = "820500";
-    const referenceScriptAuthPolicy: ReferenceScriptAuthPolicyDeploymentInfo = {
+export const makeFinalizedDeploymentManifestFixture = async (
+  options: {
+    readonly contracts?: MidgardValidators;
+    readonly authPolicy?: ReferenceScriptAuthPolicyDeploymentInfo;
+    readonly outRefs?: ReadonlyMap<
+      string,
+      { readonly txHash: string; readonly outputIndex: number }
+    >;
+    readonly blueprintHash?: string;
+    readonly nonce?: { readonly txHash: string; readonly outputIndex: number };
+    readonly deployAddress?: string;
+  } = {},
+): Promise<DeploymentManifest> => {
+  const nonce = options.nonce ?? { txHash: "ab".repeat(32), outputIndex: 0 };
+  const contracts =
+    options.contracts ?? (await loadRealMidgardContractsForTest(nonce));
+  const nativeScriptCbor = "820500";
+  const referenceScriptAuthPolicy: ReferenceScriptAuthPolicyDeploymentInfo =
+    options.authPolicy ?? {
       policyId: validatorToScriptHash({
         type: "Native",
         script: nativeScriptCbor,
@@ -88,7 +100,9 @@ export const makeFinalizedDeploymentManifestFixture =
       tokenNames: REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
       postTimelockAudit: { required: true, rule: "test fixture" },
     };
-    const referenceScriptOutRefs = new Map(
+  const referenceScriptOutRefs =
+    options.outRefs ??
+    new Map(
       Object.values(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
         (contractName, index) => [
           contractName,
@@ -99,31 +113,36 @@ export const makeFinalizedDeploymentManifestFixture =
         ],
       ),
     );
-    const catalogue = await Effect.runPromise(
-      buildFraudProofCatalogueDeploymentInfo(
-        fraudProofsToIndexedValidators(contracts.fraudProofs),
+  const catalogue = await Effect.runPromise(
+    buildFraudProofCatalogueDeploymentInfo(
+      fraudProofsToIndexedValidators(contracts.fraudProofs),
+    ),
+  );
+  return parseDeploymentManifestValue(
+    buildDeploymentManifest(
+      buildContractDeploymentInfoFromContracts(
+        contracts,
+        referenceScriptAuthPolicy,
+        referenceScriptOutRefs,
+        catalogue,
       ),
-    );
-    return parseDeploymentManifestValue(
-      buildDeploymentManifest(
-        buildContractDeploymentInfoFromContracts(
-          contracts,
-          referenceScriptAuthPolicy,
-          referenceScriptOutRefs,
-          catalogue,
-        ),
-        {
-          network: "Preprod",
-          ...IDENTITY,
-          referenceScriptDeployAddress: "addr_test1reference",
-          hubOracleOneShotTxHash: "ab".repeat(32),
-          hubOracleOneShotOutputIndex: 0,
-          hubOracleOneShotStatus: "consumed_by_init",
-          steps: {
-            initProtocol: { status: "complete" },
-            availabilityRegistration: { status: "complete" },
-          },
+      {
+        network: "Preprod",
+        ...IDENTITY,
+        artifacts: {
+          blueprintHash:
+            options.blueprintHash ?? IDENTITY.artifacts.blueprintHash,
         },
-      ),
-    );
-  };
+        referenceScriptDeployAddress:
+          options.deployAddress ?? "addr_test1reference",
+        hubOracleOneShotTxHash: nonce.txHash,
+        hubOracleOneShotOutputIndex: nonce.outputIndex,
+        hubOracleOneShotStatus: "consumed_by_init",
+        steps: {
+          initProtocol: { status: "complete" },
+          availabilityRegistration: { status: "complete" },
+        },
+      },
+    ),
+  );
+};

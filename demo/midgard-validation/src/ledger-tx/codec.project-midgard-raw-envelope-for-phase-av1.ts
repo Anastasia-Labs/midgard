@@ -94,6 +94,7 @@ const projectRawScriptWitnesses = (
 
 const validateRawProjectionNonScriptFields = (
   canonical: MidgardRawEnvelopePhaseAProjection["canonical"],
+  sourceKind: "normal" | "forced",
 ): void => {
   decodeOutRefList(
     canonical.body.spendInputsPreimageCbor,
@@ -111,7 +112,10 @@ const validateRawProjectionNonScriptFields = (
   );
   decodeMint(canonical.body.mintPreimageCbor);
   decodeVKeyWitnesses(canonical.witnessSet.addrTxWitsPreimageCbor);
-  decodeRedeemers(canonical.witnessSet.redeemerTxWitsPreimageCbor);
+  decodeRedeemers(
+    canonical.witnessSet.redeemerTxWitsPreimageCbor,
+    sourceKind === "normal",
+  );
 };
 
 /**
@@ -129,7 +133,7 @@ export const projectMidgardRawEnvelopeForPhaseAV1 = (
       : deriveMidgardNativeTxFaultEvidenceMaterial
   )(txCbor);
   try {
-    validateRawProjectionNonScriptFields(material.canonical);
+    validateRawProjectionNonScriptFields(material.canonical, sourceKind);
     const scriptWitnesses = projectRawScriptWitnesses(
       material.canonical.witnessSet.scriptTxWitsPreimageCbor,
     );
@@ -179,6 +183,7 @@ export const projectMidgardRawEnvelopeForPhaseAV1 = (
     );
     const redeemers = decodeRedeemers(
       material.canonical.witnessSet.redeemerTxWitsPreimageCbor,
+      sourceKind === "normal",
     );
     const ledgerTx: MidgardRawEnvelopePhaseAProjection["ledgerTx"] = {
       txId: Buffer.from(material.transactionId) as MidgardTxId,

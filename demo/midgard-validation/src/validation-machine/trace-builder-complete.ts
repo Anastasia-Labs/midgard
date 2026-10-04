@@ -2,7 +2,6 @@
  * buildDeterministicValidationMachineTrace: the phase-by-phase construction of the deterministic
  * validation-machine trace for one transaction.
  */
-
 import {
   appendMidgardValidationMerkleLeaf,
   buildMidgardBoundedItemChunkProof,
@@ -62,7 +61,6 @@ import {
   summarizeMidgardCekLucidData,
   validateMidgardCekObserverCollection,
 } from "../cek-context.js";
-import { executeMidgardCekStructuralProgram } from "../cek-executor.js";
 import {
   cardanoScriptPurposeData,
   type DecodedMidgardRedeemer,
@@ -104,6 +102,7 @@ import {
 import { redeemerTagForPurposeKind } from "./redeemer-purpose.js";
 import { encodeValidationTerminalWitnessCbor } from "./terminal-witness.js";
 import type { prepareValidationTrace } from "./trace-builder-prepare.js";
+import { ValidationTraceStopped } from "./trace-builder-stop.js";
 import type {
   PhaseANativeScriptsScanControl,
   ScriptExecutionProofEntry,
@@ -859,18 +858,12 @@ export const completeValidationTrace = (
               );
             }
             const selected = selectedRedeemer(executionEntry);
-            const exactExecution = executeMidgardCekStructuralProgram({
-              root: evaluation.graph.root,
-              material: evaluation.graph.material.values(),
-              constantWitnesses: evaluation.graph.constantWitnesses,
-              executionIndex: BigInt(executionIndex),
-              maxSteps:
-                input.consensusProfile.limits.maxValidationMachineStepCount,
-              executionBudget: {
-                cpu: selected.value.exUnits.steps,
-                memory: selected.value.exUnits.memory,
-              },
-            });
+            const exactExecution = evaluation.execution;
+            if (exactExecution === null) {
+              throw new Error(
+                "CEK trace is missing the evaluator's captured execution",
+              );
+            }
             const programEnvelope = decodeMidgardCekProgramEnvelope(
               executionEntry.source.script.scriptBytes,
             );
@@ -1881,7 +1874,9 @@ export const completeValidationTrace = (
                   terminalPhase !== "cek" ||
                   rejection.code !== RejectCodes.PlutusScriptInvalid
                 ) {
-                  throw new Error(
+                  throw new ValidationTraceStopped(
+                    "disagreement",
+                    input,
                     "CEK failure transition disagrees with validation",
                   );
                 }
@@ -1894,7 +1889,9 @@ export const completeValidationTrace = (
               exactExecution.terminalState.mode !== "haltSuccess" ||
               evaluation.result.kind !== "accepted"
             ) {
-              throw new Error(
+              throw new ValidationTraceStopped(
+                "disagreement",
+                input,
                 "CEK successful trace disagrees with local validation",
               );
             }

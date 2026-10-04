@@ -1,25 +1,9 @@
 /**
- * Emulator lifecycles for the shared ledger-output-proof semantic family:
- * the ResolveInputs membership step/finalize pair (resolver 7, semantics 3/4)
- * and the ScriptSources output-proof step/finalize pair (resolver 8,
- * semantics 2/3), each resolved through the shared LOP yield conjunction
- * (stage yield plus scalar attestation yields on the step path, the attach
- * group's descriptor yields on the finalize path).
- *
- * The monolithic five-execution finalize was restructured into three
- * descriptor fact-attach steps and a thin terminal: each finalize-shaped
- * machine step attaches one fact group (`[[2, 3], [1], [0]]` — datum+value
- * summaries, then reference script, then scan facts) with only that group's
- * descriptor yields in the transaction. Every fact is derived from the
- * terminal control alone, so each attach step has one successor, and the
- * terminal carries no descriptor yields at all — `facts_are_exact` (the
- * recorded scan fact commits exactly the redeemer's descriptor) is its only
- * gate. Likewise the per-step span yield was replaced by a single
- * span-attach step (stage role 23) whose window is derived from the span the
- * consuming stage demands, admitted only while the recorded window fails to
- * cover it; every later consumer binds its redeemer bytes to that window. Every
- * positive path below is asserted under the 13,200,000-memory /
- * 8,000,000,000-step basis the fit ledger enforces.
+ * Applied emulator paths for ResolveInputs and ScriptSources LOP step/finalize.
+ * Descriptor facts are attached in groups [[2, 3], [1], [0]], then finalized
+ * without descriptor yields. A span-attach step pins the consumer-derived
+ * window; subsequent readers authenticate against that window. Positive paths
+ * enforce the 13,200,000-memory / 8,000,000,000-step fit basis.
  */
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
 import { Constr, Data } from "@lucid-evolution/lucid";

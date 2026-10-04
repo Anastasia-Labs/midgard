@@ -56,6 +56,7 @@ export type RejectSubject =
       readonly purposeKind: bigint;
       readonly purposeIndex: bigint;
     }
+  | { readonly arm: "RedeemerMalformed"; readonly index: bigint }
   | { readonly arm: "UnusedRedeemer"; readonly index: bigint }
   | { readonly arm: "UnusedScriptWitness"; readonly index: bigint }
   | { readonly arm: "ScriptIntegrityHashMismatch" }

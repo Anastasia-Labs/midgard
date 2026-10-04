@@ -20,5 +20,4 @@ export {
   createFieldPreimageLengthLucidSubmission,
   fieldPreimageLengthConfigFromBinding,
   loadManifestBoundFieldPreimageLengthConfig,
-  runManifestBoundFieldPreimageLengthWorkflow,
 } from "./config.load-manifest-bound-field-preimage-length-config.js";

@@ -226,7 +226,6 @@ describe("receivePurposeLanguage real lifecycle", () => {
       artifact.authentication,
     );
     await h.cancel(seamThread.result.nextThreadOutRef, 1);
-
     progress("actuator lifecycle");
     const deploymentInfo = await h.removalDeployment();
     const actuator = createReceivePurposeLanguageActuator({
@@ -317,6 +316,7 @@ describe("receivePurposeLanguage real lifecycle", () => {
       "accepted-remove",
       {
         stage: "remove",
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
         nextRemovalOutRef: setup.fraudulentBlockOutRef,
         fraudProofOutRef: s3.next,
       },

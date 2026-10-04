@@ -334,3 +334,128 @@ test descriptor_narrow_header_equals_generic(
     redeemer_item_proof_v1.descriptor_step_v1(initial, True, proof, None) == None,
   }
 }
+
+fn authenticated_data_head(
+  item: ByteArray,
+) -> redeemer_item_proof_v1.RedeemerItemProofControlV1 {
+  let proof = singleton_chunk_proof(item, 0)
+  let initial = redeemer_item_proof_v1.initial_control_v1(
+    redeemer_item_proof_v1.mode_data,
+    0,
+    1,
+    bytearray.length(item),
+    bounded_item_v1.from_bytes(8, 0, item),
+    -1,
+    -1,
+  )
+  expect
+      Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: tail })
+    = redeemer_item_proof_v1.step_v1(
+    initial,
+    source_witness(redeemer_item_proof_v1.RedeemerItemOpenHeader, proof),
+  )
+  expect
+      Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: head })
+    = redeemer_item_proof_v1.step_v1(
+    tail,
+    source_witness(redeemer_item_proof_v1.RedeemerItemOpenTail, proof),
+  )
+  head
+}
+
+test data_head_refusal_authenticates_noncanonical_constructor_and_refuses_bad_views() {
+  let item = #"84000044d8798101820a14"
+  let head = authenticated_data_head(item)
+  let proof = singleton_chunk_proof(item, 0)
+  let witness = source_witness(
+    redeemer_item_proof_v1.RedeemerItemTraverseData {
+      action: cek_data_traverse_v1.NoAction,
+    },
+    proof,
+  )
+  expect Some(traversal) = head.traversal
+  and {
+    redeemer_item_proof_v1.step_v1(head, witness) == Some(
+      redeemer_item_proof_v1.RedeemerItemProofInvalid,
+    ),
+    cek_data_traverse_v1.noncanonical_definite_sequence_head_v1(
+      traversal,
+      Some(#"d8798101"),
+    ),
+    !cek_data_traverse_v1.noncanonical_definite_sequence_head_v1(
+      traversal,
+      Some(#"d87981"),
+    ),
+    !cek_data_traverse_v1.noncanonical_definite_sequence_head_v1(
+      traversal,
+      Some(#"d879810182"),
+    ),
+    redeemer_item_proof_v1.step_v1(
+      head,
+      redeemer_item_proof_v1.RedeemerItemProofWitnessV1 {
+        ..witness,
+        chunk_proof: None,
+      },
+    ) == None,
+    redeemer_item_proof_v1.step_v1(
+      head,
+      redeemer_item_proof_v1.RedeemerItemProofWitnessV1 {
+        ..witness,
+        chunk_proof: Some(singleton_chunk_proof(#"84000044d8799f01820a14", 0)),
+      },
+    ) == None,
+    redeemer_item_proof_v1.step_v1(
+      head,
+      source_witness(
+        redeemer_item_proof_v1.RedeemerItemTraverseData {
+          action: cek_data_traverse_v1.HeadScalar,
+        },
+        proof,
+      ),
+    ) == None,
+  }
+}
+
+test data_head_refusal_cannot_reject_honest_constructor_under_wrong_action_or_view() {
+  let item = #"84000045d8799f01ff820a14"
+  let head = authenticated_data_head(item)
+  let proof = singleton_chunk_proof(item, 0)
+  expect Some(traversal) = head.traversal
+  expect Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { .. }) = redeemer_item_proof_v1.step_v1(
+    head,
+    source_witness(
+      redeemer_item_proof_v1.RedeemerItemTraverseData {
+        action: cek_data_traverse_v1.HeadSequence,
+      },
+      proof,
+    ),
+  )
+  and {
+    !cek_data_traverse_v1.noncanonical_definite_sequence_head_v1(
+      traversal,
+      Some(#"d8799f01ff"),
+    ),
+    !cek_data_traverse_v1.noncanonical_definite_sequence_head_v1(
+      traversal,
+      Some(#"d87981"),
+    ),
+    redeemer_item_proof_v1.step_v1(
+      head,
+      source_witness(
+        redeemer_item_proof_v1.RedeemerItemTraverseData {
+          action: cek_data_traverse_v1.NoAction,
+        },
+        proof,
+      ),
+    ) == None,
+    redeemer_item_proof_v1.step_v1(
+      head,
+      source_witness(
+        redeemer_item_proof_v1.RedeemerItemTraverseData {
+          action: cek_data_traverse_v1.HeadScalar,
+        },
+        proof,
+      ),
+    ) == None,
+  }
+}

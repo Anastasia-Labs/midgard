@@ -7,14 +7,13 @@ import {
   type Proof,
   ProofSchema,
 } from "../common.js";
+import { type EventKey, EventKeySchema } from "../ledger-state.js";
 import {
-  type DepositSourceMembershipProof,
   DepositSourceMembershipProofSchema,
   type EventToStepMembershipProof,
   EventToStepMembershipProofSchema,
   type EventToStepNonMembershipProof,
   EventToStepNonMembershipProofSchema,
-  type ForcedTransactionSourceMembershipProof,
   ForcedTransactionSourceMembershipProofSchema,
   type IndexedTraceProof,
   type RawRootMembershipProof,
@@ -24,7 +23,6 @@ import {
   type RootNonMembershipProof,
   rootNonMembershipProofSchema,
   TransitionTraceMembershipProofSchema,
-  type WithdrawalSourceMembershipProof,
   WithdrawalSourceMembershipProofSchema,
 } from "../transition-trace.js";
 
@@ -92,55 +90,69 @@ export const DepositSourceNonMembershipProof =
     DepositSourceNonMembershipProofSchema,
   );
 
-export const TransitionSourceMembershipProofSchema = Data.Enum([
+export const SourceKeyOpeningSchema = Data.Enum([
   Data.Object({
-    WithdrawalSourceMembership: Data.Object({
-      membership: WithdrawalSourceMembershipProofSchema,
+    WithdrawalKeyOpening: Data.Object({
+      withdrawal_id: OutputReferenceSchema,
+      value_hash: Data.Bytes(),
+      phas_root: Data.Bytes(),
+      proof: ProofSchema,
     }),
   }),
   Data.Object({
-    ForcedTransactionSourceMembership: Data.Object({
-      membership: ForcedTransactionSourceMembershipProofSchema,
+    ForcedKeyOpening: Data.Object({
+      tx_order_id: OutputReferenceSchema,
+      value_hash: Data.Bytes(),
+      phas_root: Data.Bytes(),
+      proof: ProofSchema,
     }),
   }),
   Data.Object({
-    L2TransactionSourceMembership: Data.Object({
-      membership: L2TransactionSourceMembershipProofSchema,
+    L2KeyOpening: Data.Object({
+      tx_id: Data.Bytes(),
+      value_hash: Data.Bytes(),
+      phas_root: Data.Bytes(),
+      proof: ProofSchema,
     }),
   }),
   Data.Object({
-    DepositSourceMembership: Data.Object({
-      membership: DepositSourceMembershipProofSchema,
+    DepositKeyOpening: Data.Object({
+      deposit_id: OutputReferenceSchema,
+      value_hash: Data.Bytes(),
+      phas_root: Data.Bytes(),
+      proof: ProofSchema,
     }),
   }),
 ]);
-
-export type TransitionSourceMembershipProof =
+export type SourceKeyOpeningFields = {
+  readonly value_hash: string;
+  readonly phas_root: string;
+  readonly proof: Proof;
+};
+export type SourceKeyOpening =
   | {
-      readonly WithdrawalSourceMembership: {
-        readonly membership: WithdrawalSourceMembershipProof;
+      readonly WithdrawalKeyOpening: SourceKeyOpeningFields & {
+        readonly withdrawal_id: OutputReference;
       };
     }
   | {
-      readonly ForcedTransactionSourceMembership: {
-        readonly membership: ForcedTransactionSourceMembershipProof;
+      readonly ForcedKeyOpening: SourceKeyOpeningFields & {
+        readonly tx_order_id: OutputReference;
       };
     }
   | {
-      readonly L2TransactionSourceMembership: {
-        readonly membership: L2TransactionSourceMembershipProof;
+      readonly L2KeyOpening: SourceKeyOpeningFields & {
+        readonly tx_id: string;
       };
     }
   | {
-      readonly DepositSourceMembership: {
-        readonly membership: DepositSourceMembershipProof;
+      readonly DepositKeyOpening: SourceKeyOpeningFields & {
+        readonly deposit_id: OutputReference;
       };
     };
-
-export const TransitionSourceMembershipProof =
-  asDataType<TransitionSourceMembershipProof>(
-    TransitionSourceMembershipProofSchema,
-  );
+export const SourceKeyOpening = asDataType<SourceKeyOpening>(
+  SourceKeyOpeningSchema,
+);
 
 export const TransitionSourceNonMembershipProofSchema = Data.Enum([
   Data.Object({
@@ -202,14 +214,39 @@ export const SourceMembershipMismatchWitnessSchema = Data.Enum([
   }),
   Data.Object({
     SourceEventMissingTrace: Data.Object({
-      source_membership: TransitionSourceMembershipProofSchema,
+      source_membership: SourceKeyOpeningSchema,
       event_to_step_non_membership: EventToStepNonMembershipProofSchema,
     }),
   }),
   Data.Object({
     SourcePhaseMismatch: Data.Object({
       trace_proof: TransitionTraceMembershipProofSchema,
-      source_membership: TransitionSourceMembershipProofSchema,
+      source_membership: SourceKeyOpeningSchema,
+    }),
+  }),
+  Data.Object({
+    SourceEventMissingValidationRun: Data.Object({
+      source: SourceKeyOpeningSchema,
+      run_phas_root: Data.Bytes(),
+      run_absence_proof: ProofSchema,
+    }),
+  }),
+  Data.Object({
+    ForeignValidationRun: Data.Object({
+      event_key: Data.Bytes(),
+      value_hash: Data.Bytes(),
+      run_phas_root: Data.Bytes(),
+      run_proof: ProofSchema,
+      source_phas_root: Data.Bytes(),
+      source_absence_proof: ProofSchema,
+    }),
+  }),
+  Data.Object({
+    MalformedValidationRun: Data.Object({
+      event_key: EventKeySchema,
+      value: Data.Bytes(),
+      run_phas_root: Data.Bytes(),
+      run_proof: ProofSchema,
     }),
   }),
 ]);
@@ -224,14 +261,39 @@ export type SourceMembershipMismatchWitness =
     }
   | {
       readonly SourceEventMissingTrace: {
-        readonly source_membership: TransitionSourceMembershipProof;
+        readonly source_membership: SourceKeyOpening;
         readonly event_to_step_non_membership: EventToStepNonMembershipProof;
       };
     }
   | {
       readonly SourcePhaseMismatch: {
         readonly trace_proof: IndexedTraceProof;
-        readonly source_membership: TransitionSourceMembershipProof;
+        readonly source_membership: SourceKeyOpening;
+      };
+    }
+  | {
+      readonly SourceEventMissingValidationRun: {
+        readonly source: SourceKeyOpening;
+        readonly run_phas_root: string;
+        readonly run_absence_proof: Proof;
+      };
+    }
+  | {
+      readonly ForeignValidationRun: {
+        readonly event_key: string;
+        readonly value_hash: string;
+        readonly run_phas_root: string;
+        readonly run_proof: Proof;
+        readonly source_phas_root: string;
+        readonly source_absence_proof: Proof;
+      };
+    }
+  | {
+      readonly MalformedValidationRun: {
+        readonly event_key: EventKey;
+        readonly value: string;
+        readonly run_phas_root: string;
+        readonly run_proof: Proof;
       };
     };
 

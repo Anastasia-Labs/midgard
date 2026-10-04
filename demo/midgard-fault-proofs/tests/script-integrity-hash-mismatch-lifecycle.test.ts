@@ -22,7 +22,7 @@ import {
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   MidgardRedeemerTag,
-  validationAuxiliaryWitnessData,
+  retainedValidationAuxiliaryWitnessData as retainedAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -417,9 +417,9 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
         [{ key: eventKeyCbor, value: descriptorCbor }],
       );
       const auxiliary = Data.from(
-        Data.to(validationAuxiliaryWitnessData(witness.auxiliary) as never),
-        SDK.ValidationAuxiliaryWitnessSchema,
-      ) as unknown as SDK.ValidationAuxiliaryWitness;
+        Data.to(retainedAuxiliaryWitnessData(witness.auxiliary) as never),
+        SDK.RetainedValidationAuxiliaryWitnessSchema,
+      ) as unknown as SDK.RetainedValidationAuxiliaryWitness;
       const retained: SDK.RetainedValidationWitness = {
         machine_state: SDK.validationMachineStateDataFromCore(
           trace.states[stateIndex]!,

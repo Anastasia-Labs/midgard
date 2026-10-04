@@ -19,12 +19,12 @@ import {
   hashBlockHeader,
   rejectionCodeOf,
   type RejectionReason,
+  type RetainedValidationAuxiliaryWitness,
+  RetainedValidationAuxiliaryWitnessSchema,
   retainedValidationEndpointCoordinate,
   retainedValidationStateCoordinate,
   ROOT_DOMAINS,
   TransitionStep,
-  type ValidationAuxiliaryWitness,
-  ValidationAuxiliaryWitnessSchema,
   validationMachineStateDataFromCore,
   type ValidationTraceDescriptor,
   ValidationTraceDescriptorSchema,
@@ -33,7 +33,7 @@ import {
 import {
   buildCanonicalMidgardLedgerEntryOutputMaterial,
   type DeterministicValidationMachineTrace,
-  validationAuxiliaryWitnessData,
+  retainedValidationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -113,10 +113,10 @@ export const retainValidationTrace = ({
           endpoint === undefined
             ? Data.from(
                 Data.to<unknown>(
-                  validationAuxiliaryWitnessData(witness.auxiliary),
+                  retainedValidationAuxiliaryWitnessData(witness.auxiliary),
                 ),
-                asDataType<ValidationAuxiliaryWitness>(
-                  ValidationAuxiliaryWitnessSchema,
+                asDataType<RetainedValidationAuxiliaryWitness>(
+                  RetainedValidationAuxiliaryWitnessSchema,
                 ),
               )
             : "NoAuxiliaryWitness",

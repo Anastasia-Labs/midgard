@@ -110,6 +110,7 @@ export const nativeScanCursor = (
 ): {
   readonly stage: number;
   readonly cursor: number;
+  readonly itemLength: number;
 } => {
   const control = asArray(
     lucidDataFromCborIterative(witness.cbor),
@@ -124,7 +125,13 @@ export const nativeScanCursor = (
   const exactCursor = Number(
     asBigInt(control[11], "phase_a_native_control.cursor"),
   );
+  const itemLength = Number(
+    asBigInt(control[9], "phase_a_native_control.item_length"),
+  );
   if (
+    !Number.isSafeInteger(itemLength) ||
+    itemLength < 0 ||
+    exactCursor > itemLength ||
     !Number.isSafeInteger(exactStage) ||
     exactStage < 0 ||
     !Number.isSafeInteger(exactCursor) ||
@@ -132,12 +139,13 @@ export const nativeScanCursor = (
   ) {
     throw new Error("phase-A native control stage or cursor is invalid");
   }
-  return { stage: exactStage, cursor: exactCursor };
+  return { stage: exactStage, cursor: exactCursor, itemLength };
 };
 
 export const nativePayloadChildCount = ({
   witness,
   cursor,
+  itemLength,
   stage,
 }: {
   readonly witness: Extract<
@@ -145,8 +153,11 @@ export const nativePayloadChildCount = ({
     { readonly kind: "nativeScriptToken" }
   >;
   readonly cursor: number;
+  readonly itemLength: number;
   readonly stage: number;
-}): number => {
+}): number | null => {
+  // Aiken returns an empty window here without opening a chunk.
+  if (cursor === itemLength) return null;
   const expectedChunkIndex = Math.floor(
     cursor / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   );
@@ -160,17 +171,23 @@ export const nativePayloadChildCount = ({
     witness.nextChunkProof?.chunk ?? Buffer.alloc(0),
   ]);
   let offset = cursor - expectedChunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES;
-  if (stage === 6) {
-    offset = readCborUnsigned(
+  try {
+    if (stage === 6) {
+      offset = readCborUnsigned(
+        window,
+        offset,
+        "phase_a_native_payload.required",
+      ).nextOffset;
+    }
+    return readCborArrayHeader(
       window,
       offset,
-      "phase_a_native_payload.required",
-    ).nextOffset;
+      "phase_a_native_payload.children",
+    ).length;
+  } catch {
+    // Both container executors authenticate the window and prove the exact
+    // InvalidFieldType successor on malformed payloads. Route to the empty
+    // executor; this selection does not accept or repair the payload bytes.
+    return null;
   }
-  const children = readCborArrayHeader(
-    window,
-    offset,
-    "phase_a_native_payload.children",
-  );
-  return children.length;
 };

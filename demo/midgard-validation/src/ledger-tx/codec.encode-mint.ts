@@ -125,16 +125,19 @@ const encodeMint = (mint: MidgardLedgerMint): Buffer => {
 
 export const decodeRedeemers = (
   preimageCbor: Uint8Array,
+  requireCanonicalData = false,
 ): MidgardLedgerRedeemer[] =>
-  decodeMidgardRedeemers(preimageCbor).map((redeemer) => ({
-    tag: redeemer.tag,
-    index: redeemer.index,
-    dataCbor: Buffer.from(redeemer.dataCborHex, "hex"),
-    exUnits: {
-      memory: redeemer.exUnits.memory,
-      steps: redeemer.exUnits.steps,
-    },
-  }));
+  decodeMidgardRedeemers(preimageCbor, requireCanonicalData).map(
+    (redeemer) => ({
+      tag: redeemer.tag,
+      index: redeemer.index,
+      dataCbor: Buffer.from(redeemer.dataCborHex, "hex"),
+      exUnits: {
+        memory: redeemer.exUnits.memory,
+        steps: redeemer.exUnits.steps,
+      },
+    }),
+  );
 
 /**
  * §5.1/§5.3: field 8 is the enveloped list of `enc_8` items. Pointer ordering and
@@ -243,6 +246,7 @@ export const toNativeTx = (tx: MidgardLedgerTx): MidgardNativeTxFull => {
 
 const decodeMidgardLedgerTxFromNativeTx = (
   nativeTx: MidgardNativeTxFull | MidgardForcedTxFull,
+  sourceKind: "normal" | "forced",
 ): MidgardLedgerTx => {
   const vkeyWitnesses = decodeVKeyWitnesses(
     nativeTx.witnessSet.addrTxWitsPreimageCbor,
@@ -252,6 +256,7 @@ const decodeMidgardLedgerTxFromNativeTx = (
   );
   const redeemers = decodeRedeemers(
     nativeTx.witnessSet.redeemerTxWitsPreimageCbor,
+    sourceKind === "normal",
   );
   const tx: MidgardLedgerTx = {
     txId: computeMidgardNativeTxId(nativeTx.compact) as MidgardTxId,
@@ -307,7 +312,7 @@ const envelopeFromNativeTx = (
   return {
     txCbor: Buffer.from(txCbor),
     sourceKind,
-    ledgerTx: decodeMidgardLedgerTxFromNativeTx(nativeTx),
+    ledgerTx: decodeMidgardLedgerTxFromNativeTx(nativeTx, sourceKind),
     commitments: {
       transactionCompact: copyNativeTxCompact(nativeTx.compact),
       witnessSetCompact,

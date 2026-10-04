@@ -184,7 +184,9 @@ const outRefIdentity = (
   outRef: MidgardLedgerTx["spendInputs"][number],
 ): string => `${outRef.txId.toString("hex")}#${outRef.index.toString()}`;
 
-export const validateInputSets = (tx: MidgardLedgerTx): RejectedTx | null => {
+export const validateInputSets = (
+  tx: Pick<MidgardLedgerTx, "txId" | "spendInputs" | "referenceInputs">,
+): RejectedTx | null => {
   if (tx.spendInputs.length === 0) {
     return reject(tx.txId, RejectCodes.EmptyInputs, null, "inputSets");
   }
@@ -259,7 +261,10 @@ export const validateInputSets = (tx: MidgardLedgerTx): RejectedTx | null => {
 };
 
 export const validateValidityInterval = (
-  tx: MidgardLedgerTx,
+  tx: Pick<
+    MidgardLedgerTx,
+    "txId" | "validityIntervalStart" | "validityIntervalEnd"
+  >,
 ): RejectedTx | null => {
   if (
     (tx.validityIntervalStart !== undefined && tx.validityIntervalStart < 0n) ||
@@ -303,7 +308,7 @@ const verifyVKeyWitnessWithCml = (
 };
 
 export const verifyVKeyWitnessSignatures = (
-  tx: MidgardLedgerTx,
+  tx: Pick<MidgardLedgerTx, "txId" | "vkeyWitnesses">,
   verifySignature: NonNullable<
     PhaseALocalContext["verifyVKeyWitnessSignature"]
   > = verifyVKeyWitnessWithCml,
@@ -323,7 +328,10 @@ export const verifyVKeyWitnessSignatures = (
 };
 
 export const validateRequiredSigners = (
-  tx: MidgardLedgerTx,
+  tx: Pick<
+    MidgardLedgerTx,
+    "txId" | "requiredSignerHashes" | "witnessKeyHashes"
+  >,
 ): RejectedTx | null => {
   if (tx.requiredSignerHashes.length === 0) {
     return null;

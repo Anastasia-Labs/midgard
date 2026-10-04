@@ -21,7 +21,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
-  validationAuxiliaryWitnessData,
+  retainedValidationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
 import {
   FUNDED_OUTPUT_LOVELACE,
@@ -348,10 +348,12 @@ export const buildForcedCrossingTrace = async (
             witness_cbor: witness.cbor.toString("hex"),
             auxiliary: Data.from(
               Data.to(
-                validationAuxiliaryWitnessData(witness.auxiliary) as never,
+                retainedValidationAuxiliaryWitnessData(
+                  witness.auxiliary,
+                ) as never,
               ),
-              SDK.ValidationAuxiliaryWitnessSchema,
-            ) as unknown as SDK.ValidationAuxiliaryWitness,
+              SDK.RetainedValidationAuxiliaryWitnessSchema,
+            ) as unknown as SDK.RetainedValidationAuxiliaryWitness,
           }),
         ),
       ];

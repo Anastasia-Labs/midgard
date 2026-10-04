@@ -35,25 +35,6 @@ type HistorySource = (
   | { kind: "Withdrawal"; membership: SDK.WithdrawalSourceMembershipProof }
 ) & { valuePath: readonly number[] };
 
-const wrappedSource = (
-  source: SDK.TransitionSourceMembershipProof,
-  valuePath: readonly number[],
-): HistorySource | null => {
-  if ("DepositSourceMembership" in source)
-    return {
-      kind: "Deposit",
-      membership: source.DepositSourceMembership.membership,
-      valuePath,
-    };
-  if ("WithdrawalSourceMembership" in source)
-    return {
-      kind: "Withdrawal",
-      membership: source.WithdrawalSourceMembership.membership,
-      valuePath,
-    };
-  return null;
-};
-
 const historySource = (
   proof: SDK.TransitionFaultProof,
 ): HistorySource | null => {
@@ -95,19 +76,6 @@ const historySource = (
         membership: witness.OutOfWindowWithdrawal.source_membership,
         valuePath,
       };
-  }
-  if ("SourceMembershipMismatch" in fault) {
-    const witness = fault.SourceMembershipMismatch.witness;
-    if ("SourceEventMissingTrace" in witness)
-      return wrappedSource(
-        witness.SourceEventMissingTrace.source_membership,
-        [2, 0, 0, 0, 5],
-      );
-    if ("SourcePhaseMismatch" in witness)
-      return wrappedSource(
-        witness.SourcePhaseMismatch.source_membership,
-        [2, 0, 1, 0, 5],
-      );
   }
   return null;
 };

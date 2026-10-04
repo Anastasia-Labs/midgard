@@ -448,6 +448,39 @@
       }
     },
     {
+      "id": "cek-builtin-cardano-v1",
+      "kind": "golden",
+      "summary": "Every builtin tag evaluated by the pinned Aiken evaluator, values and failures, with the ledger's outcome recorded where the two differ.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-cek-builtin-cardano-v1-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:cek-builtin-cardano-v1:sync",
+        "demo/midgard-validation:fixtures:cek-builtin-cardano-v1:check"
+      ],
+      "producers": [],
+      "inputs": [
+        "@golden-channel",
+        "@compiler-pin",
+        "demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.cases.mjs",
+        "demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.arguments.mjs",
+        "demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.edges.mjs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.generated.json"
+      ],
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-builtin-cardano-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-builtin-cardano-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check V1 CEK builtin golden vectors"
+      }
+    },
+    {
       "id": "validation-auxiliary-witness-v1",
       "kind": "golden",
       "summary": "Auxiliary-witness ABI corpus: JSON fixture plus a generated Aiken module pinning the corpus hash and arities.",

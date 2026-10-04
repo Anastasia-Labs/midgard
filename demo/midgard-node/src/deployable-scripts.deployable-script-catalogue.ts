@@ -281,6 +281,11 @@ export const DEPLOYABLE_SCRIPT_CATALOGUE = {
   validationTraceScriptSourcesYields: validationTraceYields(
     VALIDATION_TRACE_SCRIPT_SOURCES_YIELD_KEYS,
   ),
+  validationTraceCanonical: (contracts) =>
+    SDK.canonicalValidationTraceReferenceScripts(vtd(contracts)).map(
+      ({ deploymentEntry, validator }) =>
+        spendStep(contracts, deploymentEntry, validator),
+    ),
   validationTracePhaseASemantics: semanticResolvers(
     VALIDATION_TRACE_PHASE_A_SEMANTIC_PREFIXES,
   ),

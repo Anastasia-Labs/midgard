@@ -451,6 +451,93 @@ pub fn next_source_span_v1(
   }
 }
 
+/// This authenticated maximal head proves a definite nonempty sequence spelling.
+/// No caller-selected length or child count participates in the refusal.
+pub fn noncanonical_definite_sequence_head_v1(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  if !control_is_well_formed(control) || and {
+    control.stage != stage_head,
+    control.stage != stage_close,
+  } {
+    False
+  } else {
+    when exact_source_bytes(control, source_bytes) is {
+      None -> False
+      Some(bytes) -> {
+        let prefix = when parse_small_constructor_head(bytes) is {
+          Some(head) -> head.prefix_length
+          None -> 0
+        }
+        if prefix >= bytearray.length(bytes) {
+          False
+        } else {
+          let first = bytearray.at(bytes, prefix)
+          and {
+            first / 32 == 4,
+            first != 128,
+            first != 159,
+          }
+        }
+      }
+    }
+  }
+}
+
+/// Invalidity is a semantic result only for these complete authenticated heads.
+/// A large constructor reaches its fields opener after authenticating its index.
+pub fn noncanonical_data_head_v1(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  if !control_is_well_formed(control) || and {
+    control.stage != stage_head,
+    control.stage != stage_close,
+    control.stage != stage_large_fields,
+  } {
+    False
+  } else {
+    when exact_source_bytes(control, source_bytes) is {
+      None -> False
+      Some(bytes) -> {
+        let first = bytearray.at(bytes, 0)
+        if control.stage == stage_large_fields {
+          and {
+            first / 32 == 4,
+            first != 128,
+            first != 159,
+          }
+        } else if noncanonical_definite_sequence_head_v1(control, source_bytes) {
+          True
+        } else if first == 191 {
+          True
+        } else if first / 32 <= 2 || first / 32 == 5 || first / 32 == 6 {
+          let additional = first % 32
+          let width = if additional == 24 {
+            1
+          } else if additional == 25 {
+            2
+          } else if additional == 26 {
+            4
+          } else if additional == 27 {
+            8
+          } else {
+            0
+          }
+          and {
+            width > 0,
+            bytearray.length(bytes) >= 1 + width,
+            read_canonical_argument(bytes, 0) == None,
+          }
+        } else {
+          False
+        }
+      }
+    }
+  }
+}
+
 /// Same span selection after an earlier gate authenticated the complete
 /// canonical control, including every nested scalar/blob/hash state.
 pub fn prevalidated_next_source_span(
@@ -471,7 +558,10 @@ pub fn prevalidated_next_source_span(
     control.stage == stage_large_constructor,
   } {
     expect Some(integer) = control.integer
-    cek_data_integer_v1.prevalidated_next_source_span(integer)
+    cek_data_integer_v1.prevalidated_next_source_span(
+      integer,
+      control.source_start + control.source_length,
+    )
   } else if control.stage == stage_bytes {
     expect Some(bytes_control) = control.bytes
     cek_data_bytes_v1.prevalidated_next_source_span(
@@ -763,7 +853,7 @@ fn integer_item_length(bytes: ByteArray, offset: Int) -> Option<Int> {
     } {
       when read_canonical_argument(bytes, offset + 1) is {
         Some(magnitude) ->
-          if magnitude.major == 2 {
+          if magnitude.major == 2 && magnitude.value <= 64 {
             Some(magnitude.next_offset - offset + magnitude.value)
           } else {
             None
@@ -813,6 +903,20 @@ pub fn prevalidated_head_scalar(
         }
       }
     }
+  } else if and {
+    bytearray.length(bytes) >= 2,
+    first == 194 || first == 195,
+    bytearray.at(bytes, 1) == 95,
+  } {
+    checked_control(
+      DataTraverseControlV1 {
+        ..control,
+        stage: stage_integer,
+        integer: Some(
+          cek_data_integer_v1.initial_measure_control_v1(item_start),
+        ),
+      },
+    )
   } else {
     when integer_item_length(bytes, 0) is {
       None -> None
@@ -944,26 +1048,45 @@ pub fn prevalidated_head_large_constructor(
     bytearray.length(bytes) >= 3,
     slice_len(bytes, 0, 3) == #"d86682",
   } {
-    when integer_item_length(bytes, 3) is {
-      None -> None
-      Some(constructor_cbor_length) -> {
-        let offset = control.offset + 3
-        if offset + constructor_cbor_length < control.source_length {
-          checked_control(
-            DataTraverseControlV1 {
-              ..control,
-              stage: stage_large_constructor,
-              offset,
-              integer: Some(
-                cek_data_integer_v1.initial_control_v1(
-                  control.source_start + offset,
-                  constructor_cbor_length,
+    if and {
+      bytearray.length(bytes) >= 5,
+      bytearray.at(bytes, 3) == 194,
+      bytearray.at(bytes, 4) == 95,
+    } {
+      checked_control(
+        DataTraverseControlV1 {
+          ..control,
+          stage: stage_large_constructor,
+          offset: control.offset + 3,
+          integer: Some(
+            cek_data_integer_v1.initial_measure_control_v1(
+              control.source_start + control.offset + 3,
+            ),
+          ),
+        },
+      )
+    } else {
+      when integer_item_length(bytes, 3) is {
+        None -> None
+        Some(constructor_cbor_length) -> {
+          let offset = control.offset + 3
+          if offset + constructor_cbor_length < control.source_length {
+            checked_control(
+              DataTraverseControlV1 {
+                ..control,
+                stage: stage_large_constructor,
+                offset,
+                integer: Some(
+                  cek_data_integer_v1.initial_control_v1(
+                    control.source_start + offset,
+                    constructor_cbor_length,
+                  ),
                 ),
-              ),
-            },
-          )
-        } else {
-          None
+              },
+            )
+          } else {
+            None
+          }
         }
       }
     }
@@ -1035,7 +1158,13 @@ pub fn prevalidated_advance_integer(
   source_bytes: Option<ByteArray>,
 ) -> Option<DataTraverseControlV1> {
   expect Some(integer) = control.integer
-  when cek_data_integer_v1.step_v1(integer, source_bytes) is {
+  when
+    cek_data_integer_v1.step_v1(
+      integer,
+      control.source_start + control.source_length,
+      source_bytes,
+    )
+  is {
     None -> None
     Some(next_integer) ->
       Some(DataTraverseControlV1 { ..control, integer: Some(next_integer) })
@@ -1152,7 +1281,13 @@ pub fn prevalidated_advance_large_constructor(
     if !syntax_is_valid {
       None
     } else {
-      when cek_data_integer_v1.step_v1(integer, source_bytes) is {
+      when
+        cek_data_integer_v1.step_v1(
+          integer,
+          control.source_start + control.source_length,
+          source_bytes,
+        )
+      is {
         None -> None
         Some(next_integer) ->
           checked_control(

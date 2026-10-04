@@ -1710,3 +1710,203 @@ test mk_cons_of_well_typed_values_has_only_the_success_arm() {
     ),
   }
 }
+
+// Every newly recognized failure has exactly one authenticated halted state.
+fn builtin_failure_is_exact(
+  tag: Int,
+  arguments: List<cek_constant_v1.ConstantWitnessV1>,
+  cpu: Int,
+  memory: Int,
+) -> Bool {
+  let pre = builtin_pre(tag, arguments)
+  let direct = list.map(arguments, cek_builtin_v1.ConstantValue)
+  let post = builtin_failure_post(pre, cpu, memory)
+  let witness = cek_machine_v1.ExecuteBuiltinFailure { tag, arguments: direct }
+  and {
+    cek_machine_v1.verify_core_step_v1(pre, post, witness),
+    !cek_machine_v1.verify_core_step_v1(
+      pre,
+      cek_machine_v1.MachineStateV1 { ..post, cpu: post.cpu + 1 },
+      witness,
+    ),
+    !cek_machine_v1.verify_core_step_v1(
+      pre,
+      cek_machine_v1.MachineStateV1 { ..post, memory: post.memory + 1 },
+      witness,
+    ),
+    !cek_machine_v1.verify_core_step_v1(
+      pre,
+      cek_machine_v1.MachineStateV1 {
+        ..post,
+        auxiliary: cek_machine_v1.error_explicit,
+      },
+      witness,
+    ),
+    !cek_machine_v1.verify_core_step_v1(
+      pre,
+      cek_machine_v1.MachineStateV1 { ..post, focus_root: h_02 },
+      witness,
+    ),
+    !cek_machine_v1.verify_core_step_v1(
+      pre,
+      cek_machine_v1.MachineStateV1 { ..post, environment_root: h_02 },
+      witness,
+    ),
+    !cek_machine_v1.verify_core_step_v1(
+      pre,
+      cek_machine_v1.MachineStateV1 { ..post, continuation_root: h_02 },
+      witness,
+    ),
+    !cek_machine_v1.verify_core_step_v1(
+      cek_machine_v1.MachineStateV1 { ..pre, focus_root: h_02 },
+      post,
+      witness,
+    ),
+  }
+}
+
+test int64_builtin_failures_halt_with_zero_charge_and_exact_state() {
+  list.all(
+    [9223372036854775808, -9223372036854775809],
+    fn(amount) {
+      and {
+        builtin_failure_is_exact(
+          12,
+          [
+            integer_constant(amount),
+            integer_constant(1),
+            bytes_constant(#"abcd"),
+          ],
+          0,
+          0,
+        ),
+        builtin_failure_is_exact(
+          12,
+          [
+            integer_constant(0),
+            integer_constant(amount),
+            bytes_constant(#"abcd"),
+          ],
+          0,
+          0,
+        ),
+        builtin_failure_is_exact(
+          82,
+          [bytes_constant(#"abcd"), integer_constant(amount)],
+          0,
+          0,
+        ),
+        builtin_failure_is_exact(
+          83,
+          [bytes_constant(#"abcd"), integer_constant(amount)],
+          0,
+          0,
+        ),
+      }
+    },
+  )
+}
+
+test ecdsa_scalar_failures_halt_with_exact_paid_state() {
+  let n = 115792089237316195423570985008687907852837564279074904382605163141518161494337
+  list.all(
+    [Pair(n, 1), Pair(1, n)],
+    fn(scalars) {
+      builtin_failure_is_exact(
+        52,
+        [
+          bytes_constant(
+            #"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          ),
+          bytes_constant(
+            #"0000000000000000000000000000000000000000000000000000000000000000",
+          ),
+          bytes_constant(
+            builtin.append_bytearray(
+              builtin.integer_to_bytearray(True, 32, scalars.1st),
+              builtin.integer_to_bytearray(True, 32, scalars.2nd),
+            ),
+          ),
+        ],
+        43053543,
+        10,
+      )
+    },
+  )
+}
+
+test honest_int64_builtin_applications_reject_failure_successors() {
+  list.all(
+    [9223372036854775807, -9223372036854775808],
+    fn(amount) {
+      and {
+        !known_failure_step(
+          12,
+          [
+            integer_constant(amount),
+            integer_constant(1),
+            bytes_constant(#"abcd"),
+          ],
+          list.map(
+            [
+              integer_constant(amount),
+              integer_constant(1),
+              bytes_constant(#"abcd"),
+            ],
+            cek_builtin_v1.ConstantValue,
+          ),
+          cek_cost_v1.BuiltinBudgetV1 { cpu: 0, memory: 0 },
+        ),
+        !known_failure_step(
+          82,
+          [bytes_constant(#"abcd"), integer_constant(amount)],
+          list.map(
+            [bytes_constant(#"abcd"), integer_constant(amount)],
+            cek_builtin_v1.ConstantValue,
+          ),
+          cek_cost_v1.BuiltinBudgetV1 { cpu: 0, memory: 0 },
+        ),
+        !known_failure_step(
+          83,
+          [bytes_constant(#"abcd"), integer_constant(amount)],
+          list.map(
+            [bytes_constant(#"abcd"), integer_constant(amount)],
+            cek_builtin_v1.ConstantValue,
+          ),
+          cek_cost_v1.BuiltinBudgetV1 { cpu: 0, memory: 0 },
+        ),
+      }
+    },
+  )
+}
+
+test malformed_ed25519_lengths_have_one_paid_failure_successor() {
+  let valid_key = #"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
+  let signature = builtin.integer_to_bytearray(True, 64, 0)
+  let short_key_arguments = [
+    bytes_constant(builtin.slice_bytearray(0, 31, valid_key)),
+    bytes_constant(#""),
+    bytes_constant(signature),
+  ]
+  let short_signature_arguments = [
+    bytes_constant(valid_key),
+    bytes_constant(#""),
+    bytes_constant(builtin.slice_bytearray(0, 63, signature)),
+  ]
+  and {
+    builtin_failure_is_exact(21, short_key_arguments, 53398444, 10),
+    builtin_failure_is_exact(21, short_signature_arguments, 53398444, 10),
+    !known_failure_step(
+      21,
+      short_key_arguments,
+      list.map(short_key_arguments, cek_builtin_v1.ConstantValue),
+      cek_cost_v1.BuiltinBudgetV1 { cpu: 0, memory: 0 },
+    ),
+    !known_failure_step(
+      21,
+      short_signature_arguments,
+      list.map(short_signature_arguments, cek_builtin_v1.ConstantValue),
+      cek_cost_v1.BuiltinBudgetV1 { cpu: 0, memory: 0 },
+    ),
+  }
+}

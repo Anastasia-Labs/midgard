@@ -27,7 +27,6 @@ import {
   Lambda,
   parseUPLC,
   UPLCConst,
-  UPLCEncoder,
   type UPLCTerm,
   UPLCVar,
 } from "@harmoniclabs/uplc";
@@ -39,6 +38,7 @@ import {
   midgardCekConstantMemorySize,
 } from "./cek-constant.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
+import { encodeMidgardCekCardanoFlatProgram } from "./cek-program.cardano-flat.js";
 import {
   canonicalFlatProgramBytes,
   MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
@@ -105,7 +105,7 @@ export const buildMidgardCanonicalCekProgram = (
 
   const flat = canonicalFlatProgramBytes(raw);
   const program = parseUPLC(flat, "flat");
-  const reencoded = Buffer.from(UPLCEncoder.compile(program));
+  const reencoded = encodeMidgardCekCardanoFlatProgram(program);
   if (!flat.equals(reencoded) || !hasExactBuiltinForces(program.body)) {
     throw new Error(
       "V1 requires canonical Flat bytes with exactly the builtin forces implied by UPLC 1.1.0",

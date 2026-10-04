@@ -22,11 +22,9 @@ import {
   TX_ID,
 } from "./config.create-concrete-field-preimage-length-lucid-builders.js";
 import type {
-  FieldPreimageLengthJournal,
   FieldPreimageLengthSubmissionKind,
   PreparedFieldPreimageLengthWorkflow,
 } from "./workflow.js";
-import { runFieldPreimageLengthWorkflow } from "./workflow.js";
 
 /**
  * Manifest-bound production routing. Direction selects distinct physical
@@ -83,35 +81,6 @@ export const createFieldPreimageLengthLucidSubmission = ({
       return transactionId;
     },
   });
-
-/** Durable manifest-bound runner: captured tx ids are reconciled before retry. */
-export const runManifestBoundFieldPreimageLengthWorkflow = async ({
-  config,
-  builders,
-  load,
-  save,
-  observeConfirmed,
-}: {
-  readonly config: ManifestBoundFieldPreimageLengthConfig;
-  readonly builders: FieldPreimageLengthLucidBuilders;
-  readonly load: () => Promise<FieldPreimageLengthJournal>;
-  readonly save: (journal: FieldPreimageLengthJournal) => Promise<void>;
-  readonly observeConfirmed: (
-    action: "init" | "dispatch" | "authenticate" | "finalize" | "remove",
-    transactionId: string,
-  ) => Promise<boolean>;
-}): Promise<FieldPreimageLengthJournal> => {
-  const routed = createFieldPreimageLengthLucidSubmission({
-    config,
-    builders,
-  });
-  return await runFieldPreimageLengthWorkflow({
-    load,
-    save,
-    submit: async (action, prepared) => await routed.submit(action, prepared),
-    observeConfirmed,
-  });
-};
 
 const bindReference = ({
   binding,

@@ -62,21 +62,42 @@ export const preparePhaseAItemCarriage = async ({
   trace: DeterministicValidationMachineTrace;
   stateIndex: number;
   source: { compact_cbor: string; witness_set_compact_cbor: string };
-  kind: "native" | "foreign" | "observer" | "redeemer";
+  kind:
+    | "native"
+    | "foreign"
+    | "observer"
+    | "redeemer"
+    | "signature"
+    | "canonical";
 }) => {
   const scriptSourcesObserver =
     kind === "observer" && trace.states[stateIndex]!.phase === "scriptSources";
-  const fieldIndex = kind === "redeemer" ? 8 : kind === "observer" ? 3 : 6;
+  const fieldIndex =
+    kind === "canonical"
+      ? 2
+      : kind === "signature"
+        ? 7
+        : kind === "redeemer"
+          ? 8
+          : kind === "observer"
+            ? 3
+            : 6;
   const auxiliary = trace.witnesses[stateIndex]!.auxiliary;
   if (
     (auxiliary?.kind !== "transactionFieldChunk" &&
-      auxiliary?.kind !== "transactionRedeemerItemBegin") ||
+      auxiliary?.kind !== "transactionRedeemerItemBegin" &&
+      auxiliary?.kind !== "transactionFieldItem") ||
     auxiliary.fieldIndex !== fieldIndex
   )
     throw new Error(
       "phase-A item fixture requires a matching field item witness",
     );
-  if (auxiliary.fieldPreimage.length !== (kind === "observer" ? 32763 : 32768))
+  if (
+    kind === "canonical"
+      ? auxiliary.fieldPreimage.length !== 16_388
+      : auxiliary.fieldPreimage.length !==
+        (kind === "signature" ? 32757 : kind === "observer" ? 32763 : 32768)
+  )
     throw new Error(
       "maximum fixture must reach the exact field-specific byte bound",
     );
@@ -92,21 +113,36 @@ export const preparePhaseAItemCarriage = async ({
   const semanticPublication = await publishPlainReferenceScriptUtxo({
     lucid,
     script:
-      chain.semanticResolvers[
-        scriptSourcesObserver
-          ? 57
-          : kind === "redeemer"
-            ? 47
-            : kind === "observer"
-              ? 25
-              : 11
-      ].spendingScript,
+      kind === "canonical"
+        ? chain.semanticResolvers[1].spendingScript
+        : chain.semanticResolvers[
+            kind === "signature"
+              ? 7
+              : scriptSourcesObserver
+                ? 57
+                : kind === "redeemer"
+                  ? 47
+                  : kind === "observer"
+                    ? 25
+                    : 11
+          ].spendingScript,
     label: "phase-A item semantic",
   });
+  const canonicalObservePublication =
+    kind === "canonical"
+      ? await publishPlainReferenceScriptUtxo({
+          lucid,
+          script: chain.canonicalDecodeItemStages.observe.spendingScript,
+          label: "canonical item observe",
+        })
+      : undefined;
   const yields = [];
   for (const spec of scriptSourcesObserver
     ? SCRIPT_SOURCES_OBSERVER_YIELD_ROLES
-    : kind === "observer" || kind === "redeemer"
+    : kind === "canonical" ||
+        kind === "observer" ||
+        kind === "redeemer" ||
+        kind === "signature"
       ? []
       : PHASE_A_ITEM_YIELD_SPECS) {
     const contract = chain.yields[spec.contract];
@@ -181,10 +217,13 @@ export const preparePhaseAItemCarriage = async ({
   };
   const referenceInputs = [
     ...material.referenceUtxos,
-    semanticPublication.utxo,
+    canonicalObservePublication?.utxo ?? semanticPublication.utxo,
     ...(scriptSourcesObserver
       ? yields.map((y) => y.publication.utxo)
-      : kind === "observer" || kind === "redeemer"
+      : kind === "canonical" ||
+          kind === "observer" ||
+          kind === "redeemer" ||
+          kind === "signature"
         ? []
         : [yields[kind === "native" ? 0 : 1]!.publication.utxo]),
   ];
@@ -195,6 +234,7 @@ export const preparePhaseAItemCarriage = async ({
   });
   return {
     semanticPublication,
+    canonicalObservePublication,
     yields,
     material,
     resolveFieldCarriage: (input: {

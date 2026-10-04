@@ -29,6 +29,7 @@ import {
   resumeValidationCekMaterialTraversal,
   submitRemoveFraudulentBlock,
   submitValidationDisputeAward,
+  submitValidationDisputeDirectCommittedStep,
   submitValidationDisputeEnterResolution,
   submitValidationDisputeOpen,
   submitValidationDisputePrepareResolution,
@@ -99,24 +100,12 @@ import { submitSetupTx } from "./setup-tx.js";
 import { type ForcedValidationDisputeFixture } from "./validation-dispute-fixtures.js";
 
 /**
- * VM-DEFECT-2 dispute-level regression
- * (`docs/midgard/decisions/immutable-dispute-claims.md`).
- *
- * The shipped defect made `rejected_successor_is_exact` demand that the
- * rejecting terminal *write* `ledger_delta_root = frontier_commitment(0, [])`
- * while `immutable_context_matches` pins that same field pre == post on every
- * transition. The two are jointly unsatisfiable from any pre-state whose
- * claimed delta is non-empty -- which is every adversarially interesting
- * pre-state, because the challenger is the party who must exhibit a
- * one-step-valid rejection successor to win
- * (`validation-semantic-v1.ak` -> `continue_winning`) and
- * a real invalid transaction always claims a non-empty delta.
- *
- * It shipped because no test ever drove a challenger to an actual win: every
- * rejection fixture pinned the claimed delta to the empty commitment, the one
- * pre-state in which the contradiction vanishes. These tests close that gap
- * end to end on the emulator, against the compiled validators, in both
- * directions (GOAL_SPEC §3 invariant 9 -- soundness is symmetric).
+ * VM-DEFECT-2 regression: immutable-dispute-claims.md.
+ * The retired rejecting successor demanded an empty ledger_delta_root, while
+ * immutable_context_matches pinned pre == post. Those predicates contradicted
+ * each other for non-empty claimed deltas. Empty-delta rejection fixtures hid
+ * it because no challenger reached a real win. These compiled journeys retain
+ * non-empty claims and exercise soundness in both directions (GOAL_SPEC §3.9).
  */
 export const runForcedValidationDisputeScenario = async (
   buildFixture: (input: {
@@ -130,11 +119,14 @@ export const runForcedValidationDisputeScenario = async (
   }) => Promise<ForcedValidationDisputeFixture>,
   {
     stopAfter,
+    directCommittedStep = false,
     cekMaterialTraversalBatchSize,
     phaseANativeItemYieldKind,
     phaseANativeItemMaximum = false,
     phaseAObserverItemMaximum = false,
     scriptSourcesItemMaximum = false,
+    signatureItemMaximum = false,
+    canonicalItemMaximum = false,
     cancelPreparedSemantic = false,
     restartCekMaterialTraversal = false,
     restartCekCore = false,
@@ -148,11 +140,14 @@ export const runForcedValidationDisputeScenario = async (
     onRemovalReferenceScriptPublicationAttempt,
     onSubmittedTransaction,
   }: {
+    readonly directCommittedStep?: boolean;
     readonly cekMaterialTraversalBatchSize?: number;
     readonly phaseANativeItemYieldKind?: "native" | "foreign";
     readonly phaseANativeItemMaximum?: boolean;
     readonly phaseAObserverItemMaximum?: boolean;
     readonly scriptSourcesItemMaximum?: boolean;
+    readonly signatureItemMaximum?: boolean;
+    readonly canonicalItemMaximum?: boolean;
     readonly cancelPreparedSemantic?: boolean;
     readonly restartCekMaterialTraversal?: boolean;
     readonly restartCekCore?: boolean;
@@ -164,6 +159,8 @@ export const runForcedValidationDisputeScenario = async (
     readonly cancelCekCore?: boolean;
     readonly cancelCekMaterialTraversal?: boolean;
     readonly stopAfter?:
+      | "source"
+      | "enter-resolution"
       | "prepare-resolution"
       | "prepare-selected"
       | "semantic-resolution";
@@ -174,6 +171,12 @@ export const runForcedValidationDisputeScenario = async (
     ) => void;
   } = {},
 ) => {
+  const maximumFieldItem =
+    phaseANativeItemMaximum ||
+    phaseAObserverItemMaximum ||
+    scriptSourcesItemMaximum ||
+    signatureItemMaximum ||
+    canonicalItemMaximum;
   const realBlueprint = readBlueprint(realBlueprintPath);
   const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
   const {
@@ -215,9 +218,7 @@ export const runForcedValidationDisputeScenario = async (
     referenceScriptAuth,
     referenceScriptPublisher,
   };
-  // Operator registration and activation source their four directory
-  // validators from published reference scripts, so the roster has to exist
-  // before the setup transaction samples the header clock.
+  // Publish the four directory validators before operator setup samples time.
   const contracts = {
     ...baseContracts,
     operatorLifecycleReferenceScripts:
@@ -246,21 +247,13 @@ export const runForcedValidationDisputeScenario = async (
   const headerStartTime =
     alignUnixTimeToEmulatorSlotBoundary(
       operatorLucid,
-      emulator.now() +
-        120_000 +
-        (phaseANativeItemMaximum ||
-        phaseAObserverItemMaximum ||
-        scriptSourcesItemMaximum
-          ? 8 * 20_000
-          : 0),
+      emulator.now() + 120_000 + (maximumFieldItem ? 8 * 20_000 : 0),
     ) - 1;
   let phaseAItemCarriage:
     | Awaited<ReturnType<typeof preparePhaseAItemCarriage>>
     | undefined;
   const fixture = await buildFixture({
-    ...(phaseANativeItemMaximum ||
-    phaseAObserverItemMaximum ||
-    scriptSourcesItemMaximum
+    ...(maximumFieldItem
       ? {
           prepareFieldCarriage: async (
             input: Pick<
@@ -276,11 +269,15 @@ export const runForcedValidationDisputeScenario = async (
               certificate: contracts.fieldPreimageCertificate,
               authPolicy: referenceScriptAuth,
               publisher: referenceScriptPublisher,
-              kind: scriptSourcesItemMaximum
-                ? "redeemer"
-                : phaseAObserverItemMaximum
-                  ? "observer"
-                  : (phaseANativeItemYieldKind ?? "native"),
+              kind: canonicalItemMaximum
+                ? "canonical"
+                : signatureItemMaximum
+                  ? "signature"
+                  : scriptSourcesItemMaximum
+                    ? "redeemer"
+                    : phaseAObserverItemMaximum
+                      ? "observer"
+                      : (phaseANativeItemYieldKind ?? "native"),
             });
             return phaseAItemCarriage.resolveFieldCarriage;
           },
@@ -390,8 +387,31 @@ export const runForcedValidationDisputeScenario = async (
     }),
   );
 
+  const { lowIndex, highIndex } = fixture.evidence.finalDispute;
+  if (stopAfter === "source")
+    return {
+      fixture,
+      contracts,
+      initResult,
+      lowIndex,
+      highIndex,
+      gameContext: {
+        fixture,
+        contracts,
+        initResult,
+        sourceResult,
+        lucid: targetChallengerLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        signer: challengerSigner,
+        emulator,
+        validityRange,
+        gameReferenceScriptUtxo: validationDisputeControlPublications.game.utxo,
+      },
+    };
+
   let threadOutRef = sourceResult.nextThreadOutRef;
-  for (const move of fixture.evidence.moves) {
+  for (const move of directCommittedStep ? [] : fixture.evidence.moves) {
     const revealResult = await runEmulatorLifecycleStage(
       `reveal.${move.role}`,
       () =>
@@ -416,47 +436,99 @@ export const runForcedValidationDisputeScenario = async (
     threadOutRef = revealResult.nextThreadOutRef;
   }
 
-  const resolutionResult = await runEmulatorLifecycleStage(
-    "enter-resolution",
-    () =>
-      submitValidationDisputeEnterResolution({
+  const resolutionResult = directCommittedStep
+    ? await runEmulatorLifecycleStage("direct-committed-step", () =>
+        submitValidationDisputeDirectCommittedStep({
+          lucid: targetChallengerLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: challengerSigner,
+          threadOutRef: sourceResult.nextThreadOutRef,
+          gameReferenceScriptUtxo:
+            validationDisputeControlPublications.game.utxo,
+          validityRange: validityRange(),
+          evidence: {
+            pre_state: validationMachineStateDataFromCore(
+              fixture.operatorTrace.states[lowIndex]!,
+            ),
+            pre_proof: validationTraceProofDataFromCore(
+              fixture.operatorTrace.tree.proofs[lowIndex]!,
+            ),
+            post_proof: validationTraceProofDataFromCore(
+              fixture.operatorTrace.tree.proofs[highIndex]!,
+            ),
+            challenger_successor_hash:
+              fixture.evidence.finalDispute.challengerHighHash.toString("hex"),
+          },
+        }),
+      )
+    : await runEmulatorLifecycleStage("enter-resolution", () =>
+        submitValidationDisputeEnterResolution({
+          lucid: targetChallengerLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: challengerSigner,
+          threadOutRef,
+          gameReferenceScriptUtxo:
+            validationDisputeControlPublications.game.utxo,
+          validityRange: validityRange(),
+          awaitConfirmation: true,
+        }),
+      );
+  if (stopAfter === "enter-resolution") {
+    return {
+      fixture,
+      contracts,
+      initResult,
+      lowIndex,
+      highIndex,
+      resolutionContext: {
+        fixture,
+        contracts,
+        initResult,
+        resolutionResult,
         lucid: targetChallengerLucid,
         blueprint: realBlueprint,
         deploymentInfo,
-        network,
         signer: challengerSigner,
-        threadOutRef,
-        gameReferenceScriptUtxo: validationDisputeControlPublications.game.utxo,
-        validityRange: validityRange(),
-        awaitConfirmation: true,
-      }),
-  );
-  const { lowIndex, highIndex } = fixture.evidence.finalDispute;
-  const prepareResult = await runEmulatorLifecycleStage(
-    "prepare-resolution",
-    () =>
-      submitValidationDisputePrepareResolution({
-        lucid: targetChallengerLucid,
-        blueprint: realBlueprint,
-        deploymentInfo,
-        network,
-        signer: challengerSigner,
-        threadOutRef: resolutionResult.nextThreadOutRef,
-        preState: validationMachineStateDataFromCore(
-          fixture.operatorTrace.states[lowIndex]!,
-        ),
-        operatorPost: validationTraceProofDataFromCore(
-          fixture.operatorTrace.tree.proofs[highIndex]!,
-        ),
-        challengerPost: validationTraceProofDataFromCore(
-          fixture.challengerTrace.tree.proofs[highIndex]!,
-        ),
         boundaryReferenceScriptUtxo:
           validationDisputeControlPublications.boundary.utxo,
-        validityRange: validityRange(),
-        awaitConfirmation: true,
-      }),
-  );
+        awardReferenceScriptUtxo:
+          validationDisputeControlPublications.award.utxo,
+        witnessReferenceScripts,
+        validityRange,
+        emulator,
+      },
+    };
+  }
+
+  const prepareResult = directCommittedStep
+    ? resolutionResult
+    : await runEmulatorLifecycleStage("prepare-resolution", () =>
+        submitValidationDisputePrepareResolution({
+          lucid: targetChallengerLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: challengerSigner,
+          threadOutRef: resolutionResult.nextThreadOutRef,
+          preState: validationMachineStateDataFromCore(
+            fixture.operatorTrace.states[lowIndex]!,
+          ),
+          operatorPost: validationTraceProofDataFromCore(
+            fixture.operatorTrace.tree.proofs[highIndex]!,
+          ),
+          challengerPost: validationTraceProofDataFromCore(
+            fixture.challengerTrace.tree.proofs[highIndex]!,
+          ),
+          boundaryReferenceScriptUtxo:
+            validationDisputeControlPublications.boundary.utxo,
+          validityRange: validityRange(),
+          awaitConfirmation: true,
+        }),
+      );
   if (stopAfter === "prepare-resolution") {
     return { fixture, contracts, initResult, lowIndex, highIndex };
   }
@@ -585,18 +657,74 @@ export const runForcedValidationDisputeScenario = async (
             script: assetFoldYield.withdrawalScript,
           },
         });
+  const itemObserve =
+    stagedResolverIndex === 0 && stagedSemanticIndex === 1
+      ? contracts.fraudProofContracts.validationTraceDispute
+          .canonicalDecodeItemStages.observe
+      : undefined;
+  const itemObserveReference =
+    itemObserve === undefined
+      ? undefined
+      : {
+          scriptHash: itemObserve.spendingScriptHash,
+          utxo:
+            phaseAItemCarriage?.canonicalObservePublication?.utxo ??
+            (
+              await withRealL1MaxTxSize(emulator, () =>
+                publishPlainReferenceScriptUtxo({
+                  lucid: referenceScriptPublisherLucid,
+                  script: itemObserve.spendingScript,
+                  label: "validation canonical item observe",
+                }),
+              )
+            ).utxo,
+        };
+  const canonicalItemStageReferences: Partial<
+    Record<
+      | "canonicalDecodeItemSource"
+      | "canonicalDecodeItemProof"
+      | "canonicalDecodeItemSettlement",
+      UTxO
+    >
+  > = {};
+  if (itemObserve !== undefined) {
+    const stages =
+      contracts.fraudProofContracts.validationTraceDispute
+        .canonicalDecodeItemStages;
+    for (const [entry, stage] of [
+      ["canonicalDecodeItemSource", stages.source],
+      ["canonicalDecodeItemProof", stages.proof],
+      ["canonicalDecodeItemSettlement", stages.settlement],
+    ] as const) {
+      canonicalItemStageReferences[entry] = (
+        await withRealL1MaxTxSize(emulator, () =>
+          publishPlainReferenceScriptUtxo({
+            lucid: referenceScriptPublisherLucid,
+            script: stage.spendingScript,
+            label: entry,
+          }),
+        )
+      ).utxo;
+    }
+  }
   const baseSemanticDeploymentInfo =
-    valueAndMintSemanticPublication === undefined
+    valueAndMintSemanticPublication === undefined &&
+    itemObserveReference === undefined
       ? deploymentInfo
       : buildRemovalDeploymentInfo(contracts, catalogue, {
           validationDisputePublication,
-          validationValueAndMintSemanticReferences: [
-            {
-              semanticResolverIndex: stagedSemanticIndex,
-              scriptHash: valueAndMintSemanticContract!.spendingScriptHash,
-              utxo: valueAndMintSemanticPublication.utxo,
-            },
-          ],
+          validationItemObserveReference: itemObserveReference,
+          validationValueAndMintSemanticReferences:
+            valueAndMintSemanticPublication === undefined
+              ? []
+              : [
+                  {
+                    semanticResolverIndex: stagedSemanticIndex,
+                    scriptHash:
+                      valueAndMintSemanticContract!.spendingScriptHash,
+                    utxo: valueAndMintSemanticPublication.utxo,
+                  },
+                ],
         });
   let semanticDeploymentInfo =
     assetFoldPublication === undefined || assetFoldYield === undefined
@@ -1193,6 +1321,7 @@ export const runForcedValidationDisputeScenario = async (
         try {
           return await submitValidationDisputeSemanticResolution({
             phaseANativeItemYieldKind,
+            stageReferenceScriptUtxos: canonicalItemStageReferences,
             ...(phaseAItemCarriage === undefined
               ? {}
               : { carriageMaterial: phaseAItemCarriage.material }),

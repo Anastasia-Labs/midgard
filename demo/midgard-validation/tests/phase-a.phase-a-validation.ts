@@ -1,4 +1,8 @@
 import { computeHash32 } from "@al-ft/midgard-core/codec";
+import {
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -431,6 +435,40 @@ describe("phase A validation", () => {
         RejectCodes.InvalidFieldType,
       );
       expect(rejection.detail).toContain("redeemers[0].data");
+    },
+  );
+
+  it.each([
+    ["d8798101", true],
+    ["1801", true],
+    ["8101", true],
+    ["60", false],
+    ["0102", false],
+  ] as const)(
+    "forced redeemer %s is admitted iff well-formed (%s)",
+    async (dataHex, accepted) => {
+      const fixture = redeemerDataTx(dataHex);
+      const result = await runPhaseA([
+        {
+          ...queuedNativeTx(fixture),
+          sourceKind: "forced",
+          txCbor: encodeMidgardForcedTxCanonical(
+            materializeMidgardForcedTxFromCanonical(fixture.tx),
+          ),
+        },
+      ]);
+      expect(result.accepted).toHaveLength(accepted ? 1 : 0);
+      expect(result.rejected).toHaveLength(accepted ? 0 : 1);
+      if (accepted) {
+        expect(
+          result.accepted[0]!.ledgerTx.redeemers[0]!.dataCbor.toString("hex"),
+        ).toBe(dataHex);
+      } else {
+        expect(result.rejected[0]).toMatchObject({
+          code: RejectCodes.InvalidFieldType,
+          consensusPhase: "canonicalDecode",
+        });
+      }
     },
   );
 

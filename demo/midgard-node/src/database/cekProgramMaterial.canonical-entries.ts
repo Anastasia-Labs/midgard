@@ -10,6 +10,9 @@ export const membershipTableName = "cek_program_material_memberships";
 
 export const admissionOwnerTableName = "cek_program_material_admission_owners";
 
+export const retainedStateOwnerTableName =
+  "cek_program_material_retained_state_owners";
+
 export const STORE_ADVISORY_LOCK_NAMESPACE = 1_129_606_987;
 
 export const STORE_ADVISORY_LOCK_KEY = 1_296_651_247;

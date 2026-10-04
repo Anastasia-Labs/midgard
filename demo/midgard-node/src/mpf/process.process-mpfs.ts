@@ -9,8 +9,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   canonicalCommittedWithdrawalTransitionEffect,
   canonicalDepositTransitionEffect,
+  type LocalScriptEvaluation,
   runPhaseAValidation,
-  runPhaseBValidationWithPatch,
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerMutationStep,
 } from "@al-ft/midgard-validation";
@@ -79,6 +79,7 @@ import {
   materializeUtxoPayloadEntries,
   type UtxoPayloadSizeAggregate,
 } from "./payload-size.js";
+import { evaluateNormalBlockCandidates } from "./process.evaluate-normal-block-candidates.js";
 import {
   hexOf,
   logCommitMpfPhaseTiming,
@@ -162,7 +163,7 @@ export const processMpfs = (
     nativeMpfReplay: NativeMpfReplayBuild;
     nativeMpfHandle: NativeMpfGenerationHandle;
   },
-  MpfError | DatabaseError,
+  MpfError | Effect.Effect.Error<ReturnType<typeof classifyForcedTransactions>>,
   Database
 > =>
   Effect.gen(function* () {
@@ -581,6 +582,10 @@ export const processMpfs = (
       string,
       readonly ValidationMachineLedgerMutationStep[]
     >();
+    const proofScriptEvaluationsByTxId = new Map<
+      string,
+      LocalScriptEvaluation[]
+    >();
     const proofNormalProgramMaterialByTxId = new Map<string, Buffer>();
 
     yield* Effect.forEach(decodedMempoolTxs, (decoded) =>
@@ -737,26 +742,14 @@ export const processMpfs = (
             }),
         ),
       );
-      const proofPhaseB = yield* runPhaseBValidationWithPatch(
-        proofPhaseA.accepted,
-        proofPreState,
-        {
-          nowCardanoSlotNo: validation.slotForUnixTime(
-            effectiveEndTime!.getTime(),
-          ),
-          bucketConcurrency: validation.bucketConcurrency,
-          enforceScriptBudget: true,
-        },
-      ).pipe(
-        Effect.mapError(
-          (cause) =>
-            new DatabaseError({
-              table: MempoolDB.tableName,
-              message: "V1 normal transaction Phase B failed",
-              cause,
-            }),
-        ),
-      );
+      const proofPhaseB = yield* evaluateNormalBlockCandidates({
+        candidates: proofPhaseA.accepted,
+        state: proofPreState,
+        blockSlot: validation.slotForUnixTime(effectiveEndTime!.getTime()),
+        bucketConcurrency: validation.bucketConcurrency,
+        consensusProfile,
+        scriptEvaluationsByTxId: proofScriptEvaluationsByTxId,
+      });
       const proofRejected = [...proofPhaseA.rejected, ...proofPhaseB.rejected];
       for (const rejected of proofRejected) {
         rejectedTxHashes.push(Buffer.from(rejected.txId));
@@ -1329,6 +1322,7 @@ export const processMpfs = (
                     ? ("accepted" as const)
                     : ("rejected" as const),
                 rejectionCode: classified.rejectionCode,
+                scriptEvaluations: classified.scriptEvaluations,
               };
             }),
         );
@@ -1383,6 +1377,10 @@ export const processMpfs = (
                 ledgerOps,
                 ledgerWitnessEntries,
                 ledgerMutationSteps,
+                scriptEvaluations:
+                  proofScriptEvaluationsByTxId.get(
+                    entry[Tx.Columns.TX_ID].toString("hex"),
+                  ) ?? [],
                 verdict: "accepted" as const,
                 rejectionCode: null,
               };

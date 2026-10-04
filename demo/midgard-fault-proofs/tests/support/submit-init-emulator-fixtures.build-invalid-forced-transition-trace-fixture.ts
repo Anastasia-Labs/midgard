@@ -51,6 +51,7 @@ import {
 type ForcedTransitionTraceFixtureInput = {
   readonly operatorVkey: string;
   readonly now: number;
+  readonly headerDurationMs?: number;
   readonly fieldPreimageLengthMismatchIndex?: number;
   readonly fieldItemWidthIllegalCoordinate?: {
     readonly fieldIndex: number;
@@ -92,6 +93,7 @@ export function buildInvalidForcedTransitionTraceFixture(
 const buildForcedTransitionTraceFixture = async ({
   operatorVkey,
   now,
+  headerDurationMs,
   fieldPreimageLengthMismatchIndex,
   fieldItemWidthIllegalCoordinate,
   redeemerMalformedIndex,
@@ -285,6 +287,9 @@ const buildForcedTransitionTraceFixture = async ({
   };
   const header: Header = {
     ...makeHeader(operatorVkey, now),
+    ...(headerDurationMs === undefined
+      ? {}
+      : { endTime: BigInt(now + headerDurationMs) }),
     utxosRoot: finalUtxosRoot.root,
     forcedTransactionsRoot: forcedRoot.root,
     transitionTraceRoot: traceRoot.root,

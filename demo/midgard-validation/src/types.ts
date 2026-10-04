@@ -3,6 +3,10 @@ import type { MidgardValue } from "@al-ft/midgard-core/codec";
 import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import type { Effect } from "effect";
 
+import type {
+  MidgardCekExecutionGraph,
+  MidgardCekStructuralExecution,
+} from "./cek-executor.js";
 import type { LedgerEntry } from "./ledger.js";
 import type {
   MidgardLedgerTx,
@@ -208,6 +212,19 @@ export type PhaseALocalContext = {
   ) => boolean;
 };
 
+/** Process-local evidence from the single script evaluation used for its verdict. */
+export type LocalScriptEvaluation = {
+  readonly scriptBytes: Buffer;
+  readonly contextCbor: Buffer;
+  readonly executionIndex: bigint;
+  readonly executionBudget:
+    | { readonly cpu: bigint; readonly memory: bigint }
+    | undefined;
+  readonly result: LocalScriptEvalResult;
+  readonly graph: MidgardCekExecutionGraph | null;
+  readonly execution: MidgardCekStructuralExecution | null;
+};
+
 /** The verdict and spent budget of one script evaluation. */
 export type LocalScriptEvalResult =
   | {
@@ -226,6 +243,11 @@ export type PhaseBConfig = {
   readonly nowCardanoSlotNo: bigint;
   readonly bucketConcurrency: number;
   readonly enforceScriptBudget?: boolean;
+  readonly maxScriptExecutionSteps?: number;
+  readonly onScriptEvaluated?: (
+    txId: Buffer,
+    evaluation: LocalScriptEvaluation,
+  ) => void;
   readonly evaluateProofScript?: (
     programEnvelopeCbor: Uint8Array,
     contextCbor: Uint8Array,
@@ -233,6 +255,7 @@ export type PhaseBConfig = {
       readonly cpu: bigint;
       readonly memory: bigint;
     },
+    executionIndex?: bigint,
   ) => Effect.Effect<LocalScriptEvalResult, Error>;
 };
 

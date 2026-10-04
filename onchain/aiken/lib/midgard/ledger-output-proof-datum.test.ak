@@ -606,3 +606,127 @@ test finish_refuses_an_active_datum_traversal() fail {
     builtin.constr_data(0, []),
   ) == None
 }
+
+test datum_family_golden_agreement_over_a_streamed_chunked_integer() {
+  let output = #"a300581d7811111111111111111111111111111111111111111111111111111111018200a0025847c25f5840010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004100ff"
+  let Pair(ready, chunk_proof) = datum_ready(output)
+  let opened = same_datum_step(ready, traverse.HeadScalar, chunk_proof, output)
+  let terminal = same_integer_advances(opened, chunk_proof, output, 256)
+  expect Some(integer) = active_datum(terminal).integer
+  expect Some(summary) = integer_control.finalize_v1(integer)
+  let attached = same_datum_step(
+    terminal,
+    traverse.AttachScalar { parent: None },
+    chunk_proof,
+    output,
+  )
+  and {
+    summary.cbor_length == 71,
+    summary.memory == 69,
+    active_datum(attached).stage == traverse.stage_terminal,
+  }
+}
+
+test datum_family_golden_agreement_over_a_chunked_constructor_alternative() {
+  let output = #"a300581d7811111111111111111111111111111111111111111111111111111111018200a002584bd86682c25f5840010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004100ff80"
+  let Pair(ready, chunk_proof) = datum_ready(output)
+  let opened = same_datum_step(
+    ready,
+    traverse.HeadLargeConstructor,
+    chunk_proof,
+    output,
+  )
+  let large_fields = same_no_action_while(
+    opened,
+    traverse.stage_large_constructor,
+    chunk_proof,
+    output,
+    256,
+  )
+  expect Some(integer) = active_datum(large_fields).integer
+  let fields = same_datum_step(
+    large_fields,
+    traverse.NoAction,
+    chunk_proof,
+    output,
+  )
+  and {
+    integer.source_length == 71,
+    integer.memory == 69,
+    active_datum(fields).stage == traverse.stage_fold,
+  }
+}
+
+test chunked_constructor_break_without_fields_header_is_refused_by_both_paths() {
+  let output = #"a300581d7811111111111111111111111111111111111111111111111111111111018200a002584ad86682c25f5840010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004100ff"
+  let Pair(ready, chunk_proof) = datum_ready(output)
+  let opened = same_datum_step(
+    ready,
+    traverse.HeadLargeConstructor,
+    chunk_proof,
+    output,
+  )
+  let full = same_datum_step(opened, traverse.NoAction, chunk_proof, output)
+  let partial = same_datum_step(full, traverse.NoAction, chunk_proof, output)
+  let datum_control = active_datum(partial)
+  let typed_witness = proof.LedgerOutputProofDatum {
+    action: traverse.NoAction,
+    window: Some(recorded_window(partial, output)),
+  }
+  let witness_data: Data = typed_witness
+  expect proof.step_v1(partial, typed_witness) == None
+  narrow_datum.advance_large_constructor(
+    raw.open(proof.encode_control_v1(partial)),
+    witness_data,
+  ) == None
+}
+
+// An ordinary integer attestation must not authenticate a large-constructor
+// control. Otherwise a caller can substitute ordinary role 5 or 7 and consume
+// the constructor index as a child scalar, bypassing constructor grammar.
+fn large_control_cannot_attest_as_integer(stage: Int) -> Bool {
+  let output = #"a300581d7811111111111111111111111111111111111111111111111111111111018200a00248d8668218809f01ff"
+  let Pair(ready, chunk_proof) = datum_ready(output)
+  let opened = same_datum_step(
+    ready,
+    traverse.HeadLargeConstructor,
+    chunk_proof,
+    output,
+  )
+  let current = if stage == traverse.stage_large_constructor {
+    opened
+  } else {
+    same_no_action_while(
+      opened,
+      traverse.stage_large_constructor,
+      chunk_proof,
+      output,
+      256,
+    )
+  }
+  let datum_control = active_datum(current)
+  expect Some(scalar) = datum_control.integer
+  let scalar_data: Data = scalar
+  let claim = builtin.constr_data(
+    0,
+    [
+      builtin.i_data(datum_control.source_start),
+      builtin.i_data(datum_control.source_length),
+      builtin.i_data(datum_control.offset),
+      builtin.b_data(datum_control.frame_root),
+      scalar_data,
+    ],
+  )
+  narrow_datum.integer_scalar_claim_is_exact(
+    raw.open(proof.encode_control_v1(current)),
+    claim,
+  )
+}
+
+test constructor_control_refuses_ordinary_integer_attestation() fail {
+  large_control_cannot_attest_as_integer(traverse.stage_large_constructor)
+}
+
+test fields_control_refuses_ordinary_integer_attestation() fail {
+  large_control_cannot_attest_as_integer(traverse.stage_large_fields)
+}

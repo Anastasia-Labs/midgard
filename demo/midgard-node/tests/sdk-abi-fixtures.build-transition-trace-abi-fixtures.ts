@@ -20,6 +20,10 @@ import {
   transitionStepFixture,
   value,
 } from "./sdk-abi-fixtures.header-fixture.js";
+import {
+  sourceKeyOpeningFixtures,
+  validationRunFaultFixtures,
+} from "./sdk-abi-fixtures.validation-run-fixtures.js";
 
 export const buildTransitionTraceAbiFixtures = (): Record<
   string,
@@ -154,14 +158,10 @@ export const buildTransitionTraceAbiFixtures = (): Record<
     key: outputReference,
     proof,
   };
-  const sourceMemberships = {
-    withdrawal: {
-      WithdrawalSourceMembership: { membership: withdrawalSourceMembership },
-    },
-    deposit: {
-      DepositSourceMembership: { membership: depositSourceMembership },
-    },
-  } satisfies Record<string, SDK.TransitionSourceMembershipProof>;
+  const sourceMemberships = sourceKeyOpeningFixtures(
+    withdrawalSourceMembership,
+    depositSourceMembership,
+  );
   const sourceNonMemberships = {
     withdrawal: {
       WithdrawalSourceNonMembership: {
@@ -170,6 +170,7 @@ export const buildTransitionTraceAbiFixtures = (): Record<
     },
   } satisfies Record<string, SDK.TransitionSourceNonMembershipProof>;
   const transitionFaults: Record<string, SDK.TransitionFault> = {
+    ...validationRunFaultFixtures(l2SourceMembership),
     "transition-fault.trace-boundary": SDK.traceBoundaryFault({
       side: "TraceStart",
       traceProof,
@@ -348,7 +349,6 @@ export const buildTransitionTraceAbiFixtures = (): Record<
       },
     }),
   };
-
   const proofFor = (fault: SDK.TransitionFault): SDK.TransitionFaultProof =>
     SDK.makeTransitionFaultProof({
       challengedHeaderHash: h28,

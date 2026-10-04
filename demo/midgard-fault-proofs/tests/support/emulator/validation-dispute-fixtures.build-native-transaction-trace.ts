@@ -3,7 +3,6 @@ import {
   computeScriptIntegrityHashForLanguages,
   deriveMidgardForcedTxProofSourceFromCanonicalCbor,
   EMPTY_NULL_ROOT,
-  encodeCbor,
   encodeMidgardFieldPreimageForField,
   encodeMidgardForcedTxCanonical,
   encodeMidgardNativeScript,
@@ -29,11 +28,13 @@ import { Effect } from "effect";
 import { expect } from "vitest";
 
 import { encodeData } from "../../../src/index.js";
+import { cekBuiltinFailureProgram } from "./cek-builtin-failure-program.js";
 import { cekSelectionProgram } from "./cek-selection-program.js";
 import { transitionTraceOutRef } from "./header-fixtures.js";
 import { makeNativeTx } from "./native-tx.js";
 import { outRefCbor } from "./validation-dispute-fixtures.build-forced-validation-dispute-commitments.js";
 import { nativeTraceAssets } from "./validation-dispute-fixtures.native-trace-assets.js";
+import { signedAddressWitnessesCbor } from "./validation-dispute-fixtures.signature-witnesses.js";
 
 /**
  * Mirror control for VM-DEFECT-2 (GOAL_SPEC §3 invariant 9 -- soundness is
@@ -60,6 +61,8 @@ import { nativeTraceAssets } from "./validation-dispute-fixtures.native-trace-as
  */
 export const buildNativeTransactionTrace = async ({
   now,
+  addressWitnessCount = 1,
+  requiredSignerHashes = [],
   txOrderSeed,
   assetCount = 0,
   mintAsset = false,
@@ -73,6 +76,7 @@ export const buildNativeTransactionTrace = async ({
   cekBlsFinal = false,
   cekMaximumDirect = false,
   cekSemanticTag,
+  cekBuiltinFailureTag,
   observerCount = 0,
   preconditionsRejection,
   rejectAfterPreconditions = false,
@@ -84,6 +88,9 @@ export const buildNativeTransactionTrace = async ({
   outputLovelace,
 }: {
   readonly now: number;
+  readonly addressWitnessCount?: number;
+  /** Missing required signers drive the signature rejection fixture. */
+  readonly requiredSignerHashes?: readonly string[];
   readonly txOrderSeed: string;
   /**
    * Inline datum attached to the produced output, as Aiken-canonical Plutus
@@ -110,6 +117,7 @@ export const buildNativeTransactionTrace = async ({
   readonly cekBlsFinal?: boolean;
   readonly cekMaximumDirect?: boolean;
   readonly cekSemanticTag?: number;
+  readonly cekBuiltinFailureTag?: 12 | 21 | 52 | 82 | 83;
   readonly observerCount?: number;
   readonly rejectAfterPreconditions?: boolean;
   readonly resolveMissingInput?: boolean;
@@ -150,14 +158,16 @@ export const buildNativeTransactionTrace = async ({
     nativeScript,
   };
   const program = plutusSelection
-    ? cekSelectionProgram(
-        cekProgramLambdaCount,
-        cekDataGraph,
-        cekDirectBuiltin,
-        cekBlsFinal,
-        cekMaximumDirect,
-        cekSemanticTag,
-      )
+    ? cekBuiltinFailureTag !== undefined
+      ? cekBuiltinFailureProgram(cekBuiltinFailureTag)
+      : cekSelectionProgram(
+          cekProgramLambdaCount,
+          cekDataGraph,
+          cekDirectBuiltin,
+          cekBlsFinal,
+          cekMaximumDirect,
+          cekSemanticTag,
+        )
     : undefined;
   const plutusScript =
     program === undefined
@@ -351,6 +361,7 @@ export const buildNativeTransactionTrace = async ({
     ...scriptFields,
     ...observerFields,
     ...rejectionFields,
+    requiredSignerHashes,
     spendInputCbors: [resolveMissingInput ? outRefCbor(0x8b) : spentOutRef],
     fee: 0n,
     outputCbor: producedOutput,
@@ -360,17 +371,15 @@ export const buildNativeTransactionTrace = async ({
     ...scriptFields,
     ...observerFields,
     ...rejectionFields,
+    requiredSignerHashes,
     spendInputCbors: [resolveMissingInput ? outRefCbor(0x8b) : spentOutRef],
     fee: 0n,
     outputCbor: producedOutput,
-    addrTxWitsPreimageCbor: encodeCbor([
-      Buffer.from(
-        CML.make_vkey_witness(
-          CML.TransactionHash.from_raw_bytes(transactionId),
-          spendingKey,
-        ).to_cbor_bytes(),
-      ),
-    ]),
+    addrTxWitsPreimageCbor: signedAddressWitnessesCbor(
+      transactionId,
+      spendingKey,
+      addressWitnessCount,
+    ),
   });
   const forcedCanonicalCbor = encodeMidgardForcedTxCanonical(forcedNativeTx);
   const forcedSource =
@@ -402,81 +411,68 @@ export const buildNativeTransactionTrace = async ({
     operations: expectedLedgerOps,
   });
   const preUtxosRoot = ledgerMutationSteps[0]!.preRoot.toString("hex");
-  const postUtxosRoot =
+  const accepted =
     preconditionsRejection === undefined &&
     !rejectAfterPreconditions &&
     !resolveMissingInput &&
-    scriptSourcesRejection === undefined
-      ? ledgerMutationSteps.at(-1)!.postRoot.toString("hex")
-      : preUtxosRoot;
+    scriptSourcesRejection === undefined &&
+    cekBuiltinFailureTag === undefined &&
+    requiredSignerHashes.length === 0;
+  const postUtxosRoot = accepted
+    ? ledgerMutationSteps.at(-1)!.postRoot.toString("hex")
+    : preUtxosRoot;
+  const challengerReplayInput: Parameters<
+    typeof buildDeterministicValidationMachineTrace
+  >[0] = {
+    ...(program === undefined
+      ? {}
+      : {
+          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
+            ...program.material.values(),
+          ]),
+        }),
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    eventKeyCbor: encodeData(eventKey, EventKeySchema),
+    sourceKind: "forced",
+    blockEndTimeMs: now + 1_000,
+    expectedNetworkId: 0n,
+    minFeeA: 0n,
+    minFeeB: 0n,
+    blockSlot: 0n,
+    transactionId,
+    canonicalTransactionCbor: forcedCanonicalCbor,
+    priorUtxosRoot: preUtxosRoot,
+    postUtxosRoot,
+    ledgerWitnessEntries: [{ outRef: spentOutRef, output: spentOutput }],
+    expectedLedgerOps: accepted ? expectedLedgerOps : [],
+    ledgerMutationSteps: accepted ? ledgerMutationSteps : [],
+    expectedVerdict: accepted ? "accepted" : "rejected",
+    expectedRejectionCode:
+      requiredSignerHashes.length > 0
+        ? RejectCodes.MissingRequiredWitness
+        : cekBuiltinFailureTag !== undefined
+          ? RejectCodes.PlutusScriptInvalid
+          : scriptSourcesRejection !== undefined
+            ? scriptSourcesRejection === "unusedRedeemer"
+              ? RejectCodes.InvalidFieldType
+              : RejectCodes.MissingRequiredWitness
+            : resolveMissingInput
+              ? RejectCodes.InputNotFound
+              : rejectAfterPreconditions
+                ? RejectCodes.ValidityIntervalMismatch
+                : preconditionsRejection === undefined
+                  ? null
+                  : RejectCodes.InvalidFieldType,
+  };
   const honestTrace = await Effect.runPromise(
-    buildDeterministicValidationMachineTrace({
-      ...(program === undefined
-        ? {}
-        : {
-            programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-              ...program.material.values(),
-            ]),
-          }),
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-      eventKeyCbor: encodeData(eventKey, EventKeySchema),
-      sourceKind: "forced",
-      blockEndTimeMs: now + 1_000,
-      expectedNetworkId: 0n,
-      minFeeA: 0n,
-      minFeeB: 0n,
-      blockSlot: 0n,
-      transactionId,
-      canonicalTransactionCbor: forcedCanonicalCbor,
-      priorUtxosRoot: preUtxosRoot,
-      postUtxosRoot,
-      ledgerWitnessEntries: [{ outRef: spentOutRef, output: spentOutput }],
-      expectedLedgerOps:
-        preconditionsRejection === undefined &&
-        !rejectAfterPreconditions &&
-        !resolveMissingInput &&
-        scriptSourcesRejection === undefined
-          ? expectedLedgerOps
-          : [],
-      ledgerMutationSteps:
-        preconditionsRejection === undefined &&
-        !rejectAfterPreconditions &&
-        !resolveMissingInput &&
-        scriptSourcesRejection === undefined
-          ? ledgerMutationSteps
-          : [],
-      ...(preconditionsRejection === undefined &&
-      !rejectAfterPreconditions &&
-      !resolveMissingInput &&
-      scriptSourcesRejection === undefined
-        ? {}
-        : {}),
-      expectedVerdict:
-        preconditionsRejection === undefined &&
-        !rejectAfterPreconditions &&
-        !resolveMissingInput &&
-        scriptSourcesRejection === undefined
-          ? "accepted"
-          : "rejected",
-      expectedRejectionCode:
-        scriptSourcesRejection !== undefined
-          ? scriptSourcesRejection === "unusedRedeemer"
-            ? RejectCodes.InvalidFieldType
-            : RejectCodes.MissingRequiredWitness
-          : resolveMissingInput
-            ? RejectCodes.InputNotFound
-            : rejectAfterPreconditions
-              ? RejectCodes.ValidityIntervalMismatch
-              : preconditionsRejection === undefined
-                ? null
-                : RejectCodes.InvalidFieldType,
-    }),
+    buildDeterministicValidationMachineTrace(challengerReplayInput),
   );
   return {
     txOrderId,
     eventKey,
     forcedTransaction,
     honestTrace,
+    challengerReplayInput,
     preUtxosRoot,
     postUtxosRoot,
   };

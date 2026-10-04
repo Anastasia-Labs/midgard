@@ -1,6 +1,7 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
+use aiken/fuzz
 use midgard/cek_builtin_v1
 use midgard/cek_constant_v1
 use midgard/cek_cost_v1
@@ -1349,6 +1350,387 @@ test negative_index_over_bytes_is_a_known_failure() {
       79,
       builtin_root(79, arguments),
       arguments,
+    ),
+  }
+}
+
+// Cardano converts these operands to Int64 before costing the builtin.
+fn integer_value(value: Int) -> cek_builtin_v1.ValueWitnessV1 {
+  integer(cbor.serialise(builtin.i_data(value)))
+}
+
+fn int64_failure(tag: Int, amount: Int, length_operand: Bool) -> Bool {
+  let arguments = if tag == 12 {
+    if length_operand {
+      [integer_value(0), integer_value(amount), bytes(#"42abcd")]
+    } else {
+      [integer_value(amount), integer_value(1), bytes(#"42abcd")]
+    }
+  } else {
+    [bytes(#"42abcd"), integer_value(amount)]
+  }
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    tag,
+    builtin_root(tag, arguments),
+    arguments,
+  )
+}
+
+test int64_slice_start_and_length_failures_are_authenticated_without_charging() {
+  list.all(
+    [9223372036854775808, -9223372036854775809],
+    fn(amount) {
+      and {
+        int64_failure(12, amount, False),
+        int64_failure(12, amount, True),
+      }
+    },
+  )
+}
+
+test int64_shift_and_rotate_failures_are_authenticated_without_charging() {
+  list.all(
+    [82, 83],
+    fn(tag) {
+      list.all(
+        [9223372036854775808, -9223372036854775809],
+        fn(amount) { int64_failure(tag, amount, False) },
+      )
+    },
+  )
+}
+
+test int64_endpoints_are_not_builtin_failures() {
+  list.all(
+    [9223372036854775807, -9223372036854775808],
+    fn(amount) {
+      and {
+        !int64_failure(12, amount, False),
+        !int64_failure(12, amount, True),
+        !int64_failure(82, amount, False),
+        !int64_failure(83, amount, False),
+      }
+    },
+  )
+}
+
+fn ecdsa_scalar_arguments(r: Int, s: Int) -> List<cek_builtin_v1.ValueWitnessV1> {
+  [
+    bytes(
+      cbor.serialise(
+        builtin.b_data(
+          #"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        ),
+      ),
+    ),
+    bytes(
+      cbor.serialise(
+        builtin.b_data(
+          #"0000000000000000000000000000000000000000000000000000000000000000",
+        ),
+      ),
+    ),
+    bytes(
+      cbor.serialise(
+        builtin.b_data(
+          builtin.append_bytearray(
+            builtin.integer_to_bytearray(True, 32, r),
+            builtin.integer_to_bytearray(True, 32, s),
+          ),
+        ),
+      ),
+    ),
+  ]
+}
+
+test ecdsa_overflowing_r_or_s_is_a_paid_authenticated_failure() {
+  let n = 115792089237316195423570985008687907852837564279074904382605163141518161494337
+  list.all(
+    [Pair(n, 1), Pair(1, n), Pair(n + 1, 1), Pair(1, n + 1)],
+    fn(scalars) {
+      let arguments = ecdsa_scalar_arguments(scalars.1st, scalars.2nd)
+      and {
+        cek_builtin_v1.verify_direct_builtin_failure_v1(
+          52,
+          builtin_root(52, arguments),
+          arguments,
+        ),
+        cek_builtin_v1.authenticated_builtin_failure_budget(52, arguments) == cek_cost_v1.BuiltinBudgetV1 {
+          cpu: 43053543,
+          memory: 10,
+        },
+      }
+    },
+  )
+}
+
+test ecdsa_zero_and_high_s_are_false_results_not_builtin_failures() {
+  let n = 115792089237316195423570985008687907852837564279074904382605163141518161494337
+  list.all(
+    [Pair(0, 1), Pair(1, 0), Pair(n - 1, 1), Pair(1, n - 1)],
+    fn(scalars) {
+      let arguments = ecdsa_scalar_arguments(scalars.1st, scalars.2nd)
+      and {
+        !cek_builtin_v1.verify_direct_builtin_failure_v1(
+          52,
+          builtin_root(52, arguments),
+          arguments,
+        ),
+        cek_builtin_v1.verify_direct_scalar_semantics(
+          52,
+          arguments,
+          boolean(#"d87980"),
+        ),
+      }
+    },
+  )
+}
+
+test ed25519_malformed_lengths_fail_but_invalid_signatures_return_false() {
+  let key = #"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
+  let signature = #"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+  let arguments = [
+    bytes(cbor.serialise(builtin.b_data(key))),
+    bytes(#"40"),
+    bytes(cbor.serialise(builtin.b_data(signature))),
+  ]
+  let short_key_arguments = [
+    bytes(#"40"),
+    bytes(#"40"),
+    bytes(cbor.serialise(builtin.b_data(signature))),
+  ]
+  let short_signature_arguments = [
+    bytes(cbor.serialise(builtin.b_data(key))),
+    bytes(#"40"),
+    bytes(#"40"),
+  ]
+  and {
+    cek_builtin_v1.verify_direct_builtin_failure_v1(
+      21,
+      builtin_root(21, short_key_arguments),
+      short_key_arguments,
+    ),
+    cek_builtin_v1.verify_direct_builtin_failure_v1(
+      21,
+      builtin_root(21, short_signature_arguments),
+      short_signature_arguments,
+    ),
+    !cek_builtin_v1.verify_direct_builtin_failure_v1(
+      21,
+      builtin_root(21, arguments),
+      arguments,
+    ),
+    cek_builtin_v1.verify_direct_scalar_semantics(
+      21,
+      arguments,
+      boolean(#"d87980"),
+    ),
+    cek_builtin_v1.authenticated_builtin_failure_budget(21, short_key_arguments) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 53398444,
+      memory: 10,
+    },
+  }
+}
+
+test cardano_shift_over_int64_fails(source via fuzz.bytearray()) fail {
+  builtin.shift_bytearray(source, 9223372036854775808) == #""
+}
+
+test cardano_rotate_below_int64_fails(source via fuzz.bytearray()) fail {
+  builtin.rotate_bytearray(source, -9223372036854775809) == #""
+}
+
+// The successful slice arm explicitly excludes Cardano's failed Int64 decode,
+// even though the pinned Aiken test evaluator clamps this operand.
+test out_of_int64_slice_cannot_claim_a_successful_empty_result() fail {
+  cek_builtin_v1.verify_direct_scalar_semantics(
+    12,
+    [integer_value(9223372036854775808), integer_value(1), bytes(#"42abcd")],
+    bytes(#"40"),
+  )
+}
+
+test int64_failure_tags_reject_ill_typed_sources() {
+  let slice_arguments = [
+    integer_value(9223372036854775808),
+    integer_value(1),
+    integer_value(0),
+  ]
+  let shift_arguments = [integer_value(0), integer_value(9223372036854775808)]
+  let slice_runtime = [
+    runtime_constant(#"9f00ff", #"1b8000000000000000"),
+    runtime_constant(#"9f00ff", #"01"),
+    runtime_constant(#"9f00ff", #"00"),
+  ]
+  let shift_runtime = [
+    runtime_constant(#"9f00ff", #"00"),
+    runtime_constant(#"9f00ff", #"1b8000000000000000"),
+  ]
+  and {
+    ill_typed_failure_has_one_arm(12, slice_arguments, slice_runtime),
+    ill_typed_failure_has_one_arm(82, shift_arguments, shift_runtime),
+    ill_typed_failure_has_one_arm(83, shift_arguments, shift_runtime),
+  }
+}
+
+test out_of_int64_shift_cannot_claim_a_successful_zero_result() fail {
+  cek_builtin_v1.verify_direct_scalar_semantics(
+    82,
+    [bytes(#"42abcd"), integer_value(9223372036854775808)],
+    bytes(#"420000"),
+  )
+}
+
+test out_of_int64_rotate_cannot_claim_a_successful_result() fail {
+  cek_builtin_v1.verify_direct_scalar_semantics(
+    83,
+    [bytes(#"42abcd"), integer_value(-9223372036854775809)],
+    bytes(#"42abcd"),
+  )
+}
+
+test overflowing_ecdsa_scalar_cannot_claim_a_successful_false_result() fail {
+  let arguments = ecdsa_scalar_arguments(
+    115792089237316195423570985008687907852837564279074904382605163141518161494337,
+    1,
+  )
+  cek_builtin_v1.verify_direct_scalar_semantics(
+    52,
+    arguments,
+    boolean(#"d87980"),
+  )
+}
+
+test int64_endpoints_succeed_with_exact_slice_shift_rotate_results() {
+  and {
+    cek_builtin_v1.verify_direct_scalar_semantics(
+      12,
+      [integer_value(9223372036854775807), integer_value(1), bytes(#"42abcd")],
+      bytes(#"40"),
+    ),
+    cek_builtin_v1.verify_direct_scalar_semantics(
+      12,
+      [integer_value(-9223372036854775808), integer_value(1), bytes(#"42abcd")],
+      bytes(#"41ab"),
+    ),
+    cek_builtin_v1.verify_direct_scalar_semantics(
+      12,
+      [integer_value(0), integer_value(9223372036854775807), bytes(#"42abcd")],
+      bytes(#"42abcd"),
+    ),
+    cek_builtin_v1.verify_direct_scalar_semantics(
+      12,
+      [integer_value(0), integer_value(-9223372036854775808), bytes(#"42abcd")],
+      bytes(#"40"),
+    ),
+    cek_builtin_v1.verify_direct_scalar_semantics(
+      82,
+      [bytes(#"42abcd"), integer_value(9223372036854775807)],
+      bytes(#"420000"),
+    ),
+    cek_builtin_v1.verify_direct_scalar_semantics(
+      82,
+      [bytes(#"42abcd"), integer_value(-9223372036854775808)],
+      bytes(#"420000"),
+    ),
+    cek_builtin_v1.verify_direct_scalar_semantics(
+      83,
+      [bytes(#"42abcd"), integer_value(9223372036854775807)],
+      bytes(#"42d5e6"),
+    ),
+    cek_builtin_v1.verify_direct_scalar_semantics(
+      83,
+      [bytes(#"42abcd"), integer_value(-9223372036854775808)],
+      bytes(#"42abcd"),
+    ),
+  }
+}
+
+test malformed_ed25519_lengths_charge_the_exact_builtin_budget() {
+  let key = #"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
+  list.all(
+    [Pair(31, 64), Pair(32, 63), Pair(32, 65), Pair(0, 0)],
+    fn(lengths) {
+      let signature = if lengths.2nd == 65 {
+        builtin.cons_bytearray(0, builtin.integer_to_bytearray(True, 64, 0))
+      } else if lengths.2nd == 0 {
+        #""
+      } else {
+        builtin.integer_to_bytearray(True, lengths.2nd, 0)
+      }
+      let arguments = [
+        bytes(
+          cbor.serialise(
+            builtin.b_data(builtin.slice_bytearray(0, lengths.1st, key)),
+          ),
+        ),
+        bytes(#"40"),
+        bytes(cbor.serialise(builtin.b_data(signature))),
+      ]
+      and {
+        cek_builtin_v1.verify_direct_builtin_failure_v1(
+          21,
+          builtin_root(21, arguments),
+          arguments,
+        ),
+        cek_builtin_v1.authenticated_builtin_failure_budget(21, arguments) == cek_cost_v1.BuiltinBudgetV1 {
+          cpu: 53398444,
+          memory: 10,
+        },
+      }
+    },
+  )
+}
+
+test ed25519_charges_message_words_and_keeps_true_false_successes() {
+  let key = bytes(
+    #"5820d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+  )
+  let signature = bytes(
+    cbor.serialise(builtin.b_data(builtin.integer_to_bytearray(True, 64, 0))),
+  )
+  let valid_signature = bytes(
+    #"5840e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b",
+  )
+  and {
+    cek_builtin_v1.verify_direct_scalar_semantics(
+      21,
+      [key, bytes(#"40"), valid_signature],
+      boolean(#"d87a80"),
+    ),
+    list.all(
+      [
+        Pair(0, 53398444), Pair(1, 53398444), Pair(8, 53398444),
+        Pair(9, 53412777), Pair(16, 53412777), Pair(17, 53427110),
+      ],
+      fn(example) {
+        let message = if example.1st == 0 {
+          #""
+        } else {
+          builtin.integer_to_bytearray(True, example.1st, 0)
+        }
+        let arguments = [
+          key,
+          bytes(cbor.serialise(builtin.b_data(message))),
+          signature,
+        ]
+        and {
+          cek_builtin_v1.direct_builtin_budget_v1(21, arguments) == cek_cost_v1.BuiltinBudgetV1 {
+            cpu: example.2nd,
+            memory: 10,
+          },
+          cek_builtin_v1.verify_direct_scalar_semantics(
+            21,
+            arguments,
+            boolean(#"d87980"),
+          ),
+          !cek_builtin_v1.verify_direct_builtin_failure_v1(
+            21,
+            builtin_root(21, arguments),
+            arguments,
+          ),
+        }
+      },
     ),
   }
 }

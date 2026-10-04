@@ -13,6 +13,8 @@ import { Effect } from "effect";
 import {
   buildMidgardCekExecutionGraph,
   executeMidgardCekStructuralProgram,
+  type MidgardCekExecutionGraph,
+  type MidgardCekStructuralExecution,
 } from "./cek-executor.js";
 import { findRedeemerByPointer } from "./midgard-redeemers.js";
 import { discoverLocalScriptExecutions } from "./phase-b.discover-local-script-executions.js";
@@ -196,28 +198,35 @@ export const runLocalScriptEvaluation = (
               cpu: redeemer.exUnits.steps,
               memory: redeemer.exUnits.memory,
             };
+      let graph: MidgardCekExecutionGraph | null = null;
+      let cek: MidgardCekStructuralExecution | null = null;
+      const executionIndex = executionIndexOf.get(execution)!;
       let result: LocalScriptEvalResult;
       if (config.evaluateProofScript !== undefined) {
         result = yield* config.evaluateProofScript(
           execution.resolved.source.scriptBytes,
           contextCbor,
           executionBudget,
+          executionIndex,
         );
       } else {
         try {
           const envelope = decodeMidgardCekProgramEnvelope(
             execution.resolved.source.scriptBytes,
           );
-          const graph = buildMidgardCekExecutionGraph(
+          graph = buildMidgardCekExecutionGraph(
             envelope,
             proofProgramMaterial,
             contextCbor,
           );
-          const cek = executeMidgardCekStructuralProgram({
+          cek = executeMidgardCekStructuralProgram({
             root: graph.root,
             material: graph.material.values(),
             constantWitnesses: graph.constantWitnesses,
-            maxSteps: MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
+            executionIndex,
+            maxSteps:
+              config.maxScriptExecutionSteps ??
+              MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
             executionBudget,
           });
           result =
@@ -241,6 +250,15 @@ export const runLocalScriptEvaluation = (
           };
         }
       }
+      config.onScriptEvaluated?.(candidate.ledgerTx.txId, {
+        scriptBytes: Buffer.from(execution.resolved.source.scriptBytes),
+        contextCbor: Buffer.from(contextCbor),
+        executionIndex,
+        executionBudget,
+        result,
+        graph,
+        execution: cek,
+      });
       if (result.kind === "script_invalid") {
         return {
           kind: "rejected",

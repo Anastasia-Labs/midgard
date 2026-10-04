@@ -47,6 +47,53 @@ const decodeAndReplay = (payload: SDK.DaPayload): SDK.DaPayload => {
 };
 
 describe("canonical V1 DA payload verification", () => {
+  it.each(["initial", "terminal", "both"] as const)(
+    "rejects omission of %s endpoints from any committed validation descriptor",
+    async (endpoint) => {
+      const fixture = await makePayloadFixture(3);
+      expect(() =>
+        decodeDaPayloadStrict(fixture.innerPayloadCbor),
+      ).not.toThrow();
+      for (const [eventCbor, descriptorCbor] of fixture.payload.block_body
+        .validation_traces) {
+        const descriptor = LucidData.from(
+          descriptorCbor,
+          SDK.ValidationTraceDescriptor,
+        );
+        const removed = (
+          endpoint === "both" ? (["initial", "terminal"] as const) : [endpoint]
+        ).map((kind) =>
+          SDK.retainedValidationEndpointCoordinate(descriptor.step_count, kind),
+        );
+        const witnesses =
+          fixture.payload.block_body.validation_trace_witnesses.filter(
+            ([keyCbor]) => {
+              const key = SDK.decodeRetainedValidationWitnessKey(
+                Buffer.from(keyCbor, "hex"),
+              );
+              return (
+                LucidData.to(key.event_key, SDK.EventKey) !== eventCbor ||
+                !removed.includes(key.execution_index)
+              );
+            },
+          );
+        expect(() =>
+          decodeDaPayloadStrict(
+            SDK.encodeDaPayload({
+              ...fixture.payload,
+              block_body: {
+                ...fixture.payload.block_body,
+                validation_trace_witnesses: witnesses,
+              },
+            }),
+          ),
+        ).toThrow(
+          /validation trace omits its retained (initial|terminal) endpoint/u,
+        );
+      }
+    },
+  );
+
   it("rejects duplicate and orphan retained validation witness coordinates", async () => {
     const fixture = await makePayloadFixture();
     const existingEvent = LucidData.from(
@@ -83,13 +130,13 @@ describe("canonical V1 DA payload verification", () => {
   });
 
   it.each([
-    // The fixture descriptors have step_count 0: state 0 is -1, the initial
-    // endpoint -2 and the terminal endpoint -3.
-    [-4n, /outside its descriptor's retained domain/u],
+    // The fixture descriptors have step_count 1: states 0/1 are -2/-1,
+    // the initial endpoint is -3 and the terminal endpoint is -4.
+    [-5n, /outside its descriptor's retained domain/u],
     [0n, /reserved for NativeScripts execution aliases/u],
-    [-1n, /does not open the committed descriptor/u],
     [-2n, /does not open the committed descriptor/u],
     [-3n, /does not open the committed descriptor/u],
+    [-4n, /does not open the committed descriptor/u],
   ] as const)(
     "rejects a retained witness at coordinate %s that does not open its descriptor",
     async (executionIndex, message) => {

@@ -4,6 +4,7 @@
 
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  type LocalScriptEvaluation,
   type RejectCode,
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerMutationStep,
@@ -49,6 +50,7 @@ export type ValidationTraceTransactionInput = {
   readonly ledgerOps: readonly MpfBatchOp[];
   readonly ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
   readonly ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[];
+  readonly scriptEvaluations?: readonly LocalScriptEvaluation[];
   readonly verdict: "accepted" | "rejected";
   readonly rejectionCode: RejectCode | null;
 };

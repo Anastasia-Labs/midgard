@@ -1,4 +1,6 @@
+use aiken/builtin
 use aiken/cbor
+use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry.{Leaf}
 use aiken/merkle_patricia_forestry as mpf
@@ -1126,8 +1128,11 @@ test accepts_l2_source_event_missing_trace_fault() {
     header,
     proof.SourceMembershipMismatch {
       witness: proof.SourceEventMissingTrace {
-        source_membership: proof.L2TransactionSourceMembership {
-          membership: source_membership,
+        source_membership: proof.L2KeyOpening {
+          tx_id: source_membership.key,
+          value_hash: blake2b_256(source_membership.value),
+          phas_root: source_membership.phas_root,
+          proof: source_membership.proof,
         },
         event_to_step_non_membership,
       },
@@ -1842,8 +1847,11 @@ test accepts_forced_transaction_classified_as_normal_fault() {
     proof.SourceMembershipMismatch {
       witness: proof.SourcePhaseMismatch {
         trace_proof,
-        source_membership: proof.ForcedTransactionSourceMembership {
-          membership: source_membership,
+        source_membership: proof.ForcedKeyOpening {
+          tx_order_id: source_membership.key,
+          value_hash: blake2b_256(cbor.serialise(source_membership.value)),
+          phas_root: source_membership.phas_root,
+          proof: source_membership.proof,
         },
       },
     },
@@ -1875,8 +1883,11 @@ test accepts_normal_transaction_classified_as_forced_fault() {
     proof.SourceMembershipMismatch {
       witness: proof.SourcePhaseMismatch {
         trace_proof,
-        source_membership: proof.L2TransactionSourceMembership {
-          membership: source_membership,
+        source_membership: proof.L2KeyOpening {
+          tx_id: source_membership.key,
+          value_hash: blake2b_256(source_membership.value),
+          phas_root: source_membership.phas_root,
+          proof: source_membership.proof,
         },
       },
     },
@@ -3535,5 +3546,482 @@ test accepts_out_of_window_deposit_fault() {
     dummy_hub_datum(),
     [reference_input],
     Some(timing_fixture.evidence(header, [reference_input])),
+  )
+}
+
+fn n2_source() -> proof.SourceKeyOpening {
+  let membership = raw_l2_source_membership(h32_a, #"d87980")
+  proof.L2KeyOpening {
+    tx_id: h32_a,
+    value_hash: blake2b_256(membership.value),
+    phas_root: membership.phas_root,
+    proof: [],
+  }
+}
+
+fn n2_descriptor() -> validation_trace_v1.ValidationTraceDescriptorV1 {
+  validation_trace_v1.ValidationTraceDescriptorV1 {
+    schema_version: 1,
+    machine_version: 1,
+    trace_root: h32_a,
+    step_count: 1,
+    initial_state_hash: h32_b,
+    terminal_state_hash: h32_c,
+    verdict: validation_trace_v1.Accepted,
+    rejection_code_hash: zero_hash,
+  }
+}
+
+fn n2_run_root(event_key: ledger_state.EventKey, value: ByteArray) -> ByteArray {
+  mpf.root(mpf.insert(mpf.empty, cbor.serialise(event_key), value, []))
+}
+
+fn n2_header(run_root: ByteArray) -> ledger_state.HeaderV1 {
+  let source = raw_l2_source_membership(h32_a, #"d87980")
+  ledger_state.HeaderV1 {
+    ..base_header(),
+    transactions_root: source.root,
+    l2_transaction_count: 1,
+    validation_trace_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+    validation_traces_root: transition_trace.commit_counted_root(
+      transition_trace.ValidationTracesRootDomain,
+      run_root,
+      1,
+    ),
+  }
+}
+
+fn n2_missing_fault(
+  run_root: ByteArray,
+  absence: mpf.Proof,
+) -> proof.TransitionFault {
+  proof.SourceMembershipMismatch {
+    witness: proof.SourceEventMissingValidationRun {
+      source: n2_source(),
+      run_phas_root: run_root,
+      run_absence_proof: absence,
+    },
+  }
+}
+
+test n2_missing_run_convicts_committed_source() {
+  // A distinct run is present under the authenticated count label.
+  let other = ledger_state.L2TransactionEventKey { tx_id: h32_b }
+  let value = cbor.serialise(n2_descriptor())
+  let root = n2_run_root(other, value)
+  let path = blake2b_256(cbor.serialise(other))
+  let absence = [mpf.Leaf { skip: 0, key: path, value: blake2b_256(value) }]
+  proof.validate_source_fault_proof(
+    prove(n2_header(root), n2_missing_fault(root, absence)),
+    asset_name_for(n2_header(root)),
+  )
+}
+
+test n2_present_run_refuses_missing_claim() fail {
+  let root = n2_run_root(
+    ledger_state.L2TransactionEventKey { tx_id: h32_a },
+    cbor.serialise(n2_descriptor()),
+  )
+  proof.validate_source_fault_proof(
+    prove(n2_header(root), n2_missing_fault(root, [])),
+    asset_name_for(n2_header(root)),
+  )
+}
+
+test n2_foreign_run_convicts() {
+  let key = ledger_state.L2TransactionEventKey { tx_id: h32_b }
+  let value = cbor.serialise(n2_descriptor())
+  let root = n2_run_root(key, value)
+  let source = raw_l2_source_membership(h32_a, #"d87980")
+  let absence = [
+    mpf.Leaf {
+      skip: 0,
+      key: blake2b_256(h32_a),
+      value: blake2b_256(source.value),
+    },
+  ]
+  let header = n2_header(root)
+  proof.validate_source_fault_proof(
+    prove(
+      header,
+      proof.SourceMembershipMismatch {
+        witness: proof.ForeignValidationRun {
+          event_key: cbor.serialise(key),
+          value_hash: blake2b_256(value),
+          run_phas_root: root,
+          run_proof: [],
+          source_phas_root: source.phas_root,
+          source_absence_proof: absence,
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test n2_existing_source_refuses_foreign_claim() fail {
+  let key = ledger_state.L2TransactionEventKey { tx_id: h32_a }
+  let value = cbor.serialise(n2_descriptor())
+  let root = n2_run_root(key, value)
+  let source = raw_l2_source_membership(h32_a, #"d87980")
+  let header = n2_header(root)
+  proof.validate_source_fault_proof(
+    prove(
+      header,
+      proof.SourceMembershipMismatch {
+        witness: proof.ForeignValidationRun {
+          event_key: cbor.serialise(key),
+          value_hash: blake2b_256(value),
+          run_phas_root: root,
+          run_proof: [],
+          source_phas_root: source.phas_root,
+          source_absence_proof: [],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+fn n2_malformed_claim(value: ByteArray) -> Bool {
+  let key = ledger_state.L2TransactionEventKey { tx_id: h32_a }
+  let root = n2_run_root(key, value)
+  let header = n2_header(root)
+  proof.validate_source_fault_proof(
+    prove(
+      header,
+      proof.SourceMembershipMismatch {
+        witness: proof.MalformedValidationRun {
+          event_key: key,
+          value,
+          run_phas_root: root,
+          run_proof: [],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test n2_garbled_run_convicts() {
+  n2_malformed_claim(#"ff")
+}
+
+test n2_zero_step_run_convicts() {
+  n2_malformed_claim(
+    cbor.serialise(
+      validation_trace_v1.ValidationTraceDescriptorV1 {
+        ..n2_descriptor(),
+        step_count: 0,
+      },
+    ),
+  )
+}
+
+test n2_honest_descriptor_refuses_malformed_claim() fail {
+  n2_malformed_claim(cbor.serialise(n2_descriptor()))
+}
+
+test n2_descriptor_decoder_is_total_over_wrong_data_shapes() {
+  list.all(
+    [
+      #"ff", #"00", #"40", #"80", #"a0", #"d87980",
+      #"d8799f0101582000000000000000000000000000000000000000000000000000000000000000000140400040ff",
+    ],
+    fn(bytes) { !validation_trace_v1.descriptor_bytes_are_well_formed(bytes) },
+  )
+}
+
+// The value digest cannot be rebound to another event, root or count label.
+test n2_source_key_opening_is_exact() {
+  let root = n2_run_root(
+    ledger_state.L2TransactionEventKey { tx_id: h32_b },
+    cbor.serialise(n2_descriptor()),
+  )
+  let header = n2_header(root)
+  let source = raw_l2_source_membership(h32_a, #"d87980")
+  let forged = proof.L2KeyOpening {
+    tx_id: h32_c,
+    value_hash: blake2b_256(source.value),
+    phas_root: source.phas_root,
+    proof: [],
+  }
+  !proof.validate_source_fault_proof(
+    prove(
+      header,
+      proof.SourceMembershipMismatch {
+        witness: proof.SourceEventMissingValidationRun {
+          source: forged,
+          run_phas_root: root,
+          run_absence_proof: [],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test n2_nontransaction_run_key_is_foreign() {
+  let key = ledger_state.WithdrawalEventKey { withdrawal_id: out_ref(0) }
+  let value = cbor.serialise(n2_descriptor())
+  let root = n2_run_root(key, value)
+  let header = n2_header(root)
+  proof.validate_source_fault_proof(
+    prove(
+      header,
+      proof.SourceMembershipMismatch {
+        witness: proof.ForeignValidationRun {
+          event_key: cbor.serialise(key),
+          value_hash: blake2b_256(value),
+          run_phas_root: root,
+          run_proof: [],
+          source_phas_root: env.empty_merkle_tree_root,
+          source_absence_proof: [],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test n2_descriptor_decoder_refuses_wrong_fields_and_versions() {
+  let honest = n2_descriptor()
+  and {
+    validation_trace_v1.descriptor_bytes_are_well_formed(cbor.serialise(honest)),
+    !validation_trace_v1.descriptor_bytes_are_well_formed(
+      cbor.serialise(
+        validation_trace_v1.ValidationTraceDescriptorV1 {
+          ..honest,
+          machine_version: 2,
+        },
+      ),
+    ),
+    !validation_trace_v1.descriptor_bytes_are_well_formed(
+      cbor.serialise(
+        validation_trace_v1.ValidationTraceDescriptorV1 {
+          ..honest,
+          schema_version: 2,
+        },
+      ),
+    ),
+    !validation_trace_v1.descriptor_bytes_are_well_formed(
+      cbor.serialise(
+        validation_trace_v1.ValidationTraceDescriptorV1 {
+          ..honest,
+          trace_root: #"00",
+        },
+      ),
+    ),
+    !validation_trace_v1.descriptor_bytes_are_well_formed(
+      cbor.serialise(
+        validation_trace_v1.ValidationTraceDescriptorV1 {
+          ..honest,
+          verdict: validation_trace_v1.Pending,
+        },
+      ),
+    ),
+    !validation_trace_v1.descriptor_bytes_are_well_formed(
+      cbor.serialise(
+        validation_trace_v1.ValidationTraceDescriptorV1 {
+          ..honest,
+          step_count: 4_294_967_296,
+        },
+      ),
+    ),
+    !validation_trace_v1.descriptor_bytes_are_well_formed(
+      cbor.serialise(
+        validation_trace_v1.ValidationTraceDescriptorV1 {
+          ..honest,
+          verdict: validation_trace_v1.Rejected,
+        },
+      ),
+    ),
+  }
+}
+
+test n2_all_runs_missing_is_provable() {
+  let header = n2_header(env.empty_merkle_tree_root)
+  proof.validate_source_fault_proof(
+    prove(header, n2_missing_fault(env.empty_merkle_tree_root, [])),
+    asset_name_for(header),
+  )
+}
+
+test n2_bignum_leaf_is_malformed_and_provable() {
+  n2_malformed_claim(#"c24100")
+}
+
+fn n2_extra_raw_key_is_provable(key: ByteArray) -> Bool {
+  let legitimate_key = cbor.serialise(
+    ledger_state.L2TransactionEventKey { tx_id: h32_a },
+  )
+  let value = cbor.serialise(n2_descriptor())
+  let legitimate_path = blake2b_256(legitimate_key)
+  let neighbor = [
+    mpf.Leaf { skip: 0, key: legitimate_path, value: blake2b_256(value) },
+  ]
+  let legitimate = mpf.insert(mpf.empty, legitimate_key, value, [])
+  let root = mpf.root(mpf.insert(legitimate, key, value, neighbor))
+  let header = n2_header(root)
+  proof.validate_source_fault_proof(
+    prove(
+      header,
+      proof.SourceMembershipMismatch {
+        witness: proof.ForeignValidationRun {
+          event_key: key,
+          value_hash: blake2b_256(value),
+          run_phas_root: root,
+          run_proof: neighbor,
+          source_phas_root: env.empty_merkle_tree_root,
+          source_absence_proof: [],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test n2_extra_garbled_run_key_is_foreign_despite_honest_count_label() {
+  n2_extra_raw_key_is_provable(#"00")
+}
+
+test n2_extra_bignum_run_key_is_foreign_without_decoder_abort() {
+  n2_extra_raw_key_is_provable(#"c24100")
+}
+
+fn n2_forced_foreign_claim(existing: Bool) -> Bool {
+  let event_key = ledger_state.ForcedTransactionEventKey {
+    tx_order_id: out_ref(0),
+  }
+  let value = cbor.serialise(n2_descriptor())
+  let run_root = n2_run_root(event_key, value)
+  let source = forced_source_membership(
+    out_ref(0),
+    forced_tx(verdict_plutus_failed(), #""),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..n2_header(run_root),
+    forced_transactions_root: if existing {
+      source.root
+    } else {
+      env.empty_merkle_tree_root
+    },
+    forced_transaction_count: if existing {
+      1
+    } else {
+      0
+    },
+  }
+  proof.validate_source_fault_proof(
+    prove(
+      header,
+      proof.SourceMembershipMismatch {
+        witness: proof.ForeignValidationRun {
+          event_key: cbor.serialise(event_key),
+          value_hash: blake2b_256(value),
+          run_phas_root: run_root,
+          run_proof: [],
+          source_phas_root: if existing {
+            source.phas_root
+          } else {
+            env.empty_merkle_tree_root
+          },
+          source_absence_proof: [],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test n2_forced_foreign_run_convicts() {
+  n2_forced_foreign_claim(False)
+}
+
+test n2_existing_forced_source_refuses_foreign_claim() fail {
+  n2_forced_foreign_claim(True)
+}
+
+test n2_forced_source_missing_run_convicts() {
+  let source = forced_source_membership(
+    out_ref(0),
+    forced_tx(verdict_plutus_failed(), #""),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..n2_header(env.empty_merkle_tree_root),
+    forced_transactions_root: source.root,
+    forced_transaction_count: 1,
+  }
+  proof.validate_source_fault_proof(
+    prove(
+      header,
+      proof.SourceMembershipMismatch {
+        witness: proof.SourceEventMissingValidationRun {
+          source: proof.ForcedKeyOpening {
+            tx_order_id: source.key,
+            value_hash: blake2b_256(cbor.serialise(source.value)),
+            phas_root: source.phas_root,
+            proof: [],
+          },
+          run_phas_root: env.empty_merkle_tree_root,
+          run_absence_proof: [],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test n2_fixed_descriptor_wire_matches_typed_codec_at_all_count_width_boundaries() {
+  list.all(
+    [-1, 0, 1, 23, 24, 255, 256, 65_535, 65_536, 4_294_967_295, 4_294_967_296],
+    fn(count) {
+      list.all(
+        [
+          validation_trace_v1.Pending,
+          validation_trace_v1.Accepted,
+          validation_trace_v1.Rejected,
+        ],
+        fn(verdict) {
+          list.all(
+            [zero_hash, h32_a],
+            fn(rejection) {
+              let descriptor = validation_trace_v1.ValidationTraceDescriptorV1 {
+                ..n2_descriptor(),
+                step_count: count,
+                verdict,
+                rejection_code_hash: rejection,
+              }
+              validation_trace_v1.descriptor_bytes_are_well_formed(
+                cbor.serialise(descriptor),
+              ) == validation_trace_v1.descriptor_is_well_formed(descriptor)
+            },
+          )
+        },
+      )
+    },
+  )
+}
+
+test n2_fixed_descriptor_wire_refuses_nonminimal_count_spellings() {
+  let bytes = cbor.serialise(n2_descriptor())
+  let prefix = builtin.slice_bytearray(0, 39, bytes)
+  let suffix = builtin.slice_bytearray(
+    40,
+    builtin.length_of_bytearray(bytes) - 40,
+    bytes,
+  )
+  list.all(
+    [#"1801", #"190001", #"1a00000001", #"1b0000000000000001", #"c24101"],
+    fn(count) {
+      !validation_trace_v1.descriptor_bytes_are_well_formed(
+        builtin.append_bytearray(
+          prefix,
+          builtin.append_bytearray(count, suffix),
+        ),
+      )
+    },
   )
 }

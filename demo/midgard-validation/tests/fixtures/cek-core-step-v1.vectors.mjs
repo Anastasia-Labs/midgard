@@ -40,14 +40,13 @@ import {
   Force,
   Lambda,
   UPLCConst,
-  UPLCEncoder,
   UPLCProgram,
   UPLCVar,
 } from "@harmoniclabs/uplc";
 
 /** `(program 1.1.0 term)` as canonical Flat bytes, the V1 script payload. */
-export const compileMidgardCekGoldenProgram = (term) =>
-  Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], term)));
+export const compileMidgardCekGoldenProgram = (term, encodeProgram) =>
+  Buffer.from(encodeProgram(new UPLCProgram([1, 1, 0], term)));
 
 /** The empty script context every program without a `context` is applied to. */
 export const EMPTY_CONTEXT = () => new DataConstr(0n, []);

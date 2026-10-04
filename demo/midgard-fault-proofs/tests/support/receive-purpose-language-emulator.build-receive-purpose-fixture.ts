@@ -17,7 +17,7 @@ import {
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   MidgardRedeemerTag,
-  validationAuxiliaryWitnessData,
+  retainedValidationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -289,9 +289,11 @@ export const buildReceivePurposeFixture = async (
         program_counter: BigInt(retained.programCounter),
         witness_cbor: retained.cbor.toString("hex"),
         auxiliary: Data.from(
-          Data.to(validationAuxiliaryWitnessData(retained.auxiliary) as never),
-          SDK.ValidationAuxiliaryWitnessSchema,
-        ) as unknown as SDK.ValidationAuxiliaryWitness,
+          Data.to(
+            retainedValidationAuxiliaryWitnessData(retained.auxiliary) as never,
+          ),
+          SDK.RetainedValidationAuxiliaryWitnessSchema,
+        ) as unknown as SDK.RetainedValidationAuxiliaryWitness,
       };
       return [
         SDK.encodeRetainedValidationWitnessKey(key).toString("hex"),

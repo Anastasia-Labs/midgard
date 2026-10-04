@@ -53,6 +53,7 @@ export const PUBLICATION_ORDER: readonly PublicationStep[] = [
   "fieldPreimageCertificate",
   "cekProgramMaterial",
   "validationTraceDisputeControl",
+  "validationTraceCanonical",
   // Each legacy family publishes step 01 followed by its later steps.
   {
     interleaveByChain: [

@@ -138,6 +138,9 @@
       "types": "./dist/types.d.ts",
       "import": "./dist/types.js",
       "require": "./dist/types.cjs"
+    },
+    "./tests/forced-native-first-fault-fixture": {
+      "midgard-source": "./tests/forced-native-first-fault.fixture.ts"
     }
   },
   "scripts": {
@@ -155,6 +158,8 @@
     "fixtures:nested-boundary-aiken:check": "pnpm run build && node scripts/generate-nested-boundary-aiken-goldens.mjs --check",
     "fixtures:cek-core-step-v1:sync": "pnpm run build && node scripts/generate-cek-core-step-v1-goldens.mjs",
     "fixtures:cek-core-step-v1:check": "pnpm run build && node scripts/generate-cek-core-step-v1-goldens.mjs --check",
+    "fixtures:cek-builtin-cardano-v1:sync": "node scripts/generate-cek-builtin-cardano-v1-goldens.mjs",
+    "fixtures:cek-builtin-cardano-v1:check": "node scripts/generate-cek-builtin-cardano-v1-goldens.mjs --check",
     "test": "vitest run",
     "test:cardano-capability-p2:data-breadth": "NODE_OPTIONS=--max-old-space-size=4096 node scripts/verify-goal-cardano-capability-p2-data-breadth.mjs"
   },
@@ -175,6 +180,7 @@
     "@harmoniclabs/plutus-machine": "3.0.3",
     "@harmoniclabs/uplc": "2.0.7",
     "@lucid-evolution/lucid": "0.6.5",
+    "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.0.1",
     "effect": "^3.14.22"
   },

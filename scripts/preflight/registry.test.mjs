@@ -77,12 +77,24 @@ test("every script a check runs exists", () => {
   assert.deepEqual(missing, []);
 });
 
-test("derived golden channels and ledgers read Aiken sources", () => {
+test("derived goldens read Aiken sources or the pinned builtin evaluator", () => {
   const goldens = registry.checks.filter((check) =>
     check.id.startsWith("golden:"),
   );
   assert.ok(goldens.length >= 10, `only ${String(goldens.length)} channels`);
   for (const check of goldens) {
+    // This oracle evaluates textual UPLC directly; it has no Aiken module.
+    if (check.id === "golden:cek-builtin-cardano-v1") {
+      for (const path of [
+        "onchain/aiken/scripts/pinned-compiler.mjs",
+        "demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.cases.mjs",
+        "demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.generated.json",
+        "demo/midgard-validation/src/**",
+      ]) {
+        assert.ok(check.triggers.includes(path), `${check.id}: ${path}`);
+      }
+      continue;
+    }
     assert.ok(
       check.triggers.some((path) => path.endsWith(".ak")),
       `${check.id} names no .ak file, so an Aiken edit cannot select it`,

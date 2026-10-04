@@ -41,11 +41,11 @@ pub type Claim {
 /// yields — reads the same action through this function, so the claims they
 /// verify and the claims the stage yield consumes are one value; the
 /// dispatcher never has to compare claims across yields.
-fn dispatch_action(
+fn dispatcher_action(
   dispatchers: List<ScriptHash>,
   inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
-) -> (Claim, Int) {
+) -> (Data, List<Data>) {
   expect
       [
         Input {
@@ -67,13 +67,22 @@ fn dispatch_action(
     fn(pair) { pair.1st == Spend(output_reference) },
   )
   expect Pair(1, [action]) = builtin.un_constr_data(redeemer)
+  expect Pair(0, fields) = builtin.un_constr_data(action)
+  (datum_data, fields)
+}
+
+fn dispatch_action(
+  dispatchers: List<ScriptHash>,
+  inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> (Claim, Int) {
+  let (datum_data, fields) = dispatcher_action(dispatchers, inputs, redeemers)
   expect
-      Pair(0,
       [
         _input_index, _output_index, transition_data, witness_data, control_data,
         next_data, claimed_scalar, role_data, _ref_indices,
-      ])
-    = builtin.un_constr_data(action)
+      ]
+    = fields
   // `StepRedeemer` transition: [work_witness_cbor, claimed_successor]; the
   // dispatcher's checked redeemer decode pins the shape.
   let Pair(_, transition_fields) = builtin.un_constr_data(transition_data)
@@ -123,10 +132,6 @@ pub fn dispatch(
   claim
 }
 
-/// An attestation yield serves every stage role, so it pins no role index;
-/// the dispatcher's role table decides which attestations a role requires,
-/// and `require_authenticated_zero_yield` binds each required role name to
-/// the withdrawal that runs this dispatch.
 pub fn dispatch_attestation(
   dispatchers: List<ScriptHash>,
   inputs: List<Input>,
@@ -134,6 +139,49 @@ pub fn dispatch_attestation(
 ) -> Claim {
   let (claim, _role) = dispatch_action(dispatchers, inputs, redeemers)
   claim
+}
+
+/// Large constructor stages only advance a control or refuse the step;
+/// they never return a terminal rejection. Read exactly the fields they use,
+/// while retaining the shared unique dispatcher/spend and exact role gates.
+pub type AdvanceClaim {
+  witness: Data,
+  control: raw.Frame,
+  next_control_cbor: ByteArray,
+}
+
+pub fn dispatch_advance(
+  dispatchers: List<ScriptHash>,
+  expected_role: Int,
+  inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> AdvanceClaim {
+  let (_datum, fields) = dispatcher_action(dispatchers, inputs, redeemers)
+  expect
+      [
+        _input_index, _output_index, _transition, witness, control_data,
+        next_data, _claimed_scalar, role_data, _ref_indices,
+      ]
+    = fields
+  expect builtin.un_i_data(role_data) == expected_role
+  AdvanceClaim {
+    witness,
+    control: raw.open(builtin.un_b_data(control_data)),
+    next_control_cbor: builtin.un_b_data(next_data),
+  }
+}
+
+pub fn attest_advance(
+  claim: AdvanceClaim,
+  result: Option<stages.StepResult>,
+) -> Bool {
+  when result is {
+    Some(stages.Advanced { control }) -> and {
+        claim.next_control_cbor != #"",
+        raw.encode(control) == claim.next_control_cbor,
+      }
+    _ -> False
+  }
 }
 
 /// The span-attach step witness (`constr 5 [chunk_proof,

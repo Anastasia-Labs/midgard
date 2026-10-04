@@ -6,6 +6,7 @@ import { registerHistoryTests } from "./database.test/history.js";
 import { registerInitializationTests } from "./database.test/initialization.js";
 import { registerLedgerTests } from "./database.test/ledger.js";
 import { registerMpfTests } from "./database.test/mpf.js";
+import { registerRetainedScriptMaterialTests } from "./database.test/retained-script-material.js";
 import { registerWithdrawalRecoveryTests } from "./database.test/withdrawal-recovery.js";
 
 registerDatabaseSetup();
@@ -17,3 +18,4 @@ registerLedgerTests();
 registerHistoryTests();
 registerMpfTests();
 registerWithdrawalRecoveryTests();
+registerRetainedScriptMaterialTests();

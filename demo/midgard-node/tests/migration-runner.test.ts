@@ -66,7 +66,7 @@ describe("splitSqlStatements", () => {
     expect(statements[1]).toBe("SELECT 1");
   });
 
-  it("keeps v1 as the single fresh-install baseline with contiguous transactional successors", () => {
+  it("keeps v1 as the single fresh-install baseline with ordered transactional successors", () => {
     expect(
       MIGRATIONS.map(({ version, name, transactional }) => ({
         version,
@@ -76,6 +76,8 @@ describe("splitSqlStatements", () => {
     ).toEqual([
       { version: 1, name: "initial_schema", transactional: true },
       { version: 2, name: "automatic_settlement", transactional: true },
+      { version: 3, name: "operator_membership", transactional: true },
+      { version: 4, name: "retained_script_material", transactional: true },
     ]);
   });
 
@@ -129,7 +131,7 @@ describe("splitSqlStatements", () => {
     });
     expect(() =>
       validateAppliedMigrationLedger(
-        [stamped(first!, 1), stamped(second!, 2)],
+        MIGRATIONS.map((migration) => stamped(migration, migration.version)),
         "exact",
       ),
     ).not.toThrow();
@@ -180,7 +182,19 @@ describe("splitSqlStatements", () => {
       expect.objectContaining({ code: "schema_version_behind" }),
     );
     for (const [rows, code] of cases.map(
-      ([row, code]) => [[row] as const, code] as const,
+      ([row, code]) =>
+        [
+          [
+            row,
+            ...MIGRATIONS.slice(1).map((migration) => ({
+              ...appliedMigrationRow(),
+              version: migration.version,
+              name: migration.name,
+              checksum_sha256: migration.checksumSha256,
+            })),
+          ] as const,
+          code,
+        ] as const,
     )) {
       expect(() => validateAppliedMigrationLedger(rows, "exact")).toThrow(
         expect.objectContaining({ code }),

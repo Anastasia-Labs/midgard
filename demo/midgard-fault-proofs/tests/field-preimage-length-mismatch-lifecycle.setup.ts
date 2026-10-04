@@ -79,6 +79,7 @@ export const setup = async ({
     ? await buildInvalidForcedTransitionTraceFixture({
         ...(await operator()),
         fieldPreimageLengthMismatchIndex: 0,
+        headerDurationMs: 300_000,
       })
     : undefined;
   const familyForced =

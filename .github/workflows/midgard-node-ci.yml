@@ -380,6 +380,13 @@ jobs:
       - name: Check V1 CEK core-step golden vectors
         if: ${{ !cancelled() }}
         run: pnpm --dir demo/midgard-validation run fixtures:cek-core-step-v1:check
+      # The V1 CEK builtin channel: every builtin tag evaluated by the pinned
+      # Aiken evaluator, values and failures, with the cases where the ledger
+      # and that evaluator differ recorded as overrides beside both outcomes.
+      # The node's builtin evaluation must reproduce every expected outcome.
+      - name: Check V1 CEK builtin golden vectors
+        if: ${{ !cancelled() }}
+        run: pnpm --dir demo/midgard-validation run fixtures:cek-builtin-cardano-v1:check
       # The V1 validation-auxiliary-witness ABI channel. Its generator emits
       # both `tests/fixtures/validation-auxiliary-witness-v1.generated.json` —
       # which `demo/midgard-sdk/tests/validation-auxiliary-witness.test.ts`

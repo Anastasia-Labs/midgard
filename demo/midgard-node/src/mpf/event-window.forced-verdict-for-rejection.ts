@@ -3,11 +3,15 @@ import {
   encodeMidgardCekProgramMaterialSidecar,
   type MidgardCekProgramEnvelope,
 } from "@al-ft/midgard-core/cek-proof";
-import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
+import {
+  ForcedRejectionStopped,
+  forcedVerdictForRejection,
+} from "@al-ft/midgard-fault-proofs";
 import type * as SDK from "@al-ft/midgard-sdk";
 import {
   applyValidationMachineLedgerMutationStep,
   type CanonicalTransitionEffect,
+  type LocalScriptEvaluation,
   type RejectCode,
   type RejectedTx,
   type ValidationMachineLedgerEntry,
@@ -31,6 +35,7 @@ export type ClassifiedForcedTransaction = {
   readonly rawLedgerOps: readonly MpfBatchOp[];
   readonly ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
   readonly ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[];
+  readonly scriptEvaluations: readonly LocalScriptEvaluation[];
   readonly rejectionCode: RejectCode | null;
   readonly programMaterialSidecarCbor: Buffer;
 };
@@ -41,16 +46,32 @@ export type ClassifiedForcedTransaction = {
  */
 export const forcedRejectionVerdict = (
   rejection: RejectedTx,
-): Effect.Effect<SDK.OperatorVerdict, DatabaseError> =>
+): Effect.Effect<SDK.OperatorVerdict, DatabaseError | ForcedRejectionStopped> =>
   Effect.try({
     try: () => forcedVerdictForRejection(rejection),
     catch: (cause) =>
-      new DatabaseError({
-        table: ForcedTransactionsDB.tableName,
-        message: "Forced transaction rejection has no exact verdict",
-        cause,
-      }),
-  });
+      cause instanceof ForcedRejectionStopped
+        ? cause
+        : new DatabaseError({
+            table: ForcedTransactionsDB.tableName,
+            message: "Forced transaction rejection has no exact verdict",
+            cause,
+          }),
+  }).pipe(
+    Effect.tapError((error) =>
+      error instanceof ForcedRejectionStopped
+        ? Effect.logError(
+            "Forced transaction block stopped: no exact machine verdict",
+          ).pipe(
+            Effect.annotateLogs({
+              rejectCode: error.code,
+              consensusPhase: error.consensusPhase ?? "unknown",
+              retryable: error.retryable,
+            }),
+          )
+        : Effect.void,
+    ),
+  );
 
 export type ForcedProgramMaterialSidecarResolver<R> = (
   envelopes: readonly MidgardCekProgramEnvelope[],

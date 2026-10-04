@@ -15,6 +15,12 @@ import {
 } from "../field-opening.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
+  boundPublicationAddress,
+  requireBoundPublicationContext,
+  requireBoundPublicationRecoveryHeader,
+} from "./bound-data-publication.js";
+import {
+  BOUND_DATA_PUBLICATION_PREREQUISITE,
   exact,
   FIELD_CARRIAGE_PREREQUISITE,
   type FieldCarriagePrerequisitePort,
@@ -31,6 +37,7 @@ import {
   recovery,
 } from "./field-carriage-prerequisite.recorded-carriage-recovery.js";
 import {
+  carriageActionInputKeys,
   certificateAction,
   certifiedRequirement,
   parseBaseAction,
@@ -49,11 +56,7 @@ import {
   type LocallyEvaluatedTransaction,
 } from "./transaction-boundary.js";
 
-/**
- * Adds one durable action per field chunk and one for the tier-3 certificate.
- * Candidate discovery may use Lucid, but only raw-L1 admission can satisfy an
- * action or reconcile an ambiguous submission.
- */
+/** Journaled carriage actions require distinct raw-L1-authenticated chunk out-refs. */
 export const createAuthenticatedFieldCarriagePrerequisitePort = <
   Category extends FraudProofCatalogueCategoryName,
 >({
@@ -102,8 +105,10 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     datumCbor,
     unit,
     utxos,
+    claimed,
   }: {
     readonly utxos: readonly UTxO[];
+    readonly claimed?: ReadonlySet<string>;
     readonly headerHash: string;
     readonly kind: "field_publication" | "field_certificate";
     readonly address: string;
@@ -116,6 +121,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     const matches = utxos
       .filter(
         (utxo) =>
+          !claimed?.has(outRef(utxo)) &&
           utxo.datum === datumCbor &&
           utxo.datumHash == null &&
           utxo.scriptRef == null &&
@@ -140,11 +146,36 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
         expectedDatumCbor: datumCbor,
         ...(unit === null ? {} : { expectedUnit: unit }),
       });
-      if (observed.kind === "confirmed") {
-        return { kind: "confirmed", utxo };
-      }
+      if (observed.kind === "confirmed") return { kind: "confirmed", utxo };
     }
     return { kind: "pending" };
+  };
+  const publicationAddress = (required: Requirement) =>
+    boundPublicationAddress(required, signer.address);
+  const resolvePublications = async (
+    headerHash: string,
+    required: Requirement,
+    failure: string,
+  ): Promise<UTxO[]> => {
+    const publicationUtxos = await lucid.utxosAt(publicationAddress(required));
+    const claimed = new Set<string>();
+    const resolved: UTxO[] = [];
+    for (const datumCbor of required.publicationDatums) {
+      const observed = await candidate({
+        headerHash,
+        kind: "field_publication",
+        utxos: publicationUtxos,
+        claimed,
+        address: publicationAddress(required),
+        datumCbor,
+        unit: null,
+      });
+      if (observed.kind !== "confirmed" || observed.utxo === undefined)
+        throw new Error(failure);
+      claimed.add(outRef(observed.utxo));
+      resolved.push(observed.utxo);
+    }
+    return resolved;
   };
   const inspect = async ({
     headerHash,
@@ -159,13 +190,16 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     if (required === null || required.planned.plan.tier === "Inline") {
       return { kind: "not_required" as const };
     }
-    const publicationUtxos = await lucid.utxosAt(signer.address);
+    requireBoundPublicationContext(required, headerHash, baseAction);
+    const publicationUtxos = await lucid.utxosAt(publicationAddress(required));
+    const claimed = new Set<string>();
     for (const [index, datumCbor] of required.publicationDatums.entries()) {
       const observed = await candidate({
         headerHash,
         kind: "field_publication",
         utxos: publicationUtxos,
-        address: signer.address,
+        claimed,
+        address: publicationAddress(required),
         datumCbor,
         unit: null,
       });
@@ -186,6 +220,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
           reason: `${category} field publication ${index.toString()} is not authenticated on the current chain`,
         };
       }
+      claimed.add(outRef(observed.utxo!));
     }
     if (required.planned.plan.tier !== "Certified") {
       return { kind: "satisfied" as const };
@@ -226,11 +261,13 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
         };
   };
   const exactAction = async ({
+    headerHash,
     action,
     artifact,
   }: {
     readonly action: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
+    readonly headerHash: string;
   }): Promise<
     Readonly<{
       kind: Recovery["kind"];
@@ -239,33 +276,15 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       publicationIndex?: number;
     }>
   > => {
-    const stage = action.input.stage;
-    const keys =
-      stage === "publish_field_carriage"
-        ? [
-            "schemaVersion",
-            "category",
-            "stage",
-            "forAction",
-            "requirementSha256",
-            "publicationIndex",
-            "publicationEncoding",
-            "publicationDigest",
-            "datumCborSha256",
-          ]
-        : [
-            "schemaVersion",
-            "category",
-            "stage",
-            "forAction",
-            "requirementSha256",
-            "certificateDatumCborSha256",
-            "certificateUnit",
-          ];
-    const input = exact(action.input, keys, `${category} field action`);
+    const input = exact(
+      action.input,
+      carriageActionInputKeys(action),
+      `${category} field action`,
+    );
     if (
       (input.schemaVersion !== FIELD_CARRIAGE_PREREQUISITE &&
-        input.schemaVersion !== RAW_DATUM_PREIMAGE_PREREQUISITE) ||
+        input.schemaVersion !== RAW_DATUM_PREIMAGE_PREREQUISITE &&
+        input.schemaVersion !== BOUND_DATA_PUBLICATION_PREREQUISITE) ||
       input.category !== category ||
       (input.stage !== "publish_field_carriage" &&
         input.stage !== "certify_field_carriage")
@@ -280,6 +299,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     if (required === null) {
       throw new Error(`${category} field action is no longer required`);
     }
+    requireBoundPublicationContext(required, headerHash, baseAction);
     if (input.stage === "publish_field_carriage") {
       if (
         typeof input.publicationIndex !== "number" ||
@@ -332,24 +352,12 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
           requirement: required,
         });
       }
-      const publicationUtxos = await lucid.utxosAt(signer.address);
-      const resolved: UTxO[] = [];
-      for (const datumCbor of required.publicationDatums) {
-        const observed = await candidate({
-          headerHash,
-          kind: "field_publication",
-          utxos: publicationUtxos,
-          address: signer.address,
-          datumCbor,
-          unit: null,
-        });
-        if (observed.kind !== "confirmed" || observed.utxo === undefined) {
-          throw new Error(
-            `${category} proof step cannot use an unauthenticated field publication`,
-          );
-        }
-        resolved.push(observed.utxo);
-      }
+      requireBoundPublicationContext(required, headerHash, action);
+      const resolved = await resolvePublications(
+        headerHash,
+        required,
+        `${category} proof step cannot use an unauthenticated field publication`,
+      );
       if (required.planned.plan.tier !== "Certified") {
         return Object.freeze({
           publications: Object.freeze(resolved),
@@ -387,7 +395,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     },
     inspect: async (input) => await inspect(input),
     capture: async ({ headerHash, action, artifact }) => {
-      const parsed = await exactAction({ action, artifact });
+      const parsed = await exactAction({ headerHash, action, artifact });
       signer.selectWallet(lucid);
       if (parsed.kind === "publication") {
         const index = parsed.publicationIndex!;
@@ -402,7 +410,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
               byteLength: publication.bytes.length,
               digestHex: publication.digest.toString("hex"),
             },
-            publisherAddress: signer.address,
+            publisherAddress: publicationAddress(parsed.requirement),
           }),
         );
         const signed = await unsigned.sign.withWallet().complete();
@@ -417,30 +425,17 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
             kind: "publication",
             requirement: parsed.requirement,
             transaction,
-            address: signer.address,
+            address: publicationAddress(parsed.requirement),
             datumCbor,
             unit: null,
           }),
         };
       }
-      const publicationUtxos = await lucid.utxosAt(signer.address);
-      const chunkUtxos: UTxO[] = [];
-      for (const datumCbor of parsed.requirement.publicationDatums) {
-        const observed = await candidate({
-          headerHash,
-          kind: "field_publication",
-          utxos: publicationUtxos,
-          address: signer.address,
-          datumCbor,
-          unit: null,
-        });
-        if (observed.kind !== "confirmed" || observed.utxo === undefined) {
-          throw new Error(
-            `${category} field certificate cannot bypass authenticated chunk publication`,
-          );
-        }
-        chunkUtxos.push(observed.utxo);
-      }
+      const chunkUtxos = await resolvePublications(
+        headerHash,
+        parsed.requirement,
+        `${category} field certificate cannot bypass authenticated chunk publication`,
+      );
       const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await certifyFaultProofFieldCarriage({
@@ -508,12 +503,13 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
           txHash,
           value: durableRecovery,
         });
+        requireBoundPublicationRecoveryHeader(action, headerHash);
       } catch (cause) {
         return { kind: "conflict", reason: String(cause) };
       }
       const address =
         recovered.kind === "publication"
-          ? signer.address
+          ? (recovered.publicationAddress ?? signer.address)
           : fieldPreimageCertificateAddress({
               network,
               certificatePolicyId: recovered.unit!.slice(0, 56),

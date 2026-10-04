@@ -800,21 +800,28 @@ fn apply_step(
     } else {
       when action is {
         RedeemerItemTraverseData { action: traversal_action } ->
-          when
-            cek_data_traverse_v1.step_v1(
-              traversal,
-              source_bytes,
-              traversal_action,
-            )
-          is {
-            None -> None
-            Some(next_traversal) ->
-              advanced(
-                RedeemerItemProofControlV1 {
-                  ..control,
-                  traversal: Some(next_traversal),
-                },
+          if traversal_action == cek_data_traverse_v1.NoAction && cek_data_traverse_v1.noncanonical_data_head_v1(
+            traversal,
+            source_bytes,
+          ) {
+            Some(RedeemerItemProofInvalid)
+          } else {
+            when
+              cek_data_traverse_v1.step_v1(
+                traversal,
+                source_bytes,
+                traversal_action,
               )
+            is {
+              None -> None
+              Some(next_traversal) ->
+                advanced(
+                  RedeemerItemProofControlV1 {
+                    ..control,
+                    traversal: Some(next_traversal),
+                  },
+                )
+            }
           }
         _ -> None
       }

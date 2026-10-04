@@ -15,6 +15,7 @@ import { decodeMidgardSpendInputItem } from "./codec/native-tx-field-item-decode
 import { encodeMidgardSpendInputItem } from "./codec/native-tx-field-items.js";
 import { decodeMidgardTxOutput } from "./codec/output.js";
 import {
+  decodeMidgardVersionedScriptEnvelope,
   decodeMidgardVersionedScriptListPreimage,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
@@ -140,13 +141,25 @@ export const hashMidgardV1VersionedScript = (
  */
 export const collectMidgardAttachedProgramEnvelopes = (
   tx: Pick<MidgardNativeTxCanonical, "body" | "witnessSet">,
+  sourceKind: "normal" | "forced" = "normal",
 ): readonly MidgardCekProgramEnvelope[] => {
   const envelopes: MidgardCekProgramEnvelope[] = [];
-  for (const script of decodeMidgardVersionedScriptListPreimage(
-    tx.witnessSet.scriptTxWitsPreimageCbor,
-  )) {
-    const envelope = decodeMidgardScriptProgramEnvelope(script);
-    if (envelope !== null) envelopes.push(envelope);
+  if (sourceKind === "forced") {
+    for (const item of decodeMidgardNativeByteListPreimage(
+      tx.witnessSet.scriptTxWitsPreimageCbor,
+      "forced.script_witnesses",
+    )) {
+      const script = decodeMidgardVersionedScriptEnvelope(item);
+      if (script.language !== "NativeCardano")
+        envelopes.push(decodeMidgardCekProgramEnvelope(script.scriptBytes));
+    }
+  } else {
+    for (const script of decodeMidgardVersionedScriptListPreimage(
+      tx.witnessSet.scriptTxWitsPreimageCbor,
+    )) {
+      const envelope = decodeMidgardScriptProgramEnvelope(script);
+      if (envelope !== null) envelopes.push(envelope);
+    }
   }
   const outputs = decodeSingleCbor(tx.body.outputsPreimageCbor);
   if (!Array.isArray(outputs)) {
@@ -180,8 +193,9 @@ export const collectMidgardAttachedProgramEnvelopes = (
 export const collectMidgardEventProgramEnvelopes = (
   tx: Pick<MidgardNativeTxCanonical, "body" | "witnessSet">,
   preStateOutput: (outRefHex: string) => Uint8Array | undefined,
+  sourceKind: "normal" | "forced" = "normal",
 ): readonly MidgardCekProgramEnvelope[] => {
-  const envelopes = [...collectMidgardAttachedProgramEnvelopes(tx)];
+  const envelopes = [...collectMidgardAttachedProgramEnvelopes(tx, sourceKind)];
   // Program sources taken from ledger state: the reference inputs.
   for (const outRef of decodeMidgardNativeByteListPreimage(
     tx.body.referenceInputsPreimageCbor,

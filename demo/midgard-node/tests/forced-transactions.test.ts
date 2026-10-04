@@ -51,6 +51,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
+import { retainedEndpointsMatchDescriptor } from "../../da-committee-node/tests/helpers.validation-trace.js";
 import {
   encodeRecomputedNativeTx,
   FUNDED_OUTPUT_LOVELACE,
@@ -820,13 +821,10 @@ describe("V1 forced transaction material", () => {
     );
 
     expect(members).toHaveLength(2);
-    expect(
-      members.every(
-        ({ value }) =>
-          value.machine_version === 1n && value.verdict === "Accepted",
-      ),
-    ).toBe(true);
     for (const member of members) {
+      expect(member.value.machine_version).toBe(1n);
+      expect(member.value.verdict).toBe("Accepted");
+      expect(retainedEndpointsMatchDescriptor(member)).toBe(true);
       const retained = member.witnesses.map(([keyHex, valueHex]) => ({
         key: SDK.decodeRetainedValidationWitnessKey(Buffer.from(keyHex, "hex")),
         value: SDK.decodeRetainedValidationWitness(
@@ -1106,7 +1104,7 @@ describe("forced transaction program material at its position", () => {
       ).verdict,
     ).toEqual({
       ForcedTxInvalid: {
-        reason: { InputNotFound: { source_kind: 0n, input_index: 0n } },
+        reason: { InputNotFound: { source_kind: 1n, input_index: 0n } },
       },
     });
     expect(classified.rejectionCode).toBe(RejectCodes.InputNotFound);

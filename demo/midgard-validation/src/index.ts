@@ -28,6 +28,7 @@ export * from "./validation-candidate.js";
 export * from "./validation-dispute-evidence.js";
 export * from "./validation-machine/index.js";
 export * from "./validation-machine-data.js";
+export { retainedValidationAuxiliaryWitnessData } from "./validation-machine-data.retained-validation-auxiliary-witness-data.js";
 export * from "./validation-one-step-data.js";
 export * from "./value-accounting.js";
 export * from "./wire.js";

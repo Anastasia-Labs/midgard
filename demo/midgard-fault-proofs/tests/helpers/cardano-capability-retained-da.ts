@@ -14,23 +14,17 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import {
-  MIDGARD_VALIDATION_MACHINE_VERSION,
-  MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
-} from "@al-ft/midgard-core/consensus-profile";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { fixtureValidationTrace } from "../../../da-committee-node/tests/helpers.validation-trace.js";
 import {
   buildCountedRoot,
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/index.js";
-
-const hash32 = (byte: number): string =>
-  byte.toString(16).padStart(2, "0").repeat(32);
 
 const hash28 = (byte: number): string =>
   byte.toString(16).padStart(2, "0").repeat(28);
@@ -66,26 +60,6 @@ const countedRoot = (
       value: Buffer.from(value, "hex"),
     })),
   );
-
-const validationDescriptor = (
-  eventKey: SDK.EventKey,
-  index: number,
-): SDK.DaPayloadEntry => [
-  Data.to(eventKey as never, SDK.EventKeySchema as never),
-  Data.to(
-    SDK.validationTraceDescriptorDataFromCore({
-      schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
-      machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
-      traceRoot: Buffer.from(hash32(0xa0 + index), "hex"),
-      stepCount: 1,
-      initialStateHash: Buffer.from(hash32(0xb0 + index), "hex"),
-      terminalStateHash: Buffer.from(hash32(0xc0 + index), "hex"),
-      verdict: "accepted",
-      rejectionCodeHash: Buffer.alloc(32),
-    }) as never,
-    SDK.ValidationTraceDescriptorSchema as never,
-  ),
-];
 
 export type StrictRetainedDaPairFixture = {
   readonly payload: SDK.DaPayload;
@@ -237,10 +211,13 @@ export const buildStrictRetainedDaPairFixture = async ({
       valueSchema: SDK.EventToStepValueSchema,
     }),
   ];
-  const validationTraces: readonly SDK.DaPayloadEntry[] = [
-    ...(withForcedTwin ? [validationDescriptor(forcedEventKey, 0)] : []),
-    validationDescriptor(normalEventKey, 1),
+  const validationTraceMembers = [
+    ...(withForcedTwin
+      ? [fixtureValidationTrace(forcedEventKey, transactionIdHex)]
+      : []),
+    fixtureValidationTrace(normalEventKey, transactionIdHex),
   ];
+  const validationTraces = validationTraceMembers.map(({ entry }) => entry);
   const cekProgramMaterial = sorted(
     (canonicalMaterialSidecarCbor === undefined
       ? []
@@ -329,7 +306,9 @@ export const buildStrictRetainedDaPairFixture = async ({
       transition_trace: sorted(transitionTrace),
       event_to_step: sorted(eventToStep),
       validation_traces: sorted(validationTraces),
-      validation_trace_witnesses: [],
+      validation_trace_witnesses: sorted(
+        validationTraceMembers.flatMap(({ witnesses }) => witnesses),
+      ),
       counts,
     },
   };

@@ -236,11 +236,17 @@ export const validateDaPayloadEventProgramCoverage = (
   );
 
   const programEnvelopes = new Map<string, MidgardCekProgramEnvelope>();
-  const collect = (tx: CanonicalTx, fieldName: string): void => {
+  const collect = (
+    tx: CanonicalTx,
+    fieldName: string,
+    sourceKind: "normal" | "forced" = "normal",
+  ): void => {
     let envelopes: readonly MidgardCekProgramEnvelope[];
     try {
-      envelopes = collectMidgardEventProgramEnvelopes(tx, (outRefHex) =>
-        state.get(outRefHex),
+      envelopes = collectMidgardEventProgramEnvelopes(
+        tx,
+        (outRefHex) => state.get(outRefHex),
+        sourceKind,
       );
     } catch (cause) {
       throw new DaPayloadValidationError(
@@ -263,7 +269,7 @@ export const validateDaPayloadEventProgramCoverage = (
         if (event.spentOutRefHex !== null) state.delete(event.spentOutRefHex);
         break;
       case "forced":
-        collect(event.tx, event.fieldName);
+        collect(event.tx, event.fieldName, "forced");
         if (event.effectful) {
           applyTransactionEffect(state, event.tx, event.fieldName);
         }

@@ -15,7 +15,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
   MidgardRedeemerTag,
-  validationAuxiliaryWitnessData,
+  retainedValidationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -394,9 +394,11 @@ export const buildMissingRedeemerFixture = async (
       program_counter: BigInt(witness.programCounter),
       witness_cbor: witness.cbor.toString("hex"),
       auxiliary: Data.from(
-        Data.to(validationAuxiliaryWitnessData(witness.auxiliary) as never),
-        SDK.ValidationAuxiliaryWitnessSchema,
-      ) as unknown as SDK.ValidationAuxiliaryWitness,
+        Data.to(
+          retainedValidationAuxiliaryWitnessData(witness.auxiliary) as never,
+        ),
+        SDK.RetainedValidationAuxiliaryWitnessSchema,
+      ) as unknown as SDK.RetainedValidationAuxiliaryWitness,
     };
     return [
       {

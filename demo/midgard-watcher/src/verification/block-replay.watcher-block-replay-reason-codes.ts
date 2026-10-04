@@ -280,6 +280,8 @@ export const WATCHER_BLOCK_REPLAY_REASON_CODES = [
   "malformed_prior_state",
   "prior_state_root_mismatch",
   "canonical_validation_threw",
+  "forced_evaluation_unavailable",
+  "forced_rejection_unsupported",
   "canonical_replay_threw",
   "unknown_reject_code",
   "undeclared_reachable_code",

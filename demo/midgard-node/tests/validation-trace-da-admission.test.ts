@@ -21,6 +21,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
+import { retainedEndpointsMatchDescriptor } from "../../da-committee-node/tests/helpers.validation-trace.js";
 import { buildDeterministicValidationTraceMembers } from "../src/mpf/index.js";
 
 const byKey = (entries: readonly SDK.DaPayloadEntry[]): SDK.DaPayloadEntry[] =>
@@ -148,6 +149,7 @@ describe("node-produced validation traces pass DA committee admission", () => {
     // The full dense retention: one chronological record per state plus the
     // initial and terminal endpoints.
     expect(member.witnesses).toHaveLength(Number(member.value.step_count) + 3);
+    expect(retainedEndpointsMatchDescriptor(member)).toBe(true);
     const verified = await verifyDaPayloadAgainstHeader(
       await wrapDaPayload(SDK.encodeDaPayload(payload), { mode: "identity" }),
       headerHash,
@@ -161,6 +163,34 @@ describe("node-produced validation traces pass DA committee admission", () => {
     expect(verified.validation.headerHash).toBe(headerHash);
     expect(verified.counts.validationTraceCount).toBe(1n);
   });
+
+  it.each(["initial", "terminal"] as const)(
+    "refuses a node trace after removing only its %s endpoint, preserving every chronological state",
+    async (endpoint) => {
+      const { member, payload } = await nodeTracedForcedPayload();
+      const coordinate = SDK.retainedValidationEndpointCoordinate(
+        member.value.step_count,
+        endpoint,
+      );
+      const witnesses = payload.block_body.validation_trace_witnesses.filter(
+        ([keyHex]) =>
+          SDK.decodeRetainedValidationWitnessKey(Buffer.from(keyHex, "hex"))
+            .execution_index !== coordinate,
+      );
+      expect(witnesses).toHaveLength(member.witnesses.length - 1);
+      expect(() =>
+        decodeDaPayloadStrict(
+          SDK.encodeDaPayload({
+            ...payload,
+            block_body: {
+              ...payload.block_body,
+              validation_trace_witnesses: witnesses,
+            },
+          }),
+        ),
+      ).toThrow(`validation trace omits its retained ${endpoint} endpoint`);
+    },
+  );
 
   it.each([
     ["a chronological state", "state", /do not match state\.work_root/u],

@@ -13,6 +13,7 @@ import {
   isMidgardConsensusProfile,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
+import { type MidgardForcedTxAdmissionStopped } from "@al-ft/midgard-core/consensus-validation";
 import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
@@ -54,7 +55,7 @@ const txOrderUTxOToEntry = (
   read: TxOrderCarriageReadOptions | undefined,
 ): Effect.Effect<
   ForcedTransactionsDB.Entry,
-  SDK.LucidError | DatabaseError,
+  SDK.LucidError | DatabaseError | MidgardForcedTxAdmissionStopped,
   Database | NodeConfig
 > =>
   Effect.gen(function* () {
@@ -79,9 +80,17 @@ const txOrderUTxOToEntry = (
       payload,
       material,
     });
+    // Validate the kept screens before collecting attached program material:
+    // a malformed program envelope is a typed stop, never a Lucid/DB wrapper.
+    // The provisional leaf is replaced only by the actual Phase A/B verdict.
+    const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValueV1({
+      nativeTxCbor,
+      verdict: "ForcedTxValid",
+      consensusProfile: consensusProfile satisfies MidgardConsensusProfile,
+    });
     const decoded = decodeMidgardForcedTxFullFromCanonicalCbor(nativeTxCbor);
     const attachedProgramEnvelopes = yield* Effect.try({
-      try: () => collectMidgardAttachedProgramEnvelopes(decoded),
+      try: () => collectMidgardAttachedProgramEnvelopes(decoded, "forced"),
       catch: (cause) =>
         new SDK.LucidError({
           message: "Failed to collect V1 attached CEK program envelopes",
@@ -103,20 +112,6 @@ const txOrderUTxOToEntry = (
         ),
       );
     }
-    // The verdict recorded at ingest is provisional: the operator has not run
-    // Phase A/B yet. Admission requires the submitted bytes to claim
-    // TxIsValid (`E_IS_VALID_FALSE_FORBIDDEN`, enforced inside
-    // `encodeForcedInclusionValueV1`), so the only verdict an unadjudicated
-    // admitted preimage can carry is `ForcedTxValid`; block commitment
-    // recomputes and overwrites both this row's verdict and its
-    // `forced_inclusion_value`, and the encoder stamps the committed leaf's
-    // validity scalar from whatever verdict it is given (`ForcedTxValid` ⇔
-    // code 0, `ForcedTxInvalid { _ }` ⇔ code 1).
-    const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValueV1({
-      nativeTxCbor,
-      verdict: "ForcedTxValid",
-      consensusProfile: consensusProfile satisfies MidgardConsensusProfile,
-    });
     // The two identity columns this row carries are **recomputed** from the
     // reconstructed canonical bytes, not copied out of the datum:
     // `encodeForcedInclusionValueV1` re-derives the proof source from
@@ -228,7 +223,7 @@ export const reconcileVisibleTxOrderUTxOs = (
   read?: TxOrderCarriageReadOptions,
 ): Effect.Effect<
   UserEventReconcileResult,
-  SDK.LucidError | DatabaseError,
+  SDK.LucidError | DatabaseError | MidgardForcedTxAdmissionStopped,
   MidgardContracts | ContractDeploymentIdentity | Lucid | Database | NodeConfig
 > =>
   Effect.gen(function* () {
@@ -301,7 +296,7 @@ export const reconcileVisibleTxOrderUTxOs = (
 
 export const fetchAndInsertTxOrderUTxOs: Effect.Effect<
   void,
-  SDK.LucidError | DatabaseError,
+  SDK.LucidError | DatabaseError | MidgardForcedTxAdmissionStopped,
   MidgardContracts | ContractDeploymentIdentity | Lucid | Database | NodeConfig
 > = Effect.gen(function* () {
   yield* Effect.logDebug("fetching TxOrderUTxOs...");
@@ -317,7 +312,7 @@ export const fetchAndInsertTxOrderUTxOsForCommitBarrier = (
   inclusionTimeUpperBound: Date,
 ): Effect.Effect<
   Date,
-  SDK.LucidError | DatabaseError,
+  SDK.LucidError | DatabaseError | MidgardForcedTxAdmissionStopped,
   MidgardContracts | ContractDeploymentIdentity | Lucid | Database | NodeConfig
 > =>
   runCommitTimeUserEventIngestionBarrier({

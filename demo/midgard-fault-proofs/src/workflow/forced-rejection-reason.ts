@@ -12,14 +12,27 @@ export type ForcedRejection = Pick<
   "code" | "subject" | "consensusPhase"
 >;
 
-/**
- * A rejection whose code has coordinate-carrying arms arrived without a
- * subject of that code. Writing any coordinate would be a guess, and a
- * guessed coordinate the family finds sound convicts the operator.
- */
-export class ForcedRejectionSubjectMissing extends Error {
+/** A local inability to record a provable verdict; this is never a verdict. */
+export class ForcedRejectionStopped extends Error {
+  readonly _tag = "ForcedRejectionStopped";
+  readonly code: RejectCode;
+  readonly consensusPhase: ForcedRejection["consensusPhase"];
+  readonly retryable: boolean;
+
+  constructor(rejection: ForcedRejection, message: string) {
+    super(message);
+    this.name = "ForcedRejectionStopped";
+    this.code = rejection.code;
+    this.consensusPhase = rejection.consensusPhase;
+    this.retryable = rejection.code === RejectCodes.PlutusEvaluationUnavailable;
+  }
+}
+
+/** The machine did not supply the subject required to cite its arm exactly. */
+export class ForcedRejectionSubjectMissing extends ForcedRejectionStopped {
   constructor(rejection: ForcedRejection) {
     super(
+      rejection,
       `forced rejection ${rejection.code} at ${rejection.consensusPhase} records no subject of its code${
         rejection.subject === undefined
           ? ""
@@ -27,6 +40,17 @@ export class ForcedRejectionSubjectMissing extends Error {
       }`,
     );
     this.name = "ForcedRejectionSubjectMissing";
+  }
+}
+
+/** No deployed machine arm proves this pre-screen or evaluation failure. */
+export class ForcedRejectionUnsupported extends ForcedRejectionStopped {
+  constructor(rejection: ForcedRejection) {
+    super(
+      rejection,
+      `forced rejection ${rejection.code} at ${rejection.consensusPhase} has no deployed machine arm`,
+    );
+    this.name = "ForcedRejectionUnsupported";
   }
 }
 
@@ -131,6 +155,8 @@ export const rejectionReasonOfSubject = (
           purpose_index: subject.purposeIndex,
         },
       };
+    case "RedeemerMalformed":
+      return { RedeemerMalformed: { redeemer_index: subject.index } };
     case "UnusedRedeemer":
       return { UnusedRedeemer: { redeemer_index: subject.index } };
     case "UnusedScriptWitness":
@@ -177,7 +203,7 @@ type CodeDisposition =
   | { readonly kind: "fixed"; readonly reason: SDK.RejectionReason }
   /** The code has coordinate-carrying arms: the subject names the one. */
   | { readonly kind: "located"; readonly code: SDK.RejectionCodeLabel }
-  | { readonly kind: "noArm"; readonly reason: SDK.RejectionReason };
+  | { readonly kind: "stop" };
 
 const fixed = (reason: SDK.RejectionReason): CodeDisposition => ({
   kind: "fixed",
@@ -229,15 +255,9 @@ const dispositionOf = (code: RejectCode): CodeDisposition => {
       return located("E_NATIVE_SCRIPT_NODE_COUNT");
     case RejectCodes.AssetCount:
       return located("E_ASSET_COUNT");
-    // Open question: no fault proof can prove these rejections, so each
-    // needs either an on-chain RejectionReasonV1 arm or removal of the node
-    // pre-screen that raises it. Until then they keep the verdict the node
-    // has always written for them.
+    // Pre-screen and infrastructure failures are not machine verdicts. Keep
+    // them as explicit stops until the authoritative machine can judge them.
     case RejectCodes.PlutusEvaluationUnavailable:
-      return {
-        kind: "noArm",
-        reason: { PlutusExecutionFailed: { execution_index: 0n } },
-      };
     case RejectCodes.CborDeserialization:
     case RejectCodes.TxHashMismatch:
     case RejectCodes.UnsupportedFieldNonEmpty:
@@ -268,7 +288,7 @@ const dispositionOf = (code: RejectCode): CodeDisposition => {
     case RejectCodes.ReferenceInputForbidden:
     case RejectCodes.ScriptFeatureForbidden:
     case RejectCodes.CekProgramMaterial:
-      return { kind: "noArm", reason: "ValueNotPreserved" };
+      return { kind: "stop" };
     default: {
       const unreachable: never = code;
       throw new Error(
@@ -277,27 +297,6 @@ const dispositionOf = (code: RejectCode): CodeDisposition => {
     }
   }
 };
-
-/**
- * Canonical-decode rejections that can arrive without a subject, with the
- * reason recorded for them. The validation trace refuses every
- * canonical-decode rejection (`prepareValidationTrace` fails on its terminal
- * phase), so a block holding one is never built and this reason is never
- * committed; it only lets a replay compare the arm it would have written.
- * The raw-envelope field-6 case is the one decode rejection a trace commits,
- * and the trace commits it only when it carries its subject.
- */
-const UNCOMMITTED_CANONICAL_DECODE_REASONS: Partial<
-  Record<RejectCode, SDK.RejectionReason>
-> = Object.freeze({
-  [RejectCodes.InvalidFieldType]: {
-    FieldItemWidthIllegal: { field_index: 0n, item_index: 0n },
-  },
-  [RejectCodes.InvalidOutput]: { OutputNonCanonical: { output_index: 0n } },
-  [RejectCodes.FieldPreimageSize]: {
-    FieldPreimageLengthMismatch: { field_index: 0n },
-  },
-});
 
 /**
  * The exact `RejectionReasonV1` a forced leaf records for a Phase A/B
@@ -315,18 +314,15 @@ export const forcedRejectionReason = (
   rejection: ForcedRejection,
 ): SDK.RejectionReason => {
   const disposition = dispositionOf(rejection.code);
-  if (disposition.kind !== "located") return disposition.reason;
+  if (disposition.kind === "stop")
+    throw new ForcedRejectionUnsupported(rejection);
+  if (disposition.kind === "fixed") return disposition.reason;
   if (rejection.subject !== undefined) {
     const reason = rejectionReasonOfSubject(rejection.subject);
     if (SDK.rejectionCodeOf(reason) === SDK.RejectionCodes[disposition.code])
       return reason;
     throw new ForcedRejectionSubjectMissing(rejection);
   }
-  const uncommitted =
-    rejection.consensusPhase === "canonicalDecode"
-      ? UNCOMMITTED_CANONICAL_DECODE_REASONS[rejection.code]
-      : undefined;
-  if (uncommitted !== undefined) return uncommitted;
   throw new ForcedRejectionSubjectMissing(rejection);
 };
 

@@ -12,6 +12,8 @@ import { type eqData } from "@harmoniclabs/plutus-data";
 import {
   // ok: midgard/no-recursive-plutus-data
   BnCEK,
+  // ok: midgard/no-recursive-plutus-data
+  Linear3InY,
   // ruleid: midgard/no-recursive-plutus-data
   Machine,
 } from "@harmoniclabs/plutus-machine";

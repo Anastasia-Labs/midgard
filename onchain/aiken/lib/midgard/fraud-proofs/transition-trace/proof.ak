@@ -11,6 +11,7 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use env
+use midgard/canonical_cbor_scan_v1 as key_cbor
 use midgard/common/types.{Proof}
 use midgard/common/utils
 use midgard/event_history/order_facts
@@ -73,27 +74,32 @@ pub type TransitionFault {
   }
 }
 
-pub type SourceMembershipProof {
-  WithdrawalSourceMembership {
-    membership: transition_trace.RootMembershipProof<
-      ledger_state.WithdrawalId,
-      ledger_state.WithdrawalInfo,
-    >,
+/// Tag-3 source membership opens only the key and its value digest. The
+/// source domain, count and counted root are derived from the challenged header.
+pub type SourceKeyOpening {
+  WithdrawalKeyOpening {
+    withdrawal_id: ledger_state.WithdrawalId,
+    value_hash: ByteArray,
+    phas_root: ByteArray,
+    proof: Proof,
   }
-  ForcedTransactionSourceMembership {
-    membership: transition_trace.RootMembershipProof<
-      ledger_state.TxOrderId,
-      ledger_state.ForcedInclusionTxV1,
-    >,
+  ForcedKeyOpening {
+    tx_order_id: ledger_state.TxOrderId,
+    value_hash: ByteArray,
+    phas_root: ByteArray,
+    proof: Proof,
   }
-  L2TransactionSourceMembership {
-    membership: transition_trace.RootMembershipProof<ByteArray, ByteArray>,
+  L2KeyOpening {
+    tx_id: ByteArray,
+    value_hash: ByteArray,
+    phas_root: ByteArray,
+    proof: Proof,
   }
-  DepositSourceMembership {
-    membership: transition_trace.RootMembershipProof<
-      ledger_state.DepositId,
-      ledger_state.DepositInfo,
-    >,
+  DepositKeyOpening {
+    deposit_id: ledger_state.DepositId,
+    value_hash: ByteArray,
+    phas_root: ByteArray,
+    proof: Proof,
   }
 }
 
@@ -128,14 +134,33 @@ pub type SourceMembershipMismatchWitness {
     source_non_membership: SourceNonMembershipProof,
   }
   SourceEventMissingTrace {
-    source_membership: SourceMembershipProof,
+    source_membership: SourceKeyOpening,
     event_to_step_non_membership: transition_trace.RootNonMembershipProof<
       ledger_state.EventKey,
     >,
   }
   SourcePhaseMismatch {
     trace_proof: transition_trace.IndexedTraceProof,
-    source_membership: SourceMembershipProof,
+    source_membership: SourceKeyOpening,
+  }
+  SourceEventMissingValidationRun {
+    source: SourceKeyOpening,
+    run_phas_root: ByteArray,
+    run_absence_proof: Proof,
+  }
+  ForeignValidationRun {
+    event_key: ByteArray,
+    value_hash: ByteArray,
+    run_phas_root: ByteArray,
+    run_proof: Proof,
+    source_phas_root: ByteArray,
+    source_absence_proof: Proof,
+  }
+  MalformedValidationRun {
+    event_key: ledger_state.EventKey,
+    value: ByteArray,
+    run_phas_root: ByteArray,
+    run_proof: Proof,
   }
 }
 
@@ -340,22 +365,21 @@ pub fn event_key_phase(
 }
 
 fn event_key_from_source_membership(
-  source_membership: SourceMembershipProof,
+  source_membership: SourceKeyOpening,
 ) -> ledger_state.EventKey {
   when source_membership is {
-    WithdrawalSourceMembership { membership } ->
-      ledger_state.WithdrawalEventKey { withdrawal_id: membership.key }
-    ForcedTransactionSourceMembership { membership } ->
-      ledger_state.ForcedTransactionEventKey { tx_order_id: membership.key }
-    L2TransactionSourceMembership { membership } ->
-      ledger_state.L2TransactionEventKey { tx_id: membership.key }
-    DepositSourceMembership { membership } ->
-      ledger_state.DepositEventKey { deposit_id: membership.key }
+    WithdrawalKeyOpening { withdrawal_id, .. } ->
+      ledger_state.WithdrawalEventKey { withdrawal_id }
+    ForcedKeyOpening { tx_order_id, .. } ->
+      ledger_state.ForcedTransactionEventKey { tx_order_id }
+    L2KeyOpening { tx_id, .. } -> ledger_state.L2TransactionEventKey { tx_id }
+    DepositKeyOpening { deposit_id, .. } ->
+      ledger_state.DepositEventKey { deposit_id }
   }
 }
 
 fn source_membership_phase(
-  source_membership: SourceMembershipProof,
+  source_membership: SourceKeyOpening,
 ) -> ledger_state.TransitionPhase {
   event_key_from_source_membership(source_membership) |> event_key_phase
 }
@@ -405,46 +429,66 @@ fn verify_event_to_step_non_membership(
   )
 }
 
+fn verify_key_opening(
+  domain: transition_trace.RootDomain,
+  root: ByteArray,
+  count: Int,
+  phas_root: ByteArray,
+  key: ByteArray,
+  value_hash: ByteArray,
+  proof: Proof,
+) -> Bool {
+  and {
+    count > 0,
+    root == transition_trace.commit_counted_root(domain, phas_root, count),
+    canonical_mpf.has_value_hash(phas_root, key, value_hash, proof),
+  }
+}
+
 fn verify_source_membership(
   header: ledger_state.HeaderV1,
-  source_membership: SourceMembershipProof,
+  source_membership: SourceKeyOpening,
 ) -> Bool {
   when source_membership is {
-    WithdrawalSourceMembership { membership } ->
-      transition_trace.verify_root_membership_with_bytes(
-        membership,
+    WithdrawalKeyOpening { withdrawal_id, value_hash, phas_root, proof } ->
+      verify_key_opening(
         transition_trace.WithdrawalsRootDomain,
         header.withdrawals_root,
         header.withdrawal_count,
-        cbor.serialise(membership.key),
-        cbor.serialise(membership.value),
+        phas_root,
+        cbor.serialise(withdrawal_id),
+        value_hash,
+        proof,
       )
-    ForcedTransactionSourceMembership { membership } ->
-      transition_trace.verify_root_membership_with_bytes(
-        membership,
+    ForcedKeyOpening { tx_order_id, value_hash, phas_root, proof } ->
+      verify_key_opening(
         transition_trace.ForcedTransactionsV1RootDomain,
         header.forced_transactions_root,
         header.forced_transaction_count,
-        cbor.serialise(membership.key),
-        cbor.serialise(membership.value),
+        phas_root,
+        cbor.serialise(tx_order_id),
+        value_hash,
+        proof,
       )
-    L2TransactionSourceMembership { membership } ->
-      transition_trace.verify_root_membership_with_bytes(
-        membership,
+    L2KeyOpening { tx_id, value_hash, phas_root, proof } ->
+      verify_key_opening(
         transition_trace.TransactionsV1RootDomain,
         header.transactions_root,
         header.l2_transaction_count,
-        membership.key,
-        membership.value,
+        phas_root,
+        tx_id,
+        value_hash,
+        proof,
       )
-    DepositSourceMembership { membership } ->
-      transition_trace.verify_root_membership_with_bytes(
-        membership,
+    DepositKeyOpening { deposit_id, value_hash, phas_root, proof } ->
+      verify_key_opening(
         transition_trace.DepositsRootDomain,
         header.deposits_root,
         header.deposit_count,
-        cbor.serialise(membership.key),
-        cbor.serialise(membership.value),
+        phas_root,
+        cbor.serialise(deposit_id),
+        value_hash,
+        proof,
       )
   }
 }
@@ -593,6 +637,151 @@ fn validate_event_to_step_mismatch(
   }
 }
 
+fn verify_source_absence(
+  domain: transition_trace.RootDomain,
+  root: ByteArray,
+  count: Int,
+  phas_root: ByteArray,
+  key: ByteArray,
+  proof: Proof,
+) -> Bool {
+  expect root == transition_trace.commit_counted_root(domain, phas_root, count)
+  // The count is a committed label, not an authenticated leaf count. An empty
+  // trie with a positive run label is precisely an all-runs-missing fault.
+  expect canonical_mpf.does_not_have(phas_root, key, proof)
+  True
+}
+
+fn verify_run_absence(
+  header: ledger_state.HeaderV1,
+  phas_root: ByteArray,
+  event_key: ledger_state.EventKey,
+  proof: Proof,
+) -> Bool {
+  verify_source_absence(
+    transition_trace.ValidationTracesRootDomain,
+    header.validation_traces_root,
+    header.validation_trace_count,
+    phas_root,
+    cbor.serialise(event_key),
+    proof,
+  )
+}
+
+/// A run's key is raw committed bytes. Invalid and non-canonical keys are
+/// foreign too; decoding them must never prevent adjudication of the leaf.
+fn validation_key_bytes(
+  bytes: ByteArray,
+  offset: Int,
+) -> Option<key_cbor.CborBytesV1> {
+  if builtin.slice_bytearray(offset, 1, bytes) == #"5f" {
+    validation_key_chunks(bytes, offset + 1, 0, #"")
+  } else {
+    when key_cbor.bytes_at_v1(bytes, offset) is {
+      Some(item) ->
+        if builtin.length_of_bytearray(item.value) <= 64 {
+          Some(item)
+        } else {
+          None
+        }
+      None -> None
+    }
+  }
+}
+
+fn validation_key_chunks(
+  bytes: ByteArray,
+  offset: Int,
+  seen: Int,
+  value: ByteArray,
+) -> Option<key_cbor.CborBytesV1> {
+  if builtin.slice_bytearray(offset, 1, bytes) == #"ff" {
+    if seen >= 2 {
+      Some(key_cbor.CborBytesV1 { next_offset: offset + 1, value })
+    } else {
+      None
+    }
+  } else {
+    when key_cbor.bytes_at_v1(bytes, offset) is {
+      None -> None
+      Some(item) -> {
+        let length = builtin.length_of_bytearray(item.value)
+        let next_value = builtin.append_bytearray(value, item.value)
+        if length == 64 {
+          validation_key_chunks(bytes, item.next_offset, seen + 1, next_value)
+        } else if and {
+          seen >= 1,
+          length > 0,
+          length < 64,
+          builtin.slice_bytearray(item.next_offset, 1, bytes) == #"ff",
+        } {
+          Some(
+            key_cbor.CborBytesV1 {
+              next_offset: item.next_offset + 1,
+              value: next_value,
+            },
+          )
+        } else {
+          None
+        }
+      }
+    }
+  }
+}
+
+/// Only the two transaction EventKey shapes name a validation source. Read
+/// their canonical wire grammar directly rather than recursively decoding any
+/// Data an adversary puts in a trie key. All other bytes stay foreign, including
+/// bignums and generic constructors which the general decoder cannot safely
+/// materialise. Byte-string chunking and integer widths keep the same domain as
+/// the previous canonicality screen followed by the typed-field checks.
+pub fn validation_run_source_key(bytes: ByteArray) -> Pair<Int, ByteArray> {
+  let length = builtin.length_of_bytearray(bytes)
+  if builtin.slice_bytearray(0, 3, bytes) == #"d87b9f" {
+    when validation_key_bytes(bytes, 3) is {
+      Some(item) ->
+        if and {
+          item.next_offset + 1 == length,
+          builtin.slice_bytearray(item.next_offset, 1, bytes) == #"ff",
+        } {
+          Pair(2, item.value)
+        } else {
+          Pair(0, #"")
+        }
+      None -> Pair(0, #"")
+    }
+  } else if builtin.slice_bytearray(0, 6, bytes) == #"d87a9fd8799f" {
+    when validation_key_bytes(bytes, 6) is {
+      None -> Pair(0, #"")
+      Some(item) -> {
+        let major = if item.next_offset < length {
+          builtin.index_bytearray(bytes, item.next_offset) / 32
+        } else {
+          2
+        }
+        if major == 0 || major == 1 {
+          when key_cbor.head_at_v1(bytes, item.next_offset, major) is {
+            Some(index) ->
+              if and {
+                index.next_offset + 2 == length,
+                builtin.slice_bytearray(index.next_offset, 2, bytes) == #"ffff",
+              } {
+                Pair(1, builtin.slice_bytearray(3, length - 4, bytes))
+              } else {
+                Pair(0, #"")
+              }
+            None -> Pair(0, #"")
+          }
+        } else {
+          Pair(0, #"")
+        }
+      }
+    }
+  } else {
+    Pair(0, #"")
+  }
+}
+
 fn validate_source_membership_mismatch(
   header: ledger_state.HeaderV1,
   witness: SourceMembershipMismatchWitness,
@@ -634,6 +823,80 @@ fn validate_source_membership_mismatch(
         trace_proof.value.event_key == event_key,
         trace_proof.value.phase != source_membership_phase(source_membership),
       }
+    }
+    SourceEventMissingValidationRun { source, run_phas_root, run_absence_proof } ->
+      and {
+        when source is {
+          ForcedKeyOpening { .. } -> True
+          L2KeyOpening { .. } -> True
+          _ -> False
+        },
+        verify_source_membership(header, source),
+        verify_run_absence(
+          header,
+          run_phas_root,
+          event_key_from_source_membership(source),
+          run_absence_proof,
+        ),
+      }
+    ForeignValidationRun {
+      event_key,
+      value_hash,
+      run_phas_root,
+      run_proof,
+      source_phas_root,
+      source_absence_proof,
+    } -> and {
+        verify_key_opening(
+          transition_trace.ValidationTracesRootDomain,
+          header.validation_traces_root,
+          header.validation_trace_count,
+          run_phas_root,
+          event_key,
+          value_hash,
+          run_proof,
+        ),
+        when validation_run_source_key(event_key) is {
+          Pair(source_kind, source_key) ->
+            if source_kind == 0 {
+              True
+            } else {
+              verify_source_absence(
+                if source_kind == 1 {
+                  transition_trace.ForcedTransactionsV1RootDomain
+                } else {
+                  transition_trace.TransactionsV1RootDomain
+                },
+                if source_kind == 1 {
+                  header.forced_transactions_root
+                } else {
+                  header.transactions_root
+                },
+                if source_kind == 1 {
+                  header.forced_transaction_count
+                } else {
+                  header.l2_transaction_count
+                },
+                source_phas_root,
+                source_key,
+                source_absence_proof,
+              )
+            }
+        },
+      }
+    MalformedValidationRun { event_key, value, run_phas_root, run_proof } -> {
+      expect
+        verify_key_opening(
+          transition_trace.ValidationTracesRootDomain,
+          header.validation_traces_root,
+          header.validation_trace_count,
+          run_phas_root,
+          cbor.serialise(event_key),
+          builtin.blake2b_256(value),
+          run_proof,
+        )
+      expect !validation_trace_v1.descriptor_bytes_are_well_formed(value)
+      True
     }
   }
 }
@@ -735,9 +998,13 @@ fn validate_withdrawal_one_step_binding(
 ) -> Bool {
   and {
     verify_trace_binding_to_event_to_step(header, trace_proof, event_to_step),
-    verify_source_membership(
-      header,
-      WithdrawalSourceMembership { membership: source_membership },
+    transition_trace.verify_root_membership_with_bytes(
+      source_membership,
+      transition_trace.WithdrawalsRootDomain,
+      header.withdrawals_root,
+      header.withdrawal_count,
+      cbor.serialise(source_membership.key),
+      cbor.serialise(source_membership.value),
     ),
     trace_proof.value.event_key == ledger_state.WithdrawalEventKey {
       withdrawal_id: source_membership.key,
@@ -760,9 +1027,13 @@ fn validate_forced_transaction_one_step_binding(
 ) -> Bool {
   and {
     verify_trace_binding_to_event_to_step(header, trace_proof, event_to_step),
-    verify_source_membership(
-      header,
-      ForcedTransactionSourceMembership { membership: source_membership },
+    transition_trace.verify_root_membership_with_bytes(
+      source_membership,
+      transition_trace.ForcedTransactionsV1RootDomain,
+      header.forced_transactions_root,
+      header.forced_transaction_count,
+      cbor.serialise(source_membership.key),
+      cbor.serialise(source_membership.value),
     ),
     trace_proof.value.event_key == ledger_state.ForcedTransactionEventKey {
       tx_order_id: source_membership.key,
@@ -785,9 +1056,13 @@ pub fn validate_deposit_one_step_binding(
 ) -> Bool {
   and {
     verify_trace_binding_to_event_to_step(header, trace_proof, event_to_step),
-    verify_source_membership(
-      header,
-      DepositSourceMembership { membership: source_membership },
+    transition_trace.verify_root_membership_with_bytes(
+      source_membership,
+      transition_trace.DepositsRootDomain,
+      header.deposits_root,
+      header.deposit_count,
+      cbor.serialise(source_membership.key),
+      cbor.serialise(source_membership.value),
     ),
     trace_proof.value.event_key == ledger_state.DepositEventKey {
       deposit_id: source_membership.key,
@@ -2136,11 +2411,13 @@ pub fn validate_forced_l1_event_fault(
             !forced_event_is_due(header, inclusion_time, compact_body),
             source_membership.key == event.id,
             source_membership.value == expected_source_value,
-            verify_source_membership(
-              header,
-              ForcedTransactionSourceMembership {
-                membership: source_membership,
-              },
+            transition_trace.verify_root_membership_with_bytes(
+              source_membership,
+              transition_trace.ForcedTransactionsV1RootDomain,
+              header.forced_transactions_root,
+              header.forced_transaction_count,
+              cbor.serialise(source_membership.key),
+              cbor.serialise(source_membership.value),
             ),
           }
         }

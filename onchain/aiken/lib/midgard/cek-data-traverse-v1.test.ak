@@ -372,3 +372,21 @@ test narrow_integer_and_bytes_steps_match_the_shared_machine() {
     ),
   }
 }
+
+test accepts_the_cardano_canonical_65_byte_bignum_scalar() {
+  let source = #"c25f5840010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004100ff"
+  let initial = cek_data_traverse_v1.initial_control_v1(17, 71)
+  expect Some(opened) = cek_data_traverse_v1.step_v1(
+    initial,
+    source_for_control(initial, source, 17),
+    cek_data_traverse_v1.HeadScalar,
+  )
+  let terminal = finish_scalar(opened, source, 17)
+  expect Some(integer) = terminal.integer
+  expect Some(summary) = cek_data_integer_v1.finalize_v1(integer)
+  and {
+    summary.cbor_length == 71,
+    summary.memory == 69,
+    summary.root == #"2245ce3c839885a8e667481cec15cbe0e91df8a04f816859ae3bb38a8217b6aa",
+  }
+}

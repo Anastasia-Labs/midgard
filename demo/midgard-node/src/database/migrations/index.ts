@@ -1,6 +1,8 @@
 import { sha256Hex } from "../../sha256.js";
 import initialSchemaSql from "./sql/0001_initial_schema.sql";
 import automaticSettlementSql from "./sql/0002_automatic_settlement.sql";
+import operatorMembershipSql from "./sql/0003_operator_membership.sql";
+import retainedScriptMaterialSql from "./sql/0004_retained_script_material.sql";
 
 export type Migration = {
   readonly version: number;
@@ -23,6 +25,20 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "automatic_settlement",
     checksumSha256: sha256Hex(automaticSettlementSql),
     sql: automaticSettlementSql,
+    transactional: true,
+  },
+  {
+    version: 3,
+    name: "operator_membership",
+    checksumSha256: sha256Hex(operatorMembershipSql),
+    sql: operatorMembershipSql,
+    transactional: true,
+  },
+  {
+    version: 4,
+    name: "retained_script_material",
+    checksumSha256: sha256Hex(retainedScriptMaterialSql),
+    sql: retainedScriptMaterialSql,
     transactional: true,
   },
 ] as const;
@@ -56,12 +72,14 @@ export const MIGRATION_PREFIX_MANIFEST_HASHES: ReadonlyMap<string, number> =
   );
 
 export const APPLICATION_TABLE_NAMES = [
+  "operator_membership_observations",
   "settlement_jobs",
   "settlement_attempts",
   "settlement_owners",
   "address_history",
   "blocks",
   "cek_program_material_admission_owners",
+  "cek_program_material_retained_state_owners",
   "cek_program_material_entries",
   "cek_program_material_memberships",
   "confirmed_ledger",

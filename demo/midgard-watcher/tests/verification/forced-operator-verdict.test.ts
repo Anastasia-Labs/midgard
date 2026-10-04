@@ -1,6 +1,6 @@
 import {
   forcedRejectionReason,
-  ForcedRejectionSubjectMissing,
+  ForcedRejectionStopped,
 } from "@al-ft/midgard-fault-proofs";
 import {
   OperatorVerdictSchema,
@@ -15,6 +15,8 @@ import {
   WATCHER_FORCED_TX_VALID,
   watcherForcedOperatorVerdict,
 } from "../../src/indexers/user-event-indexer.js";
+import { canonicalRejectionArm } from "../../src/verification/block-replay.replay-forced-transition-effect.js";
+import { WatcherBlockReplayError } from "../../src/verification/block-replay.watcher-block-replay-result.js";
 import { userEventForcedOperatorVerdictForClassification } from "../support/user-event-forced-order-fixture.js";
 
 /**
@@ -205,8 +207,7 @@ describe("forced operator verdict vocabulary", () => {
     // `forcedRejectionReason`, the one writer the node commits with, so every
     // tag it can produce must be in the watcher's accepted vocabulary. A
     // located code is written from its subject, whose tag is one of the arms
-    // pinned above; without a subject it throws, or, for the canonical-decode
-    // rejections no trace commits, writes the tag checked here.
+    // pinned above; every unsupported code or missing subject stops replay.
     for (const code of Object.values(RejectCodes)) {
       let tag: string;
       try {
@@ -214,11 +215,39 @@ describe("forced operator verdict vocabulary", () => {
           forcedRejectionReason({ code, consensusPhase: "canonicalDecode" }),
         );
       } catch (error) {
-        expect(error, code).toBeInstanceOf(ForcedRejectionSubjectMissing);
+        expect(error, code).toBeInstanceOf(ForcedRejectionStopped);
         continue;
       }
       expect(isWatcherForcedOperatorVerdict(tag), code).toBe(true);
       expect(tag, code).not.toBe(WATCHER_FORCED_TX_VALID);
     }
   });
+  it("uses the exact machine arm for a supported located rejection", () => {
+    expect(
+      canonicalRejectionArm({
+        code: RejectCodes.PlutusScriptInvalid,
+        subject: { arm: "PlutusExecutionFailed", index: 7n },
+        consensusPhase: "cek",
+      }),
+    ).toBe("PlutusExecutionFailed");
+  });
+
+  it.each([
+    [RejectCodes.PlutusEvaluationUnavailable, "forced_evaluation_unavailable"],
+    [RejectCodes.AuxDataForbidden, "forced_rejection_unsupported"],
+    [RejectCodes.InvalidOutput, "forced_rejection_unsupported"],
+  ] as const)(
+    "stops replay for %s instead of producing a verdict",
+    (code, expected) => {
+      let caught: unknown;
+      try {
+        canonicalRejectionArm({ code, consensusPhase: "canonicalDecode" });
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(WatcherBlockReplayError);
+      expect((caught as WatcherBlockReplayError).code).toBe(expected);
+      expect((caught as WatcherBlockReplayError).path).toContain(code);
+    },
+  );
 });

@@ -24,7 +24,7 @@ import {
 } from "../cek-context.js";
 import { type MidgardCekExecutionStep } from "../cek-executor.js";
 import type { MidgardCekDataSequenceSummary } from "../script-context-proof.js";
-import type { RejectCode } from "../types.js";
+import type { LocalScriptEvaluation, RejectCode } from "../types.js";
 import {
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerMutationStep,
@@ -45,6 +45,8 @@ export type ValidationMachineReplayInput = {
   readonly ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
   readonly expectedLedgerOps: readonly ValidationMachineLedgerOp[];
   readonly ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[];
+  /** Captures supplied by the node classification; an empty array forbids evaluation. */
+  readonly scriptEvaluations?: readonly LocalScriptEvaluation[];
   readonly expectedVerdict: "accepted" | "rejected";
   readonly expectedRejectionCode: RejectCode | null;
   readonly blockEndTimeMs: number;

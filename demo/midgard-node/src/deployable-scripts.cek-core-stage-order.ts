@@ -53,7 +53,10 @@ export const isRecordedValidationTraceSemantic = (
   semanticKeyHasPrefix(
     key,
     VALIDATION_TRACE_SCRIPT_SOURCES_SEMANTIC_PREFIXES,
-  ) || semanticKeyHasPrefix(key, VALIDATION_TRACE_PHASE_A_SEMANTIC_PREFIXES);
+  ) ||
+  semanticKeyHasPrefix(key, VALIDATION_TRACE_PHASE_A_SEMANTIC_PREFIXES) ||
+  key === "canonicalDecodeEmpty" ||
+  key === "canonicalDecodeItem";
 
 /** Titled script-sources and ledger-output yields, in title order. */
 export const VALIDATION_TRACE_SCRIPT_SOURCES_YIELD_KEYS = (

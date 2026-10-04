@@ -250,7 +250,8 @@ export const buildDecodingBlockFixture = async ({
             initial_state_hash: "1b".repeat(32),
             terminal_state_hash: "1c".repeat(32),
             verdict: event.verdict,
-            rejection_code_hash: "1d".repeat(32),
+            rejection_code_hash:
+              event.verdict === "Rejected" ? "1d".repeat(32) : "00".repeat(32),
           } satisfies SDK.ValidationTraceDescriptor,
           SDK.ValidationTraceDescriptorSchema as never,
         ),

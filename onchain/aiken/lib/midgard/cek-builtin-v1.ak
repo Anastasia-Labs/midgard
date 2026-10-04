@@ -242,7 +242,21 @@ pub fn builtin_cost_sizes_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
 ) -> List<Int> {
-  if tag == 26 {
+  if tag == 21 {
+    // Cardano costs Ed25519 byte strings in eight-byte words; the generic
+    // constant memory remains part of its existing commitment ABI.
+    list.map(
+      arguments,
+      fn(argument) {
+        let length = bytearray.length(bytes_v1(argument))
+        if length == 0 {
+          1
+        } else {
+          ( length + 7 ) / 8
+        }
+      },
+    )
+  } else if tag == 26 {
     expect [condition, _, _] = arguments
     let condition_value = boolean_v1(condition)
     expect or {
@@ -817,15 +831,18 @@ fn verify_bytes_v1(
     )
   } else if tag == 12 {
     expect [start, length, bytes] = arguments
+    let start_value = integer_v1(start)
+    let length_value = integer_v1(length)
+    // Cardano decodes both operands as machine Int even when the slice is empty.
+    expect and {
+        !outside_int64_v1(start_value),
+        !outside_int64_v1(length_value),
+      }
     result_is_constant_v1(
       result,
       cek_constant_v1.ByteStringConstant,
       builtin.b_data(
-        builtin.slice_bytearray(
-          integer_v1(start),
-          integer_v1(length),
-          bytes_v1(bytes),
-        ),
+        builtin.slice_bytearray(start_value, length_value, bytes_v1(bytes)),
       ),
     )
   } else if tag == 13 {
@@ -3116,6 +3133,9 @@ fn wrong_data_variant_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
   }
 }
 
+const secp256k1_group_order =
+  115792089237316195423570985008687907852837564279074904382605163141518161494337
+
 const secp256k1_field_prime =
   115792089237316195423570985008687907853269984665640564039457584007908834671663
 
@@ -3258,6 +3278,27 @@ fn bls_g1_curve_encoding_is_invalid_v1(encoded: ByteArray) -> Bool {
   }
 }
 
+fn ecdsa_signature_scalar_overflows_v1(signature: ByteArray) -> Bool {
+  expect bytearray.length(signature) == 64
+  or {
+    builtin.bytearray_to_integer(
+      True,
+      builtin.slice_bytearray(0, 32, signature),
+    ) >= secp256k1_group_order,
+    builtin.bytearray_to_integer(
+      True,
+      builtin.slice_bytearray(32, 32, signature),
+    ) >= secp256k1_group_order,
+  }
+}
+
+fn outside_int64_v1(value: Int) -> Bool {
+  or {
+    value < -9223372036854775808,
+    value > 9223372036854775807,
+  }
+}
+
 fn malformed_signature_lengths_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
@@ -3279,7 +3320,10 @@ fn malformed_signature_lengths_v1(
     } {
       True
     } else {
-      !secp256k1_public_key_is_valid_v1(tag, bytes_v1(key_value))
+      or {
+        !secp256k1_public_key_is_valid_v1(tag, bytes_v1(key_value)),
+        ecdsa_signature_scalar_overflows_v1(bytes_v1(signature_value)),
+      }
     }
   } else {
     expect tag == 53
@@ -3318,6 +3362,17 @@ fn known_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
       or {
         value < 0,
         value > 255,
+      },
+    }
+  } else if tag == 12 {
+    expect [start, length, source] = arguments
+    let start_value = integer_v1(start)
+    let length_value = integer_v1(length)
+    and {
+      constant_type_v1(source) == cek_constant_v1.ByteStringConstant,
+      or {
+        outside_int64_v1(start_value),
+        outside_int64_v1(length_value),
       },
     }
   } else if tag == 14 {
@@ -3420,6 +3475,12 @@ fn known_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
       length > 8192,
       byte < 0,
       byte > 255,
+    }
+  } else if tag == 82 || tag == 83 {
+    expect [source, amount] = arguments
+    and {
+      constant_type_v1(source) == cek_constant_v1.ByteStringConstant,
+      outside_int64_v1(integer_v1(amount)),
     }
   } else {
     False
@@ -3746,6 +3807,7 @@ pub fn authenticated_builtin_failure_budget(
     tag == 4,
     tag == 5,
     tag == 6,
+    tag == 21,
     tag == 52,
     tag == 53,
     tag == 58,

@@ -22,6 +22,7 @@ export {
   verifyMidgardTxFieldPreimage,
 } from "./consensus-validation.reconstruct-midgard-transaction.js";
 export {
+  MidgardForcedTxAdmissionStopped,
   validateMidgardConsensusForcedTxCbor,
   validateMidgardConsensusTx,
   validateMidgardConsensusTxCbor,

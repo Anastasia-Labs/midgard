@@ -132,6 +132,31 @@ test common_continue_rejects_prover_swap() fail {
   )
 }
 
+/// Public valid evidence does not authorize taking the thread's ADA.
+test common_continue_rejects_redirected_thread_ada() fail {
+  let asset_name = fixture.ct_token_asset_name(valid_block())
+  let funded = fixture.ct_token_value(asset_name)
+    |> assets.add(#"", #"", 5_000_000)
+  let tx = fixture.continue_mid_step_l1_tx_v1(asset_name, sample_state())
+  run_continue(
+    Transaction { ..tx, inputs: [fixture.step_input_with_value(funded)] },
+  )
+}
+
+/// A separate wallet may fund a larger datum's ledger minimum.
+test common_continue_accepts_separately_funded_topup() {
+  let asset_name = fixture.ct_token_asset_name(valid_block())
+  let funded = fixture.ct_token_value(asset_name)
+    |> assets.add(#"", #"", 5_000_000)
+  let tx = fixture.continue_mid_step_l1_tx_v1(asset_name, sample_state())
+  run_continue(
+    Transaction {
+      ..tx,
+      outputs: [fixture.step_output_with_value(funded, sample_state())],
+    },
+  )
+}
+
 // ## 3. Token coupling: state and token are inseparable
 
 /// Token-coupling negative: a thread-state UTxO without its thread token is
@@ -221,6 +246,17 @@ fn run_finalize(l1_tx: Transaction) -> Bool {
 test common_finalize_accepts_terminal_fraud_proof_record() {
   let asset_name = fixture.ct_token_asset_name(valid_block())
   run_finalize(fixture.finalize_step_l1_tx_v1(asset_name))
+}
+
+/// Finalization must not move the retained thread funding to an attacker.
+test common_finalize_rejects_redirected_thread_ada() fail {
+  let asset_name = fixture.ct_token_asset_name(valid_block())
+  let funded = fixture.ct_token_value(asset_name)
+    |> assets.add(#"", #"", 5_000_000)
+  let tx = fixture.finalize_step_l1_tx_v1(asset_name)
+  run_finalize(
+    Transaction { ..tx, inputs: [fixture.step_input_with_value(funded)] },
+  )
 }
 
 /// Lifecycle negative: finalization without invoking the fraud-proof minting

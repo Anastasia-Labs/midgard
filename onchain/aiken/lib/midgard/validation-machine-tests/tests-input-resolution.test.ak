@@ -1650,3 +1650,204 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
     inline_field_door(),
   )
 }
+
+test signatures_refuses_an_alternative_authentic_first_choice() {
+  let base = empty_v1_transaction()
+  let first = MidgardAddressWitness {
+    verification_key: h_a,
+    signature: zero |> bytearray.concat(zero),
+  }
+  let second = MidgardAddressWitness {
+    verification_key: zero,
+    signature: zero |> bytearray.concat(zero),
+  }
+  let tx = MidgardTransaction {
+    ..base,
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      addr_tx_wits: [first, second],
+    },
+  }
+  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx, h_a)
+  let bytes = encode_midgard_address_witness(second)
+  let signer_hash = blake2b_224(second.verification_key)
+  let frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.signer_leaf_hash(signer_hash)],
+  )
+  let next = signatures_scan_witness(
+    tx,
+    0,
+    2,
+    0,
+    1,
+    0,
+    signer_hash
+      |> bytearray.concat(bytes)
+      |> bytearray.concat(cbor.serialise(1)),
+    signer_hash,
+    frontier,
+    1,
+  )
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: pre.program_counter + 1,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Signatures,
+      pre.program_counter + 1,
+      next,
+    ),
+  }
+  !vm_signatures.verify_signature_address_item_semantics_v1(
+    pre,
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: post,
+    },
+    inline_field_door(),
+    7,
+    1,
+    inline_field_carriage([encode_midgard_address_witness(first), bytes]),
+  )
+}
+
+test signatures_accepts_the_authentic_minimum_at_reordered_physical_index() {
+  let base = empty_v1_transaction()
+  let first = MidgardAddressWitness {
+    verification_key: zero,
+    signature: zero |> bytearray.concat(zero),
+  }
+  let second = MidgardAddressWitness {
+    verification_key: h_a,
+    signature: zero |> bytearray.concat(zero),
+  }
+  let tx = MidgardTransaction {
+    ..base,
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      addr_tx_wits: [first, second],
+    },
+  }
+  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx, h_a)
+  let bytes = encode_midgard_address_witness(second)
+  let signer_hash = blake2b_224(second.verification_key)
+  let frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.signer_leaf_hash(signer_hash)],
+  )
+  let next = signatures_scan_witness(
+    tx,
+    0,
+    2,
+    0,
+    1,
+    0,
+    signer_hash
+      |> bytearray.concat(bytes)
+      |> bytearray.concat(cbor.serialise(1)),
+    signer_hash,
+    frontier,
+    1,
+  )
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: pre.program_counter + 1,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Signatures,
+      pre.program_counter + 1,
+      next,
+    ),
+  }
+  vm_signatures.verify_signature_address_item_semantics_v1(
+    pre,
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: post,
+    },
+    inline_field_door(),
+    7,
+    1,
+    inline_field_carriage([encode_midgard_address_witness(first), bytes]),
+  )
+}
+
+fn signatures_accepts_duplicate_index_boundary(count: Int, index: Int) -> Bool {
+  let base = empty_v1_transaction()
+  let address = MidgardAddressWitness {
+    verification_key: zero,
+    signature: zero |> bytearray.concat(zero),
+  }
+  let addresses = list.repeat(address, count)
+  let tx = MidgardTransaction {
+    ..base,
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      addr_tx_wits: addresses,
+    },
+  }
+  let Pair(initial, _) = signatures_step_fixture(tx, h_a)
+  let bytes = encode_midgard_address_witness(address)
+  let signer_hash = blake2b_224(address.verification_key)
+  let prefix = signer_hash |> bytearray.concat(bytes)
+  let frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.signer_leaf_hash(signer_hash)],
+  )
+  let work_witness_cbor = signatures_scan_witness(
+    tx,
+    0,
+    count,
+    0,
+    index,
+    0,
+    prefix |> bytearray.concat(cbor.serialise(index - 1)),
+    signer_hash,
+    frontier,
+    1,
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..initial,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Signatures,
+      initial.program_counter,
+      work_witness_cbor,
+    ),
+  }
+  let next = signatures_scan_witness(
+    tx,
+    0,
+    count,
+    0,
+    index + 1,
+    0,
+    prefix |> bytearray.concat(cbor.serialise(index)),
+    signer_hash,
+    frontier,
+    1,
+  )
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: pre.program_counter + 1,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Signatures,
+      pre.program_counter + 1,
+      next,
+    ),
+  }
+  vm_signatures.verify_signature_address_item_semantics_v1(
+    pre,
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: post,
+    },
+    inline_field_door(),
+    7,
+    index,
+    inline_field_carriage(list.map(addresses, encode_midgard_address_witness)),
+  )
+}
+
+test signatures_preserves_duplicate_index_cbor_boundary_24() {
+  signatures_accepts_duplicate_index_boundary(318, 24)
+}
+
+test signatures_preserves_duplicate_index_cbor_boundary_256() {
+  signatures_accepts_duplicate_index_boundary(318, 256)
+}

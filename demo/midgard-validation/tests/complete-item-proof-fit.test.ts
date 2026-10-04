@@ -50,19 +50,9 @@ import {
 } from "./complete-item-proof-fit.resolve-carriage-for-plan.js";
 
 describe("complete-item proof fit V1", () => {
-  it("keeps the complete-item witness across the tier-1 carriage domain and past it, and reaches the chunked fallback", async () => {
-    // The producer's complete-versus-chunk threshold is
-    // `maxSinglePublicationCompleteItemBytes` (14,396), and the arithmetic
-    // around it is worth stating because it is not obvious: a single-output
-    // field-2 preimage is `81 ‖ 59 <len:2> ‖ item`, four bytes wider than its
-    // item, so the largest item §8.3's tier-1 cap admits is 14,332 — 64 bytes
-    // below the threshold.
-    //
-    // **#600 restores what #597's narrowing removed.** The trace producer no
-    // longer names a tier at all: it records the field and its §5.1 preimage and
-    // the tier is resolved at evidence commitment, so the producer builds across
-    // the whole admissible range and the threshold above the tier-1 cap is
-    // reachable again.
+  it("keeps output complete-item witnesses across Inline, RawUtxo, and Certified carriage", async () => {
+    // Output items keep the deployed complete-item staged route even when
+    // their field requires reference carriage. Publication fit chooses carriage.
     const largestTier1Item = MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES - 4;
     const atCap = makeExactSizeOutputItem(largestTier1Item);
     expect(atCap.length).toBe(largestTier1Item);
@@ -92,30 +82,18 @@ describe("complete-item proof fit V1", () => {
       selectMidgardFieldCarriageTier(above.planInput.fieldPreimage.length),
     ).toBe("RawUtxo");
 
-    // The chunked fallback, reachable again (#597's Deviation retired). An item
-    // above `maxSinglePublicationCompleteItemBytes` forces canonicalDecode's
-    // chunked route, which needs a preimage §8.4 carries above tier 1 — exactly
-    // the domain the named refusal used to remove. Exercised, not scanned for.
-    const chunkedItem =
-      MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes + 1;
-    expect(chunkedItem).toBeGreaterThan(largestTier1Item);
-    const chunkedTrace = await buildTraceWithOutputs([
-      makeExactSizeOutputItem(chunkedItem),
+    const largestItem = MIDGARD_CONSENSUS_LIMITS.maxLedgerOutputPreimageBytes;
+    const largestTrace = await buildTraceWithOutputs([
+      makeExactSizeOutputItem(largestItem),
     ]);
-    const chunkedSteps = chunkedTrace.witnesses.filter(
-      (witness) =>
-        witness.phase === "canonicalDecode" &&
-        witness.auxiliary?.kind === "transactionFieldChunk" &&
-        witness.auxiliary.fieldIndex === 2,
-    );
-    expect(chunkedSteps.length).toBeGreaterThan(0);
-    // And it is chunked *because* the item crossed the threshold, not because
-    // the field is large: field 2 emits no complete-item step for this item.
     expect(
-      chunkedTrace.witnesses.some(
+      findFieldItemStep(largestTrace, largestItem).witness.auxiliary?.kind,
+    ).toBe("transactionFieldItem");
+    expect(
+      largestTrace.witnesses.some(
         (witness) =>
           witness.phase === "canonicalDecode" &&
-          witness.auxiliary?.kind === "transactionFieldItem" &&
+          witness.auxiliary?.kind === "transactionFieldChunk" &&
           witness.auxiliary.fieldIndex === 2,
       ),
     ).toBe(false);
