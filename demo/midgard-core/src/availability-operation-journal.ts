@@ -104,6 +104,29 @@ export const openAvailabilityOperationJournal = (
       kind: "collateral",
     })),
   ];
+  /** Reserves `resource` for `intent`; returns the other intents holding it. */
+  const reserve = (
+    intent: AvailabilityOperationIntent,
+    resource: string,
+    kind: string,
+  ): string[] => {
+    const others = db
+      .prepare(
+        "SELECT intent_id, kind, actor FROM availability_operation_resources WHERE resource = ? AND intent_id != ?",
+      )
+      .all(resource, intent.id)
+      .filter(
+        (row) =>
+          kind !== "collateral" ||
+          row.kind !== "collateral" ||
+          row.actor !== intent.actor,
+      )
+      .map((row) => String(row.intent_id));
+    db.prepare(
+      "INSERT OR IGNORE INTO availability_operation_resources VALUES (?, ?, ?, ?)",
+    ).run(resource, intent.id, kind, intent.actor);
+    return others;
+  };
   const confirmedOf = (
     lease: AvailabilityOperationLease,
     id: string,
@@ -178,17 +201,16 @@ export const openAvailabilityOperationJournal = (
         actor,
       );
     },
-    finalizedAnchors(deployment, actor) {
+    finalizedAnchors(actor) {
       return records(
         `SELECT parent.record FROM availability_operation_intents AS parent
-        WHERE parent.deployment = ? AND parent.actor = ? AND parent.state = 'confirmed'
+        WHERE parent.actor = ? AND parent.state = 'confirmed'
         AND NOT EXISTS (
           SELECT 1 FROM availability_operation_dependencies AS edge
           JOIN availability_operation_intents AS child ON child.id = edge.child_id
           WHERE edge.parent_tx_hash = parent.tx_hash AND child.state = 'confirmed'
           AND child.deployment = parent.deployment AND child.actor = parent.actor
         ) ORDER BY parent.id`,
-        deployment,
         actor,
       );
     },
@@ -304,28 +326,11 @@ export const openAvailabilityOperationJournal = (
             "Availability funding, protocol inputs and collateral overlap",
           );
         }
-        for (const { resource, kind } of resources(intent)) {
-          const reservations = db
-            .prepare(
-              "SELECT kind, actor FROM availability_operation_resources WHERE resource = ?",
-            )
-            .all(resource);
-          if (
-            reservations.some(
-              (row) =>
-                kind !== "collateral" ||
-                row.kind !== "collateral" ||
-                row.actor !== intent.actor,
-            )
-          ) {
+        for (const { resource, kind } of resources(intent))
+          if (reserve(intent, resource, kind).length > 0)
             throw new Error(
               "Availability operation resource is already reserved",
             );
-          }
-          db.prepare(
-            "INSERT INTO availability_operation_resources VALUES (?, ?, ?, ?)",
-          ).run(resource, intent.id, kind, intent.actor);
-        }
         const record: AvailabilityOperationRecord = {
           intent,
           state: "pending",
@@ -401,23 +406,31 @@ export const openAvailabilityOperationJournal = (
       });
     },
     rewind(lease, id, detail, nowMs) {
-      transaction(() => {
+      return transaction(() => {
         const record = confirmedOf(lease, id, nowMs, "rewind");
+        // Retirement past validity (or, before retention, confirmation) freed
+        // these, so another intent may hold one since. Both claims stay and
+        // the rewound intent records the double claim as a conflict.
+        const claimed = resources(record.intent).flatMap(({ resource, kind }) =>
+          reserve(record.intent, resource, kind).map(
+            (other) => `${resource} (intent ${other})`,
+          ),
+        );
+        const conflict =
+          claimed.length === 0
+            ? null
+            : `${detail}; its inputs are also reserved by ${claimed.join(", ")}`;
         const next: AvailabilityOperationRecord = {
           intent: record.intent,
-          state: "pending",
+          state: conflict === null ? "pending" : "conflict",
           inclusionPoint: null,
-          detail,
+          detail: conflict ?? detail,
         };
         write(next);
-        // A journal from before retention lost these at confirmation.
-        for (const { resource, kind } of resources(record.intent))
-          db.prepare(
-            "INSERT OR IGNORE INTO availability_operation_resources VALUES (?, ?, ?, ?)",
-          ).run(resource, id, kind, record.intent.actor);
         // Restore even a workflow row deleted before schema 3.
         if (record.intent.action === "open" || record.intent.completesWorkflow)
           restoreWorkflow(record.intent);
+        return conflict;
       });
     },
     retire(lease, id, evidence, nowMs) {

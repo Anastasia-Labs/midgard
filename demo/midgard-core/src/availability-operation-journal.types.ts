@@ -100,10 +100,11 @@ export interface AvailabilityOperationJournal {
     deploymentIdentity: string,
     actor: string,
   ): readonly AvailabilityOperationRecord[];
-  finalizedAnchors(
-    deploymentIdentity: string,
-    actor: string,
-  ): readonly AvailabilityOperationRecord[];
+  /**
+   * The actor's confirmed intents no confirmed intent spends, in every
+   * deployment: a redeploy's earlier records still retire and prune.
+   */
+  finalizedAnchors(actor: string): readonly AvailabilityOperationRecord[];
   /** All unresolved wallet resources, including intents for other deployments. */
   reservedOutRefs(actor: string): readonly string[];
   /**
@@ -169,14 +170,16 @@ export interface AvailabilityOperationJournal {
    * Returns a confirmed intent to pending once canonical evidence contradicts
    * its inclusion. Its reservations come back and, for an Open or terminal
    * step, its header's workflow is live again, so the same signed bytes can
-   * land again; nothing is re-signed.
+   * land again; nothing is re-signed. When another intent reserved one of
+   * its inputs meanwhile, both claims stay, the intent becomes a conflict,
+   * and its recorded detail is returned; otherwise null.
    */
   rewind(
     lease: AvailabilityOperationLease,
     id: string,
     detail: string,
     nowMs: number,
-  ): void;
+  ): string | null;
   /** Applies {@link AvailabilityOperationRetirement} to `id` and its confirmed ancestors. */
   retire(
     lease: AvailabilityOperationLease,

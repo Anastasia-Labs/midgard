@@ -23,7 +23,7 @@ type Observed<S extends DaAvailabilityOperationObservation["status"]> = Extract<
   { status: S }
 >;
 
-const authenticates = (
+export const authenticates = (
   intent: AvailabilityOperationIntent,
   observation: Observed<"included">,
 ): boolean =>
@@ -31,6 +31,31 @@ const authenticates = (
   Boolean(observation.inclusionPoint) &&
   Number.isSafeInteger(observation.confirmationDepth) &&
   observation.confirmationDepth >= 0;
+
+/** Applies the journal's retention to `intent` from inclusion that authenticates it. */
+export const retireIncluded = (
+  context: DaAvailabilityOperationContext,
+  lease: AvailabilityOperationLease,
+  intent: AvailabilityOperationIntent,
+  observed: Observed<"included">,
+): void =>
+  context.journal.retire(
+    lease,
+    intent.id,
+    {
+      confirmationDepth: observed.confirmationDepth,
+      inclusionPoint: observed.inclusionPoint,
+      ...(observed.currentBlockNo === undefined
+        ? {}
+        : { currentBlockNo: observed.currentBlockNo }),
+      ...(Number.isSafeInteger(observed.currentSlot) &&
+      observed.currentSlot! >= 0
+        ? { currentSlot: observed.currentSlot }
+        : {}),
+      recoveryDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth,
+    },
+    (context.nowMs ?? Date.now)(),
+  );
 
 /**
  * Whether missing inputs prove the intent can never land: the detail its
@@ -157,24 +182,7 @@ export const reconcile = async (
       });
       const now = context.nowMs ?? Date.now;
       const retire = (observed: Observed<"included">): void =>
-        context.journal.retire(
-          lease,
-          intent.id,
-          {
-            confirmationDepth: observed.confirmationDepth,
-            inclusionPoint: observed.inclusionPoint,
-            ...(observed.currentBlockNo === undefined
-              ? {}
-              : { currentBlockNo: observed.currentBlockNo }),
-            ...(Number.isSafeInteger(observed.currentSlot) &&
-            observed.currentSlot! >= 0
-              ? { currentSlot: observed.currentSlot }
-              : {}),
-            recoveryDepth:
-              DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth,
-          },
-          now(),
-        );
+        retireIncluded(context, lease, intent, observed);
       if (context.journal.get(intent.id)?.state === "confirmed") {
         // Confirmation depth is not finality. Positive evidence that the
         // transaction left the canonical chain returns it to pending, and the
@@ -211,12 +219,16 @@ export const reconcile = async (
           case "conflicting_spend":
             break;
         }
-        context.journal.rewind(
+        // An input another intent reserved since its release is a double
+        // claim: it is surfaced as a conflict, and both intents keep their
+        // reservations.
+        const conflict = context.journal.rewind(
           lease,
           intent.id,
           `Confirmed availability transaction left the canonical chain (${observation.status})`,
           now(),
         );
+        if (conflict !== null) return result("conflict", conflict);
       }
       switch (observation.status) {
         case "included":

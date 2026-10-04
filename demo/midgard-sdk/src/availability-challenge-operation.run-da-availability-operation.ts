@@ -56,10 +56,12 @@ export const runDaAvailabilityOperation = (
         assertCurrent,
         observationScope(),
       );
-    for (const anchor of context.journal.finalizedAnchors(
-      context.deploymentIdentity,
-      context.actor,
-    )) {
+    for (const anchor of context.journal
+      .finalizedAnchors(context.actor)
+      .filter(
+        ({ intent }) =>
+          intent.deploymentIdentity === context.deploymentIdentity,
+      )) {
       const audit = await reconcile(
         context,
         lease,

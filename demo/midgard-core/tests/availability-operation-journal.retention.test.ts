@@ -177,7 +177,7 @@ describe("availability journal retention is bounded by validity and recovery dep
       );
       expect(journal.get("open")).toBeNull();
       expect(journal.get("remove")).toBeNull();
-      expect(journal.finalizedAnchors("deployment", "actor")).toEqual([]);
+      expect(journal.finalizedAnchors("actor")).toEqual([]);
       for (const table of ["workflows", "resources", "dependencies"])
         expect(
           rows(database, `SELECT * FROM availability_operation_${table}`),
@@ -313,7 +313,7 @@ describe("availability journal retention is bounded by validity and recovery dep
       expect(() => journal.rewind(foreign, "remove", "rolled back", 6)).toThrow(
         /different actor/,
       );
-      journal.rewind(lease, "remove", "rolled back", 7);
+      expect(journal.rewind(lease, "remove", "rolled back", 7)).toBeNull();
       expect(journal.get("remove")).toMatchObject({
         state: "pending",
         inclusionPoint: null,
@@ -334,6 +334,76 @@ describe("availability journal retention is bounded by validity and recovery dep
       journal.transition(lease, "remove", "included", "21:cc", null, 10);
       journal.transition(lease, "remove", "confirmed", "21:cc", null, 11);
       expect(journal.workflows("actor")).toEqual([]);
+    } finally {
+      journal.close();
+    }
+  });
+
+  it("records a double claim when a rewound intent's freed input was reserved by another intent since", () => {
+    const database = path();
+    const journal = openAvailabilityOperationJournal(database);
+    try {
+      const lease = journal.acquire("actor", "owner", 0, 1_000);
+      journal.persist(lease, intent("first"), 1);
+      journal.transition(lease, "first", "confirmed", "10:aa", null, 2);
+      // Past its validity at the tip of the moment: its inputs are released.
+      journal.retire(
+        lease,
+        "first",
+        { confirmationDepth: 30, currentSlot: 100, recoveryDepth: RECOVERY },
+        3,
+      );
+      expect(journal.reservedOutRefs("actor")).toEqual([]);
+      // A rollback brings the input back unspent and a new intent takes it,
+      // sharing the actor's collateral as it may.
+      journal.persist(
+        lease,
+        intent("second", { spentOutRefs: ["first-input#0"] }),
+        4,
+      );
+      const detail = journal.rewind(lease, "first", "rolled back", 5);
+      expect(detail).toBe(
+        "rolled back; its inputs are also reserved by first-input#0 (intent second)",
+      );
+      expect(journal.get("first")).toMatchObject({
+        state: "conflict",
+        inclusionPoint: null,
+        detail,
+      });
+      expect(
+        journal.pending("deployment", "actor").map(({ intent }) => intent.id),
+      ).toEqual(["first", "second"]);
+      // Both claims stay, so no third intent can take the input.
+      expect(
+        rows(
+          database,
+          "SELECT intent_id FROM availability_operation_resources WHERE resource = 'first-input#0' ORDER BY intent_id",
+        ),
+      ).toEqual([{ intent_id: "first" }, { intent_id: "second" }]);
+      expect(() =>
+        journal.persist(
+          lease,
+          intent("third", { spentOutRefs: ["first-input#0"] }),
+          6,
+        ),
+      ).toThrow(/already reserved/);
+    } finally {
+      journal.close();
+    }
+  });
+
+  it("frees a confirmed chain's reservations when it prunes it, whatever the slot evidence", () => {
+    const { journal, lease } = finishedChallenge(path());
+    try {
+      journal.retire(
+        lease,
+        "remove",
+        { confirmationDepth: RECOVERY + 1, recoveryDepth: RECOVERY },
+        5,
+      );
+      expect(journal.get("open")).toBeNull();
+      expect(journal.get("remove")).toBeNull();
+      expect(journal.reservedOutRefs("actor")).toEqual([]);
     } finally {
       journal.close();
     }

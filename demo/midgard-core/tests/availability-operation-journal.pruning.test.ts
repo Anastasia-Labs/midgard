@@ -73,9 +73,7 @@ describe("journal history pruning under continuous activity", () => {
     expect(journal.get("parent")).toBeNull();
     expect(journal.get("child")?.state).toBe("confirmed");
     expect(
-      journal
-        .finalizedAnchors("deployment", "actor")
-        .map(({ intent }) => intent.id),
+      journal.finalizedAnchors("actor").map(({ intent }) => intent.id),
     ).toEqual(["child"]);
   });
 

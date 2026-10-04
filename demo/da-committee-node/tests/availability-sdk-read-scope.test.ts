@@ -212,13 +212,8 @@ describe("shared SDK availability read scopes", () => {
         )
       ).status,
     ).toBe("confirmed");
-    expect(
-      s.journal.finalizedAnchors(s.context.deploymentIdentity, s.context.actor),
-    ).toHaveLength(2);
-    const before = s.journal.finalizedAnchors(
-      s.context.deploymentIdentity,
-      s.context.actor,
-    );
+    expect(s.journal.finalizedAnchors(s.context.actor)).toHaveLength(2);
+    const before = s.journal.finalizedAnchors(s.context.actor);
     const freshBuild = vi.fn(async () => s.tx);
     const observe = vi.fn(
       async (
@@ -237,9 +232,7 @@ describe("shared SDK availability read scopes", () => {
     await vi.advanceTimersByTimeAsync(10);
     expect(observe).toHaveBeenCalledTimes(2);
     expect(freshBuild).not.toHaveBeenCalled();
-    expect(
-      s.journal.finalizedAnchors(s.context.deploymentIdentity, s.context.actor),
-    ).toEqual(before);
+    expect(s.journal.finalizedAnchors(s.context.actor)).toEqual(before);
   });
 
   it("returns unresolved on signed observation timeout and recovers the same bytes after SQLite reopen", async () => {

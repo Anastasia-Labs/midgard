@@ -9,19 +9,24 @@ import {
   inspectDaAvailabilitySignedIntent,
 } from "./availability-challenge-operation.inspect-da-availability-signed-intent.js";
 import type { DaAvailabilityReadScope } from "./availability-challenge-operation.read-scope.js";
-import { reconcile } from "./availability-challenge-operation.reconcile.js";
+import {
+  authenticates,
+  reconcile,
+  retireIncluded,
+} from "./availability-challenge-operation.reconcile.js";
 
 export const reconcileDaAvailabilityOperations = (
   context: DaAvailabilityOperationContext,
 ): Promise<readonly DaAvailabilityOperationResult[]> =>
   withLease(context, async (lease, assertCurrent, observationScope) => {
     const results: DaAvailabilityOperationResult[] = [];
+    const anchors = context.journal.finalizedAnchors(context.actor);
     const records = [
       ...context.journal.pending(context.deploymentIdentity, context.actor),
       ...context.journal.unfinalized(context.deploymentIdentity, context.actor),
-      ...context.journal.finalizedAnchors(
-        context.deploymentIdentity,
-        context.actor,
+      ...anchors.filter(
+        ({ intent }) =>
+          intent.deploymentIdentity === context.deploymentIdentity,
       ),
     ];
     const byTransaction = new Map(
@@ -145,6 +150,28 @@ export const reconcileDaAvailabilityOperations = (
         DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth,
         (context.nowMs ?? Date.now)(),
       );
+    }
+    // A redeploy leaves earlier deployments' confirmed intents behind. This
+    // deployment never reconciles, rewinds or rebroadcasts them, but they
+    // retire under the same rules: authenticated inclusion frees their inputs
+    // past validity and prunes them past recovery depth. Other evidence
+    // changes nothing and is read again on the next pass.
+    for (const { intent } of anchors) {
+      if (intent.deploymentIdentity === context.deploymentIdentity) continue;
+      const scope = observationScope();
+      const observed = await scope.read(async () => {
+        await assertCurrent(scope);
+        const result = await context.observe(intent, scope);
+        scope.assertCurrent();
+        await assertCurrent(scope);
+        return result;
+      });
+      if (
+        observed.status === "included" &&
+        authenticates(intent, observed) &&
+        observed.confirmationDepth >= context.minimumConfirmationDepth
+      )
+        retireIncluded(context, lease, intent, observed);
     }
     return results;
   });

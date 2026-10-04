@@ -240,9 +240,7 @@ describe("availability operation journal durability and fencing", () => {
         ),
       ).toThrow(/already has a live challenge workflow/);
       expect(
-        journal
-          .finalizedAnchors("deployment", "actor")
-          .map((record) => record.intent.id),
+        journal.finalizedAnchors("actor").map((record) => record.intent.id),
       ).toEqual(["remove"]);
     } finally {
       journal.close();

@@ -597,7 +597,7 @@ describe("availability operation signed recovery", () => {
       );
       expect(
         f.context.journal
-          .finalizedAnchors(f.context.deploymentIdentity, f.context.actor)
+          .finalizedAnchors(f.context.actor)
           .map((record) => record.intent.txHash),
       ).toEqual([child.txHash]);
       await reconcileDaAvailabilityOperations({ ...f.context, observe });

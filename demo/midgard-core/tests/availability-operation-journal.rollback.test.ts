@@ -41,6 +41,17 @@ const intent = (
   completesWorkflow: false,
   ...overrides,
 });
+const rows = (database: string, sql: string) => {
+  const db = new DatabaseSync(database);
+  try {
+    return db
+      .prepare(sql)
+      .all()
+      .map((row) => ({ ...row }));
+  } finally {
+    db.close();
+  }
+};
 const CLOSE = {
   openIntentId: "open",
   reason: "challenge-closed" as const,
@@ -173,6 +184,35 @@ describe("a foreign terminal's release stays reversible until it is final", () =
     }
   });
 
+  it("lets our own confirmed terminal step settle a release whose foreign evidence is not final", () => {
+    const { database, journal, lease } = released();
+    try {
+      journal.persist(
+        lease,
+        intent("remove", {
+          action: "remove",
+          completesWorkflow: true,
+          spentOutRefs: ["open#1"],
+        }),
+        4,
+      );
+      journal.transition(lease, "remove", "confirmed", "20:bb", null, 5);
+      // Our terminal ended the workflow; the foreign one no longer matters.
+      expect(journal.unsettledReleases("actor")).toEqual([]);
+      expect(
+        rows(
+          database,
+          "SELECT retired_by, release FROM availability_operation_workflows",
+        ),
+      ).toEqual([{ retired_by: "remove", release: null }]);
+      expect(() =>
+        journal.reviveWorkflow(lease, "deployment", "header", 6),
+      ).toThrow(/no unsettled release/);
+    } finally {
+      journal.close();
+    }
+  });
+
   it("makes a header re-opened after a foreign release live again", () => {
     const { journal, lease } = released();
     try {
@@ -293,6 +333,29 @@ it("releases a never-landed Open's capital at expiry while retaining its progres
   } finally {
     journal.close();
   }
+});
+
+describe("a redeploy", () => {
+  it("lists confirmed anchors in every deployment of the actor", () => {
+    const journal = openAvailabilityOperationJournal(path());
+    try {
+      const lease = journal.acquire("actor", "owner", 0, 1_000);
+      journal.persist(
+        lease,
+        intent("old", { action: "publish", deploymentIdentity: "old" }),
+        1,
+      );
+      journal.persist(lease, intent("new", { action: "publish" }), 2);
+      journal.transition(lease, "old", "confirmed", "10:aa", null, 3);
+      journal.transition(lease, "new", "confirmed", "11:bb", null, 4);
+      expect(
+        journal.finalizedAnchors("actor").map(({ intent }) => intent.id),
+      ).toEqual(["new", "old"]);
+      expect(journal.finalizedAnchors("other")).toEqual([]);
+    } finally {
+      journal.close();
+    }
+  });
 });
 
 describe("lookups by transaction hash", () => {
