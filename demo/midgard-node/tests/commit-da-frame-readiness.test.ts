@@ -219,7 +219,12 @@ describe("commit DA frame readiness", () => {
       expect(reasonsOf(globals)).toEqual([
         { source: "commit_worker", reason: "commit_worker_failed" },
       ]);
+      // Only the idle notice of a no-work tick clears the diagnostics.
       takeCommitWorkerOutput(globals, { type: "NothingToCommitOutput" }, 0);
+      expect(Effect.runSync(Ref.get(globals.COMMIT_DA_FRAME_PRESSURE))).toBe(
+        pressure,
+      );
+      takeCommitWorkerOutput(globals, COMMIT_DA_FRAME_IDLE_NOTICE, 0);
       expect(
         Effect.runSync(Ref.get(globals.COMMIT_DA_FRAME_PRESSURE)),
       ).toBeNull();
