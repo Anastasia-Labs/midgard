@@ -5,6 +5,7 @@ import {
   interactiveEmulatorSetup,
   isolatedForksPool,
   midgardSourceSsr,
+  rawSqlLoaderPlugin,
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
 
@@ -59,6 +60,7 @@ const interactiveTests = [
 ];
 
 export default defineConfig({
+  plugins: [rawSqlLoaderPlugin()],
   test: {
     // Refuses the run when onchain/aiken/plutus.json is stale.
     workspace: [

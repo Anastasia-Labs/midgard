@@ -165,6 +165,7 @@ export const buildCanonicalBlockFixture = async ({
   transactionsRootMode = "payloadSource",
   prevHeaderHash = h28(90),
   prevUtxosRoot = SDK.EMPTY_MERKLE_TREE_ROOT,
+  transitionSteps = [],
 }: {
   readonly transactions: readonly FixtureTransaction[];
   readonly utxos?: readonly Readonly<{
@@ -178,6 +179,7 @@ export const buildCanonicalBlockFixture = async ({
   readonly transactionsRootMode?: CanonicalTransactionsRootMode;
   readonly prevHeaderHash?: string;
   readonly prevUtxosRoot?: string;
+  readonly transitionSteps?: readonly SDK.TransitionStep[];
 }): Promise<CanonicalBlockFixture> => {
   const transactionEntries: SDK.DaPayloadEntry[] = transactions.map((tx) => [
     tx.txId,
@@ -253,7 +255,16 @@ export const buildCanonicalBlockFixture = async ({
     SDK.ROOT_DOMAINS.forcedTransactionsV1,
   );
   const depositsRoot = await emptyRoot(SDK.ROOT_DOMAINS.deposits);
-  const transitionTraceRoot = await emptyRoot(SDK.ROOT_DOMAINS.transitionTrace);
+  const transitionTraceEntries: SDK.DaPayloadEntry[] = transitionSteps.map(
+    (step) => [
+      encodeData(step.step_index, Data.Integer()).toString("hex"),
+      encodeData(step, SDK.TransitionStepSchema).toString("hex"),
+    ],
+  );
+  const transitionTraceRoot = await buildCountedRoot(
+    SDK.ROOT_DOMAINS.transitionTrace,
+    bufferEntries(transitionTraceEntries),
+  );
   const eventToStepRoot = await buildCountedRoot(
     SDK.ROOT_DOMAINS.eventToStep,
     bufferEntries(eventToStepEntries),
@@ -282,7 +293,7 @@ export const buildCanonicalBlockFixture = async ({
     l2TransactionCount: BigInt(transactions.length),
     depositCount: 0n,
     totalEventCount: BigInt(transactions.length),
-    transitionStepCount: 0n,
+    transitionStepCount: BigInt(transitionSteps.length),
     validationTraceCount: BigInt(transactions.length),
   };
 
@@ -318,7 +329,7 @@ export const buildCanonicalBlockFixture = async ({
       forced_transactions: [],
       transactions: sortEntries(transactionEntries),
       deposits: [],
-      transition_trace: [],
+      transition_trace: sortEntries(transitionTraceEntries),
       event_to_step: sortEntries(eventToStepEntries),
       transaction_preimages: sortEntries(preimageEntries),
       forced_transaction_preimages: [],
@@ -340,6 +351,31 @@ export const buildCanonicalBlockFixture = async ({
     nativeCompactTransactionsRoot: nativeCompactTransactionsRoot.root,
     transactions,
   };
+};
+
+/** Commit-compatible transition commitments for the supplied L2 source rows. */
+export const buildCanonicalL2BlockFixture = async (
+  transactions: readonly FixtureTransaction[],
+  genesis: SDK.ConfirmedState,
+): Promise<CanonicalBlockFixture> => {
+  const base = await buildCanonicalBlockFixture({
+    transactions,
+    prevHeaderHash: genesis.headerHash,
+    prevUtxosRoot: genesis.utxoRoot,
+  });
+  return await buildCanonicalBlockFixture({
+    transactions,
+    prevHeaderHash: genesis.headerHash,
+    prevUtxosRoot: genesis.utxoRoot,
+    transitionSteps: transactions.map((tx, index) => ({
+      schema_version: 1n,
+      step_index: BigInt(index),
+      event_key: { L2TransactionEventKey: { tx_id: tx.txId } },
+      phase: "L2Transaction",
+      pre_utxos_root: index === 0 ? genesis.utxoRoot : base.header.utxosRoot,
+      post_utxos_root: base.header.utxosRoot,
+    })),
+  });
 };
 
 export const authenticatedHeaderObservation = <

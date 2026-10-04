@@ -172,17 +172,17 @@ describe("initialization emulator", () => {
       expect(calls.validFrom).toBe(Number(validFrom));
       expect(calls.validTo).toBe(Number(validTo));
       expect(calls.collected).toEqual([nonceUtxo]);
-      // Output 3, the state-queue root, is funded at the node floor; the
-      // other protocol outputs take Lucid's automatic minimum.
-      expect(
-        outputAssets
-          .slice(0, 9)
-          .every((assets, index) => index === 3 || !("lovelace" in assets)),
-      ).toBe(true);
+      // The queue root and correction lock reserve ADA for their larger datums.
+      for (const [index, assets] of outputAssets.slice(0, 9).entries()) {
+        if (![3, 8].includes(index))
+          expect(assets).not.toHaveProperty("lovelace");
+      }
       expect(outputAssets[3]?.lovelace).toBe(SDK.STATE_QUEUE_NODE_MIN_LOVELACE);
-      // Nine protocol outputs, the two history roots, then the DA bond pool,
-      // which the init appends last and funds to one bond above the profile
-      // floor, so it backs the first attestation.
+      expect(outputAssets[8]?.lovelace).toBeGreaterThan(0n);
+      for (const { assets } of mintCalls)
+        expect(assets).not.toHaveProperty("lovelace");
+      // Nine protocol outputs, two history roots, then the DA pool with one
+      // bond above its floor to back the first attestation.
       expect(outputAssets).toHaveLength(12);
       expect(
         outputAssets.slice(9, 11).every((assets) => assets.lovelace > 0n),

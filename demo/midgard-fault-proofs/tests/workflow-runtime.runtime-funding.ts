@@ -39,6 +39,7 @@ export const runtimeFunding = async (
       input: ReturnType<typeof runtimeFundingPolicyFixture>["constructorInput"],
     ) => ReturnType<typeof createWorkflowRuntimeFundingPolicy>;
     governedReference?: Script;
+    referenceOutRefs?: readonly string[];
     resolvedReference?: Script;
     useStage?: boolean;
     collateral?: boolean;
@@ -55,18 +56,19 @@ export const runtimeFunding = async (
   }> = {},
 ) => {
   const actuation = await admittedActuation();
+  const governedReference = options.governedReference;
   const { runner, policy, constructorInput } = runtimeFundingPolicyFixture({
     deploymentFingerprint: DEPLOYMENT,
     fundingPaymentKeyHash: fundingKey.to_public().hash().to_hex(),
     referenceScripts:
-      options.governedReference === undefined
+      governedReference === undefined
         ? []
-        : [
-            {
-              outRef: fundingReferenceOutRef,
-              scriptHash: validatorToScriptHash(options.governedReference),
-            },
-          ],
+        : (options.referenceOutRefs ?? [fundingReferenceOutRef]).map(
+            (outRef) => ({
+              outRef,
+              scriptHash: validatorToScriptHash(governedReference),
+            }),
+          ),
   });
   const values = new Map([
     [`${"71".repeat(32)}#0`, 3_000_000n],

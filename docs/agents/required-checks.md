@@ -333,7 +333,11 @@ Golden channel native-compact (@al-ft/lucid-midgard).
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
   - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
   - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 - Mode: warns only (no workflow runs this channel, so a red check does not block)
@@ -435,10 +439,15 @@ Golden channel ordered-collection-boundary-aiken (@al-ft/midgard-validation).
   - `onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-redeemers.test.ak`
   - `onchain/aiken/lib/midgard/validation-machine-tests/constants.ak`
   - `onchain/aiken/validators/fraud-proofs/da-hash-preimage/step-01.ak`
+  - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
   - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
   - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
@@ -453,10 +462,15 @@ Golden channel validation-auxiliary-witness-v1 (@al-ft/midgard-validation).
   - `demo/midgard-validation/tests/fixtures/validation-auxiliary-witness-canonical.ts`
   - `demo/midgard-validation/tests/fixtures/validation-auxiliary-witness-v1.generated.json`
   - `onchain/aiken/lib/midgard/validation-auxiliary-witness-v1-abi-generated.ak`
+  - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
   - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
   - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
@@ -473,10 +487,15 @@ Golden channel nested-boundary-aiken (@al-ft/midgard-validation).
   - `demo/midgard-validation/tests/nested-value-boundary.test.ts`
   - `onchain/aiken/lib/midgard/cek-data-traverse.max-cardano.test.ak`
   - `onchain/aiken/lib/midgard/ledger-output-value-v1.test.ak`
+  - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
   - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
   - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
@@ -518,10 +537,15 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-constr-wrong-variant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-map-wrong-variant-constant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/unbound-variable.test.ak`
+  - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
   - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
   - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 

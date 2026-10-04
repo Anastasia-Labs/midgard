@@ -7,7 +7,7 @@ import {
   getUnappliedScript,
   parseFaultProofBlueprint,
 } from "@al-ft/midgard-sdk";
-import { type Data, type Network } from "@lucid-evolution/lucid";
+import { type Data } from "@lucid-evolution/lucid";
 
 export const moduleDir = dirname(fileURLToPath(import.meta.url));
 
@@ -33,7 +33,7 @@ export const alwaysSucceedsBlueprintPath = resolve(
   "demo/midgard-node/blueprints/always-succeeds/plutus.json",
 );
 
-export const network: Network = "Preprod";
+export const network = "Preprod" as const;
 
 export type BlueprintParameter = {
   readonly title: string;

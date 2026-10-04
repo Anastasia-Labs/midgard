@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
 import {
   CML,
+  credentialToAddress,
+  Data,
   type TxSigned,
   type UTxO,
   utxoToCore,
@@ -102,6 +105,10 @@ export const slashFundingFixture = async (
     includeWalletInput?: boolean;
     capability?: boolean;
     foreignAuthority?: boolean;
+    thirdPartyReward?: boolean;
+    foreignRewardAddress?: boolean;
+    changedProofDatum?: boolean;
+    missingProofToken?: boolean;
   } = {},
 ) => {
   const actuation = await admittedActuation();
@@ -126,11 +133,20 @@ export const slashFundingFixture = async (
     address: protocolAddress,
     assets: { lovelace: 2_000_000n },
   };
+  const proverHash = options.thirdPartyReward
+    ? "c5".repeat(28)
+    : fundingKey.to_public().hash().to_hex();
+  const rewardAddress = credentialToAddress("Preprod", {
+    type: "Key",
+    hash: proverHash,
+  });
+  const proofUnit = "a5".repeat(28) + "01";
   const proof: UTxO = {
     txHash: "83".repeat(32),
     outputIndex: 0,
     address: protocolAddress,
-    assets: { lovelace: 2_000_000n },
+    assets: { lovelace: 2_000_000n, [proofUnit]: 1n },
+    datum: Data.to({ fraud_prover: proverHash }, FraudProofTokenDatum),
   };
   const ref = (utxo: UTxO) => `${utxo.txHash}#${utxo.outputIndex}`;
   const { runner, policy } = runtimeFundingPolicyFixture({
@@ -246,6 +262,7 @@ export const slashFundingFixture = async (
     ].sort(),
     referenceOutRefs: [ref(proof)],
     outputLovelace: 400_000_000n + (options.rewardDelta ?? 0n),
+    outputAddress: rewardAddress,
     additionalOutputs: [utxoToCore(anchor).output()],
     fee: exactFee + (options.feeDelta ?? 0n),
     collateral: {
@@ -269,7 +286,14 @@ export const slashFundingFixture = async (
     tranche,
     exactFeeLovelace: exactFee.toString(),
     rewardLovelace: "400000000",
-    rewardAddress: fundingAddress,
+    rewardAddress: options.foreignRewardAddress
+      ? credentialToAddress("Preprod", { type: "Key", hash: "d5".repeat(28) })
+      : rewardAddress,
+    fraudProofUnit: proofUnit,
+    fraudProofAddress: protocolAddress,
+    fraudProofResolvedOutputCborHex: utxoToCore(proof)
+      .output()
+      .to_canonical_cbor_hex(),
     transactionHash: signed.toHash(),
     transactionBodySha256: createHash("sha256")
       .update(Buffer.from(signed.toTransaction().body().to_cbor_hex(), "hex"))
@@ -280,6 +304,12 @@ export const slashFundingFixture = async (
       resolvedOutputCborHex: utxoToCore(utxo).output().to_canonical_cbor_hex(),
     })),
   };
+  if (options.changedProofDatum)
+    proof.datum = Data.to(
+      { fraud_prover: "e5".repeat(28) },
+      FraudProofTokenDatum,
+    );
+  if (options.missingProofToken) delete proof.assets[proofUnit];
   // The real minter is private to the evaluated removal builder. Isolate that
   // builder seam while checking actual signed CML wire here.
   const originalReader = removalFunding.readFraudSlashFundingAuthority;
