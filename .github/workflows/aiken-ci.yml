@@ -132,7 +132,7 @@ jobs:
       # turns that into a nonzero exit naming the selector; its self-test
       # includes the negative case, and an unguarded guard is worth nothing.
       - name: Self-test the fail-closed focused-selector guard
-        run: node --test scripts/guard-focused-selector.test.mjs
+        run: node --test scripts/guard-focused-selector.test.mjs scripts/complete-test-shards.test.mjs
       # Issue #577. Same reasoning one level up: the execution-ledger pins below
       # decide their verdicts in scripts/exec-ledger-within-basis-v1.mjs, so a
       # ledger that measured nothing, a basis edited away from the one the lane
@@ -148,7 +148,7 @@ jobs:
   # them), so a formatting drift, a red suite or one drifted ledger no longer
   # hides the verdict of the others.
   aiken:
-    name: Aiken format, check and execution ledgers
+    name: Aiken format, deployment profiles and execution ledgers
     runs-on: ubuntu-latest
     timeout-minutes: 300
     defaults:
@@ -223,16 +223,7 @@ jobs:
           # Normalize only that formatter artifact before comparing sources.
           git ls-files -z '*.ak' | xargs -0 sed -i 's/[[:space:]]\+$//'
           git diff --name-only --exit-code -- '*.ak'
-      # One compiler now type-checks AND executes. The split that used to live
-      # here (released compiler compiles, patched compiler executes) is gone
-      # with stock's retirement. The guard's `--all` runs the whole suite as a
-      # bare `aiken check` would, prints the collected count, and fails on
-      # zero collected, on any failing test (named in the log) and on a
-      # missing report. A bare `aiken check` that collects nothing exits 0.
-      - name: Compile and run the Aiken test suite with the pinned fork
-        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
-        run: node scripts/guard-focused-selector.mjs --all
-      # The suite above compiles against the default env only. The pooled DA
+      # The complete test shards compile against the default env only. The pooled DA
       # bond relations (challenge window ordering, both withdrawal-delay forms,
       # 0 < slash penalty < DA bond, positive top-up, pool floor and record
       # lovelace) are pinned by env-bound tests, so they run once per
@@ -394,13 +385,124 @@ jobs:
         if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
         run: git diff --name-only --exit-code aiken.lock
 
+  # One fresh property seed and a source-derived, complete module partition.
+  shard-plan:
+    name: Plan the complete Aiken test census
+    needs: [guard-self-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: demo/.nvmrc
+      - name: Generate whole-module shards with a fresh common seed
+        run: node onchain/aiken/scripts/guard-focused-selector.mjs --plan-shards 4 --output "$RUNNER_TEMP/aiken-plan.json"
+      - name: Publish the common source and seed plan
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: aiken-shard-plan
+          path: ${{ runner.temp }}/aiken-plan.json
+          if-no-files-found: error
+
+  # Filters run before test code generation in the pinned fork. Collision
+  # components stay together because module filters use substring matching.
+  # Every current and future source module is assigned; no test allowlist is
+  # involved. Independent format/profile/ledger work above still runs once.
+  aiken-tests:
+    name: Aiken complete test shard ${{ matrix.shard }}
+    needs: [shard-plan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      RAYON_NUM_THREADS: "2"
+    defaults:
+      run:
+        working-directory: ./onchain/aiken
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: demo/.nvmrc
+      - name: Cache the pinned Aiken fork
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.aiken-fork
+          key: aiken-fork-${{ env.AIKEN_FORK_REV }}-${{ runner.os }}
+      - name: Build the pinned Aiken fork
+        working-directory: .
+        run: scripts/ci/build-aiken-fork.sh --prefix ~/.aiken-fork
+      - name: Assert the pinned compiler identity and put it on PATH
+        run: |
+          set -euo pipefail
+          node scripts/pinned-compiler.mjs ~/.aiken-fork/bin/aiken
+          echo "$HOME/.aiken-fork/bin" >> "$GITHUB_PATH"
+      - name: Assert no stock compiler is reachable
+        id: compiler
+        run: |
+          set -euo pipefail
+          node scripts/pinned-compiler.mjs aiken
+      - name: Download the common source and seed plan
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: aiken-shard-plan
+          path: ${{ runner.temp }}/aiken-plan
+      - name: Compile and run the Aiken test suite with the pinned fork
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
+        run: node scripts/guard-focused-selector.mjs --shard ${{ matrix.shard }} --plan "$RUNNER_TEMP/aiken-plan/aiken-plan.json" --output "$RUNNER_TEMP/aiken-reports/shard-${{ matrix.shard }}.json"
+      - name: Preserve the complete raw compiler report and exit metadata
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: aiken-shard-report-${{ matrix.shard }}
+          path: ${{ runner.temp }}/aiken-reports/shard-${{ matrix.shard }}.json
+          if-no-files-found: error
+
+  shard-collector:
+    name: Verify the complete Aiken test union
+    if: ${{ !cancelled() }}
+    needs: [shard-plan, aiken-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: demo/.nvmrc
+      - name: Download the common source and seed plan
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: aiken-shard-plan
+          path: ${{ runner.temp }}/aiken-plan
+      - name: Download every raw shard report
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: aiken-shard-report-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/aiken-reports
+      - name: Require all shard identities, source assignments and passing test records
+        run: node onchain/aiken/scripts/guard-focused-selector.mjs --collect-shards --plan "$RUNNER_TEMP/aiken-plan/aiken-plan.json" --reports "$RUNNER_TEMP/aiken-reports"
+
   # The one check branch protection should require. It runs even when jobs
   # above failed or were skipped, and fails unless every one of them
   # succeeded.
   gate:
     name: Aiken CI gate
     if: ${{ !cancelled() }}
-    needs: [deployment-profiles, guard-self-tests, aiken]
+    needs:
+      [
+        deployment-profiles,
+        guard-self-tests,
+        aiken,
+        shard-plan,
+        aiken-tests,
+        shard-collector,
+      ]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

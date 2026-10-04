@@ -65,6 +65,9 @@ const scenarios = {
       "aiken-ci:deployment-profiles",
       "aiken-ci:guard-self-tests",
       "aiken-ci:aiken",
+      "aiken-ci:shard-plan",
+      "aiken-ci:aiken-tests",
+      "aiken-ci:shard-collector",
       "aiken-ci:gate",
       ...[
         "aiken-fork",

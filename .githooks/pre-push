@@ -61,6 +61,12 @@ MSG
   exit 0
 fi
 
+# Nested tooling creates other repositories. Git's exported hook environment
+# must not make their Git commands address the repository being pushed.
+while IFS= read -r git_env_var; do
+  unset "$git_env_var"
+done < <(git rev-parse --local-env-vars)
+
 node scripts/preflight.mjs --pre-push
 status=$?
 case "$status" in
