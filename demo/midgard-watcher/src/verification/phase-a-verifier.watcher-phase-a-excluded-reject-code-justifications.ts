@@ -94,7 +94,7 @@ export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODES = Object.freeze(
 );
 
 /**
- * The 21 reachable codes the W24 suite pins with a deterministic
+ * The 20 reachable codes the W24 suite pins with a deterministic
  * rejection-evidence case, in `RejectCodes` declaration order.
  *
  * The suite asserts this list equals the set of codes its evidence corpus
@@ -119,7 +119,6 @@ export const WATCHER_PHASE_A_EVIDENCED_REJECT_CODES = Object.freeze([
   RejectCodes.TxSize,
   RejectCodes.ValueSize,
   RejectCodes.FieldPreimageSize,
-  RejectCodes.LedgerOutputSize,
   RejectCodes.ScriptProgramEncoding,
   RejectCodes.CekProgramMaterial,
 ] as const);
@@ -160,6 +159,8 @@ export const WATCHER_PHASE_A_DOMINATED_REJECT_CODE_JUSTIFICATIONS =
       "dominated: 16,385 redeemers exceed the 32,768-byte redeemers preimage bound, and degenerate items fail canonical redeemer decoding first.",
     [RejectCodes.ObserverCount]:
       "dominated: observers are 28-byte credentials, so 16,385 of them exceed the 32,768-byte preimage bound (E_FIELD_PREIMAGE_SIZE / E_INVALID_FIELD_TYPE).",
+    [RejectCodes.LedgerOutputSize]:
+      "dominated: the normal and forced canonical output-item width check enforces the same maxLedgerOutputPreimageBytes bound before consensus admission and rejects E_INVALID_FIELD_TYPE with FieldItemWidthIllegal.",
     [RejectCodes.ScriptProgramSize]:
       "dominated: consensus-validation.ts has no E_SCRIPT_PROGRAM_SIZE call site; oversized programs surface as E_SCRIPT_PROGRAM_ENCODING from the bounded envelope decoder.",
     [RejectCodes.NativeScriptDepth]:
@@ -206,7 +207,7 @@ export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS =
     [RejectCodes.NonZeroWithdrawal]:
       "no Phase A call site: V1 canonical transactions have no withdrawal field, so the prohibition is structural.",
     [RejectCodes.DatumSize]:
-      "no Phase A call site: datum bounds are enforced by the output/ledger-output preimage bounds that surface as E_LEDGER_OUTPUT_SIZE.",
+      "no Phase A call site: datum bounds are enforced by canonical output-item width, which surfaces as E_INVALID_FIELD_TYPE before the dominated E_LEDGER_OUTPUT_SIZE screen.",
     [RejectCodes.ScriptProgramAggregateSize]:
       "no Phase A call site: the aggregate program bound is checked by the CEK bundle verifier and surfaces as E_CEK_PROGRAM_MATERIAL.",
     [RejectCodes.RedeemerSize]:

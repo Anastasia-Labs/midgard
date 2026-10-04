@@ -2,6 +2,7 @@ import { validatePhaseASingle } from "@al-ft/midgard-validation/phase-a";
 import {
   makeNativeTx,
   nativeScriptWitness,
+  TEST_ADDRESS_BYTES,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import type { PhaseAConfig, QueuedTx } from "@al-ft/midgard-validation/types";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
@@ -13,6 +14,7 @@ import {
   WATCHER_PHASE_A_EVIDENCED_REJECT_CODES,
 } from "../../src/verification/phase-a-verifier.js";
 import {
+  bigInlineDatum,
   CONFIG,
   configFor,
   KEY,
@@ -220,6 +222,51 @@ describe("rejection evidence per reachable code", () => {
 // ---------------------------------------------------------------------------
 
 describe("adjacent boundary", () => {
+  it.each(["normal", "forced"] as const)(
+    "shows output width dominates E_LEDGER_OUTPUT_SIZE for %s sources",
+    (sourceKind) => {
+      expect(WATCHER_PHASE_A_DOMINATED_REJECT_CODES).toContain(
+        RejectCodes.LedgerOutputSize,
+      );
+      const fixture = makeNativeTx({
+        privateKey: KEY,
+        outputs: [
+          encodeMidgardTxOutput({
+            address: TEST_ADDRESS_BYTES,
+            value: { lovelace: 1n, assets: new Map() },
+            datum: { kind: "inline", cbor: bigInlineDatum(400) },
+          }),
+        ],
+      });
+      const txCbor =
+        sourceKind === "normal"
+          ? fixture.txCbor
+          : encodeMidgardForcedTxCanonical(
+              materializeMidgardForcedTxFromCanonical(fixture.tx),
+            );
+      const result = evaluateWatcherPhaseAQueuedTxs({
+        queuedTxs: [queuedTx(fixture.txId, txCbor, { sourceKind })],
+        config: CONFIG,
+      });
+      expect(result.rejections[0]).toMatchObject({
+        code: RejectCodes.InvalidFieldType,
+        stage: "canonicalDecode",
+      });
+      expect(
+        validatePhaseASingle(
+          queuedTx(fixture.txId, txCbor, { sourceKind }),
+          CONFIG,
+        ),
+      ).toMatchObject({
+        subject: {
+          arm: "FieldItemWidthIllegal",
+          fieldIndex: 2n,
+          itemIndex: 0n,
+        },
+      });
+    },
+  );
+
   it("accepts a fee exactly at the header minimum and rejects one below", () => {
     const fixture = makeNativeTx({ privateKey: KEY, fee: 7n });
     const config = configFor({ minFeeB: 7n });
@@ -312,3 +359,8 @@ describe("adjacent boundary", () => {
     ).toThrow(/nesting exceeds/u);
   });
 });
+import {
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
+import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec/output";

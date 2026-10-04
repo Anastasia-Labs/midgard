@@ -286,19 +286,20 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
       [
         makePhaseBCandidate({
           spent: [nativeInput],
-          outputs: [
-            makeProtectedScriptOutput(
-              hashScriptWitness(native),
-              FUNDED_OUTPUT_LOVELACE,
-            ),
-          ],
           scriptWitnesses: [native],
-          redeemerTxWitsPreimageCbor: makeRedeemersCbor([
-            { tag: MidgardRedeemerTag.Receiving, index: 0n },
-          ]),
         }),
       ],
-      entries([[nativeInput, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
+      // Native spend execution has no redeemer. A receiving redeemer would
+      // reject as unused before the native false predicate could be reached.
+      entries([
+        [
+          nativeInput,
+          makeProtectedScriptOutput(
+            hashScriptWitness(native),
+            FUNDED_OUTPUT_LOVELACE,
+          ),
+        ],
+      ]),
     );
 
     // Sixteen inputs fold 16,384 distinct assets, the bound; the output's

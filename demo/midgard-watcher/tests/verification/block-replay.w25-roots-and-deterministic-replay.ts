@@ -1115,10 +1115,7 @@ describe("W25 roots and deterministic replay", () => {
       [secondInput, output],
     ]);
 
-    // #517: the candidate-level entry point recomputes every root but binds
-    // none of them to a committed value, so it is never an acceptance. The
-    // roots below are still the point of this case; the verdict is pinned by
-    // the adversarial case that follows.
+    // #517: unbound candidate replay recomputes roots but cannot accept.
     const unbound = await replay([first, second], priorState);
     expect(unbound.action).toBe("reject");
     expect(unbound.priorStateRoot).toBe(
@@ -1158,11 +1155,8 @@ describe("W25 roots and deterministic replay", () => {
   });
 
   it("refuses acceptance while either committed binding is unrun", async () => {
-    // #517. Before this case, `finalizeResult` derived `accept` from an empty
-    // `reasonCodes` set while both bindings that compare a recomputed root
-    // against an operator commitment - the committed transition trace and the
-    // header `utxosRoot` - were skipped whenever the caller supplied neither.
-    // A replayed block was therefore accepted with nothing compared at all.
+    // #517: finalizeResult formerly accepted when callers supplied neither
+    // committed transition trace nor header utxosRoot, leaving roots unbound.
     const spent = outRefFromByte(0x11);
     const output = makeOutput(FUNDED_OUTPUT_LOVELACE, FIXED_ADDRESS);
     const native = makeNativeTx({
@@ -1178,8 +1172,7 @@ describe("W25 roots and deterministic replay", () => {
     const priorState = entries([[spent, output]]);
     const postState = entries([[outRefFromTxId(native.txId), output]]);
 
-    // Control: the same block through the fully bound public entry point,
-    // where both bindings run against the L1-committed material.
+    // Control: both public-entry bindings run against L1-committed material.
     const fixture = await buildPublicReplayFixture({
       txCbors: [native.txCbor],
       steps: [
@@ -1364,11 +1357,11 @@ describe("W25 roots and deterministic replay", () => {
     ).toStrictEqual([
       ["transition_trace_mismatch"],
       ["transition_trace_mismatch"],
-      ["canonical_reconstruction_failed"],
+      ["reconstruction_not_accepted"],
     ]);
   });
 
-  it("is restart/replay deterministic and never depends on caller array order", async () => {
+  it("is restart/replay deterministic for canonical block order and unordered prior entries", async () => {
     const firstInput = outRefFromByte(0x13);
     const secondInput = outRefFromByte(0x14);
     const first = makePhaseBCandidate({ spent: [firstInput], arrivalSeq: 0n });
@@ -1381,12 +1374,19 @@ describe("W25 roots and deterministic replay", () => {
       [secondInput, makeOutput(FUNDED_OUTPUT_LOVELACE)],
     ]);
     const initial = await replay([first, second], priorState);
-    const restarted = await replay([second, first], priorState);
+    // Committed candidate order matters; ledger entry delivery order does not.
+    const restarted = await replay([first, second], [...priorState].reverse());
     expect(restarted.resultDigest).toBe(initial.resultDigest);
     expect(restarted.acceptedTxIds).toStrictEqual(initial.acceptedTxIds);
     expect(restarted.intermediateRoots).toStrictEqual(
       initial.intermediateRoots,
     );
+    const reordered = await replay([second, first], priorState);
+    expect(reordered.postStateRoot).toBe(initial.postStateRoot);
+    expect(reordered.intermediateRoots).not.toStrictEqual(
+      initial.intermediateRoots,
+    );
+    expect(reordered.resultDigest).not.toBe(initial.resultDigest);
   });
 
   it("fails closed before replay for an uncommitted prior root and after replay for a bad post root", async () => {
