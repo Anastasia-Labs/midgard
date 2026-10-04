@@ -19,6 +19,7 @@ import {
   renderRequiredChecks,
 } from "./preflight/docs.mjs";
 import { createProbeSet } from "./preflight/probes.mjs";
+import { readCiEvidence } from "./preflight/ci-evidence.mjs";
 import {
   buildRegistry,
   formatCommand as formatStep,
@@ -35,7 +36,7 @@ import {
 
 export const JSON_SCHEMA = "midgard-preflight/v1";
 
-const USAGE = `usage: node scripts/preflight.mjs [--strict | --pre-push] [--base <ref>] [--full] [--list] [--json]
+const USAGE = `usage: node scripts/preflight.mjs [--strict | --pre-push] [--base <target-ref>] [--ci-run <id>] [--full] [--list] [--json]
        node scripts/preflight.mjs --write-docs | --check-docs`;
 
 export const parseArguments = (argv) => {
@@ -43,6 +44,7 @@ export const parseArguments = (argv) => {
     strict: false,
     prePush: false,
     base: undefined,
+    ciRun: undefined,
     full: false,
     list: false,
     json: false,
@@ -74,12 +76,14 @@ export const parseArguments = (argv) => {
         }
         options.docs = arg.slice(2, -"-docs".length);
         break;
+      case "--ci-run":
       case "--base": {
         const value = argv[index + 1];
         if (value === undefined || value.startsWith("--")) {
-          throw new UsageError("--base needs a ref");
+          throw new UsageError(`${arg} needs a value`);
         }
-        options.base = value;
+        if (arg === "--base") options.base = value;
+        else options.ciRun = value;
         index += 1;
         break;
       }
@@ -169,10 +173,18 @@ export const main = async (
   let base;
   let changes;
   let registry;
+  let ciEvidence;
   try {
     base = resolveBase(root, options.base);
     changes = collectChanges(root, { base, strict: options.strict });
     registry = buildRegistry(root);
+    if (options.ciRun !== undefined && !options.list)
+      ciEvidence = readCiEvidence(
+        root,
+        options.ciRun,
+        base,
+        changes.integrationTree,
+      );
   } catch (error) {
     stderr(`preflight: ${error.message}\n`);
     return EXIT.usage;
@@ -231,6 +243,7 @@ export const main = async (
         env,
         log: stderr,
         signal: controller.signal,
+        ciEvidence,
         ...(runStep === undefined ? {} : { runStep }),
       });
     } finally {
@@ -256,7 +269,7 @@ export const main = async (
     );
   }
   say(
-    "\nSelection is not the final gate: CI runs every check before merge. See docs/agents/required-checks.md.\n",
+    "\nSelection is not the final gate: required CI and distinct acceptance checks remain. See docs/agents/verification.md.\n",
   );
   if (!options.list) {
     say(
@@ -280,6 +293,7 @@ export const main = async (
           full: plan.full,
           fullReasons: plan.fullReasons,
           changedFiles: changes.changed,
+          integrationTree: changes.integrationTree,
           // A dry run executes nothing, so checks[] stays empty and the plan
           // is reported separately.
           checks: results,
