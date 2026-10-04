@@ -30,6 +30,26 @@ const selectedIds = (changed, options) =>
     ({ check }) => check.id,
   );
 
+test("SDK obligation follows completed full suites without changing the other lanes", () => {
+  const position = (id) =>
+    registry.checks.findIndex((check) => check.id === id);
+  assert.ok(position("tx-preparation:sdk") > position("demo-test"));
+  assert.ok(position("tx-preparation:sdk") > position("demo-test-db"));
+  const steps = byId.get("demo-test").plan({
+    matched: ["demo/lucid-midgard/src/x.ts", "demo/midgard-sdk/src/x.ts"],
+    full: false,
+  });
+  for (const name of ["@al-ft/lucid-midgard", "@al-ft/midgard-sdk"]) {
+    assert.deepEqual(steps.find((step) => step.sdkSuite === name)?.argv, [
+      "pnpm",
+      "--filter",
+      name,
+      "test",
+    ]);
+    assert.equal(steps.find((step) => step.sdkSuite === name).cwd, "demo");
+  }
+});
+
 test("globs: ** spans directories, * and ? stay within one segment", () => {
   assert.ok(globToRegExp("a/**").test("a/b/c.ts"));
   assert.ok(globToRegExp("**/AGENTS.md").test("AGENTS.md"));

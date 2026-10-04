@@ -254,6 +254,153 @@ const run = async (checks, { statuses = {}, outcomes = {}, exists } = {}) => {
 const statusOf = (report) =>
   Object.fromEntries(report.results.map((r) => [r.id, r.status]));
 
+test("SDK lane credits only both completed full suites in this unchanged run", async () => {
+  const suites = ["@al-ft/lucid-midgard", "@al-ft/midgard-sdk"];
+  const checks = [
+    check("demo-test", {
+      plan: () =>
+        suites.map((name) => ({
+          argv: ["pnpm", "--filter", name, "test"],
+          cwd: "demo",
+          sdkSuite: name,
+        })),
+    }),
+    check("tx-preparation:sdk", {
+      plan: () => [
+        { argv: ["pnpm", "--dir", "demo", "run", "test:tx-prep:sdk"] },
+      ],
+    }),
+  ];
+  const dispatched = [];
+  const report = await runPreflight({
+    root: "/nonexistent",
+    base: "base",
+    plan: planPreflight({ checks }, ["x"]),
+    probes: probes({}),
+    log() {},
+    sdkContext: () => "frozen",
+    runStep: async (_root, step) => {
+      dispatched.push(step.argv);
+      return {
+        status: 0,
+        output: "",
+        sdkSuite: step.sdkSuite
+          ? {
+              name: step.sdkSuite,
+              identity: "frozen",
+              receipt: `receipt-${step.sdkSuite}`,
+            }
+          : undefined,
+      };
+    },
+  });
+  assert.equal(report.exitCode, EXIT.passed);
+  assert.equal(
+    dispatched.length,
+    2,
+    "the identical SDK lane must not run again",
+  );
+  assert.match(report.results.at(-1).reason, /same-run/u);
+});
+
+test("SDK dedup refuses missing, failed, skipped, stale or future evidence and other lanes", async () => {
+  const names = ["@al-ft/lucid-midgard", "@al-ft/midgard-sdk"];
+  for (const scenario of [
+    "missing-lucid",
+    "missing-sdk",
+    "failure",
+    "setup-refusal",
+    "skip",
+    "stale",
+    "unknown-context",
+    "future",
+    "second-run",
+    "node",
+    "emulator",
+    "changed-command",
+  ]) {
+    const dispatched = [];
+    const full = check("demo-test", {
+      plan: () =>
+        names.map((name) => ({
+          argv: ["pnpm", "--filter", name, "test"],
+          cwd: "demo",
+          sdkSuite: name,
+        })),
+    });
+    const lane = check(
+      `tx-preparation:${["node", "emulator"].includes(scenario) ? scenario : "sdk"}`,
+      {
+        plan: () => [
+          {
+            argv: [
+              "pnpm",
+              "--dir",
+              "demo",
+              "run",
+              "test:tx-prep:sdk",
+              ...(scenario === "changed-command" ? ["--filter"] : []),
+            ],
+          },
+        ],
+      },
+    );
+    const report = await runPreflight({
+      root: "/nonexistent",
+      base: "base",
+      probes: probes({}),
+      log() {},
+      plan: planPreflight(
+        { checks: scenario === "future" ? [lane, full] : [full, lane] },
+        ["x"],
+      ),
+      sdkContext: () => {
+        if (scenario === "unknown-context") throw new Error("missing input");
+        return scenario === "stale" ? "changed" : "frozen";
+      },
+      runStep: async (_root, step) => {
+        dispatched.push(step);
+        const failed =
+          step.sdkSuite === names[1] &&
+          ["failure", "setup-refusal", "skip"].includes(scenario);
+        const absent =
+          scenario === "second-run" ||
+          (scenario === "missing-lucid" && step.sdkSuite === names[0]) ||
+          (scenario === "missing-sdk" && step.sdkSuite === names[1]);
+        return {
+          status: failed ? 1 : 0,
+          output: "",
+          ...(scenario === "setup-refusal" && failed
+            ? { error: new Error("setup refused") }
+            : {}),
+          ...(!absent && step.sdkSuite
+            ? {
+                sdkSuite: {
+                  name: step.sdkSuite,
+                  identity: "frozen",
+                  receipt: "completed-report",
+                },
+              }
+            : {}),
+        };
+      },
+    });
+    assert.equal(
+      dispatched.filter((step) => !step.sdkSuite).length,
+      1,
+      scenario,
+    );
+    assert.equal(
+      report.results.find((result) => result.id.startsWith("tx-preparation:"))
+        .evidence,
+      undefined,
+      scenario,
+    );
+    if (["failure", "setup-refusal", "skip"].includes(scenario))
+      assert.equal(report.exitCode, EXIT.failed, scenario);
+  }
+});
+
 test("everything passing exits 0 with the stable result schema", async () => {
   const report = await run([check("one"), check("two")]);
   assert.equal(report.exitCode, EXIT.passed);

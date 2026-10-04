@@ -93,6 +93,14 @@ export const independentChecks = () => [
       "blueprint",
       ...(lane === "sdk" ? [] : ["postgres", "db-prefix"]),
     ],
+    ...(lane === "sdk"
+      ? {
+          requiresFiles: [
+            "demo/lucid-midgard/package.json",
+            "demo/midgard-sdk/package.json",
+          ],
+        }
+      : {}),
     display: `pnpm --dir demo run test:tx-prep:${lane}`,
     plan: () => [step(["pnpm", "--dir", DEMO, "run", `test:tx-prep:${lane}`])],
   })),

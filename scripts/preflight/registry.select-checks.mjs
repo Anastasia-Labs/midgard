@@ -26,6 +26,7 @@ export const buildRegistry = (root) => {
   const ciText = workflowText(root);
   const demo = demoChecks(root, packages);
   const [fmt, focused, blueprint] = aikenChecks(root, index);
+  const independent = independentChecks();
   const checks = [
     ...toolingChecks(),
     fmt,
@@ -35,10 +36,12 @@ export const buildRegistry = (root) => {
     ...goldenChecks(root, packages, ciText),
     focused,
     blueprint,
-    ...independentChecks(),
+    ...independent.filter((check) => check.id !== "tx-preparation:sdk"),
     ...ledgerChecks(root, index, ciText),
     demo.test,
     demo.testDb,
+    // This obligation can reuse only suites that have actually completed.
+    ...independent.filter((check) => check.id === "tx-preparation:sdk"),
   ].map((check) => ({
     triggers: [],
     capabilities: [],
