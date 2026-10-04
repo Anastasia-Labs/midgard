@@ -10,6 +10,10 @@ import {
 import { readFraudSlashFundingAuthority } from "../remove-fraudulent-block.js";
 import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.js";
 import {
+  assertAuthenticatedFraudSlashReward,
+  isExactFraudSlashRewardOutput,
+} from "./funding-reservation-permit.assert-authenticated-fraud-slash-reward.js";
+import {
   addAssets,
   isProtocolFundingContract,
 } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
@@ -27,7 +31,6 @@ import {
   workflowRuntimeFundingMinimumFee,
 } from "./runtime-funding-policy.js";
 import { workflowTransactionReferenceInputOutRefs } from "./transaction-boundary.js";
-
 export const assertRuntimeTransactionBound = async ({
   state,
   action,
@@ -68,8 +71,7 @@ export const assertRuntimeTransactionBound = async ({
         ? 0n
         : BigInt(economics.inactivitySlashingPenaltyLovelace));
     const reward = BigInt(economics.fraudProverRewardLovelace);
-    // The removal action names the out-refs it spends and references under the shared `nextRemovalOutRef` / `fraudProofOutRef` vocabulary; its kind
-    // is read through `actionKind` (either `actionKind` or `stage`). A refusal names the differing checks so an operator can act on it.
+    // Read removal out-refs via nextRemovalOutRef/fraudProofOutRef and kind via actionKind or stage; name differing checks in refusals.
     const differing = (
       [
         ["current action kind", state.currentActionKind === "remove"],
@@ -96,10 +98,6 @@ export const assertRuntimeTransactionBound = async ({
         [
           "economics policy digest",
           slash.economicsPolicyDigest === policy.economicsPolicyDigest,
-        ],
-        [
-          "reward address",
-          slash.rewardAddress === state.snapshot.walletAddress,
         ],
         ["operator bond", BigInt(slash.operatorBondLovelace) === bond],
         ["reward", BigInt(slash.rewardLovelace) === reward],
@@ -179,6 +177,13 @@ export const assertRuntimeTransactionBound = async ({
     outRefs: [...workflowTransactionReferenceInputOutRefs(signed)].sort(),
     label: "runtime funding reference inputs",
   });
+  if (slash !== null)
+    assertAuthenticatedFraudSlashReward(
+      slash,
+      references,
+      contracts,
+      state.snapshot.walletAddress,
+    );
   let referenceScriptBytes = 0n;
   const scriptIdentities = new Map(
     policy.referenceScripts.map(({ outRef, scriptHash }) => [
@@ -400,20 +405,15 @@ export const assertRuntimeTransactionBound = async ({
     )
       throw new Error("funding output violates exact min-Ada or maxValueSize");
     addAssets(outputAssets, output.assets);
+    if (slash !== null && isExactFraudSlashRewardOutput(raw, slash)) {
+      rewardOutputs += 1;
+      if (output.address === state.snapshot.walletAddress)
+        addAssets(walletOutputAssets, output.assets);
+      continue;
+    }
     if (output.address === state.snapshot.walletAddress) {
-      if (slash !== null) {
-        rewardOutputs += 1;
-        if (
-          raw.amount().coin().toString() !== slash.rewardLovelace ||
-          raw.amount().has_multiassets() ||
-          raw.datum() !== undefined ||
-          raw.script_ref() !== undefined
-        ) {
-          throw new Error(
-            "fraud slash reward differs from exact release economics",
-          );
-        }
-      }
+      if (slash !== null)
+        throw new Error("fraud slash cannot pay unrelated caller change");
       addAssets(walletOutputAssets, output.assets);
       continue;
     }

@@ -36,6 +36,7 @@ import {
   assertExactFraudSlashLovelaceConservation,
   fraudRemovalUsesWalletCoinSelection,
   fraudSlashEconomicsFromDeploymentManifest,
+  fraudSlashFundingProofSource,
   readFraudSlashFundingAuthority,
   type RemoveFraudulentBlockFraudCategory,
   type RemoveFraudulentBlockLayout,
@@ -563,7 +564,7 @@ export const submitRemoveFraudulentBlock = async ({
             computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
           category: contracts.fraudCategory,
           headerHash,
-          fraudProofOutRef: outRefLabel(fraudProofUtxo),
+          ...fraudSlashFundingProofSource(fraudProofUtxo, fraudProofUnit),
           removedStateQueueOutRef: outRefLabel(removed.utxo),
           operatorOutRef: outRefLabel(
             operatorSlashingPlan.removalPlan.node.utxo,
@@ -710,7 +711,6 @@ export const submitRemoveFraudulentBlock = async ({
       await stateQueueMutationLease.release();
       stateQueueMutationLeaseReleased = true;
     }
-
     return {
       txHash: finalTransaction.txHash,
       walletSource: signer.source,

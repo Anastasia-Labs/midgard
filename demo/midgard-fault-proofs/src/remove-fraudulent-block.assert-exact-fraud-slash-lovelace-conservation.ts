@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { outRefLabel } from "@al-ft/midgard-core";
 import { parseDeploymentManifestEconomics } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type EmulatorStateQueueRemoveSlashingParams,
@@ -11,6 +12,7 @@ import {
   type Script,
   type TxSigned,
   type UTxO,
+  utxoToCore,
 } from "@lucid-evolution/lucid";
 
 import { type SupportedFaultProofCategoryName } from "./runtime.js";
@@ -34,6 +36,9 @@ export type FraudSlashFundingAuthority = Readonly<{
   category: string;
   headerHash: string;
   fraudProofOutRef: string;
+  fraudProofUnit: string;
+  fraudProofAddress: string;
+  fraudProofResolvedOutputCborHex: string;
   removedStateQueueOutRef: string;
   operatorOutRef: string;
   operatorBondLovelace: string;
@@ -49,6 +54,15 @@ export type FraudSlashFundingAuthority = Readonly<{
     resolvedOutputCborHex: string;
   }>[];
 }>;
+
+export const fraudSlashFundingProofSource = (proof: UTxO, unit: string) => ({
+  fraudProofOutRef: outRefLabel(proof),
+  fraudProofUnit: unit,
+  fraudProofAddress: proof.address,
+  fraudProofResolvedOutputCborHex: utxoToCore(proof)
+    .output()
+    .to_canonical_cbor_hex(),
+});
 
 // Only the evaluated canonical-manifest removal path below can mint this
 // authority. A declared action kind or fee never creates a slashing allowance.
