@@ -20,8 +20,10 @@ import { isNodeError } from "./store.parse-stored-record-map.js";
 /** How often a live holder renews its lease. */
 export const JSON_STORE_LEASE_RENEW_MS = 10_000;
 /**
- * Diagnostic age of unrenewed metadata. Age never authorizes displacement
- * of a live or unprovable holder.
+ * How long a lease may go unrenewed before another process may take it over.
+ * Several renewals long, so a holder that is merely slow is never displaced.
+ * Takeover is examined only while the successor holds the process mutex, so
+ * a live cooperating holder, which keeps the mutex, is never displaced.
  */
 export const JSON_STORE_LEASE_STALE_MS = 60_000;
 
@@ -55,7 +57,7 @@ export type JsonStoreLeaseOptions = {
    * later write is refused, and the process must stop.
    */
   readonly onLost?: (error: Error) => void;
-  /** Called when a lease left by a provably gone holder is taken over. */
+  /** Called when a lease left by a dead or stale holder is taken over. */
   readonly onTakeover?: (reason: string) => void;
 };
 
@@ -111,10 +113,17 @@ const parseLease = (raw: string): JsonStoreLeaseRecord | undefined => {
   }
 };
 
-/** A holder is displaced only when its process or boot is provably gone.
- * Unknown/remote namespace and unreadable metadata require explicit recovery;
- * timestamps cannot fence a suspended writer. The process mutex serializes
- * concurrent recoverers before this metadata is examined or renamed. */
+/**
+ * Why the holder of `raw` may be displaced, or undefined while it must not
+ * be. A holder is displaced only when it is provably gone (same host: its
+ * boot ended, or, in the same pid namespace, its pid is this process or is
+ * not running) or its lease is stale. A holder whose pid namespace is
+ * unknown or another one is judged by its lease alone. A lock file this
+ * process cannot read (a torn write, a legacy lock) is judged by its
+ * modification time alone. Callers examine it only while holding the
+ * process mutex: holding it proves no cooperating writer is alive on this
+ * filesystem, and it serializes concurrent successors.
+ */
 export const leaseTakeoverReason = (args: {
   readonly raw: string;
   readonly mtimeMs: number;
@@ -126,7 +135,14 @@ export const leaseTakeoverReason = (args: {
   readonly isProcessAlive: (pid: number) => boolean;
 }): string | undefined => {
   const lease = parseLease(args.raw);
-  if (lease === undefined) return undefined;
+  const renewedAtMs = Math.max(
+    args.mtimeMs,
+    lease === undefined ? 0 : Date.parse(lease.renewedAt) || 0,
+  );
+  const stale = args.nowMs - renewedAtMs > args.staleMs;
+  if (lease === undefined) {
+    return stale ? "unreadable_lease_stale" : undefined;
+  }
   if (heldHere.has(lease.owner)) {
     return undefined;
   }
@@ -152,7 +168,7 @@ export const leaseTakeoverReason = (args: {
       return "holder_process_gone";
     }
   }
-  return undefined;
+  return stale ? "lease_stale" : undefined;
 };
 
 /**
@@ -301,7 +317,7 @@ export class JsonStoreLease {
     const reason = leaseTakeoverReason({ ...args, raw, mtimeMs });
     if (reason === undefined) {
       throw new JsonStoreLeaseHeldError(
-        `committee node file store is already exclusively leased: ${lockPath}; its holder is live or cannot be proven gone; time alone never authorizes takeover`,
+        `committee node file store is already exclusively leased: ${lockPath}; its holder is live and renewing (it is taken over once the holder is gone or its lease goes ${(args.staleMs / 1000).toString()} s unrenewed)`,
       );
     }
     const aside = `${lockPath}.displaced-${randomUUID()}`;

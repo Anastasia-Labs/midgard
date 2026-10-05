@@ -108,32 +108,67 @@ describe("the JSON store's lease on its lock file", () => {
     }
   });
 
-  it.each(["another namespace", "another host", "unreadable"])(
-    "refuses an unprovable %s holder even after metadata is stale",
-    async (kind) => {
+  it("judges a holder in another pid namespace (a container sharing this hostname and boot) by its lease alone", async () => {
+    for (const pid of [await exitedPid(), process.pid]) {
       const dir = await tempDir();
       const renewedAt = Date.now();
       await leaveLock(
         dir,
-        kind === "unreadable"
-          ? ""
-          : leaseOf({
-              ...(kind === "another namespace"
-                ? { pidNamespace: "pid:[4026539999]" }
-                : { hostname: "another-host" }),
-              renewedAt: new Date(renewedAt).toISOString(),
-            }),
+        leaseOf({
+          pid,
+          pidNamespace: "pid:[4026539999]",
+          renewedAt: new Date(renewedAt).toISOString(),
+        }),
       );
       const pinned = new Date(renewedAt);
       await utimes(lockPath(dir), pinned, pinned);
-      await expect(
-        open(dir, {
-          bootId,
-          now: () => renewedAt + JSON_STORE_LEASE_STALE_MS + 1000,
-        }),
-      ).rejects.toThrow(heldLockError);
-    },
-  );
+      await expect(open(dir, { bootId })).rejects.toThrow(heldLockError);
+      const onTakeover = vi.fn();
+      await open(dir, {
+        bootId,
+        now: () => renewedAt + JSON_STORE_LEASE_STALE_MS + 1_000,
+        onTakeover,
+      });
+      expect(onTakeover).toHaveBeenCalledExactlyOnceWith("lease_stale");
+    }
+  });
+
+  it("is refused while another host's lease is fresh, and taken over once it goes stale", async () => {
+    const dir = await tempDir();
+    const renewedAt = Date.now();
+    await leaveLock(
+      dir,
+      leaseOf({
+        hostname: "another-host",
+        renewedAt: new Date(renewedAt).toISOString(),
+      }),
+    );
+    // The lease's age runs from the later of renewedAt and the file's mtime,
+    // so the mtime is pinned to renewedAt rather than left to the write.
+    const pinned = new Date(renewedAt);
+    await utimes(lockPath(dir), pinned, pinned);
+    await expect(open(dir, { bootId })).rejects.toThrow(heldLockError);
+    const onTakeover = vi.fn();
+    await open(dir, {
+      bootId,
+      now: () => renewedAt + JSON_STORE_LEASE_STALE_MS + 1_000,
+      onTakeover,
+    });
+    expect(onTakeover).toHaveBeenCalledExactlyOnceWith("lease_stale");
+  });
+
+  it("judges an unreadable lock (a crash mid-write) by its age alone", async () => {
+    const dir = await tempDir();
+    await leaveLock(dir, "");
+    await expect(open(dir, { bootId })).rejects.toThrow(heldLockError);
+    const old = new Date(Date.now() - JSON_STORE_LEASE_STALE_MS - 1_000);
+    await utimes(lockPath(dir), old, old);
+    const onTakeover = vi.fn();
+    await open(dir, { bootId, onTakeover });
+    expect(onTakeover).toHaveBeenCalledExactlyOnceWith(
+      "unreadable_lease_stale",
+    );
+  });
 
   it("is renewed while held, so a live holder is never judged stale", async () => {
     const dir = await tempDir();
@@ -211,6 +246,110 @@ describe("the JSON store's lease on its lock file", () => {
     expect(opens).toBe(1);
     expect(await store.listStateQueueHeaders()).toEqual([]);
   });
+
+  it("starts a committee restarted in a new pid namespace by taking over its crashed holder's lease", async () => {
+    const dir = await tempDir();
+    const renewedAt = Date.now();
+    // The crashed holder ran in another container: another pid namespace and
+    // another hostname. Its death released the process mutex.
+    await leaveLock(
+      dir,
+      leaseOf({
+        pid: 1,
+        pidNamespace: "pid:[4026539999]",
+        hostname: "crashed-container",
+        renewedAt: new Date(renewedAt).toISOString(),
+      }),
+    );
+    const pinned = new Date(renewedAt);
+    await utimes(lockPath(dir), pinned, pinned);
+    let nowMs = renewedAt;
+    const reasons: string[] = [];
+    const onTakeover = vi.fn();
+    const store = await retryStartup({
+      attempt: () => open(dir, { bootId, now: () => nowMs, onTakeover }),
+      onFailure: (reason) => reasons.push(reason),
+      write: () => undefined,
+      sleep: async () => {
+        nowMs += JSON_STORE_LEASE_STALE_MS + 1_000;
+      },
+    });
+    expect(reasons).toEqual(["starting:store_instance_lock_held"]);
+    expect(onTakeover).toHaveBeenCalledExactlyOnceWith("lease_stale");
+    expect(await store.listStateQueueHeaders()).toEqual([]);
+    expect(
+      JSON.parse(await readFile(lockPath(dir), "utf8")) as JsonStoreLeaseRecord,
+    ).toMatchObject({ pid: process.pid, hostname: hostname() });
+  });
+
+  it.each(["another namespace", "another host", "unreadable"])(
+    "never takes over a live holder that keeps the process mutex, even with stale %s metadata",
+    async (kind) => {
+      const dir = await tempDir();
+      const holder = spawn(
+        process.execPath,
+        [
+          "--experimental-transform-types",
+          "--no-warnings",
+          "--input-type=module",
+          "-e",
+          `const { JsonStoreProcessMutex } = await import(${JSON.stringify(
+            fileURLToPath(
+              new URL(
+                "../src/store.json-file-process-mutex.ts",
+                import.meta.url,
+              ),
+            ),
+          )});
+JsonStoreProcessMutex.acquire(${JSON.stringify(`${lockPath(dir)}.mutex.sqlite`)});
+process.stdout.write("held\\n");
+setInterval(() => {}, 1_000);`,
+        ],
+        { stdio: ["ignore", "pipe", "inherit"] },
+      );
+      children.add(holder);
+      await new Promise<void>((resolve, reject) => {
+        holder.stdout!.on("data", (chunk: Buffer) => {
+          if (chunk.toString().includes("held")) resolve();
+        });
+        holder.once("exit", (code) =>
+          reject(new Error(`mutex holder exited with ${String(code)}`)),
+        );
+      });
+      const renewedAt = Date.now() - 10 * JSON_STORE_LEASE_STALE_MS;
+      const metadata =
+        kind === "unreadable"
+          ? ""
+          : `${JSON.stringify(
+              leaseOf({
+                ...(kind === "another namespace"
+                  ? { pidNamespace: "pid:[4026539999]" }
+                  : { hostname: "another-host" }),
+                renewedAt: new Date(renewedAt).toISOString(),
+              }),
+            )}\n`;
+      await leaveLock(dir, metadata);
+      const pinned = new Date(renewedAt);
+      await utimes(lockPath(dir), pinned, pinned);
+      const onTakeover = vi.fn();
+      const refused = open(dir, { bootId, onTakeover });
+      await expect(refused).rejects.toThrow(/its process mutex is held/u);
+      expect(
+        startupReason(await refused.catch((error: unknown) => error)),
+      ).toBe("starting:store_instance_lock_held");
+      expect(onTakeover).not.toHaveBeenCalled();
+      expect(await readFile(lockPath(dir), "utf8")).toBe(metadata);
+      // The mutex alone kept it: once the holder dies the same stale
+      // metadata is taken over.
+      const exited = new Promise((resolve) => holder.once("exit", resolve));
+      holder.kill("SIGKILL");
+      await exited;
+      await open(dir, { bootId, onTakeover });
+      expect(onTakeover).toHaveBeenCalledExactlyOnceWith(
+        kind === "unreadable" ? "unreadable_lease_stale" : "lease_stale",
+      );
+    },
+  );
 });
 
 it("old release preserves successor metadata even before observing ownership loss", async () => {

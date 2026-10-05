@@ -78,10 +78,13 @@ may be alive. Shared network filesystems and uncoordinated writers are outside
 this backend's storage boundary; use the PostgreSQL backend for shared
 multi-host deployment.
 
-A paused live writer retains ownership even when its renewal metadata is old.
-Process death releases the mutex; a successor can recover a metadata lease whose
-process or boot is provably gone on the same host and PID namespace. Unknown,
-unreadable, cross-host or unknown-namespace metadata is refused and requires an
-explicit recovery plan establishing that all previous writers have stopped.
-Time alone never authorizes displacement. Lease metadata publishes atomically
-so a crash during renewal preserves the prior complete owner record.
+A live writer, even a paused one, keeps the mutex, so a successor is refused
+before it reads the lease metadata. Process death releases the mutex. Holding it
+proves no cooperating writer is alive on this filesystem, and only then does a
+successor judge the metadata: a holder whose process or boot is provably gone on
+the same host and PID namespace is taken over at once, and unreadable,
+cross-host or other-namespace metadata (a crashed container) is taken over once
+it is 60 s unrenewed. Until then startup holds unready with
+`starting:store_instance_lock_held` and retries, so a crash never needs an
+operator to remove the lock. Lease metadata publishes atomically so a crash
+during renewal preserves the prior complete owner record.
