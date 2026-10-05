@@ -29,6 +29,7 @@ import {
   shouldSkipForRegisteredCommitDueWork,
   tryAcquireCommitMutationWorkerPhase,
 } from "./block-commitment.should-skip-for-registered-commit-due-work.js";
+import { verifyForeignBaseOnIdleTick } from "./block-commitment.verify-idle-foreign-base.js";
 import {
   publishFinalizedDaPayloadBestEffort,
   runAfterL1ControlPlaneRelease,
@@ -135,6 +136,8 @@ export const blockCommitmentAction: Effect.Effect<
       }
     }
     if (yield* shouldSkipIdleCommitPipelineBeforeSchedulerAlignment) {
+      // Readiness evidence must not wait for work to commit.
+      yield* verifyForeignBaseOnIdleTick;
       return;
     }
     if (yield* shouldSkipForActivePendingFinalization) {
