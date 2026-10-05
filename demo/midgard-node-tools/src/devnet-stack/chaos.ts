@@ -243,8 +243,11 @@ export const runDrills = async (
       `${JSON.stringify({ at: iso(deps.now()), ...line })}\n`,
     );
   };
-  const stopping = async () =>
-    signal?.aborted === true || (await options.shouldStop?.()) === true;
+  const stopping = async () => {
+    if (signal?.aborted) return true;
+    const stopped = await options.shouldStop?.();
+    return signal?.aborted === true || stopped === true;
+  };
   const outcome = (
     ok: boolean,
     detail: string,
@@ -303,6 +306,7 @@ export const runDrills = async (
       if (await stopping()) return "stopped before the trigger held";
       try {
         const body = await deps.fetchNode(trigger.endpoint);
+        if (await stopping()) return "stopped before the trigger held";
         if (trigger.holds(body)) return body;
       } catch {
         // The node is not answering; keep polling.
@@ -323,10 +327,12 @@ export const runDrills = async (
       const queue = section(seen, "stateQueue");
       observed = ` at "${drill.trigger.description}"${typeof queue.unconfirmedSubmittedBlockTxHash === "string" ? ` (block tx ${queue.unconfirmedSubmittedBlockTxHash})` : ""}`;
     }
+    if (await stopping()) return failed(null, "not injected: interrupted");
     const owned = ownedPid(deps, options, drill.service);
     if ("refused" in owned) return failed(null, `refused: ${owned.refused}`);
     const eventsBefore = deps.supervisorEvents().length;
     const injectedAt = deps.now();
+    if (await stopping()) return failed(null, "not injected: interrupted");
     deps.signalGroup(owned.pid, "SIGKILL");
     const deadline = injectedAt + recoveryMs;
     const what = `SIGKILL process group ${owned.pid}${observed}`;
@@ -447,6 +453,14 @@ export const runDrills = async (
           drill.name,
           drill.service,
           failed(null, `not injected: ${preflight.detail}`),
+        );
+        return summarise(records);
+      }
+      if (await stopping()) {
+        record(
+          drill.name,
+          drill.service,
+          failed(null, "not injected: interrupted after preflight"),
         );
         return summarise(records);
       }

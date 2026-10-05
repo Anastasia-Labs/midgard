@@ -55,7 +55,12 @@ export type SignedPayment = {
   readonly input: string;
 };
 
+export const assertFloatActive = (signal?: AbortSignal) => {
+  if (signal?.aborted) throw new Error("reserve-float cancelled");
+};
+
 export type FloatDeps = {
+  readonly signal?: AbortSignal;
   readonly reserveAddress: string;
   /** Unspent outputs at `address`. */
   readonly unspentAt: (address: string) => Promise<readonly ChainOutput[]>;
@@ -128,7 +133,11 @@ const record = (journal: Journal, value: FloatRecord) =>
 
 const waitLanded = async (deps: FloatDeps, txId: string) => {
   const deadline = deps.now() + CONFIRM_TIMEOUT_MS;
-  while (!(await deps.landed(txId))) {
+  for (;;) {
+    assertFloatActive(deps.signal);
+    const landed = await deps.landed(txId);
+    assertFloatActive(deps.signal);
+    if (landed) return;
     if (deps.now() > deadline)
       throw new Error(
         `reserve float transaction ${txId} did not confirm; the next run resumes it`,
@@ -148,8 +157,12 @@ const reconcile = async (
   journal: Journal,
   pending: FloatRecord,
 ) => {
+  assertFloatActive(deps.signal);
   const input = await deps.outputState(pending.input);
-  if (await deps.landed(pending.txId)) {
+  assertFloatActive(deps.signal);
+  const landed = await deps.landed(pending.txId);
+  assertFloatActive(deps.signal);
+  if (landed) {
     deps.log(`reserve-float: journaled payment ${pending.txId} landed`);
     record(journal, { ...pending, status: "confirmed" });
     return;
@@ -163,8 +176,10 @@ const reconcile = async (
     return;
   }
   deps.log(`reserve-float: resubmitting journaled payment ${pending.txId}`);
+  assertFloatActive(deps.signal);
   await deps.submit(pending.signedTx);
   await waitLanded(deps, pending.txId);
+  assertFloatActive(deps.signal);
   record(journal, { ...pending, status: "confirmed" });
 };
 
@@ -180,15 +195,18 @@ export const ensureReserveFloat = async (
   deps: FloatDeps,
   journal: Journal,
 ): Promise<FloatOutcome> => {
+  assertFloatActive(deps.signal);
   const records = journal.withPrefix<FloatRecord>(RECORD_PREFIX);
   for (const pending of records.filter((r) => r.status === "pending"))
     await reconcile(deps, journal, pending);
 
   const float = largestFloat(await deps.unspentAt(deps.reserveAddress));
+  assertFloatActive(deps.signal);
   if (float !== undefined && float.lovelace >= FLOAT_MINIMUM_LOVELACE)
     return { action: "sufficient", float };
 
   const sequence = records.length + 1;
+  assertFloatActive(deps.signal);
   const payment = await deps.buildPayment(
     deps.reserveAddress,
     FLOAT_TARGET_LOVELACE,
@@ -201,9 +219,12 @@ export const ensureReserveFloat = async (
     ...payment,
     status: "pending",
   };
+  // Keep returned signed bytes durable even if signing completed during abort.
   record(journal, intent);
+  assertFloatActive(deps.signal);
   await deps.submit(payment.signedTx);
   await waitLanded(deps, payment.txId);
+  assertFloatActive(deps.signal);
   record(journal, { ...intent, status: "confirmed" });
   return {
     action: "topped-up",
@@ -226,6 +247,7 @@ export const ensureReserveFloatRetrying = async (
     try {
       return await ensureReserveFloat(deps, journal);
     } catch (error) {
+      assertFloatActive(deps.signal);
       if (deps.now() >= deadline) throw error;
       deps.log(
         `reserve-float: ${error instanceof Error ? error.message : String(error)}; retrying`,

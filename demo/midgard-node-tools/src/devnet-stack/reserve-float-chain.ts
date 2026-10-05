@@ -20,6 +20,7 @@ import { Journal } from "./journal.js";
 import type { Layout, RunEnv } from "./layout.js";
 import { acquireLock, ControllerLockBusy } from "./lock.js";
 import {
+  assertFloatActive,
   type ChainOutput,
   ensureReserveFloatRetrying,
   FLOAT_STEP_TIMEOUT_MS,
@@ -80,11 +81,15 @@ type KupoMatch = {
 const kupo = async (
   run: RunEnv,
   pattern: string,
+  signal?: AbortSignal,
 ): Promise<readonly KupoMatch[]> => {
   const response = await fetch(
     `http://127.0.0.1:${run.kupoPort}/matches/${pattern}`,
     {
-      signal: AbortSignal.timeout(10_000),
+      signal:
+        signal === undefined
+          ? AbortSignal.timeout(10_000)
+          : AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
     },
   );
   if (!response.ok)
@@ -112,24 +117,32 @@ const FEE_HEADROOM = 5_000_000n;
  * while the stack runs. Reads and confirmation go through Kupo alone, which
  * applies a block's spends and outputs together.
  */
-export const productionFloatDeps = (layout: Layout, run: RunEnv): FloatDeps => {
+export const productionFloatDeps = (
+  layout: Layout,
+  run: RunEnv,
+  signal?: AbortSignal,
+): FloatDeps => {
   const work = join(layout.state, "work");
   const magic = ["--testnet-magic", String(run.networkMagic)];
   const socket = ["--socket-path", "/run/cardano/ipc/node.socket"];
-  const cli = async (args: readonly string[], label: string) =>
-    requireSuccess(
+  const cli = async (args: readonly string[], label: string) => {
+    // After signing, obtain the read-only txid so the caller can persist intent.
+    if (label !== "reserve-float-txid") assertFloatActive(signal);
+    return requireSuccess(
       await cardanoCli(layout, run, args, label),
       `cardano-cli ${label}`,
     ).stdout.trim();
+  };
   const unspentAt = async (address: string) =>
-    (await kupo(run, `${address}?unspent`)).map(chainOutput);
+    (await kupo(run, `${address}?unspent`, signal)).map(chainOutput);
   return {
+    signal,
     reserveAddress: reserveAddressFromManifest(layout.contractManifest),
     unspentAt,
-    landed: async (txId) => (await kupo(run, `*@${txId}`)).length > 0,
+    landed: async (txId) => (await kupo(run, `*@${txId}`, signal)).length > 0,
     outputState: async (outRef) => {
       const [txId, index] = outRef.split("#");
-      const matches = await kupo(run, `${index}@${txId}`);
+      const matches = await kupo(run, `${index}@${txId}`, signal);
       if (matches.length === 0) return "unknown";
       return matches.some((match) => match.spent_at === null)
         ? "unspent"
@@ -201,6 +214,7 @@ export const productionFloatDeps = (layout: Layout, run: RunEnv): FloatDeps => {
       return { txId, signedTx: signed, input: input.outRef };
     },
     submit: async (signedTx) => {
+      assertFloatActive(signal);
       const submitted = await cardanoCli(
         layout,
         run,
@@ -220,7 +234,10 @@ export const productionFloatDeps = (layout: Layout, run: RunEnv): FloatDeps => {
       if (submitted.code !== 0)
         console.log(`reserve-float submit: ${submitted.stderr.trim()}`);
     },
-    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    sleep:
+      signal === undefined
+        ? (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+        : abortableSleep(signal),
     now: Date.now,
     log: (line) => console.log(line),
   };
@@ -242,13 +259,14 @@ const lockRetryable = (error: unknown) => error instanceof ControllerLockBusy;
  */
 export const withFloatLock = async <T>(
   layout: Layout,
-  clock: Pick<FloatDeps, "sleep" | "now">,
+  clock: Pick<FloatDeps, "sleep" | "now" | "signal">,
   step: () => Promise<T>,
 ): Promise<T> => {
   const lock = floatLock(layout);
   const deadline = clock.now() + FLOAT_STEP_TIMEOUT_MS;
   let release: () => void;
   for (;;) {
+    assertFloatActive(clock.signal);
     try {
       release = acquireLock(lock);
       break;
@@ -258,6 +276,7 @@ export const withFloatLock = async <T>(
     }
   }
   try {
+    assertFloatActive(clock.signal);
     return await step();
   } finally {
     release();
@@ -276,15 +295,21 @@ export const provisionReserveFloat = async (
   layout: Layout,
   run: RunEnv,
   _journal: Journal,
-  deps: FloatDeps = productionFloatDeps(layout, run),
+  deps?: FloatDeps,
+  signal?: AbortSignal,
 ): Promise<FloatOutcome> => {
-  const outcome = await withFloatLock(layout, deps, () =>
-    ensureReserveFloatRetrying(deps, new Journal(layout.journal)),
+  const scoped =
+    deps === undefined
+      ? productionFloatDeps(layout, run, signal)
+      : { ...deps, signal: signal ?? deps.signal };
+  const outcome = await withFloatLock(layout, scoped, () =>
+    ensureReserveFloatRetrying(scoped, new Journal(layout.journal)),
   );
+  assertFloatActive(scoped.signal);
   console.log(
     outcome.action === "sufficient"
-      ? `reserve-float: ${deps.reserveAddress} holds ${outcome.float.lovelace} lovelace pure-ADA float ${outcome.float.outRef}; no top-up`
-      : `reserve-float: paid ${outcome.lovelace} lovelace to ${deps.reserveAddress} in ${outcome.txId}`,
+      ? `reserve-float: ${scoped.reserveAddress} holds ${outcome.float.lovelace} lovelace pure-ADA float ${outcome.float.outRef}; no top-up`
+      : `reserve-float: paid ${outcome.lovelace} lovelace to ${scoped.reserveAddress} in ${outcome.txId}`,
   );
   return outcome;
 };
