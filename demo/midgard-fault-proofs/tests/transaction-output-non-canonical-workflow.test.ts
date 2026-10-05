@@ -227,10 +227,7 @@ describe("transactionOutputNonCanonical production workflow", () => {
       position: 0n,
       frontier: "accepted",
       subjectEventKeyCbors: [
-        Data.to(
-          { L2TransactionEventKey: { tx_id: nodeTxId } },
-          SDK.EventKeySchema,
-        ),
+        Data.to({ L2TransactionEventKey: { tx_id: nodeTxId } }, SDK.EventKey),
       ],
       diagnostic: `transaction ${nodeTxId} field 2 item 1 has illegal width ${malformed.length.toString()}`,
     });

@@ -205,10 +205,7 @@ describe("mintItemNonCanonical production workflow", () => {
       position: 0n,
       frontier: "accepted",
       subjectEventKeyCbors: [
-        Data.to(
-          { L2TransactionEventKey: { tx_id: nodeTxId } },
-          SDK.EventKeySchema,
-        ),
+        Data.to({ L2TransactionEventKey: { tx_id: nodeTxId } }, SDK.EventKey),
       ],
       diagnostic: `transaction ${nodeTxId} mint policy item 1 violates the field-5 grammar or policy ordering`,
     });
