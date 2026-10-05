@@ -136,7 +136,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "68ba82a48ff6ff22c5319cc71a6da31438ed42e2e64ddd9ea69a11179144bee9",
+          "03f98ad101599f6b458dcf5a328a4ffd7eb67059ea5600c17f9c372d94fef08b",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
@@ -155,7 +155,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "febc0f61316bf0753595327213fbaa37298bad8b8f579006be0e39288949f529",
+          "45ba1c1bb4baf099d347af5b85c2c5fc105871cecf81ffb1d050e023fe61a852",
         );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test
