@@ -69,11 +69,6 @@ export const createWatcherProverFundingAuthority = async (input: {
       "prover funding has multiple reservations for the same decision",
     );
   const existing = matching[0];
-  const { reconciliationOnly, assertSubmissionAuthority } =
-    await readProverFundingSubmissionAuthority(
-      input.store,
-      existing !== undefined,
-    );
   const authority = assertWorkflowActuationPermitIdentity({
     permit: input.actuationPermit,
     category: input.category,
@@ -108,6 +103,12 @@ export const createWatcherProverFundingAuthority = async (input: {
           walletAddress: input.walletAddress,
           record: existing,
         });
+  const { reconciliationOnly, assertSubmissionAuthority } =
+    await readProverFundingSubmissionAuthority(
+      input.store,
+      plan.reservationId,
+      existing !== undefined,
+    );
   // Released reservations cannot spend; authenticated reobservation can reopen
   // provisional completion before its terminal anchor.
   if (existing?.state !== "released" && !reconciliationOnly)

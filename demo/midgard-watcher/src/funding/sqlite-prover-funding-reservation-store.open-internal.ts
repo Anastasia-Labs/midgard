@@ -705,20 +705,23 @@ export const openInternal = async (
     return Object.freeze(records);
   };
 
-  const assertSubmissionAuthority = () => {
-    if (leaseProjection().reconciliationOnly)
+  const assertSubmissionAuthority = (reservationId: string) => {
+    if (leaseProjection().heldReservationIds.has(reservationId))
       throw new Error(
-        "prover funding is reserved by overlapping legacy signed attempts; reconciliation only",
+        "prover funding reservation overlaps legacy signed attempts; reconciliation only",
       );
   };
+  /** Holds only the reservation the operation acts for, before and after it,
+   * so a fresh operation can neither use nor create a legacy overlap. */
   const transaction = <T>(
     operation: () => T,
-    reconciliationOnly = false,
+    reservationId: string | null,
   ): T => {
     database.exec("BEGIN IMMEDIATE");
     try {
-      if (!reconciliationOnly) assertSubmissionAuthority();
+      if (reservationId !== null) assertSubmissionAuthority(reservationId);
       const value = operation();
+      if (reservationId !== null) assertSubmissionAuthority(reservationId);
       audit();
       database.exec("COMMIT");
       return value;
@@ -759,17 +762,17 @@ export const openInternal = async (
       (row) => row.reservation_id === reservationId,
     );
 
-  transaction(rebuildLeases, true);
+  transaction(rebuildLeases, null);
 
   const store: WatcherProverFundingReservationStore = Object.freeze({
     readAll: async () => auditRead(),
-    isReconciliationOnly: async () => {
+    isReconciliationOnly: async ({ reservationId }) => {
       auditRead();
-      return leaseProjection().reconciliationOnly;
+      return leaseProjection().heldReservationIds.has(reservationId);
     },
-    assertSubmissionAuthority: async () => {
+    assertSubmissionAuthority: async ({ reservationId }) => {
       auditRead();
-      assertSubmissionAuthority();
+      assertSubmissionAuthority(reservationId);
     },
     readReservedOutRefs: async ({ excludingReservationId }) => {
       auditRead();
@@ -813,7 +816,7 @@ export const openInternal = async (
         writeRecord(current.recordDigest, next);
         rebuildLeases();
         return next;
-      }, true);
+      }, null);
     },
     readLegacyAbandonedTransactions: async ({ reservationId }) => {
       auditRead();
@@ -934,7 +937,7 @@ export const openInternal = async (
         writeRecord(current.recordDigest, next);
         rebuildLeases();
         return next;
-      });
+      }, plan.reservationId);
     },
     readCompletionHandoff: async ({ reservationId }) => {
       auditRead();
@@ -981,7 +984,7 @@ export const openInternal = async (
         writeRecord(current.recordDigest, next);
         rebuildLeases();
         return true;
-      });
+      }, snapshot.reservationId);
     },
     reserve: async (plan, expectedIdleRevision) => {
       assertPlan(plan);
@@ -1027,7 +1030,7 @@ export const openInternal = async (
         writeRecord(null, record);
         rebuildLeases();
         return "reserved" as const;
-      });
+      }, plan.reservationId);
     },
     prepareTransition: async (transitionInput) => {
       assertPlan(transitionInput.plan);
@@ -1080,7 +1083,7 @@ export const openInternal = async (
         writeRecord(current.recordDigest, next);
         rebuildLeases();
         return next;
-      });
+      }, transitionInput.plan.reservationId);
     },
     confirmTransition: async (confirmation) => {
       assertPlan(confirmation.plan);
@@ -1159,7 +1162,7 @@ export const openInternal = async (
         writeRecord(current.recordDigest, next);
         rebuildLeases();
         return next;
-      });
+      }, confirmation.plan.reservationId);
     },
     abandonPendingTransition: async (abandonment) => {
       assertPlan(abandonment.plan);
@@ -1209,7 +1212,7 @@ export const openInternal = async (
         writeRecord(current.recordDigest, next);
         rebuildLeases();
         return next;
-      });
+      }, abandonment.plan.reservationId);
     },
     releaseIdle: async ({ plan, expectedRevision }) => {
       assertPlan(plan);
@@ -1232,7 +1235,7 @@ export const openInternal = async (
         writeRecord(current.recordDigest, next);
         rebuildLeases();
         return next;
-      });
+      }, plan.reservationId);
     },
     acknowledgeAbandonment: async (acknowledgement) => {
       assertPlan(acknowledgement.plan);
@@ -1286,7 +1289,7 @@ export const openInternal = async (
         writeRecord(current.recordDigest, next);
         rebuildLeases();
         return next;
-      });
+      }, acknowledgement.plan.reservationId);
     },
     markConflict: async (conflict) => {
       assertPlan(conflict.plan);
@@ -1315,7 +1318,7 @@ export const openInternal = async (
         writeRecord(current.recordDigest, next);
         rebuildLeases();
         return next;
-      });
+      }, conflict.plan.reservationId);
     },
     release: async (release) => {
       assertPlan(release.plan);
@@ -1367,7 +1370,7 @@ export const openInternal = async (
         writeRecord(current.recordDigest, next);
         rebuildLeases();
         return next;
-      });
+      }, release.plan.reservationId);
     },
   });
 

@@ -71,7 +71,14 @@ it("opens the existing production funding permit read-only under a legacy overla
     );
   }
   await test.restartStore();
-  expect(await test.store.isReconciliationOnly!()).toBe(true);
+  const held = async () =>
+    await Promise.all(
+      [test.plan, later].map(
+        async ({ reservationId }) =>
+          await test.store.isReconciliationOnly!({ reservationId }),
+      ),
+    );
+  expect(await held()).toEqual([true, true]);
   const admitted = await test.createPermit(test.fresh, "2");
   const journal = test.bind(test.fresh, admitted);
   await expect(
@@ -88,7 +95,7 @@ it("opens the existing production funding permit read-only under a legacy overla
     reason: "canonical evidence unavailable",
   });
   await test.run(journal);
-  expect(await test.store.isReconciliationOnly!()).toBe(true);
+  expect(await held()).toEqual([true, true]);
   expect(
     (await test.records()).find(
       ({ reservationId }) => reservationId === later.reservationId,
@@ -98,7 +105,7 @@ it("opens the existing production funding permit read-only under a legacy overla
     expiredNotFound(test.transactionHash),
   );
   await test.run(journal);
-  expect(await test.store.isReconciliationOnly!()).toBe(false);
+  expect(await held()).toEqual([false, false]);
   expect(
     (await test.records()).find(
       ({ reservationId }) => reservationId === later.reservationId,

@@ -12,8 +12,8 @@ export type ProverFundingLeaseClaim = Readonly<{
 }>;
 
 /** Signed legacy promises remain in their original handoffs. The unique lease
- * projection keeps the current owner while every overlapping promise holds
- * fresh actuation globally until canonical retirement resolves the overlap. */
+ * projection keeps the current owner; an overlap holds only the reservations
+ * whose claims share the output, until canonical retirement resolves it. */
 export const projectProverFundingLeaseClaims = (
   claims: readonly ProverFundingLeaseClaim[],
   previousOwners: ReadonlyMap<string, string>,
@@ -29,14 +29,15 @@ export const projectProverFundingLeaseClaims = (
     if (previous === undefined || claim.phase === "active")
       owners.set(claim.reservationId, claim);
   }
-  let reconciliationOnly = false;
+  const heldReservationIds = new Set<string>();
   const leases: ProverFundingLeaseClaim[] = [];
   for (const [outRef, owners] of byOutput) {
     const values = [...owners.values()];
     const ordinary = values.filter((claim) => !claim.legacy);
     if (ordinary.length > 1)
       throw new Error("prover funding reservation repeats an output lease");
-    if (values.length > 1) reconciliationOnly = true;
+    if (values.length > 1)
+      for (const claim of values) heldReservationIds.add(claim.reservationId);
     const owner =
       ordinary[0] ?? owners.get(previousOwners.get(outRef) ?? "") ?? values[0]!;
     leases.push(owner);
@@ -44,7 +45,7 @@ export const projectProverFundingLeaseClaims = (
   return {
     claims: [...byOutput.values()].flatMap((owners) => [...owners.values()]),
     leases,
-    reconciliationOnly,
+    heldReservationIds: heldReservationIds as ReadonlySet<string>,
   };
 };
 

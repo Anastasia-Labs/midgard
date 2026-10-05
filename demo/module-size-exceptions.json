@@ -1596,12 +1596,12 @@
   },
   {
     "file": "midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority.ts",
-    "max": 505,
+    "max": 506,
     "reason": "createWatcherProverFundingAuthority is one state owner: the reservation port's methods close over one plan, store and actuation permit and share their revision and authority checks. The public-testnet B1 selection/capacity calculations and the lifecycle legacy-retirement and submission-authority methods together pass 500 lines; splitting the port would redesign that ownership rather than separate independent declarations."
   },
   {
     "file": "midgard-watcher/src/funding/sqlite-prover-funding-reservation-store.open-internal.ts",
-    "max": 1379,
+    "max": 1382,
     "reason": "openInternal is the dominant indivisible declaration (1365 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {

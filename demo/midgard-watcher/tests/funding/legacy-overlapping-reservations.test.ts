@@ -109,13 +109,62 @@ it.each([
     db.close();
     let runtime = await reopen({ path: opened.path }, () => undefined);
     try {
-      expect(await runtime.store.isReconciliationOnly!()).toBe(true);
-      await expect(runtime.store.assertSubmissionAuthority!()).rejects.toThrow(
-        "reconciliation only",
-      );
+      const held = async () =>
+        await Promise.all(
+          [old, later].map(
+            async ({ reservationId }) =>
+              await runtime.store.isReconciliationOnly!({ reservationId }),
+          ),
+        );
+      expect(await held()).toEqual([true, true]);
+      await expect(
+        runtime.store.assertSubmissionAuthority!({
+          reservationId: later.reservationId,
+        }),
+      ).rejects.toThrow("reconciliation only");
       await expect(runtime.store.reserve(later)).rejects.toThrow(
         "reconciliation only",
       );
+      // The overlap holds only its own reservations: a disjoint one proceeds.
+      const disjointBase = plan("cc", "88", `${"13".repeat(32)}#0`);
+      const disjoint = {
+        ...disjointBase,
+        inputs: [
+          disjointBase.inputs[0]!,
+          { ...disjointBase.inputs[1]!, outRef: `${"14".repeat(32)}#0` },
+        ],
+      };
+      expect(await runtime.store.reserve(disjoint)).toBe("reserved");
+      expect(
+        await runtime.store.isReconciliationOnly!({
+          reservationId: disjoint.reservationId,
+        }),
+      ).toBe(false);
+      await expect(
+        runtime.store.assertSubmissionAuthority!({
+          reservationId: disjoint.reservationId,
+        }),
+      ).resolves.toBeUndefined();
+      const disjointPending = await prepareTransition(runtime.store, {
+        plan: disjoint,
+        expectedRevision: "0",
+        actionKind: "proof.init",
+        ...signedTransition({ inputHash: "13".repeat(32) }),
+        consumedOutRefs: [disjoint.inputs[0]!.outRef],
+      });
+      expect(disjointPending.pendingTransition).not.toBeNull();
+      // A fresh reservation may not claim an output a legacy attempt claims:
+      // the old attempt's produced output is claimed only by that attempt.
+      const overlapping = plan("dd", "99", `${original.transactionHash}#0`);
+      await expect(
+        runtime.store.reserve({
+          ...overlapping,
+          inputs: [
+            overlapping.inputs[0]!,
+            { ...overlapping.inputs[1]!, outRef: `${"15".repeat(32)}#0` },
+          ],
+        }),
+      ).rejects.toThrow("prover funding output is already reserved");
       for (const excludingReservationId of [
         old.reservationId,
         later.reservationId,
@@ -149,7 +198,7 @@ it.each([
           },
         }),
       ).rejects.toThrow();
-      expect(await runtime.store.isReconciliationOnly!()).toBe(true);
+      expect(await held()).toEqual([true, true]);
       expect(
         await runtime.store.readLegacyAbandonedTransactions!({
           reservationId: old.reservationId,
@@ -161,9 +210,11 @@ it.each([
         transactionHash: original.transactionHash,
         retirement: certificate,
       });
-      expect(await runtime.store.isReconciliationOnly!()).toBe(false);
+      expect(await held()).toEqual([false, false]);
       await expect(
-        runtime.store.assertSubmissionAuthority!(),
+        runtime.store.assertSubmissionAuthority!({
+          reservationId: later.reservationId,
+        }),
       ).resolves.toBeUndefined();
       // BB still owns the original funding output; retirement cannot free it.
       expect(await runtime.store.readReservedOutRefs({})).toContain(outRef);
@@ -182,7 +233,7 @@ it.each([
       expect(await runtime.store.reserve(later)).toBe("unchanged");
       runtime.close();
       runtime = await reopen({ path: opened.path }, () => undefined);
-      expect(await runtime.store.isReconciliationOnly!()).toBe(false);
+      expect(await held()).toEqual([false, false]);
       expect(
         await runtime.store.readPendingHandoff({
           reservationId: later.reservationId,

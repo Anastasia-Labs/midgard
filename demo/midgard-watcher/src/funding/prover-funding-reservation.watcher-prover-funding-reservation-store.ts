@@ -71,9 +71,14 @@ export type WatcherProverFundingReservationRecord = Readonly<{
 
 export type WatcherProverFundingReservationStore = Readonly<{
   readAll(): Promise<readonly unknown[]>;
-  /** Durable legacy overlap permits reads and exact retirement, never fresh actuation. */
-  isReconciliationOnly?(): Promise<boolean>;
-  assertSubmissionAuthority?(): Promise<void>;
+  /** A reservation whose claims overlap a legacy signed attempt permits reads
+   * and exact retirement, never fresh actuation; other reservations proceed. */
+  isReconciliationOnly?(input: {
+    readonly reservationId: string;
+  }): Promise<boolean>;
+  assertSubmissionAuthority?(input: {
+    readonly reservationId: string;
+  }): Promise<void>;
   readReservedOutRefs(input: {
     readonly excludingReservationId?: string;
   }): Promise<readonly string[]>;
