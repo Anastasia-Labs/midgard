@@ -116,7 +116,16 @@ const redeemerFieldLength = (redeemerCbor: Uint8Array) =>
 // the structural arms run against real list, map and large-constructor frames.
 // The trailing canonical byte string absorbs the remaining width without
 // adding traversal breadth.
+//
+// The padding search costs about a second, so it runs once per file; every
+// caller receives its own copy of the bytes.
+let maximumItemRedeemerBytes: Buffer | undefined;
 const maximumItemRedeemer = (): Uint8Array => {
+  maximumItemRedeemerBytes ??= searchMaximumItemRedeemer();
+  return Buffer.from(maximumItemRedeemerBytes);
+};
+
+const searchMaximumItemRedeemer = (): Buffer => {
   for (let padding = 30_000; padding < 32_800; padding++) {
     const candidate = Buffer.concat([
       Buffer.from([0x9f]),
