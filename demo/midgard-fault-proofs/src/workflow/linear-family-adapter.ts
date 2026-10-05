@@ -394,8 +394,15 @@ export const createLinearFamilyWorkflowAdapter = <
       txHash,
       durableRecovery,
       signedTransactionCborHex,
+      retirementOnly,
       authorizeResubmission,
     }) => {
+      if (retirementOnly && txHash !== undefined)
+        return await reconcileSignedWorkflowTransaction({
+          transactionHash: txHash,
+          signedTransactionCborHex,
+          observe: l1.observeSignedTransaction,
+        });
       if (
         identity.category !== category ||
         identity.target.kind !== "state_queue_header"

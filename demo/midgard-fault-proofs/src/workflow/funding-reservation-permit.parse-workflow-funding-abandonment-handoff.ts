@@ -17,6 +17,10 @@ import {
   normalizeJournalJson,
   validateFraudProofWorkflowJournal,
 } from "./journal.js";
+import {
+  parseSignedWorkflowTransactionRetirement,
+  type SignedWorkflowTransactionRetirement,
+} from "./signed-transaction-retirement.js";
 
 export const parseWorkflowFundingAbandonmentHandoff = (
   value: unknown,
@@ -40,7 +44,16 @@ export const parseWorkflowFundingAbandonmentHandoff = (
   );
   const reconciliation = exact(
     record.reconciliation,
-    ["kind", "actionId", "outcome", "txHash"],
+    [
+      "kind",
+      "actionId",
+      "outcome",
+      "txHash",
+      ...(isPlainObject(record.reconciliation) &&
+      "retirement" in record.reconciliation
+        ? ["retirement"]
+        : []),
+    ],
     "funding abandonment reconciliation",
   );
   if (
@@ -85,6 +98,14 @@ export const parseWorkflowFundingAbandonmentHandoff = (
       actionId: intent.actionId,
       outcome: "not_found",
       txHash: intent.txHash,
+      ...(reconciliation.retirement === undefined
+        ? {}
+        : {
+            retirement: parseSignedWorkflowTransactionRetirement(
+              reconciliation.retirement,
+              intent.txHash,
+            ),
+          }),
     }),
   });
 };
@@ -92,6 +113,7 @@ export const parseWorkflowFundingAbandonmentHandoff = (
 export const createWorkflowFundingAbandonmentHandoff = (input: {
   readonly entries: readonly FraudProofWorkflowJournalEntry[];
   readonly transactionHash: string;
+  readonly retirement?: SignedWorkflowTransactionRetirement;
 }): WorkflowFundingAbandonmentHandoff => {
   const first = input.entries[0],
     prepared = input.entries[1];
@@ -122,6 +144,9 @@ export const createWorkflowFundingAbandonmentHandoff = (input: {
       actionId: intent.actionId,
       outcome: "not_found",
       txHash: intent.txHash,
+      ...(input.retirement === undefined
+        ? {}
+        : { retirement: input.retirement }),
     },
   });
   assertWorkflowFundingAbandonmentHandoffJournal({

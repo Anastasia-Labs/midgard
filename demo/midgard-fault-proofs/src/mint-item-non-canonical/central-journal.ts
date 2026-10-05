@@ -7,5 +7,8 @@ import "../workflow/release-finality-policy.js";
 import "../workflow/transaction-boundary.js";
 import "./central-journal.recovery-from.js";
 import "./central-journal.create-mint-item-non-canonical-central-journal-adapter.js";
-export { createMintItemNonCanonicalCentralJournalAdapter } from "./central-journal.create-mint-item-non-canonical-central-journal-adapter.js";
+export {
+  createMintItemNonCanonicalCentralJournalAdapter,
+  MintItemWorkflowRecoveryPendingError,
+} from "./central-journal.create-mint-item-non-canonical-central-journal-adapter.js";
 export { type MintItemRemovalAction } from "./central-journal.recovery-from.js";

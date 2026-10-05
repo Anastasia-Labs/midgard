@@ -17,11 +17,13 @@ import {
   type FraudProofRawL1Transaction,
   type FraudProofRawL1Utxo,
 } from "../../src/workflow/raw-l1-snapshot.js";
-const point = (n: number) => {
+// Emulator exposes no native header hash. This encoder belongs only to this
+// mocked raw-authority test domain; height/slot come from its real public API.
+const syntheticEmulatorPoint = (blockHeight: number, slot: number) => {
   const value = {
-    slot: String(n),
-    blockNo: String(n),
-    blockHash: n.toString(16).padStart(64, "0"),
+    slot: String(slot),
+    blockNo: String(blockHeight),
+    blockHash: blockHeight.toString(16).padStart(64, "0"),
   };
   return { ...value, pointId: computeFraudProofRawL1PointId(value) };
 };
@@ -35,7 +37,10 @@ const raw = (
   referenceScriptCbor: output.script_ref()?.to_canonical_cbor_hex() ?? null,
 });
 export const recordCrossBlockRawEmulator = () => {
-  const rows: Omit<FraudProofRawL1Transaction, "confirmationDepth">[] = [];
+  const rows: Omit<
+    FraudProofRawL1Transaction,
+    "confirmationDepth" | "inclusionPoint"
+  >[] = [];
   const signedCbors = new Map<string, string>();
   // Submission coordinates are diagnostic metadata, separate from the legacy
   // raw rows. Actual inclusion is read from Emulator.getTransactionStatus.
@@ -101,7 +106,6 @@ export const recordCrossBlockRawEmulator = () => {
         redeemersCbor:
           tx.witness_set().redeemers()?.to_canonical_cbor_hex() ?? null,
         isValid: true,
-        inclusionPoint: point(rows.length + 1),
         resolvedInputs,
         resolvedReferenceInputs,
       });
@@ -113,20 +117,43 @@ export const recordCrossBlockRawEmulator = () => {
       const emulator = recorded.emulator;
       if (emulator === undefined)
         throw new Error("no emulator transactions captured");
-      const boundary = point(rows.length + 1);
-      const tip = point(rows.length + 30);
+      const tip = syntheticEmulatorPoint(emulator.blockHeight, emulator.slot);
       const sourceId = "local-emulator-recorded-cardano";
       const statuses = await Promise.all(
         rows.map((row) => emulator.getTransactionStatus(row.txHash)),
       );
-      const includedRows = rows.filter(
-        (_, index) => statuses[index]!.status === "confirmed",
+      const all = rows.flatMap((row, index) => {
+        const status = statuses[index]!;
+        if (status.status !== "confirmed") return [];
+        const { blockHeight, slot, confirmations } = status.confirmation;
+        if (
+          blockHeight === undefined ||
+          slot === undefined ||
+          confirmations === undefined
+        )
+          throw new Error(
+            "emulator confirmation lacks actual inclusion coordinates",
+          );
+        return [
+          {
+            ...row,
+            inclusionPoint: syntheticEmulatorPoint(blockHeight, slot),
+            confirmationDepth: confirmations,
+          },
+        ];
+      });
+      const latest = all.reduce<(typeof all)[number] | undefined>(
+        (last, row) =>
+          last === undefined ||
+          BigInt(row.inclusionPoint.blockNo) >
+            BigInt(last.inclusionPoint.blockNo)
+            ? row
+            : last,
+        undefined,
       );
-      const all = includedRows.map((row) => ({
-        ...row,
-        confirmationDepth:
-          Number(tip.blockNo) - Number(row.inclusionPoint.blockNo) + 1,
-      }));
+      if (latest === undefined)
+        throw new Error("no confirmed emulator transactions captured");
+      const boundary = latest.inclusionPoint;
       const touches = (row: FraudProofRawL1Transaction, unit: string) => {
         const outputs = CML.TransactionBody.from_cbor_hex(
           row.bodyCbor,
@@ -178,7 +205,7 @@ export const recordCrossBlockRawEmulator = () => {
         cursor: {
           point: boundary,
           tip,
-          confirmationDepth: 30,
+          confirmationDepth: latest.confirmationDepth,
           rollbackCursor: computeFraudProofRawL1RollbackCursor({
             ...request,
             sourceId,

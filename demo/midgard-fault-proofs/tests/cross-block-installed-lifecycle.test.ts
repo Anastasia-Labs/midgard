@@ -41,6 +41,7 @@ import { makeMaximumCrossBlockProof } from "./support/cross-block-maximum-proof.
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { crossBlockRetainedFixture } from "./support/cross-block-retained.js";
 import { settleOldestCrossBlockHeader } from "./support/cross-block-settlement-emulator.js";
+import { installedWorkflowEmulatorClock } from "./support/installed-workflow.advance-emulator-observation.js";
 import { makeHeader } from "./support/submit-init-emulator-shared.js";
 const finalityPolicy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 import { createHash } from "node:crypto";
@@ -225,6 +226,7 @@ describe("crossBlockDuplicateEvent installed cursor actuator", () => {
             fail: async () => {},
           }),
         };
+        installedWorkflowEmulatorClock(h.emulator).awaitReleaseDepth();
         const binding = {
           definition: { headerHash: setup.headerHash },
           blueprint: h.realBlueprint,
@@ -529,7 +531,6 @@ describe("crossBlockDuplicateEvent installed cursor actuator", () => {
           if (observation.kind !== "action_required")
             throw new Error("missing action");
           const action = observation.action;
-
           if (action.input.stage === "init") {
             hideSettlement = true;
             await expect(
@@ -583,8 +584,7 @@ describe("crossBlockDuplicateEvent installed cursor actuator", () => {
               cpuUnits: m.executionSteps,
             }),
           );
-          h.emulator.awaitBlock();
-
+          installedWorkflowEmulatorClock(h.emulator).awaitReleaseDepth();
           await append({
             kind: "submission_ambiguous",
             actionId: action.actionId,

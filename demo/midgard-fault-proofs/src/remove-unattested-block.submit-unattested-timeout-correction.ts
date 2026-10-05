@@ -455,7 +455,7 @@ export const submitUnattestedTimeoutCorrection = async ({
       );
       if (
         sameTxIndex >= 0 &&
-        journal.steps[sameTxIndex]?.status !== "superseded"
+        !["superseded", "retired"].includes(journal.steps[sameTxIndex]!.status)
       ) {
         throw new Error(
           `Timeout-correction transaction hash ${txHash} conflicts with non-superseded journal state.`,

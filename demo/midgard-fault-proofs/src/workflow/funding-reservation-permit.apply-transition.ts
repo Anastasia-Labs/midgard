@@ -96,6 +96,10 @@ export const abandonWorkflowFundingReservationTransaction = async (input: {
   const state = stateForJournal(input.journal);
   if (state === undefined) return;
   const handoff = parseWorkflowFundingAbandonmentHandoff(input.handoff);
+  if (handoff.reconciliation.retirement === undefined)
+    throw new Error(
+      "Funding cannot retire an attempt without authenticated canonical evidence",
+    );
   if (
     handoff.submissionIntent.txHash !== input.transactionHash ||
     (state.pendingTransactionHash !== undefined &&
@@ -132,9 +136,16 @@ const journalHasOnlyResolvedFundingAttempts = (
       event.txHash !== undefined &&
       resolved.has(event.txHash)
     ) {
-      if (event.kind === "confirmed") resolved.set(event.txHash, true);
+      if (event.kind === "signed_attempt_retired")
+        resolved.set(event.txHash, true);
+      // Confirmation may still roll back. It cannot retire an exact signed
+      // descendant or authorize reusing its stale wallet reservation.
+      else if (event.kind === "confirmed") resolved.set(event.txHash, false);
       else if (event.kind === "reconciled")
-        resolved.set(event.txHash, event.outcome === "not_found");
+        resolved.set(
+          event.txHash,
+          event.outcome === "not_found" && event.retirement !== undefined,
+        );
       else if (
         event.kind === "reobserved" ||
         event.kind === "submitted" ||
@@ -248,4 +259,22 @@ export const balanceCbor = (utxos: readonly UTxO[]): string => {
     }
   }
   return assetsToValue(assets).to_cbor_hex();
+};
+
+export const retireLegacyWorkflowFundingAbandonment = async (input: {
+  readonly journal: object;
+  readonly transactionHash: string;
+  readonly retirement: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement;
+}) => {
+  const state = stateForJournal(input.journal);
+  if (state === undefined || state.port.retireLegacyAbandonment === undefined)
+    throw new Error("Funding authority cannot authenticate legacy retirement");
+  state.snapshot = parseStateSnapshot(
+    state,
+    await state.port.retireLegacyAbandonment({
+      expectedRevision: state.snapshot.revision,
+      transactionHash: input.transactionHash,
+      retirement: input.retirement,
+    }),
+  );
 };

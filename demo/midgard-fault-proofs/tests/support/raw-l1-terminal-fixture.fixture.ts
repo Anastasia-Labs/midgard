@@ -58,6 +58,7 @@ export const fixture = async ({
   proverCredential = PROVER,
   verifiedEconomics = releaseEconomics,
   proofCreation = false,
+  confirmationDepth = 30,
   descendant = false,
   descendantOperatorCredential,
   partial = false,
@@ -73,6 +74,7 @@ export const fixture = async ({
   proverCredential?: string;
   verifiedEconomics?: VerifiedFraudProofReleaseEconomicsPolicy;
   proofCreation?: boolean;
+  confirmationDepth?: number;
   descendant?: boolean;
   descendantOperatorCredential?: string;
   partial?: boolean;
@@ -307,9 +309,13 @@ export const fixture = async ({
     pointId: computeFraudProofRawL1PointId(pointInput),
   };
   const tipInput = {
-    slot: "1030",
+    slot: (BigInt(point.slot) + BigInt(confirmationDepth)).toString(),
     blockHash: hash32("52"),
-    blockNo: "100",
+    blockNo: (
+      BigInt(point.blockNo) +
+      BigInt(confirmationDepth) -
+      1n
+    ).toString(),
   };
   const tip = {
     ...tipInput,
@@ -360,7 +366,7 @@ export const fixture = async ({
     cursor: {
       point,
       tip,
-      confirmationDepth: 30,
+      confirmationDepth,
       rollbackCursor: computeFraudProofRawL1RollbackCursor({
         deploymentIdentityDigest: DEPLOYMENT,
         blueprintHash: RELEASE,
@@ -417,7 +423,7 @@ export const fixture = async ({
         redeemersCbor: null,
         isValid: true,
         inclusionPoint: point,
-        confirmationDepth: 30,
+        confirmationDepth,
         resolvedInputs: [target, bond],
         resolvedReferenceInputs: [proof],
       },
@@ -431,7 +437,7 @@ export const fixture = async ({
               redeemersCbor: null,
               isValid: true as const,
               inclusionPoint: point,
-              confirmationDepth: 30,
+              confirmationDepth,
               resolvedInputs: [
                 continuedTarget,
                 ...(finalTargetBond === undefined ? [] : [finalTargetBond]),
@@ -450,7 +456,7 @@ export const fixture = async ({
               redeemersCbor: null,
               isValid: true as const,
               inclusionPoint: point,
-              confirmationDepth: 30,
+              confirmationDepth,
               resolvedInputs: [],
               resolvedReferenceInputs: [],
             },
@@ -466,7 +472,7 @@ export const fixture = async ({
               redeemersCbor: null,
               isValid: true as const,
               inclusionPoint: point,
-              confirmationDepth: 30,
+              confirmationDepth,
               resolvedInputs: [],
               resolvedReferenceInputs: [],
             },

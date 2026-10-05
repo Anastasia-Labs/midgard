@@ -105,7 +105,7 @@ import {
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { buildAcceptedClaimOverMinAdaRejectingTransactionFixture } from "./support/emulator/validation-dispute-fixtures.js";
-
+import { installedWorkflowEmulatorClock } from "./support/installed-workflow.advance-emulator-observation.js";
 const DEPLOYMENT = "11".repeat(32);
 const PAYLOAD_ENVELOPE_SHA = "ab".repeat(32);
 const PAYLOAD_SHA = "cd".repeat(32);
@@ -118,7 +118,6 @@ const economicsPolicy = {
   inactivitySlashingPenaltyLovelace: "100000000",
   proverCollateralFloorLovelace: "5000000",
 } as const;
-
 const withLifecycleDeadline = async <T>(
   operation: () => Promise<T>,
   progress: () => string,
@@ -482,6 +481,7 @@ const stageInstalledValidationTraceDisputeJourney = async (
       }),
     },
   };
+  installedWorkflowEmulatorClock(emulator).awaitReleaseDepth();
   const clock = vi.spyOn(Date, "now").mockImplementation(() => emulator.now());
   const threadUnit = toUnit(
     resolvedContracts.contracts.computationThread.policyId,

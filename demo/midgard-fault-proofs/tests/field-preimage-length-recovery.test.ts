@@ -584,7 +584,7 @@ it.each([
       kind: "removed",
       terminal: {
         ...terminal,
-        observedAt: { ...terminal.observedAt, confirmationDepth: 30 },
+        observedAt: { ...terminal.observedAt, confirmationDepth: 2162 },
       },
     };
     expect(

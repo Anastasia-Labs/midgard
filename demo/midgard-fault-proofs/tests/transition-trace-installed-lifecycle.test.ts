@@ -106,6 +106,7 @@ import {
   submitSecondHeaderTx,
   submitSetupTx,
 } from "./support/emulator/setup-tx.js";
+import { installedWorkflowEmulatorClock } from "./support/installed-workflow.advance-emulator-observation.js";
 import {
   readBlueprintIdentity,
   writeOrVerifyPinnedFitLedger,
@@ -116,7 +117,6 @@ import {
   transitionTraceTimingRetainedFixture,
 } from "./support/transition-trace-retained.js";
 import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
-
 // Explicit experimental payload bound; Cardano production limits are unchanged.
 const HISTORY_BOUNDS = {
   inlineLimitBytes: 512n,
@@ -124,7 +124,6 @@ const HISTORY_BOUNDS = {
   maxPayloadNodes: 512n,
 };
 const historyRecords: unknown[] = [];
-
 const DEPLOYMENT = "11".repeat(32);
 // The release-finality check requires the selected profile's policy exactly.
 const finalityPolicy = DEPLOYMENT_MANIFEST_L1_FINALITY;
@@ -136,7 +135,6 @@ const economicsPolicy = {
   inactivitySlashingPenaltyLovelace: "100000000",
   proverCollateralFloorLovelace: "5000000",
 } as const;
-
 const installedCases = [
   {
     name: "deposit",
@@ -721,6 +719,8 @@ describe("transition trace installed retained-history workflow", () => {
             },
           },
         ];
+        const workflowClock = installedWorkflowEmulatorClock(h.emulator);
+        workflowClock.awaitReleaseDepth();
         let workflow = await createManifestBoundTransitionTraceWorkflow(config);
         const rawHandle = await captureTransitionTraceL1Events({
           binding: workflow.binding,
@@ -898,7 +898,7 @@ describe("transition trace installed retained-history workflow", () => {
               }
             }
           }
-          h.emulator.awaitBlock();
+          await workflowClock.advance(result);
           workflow = await createManifestBoundTransitionTraceWorkflow(config);
           result = await runOrResumeManifestBoundTransitionTraceWorkflow({
             workflow,
@@ -909,7 +909,7 @@ describe("transition trace installed retained-history workflow", () => {
           });
         }
         expect(
-          result.kind,
+          await workflowClock.kind(result),
           "reason" in result ? result.reason : undefined,
         ).toBe(honest ? "no_fault_detected" : "completed");
         if (!honest) {

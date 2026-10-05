@@ -93,10 +93,18 @@ export type WorkflowFundingAbandonmentHandoff = WorkflowFundingJournalHandoff &
  */
 export interface WorkflowFundingReservationPort {
   load(): Promise<unknown>;
+  /** Recheck durable resource holds before building, signing or submitting. */
+  assertSubmissionAuthority?(): Promise<void>;
   readPendingTransition(): Promise<unknown>;
   readPendingHandoff(): Promise<unknown>;
   readCompletionHandoff(): Promise<unknown>;
   readAbandonmentHandoff(): Promise<unknown>;
+  readLegacyAbandonedTransactions?(): Promise<readonly unknown[]>;
+  retireLegacyAbandonment?(input: {
+    readonly expectedRevision: string;
+    readonly transactionHash: string;
+    readonly retirement: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement;
+  }): Promise<unknown>;
   /** Re-select a recorded attempt for reconciliation after canonical re-observation. */
   /** Null means another unresolved attempt currently owns the required inputs. */
   reobserve?(input: {

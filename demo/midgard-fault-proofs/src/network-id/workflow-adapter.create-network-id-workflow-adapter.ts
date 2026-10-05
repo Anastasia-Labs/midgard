@@ -75,6 +75,7 @@ import {
   type NetworkIdWorkflowAdapterConfig,
   recoverMutationLease,
 } from "./workflow-adapter.create-network-id-raw-l1-observation-port.js";
+import { createNetworkIdForcedStepContract } from "./workflow-adapter.forced-step-contract.js";
 import {
   action,
   type ActionKind,
@@ -112,25 +113,8 @@ export const createNetworkIdWorkflowAdapter = (
   const mutationLeaseByTxHash = new Map<string, StateQueueMutationLease>();
   const category = CATEGORY;
 
-  const requireForcedStep = () => {
-    const forcedStep = config.contracts.forcedStep;
-    if (forcedStep === undefined) {
-      throw new Error(
-        "network-id forced direction requires the deployed forced step",
-      );
-    }
-    return forcedStep;
-  };
-
-  const requireForcedStepReferenceScript = (): UTxO => {
-    const referenceScript = config.forcedStepReferenceScript;
-    if (referenceScript === undefined) {
-      throw new Error(
-        "network-id forced direction requires the published fraudProofNetworkIdForcedStep reference script",
-      );
-    }
-    return referenceScript;
-  };
+  const { requireForcedStep, requireForcedStepReferenceScript } =
+    createNetworkIdForcedStepContract(config);
 
   const requireForcedScan = () => {
     const forcedScan = config.contracts.forcedScan;
@@ -1289,6 +1273,12 @@ export const createNetworkIdWorkflowAdapter = (
       }
     },
     reconcile: async (context): Promise<FraudProofWorkflowReconcileResult> => {
+      if (context.retirementOnly && context.txHash !== undefined)
+        return await reconcileSignedWorkflowTransaction({
+          transactionHash: context.txHash,
+          signedTransactionCborHex: context.signedTransactionCborHex,
+          observe: config.rawL1?.observeSignedTransaction,
+        });
       const admitted = admitNetworkIdWorkflowArtifact(context.artifact);
       const prepared = admitted.prepared;
       const kind = actionKind(context.action);

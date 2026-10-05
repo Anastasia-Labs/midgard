@@ -8,6 +8,10 @@ import {
   workflowJournalIsReconciliationOnly,
 } from "./actuation-permit.js";
 import {
+  assertFinalWorkflowTerminalReceipt,
+  isFinalWorkflowCompletion,
+} from "./completion-finality.js";
+import {
   abandonWorkflowFundingReservationTransaction,
   acknowledgeWorkflowFundingAbandonment,
   assertWorkflowFundingAbandonmentHandoffJournal,
@@ -72,6 +76,8 @@ import {
   validateAction,
   validatePreflight,
 } from "./orchestrator.normalize-workflow-terminal.js";
+import { assertWorkflowJournalReconciliation } from "./orchestrator.reconcile-legacy-abandonments.js";
+import { reconcileLegacyFraudProofAbandonments } from "./orchestrator.reconcile-legacy-abandonments.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 
 /**
@@ -281,6 +287,17 @@ export const runAdmittedFraudProofWorkflow = async ({
       entries,
     };
 
+    if (
+      !(await reconcileLegacyFraudProofAbandonments(
+        context,
+        journal,
+        adapter,
+        append,
+      ))
+    )
+      return resumeOnObservation(
+        "Legacy abandoned attempt requires authenticated canonical retirement evidence",
+      );
     // The journal records submissions, not permanent progress. When the current
     // chain asks for an older action, reconcile that exact intent first. This
     // also covers restart after rollback without a separate per-family undo log.
@@ -289,8 +306,10 @@ export const runAdmittedFraudProofWorkflow = async ({
       .find(({ event }) => event.kind !== "stalled")?.event;
     let currentObservation: FraudProofWorkflowObservation | undefined;
     if (
-      priorLifecycle?.kind !== "completed" &&
-      fundingRecovery.completionHandoff?.completion.kind !== "completed" &&
+      !isFinalWorkflowCompletion(priorLifecycle) &&
+      !isFinalWorkflowCompletion(
+        fundingRecovery.completionHandoff?.completion,
+      ) &&
       entries.some(({ event }) => event.kind === "confirmed")
     ) {
       assertWorkflowJournalActuation({
@@ -328,13 +347,7 @@ export const runAdmittedFraudProofWorkflow = async ({
               reason:
                 "Required inputs remain reserved by another unresolved transaction",
             };
-          assertWorkflowJournalActuation({
-            journal,
-            deploymentFingerprint,
-            category,
-            headerHash,
-            checkpoint: "before_reconcile",
-          });
+          assertWorkflowJournalReconciliation(journal, identity);
           await append({
             kind: "reobserved",
             actionId: intent.actionId,
@@ -399,13 +412,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       let reconciled: FraudProofWorkflowReconcileResult;
       let rebroadcastAttempted = false;
       try {
-        assertWorkflowJournalActuation({
-          journal,
-          deploymentFingerprint,
-          category,
-          headerHash,
-          checkpoint: "before_reconcile",
-        });
+        assertWorkflowJournalReconciliation(journal, identity);
         reconciled = await adapter.reconcile({
           ...context,
           action,
@@ -496,13 +503,7 @@ export const runAdmittedFraudProofWorkflow = async ({
                     }),
               }),
         });
-        assertWorkflowJournalActuation({
-          journal,
-          deploymentFingerprint,
-          category,
-          headerHash,
-          checkpoint: "before_reconcile",
-        });
+        assertWorkflowJournalReconciliation(journal, identity);
       } catch (cause) {
         // A capture exhausted its bounded retries because the canonical head
         // moved. It establishes neither inclusion nor replacement authority;
@@ -595,24 +596,26 @@ export const runAdmittedFraudProofWorkflow = async ({
           entries,
         };
       }
+      if (
+        fundingRecovery.transition !== null &&
+        reconciled.retirement === undefined
+      )
+        return resumeOnObservation(
+          "Exact funding retirement requires authenticated canonical evidence",
+        );
       const abandonmentHandoff =
         fundingRecovery.abandonmentHandoff ??
         createWorkflowFundingAbandonmentHandoff({
           entries,
           transactionHash: intent.txHash,
+          retirement: reconciled.retirement,
         });
       await abandonWorkflowFundingReservationTransaction({
         journal,
         transactionHash: intent.txHash,
         handoff: abandonmentHandoff,
       });
-      assertWorkflowJournalActuation({
-        journal,
-        deploymentFingerprint,
-        category,
-        headerHash,
-        checkpoint: "before_reconcile",
-      });
+      assertWorkflowJournalReconciliation(journal, identity);
       if (
         !assertWorkflowFundingAbandonmentHandoffJournal({
           handoff: abandonmentHandoff,
@@ -620,13 +623,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         })
       )
         await append(abandonmentHandoff.reconciliation);
-      assertWorkflowJournalActuation({
-        journal,
-        deploymentFingerprint,
-        category,
-        headerHash,
-        checkpoint: "before_reconcile",
-      });
+      assertWorkflowJournalReconciliation(journal, identity);
       await acknowledgeWorkflowFundingAbandonment({
         journal,
         handoff: abandonmentHandoff,
@@ -646,7 +643,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       checkpoint: "before_observe",
     });
     const observation: FraudProofWorkflowObservation =
-      fundingRecovery.completionHandoff?.completion.kind !== "completed"
+      !isFinalWorkflowCompletion(fundingRecovery.completionHandoff?.completion)
         ? (currentObservation ??
           (await adapter.observe({
             ...context,
@@ -668,9 +665,8 @@ export const runAdmittedFraudProofWorkflow = async ({
     if (observation.kind === "completed") {
       let terminal: FraudProofWorkflowTerminal;
       const inclusionOnly =
-        observation.terminal.observedAt.confirmationDepth <
-          releaseFinality.policy.confirmationDepth &&
-        terminalVerifier.verifyIncluded !== undefined;
+        observation.terminal.observedAt.confirmationDepth <=
+        releaseFinality.policy.automaticRecoveryMaxDepth + 1;
       try {
         assertWorkflowJournalActuation({
           journal,
@@ -683,7 +679,7 @@ export const runAdmittedFraudProofWorkflow = async ({
           identity,
           terminal: await (
             inclusionOnly
-              ? terminalVerifier.verifyIncluded!
+              ? (terminalVerifier.verifyIncluded ?? terminalVerifier.verify)
               : terminalVerifier.verify
           )({
             identity,
@@ -698,25 +694,12 @@ export const runAdmittedFraudProofWorkflow = async ({
           inclusionOnly,
         });
         if (
-          fundingRecovery.completionHandoff?.completion.kind === "completed"
+          isFinalWorkflowCompletion(
+            fundingRecovery.completionHandoff?.completion,
+          )
         ) {
           const saved = fundingRecovery.completionHandoff.completion.terminal;
-          const withoutDepth = (value: FraudProofWorkflowTerminal) => ({
-            ...value,
-            observedAt: {
-              slot: value.observedAt.slot,
-              blockHash: value.observedAt.blockHash,
-            },
-          });
-          if (
-            terminal.observedAt.confirmationDepth <
-              saved.observedAt.confirmationDepth ||
-            journalJsonDigest(normalizeJournalJson(withoutDepth(saved))) !==
-              journalJsonDigest(normalizeJournalJson(withoutDepth(terminal)))
-          )
-            throw new Error(
-              "released workflow terminal facts changed on the canonical chain",
-            );
+          assertFinalWorkflowTerminalReceipt(saved, terminal);
           terminal = normalizeWorkflowTerminal({
             identity,
             terminal: saved,
@@ -744,13 +727,14 @@ export const runAdmittedFraudProofWorkflow = async ({
       const savedInclusion = fundingRecovery.completionHandoff;
       if (
         inclusionOnly &&
-        savedInclusion?.completion.kind === "terminal_included"
+        savedInclusion?.completion.kind === "terminal_included" &&
+        entries.length > savedInclusion.expectedJournalSequence
       ) {
         // Its signed actions and original inclusion handoff already survive a
         // restart. Re-observe next time rather than persisting every depth tick.
         return { kind, workflowId, identity, terminal, entries };
       }
-      if (entries.at(-1)?.event.kind !== "completed") {
+      if (!isFinalWorkflowCompletion(priorLifecycle)) {
         const handoff: WorkflowFundingCompletionHandoff = (fundingRecovery
           .completionHandoff?.completion.kind === kind
           ? fundingRecovery.completionHandoff

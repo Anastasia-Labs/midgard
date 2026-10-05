@@ -18,7 +18,7 @@ import {
 import { sourceFixture } from "./workflow-kupmios-source.source-fixture.js";
 
 export const signedRecoveryFixture = async ({
-  ttl = 1200,
+  ttl = 6000,
   spent = false,
   referenceSpent,
   scriptOrdinary = false,
@@ -250,8 +250,8 @@ export const signedRecoveryFixture = async ({
   );
   const fixture = sourceFixture({
     observationDepth: "inclusion",
-    tipHeight: volatileReference ? 99 : 100,
-    tipSlot: volatileReference ? 620 : 1000,
+    tipHeight: volatileReference ? 2231 : 2232,
+    tipSlot: 4719,
     blockTransactions: [
       creation,
       conflict,
@@ -262,7 +262,7 @@ export const signedRecoveryFixture = async ({
       cbor: tx.toTransaction().to_cbor_hex(),
     })),
     checkpointOverride: (slot) => {
-      const tipSlot = volatileReference ? 620 : 1000;
+      const tipSlot = 4719;
       if (slot >= tipSlot) return { slot_no: tipSlot, header_hash: TIP };
       if (
         slot === 400 &&

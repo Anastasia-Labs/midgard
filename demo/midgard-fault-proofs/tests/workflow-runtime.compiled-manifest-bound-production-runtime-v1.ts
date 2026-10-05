@@ -40,11 +40,9 @@ import {
   beginWorkflowFundingReservationAction,
   bindWorkflowFundingReservationJournal,
   confirmWorkflowFundingReservationTransaction,
-  releaseIdleWorkflowFundingReservation,
   reobserveWorkflowFundingReservationTransaction,
   restrictWorkflowFundingSigner,
   unsafeWorkflowFundingReservationSelectedOutRefsForTest,
-  type WorkflowFundingReservationSnapshot,
   WorkflowFundingReservationUnavailableError,
 } from "../src/workflow/funding-reservation-permit.js";
 import {
@@ -53,8 +51,6 @@ import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEvent,
-  journalJsonDigest,
   MemoryFraudProofWorkflowJournalStore,
 } from "../src/workflow/journal.js";
 import { continuePendingWorkflow } from "../src/workflow/pending-continuation.js";
@@ -76,6 +72,7 @@ import {
   fundingReferenceOutRef,
   fundingReferenceScript,
 } from "./workflow-runtime.admitted-actuation.js";
+import { registerIdleFundingRetirementTests } from "./workflow-runtime.idle-retirement.js";
 import { assertOrdinaryMissingChange } from "./workflow-runtime.ordinary-change-control.js";
 import {
   retainedDaSource,
@@ -1231,134 +1228,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     ).rejects.toBe(failure);
   });
 
-  it.each([false, true])(
-    "authorizes stale idle refresh only after every signed descendant resolves, and reobservation revokes it (read-only: %s)",
-    async (readOnly) => {
-      const journal = new MemoryFraudProofWorkflowJournalStore();
-      const refreshIdle = vi.fn(
-        async (): Promise<WorkflowFundingReservationSnapshot> =>
-          funding.snapshot,
-      );
-      const funding = await runtimeFunding("step-one", {
-        journal,
-        refreshIdle,
-      });
-      const checkStaleRefresh = async (allowed: boolean) => {
-        if (readOnly) return;
-        funding.resolveInputs.mockResolvedValueOnce([]);
-        await funding.begin();
-        expect(refreshIdle).toHaveBeenLastCalledWith({
-          expectedRevision: funding.snapshot.revision,
-          releaseStaleInputs: allowed,
-        });
-      };
-      const identity: FraudProofWorkflowIdentity = {
-        schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-        deploymentFingerprint: DEPLOYMENT,
-        category: "doubleSpend",
-        decisionDigest: funding.actuation.decisionDigest,
-        target: {
-          kind: "state_queue_header",
-          headerHash: funding.actuation.headerHash,
-        },
-      };
-      const workflowId = computeFraudProofWorkflowId(identity);
-      const append = async (event: FraudProofWorkflowJournalEvent) => {
-        const sequence = (await journal.load(workflowId)).length;
-        await journal.append(
-          {
-            schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-            workflowId,
-            identity,
-            sequence,
-            recordedAt: new Date().toISOString(),
-            event,
-          },
-          sequence,
-        );
-      };
-      await append({ kind: "started" });
-      await append({
-        kind: "prepared",
-        artifact: {},
-        artifactDigest: journalJsonDigest({}),
-      });
-      const parentHash = "a1".repeat(32),
-        childHash = "a2".repeat(32);
-      for (const [actionId, txHash] of [
-        ["parent", parentHash],
-        ["child", childHash],
-      ] as const) {
-        await append({
-          kind: "preflight_passed",
-          actionId,
-          txHash,
-          localEvaluator: "test",
-          referenceScripts: [],
-        });
-        await append({
-          kind: "submission_intent",
-          actionId,
-          txHash,
-          attempt: 1,
-          actionInput: { actionKind: "step-one" },
-        });
-        await append({
-          kind: "reconciled",
-          actionId,
-          txHash,
-          outcome: "confirmed",
-        });
-        await append({ kind: "confirmed", actionId, txHash });
-      }
-      await append({
-        kind: "reobserved",
-        actionId: "child",
-        txHash: childHash,
-      });
-      await append({
-        kind: "reobserved",
-        actionId: "parent",
-        txHash: parentHash,
-      });
-      await append({
-        kind: "reconciled",
-        actionId: "parent",
-        txHash: parentHash,
-        outcome: "not_found",
-      });
-      if (readOnly)
-        funding.actuation.restrictToReconciliation(
-          "parent recovery owns execution slot",
-        );
-      await releaseIdleWorkflowFundingReservation({ journal, workflowId });
-      expect(funding.releaseIdle).not.toHaveBeenCalled();
-      await checkStaleRefresh(false);
-      await append({
-        kind: "reobserved",
-        actionId: "child",
-        txHash: childHash,
-      });
-      await append({
-        kind: "reconciled",
-        actionId: "child",
-        txHash: childHash,
-        outcome: "confirmed",
-      });
-      await append({ kind: "confirmed", actionId: "child", txHash: childHash });
-      await releaseIdleWorkflowFundingReservation({ journal, workflowId });
-      expect(funding.releaseIdle).toHaveBeenCalledTimes(readOnly ? 1 : 0);
-      await checkStaleRefresh(true);
-      await append({
-        kind: "reobserved",
-        actionId: "child",
-        txHash: childHash,
-      });
-      await releaseIdleWorkflowFundingReservation({ journal, workflowId });
-      expect(funding.releaseIdle).toHaveBeenCalledTimes(readOnly ? 1 : 0);
-      await checkStaleRefresh(false);
-    },
-  );
+  registerIdleFundingRetirementTests();
 
   it("returns a pending reconciliation without occupying the execution slot", async () => {
     const actuation = await admittedActuation();

@@ -1,7 +1,6 @@
 import {
   deriveFieldPreimageCertification,
   FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
-  MIDGARD_FIELD_INDEX,
 } from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
@@ -14,7 +13,6 @@ import {
   certifyFaultProofFieldCarriage,
   fieldPreimageCertificateAddress,
   findMissingFaultProofFieldPublication,
-  planFaultProofFieldOpening,
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
@@ -30,6 +28,7 @@ import {
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import { submitInit } from "../submit-init.js";
 import { admitSnapshot } from "./double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
+import { createDoubleSpendFieldOpeningPlan } from "./double-spend-adapter.field-opening-plan.js";
 import {
   action,
   artifactFrom,
@@ -95,21 +94,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       proofCbor,
     });
 
-  const fieldPlan = (
-    proofStage: "step_03" | "step_04",
-    artifact: DoubleSpendArtifact,
-  ) => {
-    const tx = proofStage === "step_03" ? artifact.tx1 : artifact.tx2;
-    return planFaultProofFieldOpening({
-      anchorSourceKind: 0n,
-      fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
-      anchorTxId: tx.nativeTxId,
-      nativeTxCompactCbor: tx.nativeTxCompactCbor,
-      itemCbors: tx.spendInputCbors.map((cbor) => Buffer.from(cbor, "hex")),
-      owner: config.signer.paymentKeyHash,
-      label: `${proofStage} production preflight`,
-    });
-  };
+  const fieldPlan = createDoubleSpendFieldOpeningPlan(config);
 
   const authenticatePublications = async ({
     headerHash,
@@ -762,8 +747,15 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       txHash,
       durableRecovery,
       signedTransactionCborHex,
+      retirementOnly,
       authorizeResubmission,
     }) => {
+      if (retirementOnly && txHash !== undefined)
+        return await reconcileSignedWorkflowTransaction({
+          transactionHash: txHash,
+          signedTransactionCborHex,
+          observe: config.l1?.observeSignedTransaction,
+        });
       if (txHash === undefined) {
         return { kind: "conflict", reason: "durable intent omitted tx hash" };
       }

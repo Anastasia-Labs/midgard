@@ -256,10 +256,10 @@ export const normalizeWorkflowTerminal = ({
   if (
     !Number.isSafeInteger(terminal.observedAt.confirmationDepth) ||
     terminal.observedAt.confirmationDepth <
-      (inclusionOnly ? 1 : releaseFinality.policy.confirmationDepth)
+      (inclusionOnly ? 1 : releaseFinality.policy.automaticRecoveryMaxDepth + 2)
   ) {
     throw new Error(
-      `terminal observation confirmation depth is below the release threshold: required=${releaseFinality.policy.confirmationDepth.toString()} actual=${String(terminal.observedAt.confirmationDepth)} policy=${releaseFinality.policyDigest}`,
+      `terminal observation confirmation depth is below the release threshold: required=${(inclusionOnly ? 1 : releaseFinality.policy.automaticRecoveryMaxDepth + 2).toString()} actual=${String(terminal.observedAt.confirmationDepth)} policy=${releaseFinality.policyDigest}`,
     );
   }
   return {

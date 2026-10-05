@@ -268,7 +268,7 @@ it("restarts at most three complete signed-recovery captures after typed head ch
       await expect(result).rejects.toBeInstanceOf(
         LocalKupmiosCheckpointChangedError,
       );
-    expect(capture).toHaveBeenCalledTimes(3);
+    expect(capture).toHaveBeenCalledTimes(changes === 2 ? 4 : 3);
     expect(fixture.submissions).toEqual([]);
   }
 });

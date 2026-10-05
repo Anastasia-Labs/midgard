@@ -5,6 +5,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { beforeAll, expect, it, vi } from "vitest";
 
+import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.js";
 import {
   reconcileSignedWorkflowTransaction,
   type SignedTransactionRecoveryObservation,
@@ -43,8 +44,22 @@ const observation = (
   return {
     ...signed,
     status,
-    canonicalPoint: point,
-    releaseFinalPoint: point,
+    canonicalPoint: {
+      ...point,
+      slot: "10000",
+      blockHash: "ef".repeat(32),
+      blockNo: "2211",
+      pointId: computeFraudProofRawL1PointId({
+        ...point,
+        slot: "10000",
+        blockHash: "ef".repeat(32),
+        blockNo: "2211",
+      }),
+    },
+    releaseFinalPoint: {
+      ...point,
+      pointId: computeFraudProofRawL1PointId(point),
+    },
     inputs: [],
     reason: "Controlled canonical recovery observation",
   };
@@ -74,8 +89,14 @@ it("retains an authorized rejected intent until canonical recovery resolves its 
   await expect(reconcileSignedWorkflowTransaction(input)).resolves.toEqual(
     pending,
   );
-  await expect(reconcileSignedWorkflowTransaction(input)).resolves.toEqual({
+  await expect(
+    reconcileSignedWorkflowTransaction(input),
+  ).resolves.toMatchObject({
     kind: "not_found",
+    retirement: {
+      reason: "invalidated",
+      transactionHash: signed.transactionHash,
+    },
   });
   expect(authorizeResubmission).toHaveBeenCalledExactlyOnceWith(signed);
   expect(rebroadcast).toHaveBeenCalledTimes(1);
@@ -113,3 +134,37 @@ it("rejects a substituted acknowledgement even after authorization", async () =>
     }),
   ).rejects.toThrow("Rebroadcast changed recorded transaction hash");
 });
+
+for (const status of ["expired", "invalidated"] as const) {
+  it(`retains ${status} signed attempts throughout the recovery horizon`, async () => {
+    const shallow = {
+      ...observation(status),
+      canonicalPoint: {
+        ...observation(status).canonicalPoint,
+        blockNo: "2210",
+      },
+    };
+    expect(
+      await reconcileSignedWorkflowTransaction({
+        ...signed,
+        observe: async () => shallow,
+      }),
+    ).toMatchObject({ kind: "unknown" });
+    expect(
+      await reconcileSignedWorkflowTransaction({
+        ...signed,
+        observe: async () => observation(status),
+      }),
+    ).toMatchObject({
+      kind: "not_found",
+      retirement: { transactionHash: signed.transactionHash, reason: status },
+    });
+    // A rollback that restores input/validity state must preserve the same intent.
+    expect(
+      await reconcileSignedWorkflowTransaction({
+        ...signed,
+        observe: async () => observation("pending"),
+      }),
+    ).toEqual({ kind: "pending", txHash: signed.transactionHash });
+  });
+}

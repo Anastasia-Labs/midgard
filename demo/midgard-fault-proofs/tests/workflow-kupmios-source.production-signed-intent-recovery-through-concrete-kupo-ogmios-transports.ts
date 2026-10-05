@@ -124,7 +124,7 @@ describe("production signed intent recovery through concrete Kupo/Ogmios transpo
   it.each([
     [{ ttl: 399, missing: true }, "expired"],
     [{ ttl: 399, missing: true, referenceSpent: "stable" }, "expired"],
-    [{ ttl: 900, missing: true }, "unknown"],
+    [{ ttl: 900, missing: true }, "pending"],
     [{ ttl: 399, missing: true, included: true }, "included"],
   ] as const)(
     "recovers dependent attempts after a parent rollback only with stable expiry or inclusion: %j",
@@ -159,7 +159,7 @@ describe("production signed intent recovery through concrete Kupo/Ogmios transpo
     expect(fixture.submissions).toEqual([]);
   });
 
-  it.each([1200, null])(
+  it.each([6000, null])(
     "rebroadcasts the exact signed bytes only after authorization and the emulator accepts them (TTL: %s)",
     async (ttl) => {
       const fixture = await signedRecoveryFixture({ ttl });

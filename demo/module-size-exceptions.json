@@ -206,7 +206,7 @@
   },
   {
     "file": "midgard-fault-proofs/src/mint-item-non-canonical/central-journal.create-mint-item-non-canonical-central-journal-adapter.ts",
-    "max": 716,
+    "max": 700,
     "reason": "createMintItemNonCanonicalCentralJournalAdapter is the dominant indivisible declaration (656 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -221,7 +221,7 @@
   },
   {
     "file": "midgard-fault-proofs/src/network-id/workflow-adapter.create-network-id-workflow-adapter.ts",
-    "max": 1534,
+    "max": 1524,
     "reason": "createNetworkIdWorkflowAdapter is the dominant indivisible declaration (1439 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -301,7 +301,7 @@
   },
   {
     "file": "midgard-fault-proofs/src/workflow/double-spend-adapter.create-double-spend-constrained-workflow-adapter.ts",
-    "max": 1013,
+    "max": 1005,
     "reason": "createDoubleSpendConstrainedWorkflowAdapter is the dominant indivisible declaration (946 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -321,17 +321,17 @@
   },
   {
     "file": "midgard-fault-proofs/src/workflow/journal.create-fraud-proof-workflow-journal-fold.ts",
-    "max": 654,
+    "max": 653,
     "reason": "createFraudProofWorkflowJournalFold is the dominant indivisible declaration (636 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/workflow/local-kupmios-http-ogmios-source.create-local-kupmios-http-ogmios-raw-source.ts",
-    "max": 1533,
+    "max": 1350,
     "reason": "createLocalKupmiosHttpOgmiosRawSource is the dominant indivisible declaration (1448 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/workflow/orchestrator.run-admitted-fraud-proof-workflow.ts",
-    "max": 974,
+    "max": 958,
     "reason": "runAdmittedFraudProofWorkflow is the dominant indivisible declaration (899 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -351,7 +351,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/custom-transaction-runner-recovery.test.ts",
-    "max": 748,
+    "max": 756,
     "reason": "recovery is the dominant indivisible declaration (234 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -446,12 +446,12 @@
   },
   {
     "file": "midgard-fault-proofs/tests/native-script-family-evidence.test.ts",
-    "max": 1147,
+    "max": 1144,
     "reason": "Retained test registration “Q33/Q34 retained-DA evidence” (956 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/network-id-forced-workflow.test.ts",
-    "max": 1102,
+    "max": 1099,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -776,7 +776,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/workflow-runtime.compiled-manifest-bound-production-runtime-v1.ts",
-    "max": 1866,
+    "max": 1736,
     "reason": "Retained test registration “compiled manifest-bound production runtime V1” (1775 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -791,7 +791,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/workflow.q51-w-o4-resumable-workflow.ts",
-    "max": 1419,
+    "max": 1326,
     "reason": "Retained test registration “Q51/W-O4 resumable workflow” (1339 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {

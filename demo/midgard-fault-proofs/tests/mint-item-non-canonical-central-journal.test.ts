@@ -1,14 +1,19 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createMintItemNonCanonicalCentralJournalAdapter } from "../src/mint-item-non-canonical/central-journal.js";
+import * as funding from "../src/workflow/funding-reservation-permit.js";
 import {
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowJournalStore,
 } from "../src/workflow/journal.js";
+import { readAdmittedLocalKupmiosSignedTransactionRecovery } from "../src/workflow/local-kupmios-http-ogmios-source.js";
+import { inspectSignedWorkflowTransaction } from "../src/workflow/signed-transaction-reconciliation.js";
+import { signedRecoveryFixture } from "./workflow-kupmios-source.signed-recovery-fixture.js";
 
 const familyDirectoryStore = (
   directory: string,
@@ -58,6 +63,88 @@ const bridge = (
   });
 
 describe("mintItemNonCanonical durable journal", () => {
+  it("keeps a depth-zero mempool intent reserved and reopens its same receipt after a canonical rollback", async () => {
+    const fixture = await signedRecoveryFixture({
+      ttl: null,
+      mempoolPresent: true,
+    });
+    const memory = memoryStore();
+    const txHash = fixture.input.transactionHash;
+    const inspected = inspectSignedWorkflowTransaction(fixture.input);
+    const read = vi
+      .spyOn(funding, "readWorkflowFundingRecovery")
+      .mockResolvedValue({
+        transition: {
+          actionKind: "proof.init",
+          transactionHash: txHash,
+          signedTransactionCborHex: fixture.input.signedTransactionCborHex,
+          transactionBodySha256: createHash("sha256")
+            .update(Buffer.from(inspected.body.to_cbor_hex(), "hex"))
+            .digest("hex"),
+          consumedOutRefs: inspected.inputOutRefs,
+          producedInputs: [],
+        },
+        submissionHandoff: null,
+        abandonmentHandoff: null,
+        completionHandoff: null,
+      });
+    let confirmed = false;
+    const restart = () =>
+      createMintItemNonCanonicalCentralJournalAdapter({
+        store: memory.store,
+        deploymentFingerprint: "1".repeat(64),
+        headerHash: "2".repeat(56),
+        decisionDigest: "3".repeat(64),
+        transactionConfirmed: async () => confirmed,
+        observeSignedTransaction: (signed) =>
+          readAdmittedLocalKupmiosSignedTransactionRecovery({
+            ...signed,
+            source: fixture.source,
+          }),
+      });
+    try {
+      const first = restart();
+      await first.begin("submitStep01", "evidence", "none", "step01");
+      await first.boundary(
+        "submitStep01",
+        "evidence",
+        "none",
+        "step01",
+      )({ txHash, signed: fixture.signed, referenceScripts: [] });
+      await expect(restart().reconcile("none")).rejects.toThrow(
+        "remains unresolved: pending",
+      );
+      expect(
+        memory.entries.some(
+          ({ event }) =>
+            event.kind === "reconciled" && event.outcome === "not_found",
+        ),
+      ).toBe(false);
+      await expect(
+        restart().begin("submitStep01", "evidence", "none", "step01"),
+      ).rejects.toThrow("must reconcile before another build");
+      confirmed = true;
+      await restart().reconcile("step01");
+      confirmed = false;
+      await expect(restart().reconcile("none")).rejects.toThrow(
+        "remains unresolved: pending",
+      );
+      expect(
+        memory.entries.filter(
+          ({ event }) => event.kind === "submission_intent",
+        ),
+      ).toHaveLength(1);
+      expect(memory.entries.at(-1)?.event).toEqual({
+        kind: "reobserved",
+        actionId: "mintItemNonCanonical:submitStep01",
+        txHash,
+      });
+      expect(fixture.submissions).toEqual([]);
+    } finally {
+      read.mockRestore();
+    }
+  });
+
   it("writes exact intent before submission and refuses tx substitution", async () => {
     const memory = memoryStore();
     const journal = bridge(memory.store);

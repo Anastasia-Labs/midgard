@@ -400,7 +400,7 @@ describe("production da-hash-preimage workflow V1", () => {
           (entry) => entry.event.kind === "confirmed",
         ).length;
         return confirmed === actionIds.length
-          ? { kind: "completed", terminal }
+          ? { kind: "completed", terminal: structuredClone(terminal) }
           : {
               kind: "action_required",
               action: {
@@ -436,34 +436,37 @@ describe("production da-hash-preimage workflow V1", () => {
     };
     const finalityPolicy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
     const journal = new MemoryFraudProofWorkflowJournalStore();
-    const result = await runDaHashPreimageWorkflowFromRetainedDa({
-      deploymentFingerprint,
-      observation: routed.observation,
-      sources: [routed.source],
-      registry: createFraudProofWorkflowRegistry({
-        adapters: [adapter],
-        launchScope: ["daHashPreimage"],
-      }),
-      journal,
-      terminalVerifier: {
-        verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-        verify: async ({ candidate }) => candidate,
-      },
-      releaseFinalityAuthority: {
-        authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
-        verifyForWorkflow: async () => ({
-          schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-          deploymentIdentityDigest: deploymentFingerprint,
-          blueprintHash: hash("e1"),
-          policyDigest:
-            computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
-          policy: finalityPolicy,
+    const run = () =>
+      runDaHashPreimageWorkflowFromRetainedDa({
+        deploymentFingerprint,
+        observation: routed.observation,
+        sources: [routed.source],
+        registry: createFraudProofWorkflowRegistry({
+          adapters: [adapter],
+          launchScope: ["daHashPreimage"],
         }),
-      },
-    });
-    expect(result.kind).toBe("completed");
+        journal,
+        terminalVerifier: {
+          verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+          verify: async ({ candidate }) => candidate,
+        },
+        releaseFinalityAuthority: {
+          authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+          verifyForWorkflow: async () => ({
+            schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+            deploymentIdentityDigest: deploymentFingerprint,
+            blueprintHash: hash("e1"),
+            policyDigest:
+              computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
+            policy: finalityPolicy,
+          }),
+        },
+      });
+    const result = await run();
+    expect(result.kind).toBe("terminal_included");
     expect(prepare).not.toHaveBeenCalled();
-    if (result.kind !== "completed") throw new Error("Q44 did not complete");
+    if (result.kind !== "terminal_included")
+      throw new Error("Q44 did not include");
     const prepared = result.entries.find(
       (entry) => entry.event.kind === "prepared",
     );
@@ -480,5 +483,10 @@ describe("production da-hash-preimage workflow V1", () => {
     expect(
       result.entries.filter((entry) => entry.event.kind === "confirmed"),
     ).toHaveLength(4);
+    terminal.observedAt.confirmationDepth = 2161;
+    expect((await run()).kind).toBe("terminal_included");
+    terminal.observedAt.confirmationDepth = 2162;
+    expect((await run()).kind).toBe("completed");
+    expect(prepare).not.toHaveBeenCalled();
   });
 });

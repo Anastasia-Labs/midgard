@@ -10,7 +10,10 @@ export const FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY =
   "midgard-fraud-proof-raw-l1-snapshot-authority-v1" as const;
 
 /** Action inclusion and durable release evidence use the same authentication. */
-export type FraudProofL1ObservationDepth = "inclusion" | "release_finality";
+export type FraudProofL1ObservationDepth =
+  | "inclusion"
+  | "release_finality"
+  | "recovery_finality";
 
 export type FraudProofRawL1ComputationStepRole =
   | "computation_thread_step_01"

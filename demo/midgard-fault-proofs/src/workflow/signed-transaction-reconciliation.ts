@@ -1,7 +1,9 @@
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { CML } from "@lucid-evolution/lucid";
 
 import type { FraudProofWorkflowReconcileResult } from "./orchestrator.js";
 import type { FraudProofRawL1Point } from "./raw-l1-snapshot.js";
+import { parseSignedWorkflowTransactionRetirement } from "./signed-transaction-retirement.js";
 
 export type SignedWorkflowTransaction = Readonly<{
   transactionHash: string;
@@ -18,6 +20,7 @@ export type SignedTransactionRecoveryObservation = SignedWorkflowTransaction &
       | "invalidated"
       | "conflict"
       | "unknown";
+    inclusionPoint?: FraudProofRawL1Point;
     canonicalPoint: FraudProofRawL1Point;
     releaseFinalPoint: FraudProofRawL1Point;
     inputs: readonly Readonly<{ outRef: string; outputCbor: string }>[];
@@ -123,8 +126,51 @@ export const reconcileSignedWorkflowTransaction = async ({
     throw new Error(
       "Signed recovery observation substituted the durable transaction",
     );
-  if (observed.status === "expired" || observed.status === "invalidated")
-    return { kind: "not_found" };
+  if (
+    observed.status === "included" &&
+    observed.inclusionPoint !== undefined &&
+    BigInt(observed.canonicalPoint.blockNo) -
+      BigInt(observed.inclusionPoint.blockNo) >
+      BigInt(DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth)
+  )
+    return {
+      ...pending,
+      retirement: parseSignedWorkflowTransactionRetirement(
+        {
+          transactionHash,
+          canonicalPoint: observed.canonicalPoint,
+          releaseFinalPoint: observed.inclusionPoint,
+          reason: "included",
+        },
+        transactionHash,
+      ),
+    };
+  if (observed.status === "expired" || observed.status === "invalidated") {
+    const blocksAfterBoundary =
+      BigInt(observed.canonicalPoint.blockNo) -
+      BigInt(observed.releaseFinalPoint.blockNo);
+    if (
+      blocksAfterBoundary <=
+      BigInt(DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth)
+    )
+      return {
+        kind: "unknown",
+        reason:
+          "Signed attempt retirement is still inside the canonical recovery horizon",
+      };
+    return {
+      kind: "not_found",
+      retirement: parseSignedWorkflowTransactionRetirement(
+        {
+          transactionHash,
+          canonicalPoint: observed.canonicalPoint,
+          releaseFinalPoint: observed.releaseFinalPoint,
+          reason: observed.status,
+        },
+        transactionHash,
+      ),
+    };
+  }
   if (observed.status === "conflict")
     return { kind: "conflict", reason: observed.reason };
   if (observed.status === "unknown")

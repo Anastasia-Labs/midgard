@@ -11,6 +11,7 @@ import { executeManifestBoundObserverOrderInvalidWorkflow } from "../src/observe
 import { executeManifestBoundObserversForbiddenWorkflow } from "../src/observers-forbidden-on-untagged-network/v1.js";
 import { executeManifestBoundRedeemerCanonicityWorkflow } from "../src/redeemer-canonicity/runtime.js";
 import {
+  assertWorkflowActuationPermitIdentity,
   bindWorkflowActuationJournal,
   createWorkflowReconciliationPermitController,
 } from "../src/workflow/actuation-permit.js";
@@ -663,7 +664,7 @@ it.each(categories)(
       observedAt: {
         slot: "4242",
         blockHash: hash("88"),
-        confirmationDepth: 30,
+        confirmationDepth: 2162,
       },
     };
     const handoff: funding.WorkflowFundingCompletionHandoff = {
@@ -705,14 +706,21 @@ it.each(categories)(
         ({ event }) => event.kind === "completed",
       ),
     ).toHaveLength(1);
-    expect(() =>
-      createWorkflowReconciliationPermitController({
-        decision: fixture.decision,
-        deploymentFingerprint,
+    // A completed journal stays indexed for canonical re-verification; its
+    // historical permit only observes the signed workflow, never submits.
+    const historical = createWorkflowReconciliationPermitController({
+      decision: fixture.decision,
+      deploymentFingerprint,
+      rollbackGeneration: "0",
+      entries: result.kind === "completed" ? result.entries : [],
+    });
+    expect(
+      assertWorkflowActuationPermitIdentity({
+        permit: historical.permit,
+        category,
         rollbackGeneration: "0",
-        entries: result.kind === "completed" ? result.entries : [],
-      }),
-    ).toThrow("existing signed workflow");
+      }).authority,
+    ).toBe("reconciliation");
   },
 );
 

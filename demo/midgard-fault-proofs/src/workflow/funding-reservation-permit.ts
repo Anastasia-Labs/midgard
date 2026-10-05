@@ -44,6 +44,7 @@ export {
 export {
   assertWorkflowFundingReservationReadyToSubmit,
   prepareWorkflowFundingReservationTransaction,
+  readLegacyWorkflowFundingAbandonedTransactions,
   readWorkflowFundingRecovery,
 } from "./funding-reservation-permit.read-workflow-funding-recovery.js";
 export {

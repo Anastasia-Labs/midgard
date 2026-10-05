@@ -99,15 +99,25 @@ const actionFinishedAfter = (
   sequence: number,
   wantedActionId: string,
 ): boolean =>
-  entries.slice(sequence + 1).some(({ event }) => {
-    if (!("actionId" in event) || event.actionId !== wantedActionId) {
-      return false;
-    }
+  (() => {
+    const latest = entries
+      .slice(sequence + 1)
+      .reverse()
+      .find(
+        ({ event }) => "actionId" in event && event.actionId === wantedActionId,
+      )?.event;
     return (
-      event.kind === "confirmed" ||
-      (event.kind === "reconciled" && event.outcome === "not_found")
+      latest?.kind === "confirmed" ||
+      (latest?.kind === "reconciled" &&
+        latest.outcome === "not_found" &&
+        (latest.retirement !== undefined ||
+          entries.some(
+            ({ event }) =>
+              event.kind === "signed_attempt_retired" &&
+              event.txHash === latest.txHash,
+          )))
     );
-  });
+  })();
 
 export const unresolvedIntent = (
   entries: readonly FraudProofWorkflowJournalEntry[],

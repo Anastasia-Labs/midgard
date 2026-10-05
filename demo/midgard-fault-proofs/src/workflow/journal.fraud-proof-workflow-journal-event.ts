@@ -6,6 +6,11 @@ import {
 } from "./journal.fraud-proof-workflow-terminal.js";
 
 export type FraudProofWorkflowJournalEvent =
+  | {
+      readonly kind: "signed_attempt_retired";
+      readonly txHash: string;
+      readonly retirement: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement;
+    }
   | { readonly kind: "started" }
   | {
       readonly kind: "prepared";
@@ -58,6 +63,7 @@ export type FraudProofWorkflowJournalEvent =
       readonly kind: "reconciled";
       readonly actionId: string;
       readonly outcome: "confirmed" | "pending" | "not_found";
+      readonly retirement?: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement;
       readonly txHash?: string;
     }
   | {

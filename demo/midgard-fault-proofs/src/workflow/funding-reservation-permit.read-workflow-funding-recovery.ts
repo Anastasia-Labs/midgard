@@ -192,6 +192,7 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
   const state = stateForJournal(journal);
   if (state === undefined) return;
   assertFundingSubmissionAuthority(state);
+  await state.port.assertSubmissionAuthority?.();
   if ((await state.port.readAbandonmentHandoff()) !== null)
     throw new Error(
       "funding abandonment outcome awaits journal acknowledgment",
@@ -199,6 +200,8 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
   const expectedRevision = state.snapshot.revision;
   const expectedPending = state.pendingTransactionHash;
   await refresh(state);
+  assertFundingSubmissionAuthority(state);
+  await state.port.assertSubmissionAuthority?.();
   assertCurrentFundingCollateralLimit(state);
   if (state.preparedTransaction !== undefined) {
     const { signed, cborHex } = state.preparedTransaction;
@@ -321,5 +324,26 @@ export const readWorkflowFundingRecovery = async (
     submissionHandoff,
     completionHandoff,
     abandonmentHandoff,
+  });
+};
+
+export const readLegacyWorkflowFundingAbandonedTransactions = async (
+  journal: object,
+) => {
+  const state = stateForJournal(journal);
+  const saved = (await state?.port.readLegacyAbandonedTransactions?.()) ?? [];
+  return saved.map((value) => {
+    const record = exact(
+      value,
+      ["transition", "handoff"],
+      "legacy funding abandonment",
+    );
+    const transition = parseWorkflowFundingPreparedTransition(
+      record.transition,
+    );
+    const handoff = parseWorkflowFundingAbandonmentHandoff(record.handoff);
+    if (transition.transactionHash !== handoff.submissionIntent.txHash)
+      throw new Error("Legacy funding abandonment changed its exact attempt");
+    return { transition, handoff };
   });
 };

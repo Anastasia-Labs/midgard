@@ -17,7 +17,8 @@ export type TimeoutCorrectionTxStatus =
   | "prepared"
   | "submitted"
   | "confirmed"
-  | "superseded";
+  | "superseded"
+  | "retired";
 
 export type TimeoutCorrectionJournalStep = {
   readonly kind: TimeoutCorrectionTxKind;
@@ -138,7 +139,8 @@ export const parseTimeoutCorrectionJournal = (
       (step.status !== "prepared" &&
         step.status !== "submitted" &&
         step.status !== "confirmed" &&
-        step.status !== "superseded") ||
+        step.status !== "superseded" &&
+        step.status !== "retired") ||
       !Array.isArray(step.inputOutRefs) ||
       step.inputOutRefs.length < 3 ||
       step.inputOutRefs.some(
@@ -296,7 +298,7 @@ export const outRefsOf = (
 export const replaceJournalStepStatus = (
   journal: TimeoutCorrectionJournal,
   stepIndex: number,
-  status: "confirmed" | "superseded",
+  status: "confirmed" | "superseded" | "retired",
 ): TimeoutCorrectionJournal => {
   return {
     ...journal,

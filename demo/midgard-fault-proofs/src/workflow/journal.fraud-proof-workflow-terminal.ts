@@ -238,3 +238,5 @@ export const computeFraudProofWorkflowId = (
     )
     .digest("hex");
 };
+
+export { isFinalWorkflowCompletion } from "./completion-finality.js";

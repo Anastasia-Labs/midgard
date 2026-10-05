@@ -1,3 +1,4 @@
+import "./workflow.provisional-completion.js";
 import "./workflow.q55-w-o6-deterministic-violation-classification.js";
 
 import { mkdtemp, rm } from "node:fs/promises";
@@ -262,7 +263,7 @@ describe("Q51/W-O4 resumable workflow", () => {
       expect(pending.kind).toBe("pending");
       const included = await resume();
       expect(included.kind).toBe("terminal_included");
-      depth = 30;
+      depth = RELEASE_FINALITY_POLICY.automaticRecoveryMaxDepth + 2;
       const completed = await resume();
       expect(completed.kind).toBe("completed");
       expect(observeRetainedHeader).toHaveBeenCalledTimes(2);
@@ -618,103 +619,9 @@ describe("Q51/W-O4 resumable workflow", () => {
     expect(result).toMatchObject({
       kind: "stalled",
       reason: expect.stringContaining(
-        `confirmation depth is below the release threshold: required=${RELEASE_FINALITY_POLICY.confirmationDepth} actual=${RELEASE_FINALITY_POLICY.confirmationDepth - 1}`,
+        `confirmation depth is below the release threshold: required=${RELEASE_FINALITY_POLICY.automaticRecoveryMaxDepth + 2} actual=${RELEASE_FINALITY_POLICY.confirmationDepth - 1}`,
       ),
     });
-  });
-
-  it("advances on inclusion and anchors the same execution after restart", async () => {
-    const evidence = await canonicalEvidence();
-    const journal = new MemoryFraudProofWorkflowJournalStore();
-    const adapter = makeAdapter();
-    const observe = adapter.observe;
-    let depth = 1;
-    adapter.observe = async (context) => {
-      const result = await observe(context);
-      return result.kind === "completed"
-        ? {
-            ...result,
-            terminal: {
-              ...result.terminal,
-              observedAt: {
-                ...result.terminal.observedAt,
-                confirmationDepth: depth,
-              },
-            },
-          }
-        : result;
-    };
-    const verify = vi.fn(
-      async ({
-        candidate,
-      }: Parameters<FraudProofWorkflowTerminalVerifier["verify"]>[0]) =>
-        candidate,
-    );
-    const verifyIncluded = vi.fn(
-      async ({
-        candidate,
-      }: Parameters<FraudProofWorkflowTerminalVerifier["verify"]>[0]) =>
-        candidate,
-    );
-    const verifier = { ...terminalVerifier, verify, verifyIncluded };
-    const included = await run({ evidence, adapter, journal, verifier });
-    expect(included.kind).toBe("terminal_included");
-    expect(verify).not.toHaveBeenCalled();
-    expect(verifyIncluded).toHaveBeenCalledOnce();
-    expect(adapter.submit).toHaveBeenCalledTimes(2);
-    depth = 30;
-    const anchored = await run({ evidence, adapter, journal, verifier });
-    expect(anchored.kind).toBe("completed");
-    expect(adapter.submit).toHaveBeenCalledTimes(2);
-    expect(verify).toHaveBeenCalledOnce();
-  });
-
-  it("reobserves an included terminal after rollback and reconciles prior actions", async () => {
-    const evidence = await canonicalEvidence();
-    const journal = new MemoryFraudProofWorkflowJournalStore();
-    const onChain = new Set<string>();
-    const adapter = makeAdapter({
-      reconcile: async ({ txHash }) => {
-        onChain.add(txHash!);
-        return { kind: "confirmed", txHash: txHash! };
-      },
-    });
-    adapter.observe = async () =>
-      onChain.has(REMOVAL_TX_HASH)
-        ? {
-            kind: "completed",
-            terminal: {
-              ...terminal(evidence.headerHash),
-              observedAt: {
-                ...terminal(evidence.headerHash).observedAt,
-                confirmationDepth: 1,
-              },
-            },
-          }
-        : {
-            kind: "action_required",
-            action: onChain.has(PROOF_TX_HASH)
-              ? { actionId: "remove", input: { step: 1 } }
-              : { actionId: "prove", input: { step: 0 } },
-          };
-    const verifier = {
-      ...terminalVerifier,
-      verifyIncluded: terminalVerifier.verify,
-    };
-    expect((await run({ evidence, adapter, journal, verifier })).kind).toBe(
-      "terminal_included",
-    );
-    onChain.clear();
-    const resumed = await run({ evidence, adapter, journal, verifier });
-    expect(resumed.kind).toBe("terminal_included");
-    if (resumed.kind !== "terminal_included") return;
-    expect(
-      resumed.entries
-        .filter(({ event }) => event.kind === "reobserved")
-        .map(({ event }) => "actionId" in event && event.actionId),
-    ).toEqual(["prove", "remove"]);
-    expect(adapter.preflight).toHaveBeenCalledTimes(2);
-    expect(adapter.submit).toHaveBeenCalledTimes(2);
   });
 
   it("rejects a release-finality authority bound to another deployment", async () => {

@@ -214,7 +214,7 @@ it("records terminal inclusion after removal and completes at release depth acro
     f.entries.filter(({ event }) => event.kind === "terminal_included"),
   ).toHaveLength(1);
   expect(f.release).toHaveBeenCalledOnce();
-  Object.assign(f.terminal.observedAt, { confirmationDepth: 30 });
+  Object.assign(f.terminal.observedAt, { confirmationDepth: 2162 });
   await expect(f.execute()).resolves.toMatchObject({ kind: "completed" });
   expect(f.entries.at(-1)?.event.kind).toBe("completed");
   expect(f.release).toHaveBeenCalledTimes(2);
@@ -226,7 +226,7 @@ it("records terminal inclusion after removal and completes at release depth acro
 });
 
 it("authenticates the saved removal transaction before recording its recovered terminal", async () => {
-  const f = fixture(30, false);
+  const f = fixture(2162, false);
   await expect(f.execute()).resolves.toMatchObject({ kind: "completed" });
   expect(f.transactionConfirmed).toHaveBeenCalledWith({
     headerHash: f.terminal.headerHash,
@@ -242,6 +242,7 @@ it("authenticates the saved removal transaction before recording its recovered t
 
 it("reconciliation-only execution remains pending without preparing or submitting when removal is unfinished", async () => {
   const f = fixture(1, false);
+  f.transactionConfirmed.mockResolvedValue(false);
   vi.spyOn(actuation, "workflowJournalIsReconciliationOnly").mockReturnValue(
     true,
   );
@@ -261,7 +262,7 @@ it("reconciliation-only execution remains pending without preparing or submittin
 it.each(["economics", "proofToken", "headerHash", "anchor"])(
   "rejects a terminal whose %s changes on independent reobservation",
   async (field) => {
-    const f = fixture(30);
+    const f = fixture(2162);
     const changed = structuredClone(f.terminal);
     if (field === "economics")
       Object.assign(changed.economics, { slashedLovelace: "1" });
@@ -280,7 +281,7 @@ it.each(["economics", "proofToken", "headerHash", "anchor"])(
   },
 );
 
-it.each([1, 30])(
+it.each([1, 30, 2162])(
   "restores a depth-%s terminal from its durable funding handoff after a journal-write crash",
   async (depth) => {
     const f = fixture(depth);
@@ -302,19 +303,19 @@ it.each([1, 30])(
     );
     const afterCrash = structuredClone(f.entries);
     await expect(f.execute()).resolves.toMatchObject({
-      kind: depth === 30 ? "completed" : "pending",
+      kind: depth === 2162 ? "completed" : "pending",
     });
     expect(f.release).toHaveBeenCalledOnce();
     expect(f.entries.slice(0, afterCrash.length)).toEqual(afterCrash);
     expect(f.entries.at(-1)?.event.kind).toBe(
-      depth === 30 ? "completed" : "terminal_included",
+      depth === 2162 ? "completed" : "terminal_included",
     );
     expect(f.observeHeader).not.toHaveBeenCalled();
   },
 );
 
 it("rejects a terminal when its exact proof or removal transaction is no longer canonical", async () => {
-  const f = fixture(30);
+  const f = fixture(2162);
   f.transactionConfirmed.mockResolvedValue(false);
   await expect(f.execute()).rejects.toThrow(
     "terminal transaction is not authenticated on L1",

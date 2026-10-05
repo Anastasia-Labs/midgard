@@ -56,7 +56,7 @@ export const reconcileLastTimeoutCorrectionStep = (
   if (transactionStatus === "expired" || transactionStatus === "invalidated") {
     return {
       disposition: "superseded",
-      journal: replaceJournalStepStatus(journal, stepIndex, "superseded"),
+      journal: replaceJournalStepStatus(journal, stepIndex, "retired"),
     };
   }
 
@@ -185,7 +185,7 @@ export const reopenRolledBackTimeoutCorrectionSteps = (
   let reopened = false;
   const steps = journal.steps.map((step) => {
     if (
-      step.status !== "confirmed" ||
+      (step.status !== "confirmed" && step.status !== "superseded") ||
       (!liveHeaders.has(step.removedHeaderHash) &&
         !step.inputOutRefs.some((input) => liveInputs.has(input)))
     )
