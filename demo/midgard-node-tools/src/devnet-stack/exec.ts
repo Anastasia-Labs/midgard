@@ -97,8 +97,11 @@ export const execLogged = (
       const timeout = timedOut
         ? ` timed out after ${options.timeoutMs! / 1000} s`
         : "";
-      transcript.end(`\n[exit code=${code} signal=${signal}${timeout}]\n`);
-      resolve({ code, signal, stdout, stderr, log });
+      // Settle once the exit line is on disk, so a caller reading the
+      // transcript sees the whole of it.
+      transcript.end(`\n[exit code=${code} signal=${signal}${timeout}]\n`, () =>
+        resolve({ code, signal, stdout, stderr, log }),
+      );
     });
   });
 };
