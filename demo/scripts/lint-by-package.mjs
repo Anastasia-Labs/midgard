@@ -5,7 +5,8 @@
 // alive at once and exhausts an 8 GB heap, so each package (and the loose
 // files beside them) gets its own process. Coverage is the same as
 // `eslint .`: every non-ignored entry of demo/ is linted under the same
-// config, and paths the config ignores are skipped without warnings.
+// config, and paths the config ignores are skipped without warnings, including
+// entries whose files are all ignored.
 //
 // Usage: node scripts/lint-by-package.mjs [extra eslint args...]
 
@@ -41,6 +42,8 @@ for (const group of groups) {
       "--max-old-space-size=8192",
       eslint,
       "--no-warn-ignored",
+      // A directory with nothing to lint (patches, schemes) is not an error.
+      "--no-error-on-unmatched-pattern",
       "--max-warnings=0",
       ...process.argv.slice(2),
       ...group,
