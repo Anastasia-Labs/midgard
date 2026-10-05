@@ -243,6 +243,7 @@ export const openInternal = async (
     acknowledgeAbandonment,
     readAbandonmentRow,
     unacknowledgedAbandonment,
+    acknowledgeOutpacedAbandonments,
     legacyAbandonedTransactions,
   } = createProverFundingAbandonmentRecords(database);
   type HandoffRow = Readonly<{
@@ -762,6 +763,7 @@ export const openInternal = async (
   ): T => {
     database.exec("BEGIN IMMEDIATE");
     try {
+      acknowledgeOutpacedAbandonments(recordedSubmissions, readOne);
       if (reservationId !== null) assertSubmissionAuthority(reservationId);
       const value = operation();
       if (reservationId !== null) assertSubmissionAuthority(reservationId);

@@ -1601,8 +1601,8 @@
   },
   {
     "file": "midgard-watcher/src/funding/sqlite-prover-funding-reservation-store.open-internal.ts",
-    "max": 1459,
-    "reason": "openInternal is the dominant indivisible declaration (1402 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 1461,
+    "reason": "openInternal is the dominant indivisible declaration (1404 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-watcher/src/index.ts",

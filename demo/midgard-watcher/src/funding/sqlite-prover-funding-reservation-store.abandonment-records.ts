@@ -79,7 +79,8 @@ export const createProverFundingAbandonmentRecords = (
   };
   /** A superseded attempt's row awaits its journal acknowledgement before
    * anything else happens. A row without retirement under a newer pending
-   * transition predates that rule and stays hidden. */
+   * transition predates that rule and stays hidden; see
+   * `acknowledgeOutpacedAbandonments` for when that transition lands. */
   const unacknowledgedAbandonment = (record: {
     readonly reservationId: string;
     readonly pendingTransition: unknown;
@@ -92,6 +93,50 @@ export const createProverFundingAbandonmentRecords = (
       record.pendingTransition !== null
       ? null
       : saved;
+  };
+  /**
+   * A row without retirement that predates the acknowledgement rule can be
+   * outpaced: another attempt of its workflow recorded a submission handoff
+   * at or after its journal sequence. That journal has moved past it and can
+   * never take its acknowledgement, so the row counts as acknowledged at its
+   * reservation's current revision. It stays a superseded attempt for
+   * exclusion and retirement. The current rules record no submission while a
+   * row is unacknowledged, so only such legacy rows match.
+   */
+  const acknowledgeOutpacedAbandonments = (
+    submissions: (reservationId: string) => readonly Readonly<{
+      transition: Readonly<{ transactionHash: string }>;
+      handoff: Readonly<{
+        workflowId: string;
+        expectedJournalSequence: number;
+      }>;
+    }>[],
+    readRecord: (reservationId: string) => { readonly revision: string } | null,
+  ) => {
+    for (const saved of (selectAllAbandonments.all() as AbandonmentRow[]).map(
+      readAbandonmentRow,
+    )) {
+      if (
+        saved.acknowledgedRevision !== null ||
+        saved.handoff.reconciliation.retirement !== undefined ||
+        !submissions(saved.reservationId).some(
+          ({ transition, handoff }) =>
+            transition.transactionHash !== saved.transition.transactionHash &&
+            handoff.workflowId === saved.handoff.workflowId &&
+            handoff.expectedJournalSequence >=
+              saved.handoff.expectedJournalSequence,
+        )
+      )
+        continue;
+      const record = readRecord(saved.reservationId);
+      if (record === null)
+        throw new Error("prover funding abandonment has no reservation");
+      acknowledgeAbandonment.run(
+        record.revision,
+        saved.reservationId,
+        saved.transitionDigest,
+      );
+    }
   };
   const legacyAbandonedTransactions = (reservationId: string) =>
     (selectAllAbandonments.all() as AbandonmentRow[])
@@ -152,6 +197,7 @@ export const createProverFundingAbandonmentRecords = (
     acknowledgeAbandonment,
     readAbandonmentRow,
     unacknowledgedAbandonment,
+    acknowledgeOutpacedAbandonments,
     legacyAbandonedTransactions,
   };
 };
