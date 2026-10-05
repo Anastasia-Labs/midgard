@@ -330,13 +330,17 @@ const exactSuccessor = <Category extends FraudProofCatalogueCategoryName>({
         outputBelongsToTransaction(stage.stateQueueBlockOutRef, txHash)
       );
     }
+    // Inclusion was checked against this action's original inputs and proof.
+    // A different caller may finish the correction after our descendant peel;
+    // its authenticated terminal is not this peel's transaction receipt.
     return (
       stage.kind === "removed" &&
-      stage.terminal.correction.removalTxHash === txHash &&
-      stage.terminal.correction.removedStateQueueOutRef ===
-        parsed.inputOutRef &&
       stage.terminal.correction.referencedProofTokenOutRef ===
-        parsed.proofOutRef
+        parsed.proofOutRef &&
+      (stage.terminal.correction.removalTxHash === txHash
+        ? stage.terminal.correction.removedStateQueueOutRef ===
+          parsed.inputOutRef
+        : parsed.inputOutRef !== parsed.targetOutRef)
     );
   }
   const successors = spec.successors[parsed.ordinal!]!;
