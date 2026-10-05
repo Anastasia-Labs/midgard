@@ -9,10 +9,12 @@ import { assertCompatibleWithStartupRetry } from "../src/database/init.js";
 import { MigrationError } from "../src/database/migrations/runner.js";
 import { retryDatabaseConnectionAtStartup } from "../src/services/database.js";
 
-const PG_HOST = process.env.PGHOST ?? "127.0.0.1";
-const PG_PORT = Number(process.env.PGPORT ?? "5433");
-const PG_USER = process.env.PGUSER ?? "postgres";
-const PG_PASSWORD = process.env.PGPASSWORD ?? "postgres";
+// The same variables global-setup and the node read: CI serves Postgres on
+// 5432 through POSTGRES_PORT, a local checkout on 5433.
+const PG_HOST = process.env.POSTGRES_HOST ?? "127.0.0.1";
+const PG_PORT = Number(process.env.POSTGRES_PORT ?? "5433");
+const PG_USER = process.env.POSTGRES_USER ?? "postgres";
+const PG_PASSWORD = process.env.POSTGRES_PASSWORD ?? "postgres";
 
 const FAST = {
   baseDelay: Duration.millis(5),

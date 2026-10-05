@@ -91,6 +91,11 @@ const transportFor = (
       : answer(request),
 });
 
+const clearHistoryAuthority = Effect.flatMap(
+  SqlClient.SqlClient,
+  (sql) => sql`DELETE FROM event_history_authority`,
+);
+
 describe("foreign header payload retrieval", () => {
   it("rejects self-consistent transport bytes with substituted roots, tries another peer, and retains the present-event hold", async () => {
     const substituted = structuredClone(fixture.payload);
@@ -230,7 +235,9 @@ describe("foreign header payload retrieval", () => {
         provideDatabaseLayers(
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
-            yield* sql`DELETE FROM event_history_authority WHERE owner_token = ${"4ab543a0-3346-4990-b302-d1e42c163f14"}::uuid`;
+            // The authority row is a singleton: a row another file left on
+            // this shard (any deployment, any owner) would refuse the claim.
+            yield* clearHistoryAuthority;
             yield* sql`DELETE FROM foreign_tip_reconciliations WHERE foreign_header_hash = ${Buffer.from(fetched.headerHash, "hex")}`;
             yield* sql`DELETE FROM da_payloads WHERE header_hash = ${Buffer.from(fetched.headerHash, "hex")}`;
             yield* ForeignTipReconciliationsDB.recordMismatch({
@@ -375,7 +382,7 @@ describe("foreign header payload retrieval", () => {
                 ),
               ).rejects.toThrow("root, or count"),
             );
-          }),
+          }).pipe(Effect.ensuring(Effect.orDie(clearHistoryAuthority))),
         ),
       ).then(() => undefined);
       client.close();
