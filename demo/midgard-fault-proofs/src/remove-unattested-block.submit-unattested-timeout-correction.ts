@@ -39,7 +39,13 @@ import {
   type SubmitUnattestedTimeoutCorrectionParams,
 } from "./remove-unattested-block.recover-timeout-correction-attempt.js";
 import {
+  adoptLandedTimeoutCorrectionAttempts,
+  assertTimeoutCorrectionExclusion,
+  timeoutCorrectionExclusionInputs,
+} from "./remove-unattested-block.supersede-timeout-correction-attempts.js";
+import {
   DEFAULT_CONFIRMATION_POLL_MS,
+  outRefLabel,
   requireDeploymentReferenceScript,
   requireDeploymentScriptHash,
   requireSingletonUtxo,
@@ -57,6 +63,7 @@ export const submitUnattestedTimeoutCorrection = async ({
   nowMs = Date.now,
   stateQueueMutationLeaseCoordinator,
   recovery,
+  attemptReadSchedule,
 }: SubmitUnattestedTimeoutCorrectionParams): Promise<SubmitUnattestedTimeoutCorrectionResult> => {
   signer.selectWallet(lucid);
   const deploymentInfo = parseContractDeploymentInfo(rawDeploymentInfo);
@@ -244,7 +251,15 @@ export const submitUnattestedTimeoutCorrection = async ({
   try {
     while (true) {
       queue = await loadQueue();
-      const reopened = reopenRolledBackTimeoutCorrectionSteps(journal, queue);
+      const reopened = await adoptLandedTimeoutCorrectionAttempts({
+        journal: reopenRolledBackTimeoutCorrectionSteps(journal, queue),
+        queue,
+        recovery,
+        nowMs: nowMs(),
+        ...(attemptReadSchedule === undefined
+          ? {}
+          : { schedule: attemptReadSchedule }),
+      });
       if (reopened !== journal) {
         journal = reopened;
         await journalStore.save(journal);
@@ -379,7 +394,8 @@ export const submitUnattestedTimeoutCorrection = async ({
           "Timeout target attestation or immutable deadline changed before signing.",
         );
       lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
-      const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+      const walletUtxos = await lucid.wallet().getUtxos();
+      const feeInput = selectFeeInput(walletUtxos);
       const correctionLockInput = await loadCorrectionLock();
       if (
         hasCompetingCorrection(
@@ -390,9 +406,27 @@ export const submitUnattestedTimeoutCorrection = async ({
         leaseReleased = await releaseTimeoutCorrectionLeaseBeforeYield(lease);
         return pendingTimeoutCorrection(journal);
       }
+      // Mutually exclusive with every abandoned attempt: a shared node or
+      // lock input, else one of its wallet inputs, which coin selection tops
+      // up from the rest of the wallet.
+      const exclusionInputs = timeoutCorrectionExclusionInputs({
+        journal,
+        protocolInputOutRefs: [
+          ...plan.inputOutRefs,
+          outRefLabel(correctionLockInput.utxo),
+        ],
+        walletUtxos,
+      });
       const common = {
         timedOutBlockUTxO: plan.target,
-        additionalInputs: [feeInput],
+        additionalInputs: [
+          ...exclusionInputs,
+          ...(exclusionInputs.some(
+            (utxo) => outRefLabel(utxo) === outRefLabel(feeInput),
+          )
+            ? []
+            : [feeInput]),
+        ],
         hubOracleRefInput,
         correctionLockInput,
         correctionLockSpendingScript,
@@ -440,6 +474,11 @@ export const submitUnattestedTimeoutCorrection = async ({
         inspected.expiresAtSlot === undefined
       )
         throw new Error("Timeout correction requires bounded signed validity.");
+      assertTimeoutCorrectionExclusion({
+        journal,
+        inputOutRefs: transactionInputOutRefs(inspected.body.inputs()),
+        walletUtxos,
+      });
       const step: TimeoutCorrectionJournalStep = {
         kind: plan.kind,
         removedHeaderHash: headerHashOf(plan.removed),
@@ -455,7 +494,9 @@ export const submitUnattestedTimeoutCorrection = async ({
       );
       if (
         sameTxIndex >= 0 &&
-        !["superseded", "retired"].includes(journal.steps[sameTxIndex]!.status)
+        !["superseded", "abandoned", "retired"].includes(
+          journal.steps[sameTxIndex]!.status,
+        )
       ) {
         throw new Error(
           `Timeout-correction transaction hash ${txHash} conflicts with non-superseded journal state.`,

@@ -241,8 +241,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/remove-unattested-block.submit-unattested-timeout-correction.ts",
-    "max": 532,
-    "reason": "submitUnattestedTimeoutCorrection is the dominant indivisible declaration (484 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 573,
+    "reason": "submitUnattestedTimeoutCorrection is the dominant indivisible declaration (518 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/resolved-output-non-canonical/central-journal.create-resolved-output-non-canonical-central-journal-adapter.ts",
@@ -503,6 +503,11 @@
     "file": "midgard-fault-proofs/tests/receive-purpose-language-lifecycle.test.ts",
     "max": 713,
     "reason": "Retained test registration “receivePurposeLanguage real lifecycle” (614 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/remove-unattested-block-submit.test.ts",
+    "max": 666,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
     "file": "midgard-fault-proofs/tests/resolved-output-non-canonical-lifecycle.test.ts",
