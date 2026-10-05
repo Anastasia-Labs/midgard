@@ -12,6 +12,7 @@ import {
   makeAdapter,
   PROOF_TX_HASH,
   REMOVAL_TX_HASH,
+  retiredNotFound,
   run,
   terminal,
 } from "./workflow.make-adapter.js";
@@ -200,7 +201,7 @@ describe("canonical reobservation with pending descendants", () => {
       reconcile: async ({ txHash }) =>
         txHash === PROOF_TX_HASH || txHash === REMOVAL_TX_HASH
           ? { kind: "confirmed", txHash }
-          : { kind: "not_found" },
+          : retiredNotFound(txHash!),
     });
     const preflight = adapter.preflight;
     adapter.preflight = async (context) => {
@@ -332,7 +333,7 @@ describe("canonical reobservation with pending descendants", () => {
       reconcile: async ({ txHash }) => ({ kind: "pending", txHash }),
     });
     expect((await run({ evidence, adapter, journal })).kind).toBe("pending");
-    adapter.reconcile = async () => ({ kind: "not_found" });
+    adapter.reconcile = async ({ txHash }) => retiredNotFound(txHash!);
     const readonly = vi
       .spyOn(actuationAuthority, "workflowJournalIsReconciliationOnly")
       .mockReturnValue(true);
@@ -397,7 +398,7 @@ describe("canonical reobservation with pending descendants", () => {
         reconciled.push(txHash!);
         // Signed recovery supplies authenticated stable expiry, not simple absence.
         if (txHash === PROOF_TX_HASH && expiredParent)
-          return { kind: "not_found" };
+          return retiredNotFound(txHash!);
         if (txHash === PROOF_TX_HASH || txHash === replacementParent) {
           parentOnChain = txHash;
           return { kind: "confirmed", txHash };

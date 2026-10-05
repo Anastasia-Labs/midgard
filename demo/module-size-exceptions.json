@@ -331,8 +331,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/workflow/orchestrator.run-admitted-fraud-proof-workflow.ts",
-    "max": 973,
-    "reason": "runAdmittedFraudProofWorkflow is the dominant indivisible declaration (883 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 983,
+    "reason": "runAdmittedFraudProofWorkflow is the dominant indivisible declaration (893 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/tests/bin.test.ts",
@@ -791,8 +791,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/workflow.q51-w-o4-resumable-workflow.ts",
-    "max": 1326,
-    "reason": "Retained test registration “Q51/W-O4 resumable workflow” (1339 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 1327,
+    "reason": "Retained test registration “Q51/W-O4 resumable workflow” (1340 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/zero-input-wrongful-rejection-lifecycle.test.ts",

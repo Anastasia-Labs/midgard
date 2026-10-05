@@ -30,6 +30,7 @@ import {
   type WorkflowFundingCompletionHandoff,
   WorkflowFundingReservationUnavailableError,
   type WorkflowFundingSubmissionHandoff,
+  workflowJournalHasFundingReservation,
 } from "./funding-reservation-permit.js";
 import {
   computeFraudProofWorkflowId,
@@ -617,7 +618,16 @@ export const runAdmittedFraudProofWorkflow = async ({
       }
       // Owner ruling (whichever lands wins): an attempt that expired or was
       // invalidated at the tip no longer holds the workflow or its funding.
-      // The replacement must spend one of its funding inputs.
+      // The replacement must spend one of its funding inputs. Without a bound
+      // funding reservation nothing enforces that, so absence without
+      // retirement stays unresolved until retirement past k.
+      if (
+        reconciled.retirement === undefined &&
+        !workflowJournalHasFundingReservation(journal)
+      )
+        return resumeOnObservation(
+          `reconciliation remains unknown for ${action.actionId}: absent without retirement, and no funding reservation keeps a replacement exclusive`,
+        );
       const abandonmentHandoff =
         fundingRecovery.abandonmentHandoff ??
         createWorkflowFundingAbandonmentHandoff({

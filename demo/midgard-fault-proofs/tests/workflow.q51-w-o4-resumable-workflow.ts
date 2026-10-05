@@ -75,6 +75,7 @@ import {
   releaseFinalityAuthority,
   REMOVAL_TX_HASH,
   retainedDaSource,
+  retiredNotFound,
   run,
   terminal,
   terminalVerifier,
@@ -726,7 +727,7 @@ describe("Q51/W-O4 resumable workflow", () => {
       reconcile: async ({ txHash }) => {
         reconcileCalls += 1;
         return reconcileCalls === 1
-          ? { kind: "not_found" }
+          ? retiredNotFound(txHash!)
           : txHash === undefined
             ? { kind: "conflict", reason: "missing intended hash" }
             : { kind: "confirmed", txHash };
@@ -811,7 +812,7 @@ describe("Q51/W-O4 resumable workflow", () => {
       reconcile: async ({ txHash }) => {
         resumedReconciliations += 1;
         return resumedReconciliations === 1
-          ? { kind: "not_found" }
+          ? retiredNotFound(txHash!)
           : txHash === undefined
             ? { kind: "conflict", reason: "missing intended hash" }
             : { kind: "confirmed", txHash };
@@ -891,7 +892,7 @@ describe("Q51/W-O4 resumable workflow", () => {
           observedRecoveries.push(recovered);
           reconciliations += 1;
           if (reconciliations === 1 && firstReconciliation === "not_found") {
-            return { kind: "not_found" as const };
+            return retiredNotFound(txHash!);
           }
           return txHash === undefined
             ? { kind: "conflict" as const, reason: "missing intended hash" }

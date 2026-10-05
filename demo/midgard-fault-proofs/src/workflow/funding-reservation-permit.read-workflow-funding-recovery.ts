@@ -223,6 +223,12 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
   }
 };
 
+/** Whether a funding reservation is bound to the journal. Only then does the
+ * reservation store keep a replacement mutually exclusive with an attempt
+ * superseded without retirement. */
+export const workflowJournalHasFundingReservation = (journal: object) =>
+  stateForJournal(journal) !== undefined;
+
 /** Read durable signed material without requiring its already-spent inputs to remain live. */
 export const readWorkflowFundingRecovery = async (
   journal: object,
