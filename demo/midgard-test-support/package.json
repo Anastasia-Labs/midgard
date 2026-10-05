@@ -40,6 +40,10 @@
     "./temp-files": {
       "midgard-source": "./src/temp-files.ts",
       "types": "./src/temp-files.ts"
+    },
+    "./duration-shards": {
+      "types": "./duration-shards.d.ts",
+      "default": "./duration-shards.js"
     }
   },
   "files": [
@@ -54,7 +58,9 @@
     "blueprint-stamp-setup.js",
     "interactive-emulator.js",
     "database-identity.js",
-    "database-identity.d.ts"
+    "database-identity.d.ts",
+    "duration-shards.js",
+    "duration-shards.d.ts"
   ],
   "scripts": {
     "capture:l1-recordings": "node scripts/capture-l1-recordings.mjs",

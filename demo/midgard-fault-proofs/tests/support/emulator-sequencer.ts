@@ -1,27 +1,20 @@
-import { basename } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { BaseSequencer, type TestSpecification } from "vitest/node";
+import { durationShardSequencer } from "@al-ft/midgard-test-support/duration-shards";
 
-// These isolated scenarios dominate the emulator lane, longest first. Their
-// small entry files otherwise sort behind large, faster suites when Vitest has
-// no timing cache, and a whale that starts late sets the suite's wall time by
-// itself: the value-conservation file alone runs for well over ten minutes.
-const expensiveFiles = [
-  "value-conservation-lifecycle.test.ts",
-  "mint-authorization-installed-lifecycle.test.ts",
-  "cek-context-lifecycle.test.ts",
-  "submit-init-emulator-transition-trace-final-deep-deposit.test.ts",
-  "submit-init-emulator-transition-trace-final-many-assets.test.ts",
-];
-
-const rank = (file: TestSpecification): number => {
-  const index = expensiveFiles.indexOf(basename(file.moduleId));
-  return index === -1 ? expensiveFiles.length : index;
-};
-
-export class EmulatorSequencer extends BaseSequencer {
-  override async sort(files: TestSpecification[]) {
-    const ordered = await super.sort(files);
-    return ordered.sort((left, right) => rank(left) - rank(right));
-  }
-}
+/**
+ * Packs `--shard=i/n` by the CI seconds each file took (see
+ * `@al-ft/midgard-test-support/duration-shards`) and starts the longest files
+ * first. A few emulator files run for many minutes while most take seconds;
+ * Vitest's default hash sharding put 75 minutes of them in one CI shard and 41
+ * in another, and a whale that starts late sets a fork's wall time by itself.
+ *
+ * Regenerate the table after a CI run from the three shard logs:
+ *   node ../midgard-test-support/scripts/ci-file-durations.mjs --package . \
+ *     --out tests/support/ci-file-durations.json <job logs>...
+ */
+export const EmulatorSequencer = durationShardSequencer({
+  tablePath: fileURLToPath(
+    new URL("./ci-file-durations.json", import.meta.url),
+  ),
+});

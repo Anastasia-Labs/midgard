@@ -22,6 +22,11 @@
     "noEmit": true,
     "baseUrl": "."
   },
-  "include": ["src", "vitest.d.ts", "database-identity.d.ts"],
+  "include": [
+    "src",
+    "vitest.d.ts",
+    "database-identity.d.ts",
+    "duration-shards.d.ts"
+  ],
   "exclude": ["node_modules"]
 }
