@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { availableParallelism } from "node:os";
 
 import {
@@ -289,6 +290,34 @@ export const requiredSeedPhrase = (name: string) =>
     Config.mapAttempt((value) => validateSeedPhrase(name, value)),
   );
 
+/**
+ * Wallet derivation runs bip39 PBKDF2 in wasm, tens of milliseconds a call,
+ * and every NodeConfig load derives up to four wallets. Hosts that rebuild
+ * the config layer per effect (commands, tests) paid that on every run. The
+ * derived address is a pure function of (network, phrase), so it is memoized
+ * under a SHA-256 of that pair: the cache holds no seed material, only public
+ * addresses. A failed derivation is not cached and throws again every load.
+ */
+const seedAddresses = new Map<string, string>();
+const SEED_ADDRESS_CACHE_LIMIT = 64;
+
+export const seedPhraseAddress = (
+  seedPhrase: string,
+  network: Network,
+): string => {
+  const key = createHash("sha256")
+    .update(network)
+    .update("\0")
+    .update(seedPhrase)
+    .digest("hex");
+  const cached = seedAddresses.get(key);
+  if (cached !== undefined) return cached;
+  const { address } = walletFromSeed(seedPhrase, { network });
+  if (seedAddresses.size >= SEED_ADDRESS_CACHE_LIMIT) seedAddresses.clear();
+  seedAddresses.set(key, address);
+  return address;
+};
+
 export const validateSeedPhrase = (name: string, value: string): string => {
   const trimmed = value.trim();
   if (trimmed.length === 0) {
@@ -299,7 +328,7 @@ export const validateSeedPhrase = (name: string, value: string): string => {
   try {
     // Address prefix depends on the network, mnemonic validity does not, so a
     // fixed network is enough to reject a malformed phrase at config load.
-    walletFromSeed(trimmed, { network: "Preprod" });
+    seedPhraseAddress(trimmed, "Preprod");
   } catch (cause) {
     throw new Error(
       `${name} is not a valid wallet seed phrase: ${String(cause)}`,

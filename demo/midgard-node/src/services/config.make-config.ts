@@ -9,7 +9,6 @@ import {
   REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
   REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
 } from "@al-ft/midgard-sdk";
-import { walletFromSeed } from "@lucid-evolution/lucid";
 import { Config, Context, Data, Effect, Layer, Option } from "effect";
 
 import { readDaHardeningConfig } from "../da/hardening-config.js";
@@ -26,6 +25,7 @@ import {
   positiveSafeIntegerConfig,
   requiredSeedPhrase,
   resolveValidationWorkerPoolSize,
+  seedPhraseAddress,
   validateDaKeySetEncoding,
   validateSeedPhrase,
 } from "./config.node-config-dep.js";
@@ -178,12 +178,10 @@ const makeConfig = Effect.gen(function* () {
       return value;
     }),
   );
-  const derivedReferenceScriptAddress = walletFromSeed(
+  const derivedReferenceScriptAddress = seedPhraseAddress(
     referenceScriptSeedPhrase,
-    {
-      network,
-    },
-  ).address;
+    network,
+  );
   const referenceScriptAddress =
     configuredReferenceScriptAddress.trim() || derivedReferenceScriptAddress;
   const referenceScriptDeployAddress = yield* Config.string(
@@ -646,7 +644,7 @@ const makeConfig = Effect.gen(function* () {
         // do, rather than surfacing later as an untyped defect inside
         // bootstrap or attestation signing.
         try {
-          walletFromSeed(trimmed, { network });
+          seedPhraseAddress(trimmed, network);
         } catch (cause) {
           throw new Error(
             `DA_COSIGNER_SEED_PHRASE is not a valid wallet seed phrase: ${String(cause)}`,
