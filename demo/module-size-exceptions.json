@@ -441,7 +441,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/network-id-forced-workflow.test.ts",
-    "max": 1101,
+    "max": 1100,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
