@@ -339,7 +339,7 @@ This lets operators distinguish a live process waiting to initialize from a proc
 _The startup reason is a constant._ The decision requires readiness failure <!-- doc-links:historical -->
 "with the startup state". The implementation returns a fixed
 `{ready: false, reasons: ["starting"]}` for every non-health request
-([listen.starting-http-server.ts](../../../demo/midgard-node/src/commands/listen.starting-http-server.ts)).
+(`demo/midgard-node/src/commands/listen.starting-http-server.ts`).
 The listener mechanism itself is sound — one scoped listener, a synchronous
 handler swap, no rebind — but a constant reason converts an invisible hold into
 an uninformative one. The operational readiness handler separately never consults
