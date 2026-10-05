@@ -26,6 +26,7 @@ import {
 import type { ServiceSpec, SupervisorPaths } from "./supervisor.js";
 
 type Entry = {
+  readonly serviceName: string;
   readonly actor: HistoryChildActor;
   readonly specification: ReturnType<typeof parseHistoryReadinessSpecification>;
   readonly child: ChildProcess;
@@ -64,6 +65,7 @@ export const createHistoryRoleRegistry = (
     if (scope === undefined) return null;
     const attemptId = randomUUID();
     return {
+      serviceName: service.name,
       specification,
       scope,
       attemptId,
@@ -88,6 +90,7 @@ export const createHistoryRoleRegistry = (
     const previous = entries.get(actor.role);
     if (previous !== undefined) remove(previous);
     const entry: Entry = {
+      serviceName: attempt.serviceName,
       actor,
       specification: attempt.specification,
       child,
@@ -130,7 +133,12 @@ export const createHistoryRoleRegistry = (
         return undefined;
       mark("child_cohort");
       const current = HISTORY_CHILD_ROLES.map((role) => entries.get(role));
-      if (current.some((entry) => entry === undefined)) return undefined;
+      if (
+        current.some((entry) => entry === undefined) ||
+        entries.get(specification.role)?.serviceName !== service.name ||
+        new Set(current.map((entry) => entry?.serviceName)).size !== 4
+      )
+        return undefined;
       const active = () =>
         !signal?.aborted &&
         historyProofRemaining(deadline) > 0 &&
@@ -175,7 +183,7 @@ export const createHistoryRoleRegistry = (
         const signed = makeHistorySignedAdmission({
           layout,
           run,
-          deadline,
+          expectedScope: { ...scope, incarnation },
           publicBindingDigest: specification.publicBindingDigest,
           deploymentFingerprint: specification.deploymentFingerprint,
           expectedNetwork: specification.expectedNetwork,
@@ -294,6 +302,7 @@ export const createHistoryRoleRegistry = (
           : [
               {
                 role,
+                serviceName: entry.serviceName,
                 pid: entry.actor.childPid,
                 attemptId: entry.actor.attemptId,
               },

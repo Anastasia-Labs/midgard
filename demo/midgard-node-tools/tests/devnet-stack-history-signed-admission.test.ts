@@ -31,6 +31,7 @@ const loader = vi.hoisted(() => {
     calls: number;
     before?: () => Promise<void>;
     afterAuthority?: () => Promise<void>;
+    afterAdmission?: () => void;
   } = { calls: 0 };
   return state;
 });
@@ -58,11 +59,28 @@ vi.mock("../src/devnet-stack/watcher-release.js", async (original) => ({
     };
   },
 }));
+vi.mock("../src/devnet-stack/history-recorded-binding.js", async (original) => {
+  const binding =
+    await original<
+      typeof import("../src/devnet-stack/history-recorded-binding.js")
+    >();
+  return {
+    ...binding,
+    loadHistoryRoleAdmission: async (
+      ...args: Parameters<typeof binding.loadHistoryRoleAdmission>
+    ) => {
+      const admitted = await binding.loadHistoryRoleAdmission(...args);
+      loader.afterAdmission?.();
+      return admitted;
+    },
+  };
+});
 const closes: (() => Promise<void>)[] = [];
 afterEach(async () => {
   loader.calls = 0;
   loader.before = undefined;
   loader.afterAuthority = undefined;
+  loader.afterAdmission = undefined;
   for (const close of closes.splice(0)) await close();
 });
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -187,7 +205,7 @@ const prepare = async () => {
         fingerprint ??
         historyRecordedBinding(f.layout, f.run, "Preprod").manifest.manifestId,
       expectedNetwork: "Preprod",
-      deadline: deadline(),
+      expectedScope: { ...scope },
       currentScope: () => scope,
     });
   const create = async () => {
@@ -288,6 +306,26 @@ it("does not turn a budget expiry into permanent drift or cache a failure as suc
     cache.current(deadline()).release.policy.automaticRecoveryMaxDepth,
   ).toBe(2160);
   expect(loader.calls).toBe(1);
+});
+it("prioritizes expiry after genuine admission over a fingerprint refusal without caching it", async () => {
+  const f = await prepare();
+  const cache = f.guard("ab".repeat(32));
+  const firstDeadline = deadline();
+  const clock = vi.spyOn(performance, "now").mockReturnValue(performance.now());
+  loader.afterAdmission = () => clock.mockReturnValue(firstDeadline + 1);
+  try {
+    await expect(cache.admit(firstDeadline)).rejects.toThrow(
+      "deadline elapsed",
+    );
+  } finally {
+    loader.afterAdmission = undefined;
+    clock.mockRestore();
+  }
+  expect(() => cache.current(deadline())).toThrow("has not completed");
+  await expect(cache.admit(deadline())).rejects.toThrow(
+    HistoryConfigurationRefusal,
+  );
+  expect(loader.calls).toBe(2);
 });
 it("refuses a path replacement even with identical bytes", async () => {
   const f = await prepare();

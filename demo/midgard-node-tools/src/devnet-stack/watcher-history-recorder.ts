@@ -8,6 +8,11 @@ import { Effect, ManagedRuntime, Redacted } from "effect";
 import { committeeDatabase, databaseUrl, PUBLIC_READER_ROLE } from "./da.js";
 import type { DeployContext } from "./deploy.js";
 import { writeDurableFile } from "./durable.js";
+import type { AdmittedHistoryChild } from "./history-child-admission.js";
+import type { HistoryReadinessDispatch } from "./history-child-startup.js";
+import { answerHistoryRecorderReadiness } from "./history-recorder-readiness.js";
+import { startHistoryRecorderSource } from "./history-recorder-source.js";
+import { DEFAULT_POLICY } from "./supervisor.js";
 import { HISTORY_ROLES } from "./watcher-history.js";
 import { createHistoryChainFollower } from "./watcher-history-chain.js";
 import {
@@ -53,11 +58,18 @@ export const retainPayloadRecord = (
  * It reads the committee store as the SELECT-only public reader. Any failure
  * ends the process; the supervisor restarts it and it resumes.
  */
-export const runHistoryRecorder = async (context: DeployContext) => {
+export const runHistoryRecorder = async (
+  context: DeployContext,
+  child: AdmittedHistoryChild,
+  dispatch?: HistoryReadinessDispatch,
+) => {
   const { layout, run, identities, artifacts } = context;
   const watcher = await loadWatcherModule(layout);
-  const watcherConfig = watcher.parseWatcherConfig(
-    JSON.parse(readFileSync(layout.watcherRuntimeConfig, "utf8")),
+  // The recorder source parses this itself: the watcher copy bundled into
+  // this CLI only admits configs it parsed, so a config already parsed by the
+  // loaded watcher dist would be rejected there.
+  const watcherConfig: unknown = JSON.parse(
+    readFileSync(layout.watcherRuntimeConfig, "utf8"),
   );
   const manifest = JSON.parse(
     readFileSync(releasePaths(layout).manifest, "utf8"),
@@ -80,13 +92,37 @@ export const runHistoryRecorder = async (context: DeployContext) => {
     admit: (event) => watcher.admitWatcherNativeRollForwardBlock(event),
   });
 
-  const native = await watcher.startWatcherNativeChainSyncWithRetry({
+  const native = await startHistoryRecorderSource({
+    actor: child.actor,
+    directories,
+    chain,
     watcherConfig,
     binaryPath: artifacts.chainSyncBinary,
-    intersectionCandidates: chain.intersectionCandidates,
-    startupTimeoutMs: 60_000,
-    onEvent: chain.onEvent,
+    signal: dispatch?.signal,
   });
+  let stopReadiness: () => void;
+  try {
+    stopReadiness = answerHistoryRecorderReadiness(
+      {
+        actor: child.actor,
+        directories,
+        sealer: native.sealer,
+        timeoutMs: DEFAULT_POLICY.probeTimeoutMs,
+        current: async (deadline) => {
+          try {
+            child.current(deadline);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      },
+      dispatch,
+    );
+  } catch (error) {
+    await native.close();
+    throw error;
+  }
 
   const database = ManagedRuntime.make(
     PgClient.layer({
@@ -175,8 +211,11 @@ export const runHistoryRecorder = async (context: DeployContext) => {
   };
 
   const stopped = new AbortController();
+  const stop = () => stopped.abort();
+  if (dispatch?.signal.aborted) stop();
+  else dispatch?.signal.addEventListener("abort", stop, { once: true });
   for (const signal of ["SIGTERM", "SIGINT"] as const)
-    process.once(signal, () => stopped.abort());
+    process.once(signal, stop);
   const polling = (async () => {
     while (!stopped.signal.aborted) {
       try {
@@ -213,14 +252,23 @@ export const runHistoryRecorder = async (context: DeployContext) => {
   try {
     await Promise.race([
       native.done,
-      new Promise<void>((resolve) =>
-        stopped.signal.addEventListener("abort", () => resolve(), {
-          once: true,
-        }),
-      ),
+      child.refusal.then((error) => {
+        throw error;
+      }),
+      new Promise<void>((resolve) => {
+        if (stopped.signal.aborted) resolve();
+        else
+          stopped.signal.addEventListener("abort", () => resolve(), {
+            once: true,
+          });
+      }),
     ]);
     if (!stopped.signal.aborted) throw new Error("native chain-sync ended");
   } finally {
+    stopReadiness();
+    dispatch?.signal.removeEventListener("abort", stop);
+    for (const signal of ["SIGTERM", "SIGINT"] as const)
+      process.removeListener(signal, stop);
     stopped.abort();
     await polling;
     await native.close();

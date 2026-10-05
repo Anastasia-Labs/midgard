@@ -14,6 +14,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { writeDurableFile, writeOnceFile } from "./durable.js";
+import type { HistoryListenerBinding } from "./history-listener-evidence.js";
+import { createHistoryListenerRequestHandler } from "./history-listener-request.js";
 import { type Layout, type RunEnv, servicePorts } from "./layout.js";
 
 /**
@@ -208,6 +210,10 @@ export const startHistoryArchive = async (
   layout: Layout,
   run: RunEnv,
   role: HistoryRole,
+  proof?: {
+    readonly binding: HistoryListenerBinding;
+    readonly maximumBudgetMs: number;
+  },
 ): Promise<Listening> => {
   const directory = layout.watcherHistoryArchive(role);
   const { createHistoryArchiveDispatch } = (await import(
@@ -227,6 +233,13 @@ export const startHistoryArchive = async (
     directory,
     JSON.parse(readFileSync(join(directory, "authority.json"), "utf8")),
   );
+  const prove =
+    proof === undefined
+      ? undefined
+      : createHistoryListenerRequestHandler({
+          directory,
+          ...proof,
+        });
   const server = createHttpsServer(
     {
       key: readFileSync(join(directory, "key.pem")),
@@ -235,6 +248,7 @@ export const startHistoryArchive = async (
     (request, response) =>
       void (async () => {
         try {
+          if (await prove?.(request, response)) return;
           const chunks: Buffer[] = [];
           let size = 0;
           for await (const chunk of request as AsyncIterable<Buffer>) {
