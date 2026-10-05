@@ -17,7 +17,7 @@ patchedDependencies:
     hash: whnaavjgxiy3ufqyxkvqfwluqi
     path: patches/@lucid-evolution__lucid@0.6.5.patch
   '@lucid-evolution/provider@0.2.4':
-    hash: zxb75sjtlydo22hmt4v4simokq
+    hash: ex7mcpvp327mozip5lll4yfhai
     path: patches/@lucid-evolution__provider@0.2.4.patch
   '@lucid-evolution/wallet@0.2.2':
     hash: ml2qraiem2gq24sxkzyn55sree
@@ -5003,7 +5003,7 @@ snapshots:
       '@lucid-evolution/core-types': 0.3.0(patch_hash=mcchjj6exr3is4hwy7rmezpwfy)
       '@lucid-evolution/core-utils': 0.1.17
       '@lucid-evolution/plutus': 0.1.36
-      '@lucid-evolution/provider': 0.2.4(patch_hash=zxb75sjtlydo22hmt4v4simokq)(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/provider': 0.2.4(patch_hash=ex7mcpvp327mozip5lll4yfhai)(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
       '@lucid-evolution/sign_data': 0.1.32
       '@lucid-evolution/tx-graph': 0.0.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
       '@lucid-evolution/uplc': file:vendor/uplc-0.2.23-midgard.1.tgz
@@ -5033,7 +5033,7 @@ snapshots:
       '@lucid-evolution/core-types': 0.3.0(patch_hash=mcchjj6exr3is4hwy7rmezpwfy)
       '@lucid-evolution/core-utils': 0.1.17
       '@lucid-evolution/plutus': 0.1.36
-      '@lucid-evolution/provider': 0.2.4(patch_hash=zxb75sjtlydo22hmt4v4simokq)(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/provider': 0.2.4(patch_hash=ex7mcpvp327mozip5lll4yfhai)(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
       '@lucid-evolution/sign_data': 0.1.32
       '@lucid-evolution/tx-graph': 0.0.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
       '@lucid-evolution/uplc': file:vendor/uplc-0.2.23-midgard.1.tgz
@@ -5062,7 +5062,7 @@ snapshots:
       '@lucid-evolution/core-utils': 0.1.17
       '@sinclair/typebox': 0.32.35
 
-  '@lucid-evolution/provider@0.2.4(patch_hash=zxb75sjtlydo22hmt4v4simokq)(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
+  '@lucid-evolution/provider@0.2.4(patch_hash=ex7mcpvp327mozip5lll4yfhai)(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
@@ -5086,7 +5086,7 @@ snapshots:
       - rxjs
       - utf-8-validate
 
-  '@lucid-evolution/provider@0.2.4(patch_hash=zxb75sjtlydo22hmt4v4simokq)(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
+  '@lucid-evolution/provider@0.2.4(patch_hash=ex7mcpvp327mozip5lll4yfhai)(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
