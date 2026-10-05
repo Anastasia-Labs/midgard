@@ -4,6 +4,11 @@ import { Effect, Option } from "effect";
 
 import { Database } from "../services/database.js";
 import {
+  STORE_ADVISORY_LOCK_KEY,
+  STORE_ADVISORY_LOCK_NAMESPACE,
+} from "./cekProgramMaterial.canonical-entries.js";
+import { collectUnownedMaterial } from "./cekProgramMaterial.collect-unowned.js";
+import {
   clearTable,
   DatabaseError,
   sqlErrorToDatabaseError,
@@ -135,7 +140,11 @@ export const upsertAvailable = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<Pick<Row, Columns.HEADER_HASH>>`
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        // Take the material-store lock before the DA row lock, matching prune.
+        yield* sql`SELECT pg_advisory_xact_lock(${STORE_ADVISORY_LOCK_NAMESPACE}, ${STORE_ADVISORY_LOCK_KEY})`;
+        const rows = yield* sql<Pick<Row, Columns.HEADER_HASH>>`
       INSERT INTO ${sql(tableName)} ${sql.insert(input)}
       ON CONFLICT (${sql(Columns.HEADER_HASH)}) DO UPDATE SET
         ${sql(Columns.UPDATED_AT)} = NOW()
@@ -204,16 +213,18 @@ export const upsertAvailable = (
         )}
       RETURNING ${sql(Columns.HEADER_HASH)}
     `;
-    if (rows.length !== 1) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: tableName,
-          message:
-            "Refusing to overwrite DA payload because an existing payload for the header differs",
-          cause: `header_hash=${input[Columns.HEADER_HASH].toString("hex")}`,
-        }),
-      );
-    }
+        if (rows.length !== 1) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: tableName,
+              message:
+                "Refusing to overwrite DA payload because an existing payload for the header differs",
+              cause: `header_hash=${input[Columns.HEADER_HASH].toString("hex")}`,
+            }),
+          );
+        }
+      }),
+    );
   }).pipe(
     Effect.withLogSpan(`upsertAvailable ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to store DA payload"),
@@ -279,12 +290,18 @@ export const pruneBeyondRetention = (args: {
             SELECT terminal.header_hash FROM da_payload_terminal_outcomes AS terminal
             WHERE terminal.terminal_outcome = 'removed'
               AND terminal.deployment_identity_digest = ${args.deploymentIdentityDigest})`;
-    const rows = yield* sql<{ readonly header_hash: Buffer }>`
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* sql`SELECT pg_advisory_xact_lock(${STORE_ADVISORY_LOCK_NAMESPACE}, ${STORE_ADVISORY_LOCK_KEY})`;
+        const rows = yield* sql<{ readonly header_hash: Buffer }>`
       DELETE FROM ${sql(tableName)}
       WHERE (${sql(Columns.BLOCK_END_TIME)} < ${args.challengeableCutoff} OR ${removed})
         AND NOT ${sql.in(Columns.HEADER_HASH, exempt)}
       RETURNING ${sql(Columns.HEADER_HASH)}`;
-    return rows.length;
+        yield* collectUnownedMaterial;
+        return rows.length;
+      }),
+    );
   }).pipe(
     Effect.withLogSpan(`pruneBeyondRetention ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to prune DA payloads"),

@@ -21,6 +21,7 @@ import {
   hashBlockHeaderCbor,
   headerCborHex,
 } from "./payload.source-event-fingerprints.js";
+import { validateDaPayloadEventProgramCoverage } from "./payload.validate-event-program-coverage.js";
 import {
   countedRoot,
   countedRootWithValues,
@@ -28,14 +29,16 @@ import {
   keyValuePhasRootWithValues,
 } from "./payload.validate-proof-trace-coverage.js";
 
-const computeDaPayloadRootsForForcedDomain = async (
-  payload: SDK.DaPayload,
-): Promise<PayloadRootSet> => {
-  const body = payload.block_body;
-  const transactionValues: Buffer[] = [];
+/**
+ * The `utxos_root` of a full V1 UTxO set: the key-value PHAS root over each
+ * entry's exact canonical ledger descriptor.
+ */
+export const computeDaPayloadUtxosRoot = async (
+  utxos: readonly SDK.DaPayloadEntry[],
+): Promise<string> => {
   const utxoDescriptorValues: Buffer[] = [];
   const utxoKeys: Buffer[] = [];
-  for (const [outRefHex, outputHex] of body.utxos) {
+  for (const [outRefHex, outputHex] of utxos) {
     try {
       const outRef = hexToBytes(outRefHex, "utxos key");
       const outputCbor = hexToBytes(outputHex, "utxos value");
@@ -54,6 +57,14 @@ const computeDaPayloadRootsForForcedDomain = async (
       );
     }
   }
+  return keyValuePhasRootWithValues(utxoKeys, utxoDescriptorValues);
+};
+
+const computeDaPayloadRootsForForcedDomain = async (
+  payload: SDK.DaPayload,
+): Promise<PayloadRootSet> => {
+  const body = payload.block_body;
+  const transactionValues: Buffer[] = [];
   for (const [, value] of body.transactions) {
     try {
       transactionValues.push(hexToBytes(value, "tx value"));
@@ -74,7 +85,7 @@ const computeDaPayloadRootsForForcedDomain = async (
     transitionTraceRoot,
     eventToStepRoot,
   ] = await Promise.all([
-    keyValuePhasRootWithValues(utxoKeys, utxoDescriptorValues),
+    computeDaPayloadUtxosRoot(body.utxos),
     countedRoot(SDK.ROOT_DOMAINS.withdrawals, body.withdrawals),
     countedRoot(
       SDK.ROOT_DOMAINS.forcedTransactionsV1,
@@ -194,6 +205,10 @@ export const verifyDaPayloadAgainstHeader = async (
         `V1 DA payload counts do not match L1 header: ${countMismatchFields.join(",")}`,
       );
     }
+    validateDaPayloadEventProgramCoverage(
+      payload.block_body,
+      options.preBlockUtxos,
+    );
     return {
       payload,
       storedPayloadCbor: storedPayloadBuffer,

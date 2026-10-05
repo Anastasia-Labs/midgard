@@ -14,10 +14,7 @@ import {
   watcherBlockReplayPriorState,
 } from "./block-replay.watcher-block-replay-prior-state.js";
 import { REACHABLE_SET } from "./block-replay.watcher-block-replay-reason-codes.js";
-import {
-  normalizeRootHex,
-  watcherBlockReplayRejectionProjection,
-} from "./block-replay.watcher-block-replay-rejection-projection.js";
+import { watcherBlockReplayRejectionProjection } from "./block-replay.watcher-block-replay-rejection-projection.js";
 import {
   fail,
   type WatcherBlockReplayEventRoot,
@@ -174,8 +171,8 @@ export const replayCandidates = async (
           phase: null,
           operation: operation.type,
           outRef: operation.key.toString("hex"),
-          preRoot: normalizeRootHex(step.preRoot.toString("hex")),
-          postRoot: normalizeRootHex(step.postRoot.toString("hex")),
+          preRoot: step.preRoot.toString("hex"),
+          postRoot: step.postRoot.toString("hex"),
         }),
       );
       cursor += 1;
@@ -183,11 +180,11 @@ export const replayCandidates = async (
     const preRoot =
       first === cursor
         ? postStateRoot
-        : normalizeRootHex(mutationSteps[first].preRoot.toString("hex"));
+        : mutationSteps[first].preRoot.toString("hex");
     postStateRoot =
       first === cursor
         ? postStateRoot
-        : normalizeRootHex(mutationSteps[cursor - 1].postRoot.toString("hex"));
+        : mutationSteps[cursor - 1].postRoot.toString("hex");
     transactionRoots.push(
       Object.freeze({
         txIndex,

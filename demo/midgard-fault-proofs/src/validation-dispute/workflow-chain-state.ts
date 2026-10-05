@@ -1,4 +1,5 @@
 import type { MidgardValidationDispute } from "@al-ft/midgard-core";
+import { decodeSingleCbor } from "@al-ft/midgard-core";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import type { ValidationTraceDisputeFaultProofContracts } from "@al-ft/midgard-sdk";
 import {
@@ -22,6 +23,8 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+
+import { readCanonicalCheckpoint } from "./workflow-canonical-checkpoint.js";
 
 /**
  * Ruling R2: the family-local dispute cursor. Every stage is derived
@@ -75,6 +78,7 @@ export type ValidationTraceDisputeChainStage =
     }>
   | Readonly<{
       kind: "semantic_in_flight";
+      canonicalOutput?: boolean;
       threadOutRef: string;
       group: ValidationTraceDisputeSemanticGroup;
       role: string;
@@ -267,7 +271,21 @@ export const buildValidationTraceDisputeAddressClassifier = (
       value,
       (address, role) => {
         put(address, (utxo) =>
-          inFlight(group, role === "" ? group : role)(utxo),
+          (() => {
+            const stage = inFlight(group, role === "" ? group : role)(utxo);
+            if (group !== "canonical_decode_item_stage") return stage;
+            const checkpoint = readCanonicalCheckpoint(utxo, chain);
+            const work = checkpoint?.transition?.work_witness_cbor;
+            const control =
+              work === undefined
+                ? undefined
+                : decodeSingleCbor(Buffer.from(work, "hex"));
+            const canonicalOutput =
+              Array.isArray(control) &&
+              control.length === 9 &&
+              (control[4] === 2n || control[4] === 2);
+            return { ...stage, canonicalOutput };
+          })(),
         );
       },
       "",

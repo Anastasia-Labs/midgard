@@ -1,17 +1,19 @@
 import {
+  computeHash32,
+  computeMidgardNativeTxId,
   decodeMidgardNativeTxCompact,
   decodeMidgardNativeTxWitnessSetCompact,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
-import { isMidgardWitnessSetField } from "@al-ft/midgard-sdk";
 
 import {
-  faultProofFieldCarriage,
-  planFaultProofFieldOpening,
+  faultProofRawFieldCarriage,
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
+import { createRawCommittedFieldCarriagePlan } from "../workflow/field-carriage-prerequisite.js";
 import type { ManifestBoundFieldPreimageLengthWorkflow } from "./authenticated-workflow.js";
 import type { AuthenticatedFieldPreimageLengthEvidence } from "./evidence.js";
 import { fieldPreimageLengthCommittedClaim } from "./prepare-accepted.js";
@@ -24,37 +26,56 @@ export const planFieldPreimageLengthCarriage = ({
   readonly evidence: AuthenticatedFieldPreimageLengthEvidence;
 }) => {
   const compact = (
-    evidence.prepared.direction === "wrongfulRejection"
+    evidence.prepared.sourceKind === "forced"
       ? decodeMidgardForcedTxCompact
       : decodeMidgardNativeTxCompact
   )(Buffer.from(evidence.fieldMaterial.nativeTxCompactCbor, "hex"));
   const witnessSet = decodeMidgardNativeTxWitnessSetCompact(
     Buffer.from(evidence.fieldMaterial.witnessSetCompactCbor, "hex"),
   );
-  const witnessField = isMidgardWitnessSetField(evidence.prepared.fieldIndex);
-  return planFaultProofFieldOpening({
-    anchorSourceKind:
-      evidence.prepared.direction === "wrongfulRejection" ? 1n : 0n,
+  if (
+    computeMidgardNativeTxId(compact).toString("hex") !==
+    evidence.prepared.transactionId
+  )
+    throw new Error(
+      "fieldPreimageLengthMismatch compact differs from the authenticated transaction id",
+    );
+  if (
+    !computeHash32(
+      Buffer.from(evidence.fieldMaterial.witnessSetCompactCbor, "hex"),
+    ).equals(compact.transactionWitnessSetHash)
+  )
+    throw new Error(
+      "fieldPreimageLengthMismatch witness set differs from the compact identity",
+    );
+  const body = compact.transactionBody;
+  const commitments = [
+    body.spendInputsHash,
+    body.referenceInputsHash,
+    body.outputsHash,
+    body.requiredObserversHash,
+    body.requiredSignersHash,
+    body.mintHash,
+    witnessSet.scriptTxWitsHash,
+    witnessSet.addrTxWitsHash,
+    witnessSet.redeemerTxWitsHash,
+  ];
+  const preimage = Buffer.from(evidence.prepared.preimageHex, "hex");
+  const expected = commitments[evidence.prepared.fieldIndex];
+  if (
+    expected === undefined ||
+    !midgardFieldCommitment(preimage).equals(expected) ||
+    preimage.length !== evidence.prepared.actualLength
+  )
+    throw new Error(
+      "fieldPreimageLengthMismatch raw field differs from the authenticated commitment or length",
+    );
+  return createRawCommittedFieldCarriagePlan({
+    sourceKind: evidence.prepared.sourceKind === "forced" ? 1n : 0n,
     fieldIndex: evidence.prepared.fieldIndex,
-    anchorTxId: evidence.prepared.transactionId,
-    nativeTxCompactCbor: evidence.fieldMaterial.nativeTxCompactCbor,
-    itemCbors: evidence.fieldMaterial.itemCbors.map((item) =>
-      Buffer.from(item, "hex"),
-    ),
+    nativeTxId: evidence.prepared.transactionId,
+    preimage,
     owner: workflow.config.signer.paymentKeyHash,
-    ...(witnessField
-      ? {
-          witnessSet: {
-            addr_tx_wits_hash: witnessSet.addrTxWitsHash.toString("hex"),
-            script_tx_wits_hash: witnessSet.scriptTxWitsHash.toString("hex"),
-            redeemer_tx_wits_hash:
-              witnessSet.redeemerTxWitsHash.toString("hex"),
-          },
-          anchorWitnessSetHash:
-            compact.transactionWitnessSetHash.toString("hex"),
-        }
-      : {}),
-    label: "fieldPreimageLengthMismatch authenticated field",
   });
 };
 
@@ -101,8 +122,8 @@ export const resolveFieldPreimageLengthCarriage = async ({
         evidence.fieldMaterial.witnessSetCompactCbor,
         "hex",
       ),
-      carriage: faultProofFieldCarriage({
-        planned,
+      carriage: faultProofRawFieldCarriage({
+        plan: planned.plan,
         referenceInputs: completeReferenceInputs,
         certificatePolicyId:
           workflow.config.contracts.fieldPreimageCertificate.policyId,

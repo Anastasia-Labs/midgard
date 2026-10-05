@@ -55,6 +55,8 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_header_executor.main.spend",
     invalidTailExecutor:
       "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_tail_executor.main.spend",
+    invalidDataExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_data_executor.main.spend",
     envelope:
       "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_envelope_v1.main.spend",
     traversalNormalizer:

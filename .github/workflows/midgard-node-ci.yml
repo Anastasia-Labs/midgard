@@ -304,6 +304,13 @@ jobs:
       - name: Check native V1 n01-n09 transaction vectors
         if: ${{ !cancelled() }}
         run: pnpm --dir demo/midgard-core run fixtures:native-tx-vector-v1:check
+      # The MPF node encoding (leaf and branch node preimages disjoint), taken
+      # from the MPF library alone. The vitest suites in midgard-core and
+      # midgard-node and the generated Aiken module recompute it; this step keeps
+      # both artifacts what the library produces.
+      - name: Check MPF node-encoding golden vectors
+        if: ${{ !cancelled() }}
+        run: pnpm --dir demo/midgard-core run fixtures:mpf-node-encoding-v1:check
       # The §12.7 canonical-decodability channel (#596). It emits both artifacts
       # from one generator run on exactly the footing of the four above, and it
       # was left unwired when it landed — so an edited producer plus a `:sync`
@@ -381,6 +388,13 @@ jobs:
       - name: Check V1 CEK core-step golden vectors
         if: ${{ !cancelled() }}
         run: pnpm --dir demo/midgard-validation run fixtures:cek-core-step-v1:check
+      # The V1 CEK builtin channel: every builtin tag evaluated by the pinned
+      # Aiken evaluator, values and failures, with the cases where the ledger
+      # and that evaluator differ recorded as overrides beside both outcomes.
+      # The node's builtin evaluation must reproduce every expected outcome.
+      - name: Check V1 CEK builtin golden vectors
+        if: ${{ !cancelled() }}
+        run: pnpm --dir demo/midgard-validation run fixtures:cek-builtin-cardano-v1:check
       # The V1 validation-auxiliary-witness ABI channel. Its generator emits
       # both `tests/fixtures/validation-auxiliary-witness-v1.generated.json` —
       # which `demo/midgard-sdk/tests/validation-auxiliary-witness.test.ts`
@@ -500,6 +514,13 @@ jobs:
           prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation
       - name: Build, typecheck, and test fault-proof tooling
         run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs run test --shard=${{ matrix.shard }}/3
+      # A plain build carries no traces, so the run above sees only that some
+      # validator refused each pinned negative. This one swaps every validator
+      # a pin names for its verbose-traced build and fails unless each pin is
+      # checked against the trace of the check it names.
+      - name: Check pinned emulator refusals against traced validators
+        if: ${{ !cancelled() && matrix.shard == 1 }}
+        run: pnpm --dir demo/midgard-fault-proofs run test:traced-refusals
 
   # The watcher's TypeScript surface. Its eslint pass is the workspace-wide one
   # in the `lint` job; the Go helper, compose stack and image are covered by

@@ -55,6 +55,7 @@ import {
   buildMidgardCanonicalCekProgram,
   buildMidgardCekExecutionGraph,
   encodeMidgardCekCoreStepDataCbor,
+  encodeMidgardCekCardanoFlatProgram,
   encodeMidgardCekPlutusData,
   executeMidgardCekStructuralProgram,
   verifyMidgardCekCoreStep,
@@ -79,7 +80,8 @@ const generatedJsonPath = join(
   packageRoot,
   "tests/fixtures/cek-core-step-v1.generated.json",
 );
-const generatedAikenDirectory = "onchain/aiken/lib/midgard/cek-core-step-goldens";
+const generatedAikenDirectory =
+  "onchain/aiken/lib/midgard/cek-core-step-goldens";
 const aikenModuleForProgram = (program) =>
   `${generatedAikenDirectory}/${program.label.replaceAll("_", "-")}.test.ak`;
 
@@ -113,7 +115,10 @@ const stateJson = (state) => ({
 
 const buildProgramVector = (definition) => {
   const program = buildMidgardCanonicalCekProgram(
-    compileMidgardCekGoldenProgram(definition.term()),
+    compileMidgardCekGoldenProgram(
+      definition.term(),
+      encodeMidgardCekCardanoFlatProgram,
+    ),
   );
   const contextCbor = encodeMidgardCekPlutusData(definition.context());
   const graph = buildMidgardCekExecutionGraph(
@@ -193,7 +198,12 @@ const buildProgramVector = (definition) => {
             memory: definition.executionBudget.memory.toString(10),
           },
         }),
-    scriptFlat: hex(compileMidgardCekGoldenProgram(definition.term())),
+    scriptFlat: hex(
+      compileMidgardCekGoldenProgram(
+        definition.term(),
+        encodeMidgardCekCardanoFlatProgram,
+      ),
+    ),
     contextCbor: hex(contextCbor),
     envelope: {
       uplcVersion: program.envelope.uplcVersion.map((part) =>

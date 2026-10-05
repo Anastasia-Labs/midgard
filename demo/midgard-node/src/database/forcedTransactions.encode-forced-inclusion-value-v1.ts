@@ -8,7 +8,10 @@ import {
   isMidgardConsensusProfile,
   MIDGARD_CONSENSUS_PROFILE_ID,
 } from "@al-ft/midgard-core/consensus-profile";
-import { validateMidgardConsensusForcedTxCbor } from "@al-ft/midgard-core/consensus-validation";
+import {
+  MidgardForcedTxAdmissionStopped,
+  validateMidgardConsensusForcedTxCbor,
+} from "@al-ft/midgard-core/consensus-validation";
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
@@ -41,7 +44,7 @@ export const encodeForcedInclusionValueV1 = ({
     readonly source: ReturnType<typeof deriveMidgardForcedTxProofSource>;
     readonly value: Buffer;
   },
-  DatabaseError
+  DatabaseError | MidgardForcedTxAdmissionStopped
 > =>
   Effect.gen(function* () {
     if (!isMidgardConsensusProfile(consensusProfile)) {
@@ -58,9 +61,7 @@ export const encodeForcedInclusionValueV1 = ({
       try: () => {
         const violation = validateMidgardConsensusForcedTxCbor(nativeTxCbor);
         if (violation !== null) {
-          throw new Error(
-            `${violation.code} ${violation.featureId}: ${violation.detail}`,
-          );
+          throw new MidgardForcedTxAdmissionStopped(violation);
         }
         const nativeTx =
           decodeMidgardForcedTxFullFromCanonicalCbor(nativeTxCbor);
@@ -76,11 +77,14 @@ export const encodeForcedInclusionValueV1 = ({
         };
       },
       catch: (cause) =>
-        new DatabaseError({
-          table: tableName,
-          message: "Failed to verify the exact canonical V1 forced transaction",
-          cause,
-        }),
+        cause instanceof MidgardForcedTxAdmissionStopped
+          ? cause
+          : new DatabaseError({
+              table: tableName,
+              message:
+                "Failed to verify the exact canonical V1 forced transaction",
+              cause,
+            }),
     });
     const forcedInclusionTx: SDK.ForcedInclusionTxV1 = {
       tx_id: material.txId.toString("hex"),
@@ -109,7 +113,21 @@ export const encodeForcedInclusionValueV1 = ({
         }),
     });
     return { ...material, value };
-  });
+  }).pipe(
+    Effect.tapError((cause) =>
+      cause instanceof MidgardForcedTxAdmissionStopped
+        ? Effect.logError(
+            "Forced transaction admission stopped; no verdict encoded",
+          ).pipe(
+            Effect.annotateLogs({
+              alarm: cause._tag,
+              code: cause.code,
+              feature: cause.violation.featureId,
+            }),
+          )
+        : Effect.void,
+    ),
+  );
 
 export const insertEntries = (
   entries: readonly Entry[],

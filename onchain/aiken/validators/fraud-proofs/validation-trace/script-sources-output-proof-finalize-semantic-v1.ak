@@ -1,15 +1,15 @@
 //// ScriptSources output-proof finalize dispatcher. Descriptor exactness of
 //// the terminal ledger-output-proof control runs in the four authenticated
 //// descriptor yields (`ledger-output-descriptor-*-yield.ak`, conjunction ==
-//// `descriptor_is_exact_v1`), spread over the fact-attachment steps: each
-//// attachment transaction carries one canonical group of descriptor yields
-//// and records their fact commitments (binding the descriptor bytes and the
-//// claimed summaries each yield consumed) in the terminal control; the thin
-//// terminal step carries no descriptor yields and instead recomputes all
-//// four commitments from one redeemer triple, so a fact can only have
-//// entered the control through its yield's attestation over exactly these
-//// bytes. The terminal then performs the network /
-//// protected-output-authorization arms and the successor splice itself. See
+//// the descriptor `terminal_descriptor_v1` derives), spread over the
+//// fact-attachment steps: each attachment transaction carries one canonical
+//// group of descriptor yields and records their fact commitments, each
+//// covering only what its yield pins, in the terminal control; the thin
+//// terminal step carries no descriptor yields and instead requires the
+//// recorded role-0 fact to commit exactly its descriptor bytes, which the
+//// last group's yield pinned field by field. The terminal then performs the
+//// network / protected-output-authorization arms and the successor splice
+//// itself. See
 //// docs/fault-proofs/decisions/0004-checkpointed-ledger-output-facts.md
 //// for the checkpointed attachment decision.
 
@@ -75,10 +75,10 @@ pub type ActionV1 {
     /// attested by every descriptor yield.
     control_cbor: ByteArray,
     /// `DataSummaryV1` on the wire; pinned by the value-summary yield and
-    /// consumed by the scan-facts yield.
+    /// consumed by the scan-facts yield. Unused at the thin terminal.
     claimed_value_summary: Data,
     /// `Option<DataSummaryV1>` on the wire; pinned by the datum-summary yield
-    /// and consumed by the scan-facts yield.
+    /// and consumed by the scan-facts yield. Unused at the thin terminal.
     claimed_datum_summary: Data,
     /// The descriptor roles whose facts this step attaches — exactly the
     /// first canonical `fact_attach_groups_v1` group with unrecorded facts —
@@ -127,10 +127,7 @@ validator main(
         attach_roles,
         yield_ref_input_indices,
       }) -> {
-        let auxiliary = LedgerOutputProofFinalizeWitness {
-          descriptor_cbor,
-          signer_proof,
-        }
+        let auxiliary = LedgerOutputProofFinalizeWitness { signer_proof }
         let auxiliary_data: Data = auxiliary
         continue_winning(
           ScriptSources,
@@ -190,7 +187,8 @@ fn output_proof_finalize_dispatch(
     // A fact-attachment step: the group's descriptor yields attest their
     // exactness clauses over exactly these control bytes, this descriptor and
     // these claimed summaries; the successor records the group's fact
-    // commitments in the terminal control.
+    // commitments, each over only what its yield pinned, in the terminal
+    // control.
     and {
       validation_semantic_yield_v1.require_semantic_yields_v1(
         tx,
@@ -229,8 +227,6 @@ fn output_proof_finalize_dispatch(
       signer_proof,
       control_cbor,
       control,
-      claimed_value_summary,
-      claimed_datum_summary,
       yield_ref_input_indices,
       frame,
     )
@@ -244,27 +240,20 @@ fn output_proof_terminal_dispatch(
   signer_proof: SignerSetProofV1,
   control_cbor: ByteArray,
   control: lop_raw.Frame,
-  claimed_value_summary: Data,
-  claimed_datum_summary: Data,
   yield_ref_input_indices: List<Int>,
   frame: raw.RawScriptSourcesFrameV1,
 ) -> Bool {
   let output_cursor = raw.item_int_v1(frame, output_cursor_index)
   let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
   and {
-    // The thin terminal carries no descriptor yields: every fact commitment
-    // recorded by the attachment steps must equal the commitment recomputed
-    // from this redeemer's descriptor bytes and claimed summaries, which
-    // together re-state `descriptor_is_exact_v1` on exactly these control
-    // bytes and this descriptor; the monolith checked it before either
-    // rejection arm, so the gate runs in every branch.
+    // The thin terminal carries no descriptor yields: the recorded role-0
+    // fact must commit exactly this redeemer's descriptor bytes. The last
+    // attachment group recorded it after its yield pinned every descriptor
+    // field against these control bytes and the other three facts; the
+    // monolith checked it before either rejection arm, so the gate runs in
+    // every branch.
     yield_ref_input_indices == [],
-    lop_stages.facts_are_exact(
-      control,
-      descriptor_cbor,
-      claimed_value_summary,
-      claimed_datum_summary,
-    ),
+    lop_stages.facts_are_exact(control, descriptor_cbor),
     raw.item_bytes_v1(frame, extension_index) == control_cbor,
     output_cursor < raw.item_int_v1(frame, output_count_index),
     // Bound locally so the descriptor leaf below is appended at the cursor

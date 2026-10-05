@@ -189,7 +189,6 @@ pub fn verify_script_sources_output_proof_step_semantics_v1(
 pub fn verify_script_sources_output_proof_finalize_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
-  descriptor_cbor: ByteArray,
   signer_proof: SignerSetProofV1,
 ) -> Bool {
   let control = script_sources_control_from_witness(witness.work_witness_cbor)
@@ -204,7 +203,6 @@ pub fn verify_script_sources_output_proof_finalize_semantics_v1(
       witness,
       control,
       output_proof,
-      descriptor_cbor,
       signer_proof,
     ),
   }

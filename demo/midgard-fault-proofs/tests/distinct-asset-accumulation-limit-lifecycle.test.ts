@@ -404,7 +404,7 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
         ledgerDeltaRoot: Buffer.from(SDK.EMPTY_MERKLE_TREE_ROOT, "hex"),
       };
       let trace = buildMidgardValidationTraceTree(
-        [hashMidgardValidationMachineState(state)],
+        [state, state].map(hashMidgardValidationMachineState),
         forced ? "rejected" : "accepted",
         rejectionHash,
       );

@@ -9,7 +9,6 @@ import "./codec/value.js";
 import "./codec/versioned-script.js";
 import "./consensus-profile.js";
 import "./consensus-validation.reconstruct-midgard-transaction.js";
-import "./consensus-validation.native-script-complexity.js";
 import "./consensus-validation.validate-midgard-consensus-tx.js";
 export {
   deriveMidgardTxFieldPreimages,
@@ -23,6 +22,7 @@ export {
   verifyMidgardTxFieldPreimage,
 } from "./consensus-validation.reconstruct-midgard-transaction.js";
 export {
+  MidgardForcedTxAdmissionStopped,
   validateMidgardConsensusForcedTxCbor,
   validateMidgardConsensusTx,
   validateMidgardConsensusTxCbor,

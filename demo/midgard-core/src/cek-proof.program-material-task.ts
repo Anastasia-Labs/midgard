@@ -198,11 +198,23 @@ type SemanticConstr = {
   readonly fields: readonly SemanticDataValue[];
 };
 
+/** One map entry: a key and its value. */
+export type SemanticDataEntry = readonly [SemanticDataValue, SemanticDataValue];
+
+/**
+ * A Plutus Data map as the ordered list of its entries. Data maps are lists
+ * of pairs: they keep every entry, in order, duplicate keys included.
+ */
+export type SemanticDataMap = {
+  readonly kind: "map";
+  readonly entries: readonly SemanticDataEntry[];
+};
+
 export type SemanticDataValue =
   | bigint
   | string
   | readonly SemanticDataValue[]
-  | ReadonlyMap<SemanticDataValue, SemanticDataValue>
+  | SemanticDataMap
   | SemanticConstr;
 
 /**
@@ -214,15 +226,14 @@ export const isSemanticList = (
   value: SemanticDataValue,
 ): value is readonly SemanticDataValue[] => Array.isArray(value);
 
-/**
- * `instanceof Map` narrows to `ReadonlyMap<...> & Map<any, any>`, and the
- * intersection resolves `entries()` against `Map<any, any>`, so every key and
- * value read back out is `any`. This picks the union member instead.
- */
 export const isSemanticMap = (
   value: SemanticDataValue,
-): value is ReadonlyMap<SemanticDataValue, SemanticDataValue> =>
-  value instanceof Map;
+): value is SemanticDataMap =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  "kind" in value &&
+  value.kind === "map";
 
 export const isSemanticConstr = (
   value: SemanticDataValue,
@@ -230,9 +241,27 @@ export const isSemanticConstr = (
   typeof value === "object" &&
   value !== null &&
   !Array.isArray(value) &&
-  !isSemanticMap(value) &&
   "kind" in value &&
   value.kind === "constr";
+
+/**
+ * A map's entries flattened key, value, key, value, in order. An entry that
+ * is not a two-item array is refused, as unknown Data is.
+ */
+export const semanticMapChildren = (
+  value: SemanticDataMap,
+): readonly SemanticDataValue[] => {
+  const unknown = (): Error =>
+    new Error("CEK constant contains unknown semantic Data");
+  const entries: unknown = value.entries;
+  if (!Array.isArray(entries)) throw unknown();
+  const children: SemanticDataValue[] = [];
+  for (const entry of entries as readonly unknown[]) {
+    if (!Array.isArray(entry) || entry.length !== 2) throw unknown();
+    children.push(entry[0] as SemanticDataValue, entry[1] as SemanticDataValue);
+  }
+  return children;
+};
 
 export const semanticCborHeader = (major: number, value: bigint): Buffer => {
   if (value < 0n) {

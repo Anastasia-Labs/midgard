@@ -22,6 +22,7 @@ import {
   buildForcedTransactionLeafMembershipProof,
   buildIndexedTraceProof,
 } from "../transition-trace/witnesses.js";
+import { forcedTransactionSubject } from "../workflow/detection-subject.js";
 
 export const NON_EXISTENT_INPUT_WRONGFUL_REJECTION_VIOLATION_ID =
   "non-existent-input-wrongful-rejection" as const;
@@ -287,6 +288,7 @@ export const detectNonExistentInputWrongfulRejections = async ({
         predecessor,
       });
       detections.push({
+        ...forcedTransactionSubject(forced.key),
         detectionId: `${NON_EXISTENT_INPUT_WRONGFUL_REJECTION_VIOLATION_ID}:${forcedIndex}`,
         headerHash: block.headerHash,
         violationId: NON_EXISTENT_INPUT_WRONGFUL_REJECTION_VIOLATION_ID,

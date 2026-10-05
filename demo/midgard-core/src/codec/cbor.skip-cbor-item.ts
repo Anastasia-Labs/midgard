@@ -1,130 +1,17 @@
-import { decodeFirst, encode, rfc8949EncodeOptions } from "cborg";
-
 import {
-  type CborItemSpan,
-  type CborReadOptions,
-  compareCborKeyBytes,
-  DECODER_OPTIONS,
-  ensureSafeLength,
-  err,
-  FATAL_UTF8_DECODER,
-  readArgument,
-} from "./cbor.read-argument.js";
+  buildCanonicalCborValue,
+  skipCborItem,
+} from "./cbor.iterative-decode.js";
+import { encodeCborIteratively } from "./cbor.iterative-encode.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 
-export const skipCborItem = (
-  bytes: Uint8Array,
-  offset: number,
-  options: CborReadOptions = {},
-): CborItemSpan => {
-  const start = offset;
-  const header = readArgument(bytes, offset);
-
-  switch (header.major) {
-    case 0:
-    case 1:
-      return { start, end: header.nextOffset, major: header.major };
-    case 2:
-    case 3: {
-      const length = ensureSafeLength(header.value, offset);
-      const end = header.nextOffset + length;
-      if (end > bytes.length) {
-        throw err("CBOR string exceeds input length", `offset=${offset}`);
-      }
-      if (header.major === 3) {
-        if (
-          length >= 3 &&
-          bytes[header.nextOffset] === 0xef &&
-          bytes[header.nextOffset + 1] === 0xbb &&
-          bytes[header.nextOffset + 2] === 0xbf
-        ) {
-          throw err(
-            "CBOR text string must not begin with a UTF-8 BOM",
-            `offset=${offset}`,
-          );
-        }
-        try {
-          FATAL_UTF8_DECODER.decode(bytes.subarray(header.nextOffset, end));
-        } catch {
-          throw err("CBOR text string is not valid UTF-8", `offset=${offset}`);
-        }
-      }
-      return { start, end, major: header.major };
-    }
-    case 4: {
-      let cursor = header.nextOffset;
-      const length = ensureSafeLength(header.value, offset);
-      for (let i = 0; i < length; i += 1) {
-        cursor = skipCborItem(bytes, cursor, options).end;
-      }
-      return { start, end: cursor, major: header.major };
-    }
-    case 5: {
-      let cursor = header.nextOffset;
-      const length = ensureSafeLength(header.value, offset);
-      const seen = new Set<string>();
-      let previousKey: Buffer | undefined;
-      for (let i = 0; i < length; i += 1) {
-        const key = skipCborItem(bytes, cursor, options);
-        const keyBytes = Buffer.from(bytes.subarray(key.start, key.end));
-        const keyHex = keyBytes.toString("hex");
-        if (seen.has(keyHex)) {
-          throw err("Duplicate CBOR map key", `offset=${key.start}`);
-        }
-        seen.add(keyHex);
-        if (
-          previousKey !== undefined &&
-          compareCborKeyBytes(previousKey, keyBytes) > 0
-        ) {
-          throw err(
-            "Non-canonical CBOR map key ordering",
-            `offset=${key.start}`,
-          );
-        }
-        previousKey = keyBytes;
-        cursor = skipCborItem(bytes, key.end, options).end;
-      }
-      return { start, end: cursor, major: header.major };
-    }
-    case 6:
-      if (options.allowTags !== true) {
-        throw err(
-          "CBOR tags are not valid in this Midgard codec",
-          `offset=${offset}`,
-        );
-      }
-      return {
-        start,
-        end: skipCborItem(bytes, header.nextOffset, options).end,
-        major: header.major,
-      };
-    case 7: {
-      if (
-        header.additional === 20 ||
-        header.additional === 21 ||
-        header.additional === 22
-      ) {
-        return { start, end: header.nextOffset, major: header.major };
-      }
-      if (header.additional === 23) {
-        throw err("CBOR undefined is not valid", `offset=${offset}`);
-      }
-      throw err(
-        "CBOR simple values and floats are not valid",
-        `offset=${offset}`,
-      );
-    }
-    default:
-      throw err("Unsupported CBOR major type", `offset=${offset}`);
-  }
-};
+export { skipCborItem };
 
 export const assertCanonicalCbor = (
   bytes: Uint8Array,
   fieldName = "cbor",
-  options: CborReadOptions = {},
 ): void => {
-  const span = skipCborItem(bytes, 0, options);
+  const span = skipCborItem(bytes, 0);
   if (span.end !== bytes.length) {
     throw new MidgardTxCodecError(
       MidgardTxCodecErrorCodes.CborDecode,
@@ -135,24 +22,16 @@ export const assertCanonicalCbor = (
 };
 
 /**
- * `cborg` declares `decodeFirst` as returning `[any, Uint8Array]`. The decoded
- * value is untrusted input that every caller validates, so it is laundered to
- * `unknown` at this one boundary rather than letting `any` spread through the
- * decoders.
+ * Decodes one canonical CBOR item. The value is untrusted input that every
+ * caller validates, so it is returned as `unknown`.
  */
-const decodeFirstUnknown = (
-  bytes: Uint8Array,
-): readonly [unknown, Uint8Array] =>
-  decodeFirst(bytes, DECODER_OPTIONS) as readonly [unknown, Uint8Array];
-
-export const decodeSingleCbor = (
-  bytes: Uint8Array,
-  options: CborReadOptions = {},
-): unknown => {
+export const decodeSingleCbor = (bytes: Uint8Array): unknown => {
   try {
-    assertCanonicalCbor(bytes, "cbor", options);
-    const [value] = decodeFirstUnknown(bytes);
-    return value;
+    assertCanonicalCbor(bytes, "cbor");
+    if (!(bytes instanceof Uint8Array)) {
+      throw new Error("CBOR decode error: data to decode must be a Uint8Array");
+    }
+    return buildCanonicalCborValue(bytes);
   } catch (e) {
     if (e instanceof MidgardTxCodecError) {
       throw e;
@@ -167,7 +46,7 @@ export const decodeSingleCbor = (
 
 export const encodeCbor = (value: unknown): Buffer => {
   try {
-    return Buffer.from(encode(value, rfc8949EncodeOptions));
+    return encodeCborIteratively(value);
   } catch (e) {
     throw new MidgardTxCodecError(
       MidgardTxCodecErrorCodes.CborEncode,

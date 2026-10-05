@@ -17,6 +17,25 @@ pub type ValidationOneStepWitnessV1 {
   claimed_successor: validation_trace_v1.ValidationMachineStateV1,
 }
 
+/// The redeemer map is folded down the execution frontier. `purpose_bound`
+/// starts at the purpose count. Each select or skip step proves the execution
+/// leaf at exactly `purpose_bound - 1` against the native control's execution
+/// frontier; that membership (`[execution-leaf]` / `[native-execution]`) is
+/// the pin, so the frontier index is derived and never named by the witness.
+/// The step is a select (auxiliary constructor 17) when the leaf carries a
+/// redeemer item leaf (language 3 or 128), and a skip (constructor 40) when
+/// it is a native execution (language 0, empty redeemer leaf); only one can
+/// apply at a given bound. Each select or skip lowers the bound by exactly
+/// one. The item steps between a select and its finish walk the selected
+/// item under `active_scan_hash` without moving the bound. The select's `total_length` is fixed by the item commitment through
+/// `commitment_from_frontier_root` (`[item-length]`). The fold completes at
+/// `cursor == redeemer_count`. Pairs are prepended, so the finished map
+/// follows the frontier ascending, which is Cardano's (tag, index) ledger
+/// order. The monolithic verifier is `verify_cek_redeemer_data_step` in
+/// `cek.ak`; the split chain is `cek-context-redeemer-select-authenticate`,
+/// then `-select-initialize`, `-select-hash` and `-select-finish` for a
+/// select, and select-authenticate routes a skip straight to
+/// `cek-context-settle`.
 pub type CekRedeemerContextControlV1 {
   cursor: Int,
   map_items: cek_data_v1.DataSequenceSummaryV1,
@@ -24,6 +43,7 @@ pub type CekRedeemerContextControlV1 {
   active_redeemer_leaf: ByteArray,
   active_purpose: cek_data_v1.DataSummaryV1,
   current_redeemer: cek_data_v1.DataSummaryV1,
+  purpose_bound: Int,
 }
 
 pub type CekFinalContextControlV1 {
@@ -185,19 +205,24 @@ pub type ValidationAuxiliaryWitnessV1 {
     siblings: List<ByteArray>,
     previous: Option<CekMintHead>,
   }
+  /// Selects the redeemer of the purpose just below the control's purpose
+  /// bound. The execution leaf at that index names the purpose, its source
+  /// and its redeemer item, so the item, the purpose and the frontier index
+  /// are all fixed by the pre-state. `item_frontier_root` opens the item
+  /// commitment far enough to fix `total_length`.
   CekRedeemerContextSelectWitness {
     control: CekRedeemerContextControlV1,
     item_index: Int,
-    item_count: Int,
     total_length: Int,
     item_commitment: ByteArray,
-    redeemer_siblings: List<ByteArray>,
-    purpose_frontier_index: Int,
     purpose_kind: Int,
     purpose_index: Int,
     script_hash: ByteArray,
     subject: ByteArray,
-    purpose_siblings: List<ByteArray>,
+    execution_language_tag: Int,
+    source_leaf: ByteArray,
+    execution_siblings: List<ByteArray>,
+    item_frontier_root: ByteArray,
   }
   RedeemerItemStepWitness {
     redeemer_control: Option<CekRedeemerContextControlV1>,
@@ -285,13 +310,16 @@ pub type ValidationAuxiliaryWitnessV1 {
   LedgerOutputProofStepWitness {
     witness: ledger_output_proof_v1.LedgerOutputProofWitnessV1,
   }
-  LedgerOutputProofFinalizeWitness {
-    descriptor_cbor: ByteArray,
-    signer_proof: SignerSetProofV1,
-  }
+  /// A fact-attachment or finalize step on a terminal output proof. The
+  /// descriptor is not a witness field: it is derived from the terminal
+  /// control.
+  LedgerOutputProofFinalizeWitness { signer_proof: SignerSetProofV1 }
   LedgerDeltaProofFrameWitness {
     frame: mpf_proof_fold_v1.ProofFrameV1,
     siblings: List<ByteArray>,
+    /// Deletion only: the group opening a terminal Branch frame needs
+    /// (`mpf_proof_v1.terminal_branch_keeps_two_children`). Empty otherwise.
+    opening: ByteArray,
   }
   LedgerDeltaOperationWitness {
     operation_kind: Int,
@@ -330,6 +358,15 @@ pub type ValidationAuxiliaryWitnessV1 {
   MintFoldAssetWitness {
     chunk_proof: bounded_item_v1.ChunkProofV1,
     next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  }
+  /// Steps the purpose bound past a native-script purpose. The execution
+  /// leaf just below the bound must be a native execution, which takes no
+  /// redeemer, so a skip and a select can never both apply at one bound.
+  CekRedeemerContextSkipWitness {
+    control: CekRedeemerContextControlV1,
+    purpose_leaf: ByteArray,
+    source_leaf: ByteArray,
+    execution_siblings: List<ByteArray>,
   }
 }
 

@@ -21,6 +21,7 @@ export const CekRedeemerContextControlSchema = Data.Object({
   active_redeemer_leaf: Data.Bytes(),
   active_purpose: DataSummarySchema,
   current_redeemer: DataSummarySchema,
+  purpose_bound: Data.Integer(),
 });
 
 export const CekFinalContextControlSchema = Data.Object({

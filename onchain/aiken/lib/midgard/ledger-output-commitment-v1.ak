@@ -3,6 +3,7 @@ use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
+use midgard/canonical_cbor_scan_v1.{CborBytesV1, CborHeadV1, head_at_v1}
 use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
@@ -210,6 +211,141 @@ pub fn decode(descriptor_cbor: ByteArray) -> LedgerOutputCommitmentV1 {
   }
   // encode enforces the descriptor domain and the exact definite wire form.
   expect encode(descriptor) == descriptor_cbor
+  descriptor
+}
+
+// An equivalent exact-schema decoder for consumers whose compiled footprint
+// benefits from direct parsing. Existing consumers retain decode above.
+fn scalar_head_at(bytes: ByteArray, offset: Int, major: Int) -> CborHeadV1 {
+  expect Some(head) = head_at_v1(bytes, offset, major)
+  head
+}
+
+fn byte_string_at(bytes: ByteArray, offset: Int) -> CborBytesV1 {
+  let head = scalar_head_at(bytes, offset, 2)
+  let next_offset = head.next_offset + head.value
+  expect next_offset <= bytearray.length(bytes)
+  CborBytesV1 {
+    next_offset,
+    value: builtin.slice_bytearray(head.next_offset, head.value, bytes),
+  }
+}
+
+// Every descriptor integer uses its shortest CBOR head. Only the reference
+// language is signed; the remaining fields have an unsigned domain.
+fn language_at(bytes: ByteArray, offset: Int) -> CborHeadV1 {
+  let negative = bytearray.at(bytes, offset) >= 32
+  let head = scalar_head_at(
+    bytes,
+    offset,
+    if negative {
+      1
+    } else {
+      0
+    },
+  )
+  CborHeadV1 {
+    next_offset: head.next_offset,
+    value: if negative {
+      -1 - head.value
+    } else {
+      head.value
+    },
+  }
+}
+
+fn summary_at(
+  bytes: ByteArray,
+  offset: Int,
+) -> Pair<Int, cek_data_v1.DataSummaryV1> {
+  expect bytearray.at(bytes, offset) == 131
+  let root = byte_string_at(bytes, offset + 1)
+  let cbor_length = scalar_head_at(bytes, root.next_offset, 0)
+  let memory = scalar_head_at(bytes, cbor_length.next_offset, 0)
+  Pair(
+    memory.next_offset,
+    cek_data_v1.DataSummaryV1 {
+      root: root.value,
+      cbor_length: cbor_length.value,
+      memory: memory.value,
+    },
+  )
+}
+
+pub fn decode_canonical_schema(
+  descriptor_cbor: ByteArray,
+) -> LedgerOutputCommitmentV1 {
+  expect builtin.slice_bytearray(0, 2, descriptor_cbor) == #"9001"
+  let output_index = scalar_head_at(descriptor_cbor, 2, 0)
+  let total_length = scalar_head_at(
+    descriptor_cbor,
+    output_index.next_offset,
+    0,
+  )
+  let item_commitment = byte_string_at(
+    descriptor_cbor,
+    total_length.next_offset,
+  )
+  let address = byte_string_at(descriptor_cbor, item_commitment.next_offset)
+  let lovelace = scalar_head_at(descriptor_cbor, address.next_offset, 0)
+  let asset_count = scalar_head_at(descriptor_cbor, lovelace.next_offset, 0)
+  let asset_frontier_commitment = byte_string_at(
+    descriptor_cbor,
+    asset_count.next_offset,
+  )
+  let cardano_value_size = scalar_head_at(
+    descriptor_cbor,
+    asset_frontier_commitment.next_offset,
+    0,
+  )
+  let reference_script_language = language_at(
+    descriptor_cbor,
+    cardano_value_size.next_offset,
+  )
+  let reference_script_hash = byte_string_at(
+    descriptor_cbor,
+    reference_script_language.next_offset,
+  )
+  let reference_script_total_length = scalar_head_at(
+    descriptor_cbor,
+    reference_script_hash.next_offset,
+    0,
+  )
+  let reference_script_item_commitment = byte_string_at(
+    descriptor_cbor,
+    reference_script_total_length.next_offset,
+  )
+  let Pair(cardano_next, cardano_tx_out) = summary_at(
+    descriptor_cbor,
+    reference_script_item_commitment.next_offset,
+  )
+  let Pair(midgard_next, midgard_tx_out) = summary_at(
+    descriptor_cbor,
+    cardano_next,
+  )
+  let Pair(end, cardano_spend_datum) = summary_at(descriptor_cbor, midgard_next)
+  expect end == bytearray.length(descriptor_cbor)
+  let descriptor = LedgerOutputCommitmentV1 {
+    version,
+    output_index: output_index.value,
+    total_length: total_length.value,
+    item_commitment: item_commitment.value,
+    address: address.value,
+    lovelace: lovelace.value,
+    asset_count: asset_count.value,
+    asset_frontier_commitment: asset_frontier_commitment.value,
+    cardano_value_size: cardano_value_size.value,
+    reference_script_language: reference_script_language.value,
+    reference_script_hash: reference_script_hash.value,
+    reference_script_total_length: reference_script_total_length.value,
+    reference_script_item_commitment: reference_script_item_commitment.value,
+    cardano_tx_out,
+    midgard_tx_out,
+    cardano_spend_datum,
+  }
+  // The schema above accepts exactly the shortest definite encoding emitted by
+  // encode. Validate the same complete descriptor domain without re-encoding.
+  expect descriptor_is_well_formed(descriptor)
   descriptor
 }
 

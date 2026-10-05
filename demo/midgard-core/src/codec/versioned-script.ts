@@ -64,6 +64,60 @@ export const encodeMidgardVersionedScript = (
   ]);
 };
 
+/**
+ * Exact outer envelope without evaluating a NativeCardano payload. Forced
+ * admission uses this projection so the deployed native-script machine can
+ * reject a malformed native payload; normal admission remains strict.
+ */
+export const decodeMidgardVersionedScriptEnvelope = (
+  bytes: Uint8Array,
+): {
+  readonly language: MidgardScriptLanguage;
+  readonly scriptBytes: Buffer;
+} => {
+  const header = readCborArrayHeader(bytes, 0, "versioned_script");
+  if (header.length !== 2)
+    fail("MidgardVersionedScript must be [language_tag, script_bytes]");
+  const tag = readCborUnsigned(
+    bytes,
+    header.nextOffset,
+    "versioned_script.tag",
+  );
+  const payload = readCborBytes(
+    bytes,
+    tag.nextOffset,
+    "versioned_script.bytes",
+  );
+  if (payload.nextOffset !== bytes.length)
+    fail("Trailing bytes after MidgardVersionedScript");
+  const language =
+    tag.value === 0n
+      ? "NativeCardano"
+      : tag.value === 3n
+        ? "PlutusV3"
+        : tag.value === 128n
+          ? "MidgardV1"
+          : fail(
+              "Unsupported Midgard versioned script tag",
+              tag.value.toString(),
+            );
+  const envelope = {
+    language,
+    scriptBytes: Buffer.from(payload.value),
+  } as const;
+  assertCanonicalCborRoundTrip(
+    bytes,
+    envelope,
+    ({ scriptBytes }) =>
+      encodeCborArrayRaw([
+        encodeCborUnsigned(tag.value),
+        encodeCborBytes(scriptBytes),
+      ]),
+    "MidgardVersionedScript envelope is not canonical",
+  );
+  return envelope;
+};
+
 export const decodeMidgardVersionedScript = (
   bytes: Uint8Array,
 ): MidgardVersionedScript => {

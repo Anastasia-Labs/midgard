@@ -216,7 +216,7 @@ describe("validation-dispute transaction validity", () => {
         expectedScriptHash: scriptHash,
       }),
     ).toThrow(
-      /missing "validationTraceDisputeItemSemantic"; publish the V1 canonical-decode item-semantic reference script/u,
+      /missing "validationTraceDisputeCanonicalDecodeItemSemantic"; publish the V1 canonical-decode item-semantic reference script/u,
     );
     expect(() =>
       requireValidationItemSemanticReferenceScriptOutRef({
@@ -263,7 +263,7 @@ describe("validation-dispute transaction validity", () => {
         expectedScriptHash: scriptHash,
       }),
     ).toThrow(
-      /missing "validationTraceDisputeItemObserve"; publish the V1 canonical-decode item-observe reference script/u,
+      /missing "validationTraceDisputeCanonicalDecodeItemObserve"; publish the V1 canonical-decode item-observe reference script/u,
     );
     expect(() =>
       requireValidationItemObserveReferenceScriptOutRef({

@@ -98,8 +98,8 @@ export const VALIDATION_AUXILIARY_SHAPES = {
   transactionRedeemerItemBegin: [29, 1],
   ledgerOutputProofBegin: [31, 4],
   ledgerOutputProofStep: [32, 1],
-  ledgerOutputProofFinalize: [33, 2],
-  ledgerDeltaProofFrame: [34, 2],
+  ledgerOutputProofFinalize: [33, 1],
+  ledgerDeltaProofFrame: [34, 3],
   ledgerDeltaOperation: [35, 4],
   scriptSourceHashBlock: [36, 2],
   nativeExecutionDescriptor: [37, 17],
@@ -112,6 +112,7 @@ export const VALIDATION_AUXILIARY_SHAPES = {
   cekSignerContextItem: [15, 4],
   cekMintContextItem: [16, 6],
   cekRedeemerContextSelect: [17, 12],
+  cekRedeemerContextSkip: [40, 4],
   cekContextFinalize: [19, 1],
   cekContextFinalizeSpend: [20, 5],
   cekContextAssemble: [21, 1],
@@ -127,7 +128,7 @@ export const VALIDATION_AUXILIARY_SHAPES = {
  * The auxiliary constructors the cek context step
  * (`cek_context_step_semantic_v1`) accepts: every `Cek*Context*Witness`, the
  * redeemer-selection witnesses (`RedeemerScanBeginWitness` /
- * `RedeemerItemStepWitness`), the observer stage's authenticated field chunk,
+ * `RedeemerItemStepWitness` / `CekRedeemerContextSkipWitness`), the observer stage's authenticated field chunk,
  * plus the empty witness that the context-only stages (seed/assemble/finalize
  * without items, observer-empty fields) step on. The resolver takes the whole
  * auxiliary and branches inside `verify_cek_context_step_semantics_v1`, so the
@@ -142,6 +143,7 @@ export const VALIDATION_CEK_CONTEXT_STEP_AUXILIARY_SHAPES = [
   VALIDATION_AUXILIARY_SHAPES.cekSignerContextItem,
   VALIDATION_AUXILIARY_SHAPES.cekMintContextItem,
   VALIDATION_AUXILIARY_SHAPES.cekRedeemerContextSelect,
+  VALIDATION_AUXILIARY_SHAPES.cekRedeemerContextSkip,
   VALIDATION_AUXILIARY_SHAPES.redeemerItemStep,
   VALIDATION_AUXILIARY_SHAPES.cekContextFinalize,
   VALIDATION_AUXILIARY_SHAPES.cekContextFinalizeSpend,

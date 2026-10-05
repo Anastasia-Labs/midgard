@@ -4,6 +4,7 @@ import {
   readCborInteger,
 } from "@al-ft/midgard-core/codec/cbor";
 import * as SDK from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
 
 import {
   detection,
@@ -13,10 +14,17 @@ import {
   type TransitionTraceDetection,
 } from "./detect.detect-count-faults.js";
 import { transitionTraceError } from "./errors.js";
+import { traceStepPhaseFault } from "./phase-band.js";
 import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
 } from "./reconstruct.js";
+import {
+  buildForeignValidationRunFault,
+  buildMalformedValidationRunFault,
+  buildMissingValidationRunFault,
+  validationRunBytesAreWellFormed,
+} from "./witnesses.build-validation-run-faults.js";
 import {
   buildDuplicateTraceEventFault,
   buildEventToStepMismatchFault,
@@ -91,11 +99,17 @@ export const detectEventToStepMismatches = async (
     const mapped = reconstruction.eventToStepByFingerprint.get(
       eventKeyFingerprint(step.event_key),
     );
-    if (
+    const mapMismatch =
       mapped === undefined ||
       mapped.value.step_index !== step.step_index ||
-      mapped.value.phase !== step.phase
-    ) {
+      mapped.value.phase !== step.phase;
+    // An e2s entry that agrees with the trace still proves the step
+    // misplaced when the step breaks its header phase band or its own event
+    // key's phase (the same EventToStepMismatch arm).
+    const phaseFault = mapMismatch
+      ? undefined
+      : traceStepPhaseFault(reconstruction.header, step);
+    if (mapMismatch || phaseFault !== undefined) {
       const mappedText =
         mapped === undefined
           ? "absent"
@@ -104,10 +118,12 @@ export const detectEventToStepMismatches = async (
         detection({
           reconstruction,
           kind: "eventToStepMismatch",
-          invariant: "event_to_step_matches_trace",
-          diagnostic: `Trace step ${step.step_index.toString()} maps event key ${eventKeyFingerprint(
-            step.event_key,
-          )}, but event_to_step is ${mappedText}.`,
+          invariant: phaseFault?.invariant ?? "event_to_step_matches_trace",
+          diagnostic:
+            phaseFault?.diagnostic ??
+            `Trace step ${step.step_index.toString()} maps event key ${eventKeyFingerprint(
+              step.event_key,
+            )}, but event_to_step is ${mappedText}.`,
           fault: await buildEventToStepMismatchFault({
             reconstruction,
             stepIndex: step.step_index,
@@ -200,6 +216,87 @@ export const detectSourceMembershipMismatches = async (
             reason: "",
           },
         ),
+      );
+    }
+  }
+  const runKeys = new Set<string>();
+  for (const entry of reconstruction.rootData.validationTraces.entries) {
+    let eventKey: SDK.EventKey;
+    try {
+      eventKey = Data.from(entry.key.toString("hex"), SDK.EventKey);
+      if (eventKeyFingerprint(eventKey) !== entry.key.toString("hex"))
+        throw new Error("non-canonical event key");
+    } catch {
+      detections.push(
+        detection({
+          reconstruction,
+          kind: "sourceMembershipMismatch",
+          invariant: "validation_run_event_key_canonical",
+          diagnostic:
+            "Validation run has an undecodable or non-canonical event key.",
+          fault: await buildForeignValidationRunFault(
+            reconstruction,
+            entry.key,
+            entry.value,
+          ),
+        }),
+      );
+      continue;
+    }
+    const fingerprint = eventKeyFingerprint(eventKey);
+    runKeys.add(fingerprint);
+    const source = reconstruction.sourceEventsByFingerprint.get(fingerprint);
+    if (
+      source === undefined ||
+      (source.phase !== "L2Transaction" && source.phase !== "ForcedTransaction")
+    ) {
+      detections.push(
+        detection({
+          reconstruction,
+          kind: "sourceMembershipMismatch",
+          invariant: "validation_run_has_source",
+          diagnostic: `Validation run ${fingerprint} has no transaction source.`,
+          fault: await buildForeignValidationRunFault(
+            reconstruction,
+            eventKey,
+            entry.value,
+          ),
+        }),
+      );
+    }
+    if (!validationRunBytesAreWellFormed(entry.value)) {
+      detections.push(
+        detection({
+          reconstruction,
+          kind: "sourceMembershipMismatch",
+          invariant: "validation_run_descriptor_well_formed",
+          diagnostic: `Validation run ${fingerprint} has a malformed descriptor.`,
+          fault: await buildMalformedValidationRunFault(
+            reconstruction,
+            eventKey,
+            entry.value,
+          ),
+        }),
+      );
+    }
+  }
+  for (const source of reconstruction.sourceEvents) {
+    if (
+      (source.phase === "L2Transaction" ||
+        source.phase === "ForcedTransaction") &&
+      !runKeys.has(source.fingerprint)
+    ) {
+      detections.push(
+        detection({
+          reconstruction,
+          kind: "sourceMembershipMismatch",
+          invariant: "source_transaction_has_validation_run",
+          diagnostic: `Source transaction ${source.fingerprint} has no validation run.`,
+          fault: await buildMissingValidationRunFault(
+            reconstruction,
+            source.eventKey,
+          ),
+        }),
       );
     }
   }

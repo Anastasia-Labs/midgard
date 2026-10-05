@@ -86,9 +86,11 @@ pub type LedgerOutputProofWitnessV1 {
   LedgerOutputProofNativeFrame {
     frame: native_script_scan_v1.NativeScriptFrameV1,
   }
+  /// The window a span attach records is not a witness choice: its start is
+  /// the span the pre-control's consuming stage reads next and its length is
+  /// the maximal `min(chunk_bytes, total_length - start)`, so the chunk
+  /// proofs are the only witness data.
   LedgerOutputProofSpanAttach {
-    start: Int,
-    length: Int,
     chunk_proof: bounded_item_v1.ChunkProofV1,
     next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
   }
@@ -794,6 +796,26 @@ fn authenticated_output_span(
   )
 }
 
+/// Whether the recorded span window contains the span
+/// `[absolute_start, absolute_start + length)`. This is the interval half of
+/// `bound_window_bytes_v1`; the span-attach step is admitted exactly when it
+/// fails for the span the pre-control demands next, so attaching and
+/// consuming are exclusive at every pre-control.
+pub fn window_covers_v1(
+  span_window: Option<LedgerOutputSpanWindowV1>,
+  absolute_start: Int,
+  length: Int,
+) -> Bool {
+  when span_window is {
+    None -> False
+    Some(window) -> and {
+        length > 0,
+        absolute_start >= window.start,
+        absolute_start + length <= window.start + window.length,
+      }
+  }
+}
+
 /// Bind redeemer-supplied window bytes to the recorded span-window commitment
 /// (one hash plus equality) and slice the demanded span out of them. This is
 /// the consuming half of the span-attach step: the digest was recorded by an
@@ -808,9 +830,7 @@ pub fn bound_window_bytes_v1(
     None -> None
     Some(window) ->
       if and {
-        length > 0,
-        absolute_start >= window.start,
-        absolute_start + length <= window.start + window.length,
+        window_covers_v1(span_window, absolute_start, length),
         bytearray.length(bytes) == window.length,
         crypto.blake2b_256(bytes) == window.digest,
       } {
@@ -823,38 +843,148 @@ pub fn bound_window_bytes_v1(
   }
 }
 
-/// The span-attach step: verify the chunk merkle membership of the claimed
-/// output span exactly once and record its `(start, length, digest)` window
-/// in the control. Valid only at the span-consuming stages.
+/// The `(absolute_start, length)` of reference-script chunk `chunk_index`:
+/// the span the reference-script commitment stage binds next.
+pub fn reference_script_chunk_span_v1(
+  item_offset: Int,
+  item_length: Int,
+  chunk_index: Int,
+) -> (Int, Int) {
+  (
+    item_offset + chunk_index * bounded_item_v1.chunk_bytes,
+    bounded_item_v1.expected_chunk_length(item_length, chunk_index),
+  )
+}
+
+/// The `(absolute_start, content_length)` of the script bytes the next ready
+/// block of the reference-script hash trace reads. The first block's leading
+/// byte is the language tag, which is not read from the output.
+pub fn script_hash_content_span_v1(
+  reference_script_offset: Int,
+  cursor: Int,
+  total_length: Int,
+) -> (Int, Int) {
+  let remaining = total_length - cursor
+  let expected_length = if remaining < blake2b_224_trace_v1.block_bytes {
+    remaining
+  } else {
+    blake2b_224_trace_v1.block_bytes
+  }
+  if cursor == 0 {
+    (reference_script_offset, expected_length - 1)
+  } else {
+    (reference_script_offset + cursor - 1, expected_length)
+  }
+}
+
+/// The output span the pre-control's consuming stage step reads next, or
+/// `None` when that step reads no output bytes. Each arm is the consuming
+/// stage's own span formula.
+pub fn demanded_span_v1(
+  control: LedgerOutputProofControlV1,
+) -> Option<(Int, Int)> {
+  if control.stage == stage_datum_traversal {
+    when control.datum is {
+      None -> None
+      Some(datum_control) ->
+        when
+          cek_data_traverse_v1.prevalidated_next_source_span(datum_control)
+        is {
+          None -> None
+          Some(span) -> Some((span.absolute_start, span.length))
+        }
+    }
+  } else if control.stage == stage_reference_script_commitment {
+    let item_offset = control.output_scan.reference_script_item_offset
+    let item_length = control.total_length - item_offset
+    if control.reference_script_count == bounded_item_v1.chunk_count(
+      item_length,
+    ) {
+      None
+    } else {
+      Some(
+        reference_script_chunk_span_v1(
+          item_offset,
+          item_length,
+          control.reference_script_count,
+        ),
+      )
+    }
+  } else if control.stage == stage_script_hash {
+    when control.script_hash is {
+      None -> None
+      Some(hash_control) ->
+        if hash_control.stage == blake2b_224_trace_v1.stage_ready {
+          let span = script_hash_content_span_v1(
+            control.output_scan.reference_script_offset,
+            hash_control.cursor,
+            hash_control.total_length,
+          )
+          if span.2nd > 0 {
+            Some(span)
+          } else {
+            None
+          }
+        } else {
+          None
+        }
+    }
+  } else {
+    None
+  }
+}
+
+/// The length of the window a span attach records at `start`: the maximal
+/// window, `min(chunk_bytes, total_length - start)`.
+pub fn attach_window_length_v1(total_length: Int, start: Int) -> Int {
+  if total_length - start < bounded_item_v1.chunk_bytes {
+    total_length - start
+  } else {
+    bounded_item_v1.chunk_bytes
+  }
+}
+
+/// The span-attach step: verify the chunk merkle membership of the window
+/// the pre-control demands exactly once and record its `(start, length,
+/// digest)` in the control. The window starts at the demanded span and runs
+/// for `min(chunk_bytes, total_length - start)` bytes; the step is admitted
+/// only when the recorded window does not already cover the demanded span.
 fn span_attach_step(
   control: LedgerOutputProofControlV1,
-  start: Int,
-  length: Int,
   chunk_proof: bounded_item_v1.ChunkProofV1,
   next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
 ) -> Option<LedgerOutputProofStepResultV1> {
-  when
-    authenticated_output_span(
-      control,
-      start,
-      length,
-      LedgerOutputProofChunks { chunk_proof, next_chunk_proof },
-    )
-  is {
+  when demanded_span_v1(control) is {
     None -> None
-    Some(bytes) ->
-      advanced(
-        LedgerOutputProofControlV1 {
-          ..control,
-          span_window: Some(
-            LedgerOutputSpanWindowV1 {
-              start,
-              length,
-              digest: crypto.blake2b_256(bytes),
-            },
-          ),
-        },
-      )
+    Some((start, length)) ->
+      if window_covers_v1(control.span_window, start, length) {
+        None
+      } else {
+        let window_length = attach_window_length_v1(control.total_length, start)
+        when
+          authenticated_output_span(
+            control,
+            start,
+            window_length,
+            LedgerOutputProofChunks { chunk_proof, next_chunk_proof },
+          )
+        is {
+          None -> None
+          Some(bytes) ->
+            advanced(
+              LedgerOutputProofControlV1 {
+                ..control,
+                span_window: Some(
+                  LedgerOutputSpanWindowV1 {
+                    start,
+                    length: window_length,
+                    digest: crypto.blake2b_256(bytes),
+                  },
+                ),
+              },
+            )
+        }
+      }
   }
 }
 
@@ -1130,11 +1260,11 @@ fn reference_script_commitment_step(
       None
     }
   } else {
-    let chunk_length = bounded_item_v1.expected_chunk_length(
+    let (absolute_start, chunk_length) = reference_script_chunk_span_v1(
+      item_offset,
       item_length,
       chunk_index,
     )
-    let absolute_start = item_offset + chunk_index * bounded_item_v1.chunk_bytes
     when
       when witness is {
         LedgerOutputProofWindow { bytes } ->
@@ -1196,25 +1326,12 @@ fn script_hash_step(
       )
     }
   } else if hash_control.stage == blake2b_224_trace_v1.stage_ready {
-    let remaining = hash_control.total_length - hash_control.cursor
-    let expected_length = if remaining < blake2b_224_trace_v1.block_bytes {
-      remaining
-    } else {
-      blake2b_224_trace_v1.block_bytes
-    }
     let includes_language = hash_control.cursor == 0
-    let language_length = if includes_language {
-      1
-    } else {
-      0
-    }
-    let content_length = expected_length - language_length
-    let output_offset_adjustment = if includes_language {
-      0
-    } else {
-      1
-    }
-    let absolute_start = control.output_scan.reference_script_offset + hash_control.cursor - output_offset_adjustment
+    let (absolute_start, content_length) = script_hash_content_span_v1(
+      control.output_scan.reference_script_offset,
+      hash_control.cursor,
+      hash_control.total_length,
+    )
     let content = if content_length == 0 {
       if witness == LedgerOutputProofNoWitness {
         Some(#"")
@@ -1323,23 +1440,8 @@ pub fn step_v1(
     LedgerOutputProofSpanAttach { .. } -> True
     _ -> False
   } {
-    expect
-        LedgerOutputProofSpanAttach {
-          start,
-          length,
-          chunk_proof,
-          next_chunk_proof,
-        }
-      = witness
-    if or {
-      control.stage == stage_datum_traversal,
-      control.stage == stage_reference_script_commitment,
-      control.stage == stage_script_hash,
-    } {
-      span_attach_step(control, start, length, chunk_proof, next_chunk_proof)
-    } else {
-      None
-    }
+    expect LedgerOutputProofSpanAttach { chunk_proof, next_chunk_proof } = witness
+    span_attach_step(control, chunk_proof, next_chunk_proof)
   } else if control.stage == stage_structure {
     structure_step(control, witness)
   } else if control.stage == stage_value_fold {
@@ -1612,58 +1714,128 @@ pub fn reference_script_digest_v1(
   }
 }
 
-fn descriptor_reference_script_is_exact_v1(
+/// The four reference-script descriptor fields of an exact terminal control:
+/// `(language, hash, total_length, item_commitment)`, the empty tuple of an
+/// output without a reference script.
+fn terminal_reference_script_fields_v1(
   control: LedgerOutputProofControlV1,
-  descriptor: ledger_output_commitment_v1.LedgerOutputCommitmentV1,
-) -> Bool {
-  if control.output_scan.reference_script_language == -1 {
-    and {
-      descriptor.reference_script_language == -1,
-      descriptor.reference_script_hash == #"",
-      descriptor.reference_script_total_length == 0,
-      descriptor.reference_script_item_commitment == #"",
-    }
+) -> Option<(Int, ByteArray, Int, ByteArray)> {
+  let language = control.output_scan.reference_script_language
+  if language == -1 {
+    Some((-1, #"", 0, #""))
   } else {
     when reference_script_digest_v1(control) is {
-      None -> False
+      None -> None
       Some(digest) ->
         when reference_script_item_commitment_v1(control) is {
-          None -> False
-          Some(item_commitment) -> and {
-              descriptor.reference_script_language == control.output_scan.reference_script_language,
-              descriptor.reference_script_hash == digest,
-              descriptor.reference_script_total_length == control.total_length - control.output_scan.reference_script_item_offset,
-              descriptor.reference_script_item_commitment == item_commitment,
-            }
+          None -> None
+          Some(item_commitment) ->
+            Some(
+              (
+                language,
+                digest,
+                control.total_length - control.output_scan.reference_script_item_offset,
+                item_commitment,
+              ),
+            )
         }
     }
   }
 }
 
+/// The descriptor of an exact terminal control, every field computed from the
+/// control itself. `None` off the terminal stage.
+pub fn terminal_descriptor_v1(
+  control: LedgerOutputProofControlV1,
+) -> Option<ledger_output_commitment_v1.LedgerOutputCommitmentV1> {
+  when cardano_tx_out_summary_v1(control) is {
+    None -> None
+    Some(cardano_tx_out) ->
+      when midgard_tx_out_summary_v1(control) is {
+        None -> None
+        Some(midgard_tx_out) ->
+          when cardano_spend_datum_summary_v1(control) is {
+            None -> None
+            Some(cardano_spend_datum) ->
+              when terminal_reference_script_fields_v1(control) is {
+                None -> None
+                Some((language, hash, reference_length, reference_commitment)) ->
+                  Some(
+                    ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+                      version: ledger_output_commitment_v1.version,
+                      output_index: control.output_index,
+                      total_length: control.total_length,
+                      item_commitment: control.item_commitment,
+                      address: control.output_scan.address,
+                      lovelace: control.output_scan.lovelace,
+                      asset_count: control.output_scan.asset_count,
+                      asset_frontier_commitment: validation_merkle_v1.frontier_commitment(
+                        control.output_scan.asset_count,
+                        control.output_scan.asset_peaks,
+                      ),
+                      cardano_value_size: control.output_scan.cardano_value_size,
+                      reference_script_language: language,
+                      reference_script_hash: hash,
+                      reference_script_total_length: reference_length,
+                      reference_script_item_commitment: reference_commitment,
+                      cardano_tx_out,
+                      midgard_tx_out,
+                      cardano_spend_datum,
+                    },
+                  )
+              }
+          }
+      }
+  }
+}
+
+/// `blake2b_256` over the serialised Plutus data list `payload`: the shape of
+/// every descriptor fact commitment.
+pub fn fact_digest_v1(payload: List<Data>) -> ByteArray {
+  crypto.blake2b_256(builtin.serialise_data(builtin.list_data(payload)))
+}
+
+/// The role-1 fact payload: the four reference-script descriptor fields,
+/// exactly what the reference-script descriptor yield pins.
+pub fn reference_script_fact_payload_v1(
+  descriptor: ledger_output_commitment_v1.LedgerOutputCommitmentV1,
+) -> List<Data> {
+  [
+    builtin.i_data(descriptor.reference_script_language),
+    builtin.b_data(descriptor.reference_script_hash),
+    builtin.i_data(descriptor.reference_script_total_length),
+    builtin.b_data(descriptor.reference_script_item_commitment),
+  ]
+}
+
 /// The commitment a fact-attachment step records for descriptor role `role`
 /// (0 scan facts, 1 reference script, 2 datum summary, 3 value summary). Each
-/// fact binds the exact descriptor bytes plus every prover-claimed summary its
-/// descriptor yield consumed, so the thin terminal's recomputation forces one
-/// consistent `(descriptor, value summary, datum summary)` triple across the
-/// whole attachment chain.
+/// fact commits only what its own descriptor yield pins: role 3 the value
+/// summary, role 2 the datum summary, role 1 the four reference-script
+/// fields, and role 0 the whole descriptor. The role-0 yield runs last and
+/// checks the three recorded facts against the descriptor and the summaries
+/// it consumes, so every attachment step has one successor and the thin
+/// terminal's descriptor is the preimage of the role-0 fact.
 pub fn fact_commitment_v1(
   role: Int,
   descriptor_cbor: ByteArray,
   claimed_value_summary: Data,
   claimed_datum_summary: Data,
 ) -> ByteArray {
-  let descriptor_data = builtin.b_data(descriptor_cbor)
-  let payload = if role == 0 {
-    [descriptor_data, claimed_value_summary, claimed_datum_summary]
+  if role == 0 {
+    fact_digest_v1([builtin.b_data(descriptor_cbor)])
   } else if role == 1 {
-    [descriptor_data]
+    fact_digest_v1(
+      reference_script_fact_payload_v1(
+        ledger_output_commitment_v1.decode(descriptor_cbor),
+      ),
+    )
   } else if role == 2 {
-    [descriptor_data, claimed_datum_summary]
+    fact_digest_v1([claimed_datum_summary])
   } else {
     expect role == 3
-    [descriptor_data, claimed_value_summary]
+    fact_digest_v1([claimed_value_summary])
   }
-  crypto.blake2b_256(builtin.serialise_data(builtin.list_data(payload)))
 }
 
 pub fn fact_v1(
@@ -1752,141 +1924,76 @@ pub fn terminal_claimed_summaries_v1(
 }
 
 /// The canonical fact-attachment groups, in machine order: the two leaf
-/// summaries first, then the composite scan facts, then the reference script.
-/// The grouping bounds each attachment transaction's descriptor-yield count so
-/// its measured memory stays within the positive-path basis.
+/// summaries first, then the reference script, then the scan facts, whose
+/// yield consumes the three facts recorded before it. The grouping bounds
+/// each attachment transaction's descriptor-yield count so its measured
+/// memory stays within the positive-path basis.
 pub fn fact_attach_groups_v1() -> List<List<Int>> {
-  [[2, 3], [0], [1]]
+  [[2, 3], [1], [0]]
 }
 
 /// One canonical fact-attachment machine step on a terminal control: record
-/// the next incomplete group's fact commitments, computed from the descriptor
-/// bytes and the control's own terminal summaries. `None` when every fact is
-/// already recorded (the next step is the thin terminal finalize).
+/// the next incomplete group's fact commitments, computed from the
+/// control's own terminal descriptor and summaries. `None` when every fact
+/// is already recorded (the next step is the thin terminal finalize).
 pub fn fact_attach_v1(
   control: LedgerOutputProofControlV1,
-  descriptor_cbor: ByteArray,
 ) -> Option<LedgerOutputProofControlV1> {
-  when terminal_claimed_summaries_v1(control) is {
+  when terminal_descriptor_v1(control) is {
     None -> None
-    Some((value_data, datum_data)) -> {
-      let next_group = list.find(
-        fact_attach_groups_v1(),
-        fn(group) {
-          list.any(group, fn(role) { fact_v1(control, role) == None })
-        },
-      )
-      when next_group is {
+    Some(descriptor) ->
+      when terminal_claimed_summaries_v1(control) is {
         None -> None
-        Some(group) -> {
-          expect list.all(group, fn(role) { fact_v1(control, role) == None })
-          Some(
-            list.foldl(
-              group,
-              control,
-              fn(role, acc) {
-                with_fact_v1(
-                  acc,
-                  role,
-                  fact_commitment_v1(
-                    role,
-                    descriptor_cbor,
-                    value_data,
-                    datum_data,
-                  ),
-                )
-              },
-            ),
+        Some((value_data, datum_data)) -> {
+          let descriptor_cbor = ledger_output_commitment_v1.encode(descriptor)
+          let next_group = list.find(
+            fact_attach_groups_v1(),
+            fn(group) {
+              list.any(group, fn(role) { fact_v1(control, role) == None })
+            },
           )
+          when next_group is {
+            None -> None
+            Some(group) -> {
+              expect
+                list.all(group, fn(role) { fact_v1(control, role) == None })
+              Some(
+                list.foldl(
+                  group,
+                  control,
+                  fn(role, acc) {
+                    with_fact_v1(
+                      acc,
+                      role,
+                      fact_commitment_v1(
+                        role,
+                        descriptor_cbor,
+                        value_data,
+                        datum_data,
+                      ),
+                    )
+                  },
+                ),
+              )
+            }
+          }
         }
       }
-    }
   }
 }
 
-/// The thin terminal's fact gate: every recorded fact equals the commitment
-/// recomputed from the finalize redeemer's descriptor bytes and claimed
-/// summaries — a fact can therefore only have entered the control through its
-/// descriptor yield's attestation over these exact bytes.
+/// The thin terminal's fact gate: the recorded role-0 fact is the commitment
+/// to exactly these descriptor bytes. A role-0 fact is recorded only by the
+/// last attachment group, whose yield checked the other three facts against
+/// the same descriptor, so this one equality pins the whole descriptor.
 pub fn facts_are_exact_v1(
   control: LedgerOutputProofControlV1,
   descriptor_cbor: ByteArray,
-  claimed_value_summary: Data,
-  claimed_datum_summary: Data,
 ) -> Bool {
   and {
+    terminal_is_exact_v1(control),
     control.scan_facts_fact == Some(
-      fact_commitment_v1(
-        0,
-        descriptor_cbor,
-        claimed_value_summary,
-        claimed_datum_summary,
-      ),
+      fact_digest_v1([builtin.b_data(descriptor_cbor)]),
     ),
-    control.reference_script_fact == Some(
-      fact_commitment_v1(
-        1,
-        descriptor_cbor,
-        claimed_value_summary,
-        claimed_datum_summary,
-      ),
-    ),
-    control.datum_summary_fact == Some(
-      fact_commitment_v1(
-        2,
-        descriptor_cbor,
-        claimed_value_summary,
-        claimed_datum_summary,
-      ),
-    ),
-    control.value_summary_fact == Some(
-      fact_commitment_v1(
-        3,
-        descriptor_cbor,
-        claimed_value_summary,
-        claimed_datum_summary,
-      ),
-    ),
-  }
-}
-
-/// Fail-closed admission boundary for a compact ledger MPF value. Every
-/// descriptor fact must equal the independently proven terminal output fact.
-pub fn descriptor_is_exact_v1(
-  control: LedgerOutputProofControlV1,
-  descriptor: ledger_output_commitment_v1.LedgerOutputCommitmentV1,
-) -> Bool {
-  if !terminal_is_exact_v1(control) {
-    False
-  } else {
-    when cardano_tx_out_summary_v1(control) is {
-      None -> False
-      Some(cardano_tx_out) ->
-        when midgard_tx_out_summary_v1(control) is {
-          None -> False
-          Some(midgard_tx_out) ->
-            when cardano_spend_datum_summary_v1(control) is {
-              None -> False
-              Some(cardano_spend_datum) -> and {
-                  descriptor.version == ledger_output_commitment_v1.version,
-                  descriptor.output_index == control.output_index,
-                  descriptor.total_length == control.total_length,
-                  descriptor.item_commitment == control.item_commitment,
-                  descriptor.address == control.output_scan.address,
-                  descriptor.lovelace == control.output_scan.lovelace,
-                  descriptor.asset_count == control.output_scan.asset_count,
-                  descriptor.asset_frontier_commitment == validation_merkle_v1.frontier_commitment(
-                    control.output_scan.asset_count,
-                    control.output_scan.asset_peaks,
-                  ),
-                  descriptor.cardano_value_size == control.output_scan.cardano_value_size,
-                  descriptor_reference_script_is_exact_v1(control, descriptor),
-                  descriptor.cardano_tx_out == cardano_tx_out,
-                  descriptor.midgard_tx_out == midgard_tx_out,
-                  descriptor.cardano_spend_datum == cardano_spend_datum,
-                }
-            }
-        }
-    }
   }
 }

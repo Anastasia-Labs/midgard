@@ -9,6 +9,7 @@ import {
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { forcedTransactionSubject } from "../workflow/detection-subject.js";
 
 export const detectMinAdaForcedReplay = (block: CanonicalBlockEvidence) =>
   block.reconstruction.forcedTransactions.flatMap(
@@ -63,6 +64,7 @@ export const detectMinAdaForcedReplay = (block: CanonicalBlockEvidence) =>
       });
       return [
         {
+          ...forcedTransactionSubject(transaction.key),
           detectionId: `min-ada:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${outputIndex.toString()}`,
           violationId: "min-ada" as const,
           headerHash: block.headerHash,

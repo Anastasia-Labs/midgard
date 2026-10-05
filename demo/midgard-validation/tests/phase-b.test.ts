@@ -5,7 +5,6 @@ import {
   hashMidgardCekTermNode,
 } from "@al-ft/midgard-core/cek-proof";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
-import { DataConstr } from "@harmoniclabs/plutus-data";
 import {
   Application,
   Lambda,
@@ -22,20 +21,19 @@ import {
   buildConflictComponents,
   LedgerColumns,
   RejectCodes,
-  runPhaseBValidationWithPatch,
 } from "../src/index.js";
-import {
-  encodeScriptContextCbor,
-  evaluateScriptWithHarmonic,
-  evaluateUplcWithContextCbor,
-} from "../src/local-script-eval.js";
 import { MidgardRedeemerTag } from "../src/midgard-redeemers.js";
 import type { PhaseBResultWithPatch } from "../src/phase-b.js";
-import type { PhaseBConfig, RejectCode, RejectedTx } from "../src/types.js";
 import {
   outputCborMeetsMinAda,
   outputCborMinAdaLovelace,
 } from "../src/value-accounting.js";
+import {
+  expectSinglePhaseBRejection,
+  phaseBConfig,
+  preState,
+  runPhaseB,
+} from "./phase-b.harness.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -48,35 +46,8 @@ import {
   TEST_ADDRESS_BYTES,
 } from "./validation-fixtures.js";
 
-const phaseBConfig: PhaseBConfig = {
-  nowCardanoSlotNo: 100n,
-  bucketConcurrency: 1,
-};
-
-const runPhaseB = (
-  candidates: Parameters<typeof runPhaseBValidationWithPatch>[0],
-  preState: Parameters<typeof runPhaseBValidationWithPatch>[1],
-  config = phaseBConfig,
-) =>
-  Effect.runPromise(runPhaseBValidationWithPatch(candidates, preState, config));
-
 const txIds = (txs: PhaseBResultWithPatch["accepted"]) =>
   txs.map((tx) => tx.ledgerTx.txId.toString("hex"));
-
-const preState = (
-  entries: readonly (readonly [outRef: Buffer, output: Buffer])[],
-) =>
-  new Map(entries.map(([outRef, output]) => [outRef.toString("hex"), output]));
-
-const expectSinglePhaseBRejection = (
-  result: PhaseBResultWithPatch,
-  expectedCode: RejectCode,
-): RejectedTx => {
-  expect(result.accepted).toHaveLength(0);
-  expect(result.rejected).toHaveLength(1);
-  expect(result.rejected[0].code).toBe(expectedCode);
-  return result.rejected[0];
-};
 
 describe("phase B validation", () => {
   it("matches the pairwise conflict oracle on randomized ready waves", () => {
@@ -524,6 +495,149 @@ describe("phase B validation", () => {
     expect(result.rejected[0].code).toBe(RejectCodes.InputNotFound);
   });
 
+  it("applies a referencer before a later spender of its reference, in candidate order", async () => {
+    // Every input resolves against the state before its own transaction, as
+    // on Cardano: T1 reads X, then T2 spends X.
+    const x = outRefFromByte(0x60);
+    const t1Input = outRefFromByte(0x61);
+    const referencer = makePhaseBCandidate({
+      arrivalSeq: 0n,
+      spent: [t1Input],
+      referenceInputs: [x],
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
+    });
+    const spender = makePhaseBCandidate({
+      arrivalSeq: 1n,
+      spent: [x],
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
+    });
+    const result = await runPhaseB(
+      [referencer, spender],
+      preState([
+        [x, makeOutput(FUNDED_OUTPUT_LOVELACE)],
+        [t1Input, makeOutput(FUNDED_OUTPUT_LOVELACE)],
+      ]),
+    );
+    expect(result.rejected).toStrictEqual([]);
+    expect(txIds(result.accepted)).toStrictEqual([
+      referencer.ledgerTx.txId.toString("hex"),
+      spender.ledgerTx.txId.toString("hex"),
+    ]);
+  });
+
+  it("returns accepted transactions in the order it applied them, never after a later spender of their reference", async () => {
+    // P produces Y; S spends Y and X; R references X. S arrives before R, but
+    // R has no in-block parent and S has P, so R is applied (and returned)
+    // before S, and R's reference X is still unspent at R's position.
+    const a = outRefFromByte(0x62);
+    const b = outRefFromByte(0x63);
+    const x = outRefFromByte(0x64);
+    const producer = makePhaseBCandidate({
+      arrivalSeq: 0n,
+      spent: [a],
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
+    });
+    const y = producer.graph.produced[0][LedgerColumns.OUTREF];
+    const spender = makePhaseBCandidate({
+      arrivalSeq: 1n,
+      spent: [y, x],
+      outputLovelace: FUNDED_OUTPUT_LOVELACE * 2n,
+    });
+    const referencer = makePhaseBCandidate({
+      arrivalSeq: 2n,
+      spent: [b],
+      referenceInputs: [x],
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
+    });
+    const result = await runPhaseB(
+      [producer, spender, referencer],
+      preState([
+        [a, makeOutput(FUNDED_OUTPUT_LOVELACE)],
+        [b, makeOutput(FUNDED_OUTPUT_LOVELACE)],
+        [x, makeOutput(FUNDED_OUTPUT_LOVELACE)],
+      ]),
+    );
+    expect(result.rejected).toStrictEqual([]);
+    expect(txIds(result.accepted)).toStrictEqual([
+      producer.ledgerTx.txId.toString("hex"),
+      referencer.ledgerTx.txId.toString("hex"),
+      spender.ledgerTx.txId.toString("hex"),
+    ]);
+  });
+
+  it("applies the producer of a reference before its referencer", async () => {
+    const a = outRefFromByte(0x65);
+    const b = outRefFromByte(0x66);
+    const producer = makePhaseBCandidate({
+      arrivalSeq: 0n,
+      spent: [a],
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
+    });
+    const y = producer.graph.produced[0][LedgerColumns.OUTREF];
+    const referencer = makePhaseBCandidate({
+      arrivalSeq: 1n,
+      spent: [b],
+      referenceInputs: [y],
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
+    });
+    const preStateEntries = preState([
+      [a, makeOutput(FUNDED_OUTPUT_LOVELACE)],
+      [b, makeOutput(FUNDED_OUTPUT_LOVELACE)],
+    ]);
+    // Submitted in either order, the producer is applied first.
+    for (const candidates of [
+      [producer, referencer],
+      [referencer, producer],
+    ]) {
+      const result = await runPhaseB(candidates, preStateEntries);
+      expect(result.rejected).toStrictEqual([]);
+      expect(txIds(result.accepted)).toStrictEqual([
+        producer.ledgerTx.txId.toString("hex"),
+        referencer.ledgerTx.txId.toString("hex"),
+      ]);
+    }
+  });
+
+  it("includes exactly the first of a reference/spend cycle, deterministically", async () => {
+    // R references A and spends X; S references X and spends A. Whichever is
+    // applied first invalidates the other, as on Cardano.
+    const a = outRefFromByte(0x67);
+    const x = outRefFromByte(0x68);
+    const r = makePhaseBCandidate({
+      arrivalSeq: 0n,
+      spent: [x],
+      referenceInputs: [a],
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
+    });
+    const s = makePhaseBCandidate({
+      arrivalSeq: 1n,
+      spent: [a],
+      referenceInputs: [x],
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
+    });
+    const preStateEntries = preState([
+      [a, makeOutput(FUNDED_OUTPUT_LOVELACE)],
+      [x, makeOutput(FUNDED_OUTPUT_LOVELACE)],
+    ]);
+    for (const [first, second] of [
+      [r, s],
+      [s, r],
+    ] as const) {
+      for (let run = 0; run < 3; run += 1) {
+        const result = await runPhaseB([first, second], preStateEntries);
+        expect(txIds(result.accepted)).toStrictEqual([
+          first.ledgerTx.txId.toString("hex"),
+        ]);
+        expect(
+          result.rejected.map((rejection) => rejection.code),
+        ).toStrictEqual([RejectCodes.InputNotFound]);
+        expect(result.rejected[0].txId.toString("hex")).toBe(
+          second.ledgerTx.txId.toString("hex"),
+        );
+      }
+    }
+  });
+
   it("cascade-rejects descendants when an ancestor fails validation", async () => {
     const parentInput = outRefFromByte(0x29);
     const parent = makePhaseBCandidate({
@@ -635,7 +749,7 @@ describe("phase B validation", () => {
     );
   });
 
-  it("injects worker UPLC evaluation without changing coordinator-side context encoding", async () => {
+  it("injects the script evaluator without changing coordinator-side context encoding", async () => {
     const spent = outRefFromByte(0x2d);
     const script = plutusV3ScriptWitness(Buffer.from("010203", "hex"));
     const scriptHash = hashScriptWitness(script);
@@ -656,7 +770,7 @@ describe("phase B validation", () => {
       ]),
       {
         ...phaseBConfig,
-        evaluateScript: (_scriptBytes, contextCbor) =>
+        evaluateProofScript: (_scriptBytes, contextCbor) =>
           Effect.sync(() => {
             evaluatorCalls += 1;
             expect(contextCbor.byteLength).toBeGreaterThan(0);
@@ -675,7 +789,7 @@ describe("phase B validation", () => {
       Buffer.from(
         UPLCEncoder.compile(
           new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
-        ).toBuffer().buffer,
+        ),
       ),
     );
     const script = plutusV3ScriptWitness(program.envelopeCbor);
@@ -714,7 +828,7 @@ describe("phase B validation", () => {
             [1, 1, 0],
             new Application(selfApplication, selfApplication),
           ),
-        ).toBuffer().buffer,
+        ),
       ),
     );
     const script = plutusV3ScriptWitness(program.envelopeCbor);
@@ -751,7 +865,7 @@ describe("phase B validation", () => {
     expect(rejection.detail).toContain("declared mem=0 cpu=0");
   });
 
-  it("propagates worker infrastructure failures instead of rejecting the tx", async () => {
+  it("propagates evaluator infrastructure failures instead of rejecting the tx", async () => {
     const spent = outRefFromByte(0x2e);
     const script = plutusV3ScriptWitness(Buffer.from("010203", "hex"));
     const scriptHash = hashScriptWitness(script);
@@ -775,17 +889,9 @@ describe("phase B validation", () => {
         ]),
         {
           ...phaseBConfig,
-          evaluateScript: () => Effect.fail(new Error("worker crashed")),
+          evaluateProofScript: () => Effect.fail(new Error("worker crashed")),
         },
       ),
     ).rejects.toThrow("worker crashed");
-  });
-
-  it("keeps the split evaluator bit-identical to the composed inline seam", () => {
-    const script = Buffer.from("010203", "hex");
-    const context = new DataConstr(0, []);
-    expect(
-      evaluateUplcWithContextCbor(script, encodeScriptContextCbor(context)),
-    ).toStrictEqual(evaluateScriptWithHarmonic(script, context));
   });
 });

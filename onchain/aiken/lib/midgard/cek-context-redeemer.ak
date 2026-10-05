@@ -17,6 +17,7 @@ pub type RedeemerSelectionPending {
   total_length: Int,
   item_commitment: ByteArray,
   redeemer_leaf: ByteArray,
+  purpose_frontier: Int,
   purpose_kind: Int,
   purpose_index: Int,
   script_hash: ByteArray,

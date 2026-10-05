@@ -1,3 +1,4 @@
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import { transitionTraceError } from "./errors.js";
@@ -205,52 +206,45 @@ export const buildSourceMembershipProof = async ({
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly eventKey: SDK.EventKey;
-}): Promise<SDK.TransitionSourceMembershipProof> => {
+}): Promise<SDK.SourceKeyOpening> => {
   const event = sourceEventOrThrow(reconstruction, eventKey);
+  const root =
+    reconstruction.rootData[
+      event.phase === "Withdrawal"
+        ? "withdrawals"
+        : event.phase === "ForcedTransaction"
+          ? "forcedTransactions"
+          : event.phase === "Deposit"
+            ? "deposits"
+            : "transactions"
+    ];
+  const fields: SDK.SourceKeyOpeningFields = {
+    value_hash: computeHash32(event.entry.valueBytes).toString("hex"),
+    phas_root: root.phasRoot,
+    proof: await keyValuePhasProof(
+      countedPhasView(root),
+      event.entry.keyBytes,
+      event.entry.valueBytes,
+    ),
+  };
   switch (event.phase) {
     case "Withdrawal":
       return {
-        WithdrawalSourceMembership: {
-          membership: await membershipProof({
-            root: reconstruction.rootData.withdrawals,
-            entry: event.entry,
-          }),
-        },
+        WithdrawalKeyOpening: { withdrawal_id: event.entry.key, ...fields },
       };
     case "ForcedTransaction":
-      return {
-        ForcedTransactionSourceMembership: {
-          membership: await membershipProof({
-            root: reconstruction.rootData.forcedTransactions,
-            entry: event.entry,
-          }),
-        },
-      };
+      return { ForcedKeyOpening: { tx_order_id: event.entry.key, ...fields } };
     case "Deposit":
-      return {
-        DepositSourceMembership: {
-          membership: await membershipProof({
-            root: reconstruction.rootData.deposits,
-            entry: event.entry,
-          }),
-        },
-      };
+      return { DepositKeyOpening: { deposit_id: event.entry.key, ...fields } };
     case "L2Transaction":
-      return {
-        L2TransactionSourceMembership: {
-          membership: await buildRawL2TransactionSourceMembershipProof({
-            reconstruction,
-            txId: event.entry.txId,
-          }),
-        },
-      };
+      return { L2KeyOpening: { tx_id: event.entry.txId, ...fields } };
   }
 };
 
 /**
  * The raw forced-transaction leaf membership — the
  * `RootMembershipProof<OutputReference, ForcedInclusionTxV1>` shape itself,
- * outside the `TransitionSourceMembershipProof` enum wrapper
+ * outside the `SourceKeyOpening` enum wrapper
  * `buildSourceMembershipProof` returns. The decoding-fault family's step-02
  * (`forced_membership`) consumes the leaf directly.
  */

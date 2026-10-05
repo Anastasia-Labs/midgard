@@ -77,24 +77,24 @@ describe("ledger-delta dense trace totality v1", () => {
       {
         schema_version: 1n,
         step_index: 0n,
-        event_key: depositKey,
-        phase: "Deposit",
+        event_key: withdrawalKey,
+        phase: "Withdrawal",
         pre_utxos_root: r0,
         post_utxos_root: r1,
       },
       {
         schema_version: 1n,
         step_index: 1n,
-        event_key: withdrawalKey,
-        phase: "Withdrawal",
+        event_key: l2Key,
+        phase: "L2Transaction",
         pre_utxos_root: r1,
         post_utxos_root: r2,
       },
       {
         schema_version: 1n,
         step_index: 2n,
-        event_key: l2Key,
-        phase: "L2Transaction",
+        event_key: depositKey,
+        phase: "Deposit",
         pre_utxos_root: r2,
         post_utxos_root: r2b,
       },
@@ -144,12 +144,12 @@ describe("ledger-delta dense trace totality v1", () => {
       ],
       steps,
       eventToStep: [
-        eventToStepEntry(depositKey, { step_index: 0n, phase: "Deposit" }),
         eventToStepEntry(withdrawalKey, {
-          step_index: 1n,
+          step_index: 0n,
           phase: "Withdrawal",
         }),
-        eventToStepEntry(l2Key, { step_index: 2n, phase: "L2Transaction" }),
+        eventToStepEntry(l2Key, { step_index: 1n, phase: "L2Transaction" }),
+        eventToStepEntry(depositKey, { step_index: 2n, phase: "Deposit" }),
         eventToStepEntry(finalDepositKey, {
           step_index: 3n,
           phase: "Deposit",
@@ -221,8 +221,8 @@ describe("ledger-delta dense trace totality v1", () => {
       {
         schema_version: 1n,
         step_index: 0n,
-        event_key: depositKey,
-        phase: "Deposit",
+        event_key: withdrawalKey,
+        phase: "Withdrawal",
         pre_utxos_root: r0,
         post_utxos_root: r1,
       },
@@ -237,8 +237,8 @@ describe("ledger-delta dense trace totality v1", () => {
       {
         schema_version: 1n,
         step_index: 2n,
-        event_key: withdrawalKey,
-        phase: "Withdrawal",
+        event_key: depositKey,
+        phase: "Deposit",
         pre_utxos_root: r2,
         post_utxos_root: r2b,
       },
@@ -290,15 +290,15 @@ describe("ledger-delta dense trace totality v1", () => {
       ],
       steps,
       eventToStep: [
-        eventToStepEntry(depositKey, { step_index: 0n, phase: "Deposit" }),
+        eventToStepEntry(withdrawalKey, {
+          step_index: 0n,
+          phase: "Withdrawal",
+        }),
         eventToStepEntry(forcedKey, {
           step_index: 1n,
           phase: "ForcedTransaction",
         }),
-        eventToStepEntry(withdrawalKey, {
-          step_index: 2n,
-          phase: "Withdrawal",
-        }),
+        eventToStepEntry(depositKey, { step_index: 2n, phase: "Deposit" }),
         eventToStepEntry(finalDepositKey, {
           step_index: 3n,
           phase: "Deposit",
@@ -403,14 +403,6 @@ describe("ledger-delta dense trace totality v1", () => {
         {
           schema_version: 1n,
           step_index: 0n,
-          event_key: depositKey,
-          phase: "Deposit",
-          pre_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
-          post_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
-        },
-        {
-          schema_version: 1n,
-          step_index: 1n,
           event_key: withdrawalKey,
           phase: "Withdrawal",
           pre_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -418,7 +410,7 @@ describe("ledger-delta dense trace totality v1", () => {
         },
         {
           schema_version: 1n,
-          step_index: 2n,
+          step_index: 1n,
           event_key: forcedKey,
           phase: "ForcedTransaction",
           pre_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -426,24 +418,32 @@ describe("ledger-delta dense trace totality v1", () => {
         },
         {
           schema_version: 1n,
-          step_index: 3n,
+          step_index: 2n,
           event_key: l2Key,
           phase: "L2Transaction",
           pre_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
           post_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
         },
+        {
+          schema_version: 1n,
+          step_index: 3n,
+          event_key: depositKey,
+          phase: "Deposit",
+          pre_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+          post_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+        },
       ],
       eventToStep: [
-        eventToStepEntry(depositKey, { step_index: 0n, phase: "Deposit" }),
         eventToStepEntry(withdrawalKey, {
-          step_index: 1n,
+          step_index: 0n,
           phase: "Withdrawal",
         }),
         eventToStepEntry(forcedKey, {
-          step_index: 2n,
+          step_index: 1n,
           phase: "ForcedTransaction",
         }),
-        eventToStepEntry(l2Key, { step_index: 3n, phase: "L2Transaction" }),
+        eventToStepEntry(l2Key, { step_index: 2n, phase: "L2Transaction" }),
+        eventToStepEntry(depositKey, { step_index: 3n, phase: "Deposit" }),
       ],
     });
     const totalBase = await reconstruct(totalFixture);
@@ -526,19 +526,19 @@ describe("ledger-delta dense trace totality v1", () => {
     const r2 = h32(912);
     const r3 = finalRoot.root;
 
-    const stepA: SDK.TransitionStep = {
+    const stepB: SDK.TransitionStep = {
       schema_version: 1n,
       step_index: 0n,
-      event_key: keyA,
-      phase: "Deposit",
+      event_key: keyB,
+      phase: "Withdrawal",
       pre_utxos_root: r0,
       post_utxos_root: r1,
     };
-    const stepB: SDK.TransitionStep = {
+    const stepA: SDK.TransitionStep = {
       schema_version: 1n,
       step_index: 1n,
-      event_key: keyB,
-      phase: "Withdrawal",
+      event_key: keyA,
+      phase: "Deposit",
       pre_utxos_root: r1,
       post_utxos_root: r2,
     };
@@ -582,10 +582,10 @@ describe("ledger-delta dense trace totality v1", () => {
         utxos: [finalUtxo],
         deposits: depositEntries,
         withdrawals: withdrawalEntries,
-        steps: [stepA, stepB, stepC],
+        steps: [stepB, stepA, stepC],
         eventToStep: [
-          eventToStepEntry(keyA, { step_index: 0n, phase: "Deposit" }),
-          eventToStepEntry(keyB, { step_index: 1n, phase: "Withdrawal" }),
+          eventToStepEntry(keyB, { step_index: 0n, phase: "Withdrawal" }),
+          eventToStepEntry(keyA, { step_index: 1n, phase: "Deposit" }),
           eventToStepEntry(keyC, { step_index: 2n, phase: "Deposit" }),
         ],
       }),
@@ -609,14 +609,14 @@ describe("ledger-delta dense trace totality v1", () => {
         utxos: [finalUtxo],
         deposits: depositEntries,
         withdrawals: withdrawalEntries,
-        steps: [stepA, stepB, stepC, stepD],
+        steps: [stepB, stepA, stepC, stepD],
         // stepD is deliberately left out of event_to_step: it has no backing
         // deposit/withdrawal/tx event, so mapping it would inflate
         // event_to_step's member count past total_event_count and fail
         // reconstruction before the detect layer ever runs.
         eventToStep: [
-          eventToStepEntry(keyA, { step_index: 0n, phase: "Deposit" }),
-          eventToStepEntry(keyB, { step_index: 1n, phase: "Withdrawal" }),
+          eventToStepEntry(keyB, { step_index: 0n, phase: "Withdrawal" }),
+          eventToStepEntry(keyA, { step_index: 1n, phase: "Deposit" }),
           eventToStepEntry(keyC, { step_index: 2n, phase: "Deposit" }),
         ],
       }),
@@ -648,11 +648,11 @@ describe("ledger-delta dense trace totality v1", () => {
         await buildPayloadFixture({
           prevUtxosRoot: r0,
           utxos: [finalUtxo],
-          deposits: depositEntries,
-          withdrawals: [],
-          transitionTraceEntries: [traceEntry(stepA), traceEntry(stepC)],
+          deposits: depositEntries.slice(1),
+          withdrawals: withdrawalEntries,
+          transitionTraceEntries: [traceEntry(stepB), traceEntry(stepC)],
           eventToStep: [
-            eventToStepEntry(keyA, { step_index: 0n, phase: "Deposit" }),
+            eventToStepEntry(keyB, { step_index: 0n, phase: "Withdrawal" }),
             eventToStepEntry(keyC, { step_index: 2n, phase: "Deposit" }),
           ],
         }),
@@ -662,10 +662,10 @@ describe("ledger-delta dense trace totality v1", () => {
       message: expect.stringContaining("outside"),
     });
 
-    // Reordered: A and B swap positions; each keeps its own true pre/post
+    // Reordered: B and A swap positions; each keeps its own true pre/post
     // roots, so the chain no longer starts from the committed prev-root.
-    const stepBReordered: SDK.TransitionStep = { ...stepB, step_index: 0n };
-    const stepAReordered: SDK.TransitionStep = { ...stepA, step_index: 1n };
+    const stepAReordered: SDK.TransitionStep = { ...stepA, step_index: 0n };
+    const stepBReordered: SDK.TransitionStep = { ...stepB, step_index: 1n };
     const reorderedDetections = await detectTransitionTraceFaults(
       await reconstruct(
         await buildPayloadFixture({
@@ -674,13 +674,13 @@ describe("ledger-delta dense trace totality v1", () => {
           deposits: depositEntries,
           withdrawals: withdrawalEntries,
           transitionTraceEntries: [
-            traceEntry(stepBReordered),
             traceEntry(stepAReordered),
+            traceEntry(stepBReordered),
             traceEntry(stepC),
           ],
           eventToStep: [
-            eventToStepEntry(keyB, { step_index: 0n, phase: "Withdrawal" }),
-            eventToStepEntry(keyA, { step_index: 1n, phase: "Deposit" }),
+            eventToStepEntry(keyA, { step_index: 0n, phase: "Deposit" }),
+            eventToStepEntry(keyB, { step_index: 1n, phase: "Withdrawal" }),
             eventToStepEntry(keyC, { step_index: 2n, phase: "Deposit" }),
           ],
         }),
@@ -698,7 +698,7 @@ describe("ledger-delta dense trace totality v1", () => {
     ).toBe(true);
 
     // Substituted: B keeps its identity and position, but its committed
-    // post-root is swapped for a different value, breaking the link to C.
+    // post-root is swapped for a different value, breaking the link to A.
     const stepBSubstituted: SDK.TransitionStep = {
       ...stepB,
       post_utxos_root: h32(940),
@@ -710,10 +710,10 @@ describe("ledger-delta dense trace totality v1", () => {
           utxos: [finalUtxo],
           deposits: depositEntries,
           withdrawals: withdrawalEntries,
-          steps: [stepA, stepBSubstituted, stepC],
+          steps: [stepBSubstituted, stepA, stepC],
           eventToStep: [
-            eventToStepEntry(keyA, { step_index: 0n, phase: "Deposit" }),
-            eventToStepEntry(keyB, { step_index: 1n, phase: "Withdrawal" }),
+            eventToStepEntry(keyB, { step_index: 0n, phase: "Withdrawal" }),
+            eventToStepEntry(keyA, { step_index: 1n, phase: "Deposit" }),
             eventToStepEntry(keyC, { step_index: 2n, phase: "Deposit" }),
           ],
         }),

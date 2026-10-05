@@ -641,9 +641,10 @@ export const submitValidationDisputeSemanticResolution = async ({
     return { contract, utxo, kind: native ? (0 as const) : (1 as const) };
   })();
   const semanticFieldCarriageData =
-    resolverIndex === 8 && staged.semanticResolverIndex === 15
+    (resolverIndex === 8 && staged.semanticResolverIndex === 15) ||
+    (resolverIndex === 4 && staged.semanticResolverIndex === 2)
       ? staged.auxiliary.fields[0]!
-      : ((resolverIndex === 5 || resolverIndex === 6) &&
+      : ((resolverIndex === 4 || resolverIndex === 5 || resolverIndex === 6) &&
             staged.semanticResolverIndex === 1) ||
           (resolverIndex === 8 && staged.auxiliary.index === 1)
         ? staged.auxiliary.fields[2]!
@@ -782,8 +783,7 @@ export const submitValidationDisputeSemanticResolution = async ({
   // The complete-item proof transaction must source the semantic validator
   // from the published reference script: embedding the validator body would
   // consume the 16,384-byte envelope the measured complete-item redeemer
-  // needs. Resolve it before publishing anything so a missing deployment
-  // entry fails fast.
+  // needs. Resolve it before publishing so a missing entry fails fast.
   const semanticReferenceScriptUtxo = isCompleteCanonicalItem
     ? (referenceScriptUtxo ??
       (await requireValidationItemSemanticReferenceScriptUtxo({

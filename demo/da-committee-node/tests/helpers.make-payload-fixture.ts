@@ -15,8 +15,6 @@ import {
 import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_PROTOCOL_VERSION,
-  MIDGARD_VALIDATION_MACHINE_VERSION,
-  MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
 } from "@al-ft/midgard-core/consensus-profile";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -27,6 +25,7 @@ import { computeDaPayloadRoots } from "../src/da/payload.js";
 import type { Header, ObservedStateQueueNode } from "../src/domain.js";
 import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
 import type {} from "./global-setup.js";
+import { fixtureValidationTrace } from "./helpers.validation-trace.js";
 
 /** A fixture directory under the run's temporary root (see global-setup). */
 export const tempDir = (): Promise<string> =>
@@ -40,8 +39,8 @@ export const fixtureHeaderBase = (): Omit<
   | "depositsRoot"
   | "withdrawalsRoot"
 > => ({
-  prevUtxosRoot:
-    "0000000000000000000000000000000000000000000000000000000000000000",
+  // The first block: its pre-state is the empty UTxO set.
+  prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS,
   startTime: 1n,
   endTime: 2n,
@@ -49,7 +48,7 @@ export const fixtureHeaderBase = (): Omit<
   expectedNetworkId: 0n,
   minFeeA: 0n,
   minFeeB: 0n,
-  prevHeaderHash: "11".repeat(28),
+  prevHeaderHash: SDK.GENESIS_HEADER_HASH,
   operatorVkey: "22".repeat(28),
   protocolVersion: BigInt(MIDGARD_PROTOCOL_VERSION),
 });
@@ -100,24 +99,11 @@ const transactionSource = (
   };
 };
 
-/** The committed descriptor leaf is its canonical Plutus Data encoding. */
-const acceptedTraceDescriptor = (seed: number): string =>
-  LucidData.to(
-    SDK.validationTraceDescriptorDataFromCore({
-      schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
-      machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
-      traceRoot: Buffer.alloc(32, seed),
-      stepCount: 0,
-      initialStateHash: Buffer.alloc(32, seed + 1),
-      terminalStateHash: Buffer.alloc(32, seed + 1),
-      verdict: "accepted",
-      rejectionCodeHash: Buffer.alloc(32),
-    }) as never,
-    SDK.ValidationTraceDescriptorSchema as never,
-  );
-
 export const makePayloadFixture = async (
   transactionCount = 3,
+  headerOverrides: Partial<
+    Pick<Header, "prevHeaderHash" | "prevUtxosRoot">
+  > = {},
 ): Promise<{
   readonly payload: SDK.DaPayload;
   readonly innerPayloadCbor: Buffer;
@@ -146,11 +132,8 @@ export const makePayloadFixture = async (
   );
   const transitionEntries = transitionTraceEntries(sourceEvents);
   const eventToStepEntries = eventToStepEntriesFor(sourceEvents);
-  const validationTraceEntries = sortedEntries(
-    sourceEvents.map((eventKey, index) => [
-      LucidData.to(eventKey as never, SDK.EventKeySchema as never),
-      acceptedTraceDescriptor(index + 1),
-    ]),
+  const validationTraces = sourceEvents.map((eventKey, index) =>
+    fixtureValidationTrace(eventKey, transactions[index]!.txId),
   );
   const counts: SDK.DaPayloadCounts = {
     withdrawalCount: 0n,
@@ -163,6 +146,7 @@ export const makePayloadFixture = async (
   };
   const placeholderHeader: Header = {
     ...fixtureHeaderBase(),
+    ...headerOverrides,
     utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -190,14 +174,19 @@ export const makePayloadFixture = async (
       cek_program_material: [],
       transition_trace: transitionEntries,
       event_to_step: eventToStepEntries,
-      validation_traces: validationTraceEntries,
-      validation_trace_witnesses: [],
+      validation_traces: sortedEntries(
+        validationTraces.map(({ entry }) => entry),
+      ),
+      validation_trace_witnesses: sortedEntries(
+        validationTraces.flatMap(({ witnesses }) => witnesses),
+      ),
       counts,
     },
   };
   const roots = await computeDaPayloadRoots(payloadWithoutHash);
   const header: Header = {
     ...fixtureHeaderBase(),
+    ...headerOverrides,
     utxosRoot: roots.utxosRoot,
     forcedTransactionsRoot: roots.forcedTransactionsRoot,
     transactionsRoot: roots.transactionsRoot,

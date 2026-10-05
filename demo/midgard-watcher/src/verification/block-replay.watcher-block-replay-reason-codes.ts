@@ -98,7 +98,7 @@ export const WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES = Object.freeze(
 );
 
 /**
- * The 13 canonical codes the Phase B pipeline can emit, in `RejectCodes`
+ * The 14 canonical codes the Phase B pipeline can emit, in `RejectCodes`
  * declaration order.
  *
  * Provenance, one entry per `reject(...)`/`fail(...)` call site in phase-b.ts:
@@ -109,8 +109,9 @@ export const WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES = Object.freeze(
  * `E_DEPENDS_ON_REJECTED_TX` (:1215, :1396), `E_VALIDITY_INTERVAL_MISMATCH`
  * (:915, :925, :1097, :1106), `E_MIN_ADA` (the output-descriptor scan),
  * `E_VALUE_NOT_PRESERVED` (:1061, :1160),
- * `E_PLUTUS_SCRIPT_INVALID` (:629, :717, :729), `E_CEK_PROGRAM_MATERIAL`
- * (:247, :551).
+ * `E_PLUTUS_SCRIPT_INVALID` (:629, :717, :729), `E_ASSET_COUNT` (the
+ * ValueAndMint walk, phase-b.check-value-and-mint.ts),
+ * `E_CEK_PROGRAM_MATERIAL` (:247, :551).
  */
 export const WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES = Object.freeze([
   RejectCodes.InvalidOutput,
@@ -125,6 +126,7 @@ export const WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES = Object.freeze([
   RejectCodes.MinAda,
   RejectCodes.ValueNotPreserved,
   RejectCodes.PlutusScriptInvalid,
+  RejectCodes.AssetCount,
   RejectCodes.CekProgramMaterial,
 ] as const);
 
@@ -133,7 +135,7 @@ export const REACHABLE_SET: ReadonlySet<string> = new Set<string>(
 );
 
 /**
- * The 11 reachable codes the W25 suite pins with a deterministic
+ * The 12 reachable codes the W25 suite pins with a deterministic
  * rejection-evidence case produced by the canonical Phase B entry point, in
  * `RejectCodes` declaration order.
  *
@@ -152,6 +154,7 @@ export const WATCHER_BLOCK_REPLAY_EVIDENCED_REJECT_CODES = Object.freeze([
   RejectCodes.MinAda,
   RejectCodes.ValueNotPreserved,
   RejectCodes.PlutusScriptInvalid,
+  RejectCodes.AssetCount,
 ] as const);
 
 const EVIDENCED_SET: ReadonlySet<string> = new Set<string>(
@@ -178,10 +181,10 @@ export const WATCHER_BLOCK_REPLAY_DOMINATED_REJECT_CODE_JUSTIFICATIONS =
   } as const);
 
 /**
- * The 27 canonical codes W24's Phase A verifier owns.
+ * The 26 canonical codes W24's Phase A verifier owns.
  *
  * Group justification, which is the same for every member and is why they are
- * published as a group rather than with 27 near-identical lines: a transaction
+ * published as a group rather than with 26 near-identical lines: a transaction
  * only reaches the Phase B pipeline after `validatePhaseASingle` accepted it,
  * and phase-b.ts has no `reject(...)` call site for any of these codes. W24
  * publishes each one's reachability and per-code evidence.
@@ -213,7 +216,6 @@ export const WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES = Object.freeze([
   RejectCodes.ScriptProgramEncoding,
   RejectCodes.NativeScriptDepth,
   RejectCodes.NativeScriptNodeCount,
-  RejectCodes.AssetCount,
 ] as const);
 
 export const WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_JUSTIFICATION =
@@ -230,7 +232,7 @@ export const WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODE_JUSTIFICATIONS =
     [RejectCodes.UnsupportedFieldNonEmpty]:
       "no call site in either pipeline: V1 canonical decoding rejects unsupported fields structurally, so the code is never constructed.",
     [RejectCodes.PlutusEvaluationUnavailable]:
-      "no call site in phase-b.ts: the pipeline always has an evaluator - config.evaluateProofScript / config.evaluateScript when supplied, otherwise the in-process evaluateScriptWithHarmonic and executeMidgardCekStructuralProgramV1 defaults this lane uses - and every evaluation failure path, including a thrown CEK error, is mapped to E_PLUTUS_SCRIPT_INVALID (phase-b.ts:695-721). The code is therefore not environment-dependent for the watcher: there is no watcher configuration under which the canonical pipeline can report evaluation as unavailable, because the watcher never injects a remote or optional evaluator. An evaluator-injecting embedder (the operator's worker pool) is the only context that could surface it, and that is not this lane.",
+      "no call site in phase-b.ts: the pipeline always has an evaluator - config.evaluateProofScript when supplied, otherwise the in-process structural CEK executor this lane uses - and every evaluation failure path, including a thrown CEK error, is mapped to E_PLUTUS_SCRIPT_INVALID. The code is therefore not environment-dependent for the watcher: there is no watcher configuration under which the canonical pipeline can report evaluation as unavailable, because the watcher never injects a remote or optional evaluator.",
     [RejectCodes.CertificatesForbidden]:
       "no call site in either pipeline: V1 canonical transactions have no certificate field to carry, so the prohibition is structural.",
     [RejectCodes.NonZeroWithdrawal]:
@@ -278,6 +280,8 @@ export const WATCHER_BLOCK_REPLAY_REASON_CODES = [
   "malformed_prior_state",
   "prior_state_root_mismatch",
   "canonical_validation_threw",
+  "forced_evaluation_unavailable",
+  "forced_rejection_unsupported",
   "canonical_replay_threw",
   "unknown_reject_code",
   "undeclared_reachable_code",

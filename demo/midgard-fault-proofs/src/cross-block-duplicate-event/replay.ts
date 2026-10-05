@@ -2,6 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
+import { sourceEventSubject } from "../workflow/detection-subject.js";
 import type { CrossBlockDuplicateEventKindInput } from "./prepare.js";
 import {
   type CrossBlockSettlementContext,
@@ -59,6 +60,9 @@ export const detectCrossBlockDuplicateEvents = ({
             "duplicate event lacks its canonical source position",
           );
         detections.push({
+          ...sourceEventSubject(
+            evidence.reconstruction.sourceEvents[position]!,
+          ),
           headerHash: evidence.headerHash,
           violationId: SDK.CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
           detectionId: crossBlockDuplicateDetectionId(coordinate),

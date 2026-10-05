@@ -29,7 +29,7 @@ import {
   encodeMidgardCekPlutusData,
   midgardCekIntegerMemorySize,
 } from "./cek-constant.js";
-import { isByteStringLike, isPlutusDataMap } from "./plutus-data-narrowing.js";
+import { isPlutusDataMap } from "./plutus-data-narrowing.js";
 
 type HashedMaterial<Node> = {
   readonly node: Node;
@@ -64,6 +64,13 @@ type DataSummary = {
   readonly memory: bigint;
 };
 
+/**
+ * Per-value summaries keyed by `Data` object identity. Passing the same memo
+ * to repeated commitments of values that share subtrees makes each later
+ * commitment cost only its new nodes.
+ */
+export type MidgardCekDataSummaryMemo = Map<Data, DataSummary>;
+
 type ListSummary = {
   readonly root: Uint8Array;
   readonly length: bigint;
@@ -94,6 +101,10 @@ type DataWork =
       readonly list: ListWork;
     };
 
+/** Cardano CBOR of an integer leaf or large constructor index. */
+export const encodeMidgardCekDataTreeInteger = (value: bigint): Buffer =>
+  encodeMidgardCekPlutusData(new DataI(value));
+
 const rootKey = (root: Uint8Array): string => Buffer.from(root).toString("hex");
 
 const addExact = <Node>(
@@ -109,17 +120,6 @@ const addExact = <Node>(
   entries.set(key, material);
 };
 
-const asByteArray = (value: unknown): Uint8Array => {
-  if (!isByteStringLike(value)) {
-    throw new Error("Plutus Data bytes leaf has an invalid byte string");
-  }
-  const bytes = value.toBuffer();
-  if (!(bytes instanceof Uint8Array)) {
-    throw new Error("Plutus Data bytes leaf did not produce bytes");
-  }
-  return bytes;
-};
-
 /**
  * Builds the semantic commitment consumed by the incremental script-context
  * and CEK builtin proofs. No complete-value proof bound is imposed: leaf
@@ -128,6 +128,7 @@ const asByteArray = (value: unknown): Uint8Array => {
  */
 export const commitMidgardCekDataTree = (
   value: Data,
+  summaries: MidgardCekDataSummaryMemo = new Map(),
 ): MidgardCekDataTreeCommitment => {
   const dataNodes = new Map<string, HashedMaterial<MidgardCekDataNode>>();
   const listNodes = new Map<string, HashedMaterial<MidgardCekDataListNode>>();
@@ -156,7 +157,6 @@ export const commitMidgardCekDataTree = (
     return committed.root;
   };
 
-  const summaries = new Map<Data, DataSummary>();
   const operations: DataWork[] = [{ kind: "visit", data: value }];
 
   const emptyListWork = (root: Uint8Array): ListWork => ({
@@ -249,9 +249,7 @@ export const commitMidgardCekDataTree = (
           memory,
         };
       } else {
-        const constructorCbor = encodeMidgardCekPlutusData(
-          new DataI(data.constr),
-        );
+        const constructorCbor = encodeMidgardCekDataTreeInteger(data.constr);
         node = {
           kind: "constrLarge",
           constructorCborRoot: addBlob(constructorCbor),
@@ -370,7 +368,7 @@ export const commitMidgardCekDataTree = (
 
       let node: MidgardCekDataNode;
       if (operation.data instanceof DataI) {
-        const cbor = encodeMidgardCekPlutusData(operation.data);
+        const cbor = encodeMidgardCekDataTreeInteger(operation.data.int);
         node = {
           kind: "integer",
           cborRoot: addBlob(cbor),
@@ -378,7 +376,7 @@ export const commitMidgardCekDataTree = (
           memory: 4n + midgardCekIntegerMemorySize(operation.data.int),
         };
       } else if (operation.data instanceof DataB) {
-        const bytes = asByteArray(operation.data.bytes);
+        const bytes = operation.data.bytes;
         node = {
           kind: "bytes",
           bytesRoot: addBlob(bytes),

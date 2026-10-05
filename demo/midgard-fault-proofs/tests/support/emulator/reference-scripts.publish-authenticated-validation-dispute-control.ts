@@ -22,6 +22,10 @@ import {
   type ReferenceScriptPublisher,
   type ReferenceScriptPublishingContracts,
 } from "./reference-script-publisher.js";
+import {
+  TRACED_REFUSALS,
+  withTracedPublicationEnvelope,
+} from "./traced-refusals.js";
 
 export const VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE =
   "V1 validation-trace dispute";
@@ -102,15 +106,19 @@ export const publishAuthenticatedValidationDisputeControl = async ({
     );
   }
   const referenceScriptsAddress = await publicationLucid.wallet().address();
-  const { tx, layout } = await Effect.runPromise(
-    completeReferenceScriptPublicationTxProgram({
-      lucid: publicationLucid,
-      selectedFundingInputs,
-      walletAddress: referenceScriptsAddress,
-      referenceScriptsAddress,
-      missingTargets: [target],
-      authPolicy,
-    }),
+  const { tx, layout } = await withTracedPublicationEnvelope(
+    publicationLucid,
+    () =>
+      Effect.runPromise(
+        completeReferenceScriptPublicationTxProgram({
+          lucid: publicationLucid,
+          selectedFundingInputs,
+          walletAddress: referenceScriptsAddress,
+          referenceScriptsAddress,
+          missingTargets: [target],
+          authPolicy,
+        }),
+      ),
   );
   const localOutput = layout.localReferenceOutputs.get(target.name);
   if (localOutput === undefined) {
@@ -123,8 +131,9 @@ export const publishAuthenticatedValidationDisputeControl = async ({
     signed.toCBOR(),
   );
   if (
+    !TRACED_REFUSALS &&
     publicationMeasurement.completeSignedBytes >
-    VAN_ROSSEM_PUBLICATION_TARGET_BYTES
+      VAN_ROSSEM_PUBLICATION_TARGET_BYTES
   ) {
     throw new Error(
       `Authenticated validation-dispute ${target.control} reference-script publication is ${publicationMeasurement.completeSignedBytes.toString()} bytes and exceeds the 15,872-byte publication target`,

@@ -1,10 +1,8 @@
-import {
-  encodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekTermNode,
-  hashMidgardCekTermNode,
-} from "@al-ft/midgard-core/cek-proof";
 import { computeHash32 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import {
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -24,6 +22,7 @@ import {
   expectSinglePhaseAAcceptance,
   expectSinglePhaseARejection,
   phaseAConfig,
+  queuedNativeTx,
   runPhaseA,
 } from "./phase-a.outref-projection.js";
 import {
@@ -33,6 +32,7 @@ import {
   makeNativeTx,
   makeOutput,
   makeQueued,
+  makeRedeemersCbor,
   nativeScriptWitness,
   outRefFromByte,
 } from "./validation-fixtures.js";
@@ -404,74 +404,91 @@ describe("phase A validation", () => {
     await expectSinglePhaseARejection(fixture, RejectCodes.InvalidFieldType);
   });
 
-  it("requires V1 material and rejects a non-canonical profile tuple", async () => {
-    const fixture = makeNativeTx();
-    const queued = makeQueued(fixture.txId, fixture.txCbor);
-    const v1Config = {
-      ...phaseAConfig,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-    };
-    const missing = validatePhaseASingle(
-      { ...queued, programMaterialSidecarCbor: undefined },
-      v1Config,
-    );
-    expect(missing).toMatchObject({
-      code: RejectCodes.CekProgramMaterial,
+  // §6.2: redeemer data is canonical only in the exact byte form
+  // `serialiseData` emits, the rule the `redeemerCanonicity` fault proof
+  // enforces. Each non-canonical spelling below decodes to Plutus Data, so a
+  // decodability probe alone admits it.
+  const redeemerDataTx = (dataHex: string) =>
+    makeNativeTx({
+      redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+        { tag: 0, index: 0n, data: Buffer.from(dataHex, "hex") },
+      ]),
+      scriptLanguages: ["PlutusV3"],
     });
 
-    const sidecar = encodeMidgardCekProgramMaterialSidecar([]);
-    const accepted = validatePhaseASingle(
-      { ...queued, programMaterialSidecarCbor: sidecar },
-      v1Config,
-    );
-    expect("ledgerTx" in accepted).toBe(true);
-    if ("ledgerTx" in accepted) {
-      expect(accepted.submission.programMaterialSidecarCbor).toEqual(sidecar);
-    }
+  it.each([
+    ["d8798101", "definite constructor fields"],
+    ["0102", "trailing bytes"],
+    ["d86682008101", "general constructor form for a compact alternative"],
+    ["1801", "non-minimal integer head"],
+    ["bf0102ff", "indefinite map"],
+    ["5f4101ff", "indefinite byte string of at most 64 bytes"],
+    ["c24101", "bignum tag for a small integer"],
+    ["9fff", "indefinite empty list"],
+    ["8101", "definite non-empty list"],
+    [`5841${"ab".repeat(65)}`, "definite byte string over 64 bytes"],
+  ])(
+    "rejects non-canonical redeemer data %s (%s) as invalid field data",
+    async (dataHex) => {
+      const rejection = await expectSinglePhaseARejection(
+        redeemerDataTx(dataHex),
+        RejectCodes.InvalidFieldType,
+      );
+      expect(rejection.detail).toContain("redeemers[0].data");
+    },
+  );
 
-    const unsupportedProfile = validatePhaseASingle(queued, {
-      ...phaseAConfig,
-      consensusProfile: {
-        ...MIDGARD_CONSENSUS_PROFILE,
-        protocolVersion: 2,
-      } as unknown as typeof MIDGARD_CONSENSUS_PROFILE,
-    });
-    expect(unsupportedProfile).toMatchObject({
-      code: RejectCodes.TxVersion,
-    });
-  });
+  it.each([
+    ["d8798101", true],
+    ["1801", true],
+    ["8101", true],
+    ["60", false],
+    ["0102", false],
+  ] as const)(
+    "forced redeemer %s is admitted iff well-formed (%s)",
+    async (dataHex, accepted) => {
+      const fixture = redeemerDataTx(dataHex);
+      const result = await runPhaseA([
+        {
+          ...queuedNativeTx(fixture),
+          sourceKind: "forced",
+          txCbor: encodeMidgardForcedTxCanonical(
+            materializeMidgardForcedTxFromCanonical(fixture.tx),
+          ),
+        },
+      ]);
+      expect(result.accepted).toHaveLength(accepted ? 1 : 0);
+      expect(result.rejected).toHaveLength(accepted ? 0 : 1);
+      if (accepted) {
+        expect(
+          result.accepted[0]!.ledgerTx.redeemers[0]!.dataCbor.toString("hex"),
+        ).toBe(dataHex);
+      } else {
+        expect(result.rejected[0]).toMatchObject({
+          code: RejectCodes.InvalidFieldType,
+          consensusPhase: "canonicalDecode",
+        });
+      }
+    },
+  );
 
-  it("rejects unclaimed material unless reference programs remain unresolved", () => {
-    const node = { kind: "error" as const };
-    const materialSidecar = encodeMidgardCekProgramMaterialSidecar([
-      {
-        kind: "term",
-        root: hashMidgardCekTermNode(node),
-        preimage: encodeMidgardCekTermNode(node),
-      },
-    ]);
-    const withoutReferences = makeNativeTx();
-    const rejected = validatePhaseASingle(
-      {
-        ...makeQueued(withoutReferences.txId, withoutReferences.txCbor),
-        programMaterialSidecarCbor: materialSidecar,
-      },
-      phaseAConfig,
-    );
-    expect(rejected).toMatchObject({
-      code: RejectCodes.CekProgramMaterial,
-    });
-
-    const unresolvedReference = makeNativeTx({
-      referenceInputs: [outRefFromByte(0x72)],
-    });
-    const deferred = validatePhaseASingle(
-      {
-        ...makeQueued(unresolvedReference.txId, unresolvedReference.txCbor),
-        programMaterialSidecarCbor: materialSidecar,
-      },
-      phaseAConfig,
-    );
-    expect("ledgerTx" in deferred).toBe(true);
+  it.each([
+    ["d87980", "empty constructor"],
+    ["d8799f01ff", "constructor with fields"],
+    ["01", "small integer"],
+    ["4101", "short byte string"],
+    ["80", "empty list"],
+    ["9f01ff", "non-empty list"],
+    ["a0", "empty map"],
+    ["a10102", "non-empty map"],
+    ["c249010000000000000000", "bignum at 2^64"],
+    [
+      `5f5840${"ab".repeat(64)}41abff`,
+      "byte string over 64 bytes in 64-byte chunks",
+    ],
+  ])("accepts canonical redeemer data %s (%s)", async (dataHex) => {
+    const result = await runPhaseA([queuedNativeTx(redeemerDataTx(dataHex))]);
+    expect(result.rejected).toHaveLength(0);
+    expect(result.accepted).toHaveLength(1);
   });
 });

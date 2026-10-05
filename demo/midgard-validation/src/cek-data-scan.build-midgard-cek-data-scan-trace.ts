@@ -6,7 +6,6 @@ import {
   type Data,
   DataB,
   DataConstr,
-  dataFromCbor,
   DataI,
   DataList,
 } from "@harmoniclabs/plutus-data";
@@ -20,7 +19,6 @@ import {
   mapHeaderLength,
   type MutableFrame,
   replaceFrame,
-  scalarBytes,
   scalarSummary,
   type ScanWork,
   type StructuredData,
@@ -33,6 +31,7 @@ import {
   type MidgardCekDataScanStep,
   type MidgardCekDataScanTraceStep,
 } from "./cek-data-scan.validate-midgard-cek-data-scan-frame.js";
+import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 import { isPlutusDataMap } from "./plutus-data-narrowing.js";
 import {
   emptyMidgardCekDataListSummary,
@@ -57,7 +56,7 @@ export const buildMidgardCekDataScanTrace = (
   if (raw.length === 0 || raw.length > 9_215) {
     throw new Error("V1 Data scan preimage must contain 1..9215 bytes");
   }
-  const rootData = dataFromCbor(raw);
+  const rootData = plutusDataFromCborIterative(raw);
   const initial: MidgardCekDataScanControl = {
     rawHash: hash32(raw),
     rawLength: raw.length,
@@ -84,7 +83,7 @@ export const buildMidgardCekDataScanTrace = (
       if (data instanceof DataI || data instanceof DataB) {
         const summary = scalarSummary(data);
         const encoded = encodeMidgardCekPlutusData(data);
-        if (data instanceof DataB && scalarBytes(data).length > 9_215) {
+        if (data instanceof DataB && data.bytes.length > 9_215) {
           throw new Error(
             "CEK Data scanner byte leaf exceeds its proof envelope",
           );

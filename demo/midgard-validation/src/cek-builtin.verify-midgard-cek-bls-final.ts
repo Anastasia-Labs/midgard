@@ -2,19 +2,27 @@ import {
   hashMidgardCekBlsExpressionNode,
   hashMidgardCekValueNode,
 } from "@al-ft/midgard-core";
-import { CEKConst, CEKError } from "@harmoniclabs/plutus-machine";
+import { DataB } from "@harmoniclabs/plutus-data";
+import { CEKConst } from "@harmoniclabs/plutus-machine";
+import { UPLCConst } from "@harmoniclabs/uplc";
 
 import {
   type Bytes,
+  directArgumentsMatchKinds,
   directWitnessPayloadBytes,
   type MidgardCekDirectValueWitness,
   sameBytes,
 } from "./cek-builtin.argument-kinds.js";
 import {
+  cardanoBlsFinalVerify,
+  cardanoBlsMillerLoop,
+  cardanoBlsMulMlResult,
+  type CardanoMlResult,
+} from "./cek-builtin.cardano-exact-bls.js";
+import {
   directConstantToReferenceValue,
   evaluateMidgardCekDirectBuiltin,
   referenceConstantToDirectWitness,
-  runPinnedReferenceBuiltin,
 } from "./cek-builtin.evaluate-reference-builtin.js";
 import {
   hashMidgardCekDirectArguments,
@@ -35,6 +43,9 @@ export const verifyMidgardCekDirectBuiltin = (
   arguments_: readonly MidgardCekDirectValueWitness[],
   result: MidgardCekDirectValueWitness,
 ): boolean => {
+  // mapData (38) and unMapData (43) succeed only through the map-conversion
+  // arm, so each map step has one successor.
+  if (tag === 38n || tag === 43n) return false;
   try {
     if (
       directWitnessPayloadBytes([...arguments_, result]) >
@@ -97,6 +108,9 @@ export const verifyMidgardCekDirectBuiltinFailure = (
     ) {
       return false;
     }
+    // A known failure applies only to well-typed arguments; an ill-typed
+    // application fails through the type-failure arm instead.
+    if (!directArgumentsMatchKinds(Number(tag), arguments_)) return false;
     return evaluateMidgardCekDirectBuiltin(tag, arguments_).kind === "failure";
   } catch {
     return false;
@@ -117,43 +131,49 @@ export type MidgardCekBlsExpressionWitness =
 
 type EvaluatedBlsExpression = {
   readonly root: Bytes;
-  readonly value: CEKConst;
+  readonly value: CardanoMlResult;
   readonly leaves: number;
   readonly depth: number;
 };
 
-const evaluateBlsExpression = (
-  expression: MidgardCekBlsExpressionWitness,
+const evaluateBlsLeaf = (
+  expression: Extract<MidgardCekBlsExpressionWitness, { kind: "millerLoop" }>,
 ): EvaluatedBlsExpression => {
-  if (expression.kind === "millerLoop") {
-    const g1Decoded = decodeMidgardCekConstantWitness(expression.g1);
-    const g2Decoded = decodeMidgardCekConstantWitness(expression.g2);
-    if (g1Decoded.type.kind !== "blsG1" || g2Decoded.type.kind !== "blsG2") {
-      throw new Error("BLS expression leaf requires G1 and G2 constants");
-    }
-    const g1 = directConstantToReferenceValue(expression.g1);
-    const g2 = directConstantToReferenceValue(expression.g2);
-    const value = runPinnedReferenceBuiltin(68, [g1, g2]);
-    if (value instanceof CEKError) {
-      throw new Error("reference evaluator rejected a BLS expression leaf");
-    }
-    return Object.freeze({
-      root: hashMidgardCekBlsExpressionNode({
-        kind: "millerLoop",
-        g1Value: hashMidgardCekConstantWitness(expression.g1),
-        g2Value: hashMidgardCekConstantWitness(expression.g2),
-      }),
-      value,
-      leaves: 1,
-      depth: 1,
-    });
+  const g1Decoded = decodeMidgardCekConstantWitness(expression.g1);
+  const g2Decoded = decodeMidgardCekConstantWitness(expression.g2);
+  if (g1Decoded.type.kind !== "blsG1" || g2Decoded.type.kind !== "blsG2") {
+    throw new Error("BLS expression leaf requires G1 and G2 constants");
   }
-  const left = evaluateBlsExpression(expression.left);
-  const right = evaluateBlsExpression(expression.right);
-  const value = runPinnedReferenceBuiltin(69, [left.value, right.value]);
-  if (value instanceof CEKError) {
-    throw new Error("reference evaluator rejected a BLS expression product");
+  // Both points must uncompress under the L1 rule before the loop runs.
+  directConstantToReferenceValue(expression.g1);
+  directConstantToReferenceValue(expression.g2);
+  if (
+    !(g1Decoded.payload instanceof DataB) ||
+    !(g2Decoded.payload instanceof DataB)
+  ) {
+    throw new Error("BLS expression leaf points are not bytes");
   }
+  const value = cardanoBlsMillerLoop(
+    Uint8Array.from(g1Decoded.payload.bytes),
+    Uint8Array.from(g2Decoded.payload.bytes),
+  );
+  return Object.freeze({
+    root: hashMidgardCekBlsExpressionNode({
+      kind: "millerLoop",
+      g1Value: hashMidgardCekConstantWitness(expression.g1),
+      g2Value: hashMidgardCekConstantWitness(expression.g2),
+    }),
+    value,
+    leaves: 1,
+    depth: 1,
+  });
+};
+
+const evaluateBlsProduct = (
+  left: EvaluatedBlsExpression,
+  right: EvaluatedBlsExpression,
+): EvaluatedBlsExpression => {
+  const value = cardanoBlsMulMlResult(left.value, right.value);
   return Object.freeze({
     root: hashMidgardCekBlsExpressionNode({
       kind: "multiply",
@@ -164,6 +184,58 @@ const evaluateBlsExpression = (
     leaves: left.leaves + right.leaves,
     depth: Math.max(left.depth, right.depth) + 1,
   });
+};
+
+/**
+ * Evaluates an expression left subtree first, then right, then the product,
+ * so the first failure is the one a depth-first reading meets. A subexpression
+ * object reached twice is evaluated once, and the walk keeps its own stack, so
+ * shared subexpressions cost linear time and any depth is walked.
+ */
+const evaluateBlsExpression = (
+  expression: MidgardCekBlsExpressionWitness,
+): EvaluatedBlsExpression => {
+  const evaluated = new Map<
+    MidgardCekBlsExpressionWitness,
+    EvaluatedBlsExpression
+  >();
+  const active = new Set<MidgardCekBlsExpressionWitness>();
+  const work: {
+    readonly expression: MidgardCekBlsExpressionWitness;
+    readonly expanded: boolean;
+  }[] = [{ expression, expanded: false }];
+  while (work.length > 0) {
+    const next = work.pop()!;
+    const node = next.expression;
+    if (next.expanded) {
+      if (node.kind !== "multiply") {
+        throw new Error("BLS expression walk expanded a leaf");
+      }
+      active.delete(node);
+      evaluated.set(
+        node,
+        evaluateBlsProduct(
+          evaluated.get(node.left)!,
+          evaluated.get(node.right)!,
+        ),
+      );
+    } else if (!evaluated.has(node)) {
+      if (active.has(node)) {
+        throw new Error("BLS expression witness is cyclic");
+      }
+      if (node.kind === "millerLoop") {
+        evaluated.set(node, evaluateBlsLeaf(node));
+      } else {
+        active.add(node);
+        work.push(
+          { expression: node, expanded: true },
+          { expression: node.right, expanded: false },
+          { expression: node.left, expanded: false },
+        );
+      }
+    }
+  }
+  return evaluated.get(expression)!;
 };
 
 export type MidgardCekBlsFinalEvaluation = {
@@ -195,10 +267,9 @@ export const evaluateMidgardCekBlsFinal = (
       "BLS finalVerify expression exceeds the ten-leaf L1 proof reserve",
     );
   }
-  const result = runPinnedReferenceBuiltin(70, [left.value, right.value]);
-  if (result instanceof CEKError) {
-    throw new Error("reference evaluator rejected BLS finalVerify");
-  }
+  const result = CEKConst.fromUplc(
+    UPLCConst.bool(cardanoBlsFinalVerify(left.value, right.value)),
+  );
   const arguments_: readonly MidgardCekDirectValueWitness[] = [
     { kind: "blsMillerLoop", expressionRoot: left.root },
     { kind: "blsMillerLoop", expressionRoot: right.root },

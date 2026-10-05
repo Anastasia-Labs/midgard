@@ -10,6 +10,7 @@ import {
   decodeMidgardFieldPreimage,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { midgardTxFieldCommitmentsFromSource } from "@al-ft/midgard-core/consensus-validation";
 import {
   type PreparedValidationResolutionDatum as PreparedValidationResolutionDatumData,
@@ -208,6 +209,11 @@ const canonicalFieldItemEncodedLength = ({
   readonly fieldIndex: number;
   readonly itemLength: number;
 }): number | null => {
+  if (
+    fieldIndex === 2 &&
+    itemLength > MIDGARD_CONSENSUS_LIMITS.maxLedgerOutputPreimageBytes
+  )
+    return null;
   if ([0, 1, 2, 3, 4, 7].includes(fieldIndex)) {
     return canonicalCborArgumentHeaderSize(itemLength) + itemLength;
   }

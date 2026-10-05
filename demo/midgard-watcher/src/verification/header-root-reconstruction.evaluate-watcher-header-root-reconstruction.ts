@@ -5,15 +5,23 @@ import {
 } from "@al-ft/midgard-core/codec/cbor";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
-import { canonicalBlockEvidenceFromVerifiedPayload } from "@al-ft/midgard-fault-proofs";
+import {
+  type CanonicalBlockEvidence,
+  canonicalBlockEvidenceFromVerifiedPayload,
+  decodePayloadStrict,
+  TransitionTraceChallengerError,
+} from "@al-ft/midgard-fault-proofs";
+import type { DaPayload } from "@al-ft/midgard-sdk";
 
 import {
   makeWatcherDurablePayload,
   type WatcherReconstructedState,
 } from "../storage/durable-store.js";
 import {
+  type Classification,
   classifyFailure,
   countSetFromCanonical,
+  declaredCountFailures,
   digestResult,
   type EvaluateWatcherHeaderRootReconstructionInput,
   orderReasonCodes,
@@ -40,11 +48,13 @@ export const evaluateWatcherHeaderRootReconstruction = async (
   // reconstruction; this exists so a rejected block still records which inner
   // byte string was examined.
   let payloadSha256: string | null = null;
+  let innerBytes: Uint8Array | null = null;
   try {
     const unwrapped = await unwrapDaPayload(input.payloadEnvelopeCbor, {
       maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
     });
-    payloadSha256 = sha256Hex(unwrapped.innerBytes);
+    innerBytes = unwrapped.innerBytes;
+    payloadSha256 = sha256Hex(innerBytes);
   } catch {
     payloadSha256 = null;
   }
@@ -62,34 +72,8 @@ export const evaluateWatcherHeaderRootReconstruction = async (
     payloadSha256,
   } as const;
 
-  try {
-    const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
-      observation: input.observation,
-      payloadEnvelopeCbor: input.payloadEnvelopeCbor,
-      daProvenance: input.daProvenance,
-      ...(input.minimumConfirmationDepth === undefined
-        ? {}
-        : { minimumConfirmationDepth: input.minimumConfirmationDepth }),
-    });
-    const reconstructedRoots = rootSetFromCanonical(
-      evidence.reconstruction.roots,
-    );
-    const reconstructedCounts = countSetFromCanonical(
-      evidence.reconstruction.counts,
-    );
-    return digestResult({
-      ...common,
-      action: "accept",
-      reasonCodes: [],
-      rootMismatches: [],
-      countMismatches: [],
-      reconstructedRoots,
-      reconstructedCounts,
-      payloadSha256: sha256Hex(evidence.reconstruction.payloadCbor),
-    });
-  } catch (error) {
-    const classification = classifyFailure(error);
-    return digestResult({
+  const reject = (classification: Classification) =>
+    digestResult({
       ...common,
       action: "reject",
       reasonCodes: orderReasonCodes(classification.reasonCodes),
@@ -98,7 +82,65 @@ export const evaluateWatcherHeaderRootReconstruction = async (
       reconstructedRoots: null,
       reconstructedCounts: null,
     });
+
+  let evidence: CanonicalBlockEvidence;
+  try {
+    evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+      observation: input.observation,
+      payloadEnvelopeCbor: input.payloadEnvelopeCbor,
+      daProvenance: input.daProvenance,
+      ...(input.minimumConfirmationDepth === undefined
+        ? {}
+        : { minimumConfirmationDepth: input.minimumConfirmationDepth }),
+    });
+  } catch (error) {
+    return reject(
+      declaredCountFailureBefore(error, innerBytes, headerCounts) ??
+        classifyFailure(error),
+    );
   }
+  const declared = declaredCountFailures(
+    evidence.reconstruction.payload,
+    headerCounts,
+  );
+  const declaredFailure = declared.before ?? declared.after;
+  if (declaredFailure !== null) return reject(declaredFailure);
+  return digestResult({
+    ...common,
+    action: "accept",
+    reasonCodes: [],
+    rootMismatches: [],
+    countMismatches: [],
+    reconstructedRoots: rootSetFromCanonical(evidence.reconstruction.roots),
+    reconstructedCounts: countSetFromCanonical(evidence.reconstruction.counts),
+    payloadSha256: sha256Hex(evidence.reconstruction.payloadCbor),
+  });
+};
+
+/**
+ * A reconstruction failure a declared-count comparison would have preceded.
+ * Every canonical reconstruction error is raised after the payload decodes,
+ * so a payload that decodes had its declared counts checked first; the
+ * header comparison additionally preceded every error raised after root
+ * authentication, that is every error but a header or root mismatch.
+ */
+const declaredCountFailureBefore = (
+  error: unknown,
+  innerBytes: Uint8Array | null,
+  headerCounts: WatcherHeaderCountSet,
+): Classification | null => {
+  if (!(error instanceof TransitionTraceChallengerError) || innerBytes === null)
+    return null;
+  let payload: DaPayload;
+  try {
+    payload = decodePayloadStrict(innerBytes);
+  } catch {
+    return null;
+  }
+  const declared = declaredCountFailures(payload, headerCounts);
+  const beforeRoots =
+    error.code === "headerMismatch" || error.code === "rootMismatch";
+  return declared.before ?? (beforeRoots ? null : declared.after);
 };
 
 // ---------------------------------------------------------------------------

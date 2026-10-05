@@ -22,7 +22,10 @@ import {
   authenticatedDatumSource,
   authenticatedOutputSpan,
   boundMidgardLedgerOutputWindowBytes,
+  demandedMidgardLedgerOutputProofSpan,
   mapNativeStructureResult,
+  midgardLedgerOutputAttachWindowLength,
+  midgardLedgerOutputWindowCovers,
 } from "./ledger-output-proof.authenticated-output-span.js";
 import {
   authenticatedChunkWindow,
@@ -69,18 +72,25 @@ export const advanceMidgardLedgerOutputProof = ({
   }
   try {
     if (witness !== null && witness.kind === "spanAttach") {
+      const demanded = demandedMidgardLedgerOutputProofSpan(control);
       if (
-        control.stage !== MidgardLedgerOutputProofStages.DatumTraversal &&
-        control.stage !==
-          MidgardLedgerOutputProofStages.ReferenceScriptCommitment &&
-        control.stage !== MidgardLedgerOutputProofStages.ScriptHash
+        demanded === null ||
+        midgardLedgerOutputWindowCovers({
+          spanWindow: control.spanWindow,
+          ...demanded,
+        })
       ) {
         return null;
       }
+      const start = demanded.absoluteStart;
+      const length = midgardLedgerOutputAttachWindowLength(
+        control.totalLength,
+        start,
+      );
       const bytes = authenticatedOutputSpan({
         control,
-        absoluteStart: witness.start,
-        length: witness.length,
+        absoluteStart: start,
+        length,
         witness: {
           kind: "chunks",
           chunkProof: witness.chunkProof,
@@ -91,8 +101,8 @@ export const advanceMidgardLedgerOutputProof = ({
       return advancedOutputProof({
         ...control,
         spanWindow: {
-          start: witness.start,
-          length: witness.length,
+          start,
+          length,
           digest: Buffer.from(blake2b(bytes, { dkLen: 32 })),
         },
       });

@@ -12,7 +12,9 @@ export {
 } from "./cek-data-bytes.content-plan.js";
 export {
   encodeMidgardCekDataBytesControl,
+  indefiniteMidgardCekDataBytesLength,
   initialMidgardCekDataBytesControl,
+  initialMidgardCekDataBytesMeasureControl,
   isWellFormedMidgardCekDataBytesControl,
   MIDGARD_CEK_DATA_BYTES_MAX_SOURCE_SPAN,
   MIDGARD_CEK_DATA_BYTES_SYNTAX_BYTES,

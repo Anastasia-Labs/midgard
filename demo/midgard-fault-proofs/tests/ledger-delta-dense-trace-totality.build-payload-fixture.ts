@@ -92,7 +92,7 @@ export const buildPayloadFixture = async ({
           initial_state_hash: h32(150 + index),
           terminal_state_hash: h32(160 + index),
           verdict: "Accepted",
-          rejection_code_hash: h32(170 + index),
+          rejection_code_hash: "00".repeat(32),
         } satisfies SDK.ValidationTraceDescriptor,
         valueSchema: SDK.ValidationTraceDescriptorSchema,
       }),
@@ -278,6 +278,6 @@ export const dummyValidationMachineState = (): SDK.ValidationMachineState => ({
   execution_cpu: 0n,
   execution_memory: 0n,
   verdict: "Accepted",
-  rejection_code_hash: h32(986),
+  rejection_code_hash: "00".repeat(32),
   ledger_delta_root: h32(987),
 });

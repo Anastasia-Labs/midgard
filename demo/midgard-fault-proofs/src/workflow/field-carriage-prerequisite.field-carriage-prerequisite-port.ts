@@ -8,6 +8,10 @@ import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { type MintingPolicy, type UTxO } from "@lucid-evolution/lucid";
 
 import { type FaultProofFieldOpeningPlan } from "../field-opening.js";
+import {
+  boundDataPublicationPlan,
+  type BoundDataPublicationRequirement,
+} from "./bound-data-publication.js";
 import type {
   FraudProofWorkflowJournalEntry,
   JournalJsonObject,
@@ -29,6 +33,8 @@ export const FIELD_CARRIAGE_PREREQUISITE =
 
 export const RAW_DATUM_PREIMAGE_PREREQUISITE =
   "midgard-raw-datum-preimage-prerequisite-v1" as const;
+
+export { BOUND_DATA_PUBLICATION_PREREQUISITE } from "./bound-data-publication.js";
 
 export const FIELD_CARRIAGE_RECOVERY =
   "midgard-production-field-carriage-recovery-v1" as const;
@@ -97,11 +103,19 @@ export type FieldCarriageRequirement = Readonly<{
 type RawRequirement = RawDatumPreimageRequirement &
   Readonly<{ planned: ReturnType<typeof rawDatumPreimagePublicationPlan> }>;
 
+type BoundRequirement = BoundDataPublicationRequirement &
+  Readonly<{ planned: ReturnType<typeof boundDataPublicationPlan> }>;
+
 export type PreimageCarriageRequirement =
   | FieldCarriageRequirement
-  | RawDatumPreimageRequirement;
+  | RawDatumPreimageRequirement
+  | BoundDataPublicationRequirement;
 
-export type Requirement = (FieldCarriageRequirement | RawRequirement) &
+export type Requirement = (
+  | FieldCarriageRequirement
+  | RawRequirement
+  | BoundRequirement
+) &
   Readonly<{
     identitySha256: string;
     publicationDatums: readonly string[];
@@ -117,6 +131,7 @@ export type Recovery = Readonly<{
   outRef: string;
   datumCbor: string;
   unit: string | null;
+  publicationAddress?: string;
 }>;
 
 export interface FieldCarriagePrerequisitePort<
@@ -132,7 +147,11 @@ export interface FieldCarriagePrerequisitePort<
     Readonly<{
       publications: readonly UTxO[];
       certificate?: UTxO;
-      requirement: FieldCarriageRequirement | RawRequirement | null;
+      requirement:
+        | FieldCarriageRequirement
+        | RawRequirement
+        | BoundRequirement
+        | null;
     }>
   >;
   inspect(input: {

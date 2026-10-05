@@ -1,7 +1,6 @@
 import "@al-ft/midgard-core/codec";
 import "@al-ft/midgard-core/consensus-validation";
 import "@lucid-evolution/lucid";
-import "cborg";
 import "vitest";
 import "./helpers/cardano-native-fixtures.js";
 import "./midgard-output-helpers.js";

@@ -2,6 +2,7 @@ import {
   computeMidgardNativeTxId,
   deriveMidgardForcedTxProofSource,
   deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardFieldPreimage,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
@@ -16,22 +17,39 @@ export const buildMissingSignatureForcedTransaction = ({
   witnessCount = 1,
   signerCount = 1,
   forged = false,
-}: { witnessCount?: number; signerCount?: number; forged?: boolean } = {}) => {
+  spendInputCbors,
+  unsignedSignerHashes = [],
+}: {
+  witnessCount?: number;
+  signerCount?: number;
+  forged?: boolean;
+  /** Spend inputs, so the transaction reaches the signer rule in Phase A. */
+  spendInputCbors?: readonly Buffer[];
+  /** Required signers after the signed one, which no witness signs. */
+  unsignedSignerHashes?: readonly string[];
+} = {}) => {
   const key = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 31));
   const verification_key = Buffer.from(key.to_public().to_raw_bytes()).toString(
     "hex",
   );
   const hash = missingSignatureVkeyHash(verification_key);
-  const requiredSignerHashes = Array.from(
-    { length: signerCount },
-    (_, index) =>
+  const requiredSignerHashes = [
+    ...Array.from({ length: signerCount }, (_, index) =>
       index === signerCount - 1 ? hash : index.toString(16).padStart(56, "0"),
-  );
+    ),
+    ...unsignedSignerHashes,
+  ];
   const base = buildMissingSignatureSubject().nativeTx;
   const unsigned = materializeMidgardForcedTxFromCanonical({
     ...base,
     body: {
       ...base.body,
+      ...(spendInputCbors === undefined
+        ? {}
+        : {
+            spendInputsPreimageCbor:
+              encodeMidgardFieldPreimage(spendInputCbors),
+          }),
       requiredSignersPreimageCbor: encodeCbor(
         requiredSignerHashes.map((h) => Buffer.from(h, "hex")),
       ),

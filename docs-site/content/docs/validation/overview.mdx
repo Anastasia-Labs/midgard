@@ -43,19 +43,18 @@ validation surface a Midgard node runs after durable queue admission.
 The package exposes a public surface through `package.json` subpath exports and
 re-exports everything from `src/index.ts`. The most important entry points:
 
-| Export                | Module                 | Purpose                                                                              |
-| --------------------- | ---------------------- | ------------------------------------------------------------------------------------ |
-| `./phase-a`           | `phase-a.ts`           | `runPhaseAValidation`, stateless per-tx validation.                                  |
-| `./phase-b`           | `phase-b.ts`           | `runPhaseBValidationWithPatch`, dependency-aware ledger validation.                  |
-| `./ledger`            | `ledger.ts`            | `LedgerEntry` / `ProcessedTx` UTxO row model.                                        |
-| `./ledger-tx`         | `ledger-tx/`           | Semantic `MidgardLedgerTx` types and canonical CBOR codec.                           |
-| `./local-script-eval` | `local-script-eval.ts` | Auxiliary UPLC evaluator; canonical V1 proof execution uses the structural CEK path. |
-| `./script-context`    | `script-context.ts`    | Builds Plutus V3 / Midgard V1 script contexts.                                       |
-| `./script-source`     | `script-source.ts`     | Resolves inline and reference script sources.                                        |
-| `./midgard-redeemers` | `midgard-redeemers.ts` | Redeemer decoding and script-purpose data.                                           |
-| `./plutus-data`       | `plutus-data.ts`       | Plutus data to canonical CBOR hex conversion.                                        |
-| `./tx-out-ref`        | `tx-out-ref.ts`        | Transaction-input reference helpers.                                                 |
-| `./types`             | `types.ts`             | Shared config, result, and `RejectCodes`.                                            |
+| Export                | Module                 | Purpose                                                             |
+| --------------------- | ---------------------- | ------------------------------------------------------------------- |
+| `./phase-a`           | `phase-a.ts`           | `runPhaseAValidation`, stateless per-tx validation.                 |
+| `./phase-b`           | `phase-b.ts`           | `runPhaseBValidationWithPatch`, dependency-aware ledger validation. |
+| `./ledger`            | `ledger.ts`            | `LedgerEntry` / `ProcessedTx` UTxO row model.                       |
+| `./ledger-tx`         | `ledger-tx/`           | Semantic `MidgardLedgerTx` types and canonical CBOR codec.          |
+| `./script-context`    | `script-context.ts`    | Builds Plutus V3 / Midgard V1 script contexts.                      |
+| `./script-source`     | `script-source.ts`     | Resolves inline and reference script sources.                       |
+| `./midgard-redeemers` | `midgard-redeemers.ts` | Redeemer decoding and script-purpose data.                          |
+| `./plutus-data`       | `plutus-data.ts`       | Plutus data to canonical CBOR hex conversion.                       |
+| `./tx-out-ref`        | `tx-out-ref.ts`        | Transaction-input reference helpers.                                |
+| `./types`             | `types.ts`             | Shared config, result, and `RejectCodes`.                           |
 
 <Callout type="warn">
   The package has **no README**. The module header comments and the JSDoc on the

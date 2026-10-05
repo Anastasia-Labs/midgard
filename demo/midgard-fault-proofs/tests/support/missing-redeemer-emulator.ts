@@ -15,7 +15,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
   MidgardRedeemerTag,
-  validationAuxiliaryWitnessData,
+  retainedValidationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -83,6 +83,14 @@ export type MissingRedeemerFixtureShape = Readonly<{
    * block the family must refuse to convict.
    */
   targetRedeemerPresent?: boolean;
+  /**
+   * A second spend of the same script, sorted after the first, that no
+   * redeemer points at: the machine rejects at its stage-10 selection, so a
+   * present target needs no decoy. Spend purposes only.
+   */
+  unredeemedSecondSpend?: boolean;
+  /** The purpose index the forced reason and the family's material name. */
+  purposeIndex?: number;
 }>;
 
 export type MissingRedeemerFixture = Readonly<{
@@ -105,6 +113,9 @@ export type MissingRedeemerFixture = Readonly<{
   validationTraceCount: bigint;
   material: MissingRedeemerMaterial;
   fieldBytes: number;
+  /** The spent and referenced outputs the transaction resolves. */
+  ledgerWitnessEntries: readonly { outRef: Buffer; output: Buffer }[];
+  programMaterialSidecarCbor: Buffer;
 }>;
 
 const REDEEMER_TAG_BY_KIND = [
@@ -210,14 +221,25 @@ export const buildMissingRedeemerFixture = async (
 ): Promise<MissingRedeemerFixture> => {
   const targetRedeemerPresent =
     requested.targetRedeemerPresent ?? requested.direction === "forced";
+  const unredeemedSecondSpend = requested.unredeemedSecondSpend ?? false;
   const shape: Required<MissingRedeemerFixtureShape> = {
     ...requested,
-    decoyRedeemers: requested.decoyRedeemers ?? (targetRedeemerPresent ? 1 : 0),
+    decoyRedeemers:
+      requested.decoyRedeemers ??
+      (targetRedeemerPresent && !unredeemedSecondSpend ? 1 : 0),
     fieldBytes: requested.fieldBytes ?? 0,
     targetRedeemerPresent,
+    unredeemedSecondSpend,
+    purposeIndex: requested.purposeIndex ?? 0,
   };
-  if (targetRedeemerPresent && shape.decoyRedeemers === 0)
+  if (
+    targetRedeemerPresent &&
+    shape.decoyRedeemers === 0 &&
+    !unredeemedSecondSpend
+  )
     throw new Error("a present target needs a decoy to stop execution");
+  if (unredeemedSecondSpend && shape.purposeKind !== 0)
+    throw new Error("an unredeemed second spend is a spend purpose");
   if (shape.purposeKind === 3 && shape.sourceLocation === "reference")
     throw new Error("MidgardV1 receive scripts have no reference carriage");
   const script: MidgardVersionedScript =
@@ -227,6 +249,8 @@ export const buildMissingRedeemerFixture = async (
   const scriptHashHex = hashScriptWitness(script);
   const scriptHash = Buffer.from(scriptHashHex, "hex");
   const spent = outRefFromByte(0x71);
+  const secondSpent = outRefFromByte(0x71, 1n);
+  const spentCount = unredeemedSecondSpend ? 2n : 1n;
   const reference = outRefFromByte(0x72);
   const spentOutput =
     shape.purposeKind === 0
@@ -240,7 +264,7 @@ export const buildMissingRedeemerFixture = async (
       ? makeOutput(FUNDED_OUTPUT_LOVELACE, undefined, mintedAssets)
       : shape.purposeKind === 3
         ? makeProtectedScriptOutput(scriptHashHex, FUNDED_OUTPUT_LOVELACE)
-        : makeOutput(FUNDED_OUTPUT_LOVELACE);
+        : makeOutput(FUNDED_OUTPUT_LOVELACE * spentCount);
   const referenceOutput = encodeMidgardTxOutput({
     address: Buffer.alloc(29, 0x61),
     value: { lovelace: FUNDED_OUTPUT_LOVELACE, assets: new Map() },
@@ -254,7 +278,7 @@ export const buildMissingRedeemerFixture = async (
   });
   const transaction = makeNativeTx({
     version: 1n,
-    spendInputs: [spent],
+    spendInputs: unredeemedSecondSpend ? [spent, secondSpent] : [spent],
     referenceInputs: shape.sourceLocation === "reference" ? [reference] : [],
     outputs: [producedOutput],
     scriptWitnesses: shape.sourceLocation === "inline" ? [script] : [],
@@ -283,6 +307,15 @@ export const buildMissingRedeemerFixture = async (
     Data.to(eventKey as never, SDK.EventKeySchema as never),
     "hex",
   );
+  const ledgerWitnessEntries = [
+    { outRef: spent, output: spentOutput },
+    ...(unredeemedSecondSpend
+      ? [{ outRef: secondSpent, output: spentOutput }]
+      : []),
+    ...(shape.sourceLocation === "reference"
+      ? [{ outRef: reference, output: referenceOutput }]
+      : []),
+  ];
   const trace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
@@ -301,18 +334,14 @@ export const buildMissingRedeemerFixture = async (
       programMaterialSidecarCbor: PROGRAM_MATERIAL_SIDECAR,
       priorUtxosRoot: "00".repeat(32),
       postUtxosRoot: "00".repeat(32),
-      ledgerWitnessEntries: [
-        { outRef: spent, output: spentOutput },
-        ...(shape.sourceLocation === "reference"
-          ? [{ outRef: reference, output: referenceOutput }]
-          : []),
-      ],
+      ledgerWitnessEntries,
       expectedLedgerOps: [],
       ledgerMutationSteps: [],
       expectedVerdict: "rejected",
-      expectedRejectionCode: targetRedeemerPresent
-        ? "E_INVALID_FIELD_TYPE"
-        : "E_MISSING_REQUIRED_WITNESS",
+      expectedRejectionCode:
+        targetRedeemerPresent && !unredeemedSecondSpend
+          ? "E_INVALID_FIELD_TYPE"
+          : "E_MISSING_REQUIRED_WITNESS",
     }),
   );
   const tree = buildMidgardValidationTraceTree(
@@ -365,9 +394,11 @@ export const buildMissingRedeemerFixture = async (
       program_counter: BigInt(witness.programCounter),
       witness_cbor: witness.cbor.toString("hex"),
       auxiliary: Data.from(
-        Data.to(validationAuxiliaryWitnessData(witness.auxiliary) as never),
-        SDK.ValidationAuxiliaryWitnessSchema,
-      ) as unknown as SDK.ValidationAuxiliaryWitness,
+        Data.to(
+          retainedValidationAuxiliaryWitnessData(witness.auxiliary) as never,
+        ),
+        SDK.RetainedValidationAuxiliaryWitnessSchema,
+      ) as unknown as SDK.RetainedValidationAuxiliaryWitness,
     };
     return [
       {
@@ -386,7 +417,7 @@ export const buildMissingRedeemerFixture = async (
   const rejectionReason = {
     RedeemerMissing: {
       purpose_kind: BigInt(shape.purposeKind),
-      purpose_index: 0n,
+      purpose_index: BigInt(shape.purposeIndex),
     },
   } as const;
   const subject =
@@ -401,7 +432,7 @@ export const buildMissingRedeemerFixture = async (
     eventKey,
     subject,
     purposeKind: shape.purposeKind,
-    purposeIndex: 0,
+    purposeIndex: shape.purposeIndex,
     txCbor:
       shape.direction === "forced"
         ? forcedTraceBytes(forcedTraceView(transaction.tx))
@@ -425,5 +456,7 @@ export const buildMissingRedeemerFixture = async (
     validationTraceCount: root.count,
     material,
     fieldBytes: redeemerTxWitsPreimageCbor.length,
+    ledgerWitnessEntries,
+    programMaterialSidecarCbor: PROGRAM_MATERIAL_SIDECAR,
   };
 };

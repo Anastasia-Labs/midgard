@@ -22,19 +22,18 @@ test large_constructor_frame_is_fixed_size_and_matches_typescript() {
     16_384,
     16_388,
     builtin.replicate_byte(32, 66),
-    2,
   )
   let expected_encoding = #"8b01005820"
     |> bytearray.concat(builtin.replicate_byte(32, 199))
     |> bytearray.concat(#"1940001940045820")
     |> bytearray.concat(builtin.replicate_byte(32, 66))
     |> bytearray.concat(
-        #"020080008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000",
+        #"000080008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000",
       )
   and {
     cek_data_frame_v1.encode_frame_v1(frame) == expected_encoding,
     bytearray.length(expected_encoding) < 256,
-    cek_data_frame_v1.hash_frame_v1(frame) == #"f1f01b15e143b47b513a5be7c071a57709fa88b183a9220a9a81a1307b5334db",
+    cek_data_frame_v1.hash_frame_v1(frame) == #"4933e73934afebd5eb26cbaf32513b4e660ba5f1f2d4a42dba9cbd5aa75d6711",
   }
 }
 
@@ -46,7 +45,6 @@ test folds_large_constructor_children_in_authenticated_reverse_order() {
     16_384,
     16_388,
     builtin.replicate_byte(32, 66),
-    2,
   )
   expect Some(with_0) = cek_data_frame_v1.append_child_v1(initial, child_0)
   expect Some(full) = cek_data_frame_v1.append_child_v1(with_0, child_1)
@@ -127,9 +125,9 @@ test folds_map_pairs_without_reordering() {
 }
 
 test exact_empty_frames_finalize_without_forged_sequence_roots() {
-  let list = cek_data_frame_v1.initial_list_frame_v1(#"", 0)
+  let list = cek_data_frame_v1.initial_list_frame_v1(#"")
   let map = cek_data_frame_v1.initial_map_frame_v1(#"", 0)
-  let constr = cek_data_frame_v1.initial_small_constr_frame_v1(127, #"", 0)
+  let constr = cek_data_frame_v1.initial_small_constr_frame_v1(127, #"")
   expect Some(list_summary) = cek_data_frame_v1.finalized_summary_v1(list)
   expect Some(map_summary) = cek_data_frame_v1.finalized_summary_v1(map)
   expect Some(constr_summary) = cek_data_frame_v1.finalized_summary_v1(constr)
@@ -148,7 +146,7 @@ test exact_empty_frames_finalize_without_forged_sequence_roots() {
 }
 
 test forged_or_unbounded_frames_fail_closed() {
-  let initial = cek_data_frame_v1.initial_list_frame_v1(#"", 2)
+  let initial = cek_data_frame_v1.initial_list_frame_v1(#"")
   let forged_empty = cek_data_frame_v1.DataFrameV1 {
     ..initial,
     sequence: cek_data_v1.DataSequenceSummaryV1 {
@@ -156,14 +154,23 @@ test forged_or_unbounded_frames_fail_closed() {
       root: builtin.replicate_byte(32, 255),
     },
   }
-  let unbounded = cek_data_frame_v1.DataFrameV1 {
+  // Only a map frame carries its header count; every other frame pins
+  // `expected_children` to zero and is closed by its authenticated break.
+  let counted_list = cek_data_frame_v1.DataFrameV1 {
     ..initial,
+    expected_children: 1,
+  }
+  let empty_map = cek_data_frame_v1.initial_map_frame_v1(#"", 0)
+  let short_map = cek_data_frame_v1.initial_map_frame_v1(#"", 2)
+  let unbounded = cek_data_frame_v1.DataFrameV1 {
+    ..empty_map,
     expected_children: 4_294_967_296,
   }
   and {
     !cek_data_frame_v1.frame_is_well_formed(forged_empty),
+    !cek_data_frame_v1.frame_is_well_formed(counted_list),
     !cek_data_frame_v1.frame_is_well_formed(unbounded),
-    cek_data_frame_v1.append_child_v1(initial, summary(68, 0, 4)) == None,
-    cek_data_frame_v1.finalized_summary_v1(initial) == None,
+    cek_data_frame_v1.append_child_v1(empty_map, summary(68, 0, 4)) == None,
+    cek_data_frame_v1.finalized_summary_v1(short_map) == None,
   }
 }

@@ -1,4 +1,13 @@
-# Pinned UPLC evaluator
+# Pinned dependencies
+
+## MPF node encoding
+
+`mpf-1.3.1-midgard.1.tgz` preserves the DA fixing package through a portable
+workspace override. Its [source and reproduction guide](mpf-source/README.md)
+include the genuine modified source, MPL-2.0 license, exact dependency locks,
+build recipe and package receipt. This is a local package, not an npm release.
+
+## UPLC evaluator
 
 `uplc-0.2.23-midgard.1.tgz` replaces `@lucid-evolution/uplc@0.2.23`
 through the workspace's version-specific pnpm override. Its public package

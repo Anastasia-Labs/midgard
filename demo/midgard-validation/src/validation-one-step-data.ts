@@ -5,7 +5,8 @@ import {
   type MidgardValidationTraceProof,
   MidgardValidationVerdict,
 } from "@al-ft/midgard-core";
-import { Constr, Data } from "@lucid-evolution/lucid";
+import { lucidDataToCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
+import { Constr } from "@lucid-evolution/lucid";
 
 import type { DeterministicValidationMachineTrace } from "./validation-machine/index.js";
 import { validationMachineStateData } from "./validation-machine-data.js";
@@ -107,27 +108,19 @@ export const buildValidationBoundaryEvidenceData = ({
 export const encodeValidationTraceDescriptorDataCbor = (
   descriptor: MidgardValidationTraceDescriptor,
 ): Buffer =>
-  Buffer.from(
-    Data.to(validationTraceDescriptorData(descriptor) as never),
-    "hex",
-  );
+  lucidDataToCborIterative(validationTraceDescriptorData(descriptor) as never);
 
 export const encodeValidationTraceProofDataCbor = (
   proof: MidgardValidationTraceProof,
-): Buffer =>
-  Buffer.from(Data.to(validationTraceProofData(proof) as never), "hex");
+): Buffer => lucidDataToCborIterative(validationTraceProofData(proof) as never);
 
 export const encodeValidationDisputeDataCbor = (
   dispute: MidgardValidationDispute,
-): Buffer =>
-  Buffer.from(Data.to(validationDisputeData(dispute) as never), "hex");
+): Buffer => lucidDataToCborIterative(validationDisputeData(dispute) as never);
 
 export const encodeValidationBoundaryEvidenceCbor = (input: {
   readonly dispute: MidgardValidationDispute;
   readonly operatorTrace: DeterministicValidationMachineTrace;
   readonly challengerTrace: DeterministicValidationMachineTrace;
 }): Buffer =>
-  Buffer.from(
-    Data.to(buildValidationBoundaryEvidenceData(input) as never),
-    "hex",
-  );
+  lucidDataToCborIterative(buildValidationBoundaryEvidenceData(input) as never);

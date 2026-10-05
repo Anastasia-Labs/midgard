@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
-  applyParamsToScript,
   Constr,
   type Data,
   mintingPolicyToId,
@@ -21,6 +20,7 @@ import {
   parseFaultProofBlueprint,
   USER_EVENT_CONTRACT_TITLES,
 } from "../src/index.js";
+import { applyExpectedScriptParams } from "./fault-proof.expected-parameter-application.js";
 
 const blueprint = parseFaultProofBlueprint(
   JSON.parse(
@@ -43,7 +43,7 @@ const independentlyApply = (title: string, parameters: Data[]): string => {
     throw new Error(`Missing real blueprint title ${title}`);
   return parameters.length === 0
     ? entry.compiledCode
-    : applyParamsToScript(entry.compiledCode, parameters);
+    : applyExpectedScriptParams(entry.compiledCode, parameters);
 };
 const mint = (script: string) => ({ type: "PlutusV3" as const, script });
 const independentlyDerivedHub = independentlyApply(titles.hubOracle.mint, [
@@ -54,7 +54,7 @@ const hubOraclePolicyId = mintingPolicyToId(mint(independentlyDerivedHub));
 const input = { blueprint, network: "Preprod" as const, hubOraclePolicyId };
 
 describe("shared user-event contract deployment recipes", () => {
-  it("matches independent Lucid applications for every script, hash and spending address", () => {
+  it("matches independent UPLC applications for every script, hash and spending address", () => {
     expect(
       buildHubOracleMintingValidator({ blueprint, oneShotOutRef }),
     ).toEqual({

@@ -6,6 +6,7 @@ import "@al-ft/midgard-core";
 import "@al-ft/midgard-sdk";
 import "@al-ft/midgard-validation";
 import "../transition-trace/reconstruct.js";
+import "./detection-subject.js";
 import "./raw-l1-snapshot.js";
 import "./historical-native-script-corpus.create-historical-native-script-provider-roster.js";
 import "./historical-native-script-corpus.require-checkpoint.js";

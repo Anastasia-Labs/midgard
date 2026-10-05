@@ -14,7 +14,7 @@ import {
 } from "./cek-semantic.js";
 import { decodeMidgardAddressBytes } from "./codec/address.js";
 import { encodeCbor } from "./codec/cbor.js";
-import { type MidgardLedgerOutputDataSummary } from "./ledger-output-commitment.js";
+import { decodeMidgardLedgerOutputCommitment } from "./ledger-output-commitment.js";
 import {
   MIDGARD_LEDGER_OUTPUT_PROOF_FIELD_INDEX,
   type MidgardLedgerOutputProofControl,
@@ -31,21 +31,15 @@ export const digestMidgardLedgerOutputReferenceScript = (
     ? digestMidgardBlake2b224Trace(control.scriptHash)
     : null;
 
-export const summarizeMidgardLedgerOutputCardanoSpendDatum = (
-  control: MidgardLedgerOutputProofControl,
-): MidgardCekDataSummary | null => {
-  if (!isExactMidgardLedgerOutputProofTerminal(control)) {
-    return null;
-  }
-  if (control.outputScan.datumOffset === -1) {
-    return summarizeMidgardCekSmallConstrData(
-      1n,
-      emptyMidgardCekDataListSummary(),
-    );
-  }
-  const datum = finalizeMidgardCekDataTraverse(control.datum!);
-  return datum === null
-    ? null
+/**
+ * The `Option<Data>` spend-datum summary of an output whose datum summary is
+ * `datum` (`null` when the output carries no datum).
+ */
+export const summarizeMidgardLedgerOutputSpendDatumOf = (
+  datum: MidgardCekDataSummary | null,
+): MidgardCekDataSummary =>
+  datum === null
+    ? summarizeMidgardCekSmallConstrData(1n, emptyMidgardCekDataListSummary())
     : summarizeMidgardCekSmallConstrData(
         0n,
         prependMidgardCekDataListSummary(
@@ -53,6 +47,24 @@ export const summarizeMidgardLedgerOutputCardanoSpendDatum = (
           emptyMidgardCekDataListSummary(),
         ),
       );
+
+/** The terminal datum summary; `null` for an unfinished traversal. */
+const terminalDatumSummary = (
+  control: MidgardLedgerOutputProofControl,
+): { readonly datum: MidgardCekDataSummary | null } | null => {
+  if (control.outputScan.datumOffset === -1) return { datum: null };
+  const datum = finalizeMidgardCekDataTraverse(control.datum!);
+  return datum === null ? null : { datum };
+};
+
+export const summarizeMidgardLedgerOutputCardanoSpendDatum = (
+  control: MidgardLedgerOutputProofControl,
+): MidgardCekDataSummary | null => {
+  if (!isExactMidgardLedgerOutputProofTerminal(control)) return null;
+  const datum = terminalDatumSummary(control);
+  return datum === null
+    ? null
+    : summarizeMidgardLedgerOutputSpendDatumOf(datum.datum);
 };
 
 export const summarizeMidgardLedgerOutputValue = (
@@ -97,10 +109,10 @@ const summarizeCredential = (
   ]);
 
 const summarizeOutputAddress = (
-  control: MidgardLedgerOutputProofControl,
+  addressBytes: Uint8Array,
   encoding: "cardano" | "midgard",
 ): MidgardCekDataSummary => {
-  const address = decodeMidgardAddressBytes(control.outputScan.address);
+  const address = decodeMidgardAddressBytes(Buffer.from(addressBytes));
   const payment = summarizeCredential(
     address.paymentCredential.kind,
     address.paymentCredential.hash,
@@ -122,27 +134,36 @@ const summarizeOutputAddress = (
   );
 };
 
-const summarizeOutputDatum = (
-  control: MidgardLedgerOutputProofControl,
-): MidgardCekDataSummary | null => {
-  if (control.outputScan.datumOffset === -1) {
-    return summarizeSmallConstr(0n, []);
-  }
-  const datum = finalizeMidgardCekDataTraverse(control.datum!);
-  return datum === null ? null : summarizeSmallConstr(2n, [datum]);
-};
-
-const summarizeOutputReferenceScript = (
-  control: MidgardLedgerOutputProofControl,
-): MidgardCekDataSummary | null => {
-  if (control.outputScan.referenceScriptLanguage === -1) {
-    return summarizeSmallConstr(1n, []);
-  }
-  const digest = digestMidgardLedgerOutputReferenceScript(control);
-  return digest === null
-    ? null
-    : summarizeSmallConstr(0n, [summarizeDirectBytesData(digest)]);
-};
+/**
+ * The `TxOut` summary of an output from its leaf facts: address bytes, value
+ * summary, datum summary (`null` without a datum) and reference-script digest
+ * (`null` without a reference script).
+ */
+export const summarizeMidgardLedgerOutputTxOutOf = ({
+  address,
+  encoding,
+  value,
+  datum,
+  referenceScriptDigest,
+}: {
+  readonly address: Uint8Array;
+  readonly encoding: "cardano" | "midgard";
+  readonly value: MidgardCekDataSummary;
+  readonly datum: MidgardCekDataSummary | null;
+  readonly referenceScriptDigest: Uint8Array | null;
+}): MidgardCekDataSummary =>
+  summarizeSmallConstr(0n, [
+    summarizeOutputAddress(address, encoding),
+    value,
+    datum === null
+      ? summarizeSmallConstr(0n, [])
+      : summarizeSmallConstr(2n, [datum]),
+    referenceScriptDigest === null
+      ? summarizeSmallConstr(1n, [])
+      : summarizeSmallConstr(0n, [
+          summarizeDirectBytesData(referenceScriptDigest),
+        ]),
+  ]);
 
 const summarizeOutputTxOut = (
   control: MidgardLedgerOutputProofControl,
@@ -152,16 +173,23 @@ const summarizeOutputTxOut = (
     return null;
   }
   const value = finalizeMidgardLedgerOutputValue(control.value!);
-  const datum = summarizeOutputDatum(control);
-  const referenceScript = summarizeOutputReferenceScript(control);
-  return value === null || datum === null || referenceScript === null
+  const datum = terminalDatumSummary(control);
+  const referenceScriptDigest =
+    control.outputScan.referenceScriptLanguage === -1
+      ? null
+      : digestMidgardLedgerOutputReferenceScript(control);
+  return value === null ||
+    datum === null ||
+    (control.outputScan.referenceScriptLanguage !== -1 &&
+      referenceScriptDigest === null)
     ? null
-    : summarizeSmallConstr(0n, [
-        summarizeOutputAddress(control, encoding),
+    : summarizeMidgardLedgerOutputTxOutOf({
+        address: control.outputScan.address,
+        encoding,
         value,
-        datum,
-        referenceScript,
-      ]);
+        datum: datum.datum,
+        referenceScriptDigest,
+      });
 };
 
 export const summarizeMidgardLedgerOutputCardanoTxOut = (
@@ -171,14 +199,6 @@ export const summarizeMidgardLedgerOutputCardanoTxOut = (
 export const summarizeMidgardLedgerOutputMidgardTxOut = (
   control: MidgardLedgerOutputProofControl,
 ): MidgardCekDataSummary | null => summarizeOutputTxOut(control, "midgard");
-
-export const summariesEqual = (
-  left: MidgardCekDataSummary,
-  right: MidgardLedgerOutputDataSummary,
-): boolean =>
-  Buffer.from(left.root).equals(Buffer.from(right.root)) &&
-  left.cborLength === right.cborLength &&
-  left.memory === right.memory;
 
 export const commitMidgardLedgerOutputReferenceScriptItem = (
   control: MidgardLedgerOutputProofControl,
@@ -242,16 +262,37 @@ export const midgardLedgerOutputProofTerminalClaimedSummaries = (
 
 /**
  * The canonical fact-attachment groups, in machine order: the two leaf
- * summaries first, then the composite scan facts, then the reference script.
+ * summaries first, then the reference script, then the scan facts, whose
+ * yield consumes the three facts recorded before it. Mirrors
+ * `ledger_output_proof_v1.fact_attach_groups_v1`.
  */
 export const MIDGARD_LEDGER_OUTPUT_PROOF_FACT_ATTACH_GROUPS: readonly (readonly number[])[] =
-  Object.freeze([[2, 3], [0], [1]]);
+  Object.freeze([[2, 3], [1], [0]]);
 
 /**
- * One descriptor-fact commitment, binding the descriptor bytes and the
- * claimed summaries relevant to the role. Mirrors
- * `ledger_output_proof_v1.fact_commitment_v1`: `blake2b_256` over the
- * serialized Plutus data list of the role's payload.
+ * `blake2b_256` over the serialized Plutus data list of `payload` (each item
+ * already serialized Plutus data): the shape of every descriptor fact
+ * commitment. Mirrors `ledger_output_proof_v1.fact_digest_v1`.
+ */
+export const midgardLedgerOutputProofFactDigest = (
+  payload: readonly Uint8Array[],
+): Buffer =>
+  Buffer.from(
+    blake2b(
+      Buffer.concat([
+        Buffer.from([0x9f]),
+        ...payload.map((item) => Buffer.from(item)),
+        Buffer.from([0xff]),
+      ]),
+      { dkLen: 32 },
+    ),
+  );
+
+/**
+ * One descriptor-fact commitment. Each fact commits only what its own
+ * descriptor yield pins: role 3 the value summary, role 2 the datum summary,
+ * role 1 the four reference-script descriptor fields, and role 0 the whole
+ * descriptor bytes. Mirrors `ledger_output_proof_v1.fact_commitment_v1`.
  */
 export const midgardLedgerOutputProofFactCommitment = ({
   role,
@@ -264,25 +305,27 @@ export const midgardLedgerOutputProofFactCommitment = ({
   readonly valueSummaryDataCbor: Uint8Array;
   readonly datumSummaryDataCbor: Uint8Array;
 }): Buffer => {
-  const descriptorData = aikenSerialisedPlutusDataBytes(descriptorCbor);
-  let payload: readonly Uint8Array[];
   if (role === 0) {
-    payload = [descriptorData, valueSummaryDataCbor, datumSummaryDataCbor];
-  } else if (role === 1) {
-    payload = [descriptorData];
-  } else if (role === 2) {
-    payload = [descriptorData, datumSummaryDataCbor];
-  } else if (role === 3) {
-    payload = [descriptorData, valueSummaryDataCbor];
-  } else {
-    throw new Error("Invalid V1 ledger output proof fact role");
+    return midgardLedgerOutputProofFactDigest([
+      aikenSerialisedPlutusDataBytes(descriptorCbor),
+    ]);
   }
-  const payloadCbor = Buffer.concat([
-    Buffer.from([0x9f]),
-    ...payload.map((item) => Buffer.from(item)),
-    Buffer.from([0xff]),
-  ]);
-  return Buffer.from(blake2b(payloadCbor, { dkLen: 32 }));
+  if (role === 1) {
+    const descriptor = decodeMidgardLedgerOutputCommitment(descriptorCbor);
+    return midgardLedgerOutputProofFactDigest([
+      encodeCbor(BigInt(descriptor.referenceScriptLanguage)),
+      aikenSerialisedPlutusDataBytes(descriptor.referenceScriptHash),
+      encodeCbor(BigInt(descriptor.referenceScriptTotalLength)),
+      aikenSerialisedPlutusDataBytes(descriptor.referenceScriptItemCommitment),
+    ]);
+  }
+  if (role === 2) {
+    return midgardLedgerOutputProofFactDigest([datumSummaryDataCbor]);
+  }
+  if (role === 3) {
+    return midgardLedgerOutputProofFactDigest([valueSummaryDataCbor]);
+  }
+  throw new Error("Invalid V1 ledger output proof fact role");
 };
 
 export const midgardLedgerOutputProofFact = (

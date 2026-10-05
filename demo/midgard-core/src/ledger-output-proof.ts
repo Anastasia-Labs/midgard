@@ -21,7 +21,14 @@ import "./ledger-output-proof.build-midgard-ledger-output-proof-trace.js";
 import "./ledger-output-proof.midgard-ledger-output-proof-fact-commitment.js";
 import "./ledger-output-proof.verify-midgard-ledger-output-descriptor.js";
 export { advanceMidgardLedgerOutputProof } from "./ledger-output-proof.advance-midgard-ledger-output-proof.js";
-export { boundMidgardLedgerOutputWindowBytes } from "./ledger-output-proof.authenticated-output-span.js";
+export {
+  boundMidgardLedgerOutputWindowBytes,
+  demandedMidgardLedgerOutputProofSpan,
+  midgardLedgerOutputAttachWindowLength,
+  midgardLedgerOutputReferenceScriptChunkSpan,
+  midgardLedgerOutputScriptHashContentSpan,
+  midgardLedgerOutputWindowCovers,
+} from "./ledger-output-proof.authenticated-output-span.js";
 export { buildMidgardLedgerOutputProofTrace } from "./ledger-output-proof.build-midgard-ledger-output-proof-trace.js";
 export {
   encodeMidgardLedgerOutputProofControl,
@@ -34,11 +41,14 @@ export {
   MIDGARD_LEDGER_OUTPUT_PROOF_FACT_ATTACH_GROUPS,
   midgardLedgerOutputProofFact,
   midgardLedgerOutputProofFactCommitment,
+  midgardLedgerOutputProofFactDigest,
   midgardLedgerOutputProofFactsComplete,
   midgardLedgerOutputProofTerminalClaimedSummaries,
   summarizeMidgardLedgerOutputCardanoSpendDatum,
   summarizeMidgardLedgerOutputCardanoTxOut,
   summarizeMidgardLedgerOutputMidgardTxOut,
+  summarizeMidgardLedgerOutputSpendDatumOf,
+  summarizeMidgardLedgerOutputTxOutOf,
   summarizeMidgardLedgerOutputValue,
 } from "./ledger-output-proof.midgard-ledger-output-proof-fact-commitment.js";
 export {
@@ -57,5 +67,9 @@ export {
 export { isExactMidgardLedgerOutputProofTerminal } from "./ledger-output-proof.span-chunk-witness.js";
 export {
   attachMidgardLedgerOutputProofFacts,
+  midgardLedgerOutputDescriptorOfTerminalFacts,
+  midgardLedgerOutputProofFactsAreExact,
+  type MidgardLedgerOutputTerminalFacts,
+  terminalMidgardLedgerOutputDescriptor,
   verifyMidgardLedgerOutputDescriptor,
 } from "./ledger-output-proof.verify-midgard-ledger-output-descriptor.js";

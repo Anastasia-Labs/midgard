@@ -8,6 +8,7 @@ import {
 } from "../fibers/speculative-commit-state.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import type { EventHistoryOwner } from "./event-history-owner.js";
+import type { ForeignBaseVerificationState } from "./foreign-base-verification.js";
 import {
   type AdmissionBacklogGaugeState,
   type AttestationTimeoutCorrectionHealth,
@@ -147,6 +148,8 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       state: "starting",
       detail: "settlement worker starting",
     });
+    const FOREIGN_BASE_VERIFICATION =
+      yield* Ref.make<ForeignBaseVerificationState>({ status: "unobserved" });
     const EVENT_HISTORY_OWNER = yield* Ref.make<EventHistoryOwner | undefined>(
       undefined,
     );
@@ -214,6 +217,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       TX_QUEUE_WAKE_GENERATION,
       NATIVE_MPF_OWNER,
       EVENT_HISTORY_OWNER,
+      FOREIGN_BASE_VERIFICATION,
       ADMISSION_BACKLOG_GAUGE,
       LOCAL_FINALIZATION_PENDING,
       HEARTBEAT_BLOCK_COMMITMENT,

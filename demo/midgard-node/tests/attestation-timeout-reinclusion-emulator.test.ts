@@ -1,7 +1,6 @@
 import "node:util";
 import "@effect/sql";
 import "effect";
-import "level";
 import "vitest";
 import "../src/database/pendingBlockFinalizations.js";
 import "../src/fibers/speculative-commit-builder.js";
@@ -11,7 +10,6 @@ import "./attestation-timeout-reinclusion-emulator.expect-rewound-and-recommitte
 
 import { SqlClient } from "@effect/sql";
 import { Effect, Ref } from "effect";
-import { Level } from "level";
 import { expect, it } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
@@ -44,6 +42,11 @@ import {
   readSqlLedgerRoot,
   restoreObserverRow,
 } from "./helpers/correction-rewind-scenario.js";
+import {
+  assertClosedCorrectionGate,
+  assertUnboundRemovedLocalRoot,
+  assertUnretainedCorrectionRoot,
+} from "./helpers/correction-rewind-source-gate.js";
 import {
   expectInvalidatedByT1,
   installReadyCandidate,
@@ -399,6 +402,7 @@ it("resumes a two-block rewind interrupted after its plan was persisted and befo
     );
     expect(await nativeRoot(scenario.h)).toBe(removed.at(-1)!.expected);
     await expectOwedAndUnreincluded(removed);
+    await assertClosedCorrectionGate(scenario.h);
     // The restarted process resumes the persisted plan at startup.
     const restarted = await scenario.h.restartRuntime();
     h = restarted;
@@ -487,44 +491,14 @@ it("resumes a rewind to a retained non-empty base interrupted after the native r
   }
 }, 600_000);
 
-it("fails closed with a specific error when the rewind base is not retained, and never moves the marker or reincludes", async () => {
-  const { scenario, removed } = await openRemovedTailOverRetainedBlock();
-  const levelPath = scenario.h.production.nodeConfig.LEDGER_MPF_DB_PATH;
-  const target = removed[0]!.base;
-  const readMarker = async () => {
-    const db = new Level<string, unknown>(levelPath, { valueEncoding: "json" });
-    await db.open();
-    try {
-      return await db.get("__root__");
-    } finally {
-      await db.close();
-    }
-  };
-  try {
-    // Drop the base root's own record while no service holds the store.
-    const failure = await failureText(
-      scenario.h.restartRuntime({
-        afterStop: async () => {
-          const db = new Level<string, unknown>(levelPath, {
-            valueEncoding: "json",
-          });
-          await db.open();
-          try {
-            expect(await db.get(target)).toBeDefined();
-            await db.del(target);
-          } finally {
-            await db.close();
-          }
-        },
-      }),
-    );
-    expect(failure).toContain(
-      `Native MPF canonical recovery target root ${target} is not retained in full; refusing to restore`,
-    );
-    expect(await readMarker()).toBe(removed[0]!.expected);
-    expect((await readSqlLedgerRoot()).root_hex).not.toBe(target);
-    await expectOwedAndUnreincluded(removed);
-  } finally {
-    await closeLifecycle(scenario.h);
-  }
-}, 600_000);
+it(
+  "fails closed with a specific error when the rewind base is not retained, and never moves the marker or reincludes",
+  assertUnretainedCorrectionRoot,
+  600_000,
+);
+
+it(
+  "refuses a removed native root whose local journal parent is unbound and leaves native and SQL unchanged",
+  assertUnboundRemovedLocalRoot,
+  600_000,
+);

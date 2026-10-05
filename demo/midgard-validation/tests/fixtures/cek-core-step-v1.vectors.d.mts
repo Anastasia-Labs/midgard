@@ -19,7 +19,12 @@ import type { UPLCTerm } from "@harmoniclabs/uplc";
 import type { MidgardCekExecutionStep } from "../../src/cek-executor.js";
 import type { MidgardCekCoreStepWitness } from "../../src/cek-machine.js";
 
-export declare const compileMidgardCekGoldenProgram: (term: UPLCTerm) => Buffer;
+export declare const compileMidgardCekGoldenProgram: (
+  term: UPLCTerm,
+  encodeProgram: (
+    program: import("@harmoniclabs/uplc").UPLCProgram,
+  ) => Uint8Array,
+) => Buffer;
 
 export declare const EMPTY_CONTEXT: () => Data;
 

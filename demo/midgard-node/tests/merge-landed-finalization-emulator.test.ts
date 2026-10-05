@@ -45,6 +45,7 @@ import {
 } from "./deposit-flow-emulator-shared.js";
 import { dropPendingEmulatorTransaction } from "./helpers/correction-rewind-scenario.js";
 import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { assertLandedMergeParentRefusal } from "./helpers/merge-landed-finalization-parent-refusal.js";
 
 // Every confirmed merge's in-flight local-finalization outcome as the merge
 // builder reports it, and an optional confirmation window replacing the
@@ -94,11 +95,6 @@ vi.mock(
 // catch-up and then skips without building a transaction.
 const CATCH_UP_ONLY = { expectedHeaderHash: "ff".repeat(28) };
 
-/**
- * One production history owner and Architecture G native owner over the
- * emulator, with the helpers both scenarios share. `restart` may be called
- * once.
- */
 const openMergeLifecycle = async () => {
   mergeHooks.confirmedFinalizations.length = 0;
   mergeHooks.confirmationWindowMs = undefined;
@@ -407,6 +403,7 @@ const openMergeLifecycle = async () => {
       return h;
     },
     run,
+    sqlRun,
     queuedBlocks,
     mergeJob,
     expectDeposits,
@@ -431,7 +428,7 @@ const openMergeLifecycle = async () => {
   };
 };
 
-type MergeLifecycle = Awaited<ReturnType<typeof openMergeLifecycle>>;
+export type MergeLifecycle = Awaited<ReturnType<typeof openMergeLifecycle>>;
 
 const expectFinalizedOnce = async (
   m: MergeLifecycle,
@@ -448,12 +445,6 @@ const expectFinalizedOnce = async (
   expect(audit.diverged).toBe(false);
 };
 
-/**
- * A merge whose local finalization failed after committing its ledger fold is
- * retried by the next merge attempt, without a restart; a merge that lands
- * while history recovery revokes the producer permit is finalized once the
- * restarted owner is Ready, and never twice.
- */
 it("finalizes a landed merge whose local finalization failed or was refused by history recovery, exactly once", async () => {
   const m = await openMergeLifecycle();
   const { fixture } = m;
@@ -588,11 +579,6 @@ it("finalizes a landed merge whose local finalization failed or was refused by h
   }
 });
 
-/**
- * A merge whose confirmation wait gives up at its deadline is not finalized
- * while it has not landed; once it lands across a restart, the restarted
- * node's next merge attempt finalizes it, exactly once.
- */
 it("finalizes a merge that lands after its confirmation wait gave up, across a restart, and never before it lands", async () => {
   const m = await openMergeLifecycle();
   const { fixture } = m;
@@ -623,6 +609,18 @@ it("finalizes a merge that lands after its confirmation wait gave up, across a r
     expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
     await expectFinalizedOnce(m, block, 1);
     expect(mergeHooks.confirmedFinalizations).toEqual([]);
+  } finally {
+    await m.close();
+  }
+});
+
+it("refuses to fold a landed merge whose retained journal names a different canonical parent", async () => {
+  const m = await openMergeLifecycle();
+  try {
+    await assertLandedMergeParentRefusal(
+      m,
+      () => mergeHooks.confirmedFinalizations,
+    );
   } finally {
     await m.close();
   }

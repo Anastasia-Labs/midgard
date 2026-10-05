@@ -19,7 +19,7 @@ import {
 } from "../../src/verification/phase-a-verifier.js";
 
 describe("W25 published rejection-code partition", () => {
-  it("is a disjoint total 13/27/10 partition of the canonical 50-code vocabulary", () => {
+  it("is a disjoint total 14/26/10 partition of the canonical 50-code vocabulary", () => {
     expect(WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES).toStrictEqual(
       Object.values(RejectCodes),
     );

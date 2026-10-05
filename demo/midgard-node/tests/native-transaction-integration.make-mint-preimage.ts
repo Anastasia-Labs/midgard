@@ -1,4 +1,5 @@
 import {
+  encodeCbor,
   encodeMidgardDefiniteBytes,
   encodeMidgardFieldPreimage,
   encodeMidgardFieldPreimageForField,
@@ -9,7 +10,6 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { plutusDataToCborHex, txOutRefData } from "@al-ft/midgard-validation";
 import { CML, Constr } from "@lucid-evolution/lucid";
-import { encode } from "cborg";
 
 import {
   makeMidgardTxOutput,
@@ -264,7 +264,7 @@ export const makeMintPreimage = (
  * can prove it is refused. §5.1 gives every one of the nine fields exactly one
  * empty spelling — `80`, which is {@link EMPTY_CBOR_LIST}.
  */
-export const RETIRED_MINT_MAP_CBOR = Buffer.from(encode(new Map()));
+export const RETIRED_MINT_MAP_CBOR = Buffer.from(encodeCbor(new Map()));
 
 /**
  * A §5.1-valid field-5 preimage whose single §5.6 item is deliberately
@@ -285,7 +285,7 @@ export const makeMalformedMintPolicyItemPreimage = (
       Buffer.from([0x82]),
       encodeMidgardDefiniteBytes(Buffer.from(policyId)),
       Buffer.from(
-        encode(
+        encodeCbor(
           new Map(
             [...assets].map(([assetName, quantity]) => [
               Buffer.from(assetName),

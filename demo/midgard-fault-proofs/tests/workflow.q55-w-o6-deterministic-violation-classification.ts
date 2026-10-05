@@ -6,8 +6,13 @@ import {
   FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE,
   FRAUD_PROOF_CLASSIFICATION_RULES,
 } from "../src/workflow/classification.js";
+import { acceptedTransactionSubject } from "../src/workflow/detection-subject.js";
 import { h32 } from "./helpers/canonical-block-evidence-fixture.js";
-import { canonicalEvidence, detection } from "./workflow.make-adapter.js";
+import {
+  canonicalEvidence,
+  canonicalEvidenceWithEvents,
+  detection,
+} from "./workflow.make-adapter.js";
 
 describe("Q55/W-O6 deterministic violation classification", () => {
   it("covers every registered family exactly once in catalogue order", () => {
@@ -36,22 +41,26 @@ describe("Q55/W-O6 deterministic violation classification", () => {
     ).toEqual(SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.slice(0, promoted));
   });
 
-  it("selects the earliest position, then stable family order", async () => {
-    const evidence = await canonicalEvidence();
+  it("selects the earliest event, then stable family order", async () => {
+    const [evidence, txIds] = await canonicalEvidenceWithEvents(3);
     const classification = await classifyCanonicalBlockViolations({
       evidence,
       detections: [
+        // A lower reported position never outranks an earlier event.
         detection(evidence, "mint-authorization", {
+          ...acceptedTransactionSubject(txIds[2]!),
           detectionId: "mint-late",
-          position: 9n,
+          position: 0n,
         }),
         detection(evidence, "invalid-range", {
+          ...acceptedTransactionSubject(txIds[1]!),
           detectionId: "range-first",
-          position: 2n,
+          position: 9n,
         }),
         detection(evidence, "double-spend", {
+          ...acceptedTransactionSubject(txIds[0]!, txIds[1]!),
           detectionId: "double-first",
-          position: 2n,
+          position: 9n,
         }),
       ],
     });
@@ -63,15 +72,17 @@ describe("Q55/W-O6 deterministic violation classification", () => {
   });
 
   it("maps unknown earliest violations to unprovable_gap, never verified", async () => {
-    const evidence = await canonicalEvidence();
+    const [evidence, txIds] = await canonicalEvidenceWithEvents(2);
     const classification = await classifyCanonicalBlockViolations({
       evidence,
       detections: [
         detection(evidence, "unknown-launch-fault", {
+          ...acceptedTransactionSubject(txIds[0]!),
           detectionId: "gap",
           position: 0n,
         }),
         detection(evidence, "double-spend", {
+          ...acceptedTransactionSubject(txIds[1]!),
           detectionId: "later-proof",
           position: 1n,
         }),

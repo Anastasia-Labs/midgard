@@ -1,4 +1,5 @@
 use aiken/cbor
+use aiken/primitive/bytearray
 use midgard/cek_data_integer_v1
 use midgard/fraud_proofs/native_tx/codec.{slice_len}
 
@@ -14,12 +15,25 @@ fn finish_trace(
     control
   } else {
     expect
-      cek_data_integer_v1.prevalidated_next_source_span(control) == cek_data_integer_v1.next_source_span_v1(
+      cek_data_integer_v1.prevalidated_next_source_span(
         control,
+        source_start + bytearray.length(source),
+      ) == cek_data_integer_v1.next_source_span_v1(
+        control,
+        source_start + bytearray.length(source),
       )
-    when cek_data_integer_v1.next_source_span_v1(control) is {
+    when
+      cek_data_integer_v1.next_source_span_v1(
+        control,
+        source_start + bytearray.length(source),
+      )
+    is {
       None -> {
-        expect Some(next) = cek_data_integer_v1.step_v1(control, None)
+        expect Some(next) = cek_data_integer_v1.step_v1(
+          control,
+          source_start + bytearray.length(source),
+          None,
+        )
         finish_trace(next, source, source_start)
       }
       Some(span) -> {
@@ -30,6 +44,7 @@ fn finish_trace(
         )
         expect Some(next) = cek_data_integer_v1.step_v1(
           control,
+          source_start + bytearray.length(source),
           Some(source_bytes),
         )
         finish_trace(next, source, source_start)
@@ -115,9 +130,9 @@ test rejects_malformed_and_noncanonical_integer_syntax() {
 test rejects_missing_short_and_surplus_authenticated_syntax_windows() {
   let initial = cek_data_integer_v1.initial_control_v1(9, 11)
   and {
-    cek_data_integer_v1.step_v1(initial, None) == None,
-    cek_data_integer_v1.step_v1(initial, Some(#"0000000000")) == None,
-    cek_data_integer_v1.step_v1(initial, Some(#"000000000000")) == None,
+    cek_data_integer_v1.step_v1(initial, 20, None) == None,
+    cek_data_integer_v1.step_v1(initial, 20, Some(#"0000000000")) == None,
+    cek_data_integer_v1.step_v1(initial, 20, Some(#"000000000000")) == None,
   }
 }
 
@@ -138,13 +153,20 @@ fn trace_pins_wire_data(
     True
   } else {
     let source_bytes = when
-      cek_data_integer_v1.next_source_span_v1(control)
+      cek_data_integer_v1.next_source_span_v1(
+        control,
+        source_start + bytearray.length(source),
+      )
     is {
       None -> None
       Some(span) ->
         Some(slice_len(source, span.absolute_start - source_start, span.length))
     }
-    expect Some(next) = cek_data_integer_v1.step_v1(control, source_bytes)
+    expect Some(next) = cek_data_integer_v1.step_v1(
+      control,
+      source_start + bytearray.length(source),
+      source_bytes,
+    )
     trace_pins_wire_data(next, source, source_start)
   }
 }
@@ -157,5 +179,96 @@ test integer_control_data_matches_wire_encoding() {
       17,
     ),
     trace_pins_wire_data(cek_data_integer_v1.initial_control_v1(0, 1), #"0b", 0),
+  }
+}
+
+test proves_cardano_chunked_signed_magnitudes_with_exact_memory() {
+  let value = 13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084096
+  let positive = cbor.serialise(value)
+  let negative = cbor.serialise(-value - 1)
+  let terminal = finish_trace(
+    cek_data_integer_v1.initial_control_v1(17, bytearray.length(positive)),
+    positive,
+    17,
+  )
+  let negative_terminal = finish_trace(
+    cek_data_integer_v1.initial_control_v1(17, bytearray.length(negative)),
+    negative,
+    17,
+  )
+  expect Some(summary) = cek_data_integer_v1.finalize_v1(terminal)
+  expect Some(negative_summary) = cek_data_integer_v1.finalize_v1(
+    negative_terminal,
+  )
+  and {
+    bytearray.length(positive) == 71,
+    summary.cbor_length == 71,
+    summary.memory == 69,
+    summary.root == #"2245ce3c839885a8e667481cec15cbe0e91df8a04f816859ae3bb38a8217b6aa",
+    cek_data_integer_v1.encode_control_v1(terminal) == #"8601021118471845d8799f860101111847840101184781830058206f2bcd2c7aaabd4f57c1d3b1d0f2ba43fcbe6927f0551a73dd7daf4fdcf7e3051847d87a80ff",
+    negative_summary.cbor_length == 71,
+    negative_summary.memory == 69,
+    summary.root != negative_summary.root,
+    trace_pins_wire_data(
+      cek_data_integer_v1.initial_control_v1(17, 71),
+      positive,
+      17,
+    ),
+  }
+}
+
+test rejects_definite_magnitude_over_cardano_chunk_bound() {
+  cek_data_integer_v1.parse_syntax_v1(#"c258410100000000000000000000", 68) == None
+}
+
+test rejects_a_single_full_indefinite_magnitude_chunk() {
+  let initial = cek_data_integer_v1.initial_measure_control_v1(17)
+  expect Some(measured) = cek_data_integer_v1.step_v1(
+    initial,
+    86,
+    Some(#"584001"),
+  )
+  cek_data_integer_v1.step_v1(measured, 86, Some(#"ff")) == None
+}
+
+test rejects_a_short_nonfinal_magnitude_chunk() {
+  let initial = cek_data_integer_v1.initial_measure_control_v1(17)
+  expect Some(full) = cek_data_integer_v1.step_v1(initial, 100, Some(#"584001"))
+  expect Some(partial) = cek_data_integer_v1.step_v1(full, 100, Some(#"410141"))
+  cek_data_integer_v1.step_v1(partial, 100, Some(#"4101ff")) == None
+}
+
+test rejects_oversized_magnitude_chunks() {
+  let initial = cek_data_integer_v1.initial_measure_control_v1(17)
+  expect Some(full) = cek_data_integer_v1.step_v1(initial, 200, Some(#"584001"))
+  cek_data_integer_v1.step_v1(full, 200, Some(#"584101")) == None
+}
+
+test rejects_a_zero_leading_chunked_magnitude_byte() {
+  cek_data_integer_v1.step_v1(
+    cek_data_integer_v1.initial_measure_control_v1(17),
+    100,
+    Some(#"584000"),
+  ) == None
+}
+
+test proves_repeated_full_chunks_then_one_partial_magnitude_chunk() {
+  let source = cbor.serialise(
+    179769313486231590772930519078902473361797697894230657273430081157732675805500963132708477322407536021120113879871393357658789768814416622492847430639474124377767893424865485276302219601246094119453082952085005768838150682342462881473913110540827237163350510684586298239947245938479716304835356329624224137216,
+  )
+  let terminal = finish_trace(
+    cek_data_integer_v1.initial_control_v1(17, bytearray.length(source)),
+    source,
+    17,
+  )
+  expect Some(summary) = cek_data_integer_v1.finalize_v1(terminal)
+  and {
+    summary.cbor_length == 137,
+    summary.memory == 133,
+    trace_pins_wire_data(
+      cek_data_integer_v1.initial_control_v1(17, 137),
+      source,
+      17,
+    ),
   }
 }

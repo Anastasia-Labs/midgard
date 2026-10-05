@@ -11,7 +11,6 @@ export {
   decodeMidgardCekConstantTypeCbor,
   decodeMidgardCekConstantWitness,
   encodeMidgardCekConstantTypeCbor,
-  encodeMidgardCekPlutusData,
 } from "./cek-constant.payload-matches-type.js";
 export {
   MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
@@ -23,13 +22,17 @@ export {
 } from "./cek-constant.semantic-data.js";
 export {
   encodeMidgardCekCanonicalConstant,
+  encodeMidgardCekCanonicalDataConstant,
   hashMidgardCekConstantWitness,
   hashMidgardCekSemanticConstantWitness,
-  midgardCekByteStringMemorySize,
   midgardCekConstantMemorySize,
   midgardCekConstantWitnessFromUplc,
   midgardCekConstantWitnessToUplc,
-  midgardCekDataMemorySize,
-  midgardCekIntegerMemorySize,
   midgardCekUplcConstantMemorySize,
 } from "./cek-constant.semantic-uplc-constant.js";
+export { encodeMidgardCekPlutusData } from "./plutus-data-iterative.encode.js";
+export {
+  midgardCekByteStringMemorySize,
+  midgardCekDataMemorySize,
+  midgardCekIntegerMemorySize,
+} from "./plutus-data-iterative.memory.js";

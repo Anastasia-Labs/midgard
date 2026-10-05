@@ -25,6 +25,7 @@ import {
   prepareDaHardeningStartup,
   runDaIdentityGatedStartupSequence,
 } from "../da/startup.js";
+import { restoreRetainedStatePins } from "../database/cekProgramMaterial.restore-retained-state-pins.js";
 import { DaPayloadsDB, InitDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { assertPhase1AcceptCrashCheckpointConfiguration } from "../e2e/phase1-accept-crash-checkpoint.js";
@@ -216,6 +217,15 @@ export const runNode = (
                 new DatabaseInitializationError({
                   message: "Startup state-queue boundary seed failed",
                   cause: e,
+                }),
+            ),
+          );
+          yield* restoreRetainedStatePins.pipe(
+            Effect.mapError(
+              (cause) =>
+                new DatabaseInitializationError({
+                  message: "Startup retained script material recovery failed",
+                  cause,
                 }),
             ),
           );

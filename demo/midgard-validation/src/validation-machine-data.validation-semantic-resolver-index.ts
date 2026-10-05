@@ -58,11 +58,12 @@ export const validationSemanticResolverIndex = (
       if (auxiliary.kind === "transactionFieldChunk") return 1;
       if (auxiliary.kind === "nativeScriptFrame") return 13;
       if (auxiliary.kind !== "nativeScriptToken") break;
-      const { stage, cursor } = nativeScanCursor(witness);
+      const { stage, cursor, itemLength } = nativeScanCursor(witness);
       if (stage === 1) return 2;
       if (stage === 3) {
         return {
-          none: -1,
+          // This executor proves malformed signatures with no signer proof.
+          none: 8,
           membership: 8,
           empty: 9,
           belowFirst: 10,
@@ -71,22 +72,22 @@ export const validationSemanticResolverIndex = (
         }[auxiliary.signerProof.kind];
       }
       if (stage === 4 || stage === 5) {
-        return nativePayloadChildCount({
+        const childCount = nativePayloadChildCount({
           witness: auxiliary,
           cursor,
+          itemLength,
           stage,
-        }) > 0
-          ? 3
-          : 4;
+        });
+        return childCount !== null && childCount > 0 ? 3 : 4;
       }
       if (stage === 6) {
-        return nativePayloadChildCount({
+        const childCount = nativePayloadChildCount({
           witness: auxiliary,
           cursor,
+          itemLength,
           stage,
-        }) > 0
-          ? 5
-          : 6;
+        });
+        return childCount !== null && childCount > 0 ? 5 : 6;
       }
       if (stage === 7 || stage === 8) return 7;
       break;

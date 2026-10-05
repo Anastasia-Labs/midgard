@@ -169,7 +169,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       traversalNormalizer: transitionTrace,
       outerNormalizer: transitionTrace,
       sourceAuthenticator: transitionTrace,
-      executors: Array.from({ length: 19 }, () => transitionTrace),
+      executors: Array.from({ length: 20 }, () => transitionTrace),
       foldMapExecutor: transitionTrace,
       finalizeFrameExecutor: transitionTrace,
       settlement: transitionTrace,
@@ -278,6 +278,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       canonicalDecodeItemStages: validationTraceCanonicalDecodeItemStages,
       scriptSourcesStageOneRedeemerStages:
         validationTraceScriptSourcesStageOneRedeemerStages,
+      canonicalDecodePrepare: validationTracePrepareResolvers[0],
       prepareResolvers: validationTracePrepareResolvers,
       semanticResolvers: validationTraceSemanticResolvers,
       cekMaterialTraversal: transitionTrace,

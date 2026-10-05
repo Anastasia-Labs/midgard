@@ -86,7 +86,7 @@ import { publishTransitionTraceYields } from "./transition-trace-yields.js";
 /** Each test file registers its own suite, measurement rows and module spies. */
 export const registerTransitionTraceFinalCases = (
   cases: readonly TransitionTraceFinalCase[],
-  fitLedgerSuffix?: "many-assets" | "deep-deposit",
+  fitLedgerSuffix?: "many-assets" | "deep-deposit" | "drained",
 ): void => {
   const fitRows: VanRossemFitMeasurement[] = [];
   const records: unknown[] = [];
@@ -134,7 +134,7 @@ export const registerTransitionTraceFinalCases = (
   });
   describe("fault-proof emulator integration", () => {
     it.each(cases)(
-      "publishes accepted semantic yields and removes a wrong transition root assets=$assetCount outputs=$outputCount bytes=$outputBytes field=$fieldBytes honest=$honest depth=$depth kind=$kind cancel=$cancelAt datum=$datumBytes corruptIndex=$corruptAssetIndex corruptDatum=$corruptDatum corruptSource=$corruptSourceReference",
+      "publishes accepted semantic yields and removes a wrong transition root assets=$assetCount outputs=$outputCount bytes=$outputBytes field=$fieldBytes honest=$honest depth=$depth kind=$kind cancel=$cancelAt datum=$datumBytes corruptIndex=$corruptAssetIndex corruptDatum=$corruptDatum corruptSource=$corruptSourceReference drained=$drained",
       async ({
         assetCount,
         outputCount,
@@ -148,6 +148,7 @@ export const registerTransitionTraceFinalCases = (
         corruptDatum = false,
         corruptSourceReference = false,
         datumBytes = 0,
+        drained = false,
       }) => {
         const realBlueprint = readBlueprint(realBlueprintPath);
         const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
@@ -360,10 +361,14 @@ export const registerTransitionTraceFinalCases = (
             fieldBytes,
           );
         }
-        let traceFixture = await buildAcceptedTransitionFixture({
+        let traceFixture: Pick<
+          Awaited<ReturnType<typeof buildAcceptedTransitionFixture>>,
+          "header" | "headerHash" | "proof"
+        > = await buildAcceptedTransitionFixture({
           outputCbors,
           honest,
           depth,
+          drained,
           operatorVkey: funderPaymentCredential.hash,
           now: headerStartTime,
         });
@@ -372,6 +377,7 @@ export const registerTransitionTraceFinalCases = (
             operatorVkey: funderPaymentCredential.hash,
             now: headerStartTime,
             honest,
+            drained,
           });
         const additionalReferenceInputs: UTxO[] = [];
         let depositOpening: TransitionDepositOpening | undefined;

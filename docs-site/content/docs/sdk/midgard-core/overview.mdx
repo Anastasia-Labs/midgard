@@ -53,8 +53,10 @@ consensus profiles, and retention utilities.
 ## Installation
 
 The package is part of the Midgard monorepo (`demo/midgard-core`) and depends on
-`@lucid-evolution/lucid`, `@noble/hashes`, `cborg`, and libp2p identity/crypto
-packages; see `package.json` for exact versions.
+`@lucid-evolution/lucid`, `@noble/hashes`, and libp2p identity/crypto packages;
+see `package.json` for exact versions. Its CBOR codec is built in and walks
+values with an explicit stack, so deeply nested input cannot exhaust the call
+stack.
 
 ```ts twoslash
 import { addAssets } from "@al-ft/midgard-core/assets";

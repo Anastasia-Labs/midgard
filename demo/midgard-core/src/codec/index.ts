@@ -5,6 +5,7 @@ export * from "./errors.js";
 export * from "./forced.js";
 export * from "./hash.js";
 export * from "./native.js";
+export { validateCanonicalPlutusDataCbor } from "./native-redeemer.js";
 export * from "./native-script.js";
 export * from "./native-tx-carriage.js";
 export * from "./native-tx-field-access.js";

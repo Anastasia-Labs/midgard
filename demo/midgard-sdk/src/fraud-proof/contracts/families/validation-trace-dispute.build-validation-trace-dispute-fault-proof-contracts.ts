@@ -19,6 +19,7 @@ export const buildValidationTraceDisputeFaultProofContracts = (
     return {
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
+      fieldPreimageCertificate: shared.fieldPreimageCertificate,
       validationTraceDispute,
     };
   });

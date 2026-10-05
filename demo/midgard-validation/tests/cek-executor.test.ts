@@ -6,7 +6,6 @@ import {
   DataI,
   DataList,
   DataMap,
-  DataPair,
 } from "@harmoniclabs/plutus-data";
 import {
   Application,
@@ -18,7 +17,6 @@ import {
   Force,
   Lambda,
   UPLCConst,
-  UPLCEncoder,
   UPLCProgram,
   type UPLCTerm,
   UPLCVar,
@@ -34,14 +32,13 @@ import {
   executeMidgardCekStructuralProgram,
 } from "../src/cek-executor.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
 
 const compileIdentity = (): Buffer => compile(new Lambda(new UPLCVar(0)));
 
 const compile = (term: UPLCTerm): Buffer =>
-  Buffer.from(
-    UPLCEncoder.compile(new UPLCProgram([1, 1, 0], term)).toBuffer().buffer,
-  );
+  encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], term));
 
 describe("V1 CEK trace generator", () => {
   it("derives the script-context application and proves every structural step", () => {
@@ -335,7 +332,7 @@ describe("V1 CEK trace generator", () => {
         );
         expect(decoded.payload).toBeInstanceOf(DataB);
         if (decoded.payload instanceof DataB) {
-          expect(decoded.payload.bytes.toBuffer()).toEqual(Buffer.from([0x80]));
+          expect(decoded.payload.bytes).toEqual(Buffer.from([0x80]));
         }
       }
     }
@@ -424,7 +421,7 @@ describe("V1 CEK trace generator", () => {
         );
         expect(decoded.payload).toBeInstanceOf(DataB);
         if (decoded.payload instanceof DataB) {
-          expect(decoded.payload.bytes.toBuffer()).toEqual(Buffer.from([0x80]));
+          expect(decoded.payload.bytes).toEqual(Buffer.from([0x80]));
         }
       }
       expect(semantic.post.cpu - semantic.pre.cpu).toBe(1_808_754n);
@@ -444,7 +441,7 @@ describe("V1 CEK trace generator", () => {
       [3n],
     ]);
     const program = buildMidgardCanonicalCekProgram(
-      compile(new Application(Builtin.headList, nested)),
+      compile(new Application(new Force(Builtin.headList), nested)),
     );
     const execution = executeMidgardCekStructuralProgram({
       root: program.envelope.termRoot,
@@ -477,8 +474,8 @@ describe("V1 CEK trace generator", () => {
       compile(new Lambda(new Application(Builtin.unMapData, new UPLCVar(0)))),
     );
     const context = new DataMap<Data, Data>([
-      new DataPair(new DataI(1n), new DataB(Buffer.alloc(9_000, 0x2a))),
-      new DataPair(new DataI(2n), new DataI(3n)),
+      { fst: new DataI(1n), snd: new DataB(Buffer.alloc(9_000, 0x2a)) },
+      { fst: new DataI(2n), snd: new DataI(3n) },
     ]);
     const graph = buildMidgardCekExecutionGraph(
       program.envelope,
@@ -513,8 +510,8 @@ describe("V1 CEK trace generator", () => {
   it("proves map conversions on narrow, empty and inline-constant maps", () => {
     const narrowMap = (): DataMap<Data, Data> =>
       new DataMap<Data, Data>([
-        new DataPair(new DataI(1n), new DataB(Buffer.alloc(10, 0x2a))),
-        new DataPair(new DataI(2n), new DataI(3n)),
+        { fst: new DataI(1n), snd: new DataB(Buffer.alloc(10, 0x2a)) },
+        { fst: new DataI(2n), snd: new DataI(3n) },
       ]);
     const roundTrip = (source: UPLCTerm): UPLCTerm =>
       new Lambda(
@@ -638,7 +635,7 @@ describe("V1 CEK trace generator", () => {
       return { ...start, witness: start.witness };
     };
     const narrow = startOf(
-      new DataMap<Data, Data>([new DataPair(new DataI(1n), new DataI(2n))]),
+      new DataMap<Data, Data>([{ fst: new DataI(1n), snd: new DataI(2n) }]),
     );
     const empty = startOf(new DataMap<Data, Data>([]));
     expect(narrow.witness.result.kind).toBe("constant");
@@ -744,7 +741,7 @@ describe("V1 CEK trace generator", () => {
       ),
     );
     const context = new DataMap<Data, Data>([
-      new DataPair(new DataI(1n), new DataB(Buffer.alloc(9_000, 0x71))),
+      { fst: new DataI(1n), snd: new DataB(Buffer.alloc(9_000, 0x71)) },
     ]);
     const graph = buildMidgardCekExecutionGraph(
       program.envelope,

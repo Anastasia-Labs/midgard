@@ -82,10 +82,11 @@ const buildRedeemerItemStages = ({
           ...REDEEMER_ITEM_EXECUTOR_KEYS,
           "invalid_header_executor",
           "invalid_tail_executor",
+          "invalid_data_executor",
         ];
   const executors = keys.map((key) => build(key, base));
   const hashes = executors.map((validator) => validator.spendingScriptHash);
-  if (hashes.length !== (carrier === "cek" ? 17 : 19))
+  if (hashes.length !== (carrier === "cek" ? 17 : 20))
     throw new Error("Shared CEK item executor roster is incomplete");
   const sourceAuthenticator = build("source_authenticator", base);
   const outerNormalizer = build("outer_normalizer_v1", [
@@ -225,6 +226,10 @@ export const REDEEMER_ITEM_EXECUTOR_REFERENCES = [
   {
     deploymentEntry: "validationTraceDisputeRedeemerItemInvalidTailExecutor",
     role: "V1 validation-trace redeemer item invalid tail executor",
+  },
+  {
+    deploymentEntry: "validationTraceDisputeRedeemerItemInvalidDataExecutor",
+    role: "V1 validation-trace redeemer item invalid data executor",
   },
 ] as const;
 

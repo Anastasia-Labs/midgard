@@ -42,7 +42,7 @@ export const withOutputs = (
       throw new Error("Invalid output mutation index");
     entry.v.array[index] = Cbor.parse(output.to_cbor_hex());
   }
-  return Cbor.encode(tx).toString();
+  return Buffer.from(Cbor.encode(tx)).toString("hex");
 };
 
 export const withRedeemer = (
@@ -92,7 +92,7 @@ export const withRedeemer = (
   }
   if (replacements !== 1)
     throw new Error("Missing targeted payout spend redeemer");
-  const mutated = Cbor.encode(tx).toString();
+  const mutated = Buffer.from(Cbor.encode(tx)).toString("hex");
   expect(CML.Transaction.from_cbor_hex(mutated).body().to_cbor_hex()).toBe(
     CML.Transaction.from_cbor_hex(signedCbor).body().to_cbor_hex(),
   );

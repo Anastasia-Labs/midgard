@@ -1,4 +1,5 @@
 import {
+  indefiniteMidgardCekDataBytesLength,
   MIDGARD_CEK_DATA_BYTES_SYNTAX_BYTES,
   parseMidgardCekDataBytesSyntax,
 } from "./cek-data-bytes.js";
@@ -98,10 +99,12 @@ const scalarEnd = (bytes: Buffer, start: number): number | null => {
           syntaxBytes,
           sourceLength,
         }) !== null
-      : parseMidgardCekDataBytesSyntax({
-          syntaxBytes,
-          sourceLength,
-        }) !== null;
+      : first === 0x5f
+        ? indefiniteMidgardCekDataBytesLength(sourceLength) !== null
+        : parseMidgardCekDataBytesSyntax({
+            syntaxBytes,
+            sourceLength,
+          }) !== null;
   return valid ? end : null;
 };
 
@@ -139,6 +142,7 @@ const parseSequenceHead = ({
 export const parseDataNodeHead = (
   bytes: Buffer,
   start: number,
+  stopAtRefusal = false,
 ): ParsedNodeHead => {
   const scalar = scalarEnd(bytes, start);
   if (scalar !== null) {
@@ -197,13 +201,35 @@ export const parseDataNodeHead = (
         start: constructorEnd,
         prefixLength: 0,
       });
-      if (
+      const validConstructor =
         parseMidgardCekDataLargeConstructorSyntax({
           syntaxBytes,
           sourceLength: constructorCborLength,
-        }) !== null &&
-        sequence !== null
+        }) !== null;
+      const fieldsHead = bytes[constructorEnd];
+      if (
+        stopAtRefusal &&
+        validConstructor &&
+        fieldsHead !== undefined &&
+        fieldsHead >>> 5 === 4 &&
+        fieldsHead !== 0x80 &&
+        fieldsHead !== 0x9f
       ) {
+        return {
+          node: {
+            kind: "constrLarge",
+            start,
+            end: 0,
+            children: [],
+            constructorCborLength,
+            closesWithBreak: false,
+          },
+          nextOffset: constructorEnd,
+          remainingChildren: 0,
+          refusalOffset: constructorEnd,
+        };
+      }
+      if (validConstructor && sequence !== null) {
         return {
           node: {
             kind: "constrLarge",

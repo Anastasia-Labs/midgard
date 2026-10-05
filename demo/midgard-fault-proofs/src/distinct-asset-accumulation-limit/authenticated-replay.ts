@@ -13,6 +13,7 @@ import {
 } from "../step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
+import { eventSubject } from "../workflow/detection-subject.js";
 import type { DistinctAssetAccumulationActuationArtifact } from "./actuator.js";
 import {
   DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID,
@@ -241,6 +242,7 @@ const replayCandidates = async (
     );
     const label = coordinateLabel(finding);
     const detection: CanonicalViolationDetection = {
+      ...eventSubject(candidate.eventKey),
       detectionId: `${DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID}:${position.toString()}:${finding.subject.transaction_id}:${label}`,
       headerHash: block.headerHash,
       violationId: `${finding.coordinate.kind}-asset-accumulation-limit`,

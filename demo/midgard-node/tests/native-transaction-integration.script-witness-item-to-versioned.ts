@@ -7,11 +7,11 @@ import {
 } from "@al-ft/midgard-core/cek-proof";
 import {
   decodeMidgardNativeScript,
+  encodeCbor,
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
 import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
-import { encode } from "cborg";
 
 import {
   hashMidgardScript,
@@ -261,7 +261,7 @@ export const uniqueScriptWitnessItems = (
   );
 
 export const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
-  Buffer.from(encode(items.map((item) => Buffer.from(item))));
+  Buffer.from(encodeCbor(items.map((item) => Buffer.from(item))));
 
 export const makeOutRef = (txHashByte: number, outputIndex: bigint): Buffer =>
   makeOutRefCbor(txHashByte, outputIndex);

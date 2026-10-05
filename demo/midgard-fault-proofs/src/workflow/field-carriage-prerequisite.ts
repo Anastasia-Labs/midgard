@@ -17,6 +17,10 @@ import "./field-carriage-prerequisite.requirement-identity.js";
 import "./field-carriage-prerequisite.recorded-carriage-recovery.js";
 import "./field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
 import "./field-carriage-prerequisite.with-field-carriage-prerequisite.js";
+export {
+  type BoundDataPublicationRequirement,
+  createBoundDataPublicationRequirement,
+} from "./bound-data-publication.js";
 export { createAuthenticatedFieldCarriagePrerequisitePort } from "./field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
 export {
   createRawCommittedFieldCarriagePlan,

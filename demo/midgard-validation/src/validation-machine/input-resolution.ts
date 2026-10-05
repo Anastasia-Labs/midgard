@@ -63,3 +63,29 @@ export const advanceMidgardResolvedInputsAccumulator = (input: {
     ]),
   );
 };
+
+export type MidgardInputResolutionSourceKind = "spend" | "reference";
+
+/**
+ * The input-resolution schedule order: spend and reference inputs merged and
+ * sorted by their canonical out-ref item bytes. A node's position in this
+ * order is the `replay_cursor` the ValueAndMint input fold advances, so the
+ * trace builder and the Phase B value walk both take it from here.
+ */
+export const orderMidgardInputResolutionSchedule = <Item>(input: {
+  readonly spend: readonly Item[];
+  readonly reference: readonly Item[];
+  readonly keyOf: (item: Item) => Uint8Array;
+}): readonly {
+  readonly sourceKind: MidgardInputResolutionSourceKind;
+  readonly item: Item;
+}[] =>
+  [
+    ...input.spend.map((item) => ({ sourceKind: "spend" as const, item })),
+    ...input.reference.map((item) => ({
+      sourceKind: "reference" as const,
+      item,
+    })),
+  ].sort((left, right) =>
+    Buffer.compare(input.keyOf(left.item), input.keyOf(right.item)),
+  );

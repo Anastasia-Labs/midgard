@@ -24,7 +24,7 @@ import {
 } from "./validation-fixtures.js";
 
 describe("raw-envelope execution-source validation trace", () => {
-  it("retains malformed field-6 bytes and deterministically proves the NativeScripts state", async () => {
+  it("retains malformed field-6 bytes and deterministically proves their Phase A native rejection", async () => {
     const spent = outRefFromByte(0x79);
     const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const payload = Buffer.from("820700", "hex");
@@ -94,20 +94,28 @@ describe("raw-envelope execution-source validation trace", () => {
     );
     const index = first.witnesses.findIndex(
       ({ phase, auxiliary }) =>
-        phase === "nativeScripts" &&
-        auxiliary?.kind === "nativeExecutionDescriptor",
+        phase === "phaseANativeScripts" &&
+        auxiliary?.kind === "nativeScriptToken",
     );
     expect(index).toBeGreaterThanOrEqual(0);
     expect(first.witnesses[index]?.auxiliary).toMatchObject({
-      kind: "nativeExecutionDescriptor",
-      languageTag: 0,
-      source: { scriptTotalLength: item.length },
+      kind: "nativeScriptToken",
+      chunkProof: {
+        fieldIndex: 6,
+        itemIndex: 0,
+        totalLength: item.length,
+        chunkIndex: 0,
+        chunk: item,
+      },
+      nextChunkProof: null,
+      signerProof: { kind: "none" },
     });
-    expect(
-      first.witnesses.some(
-        ({ auxiliary }) => auxiliary?.kind === "nativeScriptToken",
-      ),
-    ).toBe(true);
+    expect(first.witnesses.some(({ phase }) => phase === "resolveInputs")).toBe(
+      false,
+    );
+    expect(first.states.at(-2)?.phase).toBe("phaseANativeScripts");
+    expect(first.states.at(-1)?.verdict).toBe("rejected");
+    expect(first.rejectionCode).toBe("E_INVALID_FIELD_TYPE");
     expect(first.tree.descriptor).toEqual(second.tree.descriptor);
     expect(first.tree.proofs[index]).toEqual(second.tree.proofs[index]);
     expect(

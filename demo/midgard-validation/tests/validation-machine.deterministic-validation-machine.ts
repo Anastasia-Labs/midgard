@@ -2366,12 +2366,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     })();
     expect(aikenSources.length).toBeGreaterThan(0);
 
-    // Every on-chain module that performs an incremental canonical-CBOR scan.
-    // Consumption means importing the module: an Aiken source cannot call the
-    // scanner without a top-level `use midgard/canonical_cbor_scan_v1` line.
-    // The earlier bare-substring predicate also fired on doc-comment
-    // cross-references (intra-item-bytes-v1.ak names the scanner only to
-    // explain how the two readers divide §11), which is not consumption.
+    // Count imports, since doc-comment cross-references (for example in
+    // intra-item-bytes-v1.ak) do not make a module a scanner consumer.
     const importsScanner = (source: string): boolean =>
       /^\s*use\s+midgard\/canonical_cbor_scan_v1\b/mu.test(source);
     const scannerConsumers = aikenSources
@@ -2391,6 +2387,10 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const reviewedScannerConsumers = [
       "lib/midgard/redeemer-item-proof-v1.ak",
       "lib/midgard/ledger-output-scan-v1.ak",
+      // Exact descriptor scalar headers and raw transaction EventKey grammar
+      // avoid recursive Data decoding of committed adversarial bytes.
+      "lib/midgard/ledger-output-commitment-v1.ak",
+      "lib/midgard/fraud-proofs/transition-trace/proof.ak",
       // The three narrow total rules adjudicating the committed field-8
       // redeemer collection share one `head_at_v1` total header decode over
       // complete items delivered by batched §8 carriage.

@@ -313,7 +313,7 @@ export const buildAcceptingIdentityProgram = () =>
     Buffer.from(
       UPLCEncoder.compile(
         new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
-      ).toBuffer().buffer,
+      ),
     ),
   );
 
@@ -328,7 +328,7 @@ export const buildNonterminatingSelfApplicationProgram = () => {
           [1, 1, 0],
           new Application(selfApplication, selfApplication),
         ),
-      ).toBuffer().buffer,
+      ),
     ),
   );
 };

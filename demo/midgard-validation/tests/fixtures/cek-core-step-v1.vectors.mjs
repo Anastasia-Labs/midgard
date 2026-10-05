@@ -28,7 +28,6 @@ import {
   DataI,
   DataList,
   DataMap,
-  DataPair,
 } from "@harmoniclabs/plutus-data";
 import {
   Application,
@@ -41,16 +40,13 @@ import {
   Force,
   Lambda,
   UPLCConst,
-  UPLCEncoder,
   UPLCProgram,
   UPLCVar,
 } from "@harmoniclabs/uplc";
 
 /** `(program 1.1.0 term)` as canonical Flat bytes, the V1 script payload. */
-export const compileMidgardCekGoldenProgram = (term) =>
-  Buffer.from(
-    UPLCEncoder.compile(new UPLCProgram([1, 1, 0], term)).toBuffer().buffer,
-  );
+export const compileMidgardCekGoldenProgram = (term, encodeProgram) =>
+  Buffer.from(encodeProgram(new UPLCProgram([1, 1, 0], term)));
 
 /** The empty script context every program without a `context` is applied to. */
 export const EMPTY_CONTEXT = () => new DataConstr(0n, []);
@@ -65,17 +61,17 @@ const WIDE_MAP_PAYLOAD_BYTES = 9_000;
 
 const wideMap = () =>
   new DataMap([
-    new DataPair(
-      new DataI(1n),
-      new DataB(Buffer.alloc(WIDE_MAP_PAYLOAD_BYTES, 0x2a)),
-    ),
-    new DataPair(new DataI(2n), new DataI(3n)),
+    {
+      fst: new DataI(1n),
+      snd: new DataB(Buffer.alloc(WIDE_MAP_PAYLOAD_BYTES, 0x2a)),
+    },
+    { fst: new DataI(2n), snd: new DataI(3n) },
   ]);
 
 const narrowMap = () =>
   new DataMap([
-    new DataPair(new DataI(1n), new DataB(Buffer.alloc(10, 0x2a))),
-    new DataPair(new DataI(2n), new DataI(3n)),
+    { fst: new DataI(1n), snd: new DataB(Buffer.alloc(10, 0x2a)) },
+    { fst: new DataI(2n), snd: new DataI(3n) },
   ]);
 
 const mapRoundTrip = (source) =>
@@ -235,7 +231,10 @@ export const CEK_CORE_STEP_PROGRAMS = [
       new Lambda(
         new Application(
           new Application(
-            new Application(Builtin.ifThenElse, UPLCConst.bool(true)),
+            new Application(
+              new Force(Builtin.ifThenElse),
+              UPLCConst.bool(true),
+            ),
             UPLCConst.int(1),
           ),
           UPLCConst.int(2),
@@ -290,7 +289,7 @@ export const CEK_CORE_STEP_PROGRAMS = [
     term: () =>
       new Lambda(
         new Application(
-          Builtin.headList,
+          new Force(Builtin.headList),
           UPLCConst.listOf(constT.listOf(constT.int))([[1n, 2n], [3n]]),
         ),
       ),
@@ -304,7 +303,7 @@ export const CEK_CORE_STEP_PROGRAMS = [
       new Lambda(new Application(Builtin.unConstrData, new UPLCVar(0))),
     context: () =>
       new DataMap([
-        new DataPair(new DataI(1n), new DataB(Buffer.from([0x71]))),
+        { fst: new DataI(1n), snd: new DataB(Buffer.from([0x71])) },
       ]),
     maxSteps: 64,
   },

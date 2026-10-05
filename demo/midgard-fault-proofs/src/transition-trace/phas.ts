@@ -198,7 +198,9 @@ export const keyValuePhasNonMembershipProof = async (
       `Cannot build a PHAS non-membership proof for present key ${keyHex}.`,
     );
   }
-  const trie = await trieForRoot(root);
+  // The insertion below is only a proof-construction device. Never mutate
+  // the cached membership trie shared by other openings of this root.
+  const trie = await trieFromEntries(root.entries);
   await trie.insert(Buffer.from(key), NON_MEMBERSHIP_DUMMY_VALUE);
   const proof = await trie.prove(Buffer.from(key));
   const verifiedRoot = normalizeRoot(proof.verify(false));

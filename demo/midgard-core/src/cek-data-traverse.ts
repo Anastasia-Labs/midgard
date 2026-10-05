@@ -13,7 +13,10 @@ import "./cek-data-traverse.parse-midgard-cek-data-nodes.js";
 import "./cek-data-traverse.step-large-constructor.js";
 import "./cek-data-traverse.step-fold.js";
 import "./cek-data-traverse.build-midgard-cek-data-traverse-trace.js";
-export { buildMidgardCekDataTraverseTrace } from "./cek-data-traverse.build-midgard-cek-data-traverse-trace.js";
+export {
+  buildMidgardCekDataTraversePrefix,
+  buildMidgardCekDataTraverseTrace,
+} from "./cek-data-traverse.build-midgard-cek-data-traverse-trace.js";
 export {
   initialMidgardCekDataTraverseControl,
   isWellFormedMidgardCekDataTraverseControl,

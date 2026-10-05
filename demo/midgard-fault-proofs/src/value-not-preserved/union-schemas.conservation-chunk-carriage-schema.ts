@@ -298,6 +298,7 @@ export const ConservationUpdateArgsSchema = Data.Object({
   output_index: Data.Integer(),
   old_delta: Data.Integer(),
   proof: ProofSchema,
+  opening: Data.Bytes(),
 });
 
 export type ConservationUpdateArgs = Data.Static<

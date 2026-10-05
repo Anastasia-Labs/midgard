@@ -10,15 +10,17 @@ import {
   type MidgardCekDataNode,
   type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
-import { type Data, DataI } from "@harmoniclabs/plutus-data";
+import { type Data } from "@harmoniclabs/plutus-data";
 
 import { type MidgardCekDirectValueWitness } from "./cek-builtin.js";
 import {
-  encodeMidgardCekPlutusData,
   type MidgardCekConstantType,
   midgardCekIntegerMemorySize,
 } from "./cek-constant.js";
-import { commitMidgardCekDataTree } from "./cek-data-tree.js";
+import {
+  commitMidgardCekDataTree,
+  encodeMidgardCekDataTreeInteger,
+} from "./cek-data-tree.js";
 import {
   exactState,
   hashMidgardCekMapConversionControl,
@@ -309,10 +311,10 @@ export const constrDataSummary = (
       : {
           kind: "constrLarge",
           constructorCborRoot: commitMidgardCekBlob(
-            encodeMidgardCekPlutusData(new DataI(constructor)),
+            encodeMidgardCekDataTreeInteger(constructor),
           ).root,
           constructorCborLength: BigInt(
-            encodeMidgardCekPlutusData(new DataI(constructor)).length,
+            encodeMidgardCekDataTreeInteger(constructor).length,
           ),
           constructorMemory: 4n + midgardCekIntegerMemorySize(constructor),
           fieldsCount: fields.length,

@@ -205,11 +205,10 @@ pub fn value_memory_size_v1(value: ValueWitnessV1) -> Int {
       expect memory >= 0
       memory
     }
-    // Polymorphic control branches are not inspected by the CEK cost model.
-    OpaqueValue(root) -> {
-      expect bytearray.length(root) == 32
-      1
-    }
+    // An opaque value has no committed size. The only builtin positions that
+    // admit one are the polymorphic branches of tags 26, 27, 28, 31 and 36,
+    // which builtin_cost_sizes_v1 sizes without reading them.
+    OpaqueValue(_) -> fail @"opaque value has no memory size"
     BlsMillerLoopValue(expression_root) -> {
       expect bytearray.length(expression_root) == 32
       192
@@ -243,7 +242,21 @@ pub fn builtin_cost_sizes_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
 ) -> List<Int> {
-  if tag == 26 {
+  if tag == 21 {
+    // Cardano costs Ed25519 byte strings in eight-byte words; the generic
+    // constant memory remains part of its existing commitment ABI.
+    list.map(
+      arguments,
+      fn(argument) {
+        let length = bytearray.length(bytes_v1(argument))
+        if length == 0 {
+          1
+        } else {
+          ( length + 7 ) / 8
+        }
+      },
+    )
+  } else if tag == 26 {
     expect [condition, _, _] = arguments
     let condition_value = boolean_v1(condition)
     expect or {
@@ -699,19 +712,6 @@ fn g2_bytes_v1(value: ValueWitnessV1) -> ByteArray {
   compressed
 }
 
-fn semantic_pairs_v1(items: List<Data>) -> List<Pair<Data, Data>> {
-  when items is {
-    [] -> []
-    [item, ..rest] -> {
-      expect data_is_constr(item)
-      let Pair(tag, fields) = builtin.un_constr_data(item)
-      expect tag == 0
-      expect [first, second] = fields
-      [Pair(first, second), ..semantic_pairs_v1(rest)]
-    }
-  }
-}
-
 fn semantic_integers_v1(items: List<Data>) -> List<Int> {
   when items is {
     [] -> []
@@ -730,14 +730,6 @@ fn all_bit_indices_valid_v1(indices: List<Int>, bit_length: Int) -> Bool {
         index < bit_length,
         all_bit_indices_valid_v1(rest, bit_length),
       }
-  }
-}
-
-fn encode_semantic_pairs_v1(items: List<Pair<Data, Data>>) -> List<Data> {
-  when items is {
-    [] -> []
-    [item, ..rest] ->
-      [pair_data(item.1st, item.2nd), ..encode_semantic_pairs_v1(rest)]
   }
 }
 
@@ -839,15 +831,18 @@ fn verify_bytes_v1(
     )
   } else if tag == 12 {
     expect [start, length, bytes] = arguments
+    let start_value = integer_v1(start)
+    let length_value = integer_v1(length)
+    // Cardano decodes both operands as machine Int even when the slice is empty.
+    expect and {
+        !outside_int64_v1(start_value),
+        !outside_int64_v1(length_value),
+      }
     result_is_constant_v1(
       result,
       cek_constant_v1.ByteStringConstant,
       builtin.b_data(
-        builtin.slice_bytearray(
-          integer_v1(start),
-          integer_v1(length),
-          bytes_v1(bytes),
-        ),
+        builtin.slice_bytearray(start_value, length_value, bytes_v1(bytes)),
       ),
     )
   } else if tag == 13 {
@@ -1116,19 +1111,6 @@ fn verify_data_v1(
       cek_constant_v1.DataConstant,
       builtin.constr_data(integer_v1(index), items),
     )
-  } else if tag == 38 {
-    expect [items_value] = arguments
-    let Pair(element_type, items) = list_payload_v1(items_value)
-    expect
-      element_type == cek_constant_v1.PairConstant {
-        first: cek_constant_v1.DataConstant,
-        second: cek_constant_v1.DataConstant,
-      }
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.DataConstant,
-      builtin.map_data(semantic_pairs_v1(items)),
-    )
   } else if tag == 39 {
     expect [items_value] = arguments
     let Pair(element_type, items) = list_payload_v1(items_value)
@@ -1166,20 +1148,6 @@ fn verify_data_v1(
         },
       },
       pair_data(builtin.i_data(index), builtin.list_data(fields)),
-    )
-  } else if tag == 43 {
-    expect [source] = arguments
-    let data = data_payload_v1(source)
-    expect data_is_map(data)
-    result_is_constant_v1(
-      result,
-      cek_constant_v1.ListConstant {
-        element: cek_constant_v1.PairConstant {
-          first: cek_constant_v1.DataConstant,
-          second: cek_constant_v1.DataConstant,
-        },
-      },
-      builtin.list_data(encode_semantic_pairs_v1(builtin.un_map_data(data))),
     )
   } else if tag == 44 {
     expect [source] = arguments
@@ -1248,14 +1216,17 @@ fn verify_data_v1(
       },
       builtin.list_data([]),
     )
-  } else {
-    expect tag == 51
+  } else if tag == 51 {
     expect [source] = arguments
     result_is_constant_v1(
       result,
       cek_constant_v1.ByteStringConstant,
       builtin.b_data(builtin.serialise_data(data_payload_v1(source))),
     )
+  } else {
+    // mapData (38) and unMapData (43) succeed only through the
+    // StartBuiltinMapConversion arm, so each map step has one successor.
+    False
   }
 }
 
@@ -2829,15 +2800,34 @@ pub fn revealed_runtime_payload_bytes_v1(
   }
 }
 
+/// The committed constant type of a runtime value, whichever way the
+/// constant is presented. A semantic constant's `type_cbor` is part of its
+/// value root, so both presentations of one constant give one type.
+fn runtime_constant_type_v1(
+  value: RuntimeValueWitnessV1,
+) -> Option<cek_constant_v1.ConstantTypeV1> {
+  when value is {
+    RuntimeConstantValue(witness) ->
+      Some(cek_constant_v1.constant_type_v1(witness))
+    RuntimeSemanticConstantValue { type_cbor, .. } ->
+      Some(cek_constant_v1.decode_constant_type_v1(type_cbor))
+    _ -> None
+  }
+}
+
 fn mk_cons_arguments_are_well_typed_v1(
   arguments: List<RuntimeValueWitnessV1>,
 ) -> Bool {
   when arguments is {
-    [RuntimeConstantValue(element), RuntimeConstantValue(list_value)] ->
-      when cek_constant_v1.constant_type_v1(list_value) is {
-        cek_constant_v1.ListConstant { element: element_type } ->
-          cek_constant_v1.constant_type_v1(element) == element_type
-        _ -> False
+    [element, list_value] ->
+      when runtime_constant_type_v1(list_value) is {
+        Some(list_type) ->
+          when list_type is {
+            cek_constant_v1.ListConstant { element: element_type } ->
+              runtime_constant_type_v1(element) == Some(element_type)
+            _ -> False
+          }
+        None -> False
       }
     _ -> False
   }
@@ -3143,6 +3133,9 @@ fn wrong_data_variant_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
   }
 }
 
+const secp256k1_group_order =
+  115792089237316195423570985008687907852837564279074904382605163141518161494337
+
 const secp256k1_field_prime =
   115792089237316195423570985008687907853269984665640564039457584007908834671663
 
@@ -3285,6 +3278,27 @@ fn bls_g1_curve_encoding_is_invalid_v1(encoded: ByteArray) -> Bool {
   }
 }
 
+fn ecdsa_signature_scalar_overflows_v1(signature: ByteArray) -> Bool {
+  expect bytearray.length(signature) == 64
+  or {
+    builtin.bytearray_to_integer(
+      True,
+      builtin.slice_bytearray(0, 32, signature),
+    ) >= secp256k1_group_order,
+    builtin.bytearray_to_integer(
+      True,
+      builtin.slice_bytearray(32, 32, signature),
+    ) >= secp256k1_group_order,
+  }
+}
+
+fn outside_int64_v1(value: Int) -> Bool {
+  or {
+    value < -9223372036854775808,
+    value > 9223372036854775807,
+  }
+}
+
 fn malformed_signature_lengths_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
@@ -3306,7 +3320,10 @@ fn malformed_signature_lengths_v1(
     } {
       True
     } else {
-      !secp256k1_public_key_is_valid_v1(tag, bytes_v1(key_value))
+      or {
+        !secp256k1_public_key_is_valid_v1(tag, bytes_v1(key_value)),
+        ecdsa_signature_scalar_overflows_v1(bytes_v1(signature_value)),
+      }
     }
   } else {
     expect tag == 53
@@ -3322,26 +3339,49 @@ fn malformed_signature_lengths_v1(
   }
 }
 
+/// A known failure applies only to well-typed arguments; an ill-typed
+/// application fails through the type-failure arm instead, which makes the
+/// two arms exclusive. The readers below fix the type of every position they
+/// read (`constant_type_v1` refuses opaque and Miller-loop values), so each
+/// arm checks only the positions its reader skips.
 fn known_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
   if and {
     tag >= 3,
     tag <= 6,
   } {
-    expect [_, divisor] = arguments
-    integer_v1(divisor) == 0
+    expect [dividend, divisor] = arguments
+    and {
+      constant_type_v1(dividend) == cek_constant_v1.IntegerConstant,
+      integer_v1(divisor) == 0,
+    }
   } else if tag == 11 {
-    expect [byte, _] = arguments
+    expect [byte, source] = arguments
     let value = integer_v1(byte)
-    or {
-      value < 0,
-      value > 255,
+    and {
+      constant_type_v1(source) == cek_constant_v1.ByteStringConstant,
+      or {
+        value < 0,
+        value > 255,
+      },
+    }
+  } else if tag == 12 {
+    expect [start, length, source] = arguments
+    let start_value = integer_v1(start)
+    let length_value = integer_v1(length)
+    and {
+      constant_type_v1(source) == cek_constant_v1.ByteStringConstant,
+      or {
+        outside_int64_v1(start_value),
+        outside_int64_v1(length_value),
+      },
     }
   } else if tag == 14 {
     expect [source, index] = arguments
     let position = integer_v1(index)
+    // The source is read first so a negative index cannot leave it untyped.
     or {
-      position < 0,
       position >= bytearray.length(bytes_v1(source)),
+      position < 0,
       position > 9223372036854775807,
     }
   } else if tag == 21 {
@@ -3370,8 +3410,11 @@ fn known_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
     tag == 58,
     tag == 65,
   } {
-    expect [_, domain] = arguments
-    bytearray.length(bytes_v1(domain)) > 255
+    expect [message, domain] = arguments
+    and {
+      constant_type_v1(message) == cek_constant_v1.ByteStringConstant,
+      bytearray.length(bytes_v1(domain)) > 255,
+    }
   } else if tag == 60 {
     expect [source] = arguments
     let encoded = bytes_v1(source)
@@ -3407,17 +3450,22 @@ fn known_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
   } else if tag == 79 {
     expect [source, index] = arguments
     let position = integer_v1(index)
+    // The source is read first so a negative index cannot leave it untyped.
     or {
-      position < 0,
       position >= bytearray.length(bytes_v1(source)) * 8,
+      position < 0,
     }
   } else if tag == 80 {
-    expect [source, indices, _] = arguments
-    let Pair(_, index_data) = list_payload_v1(indices)
-    !all_bit_indices_valid_v1(
-      semantic_integers_v1(index_data),
-      bytearray.length(bytes_v1(source)) * 8,
-    )
+    expect [source, indices, bit] = arguments
+    let Pair(element_type, index_data) = list_payload_v1(indices)
+    and {
+      element_type == cek_constant_v1.IntegerConstant,
+      constant_type_v1(bit) == cek_constant_v1.BooleanConstant,
+      !all_bit_indices_valid_v1(
+        semantic_integers_v1(index_data),
+        bytearray.length(bytes_v1(source)) * 8,
+      ),
+    }
   } else if tag == 81 {
     expect [length_value, byte_value] = arguments
     let length = integer_v1(length_value)
@@ -3427,6 +3475,12 @@ fn known_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
       length > 8192,
       byte < 0,
       byte > 255,
+    }
+  } else if tag == 82 || tag == 83 {
+    expect [source, amount] = arguments
+    and {
+      constant_type_v1(source) == cek_constant_v1.ByteStringConstant,
+      outside_int64_v1(integer_v1(amount)),
     }
   } else {
     False
@@ -3450,37 +3504,6 @@ pub fn verify_direct_builtin_failure_v1(
       arguments_root,
     ),
     known_builtin_failure_v1(tag, arguments),
-  }
-}
-
-pub fn direct_builtin_failure_budget_v1(
-  tag: Int,
-  arguments: List<ValueWitnessV1>,
-) -> cek_cost_v1.BuiltinBudgetV1 {
-  expect known_builtin_failure_v1(tag, arguments)
-  let bls_uncompress_is_paid = if tag == 60 {
-    expect [source] = arguments
-    bytearray.length(bytes_v1(source)) == 48
-  } else if tag == 67 {
-    expect [source] = arguments
-    bytearray.length(bytes_v1(source)) == 96
-  } else {
-    False
-  }
-  if or {
-    tag == 4,
-    tag == 5,
-    tag == 6,
-    tag == 52,
-    tag == 53,
-    tag == 58,
-    tag == 65,
-    tag == 73,
-    bls_uncompress_is_paid,
-  } {
-    direct_builtin_budget_v1(tag, arguments)
-  } else {
-    cek_cost_v1.BuiltinBudgetV1 { cpu: 0, memory: 0 }
   }
 }
 
@@ -3784,6 +3807,7 @@ pub fn authenticated_builtin_failure_budget(
     tag == 4,
     tag == 5,
     tag == 6,
+    tag == 21,
     tag == 52,
     tag == 53,
     tag == 58,

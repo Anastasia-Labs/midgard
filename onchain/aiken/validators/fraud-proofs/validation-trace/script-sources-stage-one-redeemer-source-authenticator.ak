@@ -77,23 +77,34 @@ validator main(
               state.witness_hash,
             )
             let expected: Data = when witness.action is {
-              item.RedeemerItemTraverseData { action: traversal_action } -> {
-                expect Some(current) = state.current_control.traversal
-                expect Some(next) = state.next_control.traversal
-                expect
-                  state.next_control == item.RedeemerItemProofControlV1 {
-                    ..state.current_control,
-                    traversal: Some(next),
+              item.RedeemerItemTraverseData { action: traversal_action } ->
+                if state.envelope.action_family == envelope.invalid_family {
+                  expect state.next_control == state.current_control
+                  let result: Data = normalized.OuterExecution {
+                    output,
+                    current: state.current_control,
+                    next: state.next_control,
+                    action: witness.action,
+                    source_bytes,
                   }
-                let result: Data = normalized.TraversalExecution {
-                  output,
-                  current,
-                  next,
-                  action: traversal_action,
-                  source_bytes,
+                  result
+                } else {
+                  expect Some(current) = state.current_control.traversal
+                  expect Some(next) = state.next_control.traversal
+                  expect
+                    state.next_control == item.RedeemerItemProofControlV1 {
+                      ..state.current_control,
+                      traversal: Some(next),
+                    }
+                  let result: Data = normalized.TraversalExecution {
+                    output,
+                    current,
+                    next,
+                    action: traversal_action,
+                    source_bytes,
+                  }
+                  result
                 }
-                result
-              }
               action -> {
                 let result: Data = normalized.OuterExecution {
                   output,

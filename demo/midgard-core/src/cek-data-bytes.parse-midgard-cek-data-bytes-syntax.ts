@@ -18,10 +18,16 @@ const UINT32_MAX = 0xffff_ffff;
 
 export const CARDANO_DATA_BYTES_CHUNK = 64;
 
+/**
+ * `Measure` is the indefinite byte string's measuring pass: from the
+ * authenticated 0x5f opener each step reads the next chunk header and extends
+ * `sourceLength` by that chunk, until the authenticated 0xff break fixes the
+ * encoding length. The length is never a witness value.
+ */
 export const MidgardCekDataBytesStages = Object.freeze({
   Syntax: 0,
   Blob: 1,
-  Break: 2,
+  Measure: 2,
   Terminal: 3,
 } as const);
 
@@ -103,8 +109,44 @@ const canonicalCborLength = (bytesLength: number): number => {
 };
 
 /**
- * Derives the raw content length from the independently committed item length
- * and an authenticated canonical framing prefix.
+ * The content length of a canonical indefinite byte string whose complete
+ * encoding (0x5f opener through the 0xff break) is `sourceLength` bytes.
+ */
+export const indefiniteMidgardCekDataBytesLength = (
+  sourceLength: number,
+): number | null => {
+  try {
+    if (!Number.isInteger(sourceLength) || sourceLength < 2) return null;
+    const framedPayloadLength = sourceLength - 2;
+    const fullChunks = Math.floor(
+      framedPayloadLength / (CARDANO_DATA_BYTES_CHUNK + 2),
+    );
+    const encodedRemainder =
+      framedPayloadLength % (CARDANO_DATA_BYTES_CHUNK + 2);
+    const remainder =
+      encodedRemainder === 0
+        ? 0
+        : encodedRemainder >= 2 && encodedRemainder <= 24
+          ? encodedRemainder - 1
+          : encodedRemainder >= 26 && encodedRemainder <= 65
+            ? encodedRemainder - 2
+            : null;
+    if (remainder === null) return null;
+    const bytesLength = fullChunks * CARDANO_DATA_BYTES_CHUNK + remainder;
+    return bytesLength > CARDANO_DATA_BYTES_CHUNK &&
+      bytesLength <= UINT32_MAX &&
+      canonicalCborLength(bytesLength) === sourceLength
+      ? bytesLength
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * The definite byte-string syntax: derives the raw content length from the
+ * derived item length and the authenticated framing prefix. An indefinite
+ * (0x5f) string never reaches this stage; it is measured instead.
  */
 export const parseMidgardCekDataBytesSyntax = ({
   syntaxBytes,
@@ -137,28 +179,7 @@ export const parseMidgardCekDataBytesSyntax = ({
         ? bytesLength
         : null;
     }
-    if (first !== 0x5f || sourceLength < 2) return null;
-    const framedPayloadLength = sourceLength - 2;
-    const fullChunks = Math.floor(
-      framedPayloadLength / (CARDANO_DATA_BYTES_CHUNK + 2),
-    );
-    const encodedRemainder =
-      framedPayloadLength % (CARDANO_DATA_BYTES_CHUNK + 2);
-    const remainder =
-      encodedRemainder === 0
-        ? 0
-        : encodedRemainder >= 2 && encodedRemainder <= 24
-          ? encodedRemainder - 1
-          : encodedRemainder >= 26 && encodedRemainder <= 65
-            ? encodedRemainder - 2
-            : null;
-    if (remainder === null) return null;
-    const bytesLength = fullChunks * CARDANO_DATA_BYTES_CHUNK + remainder;
-    return bytesLength > CARDANO_DATA_BYTES_CHUNK &&
-      bytesLength <= UINT32_MAX &&
-      canonicalCborLength(bytesLength) === sourceLength
-      ? bytesLength
-      : null;
+    return null;
   } catch {
     return null;
   }
@@ -185,7 +206,10 @@ export const isWellFormedMidgardCekDataBytesControl = (
     ) {
       return false;
     }
-    if (control.stage === MidgardCekDataBytesStages.Syntax) {
+    if (
+      control.stage === MidgardCekDataBytesStages.Syntax ||
+      control.stage === MidgardCekDataBytesStages.Measure
+    ) {
       return control.bytesLength === 0 && control.blob === null;
     }
     if (
@@ -196,12 +220,6 @@ export const isWellFormedMidgardCekDataBytesControl = (
       control.blob.sourceLength !== control.bytesLength
     ) {
       return false;
-    }
-    if (control.stage === MidgardCekDataBytesStages.Break) {
-      return (
-        control.bytesLength > CARDANO_DATA_BYTES_CHUNK &&
-        control.blob.stage === MidgardCekSourceBlobStages.Terminal
-      );
     }
     return (
       control.stage !== MidgardCekDataBytesStages.Terminal ||
@@ -224,6 +242,27 @@ export const initialMidgardCekDataBytesControl = ({
     stage: MidgardCekDataBytesStages.Syntax,
     sourceStart,
     sourceLength,
+    bytesLength: 0,
+    blob: null,
+  } satisfies MidgardCekDataBytesControl;
+  if (!isWellFormedMidgardCekDataBytesControl(control)) {
+    throw new Error("Invalid V1 CEK Data bytes range");
+  }
+  return control;
+};
+
+/** The measuring control of an indefinite byte string whose 0x5f opener sits
+ * at `sourceStart`. */
+export const initialMidgardCekDataBytesMeasureControl = ({
+  sourceStart,
+}: {
+  readonly sourceStart: number;
+}): MidgardCekDataBytesControl => {
+  const control = {
+    version: MIDGARD_CEK_DATA_BYTES_VERSION,
+    stage: MidgardCekDataBytesStages.Measure,
+    sourceStart,
+    sourceLength: 1,
     bytesLength: 0,
     blob: null,
   } satisfies MidgardCekDataBytesControl;

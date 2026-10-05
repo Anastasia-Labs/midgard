@@ -14,7 +14,12 @@ import {
   runPhaseBValidationWithPatch,
   type UTxOStatePatch,
 } from "../phase-b.js";
-import { type QueuedTx, type RejectCode } from "../types.js";
+import {
+  type LocalScriptEvaluation,
+  type QueuedTx,
+  type RejectCode,
+  type RejectedTx,
+} from "../types.js";
 import {
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
@@ -48,6 +53,7 @@ export type ValidationMachineEventReplay = Readonly<{
   replayInput: ValidationMachineReplayInput;
   trace: DeterministicValidationMachineTrace;
   statePatch: UTxOStatePatch;
+  rejection?: RejectedTx;
 }>;
 
 /**
@@ -141,13 +147,16 @@ export const replayValidationMachineEvent = (
         strictnessProfile: "phase1_midgard",
       }),
     );
+    const scriptEvaluations: LocalScriptEvaluation[] = [];
     let rejectionCode: RejectCode | null;
+    let rejection: RejectedTx | undefined;
     let statePatch: UTxOStatePatch = {
       deletedOutRefs: [],
       upsertedOutRefs: [],
     };
     if ("code" in phaseA) {
       rejectionCode = phaseA.code;
+      rejection = phaseA;
     } else {
       const phaseB = yield* runPhaseBValidationWithPatch(
         [phaseA],
@@ -161,6 +170,10 @@ export const replayValidationMachineEvent = (
           nowCardanoSlotNo: snapshot.blockSlot,
           bucketConcurrency: 1,
           enforceScriptBudget: true,
+          maxScriptExecutionSteps:
+            snapshot.consensusProfile.limits.maxValidationMachineStepCount,
+          onScriptEvaluated: (_txId, evaluation) =>
+            scriptEvaluations.push(evaluation),
         },
       );
       if (phaseB.accepted.length + phaseB.rejected.length !== 1) {
@@ -168,7 +181,8 @@ export const replayValidationMachineEvent = (
           new Error("event replay must produce exactly one canonical verdict"),
         );
       }
-      rejectionCode = phaseB.rejected[0]?.code ?? null;
+      rejection = phaseB.rejected[0];
+      rejectionCode = rejection?.code ?? null;
       statePatch = phaseB.statePatch;
     }
     const expectedVerdict = rejectionCode === null ? "accepted" : "rejected";
@@ -205,11 +219,12 @@ export const replayValidationMachineEvent = (
     const replayInput: ValidationMachineReplayInput = {
       ...snapshot,
       expectedVerdict,
+      scriptEvaluations,
       expectedRejectionCode: rejectionCode,
       expectedLedgerOps,
       ledgerMutationSteps,
       postUtxosRoot,
     };
     const trace = yield* buildDeterministicValidationMachineTrace(replayInput);
-    return { replayInput, trace, statePatch };
+    return { replayInput, trace, statePatch, rejection };
   });

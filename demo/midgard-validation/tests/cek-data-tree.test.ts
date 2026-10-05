@@ -10,15 +10,18 @@ import {
   DataI,
   DataList,
   DataMap,
-  DataPair,
 } from "@harmoniclabs/plutus-data";
+import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
   encodeMidgardCekPlutusData,
   midgardCekDataMemorySize,
 } from "../src/cek-constant.js";
-import { commitMidgardCekDataTree } from "../src/cek-data-tree.js";
+import {
+  commitMidgardCekDataTree,
+  encodeMidgardCekDataTreeInteger,
+} from "../src/cek-data-tree.js";
 
 describe("V1 semantic Data commitment", () => {
   it("encodes the complete signed Cardano integer domain canonically", () => {
@@ -50,10 +53,26 @@ describe("V1 semantic Data commitment", () => {
     const hugeMagnitude = (1n << 2_048n) - 1n;
     const positive = encodeMidgardCekPlutusData(new DataI(hugeMagnitude));
     const negative = encodeMidgardCekPlutusData(new DataI(-(1n << 2_048n)));
-    expect(positive.subarray(0, 4).toString("hex")).toBe("c2590100");
-    expect(negative.subarray(0, 4).toString("hex")).toBe("c3590100");
-    expect(positive.length).toBe(260);
-    expect(negative.length).toBe(260);
+    // Cardano chunks a magnitude over 64 bytes: 256 bytes are four 64-byte
+    // chunks inside an indefinite byte string.
+    expect(positive.subarray(0, 4).toString("hex")).toBe("c25f5840");
+    expect(negative.subarray(0, 4).toString("hex")).toBe("c35f5840");
+    expect(positive.length).toBe(267);
+    expect(negative.length).toBe(267);
+    // Integer leaves use the same Cardano wire form; CML independently checks
+    // the full signed magnitude, chunk headers, and terminator.
+    for (const value of [hugeMagnitude, -(1n << 2_048n)]) {
+      const integer = CML.BigInteger.from_str(value.toString());
+      const data = CML.PlutusData.new_integer(integer);
+      try {
+        expect(encodeMidgardCekDataTreeInteger(value).toString("hex")).toBe(
+          data.to_cbor_hex(),
+        );
+      } finally {
+        data.free();
+        integer.free();
+      }
+    }
     expect(midgardCekDataMemorySize(new DataI(hugeMagnitude))).toBe(261n);
     expect(midgardCekDataMemorySize(new DataI(-(1n << 2_048n)))).toBe(261n);
   });
@@ -124,8 +143,8 @@ describe("V1 semantic Data commitment", () => {
 
   it("uses definite serialiseData maps without reordering raw pairs", () => {
     const value = new DataMap([
-      new DataPair(new DataB(Buffer.from("11", "hex")), new DataI(1)),
-      new DataPair(new DataB(Buffer.alloc(0)), new DataI(2)),
+      { fst: new DataB(Buffer.from("11", "hex")), snd: new DataI(1) },
+      { fst: new DataB(Buffer.alloc(0)), snd: new DataI(2) },
     ]);
     const committed = commitMidgardCekDataTree(value);
     expect(encodeMidgardCekPlutusData(value).toString("hex")).toBe(

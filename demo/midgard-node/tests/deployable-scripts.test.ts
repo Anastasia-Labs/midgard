@@ -9,16 +9,17 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { collectScriptDescriptors } from "../src/commands/contract-deployment-info.js";
 import {
   MANIFEST_ORDER,
-  manifestDeployableScripts,
   PUBLICATION_ORDER,
   REFERENCE_SCRIPT_COMMAND_NAMES,
 } from "../src/deployable-scripts.js";
 import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "../src/deployment-manifest.js";
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
+import {} from "../src/transactions/reference-scripts.js";
 import {
+  manifestDeployableScripts,
   nodeRuntimeReferenceScriptTargets,
   referenceScriptTargetsByCommand,
-} from "../src/transactions/reference-scripts.js";
+} from "./helpers/deployable-catalogue-before-canonical.js";
 import { withRealEventHistoryForTest } from "./helpers/event-history.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 

@@ -2,19 +2,18 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  applyParamsToScript,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { applyBlueprintParams } from "../src/fraud-proof/contracts/blueprint.js";
 import {
   buildFaultProofContracts,
   CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   parseFaultProofBlueprint,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
 } from "../src/index.js";
+import { applyExpectedScriptParams } from "./fault-proof.expected-parameter-application.js";
 
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(moduleDirectory, "../../..");
@@ -88,6 +87,46 @@ describe("validation resolver production-builder parameter application", () => {
       }),
     );
     const dispute = contracts.validationTraceDispute;
+    const boundaryValidator = currentTreeBlueprint.validators.find(
+      (entry) =>
+        entry.title === VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
+    );
+    if (boundaryValidator === undefined)
+      throw new Error("Validation boundary is missing");
+    expect(
+      (boundaryValidator.parameters ?? []).map(({ title }) => title),
+    ).toEqual([
+      "one_step_resolver_script_hashes",
+      "award_validator_script_hash",
+      "computation_thread_token_policy_id",
+    ]);
+    // Full application is essential: an unapplied parameter produces a lambda
+    // that succeeds without executing the terminal-padding refusal guards.
+    const appliedBoundary = applyBlueprintParams(
+      currentTreeBlueprint,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
+      [
+        dispute.resolvers.map(({ spendingScriptHash }) => spendingScriptHash),
+        dispute.award.spendingScriptHash,
+        contracts.computationThread.policyId,
+      ],
+    );
+    expect(
+      validatorToScriptHash({ type: "PlutusV3", script: appliedBoundary }),
+    ).toBe(dispute.boundary.spendingScriptHash);
+    const appliedGame = applyBlueprintParams(
+      currentTreeBlueprint,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
+      [
+        dispute.boundary.spendingScriptHash,
+        dispute.timeout.spendingScriptHash,
+        dispute.resolvers.map(({ spendingScriptHash }) => spendingScriptHash),
+        contracts.computationThread.policyId,
+      ],
+    );
+    expect(
+      validatorToScriptHash({ type: "PlutusV3", script: appliedGame }),
+    ).toBe(dispute.game.spendingScriptHash);
     const materialHash = validatorToScriptHash({
       type: "PlutusV3",
       script: materialValidator.compiledCode,
@@ -114,7 +153,7 @@ describe("validation resolver production-builder parameter application", () => {
     ): string =>
       validatorToScriptHash({
         type: "PlutusV3",
-        script: applyParamsToScript(
+        script: applyExpectedScriptParams(
           validator.compiledCode,
           titles.map((title) => {
             const value = bindings[title];

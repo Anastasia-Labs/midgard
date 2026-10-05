@@ -22,6 +22,7 @@ import {
 } from "../step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
+import { forcedTransactionSubject } from "../workflow/detection-subject.js";
 import type { ExecutionSourceScriptDecodingArtifact } from "./actuator.js";
 import {
   executionSourceScriptDecodingEvidenceCloses,
@@ -424,6 +425,7 @@ const replayExecutionSourceScriptDecodingCandidates = async (
           finding: {
             evidence,
             detection: {
+              ...forcedTransactionSubject(transaction.key),
               detectionId: `${violationId}:forced:${position.toString()}:${transaction.value.tx_id}:${executionIndex.toString()}`,
               headerHash: block.headerHash,
               violationId,

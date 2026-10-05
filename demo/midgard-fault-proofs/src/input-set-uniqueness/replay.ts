@@ -4,6 +4,10 @@ import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
+  type DetectionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
+import {
   bindForcedDuplicateInput,
   type BoundDuplicateInput,
   inputSetUnionIsStrictlyIncreasing,
@@ -12,17 +16,18 @@ import {
 export const INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID =
   "input-set-uniqueness-wrongful-rejection" as const;
 
-export type InputSetUniquenessForcedReplayDetection = Readonly<{
-  detectionId: string;
-  headerHash: string;
-  violationId: typeof INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID;
-  position: bigint;
-  forcedIndex: number;
-  transactionId: string;
-  bound: BoundDuplicateInput;
-  spendInputItemCbors: readonly string[];
-  referenceInputItemCbors: readonly string[];
-}>;
+export type InputSetUniquenessForcedReplayDetection = DetectionSubject &
+  Readonly<{
+    detectionId: string;
+    headerHash: string;
+    violationId: typeof INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID;
+    position: bigint;
+    forcedIndex: number;
+    transactionId: string;
+    bound: BoundDuplicateInput;
+    spendInputItemCbors: readonly string[];
+    referenceInputItemCbors: readonly string[];
+  }>;
 
 /** Complete retained-DA scan; no verdict/evidence callback crosses this API. */
 export const detectInputSetUniquenessForcedReplay = (
@@ -104,6 +109,7 @@ export const detectInputSetUniquenessForcedReplay = (
       }
       detections.push(
         Object.freeze({
+          ...forcedTransactionSubject(transaction.key),
           detectionId: `${INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}`,
           headerHash: block.headerHash,
           violationId: INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID,

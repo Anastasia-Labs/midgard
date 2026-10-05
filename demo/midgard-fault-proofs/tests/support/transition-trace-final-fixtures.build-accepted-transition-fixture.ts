@@ -18,11 +18,19 @@ import { makeHeader } from "./emulator/header-fixtures.js";
 import { makeNativeTx } from "./emulator/native-tx.js";
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 
+/**
+ * One L2 transaction over an otherwise empty ledger. By default it spends
+ * nothing and produces `outputCbors`. With `drained`, the ledger instead holds
+ * one entry (the first of `outputCbors`) that the transaction spends while
+ * producing nothing, so the honest post root is the committed empty-ledger
+ * root and the dishonest one is the MPF library's null root.
+ */
 export const buildAcceptedTransitionFixture = async ({
   operatorVkey,
   now,
   honest = false,
   depth = 0,
+  drained = false,
   outputCbors = [
     Buffer.from("a200581d60" + "aa".repeat(28) + "01821a001e8480a0", "hex"),
   ],
@@ -31,9 +39,33 @@ export const buildAcceptedTransitionFixture = async ({
   now: number;
   honest?: boolean;
   depth?: number;
+  drained?: boolean;
   outputCbors?: Buffer[];
 }) => {
-  const native = makeNativeTx({ spendInputCbors: [], fee: 0n, outputCbors });
+  const drainedEntry = drained
+    ? {
+        outRef: encodeMidgardSpendInputItem({
+          txId: Buffer.alloc(32, 0xee),
+          outputIndex: 0,
+        }),
+        output: outputCbors[0]!,
+      }
+    : null;
+  const drainedValue =
+    drainedEntry === null
+      ? null
+      : Buffer.from(
+          buildCanonicalMidgardLedgerOutputMaterial({
+            outputIndex: 0,
+            outputCbor: drainedEntry.output,
+          }).descriptorCbor,
+        );
+  const txOutputCbors = drained ? [] : outputCbors;
+  const native = makeNativeTx({
+    spendInputCbors: drainedEntry === null ? [] : [drainedEntry.outRef],
+    fee: drained ? 2_000_000n : 0n,
+    outputCbors: txOutputCbors,
+  });
   const txId = computeMidgardNativeTxId(native).toString("hex");
   const source = deriveMidgardNativeTxProofSource(native);
   const encodedSource = Data.to(
@@ -48,9 +80,30 @@ export const buildAcceptedTransitionFixture = async ({
     },
     SDK.L2TransactionSource,
   );
-  const ledger = await Trie.fromList([]);
+  const ledger = await Trie.fromList(
+    drainedEntry === null
+      ? []
+      : [{ key: drainedEntry.outRef, value: drainedValue! }],
+  );
+  const preUtxosRoot =
+    drainedEntry === null
+      ? SDK.EMPTY_MERKLE_TREE_ROOT
+      : ledger.hash.toString("hex");
+  const spent: SDK.LedgerDeleteWitness[] = [];
+  if (drainedEntry !== null) {
+    spent.push({
+      key: drainedEntry.outRef.toString("hex"),
+      value: drainedValue!.toString("hex"),
+      opening: "",
+      delete_proof: Data.from(
+        (await ledger.prove(drainedEntry.outRef)).toCBOR().toString("hex"),
+        SDK.Proof,
+      ),
+    });
+    await ledger.delete(drainedEntry.outRef);
+  }
   const produced: SDK.LedgerInsertWitness[] = [];
-  for (const [index, bytes] of outputCbors.entries()) {
+  for (const [index, bytes] of txOutputCbors.entries()) {
     const key = encodeMidgardSpendInputItem({
       txId: Buffer.from(txId, "hex"),
       outputIndex: index,
@@ -73,14 +126,18 @@ export const buildAcceptedTransitionFixture = async ({
       insert_proof: proof,
     });
   }
-  const actual = ledger.hash.toString("hex");
+  const dishonest = drained ? "00".repeat(32) : "bb".repeat(32);
   const step: SDK.TransitionStep = {
     schema_version: 1n,
     step_index: 0n,
     event_key: { L2TransactionEventKey: { tx_id: txId } },
     phase: "L2Transaction",
-    pre_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
-    post_utxos_root: honest ? actual : "bb".repeat(32),
+    pre_utxos_root: preUtxosRoot,
+    post_utxos_root: !honest
+      ? dishonest
+      : ledger.hash === null
+        ? SDK.EMPTY_MERKLE_TREE_ROOT
+        : ledger.hash.toString("hex"),
   };
   const event = { step_index: 0n, phase: "L2Transaction" as const };
   const roots = await Promise.all([
@@ -162,19 +219,19 @@ export const buildAcceptedTransitionFixture = async ({
               value: encodedSource,
               proof: deep === null ? [] : Data.from(deep.proofCbor, SDK.Proof),
             },
-            spend_inputs_preimage: encodeMidgardFieldPreimage([]).toString(
-              "hex",
-            ),
+            spend_inputs_preimage: encodeMidgardFieldPreimage(
+              drainedEntry === null ? [] : [drainedEntry.outRef],
+            ).toString("hex"),
             outputs_preimage:
-              encodeMidgardFieldPreimage(outputCbors).toString("hex"),
-            spent_utxos: [],
+              encodeMidgardFieldPreimage(txOutputCbors).toString("hex"),
+            spent_utxos: spent,
             produced_utxos: produced,
           },
         },
       },
     },
   };
-  return { header, headerHash, proof };
+  return { header, headerHash, proof, drainedEntry };
 };
 
 export const buildDepositTransitionFixture = async ({

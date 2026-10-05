@@ -108,7 +108,8 @@ export const record = (
 
 export type Shape = Readonly<{
   label: string;
-  item: Buffer;
+  /** Field 6: the transaction's script-witness items, in order. */
+  items: readonly Buffer[];
   nativeTx: MidgardNativeTxFull;
   txId: string;
   carriage: WitnessSetCarriage;

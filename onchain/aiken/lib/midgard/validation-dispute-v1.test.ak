@@ -438,3 +438,119 @@ test challenger_resolution_requires_exact_hashes_and_a_unique_valid_successor() 
     ),
   }
 }
+
+fn terminal_padding_fixture() -> (
+  validation_dispute_v1.ValidationDisputeV1,
+  validation_trace_v1.ValidationMachineStateV1,
+) {
+  let base = fixture_pre_state()
+  let terminal = validation_trace_v1.ValidationMachineStateV1 {
+    ..base,
+    phase: validation_trace_v1.Terminal,
+    verdict: validation_trace_v1.Accepted,
+    program_counter: 2,
+  }
+  let hash = validation_trace_v1.hash_machine_state(terminal)
+  let operator = descriptor4(h_a, h_b, hash, h_d)
+  let challenger = descriptor4(h_a, h_b, hash, h_f)
+  let opened = validation_dispute_v1.open(operator, challenger, 100)
+  let right = validation_trace_v1.trace_branch_hash(
+    validation_trace_v1.trace_leaf_hash(hash),
+    validation_trace_v1.trace_leaf_hash(h_d),
+  )
+  let operator_first = validation_dispute_v1.reveal_operator_midpoint(
+    opened,
+    proof4(1, h_b, h_a, right),
+    101,
+  )
+  let challenger_right = validation_trace_v1.trace_branch_hash(
+    validation_trace_v1.trace_leaf_hash(hash),
+    validation_trace_v1.trace_leaf_hash(h_f),
+  )
+  let agreed_first = validation_dispute_v1.reveal_challenger_midpoint(
+    operator_first,
+    proof4(1, h_b, h_a, challenger_right),
+    102,
+  )
+  let left = validation_trace_v1.trace_branch_hash(
+    validation_trace_v1.trace_leaf_hash(h_a),
+    validation_trace_v1.trace_leaf_hash(h_b),
+  )
+  let operator_second = validation_dispute_v1.reveal_operator_midpoint(
+    agreed_first,
+    proof4(2, hash, h_d, left),
+    103,
+  )
+  let ready = validation_dispute_v1.reveal_challenger_midpoint(
+    operator_second,
+    proof4(2, hash, h_f, left),
+    104,
+  )
+  (ready, terminal)
+}
+
+test authenticated_terminal_before_the_operator_end_awards_padding() {
+  let (ready, terminal) = terminal_padding_fixture()
+  and {
+    ready.low_index == 2,
+    ready.high_index == 3,
+    validation_resolution_v1.terminal_padding_is_authenticated(ready, terminal),
+  }
+}
+
+test padding_refuses_a_nonterminal_authenticated_boundary() {
+  let (ready, terminal) = terminal_padding_fixture()
+  let nonterminal = validation_trace_v1.ValidationMachineStateV1 {
+    ..terminal,
+    phase: validation_trace_v1.LedgerDelta,
+  }
+  let honest = validation_dispute_v1.ValidationDisputeV1 {
+    ..ready,
+    agreed_low_hash: validation_trace_v1.hash_machine_state(nonterminal),
+  }
+  !validation_resolution_v1.terminal_padding_is_authenticated(
+    honest,
+    nonterminal,
+  )
+}
+
+test padding_refuses_a_terminal_forged_under_an_honest_low_hash() {
+  let (ready, terminal) = terminal_padding_fixture()
+  !validation_resolution_v1.terminal_padding_is_authenticated(
+    ready,
+    validation_trace_v1.ValidationMachineStateV1 { ..terminal, work_root: h_c },
+  )
+}
+
+test padding_refuses_the_actual_final_state() {
+  let (ready, terminal) = terminal_padding_fixture()
+  !validation_resolution_v1.terminal_padding_is_authenticated(
+    validation_dispute_v1.ValidationDisputeV1 {
+      ..ready,
+      low_index: 3,
+      high_index: 4,
+    },
+    terminal,
+  )
+}
+
+test padding_refuses_a_not_ready_wrong_version_or_nonadjacent_dispute() {
+  let (ready, terminal) = terminal_padding_fixture()
+  and {
+    !validation_resolution_v1.terminal_padding_is_authenticated(
+      validation_dispute_v1.ValidationDisputeV1 {
+        ..ready,
+        turn: validation_dispute_v1.AwaitingOperator { midpoint: 2 },
+      },
+      terminal,
+    ),
+    !validation_resolution_v1.terminal_padding_is_authenticated(
+      validation_dispute_v1.ValidationDisputeV1 { ..ready, version: 2 },
+      terminal,
+    ),
+    !validation_resolution_v1.terminal_padding_is_authenticated(
+      validation_dispute_v1.ValidationDisputeV1 { ..ready, high_index: 4 },
+      terminal,
+    ),
+  }
+}

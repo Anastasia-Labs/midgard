@@ -29,10 +29,7 @@ import {
   plutusV3ScriptWitness,
 } from "../../../midgard-validation/tests/validation-fixtures.js";
 import { FixedValidationWorkerPool } from "../../src/services/validation-pool.js";
-import {
-  copyToTransferable,
-  packPhaseAJob,
-} from "../../src/workers/utils/validation-pool.js";
+import { packPhaseAJob } from "../../src/workers/utils/validation-pool.js";
 import {
   readPhase2ContainerIdentity,
   readPhase2CpuTopology,
@@ -246,7 +243,6 @@ const runPoolPhaseA = async (
 };
 
 const runPoolPhaseB = (
-  pool: FixedValidationWorkerPool,
   accepted: readonly PhaseAValidatedTx[],
   preState: Map<string, Buffer>,
 ): Promise<PhaseBResultWithPatch> =>
@@ -254,37 +250,6 @@ const runPoolPhaseB = (
     runPhaseBValidationWithPatch(accepted, preState, {
       nowCardanoSlotNo: 0n,
       bucketConcurrency: poolSize,
-      evaluateScript: (bytes, contextCbor) =>
-        Effect.tryPromise(() =>
-          pool.submit({
-            kind: "uplc",
-            jobId: pool.allocateJobId(),
-            scriptBytes: copyToTransferable(bytes),
-            contextCbor: copyToTransferable(contextCbor),
-          }),
-        ).pipe(
-          Effect.flatMap((response) => {
-            if (response.kind !== "uplc") {
-              return Effect.fail(
-                new Error(`expected uplc response, got ${response.kind}`),
-              );
-            }
-            return Effect.succeed(
-              response.result.ok
-                ? {
-                    kind: "accepted" as const,
-                    budget: {
-                      cpu: response.result.cpu,
-                      memory: response.result.memory,
-                    },
-                  }
-                : {
-                    kind: "script_invalid" as const,
-                    detail: response.result.detail,
-                  },
-            );
-          }),
-        ),
     }),
   );
 
@@ -355,11 +320,7 @@ describe("Phase 2 script-heavy UPLC worker benchmark", () => {
       try {
         await pool.start();
         const warmPhaseA = await runPoolPhaseA(pool, queued);
-        const warmPhaseB = await runPoolPhaseB(
-          pool,
-          warmPhaseA.accepted,
-          preState,
-        );
+        const warmPhaseB = await runPoolPhaseB(warmPhaseA.accepted, preState);
         expect(warmPhaseA.rejected).toStrictEqual(inlinePhaseA.rejected);
         expect(normalizePhaseB(warmPhaseB)).toStrictEqual(
           normalizePhaseB(inlinePhaseB),
@@ -369,7 +330,7 @@ describe("Phase 2 script-heavy UPLC worker benchmark", () => {
         const startedAt = performance.now();
         do {
           const phaseA = await runPoolPhaseA(pool, queued);
-          const phaseB = await runPoolPhaseB(pool, phaseA.accepted, preState);
+          const phaseB = await runPoolPhaseB(phaseA.accepted, preState);
           expect(phaseA.rejected).toStrictEqual(inlinePhaseA.rejected);
           expect(normalizePhaseB(phaseB)).toStrictEqual(
             normalizePhaseB(inlinePhaseB),
@@ -409,7 +370,6 @@ describe("Phase 2 script-heavy UPLC worker benchmark", () => {
           : "production_default_chunk64",
         everyTransactionHasPlutusSpend: true,
         everyTransactionIsPlutusV3: true,
-        uplcInWorkers: true,
         verdictMatchesInline: true,
         statePatchMatchesInline: true,
         chunkAbExperimentId:

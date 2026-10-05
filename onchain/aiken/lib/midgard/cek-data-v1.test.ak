@@ -121,6 +121,28 @@ test data_material_preimage_inspectors_reject_noncanonical_and_extract_edges() {
   }
 }
 
+/// A Data map is a list of pairs: duplicate keys stay separate entries, in
+/// order. The root is pinned in
+/// `demo/midgard-core/tests/cek-proof-duplicate-map-keys.test.ts`.
+test offchain_duplicate_key_map_root_vector() {
+  let data = builtin.map_data(
+    [
+      Pair(builtin.i_data(1), builtin.i_data(2)),
+      Pair(builtin.i_data(1), builtin.i_data(3)),
+    ],
+  )
+  let deduplicated = builtin.map_data(
+    [Pair(builtin.i_data(1), builtin.i_data(2))],
+  )
+  let summary = cek_data_v1.semantic_data_summary_v1(data)
+  and {
+    summary.root == #"aef1afbc4af14bed532f136ec0e9db7d1f297752cbe935c6af79d0f49b0817e5",
+    summary.cbor_length == 5,
+    summary.memory == 24,
+    cek_data_v1.semantic_data_summary_v1(deduplicated).root != summary.root,
+  }
+}
+
 test offchain_ordered_map_root_vector() {
   let data = builtin.map_data(
     [

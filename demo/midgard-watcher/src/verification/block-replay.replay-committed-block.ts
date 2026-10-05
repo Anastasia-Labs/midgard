@@ -34,7 +34,6 @@ import {
 } from "./block-replay.watcher-block-replay-prior-state.js";
 import { REACHABLE_SET } from "./block-replay.watcher-block-replay-reason-codes.js";
 import {
-  normalizeRootHex,
   type WatcherBlockReplayPriorUtxo,
   watcherBlockReplayRejectionProjection,
 } from "./block-replay.watcher-block-replay-rejection-projection.js";
@@ -379,8 +378,8 @@ export const replayCommittedBlock = async (input: {
           phase: group.phase,
           operation: mutationStep.operation.type,
           outRef: mutationStep.operation.key.toString("hex"),
-          preRoot: normalizeRootHex(mutationStep.preRoot.toString("hex")),
-          postRoot: normalizeRootHex(mutationStep.postRoot.toString("hex")),
+          preRoot: mutationStep.preRoot.toString("hex"),
+          postRoot: mutationStep.postRoot.toString("hex"),
         }),
       );
       cursor += 1;
@@ -388,11 +387,11 @@ export const replayCommittedBlock = async (input: {
     const preRoot =
       first === cursor
         ? postStateRoot
-        : normalizeRootHex(mutationSteps[first]!.preRoot.toString("hex"));
+        : mutationSteps[first]!.preRoot.toString("hex");
     postStateRoot =
       first === cursor
         ? postStateRoot
-        : normalizeRootHex(mutationSteps[cursor - 1]!.postRoot.toString("hex"));
+        : mutationSteps[cursor - 1]!.postRoot.toString("hex");
     if (group.phase === "L2Transaction") {
       transactionRoots.push(
         Object.freeze({

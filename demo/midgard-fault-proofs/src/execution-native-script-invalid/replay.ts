@@ -11,6 +11,10 @@ import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import {
+  acceptedTransactionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
+import {
   type HistoricalNativeScriptCorpus,
   requireHistoricalNativeScriptCorpus,
 } from "../workflow/historical-native-script-corpus.js";
@@ -147,6 +151,7 @@ export const detectExecutionNativeScriptInvalidCanonicalViolations = ({
       }
       if (result !== false) return;
       detections.push({
+        ...acceptedTransactionSubject(transaction.nodeTxId),
         detectionId: `${EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID}:accepted:${position.toString()}:${transaction.nodeTxId}:${executionIndex.toString()}`,
         headerHash: block.headerHash,
         violationId: EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID,
@@ -189,6 +194,7 @@ export const detectExecutionNativeScriptInvalidCanonicalViolations = ({
       }
       if (result !== true) return;
       detections.push({
+        ...forcedTransactionSubject(transaction.key),
         detectionId: `${EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${executionIndex.toString()}`,
         headerHash: block.headerHash,
         violationId: EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID,

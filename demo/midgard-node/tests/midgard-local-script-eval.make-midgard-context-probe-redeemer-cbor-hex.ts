@@ -1,9 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { plutusDataToCborHex, txOutRefData } from "@al-ft/midgard-validation";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import {
+  type LocalScriptEvalResult,
+  plutusDataToCborHex,
+  txOutRefData,
+} from "@al-ft/midgard-validation";
+import { encodeMidgardCekPlutusData } from "@al-ft/midgard-validation/cek-constant";
+import {
+  buildMidgardCekExecutionGraph,
+  executeMidgardCekStructuralProgram,
+} from "@al-ft/midgard-validation/cek-executor";
+import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import type { MidgardLedgerRedeemer } from "@al-ft/midgard-validation/ledger-tx/types";
-import { encodeScriptContextCbor } from "@al-ft/midgard-validation/local-script-eval";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
 
 import {
@@ -72,11 +82,42 @@ export const ledgerRedeemer = <
 
 /** The context as Lucid Data, for assertions on map-free parts of it. */
 export const lucidContext = (
-  context: Parameters<typeof encodeScriptContextCbor>[0],
+  context: Parameters<typeof encodeMidgardCekPlutusData>[0],
 ): Constr<unknown> =>
   Data.from(
-    Buffer.from(encodeScriptContextCbor(context)).toString("hex"),
+    Buffer.from(encodeMidgardCekPlutusData(context)).toString("hex"),
   ) as Constr<unknown>;
+
+/** Runs a compiled script on a context through the structural CEK executor. */
+export const evaluateScriptStructurally = (
+  scriptBytes: Uint8Array,
+  context: Parameters<typeof encodeMidgardCekPlutusData>[0],
+): LocalScriptEvalResult => {
+  const program = buildMidgardCanonicalCekProgram(scriptBytes);
+  const graph = buildMidgardCekExecutionGraph(
+    program.envelope,
+    program.material.values(),
+    encodeMidgardCekPlutusData(context),
+  );
+  const cek = executeMidgardCekStructuralProgram({
+    root: graph.root,
+    material: graph.material.values(),
+    constantWitnesses: graph.constantWitnesses,
+    maxSteps: MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
+  });
+  return cek.terminalState.mode === "haltSuccess"
+    ? {
+        kind: "accepted",
+        budget: {
+          cpu: cek.terminalState.cpu,
+          memory: cek.terminalState.memory,
+        },
+      }
+    : {
+        kind: "script_invalid",
+        detail: `V1 CEK halted with error ${cek.terminalState.auxiliary.toString(10)}`,
+      };
+};
 
 export const makeOutRefHex = (
   txHashByte: number,

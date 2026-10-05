@@ -1,15 +1,16 @@
 //// The four descriptor facts of a terminal ledger-output-proof control,
 //// factored so that each one decodes a single sub-control. Their conjunction
-//// is `ledger_output_proof_v1.descriptor_is_exact_v1` on the same control and
-//// descriptor: the finalize dispatchers require all four positions, so no
-//// clause of the monolith is dropped. See
+//// is `descriptor == ledger_output_proof_v1.terminal_descriptor_v1(control)`:
+//// the finalize dispatchers require all four positions, so no field of the
+//// monolith's derived descriptor is left unpinned. See
 //// docs/fault-proofs/decisions/0004-checkpointed-ledger-output-facts.md
 //// Decision section.
 ////
 //// The two leaf summaries (value and datum) travel through the dispatcher
 //// redeemer as prover-claimed values, each pinned by its own yield against
-//// the terminal sub-control; the scan-facts yield only ever consumes pinned
-//// leaves, so the composite summaries are rebuilt exactly.
+//// the terminal sub-control and recorded as its own fact. The scan-facts
+//// yield runs last and consumes only values the recorded facts commit, so
+//// the composite summaries are rebuilt exactly.
 
 use aiken/builtin
 use aiken/primitive/bytearray
@@ -129,9 +130,10 @@ pub fn datum_summary_is_pinned(
 // Role 1: reference script language, digest, span and item commitment
 // ---------------------------------------------------------------------------
 
-/// `descriptor_reference_script_is_exact_v1` plus the terminal structural
-/// clauses of `control_is_well_formed` that concern the reference-script
-/// frontier, the script-hash trace and the native-script structure.
+/// The four reference-script descriptor fields equal the ones
+/// `terminal_descriptor_v1` derives, plus the terminal structural clauses of
+/// `control_is_well_formed` that concern the reference-script frontier, the
+/// script-hash trace and the native-script structure.
 pub fn reference_script_is_pinned(
   control: raw.Frame,
   descriptor_cbor: ByteArray,
@@ -258,9 +260,12 @@ fn tx_out_summary(
 }
 
 /// Every descriptor field that reads the output scan, plus the three
-/// composite summaries rebuilt from the scan and the two pinned leaves. The
-/// reference-script leaf is taken from the descriptor, which role 1 pins to
-/// the trace digest, so no composite consumes an unpinned value.
+/// composite summaries rebuilt from the scan and the two leaf summaries.
+/// Everything else this yield consumes is pinned through the facts the
+/// earlier attachment groups recorded: the claimed value and datum summaries
+/// are the preimages of the role-3 and role-2 facts, and the four
+/// reference-script descriptor fields the preimage of the role-1 fact. So
+/// every descriptor field is fixed and the role-0 fact has one value.
 pub fn scan_facts_are_pinned(
   control: raw.Frame,
   descriptor_cbor: ByteArray,
@@ -296,10 +301,16 @@ pub fn scan_facts_are_pinned(
       builtin.constr_data(0, [builtin.b_data(descriptor.reference_script_hash)]),
     )
   }
+  let value_data: Data = claimed_value_summary
+  let datum_data: Data = claimed_datum_summary
   and {
-    // The claimed datum mode is the scan's own datum presence, so a prover
-    // cannot summarise a datum-bearing output as datum-free.
-    claimed_datum_summary == None == ( scan_control.datum_offset == -1 ),
+    // The role-2 fact pins the datum summary, including its mode: its yield
+    // requires `None` exactly when the scan has no datum.
+    raw.fact(control, 2) == Some(proof.fact_digest_v1([datum_data])),
+    raw.fact(control, 3) == Some(proof.fact_digest_v1([value_data])),
+    raw.fact(control, 1) == Some(
+      proof.fact_digest_v1(proof.reference_script_fact_payload_v1(descriptor)),
+    ),
     descriptor.version == commitment.version,
     descriptor.output_index == raw.integer(control, item_output_index),
     descriptor.total_length == raw.integer(control, item_total_length),

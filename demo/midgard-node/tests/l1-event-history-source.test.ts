@@ -62,13 +62,13 @@ const build = (
       ...overrides,
     }),
   );
-
+// Real-contract parameterization uses the same fixture budget as retention tests.
 beforeAll(async () => {
-  const manifest = await makeFinalizedDeploymentManifestFixture();
   contracts = await loadRealMidgardContractsForTest({
     txHash: "ab".repeat(32),
     outputIndex: 0,
   });
+  const manifest = await makeFinalizedDeploymentManifestFixture({ contracts });
   identity = {
     kind: "manifest",
     manifest,
@@ -76,7 +76,7 @@ beforeAll(async () => {
     consensusProfile: manifest.consensusProfile,
   };
   binding = await build();
-});
+}, 120_000);
 
 const capture = (): AcquiredLedgerSnapshot => {
   const outputs: LedgerSnapshotOutput[] = Object.values(

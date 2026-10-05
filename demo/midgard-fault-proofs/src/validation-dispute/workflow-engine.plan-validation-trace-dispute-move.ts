@@ -24,6 +24,7 @@ import type {
   ValidationTraceDisputeChainStage,
   ValidationTraceDisputeSemanticGroup,
 } from "./workflow-chain-state.js";
+import { type createValidationTraceFieldCarriageProvider } from "./workflow-field-carriage.js";
 
 /**
  * Ruling R6 ("installed" semantics for the sole interactive family): from
@@ -84,9 +85,28 @@ export type ValidationTraceDisputeMove =
  * semantic route. Sourced from the journal's last `submission_intent`
  * action input — never from process memory.
  */
+export type ValidationTraceDisputeFieldCarriageBinding = Readonly<{
+  stateIndex: number;
+  fieldIndex: number;
+  transactionId: string;
+  fieldCommitment: string;
+  referenceOutRefs: readonly string[];
+}> &
+  (
+    | Readonly<{ certificatePolicyId: string }>
+    | Readonly<{
+        proofItemPublication: Readonly<{
+          address: string;
+          datumCbor: string;
+          outRef: string;
+        }>;
+      }>
+  );
+
 export type ValidationTraceDisputeRetainedRouteInput = Readonly<{
   transitionCborHex?: string;
   auxiliaryCborHex?: string;
+  fieldCarriageBinding?: ValidationTraceDisputeFieldCarriageBinding;
   scriptSourcesItemPreparedCbor?: string;
 }>;
 
@@ -180,6 +200,17 @@ export const planValidationTraceDisputeMove = ({
         },
       };
     case "semantic_in_flight":
+      if (
+        stage.group === "canonical_decode_item_stage" &&
+        stage.canonicalOutput === true
+      )
+        return {
+          kind: "act",
+          action: {
+            stage: "semantic_resolution",
+            threadOutRef: stage.threadOutRef,
+          },
+        };
       // A staged multi-transaction route interrupted mid-flight is always
       // recoverable without local memory: cancellation is a single legal
       // transaction at every checkpoint (full journal discipline), after
@@ -308,6 +339,7 @@ export type ValidationTraceDisputeActuatorConfig = Readonly<{
   resolved: ResolvedValidationTraceDisputeDeploymentContracts;
   references: ValidationTraceDisputeWorkflowReferences;
   operatorProofs: ValidationTraceDisputeOperatorProofSource;
+  fieldCarriage?: ReturnType<typeof createValidationTraceFieldCarriageProvider>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
   /** Wall-clock authority for validity ranges and deadline comparisons. */

@@ -76,6 +76,7 @@ const fixture = () => {
       "retiredOperatorsSpend",
       "retiredOperatorsMint",
       "schedulerSpend",
+      "fieldPreimageCertificateMint",
     ].map((name, index) => [
       name,
       {
@@ -315,6 +316,10 @@ describe("manifest-bound builder document", () => {
         current.manifest.contracts.fraudProofCatalogueMint!.fraudProofCatalogue!
           .categories.validationTraceDispute,
       contracts: {
+        fieldPreimageCertificate: {
+          policyId: scriptHash,
+          mintingScript: script,
+        },
         validationTraceDispute: {
           firstStep: { spendingScriptHash: scriptHash },
         },
@@ -325,6 +330,38 @@ describe("manifest-bound builder document", () => {
     );
     expect(Object.isFrozen(current.manifest)).toBe(false);
   });
+
+  it.each(["policy", "script"])(
+    "refuses a %s mismatch in the applied dispute field certificate",
+    async (changed) => {
+      const current = fixture();
+      dependencies.resolveDispute.mockResolvedValue({
+        contracts: {
+          validationTraceDispute: {
+            firstStep: { spendingScriptHash: scriptHash },
+          },
+          fieldPreimageCertificate: {
+            policyId: changed === "policy" ? "ff".repeat(28) : scriptHash,
+            mintingScript:
+              changed === "script"
+                ? { ...script, script: `8200581c${"56".repeat(28)}` }
+                : script,
+          },
+        },
+      });
+      await expect(
+        bindValidationTraceDisputeWorkflowDeployment({
+          manifest: current.manifest,
+          blueprintJson,
+          deploymentInfo: current.deploymentInfo,
+          headerHash: "99".repeat(28),
+          proverCredential: "aa".repeat(28),
+        }),
+      ).rejects.toThrow(
+        "field-preimage certificate differs from the finalized manifest",
+      );
+    },
+  );
 
   it("stops before parsing builder metadata when manifest verification fails", async () => {
     const current = fixture();

@@ -1,15 +1,5 @@
-import {
-  encodeMidgardCekProgramEnvelope,
-  type MidgardCekProgramEnvelope,
-} from "@al-ft/midgard-core/cek-proof";
-import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec";
-import { type MidgardForcedTxFull } from "@al-ft/midgard-core/codec/forced";
 import { type DaPayloadEnvelopeTimingStage } from "@al-ft/midgard-core/da-payload-envelope";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import {
-  collectMidgardAttachedProgramEnvelopes,
-  collectMidgardReferencedProgramEnvelopes,
-} from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
@@ -25,6 +15,13 @@ export type DataSchema = Parameters<typeof LucidData.Nullable>[0];
 export type PayloadVerificationOptions = {
   readonly payloadSchemaVersion: 1;
   readonly stateQueueOutRef: string;
+  /**
+   * The L2 UTxO set immediately before the block, already bound to
+   * `header.prevUtxosRoot` by the caller (`resolvePreBlockUtxos`). Every
+   * event's inputs resolve against the state immediately before it, replayed
+   * from this set.
+   */
+  readonly preBlockUtxos: readonly (readonly [string, Uint8Array])[];
   readonly timing?: DaPayloadVerificationTimingOptions;
 };
 
@@ -208,39 +205,6 @@ export const validateDaPayloadCounts = (counts: SDK.DaPayloadCounts): void => {
     throw new DaPayloadValidationError(
       "count_mismatch",
       `validation_trace_count ${counts.validationTraceCount.toString()} must equal forced_transaction_count + l2_transaction_count ${expectedValidationTraces.toString()}`,
-    );
-  }
-};
-
-export const collectProofProgramEnvelopes = (
-  tx:
-    | ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor>
-    | MidgardForcedTxFull,
-  fieldName: string,
-  target: Map<string, MidgardCekProgramEnvelope>,
-  resolvedOutputsByOutRef?: ReadonlyMap<string, Uint8Array>,
-): void => {
-  try {
-    const envelopes = [...collectMidgardAttachedProgramEnvelopes(tx)];
-    if (resolvedOutputsByOutRef !== undefined) {
-      envelopes.push(
-        ...collectMidgardReferencedProgramEnvelopes(
-          tx,
-          resolvedOutputsByOutRef,
-        ),
-      );
-    }
-    for (const envelope of envelopes) {
-      target.set(
-        encodeMidgardCekProgramEnvelope(envelope).toString("hex"),
-        envelope,
-      );
-    }
-  } catch (cause) {
-    throw new DaPayloadValidationError(
-      "malformed_transaction",
-      `${fieldName} has malformed V1 program envelopes`,
-      { cause },
     );
   }
 };

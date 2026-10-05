@@ -65,7 +65,7 @@ describe("transition trace single ledger mutation replay", () => {
             key: key.toString("hex"),
             value: value.toString("hex"),
             delete_proof: proof,
-            membership_proof: proof,
+            opening: "",
           };
       const evidence = inserting
         ? {

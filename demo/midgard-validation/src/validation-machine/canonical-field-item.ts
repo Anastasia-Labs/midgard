@@ -1,3 +1,5 @@
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+
 /**
  * Canonical CBOR argument header sizes and field-item encoded lengths.
  */
@@ -20,19 +22,22 @@ export const MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX = 7;
 export const canonicalFieldItemEncodedLength = (
   fieldIndex: number,
   itemLength: number,
-): number => {
+): number | null => {
   if (
-    [0, 1, 2, 3, 4, MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX].includes(fieldIndex)
+    !Number.isSafeInteger(fieldIndex) ||
+    fieldIndex < 0 ||
+    fieldIndex > 8 ||
+    (fieldIndex === 5 && itemLength === 0)
   ) {
-    return canonicalCborArgumentHeaderSize(itemLength) + itemLength;
-  }
-  if (fieldIndex === MIDGARD_SCRIPT_WITNESSES_FIELD_INDEX || fieldIndex === 8) {
-    return itemLength;
-  }
-  if (fieldIndex !== 5 || itemLength === 0) {
     throw new Error(
       `invalid canonical field item length at field ${fieldIndex.toString()}`,
     );
   }
-  return itemLength - 1;
+  if (
+    fieldIndex === 2 &&
+    itemLength > MIDGARD_CONSENSUS_LIMITS.maxLedgerOutputPreimageBytes
+  )
+    return null;
+  // All nine §5.1 fields wrap each item in a definite byte string.
+  return canonicalCborArgumentHeaderSize(itemLength) + itemLength;
 };

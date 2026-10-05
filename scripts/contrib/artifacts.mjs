@@ -89,6 +89,7 @@ export const withScratchCheckout = async (root, directory, action) => {
     const headEntries = execFileSync("git", ["ls-tree", "-r", "-z", "HEAD"], {
       cwd: root,
       encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024,
     })
       .split("\0")
       .filter(Boolean);
@@ -98,6 +99,7 @@ export const withScratchCheckout = async (root, directory, action) => {
         ...execFileSync("git", ["ls-files", "--stage", "-z"], {
           cwd: root,
           encoding: "utf8",
+          maxBuffer: 16 * 1024 * 1024,
         }).split("\0"),
       ]
         .filter((entry) => entry.startsWith("160000 "))
@@ -110,7 +112,7 @@ export const withScratchCheckout = async (root, directory, action) => {
       ...execFileSync(
         "git",
         ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-        { cwd: root, encoding: "utf8" },
+        { cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
       )
         .split("\0")
         .filter(Boolean),

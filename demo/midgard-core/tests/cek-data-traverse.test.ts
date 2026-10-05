@@ -2,6 +2,7 @@ import "vitest";
 import "../src/index.js";
 import "./cek-data-traverse.fold-list.js";
 
+import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -21,6 +22,7 @@ import {
   initialMidgardCekDataListFrame,
   initialMidgardCekDataSmallConstrFrame,
   MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN,
+  midgardCekDataBytesCborLength,
   type MidgardCekDataSummary,
   MidgardCekDataTraverseStages,
   nextMidgardCekDataTraverseSpan,
@@ -35,19 +37,61 @@ import {
 } from "./cek-data-traverse.fold-list.js";
 
 describe("authenticated CEK Data traversal V1", () => {
-  it("streams a maximum-transaction-sized scalar root", () => {
-    const magnitude = Buffer.alloc(16_380);
-    magnitude[0] = 1;
+  it("accepts the Cardano canonical 65-byte bignum scalar", () => {
     const source = Buffer.concat([
-      Buffer.from([0xc2, 0x59, 0x3f, 0xfc]),
-      magnitude,
+      Buffer.from("c25f584001", "hex"),
+      Buffer.alloc(63),
+      Buffer.from("4100ff", "hex"),
     ]);
     const trace = harness(source);
+    transition(trace, { kind: "headScalar" });
+    const summary = finishScalar(trace, null);
+    expect(summary).toMatchObject({ cborLength: 71n, memory: 69n });
+    expect(Buffer.from(summary.root).toString("hex")).toBe(
+      "2245ce3c839885a8e667481cec15cbe0e91df8a04f816859ae3bb38a8217b6aa",
+    );
+    expect(trace.control.offset).toBe(71);
+  });
 
-    transition(trace, {
-      kind: "headScalar",
-      itemLength: source.length,
-    });
+  it("automatically traces a chunked integer in a constructor and scalar child", () => {
+    const constructor = 1n << 512n;
+    const source = Buffer.concat([
+      Buffer.from("d8668218809f", "hex"),
+      Buffer.from(Data.to(-constructor - 1n), "hex"),
+      Buffer.from("ff", "hex"),
+    ]);
+    const trace = buildMidgardCekDataTraverseTrace({ sourceStart: 17, source });
+    expect(finalizeMidgardCekDataTraverse(trace.terminal)).not.toBeNull();
+    // A bignum constructor alternative exercises the same measuring machine.
+    const largeSource = Buffer.concat([
+      Buffer.from("d86682", "hex"),
+      Buffer.from(Data.to(constructor), "hex"),
+      Buffer.from("80", "hex"),
+    ]);
+    expect(
+      finalizeMidgardCekDataTraverse(
+        buildMidgardCekDataTraverseTrace({
+          sourceStart: 17,
+          source: largeSource,
+        }).terminal,
+      ),
+    ).not.toBeNull();
+  });
+
+  it("streams a maximum-transaction-sized scalar root", () => {
+    let magnitudeLength = 16_384;
+    while (
+      1n + midgardCekDataBytesCborLength(BigInt(magnitudeLength)) >
+      16_384n
+    )
+      magnitudeLength -= 1;
+    const source = Buffer.from(
+      Data.to(1n << BigInt((magnitudeLength - 1) * 8)),
+      "hex",
+    );
+    const trace = harness(source);
+
+    transition(trace, { kind: "headScalar" });
     const summary = finishScalar(trace, null);
 
     expect(finalizeMidgardCekDataTraverse(trace.control)).toStrictEqual(
@@ -66,23 +110,15 @@ describe("authenticated CEK Data traversal V1", () => {
       Buffer.from([0xff]),
     ]);
     const trace = harness(source);
-    let frame = initialMidgardCekDataListFrame({
-      expectedChildren: 2,
-    });
+    let frame = initialMidgardCekDataListFrame();
     const children: MidgardCekDataSummary[] = [];
 
-    transition(trace, {
-      kind: "headSequence",
-      expectedChildren: 2,
-    });
-    transition(trace, { kind: "headScalar", itemLength: 1 });
+    transition(trace, { kind: "headSequence" });
+    transition(trace, { kind: "headScalar" });
     const integer = finishScalar(trace, frame);
     children.push(integer);
     frame = appendChild(frame, integer);
-    transition(trace, {
-      kind: "headScalar",
-      itemLength: bytes.length,
-    });
+    transition(trace, { kind: "headScalar" });
     const byteSummary = finishScalar(trace, frame);
     children.push(byteSummary);
     frame = appendChild(frame, byteSummary);
@@ -106,21 +142,13 @@ describe("authenticated CEK Data traversal V1", () => {
     const trace = harness(source);
     let parent = initialMidgardCekDataSmallConstrFrame({
       constructor: 0n,
-      expectedChildren: 1,
     });
 
-    transition(trace, {
-      kind: "headSequence",
-      expectedChildren: 1,
-    });
+    transition(trace, { kind: "headSequence" });
     const child = initialMidgardCekDataListFrame({
       tail: hashMidgardCekDataFrame(parent),
-      expectedChildren: 0,
     });
-    transition(trace, {
-      kind: "headSequence",
-      expectedChildren: 0,
-    });
+    transition(trace, { kind: "headSequence" });
     const childSummary = finalizeMidgardCekDataFrame(child)!;
     transition(trace, {
       kind: "finalizeFrame",
@@ -151,11 +179,7 @@ describe("authenticated CEK Data traversal V1", () => {
     ]);
     const trace = harness(source);
 
-    transition(trace, {
-      kind: "headLargeConstructor",
-      constructorCborLength: constructorCbor.length,
-      expectedChildren: 1,
-    });
+    transition(trace, { kind: "headLargeConstructor" });
     while (
       trace.control.stage === MidgardCekDataTraverseStages.LargeConstructor
     ) {
@@ -167,10 +191,9 @@ describe("authenticated CEK Data traversal V1", () => {
       constructorCborRoot,
       constructorCborLength: BigInt(constructorCbor.length),
       constructorMemory: integer.memory,
-      expectedChildren: 1,
     });
     transition(trace, null);
-    transition(trace, { kind: "headScalar", itemLength: 1 });
+    transition(trace, { kind: "headScalar" });
     const field = finishScalar(trace, frame);
     frame = appendChild(frame, field);
     transition(trace, null);
@@ -188,61 +211,47 @@ describe("authenticated CEK Data traversal V1", () => {
     expect(
       encodeMidgardCekDataTraverseControl(trace.control).toString("hex"),
     ).toBe(
-      "8a010711111140d87a80d87a80d87a80d8799f835820844cdd8ac8dc97d87e4ed149da121054504365b523034a804a12c014d55c2c441109ff",
+      "89010711111140d87a80d87a80d8799f835820844cdd8ac8dc97d87e4ed149da121054504365b523034a804a12c014d55c2c441109ff",
     );
     expect(
       hashMidgardCekDataTraverseControl(trace.control).toString("hex"),
-    ).toBe("173ab9eb57665546414d5c286c55bc1fcd939a1784a7b800863e9970b82f6c16");
+    ).toBe("573373b0ded63b7f9faa8b77b0fff3c3983a11638ba43b65699bbe73aa464622");
   });
 
   it("pins active nested integer and byte controls for Aiken decoding", () => {
     const integer = harness(Buffer.from("c249010000000000000000", "hex"));
-    transition(integer, {
-      kind: "headScalar",
-      itemLength: integer.source.length,
-    });
+    transition(integer, { kind: "headScalar" });
     expect(
       encodeMidgardCekDataTraverseControl(integer.control).toString("hex"),
-    ).toBe("8a0101110b0040d87a80d8799f860100110b00d87a80ffd87a80d87a80");
+    ).toBe("890101110b0040d8799f860100110b00d87a80ffd87a80d87a80");
 
     const bytes = harness(encodeCardanoDataBytes(Buffer.alloc(65, 0x6a)));
-    transition(bytes, {
-      kind: "headScalar",
-      itemLength: bytes.source.length,
-    });
+    transition(bytes, { kind: "headScalar" });
     expect(
       encodeMidgardCekDataTraverseControl(bytes.control).toString("hex"),
-    ).toBe("8a01021118460040d87a80d87a80d8799f86010011184600d87a80ffd87a80");
+    ).toBe("8901021118460040d87a80d8799f860102110100d87a80ffd87a80");
   });
 
-  it("fails closed for wrong counts, trailing bytes, and small large constructors", () => {
-    const wrongCount = harness(Buffer.from("9f01ff", "hex"));
-    transition(wrongCount, {
-      kind: "headSequence",
-      expectedChildren: 2,
-    });
-    transition(wrongCount, {
-      kind: "headScalar",
-      itemLength: 1,
-    });
-    let frame = initialMidgardCekDataListFrame({
-      expectedChildren: 2,
-    });
-    const child = finishScalar(wrongCount, frame);
+  it("fails closed for a head read on a break, trailing bytes, and small large constructors", () => {
+    const headOnBreak = harness(Buffer.from("9f01ff", "hex"));
+    transition(headOnBreak, { kind: "headSequence" });
+    transition(headOnBreak, { kind: "headScalar" });
+    let frame = initialMidgardCekDataListFrame();
+    const child = finishScalar(headOnBreak, frame);
     frame = appendChild(frame, child);
-    const closeWindow = nextMidgardCekDataTraverseSpan(wrongCount.control)!;
+    const closeWindow = nextMidgardCekDataTraverseSpan(headOnBreak.control)!;
 
     expect(closeWindow.length).toBe(1);
     expect(
       advanceMidgardCekDataTraverse({
-        control: wrongCount.control,
+        control: headOnBreak.control,
         sourceBytes: Buffer.from([0xff]),
-        action: { kind: "headScalar", itemLength: 1 },
+        action: { kind: "headScalar" },
       }),
     ).toBeNull();
 
     const trailing = harness(Buffer.from("0102", "hex"));
-    transition(trailing, { kind: "headScalar", itemLength: 1 });
+    transition(trailing, { kind: "headScalar" });
     while (trailing.control.integer!.stage !== 2) {
       transition(trailing, null);
     }
@@ -255,11 +264,7 @@ describe("authenticated CEK Data traversal V1", () => {
     ).toBeNull();
 
     const smallLarge = harness(Buffer.from("d86682187f80", "hex"));
-    transition(smallLarge, {
-      kind: "headLargeConstructor",
-      constructorCborLength: 2,
-      expectedChildren: 0,
-    });
+    transition(smallLarge, { kind: "headLargeConstructor" });
     expect(
       advanceMidgardCekDataTraverse({
         control: smallLarge.control,

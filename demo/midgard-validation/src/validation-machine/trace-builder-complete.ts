@@ -2,7 +2,6 @@
  * buildDeterministicValidationMachineTrace: the phase-by-phase construction of the deterministic
  * validation-machine trace for one transaction.
  */
-
 import {
   appendMidgardValidationMerkleLeaf,
   buildMidgardBoundedItemChunkProof,
@@ -44,6 +43,7 @@ import { Effect } from "effect";
 import {
   composeMidgardCekContextSummary,
   decodeMidgardCekContext,
+  emptyMidgardCekDataSummary,
   encodeMidgardCekValidationWitness,
   finalizeMidgardCekObserverItems,
   hashMidgardCekContextPartsControl,
@@ -61,7 +61,6 @@ import {
   summarizeMidgardCekLucidData,
   validateMidgardCekObserverCollection,
 } from "../cek-context.js";
-import { executeMidgardCekStructuralProgram } from "../cek-executor.js";
 import {
   cardanoScriptPurposeData,
   type DecodedMidgardRedeemer,
@@ -87,6 +86,7 @@ import {
   initialMidgardResolvedInputsAccumulator,
   ZERO_32,
 } from "./input-resolution.js";
+import { ledgerDeltaProofFrameAuxiliary } from "./ledger-mutation.js";
 import {
   hashValidationMachineNativeScriptFrame,
   MAX_NATIVE_SCRIPT_SCAN_DEPTH,
@@ -99,12 +99,10 @@ import {
   type ValidationMachineNativeScriptTokenHead,
   type ValidationMachineVersionedScriptHeader,
 } from "./native-script-frame.js";
-import {
-  purposeKindForRedeemerTag,
-  redeemerTagForPurposeKind,
-} from "./redeemer-purpose.js";
+import { redeemerTagForPurposeKind } from "./redeemer-purpose.js";
 import { encodeValidationTerminalWitnessCbor } from "./terminal-witness.js";
 import type { prepareValidationTrace } from "./trace-builder-prepare.js";
+import { ValidationTraceStopped } from "./trace-builder-stop.js";
 import type {
   PhaseANativeScriptsScanControl,
   ScriptExecutionProofEntry,
@@ -860,18 +858,12 @@ export const completeValidationTrace = (
               );
             }
             const selected = selectedRedeemer(executionEntry);
-            const exactExecution = executeMidgardCekStructuralProgram({
-              root: evaluation.graph.root,
-              material: evaluation.graph.material.values(),
-              constantWitnesses: evaluation.graph.constantWitnesses,
-              executionIndex: BigInt(executionIndex),
-              maxSteps:
-                input.consensusProfile.limits.maxValidationMachineStepCount,
-              executionBudget: {
-                cpu: selected.value.exUnits.steps,
-                memory: selected.value.exUnits.memory,
-              },
-            });
+            const exactExecution = evaluation.execution;
+            if (exactExecution === null) {
+              throw new Error(
+                "CEK trace is missing the evaluator's captured execution",
+              );
+            }
             const programEnvelope = decodeMidgardCekProgramEnvelope(
               executionEntry.source.script.scriptBytes,
             );
@@ -894,7 +886,9 @@ export const completeValidationTrace = (
               executionEntry.languageTag,
             );
 
-            let redeemerControl = initialMidgardCekRedeemerContextControl();
+            let redeemerControl = initialMidgardCekRedeemerContextControl(
+              scriptPurposeEntries.length,
+            );
             const selectedItem =
               redeemerWitnessesCollection.items[selected.index]!;
             const selectionTrace = buildMidgardRedeemerItemProofTrace({
@@ -1481,24 +1475,61 @@ export const completeValidationTrace = (
               );
             }
 
+            // The redeemer map is in ledger order, (tag, index) ascending,
+            // which is the purpose frontier's order. The fold walks the
+            // execution frontier downwards from the purpose bound and
+            // prepends, so the map ends ascending. The execution leaf at
+            // `purposeBound - 1` admits one step: a select when it names a
+            // redeemer, a skip when it is a native execution. The fold stops
+            // once every redeemer is selected.
             for (
-              let redeemerIndex = decodedProofRedeemers.length - 1;
-              redeemerIndex >= 0;
-              redeemerIndex -= 1
+              let purposeFrontierIndex = scriptExecutionEntries.length - 1;
+              purposeFrontierIndex >= 0 &&
+              redeemerControl.cursor < decodedProofRedeemers.length;
+              purposeFrontierIndex -= 1
             ) {
-              const redeemer = decodedProofRedeemers[redeemerIndex]!;
-              const purposeKind = purposeKindForRedeemerTag(redeemer.tag);
-              const purposeFrontierIndex = scriptPurposeEntries.findIndex(
-                (purpose) =>
-                  purpose.purposeKind === purposeKind &&
-                  purpose.purposeIndex === redeemer.index,
+              const execution = scriptExecutionEntries[purposeFrontierIndex]!;
+              const purpose = execution.purpose;
+              const executionSiblings = buildMidgardValidationMerkleMembership(
+                executionLeaves,
+                purposeFrontierIndex,
+              ).siblings;
+              if (execution.languageTag === 0) {
+                pushWitness(
+                  "cek",
+                  cekContextWitness({
+                    contextControl,
+                    executionCursor: executionIndex,
+                    completedCpu,
+                    completedMemory,
+                  }),
+                  {
+                    kind: "cekRedeemerContextSkip",
+                    control: redeemerControl,
+                    purposeLeaf: purpose.leaf,
+                    sourceLeaf: execution.source.leaf,
+                    executionSiblings,
+                  },
+                );
+                redeemerControl = {
+                  ...redeemerControl,
+                  purposeBound: purposeFrontierIndex,
+                };
+                contextControl = {
+                  ...contextControl,
+                  redeemerContextControlHash:
+                    hashMidgardCekRedeemerContextControl(redeemerControl),
+                };
+                continue;
+              }
+              const redeemerIndex = redeemerLeaves.findIndex((leaf) =>
+                leaf.equals(execution.redeemerLeaf),
               );
-              if (purposeFrontierIndex < 0 || purposeKind === null) {
+              if (redeemerIndex < 0) {
                 throw new Error(
-                  "CEK redeemer does not select an authenticated purpose",
+                  "CEK execution leaf names a redeemer outside the redeemer frontier",
                 );
               }
-              const purpose = scriptPurposeEntries[purposeFrontierIndex]!;
               const item = redeemerWitnessesCollection.items[redeemerIndex]!;
               const descriptorOnly =
                 executionEntry.languageTag === 3 && purpose.purposeKind === 3;
@@ -1526,28 +1557,24 @@ export const completeValidationTrace = (
                   kind: "cekRedeemerContextSelect",
                   control: redeemerControl,
                   itemIndex: redeemerIndex,
-                  itemCount: decodedProofRedeemers.length,
                   totalLength: item.bytes.length,
                   itemCommitment: item.commitment,
-                  redeemerSiblings: buildMidgardValidationMerkleMembership(
-                    redeemerLeaves,
-                    redeemerIndex,
-                  ).siblings,
-                  purposeFrontierIndex,
                   purpose: {
                     purposeKind: purpose.purposeKind,
                     purposeIndex: purpose.purposeIndex,
                     scriptHash: purpose.scriptHash,
                     subject: purpose.subject,
-                    siblings: buildMidgardValidationMerkleMembership(
-                      purposeLeaves,
-                      purposeFrontierIndex,
-                    ).siblings,
                   },
+                  executionLanguageTag: execution.languageTag,
+                  sourceLeaf: execution.source.leaf,
+                  executionSiblings,
+                  itemFrontierRoot: commitMidgardValidationMerkleFrontier(
+                    item.frontier,
+                  ),
                 },
               );
               const semanticPurpose = descriptorOnly
-                ? initialMidgardCekRedeemerContextControl().activePurpose
+                ? emptyMidgardCekDataSummary()
                 : purposeSummary(purpose, executionEntry.languageTag);
               redeemerControl = {
                 ...redeemerControl,
@@ -1556,6 +1583,7 @@ export const completeValidationTrace = (
                 ),
                 activeRedeemerLeaf: redeemerLeaves[redeemerIndex]!,
                 activePurpose: semanticPurpose,
+                purposeBound: purposeFrontierIndex,
               };
               contextControl = {
                 ...contextControl,
@@ -1588,8 +1616,7 @@ export const completeValidationTrace = (
                       cursor: redeemerControl.cursor + 1,
                       activeScanHash: Buffer.alloc(0),
                       activeRedeemerLeaf: Buffer.alloc(0),
-                      activePurpose:
-                        initialMidgardCekRedeemerContextControl().activePurpose,
+                      activePurpose: emptyMidgardCekDataSummary(),
                     };
                   } else {
                     const nextSummary = finalizeMidgardRedeemerItemProof(
@@ -1615,8 +1642,7 @@ export const completeValidationTrace = (
                       ),
                       activeScanHash: Buffer.alloc(0),
                       activeRedeemerLeaf: Buffer.alloc(0),
-                      activePurpose:
-                        initialMidgardCekRedeemerContextControl().activePurpose,
+                      activePurpose: emptyMidgardCekDataSummary(),
                       currentRedeemer: nextCurrent,
                     };
                   }
@@ -1638,6 +1664,11 @@ export const completeValidationTrace = (
                     hashMidgardCekRedeemerContextControl(redeemerControl),
                 };
               }
+            }
+            if (redeemerControl.cursor !== decodedProofRedeemers.length) {
+              throw new Error(
+                "CEK redeemer does not select an authenticated purpose",
+              );
             }
             if (
               contextControl.stage !== 10 ||
@@ -1843,7 +1874,9 @@ export const completeValidationTrace = (
                   terminalPhase !== "cek" ||
                   rejection.code !== RejectCodes.PlutusScriptInvalid
                 ) {
-                  throw new Error(
+                  throw new ValidationTraceStopped(
+                    "disagreement",
+                    input,
                     "CEK failure transition disagrees with validation",
                   );
                 }
@@ -1856,7 +1889,9 @@ export const completeValidationTrace = (
               exactExecution.terminalState.mode !== "haltSuccess" ||
               evaluation.result.kind !== "accepted"
             ) {
-              throw new Error(
+              throw new ValidationTraceStopped(
+                "disagreement",
+                input,
                 "CEK successful trace disagrees with local validation",
               );
             }
@@ -2560,11 +2595,7 @@ export const completeValidationTrace = (
                         stage: 0,
                         replayScheduleHash: resolutionScheduleHash,
                       }),
-                      {
-                        kind: "ledgerDeltaProofFrame",
-                        frame: foldStep.frame,
-                        siblings: foldStep.membership.siblings,
-                      },
+                      ledgerDeltaProofFrameAuxiliary(mutationStep, foldStep),
                     );
                     pendingMutation = {
                       ...pendingMutation,
@@ -2705,11 +2736,7 @@ export const completeValidationTrace = (
                       stage: 1,
                       replayScheduleHash: resolutionScheduleHash,
                     }),
-                    {
-                      kind: "ledgerDeltaProofFrame",
-                      frame: foldStep.frame,
-                      siblings: foldStep.membership.siblings,
-                    },
+                    ledgerDeltaProofFrameAuxiliary(mutationStep, foldStep),
                   );
                   pendingMutation = {
                     ...pendingMutation,

@@ -46,6 +46,7 @@ validator main(
             None -> current.active_purpose
             Some(summary) -> summary
           },
+          purpose_bound: selection.purpose_frontier,
         }
         let next: Data = chain.ContextVerified {
           staged: selection.staged,

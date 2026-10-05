@@ -3,18 +3,11 @@ import {
   selectMidgardValidationDisputeReveal,
 } from "@al-ft/midgard-core";
 import {
-  PreparedValidationResolutionDatum,
   validationMachineStateDataFromCore,
-  ValidationResolutionDatum,
-  type ValidationResolutionState,
   validationTraceProofCoreFromData,
   validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";
-import {
-  buildValidationOneStepArgument,
-  type ValidationOneStepArgument,
-} from "@al-ft/midgard-validation";
-import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
+import { getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 
 import { fetchUtxoByOutRef, parseOutRef } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
@@ -23,6 +16,8 @@ import {
   captureCursorRemoval,
   type CursorFamilyActionInput,
 } from "../workflow/cursor-family-runtime.js";
+import { journalJsonDigest } from "../workflow/journal.js";
+import { workflowTransactionReferenceInputOutRefs } from "../workflow/transaction-boundary.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   cancelValidationCekContext,
@@ -40,6 +35,7 @@ import {
   submitValidationDisputeTimeout,
   submitValidationDisputeVerifySource,
 } from "./submit.js";
+import { captureCanonicalCheckpoint } from "./workflow-canonical-continuation.js";
 import {
   type ValidationTraceDisputeActuationMaterial,
   type ValidationTraceDisputeActuatorAction,
@@ -50,13 +46,13 @@ import {
 import {
   capture,
   hex,
-  recoverValidationTraceStateIndex,
   requireGameDispute,
 } from "./workflow-engine.recover-validation-trace-state-index.js";
 import {
   VALIDATION_TRACE_DISPUTE_CATEGORY,
   VALIDATION_TRACE_DISPUTE_CATEGORY_ID,
 } from "./workflow-family.js";
+import { createValidationTraceOneStepArgumentResolver } from "./workflow-one-step-argument.js";
 
 /**
  * Family actuator. Builders stop after local UPLC evaluation and signing;
@@ -115,58 +111,10 @@ export const createValidationTraceDisputeActuator = (
     return match;
   };
 
-  const disputeFromResolutionInput = async (
-    threadOutRef: string,
-  ): Promise<ValidationResolutionState> => {
-    const utxo = await threadUtxo(threadOutRef);
-    if (utxo.datum == null) {
-      throw new Error(
-        "validationTraceDispute resolution thread lost its datum",
-      );
-    }
-    try {
-      const prepared = Data.from(utxo.datum, PreparedValidationResolutionDatum);
-      if (prepared.data !== null) return prepared.data.resolution;
-    } catch {
-      // fall through to the unprepared resolution shape
-    }
-    const resolution = Data.from(utxo.datum, ValidationResolutionDatum);
-    if (resolution.data === null) {
-      throw new Error(
-        "validationTraceDispute resolution thread carries a null resolution state",
-      );
-    }
-    return resolution.data;
-  };
-
-  const oneStepArgumentFor = async ({
-    material,
-    threadOutRef,
-    retained,
-  }: {
-    readonly material: ValidationTraceDisputeActuationMaterial;
-    readonly threadOutRef: string;
-    readonly retained?: ValidationTraceDisputeRetainedRouteInput;
-  }): Promise<ValidationOneStepArgument> => {
-    const resolution = await disputeFromResolutionInput(threadOutRef);
-    const stateIndex = recoverValidationTraceStateIndex({
-      trace: material.challengerTrace,
-      resolution,
-    });
-    const argument = buildValidationOneStepArgument({
-      trace: material.challengerTrace,
-      stateIndex,
-    });
-    if (
-      retained?.transitionCborHex !== undefined &&
-      hex(argument.transitionCbor) !== retained.transitionCborHex
-    ) {
-      throw new Error(
-        "validationTraceDispute retained route input diverged from the recomputed one-step argument",
-      );
-    }
-    return argument;
-  };
+  const oneStepArgumentFor = createValidationTraceOneStepArgumentResolver({
+    config,
+    threadUtxo,
+  });
 
   /**
    * Resolves the published reference-script UTxO for the validator holding
@@ -355,11 +303,21 @@ export const createValidationTraceDisputeActuator = (
           });
         }
         case "prepare_selected": {
-          const oneStepArgument = await oneStepArgumentFor({
+          const canonical = await captureCanonicalCheckpoint({
+            config,
             material,
-            threadOutRef: action.threadOutRef,
-            retained,
+            action,
+            input: await threadUtxo(action.threadOutRef),
+            publishedThreadScriptReference,
           });
+          if (canonical !== undefined) return canonical;
+          const { argument: oneStepArgument, delivery } =
+            await oneStepArgumentFor({
+              material,
+              threadOutRef: action.threadOutRef,
+              retained,
+              action,
+            });
           // The thread sits at the boundary-selected prepare resolver's own
           // address, so the manifest-bound deployment entries resolve its
           // published reference by script hash. Reference-script carriage is
@@ -388,21 +346,40 @@ export const createValidationTraceDisputeActuator = (
             durableRouteInput: {
               transitionCborHex: hex(oneStepArgument.transitionCbor),
               auxiliaryCborHex: hex(oneStepArgument.auxiliaryCbor),
+              ...(delivery === undefined
+                ? {}
+                : { fieldCarriageBinding: delivery.durableBinding }),
             },
           });
         }
         case "semantic_resolution": {
-          const oneStepArgument = await oneStepArgumentFor({
+          const canonical = await captureCanonicalCheckpoint({
+            config,
             material,
-            threadOutRef: action.threadOutRef,
-            retained,
+            action,
+            input: await threadUtxo(action.threadOutRef),
+            publishedThreadScriptReference,
           });
+          if (canonical !== undefined) return canonical;
+          const { argument: oneStepArgument, delivery } =
+            await oneStepArgumentFor({
+              material,
+              threadOutRef: action.threadOutRef,
+              retained,
+              action,
+            });
           const transaction = await captureLocallyEvaluatedTransaction(
             async (preSubmitBoundary) => {
               await submitValidationDisputeSemanticResolution({
                 ...common,
                 threadOutRef: action.threadOutRef,
                 oneStepArgument,
+                ...(delivery === undefined
+                  ? {}
+                  : {
+                      carriageMaterial: delivery.material,
+                      referenceScriptUtxo: delivery.semanticReference,
+                    }),
                 ...(action.scriptSourcesItemPreparedCbor === undefined
                   ? {}
                   : {
@@ -414,11 +391,25 @@ export const createValidationTraceDisputeActuator = (
               });
             },
           );
+          if (
+            delivery !== undefined &&
+            journalJsonDigest(
+              [
+                ...workflowTransactionReferenceInputOutRefs(transaction.signed),
+              ].sort(),
+            ) !== journalJsonDigest(delivery.durableBinding.referenceOutRefs)
+          )
+            throw new Error(
+              "validation semantic transaction changed its prepared reference set",
+            );
           return Object.freeze({
             transaction,
             durableRouteInput: {
               transitionCborHex: hex(oneStepArgument.transitionCbor),
               auxiliaryCborHex: hex(oneStepArgument.auxiliaryCbor),
+              ...(delivery === undefined
+                ? {}
+                : { fieldCarriageBinding: delivery.durableBinding }),
             },
           });
         }

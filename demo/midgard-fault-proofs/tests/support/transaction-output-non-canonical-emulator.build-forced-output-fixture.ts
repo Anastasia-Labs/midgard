@@ -1,6 +1,7 @@
 import {
   computeMidgardNativeTxId,
   encodeMidgardForcedTxCanonical,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
@@ -49,18 +50,25 @@ export type ForcedOutputFixture = Awaited<
  * was rejected for `OutputNonCanonical { output_index }`; the retained DA is
  * reconstructed so the forced leaf, its membership proof and the transaction
  * preimage all come from the committed payload.
+ *
+ * `transaction` replaces the filler transaction whole. The filler's
+ * placeholder address witness is not a decodable item, so the node would
+ * reject it as a field-type fault before reading any output; a suite that
+ * commits the verdict the node writes supplies a transaction it can classify.
  */
 export const buildForcedOutputFixture = async ({
   operatorVkey,
   now,
-  outputCbor,
   outputIndex = 0n,
+  ...shape
 }: {
   readonly operatorVkey: string;
   readonly now: number;
-  readonly outputCbor: Buffer;
   readonly outputIndex?: bigint;
-}) => {
+} & (
+  | { readonly outputCbor: Buffer }
+  | { readonly transaction: MidgardNativeTxFull }
+)) => {
   const txOrderId = transitionTraceOutRef("f1");
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
   const finalUtxo = transitionTraceRawEntry(
@@ -76,13 +84,16 @@ export const buildForcedOutputFixture = async ({
   const finalRoot = await keyValuePhasRootWithCount([
     { key: Buffer.from(finalUtxo[0], "hex"), value: descriptor },
   ]);
-  const nativeTx = makeNativeTx({
-    spendInputCbors: [],
-    fee: 0n,
-    referenceByte: "b1",
-    outputCbors: [outputCbor],
-    witnessByte: "b8",
-  });
+  const nativeTx =
+    "transaction" in shape
+      ? shape.transaction
+      : makeNativeTx({
+          spendInputCbors: [],
+          fee: 0n,
+          referenceByte: "b1",
+          outputCbors: [shape.outputCbor],
+          witnessByte: "b8",
+        });
   const source = deriveMidgardForcedTxProofSource(
     materializeMidgardForcedTxFromCanonical(nativeTx),
   );

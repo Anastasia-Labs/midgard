@@ -36,3 +36,9 @@ export {
   type MidgardRedeemerItemProofTraceStep,
   type MidgardRedeemerItemProofWitness,
 } from "./redeemer-item-proof.is-well-formed-midgard-redeemer-item-proof-control.js";
+export {
+  buildMidgardRedeemerDataHeadRejectionTrace,
+  hasNonCanonicalDefiniteSequenceHead,
+  inspectMidgardRedeemerSequenceHeads,
+  isMidgardRedeemerDataHeadRejection,
+} from "./redeemer-item-proof.noncanonical-sequence-head.js";

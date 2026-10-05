@@ -107,8 +107,6 @@ export type MidgardLedgerOutputProofWitness =
     }
   | {
       readonly kind: "spanAttach";
-      readonly start: number;
-      readonly length: number;
       readonly chunkProof: MidgardBoundedItemChunkProof;
       readonly nextChunkProof: MidgardBoundedItemChunkProof | null;
     }

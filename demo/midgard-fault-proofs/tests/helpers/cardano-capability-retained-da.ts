@@ -14,23 +14,17 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import {
-  MIDGARD_VALIDATION_MACHINE_VERSION,
-  MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
-} from "@al-ft/midgard-core/consensus-profile";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { fixtureValidationTrace } from "../../../da-committee-node/tests/helpers.validation-trace.js";
 import {
   buildCountedRoot,
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/index.js";
-
-const hash32 = (byte: number): string =>
-  byte.toString(16).padStart(2, "0").repeat(32);
 
 const hash28 = (byte: number): string =>
   byte.toString(16).padStart(2, "0").repeat(28);
@@ -67,26 +61,6 @@ const countedRoot = (
     })),
   );
 
-const validationDescriptor = (
-  eventKey: SDK.EventKey,
-  index: number,
-): SDK.DaPayloadEntry => [
-  Data.to(eventKey as never, SDK.EventKeySchema as never),
-  Data.to(
-    SDK.validationTraceDescriptorDataFromCore({
-      schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
-      machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
-      traceRoot: Buffer.from(hash32(0xa0 + index), "hex"),
-      stepCount: 1,
-      initialStateHash: Buffer.from(hash32(0xb0 + index), "hex"),
-      terminalStateHash: Buffer.from(hash32(0xc0 + index), "hex"),
-      verdict: "accepted",
-      rejectionCodeHash: Buffer.alloc(32),
-    }) as never,
-    SDK.ValidationTraceDescriptorSchema as never,
-  ),
-];
-
 export type StrictRetainedDaPairFixture = {
   readonly payload: SDK.DaPayload;
   readonly payloadEnvelopeCbor: Buffer;
@@ -102,10 +76,17 @@ export const buildStrictRetainedDaPairFixture = async ({
   canonicalTransactionCbor,
   canonicalMaterialSidecarCbor,
   resolvedReferenceUtxos,
+  withForcedTwin = true,
 }: {
   readonly canonicalTransactionCbor: Uint8Array;
   readonly canonicalMaterialSidecarCbor?: Uint8Array;
   readonly resolvedReferenceUtxos?: readonly SDK.DaPayloadEntry[];
+  /**
+   * Also commit the transaction as a valid forced transaction ahead of the
+   * normal one. A block replayed in order cannot apply one transaction twice,
+   * so a fixture that must replay as a ledger sequence leaves it out.
+   */
+  readonly withForcedTwin?: boolean;
 }): Promise<StrictRetainedDaPairFixture> => {
   const canonicalCbor = Buffer.from(canonicalTransactionCbor);
   const transaction = decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor);
@@ -164,31 +145,35 @@ export const buildStrictRetainedDaPairFixture = async ({
     })),
   );
   const steps: readonly SDK.TransitionStep[] = [
+    ...(withForcedTwin
+      ? [
+          {
+            schema_version: 1n,
+            step_index: 0n,
+            event_key: forcedEventKey,
+            phase: "ForcedTransaction",
+            pre_utxos_root: utxoRoot.root,
+            post_utxos_root: utxoRoot.root,
+          } satisfies SDK.TransitionStep,
+        ]
+      : []),
     {
       schema_version: 1n,
-      step_index: 0n,
-      event_key: forcedEventKey,
-      phase: "ForcedTransaction",
-      pre_utxos_root: utxoRoot.root,
-      post_utxos_root: utxoRoot.root,
-    },
-    {
-      schema_version: 1n,
-      step_index: 1n,
+      step_index: withForcedTwin ? 1n : 0n,
       event_key: normalEventKey,
       phase: "L2Transaction",
       pre_utxos_root: utxoRoot.root,
       post_utxos_root: utxoRoot.root,
     },
   ];
-  const forcedTransactions = [
+  const forcedTransactions = (withForcedTwin ? [forcedOrder] : []).map((key) =>
     encodedEntry({
-      key: forcedOrder,
+      key,
       keySchema: SDK.OutputReference as never,
       value: forcedSource,
       valueSchema: SDK.ForcedInclusionTxV1Schema,
     }),
-  ];
+  );
   const transactions: SDK.DaPayloadEntry[] = [
     [transactionIdHex, Data.to(source as never, SDK.L2TransactionSourceSchema)],
   ];
@@ -201,30 +186,38 @@ export const buildStrictRetainedDaPairFixture = async ({
         valueSchema: SDK.TransitionStepSchema,
       }),
   );
+  const normalStepIndex = withForcedTwin ? 1n : 0n;
   const eventToStep: readonly SDK.DaPayloadEntry[] = [
-    encodedEntry({
-      key: forcedEventKey,
-      keySchema: SDK.EventKeySchema,
-      value: {
-        step_index: 0n,
-        phase: "ForcedTransaction",
-      } satisfies SDK.EventToStepValue,
-      valueSchema: SDK.EventToStepValueSchema,
-    }),
+    ...(withForcedTwin
+      ? [
+          encodedEntry({
+            key: forcedEventKey,
+            keySchema: SDK.EventKeySchema,
+            value: {
+              step_index: 0n,
+              phase: "ForcedTransaction",
+            } satisfies SDK.EventToStepValue,
+            valueSchema: SDK.EventToStepValueSchema,
+          }),
+        ]
+      : []),
     encodedEntry({
       key: normalEventKey,
       keySchema: SDK.EventKeySchema,
       value: {
-        step_index: 1n,
+        step_index: normalStepIndex,
         phase: "L2Transaction",
       } satisfies SDK.EventToStepValue,
       valueSchema: SDK.EventToStepValueSchema,
     }),
   ];
-  const validationTraces: readonly SDK.DaPayloadEntry[] = [
-    validationDescriptor(forcedEventKey, 0),
-    validationDescriptor(normalEventKey, 1),
+  const validationTraceMembers = [
+    ...(withForcedTwin
+      ? [fixtureValidationTrace(forcedEventKey, transactionIdHex)]
+      : []),
+    fixtureValidationTrace(normalEventKey, transactionIdHex),
   ];
+  const validationTraces = validationTraceMembers.map(({ entry }) => entry);
   const cekProgramMaterial = sorted(
     (canonicalMaterialSidecarCbor === undefined
       ? []
@@ -259,12 +252,12 @@ export const buildStrictRetainedDaPairFixture = async ({
   };
   const counts: SDK.DaPayloadCounts = {
     withdrawalCount: 0n,
-    forcedTransactionCount: 1n,
+    forcedTransactionCount: withForcedTwin ? 1n : 0n,
     l2TransactionCount: 1n,
     depositCount: 0n,
-    totalEventCount: 2n,
-    transitionStepCount: 2n,
-    validationTraceCount: 2n,
+    totalEventCount: withForcedTwin ? 2n : 1n,
+    transitionStepCount: withForcedTwin ? 2n : 1n,
+    validationTraceCount: withForcedTwin ? 2n : 1n,
   };
   const header: SDK.Header = {
     prevUtxosRoot: utxoRoot.root,
@@ -300,18 +293,22 @@ export const buildStrictRetainedDaPairFixture = async ({
       transaction_preimages: [
         [transactionIdHex, canonicalCbor.toString("hex")],
       ],
-      forced_transaction_preimages: [
-        [
-          forcedOrderIdHex,
-          encodeMidgardForcedTxCanonical(forced).toString("hex"),
-        ],
-      ],
+      forced_transaction_preimages: withForcedTwin
+        ? [
+            [
+              forcedOrderIdHex,
+              encodeMidgardForcedTxCanonical(forced).toString("hex"),
+            ],
+          ]
+        : [],
       cek_program_material: cekProgramMaterial,
       deposits: [],
       transition_trace: sorted(transitionTrace),
       event_to_step: sorted(eventToStep),
       validation_traces: sorted(validationTraces),
-      validation_trace_witnesses: [],
+      validation_trace_witnesses: sorted(
+        validationTraceMembers.flatMap(({ witnesses }) => witnesses),
+      ),
       counts,
     },
   };

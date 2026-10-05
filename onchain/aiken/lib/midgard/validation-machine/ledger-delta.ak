@@ -5,6 +5,7 @@ use midgard/fraud_proofs/native_tx/components.{
 use midgard/fraud_proofs/native_tx/types.{MidgardTxInput}
 use midgard/ledger_output_commitment_v1
 use midgard/mpf_proof_fold_v1
+use midgard/mpf_proof_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types.{
   LedgerDeltaControlV1, LedgerDeltaOperationProofV1, LedgerDeltaOperationWitness,
@@ -182,15 +183,22 @@ fn ledger_delta_pending_step(
         pending.descriptor,
       ),
     )
+    // The fold reconstructs library roots, which name the empty ledger
+    // `null_hash`; the machine carries the committed Midgard root, which names
+    // it `env.empty_merkle_tree_root`. Both ends of the transition are read in
+    // the committed encoding so the terminal root a claim compares with the
+    // block's `utxos_root` has exactly one name for an emptied ledger.
     and {
       auxiliary == NoAuxiliaryWitness,
-      control.current_ledger_root == expected_current_root,
+      control.current_ledger_root == mpf_proof_v1.committed_root(
+        expected_current_root,
+      ),
       ledger_delta_successor_is_exact(
         pre,
         witness,
         LedgerDeltaControlV1 {
           ..control,
-          current_ledger_root: next_root,
+          current_ledger_root: mpf_proof_v1.committed_root(next_root),
           operation_count: control.operation_count + 1,
           operation_peaks: next_peaks,
           pending_mutation_cbor: #"",
@@ -198,7 +206,7 @@ fn ledger_delta_pending_step(
       ),
     }
   } else {
-    expect LedgerDeltaProofFrameWitness { frame, siblings } = auxiliary
+    expect LedgerDeltaProofFrameWitness { frame, siblings, opening } = auxiliary
     when
       mpf_proof_fold_v1.fold_proof_frame_v1(
         pending.key,
@@ -206,6 +214,11 @@ fn ledger_delta_pending_step(
         pending.fold_control,
         frame,
         siblings,
+        if pending.operation_kind == 0 {
+          Some(opening)
+        } else {
+          None
+        },
       )
     is {
       None -> False
@@ -689,6 +702,7 @@ pub fn verify_ledger_delta_proof_frame_semantics_v1(
   witness: ValidationOneStepWitnessV1,
   frame: mpf_proof_fold_v1.ProofFrameV1,
   siblings: List<ByteArray>,
+  opening: ByteArray,
 ) -> Bool {
   let control = ledger_delta_control_from_witness(witness.work_witness_cbor)
   expect control.pending_mutation_cbor != #""
@@ -703,7 +717,7 @@ pub fn verify_ledger_delta_proof_frame_semantics_v1(
     ledger_delta_pending_step(
       pre,
       witness,
-      LedgerDeltaProofFrameWitness { frame, siblings },
+      LedgerDeltaProofFrameWitness { frame, siblings, opening },
       control,
     ),
   }

@@ -1,7 +1,11 @@
-import { TransitionTraceChallengerError } from "@al-ft/midgard-fault-proofs";
+import {
+  payloadMemberCounts,
+  TransitionTraceChallengerError,
+} from "@al-ft/midgard-fault-proofs";
 import {
   type AuthenticatedStateQueueHeaderObservation,
   CanonicalEvidenceRejection,
+  type DaPayload,
   type EvidenceProvenance,
 } from "@al-ft/midgard-sdk";
 
@@ -66,16 +70,15 @@ export const countSetFromCanonical = (
 });
 
 /**
- * Extracts the canonical mismatch field list a `rootMismatch`/`countMismatch`
- * error carries.
+ * Extracts the canonical mismatch field list a `rootMismatch` error carries.
  *
  * The producer formats the list as `<prefix><name>,<name>.`; the names are
- * exactly the ones `rootMismatches`/`countMismatches` emit. Parsing is
- * deliberately strict: an unrecognised prefix, an empty list, or any token
- * outside the declared enumeration yields `null`, which the caller turns into
- * an `unenumerated_*` reason rather than a partial mismatch list. Coupling to
- * this format is guarded by the per-field mutation suite, which asserts every
- * one of the eight root names and seven count names is produced.
+ * exactly the ones `rootMismatches` emits. Parsing is deliberately strict: an
+ * unrecognised prefix, an empty list, or any token outside the declared
+ * enumeration yields `null`, which the caller turns into an
+ * `unenumerated_root_mismatch` reason rather than a partial mismatch list.
+ * Coupling to this format is guarded by the per-field mutation suite, which
+ * asserts every one of the eight root names is produced.
  */
 const parseCanonicalFieldList = <Field extends string>(
   message: string,
@@ -105,11 +108,6 @@ const ROOT_MISMATCH_PREFIXES = [
   "Payload roots do not match committed header: ",
 ] as const;
 
-const COUNT_MISMATCH_PREFIXES = [
-  "Payload counts do not match committed header: ",
-  "Payload declared counts do not match payload member arrays: ",
-] as const;
-
 export const orderReasonCodes = (
   codes: readonly string[],
 ): readonly WatcherHeaderRootReconstructionReasonCode[] => {
@@ -119,7 +117,7 @@ export const orderReasonCodes = (
   );
 };
 
-type Classification = {
+export type Classification = {
   readonly reasonCodes: readonly string[];
   readonly rootMismatches: readonly WatcherHeaderRootField[];
   readonly countMismatches: readonly WatcherHeaderCountField[];
@@ -187,28 +185,12 @@ export const classifyFailure = (error: unknown): Classification => {
               countMismatches: [],
             };
       }
-      case "countMismatch": {
-        const declared = error.message.startsWith(COUNT_MISMATCH_PREFIXES[1]);
-        const base = declared
-          ? ["count_mismatch", "declared_counts_member_mismatch"]
-          : ["count_mismatch"];
-        const fields = parseCanonicalFieldList(
-          error.message,
-          COUNT_MISMATCH_PREFIXES,
-          WATCHER_HEADER_COUNT_FIELDS,
-        );
-        return fields === null
-          ? {
-              reasonCodes: [...base, "unenumerated_count_mismatch"],
-              rootMismatches: [],
-              countMismatches: [],
-            }
-          : {
-              reasonCodes: base,
-              rootMismatches: [],
-              countMismatches: fields,
-            };
-      }
+      case "countMismatch":
+        return {
+          reasonCodes: ["count_mismatch", "unenumerated_count_mismatch"],
+          rootMismatches: [],
+          countMismatches: [],
+        };
       default:
         return {
           reasonCodes: ["unexpected_reconstruction_failure"],
@@ -221,6 +203,65 @@ export const classifyFailure = (error: unknown): Classification => {
     reasonCodes: ["unexpected_reconstruction_failure"],
     rootMismatches: [],
     countMismatches: [],
+  };
+};
+
+const differingCounts = (
+  left: WatcherHeaderCountSet,
+  right: WatcherHeaderCountSet,
+): readonly WatcherHeaderCountField[] =>
+  WATCHER_HEADER_COUNT_FIELDS.filter((field) => left[field] !== right[field]);
+
+/**
+ * The payload's declared counts are not committed by the header, so the
+ * canonical reconstruction no longer compares them. W22 still rejects a
+ * payload whose declared counts disagree with its members (`before`: checked
+ * right after decoding, ahead of every header and root check) or with the
+ * header (`after`: checked right after root authentication).
+ */
+export const declaredCountFailures = (
+  payload: DaPayload,
+  headerCounts: WatcherHeaderCountSet,
+): {
+  readonly before: Classification | null;
+  readonly after: Classification | null;
+} => {
+  const body = payload.block_body;
+  const counts = body.counts;
+  const declared = countSetFromCanonical(counts);
+  const members = differingCounts(
+    declared,
+    countSetFromCanonical(payloadMemberCounts(payload)),
+  );
+  const shape =
+    BigInt(body.event_to_step.length) !== counts.totalEventCount ||
+    counts.validationTraceCount !==
+      counts.forcedTransactionCount + counts.l2TransactionCount ||
+    BigInt(body.validation_traces.length) !== counts.validationTraceCount;
+  const header = differingCounts(headerCounts, declared);
+  return {
+    before:
+      members.length > 0
+        ? {
+            reasonCodes: ["count_mismatch", "declared_counts_member_mismatch"],
+            rootMismatches: [],
+            countMismatches: members,
+          }
+        : shape
+          ? {
+              reasonCodes: ["count_mismatch", "unenumerated_count_mismatch"],
+              rootMismatches: [],
+              countMismatches: [],
+            }
+          : null,
+    after:
+      header.length > 0
+        ? {
+            reasonCodes: ["count_mismatch"],
+            rootMismatches: [],
+            countMismatches: header,
+          }
+        : null,
   };
 };
 

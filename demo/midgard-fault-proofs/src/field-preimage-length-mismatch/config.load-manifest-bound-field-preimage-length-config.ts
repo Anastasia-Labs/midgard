@@ -51,7 +51,7 @@ export const createFieldPreimageLengthLucidSubmission = ({
         );
       }
       const context = Object.freeze({ config, prepared });
-      const accepted = prepared.direction === "wrongfulAcceptance";
+      const accepted = prepared.sourceKind === "normal";
       const builder =
         action === "init"
           ? builders.init

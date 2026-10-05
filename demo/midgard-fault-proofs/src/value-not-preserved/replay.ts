@@ -24,6 +24,10 @@ import {
   buildIndexedTraceProof,
 } from "../transition-trace/witnesses.js";
 import {
+  acceptedTransactionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
+import {
   collectReplayFindings,
   replayPrerequisiteFailure,
 } from "../workflow/replay-prerequisite.js";
@@ -331,6 +335,13 @@ export const detectValueConservationFaults = async ({
         ? VALUE_NOT_PRESERVED_REJECTION_VIOLATION
         : VALUE_NOT_PRESERVED_VIOLATION;
       return {
+        ...(forced
+          ? forcedTransactionSubject(
+              block.reconstruction.forcedTransactions[index]!.key,
+            )
+          : acceptedTransactionSubject(
+              block.reconstruction.transactions[index]!.txId,
+            )),
         detectionId: `${violationId}:${index}`,
         headerHash: block.headerHash,
         violationId,

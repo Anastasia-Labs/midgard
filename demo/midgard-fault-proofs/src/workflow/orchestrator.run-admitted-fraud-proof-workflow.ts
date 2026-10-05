@@ -22,7 +22,6 @@ import {
   reconcileWorkflowFundingSubmissionHandoff,
   releaseIdleWorkflowFundingReservation,
   releaseWorkflowFundingReservation,
-  reobserveWorkflowFundingReservationTransaction,
   type WorkflowFundingCompletionHandoff,
   WorkflowFundingReservationUnavailableError,
   type WorkflowFundingSubmissionHandoff,
@@ -72,6 +71,7 @@ import {
   validateAction,
   validatePreflight,
 } from "./orchestrator.normalize-workflow-terminal.js";
+import { reobserveRequiredWorkflowParent } from "./orchestrator.reobserve-required-parent.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 
 /**
@@ -281,15 +281,25 @@ export const runAdmittedFraudProofWorkflow = async ({
       entries,
     };
 
-    // The journal records submissions, not permanent progress. When the current
-    // chain asks for an older action, reconcile that exact intent first. This
-    // also covers restart after rollback without a separate per-family undo log.
-    const priorLifecycle = [...entries]
+    // Reconcile rolled-back parents before pending descendants. An action
+    // with its own unresolved intent still reconciles before reobservation.
+    const latestJournalEvent = [...entries]
       .reverse()
       .find(({ event }) => event.kind !== "stalled")?.event;
+    const unresolvedEvent =
+      fundingRecovery.abandonmentHandoff?.submissionIntent ??
+      (latestJournalEvent?.kind === "submission_intent" ||
+      latestJournalEvent?.kind === "reobserved" ||
+      latestJournalEvent?.kind === "submission_ambiguous" ||
+      latestJournalEvent?.kind === "submitted" ||
+      latestJournalEvent?.kind === "rebroadcast_intent" ||
+      (latestJournalEvent?.kind === "reconciled" &&
+        latestJournalEvent.outcome === "pending")
+        ? latestJournalEvent
+        : undefined);
     let currentObservation: FraudProofWorkflowObservation | undefined;
     if (
-      priorLifecycle?.kind !== "completed" &&
+      latestJournalEvent?.kind !== "completed" &&
       fundingRecovery.completionHandoff?.completion.kind !== "completed" &&
       entries.some(({ event }) => event.kind === "confirmed")
     ) {
@@ -302,45 +312,35 @@ export const runAdmittedFraudProofWorkflow = async ({
       });
       const current = await adapter.observe(context);
       currentObservation = current;
-      if (current.kind === "action_required") {
+      if (
+        current.kind === "action_required" &&
+        unresolvedEvent?.actionId !== current.action.actionId &&
+        (latestJournalEvent?.kind !== "reconciled" ||
+          latestJournalEvent.outcome !== "confirmed")
+      ) {
         const intent = latestSubmissionIntent(entries, current.action.actionId);
         const last = lastActionEvent(entries, current.action.actionId);
         if (
           intent !== undefined &&
           (last?.kind === "confirmed" ||
-            (priorLifecycle !== undefined &&
-              "actionId" in priorLifecycle &&
-              priorLifecycle.actionId !== current.action.actionId &&
+            (latestJournalEvent !== undefined &&
+              "actionId" in latestJournalEvent &&
+              latestJournalEvent.actionId !== current.action.actionId &&
               !(last?.kind === "reconciled" && last.outcome === "not_found")))
         ) {
-          const fundingAvailable =
-            await reobserveWorkflowFundingReservationTransaction({
-              journal,
-              transactionHash: intent.txHash,
-            });
-          if (!fundingAvailable)
-            return {
-              kind: "pending",
-              resumeOnObservation: true,
-              workflowId,
-              identity,
-              entries,
-              reason:
-                "Required inputs remain reserved by another unresolved transaction",
-            };
-          assertWorkflowJournalActuation({
-            journal,
-            deploymentFingerprint,
-            category,
+          const reobservation = await reobserveRequiredWorkflowParent({
+            adapter,
+            context,
             headerHash,
-            checkpoint: "before_reconcile",
+            journal,
+            intent,
+            hasUnresolvedDescendant: unresolvedEvent !== undefined,
+            append,
+            stalled,
+            resumeOnObservation,
           });
-          await append({
-            kind: "reobserved",
-            actionId: intent.actionId,
-            txHash: intent.txHash,
-          });
-          continue;
+          if (reobservation.kind === "reobserved") continue;
+          if (reobservation.kind !== "included") return reobservation;
         }
       }
     }
@@ -351,10 +351,6 @@ export const runAdmittedFraudProofWorkflow = async ({
     // A diagnostic `stalled` entry does not resolve an in-flight network
     // action.  Resume from the latest lifecycle event so a crash or transient
     // reconciliation failure can never turn uncertainty into a fresh submit.
-    const latestJournalEvent = [...entries]
-      .reverse()
-      .map((entry) => entry.event)
-      .find((event) => event.kind !== "stalled");
     if (
       latestJournalEvent?.kind === "reconciled" &&
       latestJournalEvent.outcome === "confirmed"
@@ -371,17 +367,6 @@ export const runAdmittedFraudProofWorkflow = async ({
       });
       continue;
     }
-    const unresolvedEvent =
-      fundingRecovery.abandonmentHandoff?.submissionIntent ??
-      (latestJournalEvent?.kind === "submission_intent" ||
-      latestJournalEvent?.kind === "reobserved" ||
-      latestJournalEvent?.kind === "submission_ambiguous" ||
-      latestJournalEvent?.kind === "submitted" ||
-      latestJournalEvent?.kind === "rebroadcast_intent" ||
-      (latestJournalEvent?.kind === "reconciled" &&
-        latestJournalEvent.outcome === "pending")
-        ? latestJournalEvent
-        : undefined);
     if (unresolvedEvent !== undefined && "actionId" in unresolvedEvent) {
       const intent =
         fundingRecovery.abandonmentHandoff?.submissionIntent ??

@@ -72,6 +72,14 @@
     "./test-support/history-pair": {
       "midgard-source": "./tests/support/emulator/history-pair.ts",
       "types": "./tests/support/emulator/history-pair.ts"
+    },
+    "./test-support/transition-trace-reconstruct": {
+      "midgard-source": "./src/transition-trace/reconstruct.ts",
+      "types": "./src/transition-trace/reconstruct.ts"
+    },
+    "./test-support/validation-one-step-staging": {
+      "midgard-source": "./src/validation-dispute/submit/reference-scripts.require-staged-one-step-argument.ts",
+      "types": "./src/validation-dispute/submit/reference-scripts.require-staged-one-step-argument.ts"
     }
   },
   "type": "module",
@@ -88,6 +96,7 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:traced-refusals": "node scripts/run-traced-refusals.mjs",
     "check:builder-exports": "node scripts/check-builder-exports.mjs",
     "test:cardano-capability-p2-retained-da": "node tests/fixtures/verify-cardano-capability-p2-retained-da-v1.mjs",
     "build:contrib-raw": "tsup src/index.ts --format esm --dts --clean && tsup src/bin.ts --format esm"
@@ -105,7 +114,7 @@
     "@al-ft/midgard-core": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
     "@al-ft/midgard-validation": "workspace:*",
-    "@harmoniclabs/cbor": "1.6.6",
+    "@harmoniclabs/cbor": "2.0.2",
     "@lucid-evolution/lucid": "0.6.5",
     "effect": "^3.14.22",
     "json-bigint": "npm:@cardanosolutions/json-bigint@1.1.0",
@@ -114,6 +123,7 @@
   "devDependencies": {
     "@al-ft/midgard-test-support": "workspace:*",
     "@lucid-evolution/scalus-uplc": "0.1.3",
+    "@lucid-evolution/uplc": "0.2.23",
     "@types/json-bigint": "1.0.4",
     "@types/node": "^22.17.0",
     "midgard-node": "workspace:*",

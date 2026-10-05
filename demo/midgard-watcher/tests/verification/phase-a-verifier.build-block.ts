@@ -306,7 +306,7 @@ describe("published rejection vocabulary", () => {
     );
   });
 
-  it("splits the reachable set into 21 evidenced and 11 dominated codes", () => {
+  it("splits the reachable set into 20 evidenced and 12 dominated codes", () => {
     expect(
       [
         ...WATCHER_PHASE_A_EVIDENCED_REJECT_CODES,
