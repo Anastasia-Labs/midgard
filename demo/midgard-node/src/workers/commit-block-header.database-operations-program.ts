@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { ForeignBlockVerificationError } from "../mpf/verified-block-import.js";
 import { assertHistoryProducer } from "../services/event-history-producer.js";
 import { Lucid, MidgardContracts } from "../services/index.js";
+import { fetchStateQueueSnapshotProgram } from "../services/state-queue-topology.js";
 import { buildOnVerifiedCommitBaseProgram } from "./commit-block-header.build-on-verified-base-program.js";
 import { defaultCommitLucidFactory } from "./commit-block-header.pending-user-event-counts-up-to.js";
 import {
@@ -33,9 +34,24 @@ export const databaseOperationsProgram = (
     const acquireLucid = args[9] ?? defaultCommitLucidFactory;
     const lucid = yield* acquireLucid();
     const contracts = yield* MidgardContracts;
-    const latest = yield* deserializeStateQueueUTxO(
-      workerInput.data.availableConfirmedBlock,
-    );
+    // History can publish a landed signed journal while the previous commit
+    // base has already left the queue. Verify the current canonical base for
+    // local recovery; its separately retained node still fixes what is replayed.
+    const latest =
+      workerInput.data.localFinalizationPending &&
+      workerInput.data.availableLocalFinalizationBlock !== ""
+        ? yield* fetchStateQueueSnapshotProgram(
+            lucid.api,
+            contracts.stateQueue,
+            "commit_preflight",
+          ).pipe(
+            Effect.flatMap((snapshot) =>
+              deserializeStateQueueUTxO(snapshot.tailCommitBase.utxo),
+            ),
+          )
+        : yield* deserializeStateQueueUTxO(
+            workerInput.data.availableConfirmedBlock,
+          );
     const base = yield* verifyForeignCommitBase(latest).pipe(
       Effect.provideService(Lucid, lucid),
     );
