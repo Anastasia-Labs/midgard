@@ -26,7 +26,10 @@ import { type HistoryListenerBinding } from "../src/devnet-stack/history-listene
 import { createHistoryWindowSealer } from "../src/devnet-stack/history-native-window-proof.js";
 import { offerForHistorySeal } from "../src/devnet-stack/history-offer-availability.js";
 import { provePinnedHistoryListener } from "../src/devnet-stack/history-pinned-listener.js";
-import { windowFixture } from "./helpers/history-native-window-fixture.js";
+import {
+  windowFixture,
+  writeSyntheticControls,
+} from "./helpers/history-native-window-fixture.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const cleanups: (() => Promise<void>)[] = [];
@@ -333,17 +336,14 @@ it("actual recorder FD3 replies are revoked by actual main-native rollback and n
     typeof recorder.ready.controlPath !== "string"
   )
     throw Error("synthetic recorder control absent");
-  writeFileSync(
-    recorder.ready.controlPath,
-    JSON.stringify([
-      {
-        schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
-        kind: "roll_backward",
-        point: { kind: "origin" },
-        tip: { kind: "origin" },
-      },
-    ]),
-  );
+  writeSyntheticControls(recorder.ready.controlPath, [
+    {
+      schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
+      kind: "roll_backward",
+      point: { kind: "origin" },
+      tip: { kind: "origin" },
+    },
+  ]);
   await expect
     .poll(
       async () =>

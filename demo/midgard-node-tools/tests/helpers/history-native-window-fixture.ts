@@ -1,5 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -20,6 +26,21 @@ import {
 import { config as baseConfig } from "midgard-watcher/tests/l1/native-chain-sync.config";
 
 import type { HistoryWindowPoint } from "../../src/devnet-stack/history-native-window-proof.js";
+
+/**
+ * Replaces the synthetic native's control file by rename. The native re-reads
+ * it every 10 ms from its own process; a truncate-then-write lets that read see
+ * an empty file, whose JSON.parse failure kills the native and ends the stream
+ * under test.
+ */
+export const writeSyntheticControls = (
+  controlPath: string,
+  controls: readonly WatcherNativeChainSyncEvent[],
+) => {
+  const staged = `${controlPath}.${randomUUID()}.tmp`;
+  writeFileSync(staged, JSON.stringify(controls));
+  renameSync(staged, controlPath);
+};
 
 /** Dummy header signatures; real raw CBOR/native admission, not Cardano consensus. */
 const emptyBlock = (
@@ -229,7 +250,7 @@ let seen=0;setInterval(async()=>{const controls=JSON.parse(readFileSync(${JSON.s
   const controls: WatcherNativeChainSyncEvent[] = [];
   const send = (event: WatcherNativeChainSyncEvent) => {
     controls.push(event);
-    writeFileSync(controlPath, JSON.stringify(controls));
+    writeSyntheticControls(controlPath, controls);
   };
   return {
     root,
