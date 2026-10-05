@@ -3,12 +3,14 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { Level } from "level";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { MidgardMpf } from "../src/mpf/index.js";
+import { ledgerOutputToInsertBatchOp } from "../src/mpf/ledger-delta.js";
 import {
   type ForeignNativeReplayBlock,
   prepareForeignNativeReplay,
@@ -31,6 +33,7 @@ import {
   nativeOwnerBinaryPresent,
   warnNativeOwnerBinaryAbsent,
 } from "./helpers/native-owner-binary.js";
+import { makeOutRefCbor } from "./midgard-output-helpers.js";
 
 const binaryPresent = nativeOwnerBinaryPresent();
 if (!binaryPresent)
@@ -129,13 +132,21 @@ describe.skipIf(!binaryPresent)(
       } finally {
         await seed.close();
       }
-      const keys = [41, 42, 43, 44].map((byte) => Buffer.alloc(32, byte));
-      const values = [51, 52, 53, 54].map((byte) => Buffer.alloc(64, byte));
-      const insert = (index: number): NativeMpfEventOp => ({
-        type: "insert",
-        key: keys[index]!,
-        value: values[index]!,
-      });
+      const keys = [41, 42, 43, 44].map((byte) => makeOutRefCbor(byte));
+      const values = [51, 52, 53, 54].map((byte) =>
+        encodeMidgardTxOutput({
+          address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, byte)]),
+          value: { lovelace: 2_000_000n + BigInt(byte), assets: new Map() },
+        }),
+      );
+      const rawOutputs = new Map(
+        keys.map((key, index) => [key.toString("hex"), values[index]!]),
+      );
+      const insert = (index: number): NativeMpfEventOp =>
+        ledgerOutputToInsertBatchOp({
+          outRef: keys[index]!,
+          outputCbor: values[index]!,
+        });
       // Foreign insertion/no-op, local replacement, then another foreign insert.
       // Multiple live leaves ensure the native replay must retain branch content.
       const events: readonly (readonly NativeMpfEventOp[])[] = [
@@ -167,7 +178,9 @@ describe.skipIf(!binaryPresent)(
           operations.map((operation) => ({
             key: Buffer.from(operation.key).toString("hex"),
             output:
-              operation.type === "insert" ? Buffer.from(operation.value) : null,
+              operation.type === "insert"
+                ? rawOutputs.get(Buffer.from(operation.key).toString("hex"))!
+                : null,
           })),
         ),
         eventRoots: roots,
@@ -210,6 +223,34 @@ describe.skipIf(!binaryPresent)(
     it("persists a foreign/local/foreign replay, recovers it in a new epoch, and continues a child fork", async () => {
       const f = await fixture();
       const owner = await open(f.options);
+      // Raw output preimages produce a different trie from E1's committed
+      // descriptors even though the native digest and event counts are exact.
+      const first = f.base.importedBlocks[0]!;
+      const rawEvents = first.events.map((event) =>
+        event.map(
+          (mutation): NativeMpfEventOp =>
+            mutation.output === null
+              ? { type: "delete", key: Buffer.from(mutation.key, "hex") }
+              : {
+                  type: "insert",
+                  key: Buffer.from(mutation.key, "hex"),
+                  value: mutation.output,
+                },
+        ),
+      );
+      const rawLog = encodeNativeMpfEventLog(
+        SDK.EMPTY_MERKLE_TREE_ROOT,
+        rawEvents,
+      );
+      const rawHandle = await owner.fork(SDK.EMPTY_MERKLE_TREE_ROOT);
+      const rawApplied = await owner.applyEvents(rawHandle, rawLog);
+      expect(rawApplied.eventLogDigest).toBe(
+        digest(EVENT_LOG_DIGEST_DOMAIN, rawLog).toString("hex"),
+      );
+      expect(rawApplied.eventRoots).toHaveLength(first.eventRoots.length);
+      expect(rawApplied.candidateRoot).not.toBe(first.root);
+      expect(rawApplied.eventRoots[0]).not.toBe(first.eventRoots[0]);
+      await owner.discard(rawHandle);
       const prepared = await Effect.runPromise(
         prepareForeignNativeReplay({
           owner,

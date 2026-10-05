@@ -5,6 +5,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 
 import type * as Ledger from "../database/utils/ledger.js";
+import { ledgerOutputToInsertBatchOp } from "../mpf/ledger-delta.js";
 import type { PersistedNativeMpfReplay } from "./mpf-native-owner/protocol.js";
 import {
   digest,
@@ -103,18 +104,22 @@ export const foreignAdoptionProjection = (
     if (
       output === null
         ? final !== undefined
-        : final === undefined || !final.equals(output)
+        : final === undefined ||
+          !ledgerOutputToInsertBatchOp({
+            outRef: Buffer.from(key, "hex"),
+            outputCbor: final,
+          }).value.equals(output)
     )
       throw new Error(
         "Foreign adoption projection differs from the verified ledger",
       );
-    if (output === null) continue;
+    if (output === null || final === undefined) continue;
     const input = decodeMidgardSpendInputItem(Buffer.from(key, "hex"));
     rows.push({
       tx_id: Buffer.from(input.txId).toString("hex"),
       outref: key,
-      output: output.toString("hex"),
-      address: encodeMidgardAddressText(decodeMidgardTxOutput(output).address),
+      output: final.toString("hex"),
+      address: encodeMidgardAddressText(decodeMidgardTxOutput(final).address),
     });
   }
   return {

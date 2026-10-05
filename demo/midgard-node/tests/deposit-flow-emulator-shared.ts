@@ -162,10 +162,7 @@ import {
   WithdrawalsDB,
 } from "../src/database/index.js";
 import * as Ledger from "../src/database/utils/ledger.js";
-import {
-  promoteOrRecoverNativeMpf,
-  publishCommitMempoolLedgerMutation,
-} from "../src/fibers/block-commitment.js";
+import { promoteOrRecoverNativeMpf } from "../src/fibers/block-commitment.js";
 import { buildBlockConfirmationAction } from "../src/fibers/block-confirmation.js";
 import { reconcileVisibleDepositUTxOs } from "../src/fibers/fetch-and-insert-deposit-utxos.js";
 import { reconcileVisibleWithdrawalUTxOs } from "../src/fibers/fetch-and-insert-withdrawal-utxos.js";
@@ -189,6 +186,7 @@ import {
   HistoryProducer,
   UnownedHistoryFixture,
 } from "../src/services/event-history-producer.js";
+import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import {
   ContractDeploymentIdentity,
   Database,
@@ -795,6 +793,8 @@ const fixtureNodeConfigFromEnvironment = NodeConfig.pipe(
   })),
 );
 
+import { runOwnedNativeCommit } from "./deposit-flow-emulator-shared.run-owned-native-commit.js";
+
 const runFixtureCommitProgram = (
   contracts: SDK.MidgardValidators,
   lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
@@ -820,72 +820,19 @@ const runFixtureCommitProgram = (
           ),
       );
     });
-  return production.owner.runProducer((token, assertCurrent, coverage) =>
-    Effect.gen(function* () {
-      const startedAtMs = Date.now();
-      const native = yield* Ref.get(production.globals.NATIVE_MPF_OWNER);
-      if (
-        native !== undefined &&
-        input.data.localFinalizationPending &&
-        input.data.availableLocalFinalizationBlock !== ""
-      ) {
-        yield* recoverNativeMpfForLocalFinalization(
-          native,
-          input.data.availableLocalFinalizationBlock,
-        ).pipe(Effect.provideService(HistoryProducer, { token, coverage }));
-      }
-      const nativeMpf =
-        native === undefined
-          ? undefined
-          : {
-              port: native.createWorkerPort(),
-              durableRoot: (yield* Effect.promise(() => native.diagnostics()))
-                .durableRoot,
-              ownerBinarySha256:
-                production.nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
-            };
-      const output = yield* commitWorkerProgram(
+  return runOwnedNativeCommit(
+    contracts,
+    lucidService,
+    production,
+    input,
+    (nativeInput) =>
+      commitWorkerProgram(
         contracts,
         lucidService,
-        {
-          ...input,
-          history: { token, coverage },
-          nativeMpf,
-        },
+        nativeInput,
         undefined,
         production.nodeConfig,
-      ).pipe(
-        Effect.provideService(HistoryProducer, { token, coverage }),
-        Effect.provideService(MempoolLedgerCache, production.cache),
-        Effect.ensuring(Effect.sync(() => nativeMpf?.port.close())),
-      );
-      yield* assertCurrent;
-      if (
-        "nativeMpfPromotion" in output &&
-        output.nativeMpfPromotion !== undefined
-      ) {
-        if (native === undefined)
-          return yield* Effect.die("Missing native owner for promotion");
-        yield* promoteOrRecoverNativeMpf({
-          owner: native,
-          handle: output.nativeMpfPromotion.handle,
-        });
-      }
-      yield* publishCommitMempoolLedgerMutation(
-        production.globals,
-        output,
-        production.nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
-      );
-      yield* Effect.sync(() =>
-        production.onCommitAttempt?.({
-          coverage,
-          startedAtMs,
-          finishedAtMs: Date.now(),
-          output,
-        }),
-      );
-      return output;
-    }),
+      ),
   );
 };
 
@@ -975,7 +922,11 @@ export const runCommitWorkerUntilSubmitted = async ({
     await alignCommitSchedulerBeforeTestWorker({
       fixture,
       lucidService,
-      targetEndTimeMs: Date.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+      targetEndTimeMs:
+        Date.now() +
+        (production === undefined
+          ? COMMIT_MINIMUM_FUTURE_BUFFER_MS
+          : HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS),
     });
 
   let lastOutput: CommitWorkerOutput | undefined;
@@ -993,6 +944,13 @@ export const runCommitWorkerUntilSubmitted = async ({
       return output;
     }
     lastOutput = output;
+    if (
+      production !== undefined &&
+      output?.type === "AwaitingForeignDaOutput" &&
+      output.reason ===
+        "Verified foreign ledger adoption is pending source-owner recovery"
+    )
+      continue;
     if (output?.type !== "RegisteredDueWorkOutput") {
       break;
     }
@@ -1141,11 +1099,13 @@ export const runSpeculativeWorkerWithInstruction = async ({
   watermarks,
   onReady,
   nodeConfig,
+  production,
 }: {
   readonly fixture: EmulatorFixture;
   readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
   readonly watermarks: UserEventBarrierWatermarks;
   readonly nodeConfig?: NodeConfigDep;
+  readonly production?: OwnedCommitFixture;
   readonly onReady: (
     candidate: SpeculativeCandidateSummary,
   ) => Effect.Effect<
@@ -1162,41 +1122,54 @@ export const runSpeculativeWorkerWithInstruction = async ({
   let acquiredLeaseToken: string | undefined;
   let lucidAcquisitions = 0;
   const config = nodeConfig ?? (await makeNodeConfigForFixture(fixture));
-  const output = await Effect.runPromise(
-    runUnownedNativeCommit(
+  const runSpeculative = (nativeInput: CommitWorkerInput) =>
+    commitWorkerProgram(
       fixture.contracts,
       lucidService,
+      nativeInput,
+      (readyCandidate) => {
+        candidate = readyCandidate;
+        // Source-owned short-window selection authenticates the live append
+        // fence once. Unowned model candidates have no provider acquisition.
+        expect(lucidAcquisitions).toBe(production === undefined ? 0 : 1);
+        return onReady(readyCandidate).pipe(
+          Effect.provideService(
+            ContractDeploymentIdentity,
+            fixtureDeploymentIdentity(fixture),
+          ),
+          Effect.tap((instruction) =>
+            instruction.type === "SubmitSpeculativeCandidate"
+              ? Effect.sync(() => {
+                  acquiredLeaseToken = instruction.stateQueueLeaseToken;
+                })
+              : Effect.void,
+          ),
+        );
+      },
       config,
-      workerInput,
-      (nativeInput) =>
-        commitWorkerProgram(
+      () =>
+        Effect.sync(() => {
+          lucidAcquisitions += 1;
+          return lucidService as any;
+        }),
+    );
+  const output = await Effect.runPromise(
+    (production === undefined
+      ? runUnownedNativeCommit(
           fixture.contracts,
           lucidService,
-          nativeInput,
-          (readyCandidate) => {
-            candidate = readyCandidate;
-            expect(lucidAcquisitions).toBe(0);
-            return onReady(readyCandidate).pipe(
-              Effect.provideService(
-                ContractDeploymentIdentity,
-                fixtureDeploymentIdentity(fixture),
-              ),
-              Effect.tap((instruction) =>
-                instruction.type === "SubmitSpeculativeCandidate"
-                  ? Effect.sync(() => {
-                      acquiredLeaseToken = instruction.stateQueueLeaseToken;
-                    })
-                  : Effect.void,
-              ),
-            );
-          },
           config,
-          () =>
-            Effect.sync(() => {
-              lucidAcquisitions += 1;
-              return lucidService as any;
-            }),
-        ),
+          workerInput,
+          runSpeculative,
+        )
+      : runOwnedNativeCommit(
+          fixture.contracts,
+          lucidService,
+          production,
+          workerInput,
+          runSpeculative,
+          false,
+        )
     ).pipe(
       Effect.ensuring(
         Effect.suspend(() =>

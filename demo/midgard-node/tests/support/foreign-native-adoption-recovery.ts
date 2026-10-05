@@ -1,14 +1,24 @@
+import {
+  decodeMidgardSpendInputItem,
+  decodeMidgardTxOutput,
+  encodeMidgardAddressText,
+} from "@al-ft/midgard-core/codec";
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
 import { Data, Emulator, Lucid as makeLucid } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
 
 import * as Adoptions from "../../src/database/foreignNativeAdoptions.js";
+import type { DepositEntry } from "../../src/database/mempoolLedger.js";
+import type { MinimalEntry } from "../../src/database/utils/ledger.js";
 import type { HistoryRecoveryPreparation } from "../../src/services/event-history-recovery.js";
 import * as ConfirmedRecovery from "../../src/services/foreign-confirmed-ledger.js";
 import { recoverForeignNativeAdoptions } from "../../src/services/foreign-native-adoption.js";
+import { foreignAdoptionProjection } from "../../src/services/foreign-native-adoption-projection.js";
 import { assertForeignVerificationSource } from "../../src/services/foreign-verification-source.js";
 import { Lucid } from "../../src/services/lucid.js";
 import {
@@ -19,6 +29,7 @@ import type {
   NativeMpfOwnerService,
   PersistedNativeMpfReplay,
 } from "../../src/services/mpf-native-owner/protocol.js";
+import { encodeNativeMpfEventLog } from "../../src/services/mpf-native-owner/service.js";
 import {
   digest,
   EVENT_LOG_DIGEST_DOMAIN,
@@ -209,6 +220,90 @@ export const adoptionRecoveryFixture = async (
     },
     rebind: (current: Verification.VerifiedForeignCommitBase) => {
       base = current;
+    },
+  };
+};
+
+export const assertRawOutputReplayRefused = (
+  replay: PersistedNativeMpfReplay,
+  entry: MinimalEntry,
+) => {
+  const rawLog = encodeNativeMpfEventLog(replay.baseRoot, [
+    [{ type: "insert", key: entry.outref, value: entry.output }],
+  ]);
+  expect(() =>
+    foreignAdoptionProjection(
+      {
+        ...replay,
+        eventLog: rawLog,
+        eventLogDigest: digest(EVENT_LOG_DIGEST_DOMAIN, rawLog).toString("hex"),
+      },
+      [entry],
+    ),
+  ).toThrow("Foreign adoption projection differs from the verified ledger");
+};
+
+/** Modeled authenticated deposit membership for the SQL coordinator boundary. */
+export const withDepositMembership = async (
+  base: Verification.VerifiedForeignCommitBase,
+) => {
+  const ledger = base.entries[0]!;
+  const input = decodeMidgardSpendInputItem(ledger.outref);
+  const id = Buffer.from(
+    Data.to(
+      {
+        transactionId: Buffer.from(input.txId).toString("hex"),
+        outputIndex: BigInt(input.outputIndex),
+      },
+      SDK.OutputReference,
+    ),
+    "hex",
+  );
+  const entry: DepositEntry = {
+    tx_id: computeHash32(id),
+    outref: ledger.outref,
+    output: ledger.output,
+    address: encodeMidgardAddressText(
+      decodeMidgardTxOutput(ledger.output).address,
+    ),
+    source_event_id: id,
+  };
+  expect(entry.tx_id.equals(Buffer.from(input.txId))).toBe(false);
+  await run(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const binding = Buffer.from(base.history.coverage.bindingDigest, "hex");
+      const incarnation = Buffer.alloc(32, 71);
+      yield* sql`INSERT INTO event_history_incarnations(binding_digest,incarnation_id,kind,event_id,event_key,
+      origin_canonical,incarnation_record,incarnation_digest) VALUES (${binding},${incarnation},'deposit',${id},${Buffer.alloc(32, 72)},true,'Explicit modeled deposit source',${Buffer.alloc(32, 73)})`;
+      yield* sql`INSERT INTO deposits_utxos(event_id,event_info,inclusion_time,deposit_l1_tx_hash,ledger_tx_id,
+      ledger_output,ledger_address,status,history_binding_digest,history_incarnation_id)
+      VALUES (${id},${Buffer.from("80", "hex")},NOW(),${Buffer.from(input.txId)},${entry.tx_id},${entry.output},${entry.address},'awaiting',${binding},${incarnation})`;
+    }),
+  );
+  const block = base.importedBlocks[0]!;
+  return {
+    base: {
+      ...base,
+      importedBlocks: [
+        {
+          ...block,
+          memberships: {
+            deposits: [{ id, entry }],
+            forcedTransactions: [],
+            withdrawals: [],
+          },
+        },
+      ],
+    },
+    assertProjected: async () => {
+      const rows = await run(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql`SELECT tx_id,outref,output,address,source_event_id FROM mempool_ledger WHERE outref=${entry.outref}`;
+        }),
+      );
+      expect(rows).toEqual([entry]);
     },
   };
 };

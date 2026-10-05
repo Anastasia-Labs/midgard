@@ -8,6 +8,7 @@ import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as Adoptions from "../src/database/foreignNativeAdoptions.js";
 import * as Engine from "../src/database/mpfEngineState.js";
 import { DatabaseError } from "../src/database/utils/common.js";
+import { ledgerOutputToInsertBatchOp } from "../src/mpf/ledger-delta.js";
 import { foreignAdoptionProjection } from "../src/services/foreign-native-adoption-projection.js";
 import { assertForeignVerificationSource } from "../src/services/foreign-verification-source.js";
 import { encodeNativeMpfEventLog } from "../src/services/mpf-native-owner/service.js";
@@ -30,7 +31,11 @@ import {
   makeMidgardTxOutput,
   makeOutRefCbor,
 } from "./midgard-output-helpers.js";
-import { adoptionRecoveryFixture } from "./support/foreign-native-adoption-recovery.js";
+import {
+  adoptionRecoveryFixture,
+  assertRawOutputReplayRefused,
+  withDepositMembership,
+} from "./support/foreign-native-adoption-recovery.js";
 
 // Actual PostgreSQL authority, durable plans and ledger/event projection.
 // L1 source evidence is explicitly modeled by the existing journal fixture;
@@ -86,7 +91,10 @@ const setup = async (noop = false) => {
       : [
           [
             { type: "delete", key: beforeKey },
-            { type: "insert", key: afterKey, value: output },
+            ledgerOutputToInsertBatchOp({
+              outRef: afterKey,
+              outputCbor: output,
+            }),
           ],
         ],
   );
@@ -160,6 +168,12 @@ const prepared = () =>
 describe("source-owned foreign native adoption SQL", () => {
   it("retains requested/prepared crash material before changing projection", async () => {
     const f = await setup();
+    const project = (replay: typeof f.replay) =>
+      foreignAdoptionProjection(replay, f.base.entries);
+    assertRawOutputReplayRefused(f.replay, f.base.entries[0]!);
+    const [projected] = project(f.replay).rows;
+    expect(projected?.output).toBe(output.toString("hex"));
+    expect(projected?.address).toBe(address);
     expect(await state()).toEqual({
       keys: [beforeKey.toString("hex")],
       root: hash(20),
@@ -385,7 +399,10 @@ describe("foreign native adoption production recovery coordinator", () => {
   it("rebinds to a new generation and completes a crash after native promotion", async () => {
     const f = await setup();
     await run(Engine.releaseLedgerStoreLease(lease));
-    const base = await withReplaySegment(f.base);
+    const deposit = await withDepositMembership(
+      await withReplaySegment(f.base),
+    );
+    const base = deposit.base;
     const fixture = await adoptionRecoveryFixture(base, f.replay);
     fixture.crashAfterPromotion();
     await expect(
@@ -414,6 +431,7 @@ describe("foreign native adoption production recovery coordinator", () => {
     ]);
     expect(fixture.verify.mock.calls.length).toBeGreaterThanOrEqual(3);
     expect(fixture.owner.fork).toHaveBeenCalledTimes(1);
+    await deposit.assertProjected();
   });
 
   it("retains preparation but refuses promotion when the source generation changes", async () => {

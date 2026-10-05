@@ -1,3 +1,4 @@
+import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
@@ -11,6 +12,7 @@ import {
   digest,
   EVENT_LOG_DIGEST_DOMAIN,
 } from "../src/services/mpf-native-owner/service.normalize-owner-options.js";
+import { makeOutRefCbor } from "./midgard-output-helpers.js";
 
 const root = (byte: string) => byte.repeat(32);
 const binary = root("ab");
@@ -24,7 +26,20 @@ const block = (
   parentHeaderHash: String(index - 1),
   parentUtxosRoot: parent,
   root: post,
-  events: [[{ key: "1122", output: Buffer.from([index]) }]],
+  events: [
+    [
+      {
+        key: makeOutRefCbor(index).toString("hex"),
+        output: encodeMidgardTxOutput({
+          address: Buffer.concat([
+            Buffer.from([0x60]),
+            Buffer.alloc(28, index),
+          ]),
+          value: { lovelace: 2_000_000n, assets: new Map() },
+        }),
+      },
+    ],
+  ],
   eventRoots: [post],
 });
 const fixture = (

@@ -4,6 +4,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import * as Adoptions from "../database/foreignNativeAdoptions.js";
+import type { DepositEntry } from "../database/mempoolLedger.js";
 import * as MpfEngineState from "../database/mpfEngineState.js";
 import {
   revalidateForeignCommitBase,
@@ -74,7 +75,10 @@ const projectionMaterial = (
   const deposits: Adoptions.AdoptionEvents["deposits"][number][] = [];
   const forced: Adoptions.AdoptionEvents["forced"][number][] = [];
   const withdrawals: Adoptions.AdoptionEvents["withdrawals"][number][] = [];
-  const origins = new Map<string, string>();
+  const origins = new Map<
+    string,
+    { readonly id: string; readonly entry: DepositEntry }
+  >();
   const unspent = new Set(
     base.entries.map((entry) => entry.outref.toString("hex")),
   );
@@ -88,7 +92,7 @@ const projectionMaterial = (
     for (const member of memberships.deposits) {
       const key = member.entry.outref.toString("hex");
       const id = member.id.toString("hex");
-      origins.set(key, id);
+      origins.set(key, { id, entry: member.entry });
       deposits.push({
         id,
         header: block.headerHash,
@@ -108,12 +112,25 @@ const projectionMaterial = (
   }
   return {
     ...projection,
-    rows: projection.rows.map((row) => ({
-      ...row,
-      ...(origins.has(row.outref)
-        ? { source_event_id: origins.get(row.outref)! }
-        : {}),
-    })),
+    rows: projection.rows.map((row) => {
+      const origin = origins.get(row.outref);
+      if (origin === undefined) return row;
+      if (
+        !origin.entry.outref.equals(Buffer.from(row.outref, "hex")) ||
+        !origin.entry.output.equals(Buffer.from(row.output, "hex")) ||
+        origin.entry.address !== row.address ||
+        !origin.entry.source_event_id.equals(Buffer.from(origin.id, "hex"))
+      )
+        throw new Error(
+          "Foreign adoption deposit projection differs from authenticated source",
+        );
+      return {
+        ...row,
+        tx_id: origin.entry.tx_id.toString("hex"),
+        address: origin.entry.address,
+        source_event_id: origin.id,
+      };
+    }),
     events: {
       deposits,
       forced,

@@ -1,6 +1,7 @@
 import { Effect, Exit } from "effect";
 
 import type { NativeMpfReplayInput } from "../database/pendingBlockFinalizations.js";
+import { ledgerOutputToInsertBatchOp } from "../mpf/ledger-delta.js";
 import {
   assertNativeMpfHashHex,
   NATIVE_MPF_OWNER_DEFAULT_CAPS,
@@ -113,7 +114,10 @@ const replayInput = (
         const key = Buffer.from(mutation.key, "hex");
         return mutation.output === null
           ? { type: "delete", key }
-          : { type: "insert", key, value: Buffer.from(mutation.output) };
+          : ledgerOutputToInsertBatchOp({
+              outRef: key,
+              outputCbor: mutation.output,
+            });
       }),
     );
     return encodeNativeMpfEventLog(block.parentUtxosRoot, events);
