@@ -53,7 +53,9 @@ it("bounds the L1 reads of one pass however many superseded attempts accumulate"
         event: { kind: "submission_intent", txHash },
       }) as unknown as FraudProofWorkflowJournalEntry,
   );
-  const reconcile = vi.fn(async () => ({ kind: "not_found" as const }));
+  const reconcile = vi.fn(async (_saved: (typeof attempts)[number]) => ({
+    kind: "not_found" as const,
+  }));
   const schedule = createSupersededAttemptReadSchedule({
     baseDelayMs: 1_000,
     perPass: 3,
