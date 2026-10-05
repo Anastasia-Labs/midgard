@@ -31,6 +31,18 @@ const sqlLayer = (name: string) =>
   });
 const run = <A, E>(work: Effect.Effect<A, E, SqlClient.SqlClient>) =>
   Effect.runPromise(Effect.provide(work, sqlLayer(database)));
+const awaitEntry = <A, E>(
+  entered: Promise<void>,
+  owner: Fiber.RuntimeFiber<A, E>,
+): Promise<void> =>
+  Promise.race([
+    entered,
+    Effect.runPromise(Fiber.await(owner)).then((exit) => {
+      if (Exit.isFailure(exit))
+        return Effect.runPromise(Effect.failCause(exit.cause));
+      throw new Error("Control-plane owner exited before work entry");
+    }),
+  ]);
 const makeGlobals = () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -136,7 +148,7 @@ it.skipIf(!dbEnabled).each(["interruption", "hold-timeout"] as const)(
       ),
     );
     try {
-      await entered;
+      await awaitEntry(entered, fiber);
       let joined = false;
       const settled =
         trigger === "interruption"
@@ -216,7 +228,7 @@ it("still interrupts ordinary work and releases its control-plane permit", async
     ),
   );
   try {
-    await entered;
+    await awaitEntry(entered, fiber);
     expect(
       Exit.isInterrupted(await Effect.runPromise(Fiber.interrupt(fiber))),
     ).toBe(true);
