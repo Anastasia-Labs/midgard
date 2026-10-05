@@ -19,6 +19,7 @@ import {
 } from "./service-readiness.js";
 export { probe } from "./service-readiness.js";
 import { writeDurableJson } from "./durable.js";
+import { historyDaemonDiscovery } from "./history-daemon-discovery.js";
 import type { HistoryReadinessSpecification } from "./history-role-context.js";
 import { createHistoryRoleRegistry } from "./history-role-registry.js";
 import {
@@ -114,6 +115,11 @@ export type SupervisorPaths = {
   serviceSpecs?: readonly ServiceSpec[];
   readonly runDir: string;
   readonly deploymentBinding?: string;
+  readonly historyDaemon?: Readonly<{
+    descriptorPath: string;
+    supervisorPid: string;
+    runId: string;
+  }>;
   readonly pidDir: string;
   readonly events: string;
   readonly serviceLog: (name: string) => string;
@@ -174,9 +180,14 @@ export const superviseServices = async (
 ) => {
   const recoveryPaths = { ...paths, serviceSpecs: services };
   const startedScope = recoveryScope(recoveryPaths);
-  const history = createHistoryRoleRegistry(recoveryPaths);
+  let cohortChanged: () => void = () => undefined;
+  const history = createHistoryRoleRegistry(recoveryPaths, () =>
+    cohortChanged(),
+  );
   mkdirSync(paths.pidDir, { recursive: true, mode: 0o700 });
   const record = eventRecorder(paths);
+  const historyQuery = historyDaemonDiscovery(recoveryPaths, history, record);
+  cohortChanged = historyQuery.changed;
   await sweepOrphans(paths, policy, record);
   record({
     event: "supervisor-start",
@@ -426,7 +437,11 @@ export const superviseServices = async (
   try {
     await Promise.all(services.map((service) => keepAlive(service)));
   } finally {
-    history.close();
+    try {
+      await historyQuery.close();
+    } finally {
+      history.close();
+    }
   }
   record({ event: "supervisor-stop", pid: process.pid });
 };

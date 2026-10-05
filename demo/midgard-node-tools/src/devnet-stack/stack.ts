@@ -5,9 +5,17 @@ import { type DeployContext, nodeCli } from "./deploy.js";
 import { codeStamp, runtimeDistTargets } from "./dist-freshness.js";
 import { readJsonIfPresent, writeDurableFile } from "./durable.js";
 import { lastJsonValue, requireSuccess } from "./exec.js";
+import { historyDaemonReports } from "./history-daemon-discovery.js";
+import { HISTORY_DAEMON_QUERY_MS } from "./history-daemon-query.js";
+import { historyProofDeadline } from "./history-proof-deadline.js";
 import type { Layout } from "./layout.js";
 import { lockOwner } from "./lock.js";
 import type { HubOracleOneShot } from "./node-env.js";
+import {
+  hasReadinessProbe,
+  probeServiceReadiness,
+} from "./service-readiness.js";
+import { type ServiceRefusal, serviceRefusal } from "./service-refusal.js";
 import { serviceSpecs, specsDigest } from "./services.js";
 import { DEFAULT_POLICY, probe, type ServiceSpec } from "./supervisor.js";
 
@@ -189,6 +197,7 @@ export type ServiceReport = {
   readonly live?: boolean;
   readonly ready?: boolean;
   readonly reasons?: unknown;
+  readonly refusal?: ServiceRefusal;
 };
 
 /**
@@ -228,12 +237,29 @@ export const serviceReport = async (
     startedAt: pidFile?.startedAt,
     alive: pid !== undefined && alive(pid),
   };
+  const refusal = serviceRefusal(
+    {
+      runDir: layout.runDir,
+      pidDir: `${layout.state}/services`,
+      events: layout.supervisorEvents,
+      serviceLog: layout.serviceLog,
+    },
+    service.name,
+  );
+  if (refusal !== undefined)
+    return {
+      ...report,
+      live: false,
+      ready: false,
+      reasons: ["configuration_or_deployment_refused"],
+      refusal,
+    };
   const live =
     service.healthUrl === undefined
       ? undefined
       : (await probe(service.healthUrl, 5_000)).ok;
-  if (service.readyUrl === undefined) return { ...report, live };
-  const ready = await probe(service.readyUrl, 10_000);
+  if (!hasReadinessProbe(service)) return { ...report, live };
+  const ready = await probeServiceReadiness(service, 10_000);
   const body = readyBody(ready.body);
   return {
     ...report,
@@ -243,6 +269,24 @@ export const serviceReport = async (
       ? {}
       : { reasons: body.reasons ?? ready.body.slice(0, 300) }),
   };
+};
+
+/** One current complete history proof per poll; never four competing queries. */
+export const serviceReports = async (
+  layout: Layout,
+  services: readonly ServiceSpec[],
+): Promise<readonly ServiceReport[]> => {
+  const history = historyDaemonReports(
+    layout,
+    services,
+    historyProofDeadline(HISTORY_DAEMON_QUERY_MS),
+  );
+  const reports = await Promise.all(
+    services.map((service) => serviceReport(layout, service)),
+  );
+  const unchanged = history.current();
+  const ready = await history.ready;
+  return history.map(reports, unchanged && ready);
 };
 
 /**
@@ -289,9 +333,7 @@ export const waitForServices = async (
       throw new Error(
         `the supervisor is not running; see ${context.layout.serviceLog("supervisor")}`,
       );
-    const reports = await Promise.all(
-      services.map((s) => serviceReport(context.layout, s)),
-    );
+    const reports = await serviceReports(context.layout, services);
     const pending = reports.filter((r) => !r.alive || r.ready === false);
     if (pending.length === 0) return reports;
     const now = Date.now();

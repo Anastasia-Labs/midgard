@@ -5,6 +5,9 @@ import { join } from "node:path";
 import { LOCAL_AUTHORITY_ID } from "./da.js";
 import type { DeployContext } from "./deploy.js";
 import { writeDurableFile, writeOnceFile } from "./durable.js";
+import type { HistoryChildRole } from "./history-child-evidence.js";
+import { historyRecordedBinding } from "./history-recorded-binding.js";
+import type { HistoryReadinessSpecification } from "./history-role-context.js";
 import { type Layout, type RunEnv, servicePorts } from "./layout.js";
 import type { HubOracleOneShot } from "./node-env.js";
 import type { ServiceSpec } from "./supervisor.js";
@@ -325,6 +328,16 @@ export const watcherServiceSpecs = (
   const controller = join(layout.toolsRoot, "dist/devnet-stack.js");
   const { operations } = endpoints(run);
   const tunnel = `http://127.0.0.1:${servicePorts(run).historyTunnel}`;
+  const binding = historyRecordedBinding(layout, run, "Custom");
+  const historyReadiness = (
+    role: HistoryChildRole,
+  ): HistoryReadinessSpecification => ({
+    role,
+    runId: run.runId,
+    deploymentFingerprint: binding.manifest.manifestId,
+    publicBindingDigest: binding.digest,
+    expectedNetwork: "Custom",
+  });
   const own = (name: string, args: readonly string[]): ServiceSpec => ({
     name,
     command: process.execPath,
@@ -340,14 +353,25 @@ export const watcherServiceSpecs = (
       cwd: layout.watcherRoot,
       env: { ...WATCHER_ENV },
     },
-    ...HISTORY_ROLES.map((role) =>
-      own(`watcher-history-${role}`, ["history-archive", "--provider", role]),
-    ),
+    ...HISTORY_ROLES.map((role) => ({
+      ...own(`watcher-history-${role}`, [
+        "history-archive",
+        "--provider",
+        role,
+      ]),
+      historyReadiness: historyReadiness(
+        role === "a" ? "history-archive-a" : "history-archive-b",
+      ),
+    })),
     {
       ...own("watcher-history-tunnel", ["history-tunnel"]),
+      historyReadiness: historyReadiness("history-tunnel"),
       healthUrl: `${tunnel}/healthz`,
     },
-    own("watcher-history-recorder", ["history-recorder"]),
+    {
+      ...own("watcher-history-recorder", ["history-recorder"]),
+      historyReadiness: historyReadiness("history-recorder"),
+    },
     {
       name: "watcher",
       command: process.execPath,

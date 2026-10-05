@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -8,6 +9,7 @@ import {
   publicRetainedDaEnvironment,
 } from "./da.js";
 import type { DeployContext } from "./deploy.js";
+import { codeStamp, runtimeDistTargets } from "./dist-freshness.js";
 import { recordedHistoryGenesisPin } from "./history-pin.js";
 import { walletInfos } from "./identities.js";
 import { servicePorts } from "./layout.js";
@@ -24,7 +26,7 @@ import type {
 import { watcherServiceSpecs } from "./watcher.js";
 
 /**
- * The node binds its HTTP server only once startup is done. Its default
+ * The node publishes readiness once startup is done. Its default
  * startup budget: four provider steps (protocol status, DA provider
  * assertions, state-queue boundary seed, tx-order catch-up), each retried
  * STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS 120 x 5 s, plus the first-start
@@ -33,9 +35,26 @@ import { watcherServiceSpecs } from "./watcher.js";
 export const NODE_START_GRACE_MS = 60 * 60_000;
 
 export const supervisorPaths = (
-  context: Pick<DeployContext, "layout">,
+  context: Pick<DeployContext, "layout"> & Partial<Pick<DeployContext, "run">>,
+  specs?: readonly ServiceSpec[],
 ): SupervisorPaths => ({
   runDir: context.layout.runDir,
+  runtimeCodeStamp: () => codeStamp(runtimeDistTargets(context.layout)),
+  serviceSpecs: specs,
+  historyDaemon:
+    context.run !== undefined &&
+    specs?.some((spec) => spec.historyReadiness !== undefined)
+      ? {
+          runId: context.run.runId,
+          supervisorPid: context.layout.supervisorPid,
+          descriptorPath: context.layout.historyDaemonDescriptor,
+        }
+      : undefined,
+  deploymentBinding: existsSync(context.layout.contractManifest)
+    ? createHash("sha256")
+        .update(readFileSync(context.layout.contractManifest))
+        .digest("hex")
+    : undefined,
   pidDir: join(context.layout.state, "services"),
   events: context.layout.supervisorEvents,
   serviceLog: context.layout.serviceLog,
@@ -81,6 +100,8 @@ export const serviceSpecs = (
       args: [join(layout.daRoot, "dist/public-retained-da.js")],
       cwd: layout.daRoot,
       env: publicRetainedDaEnvironment({ layout, run, identities }),
+      healthUrl: `http://127.0.0.1:${ports.publicRetainedDaHealth}/healthz`,
+      readyUrl: `http://127.0.0.1:${ports.publicRetainedDaHealth}/readyz`,
       // Its tables exist once member 0 has migrated its store.
       prestart: () => grantPublicReader(layout, run, identities),
     },
@@ -134,35 +155,4 @@ export const enduranceReport = (
     .then(() => enduranceReasons(enduranceInputs(context)))
     .catch((error: unknown) => String(error));
 
-/**
- * Everything about a service set a running supervisor fixed when it started,
- * and the code it runs: `code` is the stamp of the runtime dists
- * (dist-freshness.ts codeStamp) when it started them. `up` compares it with
- * the set it would run now on the dists on disk, so a rebuild that changed
- * them restarts the supervisor and every service onto the new code. A
- * prestart is a closure, so only its presence counts.
- */
-export const specsDigest = (
-  specs: readonly ServiceSpec[],
-  code: string,
-): string =>
-  createHash("sha256")
-    .update(
-      JSON.stringify([
-        code,
-        specs.map((spec) => [
-          spec.name,
-          spec.command,
-          spec.args,
-          spec.cwd,
-          Object.entries(spec.env).sort(([a], [b]) =>
-            a < b ? -1 : a > b ? 1 : 0,
-          ),
-          spec.healthUrl ?? null,
-          spec.readyUrl ?? null,
-          spec.startGraceMs ?? null,
-          spec.prestart !== undefined,
-        ]),
-      ]),
-    )
-    .digest("hex");
+export { specsDigest } from "./service-recovery-scope.js";

@@ -65,7 +65,7 @@ import {
   recordedOneShot,
   recordSupervisorSpecs,
   runningSupervisor,
-  serviceReport,
+  serviceReports,
   startSupervisor,
   stopSupervisor,
   SUPERVISOR_STOP_MS,
@@ -202,15 +202,11 @@ const supervise = async (options: { runDir: string }) => {
 const status = async (options: { runDir: string }) => {
   const layout = layoutFor(options.runDir);
   const { context, oneShot } = runningContext(layout);
-  const services = await Promise.all(
-    serviceSpecs(context, oneShot).map((service) =>
-      serviceReport(layout, service),
-    ),
-  );
   const bond = await bondStatus(context, oneShot).catch((error: unknown) =>
     String(error),
   );
   const endurance = await enduranceReport(context);
+  const services = await serviceReports(layout, serviceSpecs(context, oneShot));
   console.log(
     JSON.stringify(
       {

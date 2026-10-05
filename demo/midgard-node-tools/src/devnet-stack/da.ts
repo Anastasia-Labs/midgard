@@ -227,6 +227,10 @@ export const publicRetainedDaEnvironment = (input: {
     MIDGARD_DOTENV_MODE: "disabled",
     MIDGARD_NETWORK: "Custom",
     DA_PUBLIC_RETAINED_DA_ENABLED: "true",
+    DA_PUBLIC_RETAINED_DA_HEALTH_HOST: "127.0.0.1",
+    DA_PUBLIC_RETAINED_DA_HEALTH_PORT: String(
+      servicePorts(run).publicRetainedDaHealth,
+    ),
     MIDGARD_DEPLOYMENT_MANIFEST_PATH: layout.committeeManifest(0),
     MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: layout.contractManifest,
     DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE: `seed:${identities.libp2p.retained}`,

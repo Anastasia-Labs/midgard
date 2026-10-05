@@ -7,7 +7,7 @@ import { serviceSpecs, supervisorPaths } from "./services.js";
 import {
   runningSupervisor,
   type ServiceReport,
-  serviceReport,
+  serviceReports,
   waitForServices,
 } from "./stack.js";
 import { DEFAULT_POLICY } from "./supervisor.js";
@@ -325,9 +325,7 @@ export const serviceReadiness = (
   return async (): Promise<readonly ServiceReadiness[]> => {
     specs ??= serviceSpecs(context, oneShot);
     const supervisor = supervisorPid ?? runningSupervisor(context.layout);
-    const reports = await Promise.all(
-      specs.map((spec) => serviceReport(context.layout, spec)),
-    );
+    const reports = await serviceReports(context.layout, specs);
     return supervisor !== undefined && alive(supervisor)
       ? reports
       : [...reports, { name: "supervisor", alive: false }];
