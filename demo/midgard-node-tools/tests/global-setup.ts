@@ -8,9 +8,20 @@
  */
 import { provisionMidgardNodeTestDatabaseShards } from "midgard-node/tests/global-setup";
 
-export const setup = async (): Promise<void> => {
+const ONCE = Symbol.for("midgard-node-tools/tests/global-setup");
+
+/**
+ * Vitest runs a root `globalSetup` once for the root config and once more for
+ * every `extends: true` project (vitest.config.ts declares the suite as a
+ * workspace-bundle project plus, when needed, a source project), all in this
+ * one process. Provisioning drops and recreates the shard databases, so it
+ * must happen exactly once per run: every call shares the first one's promise.
+ */
+export const setup = (): Promise<void> => {
   if (process.env.MIDGARD_SKIP_DB_TESTS === "1") {
-    return;
+    return Promise.resolve();
   }
-  await provisionMidgardNodeTestDatabaseShards();
+  const registry = globalThis as { [ONCE]?: Promise<void> };
+  registry[ONCE] ??= provisionMidgardNodeTestDatabaseShards();
+  return registry[ONCE];
 };

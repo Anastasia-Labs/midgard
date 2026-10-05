@@ -772,6 +772,9 @@ importers:
       '@types/node':
         specifier: ^22.17.0
         version: 22.19.17
+      esbuild:
+        specifier: 0.25.0
+        version: 0.25.0
       typescript:
         specifier: ^5.7.3
         version: 5.7.3

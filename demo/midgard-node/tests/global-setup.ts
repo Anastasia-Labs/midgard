@@ -184,7 +184,7 @@ export const provisionMidgardNodeTestDatabaseShards =
     }
   };
 
-export const setup = async (): Promise<void> => {
+const provisionOnce = async (): Promise<void> => {
   buildNativeOwnerBinary();
   // The package's existing opt-out for database-backed tests. Provisioning
   // needs a live Postgres, and most files in this suite do not, so a run that
@@ -194,4 +194,19 @@ export const setup = async (): Promise<void> => {
     return;
   }
   await provisionMidgardNodeTestDatabaseShards();
+};
+
+/**
+ * Vitest runs a root-config global setup once for the root and once more for
+ * every workspace project that extends it (vitest.config.ts splits the suite
+ * into a workspace-bundle and a source project), each through its own module
+ * runner. The provisioning is per run, so later calls in the same Vitest
+ * process join the first one, failures included.
+ */
+const ONCE = Symbol.for("midgard-node/tests/global-setup");
+
+export const setup = (): Promise<void> => {
+  const registry = globalThis as { [ONCE]?: Promise<void> };
+  registry[ONCE] ??= provisionOnce();
+  return registry[ONCE];
 };

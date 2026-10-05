@@ -40,3 +40,13 @@ export declare const interactiveEmulatorPlugin: () => {
   name: string;
   transform(code: string, id: string): { code: string; map: null } | null;
 };
+
+export declare const workspaceBundleProjects: <
+  Project extends {
+    readonly extends?: true | string;
+    readonly test: { readonly name: string };
+  },
+>(
+  project: Project,
+  options: { readonly packageDirectory: string },
+) => Project[];

@@ -1,8 +1,11 @@
+import { fileURLToPath } from "node:url";
+
 import {
   blueprintStampGlobalSetup,
   isolatedForksPool,
   midgardSourceSsr,
   rawSqlLoaderPlugin,
+  workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
 import { configDefaults, defineConfig } from "vitest/config";
 
@@ -92,18 +95,31 @@ export default defineConfig({
     // after refusing a stale onchain/aiken/plutus.json.
     globalSetup: [blueprintStampGlobalSetup, "./tests/global-setup.ts"],
     reporters: [["default", { summary: false }]],
-    // Vitest 3's filter resolution does not reliably match the eight-way
-    // extension brace used here previously, so keep the overwhelmingly common
-    // TypeScript lane explicit. Otherwise a focused `*.test.ts` invocation can
-    // report "No test files found" and never exercise a release gate.
-    include: [
-      "./tests/**/*.test.ts",
-      "./tests/**/*.test.{js,mjs,cjs,mts,cts,jsx,tsx}",
-    ],
-    exclude: [
-      ...configDefaults.exclude,
-      "./tests/phase4-pipelined-process-summary-verifier.test.mjs",
-    ],
+    // Workspace packages load from a per-run source bundle; files that need
+    // them module-by-module run in the `midgard-node:source` project. The
+    // projects inherit everything else here.
+    workspace: workspaceBundleProjects(
+      {
+        extends: true,
+        test: {
+          name: "midgard-node",
+          // Vitest 3's filter resolution does not reliably match the
+          // eight-way extension brace used here previously, so keep the
+          // overwhelmingly common TypeScript lane explicit. Otherwise a
+          // focused `*.test.ts` invocation can report "No test files found"
+          // and never exercise a release gate.
+          include: [
+            "./tests/**/*.test.ts",
+            "./tests/**/*.test.{js,mjs,cjs,mts,cts,jsx,tsx}",
+          ],
+          exclude: [
+            ...configDefaults.exclude,
+            "./tests/phase4-pipelined-process-summary-verifier.test.mjs",
+          ],
+        },
+      },
+      { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
+    ),
     testTimeout: 420_000,
     ...(bail === undefined ? {} : { bail }),
     environment: "node",

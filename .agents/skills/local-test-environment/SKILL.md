@@ -85,6 +85,13 @@ export condition (`midgardSourceSsr` in `demo/midgard-test-support/vitest.js`).
 Plain `node` does not: it follows the `import` condition to `dist/`. So
 anything a suite runs outside vitest needs dist built first.
 
+A single run (`vitest run`, CI, non-interactive stdin) loads the other
+workspace packages from a per-run esbuild bundle of that same source
+(`workspaceBundleProjects`), not module by module. Files that mock a workspace
+package, spy on its namespace or reset modules run in the `<name>:source`
+project instead. `MIDGARD_TEST_WORKSPACE_BUNDLE=0` forces plain source mode;
+`MIDGARD_TEST_WORKSPACE_BUNDLE_REPORT=1` prints the routing.
+
 `contrib prepare` expands declared pretest builds and their runtime dependency
 closure in order. Node suites need their bundled workers; tooling also needs
 plain-Node imports. `contrib test` owns these artifacts until the run joins.

@@ -1,4 +1,5 @@
 import { availableParallelism } from "node:os";
+import { fileURLToPath } from "node:url";
 
 import {
   blueprintStampGlobalSetup,
@@ -7,6 +8,7 @@ import {
   interactiveEmulatorSetup,
   midgardSourceSsr,
   rawSqlLoaderPlugin,
+  workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
 
@@ -41,15 +43,21 @@ export default defineConfig({
   test: {
     // Refuses the run when onchain/aiken/plutus.json is stale.
     workspace: [
-      {
-        extends: true,
-        test: {
-          name: "testing-profile",
-          include: ["./tests/**/*.test.ts"],
-          exclude: ["./tests/fault-proofs/watcher-installed-journey.test.ts"],
-          globalSetup: [blueprintStampGlobalSetup],
+      // Workspace packages load from a per-run source bundle; files that need
+      // them module-by-module run in `testing-profile:source`.
+      ...workspaceBundleProjects(
+        {
+          extends: true,
+          test: {
+            name: "testing-profile",
+            include: ["./tests/**/*.test.ts"],
+            exclude: ["./tests/fault-proofs/watcher-installed-journey.test.ts"],
+            globalSetup: [blueprintStampGlobalSetup],
+          },
         },
-      },
+        { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
+      ),
+      // Not bundled: its plugin rewrites a midgard-core module.
       {
         extends: true,
         plugins: [interactiveEmulatorPlugin()],
