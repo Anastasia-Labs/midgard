@@ -132,7 +132,9 @@ describe("history recorder chain follower", () => {
       blockHash: hashOf(5),
       slot: "50",
     });
-    expect(restarted.intersectionCandidates.at(-1)).toEqual({ kind: "origin" });
+    expect(restarted.intersectionCandidates).not.toContainEqual({
+      kind: "origin",
+    });
     // Chain-sync opens the session by acknowledging the intersection.
     await restarted.onEvent(backward(5));
     for (const directory of paths.directories)

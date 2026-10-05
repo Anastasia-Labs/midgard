@@ -114,6 +114,21 @@ const fakeClock = (maxPolls: number) => {
 };
 
 describe("withFloatLock", () => {
+  it("refuses a corrupt kernel mutex without retrying or running the float step", async () => {
+    const state = tempDir();
+    writeFileSync(
+      join(state, "reserve-float.lock.mutex.sqlite"),
+      "corrupt database",
+    );
+    const time = fakeClock(10);
+    let steps = 0;
+    await expect(
+      withFloatLock(layoutAt(state), time, () => Promise.resolve((steps += 1))),
+    ).rejects.toThrow(/file is not a database/);
+    expect(steps).toBe(0);
+    expect(time.clock.polls).toBe(0);
+  });
+
   it("gives up on a live holder once FLOAT_STEP_TIMEOUT_MS has passed", async () => {
     const state = tempDir();
     heldByOther(state);

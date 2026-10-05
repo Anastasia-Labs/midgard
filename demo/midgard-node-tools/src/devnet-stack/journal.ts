@@ -7,6 +7,12 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname } from "node:path";
+import { performance } from "node:perf_hooks";
+
+import {
+  isSqliteMutexBusy,
+  SqliteProcessMutex,
+} from "@al-ft/midgard-core/sqlite-process-mutex";
 
 import { readJsonIfPresent, writeDurableJson } from "./durable.js";
 import { lockOwner, processStartTime } from "./lock.js";
@@ -97,14 +103,18 @@ const takeOverDeadHolder = (
  * dead holder's. A lock whose holder has exited is taken over by exactly one
  * waiter; a live holder is waited for, up to `waitMs`.
  */
-const withJournalLock = <T>(path: string, waitMs: number, body: () => T): T => {
+const withPidJournalLock = <T>(
+  path: string,
+  waitMs: number,
+  body: () => T,
+): T => {
   const lock = `${path}.lock`;
   const record =
     `${process.pid.toString()} ${processStartTime(process.pid) ?? ""}`.trim();
   const staging = `${lock}.${process.pid.toString()}`;
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   writeFileSync(staging, record, { mode: 0o600 });
-  const deadline = Date.now() + waitMs;
+  const deadline = performance.now() + waitMs;
   try {
     for (;;) {
       try {
@@ -119,7 +129,7 @@ const withJournalLock = <T>(path: string, waitMs: number, body: () => T): T => {
       if (holder === null) continue;
       if (holder === undefined && takeOverDeadHolder(lock, held, staging))
         continue;
-      if (Date.now() > deadline)
+      if (performance.now() > deadline)
         throw new Error(
           holder === undefined
             ? `${lock} names an exited holder whose takeover by another writer has not finished in ${waitMs.toString()} ms; the journal is unchanged`
@@ -134,6 +144,36 @@ const withJournalLock = <T>(path: string, waitMs: number, body: () => T): T => {
     return body();
   } finally {
     if (readIfPresent(lock) === record) unlinkIfPresent(lock);
+  }
+};
+
+/** The kernel mutex serializes orphan takeover as well as the whole durable
+ * write. It is a permanent local sidecar; removing it would split ownership. */
+const withJournalLock = <T>(path: string, waitMs: number, body: () => T): T => {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const deadline = performance.now() + waitMs;
+  let mutex: SqliteProcessMutex;
+  for (;;) {
+    try {
+      mutex = SqliteProcessMutex.acquire(`${path}.mutex.sqlite`);
+      break;
+    } catch (error) {
+      if (!isSqliteMutexBusy(error)) throw error;
+      if (performance.now() >= deadline)
+        throw new Error(
+          `${path} is held by another journal writer for over ${waitMs.toString()} ms; the journal is unchanged`,
+        );
+      pause(LOCK_POLL_MS);
+    }
+  }
+  try {
+    return withPidJournalLock(
+      path,
+      Math.max(0, deadline - performance.now()),
+      body,
+    );
+  } finally {
+    mutex.close();
   }
 };
 

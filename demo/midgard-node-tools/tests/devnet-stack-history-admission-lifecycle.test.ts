@@ -168,3 +168,80 @@ it("joins an idle owned FD3 socket's actual close event before returning", async
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+it.each(["active", "uninstall", "stop", "replacement"])(
+  "fences the actual pending socket response when its handler is %s",
+  async (withdrawal) => {
+    const server = createServer();
+    const accepted = new Promise<import("node:net").Socket>((resolve) =>
+      server.once("connection", resolve),
+    );
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string") throw Error("no owned port");
+    const pipe = createConnection({ host: "127.0.0.1", port: address.port });
+    const peer = await accepted;
+    const actor = {
+      role: "history-archive-a" as const,
+      runId: "synthetic",
+      deploymentFingerprint: "a".repeat(64),
+      codeStamp: "b".repeat(64),
+      serviceSpecsDigest: "c".repeat(64),
+      attemptId: "27d6c44a-3262-44e1-bf69-19289923903b",
+      childPid: process.pid,
+    };
+    const lifecycle = startHistoryChildLifecycle(actor, pipe);
+    const client = historyChildClient({ actor, pipe: peer });
+    let release: () => void = () => undefined;
+    let entered: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const offer = untrustedHistoryOffer(actor); // Structural hostile declaration, never native proof.
+    const uninstall = lifecycle.install({
+      parse: parseHistoryChildChallenge,
+      answer: async (request) => {
+        entered();
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return {
+          schema: HISTORY_CHILD_SCHEMA,
+          challengeId: request.challengeId,
+          actor,
+          offer,
+        };
+      },
+    });
+    try {
+      const requested = client.request("prove", offer, 1000);
+      await started;
+      if (withdrawal === "stop") process.emit("SIGTERM");
+      else if (withdrawal === "uninstall") uninstall();
+      else if (withdrawal === "replacement")
+        lifecycle.install({
+          parse: parseHistoryChildChallenge,
+          answer: async (request) => ({
+            schema: HISTORY_CHILD_SCHEMA,
+            challengeId: request.challengeId,
+            actor,
+            offer: null,
+          }),
+        });
+      expect(pipe.destroyed).toBe(false); // Real command awaits listener/native close before lifecycle.close.
+      release();
+      const response = await requested;
+      expect(response?.actor).toEqual(actor);
+      if (withdrawal === "active") expect(response?.offer).toEqual(offer);
+      else expect(response?.offer).toBeNull();
+    } finally {
+      release();
+      await lifecycle.close();
+      client.close();
+      peer.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  },
+);

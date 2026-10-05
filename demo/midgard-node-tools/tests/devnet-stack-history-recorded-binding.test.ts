@@ -14,10 +14,14 @@ import {
   loadHistoryRoleAdmission,
 } from "../src/devnet-stack/history-recorded-binding.js";
 import { makeLayout, type RunEnv } from "../src/devnet-stack/layout.js";
+import { HISTORY_ROLES } from "../src/devnet-stack/watcher-history.js";
 import { releasePaths } from "../src/devnet-stack/watcher-release.js";
 
 const loader = vi.hoisted(() => {
-  const state: { before?: () => Promise<void> } = {};
+  const state: {
+    before?: () => Promise<void>;
+    afterAuthority?: () => Promise<void>;
+  } = {};
   return state;
 });
 // Use the actual public signed loader/verifier in this source unit; compiled
@@ -28,12 +32,25 @@ vi.mock("../src/devnet-stack/watcher-release.js", async (original) => ({
   >()),
   loadWatcherModule: async () => {
     await loader.before?.();
-    return watcher;
+    return {
+      ...watcher,
+      loadWatcherVerifiedDeploymentAuthority: async (
+        input: Parameters<
+          typeof watcher.loadWatcherVerifiedDeploymentAuthority
+        >[0],
+      ) => {
+        const verified =
+          await watcher.loadWatcherVerifiedDeploymentAuthority(input);
+        await loader.afterAuthority?.();
+        return verified;
+      },
+    };
   },
 }));
 const closes: (() => Promise<void>)[] = [];
 afterEach(async () => {
   loader.before = undefined;
+  loader.afterAuthority = undefined;
   for (const close of closes.splice(0)) await close();
 });
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -326,3 +343,150 @@ it("checks an expired budget before touching absent public evidence", () => {
   expect(call).toThrow("history role admission deadline elapsed");
   expect(call).not.toThrow(HistoryConfigurationRefusal);
 });
+
+const authorityObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+const publicAuthority = (path: string): Record<string, unknown> => {
+  const value: unknown = JSON.parse(readFileSync(path, "utf8"));
+  if (!authorityObject(value))
+    throw Error("synthetic public authority document malformed");
+  return value;
+};
+for (const field of ["trustRoots", "durableMarker", "policy"] as const) {
+  const changed = (authority: Record<string, unknown>) => ({
+    ...authority,
+    [field]: field === "trustRoots" ? [] : null,
+  });
+  it(`binds complete public ${field} before asynchronous signed admission`, async () => {
+    const f = await setup();
+    const binding = historyRecordedBinding(f.layout, f.run, "Preprod");
+    write(f.paths.authority, changed(publicAuthority(f.paths.authority)));
+    expect(historyRecordedBinding(f.layout, f.run, "Preprod").digest).not.toBe(
+      binding.digest,
+    );
+    await expect(
+      loadHistoryRoleAdmission(
+        f.layout,
+        f.run,
+        binding.digest,
+        deadline(),
+        "Preprod",
+      ),
+    ).rejects.toMatchObject({
+      message:
+        "history recorded configuration changed from this service generation",
+    });
+  });
+  it(`refuses ${field} changed after actual signed verification before final generation fence`, async () => {
+    const f = await setup();
+    const binding = historyRecordedBinding(f.layout, f.run, "Preprod");
+    loader.afterAuthority = async () => {
+      write(f.paths.authority, changed(publicAuthority(f.paths.authority)));
+    };
+    const outcome = await loadHistoryRoleAdmission(
+      f.layout,
+      f.run,
+      binding.digest,
+      deadline(),
+      "Preprod",
+    ).then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    );
+    await expect(
+      watcher.loadWatcherVerifiedDeploymentAuthority({
+        path: f.paths.authority,
+        ruleBundlePath: f.paths.rules,
+      }),
+    ).rejects.toThrow();
+    expect("error" in outcome).toBe(true);
+    if ("error" in outcome)
+      expect(outcome.error).toMatchObject({
+        message:
+          "history recorded configuration changed during signed admission",
+      });
+  });
+}
+
+const providerPolicyMutation = (path: string) => {
+  const authority = publicAuthority(path);
+  const release = authority.releaseFinality;
+  if (
+    !authorityObject(release) ||
+    !authorityObject(release.policy) ||
+    release.policy.automaticRecoveryMaxDepth !== 2160
+  )
+    throw Error("synthetic authenticated provider recovery policy absent");
+  write(path, {
+    ...authority,
+    releaseFinality: {
+      ...release,
+      policy: { ...release.policy, automaticRecoveryMaxDepth: 2161 },
+    },
+  });
+};
+for (const role of HISTORY_ROLES) {
+  it(`binds the complete provider ${role} policy before asynchronous signed admission`, async () => {
+    const f = await setup();
+    const binding = historyRecordedBinding(f.layout, f.run, "Preprod");
+    providerPolicyMutation(
+      join(f.layout.watcherHistoryArchive(role), "authority.json"),
+    );
+    expect(historyRecordedBinding(f.layout, f.run, "Preprod").digest).not.toBe(
+      binding.digest,
+    );
+    await expect(
+      loadHistoryRoleAdmission(
+        f.layout,
+        f.run,
+        binding.digest,
+        deadline(),
+        "Preprod",
+      ),
+    ).rejects.toMatchObject({
+      message:
+        "history recorded configuration changed from this service generation",
+    });
+  });
+  it(`refuses provider ${role} policy changed after actual signed verification before final generation fence`, async () => {
+    const f = await setup();
+    const binding = historyRecordedBinding(f.layout, f.run, "Preprod");
+    loader.afterAuthority = async () => {
+      providerPolicyMutation(
+        join(f.layout.watcherHistoryArchive(role), "authority.json"),
+      );
+    };
+    const outcome = await loadHistoryRoleAdmission(
+      f.layout,
+      f.run,
+      binding.digest,
+      deadline(),
+      "Preprod",
+    ).then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    );
+    loader.afterAuthority = undefined;
+    const current = historyRecordedBinding(f.layout, f.run, "Preprod");
+    // A fresh admission of the final document must fail full authenticated
+    // policy comparison; the after-await fence cannot return its stale proof.
+    await expect(
+      loadHistoryRoleAdmission(
+        f.layout,
+        f.run,
+        current.digest,
+        deadline(),
+        "Preprod",
+      ),
+    ).rejects.toMatchObject({
+      message:
+        "history authenticated release differs from recorded provider authorities",
+    });
+    expect("error" in outcome).toBe(true);
+    if ("error" in outcome)
+      expect(outcome.error).toMatchObject({
+        message:
+          "history recorded configuration changed during signed admission",
+      });
+  });
+}

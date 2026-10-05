@@ -10,6 +10,7 @@ import {
 import { refuseWhileBuilding, runLockPaths } from "./fresh-controller.js";
 import { makeLayout } from "./layout.js";
 import { acquireLock } from "./lock.js";
+import { hasReadinessProbe } from "./service-readiness.js";
 import { readServiceRecoveryContext } from "./service-recovery-context.js";
 import { requestServiceRecovery } from "./service-refusal.js";
 import { serviceSpecs, supervisorPaths } from "./services.js";
@@ -63,7 +64,7 @@ export const registerServiceRecovery = (program: Command): void => {
               "supervisor run/code/service set differs; use normal up validation first",
             );
           const service = specs.find((spec) => spec.name === options.service);
-          if (service === undefined || service.readyUrl === undefined)
+          if (service === undefined || !hasReadinessProbe(service))
             throw new Error(
               "role requires a configured validated readiness probe before scoped recovery",
             );

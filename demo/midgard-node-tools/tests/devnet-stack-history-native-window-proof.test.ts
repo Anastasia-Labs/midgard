@@ -241,3 +241,107 @@ it("bounds a stalled actual source capture and keeps it transient and unknown", 
   expect(error).not.toBeInstanceOf(HistoryWindowRefusal);
   expect(sealer.seal(10000)).toBeNull();
 });
+
+it("initializes from actual genesis roll-forward and reacquires after actual rollback without a restart", async () => {
+  const f = windowFixture(5);
+  fixtures.push(f);
+  const sealer = createHistoryWindowSealer({
+    actor: {
+      role: "history-recorder",
+      runId: randomUUID(),
+      deploymentFingerprint: "11".repeat(32),
+      codeStamp: "22".repeat(32),
+      serviceSpecsDigest: "33".repeat(32),
+      attemptId: randomUUID(),
+    },
+    directories: f.directories,
+    watcherConfig: f.watcherConfig,
+    binaryPath: f.binaryPath,
+  });
+  let proven = false;
+  let captured = 0;
+  let latest = -1;
+  let failure: unknown;
+  await f.startMain(async (event) => {
+    if (event.kind === "roll_backward") {
+      sealer.revoke();
+      proven = false;
+      return;
+    }
+    try {
+      const target = f.points[Number(event.blockNo)];
+      if (target === undefined) throw Error("synthetic target absent");
+      if (!proven) {
+        f.retain(event);
+        if (captured === 0) {
+          await expect(
+            sealer.capture({ ...event }, target, 10000),
+          ).rejects.toMatchObject({
+            reason: "native event has no acquisition receipt",
+          });
+          const wrong = f.points[1];
+          if (wrong === undefined) throw Error("synthetic wrong target absent");
+          await expect(
+            sealer.capture(event, wrong, 10000),
+          ).rejects.toMatchObject({
+            reason: "capture target is not the actual main receipt point",
+          });
+        }
+        await sealer.capture(event, target, 10000);
+        proven = true;
+        captured++;
+      } else {
+        sealer.prepareAppend(event);
+        f.retain(event);
+        sealer.completeAppend();
+      }
+      latest = Number(event.blockNo);
+    } catch (error) {
+      failure = error;
+      throw error;
+    }
+  }, true);
+  await expect
+    .poll(() => failure !== undefined || latest === 5, { timeout: 15000 })
+    .toBe(true);
+  expect(failure).toBeUndefined();
+  const old = sealer.seal(10000);
+  expect(old).toMatchObject({
+    first: f.points[0],
+    last: f.points[5],
+    rowCount: 6,
+  });
+  if (old === null) throw Error("genesis proof absent");
+  const rollback = f.points[2];
+  const replay = f.events[3];
+  if (rollback === undefined || replay === undefined)
+    throw Error("synthetic rollback absent");
+  f.send({
+    schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
+    kind: "roll_backward",
+    point: {
+      kind: "point",
+      blockHash: rollback.blockHash,
+      slot: rollback.slot,
+    },
+    tip: {
+      kind: "point",
+      blockHash: rollback.blockHash,
+      blockNo: rollback.blockNo,
+      slot: rollback.slot,
+    },
+  });
+  await expect.poll(() => proven, { timeout: 10000 }).toBe(false);
+  expect(sealer.revalidate(old.sealId, old.generation)).toBeNull();
+  f.send(replay);
+  await expect
+    .poll(() => failure !== undefined || captured === 2, { timeout: 15000 })
+    .toBe(true);
+  expect(failure).toBeUndefined();
+  expect(sealer.seal(10000)).toMatchObject({
+    first: f.points[0],
+    last: f.points[3],
+    rowCount: 4,
+  });
+  expect(readFileSync(f.startsPath, "utf8").trim().split("\n")).toHaveLength(3);
+});

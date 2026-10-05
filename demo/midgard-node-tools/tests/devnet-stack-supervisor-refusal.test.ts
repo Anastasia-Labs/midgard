@@ -47,6 +47,8 @@ const pathsAt = (runDir: string): SupervisorPaths => ({
   pidDir: join(runDir, "stack/services"),
   events: join(runDir, "events.ndjson"),
   serviceLog: (name) => join(runDir, `${name}.log`),
+  runtimeCodeStamp: () => "synthetic-code",
+  serviceSpecs: [],
 });
 const events = (paths: SupervisorPaths): Record<string, unknown>[] =>
   !existsSync(paths.events)
@@ -144,6 +146,7 @@ it("preserves refusal across daemon replacement and clears only a matching one-s
       `const fs=require('node:fs'); const config=${JSON.stringify(config)}; const ready=${JSON.stringify(ready)}; const value=fs.existsSync(config)?fs.readFileSync(config,'utf8'):'78'; if(value!=='ok')process.exit(Number(value)); require('node:http').createServer((req,res)=>{const ok=fs.existsSync(ready);res.writeHead(ok?200:503);res.end(JSON.stringify({ready:ok}));}).listen(${port},'127.0.0.1');`,
     ],
   };
+  paths.serviceSpecs = [spec];
   let abort = new AbortController();
   let running = superviseServices([spec], paths, abort.signal, policy);
   try {
@@ -276,3 +279,128 @@ it("rejects changed public deployment binding and consumes mismatched requests w
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+it.each(["code", "specs"])(
+  "keeps a queued retry refused after daemon replacement changes %s",
+  async (change) => {
+    const dir = mkdtempSync(join(tmpdir(), "devnet-retry-drift-"));
+    let stamp = "original-code";
+    const spec = {
+      name: "role",
+      command: process.execPath,
+      args: ["-e", "setInterval(()=>{},1000)"],
+      cwd: dir,
+      env: {},
+      readyUrl: "http://127.0.0.1:1/readyz",
+    };
+    const paths = {
+      ...pathsAt(dir),
+      runtimeCodeStamp: () => stamp,
+      serviceSpecs: [spec],
+    };
+    const refusal = refuseService(paths, "role");
+    requestServiceRecovery(
+      paths,
+      "role",
+      refusal.refusalId,
+      "one original attempt",
+    );
+    if (change === "code") stamp = "replacement-code";
+    const replacement =
+      change === "specs" ? { ...spec, env: { REPLACED_ROLE: "yes" } } : spec;
+    const abort = new AbortController();
+    const running = superviseServices(
+      [replacement],
+      paths,
+      abort.signal,
+      policy,
+    );
+    try {
+      await pause(150);
+      expect(
+        events(paths).filter((event) => event.event === "start"),
+      ).toHaveLength(0);
+      expect(serviceRefusal(paths, "role")?.refusalId).toBe(refusal.refusalId);
+    } finally {
+      abort.abort();
+      await running;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+it("revalidates consumed permission after an asynchronous prestart before spawning", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "devnet-retry-prestart-"));
+  let stamp = "original-code";
+  let entered = false;
+  let release!: (value: boolean) => void;
+  const prestart = new Promise<boolean>((resolve) => {
+    release = resolve;
+  });
+  const spec = {
+    name: "role",
+    command: process.execPath,
+    args: ["-e", "setInterval(()=>{},1000)"],
+    cwd: dir,
+    env: {},
+    readyUrl: "http://127.0.0.1:1/readyz",
+    prestart: () => {
+      entered = true;
+      return prestart;
+    },
+  };
+  const paths = {
+    ...pathsAt(dir),
+    runtimeCodeStamp: () => stamp,
+    serviceSpecs: [spec],
+  };
+  const refusal = refuseService(paths, "role");
+  requestServiceRecovery(
+    paths,
+    "role",
+    refusal.refusalId,
+    "one original attempt",
+  );
+  const abort = new AbortController();
+  const running = superviseServices([spec], paths, abort.signal, policy);
+  try {
+    await until(() => entered);
+    stamp = "changed-during-prestart";
+    release(true);
+    await pause(100);
+    expect(
+      events(paths).filter((event) => event.event === "start"),
+    ).toHaveLength(0);
+    expect(serviceRefusal(paths, "role")?.refusalId).toBe(refusal.refusalId);
+  } finally {
+    release(true);
+    abort.abort();
+    await running;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+it.each(["codeStamp", "serviceSpecsDigest"])(
+  "keeps legacy requests missing %s refused",
+  (field) => {
+    const dir = mkdtempSync(join(tmpdir(), "devnet-retry-legacy-"));
+    const paths = pathsAt(dir);
+    try {
+      const refusal = refuseService(paths, "role");
+      requestServiceRecovery(
+        paths,
+        "role",
+        refusal.refusalId,
+        "scoped attempt",
+      );
+      const requestFile = join(paths.pidDir, "refused/role.retry.json");
+      const request = JSON.parse(readFileSync(requestFile, "utf8"));
+      delete request[field];
+      writeFileSync(requestFile, JSON.stringify(request));
+      expect(consumeServiceRecovery(paths, refusal)).toBeUndefined();
+      expect(serviceRefusal(paths, "role")?.refusalId).toBe(refusal.refusalId);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);

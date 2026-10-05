@@ -58,6 +58,7 @@ export const transaction = (
   outputs: readonly TxOutput[],
   mint: Record<string, bigint> = {},
   redeemers: readonly [CML.RedeemerTag, number, string][] = [],
+  referenceInputs: readonly AcceptanceOutRef[] = [],
 ): AcceptanceCanonicalTransaction => {
   const allocated: { free(): void }[] = [];
   const own = <T extends { free(): void }>(value: T) => {
@@ -95,6 +96,19 @@ export const transaction = (
         ),
       );
     const body = own(CML.TransactionBody.new(ins, outs, 200_000n));
+    if (referenceInputs.length > 0) {
+      const references = own(CML.TransactionInputList.new());
+      for (const input of referenceInputs)
+        references.add(
+          own(
+            CML.TransactionInput.new(
+              own(CML.TransactionHash.from_hex(input.txHash)),
+              BigInt(input.outputIndex),
+            ),
+          ),
+        );
+      body.set_reference_inputs(references);
+    }
     if (Object.keys(mint).length > 0) {
       const values = own(CML.Mint.new());
       for (const [unit, quantity] of Object.entries(mint))
@@ -129,7 +143,7 @@ export const transaction = (
       observed: {
         txHash,
         spentInputs: inputs,
-        referenceInputs: [],
+        referenceInputs,
         mintPolicyIds: [
           ...new Set(Object.keys(mint).map((unit) => unit.slice(0, 56))),
         ].sort(),
@@ -158,6 +172,7 @@ const step = (
 
 export const payoutFixture = (
   options: {
+    nonceByte?: string;
     external?: boolean;
     orderMoves?: number;
     corruptOrder?: boolean;
@@ -171,8 +186,10 @@ export const payoutFixture = (
     wrongEvent?: boolean;
     datum?: SDK.CardanoDatum;
   } = {},
-): AcceptancePayoutInput => {
-  const nonce = { txHash: hash("11"), outputIndex: 2 };
+): AcceptancePayoutInput & {
+  externalPublication?: AcceptanceCanonicalTransaction;
+} => {
+  const nonce = { txHash: hash(options.nonceByte ?? "11"), outputIndex: 2 };
   const eventId = { transactionId: nonce.txHash, outputIndex: 2n };
   const body: SDK.WithdrawalBody = {
     l2_outref: { transactionId: hash("12"), outputIndex: 3n },
@@ -201,6 +218,18 @@ export const payoutFixture = (
     },
     SDK.EventHistoryData,
   );
+  const externalPublication = options.external
+    ? transaction(
+        [{ txHash: hash("66"), outputIndex: Number(eventId.outputIndex) }],
+        [
+          {
+            address: withdrawalAddress,
+            assets: { lovelace: 2_000_000n },
+            datum: externalDatum,
+          },
+        ],
+      )
+    : undefined;
   const node: SDK.EventHistoryNode = {
     position: { Key: [eventKey] },
     next: null,
@@ -228,6 +257,11 @@ export const payoutFixture = (
         datum: Data.to(node, SDK.EventHistoryNode),
       },
     ],
+    {},
+    [],
+    externalPublication === undefined
+      ? []
+      : [{ txHash: externalPublication.observed.txHash, outputIndex: 0 }],
   );
   if (typeof node.payload !== "object" || !("Order" in node.payload))
     throw new Error("fixture Order payload missing");
@@ -420,6 +454,6 @@ export const payoutFixture = (
       step(conclude, "conclude", 1),
       fund1,
     ],
-    ...(options.external ? { externalDatum } : {}),
+    ...(options.external ? { externalDatum, externalPublication } : {}),
   };
 };

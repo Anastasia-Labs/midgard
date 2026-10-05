@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import { Journal } from "../src/devnet-stack/journal.js";
 import type { Layout, RunEnv } from "../src/devnet-stack/layout.js";
+import { acquireLock, ControllerLockBusy } from "../src/devnet-stack/lock.js";
 import {
   FLOAT_TARGET_LOVELACE,
   type FloatRecord,
@@ -232,10 +233,20 @@ it("joins an in-flight submit on abort and preserves its unknown pending outcome
   )
     await Promise.resolve();
   expect(transport.labels).toContain("reserve-float-submit");
-  expect(settled).toBe(false);
-  expect(test.records()).toMatchObject([{ status: "pending" }]);
-  release();
-  await refusal;
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  try {
+    expect(settled).toBe(false);
+    expect(() => {
+      const releaseUnexpected = acquireLock(
+        join(test.layout.state, "reserve-float.lock"),
+      );
+      releaseUnexpected();
+    }).toThrow(ControllerLockBusy);
+    expect(test.records()).toMatchObject([{ status: "pending" }]);
+  } finally {
+    release();
+    await refusal;
+  }
   expect(test.records()).toMatchObject([{ status: "pending" }]);
   expect(
     transport.labels.filter((label) => label === "reserve-float-submit"),
