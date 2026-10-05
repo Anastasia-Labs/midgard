@@ -7,6 +7,13 @@ import {
   writeSync,
 } from "node:fs";
 
+import {
+  isSqliteMutexBusy,
+  SqliteProcessMutex,
+} from "@al-ft/midgard-core/sqlite-process-mutex";
+
+export class ControllerLockBusy extends Error {}
+
 const alive = (pid: number) => {
   try {
     process.kill(pid, 0);
@@ -49,26 +56,80 @@ export const lockOwner = (path: string): number | undefined => {
 /**
  * One controller per run directory. The lock file holds the owner's PID and
  * start time; a lock whose owner has exited is stale and is taken over.
+ * The persistent SQLite sidecar owns the entire operation, including stale
+ * takeover. Never unlink/replace that sidecar while controllers can run.
  */
 export const acquireLock = (path: string): (() => void) => {
+  const mutexPath = `${path}.mutex.sqlite`;
+  // Preserve filesystem permission/missing-directory errors, and create the
+  // sidecar with private permissions. Do not open/close an existing SQLite
+  // file outside its VFS: that could release this process's POSIX locks.
+  try {
+    closeSync(openSync(mutexPath, "wx", 0o600));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
+  let mutex: SqliteProcessMutex;
+  try {
+    mutex = SqliteProcessMutex.acquire(mutexPath);
+  } catch (error) {
+    if (isSqliteMutexBusy(error))
+      throw new ControllerLockBusy(`another controller holds ${path}`);
+    throw error;
+  }
+  try {
+    return acquireOwnedLock(path, mutex);
+  } catch (error) {
+    mutex.close();
+    throw error;
+  }
+};
+
+const acquireOwnedLock = (
+  path: string,
+  mutex: SqliteProcessMutex,
+): (() => void) => {
   const record = ownerRecord(process.pid);
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const fd = openSync(path, "wx", 0o600);
-      writeSync(fd, record);
-      closeSync(fd);
+      try {
+        writeSync(fd, record);
+      } finally {
+        closeSync(fd);
+      }
+      let released = false;
       const release = () => {
-        if (existsSync(path) && readFileSync(path, "utf8") === record)
-          unlinkSync(path);
+        if (released) return;
+        released = true;
+        process.removeListener("exit", release);
+        try {
+          if (existsSync(path) && readFileSync(path, "utf8") === record)
+            unlinkSync(path);
+        } finally {
+          mutex.close();
+        }
       };
       process.once("exit", release);
       return release;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      const owner = lockOwner(path);
-      if (owner !== undefined)
-        throw new Error(`another controller (pid ${owner}) holds ${path}`);
-      unlinkSync(path);
+      try {
+        const owner = lockOwner(path);
+        if (owner !== undefined)
+          throw new ControllerLockBusy(
+            `another controller (pid ${owner}) holds ${path}`,
+          );
+        unlinkSync(path);
+      } catch (error) {
+        // A live legacy owner can release metadata without our new mutex.
+        // Only that exact metadata disappearance is a retryable transition.
+        if ((error as NodeJS.ErrnoException).code === "ENOENT")
+          throw new ControllerLockBusy(
+            `lock owner changed while acquiring ${path}`,
+          );
+        throw error;
+      }
     }
   }
   throw new Error(`could not acquire ${path}`);
