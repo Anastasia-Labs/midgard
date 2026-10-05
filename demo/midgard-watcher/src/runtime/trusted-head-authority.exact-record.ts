@@ -27,6 +27,9 @@ export const LOOPBACK_HOSTS = new Set([
 
 export class TrustedHeadCallerError extends Error {}
 
+/** A transient store failure: the request may be retried as is. */
+export class TrustedHeadAuthorityUnavailableError extends Error {}
+
 export type TrustedHeadAuthorityRecord = Readonly<{
   schemaVersion: typeof WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_SCHEMA_VERSION;
   revision: string;

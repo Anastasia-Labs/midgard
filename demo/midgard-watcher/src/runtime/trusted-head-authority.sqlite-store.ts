@@ -15,6 +15,7 @@ import {
   sameHead,
   sha256,
 } from "./trusted-head-authority.exact-record.js";
+import { TrustedHeadAuthorityUnavailableError } from "./trusted-head-authority.exact-record.js";
 import type { AuthorityRecordCodec } from "./trusted-head-authority.record-codec.js";
 import { SCHEMAS, TABLES } from "./trusted-head-authority.sqlite-schema.js";
 
@@ -55,29 +56,36 @@ export const openSqliteAuthority = (
   }>,
 ): SqliteAuthorityStore => {
   const { records, envelopes, initializationSha256 } = input;
-  const db = new DatabaseSync(
-    `${pathToFileURL(input.databasePath).href}?mode=rw`,
-  );
-  try {
-    if (db.prepare("PRAGMA database_list").get()?.file !== input.databasePath)
-      throw new Error(
-        "trusted-head authority SQLite path differs from selection",
-      );
-    if (db.prepare("PRAGMA journal_mode").get()?.journal_mode !== "wal")
-      throw new Error(
-        "trusted-head authority SQLite requires persisted WAL mode",
-      );
-    db.exec(
-      "PRAGMA synchronous=FULL; PRAGMA busy_timeout=1000; PRAGMA wal_autocheckpoint=64;",
+  const open = () => {
+    const db = new DatabaseSync(
+      `${pathToFileURL(input.databasePath).href}?mode=rw`,
     );
-    if (db.prepare("PRAGMA synchronous").get()?.synchronous !== 2)
-      throw new Error(
-        "trusted-head authority SQLite FULL synchronization unavailable",
+    try {
+      if (db.prepare("PRAGMA database_list").get()?.file !== input.databasePath)
+        throw new Error(
+          "trusted-head authority SQLite path differs from selection",
+        );
+      if (db.prepare("PRAGMA journal_mode").get()?.journal_mode !== "wal")
+        throw new Error(
+          "trusted-head authority SQLite requires persisted WAL mode",
+        );
+      db.exec(
+        "PRAGMA synchronous=FULL; PRAGMA busy_timeout=1000; PRAGMA wal_autocheckpoint=64;",
       );
-  } catch (error) {
-    db.close();
-    throw error;
-  }
+      if (db.prepare("PRAGMA synchronous").get()?.synchronous !== 2)
+        throw new Error(
+          "trusted-head authority SQLite FULL synchronization unavailable",
+        );
+    } catch (error) {
+      db.close();
+      throw error;
+    }
+    return db;
+  };
+  let db = open();
+  // False once a failed ROLLBACK left the handle inside a transaction and it
+  // was closed; the next transaction opens a fresh one.
+  let usable = true;
   const singleton = (name: (typeof TABLES)[number], required: boolean) => {
     const rows = db
       .prepare(
@@ -219,6 +227,17 @@ export const openSqliteAuthority = (
     return { head, recordSha256: prior, rows: admitted };
   };
   const transaction = <T>(write: boolean, run: () => T): T => {
+    if (!usable) {
+      try {
+        db = open();
+      } catch (error) {
+        throw new TrustedHeadAuthorityUnavailableError(
+          "trusted-head authority SQLite could not be reopened",
+          { cause: error },
+        );
+      }
+      usable = true;
+    }
     db.exec(write ? "BEGIN IMMEDIATE" : "BEGIN");
     try {
       const result = run();
@@ -228,7 +247,22 @@ export const openSqliteAuthority = (
       try {
         db.exec("ROLLBACK");
       } catch {
-        /* Commit/IO failure is ambiguous; preserve original failure. */
+        // Commit/IO failure is ambiguous; preserve the original failure once
+        // the transaction has ended either way.
+        if (!db.isTransaction) throw error;
+        // A handle still inside its transaction fails every later BEGIN.
+        // Closing it discards that transaction; the next call reopens and
+        // re-verifies.
+        usable = false;
+        try {
+          db.close();
+        } catch {
+          /* Already unusable; the reopen decides. */
+        }
+        throw new TrustedHeadAuthorityUnavailableError(
+          "trusted-head authority SQLite transaction failed and could not roll back",
+          { cause: error },
+        );
       }
       throw error;
     }
@@ -296,7 +330,9 @@ export const openSqliteAuthority = (
         verify();
         return { committed: true, head: next };
       }),
-    close: () => db.close(),
+    close: () => {
+      if (usable) db.close();
+    },
   });
 };
 

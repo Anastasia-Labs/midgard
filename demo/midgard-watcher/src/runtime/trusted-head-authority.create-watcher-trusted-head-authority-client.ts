@@ -13,6 +13,7 @@ import {
   MAX_REQUEST_BYTES,
   parseJson,
   sameHead,
+  TrustedHeadAuthorityUnavailableError,
   TrustedHeadCallerError,
   type WatcherTrustedHeadAuthorityStore,
 } from "./trusted-head-authority.exact-record.js";
@@ -136,6 +137,10 @@ export const startWatcherTrustedHeadAuthorityServer = async (input: {
     } catch (error) {
       if (error instanceof TrustedHeadCallerError) {
         replyJson(response, 400, { error: "invalid_request" });
+      } else if (error instanceof TrustedHeadAuthorityUnavailableError) {
+        // Transient: the store recovered its handle and the caller holds
+        // readiness and reconciles.
+        replyJson(response, 503, { error: "unavailable" });
       } else {
         replyJson(response, 500, { error: "persistence_failure" });
       }
