@@ -3,6 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
+  computeFraudProofRawL1PointId,
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   journalJsonDigest,
@@ -106,7 +107,10 @@ export const openStore = async (explicitPath?: string) => {
   let path = explicitPath;
   if (path === undefined) {
     const directory = await mkdtemp(
-      join(process.cwd(), ".watcher-funding-reservation-test-"),
+      join(
+        process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
+        ".watcher-funding-reservation-test-",
+      ),
     );
     temporaryDirectories.push(directory);
     path = join(directory, "watcher.sqlite");
@@ -210,6 +214,20 @@ export const prepareTransition = (
   >,
 ) => store.prepareTransition({ ...input, handoff: submissionHandoff(input) });
 
+export const retirementFixture = (transactionHash: string) => {
+  const boundary = { slot: "1000", blockNo: "50", blockHash: "ab".repeat(32) };
+  const tip = { slot: "10000", blockNo: "2211", blockHash: "cd".repeat(32) };
+  return {
+    transactionHash,
+    reason: "invalidated" as const,
+    releaseFinalPoint: {
+      ...boundary,
+      pointId: computeFraudProofRawL1PointId(boundary),
+    },
+    canonicalPoint: { ...tip, pointId: computeFraudProofRawL1PointId(tip) },
+  };
+};
+
 export const abandonmentHandoff = (
   plan: WatcherProverFundingReservationPlan,
   transactionHash: string,
@@ -228,6 +246,7 @@ export const abandonmentHandoff = (
     actionId: actionKind,
     outcome: "not_found",
     txHash: transactionHash,
+    retirement: retirementFixture(transactionHash),
   },
 });
 
@@ -248,3 +267,23 @@ export const completionHandoff = (
     },
   };
 };
+
+export const substituteAbandonmentTransactionHash = (
+  handoff: WorkflowFundingAbandonmentHandoff,
+  txHash: string,
+): WorkflowFundingAbandonmentHandoff => ({
+  ...handoff,
+  submissionIntent: { ...handoff.submissionIntent, txHash },
+  reconciliation: {
+    ...handoff.reconciliation,
+    txHash,
+    ...(handoff.reconciliation.retirement === undefined
+      ? {}
+      : {
+          retirement: {
+            ...handoff.reconciliation.retirement,
+            transactionHash: txHash,
+          },
+        }),
+  },
+});

@@ -2,17 +2,10 @@ import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availabili
 import {
   type LocalKupmiosFraudProofRawSource,
   retainedDaAttemptsOnlyUnavailable,
-  settleLocalKupmiosReads,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  Data,
-  Lucid,
-  paymentCredentialOf,
-  type TxSignBuilder,
-} from "@lucid-evolution/lucid";
+import { Lucid, paymentCredentialOf } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
-import { Effect } from "effect";
 
 import {
   assertWatcherStateQueueObservation,
@@ -42,30 +35,33 @@ import {
   type WatcherDaBondPoolObservation,
 } from "./pool-observation.js";
 import { createWatcherL1AvailabilityPayloadSource } from "./published-payload.js";
-import { createWatcherAvailabilityProtocolRuntime } from "./runtime.protocol-parameter-refresh.js";
+import { watcherAvailabilityAttemptOperation } from "./runtime.build-attempt.js";
+import { buildWatcherAvailabilityOperation } from "./runtime.build-operation.js";
+import { watcherAvailabilityExecutionLimits } from "./runtime.execution-limits.js";
+import {
+  createWatcherAvailabilityReadAttempt,
+  watcherAvailabilityAuthenticatedOpenDeadline,
+} from "./runtime.read-attempt.js";
 import {
   createWatcherAvailabilityReconcileRetry,
   watcherAvailabilityStatusDetail,
 } from "./runtime.reconcile-retry.js";
+import { watcherAvailabilityRecoveryContext } from "./runtime.recovery-limits.js";
 import {
   availabilityUndecidable,
   DA_CHALLENGE_WINDOW_MS,
   dropReleasedHeaders,
   releaseWatcherAvailabilityWorkflows,
   required,
-  WatcherAvailabilityCapitalShortfall,
   type WatcherAvailabilityRuntime,
   type WatcherAvailabilityStatus,
   type WatcherAvailabilityStatusTransition,
-  WatcherAvailabilityTimeoutPoolUnavailable,
   type WatcherAvailabilityWorkflowRefusal,
   watcherAvailabilityWorkflowRefusal,
   type WatcherReleasedHeadersReader,
 } from "./runtime.release-watcher-availability-workflows.js";
 import {
   buildAdmittedWatcherAvailabilityOperation,
-  selectWatcherAvailabilityFunding,
-  watcherAvailabilityTimeoutCollateralLovelace,
   watcherAvailabilityValidity,
 } from "./runtime.select-watcher-availability-funding.js";
 
@@ -120,7 +116,6 @@ export const createWatcherAvailabilityRuntime = async (input: {
       slotConfig: input.config.watcherConfig.customNetwork?.slotConfig,
     },
   );
-  const protocolRuntime = createWatcherAvailabilityProtocolRuntime(lucid);
   const secret = await loadWatcherSecretText(
     input.config.availability.keySource,
   );
@@ -159,6 +154,11 @@ export const createWatcherAvailabilityRuntime = async (input: {
     await publicDa.close();
     throw error;
   }
+  const activeScopes = new Set<SDK.DaAvailabilityReadScope>();
+  const closeScopes = () => {
+    for (const scope of activeScopes) scope.close();
+    activeScopes.clear();
+  };
   let generation = 0;
   let closed = false;
   let current: WatcherAuthenticatedStateQueueObservation | null = null;
@@ -222,6 +222,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
   const commitmentOf = async (
     observation: WatcherAuthenticatedStateQueueObservation,
     snapshot: SDK.DaAvailabilityChallengeSnapshot,
+    reader = intake,
   ): Promise<SDK.DaAvailabilityCommitment | undefined> => {
     const status = watcherAvailabilityQueueStatus(snapshot);
     if (
@@ -234,7 +235,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
     if ("Challenged" in status) return snapshot.recordDatum?.commitment;
     // E1: an Attested node carries only the hash; the preimage is the DAAT
     // datum its Apply spent, recovered and checked against that hash.
-    return await intake.attestedCommitment(
+    return await reader.attestedCommitment(
       observation,
       snapshot.headerHash,
       status.Attested.commitment_hash,
@@ -257,259 +258,30 @@ export const createWatcherAvailabilityRuntime = async (input: {
     }
     return false;
   };
-  // Open spends one exact coin: challenger bond + record lovelace + the fee,
-  // which is pinned to the Open fee ceiling.
-  const openingLovelace =
-    deployment.parameters.challenger_bond_lovelace +
-    deployment.parameters.challenge_record_lovelace +
-    deployment.parameters.max_open_fee_lovelace;
-  const build = async (
+  const build = (
     snapshot: SDK.DaAvailabilityChallengeSnapshot,
     action: WatcherAvailabilityAction,
     observation: WatcherAuthenticatedStateQueueObservation,
     commitment: SDK.DaAvailabilityCommitment | undefined,
-  ): Promise<{
-    action: string;
-    completesWorkflow?: boolean;
-    build(): Promise<TxSignBuilder | SDK.DaAvailabilityOperationBuild>;
-  }> => {
-    const parameters = deployment.parameters;
-    const feeLovelace =
-      action.action === "open"
-        ? parameters.max_open_fee_lovelace
-        : action.action === "settle"
-          ? parameters.max_settlement_fee_lovelace
-          : action.action === "close"
-            ? parameters.max_close_fee_lovelace
-            : parameters.max_timeout_fee_lovelace;
-    const protocol = required(
-      lucid.config().protocolParameters,
-      "live protocol parameters",
-    );
-    const liveQueue =
-      action.action === "timeout"
-        ? await Effect.runPromise(
-            SDK.fetchSortedStateQueueUTxOsProgram(lucid, {
-              stateQueueAddress:
-                deployment.contracts.stateQueue.spendingScriptAddress,
-              stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
-            }),
-          )
-        : undefined;
-    // Anyone may TopUp the one shared pool and every Timeout spends it, so a
-    // Timeout reads it at the tip rather than from the finalized snapshot,
-    // which lags the tip. Without an authentic pool there the Timeout is
-    // skipped this reconciliation, never built against the snapshot's pool.
-    let livePool: Awaited<ReturnType<typeof SDK.fetchDaBondPool>> | undefined;
-    if (action.action === "timeout") {
-      try {
-        livePool = await SDK.fetchDaBondPool(lucid, {
-          policyId: deployment.contracts.daBondPool.policyId,
-          address: deployment.contracts.daBondPool.spendingScriptAddress,
-        });
-      } catch (cause) {
-        throw new WatcherAvailabilityTimeoutPoolUnavailable(
-          cause instanceof Error ? cause.message : String(cause),
-        );
-      }
-    }
-    const minChange = protocolRuntime.minimumChange(protocol, walletAddress);
-    const removalReserve =
-      BigInt(liveQueue?.length ?? observation.finalizedHeaders.length + 1) *
-        parameters.max_timeout_fee_lovelace +
-      minChange;
-    const configured = BigInt(input.config.availability.minimumFundingLovelace);
-    const requiredWorking =
-      action.action === "open"
-        ? openingLovelace + removalReserve + parameters.max_open_fee_lovelace
-        : action.action === "timeout" ||
-            action.action === "prune" ||
-            action.action === "remove"
-          ? removalReserve
-          : 0n;
-    // G9: an Open is only worth taking when its Timeout stays reachable, and
-    // the Timeout's fee includes the slashed penalty.
-    const collateralRequired =
-      action.action === "open" || action.action === "timeout"
-        ? watcherAvailabilityTimeoutCollateralLovelace({
-            parameters,
-            collateralPercentage: protocol.collateralPercentage,
-            minimumReturnLovelace: minChange,
-          })
-        : (feeLovelace * BigInt(protocol.collateralPercentage) + 99n) / 100n +
-          minChange;
-    // An Open (and its preparation) is taken only while the wallet also holds
-    // the queue-bounded removal reserve and one Timeout collateral set, once
-    // per wallet: removals are serialized by the correction lock and every
-    // Timeout removes the head and prunes its descendants, so all live
-    // challenges share one removal path. Bonds already opened sit on chain.
-    const funds = selectWatcherAvailabilityFunding({
-      utxos: await lucid.wallet().getUtxos(),
-      reservedOutRefs: new Set(journal.reservedOutRefs(actor)),
-      collateralLovelace: collateralRequired,
-      openingLovelace,
-      requiredWorkingLovelace:
-        action.action === "open" && configured > requiredWorking
-          ? configured
-          : requiredWorking,
-    });
-    if (action.action === "open" && funds.exactOpening === undefined) {
-      const preparing =
-        openingLovelace + parameters.max_open_fee_lovelace + minChange;
-      if (funds.funding.assets.lovelace < preparing) {
-        throw new WatcherAvailabilityCapitalShortfall(
-          "Availability funding needs one input large enough to prepare the exact challenger bond",
-          preparing,
-          funds.funding.assets.lovelace,
-        );
-      }
-      return {
-        action: "prepare",
-        build: () =>
-          SDK.buildDaAvailabilityFundingPreparationTx(lucid, {
-            fundingInput: funds.funding,
-            outputLovelace: openingLovelace,
-            feeLovelace: parameters.max_open_fee_lovelace,
-            ...watcherAvailabilityValidity(),
-          }),
-      };
-    }
-    return {
-      action: action.action,
-      ...(action.action === "timeout"
-        ? { completesWorkflow: snapshot.descendant === undefined }
-        : {}),
-      build: async () => {
-        const resources = {
-          collateralInputs: funds.collateral,
-          feeLovelace,
-          ...watcherAvailabilityValidity(),
-        };
-        if (action.action === "open") {
-          // The Open's inclusive upper bound must stay before the header's
-          // end_time + da_challenge_window_ms.
-          const node = Data.castFrom(
-            required(snapshot.queue, "queue").datum.data,
-            SDK.StateQueueNode,
-          );
-          const deadline = node.header.endTime + DA_CHALLENGE_WINDOW_MS;
-          return (
-            await Effect.runPromise(
-              SDK.buildOpenDaAvailabilityChallengeTxProgram(lucid, deployment, {
-                ...resources,
-                validTo:
-                  resources.validTo < deadline ? resources.validTo : deadline,
-                commitment: required(commitment, "attested commitment"),
-                queue: required(snapshot.queue, "queue").utxo,
-                challengerFunding: required(
-                  funds.exactOpening,
-                  "exact challenger funding",
-                ),
-                challenger: actor,
-                daChallengeWindowMs: DA_CHALLENGE_WINDOW_MS,
-              }),
-            )
-          ).tx;
-        }
-        if (action.action === "settle") {
-          const tranche = required(action.tranche, "next tranche");
-          return (
-            await Effect.runPromise(
-              SDK.buildSettleDaAvailabilityTrancheTxProgram(lucid, deployment, {
-                ...resources,
-                record: required(snapshot.record, "challenge record"),
-                terminal: required(snapshot.terminal, "terminal accumulator"),
-                thread: tranche.utxo,
-                ...(tranche.carrier === undefined
-                  ? {}
-                  : { carrier: tranche.carrier }),
-              }),
-            )
-          ).tx;
-        }
-        if (action.action === "close")
-          return (
-            await Effect.runPromise(
-              SDK.buildCloseDaAvailabilityChallengeTxProgram(
-                lucid,
-                deployment,
-                {
-                  ...resources,
-                  record: required(snapshot.record, "challenge record"),
-                  terminal: required(snapshot.terminal, "terminal accumulator"),
-                  queue: required(snapshot.queue, "queue").utxo,
-                },
-              ),
-            )
-          ).tx;
-        const removalTarget = {
-          collateralInputs: resources.collateralInputs,
-          validFrom: resources.validFrom,
-          validTo: resources.validTo,
-          queue: required(snapshot.queue, "queue").utxo,
-          confirmedState: snapshot.confirmedState.utxo,
-          correctionLock: snapshot.correctionLock,
-          ...(snapshot.descendant === undefined
-            ? {}
-            : { descendant: snapshot.descendant.utxo }),
-          challengeAssetName: required(
-            action.challengeAssetName,
-            "challenge identity",
-          ),
-          headerHash: snapshot.headerHash,
-          rentRefundAddress: input.proverWalletAddress,
-        };
-        if (action.action === "timeout") {
-          // The record, terminal and pool pay the exact fee
-          // min(penalty, taken) + c, so no wallet coin funds it (E2). The
-          // pool is the one read at the tip for this step.
-          const built = await Effect.runPromise(
-            SDK.buildTimeoutDaAvailabilityChallengeTxProgram(
-              lucid,
-              deployment,
-              {
-                ...removalTarget,
-                fundingQueueTailRefInput: required(
-                  liveQueue?.at(-1),
-                  "live funding queue tail",
-                ).utxo,
-                record: required(snapshot.record, "challenge record"),
-                terminal: required(snapshot.terminal, "terminal accumulator"),
-                pool: required(livePool, "tip DA bond pool").utxo,
-              },
-            ),
-          );
-          return {
-            tx: built.tx,
-            timeoutFeePartLovelace: required(
-              built.timeoutFeePartLovelace,
-              "timeout fee part",
-            ),
-          };
-        }
-        const removal = {
-          ...removalTarget,
-          feeLovelace,
-          feeFunding: funds.funding,
-        };
-        return (
-          await Effect.runPromise(
-            action.action === "prune"
-              ? SDK.buildPruneDaUnavailableBlockDescendantTxProgram(
-                  lucid,
-                  deployment,
-                  removal,
-                )
-              : SDK.buildRemoveDaUnavailableHeadTxProgram(
-                  lucid,
-                  deployment,
-                  removal,
-                ),
-          )
-        ).tx;
+    buildLucid = lucid,
+    scope?: SDK.DaAvailabilityReadScope,
+  ) =>
+    buildWatcherAvailabilityOperation(
+      snapshot,
+      action,
+      observation,
+      commitment,
+      buildLucid,
+      {
+        deployment,
+        walletAddress,
+        actor,
+        config: input.config,
+        journal,
+        proverWalletAddress: input.proverWalletAddress,
       },
-    };
-  };
+      scope,
+    );
   const reconcile = (
     observation: WatcherAuthenticatedStateQueueObservation,
     actuate: boolean,
@@ -527,10 +299,54 @@ export const createWatcherAvailabilityRuntime = async (input: {
           .map(({ headerHash }) => headerHash),
       );
       report = { phase: "waiting", pendingHeaders: [...pending] };
+      const ownedScopes: SDK.DaAvailabilityReadScope[] = [];
+      const trackScope = (scope: SDK.DaAvailabilityReadScope) => {
+        if (!activeScopes.has(scope)) {
+          activeScopes.add(scope);
+          ownedScopes.push(scope);
+        }
+        return scope;
+      };
+      const attempt = (scope: SDK.DaAvailabilityReadScope) =>
+        createWatcherAvailabilityReadAttempt({
+          config: input.config,
+          identity: input.identity,
+          deployment,
+          observation,
+          baseLucid: lucid,
+          scope: trackScope(scope),
+          assertCurrent: () => assertCurrent(epoch),
+          selectWallet: (attemptLucid) => {
+            if (secret.startsWith("ed25519_sk"))
+              attemptLucid.selectWallet.fromPrivateKey(secret);
+            else
+              attemptLucid.selectWallet.fromSeed(secret, {
+                addressType: "Enterprise",
+              });
+          },
+        });
+      const readScope = (deadlineEpochMs?: number) => {
+        const scope = SDK.createDaAvailabilityReadScope({
+          deadlineEpochMs,
+          attemptTimeoutMs: input.config.watcherConfig.l1.requestTimeoutMs,
+        });
+        return trackScope(scope);
+      };
+      const opens = new Map<string, ReturnType<typeof attempt>>();
       let poolRead: WatcherDaBondPoolObservation | undefined;
       let poolReadFailure: string | undefined;
       try {
-        await protocolRuntime.refresh();
+        for (const header of observation.finalizedHeaders) {
+          if (
+            typeof header.daAvailability === "object" &&
+            "Attested" in header.daAvailability
+          ) {
+            const deadline =
+              watcherAvailabilityAuthenticatedOpenDeadline(header);
+            if (deadline > Date.now())
+              opens.set(header.headerHash, attempt(readScope(deadline)));
+          }
+        }
         await dropReleasedHeaders(pending, observation, input.mergedHeaders);
         report = { phase: "waiting", pendingHeaders: [...pending] };
         assertCurrent(epoch);
@@ -539,7 +355,10 @@ export const createWatcherAvailabilityRuntime = async (input: {
         // the phase or holds back an Open, Settle, Close, Timeout or prune.
         try {
           const read = deriveWatcherDaBondPoolObservation({
-            pool: await intake.pool(observation),
+            pool: await (() => {
+              const reader = attempt(readScope());
+              return reader.read(() => reader.intake.pool(observation));
+            })(),
             policyId: deployment.contracts.daBondPool.policyId,
             parameters: deployment.parameters,
             nowMs: BigInt(Date.now()),
@@ -553,23 +372,32 @@ export const createWatcherAvailabilityRuntime = async (input: {
           lastPoolReadFailure = poolReadFailure =
             cause instanceof Error ? cause.message : String(cause);
         }
-        const context: SDK.DaAvailabilityOperationContext = {
+        const context = watcherAvailabilityRecoveryContext({
+          lucid,
+          parameters: deployment.parameters,
+          observation,
+          attempt: (scope) => attempt(scope ?? readScope()),
+          assertCurrent: () => assertCurrent(epoch),
+        })(() => ({
           deploymentIdentity: input.identity.manifestId,
           actor,
           journal,
           stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
           minimumConfirmationDepth: intake.confirmationDepth,
-          get transactionLimits() {
-            return protocolRuntime.transactionLimits(deployment.parameters);
+          observationTimeoutMs: input.config.watcherConfig.l1.requestTimeoutMs,
+          readBoundary: async (scope) => {
+            if (scope !== undefined) trackScope(scope);
+            assertCurrent(epoch);
+            scope?.assertCurrent();
+            return { blockNo: Number(observation.nativePoint.blockNo) };
           },
-          assertActuationCurrent: () => assertCurrent(epoch),
-          readBoundary: async () => ({
-            blockNo: Number(observation.nativePoint.blockNo),
-          }),
-          observe: (intent) => intake.operation(observation, intent),
+          assertActuationCurrent: (scope) => {
+            assertCurrent(epoch);
+            scope?.assertCurrent();
+          },
           submit: (cbor) =>
             required(lucid.config().provider, "local provider").submitTx(cbor),
-        };
+        }));
         const recovered = await SDK.reconcileDaAvailabilityOperations(context);
         // P20: after our own steps reconcile and before any admission, rows
         // whose challenge someone else's terminal step ended are released,
@@ -577,8 +405,16 @@ export const createWatcherAvailabilityRuntime = async (input: {
         const workflowRelease = await releaseWatcherAvailabilityWorkflows(
           journal,
           actor,
-          (openIntent, headerHash) =>
-            intake.workflowRelease(observation, openIntent, headerHash),
+          (openIntent, headerHash) => {
+            const reader = attempt(readScope());
+            return reader.read(() =>
+              reader.intake.workflowRelease(
+                observation,
+                openIntent,
+                headerHash,
+              ),
+            );
+          },
           () => assertCurrent(epoch),
         );
         const unresolved = recovered.find(
@@ -601,14 +437,8 @@ export const createWatcherAvailabilityRuntime = async (input: {
             : { detail: unresolved.detail }),
         };
         if (unresolvedReport !== undefined) report = unresolvedReport;
-        const snapshots = await settleLocalKupmiosReads(
-          observation.finalizedHeaders
-            .filter(({ headerHash }) => pending.has(headerHash))
-            .map(({ headerHash }) => intake.snapshot(observation, headerHash)),
-        );
         const now = BigInt(Date.now());
         const openWindow = {
-          // The earliest upper bound any Open built now could carry.
           inclusiveValidityUpper: now,
           daChallengeWindowMs: DA_CHALLENGE_WINDOW_MS,
         };
@@ -618,26 +448,75 @@ export const createWatcherAvailabilityRuntime = async (input: {
           publiclyAvailable: boolean;
         }[] = [];
         const missedOpenDeadlines: string[] = [];
-        for (const snapshot of snapshots) {
-          const status = watcherAvailabilityQueueStatus(snapshot);
-          const commitment = await commitmentOf(observation, snapshot);
-          if (commitment !== undefined)
-            commitments.set(snapshot.headerHash, commitment);
-          const attested = typeof status === "object" && "Attested" in status;
-          const available =
-            attested &&
-            commitment !== undefined &&
-            (await publicPayloadAvailable(snapshot.headerHash, commitment));
-          if (attested && available) pending.delete(snapshot.headerHash);
-          if (
-            watcherAvailabilityOpenDeadlineMissed(
-              snapshot,
-              available,
-              openWindow,
+        let deferredOpenRead:
+          | SDK.DaAvailabilityReadScopeExpiredError
+          | undefined;
+        const headers = observation.finalizedHeaders.filter(({ headerHash }) =>
+          pending.has(headerHash),
+        );
+        const snapshotReads = await Promise.allSettled(
+          headers.map(async (header) => {
+            const open = opens.get(header.headerHash);
+            const attested =
+              typeof header.daAvailability === "object" &&
+              "Attested" in header.daAvailability;
+            if (attested && open === undefined) return undefined;
+            const reader = open ?? attempt(readScope());
+            return {
+              reader,
+              snapshot: await reader.read(() =>
+                reader.intake.snapshot(observation, header.headerHash),
+              ),
+            };
+          }),
+        );
+        for (let index = 0; index < headers.length; index += 1) {
+          const header = headers[index]!;
+          const open = opens.get(header.headerHash);
+          const attested =
+            typeof header.daAvailability === "object" &&
+            "Attested" in header.daAvailability;
+          if (attested && open === undefined) {
+            missedOpenDeadlines.push(header.headerHash);
+            continue;
+          }
+          try {
+            const read = snapshotReads[index]!;
+            if (read.status === "rejected") throw read.reason;
+            if (read.value === undefined) continue;
+            const { snapshot, reader } = read.value;
+            const commitment = await reader.read(() =>
+              commitmentOf(observation, snapshot, reader.intake),
+            );
+            if (commitment !== undefined)
+              commitments.set(snapshot.headerHash, commitment);
+            const available =
+              attested &&
+              commitment !== undefined &&
+              (await reader.publicRead(() =>
+                publicPayloadAvailable(snapshot.headerHash, commitment),
+              ));
+            if (attested && available) pending.delete(snapshot.headerHash);
+            if (
+              watcherAvailabilityOpenDeadlineMissed(
+                snapshot,
+                available,
+                openWindow,
+              )
             )
-          )
-            missedOpenDeadlines.push(snapshot.headerHash);
-          candidates.push({ snapshot, publiclyAvailable: available });
+              missedOpenDeadlines.push(snapshot.headerHash);
+            candidates.push({ snapshot, publiclyAvailable: available });
+          } catch (cause) {
+            assertCurrent(epoch);
+            if (
+              open === undefined ||
+              !(cause instanceof SDK.DaAvailabilityReadScopeExpiredError)
+            )
+              throw cause;
+            if (Date.now() >= (open.scope.deadlineEpochMs ?? Infinity))
+              missedOpenDeadlines.push(header.headerHash);
+            else deferredOpenRead = cause;
+          }
         }
         // E3: every header is selected independently; no live challenge
         // suppresses another header's Open, including a withheld descendant of
@@ -690,6 +569,10 @@ export const createWatcherAvailabilityRuntime = async (input: {
         // fund, must not starve a live challenge's own settle, close or
         // Timeout, so take the first step that is admitted and builds.
         const workflowRefused: WatcherAvailabilityWorkflowRefusal[] = [];
+        const buildAttempts = new Map<
+          WatcherAvailabilityAction,
+          ReturnType<typeof attempt>
+        >();
         const { selected, openRefused, timeoutsDeferred } =
           await buildAdmittedWatcherAvailabilityOperation(
             ordered,
@@ -705,16 +588,44 @@ export const createWatcherAvailabilityRuntime = async (input: {
               workflowRefused.push({ headerHash, action, detail });
               return false;
             },
-            (step) =>
-              build(
-                step.snapshot,
-                step.action,
-                observation,
-                commitments.get(step.snapshot.headerHash),
-              ),
+            async (step) => {
+              // Completion starts its own monotonic scope before wallet or
+              // provider work; only Open inherits an authenticated cutoff.
+              const builder =
+                step.action.action === "open"
+                  ? required(
+                      opens.get(step.snapshot.headerHash),
+                      "Open attempt",
+                    )
+                  : attempt(readScope());
+              buildAttempts.set(step.action, builder);
+              const attemptLucid = await builder.lucid();
+              return await builder.read(() =>
+                build(
+                  step.snapshot,
+                  step.action,
+                  observation,
+                  commitments.get(step.snapshot.headerHash),
+                  attemptLucid,
+                  builder.scope,
+                ),
+              );
+            },
+            (headerHash) => {
+              const cutoff = opens.get(headerHash)?.scope.deadlineEpochMs;
+              if (cutoff !== undefined && Date.now() >= cutoff)
+                missedOpenDeadlines.push(headerHash);
+              else
+                deferredOpenRead = new SDK.DaAvailabilityReadScopeExpiredError(
+                  cutoff,
+                );
+            },
           );
         alerts = {
           ...alerts,
+          ...(missedOpenDeadlines.length === 0
+            ? {}
+            : { missedOpenDeadlines: Object.freeze([...missedOpenDeadlines]) }),
           ...(openRefused.length === 0
             ? {}
             : { openRefused: Object.freeze(openRefused) }),
@@ -726,21 +637,43 @@ export const createWatcherAvailabilityRuntime = async (input: {
             : { workflowRefused: Object.freeze(workflowRefused) }),
         };
         report = { ...report, ...alerts };
-        if (selected === undefined) return;
-        const { operation } = selected;
-        const result = await SDK.runDaAvailabilityOperation(context, {
-          headerHash: selected.step.snapshot.headerHash,
-          ...protocolRuntime.refreshedOperation(
+        if (selected === undefined) {
+          if (deferredOpenRead !== undefined)
+            report = {
+              ...retry.failed(deferredOpenRead, [...pending]),
+              ...alerts,
+            };
+          return;
+        }
+        const { operation, step: selectedStep } = selected;
+        const buildAttempt = required(
+          buildAttempts.get(selectedStep.action),
+          "selected availability attempt",
+        );
+        const attemptLucid = await buildAttempt.lucid();
+        const execution = watcherAvailabilityExecutionLimits(
+          context,
+          deployment.parameters,
+          () => assertCurrent(epoch),
+        );
+        execution.capture(attemptLucid, buildAttempt.scope);
+        const result = await SDK.runDaAvailabilityOperation(execution.context, {
+          headerHash: selectedStep.snapshot.headerHash,
+          ...watcherAvailabilityAttemptOperation({
+            attempt: buildAttempt,
             operation,
-            build,
-            [
-              selected.step.snapshot,
-              selected.step.action,
-              observation,
-              commitments.get(selected.step.snapshot.headerHash),
-            ] as const,
-            () => assertCurrent(epoch),
-          ),
+            execution,
+            assertCurrent: () => assertCurrent(epoch),
+            reselect: () =>
+              build(
+                selectedStep.snapshot,
+                selectedStep.action,
+                observation,
+                commitments.get(selectedStep.snapshot.headerHash),
+                attemptLucid,
+                buildAttempt.scope,
+              ),
+          }),
         });
         report = {
           phase:
@@ -757,6 +690,10 @@ export const createWatcherAvailabilityRuntime = async (input: {
         if (epoch !== generation || closed) return;
         report = retry.failed(cause, [...pending]);
       } finally {
+        for (const scope of ownedScopes) {
+          scope.close();
+          activeScopes.delete(scope);
+        }
         // Diagnostics describe the completed reconciliation, not its temporary
         // waiting state. A revoked observation cannot emit a recovery signal.
         if (epoch === generation && !closed) {
@@ -837,6 +774,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
     },
     invalidateForRollback: () => {
       generation += 1;
+      closeScopes();
       retry.cancel();
       // Even a rollback through the finalized observation only rewinds it:
       // the next observation re-derives every intent, and reconciliation
@@ -847,6 +785,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
     },
     invalidateForShutdown: () => {
       generation += 1;
+      closeScopes();
       closed = true;
       retry.cancel();
     },
@@ -859,6 +798,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
     }),
     close: async () => {
       generation += 1;
+      closeScopes();
       closed = true;
       retry.cancel();
       await serial;

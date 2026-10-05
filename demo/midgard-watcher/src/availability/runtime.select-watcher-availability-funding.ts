@@ -30,6 +30,7 @@ export const buildAdmittedWatcherAvailabilityOperation = async <
   ordered: readonly T[],
   admits: (headerHash: string, action: string) => boolean,
   build: (step: T) => Promise<O>,
+  onOpenReadExpired?: (headerHash: string) => void,
 ): Promise<
   Readonly<{
     selected?: Readonly<{ step: T; operation: O }>;
@@ -46,6 +47,13 @@ export const buildAdmittedWatcherAvailabilityOperation = async <
     try {
       operation = await build(step);
     } catch (cause) {
+      if (
+        step.action.action === "open" &&
+        cause instanceof SDK.DaAvailabilityReadScopeExpiredError
+      ) {
+        onOpenReadExpired?.(headerHash);
+        continue;
+      }
       if (
         step.action.action === "timeout" &&
         cause instanceof WatcherAvailabilityTimeoutPoolUnavailable

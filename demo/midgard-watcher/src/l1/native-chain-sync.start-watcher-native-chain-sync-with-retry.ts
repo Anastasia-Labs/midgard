@@ -81,8 +81,9 @@ export const startWatcherNativeChainSyncWithRetry = async (input: {
   // An unanswering node restarts the whole walk, newest candidate first, after
   // a capped backoff; it never ends startup.
   let waiting: { readonly error: unknown } | undefined;
+  let runtime: WatcherNativeChainSyncRuntime;
   try {
-    return await retryWatcherL1Transient(
+    runtime = await retryWatcherL1Transient(
       () => {
         waiting = undefined;
         signal?.throwIfAborted();
@@ -108,10 +109,19 @@ export const startWatcherNativeChainSyncWithRetry = async (input: {
       },
     );
   } catch (error) {
-    if (waiting?.error === error && signal?.aborted === true)
+    if (
+      waiting !== undefined &&
+      waiting.error === error &&
+      signal?.aborted === true
+    )
       signal.throwIfAborted();
     throw error;
   }
+  if (signal?.aborted === true) {
+    await runtime.close();
+    signal.throwIfAborted();
+  }
+  return runtime;
 };
 
 const walk = async (
@@ -122,8 +132,9 @@ const walk = async (
   let lastIntersectionFailure: NativeChainSyncStartupFailure | undefined;
   for (const intersection of candidates) {
     signal?.throwIfAborted();
+    let runtime: WatcherNativeChainSyncRuntime;
     try {
-      const runtime = await startWatcherNativeChainSync({
+      runtime = await startWatcherNativeChainSync({
         binaryPath: input.binaryPath,
         signal,
         watcherConfig: input.watcherConfig,
@@ -141,11 +152,6 @@ const walk = async (
                 input.unsafeReadIdentityFileForTest,
             }),
       });
-      if (signal?.aborted === true) {
-        await runtime.close();
-        signal.throwIfAborted();
-      }
-      return runtime;
     } catch (error) {
       if (
         !(error instanceof NativeChainSyncStartupFailure) ||
@@ -154,7 +160,15 @@ const walk = async (
         throw error;
       }
       lastIntersectionFailure = error;
+      continue;
     }
+    // Only startup intersection refusal advances the walk; a close failure is
+    // an owned drainage failure even if it uses the same error type/code.
+    if (signal?.aborted === true) {
+      await runtime.close();
+      signal.throwIfAborted();
+    }
+    return runtime;
   }
   throw (
     lastIntersectionFailure ??

@@ -1,14 +1,9 @@
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import {
-  type DaAvailabilityOperationBuild,
-  daAvailabilityOperationLimits,
-  type DaAvailabilityParameters,
-} from "@al-ft/midgard-sdk";
+import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
 import {
   calculateMinLovelaceFromUTxO,
   type LucidEvolution,
   type ProtocolParameters,
-  type TxSignBuilder,
 } from "@lucid-evolution/lucid";
 
 import { buildWithWatcherProtocolParameterRefresh } from "../funding/protocol-parameter-retry.js";
@@ -24,17 +19,25 @@ const parameterDigest = (lucid: LucidEvolution): string =>
     ) as unknown,
   );
 
-export const createWatcherAvailabilityParameterRefresh =
-  (lucid: LucidEvolution) => async (): Promise<boolean> => {
-    const before = parameterDigest(lucid);
-    const provider = lucid.config().provider;
-    if (provider === undefined)
-      throw new Error("Availability operation omitted local provider");
-    // The same admitted local provider retains its network and native query
-    // authority. Lucid refreshes balancing parameters and cost models.
-    await lucid.switchProvider(provider);
-    return before !== parameterDigest(lucid);
-  };
+/** Owns an isolated attempt Lucid. A late refresh can only mutate this attempt.
+ * The same admitted local provider retains its network and native query
+ * authority; Lucid refreshes balancing parameters and cost models. */
+export const refreshWatcherAvailabilityAttempt = async (
+  lucid: LucidEvolution,
+  scope: DaAvailabilityReadScope,
+  assertCurrent: () => void,
+): Promise<boolean> => {
+  assertCurrent();
+  scope.assertCurrent();
+  const before = parameterDigest(lucid);
+  const provider = lucid.config().provider;
+  if (provider === undefined)
+    throw new Error("Availability attempt omitted provider");
+  await scope.read(() => lucid.switchProvider(provider));
+  assertCurrent();
+  scope.assertCurrent();
+  return before !== parameterDigest(lucid);
+};
 
 export const minimumWatcherAvailabilityChange = (
   protocol: ProtocolParameters,
@@ -47,57 +50,24 @@ export const minimumWatcherAvailabilityChange = (
     outputIndex: 0,
   });
 
-export const watcherAvailabilityRefreshedOperation = (
-  operation: {
-    action: string;
-    completesWorkflow?: boolean;
-    build(): Promise<TxSignBuilder | DaAvailabilityOperationBuild>;
-  },
-  select: () => Promise<{
-    action: string;
-    build(): Promise<TxSignBuilder | DaAvailabilityOperationBuild>;
-  }>,
-  refresh: () => Promise<boolean>,
-  assertCurrent: () => void,
-) => ({
-  ...operation,
-  build: () =>
-    buildWithWatcherProtocolParameterRefresh({
-      assertCurrent,
-      refresh,
-      build: async () => {
-        // Re-select live wallet inputs and recompute min-ADA/collateral.
-        const selected = await select();
-        if (selected.action !== operation.action)
-          throw new Error(
-            "Parameter refresh changed availability action; reconcile before building",
-          );
-        return await selected.build();
-      },
-    }),
-});
-
-export const createWatcherAvailabilityProtocolRuntime = (
-  lucid: LucidEvolution,
-) => ({
-  refresh: createWatcherAvailabilityParameterRefresh(lucid),
-  minimumChange: minimumWatcherAvailabilityChange,
-  transactionLimits: (parameters: DaAvailabilityParameters) =>
-    daAvailabilityOperationLimits(lucid, parameters),
-  refreshedOperation: <Args extends readonly unknown[]>(
-    operation: Parameters<typeof watcherAvailabilityRefreshedOperation>[0],
-    select: (
-      ...args: Args
-    ) => ReturnType<
-      Parameters<typeof watcherAvailabilityRefreshedOperation>[1]
-    >,
-    args: Args,
-    assertCurrent: () => void,
-  ) =>
-    watcherAvailabilityRefreshedOperation(
-      operation,
-      () => select(...args),
-      createWatcherAvailabilityParameterRefresh(lucid),
-      assertCurrent,
-    ),
-});
+/** Re-select exact funding and min-ADA after one changed-parameter refresh.
+ * Signing, durable intent writes and submission stay outside this wrapper. */
+export const buildWatcherAvailabilityAttempt = async <T>(input: {
+  lucid: LucidEvolution;
+  scope: DaAvailabilityReadScope;
+  assertCurrent: () => void;
+  build: () => Promise<T>;
+}): Promise<T> =>
+  await buildWithWatcherProtocolParameterRefresh({
+    assertCurrent: () => {
+      input.assertCurrent();
+      input.scope.assertCurrent();
+    },
+    refresh: () =>
+      refreshWatcherAvailabilityAttempt(
+        input.lucid,
+        input.scope,
+        input.assertCurrent,
+      ),
+    build: () => input.scope.read(input.build),
+  });

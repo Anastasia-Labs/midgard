@@ -370,7 +370,7 @@ describe("concurrent availability challenges on one wallet (spec #685 E3, P9)", 
       await watcher.close();
     }
     const deadline = endTime + window;
-    expect(io.opens.map(({ validTo }) => validTo)).toEqual([deadline]);
+    expect(io.opens.map(({ validTo }) => validTo)).toEqual([deadline - 1n]);
     // The SDK's window check admits the capped bound and refuses the uncapped
     // one the Open would otherwise carry.
     const accepts = (validTo: bigint) => () =>

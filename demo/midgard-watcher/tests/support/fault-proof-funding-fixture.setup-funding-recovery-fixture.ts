@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -59,6 +58,7 @@ import {
   watcherDeploymentReleaseEconomicsAuthority,
 } from "../../src/runtime/deployment-identity.js";
 import { runtimeAuthority } from "../funding/prover-funding-calculation.runtime-authority.js";
+import { signFundingRecoveryFixtureBody } from "./fault-proof-funding-fixture.sign-body.js";
 import {
   closers,
   deploymentIdentity,
@@ -68,6 +68,7 @@ import {
   sourcesFor,
   walletAddress,
 } from "./fault-proof-funding-fixture.sources-for.js";
+import { createFundingRecoveryDirectory } from "./test-storage-root.js";
 
 export const setupFundingRecoveryFixture = async (
   interruptAfterPreparation: boolean | "after_preflight" = false,
@@ -79,9 +80,7 @@ export const setupFundingRecoveryFixture = async (
   protocolMinFeeCoefficient = 44,
   protocolMaxCollateralInputs = 3,
 ) => {
-  const journalRoot = await mkdtemp(
-    join(process.cwd(), ".watcher-funding-recovery-"),
-  );
+  const journalRoot = await createFundingRecoveryDirectory();
   directories.push(journalRoot);
   const path = join(journalRoot, "watcher.sqlite");
   let database = await openWatcherSqliteProverFundingReservationStore({
@@ -403,6 +402,7 @@ export const setupFundingRecoveryFixture = async (
     ),
   );
   const body = CML.TransactionBody.new(inputs, outputs, 1_000_000n);
+  body.set_ttl(100n);
   if (withCollateral) {
     const collateral = CML.TransactionInputList.new();
     for (const reserved of plan.inputs.filter(
@@ -418,22 +418,8 @@ export const setupFundingRecoveryFixture = async (
     }
     body.set_collateral_inputs(collateral);
   }
-  const witnesses = CML.TransactionWitnessSet.new();
-  const vkeys = CML.VkeywitnessList.new();
-  vkeys.add(
-    CML.Vkeywitness.new(
-      key.to_public(),
-      key.sign(CML.hash_transaction(body).to_raw_bytes()),
-    ),
-  );
-  witnesses.set_vkeywitnesses(vkeys);
-  const signedTransactionCborHex = CML.Transaction.new(
-    body,
-    witnesses,
-    true,
-    undefined,
-  ).to_cbor_hex();
-  const transactionHash = CML.hash_transaction(body).to_hex();
+  const { signedTransactionCborHex, transactionHash } =
+    signFundingRecoveryFixtureBody(body);
   const prepared = (await journal.load(initial.workflowId)).find(
     ({ event }) => event.kind === "prepared",
   )!;

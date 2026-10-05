@@ -24,6 +24,17 @@ import {
   type WatcherProverFundingReservationTransition,
 } from "./prover-funding-reservation.js";
 import {
+  finalProverFundingCompletion as finalCompletion,
+  pendingProverFundingLineage,
+  pendingProverFundingLineageParameters,
+  proverFundingReobservationInputs,
+  retainedProverFundingInputs,
+} from "./prover-funding-reservation.retained-signed-inputs.js";
+import {
+  type AbandonmentRow,
+  createProverFundingAbandonmentRecords,
+} from "./sqlite-prover-funding-reservation-store.abandonment-records.js";
+import {
   assertPlanMatchesRecord,
   canonicalDatabasePath,
   deriveSignedTransition,
@@ -36,6 +47,7 @@ import {
   WATCHER_SQLITE_PROVER_FUNDING_RESERVATION_STORE,
   type WatcherSqliteProverFundingReservationStoreRuntime,
 } from "./sqlite-prover-funding-reservation-store.derive-signed-transition.js";
+import { projectRetainedProverFundingLeases } from "./sqlite-prover-funding-reservation-store.lease-claims.js";
 
 export const openInternal = async (
   input: Readonly<{ path: string; busyTimeoutMs?: number }>,
@@ -218,78 +230,15 @@ export const openInternal = async (
     FROM watcher_prover_funding_handoff_v1
     ORDER BY reservation_id ASC, kind ASC, identity_digest ASC
   `);
-  const insertAbandonment = database.prepare(`
-    INSERT INTO watcher_prover_funding_abandonment_v1(reservation_id, transition_digest, record_digest, canonical_json)
-    VALUES (?, ?, ?, ?)
-  `);
-  const selectUnacknowledgedAbandonment = database.prepare(`
-    SELECT * FROM watcher_prover_funding_abandonment_v1 WHERE reservation_id = ? AND acknowledged_revision IS NULL
-  `);
-  const selectAllAbandonments = database.prepare(
-    `SELECT * FROM watcher_prover_funding_abandonment_v1 ORDER BY reservation_id, transition_digest`,
-  );
-  const acknowledgeAbandonment = database.prepare(`
-    UPDATE watcher_prover_funding_abandonment_v1 SET acknowledged_revision = ?
-    WHERE reservation_id = ? AND transition_digest = ? AND acknowledged_revision IS NULL
-  `);
-  type AbandonmentRow = Readonly<{
-    reservation_id: unknown;
-    transition_digest: unknown;
-    record_digest: unknown;
-    canonical_json: unknown;
-    acknowledged_revision: unknown;
-  }>;
-  const readAbandonmentRow = (row: AbandonmentRow) => {
-    if (
-      typeof row.reservation_id !== "string" ||
-      !HEX_32.test(row.reservation_id) ||
-      typeof row.transition_digest !== "string" ||
-      !HEX_32.test(row.transition_digest) ||
-      typeof row.record_digest !== "string" ||
-      !HEX_32.test(row.record_digest) ||
-      typeof row.canonical_json !== "string" ||
-      (row.acknowledged_revision !== null &&
-        (typeof row.acknowledged_revision !== "string" ||
-          !/^(?:0|[1-9][0-9]*)$/u.test(row.acknowledged_revision)))
-    )
-      throw new Error("prover funding abandonment row is malformed");
-    const value: unknown = JSON.parse(row.canonical_json);
-    if (
-      value === null ||
-      typeof value !== "object" ||
-      Array.isArray(value) ||
-      Object.keys(value).sort().join(",") !== "handoff,transition" ||
-      !("handoff" in value) ||
-      !("transition" in value) ||
-      watcherCanonicalJson(value) !== row.canonical_json ||
-      computeDeploymentManifestJsonDigest(value) !== row.record_digest
-    )
-      throw new Error("prover funding abandonment row digest mismatch");
-    const transition = parseWorkflowFundingPreparedTransition(value.transition);
-    const handoff = parseWorkflowFundingAbandonmentHandoff(value.handoff);
-    if (
-      computeDeploymentManifestJsonDigest(transition) !==
-        row.transition_digest ||
-      handoff.submissionIntent.txHash !== transition.transactionHash ||
-      handoff.reconciliation.txHash !== transition.transactionHash
-    )
-      throw new Error(
-        "prover funding abandonment changed signed transaction identity",
-      );
-    return {
-      reservationId: row.reservation_id,
-      transitionDigest: row.transition_digest,
-      acknowledgedRevision: row.acknowledged_revision,
-      transition,
-      handoff,
-    };
-  };
-  const unacknowledgedAbandonment = (reservationId: string) => {
-    const row = selectUnacknowledgedAbandonment.get(reservationId) as
-      | AbandonmentRow
-      | undefined;
-    return row === undefined ? null : readAbandonmentRow(row);
-  };
+  const {
+    retireLegacyAbandonment,
+    insertAbandonment,
+    selectAllAbandonments,
+    acknowledgeAbandonment,
+    readAbandonmentRow,
+    unacknowledgedAbandonment,
+    legacyAbandonedTransactions,
+  } = createProverFundingAbandonmentRecords(database);
   type HandoffRow = Readonly<{
     reservation_id: unknown;
     kind: unknown;
@@ -533,8 +482,7 @@ export const openInternal = async (
     }
   };
 
-  // An included terminal may have released this exact change output to a
-  // later job. Replaying its producer must preserve that job's sole lease.
+  // Preserve a later job's lease after an irreversible release.
   const outputTransferredToAnotherReservation = (
     reservationId: string,
     outRef: string,
@@ -556,35 +504,78 @@ export const openInternal = async (
     );
   };
 
-  const rebuildLeases = (): void => {
-    const records = (selectAll.all() as RecordRow[]).map(parseRow);
-    for (const record of records) deleteLeases.run(record.reservationId);
-    for (const record of records) {
-      for (const value of record.activeInputs)
-        insertLease.run(
-          value.outRef,
-          record.reservationId,
-          "active",
-          value.role,
-        );
-    }
-    for (const record of records) {
-      for (const value of record.pendingTransition?.producedInputs ?? []) {
-        if (
-          outputTransferredToAnotherReservation(
-            record.reservationId,
-            value.outRef,
+  const leaseInputs = (record: WatcherProverFundingReservationRecord) => {
+    const completion = selectCompletionHandoff.get(record.reservationId) as
+      | HandoffRow
+      | undefined;
+    const saved =
+      completion === undefined ? undefined : readHandoffRow(completion);
+    return retainedProverFundingInputs({
+      record,
+      submissions: [
+        ...recordedSubmissions(record.reservationId),
+        ...legacyAbandonedTransactions(record.reservationId),
+      ].map(({ transition }) => transition),
+      abandonedTransactionHashes: new Set(
+        (selectAllAbandonments.all() as AbandonmentRow[])
+          .filter((row) => row.reservation_id === record.reservationId)
+          .map(readAbandonmentRow)
+          .filter(
+            (saved) => saved.handoff.reconciliation.retirement !== undefined,
           )
-        )
-          continue;
-        insertLease.run(
-          value.outRef,
-          record.reservationId,
-          "pending",
-          value.role,
-        );
-      }
-    }
+          .map((saved) => saved.transition.transactionHash),
+      ),
+      unverifiedAbandonedTransactionHashes: new Set(
+        (selectAllAbandonments.all() as AbandonmentRow[])
+          .filter((row) => row.reservation_id === record.reservationId)
+          .map(readAbandonmentRow)
+          .filter(
+            (saved) => saved.handoff.reconciliation.retirement === undefined,
+          )
+          .map((saved) => saved.transition.transactionHash),
+      ),
+      completed: saved?.kind === "completion" && finalCompletion(saved.handoff),
+    });
+  };
+
+  const leaseProjection = (
+    records = (selectAll.all() as RecordRow[]).map(parseRow),
+  ) =>
+    projectRetainedProverFundingLeases({
+      records,
+      readInputs: leaseInputs,
+      readAttempts: (id) =>
+        [...recordedSubmissions(id), ...legacyAbandonedTransactions(id)].map(
+          ({ transition }) => transition,
+        ),
+      readUnverifiedHashes: (id) =>
+        new Set(
+          legacyAbandonedTransactions(id)
+            .filter(
+              ({ handoff }) => handoff.reconciliation.retirement === undefined,
+            )
+            .map(({ transition }) => transition.transactionHash),
+        ),
+      transferred: outputTransferredToAnotherReservation,
+      previousOwners: new Map(
+        (selectAllLeases.all() as LeaseRow[]).map((row) => [
+          String(row.out_ref),
+          String(row.reservation_id),
+        ]),
+      ),
+    });
+
+  const rebuildLeases = (): void => {
+    const projection = leaseProjection();
+    for (const record of (selectAll.all() as RecordRow[]).map(parseRow))
+      deleteLeases.run(record.reservationId);
+    for (const lease of projection.leases)
+      insertLease.run(
+        lease.outRef,
+        lease.reservationId,
+        lease.phase,
+        lease.role,
+      );
   };
 
   const persistPendingLineage = (input: {
@@ -592,30 +583,10 @@ export const openInternal = async (
     readonly transition: WatcherProverFundingReservationTransition;
     readonly signedTransactionCborHex: string;
   }): number => {
-    const transaction = CML.Transaction.from_cbor_hex(
-      input.signedTransactionCborHex,
-    );
-    const outputs = transaction.body().outputs();
-    for (let outputIndex = 0; outputIndex < outputs.len(); outputIndex += 1) {
-      const identity = Object.freeze({
-        reservationId: input.reservationId,
-        sourceActionKind: input.transition.actionKind,
-        sourceOutputIndex: outputIndex,
-        outRef: `${input.transition.transactionHash}#${outputIndex.toString()}`,
-        resolvedOutputCborHex: outputs.get(outputIndex).to_canonical_cbor_hex(),
-        transitionDigest: input.transition.transitionDigest,
-      });
-      insertLineage.run(
-        identity.reservationId,
-        identity.sourceActionKind,
-        identity.sourceOutputIndex,
-        identity.outRef,
-        identity.resolvedOutputCborHex,
-        identity.transitionDigest,
-        computeDeploymentManifestJsonDigest(identity),
-      );
-    }
-    return outputs.len();
+    const identities = pendingProverFundingLineage(input);
+    for (const identity of identities)
+      insertLineage.run(...pendingProverFundingLineageParameters(identity));
+    return identities.length;
   };
 
   const recordedSubmissions = (reservationId: string): SubmissionHandoff[] =>
@@ -633,75 +604,20 @@ export const openInternal = async (
   ) => {
     const record = readOne(reservationId);
     if (record === null) throw new Error("prover reservation is missing");
-    const candidates = new Map(
-      record.activeInputs.map(({ outRef, role }) => [outRef, role]),
-    );
-    for (const { transition } of recordedSubmissions(reservationId)) {
-      if (transition.transactionHash !== transactionHash) continue;
-      for (const outRef of transition.consumedOutRefs)
-        candidates.set(outRef, "funding");
-      const collateral = CML.Transaction.from_cbor_hex(
-        transition.signedTransactionCborHex,
-      )
-        .body()
-        .collateral_inputs();
-      for (let i = 0; i < (collateral?.len() ?? 0); i++) {
-        const ref = collateral!.get(i);
-        candidates.set(
-          `${ref.transaction_id().to_hex()}#${ref.index()}`,
-          "collateral",
-        );
-      }
-    }
-    return [...candidates].map(([outRef, role]) => ({ outRef, role }));
+    return proverFundingReobservationInputs({
+      record,
+      transactionHash,
+      submissions: recordedSubmissions(reservationId).map(
+        ({ transition }) => transition,
+      ),
+    });
   };
 
   const audit = (): readonly WatcherProverFundingReservationRecord[] => {
     const records = (selectAll.all() as RecordRow[]).map(parseRow);
-    const expected = new Map<
-      string,
-      Readonly<{
-        reservationId: string;
-        phase: "active" | "pending";
-        role: string;
-      }>
-    >();
-    for (const record of records) {
-      for (const value of record.activeInputs) {
-        if (expected.has(value.outRef))
-          throw new Error("prover funding reservation repeats an output lease");
-        expected.set(
-          value.outRef,
-          Object.freeze({
-            reservationId: record.reservationId,
-            phase: "active",
-            role: value.role,
-          }),
-        );
-      }
-    }
-    for (const record of records) {
-      for (const value of record.pendingTransition?.producedInputs ?? []) {
-        if (
-          outputTransferredToAnotherReservation(
-            record.reservationId,
-            value.outRef,
-          )
-        )
-          continue;
-        if (expected.has(value.outRef)) {
-          throw new Error("prover funding reservation repeats an output lease");
-        }
-        expected.set(
-          value.outRef,
-          Object.freeze({
-            reservationId: record.reservationId,
-            phase: "pending",
-            role: value.role,
-          }),
-        );
-      }
-    }
+    const expected = new Map(
+      leaseProjection(records).leases.map((lease) => [lease.outRef, lease]),
+    );
     const leases = selectAllLeases.all() as LeaseRow[];
     if (leases.length !== expected.size) {
       throw new Error("prover funding reservation lease set mismatch");
@@ -753,7 +669,11 @@ export const openInternal = async (
       if (record === undefined)
         throw new Error("prover funding handoff has no reservation");
       assertHandoffReservation(handoff.handoff, record);
-      if (handoff.kind === "completion" && record.state !== "released")
+      if (
+        handoff.kind === "completion" &&
+        finalCompletion(handoff.handoff) &&
+        record.state !== "released"
+      )
         throw new Error(
           "prover funding completion handoff has unreleased inputs",
         );
@@ -767,6 +687,7 @@ export const openInternal = async (
         throw new Error("prover funding abandonment has no reservation");
       assertHandoffReservation(abandoned.handoff, record);
       if (
+        abandoned.handoff.reconciliation.retirement !== undefined &&
         abandoned.acknowledgedRevision === null &&
         (record.pendingTransition !== null || record.state === "released")
       )
@@ -784,9 +705,19 @@ export const openInternal = async (
     return Object.freeze(records);
   };
 
-  const transaction = <T>(operation: () => T): T => {
+  const assertSubmissionAuthority = () => {
+    if (leaseProjection().reconciliationOnly)
+      throw new Error(
+        "prover funding is reserved by overlapping legacy signed attempts; reconciliation only",
+      );
+  };
+  const transaction = <T>(
+    operation: () => T,
+    reconciliationOnly = false,
+  ): T => {
     database.exec("BEGIN IMMEDIATE");
     try {
+      if (!reconciliationOnly) assertSubmissionAuthority();
       const value = operation();
       audit();
       database.exec("COMMIT");
@@ -828,14 +759,65 @@ export const openInternal = async (
       (row) => row.reservation_id === reservationId,
     );
 
-  auditRead();
+  transaction(rebuildLeases, true);
 
   const store: WatcherProverFundingReservationStore = Object.freeze({
     readAll: async () => auditRead(),
+    isReconciliationOnly: async () => {
+      auditRead();
+      return leaseProjection().reconciliationOnly;
+    },
+    assertSubmissionAuthority: async () => {
+      auditRead();
+      assertSubmissionAuthority();
+    },
+    readReservedOutRefs: async ({ excludingReservationId }) => {
+      auditRead();
+      return [
+        ...new Set(
+          leaseProjection()
+            .claims.filter(
+              (claim) => claim.reservationId !== excludingReservationId,
+            )
+            .map((claim) => claim.outRef),
+        ),
+      ];
+    },
     hasSignedHistory: async ({ reservationId }) => {
       if (!auditRead().some((record) => record.reservationId === reservationId))
         throw new Error("prover funding history reservation is missing");
       return hasSignedHistory(reservationId);
+    },
+    retireLegacyAbandonment: async ({
+      plan,
+      expectedRevision,
+      transactionHash,
+      retirement,
+    }) => {
+      assertPlan(plan);
+      return transaction(() => {
+        const current = readOne(plan.reservationId);
+        if (current === null || current.revision !== expectedRevision)
+          throw new Error("Legacy retirement revision changed");
+        assertPlanMatchesRecord(plan, current);
+        const next = nextRecord({ current });
+        if (
+          !retireLegacyAbandonment(
+            plan.reservationId,
+            transactionHash,
+            retirement,
+            next.revision,
+          )
+        )
+          return current;
+        writeRecord(current.recordDigest, next);
+        rebuildLeases();
+        return next;
+      }, true);
+    },
+    readLegacyAbandonedTransactions: async ({ reservationId }) => {
+      auditRead();
+      return legacyAbandonedTransactions(reservationId);
     },
     readAbandonmentHandoff: async ({ reservationId }) => {
       auditRead();
@@ -895,10 +877,7 @@ export const openInternal = async (
         ) as HandoffRow | undefined;
         if (completionRow !== undefined) {
           const saved = readHandoffRow(completionRow);
-          if (
-            saved.kind !== "completion" ||
-            saved.handoff.completion.kind !== "terminal_included"
-          )
+          if (saved.kind !== "completion" || finalCompletion(saved.handoff))
             throw new Error("anchored prover reservation cannot be reopened");
         }
         const recorded = recordedSubmissions(current.reservationId).find(
@@ -1192,6 +1171,10 @@ export const openInternal = async (
           abandonment.handoff,
         );
         assertHandoffReservation(handoff, current);
+        if (handoff.reconciliation.retirement === undefined)
+          throw new Error(
+            "Funding abandonment requires a verified canonical retirement receipt",
+          );
         if (
           current.state !== "active" ||
           current.revision !== abandonment.expectedRevision
@@ -1349,42 +1332,35 @@ export const openInternal = async (
         )
           throw new Error("prover reservation release mismatch");
         const digest = computeDeploymentManifestJsonDigest(handoff);
-        if (current.state === "released") {
-          const row = selectCompletionHandoff.get(current.reservationId) as
-            | HandoffRow
-            | undefined;
-          if (row !== undefined) {
-            const prior = readHandoffRow(row);
-            if (
-              prior.kind === "completion" &&
-              prior.handoff.completion.kind === "terminal_included" &&
-              handoff.completion.kind === "completed"
-            ) {
-              // Anchoring closes an already released execution. Resource use
-              // remains independent of how long the finality stamp takes.
-              database
-                .prepare(
-                  "DELETE FROM watcher_prover_funding_handoff_v1 WHERE reservation_id = ? AND kind = 'completion'",
-                )
-                .run(current.reservationId);
-              persistHandoff(current, "completion", digest, handoff);
-              return current;
-            }
+        const priorRow = selectCompletionHandoff.get(current.reservationId) as
+          | HandoffRow
+          | undefined;
+        if (priorRow !== undefined) {
+          const prior = readHandoffRow(priorRow);
+          if (prior.kind !== "completion")
+            throw new Error("prover completion handoff is malformed");
+          if (finalCompletion(prior.handoff)) {
+            if (prior.identityDigest !== digest)
+              throw new Error("prover reservation release handoff mismatch");
+            return current;
           }
-          if (
-            row === undefined ||
-            readHandoffRow(row).identityDigest !== digest
-          )
-            throw new Error("prover reservation release handoff mismatch");
-          return current;
+          if (prior.identityDigest === digest) return current;
+          database
+            .prepare(
+              "DELETE FROM watcher_prover_funding_handoff_v1 WHERE reservation_id = ? AND kind = 'completion'",
+            )
+            .run(current.reservationId);
         }
-        if (current.state !== "active")
+        if (
+          current.state !== "active" &&
+          !(current.state === "released" && priorRow !== undefined)
+        )
           throw new Error("prover reservation release mismatch");
         persistHandoff(current, "completion", digest, handoff);
         const next = nextRecord({
           current,
-          state: "released",
-          activeInputs: [],
+          state: finalCompletion(handoff) ? "released" : "active",
+          activeInputs: finalCompletion(handoff) ? [] : current.activeInputs,
           pendingTransition: null,
           conflictCode: null,
         });

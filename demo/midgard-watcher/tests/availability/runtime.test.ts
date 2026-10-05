@@ -2,6 +2,7 @@ import {
   type LocalKupmiosFraudProofRawSource,
   LocalKupmiosTransportUnavailableError,
 } from "@al-ft/midgard-fault-proofs";
+import { DaAvailabilityReadScopeExpiredError } from "@al-ft/midgard-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -12,13 +13,10 @@ import type { WatcherAuthenticatedStateQueueObservation } from "../../src/indexe
 import type { VerifiedWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.js";
 import type { WatcherProcessConfig } from "../../src/runtime/process-config.js";
 
-// Keep the real serialized reconciliation and transition reporting; isolate
-// wallet, source admission and chain I/O, which have their own fixture suites.
 const io = vi.hoisted(() => ({
   reconcile: vi.fn(),
   snapshot: vi.fn(),
   payload: vi.fn(),
-  refresh: vi.fn(),
 }));
 vi.mock("@al-ft/midgard-core/availability-operation-journal", () => ({
   openAvailabilityOperationJournal: () => ({
@@ -37,8 +35,6 @@ vi.mock("@lucid-evolution/lucid", async (original) => ({
   Lucid: async () => ({
     selectWallet: { fromSeed() {} },
     wallet: () => ({ address: async () => "availability" }),
-    config: () => ({ protocolParameters: {}, provider: {} }),
-    switchProvider: io.refresh,
   }),
   paymentCredentialOf: (address: string) => ({ hash: address }),
 }));
@@ -73,8 +69,6 @@ vi.mock("../../src/availability/deployment.js", async () => {
     }),
   };
 });
-// The intake carries the verified source's release depth; a sentinel distinct
-// from every profile depth proves the runtime forwards it and substitutes none.
 vi.mock("../../src/availability/observation.js", () => ({
   createWatcherAvailabilityObservation: () => ({
     pool: async () => undefined,
@@ -107,6 +101,7 @@ const fixture = (
     config: {
       watcherConfig: {
         l1: {
+          requestTimeoutMs: 10_000,
           source: {
             sourceMode: "local_node",
             queryServices: [
@@ -138,7 +133,6 @@ const fixture = (
   });
 
 beforeEach(() => {
-  io.refresh.mockReset().mockResolvedValue(undefined);
   io.reconcile.mockReset().mockResolvedValue([]);
   io.payload.mockReset().mockResolvedValue({ ok: true });
 });
@@ -291,29 +285,37 @@ describe("availability reconciliation retry on a quiet queue", () => {
   const transient = () =>
     new LocalKupmiosTransportUnavailableError("ogmios is unavailable");
 
-  it("waits out an L1 transient on its own timer and reconciles again exactly once", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const events: WatcherAvailabilityStatusTransition[] = [];
-    const runtime = await fixture((event) => events.push(event));
-    io.reconcile.mockRejectedValueOnce(transient());
-    await runtime.reconcile(observation(1), false);
-    expect(runtime.status()).toMatchObject({
-      phase: "waiting",
-      detail: "ogmios is unavailable",
-    });
-    expect(io.reconcile).toHaveBeenCalledTimes(1);
-    // No new block arrives; the retry alone completes the reconciliation.
-    await vi.advanceTimersByTimeAsync(999);
-    expect(io.reconcile).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(1);
-    expect(io.reconcile).toHaveBeenCalledTimes(2);
-    expect(runtime.status().phase).toBe("ready");
-    await vi.advanceTimersByTimeAsync(120_000);
-    expect(io.reconcile).toHaveBeenCalledTimes(2);
-    // A transient wait is not a blocked diagnostic, so it never emits one.
-    expect(events).toEqual([]);
-    await runtime.close();
-  });
+  it.each(["source", "scope"])(
+    "waits out a %s transient on its own timer and reconciles again exactly once",
+    async (kind) => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const events: WatcherAvailabilityStatusTransition[] = [];
+      const runtime = await fixture((event) => events.push(event));
+      io.reconcile.mockRejectedValueOnce(
+        kind === "source"
+          ? transient()
+          : new DaAvailabilityReadScopeExpiredError(),
+      );
+      await runtime.reconcile(observation(1), false);
+      expect(runtime.status()).toMatchObject({
+        phase: "waiting",
+        detail:
+          kind === "source"
+            ? "ogmios is unavailable"
+            : "Availability read attempt expired",
+      });
+      expect(io.reconcile).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(999);
+      expect(io.reconcile).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(io.reconcile).toHaveBeenCalledTimes(2);
+      expect(runtime.status().phase).toBe("ready");
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(io.reconcile).toHaveBeenCalledTimes(2);
+      expect(events).toEqual([]);
+      await runtime.close();
+    },
+  );
 
   it("reports a genuine refusal blocked, and a block or close supersedes its retry", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -480,13 +482,19 @@ it("rejects inclusion classification revoked during public DA lookup", async () 
   await runtime.close();
 });
 
-it("refreshes local balancing parameters before every availability reconciliation", async () => {
-  const runtime = await fixture();
-  await runtime.reconcile(observation(1), false);
-  await runtime.reconcile(observation(2), false);
-  expect(io.refresh).toHaveBeenCalledTimes(2);
-  expect(io.refresh.mock.invocationCallOrder[0]).toBeLessThan(
-    io.reconcile.mock.invocationCallOrder[0]!,
-  );
-  await runtime.close();
-});
+vi.mock("../../src/l1/local-kupmios-raw-source.js", () => ({
+  createWatcherLocalKupmiosRawSource: () => ({}),
+}));
+vi.mock("../../src/storage/retained-da-runtime.read-scope.js", () => ({
+  withWatcherRetainedDaReadScope: async (
+    input: { scope: SDKScope },
+    read: () => Promise<unknown>,
+  ) => input.scope.read(read),
+}));
+type SDKScope = import("@al-ft/midgard-sdk").DaAvailabilityReadScope;
+vi.mock("../../src/availability/runtime.read-attempt.js", async (original) => ({
+  ...(await original<
+    typeof import("../../src/availability/runtime.read-attempt.js")
+  >()),
+  watcherAvailabilityAuthenticatedOpenDeadline: () => Date.now() + 2_400_000,
+}));

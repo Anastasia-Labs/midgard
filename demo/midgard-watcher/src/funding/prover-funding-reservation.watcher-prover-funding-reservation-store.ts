@@ -71,6 +71,12 @@ export type WatcherProverFundingReservationRecord = Readonly<{
 
 export type WatcherProverFundingReservationStore = Readonly<{
   readAll(): Promise<readonly unknown[]>;
+  /** Durable legacy overlap permits reads and exact retirement, never fresh actuation. */
+  isReconciliationOnly?(): Promise<boolean>;
+  assertSubmissionAuthority?(): Promise<void>;
+  readReservedOutRefs(input: {
+    readonly excludingReservationId?: string;
+  }): Promise<readonly string[]>;
   /** Includes resolved handoffs and lineage, not just the current pending attempt. */
   hasSignedHistory?(input: {
     readonly reservationId: string;
@@ -86,6 +92,17 @@ export type WatcherProverFundingReservationStore = Readonly<{
     readonly expectedRevision: string;
     readonly transactionHash: string;
     readonly inputs: readonly WatcherProverFundingReservationInput[];
+  }): Promise<WatcherProverFundingReservationRecord>;
+  readLegacyAbandonedTransactions?(input: {
+    readonly reservationId: string;
+  }): Promise<readonly unknown[]>;
+  retireLegacyAbandonment?(input: {
+    readonly plan: WatcherProverFundingReservationPlan;
+    readonly expectedRevision: string;
+    readonly transactionHash: string;
+    readonly retirement: NonNullable<
+      WorkflowFundingAbandonmentHandoff["reconciliation"]["retirement"]
+    >;
   }): Promise<WatcherProverFundingReservationRecord>;
   readAbandonmentHandoff(input: {
     readonly reservationId: string;

@@ -8,7 +8,6 @@ import {
   readAdmittedLocalKupmiosUnitHistoryAtPoint,
   type RetainedDaPayloadSource,
   settleLocalKupmiosReads,
-  withLocalKupmiosSourceCapture,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -27,6 +26,7 @@ import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
 } from "../runtime/deployment-identity.js";
+import { withWatcherAvailabilityReadOperation } from "./read-operation.js";
 
 const admitted = new WeakMap<object, VerifiedWatcherDeploymentIdentity>();
 export const assertWatcherL1AvailabilityPayloadSource = (
@@ -244,6 +244,7 @@ export const createWatcherL1AvailabilityPayloadSource = (input: {
   rawSource: LocalKupmiosFraudProofRawSource;
   lucid: Pick<LucidEvolution, "slotToUnixTime">;
   currentObservation(): WatcherAuthenticatedStateQueueObservation | null;
+  scope?: SDK.DaAvailabilityReadScope;
 }): RetainedDaPayloadSource => {
   assertVerifiedWatcherDeploymentIdentity(input.identity);
   const details = localKupmiosHttpOgmiosRawSourceDetails(input.rawSource);
@@ -263,6 +264,7 @@ export const createWatcherL1AvailabilityPayloadSource = (input: {
   const source: RetainedDaPayloadSource = {
     sourceId,
     fetchPayloadByHeaderHash: async (headerHash) => {
+      input.scope?.assertCurrent();
       const observation = input.currentObservation();
       if (observation === null) return { ok: false, sourceId, attempts: [] };
       assertWatcherStateQueueObservation(observation);
@@ -300,9 +302,13 @@ export const createWatcherL1AvailabilityPayloadSource = (input: {
           ? cache.get(headerHash)!.payload
           : undefined;
       if (payload === undefined) {
-        payload = await withLocalKupmiosSourceCapture(
+        payload = await withWatcherAvailabilityReadOperation(
           input.rawSource,
-          async () => {
+          input.scope,
+          async (assertCurrent) => {
+            assertCurrent();
+            if (input.scope !== undefined) await input.rawSource.readBoundary();
+            assertCurrent();
             const { blockHash, slot, blockNo } = observation.nativePoint;
             const point = {
               blockHash,
@@ -318,6 +324,7 @@ export const createWatcherL1AvailabilityPayloadSource = (input: {
               source: input.rawSource,
               point,
             });
+            assertCurrent();
             const readHistory = async (unit: string) => {
               const history = await readAdmittedLocalKupmiosUnitHistoryAtPoint({
                 source: input.rawSource,
@@ -335,24 +342,28 @@ export const createWatcherL1AvailabilityPayloadSource = (input: {
                 ),
               );
             };
-            return await reconstructWatcherAvailabilityPublishedPayload({
-              headerHash,
-              terminalCommitment,
-              deploymentIdentity: input.deployment.hubOraclePolicyId,
-              availabilityAddress:
-                input.deployment.contracts.availabilityChallenge
-                  .spendingScriptAddress,
-              availabilityPolicyId:
-                input.deployment.contracts.availabilityChallenge.policyId,
-              stateQueuePolicyId:
-                input.deployment.contracts.stateQueue.policyId,
-              parameters: input.deployment.parameters,
-              readHistory,
-              slotToUnixTime: input.lucid.slotToUnixTime,
-            });
+            const reconstructed =
+              await reconstructWatcherAvailabilityPublishedPayload({
+                headerHash,
+                terminalCommitment,
+                deploymentIdentity: input.deployment.hubOraclePolicyId,
+                availabilityAddress:
+                  input.deployment.contracts.availabilityChallenge
+                    .spendingScriptAddress,
+                availabilityPolicyId:
+                  input.deployment.contracts.availabilityChallenge.policyId,
+                stateQueuePolicyId:
+                  input.deployment.contracts.stateQueue.policyId,
+                parameters: input.deployment.parameters,
+                readHistory,
+                slotToUnixTime: input.lucid.slotToUnixTime,
+              });
+            assertCurrent();
+            return reconstructed;
           },
         );
       }
+      input.scope?.assertCurrent();
       if (
         input.currentObservation()?.observationDigest !==
         observation.observationDigest

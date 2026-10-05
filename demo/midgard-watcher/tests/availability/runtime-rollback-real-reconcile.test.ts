@@ -176,6 +176,7 @@ describe("availability runtime recovery through the SDK's own reconciliation", (
       config: {
         watcherConfig: {
           l1: {
+            requestTimeoutMs: 10_000,
             source: {
               sourceMode: "local_node",
               queryServices: [
@@ -236,3 +237,20 @@ describe("availability runtime recovery through the SDK's own reconciliation", (
     }
   });
 });
+
+vi.mock("../../src/l1/local-kupmios-raw-source.js", () => ({
+  createWatcherLocalKupmiosRawSource: () => ({}),
+}));
+vi.mock("../../src/storage/retained-da-runtime.read-scope.js", () => ({
+  withWatcherRetainedDaReadScope: async (
+    input: { scope: SDKScope },
+    read: () => Promise<unknown>,
+  ) => input.scope.read(read),
+}));
+type SDKScope = import("@al-ft/midgard-sdk").DaAvailabilityReadScope;
+vi.mock("../../src/availability/runtime.read-attempt.js", async (original) => ({
+  ...(await original<
+    typeof import("../../src/availability/runtime.read-attempt.js")
+  >()),
+  watcherAvailabilityAuthenticatedOpenDeadline: () => Date.now() + 2_400_000,
+}));

@@ -8,7 +8,7 @@ import {
 } from "@al-ft/midgard-core/availability-operation-journal";
 import type { LocalKupmiosFraudProofRawSource } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
-import { type UTxO } from "@lucid-evolution/lucid";
+import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { afterEach, beforeEach, vi } from "vitest";
 
 import {
@@ -24,15 +24,17 @@ import {
   parametersFixture,
   utxo,
 } from "../support/availability-challenge-fixture.js";
+import { stubRunner } from "./concurrent-challenges.runner.js";
 
 // The real runtime reconciliation and the real availability journal decide
 // what runs; only chain I/O, signing and transaction bodies are stubbed. The
-// stub runner exercises the journal exactly as the SDK runner does: it
-// re-checks the workflow rule, builds, persists the intent and confirms it.
+// stub runner checks workflows, builds, persists and confirms its intent.
 // A test that needs the SDK's own runner and reconciliation (with signed
 // transaction bytes) routes `run` and `reconcile` to the real functions.
 const io = vi.hoisted(() => ({
   utxos: [] as UTxO[],
+  sourceSignals: [] as AbortSignal[],
+  lucidInstances: [] as object[],
   pool: vi.fn(),
   snapshot: vi.fn(),
   attestedCommitment: vi.fn(),
@@ -51,7 +53,20 @@ const io = vi.hoisted(() => ({
   submitTx: vi.fn(),
   walletAddress: "availability",
   queuePolicy: "policy",
-  limits: undefined as SDK.DaAvailabilityOperationLimits | undefined,
+  limits: undefined as
+    | SDK.DaAvailabilityOperationLimits
+    | typeof SDK.daAvailabilityOperationLimits
+    | undefined,
+  lucidAllocated: undefined as ((lucid: LucidEvolution) => void) | undefined,
+  closeBuild: undefined as
+    | (() => ReturnType<typeof SDK.buildCloseDaAvailabilityChallengeTxProgram>)
+    | undefined,
+  openBuild: undefined as
+    | (() => ReturnType<typeof SDK.buildOpenDaAvailabilityChallengeTxProgram>)
+    | undefined,
+  minimumAda: undefined as
+    | typeof import("@lucid-evolution/lucid").calculateMinLovelaceFromUTxO
+    | undefined,
   timeoutTx: undefined as ((input: TimeoutInput) => unknown) | undefined,
 }));
 export type TimeoutInput = Parameters<
@@ -62,7 +77,10 @@ vi.mock("@al-ft/midgard-sdk", async (original) => {
   const actual = await original<typeof import("@al-ft/midgard-sdk")>();
   return {
     ...actual,
-    daAvailabilityOperationLimits: () => io.limits ?? {},
+    daAvailabilityOperationLimits: (
+      ...args: Parameters<typeof SDK.daAvailabilityOperationLimits>
+    ) =>
+      typeof io.limits === "function" ? io.limits(...args) : (io.limits ?? {}),
     reconcileDaAvailabilityOperations: io.reconcile,
     runDaAvailabilityOperation: io.run,
     buildDaAvailabilityFundingPreparationTx: async () => "prepare-tx",
@@ -71,11 +89,12 @@ vi.mock("@al-ft/midgard-sdk", async (original) => {
       _deployment: unknown,
       input: { validTo: bigint },
     ) => {
+      if (io.openBuild !== undefined) return io.openBuild();
       io.opens.push(input);
       return Effect.succeed({ tx: "open-tx" });
     },
     buildCloseDaAvailabilityChallengeTxProgram: () =>
-      Effect.succeed({ tx: "close-tx" }),
+      io.closeBuild?.() ?? Effect.succeed({ tx: "close-tx" }),
     buildTimeoutDaAvailabilityChallengeTxProgram: (
       _lucid: unknown,
       _deployment: unknown,
@@ -109,19 +128,28 @@ vi.mock("@al-ft/midgard-sdk", async (original) => {
 });
 vi.mock("@lucid-evolution/lucid", async (original) => ({
   ...(await original<typeof import("@lucid-evolution/lucid")>()),
-  Lucid: async () => ({
-    selectWallet: { fromSeed() {} },
-    wallet: () => ({
-      address: async () => io.walletAddress,
-      getUtxos: async () => io.utxos,
-    }),
-    switchProvider: async () => {},
-    config: () => ({
-      protocolParameters: { coinsPerUtxoByte: 1n, collateralPercentage: 150 },
-      provider: { submitTx: io.submitTx },
-    }),
-  }),
-  calculateMinLovelaceFromUTxO: () => MIN_CHANGE,
+  Lucid: async () => {
+    const instance = {
+      selectWallet: { fromSeed() {} },
+      wallet: () => ({
+        address: async () => io.walletAddress,
+        getUtxos: async () => io.utxos,
+      }),
+      switchProvider: async () => undefined,
+      config: () => ({
+        protocolParameters: { coinsPerUtxoByte: 1n, collateralPercentage: 150 },
+        provider: { submitTx: io.submitTx },
+      }),
+    };
+    io.lucidInstances.push(instance);
+    io.lucidAllocated?.(instance as unknown as LucidEvolution);
+    return instance;
+  },
+  calculateMinLovelaceFromUTxO: (
+    ...args: Parameters<
+      typeof import("@lucid-evolution/lucid").calculateMinLovelaceFromUTxO
+    >
+  ) => io.minimumAda?.(...args) ?? MIN_CHANGE,
   paymentCredentialOf: (address: string) => ({ hash: address }),
 }));
 vi.mock("@lucid-evolution/scalus-uplc", () => ({
@@ -204,6 +232,8 @@ beforeEach(() => {
   io.snapshot.mockReset();
   io.attestedCommitment.mockReset();
   io.utxos = [];
+  io.sourceSignals = [];
+  io.lucidInstances = [];
   io.opens = [];
   io.timeouts = [];
   io.tipPool = undefined;
@@ -216,57 +246,15 @@ beforeEach(() => {
   io.walletAddress = "availability";
   io.queuePolicy = "policy";
   io.limits = undefined;
+  io.openBuild = undefined;
+  io.closeBuild = undefined;
+  io.lucidAllocated = undefined;
+  io.minimumAda = undefined;
   io.timeoutTx = undefined;
 });
 afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
-
-const stubRunner = async (
-  context: SDK.DaAvailabilityOperationContext,
-  operation: Readonly<{
-    headerHash: string;
-    action: string;
-    completesWorkflow?: boolean;
-    build: () => Promise<unknown>;
-  }>,
-): Promise<SDK.DaAvailabilityOperationResult> => {
-  const now = Date.now();
-  const lease = context.journal.acquire(context.actor, "runner", now, 60_000);
-  try {
-    context.journal.assertWorkflow(
-      lease,
-      context.deploymentIdentity,
-      operation.headerHash,
-      operation.action,
-      now,
-    );
-    await operation.build();
-    const id = `${operation.action}-${operation.headerHash}`;
-    context.journal.persist(
-      lease,
-      {
-        id,
-        deploymentIdentity: context.deploymentIdentity,
-        actor: context.actor,
-        headerHash: operation.headerHash,
-        action: operation.action,
-        signedCbor: id,
-        txHash: id,
-        spentOutRefs: [`${id}#0`],
-        collateralOutRefs: [],
-        expectedOutRefs: [],
-        validUntilSlot: 1,
-        completesWorkflow: operation.completesWorkflow ?? false,
-      },
-      now,
-    );
-    context.journal.transition(lease, id, "confirmed", "block", null, now);
-    return { status: "submitted", txHash: id, expectedOutRefs: [] };
-  } finally {
-    context.journal.release(lease);
-  }
-};
 
 /** Records `header`'s landed Open in the shared journal, as a restart finds it. */
 export const withJournal = <T>(
@@ -352,6 +340,7 @@ export const runtime = (
     config: {
       watcherConfig: {
         l1: {
+          requestTimeoutMs: 10_000,
           source: {
             sourceMode: "local_node",
             queryServices: [
@@ -390,10 +379,18 @@ export const observation = (
       blockHash: "11".repeat(32),
       finalityDepth: "30",
     },
-    finalizedHeaders: snapshots.map(({ headerHash }) => ({
-      headerHash,
-      daAvailability: { Attested: {} },
-    })),
+    finalizedHeaders: snapshots.map((snapshot) => {
+      const node =
+        snapshot.queue === undefined
+          ? undefined
+          : Data.castFrom(snapshot.queue.datum.data, SDK.StateQueueNode);
+      return {
+        headerHash: snapshot.headerHash,
+        stateQueueNodeCborHex:
+          node === undefined ? undefined : Data.to(node, SDK.StateQueueNode),
+        daAvailability: node?.da_attestation ?? "Unattested",
+      };
+    }),
     finalizedCorrectionLock: { datum: "Idle" },
   } as unknown as WatcherAuthenticatedStateQueueObservation;
 };
@@ -442,3 +439,18 @@ export const actions = () =>
   ]);
 
 export { io };
+
+vi.mock("../../src/l1/local-kupmios-raw-source.js", () => ({
+  createWatcherLocalKupmiosRawSource: (input: {
+    captureBounds: { signal: AbortSignal };
+  }) => {
+    io.sourceSignals.push(input.captureBounds.signal);
+    return {};
+  },
+}));
+vi.mock("../../src/storage/retained-da-runtime.read-scope.js", () => ({
+  withWatcherRetainedDaReadScope: async (
+    input: { scope: SDK.DaAvailabilityReadScope },
+    read: () => Promise<unknown>,
+  ) => input.scope.read(read),
+}));

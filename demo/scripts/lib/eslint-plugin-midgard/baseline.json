@@ -1032,12 +1032,7 @@
     },
     "midgard-watcher/tests/funding/sqlite-prover-funding-reservation-store.test.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        "(a, b) => a.outRef.localeCompare(b.outRef),",
-        ".sort((a, b) => a.outRef.localeCompare(b.outRef)),",
-        "].sort((a, b) => a.outRef.localeCompare(b.outRef)),",
-        "left.outRef.localeCompare(right.outRef),"
-      ]
+      "sites": ["left.outRef.localeCompare(right.outRef),"]
     },
     "midgard-watcher/tests/l1/local-historical-capture.test.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",

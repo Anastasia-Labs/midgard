@@ -1,3 +1,5 @@
+import { DaAvailabilityReadScopeExpiredError } from "@al-ft/midgard-sdk";
+
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
 import type { WatcherAvailabilityStatus } from "./runtime.release-watcher-availability-workflows.js";
 
@@ -60,7 +62,9 @@ export const createWatcherAvailabilityReconcileRetry = (
     ): WatcherAvailabilityStatus => {
       lastFailed = true;
       consecutive += 1;
-      transientOnly &&= isWatcherL1TransientFailure(cause);
+      transientOnly &&=
+        isWatcherL1TransientFailure(cause) ||
+        cause instanceof DaAvailabilityReadScopeExpiredError;
       return {
         phase:
           transientOnly &&

@@ -38,7 +38,7 @@ export const fundingTerminal = (
     observedAt: {
       slot: "4242",
       blockHash: "44".repeat(32),
-      confirmationDepth: 30,
+      confirmationDepth: 2162,
     },
   };
 };

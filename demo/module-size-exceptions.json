@@ -1576,7 +1576,7 @@
   },
   {
     "file": "midgard-watcher/src/availability/runtime.create-watcher-availability-runtime.ts",
-    "max": 871,
+    "max": 811,
     "reason": "createWatcherAvailabilityRuntime is the dominant indivisible declaration (809 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1595,8 +1595,13 @@
     "reason": "createSupervisor is the dominant indivisible declaration (828 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
+    "file": "midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority.ts",
+    "max": 505,
+    "reason": "createWatcherProverFundingAuthority is one state owner: the reservation port's methods close over one plan, store and actuation permit and share their revision and authority checks. The public-testnet B1 selection/capacity calculations and the lifecycle legacy-retirement and submission-authority methods together pass 500 lines; splitting the port would redesign that ownership rather than separate independent declarations."
+  },
+  {
     "file": "midgard-watcher/src/funding/sqlite-prover-funding-reservation-store.open-internal.ts",
-    "max": 1403,
+    "max": 1379,
     "reason": "openInternal is the dominant indivisible declaration (1365 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1646,7 +1651,7 @@
   },
   {
     "file": "midgard-watcher/tests/availability/source-capture.test.ts",
-    "max": 595,
+    "max": 594,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -1691,12 +1696,12 @@
   },
   {
     "file": "midgard-watcher/tests/funding/prover-funding-recovery.funding-recovery-across-authenticated-observation-refresh.ts",
-    "max": 1155,
+    "max": 1039,
     "reason": "Retained test registration “funding recovery across authenticated observation refresh” (1124 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-watcher/tests/funding/sqlite-prover-funding-reservation-store.test.ts",
-    "max": 1323,
+    "max": 1102,
     "reason": "Retained test registration “SQLite prover funding reservation store V1” (1280 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1781,7 +1786,7 @@
   },
   {
     "file": "midgard-watcher/tests/support/fault-proof-funding-fixture.setup-funding-recovery-fixture.ts",
-    "max": 659,
+    "max": 645,
     "reason": "setupFundingRecoveryFixture is the dominant indivisible declaration (599 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {

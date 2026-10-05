@@ -27,6 +27,7 @@ import {
   createWatcherPublicDaLibp2pTransport,
   WatcherPublicDaLibp2pTransport,
 } from "./public-da-libp2p-transport.js";
+import { watcherRetainedDaReadScope } from "./retained-da-runtime.read-scope.js";
 import {
   type AdmittedPeer,
   type AdmittedRuntimeOptions,
@@ -117,12 +118,21 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
         "retained-DA request timeout differs from the admitted watcher configuration",
       );
     }
+    const readScope = watcherRetainedDaReadScope(this.deploymentFingerprint);
+    const timeoutMs = Math.min(
+      this.configuredTimeoutMs,
+      Math.max(
+        1,
+        Math.ceil(readScope?.scope.remainingMs() ?? this.configuredTimeoutMs),
+      ),
+    );
     const subjectDigest = watcherDaFetchSubjectDigest(args);
     const startedAtMs = Date.now().toString();
     const startedMonotonicMs = performance.now();
     const signal = AbortSignal.any([
       this.lifetime,
-      AbortSignal.timeout(this.configuredTimeoutMs),
+      AbortSignal.timeout(timeoutMs),
+      ...(readScope === undefined ? [] : [readScope.scope.signal]),
     ]);
     let release: (() => void) | undefined;
     try {
@@ -138,7 +148,7 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
           args.protocol,
         ),
         requestCbor: args.payload,
-        timeoutMs: this.configuredTimeoutMs,
+        timeoutMs,
         signal,
         ...(this.customNetwork === undefined
           ? {}
@@ -207,11 +217,16 @@ export class WatcherRetainedDaSourceWithL1Fallback extends DaLibp2pRetainedDaSou
   }
 
   override async fetchPayloadByHeaderHash(headerHash: string) {
+    const readScope = watcherRetainedDaReadScope();
     this.lifetime?.throwIfAborted();
     const result = await super.fetchPayloadByHeaderHash(headerHash);
     this.lifetime?.throwIfAborted();
+    readScope?.scope.assertCurrent();
     if (result.ok) return result;
-    const fallback = await this.l1Source.fetchPayloadByHeaderHash(headerHash);
+    const fallback = await (
+      readScope?.l1Source ?? this.l1Source
+    ).fetchPayloadByHeaderHash(headerHash);
+    readScope?.scope.assertCurrent();
     this.lifetime?.throwIfAborted();
     return {
       ...fallback,
