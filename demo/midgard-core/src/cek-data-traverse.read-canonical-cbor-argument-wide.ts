@@ -1,5 +1,3 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
 import { nextMidgardCekDataBytesSpan } from "./cek-data-bytes.js";
 import { type MidgardCekDataFrame } from "./cek-data-frame.js";
 import { nextMidgardCekDataIntegerSpan } from "./cek-data-integer.js";
@@ -18,6 +16,7 @@ import {
 } from "./cek-data-traverse.is-well-formed-midgard-cek-data-traverse-control.js";
 import { type MidgardCekDataSummary } from "./cek-semantic.js";
 import { type MidgardCekSourceBlobSpan } from "./cek-source-blob.js";
+import { midgardBlake2b } from "./codec/blake2b.js";
 import { encodeCbor, encodeCborArrayRaw } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 
@@ -57,7 +56,7 @@ export const hashMidgardCekDataTraverseControl = (
   control: MidgardCekDataTraverseControl,
 ): Hash32 =>
   ensureHash32(
-    blake2b(
+    midgardBlake2b(
       Buffer.concat([
         CONTROL_DOMAIN,
         encodeMidgardCekDataTraverseControl(control),

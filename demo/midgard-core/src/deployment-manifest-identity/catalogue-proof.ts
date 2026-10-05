@@ -1,5 +1,4 @@
 import { Data } from "@lucid-evolution/lucid";
-import { blake2b } from "@noble/hashes/blake2.js";
 
 import { encodeCbor } from ".././codec/cbor.js";
 import { asLucidSchema } from ".././lucid-data.js";
@@ -7,6 +6,7 @@ import {
   buildMidgardMpfProofFoldTrace,
   type MidgardMpfProofStep,
 } from ".././mpf-proof-fold.js";
+import { midgardBlake2b } from "../codec/blake2b.js";
 import {
   DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -56,7 +56,7 @@ const MPF_NULL_HASH = Buffer.alloc(32);
 const MPF_PATH_NIBBLE_COUNT = 64;
 
 const mpfHash = (bytes: Uint8Array): Buffer =>
-  Buffer.from(blake2b(bytes, { dkLen: 32 }));
+  Buffer.from(midgardBlake2b(bytes, { dkLen: 32 }));
 
 const mpfCombine = (left: Uint8Array, right: Uint8Array): Buffer =>
   mpfHash(Buffer.concat([Buffer.from(left), Buffer.from(right)]));

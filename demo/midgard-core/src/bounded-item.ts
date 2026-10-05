@@ -1,5 +1,4 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
+import { midgardBlake2b } from "./codec/blake2b.js";
 import { encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
@@ -41,7 +40,7 @@ export type MidgardBoundedItemChunkProof = {
 };
 
 const hash32 = (value: Uint8Array): Hash32 =>
-  ensureHash32(blake2b(value, { dkLen: 32 }), "bounded_item_v1.hash");
+  ensureHash32(midgardBlake2b(value, { dkLen: 32 }), "bounded_item_v1.hash");
 
 const exactNonNegative = (value: number, name: string): number => {
   if (!Number.isSafeInteger(value) || value < 0) {

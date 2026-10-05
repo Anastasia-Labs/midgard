@@ -1,6 +1,11 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
+import { midgardBlake2b } from "./blake2b.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
+
+export {
+  midgardBlake2b,
+  midgardBlake2bBackendCounts,
+  midgardBlake2bReady,
+} from "./blake2b.js";
 
 /**
  * Canonical 32-byte hash used by the Midgard tx codec.
@@ -31,11 +36,11 @@ export const ensureHash32 = (value: Uint8Array, fieldName: string): Buffer => {
  * Computes the canonical Blake2b-256 hash for a payload.
  */
 export const computeHash32 = (value: Uint8Array): Buffer =>
-  Buffer.from(blake2b(value, { dkLen: HASH32_LENGTH }));
+  Buffer.from(midgardBlake2b(value, { dkLen: HASH32_LENGTH }));
 
 /** Computes the canonical Blake2b-224 hash used by Cardano script/header ids. */
 export const computeHash28 = (value: Uint8Array): Buffer =>
-  Buffer.from(blake2b(value, { dkLen: HASH28_LENGTH }));
+  Buffer.from(midgardBlake2b(value, { dkLen: HASH28_LENGTH }));
 
 /**
  * Recomputes the payload hash and fails if it does not match the expected

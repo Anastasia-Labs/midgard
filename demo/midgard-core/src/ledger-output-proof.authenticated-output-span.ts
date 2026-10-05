@@ -1,5 +1,3 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
 import {
   MIDGARD_BLAKE2B_BLOCK_BYTES,
   MidgardBlake2b224TraceStages,
@@ -10,6 +8,7 @@ import {
   midgardBoundedItemExpectedChunkLength,
 } from "./bounded-item.js";
 import { nextMidgardCekDataTraverseSpan } from "./cek-data-traverse.js";
+import { midgardBlake2b } from "./codec/blake2b.js";
 import {
   isWellFormedMidgardLedgerOutputProofControl,
   proofMatchesOutputChunk,
@@ -237,7 +236,7 @@ export const boundMidgardLedgerOutputWindowBytes = ({
     spanWindow === null ||
     !midgardLedgerOutputWindowCovers({ spanWindow, absoluteStart, length }) ||
     bytes.length !== spanWindow.length ||
-    !Buffer.from(blake2b(bytes, { dkLen: 32 })).equals(spanWindow.digest)
+    !Buffer.from(midgardBlake2b(bytes, { dkLen: 32 })).equals(spanWindow.digest)
   ) {
     return null;
   }

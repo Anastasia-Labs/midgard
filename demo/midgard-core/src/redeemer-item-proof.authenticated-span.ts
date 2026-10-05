@@ -1,5 +1,3 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
 import {
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   type MidgardBoundedItemChunkProof,
@@ -11,6 +9,7 @@ import {
   nextMidgardCekDataTraverseSpan,
 } from "./cek-data-traverse.js";
 import type { MidgardCekDataSummary } from "./cek-semantic.js";
+import { midgardBlake2b } from "./codec/blake2b.js";
 import { encodeCbor, encodeCborArrayRaw } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
@@ -56,7 +55,7 @@ export const hashMidgardRedeemerItemProofControl = (
   control: MidgardRedeemerItemProofControl,
 ): Hash32 =>
   ensureHash32(
-    blake2b(
+    midgardBlake2b(
       Buffer.concat([
         CONTROL_DOMAIN,
         encodeMidgardRedeemerItemProofControl(control),

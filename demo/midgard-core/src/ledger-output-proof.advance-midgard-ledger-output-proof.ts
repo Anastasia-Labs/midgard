@@ -1,5 +1,3 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
 import {
   advanceMidgardBlake2b224Trace,
   initialMidgardBlake2b224TraceControl,
@@ -17,6 +15,7 @@ import {
   initialMidgardCekDataTraverseControl,
   MidgardCekDataTraverseStages,
 } from "./cek-data-traverse.js";
+import { midgardBlake2b } from "./codec/blake2b.js";
 import {
   advancedOutputProof,
   authenticatedDatumSource,
@@ -103,7 +102,7 @@ export const advanceMidgardLedgerOutputProof = ({
         spanWindow: {
           start,
           length,
-          digest: Buffer.from(blake2b(bytes, { dkLen: 32 })),
+          digest: Buffer.from(midgardBlake2b(bytes, { dkLen: 32 })),
         },
       });
     }

@@ -1,5 +1,4 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
+import { midgardBlake2b } from "./blake2b.js";
 import {
   assertCanonicalCborRoundTrip,
   encodeCborArrayRaw,
@@ -177,7 +176,7 @@ export const hashMidgardVersionedScript = (
   script: MidgardVersionedScript,
 ): string =>
   Buffer.from(
-    blake2b(
+    midgardBlake2b(
       Buffer.concat([
         Buffer.from([MidgardScriptHashPrefixes[script.language]]),
         script.language === "NativeCardano"

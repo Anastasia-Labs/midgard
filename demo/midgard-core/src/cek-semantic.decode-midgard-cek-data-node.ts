@@ -1,5 +1,4 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
+import { midgardBlake2b } from "./codec/blake2b.js";
 import { decodeSingleCbor, encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 
@@ -23,9 +22,12 @@ export type Bytes = Uint8Array;
 
 export const hash32 = (domain: Uint8Array, preimage: Uint8Array): Hash32 =>
   ensureHash32(
-    blake2b(Buffer.concat([Buffer.from(domain), Buffer.from(preimage)]), {
-      dkLen: 32,
-    }),
+    midgardBlake2b(
+      Buffer.concat([Buffer.from(domain), Buffer.from(preimage)]),
+      {
+        dkLen: 32,
+      },
+    ),
     "cek_semantic_hash",
   );
 

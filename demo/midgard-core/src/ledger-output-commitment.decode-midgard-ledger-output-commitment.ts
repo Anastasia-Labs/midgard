@@ -1,11 +1,10 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
 import {
   buildMidgardBoundedItem,
   type MidgardBoundedItemChunkProof,
   verifyMidgardBoundedItemChunkProof,
 } from "./bounded-item.js";
 import { encodeMidgardAddressBytes } from "./codec/address.js";
+import { midgardBlake2b } from "./codec/blake2b.js";
 import { decodeSingleCbor, encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
@@ -180,7 +179,7 @@ export const hashMidgardLedgerOutputAssetLeaf = ({
     throw new Error("V1 ledger output asset quantity must be positive");
   }
   return ensureHash32(
-    blake2b(
+    midgardBlake2b(
       Buffer.concat([
         LEDGER_OUTPUT_ASSET_LEAF_DOMAIN,
         encodeCbor([policyId, assetName, quantity]),
