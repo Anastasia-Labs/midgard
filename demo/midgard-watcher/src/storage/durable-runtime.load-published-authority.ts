@@ -16,6 +16,7 @@ import {
   type WatcherRollbackDurableAuthorityRead,
   type WatcherRollbackDurableCanonicalProgressResult,
   type WatcherRollbackDurableEvaluationResult,
+  type WatcherRollbackDurableObservationEntry,
   type WatcherRollbackDurableObservationResult,
   type WatcherRollbackDurableRecoveryResult,
   type WatcherRollbackDurableTrustedHead,
@@ -48,6 +49,11 @@ export type WatcherDurableRuntime = Readonly<{
     readonly observations: readonly WatcherNormalizedL1Block[];
     readonly consistency: WatcherMultiProviderConsistency;
     readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
+  }): Promise<WatcherRollbackDurableObservationResult>;
+  /** Journals a run of authenticated blocks in one durable revision. */
+  persistObservations(input: {
+    readonly assertCurrent?: () => void;
+    readonly entries: readonly WatcherRollbackDurableObservationEntry[];
   }): Promise<WatcherRollbackDurableObservationResult>;
   persistCanonicalProgress(input: {
     readonly assertCurrent?: () => void;

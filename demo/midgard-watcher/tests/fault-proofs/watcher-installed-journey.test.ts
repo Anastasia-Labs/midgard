@@ -758,8 +758,8 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
           await pause(50);
         }
       },
-      // Catch-up authenticates all proof/replacement confirmation blocks.
-      3_000_000,
+      // Batched catch-up over the 2,161-block release horizon; fails loudly.
+      600_000,
     );
     const evidenceDirectory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
     if (evidenceDirectory !== undefined) {

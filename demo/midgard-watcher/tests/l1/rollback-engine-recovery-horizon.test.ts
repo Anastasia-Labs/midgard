@@ -54,7 +54,7 @@ const append = (
     source: evidence.store,
     history: evidence.history,
     observations: harness.observations(point),
-    consistency: harness.agreement(point),
+    consistencies: [harness.agreement(point)],
     frontier,
   });
 

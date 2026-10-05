@@ -509,6 +509,9 @@ export const createCoordinator = (input: {
     effectiveHead = recomputeEffectiveHead();
   };
 
+  // A quiet block waiting for its run to grow is already finalizable, so it
+  // skips onIncluded as a quiet block finalized on arrival does.
+  const waitingInRun = new Set<string>();
   const advanceCanonical = advanceWatcherCanonical({
     policy: input.policy,
     durable: input.durable,
@@ -523,6 +526,7 @@ export const createCoordinator = (input: {
     deliverFinalized,
     relevanceOf,
     forget,
+    waitingInRun,
     ancestryFromFinalized,
   });
 
@@ -637,7 +641,8 @@ export const createCoordinator = (input: {
           );
         includedParent = headOf(candidate);
         const candidateKey = pointKey(candidate.blockHash, candidate.slot);
-        if (includedHooked.has(candidateKey)) continue;
+        if (includedHooked.has(candidateKey) || waitingInRun.has(candidateKey))
+          continue;
         const relevance = relevanceOf(candidate);
         assertCurrentDrain();
         await input.hooks.onIncluded({

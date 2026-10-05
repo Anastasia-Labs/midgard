@@ -9,6 +9,7 @@ import {
   initializeWatcherRollbackDurableAuthority,
   persistWatcherRollbackDurableCanonicalProgress,
   persistWatcherRollbackDurableObservation,
+  persistWatcherRollbackDurableObservations,
   persistWatcherRollbackDurableUserEventCheckpoint,
   prepareWatcherRollbackDurableTrustedHeadReconciliation,
   readWatcherRollbackDurableAuthority,
@@ -292,6 +293,22 @@ export const createWatcherDurableRuntime = async (input: {
                   await persistWatcherRollbackDurableObservation({
                     authority,
                     ...operationInput,
+                  }),
+                )
+              ).result,
+          ),
+      ),
+    persistObservations: async ({ assertCurrent, entries }) =>
+      await serialized(
+        async () =>
+          await guarded(
+            assertCurrent,
+            async () =>
+              (
+                await admitResult(
+                  await persistWatcherRollbackDurableObservations({
+                    authority,
+                    entries,
                   }),
                 )
               ).result,

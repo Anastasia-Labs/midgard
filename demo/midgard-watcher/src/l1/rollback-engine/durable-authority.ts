@@ -38,6 +38,8 @@ export {
 } from "./durable-authority.persist-watcher-rollback-durable-canonical-progress.js";
 export {
   persistWatcherRollbackDurableObservation,
+  persistWatcherRollbackDurableObservations,
   unsafeWatcherCanonicalAncestryLinksForTest,
   type WatcherRollbackCanonicalAncestryLink,
+  type WatcherRollbackDurableObservationEntry,
 } from "./durable-authority.persist-watcher-rollback-durable-observation.js";

@@ -7,6 +7,7 @@ export {
   loadWatcherRollbackDurableAuthority,
   persistWatcherRollbackDurableCanonicalProgress,
   persistWatcherRollbackDurableObservation,
+  persistWatcherRollbackDurableObservations,
   persistWatcherRollbackDurableUserEventCheckpoint,
   prepareWatcherRollbackDurableTrustedHeadReconciliation,
   readWatcherRollbackDurableAuthority,
@@ -17,6 +18,7 @@ export {
   unsafeWatcherCanonicalAncestryLinksForTest,
   type WatcherRollbackCanonicalAncestryLink,
   watcherRollbackDurableAuthorityStatus,
+  type WatcherRollbackDurableObservationEntry,
 } from "./rollback-engine/durable-authority.js";
 export {
   evaluateWatcherPostFinalityRecovery,

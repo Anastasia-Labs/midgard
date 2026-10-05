@@ -113,7 +113,7 @@ export const persistWatcherRollbackDurableCanonicalProgress = async (input: {
       source: runtime.snapshot.currentStore,
       history: runtime.snapshot.consistencyHistory,
       observations: input.observations,
-      consistency: input.consistency,
+      consistencies: [input.consistency],
       frontier: finalityResult.state,
     });
   assertCanonicalProgressEvidence(

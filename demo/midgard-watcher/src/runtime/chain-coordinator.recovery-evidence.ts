@@ -35,11 +35,18 @@ export const retryQuarantinedRecovery = (
       })
     : Promise.resolve(true);
 
+/** One durable revision journals every block of a quiet run. */
 export const persistQuietRecoveryEvidence = async (
   durable: WatcherDurableRuntime,
-  observed: WatcherLocalKupmiosNativeObservation,
+  observed: readonly (WatcherLocalKupmiosNativeObservation &
+    Readonly<{ assertCurrent?: () => void }>)[],
 ): Promise<void> => {
-  const persisted = await durable.persistObservation(observed);
+  const persisted = await durable.persistObservations({
+    assertCurrent: () => {
+      for (const entry of observed) entry.assertCurrent?.();
+    },
+    entries: observed,
+  });
   if (persisted.persistence === "conflict")
     throw new WatcherDurableAuthorityConflict(
       "watcher quiet observation persistence conflicted",

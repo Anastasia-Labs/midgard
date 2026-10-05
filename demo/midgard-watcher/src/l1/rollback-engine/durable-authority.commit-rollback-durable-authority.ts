@@ -273,7 +273,7 @@ const frontierBlockNo = (state: WatcherFinalityState): bigint | null => {
 };
 
 /**
- * Appends one authenticated canonical observation to the durable evidence and
+ * Appends authenticated canonical observations to the durable evidence and
  * retires the evidence that has fallen out of the recovery horizon.
  *
  * Every reader of this evidence looks at most
@@ -296,7 +296,7 @@ export const nextAuthenticatedEvidenceWithinRecoveryHorizon = (input: {
   readonly source: WatcherDurableStore;
   readonly history: readonly WatcherMultiProviderConsistency[];
   readonly observations: readonly WatcherNormalizedL1Block[];
-  readonly consistency: WatcherMultiProviderConsistency;
+  readonly consistencies: readonly WatcherMultiProviderConsistency[];
   readonly frontier: WatcherFinalityState;
 }): Readonly<{
   store: WatcherDurableStore;
@@ -306,12 +306,14 @@ export const nextAuthenticatedEvidenceWithinRecoveryHorizon = (input: {
     input.source,
     input.observations,
   );
+  const appendedDigests = new Set(
+    input.consistencies.map(({ consistencyDigest }) => consistencyDigest),
+  );
   const appendedHistory = [
     ...input.history.filter(
-      ({ consistencyDigest }) =>
-        consistencyDigest !== input.consistency.consistencyDigest,
+      ({ consistencyDigest }) => !appendedDigests.has(consistencyDigest),
     ),
-    input.consistency,
+    ...input.consistencies,
   ];
   const anchor = frontierBlockNo(input.frontier);
   const horizon =
@@ -327,7 +329,7 @@ export const nextAuthenticatedEvidenceWithinRecoveryHorizon = (input: {
     input.frontier.finalized?.firstSeenConsistencyDigest,
     input.frontier.finalized?.lastSeenConsistencyDigest,
     input.frontier.incident?.triggerConsistencyDigest,
-    input.consistency.consistencyDigest,
+    ...appendedDigests,
   ]);
   const latestByPoint = new Map<string, WatcherMultiProviderConsistency>();
   for (const consistency of appendedHistory) {

@@ -17,6 +17,15 @@ import { WatcherCoordinatorIntegrityHeld } from "./chain-coordinator.integrity-h
 import type { CapturedWatcherObservation } from "./chain-coordinator.observe-captured-block.js";
 import { persistQuietRecoveryEvidence } from "./chain-coordinator.recovery-evidence.js";
 
+/**
+ * Quiet blocks finalized while the native source is behind its tip are
+ * journaled together, so a catch-up pays one commit of the retained evidence
+ * per run instead of one per block. A run waits only for blocks the node has
+ * already advertised as finalizable: at the tip every finalizable quiet block
+ * persists at once, and no block is delivered before its evidence is durable.
+ */
+export const WATCHER_QUIET_RECOVERY_RUN_BLOCKS = 128;
+
 type Forward = Extract<
   WatcherNativeChainSyncEvent,
   { readonly kind: "roll_forward" }
@@ -45,6 +54,8 @@ export const advanceWatcherCanonical = (input: {
     block: WatcherNativeBlockAdmission,
   ) => WatcherBlockRelevance;
   readonly forget: (key: string) => void;
+  /** Keys of the quiet run left waiting to grow by the latest advance. */
+  readonly waitingInRun: Set<string>;
   readonly ancestryFromFinalized: (
     finalized: WatcherProcessedHead,
     target: WatcherNativeBlockAdmission,
@@ -57,6 +68,43 @@ export const advanceWatcherCanonical = (input: {
     >,
   ): Promise<void> => {
     const confirmationDepth = BigInt(input.policy.confirmationDepth);
+    input.waitingInRun.clear();
+    // The finalizable quiet run starting at `first`, or null while it is still
+    // growing during a catch-up and should wait for the next arrival.
+    const quietRecoveryRun = (
+      first: WatcherNativeBlockAdmission,
+    ): readonly WatcherNativeBlockAdmission[] | null => {
+      const finalized = input.authorityFinalizedHead();
+      const run: WatcherNativeBlockAdmission[] = [];
+      let candidate: WatcherNativeBlockAdmission | null = first;
+      while (
+        candidate !== null &&
+        run.length < WATCHER_QUIET_RECOVERY_RUN_BLOCKS &&
+        input.relevanceOf(candidate) === "quiet" &&
+        (finalized === null ||
+          BigInt(candidate.blockNo) - BigInt(finalized.blockNo) <
+            WATCHER_AUTHORITY_CHECKPOINT_INTERVAL_BLOCKS) &&
+        BigInt(depthAtTip(candidate, event)) >= confirmationDepth
+      ) {
+        run.push(candidate);
+        candidate = nextBufferedChild(
+          input.buffered,
+          candidate.blockHash,
+          candidate.blockNo,
+        );
+      }
+      // Only a run that reached the end of the buffer can still grow. Its
+      // newest block deeper than the confirmation depth means the node already
+      // has the next block, which will arrive finalizable as well.
+      const growing =
+        candidate === null &&
+        run.length < WATCHER_QUIET_RECOVERY_RUN_BLOCKS &&
+        BigInt(depthAtTip(run.at(-1)!, event)) > confirmationDepth;
+      if (!growing) return run;
+      for (const block of run)
+        input.waitingInRun.add(pointKey(block.blockHash, block.slot));
+      return null;
+    };
     const maximumIterations = input.buffered.size + 1;
     for (let iteration = 0; iteration < maximumIterations; iteration += 1) {
       const state = input.durable.readFinality();
@@ -146,12 +194,16 @@ export const advanceWatcherCanonical = (input: {
         if (BigInt(depthAtTip(target, event)) < confirmationDepth) return;
         // Quiet blocks are part of either side of a recovery path. Persist
         // their authenticated identity without advancing the sparse authority.
-        await persistQuietRecoveryEvidence(
-          input.durable,
-          await input.observe(target, event),
-        );
-        await input.deliverFinalized(target, null, "quiet");
-        input.forget(key);
+        const run = quietRecoveryRun(target);
+        if (run === null) return;
+        const observed = [];
+        for (const block of run)
+          observed.push(await input.observe(block, event));
+        await persistQuietRecoveryEvidence(input.durable, observed);
+        for (const block of run) {
+          await input.deliverFinalized(block, null, "quiet");
+          input.forget(pointKey(block.blockHash, block.slot));
+        }
         continue;
       }
       if (!input.captured.has(key)) await input.observe(target, event);
