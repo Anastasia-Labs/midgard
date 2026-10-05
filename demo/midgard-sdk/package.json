@@ -50,7 +50,7 @@
     "@al-ft/midgard-core": "workspace:*",
     "@al-ft/midgard-test-support": "workspace:*",
     "@effect/vitest": "^0.17.8",
-    "@lucid-evolution/lucid": "0.6.5",
+    "@lucid-evolution/lucid": "0.6.7",
     "@sinclair/typebox": "^0.34.28",
     "@types/node": "^22.17.0",
     "@typescript-eslint/eslint-plugin": "^8.25.0",
@@ -72,11 +72,11 @@
     "@al-ft/midgard-core": "workspace:*",
     "@harmoniclabs/cbor": "2.0.2",
     "@harmoniclabs/crypto": "^0.3.1",
-    "@lucid-evolution/uplc": "0.2.23",
+    "@lucid-evolution/uplc": "0.2.24",
     "@noble/hashes": "^2.0.1"
   },
   "peerDependencies": {
-    "@lucid-evolution/lucid": "0.6.5",
+    "@lucid-evolution/lucid": "0.6.7",
     "effect": "^3.14.22"
   }
 }

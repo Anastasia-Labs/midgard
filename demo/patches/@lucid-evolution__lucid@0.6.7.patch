@@ -251,14 +251,12 @@ diff --git a/dist/index.cjs b/dist/index.cjs
 +    return yield* completeCurrentConfig(completionOptions, internalOptions);
    if (hasDelayedActions(config)) {
 -    return yield* completeDelayedFromActions(config, options);
--  }
--  return yield* completeStaticFromActions(config, options);
--});
--var selectionAndEvaluation = (walletInputs, changeAddress, coinSelection, localUPLCEval, evaluator, includeLeftoverLovelaceAsFee, script_calculation, bootstrapExUnits = false, knownRedeemerExUnits, redeemerInputFingerprint) => import_effect22.Effect.gen(function* () {
 +    return yield* completeDelayedFromActions(config, completionOptions);
-+  }
+   }
+-  return yield* completeStaticFromActions(config, options);
 +  return yield* completeStaticFromActions(config, completionOptions, internalOptions);
-+});
+ });
+-var selectionAndEvaluation = (walletInputs, changeAddress, coinSelection, localUPLCEval, evaluator, includeLeftoverLovelaceAsFee, script_calculation, bootstrapExUnits = false, knownRedeemerExUnits, redeemerInputFingerprint) => import_effect22.Effect.gen(function* () {
 +var selectionAndEvaluation = (walletInputs, changeAddress, coinSelection, localUPLCEval, evaluator, includeLeftoverLovelaceAsFee, script_calculation, bootstrapExUnits = false, knownRedeemerExUnits, redeemerInputFingerprint, provisionalEvaluation = false) => import_effect22.Effect.gen(function* () {
    const { config } = yield* TxConfig;
    const refScriptInputs = config.readInputs.filter(
@@ -317,7 +315,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    }
    return yield* completeTxError(
      `Phase-two evaluation did not converge after ${MAX_EVALUATION_ATTEMPTS} attempts. Check for scripts that depend on transaction fees, change outputs, or execution-unit-driven transaction shape.`
-@@ -5063,32 +5161,78 @@
+@@ -5063,33 +5161,81 @@
    name: "provider",
    evaluate: ({ tx, additionalUTxOs }) => provider.evaluateTx(tx, additionalUTxOs)
  });
@@ -342,7 +340,8 @@ diff --git a/dist/index.cjs b/dist/index.cjs
 -      context.protocolParameters.maxTxExMem,
 -      BigInt(context.slotConfig.zeroTime),
 -      BigInt(context.slotConfig.zeroSlot),
--      context.slotConfig.slotLength
+-      context.slotConfig.slotLength,
+-      context.protocolParameters.protocolMajorVersion
 -    );
 -    return decodeLegacyRedeemers(uplcEval);
 -  }
@@ -374,7 +373,8 @@ diff --git a/dist/index.cjs b/dist/index.cjs
 +        maxMemory: context.protocolParameters.maxTxExMem,
 +        zeroTime: BigInt(context.slotConfig.zeroTime),
 +        zeroSlot: BigInt(context.slotConfig.zeroSlot),
-+        slotLength: context.slotConfig.slotLength
++        slotLength: context.slotConfig.slotLength,
++        protocolMajorVersion: context.protocolParameters.protocolMajorVersion
 +      };
 +      const prior = previous?.request;
 +      if (prior &&
@@ -386,7 +386,8 @@ diff --git a/dist/index.cjs b/dist/index.cjs
 +          prior.maxMemory === request.maxMemory &&
 +          prior.zeroTime === request.zeroTime &&
 +          prior.zeroSlot === request.zeroSlot &&
-+          Object.is(prior.slotLength, request.slotLength)) {
++          Object.is(prior.slotLength, request.slotLength) &&
++          Object.is(prior.protocolMajorVersion, request.protocolMajorVersion)) {
 +        // Decode anew so callers never receive the retained result's objects.
 +        return decodeLegacyRedeemers(previous.redeemers);
 +      }
@@ -407,7 +408,8 @@ diff --git a/dist/index.cjs b/dist/index.cjs
 +        request.maxMemory,
 +        request.zeroTime,
 +        request.zeroSlot,
-+        request.slotLength
++        request.slotLength,
++        request.protocolMajorVersion
 +      );
 +      const result = decodeLegacyRedeemers(uplcEval);
 +      // Retain only a successful exact request, and never share mutable bytes.
@@ -675,14 +677,12 @@ diff --git a/dist/index.js b/dist/index.js
 +    return yield* completeCurrentConfig(completionOptions, internalOptions);
    if (hasDelayedActions(config)) {
 -    return yield* completeDelayedFromActions(config, options);
--  }
--  return yield* completeStaticFromActions(config, options);
--});
--var selectionAndEvaluation = (walletInputs, changeAddress, coinSelection, localUPLCEval, evaluator, includeLeftoverLovelaceAsFee, script_calculation, bootstrapExUnits = false, knownRedeemerExUnits, redeemerInputFingerprint) => Effect21.gen(function* () {
 +    return yield* completeDelayedFromActions(config, completionOptions);
-+  }
+   }
+-  return yield* completeStaticFromActions(config, options);
 +  return yield* completeStaticFromActions(config, completionOptions, internalOptions);
-+});
+ });
+-var selectionAndEvaluation = (walletInputs, changeAddress, coinSelection, localUPLCEval, evaluator, includeLeftoverLovelaceAsFee, script_calculation, bootstrapExUnits = false, knownRedeemerExUnits, redeemerInputFingerprint) => Effect21.gen(function* () {
 +var selectionAndEvaluation = (walletInputs, changeAddress, coinSelection, localUPLCEval, evaluator, includeLeftoverLovelaceAsFee, script_calculation, bootstrapExUnits = false, knownRedeemerExUnits, redeemerInputFingerprint, provisionalEvaluation = false) => Effect21.gen(function* () {
    const { config } = yield* TxConfig;
    const refScriptInputs = config.readInputs.filter(
@@ -741,7 +741,7 @@ diff --git a/dist/index.js b/dist/index.js
    }
    return yield* completeTxError(
      `Phase-two evaluation did not converge after ${MAX_EVALUATION_ATTEMPTS} attempts. Check for scripts that depend on transaction fees, change outputs, or execution-unit-driven transaction shape.`
-@@ -4961,32 +5059,78 @@
+@@ -4961,33 +5059,81 @@
    name: "provider",
    evaluate: ({ tx, additionalUTxOs }) => provider.evaluateTx(tx, additionalUTxOs)
  });
@@ -766,7 +766,8 @@ diff --git a/dist/index.js b/dist/index.js
 -      context.protocolParameters.maxTxExMem,
 -      BigInt(context.slotConfig.zeroTime),
 -      BigInt(context.slotConfig.zeroSlot),
--      context.slotConfig.slotLength
+-      context.slotConfig.slotLength,
+-      context.protocolParameters.protocolMajorVersion
 -    );
 -    return decodeLegacyRedeemers(uplcEval);
 -  }
@@ -798,7 +799,8 @@ diff --git a/dist/index.js b/dist/index.js
 +        maxMemory: context.protocolParameters.maxTxExMem,
 +        zeroTime: BigInt(context.slotConfig.zeroTime),
 +        zeroSlot: BigInt(context.slotConfig.zeroSlot),
-+        slotLength: context.slotConfig.slotLength
++        slotLength: context.slotConfig.slotLength,
++        protocolMajorVersion: context.protocolParameters.protocolMajorVersion
 +      };
 +      const prior = previous?.request;
 +      if (prior &&
@@ -810,7 +812,8 @@ diff --git a/dist/index.js b/dist/index.js
 +          prior.maxMemory === request.maxMemory &&
 +          prior.zeroTime === request.zeroTime &&
 +          prior.zeroSlot === request.zeroSlot &&
-+          Object.is(prior.slotLength, request.slotLength)) {
++          Object.is(prior.slotLength, request.slotLength) &&
++          Object.is(prior.protocolMajorVersion, request.protocolMajorVersion)) {
 +        // Decode anew so callers never receive the retained result's objects.
 +        return decodeLegacyRedeemers(previous.redeemers);
 +      }
@@ -831,7 +834,8 @@ diff --git a/dist/index.js b/dist/index.js
 +        request.maxMemory,
 +        request.zeroTime,
 +        request.zeroSlot,
-+        request.slotLength
++        request.slotLength,
++        request.protocolMajorVersion
 +      );
 +      const result = decodeLegacyRedeemers(uplcEval);
 +      // Retain only a successful exact request, and never share mutable bytes.

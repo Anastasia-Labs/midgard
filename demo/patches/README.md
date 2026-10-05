@@ -1,6 +1,6 @@
 # Dependency patches
 
-`@lucid-evolution__lucid@0.6.5.patch` fixes delayed-redeemer bootstrap for
+`@lucid-evolution__lucid@0.6.7.patch` fixes delayed-redeemer bootstrap for
 transactions whose inputs fund an explicit fee. The unpatched builder assigns
 the entire maximum transaction execution budget before the delayed redeemers
 exist. That provisional fee exceeds the exact funding required by availability
@@ -30,14 +30,15 @@ The Lucid patch also selects collateral from an explicit wallet
 existing selection from wallet inputs; an explicitly empty collateral list does
 not fall back to ordinary spendable inputs. The
 `@lucid-evolution__core-types@0.3.0.patch` declares this optional wallet method,
-and `@lucid-evolution__wallet@0.2.2.patch` exposes a CIP-30 wallet's collateral
+and `@lucid-evolution__wallet@0.2.3.patch` exposes a CIP-30 wallet's collateral
 through it. Both JavaScript module formats and both type declaration formats
 are covered by their respective patches.
 
 The Lucid patch also reuses the last successful default Aiken evaluation within
 one public transaction completion, including its internal fee, collateral, and
 delayed-redeemer replays. Reuse requires exact transaction bytes, ordered input
-and output CBOR bytes, cost models, CPU and memory budgets, and slot parameters.
+and output CBOR bytes, cost models, CPU and memory budgets, slot parameters,
+and the protocol major version passed to the evaluator.
 The retained request and result bytes are detached; each hit decodes fresh
 redeemer values. A changed request clears the entry, failures are not retained,
 and separate completions do not share results. Explicit custom evaluators and
@@ -62,7 +63,7 @@ limits. These tests use the canonical delayed-redeemer callbacks throughout.
 
 The existing `blake2b@2.1.4.patch` remains independently managed.
 
-`@lucid-evolution__provider@0.2.4.patch` fixes emulator verification of native
+`@lucid-evolution__provider@0.2.6.patch` fixes emulator verification of native
 reference scripts. The attached-script pass has already freed its signer list;
 the reference-script pass now creates and frees its own list from the same
 verified key hashes. Signature and timelock checks are unchanged. Both ESM and

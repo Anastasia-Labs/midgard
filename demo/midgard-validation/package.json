@@ -180,7 +180,7 @@
     "@harmoniclabs/plutus-data": "2.0.1",
     "@harmoniclabs/plutus-machine": "3.0.3",
     "@harmoniclabs/uplc": "2.0.7",
-    "@lucid-evolution/lucid": "0.6.5",
+    "@lucid-evolution/lucid": "0.6.7",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.0.1",
     "effect": "^3.14.22"

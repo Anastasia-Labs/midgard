@@ -9,8 +9,9 @@ build recipe and package receipt. This is a local package, not an npm release.
 
 ## UPLC evaluator
 
-`uplc-0.2.23-midgard.1.tgz` replaces `@lucid-evolution/uplc@0.2.23`
-through the workspace's version-specific pnpm override. Its public package
+`uplc-0.2.23-midgard.1.tgz` replaces `@lucid-evolution/uplc@0.2.24`, the
+version Lucid 0.6.7 requests, through the workspace's version-specific pnpm
+override. Its public package
 metadata, JavaScript, declarations and MIT license are unchanged. The Node and
 bundler WASM targets are rebuilt separately, with the UPLC Apache license and a
 modified-source notice included. This is a local dependency, not an npm release.
@@ -44,5 +45,11 @@ used its generated imports in Node; it is not a deployed browser test. Installed
 workspace acceptance remains a separate requirement from this comparison.
 
 Remove this override only after an upstream release provides equivalent
-behavior and passes the unchanged installed acceptance gates. Avoid pnpm text
+behavior and passes the unchanged installed acceptance gates.
+Upstream 0.2.24 is built on the `uplc` 1.1.23 crate, which predates the
+constant-cost change (aiken-lang/aiken#1437, released in aiken v1.1.24).
+Replaying 2,162 captured `eval_phase_two_raw` requests from
+`mint-authorization-maximum-lifecycle` gave byte-identical results and errors
+from both packages, but 41–47 s of evaluation for upstream 0.2.24 against
+22 s for this package. Avoid pnpm text
 patches for binary WASM payloads.
