@@ -918,19 +918,18 @@ export const runCommitWorkerUntilSubmitted = async ({
     { readonly type: "SubmittedAwaitingConfirmationOutput" }
   >
 > => {
-  if (alignScheduler)
-    await alignCommitSchedulerBeforeTestWorker({
-      fixture,
-      lucidService,
-      targetEndTimeMs:
-        Date.now() +
-        (production === undefined
-          ? COMMIT_MINIMUM_FUTURE_BUFFER_MS
-          : HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS),
-    });
-
   let lastOutput: CommitWorkerOutput | undefined;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (alignScheduler)
+      await alignCommitSchedulerBeforeTestWorker({
+        fixture,
+        lucidService,
+        targetEndTimeMs:
+          Date.now() +
+          (production === undefined
+            ? COMMIT_MINIMUM_FUTURE_BUFFER_MS
+            : HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS),
+      });
     await production?.synchronize();
     const output = await runCommitWorker(
       fixture.contracts,

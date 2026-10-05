@@ -133,25 +133,32 @@ export const adoptionRecoveryFixture = async (
     switchToOperatorsMergingWallet: Effect.void,
     switchToReferenceScriptWallet: Effect.void,
   });
-  const header = headerFor(
-    {
-      utxosRoot: base.root,
-      transactionsRoot: hash(0),
-      depositsRoot: hash(0),
-      withdrawalsRoot: hash(0),
-      forcedTransactionsRoot: hash(0),
-      transitionTraceRoot: hash(0),
-      eventToStepRoot: hash(0),
-      validationTracesRoot: hash(0),
-    },
-    countsFromLengths({}),
-  );
+  const header = base.importedBlocks.at(-1)
+    ? Data.from(base.importedBlocks.at(-1)!.headerCbor, SDK.Header)
+    : headerFor(
+        {
+          utxosRoot: base.root,
+          transactionsRoot: hash(0),
+          depositsRoot: hash(0),
+          withdrawalsRoot: hash(0),
+          forcedTransactionsRoot: hash(0),
+          transitionTraceRoot: hash(0),
+          eventToStepRoot: hash(0),
+          validationTracesRoot: hash(0),
+        },
+        countsFromLengths({}),
+      );
   const node: SDK.StateQueueUTxO = {
     utxo: {
       txHash: hash(99),
-      outputIndex: 0,
+      outputIndex: 1,
       address: contracts.stateQueue.spendingScriptAddress,
-      assets: { lovelace: 2_000_000n },
+      assets: {
+        lovelace: 2_000_000n,
+        [contracts.stateQueue.policyId +
+        SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX +
+        base.headerHash]: 1n,
+      },
     },
     datum: {
       key: { Key: { key: base.headerHash } },
@@ -163,8 +170,37 @@ export const adoptionRecoveryFixture = async (
     },
     assetName: SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + base.headerHash,
   };
+  node.utxo.datum = SDK.encodeLinkedListNodeView(node.datum);
+  // This component models a foreign confirmed parent, with no local journal
+  // for landed-merge repair. Keep its real canonical-root boundary present;
+  // complete foreign semantic verification remains the controlled seam below.
+  const root: SDK.StateQueueUTxO = {
+    utxo: {
+      txHash: hash(99),
+      outputIndex: 0,
+      address: contracts.stateQueue.spendingScriptAddress,
+      assets: {
+        lovelace: 2_000_000n,
+        [contracts.stateQueue.policyId + SDK.STATE_QUEUE_ROOT_ASSET_NAME]: 1n,
+      },
+    },
+    datum: {
+      key: "Empty",
+      next: { Key: { key: base.headerHash } },
+      data: SDK.castConfirmedStateToData({
+        headerHash: header.prevHeaderHash,
+        prevHeaderHash: SDK.GENESIS_HEADER_HASH,
+        utxoRoot: header.prevUtxosRoot,
+        startTime: 0n,
+        endTime: header.startTime,
+        protocolVersion: header.protocolVersion,
+      }) as never,
+    },
+    assetName: SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+  };
+  root.utxo.datum = SDK.encodeLinkedListNodeView(root.datum);
   vi.spyOn(Topology, "fetchCanonicalStateQueueNodesProgram").mockReturnValue(
-    Effect.succeed([node]),
+    Effect.succeed([root, node]),
   );
   const verify = vi
     .spyOn(Verification, "verifyForeignCommitBase")
