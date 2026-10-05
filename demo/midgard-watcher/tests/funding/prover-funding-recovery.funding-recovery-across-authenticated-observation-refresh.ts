@@ -1,4 +1,3 @@
-import "./prover-funding-recovery.interrupted-abandonment.js";
 import "./prover-funding-recovery.registration.js";
 
 import { createHash } from "node:crypto";
@@ -30,23 +29,47 @@ import {
   walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
 import { fundingTerminal } from "./funding-handoff-fixture.js";
-import { registerConfirmedFundingRefillTest } from "./prover-funding-recovery.authenticated-confirmed-refill.js";
+
 // The setup uses the production classifier, opaque permits, actual signed bytes,
 // SQLite leases and directory journals. Only canonical transaction observations
 // are controlled; all recovery and lease rotation run through the orchestrator.
-import { expiredNotFound } from "./prover-funding-recovery.retirement-fixture.js";
-
 describe("funding recovery across authenticated observation refresh", () => {
-  registerConfirmedFundingRefillTest();
+  it("refreshes externally spent unsigned change after confirmation without rotating healthy inputs", async () => {
+    const test = await setup();
+    const admitted = await test.createPermit(test.fresh, "2");
+    const journal = test.bind(test.fresh, admitted);
+    await test.run(journal);
+    const before = await test.records();
+    const action = { actionId: "next", input: { actionKind: "proof.init" } };
+    await beginWorkflowFundingReservationAction({ journal, action });
+    expect(await test.records()).toEqual(before);
+    expect(test.readWalletUtxos).not.toHaveBeenCalled();
+    const spent = before[0]!.activeInputs.find(
+      ({ role }) => role === "funding",
+    )!.outRef;
+    test.walletUtxos.splice(
+      0,
+      test.walletUtxos.length,
+      ...test.walletUtxos.filter(
+        (utxo) => `${utxo.txHash}#${utxo.outputIndex}` !== spent,
+      ),
+    );
+    await beginWorkflowFundingReservationAction({ journal, action });
+    expect(test.readWalletUtxos).toHaveBeenCalledOnce();
+    expect(
+      (await test.records())[0]!.activeInputs.map(({ outRef }) => outRef),
+    ).not.toContain(spent);
+    expect((await test.records())[0]!.reservationId).toBe(
+      before[0]!.reservationId,
+    );
+  });
 
   it("keeps unavailable funding pending and refuses revoked or reconciliation-only refill", async () => {
     const test = await setup();
     test.useUnspentPendingInputs();
     const admitted = await test.createPermit(test.fresh, "2");
     const journal = test.bind(test.fresh, admitted);
-    vi.mocked(test.adapter.reconcile).mockResolvedValue(
-      expiredNotFound(test.transactionHash),
-    );
+    vi.mocked(test.adapter.reconcile).mockResolvedValue({ kind: "not_found" });
     await test.run(journal);
     const idle = await test.records();
     test.readWalletUtxos.mockResolvedValueOnce([]);
@@ -123,9 +146,9 @@ describe("funding recovery across authenticated observation refresh", () => {
           assets: { lovelace: 2_000_000_000n },
         })),
       );
-      vi.mocked(test.adapter.reconcile).mockResolvedValue(
-        expiredNotFound(test.transactionHash),
-      );
+      vi.mocked(test.adapter.reconcile).mockResolvedValue({
+        kind: "not_found",
+      });
       await test.run(journal);
       const [idle] = await test.records();
       expect(idle).toMatchObject({
@@ -287,9 +310,9 @@ describe("funding recovery across authenticated observation refresh", () => {
     async (acknowledgedBeforeReadOnly) => {
       const test = await setup();
       test.useUnspentPendingInputs();
-      vi.mocked(test.adapter.reconcile).mockResolvedValue(
-        expiredNotFound(test.transactionHash),
-      );
+      vi.mocked(test.adapter.reconcile).mockResolvedValue({
+        kind: "not_found",
+      });
       if (acknowledgedBeforeReadOnly) {
         await test.run(await test.recover());
         expect((await test.records())[0]!.activeInputs).toEqual([]);
@@ -335,9 +358,7 @@ describe("funding recovery across authenticated observation refresh", () => {
   it("releases acknowledged idle inputs when the existing submission permit becomes reconciliation-only", async () => {
     const test = await setup();
     test.useUnspentPendingInputs();
-    vi.mocked(test.adapter.reconcile).mockResolvedValue(
-      expiredNotFound(test.transactionHash),
-    );
+    vi.mocked(test.adapter.reconcile).mockResolvedValue({ kind: "not_found" });
     const admitted = await test.createPermit(test.fresh, "2");
     const journal = test.bind(test.fresh, admitted);
     await test.run(journal);
@@ -398,9 +419,7 @@ describe("funding recovery across authenticated observation refresh", () => {
   it("yields an interrupted abandonment whose expiry is no longer authenticated during read-only recovery", async () => {
     const test = await setup();
     test.useUnspentPendingInputs();
-    vi.mocked(test.adapter.reconcile).mockResolvedValue(
-      expiredNotFound(test.transactionHash),
-    );
+    vi.mocked(test.adapter.reconcile).mockResolvedValue({ kind: "not_found" });
     const journal = await test.recover();
     const append = journal.append.bind(journal);
     vi.spyOn(journal, "append").mockImplementation(async (entry, sequence) => {
@@ -562,7 +581,7 @@ describe("funding recovery across authenticated observation refresh", () => {
     // Confirm a second actual signed funding transaction and record the normal
     // removal lifecycle, so terminal normalization sees both confirmed actions.
     const funding = (await test.records())[0]!.activeInputs.find(
-      ({ outRef }) => outRef === `${test.transactionHash}#0`,
+      ({ role }) => role === "funding",
     )!;
     const inputs = CML.TransactionInputList.new();
     inputs.add(
@@ -901,11 +920,108 @@ describe("funding recovery across authenticated observation refresh", () => {
     ).toThrow("after journal binding");
   });
 
+  it.each(["before_not_found", "after_not_found"] as const)(
+    "recovers abandonment interrupted %s with exact signed bytes",
+    async (boundary) => {
+      const test = await setup(false, true);
+      test.useUnspentPendingInputs();
+      vi.mocked(test.adapter.reconcile).mockImplementation(
+        async ({ txHash, signedTransactionCborHex }) => {
+          expect(txHash).toBe(test.transactionHash);
+          expect(signedTransactionCborHex).toBe(test.signedTransactionCborHex);
+          return { kind: "not_found" };
+        },
+      );
+      const journal = await test.recover();
+      const append = journal.append.bind(journal);
+      const crash = new Error(`crash ${boundary}`);
+      vi.spyOn(journal, "append").mockImplementation(
+        async (entry, sequence) => {
+          if (
+            entry.event.kind !== "reconciled" ||
+            entry.event.outcome !== "not_found"
+          )
+            return append(entry, sequence);
+          expect((await test.records())[0]).toMatchObject({
+            revision: "2",
+            pendingTransition: null,
+            activeInputs: test.pending.activeInputs,
+          });
+          expect(
+            await test.store.readAbandonmentHandoff({
+              reservationId: test.plan.reservationId,
+            }),
+          ).toMatchObject({
+            transition: {
+              signedTransactionCborHex: test.signedTransactionCborHex,
+              transactionHash: test.transactionHash,
+            },
+            handoff: { reconciliation: entry.event },
+          });
+          if (boundary === "after_not_found") await append(entry, sequence);
+          throw crash;
+        },
+      );
+      await expect(test.run(journal)).rejects.toBe(crash);
+      expect(test.adapter.observe).not.toHaveBeenCalled();
+      await test.restartStore();
+      vi.mocked(test.adapter.reconcile).mockResolvedValueOnce({
+        kind: "pending",
+        txHash: test.transactionHash,
+      });
+      expect(await test.run(await test.recover())).toMatchObject({
+        kind: "stalled",
+      });
+      expect((await test.records())[0]).toMatchObject({
+        revision: "2",
+        pendingTransition: null,
+      });
+      expect(
+        await test.store.readAbandonmentHandoff({
+          reservationId: test.plan.reservationId,
+        }),
+      ).not.toBeNull();
+      expect(test.adapter.observe).not.toHaveBeenCalled();
+      expect(await test.run(await test.recover())).toMatchObject({
+        kind: "pending",
+        workflowId: test.initial.workflowId,
+      });
+      const [acknowledged] = await test.records();
+      expect(acknowledged).toMatchObject({
+        revision: "4",
+        pendingTransition: null,
+        activeInputs: [],
+      });
+      expect(
+        await test.store.readAbandonmentHandoff({
+          reservationId: test.plan.reservationId,
+        }),
+      ).toBeNull();
+      const entries = await test.journal.load(test.initial.workflowId);
+      expect(
+        entries.filter(
+          ({ event }) =>
+            event.kind === "reconciled" && event.outcome === "not_found",
+        ),
+      ).toHaveLength(1);
+      expect(
+        entries
+          .filter(({ event }) => event.kind === "submission_intent")
+          .map(({ event }) => event),
+      ).toEqual([test.handoff.submissionIntent]);
+      expect(test.adapter.reconcile).toHaveBeenCalledTimes(3);
+      expect(test.adapter.preflight).not.toHaveBeenCalled();
+      expect(test.adapter.submit).not.toHaveBeenCalled();
+      await test.restartStore();
+      await test.run(await test.recover());
+      expect(await test.records()).toEqual([acknowledged]);
+      expect(test.adapter.reconcile).toHaveBeenCalledTimes(3);
+    },
+  );
+
   it("abandons a canonically absent expired intent without inventing confirmation or submission", async () => {
     const test = await setup();
-    vi.mocked(test.adapter.reconcile).mockResolvedValue(
-      expiredNotFound(test.transactionHash),
-    );
+    vi.mocked(test.adapter.reconcile).mockResolvedValue({ kind: "not_found" });
     expect(await test.run(await test.recover())).toMatchObject({
       kind: "pending",
       workflowId: test.initial.workflowId,

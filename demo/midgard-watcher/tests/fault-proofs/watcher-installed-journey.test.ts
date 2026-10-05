@@ -53,7 +53,7 @@ import { operationsVerifiedHeader } from "../support/operations-verified-header.
 import { createPublishedWatcherDeploymentAuthority } from "../support/published-deployment-authority.js";
 import { stagePublishedDepositTrace } from "../support/published-deposit-trace.js";
 import { createTerminalRelease } from "../support/terminal-release.js";
-import { startPublishedWatcherJourneyAuthorityFixture } from "../support/trusted-head-process-fixture.js";
+import { startWatcherTrustedHeadAuthorityChildForTest } from "../support/trusted-head-process-fixture.js";
 import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
 
 const transport = vi.hoisted(() => ({
@@ -367,9 +367,27 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     );
     if (policy === null)
       throw new Error("Fixture finality policy was not admitted");
-    const trusted = await startPublishedWatcherJourneyAuthorityFixture({
-      directory: join(directory, "trusted-head"),
-      policy,
+    const trusted = await startWatcherTrustedHeadAuthorityChildForTest({
+      config: {
+        schemaVersion:
+          "midgard-watcher-trusted-head-authority-process-config-v1",
+        directory: join(directory, "trusted-head"),
+        endpoint: "http://127.0.0.1:0",
+        policy,
+        recordAuthenticationKeySource: {
+          kind: "environment",
+          variable: "MIDGARD_TEST_RECORD_KEY",
+        },
+        httpBearerSecretSource: {
+          kind: "environment",
+          variable: "MIDGARD_WATCHER_TRUSTED_HEAD_BEARER",
+        },
+      },
+      unsafeEnvironmentForTest: {
+        MIDGARD_TEST_RECORD_KEY: "5c".repeat(32),
+        MIDGARD_WATCHER_TRUSTED_HEAD_BEARER: "39".repeat(32),
+      },
+      unsafeAllowEphemeralPortForTest: true,
     });
     cleanup.push(trusted.close);
     const config = parseWatcherProcessConfig({
