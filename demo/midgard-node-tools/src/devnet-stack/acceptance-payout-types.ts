@@ -31,6 +31,7 @@ export type AcceptancePayoutInput = Readonly<{
   record: WithdrawalRecord;
   order: AcceptanceCanonicalTransaction;
   settlements: readonly AcceptanceSettlementTransaction[];
+  orderSuccessors?: readonly AcceptanceCanonicalTransaction[];
   externalDatum?: string;
 }>;
 export type AcceptancePayoutConfig = Readonly<{
@@ -47,6 +48,7 @@ export type AcceptancePayoutProof = Readonly<{
   eventId: string;
   eventKey: string;
   order: AcceptanceOutRef;
+  currentOrder: AcceptanceOutRef;
   payout: AcceptanceOutRef;
   beneficiary: AcceptanceOutRef;
   address: string;

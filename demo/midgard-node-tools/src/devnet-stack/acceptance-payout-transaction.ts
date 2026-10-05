@@ -1,7 +1,9 @@
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
 import {
+  type AcceptanceCanonicalTransaction,
   acceptanceOutRefKey,
+  type AcceptancePayoutConfig,
   type AcceptanceTransaction,
   requireAcceptance,
 } from "./acceptance-payout-types.js";
@@ -120,4 +122,19 @@ export const decodeAcceptanceTransaction = (
   } finally {
     for (const value of allocated.reverse()) value.free();
   }
+};
+
+export const decodeAcceptanceCanonicalTransaction = (
+  evidence: AcceptanceCanonicalTransaction,
+  config: AcceptancePayoutConfig,
+) => {
+  requireAcceptance(
+    evidence.canonicalDepth >= config.confirmationDepth,
+    "transaction lacks required selected-chain depth",
+  );
+  return decodeAcceptanceTransaction(
+    evidence.observed.transactionCbor,
+    evidence.observed.txHash,
+    config.maxTransactionBytes,
+  );
 };

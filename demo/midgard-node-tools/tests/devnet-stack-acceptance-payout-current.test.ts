@@ -13,6 +13,7 @@ const proofs = (): AcceptancePayoutProof[] =>
     eventId: String(index),
     eventKey: hash("11"),
     order: { txHash: hash("12"), outputIndex: index },
+    currentOrder: { txHash: hash("12"), outputIndex: index },
     payout: { txHash: hash("13"), outputIndex: index },
     beneficiary: { txHash: hash("14"), outputIndex: index },
     address: beneficiaryAddress,

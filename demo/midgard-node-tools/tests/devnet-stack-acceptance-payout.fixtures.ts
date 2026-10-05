@@ -159,6 +159,9 @@ const step = (
 export const payoutFixture = (
   options: {
     external?: boolean;
+    orderMoves?: number;
+    corruptOrder?: boolean;
+    corruptOrderValue?: boolean;
     wrongAddress?: boolean;
     wrongValue?: boolean;
     extraAsset?: boolean;
@@ -226,7 +229,43 @@ export const payoutFixture = (
       },
     ],
   );
-  const orderRef = { txHash: order.observed.txHash, outputIndex: 0 };
+  if (typeof node.payload !== "object" || !("Order" in node.payload))
+    throw new Error("fixture Order payload missing");
+  const originalFacts = node.payload.Order.facts;
+  let orderRef = { txHash: order.observed.txHash, outputIndex: 0 };
+  const orderSuccessors: AcceptanceCanonicalTransaction[] = [];
+  for (let index = 0; index < (options.orderMoves ?? 0); index++) {
+    const moved: SDK.EventHistoryNode = {
+      ...node,
+      next: hash((index + 20).toString(16).padStart(2, "0")),
+      protected_until: BigInt(index + 1),
+      ...(options.corruptOrder
+        ? {
+            payload: {
+              Order: {
+                facts: { ...originalFacts, inclusion_time: 1n },
+              },
+            },
+          }
+        : {}),
+    };
+    const successor = transaction(
+      [orderRef, { txHash: hash("00"), outputIndex: 0 }],
+      [
+        fee,
+        {
+          address: withdrawalAddress,
+          assets: {
+            lovelace: options.corruptOrderValue ? 2_000_001n : 2_000_000n,
+            [withdrawalPolicy + eventKey]: 1n,
+          },
+          datum: Data.to(moved, SDK.EventHistoryNode),
+        },
+      ],
+    );
+    orderSuccessors.push(successor);
+    orderRef = { txHash: successor.observed.txHash, outputIndex: 1 };
+  }
   const unit = payoutPolicy + (options.wrongEvent ? hash("98") : eventKey);
   const payoutDatum = Data.to(
     {
@@ -255,7 +294,7 @@ export const payoutFixture = (
             MintPayout: {
               withdrawal_utxo_out_ref: {
                 transactionId: orderRef.txHash,
-                outputIndex: 0n,
+                outputIndex: BigInt(orderRef.outputIndex),
               },
               withdrawal_input_index: options.wrongMintIndex ? 0n : 1n,
               retirement_withdraw_redeemer_index: 0n,
@@ -374,6 +413,7 @@ export const payoutFixture = (
       ),
     },
     order,
+    orderSuccessors,
     settlements: [
       step(initialize, "initialize", 1),
       fund2,

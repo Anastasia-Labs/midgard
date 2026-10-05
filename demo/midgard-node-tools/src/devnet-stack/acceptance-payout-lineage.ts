@@ -4,9 +4,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, datumToHash } from "@lucid-evolution/lucid";
 import { addressDataToBech32 } from "midgard-node/commands/withdrawal-utils";
 
-import { decodeAcceptanceTransaction } from "./acceptance-payout-transaction.js";
+import { traceAcceptanceOrderSuccessors } from "./acceptance-payout-order.js";
 import {
-  type AcceptanceCanonicalTransaction,
+  decodeAcceptanceCanonicalTransaction as canonical,
+  decodeAcceptanceTransaction,
+} from "./acceptance-payout-transaction.js";
+import {
   type AcceptanceOutRef,
   acceptanceOutRefKey,
   type AcceptancePayoutConfig,
@@ -63,20 +66,6 @@ const inputIndex = (tx: AcceptanceTransaction, ref: AcceptanceOutRef) => {
   );
   return index;
 };
-const canonical = (
-  evidence: AcceptanceCanonicalTransaction,
-  config: AcceptancePayoutConfig,
-) => {
-  requireAcceptance(
-    evidence.canonicalDepth >= config.confirmationDepth,
-    "transaction lacks required selected-chain depth",
-  );
-  return decodeAcceptanceTransaction(
-    evidence.observed.transactionCbor,
-    evidence.observed.txHash,
-    config.maxTransactionBytes,
-  );
-};
 const onePayout = (
   tx: AcceptanceTransaction,
   unit: string,
@@ -130,8 +119,9 @@ export const verifyAcceptancePayoutLineage = (
   );
   requireAcceptance(
     Number.isSafeInteger(config.maxLineageTransactions) &&
-      config.maxLineageTransactions >= 2 &&
-      input.settlements.length <= config.maxLineageTransactions,
+      config.maxLineageTransactions >= 3 &&
+      1 + (input.orderSuccessors?.length ?? 0) + input.settlements.length <=
+        config.maxLineageTransactions,
     "lineage exceeds explicit transaction bound",
   );
   const record = input.record;
@@ -260,7 +250,15 @@ export const verifyAcceptancePayoutLineage = (
   requireAcceptance(initial.length === 1, "initialize is missing or ambiguous");
   const { row: initRow, tx: init } = initial[0]!;
   const orderRef = { txHash: order.txHash, outputIndex: orderIndex };
-  const orderInputIndex = inputIndex(init, orderRef);
+  const orderUpdates = traceAcceptanceOrderSuccessors(
+    order,
+    orderIndex,
+    eventKey,
+    config,
+    input.orderSuccessors ?? [],
+  );
+  const currentOrder = orderUpdates.current;
+  const orderInputIndex = inputIndex(init, currentOrder);
   requireAcceptance(
     assetsEqual(policyMint(init, config.payoutPolicyId), { [payoutUnit]: 1n }),
     "initialize does not mint exact sole payout NFT",
@@ -274,9 +272,9 @@ export const verifyAcceptancePayoutLineage = (
     "MintPayout" in mint &&
       mint.MintPayout.withdrawal_input_index === BigInt(orderInputIndex) &&
       mint.MintPayout.withdrawal_utxo_out_ref.transactionId ===
-        orderRef.txHash &&
+        currentOrder.txHash &&
       mint.MintPayout.withdrawal_utxo_out_ref.outputIndex ===
-        BigInt(orderIndex),
+        BigInt(currentOrder.outputIndex),
     "initialize mint does not bind exact Order input",
   );
   let current = onePayout(init, payoutUnit, config, payoutFields);
@@ -287,6 +285,7 @@ export const verifyAcceptancePayoutLineage = (
   let currentOutput = init.outputs[current.outputIndex]!;
   const lineage = [
     { phase: "order", txHash: order.txHash },
+    ...orderUpdates.lineage,
     { phase: "initialize", txHash: init.txHash },
   ];
   const remaining = rows.filter(({ row }) => row.phase !== "initialize");
@@ -397,6 +396,7 @@ export const verifyAcceptancePayoutLineage = (
       eventId: record.withdrawalEventId,
       eventKey,
       order: orderRef,
+      currentOrder,
       payout: current,
       beneficiary: { txHash: tx.txHash, outputIndex },
       address: record.l1Address,
