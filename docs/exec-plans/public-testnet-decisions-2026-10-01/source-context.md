@@ -89,7 +89,7 @@ growth rate per L2 UTxO. I have asked LS3-CS for a projection that does not
 require the live devnet.
 
 ### A7. Watcher refuses to boot after a legitimate protocol-parameter update
-`watcher/src/funding/prover-funding.ts:148-150` refuses to boot whenever live
+`watcher/src/funding/prover-funding.ts:148-150` refuses to boot whenever live <!-- doc-links:historical -->
 protocol parameters differ from the signed deployment manifest — so a routine L1
 parameter update bricks the watcher until someone re-signs the manifest.
 **Recommendation: boot, serve, and refuse only the funding operations that

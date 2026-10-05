@@ -219,8 +219,8 @@ The manifest already states the correct policy. `DeploymentManifestL1Finality`
 pins `automaticRecoveryMaxDepth` to the literal `2160` and `deepRollbackPolicy`
 to `"automated_rewind_replay_incident-v1"`, frozen, and both are required fields
 of the signed deployment identity
-([types.ts:32](/home/gumbo/midgard-hub/midgard/demo/midgard-core/src/deployment-manifest-identity/types.ts:32),
-[finalized.verify-finalized-deployment-manifest.ts:349](/home/gumbo/midgard-hub/midgard/demo/midgard-core/src/deployment-manifest-identity/finalized.verify-finalized-deployment-manifest.ts:349)).
+([types.ts:32](../../../demo/midgard-core/src/deployment-manifest-identity/types.ts#L32),
+[finalized.verify-finalized-deployment-manifest.ts:349](../../../demo/midgard-core/src/deployment-manifest-identity/finalized.verify-finalized-deployment-manifest.ts#L349)).
 Those fields are read only by `midgard-fault-proofs` and the node-tools policy
 validator; the availability journal, the node, the SDK and the watcher consume
 `confirmationDepth` alone. **The global halt therefore does not merely exceed what
@@ -232,7 +232,7 @@ to `k`, and OP's derivation pipeline resets without operator action
 _The root cause is a deletion, not a missing subsystem._ On confirmation the
 journal executes `DELETE FROM availability_operation_resources WHERE intent_id = ?`
 and, for a terminal action, deletes the workflow row
-([availability-operation-journal.ts:575](/home/gumbo/midgard-hub/midgard/demo/midgard-core/src/availability-operation-journal.ts:575)).
+([availability-operation-journal.ts:575](../../../demo/midgard-core/src/availability-operation-journal.ts#L575)).
 The rewind state the shallow path uses is destroyed at confirmation depth, and the
 global flag is a latch standing in for it. The flag itself is one metadata row for
 the whole database with a `halt(reason)` writer and **no clearing method anywhere
@@ -261,7 +261,7 @@ bytes** rather than signing a replacement that could compete with a transaction
 still able to land. Delete `halt()` and replace it with a bounded, self-clearing
 refusal scoped as this item describes, published through readiness. The second
 trigger — a watcher rollback crossing its accepted finalized observation
-([runtime.create-watcher-availability-runtime.ts:835](/home/gumbo/midgard-hub/midgard/demo/midgard-watcher/src/availability/runtime.create-watcher-availability-runtime.ts:835))
+([runtime.create-watcher-availability-runtime.ts:835](../../../demo/midgard-watcher/src/availability/runtime.create-watcher-availability-runtime.ts#L835))
 — names no intent and involves no signed bytes, and should never have been a
 latch at all: rewind the observation to the fork point and re-derive.
 
@@ -294,7 +294,7 @@ Do not remove the ledger field in isolation. Current proof builders and recovery
 **Amended after review — this is a terminal state, not only a cost.** The frame
 is fixed: `maxDaPayloadInnerBytes` is binary-searched against a constant transport
 limit of roughly 64 MiB
-([da-payload-sizing.ts:114](/home/gumbo/midgard-hub/midgard/demo/midgard-core/src/da-payload-sizing.ts:114)),
+([da-payload-sizing.ts:114](../../../demo/midgard-core/src/da-payload-sizing.ts#L114)),
 while the payload carries the whole unspent-output aggregate. There is therefore a
 state size past which **no block fits at all**, and no operator action clears it.
 A6 is not an efficiency item; it removes an unrecoverable condition, which places
@@ -336,10 +336,10 @@ This lets operators distinguish a live process waiting to initialize from a proc
 
 **Amended after review — two gaps between the decision and the implementation.**
 
-_The startup reason is a constant._ The decision requires readiness failure
+_The startup reason is a constant._ The decision requires readiness failure <!-- doc-links:historical -->
 "with the startup state". The implementation returns a fixed
 `{ready: false, reasons: ["starting"]}` for every non-health request
-([listen.starting-http-server.ts](/home/gumbo/midgard-hub/midgard/demo/midgard-node/src/commands/listen.starting-http-server.ts)).
+([listen.starting-http-server.ts](../../../demo/midgard-node/src/commands/listen.starting-http-server.ts)).
 The listener mechanism itself is sound — one scoped listener, a synchronous
 handler swap, no rebind — but a constant reason converts an invisible hold into
 an uninformative one. The operational readiness handler separately never consults
@@ -495,9 +495,9 @@ A controlled probe of the installed provider returned a structured retryable err
 **Amended after review — the seam is wider than the probe showed, and the shim
 already exists.** The node's only reclassifier of an Ogmios JSON-RPC failure
 matches the string prefix `"Ogmios chain-sync error: "` and a small code set
-([l1-ledger-snapshot.ts:83](/home/gumbo/midgard-hub/midgard/demo/midgard-node/src/l1-ledger-snapshot.ts:83)),
+([l1-ledger-snapshot.ts:83](../../../demo/midgard-node/src/l1-ledger-snapshot.ts#L83)),
 against an error constructed as a plain `Error` carrying that message
-([l1-tx-order-carriage.open-ogmios-session.ts:88](/home/gumbo/midgard-hub/midgard/demo/midgard-node/src/l1-tx-order-carriage.open-ogmios-session.ts:88)).
+([l1-tx-order-carriage.open-ogmios-session.ts:88](../../../demo/midgard-node/src/l1-tx-order-carriage.open-ogmios-session.ts#L88)).
 The two committee clients — `provider.ogmios-rpc-session.ts:74` and
 `state-queue-replay-provider.open-rpc.ts:256` — reject with a plain `Error` and
 reclassify nothing. The fix is therefore one shared typed classification across
@@ -618,7 +618,7 @@ I agree with this as launch scope. Add fair scheduling, bounded speculative dept
 this item's conclusion.** The confirmed ledger is not merely derived through local
 journals; it is materialized by folding **journal deltas**, recursing through
 parent journals
-([confirmed-ledger-snapshot.ts:196](/home/gumbo/midgard-hub/midgard/demo/midgard-node/src/confirmed-ledger-snapshot.ts:196)).
+([confirmed-ledger-snapshot.ts:196](../../../demo/midgard-node/src/transactions/state-queue/confirmed-ledger-snapshot.ts#L196)).
 A peer's block has no local journal, so there is nothing to fold — the node is
 single-operator by construction rather than by configuration. This was reached
 independently from three separate refusals (the foreign-event window gate, the
@@ -687,9 +687,9 @@ produce.**
 
 Midgard does the opposite on both axes. The planner budgets
 `selectedTxBytes + selectedTxCount * limits.estimatedDaOverheadBytesPerTx`
-([commit-block-planner.plan-earliest-commit-scheduler-due-work.ts](/home/gumbo/midgard-hub/midgard/demo/midgard-node/src/workers/utils/commit-block-planner.plan-earliest-commit-scheduler-due-work.ts),
+([commit-block-planner.plan-earliest-commit-scheduler-due-work.ts](../../../demo/midgard-node/src/workers/utils/commit-block-planner.plan-earliest-commit-scheduler-due-work.ts),
 limits at
-[commit-scheduler-evidence-key.ts:64](/home/gumbo/midgard-hub/midgard/demo/midgard-node/src/workers/utils/commit-block-planner.commit-scheduler-evidence-key.ts:64)),
+[commit-scheduler-evidence-key.ts:64](../../../demo/midgard-node/src/workers/utils/commit-block-planner.commit-scheduler-evidence-key.ts#L64)),
 with the per-transaction allowance fixed at 128 bytes and the base-ledger
 aggregate, the second transaction representation, script material and traces
 omitted entirely. It then refuses at the real frame guard. Because selection is

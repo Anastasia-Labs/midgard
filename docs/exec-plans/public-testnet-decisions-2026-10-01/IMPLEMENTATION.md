@@ -52,7 +52,7 @@ The three transaction-preparation runs preceded the final funding capacity and a
 
 These parent runs followed the final funding-capacity and archive fixes on 1 October 2026:
 
-- `pnpm --dir demo/midgard-watcher exec vitest run tests/funding tests/availability/runtime.test.ts tests/l1/rollback-retention.test.ts tests/runtime/trusted-head-authority-retention.test.ts --reporter=default`: **14 files, 125 tests passed, no skipped tests, exit 0**. Log `/tmp/midgard-root-final-funding.log`. (Run before the port onto devnet-lifecycle; `tests/l1/rollback-retention.test.ts` has since been deleted and its cases live in `tests/l1/rollback-engine-recovery-horizon.test.ts`.)
+- `pnpm --dir demo/midgard-watcher exec vitest run tests/funding tests/availability/runtime.test.ts tests/l1/rollback-retention.test.ts tests/runtime/trusted-head-authority-retention.test.ts --reporter=default`: **14 files, 125 tests passed, no skipped tests, exit 0**. Log `/tmp/midgard-root-final-funding.log`. (Run before the port onto devnet-lifecycle; `tests/l1/rollback-retention.test.ts` has since been deleted and its cases live in `tests/l1/rollback-engine-recovery-horizon.test.ts`.) <!-- doc-links:historical -->
 - `pnpm --dir demo/midgard-fault-proofs exec vitest run tests/funding-parameter-update.test.ts tests/workflow-runtime.test.ts tests/mint-reconciliation-permit.test.ts --reporter=default`: **3 files, 98 tests passed, no skipped tests, exit 0**. This includes refusal of new actuation by completed historical reconciliation permits. Log `/tmp/midgard-root-final-policy.log`.
 - The following archive command: **12 files, 91 tests passed, no skipped tests, exit 0**. Log `/tmp/midgard-root-final-archive.log`.
 
