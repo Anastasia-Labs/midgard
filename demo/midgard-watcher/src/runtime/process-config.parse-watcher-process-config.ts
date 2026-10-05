@@ -23,6 +23,7 @@ import {
   WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
   type WatcherProcessConfig,
 } from "./process-config.historical-native-script-history.js";
+import { AUTHORITY_MAX_LIVE_RECORDS } from "./trusted-head-authority.envelope-codec.js";
 
 export const parseWatcherProcessConfig = (
   value: unknown,
@@ -161,6 +162,7 @@ export type WatcherTrustedHeadAuthorityProcessConfig = Readonly<{
   schemaVersion: typeof WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION;
   policy: WatcherFinalityPolicy;
   directory: string;
+  liveRecordLimit: number;
   endpoint: string;
   recordAuthenticationKeySource: WatcherWalletKeySource;
   httpBearerSecretSource: WatcherWalletKeySource;
@@ -175,6 +177,7 @@ export const parseWatcherTrustedHeadAuthorityProcessConfig = (
       "schemaVersion",
       "policy",
       "directory",
+      "liveRecordLimit",
       "endpoint",
       "recordAuthenticationKeySource",
       "httpBearerSecretSource",
@@ -211,6 +214,15 @@ export const parseWatcherTrustedHeadAuthorityProcessConfig = (
       `trusted-head authority policy requires confirmation and pre-finality rollback depth ${releaseDepth.toString()} from the deployment profile, with post-finality recovery depth 2160`,
     );
   }
+  if (
+    !Number.isSafeInteger(input.liveRecordLimit) ||
+    typeof input.liveRecordLimit !== "number" ||
+    input.liveRecordLimit < 1 ||
+    input.liveRecordLimit > AUTHORITY_MAX_LIVE_RECORDS
+  )
+    throw new Error(
+      "trusted-head authority requires explicit supported liveRecordLimit",
+    );
   const recordAuthenticationKeySource = secretSource(
     input.recordAuthenticationKeySource,
     "sidecar record authentication key source",
@@ -227,6 +239,7 @@ export const parseWatcherTrustedHeadAuthorityProcessConfig = (
     schemaVersion: WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
     policy,
     directory: canonicalPath(input.directory, "trusted-head durable directory"),
+    liveRecordLimit: input.liveRecordLimit,
     endpoint: loopbackEndpoint(input.endpoint, "trusted-head endpoint"),
     recordAuthenticationKeySource,
     httpBearerSecretSource,

@@ -48,25 +48,22 @@ export type WatcherTrustedHeadAuthorityProcessRuntime = Readonly<{
 }>;
 
 /**
- * Starts the append-only authority from its sidecar-only config. This process
- * loads the record key and bearer only; it has no field or loader for the
+ * Loads the authority record key and bearer from its sidecar-only config.
+ * This loader has no field or loader for the
  * watcher rollback HMAC key or proof signer.
  */
-export const startWatcherTrustedHeadAuthorityProcess = async (input: {
-  readonly config: WatcherTrustedHeadAuthorityProcessConfig;
-  readonly unsafeEnvironmentForTest?: Readonly<
-    Record<string, string | undefined>
-  >;
-  readonly unsafeAllowEphemeralPortForTest?: true;
-}): Promise<WatcherTrustedHeadAuthorityProcessRuntime> => {
+export const loadWatcherTrustedHeadAuthoritySecrets = async (
+  config: WatcherTrustedHeadAuthorityProcessConfig,
+  unsafeEnvironmentForTest?: Readonly<Record<string, string | undefined>>,
+) => {
   const [recordText, bearerText] = await Promise.all([
     loadWatcherSecretText(
-      input.config.recordAuthenticationKeySource,
-      input.unsafeEnvironmentForTest,
+      config.recordAuthenticationKeySource,
+      unsafeEnvironmentForTest,
     ),
     loadWatcherSecretText(
-      input.config.httpBearerSecretSource,
-      input.unsafeEnvironmentForTest,
+      config.httpBearerSecretSource,
+      unsafeEnvironmentForTest,
     ),
   ]);
   const recordAuthenticationKey = decodeWatcherAuthenticationKey32(recordText);
@@ -75,20 +72,53 @@ export const startWatcherTrustedHeadAuthorityProcess = async (input: {
     secretCandidateIds(recordText),
     secretCandidateIds(bearerText),
   ]);
+  return { recordAuthenticationKey, httpSecret };
+};
+
+/** Ordinary startup opens only an already selected backend. It never creates
+ * authority state or falls back to explicit provisioning on an open failure. */
+export const startWatcherTrustedHeadAuthorityProcess = async (input: {
+  readonly config: WatcherTrustedHeadAuthorityProcessConfig;
+  readonly unsafeEnvironmentForTest?: Readonly<
+    Record<string, string | undefined>
+  >;
+  readonly unsafeAllowEphemeralPortForTest?: true;
+}): Promise<WatcherTrustedHeadAuthorityProcessRuntime> => {
+  const { recordAuthenticationKey, httpSecret } =
+    await loadWatcherTrustedHeadAuthoritySecrets(
+      input.config,
+      input.unsafeEnvironmentForTest,
+    );
   const store = await openWatcherTrustedHeadAuthorityStore({
     directory: input.config.directory,
     policy: input.config.policy,
     recordAuthenticationKey,
+    liveRecordLimit: input.config.liveRecordLimit,
   });
-  const server = await startWatcherTrustedHeadAuthorityServer({
-    endpoint: input.config.endpoint,
-    httpSecret,
-    store,
-    ...(input.unsafeAllowEphemeralPortForTest === true
-      ? { unsafeAllowEphemeralPortForTest: true as const }
-      : {}),
+  let server: WatcherTrustedHeadAuthorityServer;
+  try {
+    server = await startWatcherTrustedHeadAuthorityServer({
+      endpoint: input.config.endpoint,
+      httpSecret,
+      store,
+      ...(input.unsafeAllowEphemeralPortForTest === true
+        ? { unsafeAllowEphemeralPortForTest: true as const }
+        : {}),
+    });
+  } catch (error) {
+    store.close();
+    throw error;
+  }
+  return Object.freeze({
+    server,
+    close: async () => {
+      try {
+        await server.close();
+      } finally {
+        store.close();
+      }
+    },
   });
-  return Object.freeze({ server, close: async () => await server.close() });
 };
 
 export type WatcherTrustedHeadClientRuntime = Readonly<{

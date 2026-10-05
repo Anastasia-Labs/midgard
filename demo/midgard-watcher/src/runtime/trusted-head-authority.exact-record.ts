@@ -1,5 +1,4 @@
 import { createHash, createHmac } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { isAbsolute, normalize } from "node:path";
 
 import { type WatcherRollbackDurableTrustedHead } from "../l1/rollback-engine.js";
@@ -15,11 +14,7 @@ export const RECORD_FILE = /^([0-9]{20})\.json$/u;
 
 const UINT64_MAX = 18_446_744_073_709_551_615n;
 
-const MAX_RECORD_BYTES = 16_384;
-
-export const RECORD_SCAN_BATCH_SIZE = 8;
-
-export const MAX_CACHED_RECORDS = 4_096;
+export const MAX_RECORD_BYTES = 16_384;
 
 export const MAX_REQUEST_BYTES = 32_768;
 
@@ -146,14 +141,6 @@ export const makeAuthorityRecord = (input: {
   });
 };
 
-export const readBounded = (path: string): Uint8Array => {
-  const bytes = readFileSync(path);
-  if (bytes.byteLength === 0 || bytes.byteLength > MAX_RECORD_BYTES) {
-    throw new Error("trusted-head authority record size is invalid");
-  }
-  return Uint8Array.from(bytes);
-};
-
 export const parseJson = (bytes: Uint8Array): unknown => {
   try {
     return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
@@ -168,5 +155,10 @@ export type WatcherTrustedHeadAuthorityStore = Readonly<{
   compareAndSwap(input: {
     readonly expectedTrustedHead: unknown | null;
     readonly nextTrustedHead: unknown;
-  }): Promise<boolean>;
+  }): Promise<
+    Readonly<{
+      committed: boolean;
+      head: WatcherRollbackDurableTrustedHead | null;
+    }>
+  >;
 }>;

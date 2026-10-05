@@ -11,6 +11,7 @@ import "../../src/runtime/watcher-runtime.js";
 import "../../src/storage/durable-store.js";
 import "./process-config.watcher-config-value.js";
 
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -26,6 +27,7 @@ import {
   WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
   type WatcherTrustedHeadAuthorityProcessConfig,
 } from "../../src/runtime/process-config.js";
+import { initializeSelectedAuthorityStore } from "../../src/runtime/trusted-head-authority.js";
 import {
   createWatcherTrustedHeadClientRuntime,
   startWatcherTrustedHeadAuthorityProcess,
@@ -315,6 +317,7 @@ describe("production process authority separation", () => {
         WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
       policy: policy(),
       directory: "/var/lib/midgard-trusted-head",
+      liveRecordLimit: 8,
       endpoint: "http://127.0.0.1:43123",
       recordAuthenticationKeySource: {
         kind: "environment",
@@ -352,6 +355,7 @@ describe("production process authority separation", () => {
         WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
       policy: policy(),
       directory,
+      liveRecordLimit: 8,
       endpoint: "http://127.0.0.1:0",
       recordAuthenticationKeySource: {
         kind: "environment",
@@ -379,12 +383,22 @@ describe("production process authority separation", () => {
     directories.push(directory);
     const rollbackAndRecordKey = "12".repeat(32);
     const bearer = "watcher-sidecar-bearer-secret-0001";
+    await initializeSelectedAuthorityStore({
+      directory,
+      policy: policy(),
+      recordAuthenticationKey: Uint8Array.from(
+        Buffer.from(rollbackAndRecordKey, "hex"),
+      ),
+      liveRecordLimit: 8,
+      generation: `generation-${randomUUID()}`,
+    });
     const authority = await startWatcherTrustedHeadAuthorityProcess({
       config: {
         schemaVersion:
           WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
         policy: policy(),
         directory,
+        liveRecordLimit: 8,
         endpoint: "http://127.0.0.1:0",
         recordAuthenticationKeySource: {
           kind: "environment",

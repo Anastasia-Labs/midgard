@@ -16,7 +16,10 @@ import {
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import { createWatcherTrustedHeadAuthorityClient } from "../../src/runtime/trusted-head-authority.js";
 import { watcherCanonicalJson } from "../../src/storage/durable-store.js";
-import { startWatcherTrustedHeadAuthorityChildForTest } from "../support/trusted-head-process-fixture.js";
+import {
+  provisionWatcherTrustedHeadAuthorityFixture,
+  startWatcherTrustedHeadAuthorityChildForTest,
+} from "../support/trusted-head-process-fixture.js";
 
 const hex32 = (byte: string): string => byte.repeat(32);
 const authenticationKey = Uint8Array.from({ length: 32 }, (_, index) => index);
@@ -138,6 +141,7 @@ const inputFor = (
     schemaVersion:
       "midgard-watcher-trusted-head-authority-process-config-v1" as const,
     directory,
+    liveRecordLimit: 8,
     endpoint: "http://127.0.0.1:0",
     policy: finalityPolicy,
     recordAuthenticationKeySource: {
@@ -165,6 +169,7 @@ describe("trusted-head authority child process fixture", () => {
       | Awaited<ReturnType<typeof startWatcherTrustedHeadAuthorityChildForTest>>
       | undefined;
     try {
+      await provisionWatcherTrustedHeadAuthorityFixture(input);
       child = await startWatcherTrustedHeadAuthorityChildForTest(input);
       expect(child.processId).not.toBe(process.pid);
       const firstProcessId = child.processId;

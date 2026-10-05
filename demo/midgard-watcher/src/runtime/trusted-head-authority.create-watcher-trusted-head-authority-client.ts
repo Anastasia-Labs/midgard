@@ -125,14 +125,11 @@ export const startWatcherTrustedHeadAuthorityServer = async (input: {
           replyJson(response, 400, { error: "invalid_request" });
           return;
         }
-        const committed = await input.store.compareAndSwap({
+        const result = await input.store.compareAndSwap({
           expectedTrustedHead: body.expectedTrustedHead,
           nextTrustedHead: body.nextTrustedHead,
         });
-        replyJson(response, committed ? 200 : 409, {
-          committed,
-          head: await input.store.readCurrent(),
-        });
+        replyJson(response, result.committed ? 200 : 409, result);
         return;
       }
       replyJson(response, 404, { error: "not_found" });
