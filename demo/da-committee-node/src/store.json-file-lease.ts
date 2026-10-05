@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readlinkSync } from "node:fs";
 import {
-  type FileHandle,
   link,
   open as openFile,
   readFile,
@@ -10,14 +9,19 @@ import {
   unlink,
 } from "node:fs/promises";
 import { hostname as osHostname } from "node:os";
+import { dirname } from "node:path";
 
+import {
+  isSqliteMutexBusy,
+  JsonStoreProcessMutex,
+} from "./store.json-file-process-mutex.js";
 import { isNodeError } from "./store.parse-stored-record-map.js";
 
 /** How often a live holder renews its lease. */
 export const JSON_STORE_LEASE_RENEW_MS = 10_000;
 /**
- * How long a lease may go unrenewed before another process may take it over.
- * Several renewals long, so a holder that is merely slow is never displaced.
+ * Diagnostic age of unrenewed metadata. Age never authorizes displacement
+ * of a live or unprovable holder.
  */
 export const JSON_STORE_LEASE_STALE_MS = 60_000;
 
@@ -51,7 +55,7 @@ export type JsonStoreLeaseOptions = {
    * later write is refused, and the process must stop.
    */
   readonly onLost?: (error: Error) => void;
-  /** Called when a lease left by a dead or stale holder is taken over. */
+  /** Called when a lease left by a provably gone holder is taken over. */
   readonly onTakeover?: (reason: string) => void;
 };
 
@@ -107,15 +111,10 @@ const parseLease = (raw: string): JsonStoreLeaseRecord | undefined => {
   }
 };
 
-/**
- * Why the holder of `raw` may be displaced, or undefined while it must not
- * be. A holder is displaced only when it is provably gone (same host: its
- * boot ended, or, in the same pid namespace, its pid is this process or is
- * not running) or its lease is stale. A holder whose pid namespace is
- * unknown or another one is judged by its lease alone. A lock file this
- * process cannot read (a torn write, a legacy lock) is judged by its
- * modification time alone.
- */
+/** A holder is displaced only when its process or boot is provably gone.
+ * Unknown/remote namespace and unreadable metadata require explicit recovery;
+ * timestamps cannot fence a suspended writer. The process mutex serializes
+ * concurrent recoverers before this metadata is examined or renamed. */
 export const leaseTakeoverReason = (args: {
   readonly raw: string;
   readonly mtimeMs: number;
@@ -127,14 +126,7 @@ export const leaseTakeoverReason = (args: {
   readonly isProcessAlive: (pid: number) => boolean;
 }): string | undefined => {
   const lease = parseLease(args.raw);
-  const renewedAtMs = Math.max(
-    args.mtimeMs,
-    lease === undefined ? 0 : Date.parse(lease.renewedAt) || 0,
-  );
-  const stale = args.nowMs - renewedAtMs > args.staleMs;
-  if (lease === undefined) {
-    return stale ? "unreadable_lease_stale" : undefined;
-  }
+  if (lease === undefined) return undefined;
   if (heldHere.has(lease.owner)) {
     return undefined;
   }
@@ -160,51 +152,75 @@ export const leaseTakeoverReason = (args: {
       return "holder_process_gone";
     }
   }
-  return stale ? "lease_stale" : undefined;
+  return undefined;
 };
 
 /**
- * An exclusive, renewed lease on a JSON committee store, held in a lock file
- * created with O_EXCL. A lock left by a holder that is provably gone, or
- * whose lease is stale, is taken over, so a crash never leaves the store
- * unopenable; a live holder's lock never is.
+ * An exclusive, renewed lease on a JSON committee store, published atomically
+ * under a SQLite process mutex held for the store lifetime.
+ * Local filesystems with reliable SQLite/POSIX locking are required. Never
+ * delete/replace the persistent mutex file while any holder may be alive.
  */
 export class JsonStoreLease {
   private timer: ReturnType<typeof setInterval> | undefined;
   /**
-   * Renewals and ownership checks run one at a time: a renewal rewrites the
-   * lock file in place, and a check reading it mid-rewrite would see a torn
-   * record and report the lease lost.
+   * Renewals and ownership checks run one at a time; metadata publishes
+   * atomically and a close waits for any queued renewal before releasing.
    */
   private serial: Promise<void> = Promise.resolve();
   /** A renewal is waiting its turn; a slow one never piles up more. */
   private renewalQueued = false;
   private lost: Error | undefined;
+  private releasePromise: Promise<void> | undefined;
 
   private constructor(
     readonly lockPath: string,
     readonly owner: string,
-    private readonly handle: FileHandle,
     private record: JsonStoreLeaseRecord,
     private readonly options: JsonStoreLeaseOptions,
+    private readonly mutex: JsonStoreProcessMutex,
   ) {}
 
   static async acquire(
     lockPath: string,
     options: JsonStoreLeaseOptions = {},
   ): Promise<JsonStoreLease> {
+    let mutex: JsonStoreProcessMutex;
+    try {
+      mutex = JsonStoreProcessMutex.acquire(`${lockPath}.mutex.sqlite`);
+    } catch (error) {
+      if (isSqliteMutexBusy(error))
+        throw new JsonStoreLeaseHeldError(
+          `committee node file store is already exclusively leased: ${lockPath}; its process mutex is held`,
+        );
+      throw error;
+    }
+    try {
+      return await JsonStoreLease.acquireWithMutex(lockPath, options, mutex);
+    } catch (error) {
+      mutex.close();
+      throw error;
+    }
+  }
+
+  private static async acquireWithMutex(
+    lockPath: string,
+    options: JsonStoreLeaseOptions,
+    mutex: JsonStoreProcessMutex,
+  ): Promise<JsonStoreLease> {
     const now = options.now ?? Date.now;
     const host = (options.hostname ?? osHostname)();
     const bootId = (options.bootId ?? readBootId)();
     const pidNamespace = (options.pidNamespace ?? readPidNamespace)();
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      let handle: FileHandle;
-      try {
-        handle = await openFile(lockPath, "wx", 0o600);
-      } catch (error) {
-        if (!(isNodeError(error) && error.code === "EEXIST")) {
+      const present = await readFile(lockPath, "utf8").then(
+        () => true,
+        (error: unknown) => {
+          if (isNodeError(error) && error.code === "ENOENT") return false;
           throw error;
-        }
+        },
+      );
+      if (present) {
         await JsonStoreLease.displace(lockPath, {
           nowMs: now(),
           staleMs: options.staleMs ?? JSON_STORE_LEASE_STALE_MS,
@@ -232,15 +248,19 @@ export class JsonStoreLease {
       const lease = new JsonStoreLease(
         lockPath,
         record.owner,
-        handle,
         record,
         options,
+        mutex,
       );
       try {
         await lease.writeRecord();
       } catch (error) {
-        await handle.close().catch(() => undefined);
-        await unlink(lockPath).catch(() => undefined);
+        // The mutex still excludes all cooperating successors during cleanup.
+        if (
+          parseLease(await readFile(lockPath, "utf8").catch(() => ""))
+            ?.owner === record.owner
+        )
+          await unlink(lockPath).catch(() => undefined);
         throw error;
       }
       heldHere.add(record.owner);
@@ -281,7 +301,7 @@ export class JsonStoreLease {
     const reason = leaseTakeoverReason({ ...args, raw, mtimeMs });
     if (reason === undefined) {
       throw new JsonStoreLeaseHeldError(
-        `committee node file store is already exclusively leased: ${lockPath}; its holder is live and renewing (it is taken over once the holder is gone or its lease goes ${(args.staleMs / 1000).toString()} s unrenewed)`,
+        `committee node file store is already exclusively leased: ${lockPath}; its holder is live or cannot be proven gone; time alone never authorizes takeover`,
       );
     }
     const aside = `${lockPath}.displaced-${randomUUID()}`;
@@ -333,13 +353,26 @@ export class JsonStoreLease {
   }
 
   async release(): Promise<void> {
+    this.releasePromise ??= this.releaseOnce();
+    await this.releasePromise;
+  }
+
+  private async releaseOnce(): Promise<void> {
     if (this.timer !== undefined) clearInterval(this.timer);
     this.timer = undefined;
-    await this.serial;
-    heldHere.delete(this.owner);
-    await this.handle.close();
-    if (this.lost === undefined) {
-      await unlink(this.lockPath);
+    try {
+      await this.serial;
+      if (this.lost === undefined) {
+        try {
+          await this.checkHeld();
+        } catch (error) {
+          if (this.lost === undefined) throw error;
+        }
+        if (this.lost === undefined) await unlink(this.lockPath);
+      }
+    } finally {
+      heldHere.delete(this.owner);
+      this.mutex.close();
     }
   }
 
@@ -370,9 +403,26 @@ export class JsonStoreLease {
   }
 
   private async writeRecord(): Promise<void> {
-    const bytes = `${JSON.stringify(this.record)}\n`;
-    await this.handle.truncate(0);
-    await this.handle.write(bytes, 0, "utf8");
-    await this.handle.sync();
+    const temporary = `${this.lockPath}.${this.owner}.metadata.tmp`;
+    const handle = await openFile(temporary, "wx", 0o600);
+    try {
+      try {
+        await handle.writeFile(`${JSON.stringify(this.record)}\n`, "utf8");
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+      await rename(temporary, this.lockPath);
+      const directory = await openFile(dirname(this.lockPath), "r");
+      try {
+        await directory.sync();
+      } finally {
+        await directory.close();
+      }
+    } finally {
+      await unlink(temporary).catch((error: unknown) => {
+        if (!(isNodeError(error) && error.code === "ENOENT")) throw error;
+      });
+    }
   }
 }

@@ -1,9 +1,13 @@
-import { type ChildProcess, spawn } from "node:child_process";
-import { readlinkSync } from "node:fs";
-import { readFile, utimes, writeFile } from "node:fs/promises";
+import { type ChildProcess, fork, spawn } from "node:child_process";
+import { existsSync, readlinkSync } from "node:fs";
+import fileSystem from "node:fs/promises";
+import { mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { hostname } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
+import { build } from "tsup";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { retryStartup, startupReason } from "../src/startup.js";
@@ -104,67 +108,32 @@ describe("the JSON store's lease on its lock file", () => {
     }
   });
 
-  it("judges a holder in another pid namespace (a container sharing this hostname and boot) by its lease alone", async () => {
-    for (const pid of [await exitedPid(), process.pid]) {
+  it.each(["another namespace", "another host", "unreadable"])(
+    "refuses an unprovable %s holder even after metadata is stale",
+    async (kind) => {
       const dir = await tempDir();
       const renewedAt = Date.now();
       await leaveLock(
         dir,
-        leaseOf({
-          pid,
-          pidNamespace: "pid:[4026539999]",
-          renewedAt: new Date(renewedAt).toISOString(),
-        }),
+        kind === "unreadable"
+          ? ""
+          : leaseOf({
+              ...(kind === "another namespace"
+                ? { pidNamespace: "pid:[4026539999]" }
+                : { hostname: "another-host" }),
+              renewedAt: new Date(renewedAt).toISOString(),
+            }),
       );
       const pinned = new Date(renewedAt);
       await utimes(lockPath(dir), pinned, pinned);
-      await expect(open(dir, { bootId })).rejects.toThrow(heldLockError);
-      const onTakeover = vi.fn();
-      await open(dir, {
-        bootId,
-        now: () => renewedAt + JSON_STORE_LEASE_STALE_MS + 1_000,
-        onTakeover,
-      });
-      expect(onTakeover).toHaveBeenCalledExactlyOnceWith("lease_stale");
-    }
-  });
-
-  it("is refused while another host's lease is fresh, and taken over once it goes stale", async () => {
-    const dir = await tempDir();
-    const renewedAt = Date.now();
-    await leaveLock(
-      dir,
-      leaseOf({
-        hostname: "another-host",
-        renewedAt: new Date(renewedAt).toISOString(),
-      }),
-    );
-    // The lease's age runs from the later of renewedAt and the file's mtime,
-    // so the mtime is pinned to renewedAt rather than left to the write.
-    const pinned = new Date(renewedAt);
-    await utimes(lockPath(dir), pinned, pinned);
-    await expect(open(dir, { bootId })).rejects.toThrow(heldLockError);
-    const onTakeover = vi.fn();
-    await open(dir, {
-      bootId,
-      now: () => renewedAt + JSON_STORE_LEASE_STALE_MS + 1_000,
-      onTakeover,
-    });
-    expect(onTakeover).toHaveBeenCalledExactlyOnceWith("lease_stale");
-  });
-
-  it("judges an unreadable lock (a crash mid-write) by its age alone", async () => {
-    const dir = await tempDir();
-    await leaveLock(dir, "");
-    await expect(open(dir, { bootId })).rejects.toThrow(heldLockError);
-    const old = new Date(Date.now() - JSON_STORE_LEASE_STALE_MS - 1_000);
-    await utimes(lockPath(dir), old, old);
-    const onTakeover = vi.fn();
-    await open(dir, { bootId, onTakeover });
-    expect(onTakeover).toHaveBeenCalledExactlyOnceWith(
-      "unreadable_lease_stale",
-    );
-  });
+      await expect(
+        open(dir, {
+          bootId,
+          now: () => renewedAt + JSON_STORE_LEASE_STALE_MS + 1000,
+        }),
+      ).rejects.toThrow(heldLockError);
+    },
+  );
 
   it("is renewed while held, so a live holder is never judged stale", async () => {
     const dir = await tempDir();
@@ -242,4 +211,151 @@ describe("the JSON store's lease on its lock file", () => {
     expect(opens).toBe(1);
     expect(await store.listStateQueueHeaders()).toEqual([]);
   });
+});
+
+it("old release preserves successor metadata even before observing ownership loss", async () => {
+  const dir = await tempDir();
+  const store = await open(dir, { bootId, renewMs: 1_000_000_000 });
+  const successor = leaseOf({ owner: "successor", hostname: "another-host" });
+  await leaveLock(dir, successor);
+  await store.close();
+  openStores.delete(store);
+  expect(existsSync(lockPath(dir))).toBe(true);
+  expect(JSON.parse(await readFile(lockPath(dir), "utf8"))).toEqual(successor);
+  await store.close();
+});
+
+it("fences a paused live writer, then admits exactly one real successor after process death", async () => {
+  const fixtureRoot = await mkdtemp(
+    join(dirname(fileURLToPath(import.meta.url)), ".json-lease-fixture-"),
+  );
+  const dir = await tempDir();
+  const storePath = join(dir, "committee.json");
+  const worker = fileURLToPath(
+    new URL("./fixtures/json-store-lease-child.mjs", import.meta.url),
+  );
+  const owned: ChildProcess[] = [];
+  const start = (role: string) => {
+    const child = fork(
+      worker,
+      [
+        join(fixtureRoot, "store.json-file-committee-store.js"),
+        storePath,
+        role,
+      ],
+      { stdio: ["ignore", "ignore", "inherit", "ipc"], execArgv: [] },
+    );
+    owned.push(child);
+    const events: { event: string; peers?: string[]; message?: string }[] = [];
+    child.on("message", (message) =>
+      events.push(message as (typeof events)[number]),
+    );
+    const wait = async (...kinds: string[]) => {
+      await vi.waitFor(
+        () =>
+          expect(events.some((event) => kinds.includes(event.event))).toBe(
+            true,
+          ),
+        { timeout: 5000, interval: 10 },
+      );
+      return events.find((event) => kinds.includes(event.event))!;
+    };
+    return { child, wait };
+  };
+  const stop = async (child: ChildProcess) => {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    const exited = new Promise((resolve) => child.once("exit", resolve));
+    child.kill("SIGKILL");
+    await exited;
+  };
+  try {
+    await build({
+      entry: ["src/store.json-file-committee-store.ts"],
+      outDir: fixtureRoot,
+      format: ["esm"],
+      bundle: true,
+      splitting: false,
+      dts: false,
+      silent: true,
+      skipNodeModulesBundle: true,
+      esbuildOptions(options) {
+        options.conditions = ["node", "import"];
+      },
+    });
+    const old = start("paused");
+    expect((await old.wait("opened", "refused")).event).toBe("opened");
+    old.child.send("save");
+    await old.wait("write-paused");
+    const contender = start("contender");
+    const refusal = await contender.wait("opened", "refused");
+    expect(refusal.event).toBe("refused");
+    expect(refusal.message).toMatch(heldLockError);
+    expect(old.child.exitCode).toBeNull();
+    old.child.send("resume");
+    expect((await old.wait("saved")).peers).toEqual(["old-peer"]);
+    await stop(old.child);
+    const candidates = [start("contender"), start("contender")];
+    const results = await Promise.all(
+      candidates.map((candidate) => candidate.wait("opened", "refused")),
+    );
+    expect(results.filter((result) => result.event === "opened")).toHaveLength(
+      1,
+    );
+    expect(results.filter((result) => result.event === "refused")).toHaveLength(
+      1,
+    );
+    const successor =
+      candidates[results.findIndex((result) => result.event === "opened")];
+    successor.child.send("save");
+    expect((await successor.wait("saved")).peers).toEqual([
+      "new-peer",
+      "old-peer",
+    ]);
+    successor.child.send("close");
+    await successor.wait("closed");
+    const reopened = await open(dir);
+    expect(
+      (await reopened.listPeerHealth()).map((peer) => peer.peerId),
+    ).toEqual(["new-peer", "old-peer"]);
+  } finally {
+    await Promise.all(owned.map(stop));
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+}, 20_000);
+
+it("releases the process mutex and temporary handle after failed metadata publication", async () => {
+  const dir = await tempDir();
+  const original = fileSystem.open;
+  let injected = false;
+  fileSystem.open = async (...args: Parameters<typeof fileSystem.open>) => {
+    const handle = await original(...args);
+    if (!injected && String(args[0]).endsWith(".metadata.tmp")) {
+      injected = true;
+      handle.sync = () =>
+        Promise.reject(new Error("synthetic metadata sync failure"));
+    }
+    return handle;
+  };
+  syncBuiltinESMExports();
+  try {
+    await expect(JsonFileCommitteeStore.open(dir)).rejects.toThrow(
+      "synthetic metadata sync failure",
+    );
+    expect(injected).toBe(true);
+    expect(existsSync(lockPath(dir))).toBe(false);
+  } finally {
+    fileSystem.open = original;
+    syncBuiltinESMExports();
+  }
+  const store = await open(dir);
+  expect(await store.listPeerHealth()).toEqual([]);
+});
+
+it("releases an acquired process mutex when constructing its owner timestamp fails", async () => {
+  const dir = await tempDir();
+  await expect(
+    JsonFileCommitteeStore.open(dir, { now: () => Number.NaN }),
+  ).rejects.toThrow("Invalid time value");
+  expect(existsSync(lockPath(dir))).toBe(false);
+  expect(await (await open(dir)).listPeerHealth()).toEqual([]);
 });
