@@ -3,6 +3,7 @@ import {
   OgmiosJsonRpcError,
 } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 
+import { joinNativeReads } from "./provider.join-native-reads.js";
 import { fetchKupoCheckpoint } from "./provider.local-node-chain-authority-from-config.js";
 import {
   assertNetworkMagic,
@@ -25,7 +26,7 @@ export const alignedKupmiosTip = async (
   networkMagic: number | undefined,
 ): Promise<CanonicalChainPoint> => {
   for (let attempt = 1; ; attempt += 1) {
-    const [kupoPoint, ogmiosTip] = await Promise.all([
+    const [kupoPoint, ogmiosTip] = await joinNativeReads([
       fetchKupoCheckpoint(kupoUrl, fetchFn),
       requestOgmiosTip(ogmiosUrl),
     ]);

@@ -178,7 +178,7 @@ describe("the L1 factories main() calls build Custom Lucid on the genesis mappin
       ) =>
         availabilityResponderFromConfig(
           config,
-          {} as never,
+          { getRetirementFloor: async () => undefined } as never,
           {
             fetchStateQueueNodes: async () => [],
             currentChainSyncCursor: unreachable,

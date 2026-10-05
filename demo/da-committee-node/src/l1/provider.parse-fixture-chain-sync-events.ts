@@ -14,6 +14,7 @@ import {
   resolveChainPoints,
 } from "./provider.chain-point-batch.js";
 import { createOgmiosChainSyncRequest } from "./provider.create-ogmios-chain-sync-request.js";
+import { joinNativeReads } from "./provider.join-native-reads.js";
 import { type OgmiosChainSyncRequest } from "./provider.local-node-chain-authority.js";
 import {
   type CanonicalChainPoint,
@@ -21,6 +22,7 @@ import {
   type ChainSyncEvent,
   type ChainSyncEventBatch,
   type ChainSyncEventSource,
+  type ChainSyncReadBudget,
   getRecord,
   safeBlockHash,
   safeSlot,
@@ -44,6 +46,7 @@ export class OgmiosChainSyncEventSource implements ChainSyncEventSource {
   async next(
     cursor: ChainSyncCursor | undefined,
     intersectionCandidates?: readonly CanonicalChainPoint[],
+    readBudget?: ChainSyncReadBudget,
   ): Promise<ChainSyncEventBatch> {
     const response = await this.request(
       this.ogmiosUrl,
@@ -52,6 +55,7 @@ export class OgmiosChainSyncEventSource implements ChainSyncEventSource {
       this.network,
       this.authorityNodeId,
       this.networkMagic,
+      readBudget,
     );
     return response;
   }
@@ -196,7 +200,7 @@ export const stateQueueUtxosToObservedSnapshot = async (
     throw new Error("state queue snapshot has no confirmed root node");
   }
   const nodeUtxos = nonRootUtxos(stateQueueUtxos);
-  const [{ data }, chainPoints] = await Promise.all([
+  const [{ data }, chainPoints] = await joinNativeReads([
     Effect.runPromise(
       SDK.getConfirmedStateFromStateQueueDatum(confirmed.datum),
     ),

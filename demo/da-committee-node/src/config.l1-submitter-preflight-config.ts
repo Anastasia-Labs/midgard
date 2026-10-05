@@ -311,6 +311,7 @@ export const contractDeploymentManifestConfig = (
   readonly network: string;
   readonly daRetentionDays: number;
   readonly finalityDepth: number;
+  readonly automaticRecoveryMaxDepth: number;
   readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
 } => {
   const verified = verifyFinalizedDeploymentManifest(contractDeploymentInfo);
@@ -321,6 +322,7 @@ export const contractDeploymentManifestConfig = (
     // The retention window is part of the verified deployment identity.
     daRetentionDays: verified.da.transportProfile.retentionDays,
     finalityDepth: verified.l1Finality.confirmationDepth,
+    automaticRecoveryMaxDepth: verified.l1Finality.automaticRecoveryMaxDepth,
     // Preserve the parser's independently owned, frozen configuration value.
     availabilityChallenge: parseDeploymentManifestAvailabilityChallenge(
       verified.availabilityChallenge,

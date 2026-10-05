@@ -4,6 +4,8 @@ import { Data } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
 import { createLocalKupmiosStateQueueReplayProvider } from "../src/l1/state-queue-replay-provider.js";
+import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
+import { fixtureHeaderBase } from "./helpers.js";
 
 export const outRef = (byte: number): string => `${h32(byte)}#0`;
 
@@ -11,9 +13,21 @@ export const deployment = h32(0xaa);
 
 export const policy = h28(0xbb);
 
-export const target = h28(0x11);
+export const targetHeader = {
+  ...fixtureHeaderBase(),
+  utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+  forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+  transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+  depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+  withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+};
+export const descendantHeader = {
+  ...targetHeader,
+  endTime: targetHeader.endTime + 1n,
+};
+export const target = hashBlockHeader(targetHeader);
 
-const descendant = h28(0x22);
+const descendant = hashBlockHeader(descendantHeader);
 
 const transactionHash = h32(0xcc);
 
@@ -39,9 +53,20 @@ export const after: readonly SDK.StateQueueTransitionNode[] = [
 export const harness = ({
   rollback = false,
   tipHeight = 119,
+  rawTipHeight = tipHeight,
+  omitRawTip = false,
+  rawTip = undefined as unknown,
   availability = false,
   /** Output references Kupo does not know, as after a deep rollback. */
   unknownOutRefs = [] as readonly string[],
+}: {
+  rollback?: boolean;
+  tipHeight?: number;
+  rawTipHeight?: number;
+  omitRawTip?: boolean;
+  rawTip?: unknown;
+  availability?: boolean;
+  unknownOutRefs?: readonly string[];
 } = {}) => {
   const challenge = "44414348" + "dd".repeat(28);
   const identity: SDK.CorrectionIdentity = availability
@@ -208,6 +233,19 @@ export const harness = ({
                   ? { direction: "backward" }
                   : {
                       direction: "forward",
+                      ...(omitRawTip
+                        ? {}
+                        : {
+                            tip:
+                              rawTip ??
+                              (rawTipHeight === 90
+                                ? { id: h32(0x77), slot: 100, height: 90 }
+                                : {
+                                    id: h32(0x88),
+                                    slot: rawTipHeight + 10,
+                                    height: rawTipHeight,
+                                  }),
+                          }),
                       block: {
                         id: h32(0x77),
                         slot: 100,

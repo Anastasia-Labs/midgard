@@ -512,8 +512,7 @@
         "left.headerHash.localeCompare(right.headerHash) ||",
         "left.availabilityCommitmentDigest.localeCompare(",
         "left.peerId.localeCompare(right.peerId),",
-        "left.peerId.localeCompare(right.peerId),",
-        "left.headerHash.localeCompare(right.headerHash),"
+        "left.peerId.localeCompare(right.peerId),"
       ]
     },
     "da-committee-node/tests/conflict-evidence.conflict-fixture.ts": {

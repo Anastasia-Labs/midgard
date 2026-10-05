@@ -143,6 +143,11 @@ const churnHarness = () => {
             ? { direction: "backward" }
             : {
                 direction: "forward",
+                tip: {
+                  id: block(index),
+                  slot: 1_000 + index,
+                  height: 500 + index,
+                },
                 block: {
                   id: block(index),
                   slot: 1_000 + index,
@@ -204,6 +209,25 @@ const churnHarness = () => {
 };
 
 describe("committee local Kupmios state-queue replay", () => {
+  it("caps newer raw selected-tip age at the snapshot height", async () => {
+    await expect(
+      harness({ tipHeight: 119, rawTipHeight: 120 })(before, after),
+    ).resolves.toMatchObject([{ finalityDepth: "30" }]);
+  });
+  it.each([
+    undefined,
+    "origin",
+    { id: h32(0x88), slot: 129 },
+    { id: h32(0x77), slot: 100, height: 91 },
+    { id: h32(0x88), slot: 100, height: 119 },
+  ])(
+    "refuses unavailable or incoherent raw selected tip %j",
+    async (rawTip) => {
+      await expect(
+        harness({ omitRawTip: rawTip === undefined, rawTip })(before, after),
+      ).rejects.toThrow(/coherent selected-chain tip/u);
+    },
+  );
   it("authenticates availability-timeout correction identity from the native transaction", async () => {
     const provider = harness({ availability: true });
     const records = await provider(before, after);
@@ -247,7 +271,7 @@ describe("committee local Kupmios state-queue replay", () => {
   });
 
   it("refuses a snapshot tip below its own history as an observation failure", async () => {
-    const replay = harness({ tipHeight: 89 })(before, after);
+    const replay = harness({ tipHeight: 89, rawTipHeight: 90 })(before, after);
     await expect(replay).rejects.toThrow(/tip precedes a transaction/u);
     await expect(replay).rejects.not.toBeInstanceOf(L1SourceIntegrityError);
   });

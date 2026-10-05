@@ -2,6 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { committeeScopedOgmiosRpc } from "../src/availability/scoped-transports.js";
 import type { ChainPoint } from "../src/domain.js";
 import {
   ChainPointBatchDeadlineError,
@@ -41,6 +42,7 @@ const fakeKupmios = (
   options: {
     /** Moves the tip one block once this many walks have closed. */
     readonly moveTipAfterWalks?: number;
+    readonly holdNextBlock?: boolean;
   } = {},
 ) => {
   let tipIndex = 9;
@@ -49,6 +51,7 @@ const fakeKupmios = (
   let walksStarted = 0;
   let walksClosed = 0;
   const tip = () => ({ ...block(tipIndex), height: tipIndex + 1 });
+  const sockets = new Set<FakeOgmiosSocket>();
   class FakeOgmiosSocket {
     onopen: ((event: unknown) => void) | null = null;
     onmessage: ((event: { readonly data: unknown }) => void) | null = null;
@@ -58,7 +61,16 @@ const fakeKupmios = (
     private walking = false;
 
     constructor(_url: string) {
+      sockets.add(this);
       queueMicrotask(() => this.onopen?.({}));
+    }
+
+    addEventListener(type: string, listener: (event: never) => void): void {
+      const call = (event: unknown) => listener(event as never);
+      if (type === "open") this.onopen = call;
+      else if (type === "message") this.onmessage = call;
+      else if (type === "error") this.onerror = call;
+      else if (type === "close") this.onclose = call;
     }
 
     send(raw: string): void {
@@ -67,6 +79,7 @@ const fakeKupmios = (
         readonly method: string;
         readonly params?: { readonly points?: readonly unknown[] };
       };
+      if (options.holdNextBlock && request.method === "nextBlock") return;
       let result: unknown;
       if (request.method === "queryNetwork/tip") {
         result = tip();
@@ -101,11 +114,16 @@ const fakeKupmios = (
     }
 
     close(): void {
-      if (this.cursor === undefined) return;
+      if (!sockets.delete(this)) return;
+      if (this.cursor === undefined) {
+        this.onclose?.({});
+        return;
+      }
       this.cursor = undefined;
       openWalks -= 1;
       walksClosed += 1;
       if (walksClosed === options.moveTipAfterWalks) tipIndex += 1;
+      this.onclose?.({});
     }
   }
   vi.stubGlobal("WebSocket", FakeOgmiosSocket);
@@ -120,6 +138,19 @@ const fakeKupmios = (
     alignedTipReads: () => fetchFn.mock.calls.length,
     maxOpenWalks: () => maxOpenWalks,
     walksStarted: () => walksStarted,
+    walksClosed: () => walksClosed,
+    socketFactory: (url: string) => new FakeOgmiosSocket(url),
+    closeSockets: () => {
+      for (const socket of sockets) socket.close();
+    },
+    point: () => ({
+      network: "Preview",
+      slot: tip().slot,
+      blockHash: tip().id,
+      blockHeight: tip().height,
+      providerSource: "fixture",
+      observedAt: "fixture",
+    }),
   };
 };
 
@@ -216,6 +247,98 @@ describe("one aligned Kupmios tip per state-queue snapshot", () => {
     expect(points).toHaveLength(UTXOS.length);
     expect(kupmios.walksStarted() - started).toBe(UTXOS.length);
     expect(kupmios.alignedTipReads() - reads).toBe(2);
+  });
+});
+
+describe("caller-owned depth transport authority", () => {
+  const limits = {
+    requestRefusalMs: 1000,
+    httpResponseBytes: 4096,
+    webSocketMessageBytes: 4096,
+    rawUtxos: 32,
+  };
+
+  it("preserves exact default block-walk depth while using both supplied transport authorities", async () => {
+    const kupmios = fakeKupmios();
+    const scope = SDK.createDaAvailabilityReadScope({ attemptTimeoutMs: 1000 });
+    let sessions = 0;
+    let tipReads = 0;
+    const resolve = resolverOver(kupmios, {
+      openSession: (url) => {
+        sessions++;
+        return committeeScopedOgmiosRpc(
+          url,
+          scope,
+          limits,
+          kupmios.socketFactory,
+        );
+      },
+      readAlignedTip: async () => {
+        tipReads++;
+        scope.assertCurrent();
+        return kupmios.point();
+      },
+    });
+    try {
+      await expect(resolve(utxoAt(0))).resolves.toMatchObject({
+        slot: 10,
+        depth: 3,
+      });
+      expect(sessions).toBe(1);
+      expect(tipReads).toBe(2);
+      expect(kupmios.alignedTipReads()).toBe(0);
+      expect(kupmios.walksStarted()).toBe(1);
+      expect(kupmios.walksClosed()).toBe(1);
+    } finally {
+      scope.close();
+    }
+  });
+
+  it("closes the owning socket when the same scope expires during a depth walk", async () => {
+    const kupmios = fakeKupmios({ holdNextBlock: true });
+    const scope = SDK.createDaAvailabilityReadScope({ attemptTimeoutMs: 100 });
+    const resolve = resolverOver(kupmios, {
+      openSession: (url) =>
+        committeeScopedOgmiosRpc(url, scope, limits, kupmios.socketFactory),
+      readAlignedTip: async () => {
+        scope.assertCurrent();
+        return kupmios.point();
+      },
+    });
+    try {
+      const resolution = resolve(utxoAt(0));
+      void resolution.catch(() => undefined);
+      await new Promise<void>((done) =>
+        scope.signal.addEventListener("abort", () => done(), { once: true }),
+      );
+      expect(kupmios.walksStarted()).toBe(1);
+      expect(kupmios.walksClosed()).toBe(1);
+      await expect(resolution).rejects.toThrow("expired");
+    } finally {
+      scope.close();
+      kupmios.closeSockets();
+    }
+  });
+
+  it("keeps the closing aligned-tip check even under an injected session", async () => {
+    const kupmios = fakeKupmios({ moveTipAfterWalks: 1 });
+    const scope = SDK.createDaAvailabilityReadScope({ attemptTimeoutMs: 1000 });
+    const resolve = resolverOver(kupmios, {
+      openSession: (url) =>
+        committeeScopedOgmiosRpc(url, scope, limits, kupmios.socketFactory),
+      readAlignedTip: async () => {
+        scope.assertCurrent();
+        return kupmios.point();
+      },
+    });
+    try {
+      await expect(resolve(utxoAt(0))).rejects.toBeInstanceOf(
+        ChainMovedDuringSnapshotError,
+      );
+      expect(kupmios.walksClosed()).toBe(1);
+    } finally {
+      scope.close();
+    }
   });
 });
 

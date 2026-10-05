@@ -1,6 +1,8 @@
 import type { DaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 
 import { availabilityResponderFromConfig } from "./availability/factory.js";
+import { committeePromiseAdmission } from "./availability/promise-admission.js";
+import { assertCommitteePromiseEnrollment } from "./availability/promise-profile-selection.js";
 import { CommitteeService } from "./committee-service.js";
 import type { LoadedCommitteeConfig } from "./config.js";
 import { onChainCoordinatorFromConfig } from "./coordinator/factory.js";
@@ -70,6 +72,7 @@ export const openCommitteeNodeRuntime = async (
   try {
     const store = await openCommitteeStore(config.localState, storeLockEvents);
     closers.push(() => store.close?.());
+    await assertCommitteePromiseEnrollment(config, store);
     const provider = await providerFromConfig(config);
     const daChainReader = await daAttestationReaderFromConfig(config);
     const availabilityCommitmentAuthority =
@@ -209,26 +212,64 @@ export const openCommitteeNodeRuntime = async (
             onChainCoordinator,
           })
         : undefined;
+    let actuationReady = config.availabilityPromiseAdoption === undefined;
+    let promiseAdmission:
+      | ReturnType<typeof committeePromiseAdmission>
+      | undefined;
     const service = new CommitteeService({
       config,
       store,
       stateQueueProvider: provider,
       payloadSource,
-      signer,
-      signerValidation,
-      coordinator,
-      submitterReconciler,
+      get signer() {
+        return actuationReady ? signer : undefined;
+      },
+      get signerValidation() {
+        return actuationReady ? signerValidation : undefined;
+      },
+      get promiseAdmission() {
+        return promiseAdmission;
+      },
+      get coordinator() {
+        return actuationReady ? coordinator : undefined;
+      },
+      get submitterReconciler() {
+        return actuationReady ? submitterReconciler : undefined;
+      },
       daChainReader,
       daLibp2pNode,
       daPeerRegistry,
     });
     await service.initialize();
+    if (!actuationReady) {
+      const bootstrap = await service.tick();
+      if (bootstrap.errors.length !== 0 || service.latestL1View() === undefined)
+        throw new Error(
+          "Adopted committee startup requires a complete healthy unsigned scan",
+        );
+    }
     const availabilityRuntime = config.l1SubmissionEnabled
       ? await availabilityResponderFromConfig(config, store, provider)
       : undefined;
-    if (availabilityRuntime !== undefined) {
-      closers.push(() => availabilityRuntime.close());
+    if (availabilityRuntime !== undefined)
+      closers.push(() => availabilityRuntime?.close());
+    availabilityRuntime?.bindRetirementOperationalPins?.(() =>
+      service.readRetirementOperationalPins(),
+    );
+    await availabilityRuntime?.compactRetainedPromises?.();
+    if (config.availabilityPromiseAdoption !== undefined) {
+      if (signerValidation === undefined || availabilityRuntime === undefined)
+        throw new Error(
+          "Adopted committee startup has no signing admission authority",
+        );
+      promiseAdmission = committeePromiseAdmission({
+        config,
+        store,
+        signerValidation,
+        source: availabilityRuntime.promiseAdmissionSource,
+      });
     }
+    actuationReady = true;
     closers.push(() => daLibp2pNode.stop());
     await daLibp2pNode.start();
     return {

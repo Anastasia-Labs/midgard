@@ -95,10 +95,10 @@ describe("openCommitteeStore", () => {
   it("joins concurrent JSON-store close calls before releasing the lease", async () => {
     const dir = await tempDir();
     const store = await openJsonCommitteeStore(dir);
-    const internal = (
-      Reflect.get(store, "lease") as { handle: { close: () => Promise<void> } }
-    ).handle;
-    const closeHandle = internal.close.bind(internal);
+    const internal = Reflect.get(store, "lease") as {
+      release: () => Promise<void>;
+    };
+    const releaseLease = internal.release.bind(internal);
     let releaseClose!: () => void;
     let closeEntered!: () => void;
     const released = new Promise<void>((resolve) => {
@@ -107,10 +107,10 @@ describe("openCommitteeStore", () => {
     const entered = new Promise<void>((resolve) => {
       closeEntered = resolve;
     });
-    internal.close = async () => {
+    internal.release = async () => {
       closeEntered();
       await released;
-      await closeHandle();
+      await releaseLease();
     };
     const first = store.close();
     await entered;

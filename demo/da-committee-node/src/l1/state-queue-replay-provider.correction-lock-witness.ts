@@ -1,6 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import { joinNativeReads } from "./provider.join-native-reads.js";
 import { L1SourceIntegrityError } from "./source-integrity.js";
 import {
   decodeCorrectionLockOutput,
@@ -37,13 +38,13 @@ export const correctionLockWitness = async ({
   readonly kupoUrl: string;
   readonly fetchImpl: StateQueueReplayFetch;
 }): Promise<SDK.StateQueueCorrectionLockWitness> => {
-  const spentResolved = await Promise.all(
+  const spentResolved = await joinNativeReads(
     transaction.spentInputOutRefs.map(async (reference) => ({
       reference,
       value: await fetchResolvedOutput(kupoUrl, reference, fetchImpl),
     })),
   );
-  const referenceResolved = await Promise.all(
+  const referenceResolved = await joinNativeReads(
     transaction.referenceInputOutRefs.map(async (reference) => ({
       reference,
       value: await fetchResolvedOutput(kupoUrl, reference, fetchImpl),
