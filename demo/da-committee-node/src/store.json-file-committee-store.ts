@@ -53,7 +53,7 @@ import {
   committeeStoreFilePath,
   isNodeError,
   jsonReplacer,
-  jsonReviver,
+  parseStoredJson,
 } from "./store.parse-stored-record-map.js";
 import {
   assertDecisionSignature,
@@ -892,7 +892,7 @@ export class JsonFileCommitteeStore implements CommitteeStore {
   private async read(): Promise<StoreData> {
     try {
       const raw = await readFile(this.filePath, "utf8");
-      return normalizeStoreData(JSON.parse(raw, jsonReviver) as unknown);
+      return normalizeStoreData(parseStoredJson(raw));
     } catch (error) {
       if (isNodeError(error) && error.code === "ENOENT") {
         const data = emptyStoreData();
