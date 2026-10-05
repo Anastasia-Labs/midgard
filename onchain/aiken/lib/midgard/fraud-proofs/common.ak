@@ -4,7 +4,7 @@ use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/address.{Address, Script, VerificationKey}
-use cardano/assets.{AssetName, PolicyId}
+use cardano/assets.{AssetName, PolicyId, lovelace_of}
 use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Redeemer, ScriptPurpose,
   Transaction,
@@ -930,7 +930,8 @@ pub fn validate_output_to_fraud_prover(
 /// - Verification key hash of the fraud prover.
 /// - The `data` field of the spending `StepDatum` (which is of type
 ///   `Option<a>`). `Option` so that first steps can also be covered.
-/// - The output at `output_index` (no validation is performed on it).
+/// - The output at `output_index`, preserving all input ADA. Additional
+///   funding is allowed when the successor requires a higher ledger minimum.
 fn validate_input_and_provide_output(
   computation_thread_token_policy_id: PolicyId,
   step_datum: ct.StepDatum<a>,
@@ -976,6 +977,11 @@ fn validate_input_and_provide_output(
     = get_single_asset_from_value_apart_from_ada(input_value)
   expect input_nft_policy_id == computation_thread_token_policy_id
   expect input_nft_qty == 1
+
+  // Continuations and finalization are permissionless. They cannot spend the
+  // prover's thread funding on fees or redirect it to another output. A higher
+  // successor minimum may be funded separately, so top-ups remain valid.
+  expect lovelace_of(output.value) >= lovelace_of(input_value)
 
   let ct.StepDatum { data: m_input_state_data, fraud_prover } = step_datum
 

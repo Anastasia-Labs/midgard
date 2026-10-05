@@ -1,4 +1,7 @@
-import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
+import {
+  inspectMidgardRedeemerSequenceHeads,
+  type MidgardValidationPhaseName,
+} from "@al-ft/midgard-core";
 import {
   decodeMidgardAddressBytes,
   decodeMidgardTxOutput,
@@ -7,26 +10,25 @@ import {
 import { Effect } from "effect";
 
 import { LedgerColumns } from "./ledger.js";
+import { checkValueAndMint } from "./phase-b.check-value-and-mint.js";
 import {
   type CandidateDecision,
   type CandidateNode,
-  minAdaViolation,
   reject,
   resolveReferenceInputs,
 } from "./phase-b.resolve-reference-inputs.js";
 import { runLocalScriptEvaluation } from "./phase-b.run-local-script-evaluation.js";
+import {
+  inputOrdinalOf,
+  REJECT_SOURCE_KIND_SPEND,
+  type RejectSubject,
+} from "./reject-subject.js";
 import {
   PhaseAValidatedTx,
   PhaseBConfig,
   RejectCodes,
   RejectedTx,
 } from "./types.js";
-import {
-  describeValueDelta,
-  isZeroValueDelta,
-  sumMidgardValues,
-  valuePreservationDelta,
-} from "./value-accounting.js";
 
 export const buildNodes = (
   candidates: readonly PhaseAValidatedTx[],
@@ -128,11 +130,28 @@ export const validateCandidateAgainstState = (
       code: RejectedTx["code"],
       detail: string | null = null,
       consensusPhase: MidgardValidationPhaseName = "resolveInputs",
+      subject?: RejectSubject,
     ) => ({
       index: node.index,
       accepted: false as const,
-      rejection: reject(ledgerTx.txId, code, detail, consensusPhase),
+      rejection: reject(ledgerTx.txId, code, detail, consensusPhase, subject),
     });
+    const spendSubject = (
+      arm:
+        | "InputNotFound"
+        | "InputSpentOutputNonCanonical"
+        | "SpendInputSignerMissing",
+      outRefHex: string,
+    ): RejectSubject => {
+      const index = inputOrdinalOf(
+        ledgerTx,
+        REJECT_SOURCE_KIND_SPEND,
+        outRefHex,
+      );
+      return arm === "SpendInputSignerMissing"
+        ? { arm, index }
+        : { arm, sourceKind: REJECT_SOURCE_KIND_SPEND, index };
+    };
 
     if (
       ledgerTx.validityIntervalStart !== undefined &&
@@ -154,16 +173,10 @@ export const validateCandidateAgainstState = (
       );
     }
 
-    const inputValues: MidgardValue[] = [];
+    const spentValues = new Map<string, MidgardValue>();
     let sawScriptInput = false;
 
     const witnessKeyHashes = new Set(candidate.derived.witnessKeyHashHexes);
-    const inlineNativeScriptHashes = new Set(
-      candidate.derived.nativeScriptHashHexes,
-    );
-    const inlinePlutusScriptHashes = new Set(
-      candidate.derived.plutusScriptHashHexes,
-    );
     const resolvedReferenceInputs = resolveReferenceInputs(node, stateValue);
     if ("code" in resolvedReferenceInputs) {
       return {
@@ -173,48 +186,6 @@ export const validateCandidateAgainstState = (
       };
     }
 
-    const hasSatisfiedScriptMaterial = (
-      scriptHash: string,
-      context: string,
-    ): CandidateDecision | true => {
-      if (inlineNativeScriptHashes.has(scriptHash)) {
-        return true;
-      }
-
-      if (
-        inlinePlutusScriptHashes.has(scriptHash) ||
-        resolvedReferenceInputs.scriptHashes.has(scriptHash)
-      ) {
-        return true;
-      }
-
-      return fail(
-        RejectCodes.MissingRequiredWitness,
-        `missing script witness ${scriptHash} for ${context}`,
-        "scriptSources",
-      );
-    };
-
-    for (const observerHash of candidate.derived.requiredObserverHashHexes) {
-      const observerSatisfied = hasSatisfiedScriptMaterial(
-        observerHash,
-        `required observer ${observerHash}`,
-      );
-      if (observerSatisfied !== true) {
-        return observerSatisfied;
-      }
-    }
-
-    for (const mintPolicyHash of candidate.derived.mintPolicyHashHexes) {
-      const mintSatisfied = hasSatisfiedScriptMaterial(
-        mintPolicyHash,
-        `mint policy ${mintPolicyHash}`,
-      );
-      if (mintSatisfied !== true) {
-        return mintSatisfied;
-      }
-    }
-
     for (const inputOutRefHex of node.spentOutRefs) {
       if (spentByAccepted.has(inputOutRefHex)) {
         return fail(RejectCodes.DoubleSpend, inputOutRefHex);
@@ -222,7 +193,12 @@ export const validateCandidateAgainstState = (
 
       const inputOutput = stateValue(inputOutRefHex);
       if (!inputOutput) {
-        return fail(RejectCodes.InputNotFound, inputOutRefHex);
+        return fail(
+          RejectCodes.InputNotFound,
+          inputOutRefHex,
+          "resolveInputs",
+          spendSubject("InputNotFound", inputOutRefHex),
+        );
       }
 
       try {
@@ -237,27 +213,39 @@ export const validateCandidateAgainstState = (
             return fail(
               RejectCodes.MissingRequiredWitness,
               `missing witness for input signer ${inputSigner} (outref ${inputOutRefHex})`,
+              "resolveInputs",
+              spendSubject("SpendInputSignerMissing", inputOutRefHex),
             );
           }
         } else {
           sawScriptInput = true;
-          const inputScriptHash = paymentCred.hash.toString("hex");
-          const inputScriptSatisfied = hasSatisfiedScriptMaterial(
-            inputScriptHash,
-            `outref ${inputOutRefHex}`,
-          );
-          if (inputScriptSatisfied !== true) {
-            return inputScriptSatisfied;
-          }
         }
 
-        inputValues.push(output.value);
+        spentValues.set(inputOutRefHex, output.value);
       } catch (e) {
         return fail(
           RejectCodes.InvalidOutput,
           `failed to decode input output: ${String(e)}`,
+          "resolveInputs",
+          spendSubject("InputSpentOutputNonCanonical", inputOutRefHex),
         );
       }
+    }
+
+    // Stage1 Data audit precedes all purpose/source discovery (including missing sources).
+    for (const [index, redeemer] of ledgerTx.redeemers.entries()) {
+      const inspection = inspectMidgardRedeemerSequenceHeads(redeemer.dataCbor);
+      if (inspection.kind === "refusal") {
+        return fail(
+          RejectCodes.InvalidFieldType,
+          `noncanonical redeemer Data at ${index}:${inspection.offset}`,
+          "scriptSources",
+          { arm: "RedeemerMalformed", index: BigInt(index) },
+        );
+      }
+      // An unsupported earlier prefix cannot be skipped to cite a later Data fault.
+      // Keep its existing classification/mandatory-trace prerequisite behavior.
+      if (inspection.kind === "unsupported") break;
     }
 
     if (sawScriptInput || candidate.derived.requiresLocalScriptDiscovery) {
@@ -273,26 +261,23 @@ export const validateCandidateAgainstState = (
           localScriptEvaluation.code,
           localScriptEvaluation.detail,
           localScriptEvaluation.consensusPhase,
+          localScriptEvaluation.subject,
         );
       }
     }
 
-    const underFundedOutput = minAdaViolation(candidate);
-    if (underFundedOutput !== null) {
-      return fail(RejectCodes.MinAda, underFundedOutput.detail, "valueAndMint");
-    }
-
-    const delta = valuePreservationDelta(
-      sumMidgardValues(inputValues),
-      ledgerTx.fee,
-      candidate.derived.mintDelta,
-      candidate.derived.outputSum,
-    );
-    if (!isZeroValueDelta(delta)) {
+    const valueAndMint = checkValueAndMint({
+      candidate,
+      spentOutRefs: node.spentOutRefs,
+      referenceOutRefs: node.referenceOutRefs,
+      spentValues,
+    });
+    if (valueAndMint !== null) {
       return fail(
-        RejectCodes.ValueNotPreserved,
-        `equation mismatch: inputs - fee + mint - outputs = ${describeValueDelta(delta)}`,
+        valueAndMint.code,
+        valueAndMint.detail,
         "valueAndMint",
+        valueAndMint.subject,
       );
     }
 

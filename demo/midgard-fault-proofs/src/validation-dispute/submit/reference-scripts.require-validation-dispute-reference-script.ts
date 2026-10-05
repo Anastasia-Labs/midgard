@@ -62,7 +62,7 @@ export const requireValidationDisputeReferenceScript = ({
  * C21-DISPUTE-SUBMIT).
  */
 export const VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY =
-  "validationTraceDisputeItemSemantic";
+  "validationTraceDisputeCanonicalDecodeItemSemantic";
 
 export const requireValidationItemSemanticReferenceScriptOutRef = ({
   deploymentInfo,
@@ -133,7 +133,7 @@ export const requireValidationItemSemanticReferenceScriptUtxo = async ({
  * rulings 2026-08-18, R3).
  */
 export const VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY =
-  "validationTraceDisputeItemObserve";
+  "validationTraceDisputeCanonicalDecodeItemObserve";
 
 export const requireValidationItemObserveReferenceScriptOutRef = ({
   deploymentInfo,
@@ -280,7 +280,7 @@ export const requireValidationCanonicalDecodePrepareReferenceScriptUtxo =
  * into four semantic resolvers under a `prepare_selected` validator; the
  * finish resolver fits the envelope and attaches inline like every other
  * small semantic, the three below are consumed by reference the way
- * `validationTraceDisputeItemSemantic` is (hash-checked against the applied
+ * `validationTraceDisputeCanonicalDecodeItemSemantic` is (hash-checked against the applied
  * contract, no auth-role token).
  */
 export const VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES = {

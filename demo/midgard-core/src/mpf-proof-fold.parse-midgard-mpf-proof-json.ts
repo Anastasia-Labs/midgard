@@ -228,7 +228,7 @@ export const suffix = (path: Uint8Array, cursor: number): Buffer => {
     ]);
   }
   return Buffer.concat([
-    Buffer.from([0, nibbleAt(path, cursor)]),
+    Buffer.from([0x10, nibbleAt(path, cursor)]),
     Buffer.from(path).subarray((cursor + 1) / 2),
   ]);
 };

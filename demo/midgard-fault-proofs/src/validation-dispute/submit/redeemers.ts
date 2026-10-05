@@ -1,4 +1,5 @@
 import {
+  type CommittedValidationStepEvidence,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenMintRedeemer,
   requireInputIndex,
@@ -211,7 +212,12 @@ export const makeGameHandoffRedeemer = ({
   threadUnit,
   destination,
   onLayout,
+  committedStep,
 }: {
+  readonly committedStep?: {
+    readonly resolverIndex: number;
+    readonly evidence: CommittedValidationStepEvidence;
+  };
   readonly threadUtxo: UTxO;
   readonly outputAddress: string;
   readonly outputDatum: string;
@@ -236,19 +242,28 @@ export const makeGameHandoffRedeemer = ({
     };
     onLayout(layout);
     const action =
-      destination === "resolution"
+      committedStep !== undefined
         ? {
-            EnterResolution: {
+            DirectCommittedStep: {
               input_index: layout.inputIndex,
               output_index: layout.outputIndex,
+              resolver_index: BigInt(committedStep.resolverIndex),
+              evidence: committedStep.evidence,
             },
           }
-        : {
-            EnterChallengerTimeout: {
-              input_index: layout.inputIndex,
-              output_index: layout.outputIndex,
-            },
-          };
+        : destination === "resolution"
+          ? {
+              EnterResolution: {
+                input_index: layout.inputIndex,
+                output_index: layout.outputIndex,
+              },
+            }
+          : {
+              EnterChallengerTimeout: {
+                input_index: layout.inputIndex,
+                output_index: layout.outputIndex,
+              },
+            };
     return Data.to({ Continue: [action] }, ValidationGameSpendRedeemer);
   }) satisfies BuildTxWithRedeemer;
 

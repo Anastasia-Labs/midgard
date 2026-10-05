@@ -57,17 +57,21 @@ export class MidgardLedgerTxDecodeError extends Error {
   readonly stage: MidgardLedgerTxDecodeStage;
   readonly causeValue: unknown;
   readonly invalidOutput: boolean;
+  /** Position of the output that failed to decode, when one item did. */
+  readonly invalidOutputIndex: number | undefined;
 
   constructor(
     stage: MidgardLedgerTxDecodeStage,
     causeValue: unknown,
     invalidOutput = false,
+    invalidOutputIndex?: number,
   ) {
     super(`failed to decode Midgard ledger tx at ${stage} stage`);
     this.name = "MidgardLedgerTxDecodeError";
     this.stage = stage;
     this.causeValue = causeValue;
     this.invalidOutput = invalidOutput;
+    this.invalidOutputIndex = invalidOutputIndex;
   }
 }
 
@@ -101,11 +105,14 @@ export type MidgardRawEnvelopePhaseAProjection = Readonly<{
 
 export class MidgardLedgerOutputDecodeError extends Error {
   readonly causeValue: unknown;
+  /** Position of the output item that failed, unless the list itself did. */
+  readonly outputIndex: number | undefined;
 
-  constructor(causeValue: unknown) {
+  constructor(causeValue: unknown, outputIndex?: number) {
     super("failed to decode Midgard ledger output");
     this.name = "MidgardLedgerOutputDecodeError";
     this.causeValue = causeValue;
+    this.outputIndex = outputIndex;
   }
 }
 
@@ -301,14 +308,19 @@ const toCodecOutput = (output: MidgardLedgerOutput): MidgardTxOutput => ({
 export const decodeOutputs = (
   preimageCbor: Uint8Array,
 ): MidgardLedgerOutput[] => {
+  let items: readonly Uint8Array[];
   try {
-    return decodeMidgardNativeByteListPreimage(
-      preimageCbor,
-      "native.outputs",
-    ).map((outputBytes) => toLedgerOutput(decodeMidgardTxOutput(outputBytes)));
+    items = decodeMidgardNativeByteListPreimage(preimageCbor, "native.outputs");
   } catch (e) {
     throw new MidgardLedgerOutputDecodeError(e);
   }
+  return items.map((outputBytes, index) => {
+    try {
+      return toLedgerOutput(decodeMidgardTxOutput(outputBytes));
+    } catch (e) {
+      throw new MidgardLedgerOutputDecodeError(e, index);
+    }
+  });
 };
 
 export const encodeOutputs = (

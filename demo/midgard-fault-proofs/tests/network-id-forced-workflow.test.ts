@@ -62,6 +62,7 @@ import {
   type CanonicalViolationDetection,
   classifyCanonicalBlockViolations,
 } from "../src/workflow/classification.js";
+import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
@@ -1057,6 +1058,7 @@ describe("network-id forced (§5.2) production workflow", () => {
       },
     });
     const detection = (violationId: string): CanonicalViolationDetection => ({
+      ...BLOCK_SUBJECT,
       detectionId: `${violationId}:0:${h32(0x33)}`,
       headerHash: evidence.headerHash,
       violationId,

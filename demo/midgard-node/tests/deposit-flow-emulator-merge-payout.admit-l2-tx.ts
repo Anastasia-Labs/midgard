@@ -11,7 +11,10 @@ import {
   stateReconciliationProgram,
 } from "../src/commands/state-reconciliation.js";
 import { submitWithdrawalCommandProgram } from "../src/commands/submit-withdrawal.js";
-import { decideAdmissionBatch } from "../src/fibers/tx-queue-processor.js";
+import {
+  collectAcceptedProgramEnvelopes,
+  decideAdmissionBatch,
+} from "../src/fibers/tx-queue-processor.js";
 import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
 import {
   Database,
@@ -251,16 +254,17 @@ export const admitL2Tx = async (
   const ledgerEntries = await runNodeDatabaseEffect(
     MempoolLedgerDB.retrieveSpendable,
   );
+  const ledgerState = new Map(
+    ledgerEntries.map((entry) => [
+      entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
+      entry[MempoolLedgerDB.Columns.OUTPUT],
+    ]),
+  );
   const { phaseB, allRejected } = await Effect.runPromise(
     decideAdmissionBatch({
       phaseA,
       pendingWithdrawalOutRefHexes,
-      ledgerState: new Map(
-        ledgerEntries.map((entry) => [
-          entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
-          entry[MempoolLedgerDB.Columns.OUTPUT],
-        ]),
-      ),
+      ledgerState,
       phaseBConfig: {
         nowCardanoSlotNo: BigInt(fixture.operatorLucid.currentSlot()),
         bucketConcurrency: 1,
@@ -283,6 +287,10 @@ export const admitL2Tx = async (
             rows: claimedL2Transfers,
             leaseOwner: l2TransferLeaseOwner,
             processedTxs: phaseB.accepted.map(processedTxFromValidatedTx),
+            programEnvelopesByTxId: collectAcceptedProgramEnvelopes(
+              phaseB.accepted,
+              ledgerState,
+            ),
           });
         }
       }).pipe(

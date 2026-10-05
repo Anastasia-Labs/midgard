@@ -4,6 +4,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
+  type DetectionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
+import {
   prepareZeroInputEvidence,
   ZERO_INPUT_FIELD_INDEX,
   type ZeroInputEvidence,
@@ -12,15 +16,16 @@ import {
 
 export const ZERO_INPUT_VIOLATION_ID = "zero-input" as const;
 
-export type ZeroInputForcedReplayDetection = Readonly<{
-  detectionId: string;
-  headerHash: string;
-  violationId: typeof ZERO_INPUT_VIOLATION_ID;
-  position: bigint;
-  forcedIndex: number;
-  transactionId: string;
-  evidence: ZeroInputEvidence;
-}>;
+export type ZeroInputForcedReplayDetection = DetectionSubject &
+  Readonly<{
+    detectionId: string;
+    headerHash: string;
+    violationId: typeof ZERO_INPUT_VIOLATION_ID;
+    position: bigint;
+    forcedIndex: number;
+    transactionId: string;
+    evidence: ZeroInputEvidence;
+  }>;
 
 /**
  * Derives direction, reason, transaction identity, and decisive input count
@@ -69,6 +74,7 @@ export const detectZeroInputForcedReplay = (
       if (!zeroInputEvidenceCloses(evidence)) return;
       detections.push(
         Object.freeze({
+          ...forcedTransactionSubject(transaction.key),
           detectionId: `${ZERO_INPUT_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}`,
           headerHash: block.headerHash,
           violationId: ZERO_INPUT_VIOLATION_ID,

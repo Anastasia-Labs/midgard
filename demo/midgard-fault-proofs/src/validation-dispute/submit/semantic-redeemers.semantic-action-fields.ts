@@ -180,13 +180,13 @@ export const semanticActionFields = ({
       throw new Error(
         "Ledger output proof finalize requires exactly its attach group's authenticated descriptor yields",
       );
-    // `VerifyOutputProofFinalize` field order: the auxiliary's
-    // `descriptor_cbor` and `signer_proof`, then control, the two claimed
-    // leaf summaries, the attach roles of this step's fact group (empty at
-    // the thin terminal) and the descriptor yield reference-input indices in
-    // the same order.
+    // `VerifyOutputProofFinalize` field order: the control's own descriptor,
+    // the auxiliary's `signer_proof`, control, the two claimed leaf summaries,
+    // this step's fact-group attach roles (empty at the thin terminal) and
+    // the descriptor yield reference-input indices in the same order.
     return [
       ...base,
+      ledgerOutputProofFinalizeInvocation.plan.descriptorCbor,
       ...auxiliary.fields,
       ledgerOutputProofFinalizeInvocation.plan.controlCbor,
       ledgerOutputProofFinalizeInvocation.plan.claimedValueSummary,

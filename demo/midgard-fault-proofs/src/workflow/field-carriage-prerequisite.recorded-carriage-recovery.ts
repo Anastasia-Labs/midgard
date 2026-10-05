@@ -5,20 +5,27 @@ import {
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
 import {
+  BOUND_DATA_PUBLICATION_PREREQUISITE,
   exact,
   FIELD_CARRIAGE_PREREQUISITE,
   FIELD_CARRIAGE_RECOVERY,
   OUT_REF,
   RAW_DATUM_PREIMAGE_PREREQUISITE,
+  record,
   type Recovery,
   type Requirement,
+  sameJson,
   sha256,
 } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import {
+  carriageActionInputKeys,
   parseBaseAction,
   PUBLICATION_ENCODINGS,
   type PublicationEncoding,
+  publicationReplacementOutRef,
+  publicationReplacementSuffix,
   publishedContentDigest,
+  requirementIdentity,
 } from "./field-carriage-prerequisite.requirement-identity.js";
 import type { JournalJsonObject } from "./journal.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
@@ -77,6 +84,9 @@ export const recovery = ({
       outRef: `${transaction.txHash}#${found.toString()}`,
       datumCbor,
       unit,
+      ...("kind" in requirement && requirement.kind === "bound_data_publication"
+        ? { publicationAddress: address }
+        : {}),
     }),
   });
 };
@@ -86,7 +96,9 @@ const parseRecovery = ({
   requirementSha256,
   txHash,
   kind,
+  publicationAddress,
 }: {
+  readonly publicationAddress?: string;
   readonly value: JournalJsonObject | undefined;
   readonly requirementSha256: string;
   readonly txHash: string;
@@ -102,12 +114,14 @@ const parseRecovery = ({
       "outRef",
       "datumCbor",
       "unit",
+      ...(publicationAddress === undefined ? [] : ["publicationAddress"]),
     ],
     "field carriage recovery payload",
   );
   if (
     parsed.schemaVersion !== FIELD_CARRIAGE_RECOVERY ||
     parsed.kind !== kind ||
+    parsed.publicationAddress !== publicationAddress ||
     parsed.requirementSha256 !== requirementSha256 ||
     typeof parsed.outRef !== "string" ||
     !OUT_REF.test(parsed.outRef) ||
@@ -124,6 +138,7 @@ const parseRecovery = ({
     outRef: parsed.outRef,
     datumCbor: parsed.datumCbor,
     unit: parsed.unit,
+    ...(publicationAddress === undefined ? {} : { publicationAddress }),
   });
 };
 
@@ -142,34 +157,16 @@ export const recordedCarriageRecovery = ({
   const publication = action.input.stage === "publish_field_carriage";
   const input = exact(
     action.input,
-    publication
-      ? [
-          "schemaVersion",
-          "category",
-          "stage",
-          "forAction",
-          "requirementSha256",
-          "publicationIndex",
-          "publicationEncoding",
-          "publicationDigest",
-          "datumCborSha256",
-        ]
-      : [
-          "schemaVersion",
-          "category",
-          "stage",
-          "forAction",
-          "requirementSha256",
-          "certificateDatumCborSha256",
-          "certificateUnit",
-        ],
+    carriageActionInputKeys(action),
     "recorded field carriage action",
   );
+  const bound = input.schemaVersion === BOUND_DATA_PUBLICATION_PREREQUISITE;
   const raw = input.schemaVersion === RAW_DATUM_PREIMAGE_PREREQUISITE;
   if (
-    (!raw && input.schemaVersion !== FIELD_CARRIAGE_PREREQUISITE) ||
+    (!bound && !raw && input.schemaVersion !== FIELD_CARRIAGE_PREREQUISITE) ||
     input.category !== category ||
-    (!publication && (raw || input.stage !== "certify_field_carriage")) ||
+    (!publication &&
+      (bound || raw || input.stage !== "certify_field_carriage")) ||
     typeof input.requirementSha256 !== "string" ||
     !/^[0-9a-f]{64}$/u.test(input.requirementSha256)
   )
@@ -184,19 +181,47 @@ export const recordedCarriageRecovery = ({
     (base.input.category !== undefined && base.input.category !== category)
   )
     throw new Error("recorded field carriage base action changed identity");
+  if (bound) {
+    if (typeof input.publicationAddress !== "string")
+      throw new Error("bound publication address changed identity");
+    CML.Address.from_bech32(input.publicationAddress);
+    record(input.sourceIdentity, "bound publication source identity");
+  }
   const recovered = parseRecovery({
     value,
     requirementSha256: input.requirementSha256,
     txHash,
     kind: publication ? "publication" : "certificate",
+    ...(bound
+      ? { publicationAddress: input.publicationAddress as string }
+      : {}),
   });
+  if (bound) {
+    const sourceIdentity = input.sourceIdentity as JournalJsonObject;
+    const reconstructed = requirementIdentity({
+      kind: "bound_data_publication",
+      publicationAddress: input.publicationAddress as string,
+      datumCbor: recovered.datumCbor,
+      sourceIdentity,
+    });
+    if (
+      reconstructed.identitySha256 !== input.requirementSha256 ||
+      !sameJson(sourceIdentity.action, base)
+    )
+      throw new Error(
+        "bound publication changed its source or exact output identity",
+      );
+  }
   if (publication) {
     if (
       typeof input.publicationIndex !== "number" ||
       !Number.isSafeInteger(input.publicationIndex) ||
       input.publicationIndex < 0 ||
+      (bound &&
+        (input.publicationIndex !== 0 ||
+          input.publicationEncoding !== "structured_data")) ||
       action.actionId !==
-        `publish-${raw ? "raw-datum-preimage" : "field-carriage"}:${base.actionId}:${input.requirementSha256}:${input.publicationIndex}` ||
+        `publish-${bound ? "bound-data" : raw ? "raw-datum-preimage" : "field-carriage"}:${base.actionId}:${input.requirementSha256}:${input.publicationIndex}${publicationReplacementSuffix(publicationReplacementOutRef(action))}` ||
       recovered.unit !== null ||
       sha256(recovered.datumCbor) !== input.datumCborSha256 ||
       !PUBLICATION_ENCODINGS.includes(

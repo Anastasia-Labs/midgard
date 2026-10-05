@@ -4,7 +4,9 @@ import {
   encodeMidgardNativeTxCanonical,
   materializeMidgardNativeTxFromCanonical,
 } from "@al-ft/midgard-core";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
+  Data,
   type Script,
   type UTxO,
   validatorToScriptHash,
@@ -201,6 +203,10 @@ describe("mintItemNonCanonical production workflow", () => {
       headerHash: "a".repeat(56),
       violationId: MINT_ITEM_NON_CANONICAL_VIOLATION_ID,
       position: 0n,
+      frontier: "accepted",
+      subjectEventKeyCbors: [
+        Data.to({ L2TransactionEventKey: { tx_id: nodeTxId } }, SDK.EventKey),
+      ],
       diagnostic: `transaction ${nodeTxId} mint policy item 1 violates the field-5 grammar or policy ordering`,
     });
 

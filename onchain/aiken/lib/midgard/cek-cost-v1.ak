@@ -242,7 +242,7 @@ fn cpu_cost_v1(tag: Int, sizes: List<Int>) -> Int {
   } else if tag == 20 {
     linear1(201305, 8356, one(sizes))
   } else if tag == 21 {
-    linear3_z(53384111, 14333, sizes)
+    linear3_y(53384111, 14333, sizes)
   } else if tag == 22 {
     linear2_add(1000, 59957, sizes)
   } else if tag == 23 {

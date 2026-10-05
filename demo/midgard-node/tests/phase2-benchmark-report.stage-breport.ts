@@ -192,7 +192,6 @@ export const scriptHeavyReport = (overrides: Record<string, unknown> = {}) => ({
   signatureVerifier: "node",
   everyTransactionHasPlutusSpend: true,
   everyTransactionIsPlutusV3: true,
-  uplcInWorkers: true,
   verdictMatchesInline: true,
   statePatchMatchesInline: true,
   batchSize: 256,

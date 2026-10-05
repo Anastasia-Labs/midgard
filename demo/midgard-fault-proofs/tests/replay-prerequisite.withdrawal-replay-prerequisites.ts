@@ -15,6 +15,7 @@ import { type CanonicalBlockEvidence } from "../src/evidence/canonical-block-evi
 import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.js";
 import { type CanonicalViolationDetection } from "../src/workflow/classification.js";
 import { DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { withdrawalSubject } from "../src/workflow/detection-subject.js";
 import {
   assertReplayPrerequisiteCovered,
   CanonicalReplayPrerequisiteError,
@@ -97,6 +98,9 @@ describe("withdrawal replay prerequisites", () => {
       "present_spend_input",
     ).failures[0]!;
     const mistag = (position: bigint): CanonicalViolationDetection => ({
+      ...withdrawalSubject(
+        evidence.reconstruction.withdrawals[Number(position)]!.key,
+      ),
       headerHash: evidence.headerHash,
       detectionId: `withdrawal-mistag:${position.toString()}`,
       violationId: WITHDRAWAL_MISTAG_VIOLATION_ID,
@@ -121,6 +125,9 @@ describe("withdrawal replay prerequisites", () => {
   it("lets only the fabricated-withdrawal finding at the exact leaf cover an absent or mismatched origin", () => {
     const { evidence, eventKey } = doubleWithdrawEvidence();
     const fabricated = (position: bigint): CanonicalViolationDetection => ({
+      ...withdrawalSubject(
+        evidence.reconstruction.withdrawals[Number(position)]!.key,
+      ),
       headerHash: evidence.headerHash,
       detectionId: `${FABRICATED_WITHDRAWAL_VIOLATION_ID}:${position.toString()}`,
       violationId: FABRICATED_WITHDRAWAL_VIOLATION_ID,

@@ -14,6 +14,7 @@ import {
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { verdictDetectionSubject } from "../workflow/detection-subject.js";
 
 export const INVALID_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID =
   "invalid-signature-wrongful-rejection" as const;
@@ -93,6 +94,7 @@ export const detectInvalidSignatureWrongfulRejections = ({
         invalidSignatureWrongfulRejectionCloses(evidence)
         ? [
             Object.freeze({
+              ...verdictDetectionSubject(evidence.subject),
               detectionId: `${INVALID_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID}:${forcedIndex.toString()}:${evidence.subject.transaction_id}`,
               headerHash: block.headerHash,
               violationId: INVALID_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID,

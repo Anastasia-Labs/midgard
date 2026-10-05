@@ -30,10 +30,7 @@ import {
   type MidgardCekDataScanFrame,
   validateSummary,
 } from "./cek-data-scan.validate-midgard-cek-data-scan-frame.js";
-import {
-  isByteStringLike,
-  type PlutusDataMap,
-} from "./plutus-data-narrowing.js";
+import { type PlutusDataMap } from "./plutus-data-narrowing.js";
 import {
   type MidgardCekDataSequenceSummary,
   type MidgardCekDataSummary,
@@ -125,18 +122,6 @@ export const constructorHeaderLength = (constructor: bigint): number => {
   return 4 + encodeMidgardCekPlutusData(new DataI(constructor)).length;
 };
 
-export const scalarBytes = (value: DataB): Uint8Array => {
-  const candidate: unknown = value.bytes;
-  if (!isByteStringLike(candidate)) {
-    throw new Error("CEK Data scanner received an invalid byte leaf");
-  }
-  const bytes = candidate.toBuffer();
-  if (!(bytes instanceof Uint8Array)) {
-    throw new Error("CEK Data scanner byte leaf did not produce bytes");
-  }
-  return bytes;
-};
-
 export const scalarSummary = (data: DataI | DataB): MidgardCekDataSummary => {
   let node: MidgardCekDataNode;
   if (data instanceof DataI) {
@@ -148,7 +133,7 @@ export const scalarSummary = (data: DataI | DataB): MidgardCekDataSummary => {
       memory: 4n + midgardCekIntegerMemorySize(data.int),
     };
   } else {
-    const bytes = scalarBytes(data);
+    const bytes = data.bytes;
     node = {
       kind: "bytes",
       bytesRoot: commitMidgardCekBlob(bytes).root,

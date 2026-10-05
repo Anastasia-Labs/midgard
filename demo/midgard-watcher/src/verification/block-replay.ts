@@ -177,7 +177,6 @@ export {
 } from "./block-replay.watcher-block-replay-reason-codes.js";
 export {
   type WatcherBlockReplayContext,
-  watcherBlockReplayForcedValidityForRejectCode,
   type WatcherBlockReplayPriorUtxo,
   watcherBlockReplayRejectionProjection,
   watcherBlockReplayStageForRejection,

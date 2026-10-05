@@ -504,7 +504,6 @@ export const submitRemoveFraudulentBlock = async ({
         "BuildTxWithRedeemer did not resolve remove-fraudulent-block layout.",
       );
     }
-
     const signed = await unsigned.sign.withWallet().complete();
     if (canonicalManifest !== null && slashEconomics !== null) {
       if (operatorSlashingPlan.approach === "OperatorAlreadySlashed") {

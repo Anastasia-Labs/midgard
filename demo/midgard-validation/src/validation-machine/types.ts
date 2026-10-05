@@ -24,7 +24,7 @@ import {
 } from "../cek-context.js";
 import { type MidgardCekExecutionStep } from "../cek-executor.js";
 import type { MidgardCekDataSequenceSummary } from "../script-context-proof.js";
-import type { RejectCode } from "../types.js";
+import type { LocalScriptEvaluation, RejectCode } from "../types.js";
 import {
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerMutationStep,
@@ -45,6 +45,8 @@ export type ValidationMachineReplayInput = {
   readonly ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
   readonly expectedLedgerOps: readonly ValidationMachineLedgerOp[];
   readonly ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[];
+  /** Captures supplied by the node classification; an empty array forbids evaluation. */
+  readonly scriptEvaluations?: readonly LocalScriptEvaluation[];
   readonly expectedVerdict: "accepted" | "rejected";
   readonly expectedRejectionCode: RejectCode | null;
   readonly blockEndTimeMs: number;
@@ -112,7 +114,6 @@ export type ValidationMachineWorkWitness = {
       }
     | {
         readonly kind: "ledgerOutputProofFinalize";
-        readonly descriptorCbor: Buffer;
         readonly signerProof: ValidationMachineSignerSetProof;
       }
     | {
@@ -298,18 +299,18 @@ export type ValidationMachineWorkWitness = {
         readonly kind: "cekRedeemerContextSelect";
         readonly control: MidgardCekRedeemerContextControl;
         readonly itemIndex: number;
-        readonly itemCount: number;
         readonly totalLength: number;
         readonly itemCommitment: Buffer;
-        readonly redeemerSiblings: readonly Buffer[];
-        readonly purposeFrontierIndex: number;
         readonly purpose: {
           readonly purposeKind: 0 | 1 | 2 | 3;
           readonly purposeIndex: bigint;
           readonly scriptHash: Buffer;
           readonly subject: Buffer;
-          readonly siblings: readonly Buffer[];
         };
+        readonly executionLanguageTag: 3 | 128;
+        readonly sourceLeaf: Buffer;
+        readonly executionSiblings: readonly Buffer[];
+        readonly itemFrontierRoot: Buffer;
       }
     | {
         readonly kind: "redeemerItemStep";
@@ -407,6 +408,15 @@ export type ValidationMachineWorkWitness = {
         readonly kind: "ledgerDeltaProofFrame";
         readonly frame: MidgardMpfProofFrame;
         readonly siblings: readonly Buffer[];
+        /** A deletion's terminal-Branch group opening, else empty. */
+        readonly opening: Buffer;
+      }
+    | {
+        readonly kind: "cekRedeemerContextSkip";
+        readonly control: MidgardCekRedeemerContextControl;
+        readonly purposeLeaf: Buffer;
+        readonly sourceLeaf: Buffer;
+        readonly executionSiblings: readonly Buffer[];
       }
     | null;
 };

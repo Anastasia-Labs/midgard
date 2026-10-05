@@ -22,9 +22,9 @@ const fail = (message) => {
   throw new Error(`validation auxiliary fixture generation failed: ${message}`);
 };
 
-if (canonicalValidationAuxiliaryWitnesses.length !== 40) {
+if (canonicalValidationAuxiliaryWitnesses.length !== 41) {
   fail(
-    `canonical input must contain exactly 40 constructors, got ${canonicalValidationAuxiliaryWitnesses.length}`,
+    `canonical input must contain exactly 41 constructors, got ${canonicalValidationAuxiliaryWitnesses.length}`,
   );
 }
 
@@ -112,6 +112,6 @@ assertOrWrite(aikenPath, aiken);
 
 if (!checkOnly) {
   process.stdout.write(
-    `generated validation auxiliary fixture: 40 constructors, blake2b-256 ${corpusBlake2b256}\n`,
+    `generated validation auxiliary fixture: 41 constructors, blake2b-256 ${corpusBlake2b256}\n`,
   );
 }

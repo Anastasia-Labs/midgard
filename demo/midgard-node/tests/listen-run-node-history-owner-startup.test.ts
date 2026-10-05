@@ -8,9 +8,10 @@ import { NodeConfig } from "../src/services/config.js";
 import { Globals } from "../src/services/globals.js";
 
 // runNode's own wiring of the history-owner startup: the predecessor-lease
-// wait it provides and the previous-process lease releases its startup
-// preparation runs. Every step before the owner is stubbed, and the startup
-// mutation gate fails on purpose, so nothing past the releases runs.
+// wait it provides, and the retained-pin restore and previous-process lease
+// releases its startup preparation runs. Every step before the owner is
+// stubbed, and the startup mutation gate fails on purpose, so nothing past
+// the releases runs.
 
 // Factories run while runNode's module graph loads (./utils.js already pulls
 // it in), before this file's own imports and declarations initialise: they
@@ -73,6 +74,10 @@ vi.mock("../src/commands/listen-startup.js", async (importOriginal) => {
   };
 });
 vi.mock(
+  "../src/database/cekProgramMaterial.restore-retained-state-pins.js",
+  async () => ({ restoreRetainedStatePins: await recordStep("restore-pins") }),
+);
+vi.mock(
   "../src/commands/listen-startup.release-ledger-store-lease-of-previous-node-process.js",
   async () => ({
     releaseLedgerStoreLeaseOfPreviousNodeProcess:
@@ -134,6 +139,7 @@ describe("runNode history-owner startup wiring", () => {
     expect(seen.leaseDurationMs).toBe(60_000);
     expect(seen.steps).toEqual([
       "seed",
+      "restore-pins",
       "hydrate",
       "state-queue-leases",
       "ledger-mpf-lease",

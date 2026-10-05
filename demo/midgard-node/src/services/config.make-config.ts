@@ -324,9 +324,6 @@ const makeConfig = Effect.gen(function* () {
     "VALIDATION_DRAIN_LOOPS",
     4,
   );
-  const validationUplcInWorkers = yield* Config.boolean(
-    "VALIDATION_UPLC_IN_WORKERS",
-  ).pipe(Config.withDefault(true));
   const validationLedgerDeltaLogMax = yield* boundedValidationInteger(
     "VALIDATION_LEDGER_DELTA_LOG_MAX",
     64,
@@ -1013,7 +1010,6 @@ const makeConfig = Effect.gen(function* () {
     VALIDATION_WORKER_JOB_TIMEOUT_MS: validationWorkerJobTimeoutMs,
     VALIDATION_WORKER_NODE_ED25519: validationWorkerNodeEd25519,
     VALIDATION_DRAIN_LOOPS: validationDrainLoops,
-    VALIDATION_UPLC_IN_WORKERS: validationUplcInWorkers,
     VALIDATION_LEDGER_DELTA_LOG_MAX: validationLedgerDeltaLogMax,
     TX_QUEUE_POLL_INTERVAL_MS: txQueuePollIntervalMs,
     MIN_FEE_A: minFeeA,

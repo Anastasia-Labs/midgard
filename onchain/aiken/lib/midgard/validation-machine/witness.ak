@@ -3282,13 +3282,14 @@ const cek_tx_info_assembly_domain =
 pub fn encode_cek_redeemer_context_control_v1(
   control: CekRedeemerContextControlV1,
 ) -> ByteArray {
-  encode_definite_array_header(6)
+  encode_definite_array_header(7)
     |> bytearray.concat(cbor.serialise(control.cursor))
     |> bytearray.concat(encode_data_sequence_summary_v1(control.map_items))
     |> bytearray.concat(encode_definite_bytes(control.active_scan_hash))
     |> bytearray.concat(encode_definite_bytes(control.active_redeemer_leaf))
     |> bytearray.concat(encode_data_summary_v1(control.active_purpose))
     |> bytearray.concat(encode_data_summary_v1(control.current_redeemer))
+    |> bytearray.concat(cbor.serialise(control.purpose_bound))
 }
 
 pub fn hash_cek_redeemer_context_control_v1(
@@ -3306,6 +3307,7 @@ pub fn cek_redeemer_context_control_is_well_formed(
   and {
     control.cursor >= 0,
     control.cursor <= redeemer_count,
+    control.purpose_bound >= 0,
     data_sequence_summary_is_well_formed(control.map_items),
     control.map_items.length <= control.cursor,
     optional_data_summary_is_well_formed(control.active_purpose),
@@ -3328,7 +3330,9 @@ pub fn cek_redeemer_context_control_is_well_formed(
   }
 }
 
-pub fn initial_cek_redeemer_context_control_v1() -> CekRedeemerContextControlV1 {
+pub fn initial_cek_redeemer_context_control_v1(
+  purpose_count: Int,
+) -> CekRedeemerContextControlV1 {
   CekRedeemerContextControlV1 {
     cursor: 0,
     map_items: cek_data_v1.empty_data_pair_summary_v1(),
@@ -3336,6 +3340,7 @@ pub fn initial_cek_redeemer_context_control_v1() -> CekRedeemerContextControlV1 
     active_redeemer_leaf: #"",
     active_purpose: empty_data_summary_v1(),
     current_redeemer: empty_data_summary_v1(),
+    purpose_bound: purpose_count,
   }
 }
 

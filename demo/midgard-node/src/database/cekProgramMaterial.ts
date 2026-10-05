@@ -12,10 +12,14 @@ export {
   admissionOwnerTableName,
   entryTableName,
   membershipTableName,
+  retainedStateOwnerTableName,
 } from "./cekProgramMaterial.canonical-entries.js";
+export { collectUnownedMaterial } from "./cekProgramMaterial.collect-unowned.js";
 export {
   persistVerifiedAdmissionBundle,
   releaseAdmissionOwnership,
   retrieveVerifiedBundles,
 } from "./cekProgramMaterial.persist-verified-admission-bundle.js";
 export { persistVerifiedBundles } from "./cekProgramMaterial.persist-verified-bundles.js";
+export { pinRetainedStateScriptRefs } from "./cekProgramMaterial.pin-retained-state.js";
+export { restoreRetainedStatePins } from "./cekProgramMaterial.restore-retained-state-pins.js";

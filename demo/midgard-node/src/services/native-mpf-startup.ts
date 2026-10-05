@@ -62,14 +62,17 @@ export const requirePinnedNativeOwnerBinary = (
   return Effect.void;
 };
 
-export const initializeArchitectureGOwner = (
+export const initializeArchitectureGOwner = <R = never>(
   globals: Globals,
   nodeConfig: NodeConfigDep,
   preparation?: HistoryRecoveryPreparation,
+  beforeJournalReplay?: (
+    owner: ProductionNativeMpfOwnerService,
+  ) => Effect.Effect<void, unknown, R>,
 ): Effect.Effect<
   ProductionNativeMpfOwnerService,
   unknown,
-  Database | Lucid | MidgardContracts
+  Database | Lucid | MidgardContracts | R
 > =>
   Effect.gen(function* () {
     yield* requirePinnedNativeOwnerBinary(nodeConfig);
@@ -209,6 +212,8 @@ export const initializeArchitectureGOwner = (
         });
         yield* restore(
           Effect.gen(function* () {
+            if (beforeJournalReplay !== undefined)
+              yield* beforeJournalReplay(owner);
             const active = yield* PendingBlockFinalizationsDB.retrieveActive();
             if (Option.isSome(active)) {
               const journal = active.value;

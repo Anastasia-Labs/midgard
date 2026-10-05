@@ -34,6 +34,7 @@ import {
   type ObserversForbiddenReplayDetection,
   selectCanonicalObserversForbiddenDetection,
 } from "../src/observers-forbidden-on-untagged-network/replay.js";
+import { acceptedTransactionSubject } from "../src/workflow/detection-subject.js";
 import { buildRegisteredChainFixture } from "./support/emulator/registered-chain.js";
 
 const transactionId = "01".repeat(32);
@@ -218,6 +219,7 @@ describe("observersForbiddenOnUntaggedNetwork V1 semantics", () => {
       position: bigint,
       detectionId: string,
     ): ObserversForbiddenReplayDetection => ({
+      ...acceptedTransactionSubject(transactionId),
       detectionId,
       headerHash: "03".repeat(28),
       violationId: OBSERVERS_FORBIDDEN_VIOLATION_ID,

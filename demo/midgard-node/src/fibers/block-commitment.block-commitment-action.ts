@@ -8,6 +8,7 @@ import {
 } from "../database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
 import { DatabaseError } from "../database/utils/common.js";
 import {
+  ContractDeploymentIdentity,
   Database,
   Globals,
   Lucid,
@@ -101,7 +102,12 @@ export const blockCommitmentAction: Effect.Effect<
   | SDK.CborSerializationError
   | DatabaseError
   | Error,
-  Globals | Lucid | MidgardContracts | Database | NodeConfig
+  | Globals
+  | Lucid
+  | MidgardContracts
+  | Database
+  | NodeConfig
+  | ContractDeploymentIdentity
 > = Effect.gen(function* () {
   const globals = yield* Globals;
   const nodeConfig = yield* NodeConfig;
@@ -197,7 +203,12 @@ export const blockCommitmentFiber = (
 ): Effect.Effect<
   void,
   never,
-  Globals | Lucid | MidgardContracts | Database | NodeConfig
+  | Globals
+  | Lucid
+  | MidgardContracts
+  | Database
+  | NodeConfig
+  | ContractDeploymentIdentity
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔵 Block commitment fiber started.");

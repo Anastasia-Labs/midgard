@@ -1,7 +1,5 @@
-import {
-  defaultV3Costs,
-  toCostModelArrV3,
-} from "@harmoniclabs/cardano-costmodels-ts";
+import { createHash } from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -23,11 +21,18 @@ const REDEEMER_TX_WITS_HASH = Buffer.from(
 const AIKEN_REDEEMER_TX_WITS_HASH = Buffer.alloc(32, 0x11);
 
 describe("script language views", () => {
-  it("freezes the initial protocol cost model views to Harmonic PlutusV3 today", () => {
-    const harmonicV3 = toCostModelArrV3(defaultV3Costs);
-
-    expect(PLUTUS_V3_CANONICAL_COST_MODEL_VIEW).toEqual(harmonicV3);
-    expect(MIDGARD_CANONICAL_COST_MODEL_VIEW).toEqual(harmonicV3);
+  it("freezes the initial protocol cost model views", () => {
+    // The 297-parameter Conway PlutusV3 model. Library defaults move with
+    // later protocol versions, so the view is pinned by its own digest.
+    expect(PLUTUS_V3_CANONICAL_COST_MODEL_VIEW).toHaveLength(297);
+    expect(
+      createHash("sha256")
+        .update(JSON.stringify(PLUTUS_V3_CANONICAL_COST_MODEL_VIEW))
+        .digest("hex"),
+    ).toBe("015b4c0953bbd57372fcd592df617215c7024a532882ece12b96e0557a285d39");
+    expect(MIDGARD_CANONICAL_COST_MODEL_VIEW).toEqual(
+      PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
+    );
   });
 
   it("uses EMPTY_NULL_ROOT for an empty required language set", () => {

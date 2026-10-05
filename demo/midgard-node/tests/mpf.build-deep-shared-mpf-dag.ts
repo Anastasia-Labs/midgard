@@ -55,7 +55,7 @@ const mpfMerkleRoot = (children: readonly (Buffer | undefined)[]): Buffer => {
 const mpfLeafHash = (prefix: string, value: Buffer): Buffer => {
   const odd = prefix.length % 2 > 0;
   const head = odd
-    ? Buffer.from([0, Number.parseInt(prefix[0]!, 16)])
+    ? Buffer.from([0x10, Number.parseInt(prefix[0]!, 16)])
     : Buffer.from([255]);
   const tail = Buffer.from(odd ? prefix.slice(1) : prefix, "hex");
   return mpfDigest(Buffer.concat([head, tail, mpfDigest(value)]));

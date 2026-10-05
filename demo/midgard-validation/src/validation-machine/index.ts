@@ -48,6 +48,7 @@ export {
   buildDeterministicValidationMachineTrace,
   DirectValidationTraceUnavailable,
 } from "./trace-builder.js";
+export { ValidationTraceStopped } from "./trace-builder-stop.js";
 export {
   type DeterministicValidationMachineTrace,
   type ValidationMachineReplayInput,

@@ -11,7 +11,11 @@ import {
   retainedUndecodableOutputDescriptor,
 } from "../evidence/retained-ledger-output.js";
 import { transitionTraceError } from "./errors.js";
-import { buildCountedRoot, keyValuePhasRootWithCount } from "./phas.js";
+import {
+  buildCountedRoot,
+  commitCountedRoot,
+  keyValuePhasRootWithCount,
+} from "./phas.js";
 import {
   authenticateForcedTransactionPreimages,
   buildSourceEvents,
@@ -28,7 +32,6 @@ import {
   validateDenseTransitionTrace,
 } from "./reconstruct.decode-transactions.js";
 import {
-  countMismatches,
   eventKeyFingerprint,
   normalizeHeaderHash,
   type PayloadRootSet,
@@ -154,6 +157,17 @@ export const reconstructDaPayload = async ({
       rawEntries("validation_traces", body.validation_traces),
     ),
   };
+  // N2 authenticates the trie using the committed count label. Key-set
+  // equality is adjudicated by missing/foreign-run proofs, never assumed here.
+  rootData.validationTraces = {
+    ...rootData.validationTraces,
+    count: header.validationTraceCount,
+    root: await commitCountedRoot({
+      domain: SDK.ROOT_DOMAINS.validationTraces,
+      phasRoot: rootData.validationTraces.phasRoot,
+      count: header.validationTraceCount,
+    }),
+  };
   const roots: PayloadRootSet = {
     utxosRoot: rootData.utxos.root,
     withdrawalsRoot: rootData.withdrawals.root,
@@ -164,7 +178,6 @@ export const reconstructDaPayload = async ({
     eventToStepRoot: rootData.eventToStep.root,
     validationTracesRoot: rootData.validationTraces.root,
   };
-  const counts = body.counts;
   const mismatchedRoots = rootMismatches(headerRoots(header), roots);
   if (mismatchedRoots.length > 0) {
     throw transitionTraceError(
@@ -174,15 +187,7 @@ export const reconstructDaPayload = async ({
       )}.`,
     );
   }
-  const mismatchedCounts = countMismatches(headerCounts(header), counts);
-  if (mismatchedCounts.length > 0) {
-    throw transitionTraceError(
-      "countMismatch",
-      `Payload counts do not match committed header: ${mismatchedCounts.join(
-        ",",
-      )}.`,
-    );
-  }
+  const counts = headerCounts(header);
 
   // Q44 is the one family for which canonical reconstruction is expected to
   // reject the payload. Detect it only after the raw transactions MPF/count
@@ -248,7 +253,7 @@ export const reconstructDaPayload = async ({
     keySchema: Data.Integer() as never,
     valueSchema: SDK.TransitionStepSchema,
   });
-  validateDenseTransitionTrace(transitionTrace, counts.transitionStepCount);
+  validateDenseTransitionTrace(transitionTrace);
   const eventToStep = decodeTypedEntries<SDK.EventKey, SDK.EventToStepValue>({
     fieldName: "event_to_step",
     entries: body.event_to_step,
@@ -261,6 +266,64 @@ export const reconstructDaPayload = async ({
     transactions,
     deposits,
   });
+  const sourceEventsByFingerprint =
+    ensureUniqueSourceFingerprints(sourceEvents);
+  const retainedFieldsByEvent = new Map<
+    string,
+    ReturnType<typeof SDK.retainedValidationTransactionSource>
+  >();
+  for (const [keyHex, valueHex] of body.validation_trace_witnesses) {
+    try {
+      const key = SDK.decodeRetainedValidationWitnessKey(
+        Buffer.from(keyHex, "hex"),
+      );
+      const retained = SDK.decodeRetainedValidationWitness(
+        Buffer.from(valueHex, "hex"),
+      );
+      if (SDK.retainedValidationFieldSource(retained.auxiliary) === undefined)
+        continue;
+      const fingerprint = eventKeyFingerprint(key.event_key);
+      let fields = retainedFieldsByEvent.get(fingerprint);
+      if (fields === undefined) {
+        const source = sourceEventsByFingerprint.get(fingerprint);
+        if (
+          source === undefined ||
+          (source.phase !== "ForcedTransaction" &&
+            source.phase !== "L2Transaction")
+        )
+          throw new Error(
+            "Retained field source has no authenticated transaction",
+          );
+        fields = SDK.retainedValidationTransactionSource(
+          source.entry.fullTransactionCbor,
+          source.phase === "ForcedTransaction" ? "forced" : "normal",
+        );
+        retainedFieldsByEvent.set(fingerprint, fields);
+      }
+      SDK.validateRetainedValidationTransactionIdentity(
+        fields,
+        Buffer.from(retained.machine_state.transaction_id, "hex"),
+        Buffer.from(retained.machine_state.transaction_commitment, "hex"),
+      );
+      if (
+        retained.machine_state.source_kind !==
+        ("ForcedTransactionEventKey" in key.event_key ? "Forced" : "Normal")
+      )
+        throw new Error(
+          "Retained field source kind differs from its authenticated event",
+        );
+      SDK.validateRetainedValidationFieldSource(
+        retained.auxiliary,
+        fields.fields,
+      );
+    } catch (cause) {
+      throw transitionTraceError(
+        "invalidPayloadEntries",
+        "Retained field source does not match its authenticated transaction.",
+        cause,
+      );
+    }
+  }
   const traceByStepIndex = new Map(
     transitionTrace.map((entry) => [entry.key, entry] as const),
   );
@@ -286,7 +349,7 @@ export const reconstructDaPayload = async ({
     transitionTrace,
     eventToStep,
     sourceEvents,
-    sourceEventsByFingerprint: ensureUniqueSourceFingerprints(sourceEvents),
+    sourceEventsByFingerprint,
     traceByStepIndex,
     eventToStepByFingerprint,
     rootData,

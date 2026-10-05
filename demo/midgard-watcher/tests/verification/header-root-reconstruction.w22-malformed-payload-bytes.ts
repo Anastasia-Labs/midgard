@@ -5,6 +5,10 @@ import { createHash } from "node:crypto";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
+import {
+  buildCountedRoot,
+  commitCountedRoot,
+} from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { h28 } from "@al-ft/midgard-test-support/hex";
 import { describe, expect, it } from "vitest";
@@ -41,8 +45,31 @@ describe("W22 per-count mismatch determinism", () => {
         depositBytes: [11],
         withdrawalBytes: [21],
       });
+      // N2 authenticates validation traces with the committed count label.
+      // Rebind that label to isolate the independent declared-count check.
+      const validationRoot =
+        headerField === "validationTraceCount"
+          ? await buildCountedRoot(
+              SDK.ROOT_DOMAINS.validationTraces,
+              fixture.payload.block_body.validation_traces.map(
+                ([key, value]) => ({
+                  key: Buffer.from(key, "hex"),
+                  value: Buffer.from(value, "hex"),
+                }),
+              ),
+            )
+          : null;
+      const validationTracesRoot =
+        validationRoot === null
+          ? fixture.header.validationTracesRoot
+          : await commitCountedRoot({
+              domain: SDK.ROOT_DOMAINS.validationTraces,
+              phasRoot: validationRoot.phasRoot,
+              count: fixture.header.validationTraceCount + 7n,
+            });
       const mutated = await commitMutatedHeader(fixture, (header) => ({
         ...header,
+        validationTracesRoot,
         [headerField]: (header[headerField] as bigint) + 7n,
       }));
       const result = await evaluateFixture(mutated);
@@ -53,6 +80,21 @@ describe("W22 per-count mismatch determinism", () => {
       expect(result.reconstructedCounts).toBeNull();
     },
   );
+
+  it("refuses a changed validation count before count classification when its root is not rebound", async () => {
+    const fixture = await buildFixture({
+      transactions: [corpusTransaction(0)],
+    });
+    const mutated = await commitMutatedHeader(fixture, (header) => ({
+      ...header,
+      validationTraceCount: header.validationTraceCount + 7n,
+    }));
+    const result = await evaluateFixture(mutated);
+    expect(result.action).toBe("reject");
+    expect(result.reasonCodes).toEqual(["root_mismatch"]);
+    expect(result.rootMismatches).toEqual(["validation_traces_root"]);
+    expect(result.countMismatches).toEqual([]);
+  });
 
   it("covers every declared count field exactly once", () => {
     expect(countMutations.map(([field]) => field)).toStrictEqual([

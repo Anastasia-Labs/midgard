@@ -1,3 +1,10 @@
+import {
+  advanceChunkedMagnitude,
+  chunkedMagnitudeSpan,
+  initialMidgardCekDataIntegerMeasureControl,
+  measuredMagnitudeLength,
+  parseChunkedMagnitudeSyntax,
+} from "./cek-data-integer.chunked-magnitude.js";
 import { hashMidgardCekDataNode } from "./cek-semantic.js";
 import {
   advanceMidgardCekSourceBlob,
@@ -23,6 +30,7 @@ export const MidgardCekDataIntegerStages = Object.freeze({
   Syntax: 0,
   Blob: 1,
   Terminal: 2,
+  Measure: 3,
 } as const);
 
 export type MidgardCekDataIntegerStage =
@@ -131,10 +139,7 @@ const unsignedByteLength = (value: bigint): bigint => {
   return size;
 };
 
-/**
- * Returns the exact complete Data memory for a canonical integer item.
- * `syntaxBytes` is the authenticated prefix requested by this machine.
- */
+/** Memory derived from the integer's authenticated prefix and canonical extent. */
 export const parseMidgardCekDataIntegerSyntax = ({
   syntaxBytes,
   sourceLength,
@@ -166,12 +171,15 @@ export const parseMidgardCekDataIntegerSyntax = ({
       return 4n + unsignedByteLength(argument.value * 2n);
     }
     if (first !== 0xc2 && first !== 0xc3) return null;
+    if (syntaxBytes[1] === 0x5f) {
+      return parseChunkedMagnitudeSyntax(syntaxBytes, sourceLength);
+    }
     const magnitude = readCanonicalCborArgument(syntaxBytes, 1);
     if (
       magnitude === null ||
       magnitude.major !== 2 ||
       magnitude.value < 9n ||
-      magnitude.value > BigInt(UINT32_MAX) ||
+      magnitude.value > 64n ||
       BigInt(magnitude.nextOffset) + magnitude.value !== BigInt(sourceLength) ||
       magnitude.nextOffset >= syntaxBytes.length
     ) {
@@ -221,7 +229,7 @@ export const isWellFormedMidgardCekDataIntegerControl = (
       control.version !== MIDGARD_CEK_DATA_INTEGER_VERSION ||
       !Number.isInteger(control.stage) ||
       control.stage < MidgardCekDataIntegerStages.Syntax ||
-      control.stage > MidgardCekDataIntegerStages.Terminal ||
+      control.stage > MidgardCekDataIntegerStages.Measure ||
       exactSourceCoordinate(control.sourceStart, "source start") !==
         control.sourceStart ||
       !Number.isInteger(control.sourceLength) ||
@@ -235,6 +243,17 @@ export const isWellFormedMidgardCekDataIntegerControl = (
     }
     if (control.stage === MidgardCekDataIntegerStages.Syntax) {
       return control.memory === 0n && control.blob === null;
+    }
+    if (control.stage === MidgardCekDataIntegerStages.Measure) {
+      const length = measuredMagnitudeLength(control.sourceLength);
+      return (
+        control.blob === null &&
+        (control.sourceLength === 2
+          ? control.memory === 0n
+          : length !== null &&
+            (control.memory === 4n + BigInt(length) ||
+              control.memory === 5n + BigInt(length)))
+      );
     }
     if (
       control.memory < 5n ||
@@ -254,6 +273,7 @@ export const isWellFormedMidgardCekDataIntegerControl = (
   }
 };
 
+export { initialMidgardCekDataIntegerMeasureControl } from "./cek-data-integer.chunked-magnitude.js";
 export const initialMidgardCekDataIntegerControl = ({
   sourceStart,
   sourceLength,
@@ -304,9 +324,13 @@ export const encodeMidgardCekDataIntegerControl = (
 
 export const nextMidgardCekDataIntegerSpan = (
   control: MidgardCekDataIntegerControl,
+  sourceEnd: number,
 ): MidgardCekSourceBlobSpan | null => {
   if (!isWellFormedMidgardCekDataIntegerControl(control)) {
     return null;
+  }
+  if (control.stage === MidgardCekDataIntegerStages.Measure) {
+    return chunkedMagnitudeSpan(control, sourceEnd);
   }
   if (control.stage === MidgardCekDataIntegerStages.Syntax) {
     return {
@@ -325,22 +349,32 @@ export const nextMidgardCekDataIntegerSpan = (
 export const advanceMidgardCekDataInteger = ({
   control,
   sourceBytes,
+  sourceEnd,
 }: {
   readonly control: MidgardCekDataIntegerControl;
   readonly sourceBytes?: Uint8Array | null;
+  readonly sourceEnd: number;
 }): MidgardCekDataIntegerControl | null => {
   try {
     if (!isWellFormedMidgardCekDataIntegerControl(control)) {
       return null;
     }
     if (control.stage === MidgardCekDataIntegerStages.Syntax) {
-      const span = nextMidgardCekDataIntegerSpan(control)!;
+      const span = nextMidgardCekDataIntegerSpan(control, sourceEnd)!;
       if (
         sourceBytes === null ||
         sourceBytes === undefined ||
         sourceBytes.length !== span.length
       ) {
         return null;
+      }
+      if (
+        (sourceBytes[0] === 0xc2 || sourceBytes[0] === 0xc3) &&
+        sourceBytes[1] === 0x5f
+      ) {
+        return initialMidgardCekDataIntegerMeasureControl({
+          sourceStart: control.sourceStart,
+        });
       }
       const memory = parseMidgardCekDataIntegerSyntax({
         syntaxBytes: sourceBytes,
@@ -357,6 +391,14 @@ export const advanceMidgardCekDataInteger = ({
         }),
       } satisfies MidgardCekDataIntegerControl;
       return isWellFormedMidgardCekDataIntegerControl(next) ? next : null;
+    }
+    if (control.stage === MidgardCekDataIntegerStages.Measure) {
+      return advanceChunkedMagnitude(
+        control,
+        sourceEnd,
+        sourceBytes,
+        nextMidgardCekDataIntegerSpan(control, sourceEnd),
+      );
     }
     if (
       control.stage !== MidgardCekDataIntegerStages.Blob ||
@@ -426,7 +468,10 @@ export const buildMidgardCekDataIntegerTrace = ({
   const steps: MidgardCekDataIntegerTraceStep[] = [];
   let control = initial;
   while (control.stage !== MidgardCekDataIntegerStages.Terminal) {
-    const span = nextMidgardCekDataIntegerSpan(control);
+    const span = nextMidgardCekDataIntegerSpan(
+      control,
+      sourceStart + bytes.length,
+    );
     const sourceBytes =
       span === null
         ? null
@@ -437,6 +482,7 @@ export const buildMidgardCekDataIntegerTrace = ({
     const next = advanceMidgardCekDataInteger({
       control,
       sourceBytes,
+      sourceEnd: sourceStart + bytes.length,
     });
     if (next === null || !isWellFormedMidgardCekDataIntegerControl(next)) {
       throw new Error("V1 CEK Data integer trace failed closed");
@@ -444,6 +490,8 @@ export const buildMidgardCekDataIntegerTrace = ({
     steps.push({ control, sourceBytes, next });
     control = next;
   }
+  if (control.sourceLength !== bytes.length)
+    throw new Error("V1 CEK Data integer trace failed closed: trailing bytes");
   return Object.freeze({
     initial,
     steps: Object.freeze(steps),

@@ -16,6 +16,7 @@ export type PreparedFieldPreimageLengthWorkflow = Readonly<{
   schemaVersion: typeof FIELD_PREIMAGE_LENGTH_WORKFLOW;
   headerHash: string;
   transactionId: string;
+  sourceKind: "normal" | "forced";
   direction: FieldPreimageLengthDirection;
   fieldIndex: number;
   declaredLength: number;
@@ -36,6 +37,7 @@ export const prepareFieldPreimageLengthWorkflow = ({
   headerHash,
   transactionId,
   direction,
+  sourceKind,
   fieldIndex,
   fieldPreimageLengthsCbor,
   fieldPreimage,
@@ -44,6 +46,7 @@ export const prepareFieldPreimageLengthWorkflow = ({
   readonly headerHash: string;
   readonly transactionId: string;
   readonly direction: FieldPreimageLengthDirection;
+  readonly sourceKind: "normal" | "forced";
   readonly fieldIndex: number;
   readonly fieldPreimageLengthsCbor: Uint8Array;
   readonly fieldPreimage: Uint8Array;
@@ -52,6 +55,8 @@ export const prepareFieldPreimageLengthWorkflow = ({
   if (!Number.isInteger(fieldIndex) || fieldIndex < 0 || fieldIndex >= 9) {
     throw new Error("field index is outside 0..8");
   }
+  if (direction === "wrongfulRejection" && sourceKind !== "forced")
+    throw new Error("wrongful rejection requires a forced source");
   const declaredLength = decodeMidgardNativeTxProofFieldLengths(
     fieldPreimageLengthsCbor,
   )[fieldIndex]!;
@@ -102,6 +107,7 @@ export const prepareFieldPreimageLengthWorkflow = ({
   const normalizedTx = exactHex(transactionId, 32, "transaction id");
   const evidenceDigest = createHash("sha256")
     .update(FIELD_PREIMAGE_LENGTH_WORKFLOW)
+    .update(sourceKind)
     .update(direction)
     .update(normalizedHeader, "hex")
     .update(normalizedTx, "hex")
@@ -114,6 +120,7 @@ export const prepareFieldPreimageLengthWorkflow = ({
     headerHash: normalizedHeader,
     transactionId: normalizedTx,
     direction,
+    sourceKind,
     fieldIndex,
     declaredLength,
     actualLength,

@@ -71,7 +71,8 @@ export const assertRuntimeTransactionBound = async ({
         ? 0n
         : BigInt(economics.inactivitySlashingPenaltyLovelace));
     const reward = BigInt(economics.fraudProverRewardLovelace);
-    // Read removal out-refs via nextRemovalOutRef/fraudProofOutRef and kind via actionKind or stage; name differing checks in refusals.
+    // Removal binds nextRemovalOutRef/fraudProofOutRef; actionKind also
+    // accepts stage. Each refusal names the failed binding.
     const differing = (
       [
         ["current action kind", state.currentActionKind === "remove"],
@@ -343,7 +344,7 @@ export const assertRuntimeTransactionBound = async ({
         "fraud slash operator bond differs from its authenticated tranche",
       );
     }
-    // Slashing always reacquires live protocol authority, even for an output whose earlier transaction already appears in this workflow's lineage.
+    // Slashes reacquire live authority even for confirmed workflow lineage.
     const lineage =
       slash === null
         ? await state.port.resolveConfirmedInput({ outRef })
@@ -425,8 +426,7 @@ export const assertRuntimeTransactionBound = async ({
       protocolMinimum += minimum;
     } else {
       custody += raw.amount().coin();
-      // Operator stake and slashing rewards never authorize prover topups.
-      // Existing custody is accounted from exact confirmed lineage above.
+      // Stake and rewards cannot top up funding; confirmed lineage binds custody.
       custodyAllocation += minimum;
     }
   }
@@ -484,8 +484,7 @@ export const assertRuntimeTransactionBound = async ({
       }
     }
   }
-  // Proof workflows may use withdraw-zero yielding, but never withdraw funds
-  // or certify/deposit stake through the prover funding surface.
+  // Withdraw-zero yielding never authorizes stake withdrawals or deposits.
   const withdrawals = body.withdrawals();
   if (withdrawals !== undefined) {
     const keys = withdrawals.keys();

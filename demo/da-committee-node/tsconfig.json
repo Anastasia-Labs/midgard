@@ -23,6 +23,6 @@
     "strict": true,
     "target": "ES2022"
   },
-  "include": ["src", "tests", "vitest.config.ts"],
+  "include": ["src", "tests", "vitest.config.ts", "../midgard-node/src/types"],
   "exclude": ["dist", "node_modules"]
 }

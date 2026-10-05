@@ -38,6 +38,8 @@ export interface FraudProofAuthenticatedPublicationObserver {
     readonly expectedDatumCbor: string;
     /** Required for certificates; omitted for ADA-only field publications. */
     readonly expectedUnit?: string;
+    /** Bind a surviving certificate to a previously published exact output. */
+    readonly expectedReferenceOutRef?: string;
   }): Promise<FraudProofAuthenticatedPublicationObservation>;
 }
 
@@ -134,6 +136,39 @@ export const createFraudProofAuthenticatedPublicationObserver = ({
             "authenticated certificate history does not prove the exact token mint",
           );
         }
+      }
+      if (input.expectedReferenceOutRef !== undefined) {
+        if (
+          input.kind !== "field_certificate" ||
+          input.expectedUnit === undefined
+        )
+          throw new Error(
+            "publication reference proof requires an authenticated certificate",
+          );
+        const transaction = snapshot.transactions.find(
+          (entry) => entry.txHash === input.expectedOutRef.split("#")[0],
+        );
+        if (transaction === undefined)
+          throw new Error(
+            "publication reference proof omitted its certificate creation",
+          );
+        const inputs = CML.TransactionBody.from_cbor_hex(
+          transaction.bodyCbor,
+        ).reference_inputs();
+        let found = false;
+        for (
+          let index = 0;
+          inputs !== undefined && index < inputs.len();
+          index++
+        ) {
+          const reference = inputs.get(index);
+          if (
+            `${reference.transaction_id().to_hex()}#${reference.index().toString()}` ===
+            input.expectedReferenceOutRef
+          )
+            found = true;
+        }
+        if (!found) return { kind: "not_found" };
       }
       return { kind: "confirmed", outRef: candidate.outRef };
     },

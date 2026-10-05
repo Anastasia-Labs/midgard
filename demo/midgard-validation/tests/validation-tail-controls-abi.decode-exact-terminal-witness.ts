@@ -65,7 +65,7 @@ export const decodeExactTerminalWitness = (
 
 export const EXPECTED = {
   auxiliaryCorpusHash:
-    "8916ad7c26d34eafe62c93ed9c36be30d880fb102b918bb37f0b6d3dc27111e1",
+    "544436205849eb463fb2c0c4d4fcc461ff9d38fd44ad1c55d4107ff8f616f761",
   valueAccumulatorCbor:
     "8407582054545454545454545454545454545454545454545454545454545454545454540201",
   valueAndMintControlHash:

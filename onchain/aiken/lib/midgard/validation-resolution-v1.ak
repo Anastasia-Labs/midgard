@@ -97,6 +97,26 @@ pub fn one_step_boundary_is_authenticated(
   }
 }
 
+/// The operator trace has a Terminal state before its committed last state.
+/// The agreed low hash was authenticated by the opener or by both midpoint
+/// proofs. No operator-provided intermediate transition is trusted here: any
+/// committed Terminal below step_count is itself forbidden padding.
+pub fn terminal_padding_is_authenticated(
+  dispute: validation_dispute_v1.ValidationDisputeV1,
+  terminal_state: validation_trace_v1.ValidationMachineStateV1,
+) -> Bool {
+  and {
+    dispute.version == validation_dispute_v1.dispute_version,
+    dispute.turn == validation_dispute_v1.ReadyForOneStep,
+    dispute.low_index >= 0,
+    dispute.high_index == dispute.low_index + 1,
+    dispute.low_index < dispute.operator_descriptor.step_count,
+    validation_trace_v1.machine_state_is_well_formed(terminal_state),
+    terminal_state.phase == validation_trace_v1.Terminal,
+    validation_trace_v1.hash_machine_state(terminal_state) == dispute.agreed_low_hash,
+  }
+}
+
 pub fn prepare(
   dispute: validation_dispute_v1.ValidationDisputeV1,
   pre_state: validation_trace_v1.ValidationMachineStateV1,

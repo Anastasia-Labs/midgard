@@ -31,7 +31,7 @@ pub(super) fn packed_nibbles(nibbles: &[u8]) -> Result<Vec<u8>, String> {
 
 pub(super) fn leaf_hash(prefix: &[u8], value: &[u8]) -> Result<Hash, String> {
     let (head, tail) = if prefix.len() % 2 == 1 {
-        (vec![0, prefix[0]], packed_nibbles(&prefix[1..])?)
+        (vec![0x10, prefix[0]], packed_nibbles(&prefix[1..])?)
     } else {
         (vec![0xff], packed_nibbles(prefix)?)
     };

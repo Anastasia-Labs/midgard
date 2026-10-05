@@ -8,6 +8,7 @@ import "./cek-program.build-midgard-canonical-cek-program.js";
 import "./cek-program.build-midgard-canonical-script-artifact.js";
 export { buildMidgardCanonicalCekProgram } from "./cek-program.build-midgard-canonical-cek-program.js";
 export { buildMidgardCanonicalScriptArtifact } from "./cek-program.build-midgard-canonical-script-artifact.js";
+export { encodeMidgardCekCardanoFlatProgram } from "./cek-program.cardano-flat.js";
 export {
   MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
   MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,

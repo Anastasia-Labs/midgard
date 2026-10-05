@@ -13,6 +13,12 @@ import {
   FRAUD_PROOF_CLASSIFICATION_SCHEMA_VERSION,
   type ResolvedClassificationRule,
 } from "./classification.fraud-proof-classification-rules.js";
+import {
+  compareEventOrder,
+  detectionEventOrder,
+  type DetectionSubject,
+  type EventOrder,
+} from "./detection-subject.js";
 
 const classificationByViolationId = new Map<
   string,
@@ -20,7 +26,7 @@ const classificationByViolationId = new Map<
 >();
 
 /**
- * Same-position family precedence. This is the catalogue order with exactly
+ * Same-event family precedence. This is the catalogue order with exactly
  * the owner-ruled corners moved: decision 0008 gives `crossBlockDuplicateEvent`
  * the repeated event an ancestor already committed, ahead of `doubleWithdraw`,
  * which keeps the intra-block pair. The catalogue order itself stays
@@ -63,12 +69,16 @@ for (const [ruleIndex, rule] of FRAUD_PROOF_CLASSIFICATION_RULES.entries()) {
   }
 }
 
-export type CanonicalViolationDetection = {
+export type CanonicalViolationDetection = DetectionSubject & {
   /** Stable detector-owned identity, used only as a deterministic tie-break. */
   readonly detectionId: string;
   readonly headerHash: string;
   readonly violationId: string;
-  /** Earliest invalid transition/event ordinal in the committed block. */
+  /**
+   * Reported ordinal within the detection's own source frontier. It never
+   * orders detections: the declared subject's step in the authenticated
+   * transition trace does, independent of the committed `event_to_step`.
+   */
   readonly position: bigint;
   /** Public diagnostic text only; never used to select a proof family. */
   readonly diagnostic?: string;
@@ -129,11 +139,13 @@ const validateDetection = (
 };
 
 const compareDetections = (
+  orderOf: (detection: CanonicalViolationDetection) => EventOrder,
   left: CanonicalViolationDetection,
   right: CanonicalViolationDetection,
 ): number => {
-  if (left.position !== right.position) {
-    return left.position < right.position ? -1 : 1;
+  const byEvent = compareEventOrder(orderOf(left), orderOf(right));
+  if (byEvent !== 0) {
+    return byEvent;
   }
   const leftRule = classificationByViolationId.get(left.violationId);
   const rightRule = classificationByViolationId.get(right.violationId);
@@ -191,6 +203,9 @@ export const classifyCanonicalBlockViolations = async ({
     );
   }
   const seenDetectionIds = new Set<string>();
+  const orders = new Map<CanonicalViolationDetection, EventOrder>();
+  const orderOf = (detection: CanonicalViolationDetection): EventOrder =>
+    orders.get(detection)!;
   const ordered = detections
     .map((detection) => validateDetection(detection, evidence.headerHash))
     .map((detection) => {
@@ -200,9 +215,13 @@ export const classifyCanonicalBlockViolations = async ({
         );
       }
       seenDetectionIds.add(detection.detectionId);
+      orders.set(
+        detection,
+        detectionEventOrder(evidence.reconstruction, detection),
+      );
       return detection;
     })
-    .sort(compareDetections);
+    .sort((left, right) => compareDetections(orderOf, left, right));
   if (ordered.length === 0) {
     return {
       schemaVersion: FRAUD_PROOF_CLASSIFICATION_SCHEMA_VERSION,
@@ -223,16 +242,16 @@ export const classifyCanonicalBlockViolations = async ({
         reason: "unregistered_violation",
       }),
     );
-  const earliestPosition = ordered[0]!.position;
-  const earliest = ordered.filter(
-    (detection) => detection.position === earliestPosition,
-  );
+  const earliestOrder = orderOf(ordered[0]!);
+  const atEarliest = (detection: CanonicalViolationDetection) =>
+    compareEventOrder(orderOf(detection), earliestOrder) === 0;
+  const earliest = ordered.filter(atEarliest);
   const selectedProvable = earliest.find((detection) =>
     classificationByViolationId.has(detection.violationId),
   );
   if (selectedProvable === undefined) {
-    const selected = unprovableGaps.find(
-      (gap) => gap.position === earliestPosition,
+    const selected = unprovableGaps.find((gap) =>
+      earliest.some((detection) => detection.detectionId === gap.detectionId),
     );
     if (selected === undefined) {
       throw new Error("classification invariant: earliest gap disappeared");

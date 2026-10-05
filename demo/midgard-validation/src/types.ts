@@ -3,12 +3,16 @@ import type { MidgardValue } from "@al-ft/midgard-core/codec";
 import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import type { Effect } from "effect";
 
+import type {
+  MidgardCekExecutionGraph,
+  MidgardCekStructuralExecution,
+} from "./cek-executor.js";
 import type { LedgerEntry } from "./ledger.js";
 import type {
   MidgardLedgerTx,
   MidgardLedgerVKeyWitness,
 } from "./ledger-tx/types.js";
-import type { LocalScriptEvalResult } from "./local-script-eval.js";
+import type { RejectSubject } from "./reject-subject.js";
 
 /**
  * Stable rejection codes used by Midgard phase-A and phase-B validation.
@@ -159,6 +163,11 @@ export type RejectedTx = {
    * during signer, input-resolution, or script-source validation.
    */
   readonly consensusPhase?: MidgardValidationPhaseName;
+  /**
+   * The arm and subject coordinates of the failed rule, where the rule names
+   * one. A forced verdict cites them; see {@link RejectSubject}.
+   */
+  readonly subject?: RejectSubject;
 };
 
 /**
@@ -203,6 +212,30 @@ export type PhaseALocalContext = {
   ) => boolean;
 };
 
+/** Process-local evidence from the single script evaluation used for its verdict. */
+export type LocalScriptEvaluation = {
+  readonly scriptBytes: Buffer;
+  readonly contextCbor: Buffer;
+  readonly executionIndex: bigint;
+  readonly executionBudget:
+    | { readonly cpu: bigint; readonly memory: bigint }
+    | undefined;
+  readonly result: LocalScriptEvalResult;
+  readonly graph: MidgardCekExecutionGraph | null;
+  readonly execution: MidgardCekStructuralExecution | null;
+};
+
+/** The verdict and spent budget of one script evaluation. */
+export type LocalScriptEvalResult =
+  | {
+      readonly kind: "accepted";
+      readonly budget: {
+        readonly cpu: bigint;
+        readonly memory: bigint;
+      };
+    }
+  | { readonly kind: "script_invalid"; readonly detail: string };
+
 /**
  * Configuration knobs for phase-B validation.
  */
@@ -210,10 +243,11 @@ export type PhaseBConfig = {
   readonly nowCardanoSlotNo: bigint;
   readonly bucketConcurrency: number;
   readonly enforceScriptBudget?: boolean;
-  readonly evaluateScript?: (
-    scriptBytes: Uint8Array,
-    contextCbor: Uint8Array,
-  ) => Effect.Effect<LocalScriptEvalResult, Error>;
+  readonly maxScriptExecutionSteps?: number;
+  readonly onScriptEvaluated?: (
+    txId: Buffer,
+    evaluation: LocalScriptEvaluation,
+  ) => void;
   readonly evaluateProofScript?: (
     programEnvelopeCbor: Uint8Array,
     contextCbor: Uint8Array,
@@ -221,6 +255,7 @@ export type PhaseBConfig = {
       readonly cpu: bigint;
       readonly memory: bigint;
     },
+    executionIndex?: bigint,
   ) => Effect.Effect<LocalScriptEvalResult, Error>;
 };
 

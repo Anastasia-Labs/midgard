@@ -1,6 +1,7 @@
 import { SqlClient } from "@effect/sql/SqlClient";
 import { Effect } from "effect";
 
+import * as HistoryAuthority from "../database/eventHistoryAuthority.js";
 import {
   DaPayloadPublicationsDB,
   ForeignTipReconciliationsDB,
@@ -40,6 +41,7 @@ export const readReadinessDatabaseState = (
         recentLimit: 3,
       }),
       journalAges: yield* retrieveActiveJournalAges,
+      foreignVerificationAuthority: yield* HistoryAuthority.retrieve,
     };
   });
 

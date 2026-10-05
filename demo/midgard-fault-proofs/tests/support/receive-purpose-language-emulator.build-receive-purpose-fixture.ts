@@ -17,7 +17,7 @@ import {
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   MidgardRedeemerTag,
-  validationAuxiliaryWitnessData,
+  retainedValidationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -62,6 +62,19 @@ export const buildReceivePurposeFixture = async (
       ? plutusV3ScriptWitness(PLUTUS_V3_RECEIVE_SCRIPT)
       : trivialScript;
   const scriptHash = hashScriptWitness(script);
+  const leadingReceive =
+    spec.leadingNativeReceive === true
+      ? nativeScriptWitness({ type: "atLeast", required: 0n, scripts: [] })
+      : undefined;
+  if (
+    leadingReceive !== undefined &&
+    (spec.language !== "plutusV3" ||
+      spec.purposeCount !== 1 ||
+      hashScriptWitness(leadingReceive) >= scriptHash)
+  )
+    throw new Error(
+      "a leading native receive needs a lone PlutusV3 receive it sorts before",
+    );
   const spendScriptHash = hashScriptWitness(trivialScript);
   // The key-held funding input sits at index 0 of the seeded transaction id;
   // every widening spend purpose is a later index of the same id, so the
@@ -69,6 +82,11 @@ export const buildReceivePurposeFixture = async (
   const spentTxId = Buffer.alloc(32, spec.inputByte);
   const spent = outRefFromByte(spec.inputByte);
   const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
+  // A second key-held input funds the leading receive's output.
+  const leadingFunding =
+    leadingReceive === undefined
+      ? []
+      : [{ outRef: outRefFromTxId(spentTxId, 1n), output: spentOutput }];
   const scriptSpends = Array.from(
     { length: spec.purposeCount - 1 },
     (_, index) => ({
@@ -81,24 +99,38 @@ export const buildReceivePurposeFixture = async (
   );
   const outputs = [
     makeProtectedScriptOutput(scriptHash, FUNDED_OUTPUT_LOVELACE),
+    ...(leadingReceive === undefined
+      ? []
+      : [
+          makeProtectedScriptOutput(
+            hashScriptWitness(leadingReceive),
+            FUNDED_OUTPUT_LOVELACE,
+          ),
+        ]),
     ...(scriptSpends.length > 0
       ? [makeOutput(FUNDED_OUTPUT_LOVELACE * BigInt(scriptSpends.length))]
       : []),
   ];
   const transaction = makeNativeTx({
     version: 1n,
-    spendInputs: [spent, ...scriptSpends.map(({ outRef }) => outRef)],
+    spendInputs: [
+      spent,
+      ...[...leadingFunding, ...scriptSpends].map(({ outRef }) => outRef),
+    ],
     outputs,
     scriptWitnesses:
-      spec.language === "plutusV3" && scriptSpends.length > 0
-        ? [script, trivialScript]
-        : [script],
+      leadingReceive !== undefined
+        ? [script, leadingReceive]
+        : spec.language === "plutusV3" && scriptSpends.length > 0
+          ? [script, trivialScript]
+          : [script],
     ...(spec.language === "plutusV3"
       ? {
           redeemerTxWitsPreimageCbor: makeRedeemersCbor([
             {
               tag: MidgardRedeemerTag.Receiving,
-              index: 0n,
+              // Receive purposes are indexed in script-hash order.
+              index: leadingReceive === undefined ? 0n : 1n,
               exUnits: [1_000_000n, 1_000_000n] as const,
             },
           ]),
@@ -132,6 +164,7 @@ export const buildReceivePurposeFixture = async (
       );
   const ledgerEntries = [
     { outRef: spent, output: spentOutput },
+    ...leadingFunding,
     ...scriptSpends,
   ];
   const allOperations = [
@@ -195,12 +228,15 @@ export const buildReceivePurposeFixture = async (
         : RECEIVE_PURPOSE_REJECT_CODE,
     }),
   );
-  const stateIndex = trace.witnesses.findIndex(
-    ({ phase, auxiliary }) =>
+  const receiveIndices = trace.witnesses.flatMap(
+    ({ phase, auxiliary }, index) =>
       phase === "nativeScripts" &&
       auxiliary?.kind === "nativeExecutionDescriptor" &&
-      auxiliary.purpose.purposeKind === 3,
+      auxiliary.purpose.purposeKind === 3
+        ? [index]
+        : [],
   );
+  const stateIndex = receiveIndices.at(-1) ?? -1;
   if (stateIndex < 0)
     throw new Error("receive fixture replay has no receive descriptor");
   const witness = trace.witnesses[stateIndex]!;
@@ -232,25 +268,42 @@ export const buildReceivePurposeFixture = async (
     Data.to(descriptor as never, SDK.ValidationTraceDescriptorSchema),
     "hex",
   );
-  const retainedKey: SDK.RetainedValidationWitnessKey = {
-    event_key: eventKey,
-    execution_index: BigInt(executionIndex),
-  };
-  const retainedValue: SDK.RetainedValidationWitness = {
-    machine_state: SDK.validationMachineStateDataFromCore(
-      trace.states[stateIndex]!,
-    ),
-    trace_proof: SDK.validationTraceProofDataFromCore(
-      claimedTree.proofs[stateIndex]!,
-    ),
-    phase: 9n,
-    program_counter: BigInt(witness.programCounter),
-    witness_cbor: witness.cbor.toString("hex"),
-    auxiliary: Data.from(
-      Data.to(validationAuxiliaryWitnessData(witness.auxiliary) as never),
-      SDK.ValidationAuxiliaryWitnessSchema,
-    ) as unknown as SDK.ValidationAuxiliaryWitness,
-  };
+  // Every receive execution's descriptor is retained, keyed by its index.
+  const validationTraceWitnesses: SDK.DaPayloadEntry[] = receiveIndices.map(
+    (index) => {
+      const retained = trace.witnesses[index]!;
+      if (retained.auxiliary?.kind !== "nativeExecutionDescriptor")
+        throw new Error("receive fixture retained the wrong auxiliary kind");
+      const key: SDK.RetainedValidationWitnessKey = {
+        event_key: eventKey,
+        execution_index: BigInt(retained.auxiliary.executionIndex),
+      };
+      const value: SDK.RetainedValidationWitness = {
+        machine_state: SDK.validationMachineStateDataFromCore(
+          trace.states[index]!,
+        ),
+        trace_proof: SDK.validationTraceProofDataFromCore(
+          claimedTree.proofs[index]!,
+        ),
+        phase: 9n,
+        program_counter: BigInt(retained.programCounter),
+        witness_cbor: retained.cbor.toString("hex"),
+        auxiliary: Data.from(
+          Data.to(
+            retainedValidationAuxiliaryWitnessData(retained.auxiliary) as never,
+          ),
+          SDK.RetainedValidationAuxiliaryWitnessSchema,
+        ) as unknown as SDK.RetainedValidationAuxiliaryWitness,
+      };
+      return [
+        SDK.encodeRetainedValidationWitnessKey(key).toString("hex"),
+        SDK.encodeRetainedValidationWitness(value).toString("hex"),
+      ];
+    },
+  );
+  const committedReason = receivePurposeReason(
+    spec.committedExecutionIndex ?? executionIndex,
+  );
   const nativeTx =
     spec.direction === "forced"
       ? decodeMidgardNativeTxFullFromCanonicalCbor(transaction.txCbor)
@@ -266,7 +319,7 @@ export const buildReceivePurposeFixture = async (
             nativeTx,
             orderKey,
             verdict: {
-              ForcedTxInvalid: { reason: receivePurposeReason(executionIndex) },
+              ForcedTxInvalid: { reason: committedReason },
             } as never,
           }
         : { kind: "normal", nativeTx },
@@ -282,12 +335,6 @@ export const buildReceivePurposeFixture = async (
     );
   if (!validationTraces.some(([key]) => key === eventKeyHex))
     throw new Error("receive fixture block omitted the accused event");
-  const validationTraceWitnesses: SDK.DaPayloadEntry[] = [
-    [
-      SDK.encodeRetainedValidationWitnessKey(retainedKey).toString("hex"),
-      SDK.encodeRetainedValidationWitness(retainedValue).toString("hex"),
-    ],
-  ];
   const root = await buildCountedRoot(
     SDK.ROOT_DOMAINS.validationTraces,
     validationTraces.map(([key, value]) => ({
@@ -347,7 +394,7 @@ export const buildReceivePurposeFixture = async (
       ? SDK.forcedVerdictSubject({
           transactionId: nativeTxId,
           sourceKey: orderKey,
-          rejectionReason: receivePurposeReason(executionIndex),
+          rejectionReason: committedReason,
         })
       : SDK.acceptedVerdictSubject(nativeTxId);
   return Object.freeze({
@@ -358,6 +405,7 @@ export const buildReceivePurposeFixture = async (
     trace,
     stateIndex,
     executionIndex,
+    ledgerEntries,
     eventKey,
     orderKey,
     subject,

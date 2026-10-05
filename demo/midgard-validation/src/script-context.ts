@@ -8,11 +8,10 @@ import {
   type Data,
   DataB,
   DataConstr,
-  dataFromCbor,
   DataI,
   DataList,
   DataMap,
-  DataPair,
+  type KV,
 } from "@harmoniclabs/plutus-data";
 import { Constr } from "@lucid-evolution/lucid";
 
@@ -22,6 +21,7 @@ import {
   MidgardScriptPurpose,
   midgardScriptPurposeData,
 } from "./midgard-redeemers.js";
+import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 import { txOutRefData } from "./tx-out-ref.js";
 
 type ResolvedInput = {
@@ -34,8 +34,8 @@ export type ScriptContextAddressEncoding = "cardano" | "midgard";
 export type ScriptMintValue = ReadonlyMap<string, ReadonlyMap<string, bigint>>;
 
 /**
- * `redeemers` is in the order of the transaction's redeemer witness list; the
- * redeemer map of the context keeps it.
+ * The context's redeemer map is in ledger order, (tag, index) ascending,
+ * whatever the order of `redeemers`.
  */
 export type ScriptContextView = {
   readonly txId: Buffer;
@@ -114,23 +114,20 @@ const addressData = (
 };
 
 /** Policies and asset names ordered by their bytes. */
-const multiAssetPairs = (assets: ScriptMintValue): DataPair<Data, Data>[] =>
+const multiAssetPairs = (assets: ScriptMintValue): KV<Data, Data>[] =>
   [...assets.entries()]
     .sort(([left], [right]) => compareHex(left, right))
-    .map(
-      ([policyId, names]) =>
-        new DataPair(
-          bytes(policyId),
-          new DataMap(
-            [...names.entries()]
-              .sort(([left], [right]) => compareHex(left, right))
-              .map(
-                ([name, quantity]) =>
-                  new DataPair(bytes(name), new DataI(quantity)),
-              ),
-          ),
-        ),
-    );
+    .map(([policyId, names]) => ({
+      fst: bytes(policyId),
+      snd: new DataMap(
+        [...names.entries()]
+          .sort(([left], [right]) => compareHex(left, right))
+          .map(([name, quantity]) => ({
+            fst: bytes(name),
+            snd: new DataI(quantity),
+          })),
+      ),
+    }));
 
 const valueData = (output: MidgardTxOutput): DataMap<Data, Data> => {
   const coin = output.value.lovelace;
@@ -138,10 +135,10 @@ const valueData = (output: MidgardTxOutput): DataMap<Data, Data> => {
     ...(coin === 0n
       ? []
       : [
-          new DataPair(
-            bytes(""),
-            new DataMap([new DataPair(bytes(""), new DataI(coin))]),
-          ),
+          {
+            fst: bytes(""),
+            snd: new DataMap([{ fst: bytes(""), snd: new DataI(coin) }]),
+          },
         ]),
     ...multiAssetPairs(output.value.assets),
   ]);
@@ -155,7 +152,7 @@ const datumData = (output: MidgardTxOutput): DataConstr => {
   if (datum === undefined) {
     return constr(0, []);
   }
-  return constr(2, [dataFromCbor(datum.cbor)]);
+  return constr(2, [plutusDataFromCborIterative(datum.cbor)]);
 };
 
 export const scriptContextTxOutData = (
@@ -198,18 +195,31 @@ const validRangeData = (
   ]);
 
 const redeemerData = (redeemer: MidgardLedgerRedeemer): Data =>
-  dataFromCbor(redeemer.dataCbor);
+  plutusDataFromCborIterative(redeemer.dataCbor);
+
+// Cardano orders its redeemer map by (tag, index), and Midgard's redeemer
+// tags follow the same order: spend, mint, reward, then receiving.
+const compareRedeemerPointers = (
+  left: ScriptContextView["redeemers"][number],
+  right: ScriptContextView["redeemers"][number],
+): number =>
+  left.redeemer.tag - right.redeemer.tag ||
+  (left.redeemer.index < right.redeemer.index
+    ? -1
+    : left.redeemer.index > right.redeemer.index
+      ? 1
+      : 0);
 
 const redeemersData = (
   redeemers: ScriptContextView["redeemers"],
   purposeData: (purpose: MidgardScriptPurpose) => Constr<unknown> | undefined,
 ): DataMap<Data, Data> =>
   new DataMap(
-    redeemers.flatMap((entry) => {
+    [...redeemers].sort(compareRedeemerPointers).flatMap((entry) => {
       const purpose = purposeData(entry.purpose);
       return purpose === undefined
         ? []
-        : [new DataPair(fixedShapeData(purpose), redeemerData(entry.redeemer))];
+        : [{ fst: fixedShapeData(purpose), snd: redeemerData(entry.redeemer) }];
     }),
   );
 
@@ -217,11 +227,10 @@ const withdrawalsData = (
   observers: ScriptContextView["observers"],
 ): DataMap<Data, Data> =>
   new DataMap(
-    [...observers]
-      .sort()
-      .map(
-        (observer) => new DataPair(constr(1, [bytes(observer)]), new DataI(0n)),
-      ),
+    [...observers].sort().map((observer) => ({
+      fst: constr(1, [bytes(observer)]),
+      snd: new DataI(0n),
+    })),
   );
 
 const bytesList = (values: readonly string[]): DataList =>
@@ -270,7 +279,7 @@ const spendDatumData = (
     return none();
   }
 
-  return some(dataFromCbor(datum.cbor));
+  return some(plutusDataFromCborIterative(datum.cbor));
 };
 
 const cardanoScriptInfoData = (

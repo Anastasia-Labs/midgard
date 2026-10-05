@@ -1,4 +1,8 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
+import {
+  buildMidgardMpfDeletionOpening,
+  parseMidgardMpfProofJson,
+} from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { h32 } from "@al-ft/midgard-test-support/hex";
@@ -22,6 +26,7 @@ import {
 export const buildL2ReplayFixture = async ({
   matchingCommittedRoot,
   withBranchProof = false,
+  survivorCount = withBranchProof ? 16 : 0,
   spendInputCbor,
   outputCbor,
   replayedOutputCbor,
@@ -30,6 +35,8 @@ export const buildL2ReplayFixture = async ({
 }: {
   readonly matchingCommittedRoot: boolean;
   readonly withBranchProof?: boolean;
+  /** Ledger entries besides the spent one; 16 with `withBranchProof`. */
+  readonly survivorCount?: number;
   readonly spendInputCbor?: Buffer;
   readonly outputCbor?: Buffer;
   readonly replayedOutputCbor?: Buffer;
@@ -49,24 +56,26 @@ export const buildL2ReplayFixture = async ({
   const producedValue = ledgerTrieValue(producedKey, producedOutput);
   const producedWitnessBytes =
     producedWitnessValue === "descriptor" ? producedValue : producedOutput;
-  const survivors = withBranchProof
-    ? Array.from({ length: 16 }, (_, index) => {
-        const key = spendInputItem(h32(100 + index), index);
-        return {
-          key,
-          outputCbor: spentOutputCbor,
-          value: ledgerTrieValue(key, spentOutputCbor),
-        };
-      })
-    : [];
+  const survivors = Array.from({ length: survivorCount }, (_, index) => {
+    const key = spendInputItem(h32(100 + index), index);
+    return {
+      key,
+      outputCbor: spentOutputCbor,
+      value: ledgerTrieValue(key, spentOutputCbor),
+    };
+  });
 
   const ledger = await Trie.fromList([
     { key: spentKey, value: spentValue },
     ...survivors.map(({ key, value }) => ({ key, value })),
   ]);
   const preRoot = ledger.hash.toString("hex");
-  const membershipProof = await ledger.prove(spentKey);
   const deleteProof = await ledger.prove(spentKey);
+  const deletionOpening = await buildMidgardMpfDeletionOpening(
+    ledger,
+    spentKey,
+    parseMidgardMpfProofJson(deleteProof.toJSON()),
+  );
   await ledger.delete(spentKey);
   await ledger.insert(producedKey, producedValue);
   const insertProof = await ledger.prove(producedKey);
@@ -120,7 +129,6 @@ export const buildL2ReplayFixture = async ({
       }),
     ],
   });
-  const encodedMembershipProof = sdkProof(membershipProof);
   const encodedDeleteProof = sdkProof(deleteProof);
   const encodedInsertProof = sdkProof(insertProof);
   return {
@@ -131,7 +139,7 @@ export const buildL2ReplayFixture = async ({
         {
           key: spentKey.toString("hex"),
           value: spentValue.toString("hex"),
-          membership_proof: encodedMembershipProof,
+          opening: deletionOpening.toString("hex"),
           delete_proof: encodedDeleteProof,
         },
       ],

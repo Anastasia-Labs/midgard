@@ -1,7 +1,6 @@
 import { Worker } from "node:worker_threads";
 
 import {
-  type LocalScriptEvalResult,
   type PhaseAConfig,
   type PhaseAResult,
   type QueuedTx,
@@ -26,10 +25,6 @@ export type ValidationPoolService = {
   readonly runPhaseAChunk: (
     txs: readonly QueuedTx[],
   ) => Effect.Effect<PhaseAResult, ValidationWorkerError>;
-  readonly evaluateScript: (
-    scriptBytes: Uint8Array,
-    contextCbor: Uint8Array,
-  ) => Effect.Effect<LocalScriptEvalResult, ValidationWorkerError>;
   readonly ready: Effect.Effect<void, ValidationWorkerError>;
   readonly stats: Effect.Effect<{
     readonly busyWorkers: number;
@@ -77,11 +72,6 @@ export const queueDepthGauge = Metric.gauge("validation_pool_queue_depth", {
 export const phaseAJobDuration = Metric.timer(
   "validation_pool_phase_a_job_duration",
   "Duration of Phase A worker jobs",
-);
-
-export const uplcJobDuration = Metric.timer(
-  "validation_pool_uplc_job_duration",
-  "Duration of UPLC worker jobs",
 );
 
 export const serializeDuration = Metric.timer(

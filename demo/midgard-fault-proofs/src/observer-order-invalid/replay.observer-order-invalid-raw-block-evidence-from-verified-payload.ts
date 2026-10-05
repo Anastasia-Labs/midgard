@@ -17,6 +17,11 @@ import {
   requireTransactionsRootMatch,
 } from "../prepare-double-spend.js";
 import {
+  acceptedTransactionSubject,
+  type DetectionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
+import {
   OBSERVER_ORDER_INVALID_FIELD_INDEX,
   type ObserverOrderInvalidEvidence,
   observerOrderInvalidEvidenceCloses,
@@ -29,17 +34,18 @@ export const OBSERVER_ORDER_INVALID_VIOLATION_ID =
 export const OBSERVER_ORDER_INVALID_RAW_EVIDENCE =
   "midgard-observer-order-invalid-raw-evidence-v1" as const;
 
-export type ObserverOrderInvalidReplayDetection = Readonly<{
-  detectionId: string;
-  headerHash: string;
-  violationId: typeof OBSERVER_ORDER_INVALID_VIOLATION_ID;
-  position: bigint;
-  transactionId: string;
-  observerIndex: number;
-  source: "accepted" | "forced";
-  direction: "wrongfulAcceptance" | "wrongfulRejection";
-  forcedIndex?: number;
-}>;
+export type ObserverOrderInvalidReplayDetection = DetectionSubject &
+  Readonly<{
+    detectionId: string;
+    headerHash: string;
+    violationId: typeof OBSERVER_ORDER_INVALID_VIOLATION_ID;
+    position: bigint;
+    transactionId: string;
+    observerIndex: number;
+    source: "accepted" | "forced";
+    direction: "wrongfulAcceptance" | "wrongfulRejection";
+    forcedIndex?: number;
+  }>;
 
 export type AuthenticatedObserverOrderInvalidRawTransaction = Readonly<{
   index: number;
@@ -219,6 +225,7 @@ export const detectObserverOrderInvalidAcceptedRawReplay = (
       if (evidence === null) continue;
       detections.push(
         Object.freeze({
+          ...acceptedTransactionSubject(transaction.nodeTxId),
           detectionId: `${OBSERVER_ORDER_INVALID_VIOLATION_ID}:accepted:${transaction.index.toString()}:${transaction.nodeTxId}:${observerIndex.toString()}`,
           headerHash: block.headerHash,
           violationId: OBSERVER_ORDER_INVALID_VIOLATION_ID,
@@ -279,6 +286,7 @@ export const detectObserverOrderInvalidForcedReplay = (
       if (!observerOrderInvalidEvidenceCloses(evidence)) return;
       detections.push(
         Object.freeze({
+          ...forcedTransactionSubject(transaction.key),
           detectionId: `${OBSERVER_ORDER_INVALID_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${observerIndex.toString()}`,
           headerHash: block.headerHash,
           violationId: OBSERVER_ORDER_INVALID_VIOLATION_ID,

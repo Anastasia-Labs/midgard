@@ -38,7 +38,6 @@ import {
   assertDeploymentManifestMatchesConfig,
   buildRealTxOrderContracts,
   eventHistoryBoundsFromExplicitEnvironment,
-  loadRealBlueprintSha256,
   readRuntimeDeploymentManifestFile,
   withRealStateQueueAndOperatorContracts,
 } from "../src/services/midgard-contracts.js";
@@ -56,44 +55,10 @@ import {
   collectScriptInventory,
   scriptInventoryId,
 } from "./helpers/script-inventory.js";
+import { registerBlueprintProfileBindingTests } from "./midgard-contracts.blueprint-binding.js";
 
 describe("midgard contracts registry", () => {
-  unitIt.each(["missing", "digest", "bytes"])(
-    "rejects a %s blueprint profile binding",
-    async (mutation) => {
-      const dir = await mkdtemp(join(tmpdir(), "midgard-profile-blueprint-"));
-      const blueprintPath = join(dir, "plutus.json");
-      const raw = await readFile(
-        new URL("../../../onchain/aiken/plutus.json", import.meta.url),
-      );
-      try {
-        await writeFile(blueprintPath, raw);
-        if (mutation !== "missing") {
-          await writeFile(
-            `${blueprintPath}.deployment.json`,
-            JSON.stringify({
-              profile: SELECTED_DEPLOYMENT_PROFILE,
-              profileDigest:
-                mutation === "digest"
-                  ? "00".repeat(32)
-                  : SELECTED_DEPLOYMENT_PROFILE_DIGEST,
-              blueprintHash:
-                mutation === "bytes"
-                  ? "00".repeat(32)
-                  : createHash("sha256").update(raw).digest("hex"),
-            }),
-          );
-        }
-        vi.stubEnv("MIDGARD_REAL_BLUEPRINT_PATH", blueprintPath);
-        await expect(
-          Effect.runPromise(loadRealBlueprintSha256()),
-        ).rejects.toThrow(/Failed to hash canonical real blueprint/u);
-      } finally {
-        vi.unstubAllEnvs();
-        await rm(dir, { recursive: true });
-      }
-    },
-  );
+  registerBlueprintProfileBindingTests();
   const oneShotOutRef = {
     txHash: "00".repeat(32),
     outputIndex: 0,
@@ -159,34 +124,39 @@ describe("midgard contracts registry", () => {
       // normalize bigint parameters as decimal strings. Re-pinned by #689:
       // the pooled DA bond validator was added, the per-block availability
       // bond yield removed, and the availability-challenge and DA-attestation
-      // parameters changed (pool policy, commitment-bound challenges).
-      // #683 changes only the fraud-removal withdrawal script; parameters stay fixed.
-      expect(
-        createHash("sha256")
-          .update(
-            JSON.stringify(normalizeDeploymentManifestJsonValue(resolved)),
-          )
-          .digest("hex"),
-      ).toBe(
-        "e5a7971bdb9511150006bc6eb52a0f77e0dbef8a45e30e9cf816e78841e58de3",
-      );
+      // parameters changed (pool policy, commitment-bound challenges). MPF
+      // fixes (leaf fold, terminal neighbour, deletion Branch, emptied ledger
+      // root, disjoint leaf and branch node preimages) change proofs.
+      expect
+        .soft(
+          createHash("sha256")
+            .update(
+              JSON.stringify(normalizeDeploymentManifestJsonValue(resolved)),
+            )
+            .digest("hex"),
+        )
+        .toBe(
+          "68ba82a48ff6ff22c5319cc71a6da31438ed42e2e64ddd9ea69a11179144bee9",
+        );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
       // Re-pinned by #689: the state queue and correction lock are applied over
       // the availability-challenge policy, whose parameters now include the
-      // pooled DA bond policy.
-      expect(
-        createHash("sha256")
-          .update(
-            JSON.stringify({
-              stateQueue: resolved.stateQueue,
-              correctionLock: resolved.correctionLock,
-            }),
-          )
-          .digest("hex"),
-      ).toBe(
-        "e5953074463d9a36251fd2c005132b692cf3776c44451ff42295e28b64f81493",
-      );
+      // pooled DA bond policy, and again for disjoint MPF node preimages.
+      expect
+        .soft(
+          createHash("sha256")
+            .update(
+              JSON.stringify({
+                stateQueue: resolved.stateQueue,
+                correctionLock: resolved.correctionLock,
+              }),
+            )
+            .digest("hex"),
+        )
+        .toBe(
+          "febc0f61316bf0753595327213fbaa37298bad8b8f579006be0e39288949f529",
+        );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test
       // built on this registry. Rather than name a handful of roles and assert

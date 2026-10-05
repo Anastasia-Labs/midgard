@@ -3,6 +3,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { forcedTxFromCoreCompact } from "../step-support.js";
+import { forcedTransactionSubject } from "../workflow/detection-subject.js";
 import {
   invalidRangeEvidenceCloses,
   prepareInvalidRangeEvidence,
@@ -34,6 +35,7 @@ export const detectInvalidRangeForcedReplay = (block: CanonicalBlockEvidence) =>
       return invalidRangeEvidenceCloses(evidence)
         ? [
             Object.freeze({
+              ...forcedTransactionSubject(transaction.key),
               detectionId: `invalid-range:forced:${index.toString()}:${transaction.value.tx_id}:${reason}`,
               headerHash: block.headerHash,
               violationId: "invalid-range" as const,

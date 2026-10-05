@@ -97,9 +97,8 @@ pnpm --dir midgard-fault-proofs run check:builder-exports
 The first build includes core. The export check loads the local built core,
 validation, and SDK through ordinary ESM and CommonJS package resolution,
 checks a canonical terminal vector, and exercises queue/lock construction and
-strict refusal. Core bundles the ESM-only `cborg` dependency so its advertised
-CommonJS exports remain usable. After builder changes, run the affected
-positive/refusal scenarios and `pnpm test` from `demo/`; also run
+strict refusal. After builder changes, run the affected positive/refusal
+scenarios and `pnpm test` from `demo/`; also run
 `pnpm --dir da-committee-node test`, which the workspace lane runner omits.
 
 `tests/support/emulator/protocol-parameters.ts` is the single fault-proof

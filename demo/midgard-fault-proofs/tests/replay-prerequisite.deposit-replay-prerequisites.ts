@@ -13,6 +13,10 @@ import type { TransitionTraceDetection } from "../src/transition-trace/detect.js
 import { provenTransitionEventKeyCbor } from "../src/transition-trace/replay-authority.js";
 import { type CanonicalViolationDetection } from "../src/workflow/classification.js";
 import {
+  depositSubject,
+  eventKeyCborSubject,
+} from "../src/workflow/detection-subject.js";
+import {
   assertReplayPrerequisiteCovered,
   CanonicalReplayPrerequisiteError,
   replayPrerequisiteFailure,
@@ -21,13 +25,14 @@ import { depositEvidence } from "./replay-prerequisite.withdrawal-replay-prerequ
 
 describe("deposit replay prerequisites", () => {
   it("lets the cross-block duplicate finding at the source position cover a repeated deposit", () => {
-    const { evidence, eventKey } = depositEvidence();
+    const { evidence, eventKey, depositId } = depositEvidence();
     const failure = replayPrerequisiteFailure(
       evidence.headerHash,
       eventKey(1),
       "prior_transition_effect",
     ).failures[0]!;
     const finding = (position: bigint): CanonicalViolationDetection => ({
+      ...depositSubject(depositId(Number(position))),
       headerHash: evidence.headerHash,
       violationId: CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
       detectionId: `cross-block-duplicate-event:${position}`,
@@ -78,6 +83,7 @@ describe("deposit replay prerequisites", () => {
     const proven = provenTransitionEventKeyCbor(detection);
     expect(proven).toBe(Data.to(eventKey(0), EventKey));
     const finding = {
+      ...eventKeyCborSubject(proven),
       headerHash: evidence.headerHash,
       violationId: "transition-trace",
       detectionId: "transition-trace:0:outOfWindowSourceEvent",
@@ -104,8 +110,9 @@ describe("deposit replay prerequisites", () => {
   });
 
   it("lets only the fabricated-deposit finding at the exact leaf cover an absent or mismatched origin", () => {
-    const { evidence, eventKey } = depositEvidence();
+    const { evidence, eventKey, depositId } = depositEvidence();
     const fabricated = (position: bigint): CanonicalViolationDetection => ({
+      ...depositSubject(depositId(Number(position))),
       headerHash: evidence.headerHash,
       detectionId: `${FABRICATED_DEPOSIT_VIOLATION_ID}:${position.toString()}`,
       violationId: FABRICATED_DEPOSIT_VIOLATION_ID,

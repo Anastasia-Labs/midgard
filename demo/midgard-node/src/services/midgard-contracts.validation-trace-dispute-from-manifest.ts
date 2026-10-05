@@ -85,9 +85,9 @@ export const eventHistoryContractsFromManifest = (
 
 /**
  * A validation-trace member the deployment manifest does not record: the
- * canonical-decode item stages, the prepare resolvers (`resolvers` is the same
- * list), the proof-item validator, the semantic resolvers outside the
- * published script-sources and phase-A sets, and therefore the full `steps`
+ * noncanonical prepare resolvers (`resolvers` is the same list), semantic
+ * resolvers outside the published canonical-decode, script-sources and phase-A
+ * sets, and therefore the full `steps`
  * list. The manifest carries no bytes for any of them, and no locally built
  * bundle may stand in for a deployed script, so reading one fails loudly.
  */
@@ -193,6 +193,16 @@ export const validationTraceDisputeFromManifest = (
       finalizeFrameExecutor: executors[1],
       settlement: spend("validationTraceDisputeRedeemerItemSettlement"),
     },
+    proofItem: spend("validationTraceDisputeProofItem"),
+    canonicalDecodePrepare: spend(
+      "validationTraceDisputeCanonicalDecodePrepare",
+    ),
+    canonicalDecodeItemStages: {
+      source: spend("validationTraceDisputeCanonicalDecodeItemSource"),
+      observe: spend("validationTraceDisputeCanonicalDecodeItemObserve"),
+      proof: spend("validationTraceDisputeCanonicalDecodeItemProof"),
+      settlement: spend("validationTraceDisputeCanonicalDecodeItemSettlement"),
+    },
     semanticResolvers,
     yields: Object.fromEntries(
       VALIDATION_TRACE_RECORDED_YIELD_KEYS.map((key) => [
@@ -209,11 +219,6 @@ export const validationTraceDisputeFromManifest = (
     steps: unrecordedValidationTraceMember(
       sourcePath,
       "steps (the full list includes unrecorded members)",
-    ),
-    proofItem: unrecordedValidationTraceMember(sourcePath, "proof item"),
-    canonicalDecodeItemStages: unrecordedValidationTraceMember(
-      sourcePath,
-      "canonical-decode item stages",
     ),
     prepareResolvers: unrecordedValidationTraceMember(
       sourcePath,

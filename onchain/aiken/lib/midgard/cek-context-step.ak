@@ -59,6 +59,30 @@ pub fn native_facts(control: NativeScriptsControlV1) -> NativeFacts {
   }
 }
 
+fn drop_fields(fields: List<Data>, count: Int) -> List<Data> {
+  if count == 0 {
+    fields
+  } else {
+    drop_fields(builtin.tail_list(fields), count - 1)
+  }
+}
+
+/// The execution frontier of a bound CEK witness control. `control` is the
+/// binder-authenticated `CekWitnessControlV1`, whose field 0 is the
+/// `NativeScriptsControlV1`; `execution_count` and `execution_peaks` are its
+/// fields 21 and 22.
+pub fn execution_frontier(control: Data) -> (Int, List<FrontierPeak>) {
+  let native = builtin.un_constr_data(
+    builtin.head_list(builtin.un_constr_data(control).2nd),
+  ).2nd
+  let execution = drop_fields(native, 21)
+  expect count: Int = builtin.head_list(execution)
+  expect peaks: List<FrontierPeak> = builtin.head_list(
+    builtin.tail_list(execution),
+  )
+  (count, peaks)
+}
+
 fn no_auxiliary(auxiliary: Data) -> Bool {
   builtin.un_constr_data(auxiliary) == Pair(0, [])
 }

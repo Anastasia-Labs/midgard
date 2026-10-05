@@ -30,6 +30,7 @@ import { Effect } from "effect";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
+import { verdictDetectionSubject } from "../workflow/detection-subject.js";
 
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY =
   "outputReferenceScriptDecoding" as const;
@@ -445,6 +446,7 @@ export const detectOutputReferenceScriptDecodingCanonicalViolations = (
     if (position < 0)
       return fail("detected subject is absent from authenticated block");
     return Object.freeze({
+      ...verdictDetectionSubject(evidence.subject),
       detectionId: `${violationId}:${forced ? "forced" : "accepted"}:${position.toString()}:${evidence.subject.transaction_id}:${evidence.outputIndex.toString()}:${evidence.resultClass.toString()}`,
       headerHash: block.headerHash,
       violationId,

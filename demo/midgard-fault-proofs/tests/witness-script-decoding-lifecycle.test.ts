@@ -100,7 +100,7 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       adjacent,
     ]);
     const evidence = acceptedEvidence(shape);
-    expect(scriptWitnessField([shape.item])).toHaveLength(MAXIMUM_FIELD_BYTES);
+    expect(scriptWitnessField(shape.items)).toHaveLength(MAXIMUM_FIELD_BYTES);
     expectReplayDetection(
       block,
       [shape, honestNative, honestPlutus],
@@ -322,7 +322,7 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
     const shape = nativeMaximumShape();
     const { block, setup, inclusionOf } = await h.acceptedBlock(shape);
     const evidence = acceptedEvidence(shape);
-    expect(scriptWitnessField([shape.item])).toHaveLength(MAXIMUM_FIELD_BYTES);
+    expect(scriptWitnessField(shape.items)).toHaveLength(MAXIMUM_FIELD_BYTES);
     expect(evidence.chunkProofCount).toBe(9);
     expectReplayDetection(block, [shape], evidence, [
       "witness-native-script-malformed",
@@ -730,7 +730,7 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
   it("contradicts a wrongful node-limit rejection of the widest canonical script the field bound admits", async () => {
     const h = await makeHarness();
     const shape = wideMaximumShape();
-    expect(scriptWitnessField([shape.item])).toHaveLength(MAXIMUM_FIELD_BYTES);
+    expect(scriptWitnessField(shape.items)).toHaveLength(MAXIMUM_FIELD_BYTES);
     const reason = reasonOf("WitnessNativeScriptNodeLimit", 0n);
     const forced = await h.forcedBlock(shape, reason);
     const evidence = forcedEvidence(shape, forced.orderKey, reason);
@@ -790,9 +790,7 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
     const h = await makeHarness();
     const shape = deepShape();
     if (DEEP_DEPTH === DEEP_MAXIMUM_DEPTH)
-      expect(scriptWitnessField([shape.item])).toHaveLength(
-        MAXIMUM_FIELD_BYTES,
-      );
+      expect(scriptWitnessField(shape.items)).toHaveLength(MAXIMUM_FIELD_BYTES);
     const reason = reasonOf("WitnessNativeScriptDepthLimit", 0n);
     const forced = await h.forcedBlock(shape, reason);
     const evidence = forcedEvidence(shape, forced.orderKey, reason);

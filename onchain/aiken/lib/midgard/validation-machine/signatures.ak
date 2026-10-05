@@ -1,4 +1,6 @@
+use aiken/builtin
 use aiken/cbor
+use aiken/collection/list
 use aiken/crypto.{blake2b_224, verify_ed25519_signature}
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
@@ -84,10 +86,132 @@ fn signature_address_order_key(
     |> bytearray.concat(cbor.serialise(item_index))
 }
 
+// Positive canonical CBOR integers preserve numeric order at the supported
+// physical-index boundary. The suffix is decoded once, rather than serialising
+// an index for each scanned item; the public order key stays byte-for-byte.
+fn previous_signature_index(key: ByteArray) -> Int {
+  let length = bytearray.length(key)
+  if length == 0 {
+    -1
+  } else if length == 130 {
+    let index = bytearray.at(key, 129)
+    expect index < 24
+    index
+  } else if length == 131 {
+    expect bytearray.at(key, 129) == 24
+    let index = bytearray.at(key, 130)
+    expect index >= 24
+    index
+  } else {
+    expect length == 132
+    expect bytearray.at(key, 129) == 25
+    let index = bytearray.at(key, 130) * 256 + bytearray.at(key, 131)
+    expect index > 255
+    index
+  }
+}
+
+fn signature_key_is_less(
+  signer_hash: ByteArray,
+  bytes: ByteArray,
+  index: Int,
+  other_signer_hash: ByteArray,
+  other_bytes: ByteArray,
+  other_index: Int,
+) -> Bool {
+  when bytearray.compare(signer_hash, other_signer_hash) is {
+    Less -> True
+    Greater -> False
+    Equal ->
+      when bytearray.compare(bytes, other_bytes) is {
+        Less -> True
+        Greater -> False
+        Equal -> index < other_index
+      }
+  }
+}
+
+/// Every authenticated key must lie outside the open interval between the
+/// previous consumed key and this item. Together with the existing strict
+/// progress guard this proves this item is the unique immediate successor.
+fn signature_has_no_skipped_key(
+  preimage: ByteArray,
+  count: Int,
+  payload_start: Int,
+  index: Int,
+  previous_hash: ByteArray,
+  previous_bytes: ByteArray,
+  previous_index: Int,
+  current_hash: ByteArray,
+  current_bytes: ByteArray,
+  current_index: Int,
+) -> Bool {
+  if index == count {
+    True
+  } else {
+    // The fixed door pins exact count/stride/length and payload_start is derived
+    // from an authenticated extent. Thus each range is fully inside the field;
+    // no prover offset is accepted and the builtin cannot clamp here.
+    let bytes = builtin.slice_bytearray(
+      payload_start + index * native_tx_field_access_v1.address_witness_stride,
+      native_tx_field_access_v1.address_witness_item_bytes,
+      preimage,
+    )
+    // CanonicalDecode precedes Signatures and authenticates each fixed item as
+    // 82 58 20 <vkey32> 58 40 <signature64>. Decode only the consumed witness;
+    // sorting reads the same authenticated key bytes at their fixed offset.
+    let hash = blake2b_224(builtin.slice_bytearray(3, 32, bytes))
+    if signature_key_is_less(
+      hash,
+      bytes,
+      index,
+      current_hash,
+      current_bytes,
+      current_index,
+    ) {
+      and {
+        previous_index != -1,
+        !signature_key_is_less(
+          previous_hash,
+          previous_bytes,
+          previous_index,
+          hash,
+          bytes,
+          index,
+        ),
+        signature_has_no_skipped_key(
+          preimage,
+          count,
+          payload_start,
+          index + 1,
+          previous_hash,
+          previous_bytes,
+          previous_index,
+          current_hash,
+          current_bytes,
+          current_index,
+        ),
+      }
+    } else {
+      signature_has_no_skipped_key(
+        preimage,
+        count,
+        payload_start,
+        index + 1,
+        previous_hash,
+        previous_bytes,
+        previous_index,
+        current_hash,
+        current_bytes,
+        current_index,
+      )
+    }
+  }
+}
+
 /// One §5.3 field-7 address-witness item.
 ///
-/// `item_index` is the prover's to choose — the order this phase enforces is on
-/// the derived `order_key`, which includes the index, not on the index itself.
+/// `item_index` must be the least authenticated derived key after the last key.
 fn verify_signature_address_item(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -104,7 +228,7 @@ fn verify_signature_address_item(
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
   )
-  let item = field_door.open_machine_field_item(
+  let item = field_door.open_machine_fixed_field_item(
     door,
     verified,
     witness_set,
@@ -112,8 +236,9 @@ fn verify_signature_address_item(
     item_index,
     carriage,
   )
-  let item_count = field_door.machine_field_item_count(item)
-  let item_bytes = field_door.machine_field_item_bytes(item)
+  expect native_tx_field_access_v1.Whole { bytes: preimage, .. } = item.view
+  let item_count = field_door.machine_fixed_field_item_count(item)
+  let item_bytes = field_door.machine_fixed_field_item_bytes(item)
   let active_count = if control.address_count == -1 {
     item_count
   } else {
@@ -190,6 +315,29 @@ fn verify_signature_address_item(
     item_count == active_count,
     item_index >= 0,
     item_index < active_count,
+    or {
+      // Equal authenticated prefixes with adjacent positive indexes have no
+      // key between them. This exact duplicate case needs no field-wide scan.
+      and {
+        bytearray.take(control.previous_order_key, 129) == bytearray.take(
+          order_key,
+          129,
+        ),
+        item_index == previous_signature_index(control.previous_order_key) + 1,
+      },
+      signature_has_no_skipped_key(
+        preimage,
+        active_count,
+        item.item_offset - item_index * native_tx_field_access_v1.address_witness_stride,
+        0,
+        bytearray.take(control.previous_order_key, 28),
+        builtin.slice_bytearray(28, 101, control.previous_order_key),
+        previous_signature_index(control.previous_order_key),
+        signer_hash,
+        item_bytes,
+        item_index,
+      ),
+    },
     or {
       control.previous_order_key == #"",
       bytearray.compare(control.previous_order_key, order_key) == Less,
@@ -514,4 +662,47 @@ pub fn verify_signatures_handoff_semantics_v1(
     witness,
     signatures_control_from_witness(witness.work_witness_cbor),
   )
+}
+
+fn signature_scan_budget_fixture(
+  count: Int,
+  header: ByteArray,
+  payload_start: Int,
+) -> Bool {
+  let item = #"58658258200000000000000000000000000000000000000000000000000000000000000000584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+  let bytes = list.foldl(
+    list.repeat(item, count),
+    header,
+    fn(item, acc) { bytearray.concat(acc, item) },
+  )
+  let view = native_tx_field_access_v1.Whole {
+    bytes,
+    count,
+    stride: native_tx_field_access_v1.address_witness_stride,
+  }
+  let item_bytes = native_tx_field_access_v1.whole_view_read_range(
+    view,
+    payload_start,
+    101,
+  )
+  signature_has_no_skipped_key(
+    bytes,
+    count,
+    payload_start,
+    0,
+    #"",
+    #"",
+    -1,
+    blake2b_224(builtin.slice_bytearray(3, 32, item_bytes)),
+    item_bytes,
+    0,
+  )
+}
+
+test signature_scan_only_budget_124() {
+  signature_scan_budget_fixture(124, #"987c", 4)
+}
+
+test signature_scan_only_budget_318() {
+  signature_scan_budget_fixture(318, #"99013e", 5)
 }

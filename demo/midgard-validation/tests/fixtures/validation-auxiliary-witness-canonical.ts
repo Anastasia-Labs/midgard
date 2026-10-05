@@ -63,6 +63,7 @@ const redeemerControl = {
   activeRedeemerLeaf: Buffer.alloc(0),
   activePurpose: emptySummary,
   currentRedeemer: emptySummary,
+  purposeBound: 1,
 } as const;
 const contextPartsControl = {
   redeemerItems: emptySequence,
@@ -150,6 +151,7 @@ const ledgerMutation = {
   operation: { type: "delete", key: bytes("1c") },
   preRoot: hash(0x1d),
   postRoot: hash(0x1e),
+  deletionOpening: Buffer.alloc(0),
   proofFoldTrace: {
     descriptor: proofDescriptor,
     frames: [],
@@ -360,18 +362,18 @@ export const canonicalValidationAuxiliaryWitnesses = [
       kind: "cekRedeemerContextSelect",
       control: redeemerControl,
       itemIndex: 0,
-      itemCount: 1,
       totalLength: 1,
       itemCommitment: hash(0x2a),
-      redeemerSiblings: [],
-      purposeFrontierIndex: 0,
       purpose: {
         purposeKind: 0,
         purposeIndex: 0n,
         scriptHash: hash(0x2b),
         subject: bytes("13"),
-        siblings: [],
       },
+      executionLanguageTag: 3,
+      sourceLeaf: hash(0x2c),
+      executionSiblings: [],
+      itemFrontierRoot: hash(0x2d),
     }),
   ],
   [
@@ -520,7 +522,6 @@ export const canonicalValidationAuxiliaryWitnesses = [
     33,
     auxiliary({
       kind: "ledgerOutputProofFinalize",
-      descriptorCbor: bytes("22"),
       signerProof,
     }),
   ],
@@ -530,6 +531,7 @@ export const canonicalValidationAuxiliaryWitnesses = [
       kind: "ledgerDeltaProofFrame",
       frame: proofFrame,
       siblings: [],
+      opening: Buffer.alloc(0),
     }),
   ],
   [
@@ -593,6 +595,16 @@ export const canonicalValidationAuxiliaryWitnesses = [
       kind: "mintFoldAsset",
       chunkProof,
       nextChunkProof: null,
+    }),
+  ],
+  [
+    40,
+    auxiliary({
+      kind: "cekRedeemerContextSkip",
+      control: redeemerControl,
+      purposeLeaf: hash(0x2e),
+      sourceLeaf: hash(0x2f),
+      executionSiblings: [],
     }),
   ],
 ] as const;

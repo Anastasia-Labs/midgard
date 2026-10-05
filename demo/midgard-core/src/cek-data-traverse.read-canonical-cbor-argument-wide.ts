@@ -11,7 +11,6 @@ import {
   type MidgardCekDataTraverseControl,
   MidgardCekDataTraverseStages,
   optionalControlCbor,
-  optionalIntCbor,
   type SmallConstructorHead,
   UINT32_MAX,
   UINT64_MAX,
@@ -48,7 +47,6 @@ export const encodeMidgardCekDataTraverseControl = (
     encodeCbor(BigInt(control.sourceLength)),
     encodeCbor(BigInt(control.offset)),
     encodeCbor(control.frameRoot),
-    optionalIntCbor(control.pendingLargeExpectedChildren),
     optionalControlCbor(control.integer),
     optionalControlCbor(control.bytes),
     optionalSummaryCbor(control.result),
@@ -77,6 +75,7 @@ export const nextMidgardCekDataTraverseSpan = (
   }
   switch (control.stage) {
     case MidgardCekDataTraverseStages.Head:
+    case MidgardCekDataTraverseStages.Close:
       return {
         absoluteStart: control.sourceStart + control.offset,
         length: Math.min(
@@ -86,11 +85,16 @@ export const nextMidgardCekDataTraverseSpan = (
       };
     case MidgardCekDataTraverseStages.Integer:
     case MidgardCekDataTraverseStages.LargeConstructor:
-      return nextMidgardCekDataIntegerSpan(control.integer!);
+      return nextMidgardCekDataIntegerSpan(
+        control.integer!,
+        control.sourceStart + control.sourceLength,
+      );
     case MidgardCekDataTraverseStages.Bytes:
-      return nextMidgardCekDataBytesSpan(control.bytes!);
+      return nextMidgardCekDataBytesSpan(
+        control.bytes!,
+        control.sourceStart + control.sourceLength,
+      );
     case MidgardCekDataTraverseStages.LargeFields:
-    case MidgardCekDataTraverseStages.Close:
       return {
         absoluteStart: control.sourceStart + control.offset,
         length: 1,
@@ -123,10 +127,14 @@ export const readCanonicalCborArgument = (
         ? 2
         : additional === 26
           ? 4
-          : null;
+          : additional === 27
+            ? 8
+            : null;
   if (byteLength === null || offset + 1 + byteLength > bytes.length) {
     return null;
   }
+  // An 8-byte argument may exceed 2^53; every consumer bounds it far below
+  // that (uint32), so the rounded value still compares the same way.
   let value = 0;
   for (let index = 0; index < byteLength; index += 1) {
     value = value * 256 + bytes[offset + 1 + index]!;
@@ -134,7 +142,8 @@ export const readCanonicalCborArgument = (
   if (
     (additional === 24 && value < 24) ||
     (additional === 25 && value <= 0xff) ||
-    (additional === 26 && value <= 0xffff)
+    (additional === 26 && value <= 0xffff) ||
+    (additional === 27 && value <= UINT32_MAX)
   ) {
     return null;
   }
@@ -201,6 +210,7 @@ export type ParsedDataNode =
     };
 
 type ParsedContainerHead = {
+  readonly refusalOffset?: number;
   readonly node: Exclude<ParsedDataNode, { readonly kind: "scalar" }>;
   readonly nextOffset: number;
   readonly remainingChildren: number | null;
@@ -298,12 +308,41 @@ export const parseIntegerEnd = (
     return argument.nextOffset;
   }
   if (first !== 0xc2 && first !== 0xc3) return null;
+  if (bytes[start + 1] === 0x5f) {
+    let cursor = start + 2;
+    let magnitudeLength = 0;
+    let previousLength = 64;
+    while (cursor < bytes.length) {
+      if (bytes[cursor] === 0xff)
+        return magnitudeLength > 64 ? cursor + 1 : null;
+      if (previousLength !== 64) return null;
+      const chunk = readCanonicalCborArgumentWide(bytes, cursor);
+      if (
+        chunk === null ||
+        chunk.major !== 2 ||
+        chunk.value < 1n ||
+        chunk.value > 64n
+      )
+        return null;
+      const length = Number(chunk.value);
+      if (
+        chunk.nextOffset + length >= bytes.length ||
+        (magnitudeLength === 0 &&
+          (length !== 64 || bytes[chunk.nextOffset] === 0))
+      )
+        return null;
+      magnitudeLength += length;
+      previousLength = length;
+      cursor = chunk.nextOffset + length;
+    }
+    return null;
+  }
   const magnitude = readCanonicalCborArgumentWide(bytes, start + 1);
   if (
     magnitude === null ||
     magnitude.major !== 2 ||
     magnitude.value < 9n ||
-    magnitude.value > BigInt(UINT32_MAX)
+    magnitude.value > 64n
   ) {
     return null;
   }

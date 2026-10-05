@@ -2,7 +2,7 @@ import {
   hashMidgardCekBlsExpressionNode,
   MIDGARD_CEK_MAX_BUILTIN_TAG,
 } from "@al-ft/midgard-core";
-import { DataB, dataFromCbor } from "@harmoniclabs/plutus-data";
+import { DataB } from "@harmoniclabs/plutus-data";
 import {
   BnCEK,
   CEKConst,
@@ -17,6 +17,11 @@ import {
   type MidgardCekDirectValueWitness,
 } from "./cek-builtin.argument-kinds.js";
 import {
+  type CardanoExactValue,
+  evaluateCardanoExactBuiltin,
+  MIDGARD_CEK_CARDANO_EXACT_BUILTIN_TAGS,
+} from "./cek-builtin.cardano-exact.js";
+import {
   directByteLength,
   hashMidgardCekDirectValueWitness,
   midgardCekDirectBuiltinBudget,
@@ -26,6 +31,7 @@ import {
 import {
   decodeMidgardCekConstantWitness,
   encodeMidgardCekCanonicalConstant,
+  encodeMidgardCekPlutusData,
   MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
   midgardCekConstantMemorySize,
   type MidgardCekConstantWitness,
@@ -34,21 +40,25 @@ import {
 } from "./cek-constant.js";
 import { MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS } from "./cek-cost.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
+import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 
 export const runPinnedReferenceBuiltin = (
   tag: number,
   arguments_: readonly CEKConst[],
 ): CEKConst | CEKError => {
-  const builtin = new PartialBuiltin(tag as UPLCBuiltinTag);
-  for (const argument of arguments_) builtin.apply(argument);
-  if (builtin.nMissingArgs !== 0) {
+  const builtinTag = tag as UPLCBuiltinTag;
+  if (PartialBuiltin.getNRequiredArgsFor(builtinTag) !== arguments_.length) {
     throw new Error("V1 builtin argument count is incomplete");
   }
-  return new BnCEK(
+  const result = new BnCEK(
     MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS,
     new ExBudget({ cpu: 0, mem: 0 }),
     [],
-  ).eval(builtin);
+  ).eval(builtinTag, arguments_);
+  if (!(result instanceof CEKConst) && !(result instanceof CEKError)) {
+    throw new Error("V1 builtin did not saturate to a constant");
+  }
+  return result;
 };
 
 export const directConstantToReferenceValue = (
@@ -59,14 +69,8 @@ export const directConstantToReferenceValue = (
     if (!(decoded.payload instanceof DataB)) {
       throw new Error("V1 byte-string payload is not bytes");
     }
-    const payloadBytes = decoded.payload.bytes;
-    const ByteStringConstructor = payloadBytes.constructor as new (
-      bytes: Uint8Array,
-    ) => typeof payloadBytes;
     return CEKConst.fromUplc(
-      UPLCConst.byteString(
-        new ByteStringConstructor(Uint8Array.from(payloadBytes.toBuffer())),
-      ),
+      UPLCConst.byteString(Uint8Array.from(decoded.payload.bytes)),
     );
   }
   if (decoded.type.kind !== "blsG1" && decoded.type.kind !== "blsG2") {
@@ -75,17 +79,11 @@ export const directConstantToReferenceValue = (
   if (!(decoded.payload instanceof DataB)) {
     throw new Error("V1 BLS payload is not bytes");
   }
-  const payloadBytes = decoded.payload.bytes;
-  const ByteStringConstructor = payloadBytes.constructor as new (
-    bytes: Uint8Array,
-  ) => typeof payloadBytes;
   // Harmonic's crypto parser mutates a `.slice()` while reading mask bits.
   // A Node Buffer slice aliases its source, whereas a plain Uint8Array slice
   // is detached; normalize here so the pinned evaluator sees the canonical
   // compressed point rather than a mask-cleared alias.
-  const detachedBytes = new ByteStringConstructor(
-    Uint8Array.from(payloadBytes.toBuffer()),
-  );
+  const detachedBytes = Uint8Array.from(decoded.payload.bytes);
   const compressed = CEKConst.fromUplc(UPLCConst.byteString(detachedBytes));
   const uncompressed = runPinnedReferenceBuiltin(
     decoded.type.kind === "blsG1" ? 60 : 67,
@@ -99,10 +97,42 @@ export const directConstantToReferenceValue = (
   return uncompressed;
 };
 
+const cardanoExactArgument = (
+  argument: MidgardCekDirectValueWitness,
+): CardanoExactValue => {
+  if (argument.kind !== "constant") {
+    throw new Error("non-control V1 builtin arguments must be constants");
+  }
+  const reference = directConstantToReferenceValue(argument.witness);
+  const type = reference.type[0];
+  if (type === ConstTyTag.int) {
+    return { kind: "integer", value: reference.value as bigint };
+  }
+  if (type === ConstTyTag.byteStr) {
+    return {
+      kind: "bytes",
+      value: Uint8Array.from(reference.value as Uint8Array),
+    };
+  }
+  if (type === ConstTyTag.bool) {
+    return { kind: "bool", value: reference.value as boolean };
+  }
+  throw new Error("V1 builtin argument has the wrong constant type");
+};
+
+const cardanoExactResult = (value: CardanoExactValue): CEKConst =>
+  CEKConst.fromUplc(
+    value.kind === "integer"
+      ? UPLCConst.int(value.value)
+      : value.kind === "bytes"
+        ? UPLCConst.byteString(value.value)
+        : UPLCConst.bool(value.value),
+  );
+
 const semanticConstantFromCanonical = (
   canonical: ReturnType<typeof encodeMidgardCekCanonicalConstant>,
 ): MidgardCekDirectValueWitness => {
-  const payload = dataFromCbor(canonical.payloadCbor);
+  const payload = plutusDataFromCborIterative(canonical.payloadCbor);
   const tree = commitMidgardCekDataTree(payload);
   return Object.freeze({
     kind: "semanticConstant" as const,
@@ -245,6 +275,33 @@ const evaluateReferenceBuiltin = (
       "V1 BLS finalVerify requires its dedicated expression witness",
     );
   }
+  if (tag === 51n) {
+    // serialiseData writes Cardano's exact Data CBOR: definite maps, chunked
+    // byte strings and bignum magnitudes over 64 bytes.
+    const [argument] = arguments_;
+    if (arguments_.length !== 1 || argument?.kind !== "constant") {
+      throw new Error("serialiseData requires one Data constant");
+    }
+    const decoded = decodeMidgardCekConstantWitness(argument.witness);
+    if (decoded.type.kind !== "data") {
+      throw new Error("serialiseData requires Data");
+    }
+    return referenceConstantToDirectWitness(
+      CEKConst.fromUplc(
+        UPLCConst.byteString(encodeMidgardCekPlutusData(decoded.payload)),
+      ),
+      true,
+    );
+  }
+  if (MIDGARD_CEK_CARDANO_EXACT_BUILTIN_TAGS.has(Number(tag))) {
+    const result = evaluateCardanoExactBuiltin(
+      Number(tag),
+      arguments_.map(cardanoExactArgument),
+    );
+    return result === "failure"
+      ? "failure"
+      : referenceConstantToDirectWitness(cardanoExactResult(result));
+  }
   const referenceArguments: CEKConst[] = [];
   for (const argument of arguments_) {
     if (argument.kind !== "constant") {
@@ -257,14 +314,14 @@ const evaluateReferenceBuiltin = (
   if (!(result instanceof CEKConst)) {
     throw new Error("reference builtin returned a non-constant value");
   }
-  return referenceConstantToDirectWitness(result, tag === 51n);
+  return referenceConstantToDirectWitness(result);
 };
 
 const directFailureIsCharged = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean =>
-  [4n, 5n, 6n, 52n, 53n, 58n, 65n, 73n].includes(tag) ||
+  [4n, 5n, 6n, 21n, 52n, 53n, 58n, 65n, 73n].includes(tag) ||
   (tag === 60n && directByteLength(arguments_[0]!) === 48) ||
   (tag === 67n && directByteLength(arguments_[0]!) === 96);
 

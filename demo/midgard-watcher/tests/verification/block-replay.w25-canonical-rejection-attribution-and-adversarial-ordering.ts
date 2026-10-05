@@ -286,19 +286,66 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
       [
         makePhaseBCandidate({
           spent: [nativeInput],
-          outputs: [
-            makeProtectedScriptOutput(
-              hashScriptWitness(native),
-              FUNDED_OUTPUT_LOVELACE,
-            ),
-          ],
           scriptWitnesses: [native],
-          redeemerTxWitsPreimageCbor: makeRedeemersCbor([
-            { tag: MidgardRedeemerTag.Receiving, index: 0n },
-          ]),
         }),
       ],
-      entries([[nativeInput, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
+      // Native spend execution has no redeemer. A receiving redeemer would
+      // reject as unused before the native false predicate could be reached.
+      entries([
+        [
+          nativeInput,
+          makeProtectedScriptOutput(
+            hashScriptWitness(native),
+            FUNDED_OUTPUT_LOVELACE,
+          ),
+        ],
+      ]),
+    );
+
+    // Sixteen inputs fold 16,384 distinct assets, the bound; the output's
+    // one asset is a new unit, so the ValueAndMint walk crosses there.
+    const distinctAssets = (start: number, count: number) => {
+      const assets = new Map<string, Map<string, bigint>>();
+      for (let unit = start; unit < start + count; unit += 1) {
+        const policy = Buffer.concat([
+          Buffer.alloc(27, 0xc0),
+          Buffer.from([unit >> 10]),
+        ]).toString("hex");
+        const names = assets.get(policy) ?? new Map<string, bigint>();
+        names.set(
+          Buffer.from([(unit >> 8) & 0x03, unit & 0xff]).toString("hex"),
+          1n,
+        );
+        assets.set(policy, names);
+      }
+      return assets;
+    };
+    const assetInputs = Array.from({ length: 16 }, (_, index) =>
+      outRefFromByte(0x90 + index),
+    );
+    await collect(
+      [
+        makePhaseBCandidate({
+          spent: assetInputs,
+          outputs: [
+            makeOutput(
+              FUNDED_OUTPUT_LOVELACE,
+              undefined,
+              distinctAssets(16_384, 1),
+            ),
+          ],
+        }),
+      ],
+      entries(
+        assetInputs.map((outRef, index) => [
+          outRef,
+          makeOutput(
+            FUNDED_OUTPUT_LOVELACE,
+            undefined,
+            distinctAssets(index * 1_024, 1_024),
+          ),
+        ]),
+      ),
     );
 
     expect([...observed].sort()).toStrictEqual(

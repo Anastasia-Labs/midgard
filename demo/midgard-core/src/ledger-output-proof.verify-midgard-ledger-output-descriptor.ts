@@ -1,35 +1,175 @@
+import { commitMidgardBoundedItem } from "./bounded-item.js";
+import { finalizeMidgardCekDataTraverse } from "./cek-data-traverse.js";
+import { type MidgardCekDataSummary } from "./cek-semantic.js";
 import {
+  encodeMidgardLedgerOutputCommitment,
   MIDGARD_LEDGER_OUTPUT_COMMITMENT_VERSION,
   type MidgardLedgerOutputCommitment,
+  type MidgardLedgerOutputDataSummary,
+  type MidgardLedgerOutputReferenceScriptLanguage,
 } from "./ledger-output-commitment.js";
 import {
-  commitMidgardLedgerOutputReferenceScriptItem,
   digestMidgardLedgerOutputReferenceScript,
   MIDGARD_LEDGER_OUTPUT_PROOF_FACT_ATTACH_GROUPS,
   midgardLedgerOutputProofFact,
   midgardLedgerOutputProofFactCommitment,
+  midgardLedgerOutputProofFactDigest,
   midgardLedgerOutputProofTerminalClaimedSummaries,
-  summariesEqual,
-  summarizeMidgardLedgerOutputCardanoSpendDatum,
-  summarizeMidgardLedgerOutputCardanoTxOut,
-  summarizeMidgardLedgerOutputMidgardTxOut,
+  summarizeMidgardLedgerOutputSpendDatumOf,
+  summarizeMidgardLedgerOutputTxOutOf,
 } from "./ledger-output-proof.midgard-ledger-output-proof-fact-commitment.js";
-import { type MidgardLedgerOutputProofControl } from "./ledger-output-proof.midgard-ledger-output-proof-witness.js";
+import {
+  MIDGARD_LEDGER_OUTPUT_PROOF_FIELD_INDEX,
+  type MidgardLedgerOutputProofControl,
+} from "./ledger-output-proof.midgard-ledger-output-proof-witness.js";
 import { isExactMidgardLedgerOutputProofTerminal } from "./ledger-output-proof.span-chunk-witness.js";
-import { commitMidgardValidationMerkleFrontier } from "./validation-merkle.js";
+import { finalizeMidgardLedgerOutputValue } from "./ledger-output-value.js";
+import { aikenSerialisedPlutusDataBytes } from "./plutus-data-cbor.js";
+import {
+  commitMidgardValidationMerkleFrontier,
+  type MidgardValidationMerkleFrontier,
+} from "./validation-merkle.js";
+
+const descriptorSummary = (
+  summary: MidgardCekDataSummary,
+): MidgardLedgerOutputDataSummary => ({
+  root: Buffer.from(summary.root),
+  cborLength: summary.cborLength,
+  memory: summary.memory,
+});
+
+/**
+ * The leaf facts of an exact terminal output proof that determine its
+ * descriptor: the output scan's fields, the folded value and datum summaries
+ * (`datum` is `null` exactly when the output carries no datum) and, for an
+ * output with a reference script, its language, hash, item length and chunk
+ * frontier.
+ */
+export type MidgardLedgerOutputTerminalFacts = {
+  readonly outputIndex: number;
+  readonly totalLength: number;
+  readonly itemCommitment: Uint8Array;
+  readonly address: Uint8Array;
+  readonly lovelace: bigint;
+  readonly assetFrontier: MidgardValidationMerkleFrontier;
+  readonly cardanoValueSize: number;
+  readonly value: MidgardCekDataSummary;
+  readonly datum: MidgardCekDataSummary | null;
+  readonly referenceScript: {
+    readonly language: MidgardLedgerOutputReferenceScriptLanguage;
+    readonly digest: Uint8Array;
+    readonly totalLength: number;
+    readonly frontier: MidgardValidationMerkleFrontier;
+  } | null;
+};
+
+/**
+ * The descriptor determined by the leaf facts of an exact terminal output
+ * proof. Mirrors `ledger_output_proof_v1.terminal_descriptor_v1`.
+ */
+export const midgardLedgerOutputDescriptorOfTerminalFacts = (
+  facts: MidgardLedgerOutputTerminalFacts,
+): MidgardLedgerOutputCommitment => {
+  const reference = facts.referenceScript;
+  const txOut = (encoding: "cardano" | "midgard") =>
+    descriptorSummary(
+      summarizeMidgardLedgerOutputTxOutOf({
+        address: facts.address,
+        encoding,
+        value: facts.value,
+        datum: facts.datum,
+        referenceScriptDigest: reference?.digest ?? null,
+      }),
+    );
+  return {
+    version: MIDGARD_LEDGER_OUTPUT_COMMITMENT_VERSION,
+    outputIndex: facts.outputIndex,
+    totalLength: facts.totalLength,
+    itemCommitment: Buffer.from(facts.itemCommitment),
+    address: Buffer.from(facts.address),
+    lovelace: facts.lovelace,
+    assetCount: facts.assetFrontier.count,
+    assetFrontierCommitment: commitMidgardValidationMerkleFrontier(
+      facts.assetFrontier,
+    ),
+    cardanoValueSize: facts.cardanoValueSize,
+    referenceScriptLanguage: reference?.language ?? -1,
+    referenceScriptHash: Buffer.from(reference?.digest ?? []),
+    referenceScriptTotalLength: reference?.totalLength ?? 0,
+    referenceScriptItemCommitment:
+      reference === null
+        ? Buffer.alloc(0)
+        : commitMidgardBoundedItem({
+            fieldIndex: MIDGARD_LEDGER_OUTPUT_PROOF_FIELD_INDEX,
+            itemIndex: facts.outputIndex,
+            totalLength: reference.totalLength,
+            frontier: reference.frontier,
+          }),
+    cardanoTxOut: txOut("cardano"),
+    midgardTxOut: txOut("midgard"),
+    cardanoSpendDatum: descriptorSummary(
+      summarizeMidgardLedgerOutputSpendDatumOf(facts.datum),
+    ),
+  };
+};
+
+/**
+ * The descriptor of an exact terminal control, every field computed from the
+ * control itself; `null` off the exact terminal. Mirrors
+ * `ledger_output_proof_v1.terminal_descriptor_v1`.
+ */
+export const terminalMidgardLedgerOutputDescriptor = (
+  control: MidgardLedgerOutputProofControl,
+): MidgardLedgerOutputCommitment | null => {
+  if (!isExactMidgardLedgerOutputProofTerminal(control)) return null;
+  const value = finalizeMidgardLedgerOutputValue(control.value!);
+  if (value === null) return null;
+  let datum: MidgardCekDataSummary | null = null;
+  if (control.outputScan.datumOffset !== -1) {
+    datum = finalizeMidgardCekDataTraverse(control.datum!);
+    if (datum === null) return null;
+  }
+  const language = control.outputScan.referenceScriptLanguage;
+  let referenceScript: MidgardLedgerOutputTerminalFacts["referenceScript"] =
+    null;
+  if (language !== -1) {
+    const digest = digestMidgardLedgerOutputReferenceScript(control);
+    if (digest === null) return null;
+    referenceScript = {
+      language,
+      digest,
+      totalLength:
+        control.totalLength - control.outputScan.referenceScriptItemOffset,
+      frontier: control.referenceScriptFrontier,
+    };
+  }
+  return midgardLedgerOutputDescriptorOfTerminalFacts({
+    outputIndex: control.outputIndex,
+    totalLength: control.totalLength,
+    itemCommitment: control.itemCommitment,
+    address: control.outputScan.address,
+    lovelace: control.outputScan.lovelace,
+    assetFrontier: control.outputScan.assetFrontier,
+    cardanoValueSize: control.outputScan.cardanoValueSize,
+    value,
+    datum,
+    referenceScript,
+  });
+};
 
 /**
  * One canonical fact-attachment machine step on a terminal control: record
- * the next incomplete group's fact commitments, computed from the descriptor
- * bytes and the control's own terminal summaries. `null` when every fact is
- * already recorded. Mirrors `ledger_output_proof_v1.fact_attach_v1`.
+ * the next incomplete group's fact commitments, computed from the control's
+ * own terminal descriptor and summaries. `null` when every fact is already
+ * recorded. Mirrors `ledger_output_proof_v1.fact_attach_v1`.
  */
 export const attachMidgardLedgerOutputProofFacts = (
   control: MidgardLedgerOutputProofControl,
-  descriptorCbor: Uint8Array,
 ): MidgardLedgerOutputProofControl | null => {
+  const descriptor = terminalMidgardLedgerOutputDescriptor(control);
   const summaries = midgardLedgerOutputProofTerminalClaimedSummaries(control);
-  if (summaries === null) return null;
+  if (descriptor === null || summaries === null) return null;
+  const descriptorCbor = encodeMidgardLedgerOutputCommitment(descriptor);
   const nextGroup = MIDGARD_LEDGER_OUTPUT_PROOF_FACT_ATTACH_GROUPS.find(
     (group) =>
       group.some(
@@ -65,9 +205,27 @@ export const attachMidgardLedgerOutputProofFacts = (
 };
 
 /**
- * Verifies every compact ledger descriptor fact against one exact terminal
- * output proof. No descriptor may enter the ledger MPF through this boundary
- * unless the complete independently decoded descriptor is proven equal.
+ * The thin terminal gate: the control is an exact terminal and its recorded
+ * scan fact commits exactly `descriptorCbor`. Mirrors
+ * `ledger_output_proof_v1.facts_are_exact_v1`.
+ */
+export const midgardLedgerOutputProofFactsAreExact = (
+  control: MidgardLedgerOutputProofControl,
+  descriptorCbor: Uint8Array,
+): boolean =>
+  isExactMidgardLedgerOutputProofTerminal(control) &&
+  control.scanFactsFact !== null &&
+  Buffer.from(control.scanFactsFact).equals(
+    midgardLedgerOutputProofFactDigest([
+      aikenSerialisedPlutusDataBytes(descriptorCbor),
+    ]),
+  );
+
+/**
+ * Verifies a compact ledger descriptor against one exact terminal output
+ * proof: the descriptor must equal the one the terminal control derives. No
+ * descriptor may enter the ledger MPF through this boundary unless the
+ * complete independently decoded descriptor is proven equal.
  */
 export const verifyMidgardLedgerOutputDescriptor = ({
   control,
@@ -76,52 +234,16 @@ export const verifyMidgardLedgerOutputDescriptor = ({
   readonly control: MidgardLedgerOutputProofControl;
   readonly descriptor: MidgardLedgerOutputCommitment;
 }): boolean => {
-  if (
-    !isExactMidgardLedgerOutputProofTerminal(control) ||
-    descriptor.version !== MIDGARD_LEDGER_OUTPUT_COMMITMENT_VERSION
-  ) {
+  if (descriptor.version !== MIDGARD_LEDGER_OUTPUT_COMMITMENT_VERSION) {
     return false;
   }
-  const cardanoTxOut = summarizeMidgardLedgerOutputCardanoTxOut(control);
-  const midgardTxOut = summarizeMidgardLedgerOutputMidgardTxOut(control);
-  const cardanoSpendDatum =
-    summarizeMidgardLedgerOutputCardanoSpendDatum(control);
-  if (
-    cardanoTxOut === null ||
-    midgardTxOut === null ||
-    cardanoSpendDatum === null
-  ) {
+  const derived = terminalMidgardLedgerOutputDescriptor(control);
+  if (derived === null) return false;
+  try {
+    return encodeMidgardLedgerOutputCommitment(descriptor).equals(
+      encodeMidgardLedgerOutputCommitment(derived),
+    );
+  } catch {
     return false;
   }
-  const referenceLanguage = control.outputScan.referenceScriptLanguage;
-  const referenceHash = digestMidgardLedgerOutputReferenceScript(control);
-  const referenceItemCommitment =
-    commitMidgardLedgerOutputReferenceScriptItem(control);
-  const referenceTotalLength =
-    referenceLanguage === -1
-      ? 0
-      : control.totalLength - control.outputScan.referenceScriptItemOffset;
-  return (
-    descriptor.outputIndex === control.outputIndex &&
-    descriptor.totalLength === control.totalLength &&
-    Buffer.from(descriptor.itemCommitment).equals(control.itemCommitment) &&
-    Buffer.from(descriptor.address).equals(control.outputScan.address) &&
-    descriptor.lovelace === control.outputScan.lovelace &&
-    descriptor.assetCount === control.outputScan.assetFrontier.count &&
-    Buffer.from(descriptor.assetFrontierCommitment).equals(
-      commitMidgardValidationMerkleFrontier(control.outputScan.assetFrontier),
-    ) &&
-    descriptor.cardanoValueSize === control.outputScan.cardanoValueSize &&
-    descriptor.referenceScriptLanguage === referenceLanguage &&
-    Buffer.from(descriptor.referenceScriptHash).equals(
-      referenceHash ?? Buffer.alloc(0),
-    ) &&
-    descriptor.referenceScriptTotalLength === referenceTotalLength &&
-    Buffer.from(descriptor.referenceScriptItemCommitment).equals(
-      referenceItemCommitment ?? Buffer.alloc(0),
-    ) &&
-    summariesEqual(cardanoTxOut, descriptor.cardanoTxOut) &&
-    summariesEqual(midgardTxOut, descriptor.midgardTxOut) &&
-    summariesEqual(cardanoSpendDatum, descriptor.cardanoSpendDatum)
-  );
 };

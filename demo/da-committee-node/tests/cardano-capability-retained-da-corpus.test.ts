@@ -4,6 +4,7 @@ import { isAbsolute } from "node:path";
 import {
   collectMidgardAttachedProgramEnvelopes,
   decodeMidgardCekProgramMaterialDaEntry,
+  decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
@@ -22,6 +23,7 @@ import { buildStrictRetainedDaPairFixture } from "../../midgard-fault-proofs/tes
 import {
   DaPayloadValidationError,
   decodeDaPayloadStrict,
+  validateDaPayloadEventProgramCoverage,
   verifyDaPayloadAgainstHeader,
 } from "../src/da/payload.js";
 
@@ -72,6 +74,50 @@ const corpusEntryFor = (label: string): CapabilityCorpusEntry => {
   return matches[0]!;
 };
 
+/**
+ * The state immediately before the fixture's single transaction: its
+ * resolved reference UTxOs (unless `withoutReferences`) and one output for
+ * each input it spends.
+ */
+const preBlockUtxosOf = (
+  payload: SDK.DaPayload,
+  { withoutReferences = false }: { readonly withoutReferences?: boolean } = {},
+) => {
+  const [[, txCborHex]] = payload.block_body.transaction_preimages as [
+    SDK.DaPayloadEntry,
+  ];
+  const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+    Buffer.from(txCborHex, "hex"),
+  );
+  const [anyOutput] = decodeMidgardNativeByteListPreimage(
+    tx.body.outputsPreimageCbor,
+    "outputs",
+  );
+  return [
+    ...(withoutReferences ? [] : payload.block_body.utxos).map(
+      ([outRefHex, outputHex]) =>
+        [outRefHex, Buffer.from(outputHex, "hex")] as const,
+    ),
+    ...decodeMidgardNativeByteListPreimage(
+      tx.body.spendInputsPreimageCbor,
+      "spend_inputs",
+    ).map(
+      (outRef) => [Buffer.from(outRef).toString("hex"), anyOutput!] as const,
+    ),
+  ];
+};
+
+/** Strict decoding followed by the per-event program coverage replay. */
+const decodeAndReplay = (
+  payload: SDK.DaPayload,
+  options?: { readonly withoutReferences?: boolean },
+): void => {
+  validateDaPayloadEventProgramCoverage(
+    decodeDaPayloadStrict(SDK.encodeDaPayload(payload)).block_body,
+    preBlockUtxosOf(payload, options),
+  );
+};
+
 const materialFor = (payload: SDK.DaPayload) =>
   payload.block_body.cek_program_material.map(([rootHex, valueHex]) =>
     decodeMidgardCekProgramMaterialDaEntry(
@@ -93,6 +139,7 @@ describe("Cardano capability corpus production DA admission", () => {
         canonicalTransactionCbor: canonicalCbor,
         canonicalMaterialSidecarCbor: materialSidecar,
         resolvedReferenceUtxos: boundary.resolvedReferenceUtxos,
+        withForcedTwin: false,
       });
 
       if (
@@ -121,6 +168,7 @@ describe("Cardano capability corpus production DA admission", () => {
         {
           payloadSchemaVersion: 1,
           stateQueueOutRef: `${"00".repeat(32)}#0`,
+          preBlockUtxos: preBlockUtxosOf(fixture.payload),
         },
       );
       expect(admitted.payload).toEqual(fixture.payload);
@@ -173,6 +221,7 @@ describe("Cardano capability corpus production DA admission", () => {
     const fixture = await buildStrictRetainedDaPairFixture({
       canonicalTransactionCbor: canonicalCbor,
       canonicalMaterialSidecarCbor: materialSidecar,
+      withForcedTwin: false,
     });
     const [rootHex, valueHex] =
       fixture.payload.block_body.cek_program_material[0]!;
@@ -232,7 +281,7 @@ describe("Cardano capability corpus production DA admission", () => {
       };
       let rejection: unknown;
       try {
-        decodeDaPayloadStrict(SDK.encodeDaPayload(malformed));
+        decodeAndReplay(malformed);
       } catch (cause) {
         rejection = cause;
       }
@@ -250,17 +299,18 @@ describe("Cardano capability corpus production DA admission", () => {
     const fixture = await buildStrictRetainedDaPairFixture({
       canonicalTransactionCbor: canonicalCbor,
       resolvedReferenceUtxos: boundary.resolvedReferenceUtxos,
+      withForcedTwin: false,
     });
-    const missing: SDK.DaPayload = {
-      ...fixture.payload,
-      block_body: {
-        ...fixture.payload.block_body,
-        utxos: [],
-      },
-    };
-    expect(() => decodeDaPayloadStrict(SDK.encodeDaPayload(missing))).toThrow(
+    expect(() => decodeAndReplay(fixture.payload)).not.toThrow();
+    // A reference input absent from the state before its transaction.
+    expect(() =>
+      decodeAndReplay(fixture.payload, { withoutReferences: true }),
+    ).toThrow(
       expect.objectContaining({
         code: "malformed_transaction",
+        message: expect.stringMatching(
+          /reference_inputs entry [0-9a-f]+ is absent from the state immediately before the transaction/u,
+        ),
       }),
     );
 
@@ -291,6 +341,7 @@ describe("Cardano capability corpus production DA admission", () => {
         {
           payloadSchemaVersion: 1,
           stateQueueOutRef: `${"00".repeat(32)}#0`,
+          preBlockUtxos: preBlockUtxosOf(fixture.payload),
         },
       ),
     ).rejects.toMatchObject({ code: "root_mismatch" });

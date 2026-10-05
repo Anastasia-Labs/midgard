@@ -372,10 +372,10 @@ test mpf_proof_v1_total_root_mutations_do_not_call_partial_paths_first() {
       updated_root,
     ),
     mpf_proof_v1.update_root(null_hash, key, value, updated_value, []) == None,
-    mpf_proof_v1.delete_root(singleton_root(), key, value, []) == Some(
+    mpf_proof_v1.delete_root_paired_fold(singleton_root(), key, value, [], #"") == Some(
       null_hash,
     ),
-    mpf_proof_v1.delete_root(null_hash, key, value, []) == None,
+    mpf_proof_v1.delete_root_paired_fold(null_hash, key, value, [], #"") == None,
   }
 }
 
@@ -401,12 +401,6 @@ test mpf_proof_v1_two_fold_mutations_match_the_existing_total_mutations() {
       updated_value,
       [],
     ),
-    mpf_proof_v1.delete_root_two_fold(singleton_root(), key, value, []) == mpf_proof_v1.delete_root(
-      singleton_root(),
-      key,
-      value,
-      [],
-    ),
   }
 }
 
@@ -415,11 +409,10 @@ test mpf_proof_v1_two_fold_mutations_reject_wrong_predecessors() {
   and {
     mpf_proof_v1.insert_root_two_fold(singleton_root(), key, value, []) == None,
     mpf_proof_v1.update_root_two_fold(null_hash, key, value, updated_value, []) == None,
-    mpf_proof_v1.delete_root_two_fold(null_hash, key, value, []) == None,
   }
 }
 
-fn paired_fold_matches_two_fold(proof: mpf.Proof) -> Bool {
+fn paired_fold_matches_reference_folds(proof: mpf.Proof) -> Bool {
   let path = blake2b_256(key)
   let predecessor_without_key = test_excluding_root(path, 0, proof)
   let predecessor_with_key = test_including_root(
@@ -459,12 +452,8 @@ fn paired_fold_matches_two_fold(proof: mpf.Proof) -> Bool {
       key,
       value,
       proof,
-    ) == mpf_proof_v1.delete_root_two_fold(
-      predecessor_with_key,
-      key,
-      value,
-      proof,
-    ),
+      #"",
+    ) == Some(predecessor_without_key),
   }
 }
 
@@ -493,12 +482,14 @@ test mpf_proof_v1_paired_fold_matches_all_admissible_proof_shapes() {
     },
   ]
   and {
-    paired_fold_matches_two_fold([]),
-    paired_fold_matches_two_fold(fixture.adversarial_non_membership_steps(1)),
-    paired_fold_matches_two_fold(terminal_fork),
-    paired_fold_matches_two_fold(nonterminal_fork),
-    paired_fold_matches_two_fold(terminal_leaf),
-    paired_fold_matches_two_fold(nonterminal_leaf),
+    paired_fold_matches_reference_folds([]),
+    paired_fold_matches_reference_folds(
+      fixture.adversarial_non_membership_steps(1),
+    ),
+    paired_fold_matches_reference_folds(terminal_fork),
+    paired_fold_matches_reference_folds(nonterminal_fork),
+    paired_fold_matches_reference_folds(terminal_leaf),
+    paired_fold_matches_reference_folds(nonterminal_leaf),
   }
 }
 
@@ -571,7 +562,7 @@ test mpf_proof_v1_paired_fold_rejects_wrong_predecessors_and_more_than_64_steps(
       absent_value,
       [],
     ) == None,
-    mpf_proof_v1.delete_root_paired_fold(null_hash, key, value, []) == None,
+    mpf_proof_v1.delete_root_paired_fold(null_hash, key, value, [], #"") == None,
     mpf_proof_v1.insert_root_paired_fold(
       oversized_absence_root,
       key,
@@ -590,6 +581,7 @@ test mpf_proof_v1_paired_fold_rejects_wrong_predecessors_and_more_than_64_steps(
       key,
       value,
       oversized,
+      #"",
     ) == None,
   }
 }
@@ -639,7 +631,7 @@ const unproven_root =
 /// are a real pair, so nothing here rests on this module's own arithmetic, and
 /// a genuine multi-step absence witness cannot otherwise be written by hand.
 const fruits_root =
-  #"cb7812785c2f6b56e3dba69923e37625e94953257915d25f1041f43cefd5cb62"
+  #"657ba71331b58ff290847f747f81ab44e5f6716c9c0a1b7936ab3db9b3e5a425"
 
 /// The key absent from `fruits_root`.
 const fruits_absent_key = "apple[uid: 58]"
@@ -650,7 +642,7 @@ const fruits_absence_proof: mpf.Proof =
   [
     mpf.Branch {
       skip: 0,
-      neighbors: #"c7bfa4472f3a98ebe0421e8f3f03adf0f7c4340dec65b4b92b1c9f0bed209eb47238ba5d16031b6bace4aee22156f5028b0ca56dc24f7247d6435292e82c039c3490a825d2e8deddf8679ce2f95f7e3a59d9c3e1af4a49b410266d21c9344d6d79519b8cdfbd053e5a86cf28a781debae71638cd77f85aad4b88869373d9dcfd",
+      neighbors: #"670cd8fe3049bf2f9c5cbcd01f747da8ac8feafac5c531858ec6bae229170e32f69f145e31d2dc69b65adb5fc2c9d9e87c48210d874d2a2d613793ca90ed906e25069a7a1fd46757d09286b9ee4f67753a06fc706f938d01b200791fd9518f4279519b8cdfbd053e5a86cf28a781debae71638cd77f85aad4b88869373d9dcfd",
     },
     mpf.Leaf {
       skip: 0,

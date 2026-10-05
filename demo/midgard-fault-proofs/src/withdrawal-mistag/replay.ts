@@ -13,6 +13,7 @@ import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
 } from "../transition-trace/reconstruct.js";
+import { withdrawalSubject } from "../workflow/detection-subject.js";
 import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
 import { prepareWithdrawalMistag } from "./prepare-withdrawal-mistag.js";
 
@@ -141,6 +142,7 @@ export const detectWithdrawalMistagReplay = async ({
       return prepared === null
         ? null
         : {
+            ...withdrawalSubject(block.reconstruction.withdrawals[index]!.key),
             violationId: SDK.WITHDRAWAL_MISTAG_VIOLATION_ID,
             headerHash: block.headerHash,
             detectionId: withdrawalMistagDetectionId(index),

@@ -4,6 +4,13 @@ import { expect } from "vitest";
 
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 
+const isTerminalIncluded = (result: {
+  readonly kind: string;
+}): result is Extract<
+  FraudProofWorkflowRunResult,
+  { kind: "terminal_included" }
+> => result.kind === "terminal_included";
+
 /** Advances the real emulator, never a raw snapshot's reported depth. */
 export const installedWorkflowEmulatorClock = (emulator: Emulator) => {
   const horizon = DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth;
@@ -45,8 +52,9 @@ export const installedWorkflowEmulatorClock = (emulator: Emulator) => {
     // blocks are explicit fixture setup, not capture-time finality fabrication.
     awaitReleaseDepth: () =>
       emulator.awaitBlock(DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth),
-    advance: async (result: FraudProofWorkflowRunResult) => {
-      if (result.kind !== "terminal_included") {
+    // Any runner's result: only its terminal_included shape is read.
+    advance: async (result: { readonly kind: string }) => {
+      if (!isTerminalIncluded(result)) {
         emulator.awaitBlock();
         return;
       }

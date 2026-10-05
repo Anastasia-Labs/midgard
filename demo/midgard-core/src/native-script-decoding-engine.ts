@@ -4,6 +4,7 @@ import "./codec/cbor.js";
 import "./native-script-scan.js";
 import "./native-script-decoding-engine.parse-midgard-versioned-script-header.js";
 import "./native-script-decoding-engine.build-midgard-native-script-decoding-trace.js";
+import "./native-script-decoding-engine.classify-midgard-witness-script-item.js";
 export {
   budgetedMidgardNativeScriptDecodingScan,
   buildMidgardNativeScriptDecodingTrace,
@@ -12,6 +13,11 @@ export {
   MidgardNativeScriptDecodingTraceOutcomeKinds,
   type MidgardNativeScriptDecodingTraceStep,
 } from "./native-script-decoding-engine.build-midgard-native-script-decoding-trace.js";
+export {
+  classifyMidgardWitnessScriptItem,
+  type MidgardWitnessScriptItemClass,
+  type MidgardWitnessScriptItemClassification,
+} from "./native-script-decoding-engine.classify-midgard-witness-script-item.js";
 export {
   bindMidgardNativeScriptDecodingMachine,
   hashMidgardNativeScriptDecodingControl,

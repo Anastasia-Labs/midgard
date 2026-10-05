@@ -294,12 +294,7 @@ fn ledger_delete_witness(
   key: ByteArray,
   value: ByteArray,
 ) -> proof.LedgerDeleteWitness {
-  proof.LedgerDeleteWitness {
-    key,
-    value,
-    membership_proof: [],
-    delete_proof: [],
-  }
+  proof.LedgerDeleteWitness { key, value, opening: #"", delete_proof: [] }
 }
 
 // ---------------------------------------------------------------------------
@@ -723,7 +718,7 @@ fn l2_no_op_parts() -> L2Parts {
   let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
   let expected_post_root = proof.insert_root(
-    proof.delete_root(pre_root, spent_key, spent_value, []),
+    proof.delete_root(pre_root, spent_key, spent_value, [], #""),
     produced_key,
     produced_value,
     [],

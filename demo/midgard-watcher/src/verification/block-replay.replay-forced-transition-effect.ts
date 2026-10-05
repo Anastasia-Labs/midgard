@@ -2,7 +2,12 @@ import {
   computeMidgardNativeTxId,
   decodeMidgardForcedTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
-import { makeReturn } from "@al-ft/midgard-sdk";
+import {
+  type ForcedRejection,
+  forcedRejectionReason,
+  ForcedRejectionStopped,
+} from "@al-ft/midgard-fault-proofs";
+import { makeReturn, rejectionReasonArmOf } from "@al-ft/midgard-sdk";
 import {
   buildCanonicalTransitionEffect,
   type CanonicalTransitionEffect,
@@ -24,12 +29,32 @@ import {
   type WatcherForcedOperatorVerdict,
 } from "../indexers/user-event-indexer.js";
 import { type ValidatedEventAuthority } from "./block-replay.watcher-block-replay-prior-state.js";
-import { watcherBlockReplayForcedValidityForRejectCode } from "./block-replay.watcher-block-replay-rejection-projection.js";
 import {
   fail,
   type WatcherBlockReplayCommittedStep,
   type WatcherBlockReplayForcedValidationFact,
 } from "./block-replay.watcher-block-replay-result.js";
+
+/**
+ * The arm the node would record for a canonical rejection, when the
+ * rejection can be proved exactly. Unsupported or unavailable evaluation stops
+ * replay with a typed local failure and produces no forced-validation fact.
+ */
+export const canonicalRejectionArm = (rejection: ForcedRejection): string => {
+  try {
+    return rejectionReasonArmOf(forcedRejectionReason(rejection));
+  } catch (error) {
+    if (error instanceof ForcedRejectionStopped) {
+      return fail(
+        error.retryable
+          ? "forced_evaluation_unavailable"
+          : "forced_rejection_unsupported",
+        `$.forced.${rejection.consensusPhase ?? "unknown"}.${rejection.code}`,
+      );
+    }
+    throw error;
+  }
+};
 
 export const applyAcceptedCandidate = (
   state: Map<string, Buffer>,
@@ -102,10 +127,8 @@ export const replayForcedTransitionEffect = async (input: {
   if ("code" in phaseA) {
     phaseAStatus = "rejected";
     phaseARejectCode = phaseA.code;
-    canonicalOperatorValidity = watcherBlockReplayForcedValidityForRejectCode(
-      phaseA.code,
-      "phaseA",
-    );
+    const arm = canonicalRejectionArm(phaseA);
+    canonicalOperatorValidity = arm;
   } else {
     const phaseB = await makeReturn(
       runPhaseBValidationWithPatch(
@@ -125,10 +148,8 @@ export const replayForcedTransitionEffect = async (input: {
       }
       phaseBStatus = "rejected";
       phaseBRejectCode = phaseB.rejected[0]!.code;
-      canonicalOperatorValidity = watcherBlockReplayForcedValidityForRejectCode(
-        phaseBRejectCode,
-        "phaseB",
-      );
+      const arm = canonicalRejectionArm(phaseB.rejected[0]!);
+      canonicalOperatorValidity = arm;
     } else {
       if (phaseB.accepted.length !== 1) {
         return fail("canonical_validation_threw", "$.phaseB.forced");

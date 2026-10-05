@@ -84,7 +84,10 @@ it("supersedes a pending step that a reobserved earlier action displaces, so its
         },
   );
   vi.mocked(fixture.adapter.reconcile).mockImplementation(
-    async ({ txHash }) => {
+    async ({ txHash, reconciliationOnly }) => {
+      // The inclusion check before displacement sees the rolled-back proof.
+      if (reconciliationOnly && !proofLanded)
+        return { kind: "unknown", reason: "transaction inclusion rolled back" };
       if (txHash === step.transactionHash) return { kind: "pending" };
       proofLanded = true;
       return { kind: "confirmed", txHash: txHash! };

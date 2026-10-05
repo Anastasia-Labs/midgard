@@ -19,6 +19,7 @@ import {
   type MaterialRow,
   membershipTableName,
   postgresByteaArray,
+  retainedStateOwnerTableName,
   rootHex,
   STORE_ADVISORY_LOCK_KEY,
   STORE_ADVISORY_LOCK_NAMESPACE,
@@ -31,23 +32,50 @@ import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
  * attached program envelope. The root remains the security identity; this
  * store is only a durable availability/index surface.
  */
-export const persistVerifiedBundles = (
+type MaterialOwnership =
+  | { readonly kind: "durable" }
+  | { readonly kind: "admission"; readonly txId: Buffer }
+  | { readonly kind: "retained-state"; readonly headerHash: Buffer };
+
+export function persistVerifiedBundles(
   envelopes: readonly MidgardCekProgramEnvelope[],
   entries: readonly MidgardCekProgramMaterialEntry[],
-  ownership:
-    | { readonly kind: "durable" }
-    | { readonly kind: "admission"; readonly txId: Buffer } = {
-    kind: "durable",
-  },
+  ownership: Extract<MaterialOwnership, { readonly kind: "retained-state" }>,
+): Effect.Effect<
+  void,
+  DatabaseError | MidgardCekProgramMaterialMissingRootError,
+  Database
+>;
+export function persistVerifiedBundles(
+  envelopes: readonly MidgardCekProgramEnvelope[],
+  entries: readonly MidgardCekProgramMaterialEntry[],
+  ownership?: Exclude<MaterialOwnership, { readonly kind: "retained-state" }>,
 ): Effect.Effect<
   void,
   DatabaseError | MidgardCekProgramMaterialMissingRootError,
   Database | NodeConfig
-> =>
-  Effect.try({
+>;
+export function persistVerifiedBundles(
+  envelopes: readonly MidgardCekProgramEnvelope[],
+  entries: readonly MidgardCekProgramMaterialEntry[],
+  ownership: MaterialOwnership = { kind: "durable" },
+): Effect.Effect<
+  void,
+  DatabaseError | MidgardCekProgramMaterialMissingRootError,
+  Database | NodeConfig
+> {
+  return Effect.try({
     try: () => {
       if (ownership.kind === "admission" && ownership.txId.length !== 32) {
         throw new Error("CEK admission owner transaction id must be 32 bytes");
+      }
+      if (
+        ownership.kind === "retained-state" &&
+        ownership.headerHash.length !== 28
+      ) {
+        throw new Error(
+          "CEK retained-state owner header hash must be 28 bytes",
+        );
       }
       const material = canonicalEntries(entries);
       const verifications = verifyMidgardCekProgramMaterialBundle(
@@ -111,7 +139,8 @@ export const persistVerifiedBundles = (
     Effect.flatMap(({ material, memberships }) =>
       Effect.gen(function* () {
         if (material.length === 0 && memberships.length === 0) return;
-        const config = yield* NodeConfig;
+        const config =
+          ownership.kind === "retained-state" ? undefined : yield* NodeConfig;
         const sql = yield* SqlClient.SqlClient;
         const pg = sql as PgClient;
         yield* sql.withTransaction(
@@ -234,13 +263,40 @@ export const persistVerifiedBundles = (
                   ) DO NOTHING`;
               }
             }
+            if (ownership.kind === "retained-state" && memberships.length > 0) {
+              yield* sql`INSERT INTO ${sql(retainedStateOwnerTableName)} (
+                header_hash, program_envelope_hash, material_root
+              ) SELECT ${ownership.headerHash}, program_envelope_hash, material_root
+                FROM ${sql(membershipTableName)}
+                WHERE ${sql.in(
+                  "program_envelope_hash",
+                  memberships.map((value) => value.envelopeHash),
+                )}
+                ON CONFLICT DO NOTHING`;
+            }
+            // Authenticated live state must stay available even when the admission
+            // cache is full. Only retained-only bytes are exempt: durable and
+            // admission owners reserve their bytes for their entire lifetime,
+            // so pruning a retained owner cannot overfill this bounded store.
+            if (config === undefined) return;
             const usage = yield* sql<StoreUsageRow>`SELECT (
                 COALESCE((
                   SELECT SUM(
                     octet_length(material_root)
                       + octet_length(da_value_cbor)
                   )
-                  FROM ${sql(entryTableName)}
+                  FROM ${sql(entryTableName)} entry
+                  WHERE NOT EXISTS (
+                    SELECT 1 FROM ${sql(retainedStateOwnerTableName)} retained
+                    WHERE retained.material_root = entry.material_root
+                  ) OR EXISTS (
+                    SELECT 1 FROM ${sql(membershipTableName)} membership
+                    WHERE membership.material_root = entry.material_root
+                      AND membership.durable_pin = true
+                  ) OR EXISTS (
+                    SELECT 1 FROM ${sql(admissionOwnerTableName)} owner
+                    WHERE owner.material_root = entry.material_root
+                  )
                 ), 0)
                 + COALESCE((
                   SELECT SUM(
@@ -248,7 +304,16 @@ export const persistVerifiedBundles = (
                       + octet_length(material_root)
                       + 1
                   )
-                  FROM ${sql(membershipTableName)}
+                  FROM ${sql(membershipTableName)} membership
+                  WHERE membership.durable_pin = true OR EXISTS (
+                    SELECT 1 FROM ${sql(admissionOwnerTableName)} owner
+                    WHERE owner.program_envelope_hash = membership.program_envelope_hash
+                      AND owner.material_root = membership.material_root
+                  ) OR NOT EXISTS (
+                    SELECT 1 FROM ${sql(retainedStateOwnerTableName)} retained
+                    WHERE retained.program_envelope_hash = membership.program_envelope_hash
+                      AND retained.material_root = membership.material_root
+                  )
                 ), 0)
                 + COALESCE((
                   SELECT SUM(
@@ -282,3 +347,4 @@ export const persistVerifiedBundles = (
       ),
     ),
   );
+}

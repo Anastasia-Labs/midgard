@@ -1,14 +1,28 @@
-import { Constr, type Data } from "@lucid-evolution/lucid";
+import {
+  buildMidgardLedgerOutputProofTrace,
+  decodeMidgardDatum,
+  encodeMidgardLedgerOutputCommitment,
+  encodeMidgardLedgerOutputProofControl,
+  encodeMidgardTxOutput,
+  type MidgardTxOutput,
+  terminalMidgardLedgerOutputDescriptor,
+} from "@al-ft/midgard-core";
+import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
   deriveLedgerOutputProofFinalizeClaims,
   deriveLedgerOutputProofStepClaims,
   deriveLedgerOutputProofStepPlan,
+  deriveLedgerOutputProofTerminalDescriptorCbor,
   ledgerOutputProofAttestationRoles,
   ledgerOutputProofDatumRoleIndex,
   ledgerOutputProofFactAttachRoles,
 } from "../src/ledger-output-proof-plan.js";
+import {
+  controlData,
+  items,
+} from "../src/ledger-output-proof-plan.ledger-output-proof-datum-role-index.js";
 import { buildForgedOperatorSuccessorValidationDisputeFixture } from "./support/submit-init-emulator-shared.js";
 
 describe("ledger output proof successor carriage", () => {
@@ -51,9 +65,7 @@ describe("ledger output proof successor carriage", () => {
 describe("ledger output proof datum role selection", () => {
   const controlAtTraverseStage = (stage: bigint): Data[] => {
     const control: Data[] = Array.from({ length: 12 }, () => 0n);
-    control[7] = new Constr(0, [
-      [1n, stage, 0n, 1n, 0n, "", new Constr(1, []), 0n, 0n, 0n],
-    ]);
+    control[7] = new Constr(0, [[1n, stage, 0n, 1n, 0n, "", 0n, 0n, 0n]]);
     return control;
   };
   const integerControl = controlAtTraverseStage(1n);
@@ -163,7 +175,6 @@ describe("ledger output proof step claims", () => {
       8n,
       2n,
       ROOT,
-      NONE,
       some(integerWire),
       NONE,
       NONE,
@@ -198,7 +209,6 @@ describe("ledger output proof step claims", () => {
       8n,
       2n,
       ROOT,
-      NONE,
       some(integerWire),
       NONE,
       NONE,
@@ -243,7 +253,6 @@ describe("ledger output proof step claims", () => {
       8n,
       2n,
       ROOT,
-      NONE,
       some(integerWire),
       NONE,
       NONE,
@@ -276,7 +285,6 @@ describe("ledger output proof step claims", () => {
       2n,
       ROOT,
       NONE,
-      NONE,
       some(bytesWire),
       NONE,
     ]);
@@ -306,7 +314,6 @@ describe("ledger output proof step claims", () => {
       8n,
       2n,
       ROOT,
-      NONE,
       NONE,
       NONE,
       NONE,
@@ -348,7 +355,6 @@ describe("ledger output proof finalize claims", () => {
       ROOT,
       NONE,
       NONE,
-      NONE,
       some(["22".repeat(32), 3n, 4n]),
     ]);
     return control;
@@ -383,16 +389,59 @@ describe("ledger output proof finalize claims", () => {
     expect(ledgerOutputProofFactAttachRoles(control)).toStrictEqual([2, 3]);
     control[15] = fact;
     control[16] = fact;
-    expect(ledgerOutputProofFactAttachRoles(control)).toStrictEqual([0]);
-    control[13] = fact;
     expect(ledgerOutputProofFactAttachRoles(control)).toStrictEqual([1]);
     control[14] = fact;
+    expect(ledgerOutputProofFactAttachRoles(control)).toStrictEqual([0]);
+    control[13] = fact;
     expect(ledgerOutputProofFactAttachRoles(control)).toStrictEqual([]);
   });
 
   it("refuses a half-attached fact group", () => {
     const control = terminalControl(10n);
     control[15] = some("33".repeat(32));
-    expect(ledgerOutputProofFactAttachRoles(control)).toStrictEqual([0]);
+    expect(ledgerOutputProofFactAttachRoles(control)).toStrictEqual([1]);
+  });
+});
+
+describe("ledger output proof terminal descriptor", () => {
+  const baseOutput: MidgardTxOutput = {
+    address: Buffer.concat([Buffer.from([0x78]), Buffer.alloc(28, 0x11)]),
+    value: {
+      lovelace: 8_000_000n,
+      assets: new Map([["55".repeat(28), new Map([["ff", 7n]])]]),
+    },
+  };
+  it.each([
+    ["no datum or reference script", baseOutput],
+    [
+      "an inline datum and a reference script",
+      {
+        ...baseOutput,
+        datum: decodeMidgardDatum(
+          Buffer.from(Data.to("ab".repeat(300)), "hex"),
+        ),
+        script_ref: {
+          language: "PlutusV3",
+          scriptBytes: Buffer.alloc(5_000, 0x6b),
+        },
+      } satisfies MidgardTxOutput,
+    ],
+  ])("derives the core descriptor for an output with %s", (_label, output) => {
+    const terminal = buildMidgardLedgerOutputProofTrace({
+      outputIndex: 3,
+      outputCbor: encodeMidgardTxOutput(output),
+    }).terminal;
+    const control = items(
+      controlData(
+        encodeMidgardLedgerOutputProofControl(terminal).toString("hex"),
+      ),
+      17,
+      "output proof control",
+    );
+    expect(deriveLedgerOutputProofTerminalDescriptorCbor(control)).toBe(
+      encodeMidgardLedgerOutputCommitment(
+        terminalMidgardLedgerOutputDescriptor(terminal)!,
+      ).toString("hex"),
+    );
   });
 });

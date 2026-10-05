@@ -1,10 +1,11 @@
 //// The four descriptor attestation predicates of the shared finalize family
-//// conjoin to exactly `ledger_output_proof_v1.descriptor_is_exact_v1`: over
-//// honest terminal controls the conjunction and the monolith agree, and each
-//// forged fact — a mutated scalar, a substituted leaf summary, a forged
+//// conjoin to exactly `descriptor == ledger_output_proof_v1.terminal_descriptor_v1`:
+//// over honest terminal controls the conjunction and the monolith agree, and
+//// each forged fact — a mutated scalar, a substituted leaf summary, a forged
 //// reference digest, a datum-mode lie — is refused by the yield that owns
-//// it. A non-terminal control is refused by every role's shared
-//// `terminal_scan` clause.
+//// it. The scan-facts yield runs on the control the earlier attachment
+//// groups produced, whose recorded facts it checks. A non-terminal control
+//// is refused by every role's shared `terminal_scan` clause.
 
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
@@ -63,57 +64,51 @@ fn advanced(
   control
 }
 
-/// Drive the typed proof to its terminal stage. On entering the first
-/// span-consuming stage a span-attach step records the whole-output window;
-/// the datum head then binds its span through `window: Some(output)`, the
-/// reference-script and script-hash stages through
+/// Drive the typed proof to its terminal stage. A span-attach step is taken
+/// wherever it is admitted (the recorded window does not cover the demanded
+/// span); the datum head then binds its span through the recorded window
+/// bytes, the reference-script and script-hash stages through
 /// `LedgerOutputProofWindow`. Every other stage takes `NoWitness` where
 /// accepted, otherwise the single whole-output chunk proof.
 fn until_terminal(
   control: proof.LedgerOutputProofControlV1,
   chunk_proof: bounded_item_v1.ChunkProofV1,
   output: ByteArray,
+  datum_constructor: Int,
   fuel: Int,
 ) -> proof.LedgerOutputProofControlV1 {
   expect fuel > 0
+  let attach = proof.LedgerOutputProofSpanAttach {
+    chunk_proof,
+    next_chunk_proof: None,
+  }
   if control.stage == proof.stage_terminal {
     control
-  } else if and {
-    control.span_window == None,
-    or {
-      control.stage == proof.stage_datum_traversal,
-      control.stage == proof.stage_reference_script_commitment,
-      control.stage == proof.stage_script_hash,
-    },
-  } {
+  } else if proof.step_v1(control, attach) != None {
     until_terminal(
-      advanced(
-        proof.step_v1(
-          control,
-          proof.LedgerOutputProofSpanAttach {
-            start: 0,
-            length: bytearray.length(output),
-            chunk_proof,
-            next_chunk_proof: None,
-          },
-        ),
-      ),
+      advanced(proof.step_v1(control, attach)),
       chunk_proof,
       output,
+      datum_constructor,
       fuel - 1,
     )
   } else {
+    let window_bytes = when control.span_window is {
+      None -> output
+      Some(window) ->
+        bytearray.slice(output, window.start, window.start + window.length - 1)
+    }
     let witness = if control.stage == proof.stage_datum_traversal {
       expect Some(datum_control) = control.datum
       if datum_control.stage == traverse.stage_head {
         proof.LedgerOutputProofDatum {
-          action: traverse.HeadSequence { expected_children: 0 },
-          window: Some(output),
+          action: traverse.HeadSequence,
+          window: Some(window_bytes),
         }
       } else if datum_control.stage == traverse.stage_fold {
         proof.LedgerOutputProofDatum {
           action: traverse.FinalizeFrame {
-            frame: frame.initial_small_constr_frame_v1(0, #"", 0),
+            frame: frame.initial_small_constr_frame_v1(datum_constructor, #""),
             parent: None,
           },
           window: None,
@@ -129,10 +124,10 @@ fn until_terminal(
           when
             proof.step_v1(
               control,
-              proof.LedgerOutputProofWindow { bytes: output },
+              proof.LedgerOutputProofWindow { bytes: window_bytes },
             )
           is {
-            Some(_) -> proof.LedgerOutputProofWindow { bytes: output }
+            Some(_) -> proof.LedgerOutputProofWindow { bytes: window_bytes }
             None ->
               proof.LedgerOutputProofChunks {
                 chunk_proof,
@@ -145,17 +140,28 @@ fn until_terminal(
       advanced(proof.step_v1(control, witness)),
       chunk_proof,
       output,
+      datum_constructor,
       fuel - 1,
     )
   }
 }
 
 fn terminal_of(output: ByteArray) -> proof.LedgerOutputProofControlV1 {
+  terminal_with_datum_constructor(output, 0)
+}
+
+/// `terminal_of` for an output whose inline datum is the empty constructor
+/// `datum_constructor`.
+fn terminal_with_datum_constructor(
+  output: ByteArray,
+  datum_constructor: Int,
+) -> proof.LedgerOutputProofControlV1 {
   let Pair(item_commitment, chunk_proof) = one_chunk_material(0, output)
   until_terminal(
     proof.initial_control_v1(0, bytearray.length(output), item_commitment),
     chunk_proof,
     output,
+    datum_constructor,
     256,
   )
 }
@@ -227,15 +233,24 @@ fn honest_datum(
   }
 }
 
+/// The control the scan-facts yield reads: the terminal after the
+/// `[2, 3]` and `[1]` attachment groups.
+fn scan_group_frame(terminal: proof.LedgerOutputProofControlV1) -> raw.Frame {
+  expect Some(leaves) = proof.fact_attach_v1(terminal)
+  expect Some(reference) = proof.fact_attach_v1(leaves)
+  raw.open(proof.encode_control_v1(reference))
+}
+
 fn conjunction(
-  control_frame: raw.Frame,
+  terminal: proof.LedgerOutputProofControlV1,
   descriptor_cbor: ByteArray,
   claimed_value: summary.DataSummaryV1,
   claimed_datum: Option<summary.DataSummaryV1>,
 ) -> Bool {
+  let control_frame = raw.open(proof.encode_control_v1(terminal))
   and {
     descriptor_yield.scan_facts_are_pinned(
-      control_frame,
+      scan_group_frame(terminal),
       descriptor_cbor,
       claimed_value,
       claimed_datum,
@@ -249,7 +264,7 @@ fn conjunction(
 fn conjunction_matches_monolith(output: ByteArray) -> Bool {
   let terminal = terminal_of(output)
   let descriptor = honest_descriptor(terminal)
-  let control_frame = raw.open(proof.encode_control_v1(terminal))
+  let control_frame = scan_group_frame(terminal)
   let value_claim = honest_value(terminal)
   let datum_claim = honest_datum(terminal)
   let forged_scalar = commitment.LedgerOutputCommitmentV1 {
@@ -261,22 +276,22 @@ fn conjunction_matches_monolith(output: ByteArray) -> Bool {
     cardano_tx_out: descriptor.midgard_tx_out,
   }
   and {
-    proof.descriptor_is_exact_v1(terminal, descriptor),
+    proof.terminal_descriptor_v1(terminal) == Some(descriptor),
     conjunction(
-      control_frame,
+      terminal,
       commitment.encode(descriptor),
       value_claim,
       datum_claim,
     ),
     // The monolith and the conjunction refuse the same forgeries.
-    !proof.descriptor_is_exact_v1(terminal, forged_scalar),
+    proof.terminal_descriptor_v1(terminal) != Some(forged_scalar),
     !descriptor_yield.scan_facts_are_pinned(
       control_frame,
       commitment.encode(forged_scalar),
       value_claim,
       datum_claim,
     ),
-    !proof.descriptor_is_exact_v1(terminal, swapped_summaries),
+    proof.terminal_descriptor_v1(terminal) != Some(swapped_summaries),
     !descriptor_yield.scan_facts_are_pinned(
       control_frame,
       commitment.encode(swapped_summaries),
@@ -316,36 +331,114 @@ test forged_reference_digest_is_refused() {
       control_frame,
       commitment.encode(forged),
     ),
-    !proof.descriptor_is_exact_v1(terminal, forged),
+    proof.terminal_descriptor_v1(terminal) != Some(forged),
   }
 }
 
 /// A substituted leaf summary is refused both by the leaf's own yield and by
-/// the composite rebuild of the scan-facts yield; a datum-mode lie (claiming
-/// a datum-bearing output datum-free) is refused by both datum-consuming
-/// yields.
+/// the scan-facts yield, where it is not the preimage of the recorded leaf
+/// fact; a datum-mode lie (claiming a datum-bearing output datum-free) is
+/// refused the same two ways.
 test substituted_leaf_summaries_are_refused() {
   let terminal = terminal_of(small_datum_output)
   let descriptor = honest_descriptor(terminal)
   let descriptor_cbor = commitment.encode(descriptor)
   let control_frame = raw.open(proof.encode_control_v1(terminal))
+  let scan_frame = scan_group_frame(terminal)
   let value_claim = honest_value(terminal)
   expect Some(datum_summary) = honest_datum(terminal)
   and {
+    descriptor_yield.scan_facts_are_pinned(
+      scan_frame,
+      descriptor_cbor,
+      value_claim,
+      Some(datum_summary),
+    ),
     !descriptor_yield.value_summary_is_pinned(control_frame, datum_summary),
     !descriptor_yield.datum_summary_is_pinned(control_frame, Some(value_claim)),
     !descriptor_yield.datum_summary_is_pinned(control_frame, None),
     !descriptor_yield.scan_facts_are_pinned(
-      control_frame,
+      scan_frame,
       descriptor_cbor,
       datum_summary,
       Some(datum_summary),
     ),
     !descriptor_yield.scan_facts_are_pinned(
-      control_frame,
+      scan_frame,
       descriptor_cbor,
       value_claim,
       None,
+    ),
+  }
+}
+
+/// `no_reference_output` with one lovelace: same address, other value summary.
+const other_value_output =
+  #"a200581d7811111111111111111111111111111111111111111111111111111111018201a0"
+
+/// `small_datum_output` with inline datum `d87a80`: other datum summary.
+const other_datum_output =
+  #"a300581d7811111111111111111111111111111111111111111111111111111111018200a00243d87a80"
+
+/// A scan-facts claim of another output's value summary, with a descriptor
+/// whose composites are rebuilt from that claim (every other field honest),
+/// is refused: only the role-3 fact pins the claimed value summary.
+test substituted_value_claim_with_rebuilt_descriptor_is_refused() {
+  let a = terminal_of(no_reference_output)
+  let b = terminal_of(other_value_output)
+  let desc_a = honest_descriptor(a)
+  let desc_b = honest_descriptor(b)
+  let forged = commitment.LedgerOutputCommitmentV1 {
+    ..desc_a,
+    cardano_tx_out: desc_b.cardano_tx_out,
+    midgard_tx_out: desc_b.midgard_tx_out,
+  }
+  and {
+    honest_value(a) != honest_value(b),
+    desc_a.cardano_tx_out != desc_b.cardano_tx_out,
+    descriptor_yield.scan_facts_are_pinned(
+      scan_group_frame(a),
+      commitment.encode(desc_a),
+      honest_value(a),
+      honest_datum(a),
+    ),
+    !descriptor_yield.scan_facts_are_pinned(
+      scan_group_frame(a),
+      commitment.encode(forged),
+      honest_value(b),
+      honest_datum(a),
+    ),
+  }
+}
+
+/// A scan-facts claim of another datum summary, with a descriptor whose
+/// composites and spend datum are rebuilt from that claim, is refused: only
+/// the role-2 fact pins the claimed datum summary.
+test substituted_datum_claim_with_rebuilt_descriptor_is_refused() {
+  let a = terminal_of(small_datum_output)
+  let b = terminal_with_datum_constructor(other_datum_output, 1)
+  let desc_a = honest_descriptor(a)
+  let desc_b = honest_descriptor(b)
+  let forged = commitment.LedgerOutputCommitmentV1 {
+    ..desc_a,
+    cardano_tx_out: desc_b.cardano_tx_out,
+    midgard_tx_out: desc_b.midgard_tx_out,
+    cardano_spend_datum: desc_b.cardano_spend_datum,
+  }
+  and {
+    honest_datum(a) != honest_datum(b),
+    desc_a.cardano_spend_datum != desc_b.cardano_spend_datum,
+    descriptor_yield.scan_facts_are_pinned(
+      scan_group_frame(a),
+      commitment.encode(desc_a),
+      honest_value(a),
+      honest_datum(a),
+    ),
+    !descriptor_yield.scan_facts_are_pinned(
+      scan_group_frame(a),
+      commitment.encode(forged),
+      honest_value(a),
+      honest_datum(b),
     ),
   }
 }

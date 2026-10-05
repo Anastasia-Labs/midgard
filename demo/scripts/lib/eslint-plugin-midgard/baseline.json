@@ -9,10 +9,8 @@
       "sites": ["script: applyParamsToScript(validator.compiledCode, params),"]
     },
     "midgard-fault-proofs/tests/emulator-blueprint-boundary.test.ts": {
-      "reason": "Independent oracle: the test recomputes the applied script outside the blueprint module to check that module's output against it.",
-      "sites": [
-        "const expected = applyParamsToScript(entry.compiledCode, params);"
-      ]
+      "reason": "Independent oracle: the test recomputes the same applied script outside the blueprint module with the pinned WASM API and canonical Plutus Data, comparing the guarded module's output independently. The original Lucid helper spelling changed; this remains the same single test oracle and does not deploy a production script.",
+      "sites": ["apply_params_to_script("]
     },
     "midgard-fault-proofs/tests/runtime-blueprint-construction.test.ts": {
       "reason": "Independent oracle: the test recomputes the applied script outside the blueprint module to check that module's output against it.",
@@ -22,57 +20,13 @@
       "reason": "Test builds a sized always-succeeds filler script for a reference-script sweep; it is not a Midgard validator and has no blueprint entry.",
       "sites": ["applyParamsToScript(alwaysSucceedsCode, ["]
     },
-    "midgard-sdk/tests/user-event-contracts.test.ts": {
-      "reason": "Independent oracle (independentlyApply): the test recomputes applied scripts outside the blueprint module to check that module's output against it.",
-      "sites": [": applyParamsToScript(entry.compiledCode, parameters);"]
-    },
-    "midgard-sdk/tests/validation-resolver-applied-hashes.test.ts": {
-      "reason": "Independent oracle: the test recomputes applied script hashes outside the blueprint module to check the resolver's hashes against them.",
-      "sites": ["script: applyParamsToScript("]
-    },
-    "midgard-sdk/tests/fault-proof.fault-proof-contract-builder.ts": {
-      "reason": "Independent oracles: expected CBOR for applied fault-proof steps is recomputed outside the blueprint module and compared against the SDK's result.",
-      "sites": [
-        "applyParamsToScript(",
-        "const expectedStep02Cbor = applyParamsToScript(",
-        "const expectedStep01Cbor = applyParamsToScript(",
-        "const expectedStep02Cbor = applyParamsToScript(",
-        "const expectedStep01Cbor = applyParamsToScript(",
-        "const expectedStep02Cbor = applyParamsToScript(",
-        "const expectedStep01Cbor = applyParamsToScript(",
-        "const expectedStep04Cbor = applyParamsToScript(",
-        "const expectedStep03Cbor = applyParamsToScript(",
-        "const expectedStep02Cbor = applyParamsToScript(",
-        "const expectedStep01Cbor = applyParamsToScript(",
-        "applyParamsToScript(",
-        "applyParamsToScript(",
-        "applyParamsToScript(",
-        "const expectedRouteCbor = applyParamsToScript(",
-        "const expectedAward = applyParamsToScript(",
-        "const expectedStageOneRedeemerFoldMapExecutor = applyParamsToScript(",
-        "const expectedStageOneRedeemerFinalizeFrameExecutor = applyParamsToScript(",
-        "const expectedStageOneRedeemerSourceAuthenticator = applyParamsToScript(",
-        "applyParamsToScript(compiledScript(blueprint, title), [",
-        "const expectedStageOneRedeemerOuterNormalizer = applyParamsToScript(",
-        "const expectedStageOneRedeemerTraversalNormalizer = applyParamsToScript(",
-        "const expectedStageOneRedeemerSettlement = applyParamsToScript(",
-        "const expectedStageOneRedeemerEnvelope = applyParamsToScript(",
-        "return applyParamsToScript(",
-        "applyParamsToScript(compiledScript(blueprint, title), [",
-        "const expectedBoundaryCbor = applyParamsToScript(",
-        "const expectedTimeoutCbor = applyParamsToScript(",
-        "const expectedGameCbor = applyParamsToScript(",
-        "const expectedSourceCbor = applyParamsToScript(",
-        "const expectedCbor = applyParamsToScript("
-      ]
-    },
-    "midgard-sdk/tests/state-queue.state-queue-operator-funding-inputs.ts": {
-      "reason": "Test helper applies parameters directly to exercise its own arity check against the raw validator; it is test material, not a deployed script.",
-      "sites": ["return applyParamsToScript(validator.compiledCode, params);"]
-    },
     "midgard-validation/tests/complete-item-carriage-tiers-emulator.test.ts": {
       "reason": "Test rebuilds the applied observer script to recompute its hash independently for the carriage-tier emulator check.",
       "sites": ["script: applyParamsToScript(compiledScript(OBSERVE_TITLE), ["]
+    },
+    "midgard-sdk/tests/fault-proof.expected-parameter-application.ts": {
+      "reason": "Independent test oracle migrated from the two resolver and contract-builder expectation files: encodes independently specified bindings with the supported pinned WASM API and canonical Plutus Data. Intentionally supports strict parameter prefixes to prove that underapplied hashes differ; it never deploys a production script.",
+      "sites": ["apply_params_to_script("]
     }
   },
   "midgard/exact-fee-no-change-output": {
@@ -554,7 +508,7 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["left.detectionId.localeCompare(right.detectionId),"]
     },
-    "midgard-fault-proofs/src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.ts": {
+    "midgard-fault-proofs/src/workflow/field-carriage-prerequisite.publication-observation.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         ".sort((left, right) => outRef(left).localeCompare(outRef(right)));"
@@ -1050,6 +1004,37 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         "canonicalObservedNode(left).localeCompare(canonicalObservedNode(right)),"
+      ]
+    }
+  },
+  "midgard/no-recursive-plutus-data": {
+    "midgard-core/src/cek-proof.commit-semantic-data.ts": {
+      "reason": "Bounded scalar sites: the constant type CBOR is capped at MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES, and the other two encode a single integer (a leaf value and a constructor index).",
+      "sites": [
+        "const decoded = LucidData.from(Buffer.from(typeCbor).toString(\"hex\"));",
+        "const canonicalCbor = Buffer.from(LucidData.to(value), \"hex\");",
+        "const constructorCbor = Buffer.from(LucidData.to(constructor), \"hex\");"
+      ]
+    },
+    "midgard-core/src/cek-proof.encode-semantic-data.ts": {
+      "reason": "Scalar sites: each encodes a single integer (a constructor index or an integer leaf) inside the iterative semantic encoder.",
+      "sites": [
+        "Buffer.from(LucidData.to(value.constructor), \"hex\"),",
+        "chunks.push(Buffer.from(LucidData.to(current), \"hex\"));"
+      ]
+    },
+    "midgard-core/src/cek-proof.reconstruct-semantic-data.ts": {
+      "reason": "Integer leaf decode: the head check before it admits only an unsigned, negative or bignum (tag 2/3) head, so no container is decoded here.",
+      "sites": ["const decoded = LucidData.from(bytes.toString(\"hex\"));"]
+    },
+    "midgard-core/src/deployment-manifest-identity/catalogue-proof.ts": {
+      "reason": "Decodes and re-encodes the deployment manifest's fraud-proof catalogue membership proofs against their schema; the manifest is deployer configuration read locally, not transaction data.",
+      "sites": ["proof = Data.from(", "const canonicalProofCbor = Data.to("]
+    },
+    "midgard-validation/src/plutus-data.ts": {
+      "reason": "Test-support encoder: its only callers are validation and node tests encoding fixed-shape fixtures. Moving it into test support is a separate change.",
+      "sites": [
+        "): string => Data.to(toLocalPlutusData(value) as never, undefined, options);"
       ]
     }
   },

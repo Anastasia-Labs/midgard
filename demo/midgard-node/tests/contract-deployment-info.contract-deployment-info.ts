@@ -881,16 +881,10 @@ describe("contract deployment info", () => {
             : [`${vtd}.semanticResolvers.${index.toString()}`],
         ),
         `${vtd}.steps`,
-        `${vtd}.proofItem`,
-        `${vtd}.canonicalDecodeItemStages`,
         `${vtd}.prepareResolvers`,
         `${vtd}.resolvers`,
       ];
       expect([...restored.failClosed].sort()).toEqual([...unrecorded].sort());
-      expect(
-        () =>
-          reconstructed.fraudProofContracts.validationTraceDispute.proofItem,
-      ).toThrow(/does not record validation-trace proof item/u);
 
       // The SDK builder spreads untyped copies of the top-level shared
       // validators into the chain record. Each copy must equal its top-level

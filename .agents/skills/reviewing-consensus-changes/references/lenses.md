@@ -381,3 +381,41 @@ Ask:
   replaces it?
 - Do the rarely taken exits (timeouts, cancellation, removal, reclaim) keep
   the same invariants as the main path?
+
+### 13. One successor per step
+
+A bisection dispute narrows to one step, and resolution awards the challenger
+once it proves that its own claimed successor is valid. It never checks that
+the operator's successor is wrong. So every step verifier must admit exactly
+one successor per pre-state. A witness field that reaches the successor
+without being pinned, either by the pre-state or by an equality against an
+authenticated commitment, is a free choice. A free choice lets a challenger
+dispute an honest step with a different valid successor and remove an honest
+block `[review]`.
+
+History: on 2026-09-30 a change to the CEK redeemer-context select replaced a
+pinned choice ("the item at `redeemer_count - cursor - 1`") with a bound ("any
+purpose below `purpose_bound`"). A challenger could then skip a lower purpose
+that carries a redeemer, and an emulator scenario showed the award accepted
+against an honest block. The first review pass missed it because no lens
+asked this question.
+
+Ask:
+
+- For each witness field a step reads: does it reach the successor, directly
+  or through a hash, a control record or a leaf? If it does, what pins it:
+  the pre-state, or an equality against an authenticated commitment? A bound
+  (`<`, `<=`, `> 0`) or a well-formedness check is not a pin, and neither is a
+  check at a later step, because the award happens at this one.
+- Does the step choose among items, purposes, indices or branches? Is the
+  choice forced (the next one), or only valid (any one that satisfies a
+  predicate)?
+- Does a length, count or offset the prover supplies reach the successor? If
+  so, is it checked against the committed item it describes, or only for
+  range?
+- When several witness constructors apply at one stage (select and skip, for
+  example), can two of them succeed from the same pre-state? Each pre-state
+  must admit exactly one arm.
+- Is there a test that builds two distinct successors from one pre-state and
+  shows the step accepts at most one? In an emulator scenario, a challenger
+  disputing an honest step with a different valid successor must be refused.

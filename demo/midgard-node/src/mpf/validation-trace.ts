@@ -7,7 +7,8 @@ import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
-  validationAuxiliaryWitnessData,
+  retainedValidationAuxiliaryWitnessData,
+  ValidationTraceStopped,
 } from "@al-ft/midgard-validation";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -68,6 +69,7 @@ export const buildDeterministicValidationTraceMembers = (
           ledgerMutationSteps: transaction.ledgerMutationSteps,
           expectedLedgerOps: transaction.ledgerOps,
           expectedVerdict: transaction.verdict,
+          scriptEvaluations: transaction.scriptEvaluations,
           expectedRejectionCode: transaction.rejectionCode,
           blockEndTimeMs: input.blockEndTime.getTime(),
           expectedNetworkId: input.expectedNetworkId,
@@ -75,6 +77,21 @@ export const buildDeterministicValidationTraceMembers = (
           minFeeB: input.minFeeB,
           blockSlot: input.blockSlot,
         }).pipe(
+          Effect.tapError((cause) =>
+            Effect.logError(
+              "Validation trace block stopped: evaluator classification preserved",
+            ).pipe(
+              Effect.annotateLogs({
+                alarm:
+                  cause instanceof ValidationTraceStopped
+                    ? cause.reason
+                    : "unavailable",
+                committedVerdict: transaction.verdict,
+                committedRejectionCode: transaction.rejectionCode ?? "none",
+                transactionId: transaction.transactionId.toString("hex"),
+              }),
+            ),
+          ),
           Effect.mapError(
             (cause) =>
               new DatabaseError({
@@ -115,10 +132,12 @@ export const buildDeterministicValidationTraceMembers = (
           };
           const auxiliary = LucidData.from(
             LucidData.to(
-              validationAuxiliaryWitnessData(witness.auxiliary) as never,
+              retainedValidationAuxiliaryWitnessData(
+                witness.auxiliary,
+              ) as never,
             ),
-            SDK.ValidationAuxiliaryWitnessSchema,
-          ) as unknown as SDK.ValidationAuxiliaryWitness;
+            SDK.RetainedValidationAuxiliaryWitnessSchema,
+          ) as unknown as SDK.RetainedValidationAuxiliaryWitness;
           const value: SDK.RetainedValidationWitness = {
             machine_state: SDK.validationMachineStateDataFromCore(
               trace.states[stateIndex]!,

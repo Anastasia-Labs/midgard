@@ -78,7 +78,10 @@ export type FraudProofWorkflowDeploymentBinding<
 
 /** Closed authority view over the already verified finalized manifest. */
 export const releaseFinalityAuthorityFromDeploymentBinding = (
-  binding: FraudProofWorkflowDeploymentBinding<FraudProofCatalogueCategoryName>,
+  binding: Pick<
+    FraudProofWorkflowDeploymentBinding<FraudProofCatalogueCategoryName>,
+    "deploymentFingerprint" | "releaseFinality"
+  >,
 ): FraudProofReleaseFinalityAuthority => ({
   authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   verifyForWorkflow: async ({ deploymentFingerprint }) => {

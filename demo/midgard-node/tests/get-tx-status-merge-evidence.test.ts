@@ -79,6 +79,7 @@ const fixtureOwner = (
   superseded: boolean,
 ): EventHistoryOwner => ({
   close: Effect.void,
+  requestReconciliation: () => Effect.void,
   reconciliationStatus: Effect.succeed(undefined),
   sourceStatus: Effect.succeed({
     state: "following",

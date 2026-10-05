@@ -228,7 +228,11 @@ export const retentionFixture = async (store: CommitteeStore) => {
       bytes,
       h.headerHash,
       h.header,
-      { payloadSchemaVersion: 1, stateQueueOutRef: h.stateQueueOutRef },
+      {
+        payloadSchemaVersion: 1,
+        stateQueueOutRef: h.stateQueueOutRef,
+        preBlockUtxos: [],
+      },
     );
     await store.saveDaPayload({
       deploymentFingerprint,

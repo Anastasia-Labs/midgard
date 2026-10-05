@@ -3504,7 +3504,7 @@
       "label": "map_round_trip_constant",
       "note": "map conversion from an inline program constant rather than the script context",
       "maxSteps": 64,
-      "scriptFlat": "0101002374c6ead30110bf014a2a2a2a2a2a2a2a2a2a2a0203ff0001",
+      "scriptFlat": "0101002374c6ead3010fa2014a2a2a2a2a2a2a2a2a2a2a02030001",
       "contextCbor": "d87980",
       "envelope": {
         "uplcVersion": [

@@ -1,14 +1,11 @@
 import {
   buildMidgardBoundedItem,
   buildMidgardBoundedItemChunkProof,
-  buildMidgardNativeScriptDecodingTrace,
+  classifyMidgardWitnessScriptItem,
   decodeMidgardFieldPreimage,
-  encodeMidgardNativeScriptStructureControl,
   midgardBoundedItemChunkCount,
   midgardFieldCommitment,
-  MidgardNativeScriptDecodingBindKinds,
-  MidgardNativeScriptDecodingRefusalClasses,
-  MidgardNativeScriptDecodingTraceOutcomeKinds,
+  type MidgardWitnessScriptItemClass,
   parseMidgardVersionedScriptHeader,
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
@@ -126,59 +123,28 @@ export const classifyWitnessScriptDecodingFinding = (
   return Object.freeze({ ...finding, accusedClass });
 };
 
+const RESULT_CLASS_OF_ITEM_CLASS: Readonly<
+  Record<MidgardWitnessScriptItemClass, WitnessScriptDecodingResultClass>
+> = Object.freeze({
+  noFault: WitnessScriptDecodingResultClasses.NoFault,
+  headerMalformed: WitnessScriptDecodingResultClasses.HeaderMalformed,
+  nativeMalformed: WitnessScriptDecodingResultClasses.NativeMalformed,
+  nodeLimit: WitnessScriptDecodingResultClasses.NodeLimit,
+  depthLimit: WitnessScriptDecodingResultClasses.DepthLimit,
+});
+
 const resultClassOfItem = (
   item: Uint8Array,
 ): {
   readonly resultClass: WitnessScriptDecodingResultClass;
   readonly initialControlCbor: string;
 } => {
-  const header = parseMidgardVersionedScriptHeader(item, item.length);
-  if (header === null) {
-    return {
-      resultClass: WitnessScriptDecodingResultClasses.HeaderMalformed,
-      initialControlCbor: "",
-    };
-  }
-  if (header.languageTag !== 0) {
-    return {
-      resultClass: WitnessScriptDecodingResultClasses.NoFault,
-      initialControlCbor: "",
-    };
-  }
-  const trace = buildMidgardNativeScriptDecodingTrace(item);
-  if (trace.bind.kind === MidgardNativeScriptDecodingBindKinds.Malformed) {
-    // A parsed tag-0 wrapper can only land here for the empty payload. That is
-    // a payload structural failure, not a header failure.
-    return {
-      resultClass: WitnessScriptDecodingResultClasses.NativeMalformed,
-      initialControlCbor: "",
-    };
-  }
-  if (trace.bind.kind !== MidgardNativeScriptDecodingBindKinds.Bound) {
-    return fail("native header produced an impossible non-native trace");
-  }
-  const initialControlCbor = encodeMidgardNativeScriptStructureControl(
-    trace.bind.control,
-  ).toString("hex");
-  if (trace.outcome === null)
-    return fail("native scan has no terminal outcome");
-  if (
-    trace.outcome.kind === MidgardNativeScriptDecodingTraceOutcomeKinds.Terminal
-  ) {
-    return {
-      resultClass: WitnessScriptDecodingResultClasses.NoFault,
-      initialControlCbor,
-    };
-  }
-  const resultClass =
-    trace.outcome.refusalClass ===
-    MidgardNativeScriptDecodingRefusalClasses.Malformed
-      ? WitnessScriptDecodingResultClasses.NativeMalformed
-      : trace.outcome.refusalClass ===
-          MidgardNativeScriptDecodingRefusalClasses.NodeLimit
-        ? WitnessScriptDecodingResultClasses.NodeLimit
-        : WitnessScriptDecodingResultClasses.DepthLimit;
-  return { resultClass, initialControlCbor };
+  const { itemClass, initialControlCbor } =
+    classifyMidgardWitnessScriptItem(item);
+  return {
+    resultClass: RESULT_CLASS_OF_ITEM_CLASS[itemClass],
+    initialControlCbor,
+  };
 };
 
 export type WitnessScriptDecodingEvidence = Readonly<{

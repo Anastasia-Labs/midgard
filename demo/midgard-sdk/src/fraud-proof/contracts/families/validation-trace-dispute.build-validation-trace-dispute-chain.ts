@@ -1441,7 +1441,11 @@ export const buildValidationTraceDisputeChain = ({
           applyBlueprintParams(
             blueprint,
             VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
-            [resolverHashesData, computationThread.policyId],
+            [
+              resolverHashesData,
+              award.spendingScriptHash,
+              computationThread.policyId,
+            ],
           ),
         ),
     );
@@ -1472,6 +1476,7 @@ export const buildValidationTraceDisputeChain = ({
             [
               boundary.spendingScriptHash,
               timeout.spendingScriptHash,
+              resolverHashesData,
               computationThread.policyId,
             ],
           ),
@@ -1553,6 +1558,7 @@ export const buildValidationTraceDisputeChain = ({
       cekCoreStages,
       cekContextStages,
       cekContextItemStages,
+      canonicalDecodePrepare: prepareResolvers[0],
       canonicalDecodeItemStages,
       scriptSourcesStageOneRedeemerStages,
       prepareResolvers,

@@ -3,6 +3,7 @@ import "./listen-router.post-tx-status-batch-handler.js";
 import { HttpServerResponse } from "@effect/platform";
 import { Effect, Option, Ref } from "effect";
 
+import * as HistoryAuthority from "../database/eventHistoryAuthority.js";
 import {
   DaPayloadTerminalOutcomesDB,
   StateQueueMutationLeasesDB,
@@ -10,6 +11,7 @@ import {
 import { attestationTimeoutCorrectionReadinessBounds } from "../fibers/index.js";
 import { READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS } from "../l1-provider-readiness-probe.js";
 import { localOgmiosSubmitSlotEvidence } from "../local-ogmios-slot.js";
+import { foreignBaseVerificationForAuthority } from "../services/foreign-base-verification.js";
 import {
   DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
   ValidationPool,
@@ -89,7 +91,15 @@ export const getReadinessHandler = Effect.gen(function* () {
     mempoolTxCount,
     leaseInspection,
     journalAges,
+    foreignVerificationAuthority,
   } = databaseState.right;
+  const foreignBaseVerification = foreignBaseVerificationForAuthority(
+    yield* Ref.get(globals.FOREIGN_BASE_VERIFICATION),
+    Option.isSome(foreignVerificationAuthority) &&
+      foreignVerificationAuthority.value.state === "ready"
+      ? HistoryAuthority.tokenFromRow(foreignVerificationAuthority.value)
+      : undefined,
+  );
   const nowMillis = Date.now();
   const stateQueueBlocksInQueue = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
   const resetInProgress = yield* Ref.get(globals.RESET_IN_PROGRESS);
@@ -202,6 +212,7 @@ export const getReadinessHandler = Effect.gen(function* () {
     dbHealthy: true,
     awaitingForeignTipReconciliations,
     operatorMembership,
+    foreignBaseVerification,
     validationPool: {
       configuredWorkers: validationPool.poolSize,
       liveWorkers: validationPoolStats.liveWorkers,
@@ -358,6 +369,15 @@ export const getReadinessHandler = Effect.gen(function* () {
     unfinishedLocalMutationJobs: unfinishedMutationJobs.toString(),
     daPublicationConflicts,
     awaitingForeignTipReconciliations,
+    foreignBaseVerification:
+      foreignBaseVerification.status === "unobserved"
+        ? foreignBaseVerification
+        : {
+            status: foreignBaseVerification.status,
+            foreignHeaderHash: foreignBaseVerification.foreignHeaderHash,
+            reason: foreignBaseVerification.reason,
+            generation: foreignBaseVerification.scope.generation,
+          },
     unresolvedBlockSubmissionAgeMs,
     providerQueryHealthy: providerProbe.healthy,
     providerQueryMode: providerProbe.mode,

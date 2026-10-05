@@ -4,11 +4,11 @@
 //// adding the claimed asset's quantity in that input's **pre-state ledger
 //// value** to the running delta. The value is never the prover's: it is the
 //// `LedgerOutputCommitmentV1` descriptor the header's `prev_utxos_root`
-//// commits at the input's out-ref key, fetched through the *same*
-//// ledger-membership witness path the transition-trace machinery's
-//// `apply_l2_spends` fetches spent-input values through
+//// commits at the input's out-ref key, fetched through the transition-trace
+//// machinery's ledger-membership witness path
 //// (`midgard/fraud_proofs/transition_trace/proof.verify_ledger_membership`,
-//// key `encode_midgard_tx_input(input)`), and the claimed asset's quantity
+//// key `encode_midgard_tx_input(input)`, the key `apply_l2_spends` deletes
+//// the spent input under), and the claimed asset's quantity
 //// inside the descriptor is read exactly the way the validation machine's
 //// ValueAndMint stage two reads it — by walking **all** authenticated asset
 //// leaves `0 .. asset_count-1` and summing the ones whose `(policy, name)`
@@ -145,7 +145,9 @@ pub fn spent_input_claimed_quantity_v1(
     )
 
   // 2. Total + canonical decoding of the committed bytes.
-  let descriptor = ledger_output_commitment_v1.decode(witness.descriptor_cbor)
+  let descriptor = ledger_output_commitment_v1.decode_canonical_schema(
+    witness.descriptor_cbor,
+  )
 
   when claimed_asset is {
     // 3a. The lovelace value is a scalar field of the descriptor itself; no

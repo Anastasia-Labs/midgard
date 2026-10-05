@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import {
   decodeMidgardCekProgramMaterialSidecar,
   encodeMidgardCekProgramMaterialSidecar,
@@ -8,6 +10,7 @@ import {
   Application,
   Builtin,
   ErrorUPLC,
+  Force,
   Lambda,
   UPLCConst,
   UPLCEncoder,
@@ -36,7 +39,7 @@ const compile = (version: readonly [number, number, number]): Buffer => {
       UPLCConst.int(41),
     ),
   );
-  return Buffer.from(UPLCEncoder.compile(program).toBuffer().buffer);
+  return Buffer.from(UPLCEncoder.compile(program));
 };
 
 const compileLargeString = (byteLength: number): Buffer => {
@@ -44,14 +47,11 @@ const compileLargeString = (byteLength: number): Buffer => {
     [1, 1, 0],
     UPLCConst.str("x".repeat(byteLength)),
   );
-  return Buffer.from(UPLCEncoder.compile(program).toBuffer().buffer);
+  return Buffer.from(UPLCEncoder.compile(program));
 };
 
 const compileError = (): Buffer =>
-  Buffer.from(
-    UPLCEncoder.compile(new UPLCProgram([1, 1, 0], new ErrorUPLC())).toBuffer()
-      .buffer,
-  );
+  Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], new ErrorUPLC())));
 
 const materialShape = (
   entries: Iterable<{
@@ -72,6 +72,39 @@ const materialShape = (
     .sort((left, right) => left[1].localeCompare(right[1]));
 
 describe("canonical V1 CEK programs", () => {
+  it("accepts the deployed history spending program", () => {
+    const blueprint = JSON.parse(
+      readFileSync(
+        new URL("../../../onchain/aiken/plutus.json", import.meta.url),
+        "utf8",
+      ),
+    ) as {
+      validators: readonly {
+        readonly title: string;
+        readonly compiledCode: string;
+      }[];
+    };
+    const history = blueprint.validators.find(
+      (validator) => validator.title === "user_events/history.history.spend",
+    );
+    expect(history).toBeDefined();
+    expect(
+      buildMidgardCanonicalCekProgram(Buffer.from(history!.compiledCode, "hex"))
+        .material.size,
+    ).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ["map", "0101004c0103a101010001"],
+    ["nested map", "0101004c0105a101a102030001"],
+    ["list containing map", "0101004bd70903a101010001"],
+    ["pair containing map", "0101004bded88103a10101000e01"],
+  ])("accepts Cardano-exact Flat Data constants: %s", (_name, hex) => {
+    // Pinned Aiken `uplc encode --hex` output, independent of the local encoder.
+    const program = buildMidgardCanonicalCekProgram(Buffer.from(hex, "hex"));
+    expect(program.constantWitnesses.size).toBe(1);
+  });
+
   it("turns raw UPLC into one deterministic content-addressed graph", () => {
     const script = compile([1, 1, 0]);
     const first = buildMidgardCanonicalCekProgram(script);
@@ -117,14 +150,14 @@ describe("canonical V1 CEK programs", () => {
     const canonical = buildMidgardCanonicalCekProgram(
       Buffer.from(
         UPLCEncoder.compile(
-          new UPLCProgram([1, 1, 0], Builtin.headList),
-        ).toBuffer().buffer,
+          new UPLCProgram([1, 1, 0], new Force(Builtin.headList)),
+        ),
       ),
     );
     expect(canonical.material.size).toBeGreaterThanOrEqual(2);
 
-    // Bare and over-forced Flat both decode to Harmonic's same normalized
-    // Builtin AST. Neither is the canonical UPLC 1.1.0 encoding.
+    // A polymorphic builtin with too few or too many forces directly around
+    // it is not the canonical UPLC 1.1.0 encoding.
     expect(() =>
       buildMidgardCanonicalCekProgram(Buffer.from("0101007430", "hex")),
     ).toThrow(/exactly the builtin forces/u);

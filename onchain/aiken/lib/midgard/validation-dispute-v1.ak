@@ -91,7 +91,6 @@ pub fn open(
 ) -> ValidationDisputeV1 {
   expect current_slot >= 0
   expect descriptors_can_dispute(operator, challenger)
-  expect operator.step_count > 0
   ValidationDisputeV1 {
     version: dispute_version,
     operator_descriptor: operator,

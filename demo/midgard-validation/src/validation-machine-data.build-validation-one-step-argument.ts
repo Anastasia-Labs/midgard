@@ -1,7 +1,7 @@
 import type { MidgardValidationMachineState } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
+import { lucidDataToCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
 import { hashMidgardValidationWorkWitness } from "@al-ft/midgard-core/validation-trace";
-import { Data } from "@lucid-evolution/lucid";
 
 import {
   type DeterministicValidationMachineTrace,
@@ -26,17 +26,14 @@ export const encodeValidationOneStepWitnessCbor = (input: {
   readonly witness: ValidationMachineWorkWitness;
   readonly claimedSuccessor: MidgardValidationMachineState;
 }): Buffer =>
-  Buffer.from(Data.to(validationOneStepWitnessData(input) as never), "hex");
+  lucidDataToCborIterative(validationOneStepWitnessData(input) as never);
 
 export const encodeValidationAuxiliaryWitnessCbor = (
   auxiliary: ValidationMachineWorkWitness["auxiliary"],
   resolveFieldCarriage?: ValidationMachineFieldCarriageResolver,
 ): Buffer =>
-  Buffer.from(
-    Data.to(
-      validationAuxiliaryWitnessData(auxiliary, resolveFieldCarriage) as never,
-    ),
-    "hex",
+  lucidDataToCborIterative(
+    validationAuxiliaryWitnessData(auxiliary, resolveFieldCarriage) as never,
   );
 
 /**
@@ -90,11 +87,10 @@ export const buildValidationOneStepArgument = ({
     witness.auxiliary,
     resolveFieldCarriage,
   );
-  const transitionCbor = Buffer.from(Data.to(transitionData as never), "hex");
-  const auxiliaryCbor = Buffer.from(Data.to(auxiliaryData as never), "hex");
-  const evidenceCbor = Buffer.from(
-    Data.to(record([transitionData, auxiliaryData]) as never),
-    "hex",
+  const transitionCbor = lucidDataToCborIterative(transitionData as never);
+  const auxiliaryCbor = lucidDataToCborIterative(auxiliaryData as never);
+  const evidenceCbor = lucidDataToCborIterative(
+    record([transitionData, auxiliaryData]) as never,
   );
   const maximum = MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes;
   if (

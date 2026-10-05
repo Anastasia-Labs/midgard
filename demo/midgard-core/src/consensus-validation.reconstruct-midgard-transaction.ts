@@ -35,10 +35,7 @@ export type MidgardConsensusViolationCode =
   | "E_LEDGER_OUTPUT_SIZE"
   | "E_VALUE_SIZE"
   | "E_SCRIPT_PROGRAM_SIZE"
-  | "E_SCRIPT_PROGRAM_ENCODING"
-  | "E_NATIVE_SCRIPT_DEPTH"
-  | "E_NATIVE_SCRIPT_NODE_COUNT"
-  | "E_ASSET_COUNT";
+  | "E_SCRIPT_PROGRAM_ENCODING";
 
 export type MidgardConsensusViolation = {
   readonly code: MidgardConsensusViolationCode;
@@ -293,8 +290,3 @@ export const enforcePreimageSize = (
         featureId,
         `${bytes.length.toString()} > ${maximum.toString()}`,
       );
-
-export type NativeScriptComplexity = {
-  readonly depth: number;
-  readonly nodeCount: number;
-};

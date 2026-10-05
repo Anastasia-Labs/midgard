@@ -18,6 +18,7 @@ import {
 import { COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.js";
 import { CURSOR_FAMILY_TRANSACTION_PORT } from "../src/workflow/cursor-family-adapter.js";
+import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
 import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "../src/workflow/family-l1-observation.js";
 import * as funding from "../src/workflow/funding-reservation-permit.js";
 import {
@@ -591,6 +592,7 @@ it.each(categories)(
       evidence,
       detections: [
         {
+          ...BLOCK_SUBJECT,
           headerHash: fixture.headerHash,
           detectionId: "local-driver-fixture",
           violationId,

@@ -174,7 +174,7 @@ export type SuccessfulLocalFinalizationRecoveryOutput = {
   mempoolLedgerDeletedOutRefHexes: readonly string[];
 };
 
-export type WorkerOutput =
+export type WorkerOutput = (
   | SuccessfulSubmissionOutput
   | SkippedSubmissionOutput
   | NothingToCommitOutput
@@ -185,7 +185,10 @@ export type WorkerOutput =
   | SubmittedAwaitingConfirmationOutput
   | SpeculativeCandidateReadyOutput
   | SpeculativeCandidateInvalidatedOutput
-  | SuccessfulLocalFinalizationRecoveryOutput;
+  | SuccessfulLocalFinalizationRecoveryOutput
+) & {
+  readonly foreignBaseVerification?: import("../../services/foreign-base-verification.js").ForeignBaseVerificationOutcome;
+};
 
 /**
  * Posted by the commit worker ahead of its output, as soon as a commit-stage

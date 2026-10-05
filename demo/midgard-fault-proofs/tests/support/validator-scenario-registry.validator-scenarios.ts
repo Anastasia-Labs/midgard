@@ -8,6 +8,110 @@ export type ValidatorScenarioPair = Readonly<{
 export const VALIDATOR_SCENARIOS: Readonly<
   Record<string, ValidatorScenarioPair>
 > = {
+  "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_envelope_v1.main":
+    {
+      passing: [
+        {
+          file: "demo/midgard-fault-proofs/tests/redeemer-data-refusal-deployed.test.ts",
+          test: "settles authenticated Data refusals through the deployed ScriptSources item chain",
+        },
+      ],
+      failing: [
+        {
+          file: "demo/midgard-fault-proofs/tests/redeemer-data-refusal-deployed.test.ts",
+          test: "settles authenticated Data refusals through the deployed ScriptSources item chain",
+        },
+      ],
+    },
+  "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_traversal_normalizer_v1.main":
+    {
+      passing: [
+        {
+          file: "demo/midgard-fault-proofs/tests/redeemer-data-refusal-deployed.test.ts",
+          test: "settles authenticated Data refusals through the deployed ScriptSources item chain",
+        },
+      ],
+      failing: [
+        {
+          file: "demo/midgard-fault-proofs/tests/redeemer-data-refusal-deployed.test.ts",
+          test: "settles authenticated Data refusals through the deployed ScriptSources item chain",
+        },
+      ],
+    },
+  "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_outer_normalizer_v1.main":
+    {
+      passing: [
+        {
+          file: "demo/midgard-fault-proofs/tests/redeemer-data-refusal-deployed.test.ts",
+          test: "settles authenticated Data refusals through the deployed ScriptSources item chain",
+        },
+      ],
+      failing: [
+        {
+          file: "demo/midgard-fault-proofs/tests/redeemer-data-refusal-deployed.test.ts",
+          test: "settles authenticated Data refusals through the deployed ScriptSources item chain",
+        },
+      ],
+    },
+  "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_source_authenticator.main":
+    {
+      passing: [
+        {
+          file: "demo/midgard-fault-proofs/tests/redeemer-data-refusal-deployed.test.ts",
+          test: "settles authenticated Data refusals through the deployed ScriptSources item chain",
+        },
+      ],
+      failing: [
+        {
+          file: "demo/midgard-fault-proofs/tests/redeemer-data-refusal-deployed.test.ts",
+          test: "settles authenticated Data refusals through the deployed ScriptSources item chain",
+        },
+      ],
+    },
+  "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_execution_settlement_v1.main":
+    {
+      passing: [
+        {
+          file: "demo/midgard-fault-proofs/tests/redeemer-data-refusal-deployed.test.ts",
+          test: "settles authenticated Data refusals through the deployed ScriptSources item chain",
+        },
+      ],
+      failing: [
+        {
+          file: "demo/midgard-fault-proofs/tests/redeemer-data-refusal-deployed.test.ts",
+          test: "settles authenticated Data refusals through the deployed ScriptSources item chain",
+        },
+      ],
+    },
+  "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_data_executor.main":
+    {
+      passing: [
+        {
+          file: "demo/midgard-fault-proofs/tests/redeemer-data-refusal-deployed.test.ts",
+          test: "settles authenticated Data refusals through the deployed ScriptSources item chain",
+        },
+      ],
+      failing: [
+        {
+          file: "demo/midgard-fault-proofs/tests/redeemer-data-refusal-deployed.test.ts",
+          test: "refuses canonical Data at the deployed invalid executor",
+        },
+      ],
+    },
+  "fraud_proofs/validation_trace/boundary_v1.main": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-validation-dispute-terminal-padding.test.ts",
+        test: "awards an authenticated padded terminal run and refuses a forged terminal opening",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-validation-dispute-terminal-padding.test.ts",
+        test: "refuses terminal-padding awards against an honest operator trace",
+      },
+    ],
+  },
   "operator_directory/active_operators.spend": {
     passing: [
       {
@@ -229,6 +333,62 @@ export const VALIDATOR_SCENARIOS: Readonly<
       {
         file: "demo/midgard-fault-proofs/tests/receive-purpose-language-lifecycle.test.ts",
         test: "convicts an accepted PlutusV3 receive at the maximum shape: cancels every step, refuses every step-02 seam and the adjacent index, then mints and removes through the actuator",
+      },
+    ],
+  },
+  "fraud_proofs/transition_trace/source_v1.main": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
+        test: "proves missing validation run and removes the block",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
+        test: "proves foreign validation run and removes the block",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
+        test: "proves malformed validation run and removes the block",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
+        test: "refuses missing validation-run claim against the honest block",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
+        test: "refuses foreign validation-run claim against the honest block",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
+        test: "refuses malformed validation-run claim against the honest block",
+      },
+    ],
+  },
+  "fraud_proofs/transition_trace/withdrawal_v1.main": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-withdrawal-branch.test.ts",
+        test: "convicts a wrong withdrawal step with an honest delete that opens a lone neighbour group",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-withdrawal-branch.test.ts",
+        test: "convicts a step that commits the all-zero root for the empty ledger",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-withdrawal-branch.test.ts",
+        test: "defends an honest withdrawal step against a Branch standing in for the spent output's lone neighbour",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-withdrawal-branch.test.ts",
+        test: "defends an honest withdrawal step against a terminal Leaf whose skipped nibble is rewritten",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-withdrawal-branch.test.ts",
+        test: "defends an honest step that commits the empty ledger root",
       },
     ],
   },

@@ -1,3 +1,4 @@
+import "./workflow.included-parent-with-pending-descendant.js";
 import "./workflow.compiled-production-workflow-boundary.js";
 
 import { describe, expect, it, vi } from "vitest";
@@ -268,7 +269,12 @@ describe("canonical reobservation with pending descendants", () => {
     const journal = new MemoryFraudProofWorkflowJournalStore();
     const onChain = new Set<string>();
     const adapter = makeAdapter({
-      reconcile: async ({ txHash }) => {
+      reconcile: async ({ txHash, reconciliationOnly }) => {
+        if (reconciliationOnly && !onChain.has(txHash!))
+          return {
+            kind: "unknown",
+            reason: "transaction inclusion rolled back",
+          };
         if (txHash === REMOVAL_TX_HASH) return { kind: "pending", txHash };
         onChain.add(txHash!);
         return { kind: "confirmed", txHash: txHash! };
@@ -356,7 +362,12 @@ describe("canonical reobservation with pending descendants", () => {
     let finishChild = false;
     const reconciled: string[] = [];
     const adapter = makeAdapter({
-      reconcile: async ({ txHash }) => {
+      reconcile: async ({ txHash, reconciliationOnly }) => {
+        if (reconciliationOnly && !onChain.has(txHash!))
+          return {
+            kind: "unknown",
+            reason: "transaction inclusion rolled back",
+          };
         reconciled.push(txHash!);
         if (txHash === REMOVAL_TX_HASH && !finishChild)
           return { kind: "pending", txHash };
@@ -394,7 +405,9 @@ describe("canonical reobservation with pending descendants", () => {
     let expiredParent = false;
     const reconciled: string[] = [];
     const adapter = makeAdapter({
-      reconcile: async ({ txHash }) => {
+      reconcile: async ({ txHash, reconciliationOnly }) => {
+        if (reconciliationOnly && parentOnChain !== txHash)
+          return { kind: "unknown", reason: "signed recovery required" };
         reconciled.push(txHash!);
         // Signed recovery supplies authenticated stable expiry, not simple absence.
         if (txHash === PROOF_TX_HASH && expiredParent)

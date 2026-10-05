@@ -91,6 +91,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "validationTraceDisputeRedeemerItemInvalidHeaderExecutor",
     "V1 validation-trace redeemer item invalid tail executor":
       "validationTraceDisputeRedeemerItemInvalidTailExecutor",
+    "V1 validation-trace redeemer item invalid data executor":
+      "validationTraceDisputeRedeemerItemInvalidDataExecutor",
     "V1 validation-trace redeemer item settlement":
       "validationTraceDisputeRedeemerItemSettlement",
     "V1 validation-trace CEK context settle":
@@ -235,6 +237,22 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 validation-trace boundary": "validationTraceDisputeBoundary",
     "V1 validation-trace timeout": "validationTraceDisputeTimeout",
     "V1 validation-trace award": "validationTraceDisputeAward",
+    "V1 validation-trace canonical-decode prepare":
+      "validationTraceDisputeCanonicalDecodePrepare",
+    "V1 validation-trace canonical-decode empty semantic":
+      "validationTraceDisputeCanonicalDecodeEmptySemantic",
+    "V1 validation-trace canonical-decode item semantic":
+      "validationTraceDisputeCanonicalDecodeItemSemantic",
+    "V1 validation-trace canonical-decode item source":
+      "validationTraceDisputeCanonicalDecodeItemSource",
+    "V1 validation-trace canonical-decode item observe":
+      "validationTraceDisputeCanonicalDecodeItemObserve",
+    "V1 validation-trace canonical-decode item proof":
+      "validationTraceDisputeCanonicalDecodeItemProof",
+    "V1 validation-trace canonical-decode item settlement":
+      "validationTraceDisputeCanonicalDecodeItemSettlement",
+    "V1 validation-trace proof-item publication":
+      "validationTraceDisputeProofItem",
     "V1 fraud-proof fabricated-deposit step-01": "fraudProofFabricatedDeposit",
     "V1 fraud-proof fabricated-deposit step-02":
       "fraudProofFabricatedDepositStep02",

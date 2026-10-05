@@ -13,7 +13,10 @@ import {
   type MidgardCekStructuralExecution,
 } from "../src/cek-executor.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
-import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
+import {
+  buildMidgardCanonicalCekProgram,
+  encodeMidgardCekCardanoFlatProgram,
+} from "../src/cek-program.js";
 import * as vectors from "./fixtures/cek-core-step-v1.vectors.mjs";
 
 /**
@@ -123,7 +126,10 @@ type Recomputed = {
 };
 
 const recompute = (definition: vectors.CekCoreStepProgramV1): Recomputed => {
-  const scriptFlat = vectors.compileMidgardCekGoldenProgram(definition.term());
+  const scriptFlat = vectors.compileMidgardCekGoldenProgram(
+    definition.term(),
+    encodeMidgardCekCardanoFlatProgram,
+  );
   const program = buildMidgardCanonicalCekProgram(scriptFlat);
   const contextCbor = encodeMidgardCekPlutusData(definition.context());
   const graph = buildMidgardCekExecutionGraph(

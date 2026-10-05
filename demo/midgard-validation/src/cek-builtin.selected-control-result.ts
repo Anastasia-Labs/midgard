@@ -135,11 +135,11 @@ const decodedDirectConstant = (value: MidgardCekDirectValueWitness) => {
 };
 
 const directValueMemorySize = (value: MidgardCekDirectValueWitness): bigint => {
+  // An opaque value has no committed size. The only builtin positions that
+  // admit one are the polymorphic branches of tags 26, 27, 28, 31 and 36,
+  // which midgardCekDirectBuiltinCostSizes sizes without reading them.
   if (value.kind === "opaque") {
-    if (value.root.length !== 32) {
-      throw new Error("V1 opaque CEK value root must be bytes32");
-    }
-    return 1n;
+    throw new Error("V1 opaque CEK value has no memory size");
   }
   if (value.kind === "blsMillerLoop") {
     if (value.expressionRoot.length !== 32) {
@@ -172,13 +172,22 @@ export const directByteLength = (
   if (decoded.type.kind !== "bytes" || !(decoded.payload instanceof DataB)) {
     throw new Error("V1 builtin requires a byte string");
   }
-  return decoded.payload.bytes.toBuffer().length;
+  return decoded.payload.bytes.length;
 };
 
 export const midgardCekDirectBuiltinCostSizes = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): readonly bigint[] => {
+  if (tag === 21n) {
+    // Match Cardano ByteString ExMemoryUsage without changing rooted constants.
+    return Object.freeze(
+      arguments_.map((argument) => {
+        const length = BigInt(directByteLength(argument));
+        return length === 0n ? 1n : (length + 7n) / 8n;
+      }),
+    );
+  }
   if (tag === 26n) {
     if (arguments_.length !== 3) {
       throw new Error("ifThenElse requires three arguments");
@@ -204,7 +213,7 @@ export const midgardCekDirectBuiltinCostSizes = (
     if (message.type.kind !== "string" || !(message.payload instanceof DataB)) {
       throw new Error("trace requires a string message");
     }
-    return Object.freeze([BigInt(message.payload.bytes.toBuffer().length), 1n]);
+    return Object.freeze([BigInt(message.payload.bytes.length), 1n]);
   }
   if (tag === 31n) {
     if (arguments_.length !== 3) {

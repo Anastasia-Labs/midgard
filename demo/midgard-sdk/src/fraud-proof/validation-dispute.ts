@@ -15,6 +15,8 @@ export {
 export {
   AuthenticatedCanonicalDecodeItemDatum,
   AuthenticatedCanonicalDecodeItemDatumSchema,
+  CommittedValidationStepEvidence,
+  CommittedValidationStepEvidenceSchema,
   ObservedCanonicalDecodeItem,
   ObservedCanonicalDecodeItemDatum,
   ObservedCanonicalDecodeItemDatumSchema,

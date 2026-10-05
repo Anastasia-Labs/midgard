@@ -14,6 +14,14 @@ import "./resolution.submit-validation-dispute-enter-resolution.js";
 import "./resolution.submit-validation-dispute-prepare-resolution.js";
 import "./resolution.submit-validation-dispute-prepare-selected.js";
 export {
+  submitValidationDisputeAwardTerminalPadding,
+  type SubmitValidationDisputeAwardTerminalPaddingResult,
+} from "./resolution.submit-validation-dispute-award-terminal-padding.js";
+export {
+  submitValidationDisputeDirectCommittedStep,
+  type SubmitValidationDisputeDirectCommittedStepResult,
+} from "./resolution.submit-validation-dispute-direct-committed-step.js";
+export {
   submitValidationDisputeEnterResolution,
   type SubmitValidationDisputeEnterResolutionResult,
   type SubmitValidationDisputePrepareResolutionResult,

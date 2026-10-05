@@ -4,35 +4,35 @@ import { describe, expect, it, vi } from "vitest";
 
 import { NativeMpfWorkerPortClient } from "../src/services/mpf-native-owner/client.js";
 import {
+  alignIndependentDepositCommit,
+  assertRetainedForeignDepositEvidence,
+  submitIndependentDepositBlock,
+  submitOwnedDeposit,
+  verifyCurrentForeignParent,
+} from "./deposit-flow-emulator-independent-deposit-block.js";
+import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
-  alignCommitSchedulerBeforeTestWorker,
   assertSpeculativeDepositSnapshotIsMemoryOnly,
   canonicalSlotConfigForLucid,
-  COMMIT_MINIMUM_FUTURE_BUFFER_MS,
-  commitExplicitBlockHeaderProgram,
-  commitTimingBudget,
   countDaPayloadRows,
   Data,
   decideSpeculativeInstructionForLiveTip,
   DepositsDB,
   Effect,
+  ensureSeparateCollateralUtxo,
   fetchLatestCommittedBlock,
   fetchSchedulerDatum,
   fetchStateQueueSnapshotProgram,
   ForeignTipReconciliationsDB,
   initializeNodeRuntime,
   initializeProtocol,
-  LucidService,
   makeFixture,
   makeGlobalsService,
   makeLucid,
   makeLucidRuntimeService,
-  makeNodeConfigForFixture,
   MIDGARD_CONSENSUS_PROFILE,
-  MidgardContracts,
   MidgardMpf,
-  NodeConfig,
   Option,
   PendingBlockFinalizationsDB,
   readKeyHash,
@@ -51,6 +51,7 @@ import {
   StateQueueMutationLeasesDB,
   submitDepositAndRefreshBarriers,
 } from "./deposit-flow-emulator-shared.js";
+import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
 
 describe.sequential("deposit flow emulator", () => {
   it("keeps T7 restart invalidation memory-only with the submitted base journal intact", async () => {
@@ -136,24 +137,22 @@ describe.sequential("deposit flow emulator", () => {
     const previousSpeculativeCommitBuild = process.env.SPECULATIVE_COMMIT_BUILD;
     process.env.SPECULATIVE_COMMIT_BUILD = "true";
     let t2Phase = "fixture initialization";
+    let owner:
+      | Awaited<ReturnType<typeof openHistoryProductionOwnerLifecycle>>
+      | undefined;
     try {
-      await resetActiveRuntimePaths();
-      await initializeNodeRuntime();
-      const fixture = await makeFixture();
-      await initializeProtocol(fixture);
-      const lucidService = await makeLucidRuntimeService(fixture);
-      const globals = await makeGlobalsService();
-      const testNodeConfig = await makeNodeConfigForFixture(fixture);
+      owner = await openHistoryProductionOwnerLifecycle();
+      const { fixture, lucidService, globals } = owner;
+      const production = { ...owner.production, globals };
+      const testNodeConfig = production.nodeConfig;
+      await ensureSeparateCollateralUtxo(fixture.operatorLucid);
+      await ensureSeparateCollateralUtxo(fixture.depositorLucid);
+      await owner.synchronize();
       await advanceEmulatorPastLatestBlockEndTime(fixture);
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(new Date(fixture.emulator.now()));
 
-      await submitDepositAndRefreshBarriers({
-        fixture,
-        lucidService,
-        globals,
-        lovelace: 12_000_000n,
-      });
+      await submitOwnedDeposit(owner, 12_000_000n);
       const blockNBase = await fetchLatestCommittedBlock(
         fixture.operatorLucid,
         fixture.contracts,
@@ -163,6 +162,8 @@ describe.sequential("deposit flow emulator", () => {
         fixture,
         lucidService,
         latestBlock: blockNBase,
+        production,
+        nodeConfig: testNodeConfig,
       });
       await retainAndAttestSubmittedHeader({
         fixture,
@@ -173,13 +174,16 @@ describe.sequential("deposit flow emulator", () => {
       });
       await advanceEmulatorPastUnixTime(fixture, blockN.blockEndTimeMs);
       vi.setSystemTime(new Date(fixture.emulator.now()));
-      const { watermarks } = await submitDepositAndRefreshBarriers({
-        fixture,
-        lucidService,
-        globals,
-        lovelace: 13_000_000n,
-        projectToLedger: false,
-      });
+      const { watermarks, coverage } = await submitOwnedDeposit(
+        owner,
+        13_000_000n,
+      );
+      const admittedDeposits = await runNodeDatabaseEffect(
+        DepositsDB.retrievePendingHeaderEntriesUpTo(new Date(Date.now())),
+      );
+      expect(admittedDeposits).toMatchObject([
+        { status: DepositsDB.Status.Projected, projected_header_hash: null },
+      ]);
 
       // The scheduler authorizes one active credential for this window. A
       // genuinely different key cannot produce a valid competing commit until
@@ -251,12 +255,17 @@ describe.sequential("deposit flow emulator", () => {
             fixture,
             lucidService,
             watermarks,
+            production,
+            nodeConfig: testNodeConfig,
             onReady: (candidate) =>
               Effect.gen(function* () {
-                yield* assertSpeculativeDepositSnapshotIsMemoryOnly({
-                  baseBlockEndTimeMs: blockN.blockEndTimeMs,
-                  candidateEndTimeMs: candidate.endTimeMs,
-                });
+                // Canonical admission already projects this deposit. The
+                // speculative candidate must preserve its exact source row.
+                expect(
+                  yield* DepositsDB.retrievePendingHeaderEntriesUpTo(
+                    new Date(candidate.endTimeMs),
+                  ),
+                ).toEqual(admittedDeposits);
                 expect(yield* Effect.promise(countDaPayloadRows)).toBe(
                   daPayloadCountBeforeCandidate,
                 );
@@ -266,11 +275,16 @@ describe.sequential("deposit flow emulator", () => {
                     globals,
                     fixture.contracts,
                     lucidService,
+                    testNodeConfig,
+                    production,
                   );
                   await runLocalFinalizationRecoveryWorker(
                     globals,
                     fixture.contracts,
                     lucidService,
+                    fixture.runtimeOverrides!.deploymentIdentity,
+                    testNodeConfig,
+                    production,
                   );
                   const confirmedN = await fetchLatestCommittedBlock(
                     fixture.operatorLucid,
@@ -280,73 +294,29 @@ describe.sequential("deposit flow emulator", () => {
                     SDK.getHeaderFromStateQueueDatum(confirmedN.datum),
                   );
                 });
+                const independentEndTimeMs =
+                  yield* alignIndependentDepositCommit(
+                    fixture,
+                    independentLucidService,
+                    blockN.blockEndTimeMs,
+                    coverage,
+                  );
+                t2Phase = "independent foreign header submission";
+                const independent = yield* submitIndependentDepositBlock(
+                  fixture,
+                  independentLucidService,
+                  blockN.submittedHeaderHash,
+                  independentEndTimeMs,
+                  testNodeConfig,
+                );
+                expect(independent.payload.block_body.deposits).toHaveLength(1);
+                expect(
+                  independent.payload.block_body.header.utxosRoot,
+                ).not.toBe(confirmedNHeader.utxosRoot);
+                // Independently published DA is durable; the discarded candidate
+                // must not add another DA row during the T2 decision.
                 daPayloadCountBeforeT2Decision =
                   yield* Effect.promise(countDaPayloadRows);
-                // Confirmation and local finalization advance the emulator beyond
-                // the candidate's original scheduler evidence. T2 only requires a
-                // real foreign tail, so align the independent submitter and let the
-                // explicit drill use that same fresh valid end time.
-                let independentEndTimeMs = 0;
-                yield* Effect.promise(async () => {
-                  for (let attempt = 1; attempt <= 3; attempt += 1) {
-                    const beforeAlignment = await Effect.runPromise(
-                      independentLucidService.submitSlotSnapshot(),
-                    );
-                    independentEndTimeMs =
-                      beforeAlignment.observedAtMs +
-                      COMMIT_MINIMUM_FUTURE_BUFFER_MS +
-                      30_000;
-                    await alignCommitSchedulerBeforeTestWorker({
-                      fixture,
-                      lucidService: independentLucidService,
-                      targetEndTimeMs: independentEndTimeMs,
-                    });
-                    const afterAlignment = await Effect.runPromise(
-                      independentLucidService.submitSlotSnapshot(),
-                    );
-                    vi.setSystemTime(new Date(afterAlignment.observedAtMs));
-                    if (
-                      commitTimingBudget({
-                        checkpoint: "pre_witness",
-                        resolvedEndTimeMs: independentEndTimeMs,
-                        nowMs: afterAlignment.observedAtMs,
-                      }).satisfied
-                    ) {
-                      return;
-                    }
-                  }
-                  throw new Error(
-                    "T2 independent scheduler alignment repeatedly eroded the pre-witness budget",
-                  );
-                });
-                expect(
-                  commitTimingBudget({
-                    checkpoint: "pre_witness",
-                    resolvedEndTimeMs: independentEndTimeMs,
-                    nowMs: (yield* independentLucidService.submitSlotSnapshot())
-                      .observedAtMs,
-                  }).satisfied,
-                ).toBe(true);
-                t2Phase = "independent foreign header submission";
-                const independent = yield* commitExplicitBlockHeaderProgram({
-                  utxosRoot: confirmedNHeader.utxosRoot,
-                  transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-                  depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-                  withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-                  endTimeMs: independentEndTimeMs,
-                  l2TransactionCount: 0n,
-                  awaitConfirmation: true,
-                }).pipe(
-                  Effect.provideService(
-                    LucidService,
-                    independentLucidService as any,
-                  ),
-                  Effect.provideService(
-                    MidgardContracts,
-                    fixture.contracts as any,
-                  ),
-                  Effect.provideService(NodeConfig, testNodeConfig),
-                );
                 t2Phase = "foreign-tail reconciliation";
                 independentlySubmittedHeaderHash = independent.headerHash;
                 independentlySubmittedBlockEndTimeMs =
@@ -398,6 +368,8 @@ describe.sequential("deposit flow emulator", () => {
           closeSpy.mockRestore();
         }
       })();
+      // T2 invalidation must not acquire another provider after CandidateReady.
+      expect(speculative.lucidAcquisitions).toBe(1);
       // The invalidated candidate's native generation is discarded, never
       // retained for a journal, and its scratch transactions trie is closed.
       expect(discardCalls).toBe(1);
@@ -419,7 +391,7 @@ describe.sequential("deposit flow emulator", () => {
       const pendingDeposits = await runNodeDatabaseEffect(
         DepositsDB.retrievePendingHeaderEntriesUpTo(new Date(Date.now())),
       );
-      expect(pendingDeposits).toHaveLength(1);
+      expect(pendingDeposits).toEqual(admittedDeposits);
       expect(
         Option.isNone(
           await runNodeDatabaseEffect(
@@ -445,20 +417,21 @@ describe.sequential("deposit flow emulator", () => {
         independentlySubmittedBlockEndTimeMs,
       );
       vi.setSystemTime(new Date(fixture.emulator.now()));
-      await submitDepositAndRefreshBarriers({
-        fixture,
-        lucidService,
-        globals,
-        lovelace: 14_000_000n,
-        projectToLedger: false,
-      });
+      t2Phase = "source-owned rebuild deposit admission";
+      await submitOwnedDeposit(owner, 14_000_000n);
       t2Phase = "rebuilt block submission";
       await refreshWalletUtxosFromProvider(fixture.operatorLucid);
       const rebuilt = await runCommitWorkerUntilSubmitted({
         fixture,
         lucidService,
         latestBlock: foreignTip,
+        production,
+        nodeConfig: testNodeConfig,
       });
+      t2Phase = "rebuilt block canonical observation";
+      await fixture.operatorLucid.awaitTx(rebuilt.submittedTxHash);
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+      await owner.synchronize();
       const rebuiltJournal = await runNodeDatabaseEffect(
         PendingBlockFinalizationsDB.retrieveByHeaderHash(
           Buffer.from(rebuilt.submittedHeaderHash, "hex"),
@@ -473,34 +446,27 @@ describe.sequential("deposit flow emulator", () => {
           ),
         ),
       ).toBe(true);
-      const retainedForeignEvidence = await runNodeDatabaseEffect(
-        ForeignTipReconciliationsDB.retrieveByForeignHeaderHash(
+      const authenticatedBase = await owner.command(
+        verifyCurrentForeignParent(
+          lucidService,
+          fixture.contracts,
           independentlySubmittedHeaderHash,
         ),
       );
-      expect(Option.isSome(retainedForeignEvidence)).toBe(true);
-      if (Option.isSome(retainedForeignEvidence)) {
-        expect(
-          retainedForeignEvidence.value[
-            ForeignTipReconciliationsDB.Columns.STATUS
-          ],
-        ).toBe(ForeignTipReconciliationsDB.Status.Resolved);
-        expect(
-          retainedForeignEvidence.value[
-            ForeignTipReconciliationsDB.Columns.BLOCK_START_TIME
-          ].getTime(),
-        ).toBe(Number(foreignTipHeader.startTime));
-        expect(
-          retainedForeignEvidence.value[
-            ForeignTipReconciliationsDB.Columns.BLOCK_END_TIME
-          ].getTime(),
-        ).toBe(Number(foreignTipHeader.endTime));
-        expect(
-          retainedForeignEvidence.value[
-            ForeignTipReconciliationsDB.Columns.VERIFIED_DA_PAYLOAD_CBOR
-          ],
-        ).toBeNull();
-      }
+      expect(authenticatedBase.verification).toMatchObject({
+        status: "verified",
+        foreignHeaderHash: independentlySubmittedHeaderHash,
+        verifiedHeaderHashes: expect.arrayContaining([
+          independentlySubmittedHeaderHash,
+        ]),
+      });
+      expect(authenticatedBase.root).toBe(foreignTipHeader.utxosRoot);
+      await owner.command(
+        assertRetainedForeignDepositEvidence(
+          independentlySubmittedHeaderHash,
+          foreignTipHeader.utxosRoot,
+        ),
+      );
       expect(Option.isSome(rebuiltJournal)).toBe(true);
       if (Option.isSome(rebuiltJournal)) {
         expect(
@@ -522,6 +488,7 @@ describe.sequential("deposit flow emulator", () => {
         },
       );
     } finally {
+      await owner?.close();
       if (previousSpeculativeCommitBuild === undefined) {
         delete process.env.SPECULATIVE_COMMIT_BUILD;
       } else {

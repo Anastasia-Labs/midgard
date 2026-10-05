@@ -17,7 +17,12 @@ pub const stage_syntax: Int = 0
 
 pub const stage_blob: Int = 1
 
-pub const stage_break: Int = 2
+/// An indefinite byte string is measured before its content is streamed:
+/// starting at the authenticated 0x5f opener, each step reads the next chunk
+/// header from the source and extends `source_length` by that chunk, until the
+/// authenticated 0xff break fixes the encoding length. The length is never a
+/// witness value.
+pub const stage_measure: Int = 2
 
 pub const stage_terminal: Int = 3
 
@@ -65,6 +70,45 @@ fn definite_header_length(length: Int) -> Int {
   bytearray.length(definite_bytes_header(length))
 }
 
+/// The content length of a canonical indefinite byte string whose complete
+/// encoding (0x5f opener through the 0xff break) is `source_length` bytes.
+fn indefinite_bytes_length(source_length: Int) -> Option<Int> {
+  let framed_payload_length = source_length - 2
+  let full_chunks = framed_payload_length / ( cardano_data_bytes_chunk + 2 )
+  let encoded_remainder = framed_payload_length % (
+    cardano_data_bytes_chunk + 2
+  )
+  let remainder = if encoded_remainder == 0 {
+    0
+  } else if and {
+    encoded_remainder >= 2,
+    encoded_remainder <= 24,
+  } {
+    encoded_remainder - 1
+  } else if and {
+    encoded_remainder >= 26,
+    encoded_remainder <= 65,
+  } {
+    encoded_remainder - 2
+  } else {
+    -1
+  }
+  let bytes_length = full_chunks * cardano_data_bytes_chunk + remainder
+  if and {
+    source_length >= 2,
+    remainder >= 0,
+    bytes_length > cardano_data_bytes_chunk,
+    bytes_length <= uint32_max,
+    cek_data_v1.bytes_data_cbor_length_v1(bytes_length) == source_length,
+  } {
+    Some(bytes_length)
+  } else {
+    None
+  }
+}
+
+/// The definite byte-string syntax. An indefinite (0x5f) string never reaches
+/// this stage: it is measured (`stage_measure`) instead.
 pub fn parse_syntax_v1(bytes: ByteArray, source_length: Int) -> Option<Int> {
   if or {
     source_length < 1,
@@ -99,41 +143,6 @@ pub fn parse_syntax_v1(bytes: ByteArray, source_length: Int) -> Option<Int> {
           None
         }
       }
-    } else if and {
-      first == 95,
-      source_length >= 2,
-    } {
-      let framed_payload_length = source_length - 2
-      let full_chunks = framed_payload_length / ( cardano_data_bytes_chunk + 2 )
-      let encoded_remainder = framed_payload_length % (
-        cardano_data_bytes_chunk + 2
-      )
-      let remainder = if encoded_remainder == 0 {
-        0
-      } else if and {
-        encoded_remainder >= 2,
-        encoded_remainder <= 24,
-      } {
-        encoded_remainder - 1
-      } else if and {
-        encoded_remainder >= 26,
-        encoded_remainder <= 65,
-      } {
-        encoded_remainder - 2
-      } else {
-        -1
-      }
-      let bytes_length = full_chunks * cardano_data_bytes_chunk + remainder
-      if and {
-        remainder >= 0,
-        bytes_length > cardano_data_bytes_chunk,
-        bytes_length <= uint32_max,
-        cek_data_v1.bytes_data_cbor_length_v1(bytes_length) == source_length,
-      } {
-        Some(bytes_length)
-      } else {
-        None
-      }
     } else {
       None
     }
@@ -150,7 +159,10 @@ pub fn control_is_well_formed(control: CekDataBytesControlV1) -> Bool {
     control.source_length <= uint32_max,
     control.bytes_length >= 0,
     control.bytes_length <= uint32_max,
-    if control.stage == stage_syntax {
+    if or {
+      control.stage == stage_syntax,
+      control.stage == stage_measure,
+    } {
       and {
         control.bytes_length == 0,
         control.blob == None,
@@ -163,12 +175,7 @@ pub fn control_is_well_formed(control: CekDataBytesControlV1) -> Bool {
             cek_source_blob_v1.control_is_well_formed(blob_control),
             blob_control.source_start == 0,
             blob_control.source_length == control.bytes_length,
-            if control.stage == stage_break {
-              and {
-                control.bytes_length > cardano_data_bytes_chunk,
-                blob_control.stage == cek_source_blob_v1.stage_terminal,
-              }
-            } else if control.stage == stage_terminal {
+            if control.stage == stage_terminal {
               blob_control.stage == cek_source_blob_v1.stage_terminal
             } else {
               True
@@ -188,6 +195,21 @@ pub fn initial_control_v1(
     stage: stage_syntax,
     source_start,
     source_length,
+    bytes_length: 0,
+    blob: None,
+  }
+  expect control_is_well_formed(control)
+  control
+}
+
+/// The measuring control of an indefinite byte string whose 0x5f opener sits
+/// at `source_start`.
+pub fn initial_measure_control_v1(source_start: Int) -> CekDataBytesControlV1 {
+  let control = CekDataBytesControlV1 {
+    version,
+    stage: stage_measure,
+    source_start,
+    source_length: 1,
     bytes_length: 0,
     blob: None,
   }
@@ -460,11 +482,34 @@ fn extract_content(
   }
 }
 
+/// `source_end` is the absolute end of the enclosing authenticated source;
+/// only the measuring stage reads it, to bound its chunk-header window.
 pub fn next_source_span_v1(
   control: CekDataBytesControlV1,
+  source_end: Int,
 ) -> Option<cek_source_blob_v1.CekSourceBlobSpanV1> {
   if control_is_well_formed(control) {
-    prevalidated_next_source_span(control)
+    prevalidated_next_source_span(control, source_end)
+  } else {
+    None
+  }
+}
+
+/// The next chunk-header window of a measuring control: two bytes (a chunk
+/// header, or the 0xff break and whatever follows it), or the single last
+/// byte of the enclosing source.
+fn measure_span(
+  control: CekDataBytesControlV1,
+  source_end: Int,
+) -> Option<cek_source_blob_v1.CekSourceBlobSpanV1> {
+  let absolute_start = control.source_start + control.source_length
+  if absolute_start < source_end {
+    Some(
+      cek_source_blob_v1.CekSourceBlobSpanV1 {
+        absolute_start,
+        length: minimum(syntax_bytes, source_end - absolute_start),
+      },
+    )
   } else {
     None
   }
@@ -474,6 +519,7 @@ pub fn next_source_span_v1(
 /// canonical control, including every nested scalar/blob/hash state.
 pub fn prevalidated_next_source_span(
   control: CekDataBytesControlV1,
+  source_end: Int,
 ) -> Option<cek_source_blob_v1.CekSourceBlobSpanV1> {
   if control.stage == stage_syntax {
     Some(
@@ -482,13 +528,8 @@ pub fn prevalidated_next_source_span(
         length: minimum(control.source_length, syntax_bytes),
       },
     )
-  } else if control.stage == stage_break {
-    Some(
-      cek_source_blob_v1.CekSourceBlobSpanV1 {
-        absolute_start: control.source_start + control.source_length - 1,
-        length: 1,
-      },
-    )
+  } else if control.stage == stage_measure {
+    measure_span(control, source_end)
   } else {
     when prevalidated_content_plan(control) is {
       None -> None
@@ -504,8 +545,8 @@ fn step_syntax(
   when source_bytes is {
     None -> None
     Some(bytes) -> {
-      expect Some(span) = next_source_span_v1(control)
-      if bytearray.length(bytes) != span.length {
+      let span_length = minimum(control.source_length, syntax_bytes)
+      if bytearray.length(bytes) != span_length {
         None
       } else {
         when parse_syntax_v1(bytes, control.source_length) is {
@@ -529,23 +570,76 @@ fn step_syntax(
   }
 }
 
-fn step_break(
+/// One measuring step: the authenticated window at the measured end is either
+/// the 0xff break, which fixes the encoding length and starts the content
+/// pass, or one definite chunk header, which extends the measured length by
+/// that whole chunk. The chunk layout itself is checked by the content pass.
+fn step_measure(
   control: CekDataBytesControlV1,
+  source_end: Int,
   source_bytes: Option<ByteArray>,
 ) -> Option<CekDataBytesControlV1> {
-  when source_bytes is {
-    None -> None
-    Some(bytes) ->
-      if bytes == #"ff" {
-        let next = CekDataBytesControlV1 { ..control, stage: stage_terminal }
-        if control_is_well_formed(next) {
-          Some(next)
-        } else {
-          None
-        }
-      } else {
+  when Pair(source_bytes, measure_span(control, source_end)) is {
+    Pair(Some(bytes), Some(span)) ->
+      if bytearray.length(bytes) != span.length {
         None
+      } else {
+        let first = bytearray.at(bytes, 0)
+        if first == 255 {
+          let source_length = control.source_length + 1
+          when indefinite_bytes_length(source_length) is {
+            None -> None
+            Some(bytes_length) ->
+              Some(
+                CekDataBytesControlV1 {
+                  ..control,
+                  stage: stage_blob,
+                  source_length,
+                  bytes_length,
+                  blob: Some(
+                    cek_source_blob_v1.initial_control_v1(0, bytes_length),
+                  ),
+                },
+              )
+          }
+        } else {
+          let chunk_length = if and {
+            first >= 65,
+            first <= 87,
+          } {
+            first - 63
+          } else if and {
+            first == 88,
+            span.length == 2,
+          } {
+            let content_length = bytearray.at(bytes, 1)
+            if and {
+              content_length >= 24,
+              content_length <= cardano_data_bytes_chunk,
+            } {
+              content_length + 2
+            } else {
+              -1
+            }
+          } else {
+            -1
+          }
+          if and {
+            chunk_length > 0,
+            span.absolute_start + chunk_length < source_end,
+          } {
+            Some(
+              CekDataBytesControlV1 {
+                ..control,
+                source_length: control.source_length + chunk_length,
+              },
+            )
+          } else {
+            None
+          }
+        }
       }
+    _ -> None
   }
 }
 
@@ -556,14 +650,7 @@ fn step_blob(
   expect Some(blob_control) = control.blob
   if blob_control.stage == cek_source_blob_v1.stage_terminal {
     if source_bytes == None {
-      let next = CekDataBytesControlV1 {
-        ..control,
-        stage: if control.bytes_length > cardano_data_bytes_chunk {
-          stage_break
-        } else {
-          stage_terminal
-        },
-      }
+      let next = CekDataBytesControlV1 { ..control, stage: stage_terminal }
       if control_is_well_formed(next) {
         Some(next)
       } else {
@@ -621,12 +708,13 @@ fn step_blob(
 
 pub fn step_v1(
   control: CekDataBytesControlV1,
+  source_end: Int,
   source_bytes: Option<ByteArray>,
 ) -> Option<CekDataBytesControlV1> {
   if !control_is_well_formed(control) {
     None
   } else {
-    prevalidated_step_v1(control, source_bytes)
+    prevalidated_step_v1(control, source_end, source_bytes)
   }
 }
 
@@ -636,14 +724,15 @@ pub fn step_v1(
 /// `control_is_well_formed`), so the consuming stage yield skips the check.
 pub fn prevalidated_step_v1(
   control: CekDataBytesControlV1,
+  source_end: Int,
   source_bytes: Option<ByteArray>,
 ) -> Option<CekDataBytesControlV1> {
   if control.stage == stage_syntax {
     step_syntax(control, source_bytes)
   } else if control.stage == stage_blob {
     step_blob(control, source_bytes)
-  } else if control.stage == stage_break {
-    step_break(control, source_bytes)
+  } else if control.stage == stage_measure {
+    step_measure(control, source_end, source_bytes)
   } else {
     None
   }

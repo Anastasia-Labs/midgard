@@ -40,7 +40,7 @@ export const WATCHER_PHASE_A_DIRECT_REJECT_CODES = Object.freeze([
 ] as const);
 
 /**
- * The codes `consensusProfileRejectCode` (phase-a.ts:73-116) maps the 19
+ * The codes `consensusProfileRejectCode` (phase-a.ts:73-116) maps the 18
  * `MidgardConsensusV1ViolationCode` values onto, in canonical `RejectCodes`
  * declaration order. `E_TX_VERSION` is also a direct code, so the two lists
  * overlap by exactly one member.
@@ -64,7 +64,6 @@ export const WATCHER_PHASE_A_CONSENSUS_REJECT_CODES = Object.freeze([
   RejectCodes.ScriptProgramEncoding,
   RejectCodes.NativeScriptDepth,
   RejectCodes.NativeScriptNodeCount,
-  RejectCodes.AssetCount,
 ] as const);
 
 /** The full canonical vocabulary, in `RejectCodes` declaration order. */
@@ -78,7 +77,7 @@ export const REACHABLE_SET: ReadonlySet<string> = new Set<string>([
 ]);
 
 /**
- * The 32 canonical codes Phase A can produce, in `RejectCodes` declaration
+ * The 31 canonical codes Phase A can produce, in `RejectCodes` declaration
  * order so the published table and every emitted list are stable.
  */
 export const WATCHER_PHASE_A_REACHABLE_REJECT_CODES = Object.freeze(
@@ -87,7 +86,7 @@ export const WATCHER_PHASE_A_REACHABLE_REJECT_CODES = Object.freeze(
   ),
 );
 
-/** The 18 canonical codes Phase A cannot produce. */
+/** The 19 canonical codes Phase A cannot produce. */
 export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODES = Object.freeze(
   WATCHER_PHASE_A_CANONICAL_REJECT_CODES.filter(
     (code) => !REACHABLE_SET.has(code),
@@ -95,7 +94,7 @@ export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODES = Object.freeze(
 );
 
 /**
- * The 21 reachable codes the W24 suite pins with a deterministic
+ * The 20 reachable codes the W24 suite pins with a deterministic
  * rejection-evidence case, in `RejectCodes` declaration order.
  *
  * The suite asserts this list equals the set of codes its evidence corpus
@@ -120,7 +119,6 @@ export const WATCHER_PHASE_A_EVIDENCED_REJECT_CODES = Object.freeze([
   RejectCodes.TxSize,
   RejectCodes.ValueSize,
   RejectCodes.FieldPreimageSize,
-  RejectCodes.LedgerOutputSize,
   RejectCodes.ScriptProgramEncoding,
   RejectCodes.CekProgramMaterial,
 ] as const);
@@ -161,8 +159,8 @@ export const WATCHER_PHASE_A_DOMINATED_REJECT_CODE_JUSTIFICATIONS =
       "dominated: 16,385 redeemers exceed the 32,768-byte redeemers preimage bound, and degenerate items fail canonical redeemer decoding first.",
     [RejectCodes.ObserverCount]:
       "dominated: observers are 28-byte credentials, so 16,385 of them exceed the 32,768-byte preimage bound (E_FIELD_PREIMAGE_SIZE / E_INVALID_FIELD_TYPE).",
-    [RejectCodes.AssetCount]:
-      "dominated: 16,385 distinct assets cannot fit the 32,768-byte outputs and mint preimage bounds (E_FIELD_PREIMAGE_SIZE), and a single large value hits E_VALUE_SIZE at 5,000 bytes first.",
+    [RejectCodes.LedgerOutputSize]:
+      "dominated: the normal and forced canonical output-item width check enforces the same maxLedgerOutputPreimageBytes bound before consensus admission and rejects E_INVALID_FIELD_TYPE with FieldItemWidthIllegal.",
     [RejectCodes.ScriptProgramSize]:
       "dominated: consensus-validation.ts has no E_SCRIPT_PROGRAM_SIZE call site; oversized programs surface as E_SCRIPT_PROGRAM_ENCODING from the bounded envelope decoder.",
     [RejectCodes.NativeScriptDepth]:
@@ -198,6 +196,8 @@ export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS =
       "Phase B (W25): the minimum-Ada predicate runs over resolved output descriptors in value accounting after Phase A has committed the output bytes.",
     [RejectCodes.ValueNotPreserved]:
       "Phase B (W25): value preservation needs resolved input values.",
+    [RejectCodes.AssetCount]:
+      "Phase B (W25): the distinct-asset bound counts the resolved input values' assets with the outputs and mint, in the validation machine's ValueAndMint order.",
     [RejectCodes.PlutusScriptInvalid]:
       "Phase B (W25): script execution runs after inputs, references, and script sources are resolved.",
     [RejectCodes.PlutusEvaluationUnavailable]:
@@ -207,7 +207,7 @@ export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS =
     [RejectCodes.NonZeroWithdrawal]:
       "no Phase A call site: V1 canonical transactions have no withdrawal field, so the prohibition is structural.",
     [RejectCodes.DatumSize]:
-      "no Phase A call site: datum bounds are enforced by the output/ledger-output preimage bounds that surface as E_LEDGER_OUTPUT_SIZE.",
+      "no Phase A call site: datum bounds are enforced by canonical output-item width, which surfaces as E_INVALID_FIELD_TYPE before the dominated E_LEDGER_OUTPUT_SIZE screen.",
     [RejectCodes.ScriptProgramAggregateSize]:
       "no Phase A call site: the aggregate program bound is checked by the CEK bundle verifier and surfaces as E_CEK_PROGRAM_MATERIAL.",
     [RejectCodes.RedeemerSize]:

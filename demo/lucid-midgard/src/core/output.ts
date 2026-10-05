@@ -1,5 +1,6 @@
 import "@al-ft/midgard-core/codec";
 import "@al-ft/midgard-core/hex";
+import "@al-ft/midgard-core/plutus-data-cbor";
 import "@lucid-evolution/lucid";
 import "./assets.js";
 import "./errors.js";
@@ -17,6 +18,7 @@ export {
   type OutputKind,
   type OutputOptions,
   type PlutusDataLike,
+  redeemerDataCbor,
   type ScriptRefLike,
 } from "./output.assets-to-midgard-value.js";
 export {

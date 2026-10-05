@@ -2053,7 +2053,6 @@ fn verify_builtin_failure_step(
     arguments_count,
     arguments_root,
   )
-  let budget = cek_builtin_v1.direct_builtin_failure_budget_v1(tag, arguments)
   and {
     pre.focus_root == builtin_root,
     cek_builtin_v1.verify_direct_builtin_failure_v1(
@@ -2061,17 +2060,32 @@ fn verify_builtin_failure_step(
       builtin_root,
       arguments,
     ),
-    post == exact_state(
-      pre,
-      mode_halt_error,
-      cek_proof_v1.hash_error_term_v1(),
-      cek_proof_v1.empty_environment_root_v1,
-      cek_proof_v1.empty_continuation_root_v1,
-      error_builtin_failure,
-      budget.cpu,
-      budget.memory,
-    ),
+    builtin_failure_post_is_exact(pre, post, tag, arguments),
   }
+}
+
+/// Runs only after the known failure is proved, so the budget reader sees
+/// arguments of the kinds the failure already fixed.
+fn builtin_failure_post_is_exact(
+  pre: MachineStateV1,
+  post: MachineStateV1,
+  tag: Int,
+  arguments: List<cek_builtin_v1.ValueWitnessV1>,
+) -> Bool {
+  let budget = cek_builtin_v1.authenticated_builtin_failure_budget(
+    tag,
+    arguments,
+  )
+  post == exact_state(
+    pre,
+    mode_halt_error,
+    cek_proof_v1.hash_error_term_v1(),
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    error_builtin_failure,
+    budget.cpu,
+    budget.memory,
+  )
 }
 
 fn verify_builtin_semantic_failure_step(

@@ -1,6 +1,8 @@
 import {
   buildFaultProofContracts,
   buildFieldPreimageLengthMismatchFaultProofContracts,
+  type DaPayload,
+  type Header,
   parseFaultProofBlueprint,
 } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
@@ -165,6 +167,16 @@ export const registeredContracts = async (harness: Harness) => {
 
 export type SetupOptions = Readonly<{
   forced?: boolean;
+  /** Admit exactly the header authenticated by a retained forced DA regression. */
+  forcedDaFixture?: (input: {
+    readonly operatorVkey: string;
+    readonly now: number;
+  }) => Promise<{
+    readonly header: Header;
+    readonly headerHash: string;
+    readonly payload: DaPayload;
+    readonly payloadEnvelopeCbor: Buffer;
+  }>;
   acceptedPreimageBytes?: number;
   /** Commit the honest length vector: the accepted block is not at fault. */
   honestAccepted?: boolean;

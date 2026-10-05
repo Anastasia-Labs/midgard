@@ -10,6 +10,7 @@ import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { forcedTransactionSubject } from "../workflow/detection-subject.js";
 import { nativeScriptInvalidSignerSet } from "./evidence-machine.js";
 
 export const detectNativeScriptInvalidForcedReplay = (
@@ -82,6 +83,7 @@ export const detectNativeScriptInvalidForcedReplay = (
       });
       return [
         {
+          ...forcedTransactionSubject(transaction.key),
           detectionId: `native-script-invalid:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${scriptIndex.toString()}`,
           violationId: "native-script-invalid" as const,
           headerHash: block.headerHash,

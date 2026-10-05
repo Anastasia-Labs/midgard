@@ -250,7 +250,12 @@ it("refuses unrelated active retired and absent operators and prunes active and 
       await withWrongOperatorSelection(
         successors[0]!.successorHeaderHash,
         wrongOperator,
-        () => expectOnchainRefusal(() => submitRemovalForFixture(fixture)),
+        () =>
+          expectOnchainRefusal(() => submitRemovalForFixture(fixture), {
+            refusedBy: "state_queue_yields",
+            check:
+              /expect removed_header_view\.operator_vkey == fraudulent_operator/u,
+          }),
       );
       await expectStateQueueHeaderOrder({
         lucid: funderLucid,

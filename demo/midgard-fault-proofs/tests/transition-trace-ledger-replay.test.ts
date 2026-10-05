@@ -10,6 +10,7 @@ import {
   mpfProofFromWitness,
   normalizedMpfRoot,
 } from "../src/transition-trace/detect.js";
+import { requireDeletionKeepsTwoChildren } from "../src/transition-trace/detect.mpf-proof-from-witness.js";
 import { createTransitionTraceLedgerReplay } from "../src/transition-trace/ledger-replay.js";
 import { keyValuePhasRootWithCount } from "../src/transition-trace/phas.js";
 
@@ -23,7 +24,57 @@ const output = encodeMidgardTxOutput({
   value: { lovelace: 2_000_000n, assets: new Map() },
 });
 
+const descriptorEntry = (index: number) => ({
+  key: key(index),
+  value: Buffer.from(
+    buildCanonicalMidgardLedgerEntryOutputMaterial({
+      outRef: key(index),
+      outputCbor: output,
+    }).descriptorCbor,
+  ),
+});
+
 describe("transition trace retained descriptor mutations", () => {
+  it("sends the terminal-Branch group opening with every deletion that needs one", async () => {
+    const entries = Array.from({ length: 256 }, (_, index) =>
+      descriptorEntry(index),
+    );
+    const ledger = await createTransitionTraceLedgerReplay({
+      entries,
+      expectedRoot: (await keyValuePhasRootWithCount(entries)).root,
+    });
+    let opened = 0;
+    for (const entry of entries) {
+      const removed = await ledger.delete(entry.key);
+      const deletion = mpfProofFromWitness({
+        key: entry.key,
+        value: entry.value,
+        proof: removed.delete_proof,
+        label: "delete",
+      });
+      expect(normalizedMpfRoot(deletion.verify(false), "after delete")).toBe(
+        ledger.root(),
+      );
+      requireDeletionKeepsTwoChildren({
+        proof: removed.delete_proof,
+        opening: removed.opening,
+        label: "delete",
+      });
+      if (removed.opening === "") continue;
+      opened += 1;
+      expect("Branch" in removed.delete_proof.at(-1)!).toBe(true);
+      expect(() =>
+        requireDeletionKeepsTwoChildren({
+          proof: removed.delete_proof,
+          opening: "",
+          label: "delete",
+        }),
+      ).toThrow(/does not keep two other children/u);
+    }
+    expect(opened).toBeGreaterThan(0);
+    expect(ledger.root()).toBe(SDK.EMPTY_MERKLE_TREE_ROOT);
+  });
+
   it("produces ordered canonical MPF witnesses against each evolving root", async () => {
     const entries = [0, 1].map((index) => ({
       key: key(index),

@@ -233,7 +233,7 @@ export type ExecutionSourceContext = Awaited<
 // ## Fit-ledger recorder
 
 export const MAXIMUM_SHAPE =
-  "32,768-byte field-6 preimage: zero-payload malformed item refused at its first token over the two-chunk window; widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal";
+  "32,768-byte field-6 preimage: widest any-of native script that fits the cap (16-step resumable scans across nine chunk windows); nested containers through the frame stack; cancellation from every step; mint and leased removal";
 
 export const createMeasurementRecorder = () => {
   const measurements: VanRossemFitMeasurement[] = [];

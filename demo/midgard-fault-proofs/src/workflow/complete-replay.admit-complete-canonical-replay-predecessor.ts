@@ -26,6 +26,7 @@ import {
   predecessorRecord,
   requireReplayPredecessorEvidence,
 } from "./complete-replay.replay-context-identity.js";
+import { acceptedTransactionSubject, subjectOf } from "./detection-subject.js";
 
 /**
  * Re-admits exact untrusted predecessor bytes through the canonical L1/DA
@@ -164,6 +165,10 @@ export const detectDoubleSpends = async (
       }
       if (first.transactionId === transaction.nodeTxId) continue;
       detections.push({
+        ...acceptedTransactionSubject(
+          first.transactionId,
+          transaction.nodeTxId,
+        ),
         detectionId: [
           DOUBLE_SPEND_VIOLATION_ID,
           first.transactionIndex.toString(),
@@ -250,6 +255,7 @@ export const detectLedgerRelativeMissingInputs = async ({
       });
       if (predecessorLedger === null) {
         detections.push({
+          ...acceptedTransactionSubject(transaction.nodeTxId),
           detectionId: `${PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID}:${kind}:${transactionIndex.toString()}:${inputIndex.toString()}:${transaction.nodeTxId}:${inputKey}`,
           headerHash: evidence.headerHash,
           violationId: PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID,
@@ -258,6 +264,7 @@ export const detectLedgerRelativeMissingInputs = async ({
         });
       } else if (!predecessorLedger.has(inputKey)) {
         detections.push({
+          ...acceptedTransactionSubject(transaction.nodeTxId),
           detectionId: `${violationId}:${transactionIndex.toString()}:${inputIndex.toString()}:${transaction.nodeTxId}:${inputKey}`,
           headerHash: evidence.headerHash,
           violationId,
@@ -275,6 +282,7 @@ export const detectNetworkIds = (
 ): readonly CanonicalViolationDetection[] => [
   ...detectAcceptedNetworkIds(evidence),
   ...detectNetworkIdWrongfulRejectionsForHeader(evidence).map((detection) => ({
+    ...subjectOf(detection),
     detectionId: detection.detectionId,
     headerHash: detection.headerHash,
     violationId: detection.violationId,
@@ -313,6 +321,7 @@ const detectAcceptedNetworkIds = (
       },
       expectedNetworkId: evidence.header.expectedNetworkId,
     }).map((fault) => ({
+      ...acceptedTransactionSubject(transaction.nodeTxId),
       detectionId:
         fault.kind === "transaction-network"
           ? `${NETWORK_ID_VIOLATION_ID}:${transactionIndex.toString()}:transaction`

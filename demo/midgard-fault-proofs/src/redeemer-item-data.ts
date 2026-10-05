@@ -259,7 +259,7 @@ const bytesControl = (value: unknown): MidgardCekDataBytesControl => {
   };
 };
 const traversalControl = (value: unknown): MidgardCekDataTraverseControl => {
-  const f = fields(value, 10);
+  const f = fields(value, 9);
   return {
     version: integer(f[0]) as 1,
     stage: integer(f[1]) as MidgardCekDataTraverseControl["stage"],
@@ -267,10 +267,9 @@ const traversalControl = (value: unknown): MidgardCekDataTraverseControl => {
     sourceLength: integer(f[3]),
     offset: integer(f[4]),
     frameRoot: bytes(f[5]),
-    pendingLargeExpectedChildren: option(f[6]!, integer),
-    integer: option(f[7]!, integerControl),
-    bytes: option(f[8]!, bytesControl),
-    result: option(f[9]!, (value) =>
+    integer: option(f[6]!, integerControl),
+    bytes: option(f[7]!, bytesControl),
+    result: option(f[8]!, (value) =>
       dataSummaryCore(value, "redeemer item result"),
     ),
   };
@@ -305,7 +304,7 @@ export const decodeRedeemerItemControlData = (
 const traversalAction = (value: unknown): MidgardCekDataTraverseAction => {
   if (!(value instanceof Constr))
     throw new Error("redeemer item action is not a constructor");
-  const arities = [0, 1, 1, 0, 2, 1, 4, 6, 2];
+  const arities = [0, 0, 0, 0, 0, 1, 4, 6, 2];
   if (arities[value.index] !== value.fields.length)
     throw new Error("redeemer item traversal action arity differs");
   const f = value.fields;
@@ -316,17 +315,13 @@ const traversalAction = (value: unknown): MidgardCekDataTraverseAction => {
     case 0:
       return null;
     case 1:
-      return { kind: "headScalar", itemLength: integer(f[0]) };
+      return { kind: "headScalar" };
     case 2:
-      return { kind: "headSequence", expectedChildren: integer(f[0]) };
+      return { kind: "headSequence" };
     case 3:
       return { kind: "headMap" };
     case 4:
-      return {
-        kind: "headLargeConstructor",
-        constructorCborLength: integer(f[0]),
-        expectedChildren: integer(f[1]),
-      };
+      return { kind: "headLargeConstructor" };
     case 5:
       return { kind: "attachScalar", parent: option(f[0]!, frame) };
     case 6:

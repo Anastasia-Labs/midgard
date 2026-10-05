@@ -28,6 +28,7 @@ import {
   STORE_ADVISORY_LOCK_KEY,
   STORE_ADVISORY_LOCK_NAMESPACE,
 } from "./cekProgramMaterial.canonical-entries.js";
+import { collectUnownedMaterial } from "./cekProgramMaterial.collect-unowned.js";
 import { persistVerifiedBundles } from "./cekProgramMaterial.persist-verified-bundles.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
@@ -40,12 +41,17 @@ export const persistVerifiedAdmissionBundle = ({
   txId,
   txCanonicalCbor,
   sidecarCbor,
-  referenceProgramEnvelopes,
+  programEnvelopes,
 }: {
   readonly txId: Buffer;
   readonly txCanonicalCbor: Buffer;
   readonly sidecarCbor: Buffer;
-  readonly referenceProgramEnvelopes?: readonly MidgardCekProgramEnvelope[];
+  /**
+   * The transaction's program set as Phase B resolved it
+   * (`collectMidgardEventProgramEnvelopes`). Required when the transaction
+   * has reference inputs; otherwise its attached programs are the whole set.
+   */
+  readonly programEnvelopes?: readonly MidgardCekProgramEnvelope[];
 }): Effect.Effect<void, DatabaseError, Database | NodeConfig> =>
   Effect.try({
     try: () => decodeMidgardCekProgramMaterialSidecar(sidecarCbor),
@@ -67,15 +73,12 @@ export const persistVerifiedAdmissionBundle = ({
               tx.body.referenceInputsPreimageCbor,
               "reference_inputs_preimage",
             ).length > 0;
-          if (hasReferenceInputs && referenceProgramEnvelopes === undefined) {
+          if (hasReferenceInputs && programEnvelopes === undefined) {
             throw new Error(
               "accepted transaction reference inputs lack Phase B resolution",
             );
           }
-          return [
-            ...collectMidgardAttachedProgramEnvelopes(tx),
-            ...(referenceProgramEnvelopes ?? []),
-          ] as const;
+          return programEnvelopes ?? collectMidgardAttachedProgramEnvelopes(tx);
         },
         catch: (cause) =>
           new DatabaseError({
@@ -131,21 +134,7 @@ export const releaseAdmissionOwnership = (
         yield* sql`DELETE FROM ${sql(admissionOwnerTableName)}
           WHERE tx_id =
             ANY(${pg.array(postgresByteaArray(uniqueTxIds))}::bytea[])`;
-        yield* sql`DELETE FROM ${sql(membershipTableName)} AS membership
-          WHERE membership.durable_pin = false
-            AND NOT EXISTS (
-              SELECT 1
-              FROM ${sql(admissionOwnerTableName)} AS owner
-              WHERE owner.program_envelope_hash =
-                  membership.program_envelope_hash
-                AND owner.material_root = membership.material_root
-            )`;
-        yield* sql`DELETE FROM ${sql(entryTableName)} AS material
-          WHERE NOT EXISTS (
-            SELECT 1
-            FROM ${sql(membershipTableName)} AS membership
-            WHERE membership.material_root = material.material_root
-          )`;
+        yield* collectUnownedMaterial;
       }),
     );
   }).pipe(

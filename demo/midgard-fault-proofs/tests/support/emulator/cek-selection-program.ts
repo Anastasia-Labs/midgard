@@ -56,11 +56,14 @@ export const cekSelectionProgram = (
     const pair = () => call(42, 0, [context]);
     const fields = () => call(30, 2, [pair()]);
     switch (semanticTag) {
+      case 38:
       case 43: {
         const txInfo = call(33, 1, [fields()]);
         let txFields = call(30, 2, [call(42, 0, [txInfo])]);
         for (let i = 0; i < 9; i++) txFields = call(34, 1, [txFields]);
         termRoot = call(43, 0, [call(33, 1, [txFields])]);
+        // mapData re-encodes the pairs unMapData just produced.
+        if (semanticTag === 38) termRoot = call(38, 0, [termRoot]);
         break;
       }
       case 42:

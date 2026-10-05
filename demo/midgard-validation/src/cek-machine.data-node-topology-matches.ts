@@ -8,15 +8,15 @@ import {
   type MidgardCekDataNode,
   type MidgardCekDataPairNode,
 } from "@al-ft/midgard-core";
-import { DataConstr, dataFromCbor, DataI } from "@harmoniclabs/plutus-data";
+import { DataConstr, DataI } from "@harmoniclabs/plutus-data";
 
 import { type MidgardCekDirectValueWitness } from "./cek-builtin.js";
 import {
   decodeMidgardCekConstantWitness,
-  encodeMidgardCekPlutusData,
   midgardCekConstantMemorySize,
   type MidgardCekConstantType,
 } from "./cek-constant.js";
+import { encodeMidgardCekDataTreeInteger } from "./cek-data-tree.js";
 import {
   type Bytes,
   type MidgardCekSemanticBuiltinWitness,
@@ -38,6 +38,7 @@ import {
   sameDataSummary,
   semanticSummary,
 } from "./cek-machine.verify-semantic-builtin-control.js";
+import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 
 const dataNodeTopologyMatches = (
   node: MidgardCekDataNode,
@@ -204,9 +205,9 @@ export const canonicalIntegerLeaf = (
   ) {
     return null;
   }
-  const decoded = dataFromCbor(raw);
+  const decoded = plutusDataFromCborIterative(raw);
   return decoded instanceof DataI &&
-    sameBytes(encodeMidgardCekPlutusData(decoded), raw)
+    sameBytes(encodeMidgardCekDataTreeInteger(decoded.int), raw)
     ? decoded.int
     : null;
 };

@@ -5,6 +5,7 @@ import {
 import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
+import { acceptedTransactionSubject } from "../workflow/detection-subject.js";
 import {
   type ExecutionSourceDescriptor,
   type ExecutionSourceScriptDecodingEvidence,
@@ -74,6 +75,7 @@ export const detectExecutionSourceScriptDecodingAcceptedRawReplay = ({
         Object.freeze({
           evidence,
           detection: Object.freeze({
+            ...acceptedTransactionSubject(transactionId),
             detectionId: `${violationId}:${position.toString()}:${transactionId}:${executionIndex.toString()}`,
             headerHash,
             violationId,

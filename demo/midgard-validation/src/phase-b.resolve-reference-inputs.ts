@@ -10,10 +10,7 @@ import {
   type ScriptLanguageName,
 } from "@al-ft/midgard-core/codec";
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
-import {
-  collectMidgardAttachedProgramEnvelopes,
-  decodeMidgardScriptProgramEnvelope,
-} from "@al-ft/midgard-core/script-proof";
+import { collectMidgardEventProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 
 import { LedgerColumns, type LedgerEntry } from "./ledger.js";
 import type {
@@ -24,6 +21,11 @@ import {
   MidgardRedeemerPointer,
   MidgardScriptPurpose,
 } from "./midgard-redeemers.js";
+import {
+  inputOrdinalOf,
+  REJECT_SOURCE_KIND_REFERENCE,
+  type RejectSubject,
+} from "./reject-subject.js";
 import {
   ResolvedScriptSource,
   ScriptSource,
@@ -36,61 +38,6 @@ import {
   RejectCodes,
   RejectedTx,
 } from "./types.js";
-import {
-  outputCborMeetsMinAda,
-  outputCborMinAdaLovelace,
-} from "./value-accounting.js";
-
-/**
- * `E_MIN_ADA` / MIN-ADA-TX (#618 ruling 1; R8 of decision 0005): the first
- * output of this transaction that does not fund the parameterized minimum-Ada
- * floor, or `null` when every output does.
- *
- * The bytes measured here are `graph.produced[i][LedgerColumns.OUTPUT]` -- the
- * canonical output encoding Phase A already committed to the ledger entry, and
- * therefore exactly the bytes the on-chain output descriptor's `total_length`
- * binds (`buildMidgardLedgerOutputMaterialV1` sets `totalLength` from them).
- * Re-encoding the output here would risk measuring a different serialization
- * than the one the L1 machine convicts on.
- *
- * WHY THIS RUNS IN PHASE B, AND HERE. The on-chain twin rejects on the
- * ValueAndMint stage-3 output-descriptor step, so this rejection must carry the
- * `valueAndMint` consensus phase; and because `orderedPhases` in
- * ./validation-machine.ts places `valueAndMint` after `resolveInputs`,
- * `scriptSources`, `nativeScripts`, `scriptIntegrity` and `cek`, the check has
- * to run after everything those phases decide, and before the stage-5
- * value-preservation conjunct that shares the phase. Hoisting it into Phase A
- * admission -- where the rule would also be computable, since it is stateless
- * -- would invert the phase order and make the operator's claimed terminal
- * unprovable against the machine.
- */
-export const minAdaViolation = (
-  candidate: PhaseAValidatedTx,
-): { readonly index: number; readonly detail: string } | null => {
-  const outputs = candidate.ledgerTx.outputs;
-  const produced = candidate.graph.produced;
-  for (let index = 0; index < produced.length; index += 1) {
-    const outputCbor = produced[index]![LedgerColumns.OUTPUT];
-    const lovelace = outputs[index]?.value.lovelace;
-    if (lovelace === undefined) {
-      // Phase A builds one produced entry per output; a mismatch is a
-      // construction bug, not a transaction fault, and must not be silently
-      // read as "meets the floor".
-      throw new Error(
-        `phase B min-Ada scan: produced entry ${index.toString()} has no matching ledger output`,
-      );
-    }
-    if (!outputCborMeetsMinAda(outputCbor, lovelace)) {
-      return {
-        index,
-        detail: `output[${index.toString()}] ${lovelace.toString()} < ${outputCborMinAdaLovelace(
-          outputCbor,
-        ).toString()} for ${outputCbor.length.toString()} serialized bytes`,
-      };
-    }
-  }
-  return null;
-};
 
 type UTxOState = Map<string, Buffer>;
 
@@ -196,11 +143,27 @@ export const reject = (
   code: RejectedTx["code"],
   detail: string | null = null,
   consensusPhase: MidgardValidationPhaseName = "resolveInputs",
+  subject?: RejectSubject,
 ): RejectedTx => ({
   txId,
   code,
   detail,
   consensusPhase,
+  ...(subject === undefined ? {} : { subject }),
+});
+
+const referenceInputSubject = (
+  node: CandidateNode,
+  arm: "InputNotFound" | "InputSpentOutputNonCanonical",
+  outRefHex: string,
+): RejectSubject => ({
+  arm,
+  sourceKind: REJECT_SOURCE_KIND_REFERENCE,
+  index: inputOrdinalOf(
+    node.candidate.ledgerTx,
+    REJECT_SOURCE_KIND_REFERENCE,
+    outRefHex,
+  ),
 });
 
 export const resolveReferenceInputs = (
@@ -218,6 +181,8 @@ export const resolveReferenceInputs = (
         node.candidate.ledgerTx.txId,
         RejectCodes.InputNotFound,
         `reference input not found: ${referenceOutRefHex}`,
+        "resolveInputs",
+        referenceInputSubject(node, "InputNotFound", referenceOutRefHex),
       );
     }
 
@@ -229,6 +194,12 @@ export const resolveReferenceInputs = (
         node.candidate.ledgerTx.txId,
         RejectCodes.InvalidOutput,
         `failed to decode reference input output ${referenceOutRefHex}: ${String(e)}`,
+        "resolveInputs",
+        referenceInputSubject(
+          node,
+          "InputSpentOutputNonCanonical",
+          referenceOutRefHex,
+        ),
       );
     }
     inputs.push({ outRefHex: referenceOutRefHex, output });
@@ -256,19 +227,12 @@ export const resolveReferenceInputs = (
           ? decodeMidgardForcedTxFullFromCanonicalCbor
           : decodeMidgardNativeTxFullFromCanonicalCbor
       )(node.candidate.submission.txCbor);
-      const envelopes = [
-        ...collectMidgardAttachedProgramEnvelopes(canonicalTx),
-      ];
-      for (const input of inputs) {
-        if (input.output.script_ref === undefined) continue;
-        const envelope = decodeMidgardScriptProgramEnvelope(
-          input.output.script_ref,
-        );
-        if (envelope !== null) {
-          envelopes.push(envelope);
-        }
-      }
-      verifyMidgardCekProgramMaterialBundle(envelopes, material);
+      // Every reference input is present here, so this is the event's whole
+      // program set, the one block builders and DA committee members derive.
+      verifyMidgardCekProgramMaterialBundle(
+        collectMidgardEventProgramEnvelopes(canonicalTx, stateValue),
+        material,
+      );
     } catch (cause) {
       return reject(
         node.candidate.ledgerTx.txId,
@@ -295,6 +259,7 @@ export type LocalScriptValidationResult =
       readonly code: RejectedTx["code"];
       readonly detail: string;
       readonly consensusPhase: MidgardValidationPhaseName;
+      readonly subject?: RejectSubject;
     };
 
 export const ledgerOutputToTxOutput = (

@@ -11,7 +11,6 @@ import {
   MidgardCekDataIntegerStages,
 } from "./cek-data-integer.js";
 import { type MidgardCekDataSummary } from "./cek-semantic.js";
-import { encodeCbor } from "./codec/cbor.js";
 import { ensureHash32 } from "./codec/hash.js";
 
 export const MIDGARD_CEK_DATA_TRAVERSE_VERSION = 1 as const;
@@ -50,28 +49,29 @@ export type MidgardCekDataTraverseControl = {
   readonly sourceLength: number;
   readonly offset: number;
   readonly frameRoot: Buffer;
-  readonly pendingLargeExpectedChildren: number | null;
   readonly integer: MidgardCekDataIntegerControl | null;
   readonly bytes: MidgardCekDataBytesControl | null;
   readonly result: MidgardCekDataSummary | null;
 };
 
+/**
+ * Every head action takes no argument: the item length, the constructor
+ * length and the child count are all read from the authenticated head window
+ * (an indefinite sequence closes at its authenticated 0xff break; an
+ * indefinite byte string is measured by the bytes sub-control).
+ */
 export type MidgardCekDataTraverseAction =
   | {
       readonly kind: "headScalar";
-      readonly itemLength: number;
     }
   | {
       readonly kind: "headSequence";
-      readonly expectedChildren: number;
     }
   | {
       readonly kind: "headMap";
     }
   | {
       readonly kind: "headLargeConstructor";
-      readonly constructorCborLength: number;
-      readonly expectedChildren: number;
     }
   | {
       readonly kind: "attachScalar";
@@ -192,11 +192,6 @@ export const isWellFormedMidgardCekDataTraverseControl = (
         control.offset ||
       control.offset > control.sourceLength ||
       !optionalHashIsWellFormed(control.frameRoot) ||
-      (control.pendingLargeExpectedChildren !== null &&
-        exactUint32(
-          control.pendingLargeExpectedChildren,
-          "cek_data_traverse.pending_large_children",
-        ) !== control.pendingLargeExpectedChildren) ||
       (control.result !== null && !summaryIsWellFormed(control.result))
     ) {
       return false;
@@ -206,14 +201,12 @@ export const isWellFormedMidgardCekDataTraverseControl = (
         return (
           control.offset < control.sourceLength &&
           (control.frameRoot.length === 32 || control.offset === 0) &&
-          control.pendingLargeExpectedChildren === null &&
           control.integer === null &&
           control.bytes === null &&
           control.result === null
         );
       case MidgardCekDataTraverseStages.Integer:
         return (
-          control.pendingLargeExpectedChildren === null &&
           control.integer !== null &&
           control.bytes === null &&
           control.result === null &&
@@ -221,7 +214,6 @@ export const isWellFormedMidgardCekDataTraverseControl = (
         );
       case MidgardCekDataTraverseStages.Bytes:
         return (
-          control.pendingLargeExpectedChildren === null &&
           control.integer === null &&
           control.bytes !== null &&
           control.result === null &&
@@ -231,7 +223,6 @@ export const isWellFormedMidgardCekDataTraverseControl = (
         );
       case MidgardCekDataTraverseStages.LargeConstructor:
         return (
-          control.pendingLargeExpectedChildren !== null &&
           control.integer !== null &&
           control.bytes === null &&
           control.result === null &&
@@ -240,7 +231,6 @@ export const isWellFormedMidgardCekDataTraverseControl = (
         );
       case MidgardCekDataTraverseStages.LargeFields:
         return (
-          control.pendingLargeExpectedChildren !== null &&
           control.integer !== null &&
           control.integer.stage === MidgardCekDataIntegerStages.Terminal &&
           control.bytes === null &&
@@ -252,7 +242,6 @@ export const isWellFormedMidgardCekDataTraverseControl = (
       case MidgardCekDataTraverseStages.Fold:
         return (
           control.frameRoot.length === 32 &&
-          control.pendingLargeExpectedChildren === null &&
           control.integer === null &&
           control.bytes === null &&
           control.result === null &&
@@ -263,7 +252,6 @@ export const isWellFormedMidgardCekDataTraverseControl = (
         return (
           control.offset === control.sourceLength &&
           control.frameRoot.length === 0 &&
-          control.pendingLargeExpectedChildren === null &&
           control.integer === null &&
           control.bytes === null &&
           control.result !== null
@@ -288,7 +276,6 @@ export const initialMidgardCekDataTraverseControl = ({
     sourceLength,
     offset: 0,
     frameRoot: Buffer.alloc(0),
-    pendingLargeExpectedChildren: null,
     integer: null,
     bytes: null,
     result: null,
@@ -298,15 +285,6 @@ export const initialMidgardCekDataTraverseControl = ({
   }
   return control;
 };
-
-export const optionalIntCbor = (value: number | null): Buffer =>
-  value === null
-    ? Buffer.from("d87a80", "hex")
-    : Buffer.concat([
-        Buffer.from("d8799f", "hex"),
-        encodeCbor(BigInt(value)),
-        Buffer.from([0xff]),
-      ]);
 
 export const optionalControlCbor = (
   control: MidgardCekDataIntegerControl | MidgardCekDataBytesControl | null,

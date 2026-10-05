@@ -26,6 +26,7 @@ import {
   prepareFabricatedDepositFromCommittedLeaves,
 } from "../prepare-fabricated-deposit.js";
 import type { CanonicalViolationDetection } from "./classification.js";
+import { depositSubject } from "./detection-subject.js";
 
 export const FABRICATED_DEPOSIT_EVIDENCE_AUTHORITY =
   "midgard-production-fabricated-deposit-evidence-authority-v1" as const;
@@ -320,6 +321,7 @@ export const createFabricatedDepositEvidenceAuthority = ({
             Object.freeze({
               artifact,
               detection: Object.freeze({
+                ...depositSubject(evidence.reconstruction.deposits[index]!.key),
                 detectionId: `${FABRICATED_DEPOSIT_VIOLATION_ID}:${index.toString()}:${artifact.depositInclusion.committedDepositIdCbor}`,
                 headerHash: evidence.headerHash,
                 violationId: FABRICATED_DEPOSIT_VIOLATION_ID,

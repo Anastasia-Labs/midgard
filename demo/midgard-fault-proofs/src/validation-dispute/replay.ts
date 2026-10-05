@@ -13,6 +13,7 @@ import "../transition-trace/replay-authority.js";
 import "../transition-trace/witnesses.js";
 import "../workflow/challenge-authority.js";
 import "../workflow/complete-replay.js";
+import "../workflow/detection-subject.js";
 import "../workflow/reason-disposition.js";
 import "../workflow/replay-prerequisite.js";
 import "./replay.read-origin-events.js";

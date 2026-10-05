@@ -4,7 +4,6 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
-use aiken/crypto
 use aiken/primitive/bytearray
 use midgard/blake2b_224_trace_v1 as blake
 use midgard/bounded_item_v1 as bounded
@@ -52,11 +51,11 @@ pub fn extension_items_empty(control: raw.Frame) -> Bool {
   }
 }
 
-/// One fact-attachment step on the raw terminal control: `stage_attach_roles`
-/// must be exactly the first canonical group whose facts are all unrecorded,
-/// and each of its facts is spliced in as the role's commitment over the
-/// dispatcher's descriptor bytes and claimed summaries (each pinned by that
-/// role's descriptor yield in the same transaction). Mirrors
+/// One fact-attachment step on the raw terminal control: `attach_roles` must
+/// be exactly the first canonical group whose facts are all unrecorded, and
+/// each of its facts is spliced in as the role's commitment
+/// (`fact_commitment_v1`), which covers only what that role's descriptor
+/// yield pins in the same transaction. Mirrors
 /// `ledger_output_proof_v1.fact_attach_v1` exactly.
 pub fn fact_attach(
   control: raw.Frame,
@@ -101,32 +100,17 @@ pub fn fact_attach(
   }
 }
 
-/// The thin terminal's fact gate on the raw control: every recorded fact
-/// equals the commitment recomputed from the finalize redeemer's descriptor
-/// bytes and claimed summaries. Mirrors
+/// The thin terminal's fact gate on the raw control: the recorded role-0
+/// fact is the commitment to exactly these descriptor bytes. The role-0 fact
+/// is recorded only by the last attachment group, whose yield checked the
+/// other three facts against the same descriptor. Mirrors
 /// `ledger_output_proof_v1.facts_are_exact_v1` exactly.
-pub fn facts_are_exact(
-  control: raw.Frame,
-  descriptor_cbor: ByteArray,
-  claimed_value_summary: Data,
-  claimed_datum_summary: Data,
-) -> Bool {
-  let recorded = fn(role: Int) {
-    raw.fact(control, role) == Some(
-      proof.fact_commitment_v1(
-        role,
-        descriptor_cbor,
-        claimed_value_summary,
-        claimed_datum_summary,
-      ),
-    )
-  }
+pub fn facts_are_exact(control: raw.Frame, descriptor_cbor: ByteArray) -> Bool {
   and {
     raw.integer(control, 1) == proof.stage_terminal,
-    recorded(0),
-    recorded(1),
-    recorded(2),
-    recorded(3),
+    raw.fact(control, 0) == Some(
+      proof.fact_digest_v1([builtin.b_data(descriptor_cbor)]),
+    ),
   }
 }
 
@@ -219,7 +203,6 @@ pub fn initial_datum_data(offset: Int, length: Int) -> Data {
       builtin.i_data(length),
       builtin.i_data(0),
       builtin.b_data(#""),
-      none,
       none,
       none,
       none,
@@ -369,54 +352,6 @@ pub fn bound_window_span(
   }
 }
 
-/// The span-attach step: verify the chunk merkle membership of the claimed
-/// output span exactly once and record its `(start, length, digest)` window
-/// in frame item 12. Valid only at the span-consuming stages; the recorded
-/// window replaces any earlier one.
-pub fn span_attach(
-  control: raw.Frame,
-  witness: proof.LedgerOutputProofWitnessV1,
-) -> Option<StepResult> {
-  let stage = raw.integer(control, 1)
-  expect or {
-      stage == proof.stage_datum_traversal,
-      stage == proof.stage_reference_script_commitment,
-      stage == proof.stage_script_hash,
-    }
-  expect facts_empty(control)
-  when witness is {
-    proof.LedgerOutputProofSpanAttach {
-      start,
-      length,
-      chunk_proof,
-      next_chunk_proof,
-    } ->
-      when
-        proof.authenticated_output_span_for_output(
-          raw.integer(control, 2),
-          raw.integer(control, 3),
-          raw.bytes(control, 4),
-          start,
-          length,
-          proof.LedgerOutputProofChunks { chunk_proof, next_chunk_proof },
-        )
-      is {
-        None -> None
-        Some(bytes) ->
-          Some(
-            Advanced {
-              control: raw.replace(
-                control,
-                raw.span_window_index,
-                raw.span_window_data(start, length, crypto.blake2b_256(bytes)),
-              ),
-            },
-          )
-      }
-    _ -> None
-  }
-}
-
 fn optional_data(encoded: ByteArray) -> Data {
   builtin.constr_data(0, [encoded_data(encoded)])
 }
@@ -459,8 +394,11 @@ pub fn reference_script(
       None
     }
   } else {
-    let chunk_length = bounded.expected_chunk_length(item_length, chunk_index)
-    let start = item_offset + chunk_index * bounded.chunk_bytes
+    let (start, chunk_length) = proof.reference_script_chunk_span_v1(
+      item_offset,
+      item_length,
+      chunk_index,
+    )
     when bound_window_span(control, start, chunk_length, witness) is {
       None -> None
       Some(chunk) -> {
@@ -541,23 +479,12 @@ pub fn script_hash(
       )
     }
   } else if hash_control.stage == blake.stage_ready {
-    let remaining = hash_control.total_length - hash_control.cursor
-    let expected_length = if remaining < blake.block_bytes {
-      remaining
-    } else {
-      blake.block_bytes
-    }
     let includes_language = hash_control.cursor == 0
-    let content_length = expected_length - if includes_language {
-      1
-    } else {
-      0
-    }
-    let start = scan_control.reference_script_offset + hash_control.cursor - if includes_language {
-      0
-    } else {
-      1
-    }
+    let (start, content_length) = proof.script_hash_content_span_v1(
+      scan_control.reference_script_offset,
+      hash_control.cursor,
+      hash_control.total_length,
+    )
     let content = if content_length == 0 {
       if witness == proof.LedgerOutputProofNoWitness {
         Some(#"")

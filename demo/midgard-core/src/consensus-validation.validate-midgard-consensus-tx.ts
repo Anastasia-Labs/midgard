@@ -1,5 +1,5 @@
 import { decodeMidgardCekProgramEnvelope } from "./cek-proof.js";
-import { asArray, asBytes, asMap, decodeSingleCbor } from "./codec/cbor.js";
+import { asArray, decodeSingleCbor } from "./codec/cbor.js";
 import {
   decodeMidgardForcedTxFullFromCanonicalCbor,
   type MidgardForcedTxFull,
@@ -15,9 +15,11 @@ import {
 } from "./codec/native-constants.js";
 import { decodeMidgardTxOutput } from "./codec/output.js";
 import { midgardValueToCmlValue } from "./codec/value.js";
-import { decodeMidgardVersionedScriptListPreimage } from "./codec/versioned-script.js";
+import {
+  decodeMidgardVersionedScriptEnvelope,
+  decodeMidgardVersionedScriptListPreimage,
+} from "./codec/versioned-script.js";
 import { MIDGARD_CONSENSUS_LIMITS } from "./consensus-profile.js";
-import { nativeScriptBoundViolation } from "./consensus-validation.native-script-complexity.js";
 import {
   enforceCount,
   enforcePreimageSize,
@@ -199,13 +201,9 @@ export const validateMidgardConsensusTx = (
   );
   for (let index = 0; index < scripts.length; index += 1) {
     const script = scripts[index]!;
-    if (script.language === "NativeCardano") {
-      const nativeBound = nativeScriptBoundViolation(
-        script.nativeScript,
-        `script_witnesses[${index.toString()}]`,
-      );
-      if (nativeBound !== null) return nativeBound;
-    } else {
+    // Decoding a native script enforces the V1 depth and node-count bounds,
+    // so only program envelopes are checked here.
+    if (script.language !== "NativeCardano") {
       try {
         decodeMidgardCekProgramEnvelope(script.scriptBytes);
       } catch (error) {
@@ -218,7 +216,6 @@ export const validateMidgardConsensusTx = (
     }
   }
 
-  const distinctAssets = new Set<string>();
   for (let index = 0; index < outputCbors.length; index += 1) {
     if (outputCbors[index]!.length > limits.maxLedgerOutputPreimageBytes) {
       return violation(
@@ -238,18 +235,11 @@ export const validateMidgardConsensusTx = (
         `output[${index.toString()}] Cardano Value ${cardanoValueBytes.toString()} > ${limits.maxOutputValueCborBytes.toString()}`,
       );
     }
-    for (const [policyId, assets] of output.value.assets) {
-      for (const assetName of assets.keys()) {
-        distinctAssets.add(`${policyId}.${assetName}`);
-      }
-    }
-    if (output.script_ref?.language === "NativeCardano") {
-      const nativeBound = nativeScriptBoundViolation(
-        output.script_ref.nativeScript,
-        `reference_scripts[${index.toString()}]`,
-      );
-      if (nativeBound !== null) return nativeBound;
-    } else if (output.script_ref !== undefined) {
+    // As for witnesses, decoding the output bounded a native reference script.
+    if (
+      output.script_ref !== undefined &&
+      output.script_ref.language !== "NativeCardano"
+    ) {
       try {
         decodeMidgardCekProgramEnvelope(output.script_ref.scriptBytes);
       } catch (error) {
@@ -260,31 +250,6 @@ export const validateMidgardConsensusTx = (
         );
       }
     }
-  }
-  const mintValue = decodeSingleCbor(tx.body.mintPreimageCbor);
-  if (!Array.isArray(mintValue)) {
-    for (const [policyValue, assetsValue] of asMap(mintValue, "native.mint")) {
-      const policyId = asBytes(policyValue, "native.mint.policy").toString(
-        "hex",
-      );
-      for (const assetNameValue of asMap(
-        assetsValue,
-        "native.mint.assets",
-      ).keys()) {
-        const assetName = asBytes(
-          assetNameValue,
-          "native.mint.asset_name",
-        ).toString("hex");
-        distinctAssets.add(`${policyId}.${assetName}`);
-      }
-    }
-  }
-  if (distinctAssets.size > limits.maxDistinctAssetCount) {
-    return violation(
-      "E_ASSET_COUNT",
-      "distinct_assets",
-      `${distinctAssets.size.toString()} > ${limits.maxDistinctAssetCount.toString()}`,
-    );
   }
   return null;
 };
@@ -300,7 +265,93 @@ export const validateMidgardConsensusTxCbor = (
 export const validateMidgardConsensusForcedTxCbor = (
   txCbor: Uint8Array,
 ): MidgardConsensusViolation | null =>
-  validateMidgardConsensusTx(
+  validateMidgardForcedTxAdmission(
     decodeMidgardForcedTxFullFromCanonicalCbor(txCbor),
-    txCbor.length + 1,
   );
+
+/**
+ * Forced orders already passed the L1 carriage bounds. Their normal-admission
+ * transaction/field/output sizes and collection counts are not verdicts: the
+ * validation machine judges the submitted ledger behavior. Canonical decoding,
+ * exact field commitments and L1 carriage authentication remain mandatory.
+ *
+ * These three screens stay until their deployed machine checks are total.
+ * A violation must stop the block; it must never become a guessed rejection.
+ */
+const validateMidgardForcedTxAdmission = (
+  tx: MidgardForcedTxFull,
+): MidgardConsensusViolation | null => {
+  if (!tx.body.auxiliaryDataHash.equals(EMPTY_NULL_ROOT)) {
+    return violation(
+      "E_AUX_DATA_FORBIDDEN",
+      "auxiliary_data",
+      "V1 has no authenticated auxiliary-data preimage",
+    );
+  }
+  const scripts = decodeMidgardNativeByteListPreimage(
+    tx.witnessSet.scriptTxWitsPreimageCbor,
+    "forced.script_witnesses",
+  ).map(decodeMidgardVersionedScriptEnvelope);
+  for (let index = 0; index < scripts.length; index += 1) {
+    const script = scripts[index]!;
+    if (script.language !== "NativeCardano") {
+      try {
+        decodeMidgardCekProgramEnvelope(script.scriptBytes);
+      } catch (error) {
+        return violation(
+          "E_SCRIPT_PROGRAM_ENCODING",
+          "script_witnesses",
+          `script[${index}] is not a canonical bounded V1 program envelope: ${String(error)}`,
+        );
+      }
+    }
+  }
+  const outputs = decodeMidgardNativeByteListPreimage(
+    tx.body.outputsPreimageCbor,
+    "forced.outputs",
+  );
+  for (let index = 0; index < outputs.length; index += 1) {
+    const output = decodeMidgardTxOutput(outputs[index]!);
+    const valueSize = midgardValueToCmlValue(output.value).to_cbor_bytes()
+      .length;
+    if (valueSize > MIDGARD_CONSENSUS_LIMITS.maxOutputValueCborBytes) {
+      return violation(
+        "E_VALUE_SIZE",
+        "output_value",
+        `output[${index}] Cardano Value ${valueSize} > ${MIDGARD_CONSENSUS_LIMITS.maxOutputValueCborBytes}`,
+      );
+    }
+    if (
+      output.script_ref !== undefined &&
+      output.script_ref.language !== "NativeCardano"
+    ) {
+      try {
+        decodeMidgardCekProgramEnvelope(output.script_ref.scriptBytes);
+      } catch (error) {
+        return violation(
+          "E_SCRIPT_PROGRAM_ENCODING",
+          "reference_scripts",
+          `output[${index}] reference script is not a canonical bounded V1 program envelope: ${String(error)}`,
+        );
+      }
+    }
+  }
+  return null;
+};
+
+/** An unsupported forced shape requires operator attention, never a verdict. */
+export class MidgardForcedTxAdmissionStopped extends Error {
+  readonly _tag = "MidgardForcedTxAdmissionStopped";
+  readonly retryable = false;
+  readonly code: MidgardConsensusViolation["code"];
+  readonly violation: MidgardConsensusViolation;
+
+  constructor(violation: MidgardConsensusViolation) {
+    super(
+      `Forced admission stopped: ${violation.code} ${violation.featureId}: ${violation.detail}`,
+    );
+    this.name = "MidgardForcedTxAdmissionStopped";
+    this.code = violation.code;
+    this.violation = violation;
+  }
+}

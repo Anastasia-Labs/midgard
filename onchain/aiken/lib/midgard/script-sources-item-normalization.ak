@@ -151,8 +151,12 @@ pub fn executor_index(current: Data, witness: Data, family: Int) -> Int {
     if action_tag == 0 {
       17
     } else {
-      expect action_tag == 1
-      18
+      if action_tag == 1 {
+        18
+      } else {
+        expect action_tag == 2
+        19
+      }
     }
   } else {
     expect action_tag == 2

@@ -42,6 +42,12 @@ import {
   type CompleteCanonicalReplayContext,
   requireReplayPredecessorEvidence,
 } from "./complete-replay.replay-context-identity.js";
+import {
+  acceptedTransactionSubject,
+  BLOCK_SUBJECT,
+  introducedOutputSubject,
+  subjectOf,
+} from "./detection-subject.js";
 
 /** Complete positional scan of every committed address witness. */
 export const detectInvalidSignatures = async (
@@ -58,6 +64,7 @@ export const detectInvalidSignatures = async (
         ? []
         : [
             {
+              ...acceptedTransactionSubject(transaction.nodeTxId),
               detectionId: `${INVALID_SIGNATURE_VIOLATION_ID}:${transactionIndex.toString()}:${witnessIndex.toString()}:${transaction.nodeTxId}:${witness.verification_key}`,
               headerHash: evidence.headerHash,
               violationId: INVALID_SIGNATURE_VIOLATION_ID,
@@ -107,6 +114,7 @@ export const detectNativeScriptInvalid = async (
       }
       return [
         {
+          ...acceptedTransactionSubject(transaction.nodeTxId),
           detectionId: `${NATIVE_SCRIPT_INVALID_VIOLATION_ID}:${transaction.nodeTxId}:${scriptIndex.toString()}`,
           headerHash: evidence.headerHash,
           violationId: NATIVE_SCRIPT_INVALID_VIOLATION_ID,
@@ -147,6 +155,7 @@ export const detectMinAda = async (
       return descriptorIsBelowMinAda(descriptor)
         ? [
             {
+              ...acceptedTransactionSubject(transaction.nodeTxId),
               detectionId: `${MIN_ADA_VIOLATION_ID}:tx:${transaction.nodeTxId}:${outputIndex.toString()}`,
               headerHash: evidence.headerHash,
               violationId: MIN_ADA_VIOLATION_ID,
@@ -168,6 +177,7 @@ export const detectMinAda = async (
     return [
       ...txDetections,
       {
+        ...BLOCK_SUBJECT,
         detectionId: `${PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID}:min-ada-utxo:${evidence.headerHash}`,
         headerHash: evidence.headerHash,
         violationId: PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID,
@@ -195,6 +205,10 @@ export const detectMinAda = async (
       const transactionId = Buffer.from(outRef.txId).toString("hex");
       return [
         {
+          ...introducedOutputSubject(evidence.reconstruction, {
+            transactionId,
+            outputIndex: BigInt(outRef.outputIndex),
+          }),
           detectionId: `${MIN_ADA_VIOLATION_ID}:utxo:${transactionId}:${outRef.outputIndex.toString()}`,
           headerHash: evidence.headerHash,
           violationId: MIN_ADA_VIOLATION_ID,
@@ -212,6 +226,7 @@ export const detectInputNoIdxViolations = async (
 ): Promise<readonly CanonicalViolationDetection[]> =>
   (await detectInputNoIdxViolationsFromTransactions(evidence.transactions)).map(
     (detection) => ({
+      ...acceptedTransactionSubject(detection.badTxId),
       detectionId: `${INPUT_NO_IDX_VIOLATION_ID}:${detection.badTxIndex.toString()}:${detection.badInputsIndex.toString()}:${detection.badTxId}:${detection.producingTxId}:${detection.badInputOutputIndex.toString()}:${detection.producingTxOutputCount.toString()}`,
       headerHash: evidence.headerHash,
       violationId: INPUT_NO_IDX_VIOLATION_ID,
@@ -247,6 +262,7 @@ export const detectInputSetUniqueness = async (
         : `${claim.kind}:${claim.firstIndex.toString()}:${claim.secondIndex.toString()}`;
     return [
       {
+        ...acceptedTransactionSubject(transaction.nodeTxId),
         detectionId: `${INPUT_SET_UNIQUENESS_VIOLATION_ID}:${transactionIndex.toString()}:${transaction.nodeTxId}:${identity}`,
         headerHash: evidence.headerHash,
         violationId: INPUT_SET_UNIQUENESS_VIOLATION_ID,
@@ -257,6 +273,7 @@ export const detectInputSetUniqueness = async (
   });
   const forced = detectInputSetUniquenessForcedReplay(evidence).map(
     (detection) => ({
+      ...subjectOf(detection),
       detectionId: detection.detectionId,
       headerHash: detection.headerHash,
       violationId: detection.violationId,
@@ -296,6 +313,7 @@ export const detectWithdrawnInputs = async (
           }
           return [
             {
+              ...acceptedTransactionSubject(transaction.nodeTxId),
               detectionId: `${WITHDRAWN_INPUT_VIOLATION_ID}:${transactionIndex.toString()}:${inputIndex.toString()}:${withdrawalIndex.toString()}:${transaction.nodeTxId}:${committedWithdrawalKeyBytes(withdrawal.key)}`,
               headerHash: evidence.headerHash,
               violationId: WITHDRAWN_INPUT_VIOLATION_ID,

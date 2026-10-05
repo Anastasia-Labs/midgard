@@ -1,7 +1,9 @@
 import { PLUTUS_V3_CANONICAL_COST_MODEL_VIEW } from "@al-ft/midgard-core";
 import { toCostModelV3 } from "@harmoniclabs/cardano-costmodels-ts";
 import {
+  type BuiltinCostsOf,
   costModelV3ToBuiltinCosts,
+  Linear3InY,
   PartialBuiltin,
 } from "@harmoniclabs/plutus-machine";
 import { UPLCBuiltinTag } from "@harmoniclabs/uplc";
@@ -14,12 +16,32 @@ export type MidgardCekBuiltinBudget = {
 const MIN_BUILTIN_TAG = 0;
 const MAX_BUILTIN_TAG = 86;
 
-export const MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS =
-  costModelV3ToBuiltinCosts(
-    toCostModelV3([
-      ...PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
-    ] as unknown as Parameters<typeof toCostModelV3>[0]),
-  );
+const pinnedCostModel = toCostModelV3([
+  ...PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
+] as unknown as Parameters<typeof toCostModelV3>[0]);
+const referenceBuiltinCosts = costModelV3ToBuiltinCosts(pinnedCostModel);
+
+export const MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS = <
+  Tag extends UPLCBuiltinTag,
+>(
+  tag: Tag,
+): BuiltinCostsOf<Tag> => {
+  const costs = referenceBuiltinCosts(tag);
+  if (tag === UPLCBuiltinTag.verifyEd25519Signature) {
+    // Plutus costs Ed25519 linearly in the message (second argument).
+    // The reference library incorrectly selects the signature instead.
+    return {
+      ...costs,
+      cpu: new Linear3InY(
+        BigInt(
+          pinnedCostModel["verifyEd25519Signature-cpu-arguments-intercept"],
+        ),
+        BigInt(pinnedCostModel["verifyEd25519Signature-cpu-arguments-slope"]),
+      ),
+    } as BuiltinCostsOf<Tag>;
+  }
+  return costs;
+};
 
 const assertCostSize = (size: bigint): void => {
   if (size < 0n) {

@@ -32,6 +32,7 @@ import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
 } from "../transition-trace/reconstruct.js";
+import { eventSubject } from "../workflow/detection-subject.js";
 import {
   collectReplayFindings,
   replayPrerequisiteFailure,
@@ -409,6 +410,7 @@ export const detectNativeScriptDecodingReplay = async ({
       return prepared === null
         ? null
         : {
+            ...eventSubject(prepared.eventKey),
             detectionId: nativeScriptDecodingDetectionId(coordinate),
             headerHash: block.headerHash,
             violationId: SDK.NATIVE_SCRIPT_DECODING_VIOLATION_ID,

@@ -1,7 +1,11 @@
+use aiken/builtin
 use aiken/cbor
+use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry.{Leaf}
 use aiken/merkle_patricia_forestry as mpf
+use aiken/merkle_patricia_forestry/helpers.{combine, nibble, suffix}
+use aiken/merkle_patricia_forestry/merkling.{null_hash}
 use aiken/primitive/bytearray
 use cardano/address.{Address}
 use cardano/assets
@@ -21,6 +25,7 @@ use midgard/fraud_proofs/transition_trace/timing_fixture
 use midgard/hub_oracle
 use midgard/ledger_output_descriptor_v1
 use midgard/ledger_state
+use midgard/mpf_branch_opening_fixture as opening_fixture
 use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1
 use midgard/transition_trace
@@ -28,6 +33,7 @@ use midgard/user_events
 use midgard/user_events/tx_order_v1 as tx_order
 use midgard/validation_claim_v1
 use midgard/validation_machine/witness as vm_witness
+use midgard/validation_machine_tests/fixtures_ledger
 use midgard/validation_trace_v1
 
 const h28_a = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -494,12 +500,7 @@ fn ledger_delete_witness(
   key: ByteArray,
   value: ByteArray,
 ) -> proof.LedgerDeleteWitness {
-  proof.LedgerDeleteWitness {
-    key,
-    value,
-    membership_proof: [],
-    delete_proof: [],
-  }
+  proof.LedgerDeleteWitness { key, value, opening: #"", delete_proof: [] }
 }
 
 fn ledger_insert_witness(
@@ -968,8 +969,8 @@ test accepts_trace_link_fault() {
   )
   let first_proof = trace_membership(first)
   let second_proof = trace_membership(second)
-  let phas_root = #"3bcfcd1e874525cfeeebf5e14ca50d42f13e40eb5aec6035553e387334073b11"
-  let root = #"7dcbc5316a6560bab11727549dde22de2571a24942627f1085befa031ea9a21b"
+  let phas_root = #"11c11a47e2535bc274909e7745319d95ff62b1d1a6bdc2ce11ef27743e5738da"
+  let root = #"fb52b5d24775a6d3d068ffee0bdc1f3fd0df169d16c6bcc2ed239417dad3f32b"
   let adjacent = transition_trace.AdjacentTraceProof {
     lower: transition_trace.RootMembershipProof {
       ..first_proof,
@@ -1127,8 +1128,11 @@ test accepts_l2_source_event_missing_trace_fault() {
     header,
     proof.SourceMembershipMismatch {
       witness: proof.SourceEventMissingTrace {
-        source_membership: proof.L2TransactionSourceMembership {
-          membership: source_membership,
+        source_membership: proof.L2KeyOpening {
+          tx_id: source_membership.key,
+          value_hash: blake2b_256(source_membership.value),
+          phas_root: source_membership.phas_root,
+          proof: source_membership.proof,
         },
         event_to_step_non_membership,
       },
@@ -1248,6 +1252,7 @@ test accepts_valid_withdrawal_delete_transition_fault() {
     spent_key,
     spent_value,
     [],
+    #"",
   )
   let opened_step = step(0, event_key, ledger_state.Withdrawal, pre_root, h32_b)
   let trace_proof = trace_membership(opened_step)
@@ -1279,23 +1284,130 @@ test accepts_valid_withdrawal_delete_transition_fault() {
   )
 }
 
-test rejects_valid_withdrawal_delete_when_trace_matches_expected_post_root() {
-  let event_key = withdrawal_event_key(0)
-  let spent_key = ledger_outref_key(out_ref(9))
-  let spent_value = native_output_ledger_value(out_ref(9).output_index)
-  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
-  let expected_post_root = proof.delete_root(
-    pre_root,
-    spent_key,
-    spent_value,
+// ## Withdrawing the last ledger entry
+//
+// An honest node commits an empty ledger as `env.empty_merkle_tree_root`, not
+// as the MPF library's `null_hash`. The step that withdraws the only entry is
+// honest exactly when its post root is that sentinel.
+
+fn last_entry_withdrawal_fault_is_valid(post_root: ByteArray) -> Bool {
+  withdrawal_delete_fault_from_is_valid(
+    mpf.root(
+      mpf.insert(
+        mpf.empty,
+        ledger_outref_key(out_ref(9)),
+        native_output_ledger_value(9),
+        [],
+      ),
+    ),
+    post_root,
     [],
+    #"",
   )
+}
+
+test rejects_a_last_entry_withdrawal_that_commits_the_empty_ledger() {
+  !last_entry_withdrawal_fault_is_valid(env.empty_merkle_tree_root)
+}
+
+test accepts_a_last_entry_withdrawal_that_commits_the_library_empty_root() {
+  last_entry_withdrawal_fault_is_valid(null_hash)
+}
+
+// The L2 replay route folds each spent input through `apply_delete_witness`
+// and, for a transaction with no outputs, convicts exactly when the folded root
+// differs from the step's post root. Spending the ledger's only entry folds to
+// the committed sentinel, so the route convicts a block that names the drained
+// ledger `null_hash` and not the honest block.
+test l2_replay_names_a_drained_ledger_by_the_committed_sentinel() {
+  let key = ledger_outref_key(out_ref(9))
+  let value = native_output_ledger_value(9)
+  let drained = proof.apply_delete_witness(
+    mpf.root(mpf.insert(mpf.empty, key, value, [])),
+    ledger_delete_witness(key, value),
+  )
+  let convicts = fn(post_root) { drained != post_root }
+  and {
+    !convicts(env.empty_merkle_tree_root),
+    convicts(null_hash),
+  }
+}
+
+// ## A challenger cannot steer the terminal neighbour of a one-step mutation
+//
+// The challenger supplies the delete and insert proofs of a one-step
+// transition fault. The including root authenticates the terminal neighbour
+// only up to the reading the excluding root makes of it, so a proof that
+// re-reads that neighbour would give a root the honest trie never has, and
+// convict an honest operator whose trace step holds the true root.
+
+// path(out_ref 9 key) = 5 a 1 3 ..., path(#"000a") = 5 e 3 c ...: the spent
+// output's only neighbour sits behind a skip of one.
+const withdrawal_neighbour_key = #"000a"
+
+const neighbour_value = #"0b"
+
+fn withdrawal_neighbour_step() -> mpf.ProofStep {
+  Leaf {
+    skip: 1,
+    key: blake2b_256(withdrawal_neighbour_key),
+    value: blake2b_256(neighbour_value),
+  }
+}
+
+fn withdrawal_neighbour_only_root() -> ByteArray {
+  mpf.root(mpf.insert(mpf.empty, withdrawal_neighbour_key, neighbour_value, []))
+}
+
+fn withdrawal_pre_root() -> ByteArray {
+  mpf.root(
+    mpf.insert(
+      mpf.from_root(withdrawal_neighbour_only_root()),
+      ledger_outref_key(out_ref(9)),
+      native_output_ledger_value(9),
+      [withdrawal_neighbour_step()],
+    ),
+  )
+}
+
+fn withdrawal_delete_witness(
+  delete_proof: mpf.Proof,
+  opening: ByteArray,
+) -> proof.LedgerDeleteWitness {
+  proof.LedgerDeleteWitness {
+    key: ledger_outref_key(out_ref(9)),
+    value: native_output_ledger_value(9),
+    opening,
+    delete_proof,
+  }
+}
+
+fn withdrawal_delete_fault_is_valid(
+  post_root: ByteArray,
+  delete_proof: mpf.Proof,
+  opening: ByteArray,
+) -> Bool {
+  withdrawal_delete_fault_from_is_valid(
+    withdrawal_pre_root(),
+    post_root,
+    delete_proof,
+    opening,
+  )
+}
+
+fn withdrawal_delete_fault_from_is_valid(
+  pre_root: ByteArray,
+  post_root: ByteArray,
+  delete_proof: mpf.Proof,
+  opening: ByteArray,
+) -> Bool {
+  let event_key = withdrawal_event_key(0)
   let opened_step = step(
     0,
     event_key,
     ledger_state.Withdrawal,
     pre_root,
-    expected_post_root,
+    post_root,
   )
   let trace_proof = trace_membership(opened_step)
   let event_to_step = event_to_step_membership(
@@ -1311,18 +1423,214 @@ test rejects_valid_withdrawal_delete_when_trace_matches_expected_post_root() {
     ..traced_header(trace_proof.root, event_to_step.root),
     withdrawals_root: withdrawal_membership.root,
   }
-
-  !valid_against_header(
+  valid_against_header(
     header,
     proof.InvalidOneStepTransition {
       witness: proof.ValidWithdrawalTransition {
         trace_proof,
         event_to_step,
         source_membership: withdrawal_membership,
-        spent_utxo: ledger_delete_witness(spent_key, spent_value),
+        spent_utxo: withdrawal_delete_witness(delete_proof, opening),
       },
     },
   )
+}
+
+test honest_withdrawal_delete_proof_resolves_to_the_honest_post_root() {
+  let honest = [withdrawal_neighbour_step()]
+  and {
+    proof.apply_delete_witness(
+      withdrawal_pre_root(),
+      withdrawal_delete_witness(honest, #""),
+    ) == withdrawal_neighbour_only_root(),
+    !withdrawal_delete_fault_is_valid(
+      withdrawal_neighbour_only_root(),
+      honest,
+      #"",
+    ),
+    withdrawal_delete_fault_is_valid(h32_b, honest, #""),
+  }
+}
+
+test rejects_a_tampered_terminal_leaf_key_against_an_honest_withdrawal_step() fail {
+  let neighbour_path = blake2b_256(withdrawal_neighbour_key)
+  let tampered = [
+    Leaf {
+      skip: 1,
+      key: bytearray.concat(#"7e", bytearray.drop(neighbour_path, 1)),
+      value: blake2b_256(neighbour_value),
+    },
+  ]
+  withdrawal_delete_fault_is_valid(
+    withdrawal_neighbour_only_root(),
+    tampered,
+    #"",
+  )
+}
+
+test rejects_a_terminal_fork_masquerade_against_an_honest_withdrawal_step() fail {
+  let neighbour_path = blake2b_256(withdrawal_neighbour_key)
+  let masquerade = [
+    mpf.Fork {
+      skip: 1,
+      neighbor: mpf.Neighbor {
+        nibble: nibble(neighbour_path, 1),
+        prefix: suffix(neighbour_path, 2),
+        root: blake2b_256(neighbour_value),
+      },
+    },
+  ]
+  withdrawal_delete_fault_is_valid(
+    withdrawal_neighbour_only_root(),
+    masquerade,
+    #"",
+  )
+}
+
+// The spent output's only neighbour re-read as a terminal Branch: the lone
+// n4 group of the spent output's slot (10) holds the neighbour's slot (14).
+// The step proves the spent output is in the pre-root, and the root it
+// leaves behind is a branch with one child, which the honest trie never
+// holds.
+fn withdrawal_branch_masquerade() -> mpf.ProofStep {
+  let spent_path = blake2b_256(ledger_outref_key(out_ref(9)))
+  let neighbour_path = blake2b_256(withdrawal_neighbour_key)
+  let children = opening_fixture.children(
+    [
+      Pair(
+        nibble(neighbour_path, 1),
+        combine(suffix(neighbour_path, 2), blake2b_256(neighbour_value)),
+      ),
+    ],
+  )
+  mpf.Branch {
+    skip: 1,
+    neighbors: opening_fixture.neighbors(children, nibble(spent_path, 1)),
+  }
+}
+
+test withdrawal_branch_masquerade_proves_the_spent_output() {
+  let spent_path = blake2b_256(ledger_outref_key(out_ref(9)))
+  let neighbour_path = blake2b_256(withdrawal_neighbour_key)
+  and {
+    nibble(spent_path, 1) == 10,
+    nibble(neighbour_path, 1) == 14,
+    mpf.has(
+      mpf.from_root(withdrawal_pre_root()),
+      ledger_outref_key(out_ref(9)),
+      native_output_ledger_value(9),
+      [withdrawal_branch_masquerade()],
+    ),
+  }
+}
+
+test rejects_a_terminal_branch_masquerade_against_an_honest_withdrawal_step() fail {
+  withdrawal_delete_fault_is_valid(
+    withdrawal_neighbour_only_root(),
+    [withdrawal_branch_masquerade()],
+    #"",
+  )
+}
+
+// The same step with an opening that splits the neighbour's pair (14, 15)
+// into the neighbour and an empty slot.
+test rejects_a_terminal_branch_masquerade_with_an_opening_against_an_honest_withdrawal_step() fail {
+  let neighbour_path = blake2b_256(withdrawal_neighbour_key)
+  let opening = #"01"
+    |> bytearray.concat(
+        combine(suffix(neighbour_path, 2), blake2b_256(neighbour_value)),
+      )
+    |> bytearray.concat(null_hash)
+  withdrawal_delete_fault_is_valid(
+    withdrawal_neighbour_only_root(),
+    [withdrawal_branch_masquerade()],
+    opening,
+  )
+}
+
+// A pre-root whose root branch holds the spent output (slot 5) and two other
+// outputs (slots 8 and 9) that share its lone n8 group. The honest delete
+// keeps a two-child branch and sends the group's opening.
+test honest_withdrawal_delete_opens_a_lone_neighbour_group() {
+  let spent_key = ledger_outref_key(out_ref(9))
+  let spent_value = native_output_ledger_value(9)
+  let slot_leaf = fn(slot) {
+    let key = opening_fixture.slot_key(slot)
+    Pair(slot, combine(suffix(blake2b_256(key), 1), blake2b_256(key)))
+  }
+  let children = opening_fixture.children(
+    [
+      Pair(
+        5,
+        combine(suffix(blake2b_256(spent_key), 1), blake2b_256(spent_value)),
+      ),
+      slot_leaf(8),
+      slot_leaf(9),
+    ],
+  )
+  let pre_root = combine(#"", opening_fixture.merkle(children))
+  let post_root = combine(
+    #"",
+    opening_fixture.merkle(
+      opening_fixture.children([slot_leaf(8), slot_leaf(9)]),
+    ),
+  )
+  let steps = [
+    mpf.Branch { skip: 0, neighbors: opening_fixture.neighbors(children, 5) },
+  ]
+  let opening = opening_fixture.opening(children, 5)
+  and {
+    nibble(blake2b_256(spent_key), 0) == 5,
+    bytearray.length(opening) == 66,
+    mpf.root(mpf.delete(mpf.from_root(pre_root), spent_key, spent_value, steps)) == post_root,
+    proof.apply_delete_witness(
+      pre_root,
+      proof.LedgerDeleteWitness {
+        key: spent_key,
+        value: spent_value,
+        opening,
+        delete_proof: steps,
+      },
+    ) == post_root,
+    !withdrawal_delete_fault_from_is_valid(pre_root, post_root, steps, opening),
+    withdrawal_delete_fault_from_is_valid(pre_root, h32_b, steps, opening),
+  }
+}
+
+// Without the opening the same honest delete is refused, so the prover must
+// send it.
+test honest_withdrawal_delete_of_a_lone_group_needs_the_opening() fail {
+  let spent_key = ledger_outref_key(out_ref(9))
+  let spent_value = native_output_ledger_value(9)
+  let slot_leaf = fn(slot) {
+    let key = opening_fixture.slot_key(slot)
+    Pair(slot, combine(suffix(blake2b_256(key), 1), blake2b_256(key)))
+  }
+  let children = opening_fixture.children(
+    [
+      Pair(
+        5,
+        combine(suffix(blake2b_256(spent_key), 1), blake2b_256(spent_value)),
+      ),
+      slot_leaf(8),
+      slot_leaf(9),
+    ],
+  )
+  let pre_root = combine(#"", opening_fixture.merkle(children))
+  proof.apply_delete_witness(
+    pre_root,
+    proof.LedgerDeleteWitness {
+      key: spent_key,
+      value: spent_value,
+      opening: #"",
+      delete_proof: [
+        mpf.Branch {
+          skip: 0,
+          neighbors: opening_fixture.neighbors(children, 5),
+        },
+      ],
+    },
+  ) != pre_root
 }
 
 test accepts_invalid_withdrawal_no_op_transition_fault() {
@@ -1454,6 +1762,40 @@ test rejects_valid_forced_transaction_matching_accepted_post_root_fault() {
   )
 }
 
+// An accepted claim over a transaction that deletes the ledger's only entry
+// ends at the terminal root the ledger delta admits for the drain. That root is
+// the committed empty-ledger sentinel, so the claim convicts a block that
+// commits the library's `null_hash` for the drained ledger and does not convict
+// the honest block that commits the sentinel.
+test accepted_claim_names_a_drained_ledger_by_the_committed_sentinel() {
+  let entry = fixtures_ledger.ledger_delta_singleton_entry_root()
+  let admits = fn(root) {
+    fixtures_ledger.ledger_delta_singleton_finalize(0, entry, root)
+  }
+  expect admits(env.empty_merkle_tree_root) != admits(null_hash)
+  let terminal_root = if admits(env.empty_merkle_tree_root) {
+    env.empty_merkle_tree_root
+  } else {
+    null_hash
+  }
+  let convicts = fn(post_root) {
+    let Pair(header, witness) = accepted_forced_transition_case(
+      rejection_reason_v1.ForcedTxValid,
+      ledger_state.ForcedTransaction,
+      post_root,
+      terminal_root,
+    )
+    proof.validate_accepted_transaction_fault_proof(
+      prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
+      asset_name_for(header),
+    )
+  }
+  and {
+    !convicts(env.empty_merkle_tree_root),
+    convicts(null_hash),
+  }
+}
+
 test rejects_invalid_forced_source_with_accepted_validation_claim() {
   let Pair(header, witness) = accepted_forced_transition_case(
     verdict_plutus_failed(),
@@ -1505,8 +1847,11 @@ test accepts_forced_transaction_classified_as_normal_fault() {
     proof.SourceMembershipMismatch {
       witness: proof.SourcePhaseMismatch {
         trace_proof,
-        source_membership: proof.ForcedTransactionSourceMembership {
-          membership: source_membership,
+        source_membership: proof.ForcedKeyOpening {
+          tx_order_id: source_membership.key,
+          value_hash: blake2b_256(cbor.serialise(source_membership.value)),
+          phas_root: source_membership.phas_root,
+          proof: source_membership.proof,
         },
       },
     },
@@ -1538,8 +1883,11 @@ test accepts_normal_transaction_classified_as_forced_fault() {
     proof.SourceMembershipMismatch {
       witness: proof.SourcePhaseMismatch {
         trace_proof,
-        source_membership: proof.L2TransactionSourceMembership {
-          membership: source_membership,
+        source_membership: proof.L2KeyOpening {
+          tx_id: source_membership.key,
+          value_hash: blake2b_256(source_membership.value),
+          phas_root: source_membership.phas_root,
+          proof: source_membership.proof,
         },
       },
     },
@@ -1843,6 +2191,167 @@ test rejects_deposit_transition_replaying_full_output_bytes() {
   )
 }
 
+// path(out_ref 0 key) = 6 f b 0 ..., path(#"0008") = 6 8 e 6 ... and
+// path(#"0001") = 0 1 c f ...: the projected deposit lands beside #"0008" at
+// the odd cursor 1, under a root that branches at nibble 0.
+const deposit_near_key = #"0008"
+
+const deposit_far_key = #"0001"
+
+const far_value = #"0c"
+
+fn deposit_far_step() -> mpf.ProofStep {
+  Leaf {
+    skip: 0,
+    key: blake2b_256(deposit_far_key),
+    value: blake2b_256(far_value),
+  }
+}
+
+fn deposit_honest_insert_proof() -> mpf.Proof {
+  [
+    deposit_far_step(),
+    Leaf {
+      skip: 0,
+      key: blake2b_256(deposit_near_key),
+      value: blake2b_256(neighbour_value),
+    },
+  ]
+}
+
+fn deposit_pre_root() -> ByteArray {
+  mpf.root(
+    mpf.insert(
+      mpf.insert(mpf.empty, deposit_far_key, far_value, []),
+      deposit_near_key,
+      neighbour_value,
+      [deposit_far_step()],
+    ),
+  )
+}
+
+fn deposit_projected_value() -> ByteArray {
+  ledger_value(out_ref(0).output_index, native_deposit_output_cbor(0))
+}
+
+fn deposit_honest_post_root() -> ByteArray {
+  mpf.root(
+    mpf.insert(
+      mpf.from_root(deposit_pre_root()),
+      ledger_outref_key(out_ref(0)),
+      deposit_projected_value(),
+      deposit_honest_insert_proof(),
+    ),
+  )
+}
+
+fn deposit_insert_witness(insert_proof: mpf.Proof) -> proof.LedgerInsertWitness {
+  proof.LedgerInsertWitness {
+    key: ledger_outref_key(out_ref(0)),
+    value: deposit_projected_value(),
+    non_membership_proof: deposit_honest_insert_proof(),
+    insert_proof,
+  }
+}
+
+fn deposit_insert_fault_is_valid(
+  post_root: ByteArray,
+  insert_proof: mpf.Proof,
+) -> Bool {
+  let deposit_id = out_ref(0)
+  let deposit_info = sample_deposit_info(0)
+  let event_key = ledger_state.DepositEventKey { deposit_id }
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.Deposit,
+    deposit_pre_root(),
+    post_root,
+  )
+  let trace_proof = trace_membership(opened_step)
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.Deposit,
+  )
+  let source_membership = deposit_source_membership(deposit_id, deposit_info)
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    deposits_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    deposit_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+  proof.validate_transition_fault_proof(
+    prove(
+      header,
+      proof.InvalidOneStepTransition {
+        witness: proof.ValidDepositTransition {
+          trace_proof,
+          event_to_step,
+          source_membership,
+          projected_utxo: deposit_insert_witness(insert_proof),
+        },
+      },
+    ),
+    asset_name_for(header),
+    dummy_hub_datum(),
+    [deposit_reference_input(deposit_id, deposit_info)],
+    Some(
+      timing_fixture.evidence(
+        header,
+        [deposit_reference_input(deposit_id, deposit_info)],
+      ),
+    ),
+  )
+}
+
+test honest_deposit_insert_proof_resolves_to_the_honest_post_root() {
+  let honest = deposit_honest_insert_proof()
+  and {
+    proof.apply_insert_witness(
+      deposit_pre_root(),
+      deposit_insert_witness(honest),
+    ) == deposit_honest_post_root(),
+    !deposit_insert_fault_is_valid(deposit_honest_post_root(), honest),
+    deposit_insert_fault_is_valid(h32_b, honest),
+  }
+}
+
+test rejects_an_inflated_terminal_leaf_skip_against_an_honest_deposit_step() fail {
+  let inflated = [
+    deposit_far_step(),
+    Leaf {
+      skip: 1,
+      key: blake2b_256(deposit_near_key),
+      value: blake2b_256(neighbour_value),
+    },
+  ]
+  deposit_insert_fault_is_valid(deposit_honest_post_root(), inflated)
+}
+
+// The near leaf at odd cursor 1 re-read as a branch at nibble 0 whose prefix
+// is its suffix without its marker. Leaf and branch node preimages are
+// disjoint, so its collapse is not the true leaf and the predecessor check
+// against the true pre-root refuses it.
+test rejects_a_terminal_fork_masquerade_against_an_honest_deposit_step() fail {
+  let near_path = blake2b_256(deposit_near_key)
+  let masquerade = [
+    deposit_far_step(),
+    mpf.Fork {
+      skip: 0,
+      neighbor: mpf.Neighbor {
+        nibble: 0,
+        prefix: bytearray.drop(suffix(near_path, 1), 1),
+        root: blake2b_256(neighbour_value),
+      },
+    },
+  ]
+  deposit_insert_fault_is_valid(deposit_honest_post_root(), masquerade)
+}
+
 // Q43 structural-N/A adversarial control: a canonical valid normal L2
 // transaction must apply its exact delete/insert transition. Reusing its
 // authenticated pre-root as the claimed post-root makes the transition a
@@ -2030,6 +2539,206 @@ fn descriptor_ledger_l2_dispute(
   )
 }
 
+fn common_nibbles(left: ByteArray, right: ByteArray, cursor: Int) -> Int {
+  if nibble(left, cursor) == nibble(right, cursor) {
+    common_nibbles(left, right, cursor + 1)
+  } else {
+    cursor
+  }
+}
+
+// An L2 transaction spends one output of a two-output ledger. The other
+// output sits in the root slot the produced output lands in, so the honest
+// spend ends in a Leaf step and the produced output then forks off that
+// neighbour. Reading the neighbour as the lone group of a terminal Branch
+// still proves the spend, but leaves a one-child root branch; the produced
+// output's insert keeps that branch, so the replayed post-root differs from
+// the honest one. `steered` picks the Branch reading for the spend and the
+// matching insert witness.
+fn l2_spend_branch_dispute(
+  steered: Bool,
+  claimed_post_root: Option<ByteArray>,
+) -> Pair<ledger_state.HeaderV1, proof.TransitionFault> {
+  let spent_input = native_input(h32_a, 0)
+  let spent_key = native_components.encode_midgard_tx_input(spent_input)
+  let spent_value = native_output_ledger_value(spent_input.output_index)
+  let produced_output = native_output()
+  let produced_value = ledger_value(
+    0,
+    native_components.encode_midgard_tx_output(produced_output),
+  )
+  let spend_inputs_preimage = native_preimages.encode_input_preimage(
+    [spent_input],
+  )
+  let outputs_preimage = native_preimages.encode_output_preimage(
+    [produced_output],
+  )
+  let compact_cbor = native_l2_compact_cbor(
+    spend_inputs_preimage,
+    outputs_preimage,
+  )
+  let tx_id = native_l2_tx_id(compact_cbor)
+  let produced_key = native_components.encode_midgard_tx_input(
+    native_input(tx_id, 0),
+  )
+  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
+  let spent_path = blake2b_256(spent_key)
+  let produced_path = blake2b_256(produced_key)
+  let slot = nibble(produced_path, 0)
+  expect nibble(spent_path, 0) != slot
+  let neighbour_key = opening_fixture.slot_key(slot)
+  let neighbour_path = blake2b_256(neighbour_key)
+  let neighbour_value_hash = blake2b_256(neighbour_key)
+  let neighbour_child = combine(suffix(neighbour_path, 1), neighbour_value_hash)
+  let pre_root = combine(
+    #"",
+    opening_fixture.merkle(
+      opening_fixture.children(
+        [
+          Pair(
+            nibble(spent_path, 0),
+            combine(suffix(spent_path, 1), blake2b_256(spent_value)),
+          ),
+          Pair(slot, neighbour_child),
+        ],
+      ),
+    ),
+  )
+  let shared = common_nibbles(neighbour_path, produced_path, 0)
+  let neighbour_leaf = fn(skip) {
+    Leaf { skip, key: neighbour_path, value: neighbour_value_hash }
+  }
+  let honest_post_root = mpf.root(
+    mpf.insert(
+      mpf.insert(mpf.empty, neighbour_key, neighbour_key, []),
+      produced_key,
+      produced_value,
+      [neighbour_leaf(shared)],
+    ),
+  )
+  let lone_neighbour = opening_fixture.children([Pair(slot, neighbour_child)])
+  let (delete_proof, insert_proof) = if steered {
+    (
+      [
+        mpf.Branch {
+          skip: 0,
+          neighbors: opening_fixture.neighbors(
+            lone_neighbour,
+            nibble(spent_path, 0),
+          ),
+        },
+      ],
+      [
+        mpf.Branch {
+          skip: 0,
+          neighbors: opening_fixture.neighbors(lone_neighbour, slot),
+        },
+        neighbour_leaf(shared - 1),
+      ],
+    )
+  } else {
+    ([neighbour_leaf(0)], [neighbour_leaf(shared)])
+  }
+  let post_root = when claimed_post_root is {
+    Some(root) -> root
+    None -> honest_post_root
+  }
+  let event_key = ledger_state.L2TransactionEventKey { tx_id }
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.L2Transaction,
+    pre_root,
+    post_root,
+  )
+  let trace_proof = trace_membership(opened_step)
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.L2Transaction,
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transactions_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    l2_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+  Pair(
+    header,
+    proof.InvalidOneStepTransition {
+      witness: proof.L2TransactionTransition {
+        trace_proof,
+        event_to_step,
+        source_membership,
+        spend_inputs_preimage,
+        outputs_preimage,
+        spent_utxos: [
+          proof.LedgerDeleteWitness {
+            key: spent_key,
+            value: spent_value,
+            opening: #"",
+            delete_proof,
+          },
+        ],
+        produced_utxos: [
+          proof.LedgerInsertWitness {
+            key: produced_key,
+            value: produced_value,
+            non_membership_proof: insert_proof,
+            insert_proof,
+          },
+        ],
+      },
+    },
+  )
+}
+
+fn l2_spend_branch_dispute_is_valid(
+  steered: Bool,
+  claimed_post_root: Option<ByteArray>,
+) -> Bool {
+  let Pair(header, fault) = l2_spend_branch_dispute(steered, claimed_post_root)
+  proof.validate_accepted_transaction_fault_proof(
+    prove(header, fault),
+    asset_name_for(header),
+  )
+}
+
+test honest_l2_spend_of_a_one_neighbour_ledger_resolves_to_the_honest_post_root() {
+  and {
+    !l2_spend_branch_dispute_is_valid(False, None),
+    l2_spend_branch_dispute_is_valid(False, Some(h32_b)),
+  }
+}
+
+test l2_spend_branch_masquerade_proves_the_spent_output() {
+  let Pair(header, fault) = l2_spend_branch_dispute(True, None)
+  expect
+      proof.InvalidOneStepTransition{witness: proof.L2TransactionTransition {
+        trace_proof,
+        spent_utxos,
+        ..
+      }}
+    = fault
+  expect [spent] = spent_utxos
+  and {
+    header.l2_transaction_count == 1,
+    mpf.has(
+      mpf.from_root(trace_proof.value.pre_utxos_root),
+      spent.key,
+      spent.value,
+      spent.delete_proof,
+    ),
+  }
+}
+
+test rejects_a_terminal_branch_masquerade_against_an_honest_l2_spend() fail {
+  l2_spend_branch_dispute_is_valid(True, None)
+}
+
 test rejects_l2_transaction_when_trace_matches_expected_post_root() {
   let spent_input = native_input(h32_a, 0)
   let spent_key = native_components.encode_midgard_tx_input(spent_input)
@@ -2056,7 +2765,7 @@ test rejects_l2_transaction_when_trace_matches_expected_post_root() {
   let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
   let expected_post_root = proof.insert_root(
-    proof.delete_root(pre_root, spent_key, spent_value, []),
+    proof.delete_root(pre_root, spent_key, spent_value, [], #""),
     produced_key,
     produced_value,
     [],
@@ -2443,8 +3152,8 @@ test accepts_duplicate_trace_event_fault() {
   let right_step = step(1, event_key, ledger_state.Withdrawal, h32_b, h32_c)
   let left_trace = trace_membership(left_step)
   let right_trace = trace_membership(right_step)
-  let phas_root = #"dbf61b46d5c4def32178e8415221a5f46769dffe0ce62557a3d7498069936dcf"
-  let root = #"30207d3fb9261eef53138441ef4ece4ba72f3e2e9f79e2004a122f1bffb305d3"
+  let phas_root = #"df64f827b76c8b113a639af3a96beb006fb7e8105cd3a9005432473b4a204eac"
+  let root = #"8c803cca83c457c9ebe70456bf8dcd622f10f3da25bcf0514181ebe44dccca56"
   let header = ledger_state.HeaderV1 {
     ..base_header(),
     transition_trace_root: root,
@@ -2837,5 +3546,482 @@ test accepts_out_of_window_deposit_fault() {
     dummy_hub_datum(),
     [reference_input],
     Some(timing_fixture.evidence(header, [reference_input])),
+  )
+}
+
+fn n2_source() -> proof.SourceKeyOpening {
+  let membership = raw_l2_source_membership(h32_a, #"d87980")
+  proof.L2KeyOpening {
+    tx_id: h32_a,
+    value_hash: blake2b_256(membership.value),
+    phas_root: membership.phas_root,
+    proof: [],
+  }
+}
+
+fn n2_descriptor() -> validation_trace_v1.ValidationTraceDescriptorV1 {
+  validation_trace_v1.ValidationTraceDescriptorV1 {
+    schema_version: 1,
+    machine_version: 1,
+    trace_root: h32_a,
+    step_count: 1,
+    initial_state_hash: h32_b,
+    terminal_state_hash: h32_c,
+    verdict: validation_trace_v1.Accepted,
+    rejection_code_hash: zero_hash,
+  }
+}
+
+fn n2_run_root(event_key: ledger_state.EventKey, value: ByteArray) -> ByteArray {
+  mpf.root(mpf.insert(mpf.empty, cbor.serialise(event_key), value, []))
+}
+
+fn n2_header(run_root: ByteArray) -> ledger_state.HeaderV1 {
+  let source = raw_l2_source_membership(h32_a, #"d87980")
+  ledger_state.HeaderV1 {
+    ..base_header(),
+    transactions_root: source.root,
+    l2_transaction_count: 1,
+    validation_trace_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+    validation_traces_root: transition_trace.commit_counted_root(
+      transition_trace.ValidationTracesRootDomain,
+      run_root,
+      1,
+    ),
+  }
+}
+
+fn n2_missing_fault(
+  run_root: ByteArray,
+  absence: mpf.Proof,
+) -> proof.TransitionFault {
+  proof.SourceMembershipMismatch {
+    witness: proof.SourceEventMissingValidationRun {
+      source: n2_source(),
+      run_phas_root: run_root,
+      run_absence_proof: absence,
+    },
+  }
+}
+
+test n2_missing_run_convicts_committed_source() {
+  // A distinct run is present under the authenticated count label.
+  let other = ledger_state.L2TransactionEventKey { tx_id: h32_b }
+  let value = cbor.serialise(n2_descriptor())
+  let root = n2_run_root(other, value)
+  let path = blake2b_256(cbor.serialise(other))
+  let absence = [mpf.Leaf { skip: 0, key: path, value: blake2b_256(value) }]
+  proof.validate_source_fault_proof(
+    prove(n2_header(root), n2_missing_fault(root, absence)),
+    asset_name_for(n2_header(root)),
+  )
+}
+
+test n2_present_run_refuses_missing_claim() fail {
+  let root = n2_run_root(
+    ledger_state.L2TransactionEventKey { tx_id: h32_a },
+    cbor.serialise(n2_descriptor()),
+  )
+  proof.validate_source_fault_proof(
+    prove(n2_header(root), n2_missing_fault(root, [])),
+    asset_name_for(n2_header(root)),
+  )
+}
+
+test n2_foreign_run_convicts() {
+  let key = ledger_state.L2TransactionEventKey { tx_id: h32_b }
+  let value = cbor.serialise(n2_descriptor())
+  let root = n2_run_root(key, value)
+  let source = raw_l2_source_membership(h32_a, #"d87980")
+  let absence = [
+    mpf.Leaf {
+      skip: 0,
+      key: blake2b_256(h32_a),
+      value: blake2b_256(source.value),
+    },
+  ]
+  let header = n2_header(root)
+  proof.validate_source_fault_proof(
+    prove(
+      header,
+      proof.SourceMembershipMismatch {
+        witness: proof.ForeignValidationRun {
+          event_key: cbor.serialise(key),
+          value_hash: blake2b_256(value),
+          run_phas_root: root,
+          run_proof: [],
+          source_phas_root: source.phas_root,
+          source_absence_proof: absence,
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test n2_existing_source_refuses_foreign_claim() fail {
+  let key = ledger_state.L2TransactionEventKey { tx_id: h32_a }
+  let value = cbor.serialise(n2_descriptor())
+  let root = n2_run_root(key, value)
+  let source = raw_l2_source_membership(h32_a, #"d87980")
+  let header = n2_header(root)
+  proof.validate_source_fault_proof(
+    prove(
+      header,
+      proof.SourceMembershipMismatch {
+        witness: proof.ForeignValidationRun {
+          event_key: cbor.serialise(key),
+          value_hash: blake2b_256(value),
+          run_phas_root: root,
+          run_proof: [],
+          source_phas_root: source.phas_root,
+          source_absence_proof: [],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+fn n2_malformed_claim(value: ByteArray) -> Bool {
+  let key = ledger_state.L2TransactionEventKey { tx_id: h32_a }
+  let root = n2_run_root(key, value)
+  let header = n2_header(root)
+  proof.validate_source_fault_proof(
+    prove(
+      header,
+      proof.SourceMembershipMismatch {
+        witness: proof.MalformedValidationRun {
+          event_key: key,
+          value,
+          run_phas_root: root,
+          run_proof: [],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test n2_garbled_run_convicts() {
+  n2_malformed_claim(#"ff")
+}
+
+test n2_zero_step_run_convicts() {
+  n2_malformed_claim(
+    cbor.serialise(
+      validation_trace_v1.ValidationTraceDescriptorV1 {
+        ..n2_descriptor(),
+        step_count: 0,
+      },
+    ),
+  )
+}
+
+test n2_honest_descriptor_refuses_malformed_claim() fail {
+  n2_malformed_claim(cbor.serialise(n2_descriptor()))
+}
+
+test n2_descriptor_decoder_is_total_over_wrong_data_shapes() {
+  list.all(
+    [
+      #"ff", #"00", #"40", #"80", #"a0", #"d87980",
+      #"d8799f0101582000000000000000000000000000000000000000000000000000000000000000000140400040ff",
+    ],
+    fn(bytes) { !validation_trace_v1.descriptor_bytes_are_well_formed(bytes) },
+  )
+}
+
+// The value digest cannot be rebound to another event, root or count label.
+test n2_source_key_opening_is_exact() {
+  let root = n2_run_root(
+    ledger_state.L2TransactionEventKey { tx_id: h32_b },
+    cbor.serialise(n2_descriptor()),
+  )
+  let header = n2_header(root)
+  let source = raw_l2_source_membership(h32_a, #"d87980")
+  let forged = proof.L2KeyOpening {
+    tx_id: h32_c,
+    value_hash: blake2b_256(source.value),
+    phas_root: source.phas_root,
+    proof: [],
+  }
+  !proof.validate_source_fault_proof(
+    prove(
+      header,
+      proof.SourceMembershipMismatch {
+        witness: proof.SourceEventMissingValidationRun {
+          source: forged,
+          run_phas_root: root,
+          run_absence_proof: [],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test n2_nontransaction_run_key_is_foreign() {
+  let key = ledger_state.WithdrawalEventKey { withdrawal_id: out_ref(0) }
+  let value = cbor.serialise(n2_descriptor())
+  let root = n2_run_root(key, value)
+  let header = n2_header(root)
+  proof.validate_source_fault_proof(
+    prove(
+      header,
+      proof.SourceMembershipMismatch {
+        witness: proof.ForeignValidationRun {
+          event_key: cbor.serialise(key),
+          value_hash: blake2b_256(value),
+          run_phas_root: root,
+          run_proof: [],
+          source_phas_root: env.empty_merkle_tree_root,
+          source_absence_proof: [],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test n2_descriptor_decoder_refuses_wrong_fields_and_versions() {
+  let honest = n2_descriptor()
+  and {
+    validation_trace_v1.descriptor_bytes_are_well_formed(cbor.serialise(honest)),
+    !validation_trace_v1.descriptor_bytes_are_well_formed(
+      cbor.serialise(
+        validation_trace_v1.ValidationTraceDescriptorV1 {
+          ..honest,
+          machine_version: 2,
+        },
+      ),
+    ),
+    !validation_trace_v1.descriptor_bytes_are_well_formed(
+      cbor.serialise(
+        validation_trace_v1.ValidationTraceDescriptorV1 {
+          ..honest,
+          schema_version: 2,
+        },
+      ),
+    ),
+    !validation_trace_v1.descriptor_bytes_are_well_formed(
+      cbor.serialise(
+        validation_trace_v1.ValidationTraceDescriptorV1 {
+          ..honest,
+          trace_root: #"00",
+        },
+      ),
+    ),
+    !validation_trace_v1.descriptor_bytes_are_well_formed(
+      cbor.serialise(
+        validation_trace_v1.ValidationTraceDescriptorV1 {
+          ..honest,
+          verdict: validation_trace_v1.Pending,
+        },
+      ),
+    ),
+    !validation_trace_v1.descriptor_bytes_are_well_formed(
+      cbor.serialise(
+        validation_trace_v1.ValidationTraceDescriptorV1 {
+          ..honest,
+          step_count: 4_294_967_296,
+        },
+      ),
+    ),
+    !validation_trace_v1.descriptor_bytes_are_well_formed(
+      cbor.serialise(
+        validation_trace_v1.ValidationTraceDescriptorV1 {
+          ..honest,
+          verdict: validation_trace_v1.Rejected,
+        },
+      ),
+    ),
+  }
+}
+
+test n2_all_runs_missing_is_provable() {
+  let header = n2_header(env.empty_merkle_tree_root)
+  proof.validate_source_fault_proof(
+    prove(header, n2_missing_fault(env.empty_merkle_tree_root, [])),
+    asset_name_for(header),
+  )
+}
+
+test n2_bignum_leaf_is_malformed_and_provable() {
+  n2_malformed_claim(#"c24100")
+}
+
+fn n2_extra_raw_key_is_provable(key: ByteArray) -> Bool {
+  let legitimate_key = cbor.serialise(
+    ledger_state.L2TransactionEventKey { tx_id: h32_a },
+  )
+  let value = cbor.serialise(n2_descriptor())
+  let legitimate_path = blake2b_256(legitimate_key)
+  let neighbor = [
+    mpf.Leaf { skip: 0, key: legitimate_path, value: blake2b_256(value) },
+  ]
+  let legitimate = mpf.insert(mpf.empty, legitimate_key, value, [])
+  let root = mpf.root(mpf.insert(legitimate, key, value, neighbor))
+  let header = n2_header(root)
+  proof.validate_source_fault_proof(
+    prove(
+      header,
+      proof.SourceMembershipMismatch {
+        witness: proof.ForeignValidationRun {
+          event_key: key,
+          value_hash: blake2b_256(value),
+          run_phas_root: root,
+          run_proof: neighbor,
+          source_phas_root: env.empty_merkle_tree_root,
+          source_absence_proof: [],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test n2_extra_garbled_run_key_is_foreign_despite_honest_count_label() {
+  n2_extra_raw_key_is_provable(#"00")
+}
+
+test n2_extra_bignum_run_key_is_foreign_without_decoder_abort() {
+  n2_extra_raw_key_is_provable(#"c24100")
+}
+
+fn n2_forced_foreign_claim(existing: Bool) -> Bool {
+  let event_key = ledger_state.ForcedTransactionEventKey {
+    tx_order_id: out_ref(0),
+  }
+  let value = cbor.serialise(n2_descriptor())
+  let run_root = n2_run_root(event_key, value)
+  let source = forced_source_membership(
+    out_ref(0),
+    forced_tx(verdict_plutus_failed(), #""),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..n2_header(run_root),
+    forced_transactions_root: if existing {
+      source.root
+    } else {
+      env.empty_merkle_tree_root
+    },
+    forced_transaction_count: if existing {
+      1
+    } else {
+      0
+    },
+  }
+  proof.validate_source_fault_proof(
+    prove(
+      header,
+      proof.SourceMembershipMismatch {
+        witness: proof.ForeignValidationRun {
+          event_key: cbor.serialise(event_key),
+          value_hash: blake2b_256(value),
+          run_phas_root: run_root,
+          run_proof: [],
+          source_phas_root: if existing {
+            source.phas_root
+          } else {
+            env.empty_merkle_tree_root
+          },
+          source_absence_proof: [],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test n2_forced_foreign_run_convicts() {
+  n2_forced_foreign_claim(False)
+}
+
+test n2_existing_forced_source_refuses_foreign_claim() fail {
+  n2_forced_foreign_claim(True)
+}
+
+test n2_forced_source_missing_run_convicts() {
+  let source = forced_source_membership(
+    out_ref(0),
+    forced_tx(verdict_plutus_failed(), #""),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..n2_header(env.empty_merkle_tree_root),
+    forced_transactions_root: source.root,
+    forced_transaction_count: 1,
+  }
+  proof.validate_source_fault_proof(
+    prove(
+      header,
+      proof.SourceMembershipMismatch {
+        witness: proof.SourceEventMissingValidationRun {
+          source: proof.ForcedKeyOpening {
+            tx_order_id: source.key,
+            value_hash: blake2b_256(cbor.serialise(source.value)),
+            phas_root: source.phas_root,
+            proof: [],
+          },
+          run_phas_root: env.empty_merkle_tree_root,
+          run_absence_proof: [],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test n2_fixed_descriptor_wire_matches_typed_codec_at_all_count_width_boundaries() {
+  list.all(
+    [-1, 0, 1, 23, 24, 255, 256, 65_535, 65_536, 4_294_967_295, 4_294_967_296],
+    fn(count) {
+      list.all(
+        [
+          validation_trace_v1.Pending,
+          validation_trace_v1.Accepted,
+          validation_trace_v1.Rejected,
+        ],
+        fn(verdict) {
+          list.all(
+            [zero_hash, h32_a],
+            fn(rejection) {
+              let descriptor = validation_trace_v1.ValidationTraceDescriptorV1 {
+                ..n2_descriptor(),
+                step_count: count,
+                verdict,
+                rejection_code_hash: rejection,
+              }
+              validation_trace_v1.descriptor_bytes_are_well_formed(
+                cbor.serialise(descriptor),
+              ) == validation_trace_v1.descriptor_is_well_formed(descriptor)
+            },
+          )
+        },
+      )
+    },
+  )
+}
+
+test n2_fixed_descriptor_wire_refuses_nonminimal_count_spellings() {
+  let bytes = cbor.serialise(n2_descriptor())
+  let prefix = builtin.slice_bytearray(0, 39, bytes)
+  let suffix = builtin.slice_bytearray(
+    40,
+    builtin.length_of_bytearray(bytes) - 40,
+    bytes,
+  )
+  list.all(
+    [#"1801", #"190001", #"1a00000001", #"1b0000000000000001", #"c24101"],
+    fn(count) {
+      !validation_trace_v1.descriptor_bytes_are_well_formed(
+        builtin.append_bytearray(
+          prefix,
+          builtin.append_bytearray(count, suffix),
+        ),
+      )
+    },
   )
 }

@@ -20,6 +20,7 @@ import {
   scriptHashToCredential,
   toUnit,
   type TxSigned,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -132,6 +133,7 @@ export type BuildValidationDisputeOpenParams = {
 
 export type BuildValidationDisputeOpenResult = {
   readonly signed: TxSigned;
+  readonly disputeReferenceScriptUtxo: UTxO;
   readonly threadOutRef: string;
   readonly fraudulentHeaderHash: string;
   readonly inputIndex: number;
@@ -320,6 +322,7 @@ export const buildValidationDisputeOpen = async ({
   const signed = await unsigned.sign.withWallet().complete();
   return {
     signed,
+    disputeReferenceScriptUtxo: disputeReferenceUtxo,
     threadOutRef,
     fraudulentHeaderHash,
     inputIndex: Number(layout.inputIndex),
@@ -343,6 +346,12 @@ export const submitValidationDisputeOpen = async ({
   await reachOptionalPreSubmitBoundary({
     signed: built.signed,
     boundary: preSubmitBoundary,
+    referenceScriptCandidates: [
+      {
+        role: "validation-dispute opener validator",
+        utxo: built.disputeReferenceScriptUtxo,
+      },
+    ],
   });
   const txHash = await built.signed.submit();
   if (awaitConfirmation) {

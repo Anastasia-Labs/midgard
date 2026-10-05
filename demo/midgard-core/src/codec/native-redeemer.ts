@@ -89,7 +89,7 @@ const ensureSupportedCardanoRedeemerTag = (
  * nested nodes, so validation depth is bounded only by the bytes that carry
  * the value.
  */
-const validateCanonicalPlutusDataCbor = (
+export const validateCanonicalPlutusDataCbor = (
   dataCbor: Uint8Array,
   fieldName: string,
 ): Buffer => {

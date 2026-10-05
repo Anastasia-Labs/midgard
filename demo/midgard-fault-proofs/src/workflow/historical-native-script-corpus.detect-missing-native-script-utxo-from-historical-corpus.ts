@@ -22,6 +22,10 @@ import {
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CanonicalViolationDetection } from "./classification.js";
 import {
+  acceptedTransactionSubject,
+  introducedOutputSubject,
+} from "./detection-subject.js";
+import {
   HISTORICAL_NATIVE_SCRIPT_CORPUS_PREIMAGE,
   type HistoricalNativeScriptCorpus,
 } from "./historical-native-script-corpus.create-historical-native-script-provider-roster.js";
@@ -209,6 +213,7 @@ export const detectMissingNativeScriptUtxoFromHistoricalCorpus = async ({
         }
         detections.push(
           Object.freeze({
+            ...acceptedTransactionSubject(transaction.nodeTxId),
             detectionId: `${MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID}:${transaction.nodeTxId}:${inputIndex.toString()}`,
             headerHash: evidence.headerHash,
             violationId: MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID,
@@ -271,6 +276,10 @@ export const detectMinAdaUtxoFromHistoricalCorpus = ({
       const transactionId = Buffer.from(outRef.txId).toString("hex");
       return [
         Object.freeze({
+          ...introducedOutputSubject(evidence.reconstruction, {
+            transactionId,
+            outputIndex: BigInt(outRef.outputIndex),
+          }),
           detectionId: `${MIN_ADA_VIOLATION_ID}:utxo:${transactionId}:${outRef.outputIndex.toString()}`,
           headerHash: evidence.headerHash,
           violationId: MIN_ADA_VIOLATION_ID,

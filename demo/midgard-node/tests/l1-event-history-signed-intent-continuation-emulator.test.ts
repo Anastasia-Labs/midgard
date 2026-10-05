@@ -34,15 +34,11 @@ import {
   utxosProgram,
 } from "./deposit-flow-emulator-shared.js";
 import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { retainSignedIntentContinuationEmptyChildDa } from "./helpers/signed-intent-continuation-empty-child-da.js";
 
-/** The provider accepts the real, locally evaluated commitment before its
- * response is lost. Network ancestry remains the harness's synthetic transport;
- * an authorized operator appends a real empty child, which recreates the
- * parent's node outref. The child can only follow the parent's end time, which
- * is the parent commit's signed validity upper bound, so the history owner's
- * signed-intent reconciliation has already recorded the parent's observation
- * from its own node (whichever lands wins). The child uses the explicit
- * builder, not the pending automatic worker. */
+/** Real accepted commitment with a lost provider response, then an authorized
+ * empty child recreating the parent outref. Synthetic transport ancestry;
+ * signed-intent reconciliation observes the parent by its TTL. */
 it("retains the original signed intent through an accepted queue pointer continuation before local confirmation", async () => {
   const h = await openHistoryProductionOwnerLifecycle();
   const { fixture, lucidService, globals, production } = h;
@@ -204,11 +200,8 @@ it("retains the original signed intent through an accepted queue pointer continu
       throw new Error(responseLoss);
     };
 
-    // The event wait can place the commitment beyond the current scheduler
-    // window. The history-owned worker then registers due scheduler work and
-    // leaves the refresh to the block-commitment fiber's pre-lease alignment,
-    // which runs at the due slot before the worker is re-run. No state-queue
-    // mint reaches the provider before that re-run.
+    // Due scheduler work is aligned before the next owned worker attempt;
+    // no state-queue mint reaches the provider before that re-run.
     let output: Awaited<ReturnType<typeof runCommitWorker>>;
     const dueWorkOutputs: unknown[] = [];
     try {
@@ -312,9 +305,7 @@ it("retains the original signed intent through an accepted queue pointer continu
         fixture.emulator.now() + HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
     });
     await h.synchronize();
-    // This source point reaches the parent commit's TTL. Its node is on the
-    // queue at the transaction that signed it, so the history owner records
-    // that observation; the signed intent is kept.
+    // At the parent's TTL its original queue node is observed; the signed intent is kept.
     const recordedAtTtl = await readIntent(accepted.txHash);
     assertIntent(recordedAtTtl, accepted.txHash, accepted.signedCbor);
     expect(
@@ -323,11 +314,8 @@ it("retains the original signed intent through an accepted queue pointer continu
     expect(recordedAtTtl[Pending.Columns.STATUS]).toBe(
       Pending.Status.ObservedWaitingStability,
     );
-    // The child takes the planner's end: the latest one every cap admits. The
-    // parent is the unattested queue head, so Q61's fence caps the child below
-    // the parent's end plus the attestation timeout, together with the history
-    // horizon (the synchronized source point is the current slot), the submit
-    // slot's validity range and the operator's scheduler window.
+    // The child takes the latest planner end allowed by the Q61 attestation
+    // fence, history horizon, submit validity and current scheduler window.
     const childWindow = await Effect.runPromise(
       resolveCurrentOperatorSchedulerWindow(lucid, fixture.contracts),
     );
@@ -349,8 +337,7 @@ it("retains the original signed intent through an accepted queue pointer continu
     });
     diagnostic.childEndTime = childEndTime;
     expect(childEndTime.status).toBe("fits");
-    // No user or L2 transaction is submitted after the parent. The empty child
-    // preserves its actual UTxO root; it does not repeat the parent's deposit.
+    // The empty child preserves the actual parent ledger without repeating its deposit.
     const beforeChildReceiptCount = h.receipts.length;
     expect(Object.keys(fixture.emulator.mempool)).toHaveLength(0);
     const child = await h.command(
@@ -469,6 +456,13 @@ it("retains the original signed intent through an accepted queue pointer continu
         "Authorized operator explicit empty-child builder, not automatic pending worker",
     };
     diagnostic.stage = "canonical-confirmation-through-continuation";
+    diagnostic.childDa = await h.command(
+      retainSignedIntentContinuationEmptyChildDa(
+        accepted.headerHash,
+        child.headerHash,
+        childHeader,
+      ),
+    );
     await runBlockConfirmation(
       globals,
       fixture.contracts,
@@ -498,7 +492,13 @@ it("retains the original signed intent through an accepted queue pointer continu
       production.nodeConfig,
       { ...production, globals },
     );
+    diagnostic.recovery = recovery;
     expect(recovery.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
+    expect(recovery.foreignBaseVerification).toMatchObject({
+      status: "verified",
+      foreignHeaderHash: child.headerHash,
+      verifiedHeaderHashes: [child.headerHash],
+    });
     if (recovery.type !== "SuccessfulLocalFinalizationRecoveryOutput")
       throw new Error("Canonical intent requires native local finalization");
     expect(recovery.finalizedHeaderHash).toBe(accepted.headerHash);

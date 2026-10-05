@@ -4,5 +4,6 @@ import "@harmoniclabs/uplc";
 import "vitest";
 import "../src/cek-builtin.js";
 import "../src/cek-constant.js";
+import "./cek-builtin.v1-arm-exclusivity.js";
 import "./cek-builtin.v1-builtin-runtime-type-failures.js";
 import "./cek-builtin.v1-direct-builtin-execution.js";

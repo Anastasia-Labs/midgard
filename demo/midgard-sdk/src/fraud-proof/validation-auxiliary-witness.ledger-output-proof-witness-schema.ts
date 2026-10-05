@@ -71,7 +71,6 @@ const DataTraverseControlSchema = Data.Object({
   source_length: Data.Integer(),
   offset: Data.Integer(),
   frame_root: Data.Bytes(),
-  pending_large_expected_children: Data.Nullable(Data.Integer()),
   integer: Data.Nullable(CekDataIntegerControlSchema),
   bytes: Data.Nullable(CekDataBytesControlSchema),
   result: Data.Nullable(DataSummarySchema),
@@ -79,19 +78,10 @@ const DataTraverseControlSchema = Data.Object({
 
 const DataTraverseActionSchema = Data.Enum([
   Data.Literal("NoAction"),
-  Data.Object({
-    HeadScalar: Data.Object({ item_length: Data.Integer() }),
-  }),
-  Data.Object({
-    HeadSequence: Data.Object({ expected_children: Data.Integer() }),
-  }),
+  Data.Literal("HeadScalar"),
+  Data.Literal("HeadSequence"),
   Data.Literal("HeadMap"),
-  Data.Object({
-    HeadLargeConstructor: Data.Object({
-      constructor_cbor_length: Data.Integer(),
-      expected_children: Data.Integer(),
-    }),
-  }),
+  Data.Literal("HeadLargeConstructor"),
   Data.Object({
     AttachScalar: Data.Object({
       parent: Data.Nullable(DataFrameSchema),
@@ -280,8 +270,6 @@ export const LedgerOutputProofWitnessSchema = Data.Enum([
   }),
   Data.Object({
     LedgerOutputProofSpanAttach: Data.Object({
-      start: Data.Integer(),
-      length: Data.Integer(),
       chunk_proof: BoundedItemChunkProofSchema,
       next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
     }),

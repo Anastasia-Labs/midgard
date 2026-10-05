@@ -150,8 +150,19 @@ describe("PHAS membership SDK boundary", () => {
       loadRealPhasMembershipScript(),
     );
 
-    expect(identity.scriptHash).toEqual(
-      "1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721",
+    // The compiler's blueprint independently records the digest of this build.
+    const blueprint: unknown = JSON.parse(
+      readFileSync(realBlueprintPath, "utf8"),
+    );
+    expect(blueprint).toEqual(
+      expect.objectContaining({
+        validators: expect.arrayContaining([
+          expect.objectContaining({
+            title: PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE,
+            hash: identity.scriptHash,
+          }),
+        ]),
+      }),
     );
     expect(identity.rewardAddress.startsWith("stake_test")).toBe(true);
   });

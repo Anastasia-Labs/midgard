@@ -19,6 +19,7 @@ import "./validation-dispute-fixtures.build-accepted-claim-over-min-ada-rejectin
 import "./validation-dispute-fixtures.build-native-transaction-trace.js";
 import "./validation-dispute-fixtures.build-honest-accepted-validation-dispute-fixture.js";
 import "./validation-dispute-fixtures.build-forged-operator-successor-validation-dispute-fixture.js";
+import "./validation-dispute-fixtures.forge-late-native-donor-chunk.js";
 export { buildAcceptedClaimOverMinAdaRejectingTransactionFixture } from "./validation-dispute-fixtures.build-accepted-claim-over-min-ada-rejecting-transaction-fixture.js";
 export {
   buildAcceptedClaimOverRejectingTransactionFixture,
@@ -37,3 +38,4 @@ export {
 } from "./validation-dispute-fixtures.build-forced-validation-dispute-commitments.js";
 export { buildForgedOperatorSuccessorValidationDisputeFixture } from "./validation-dispute-fixtures.build-forged-operator-successor-validation-dispute-fixture.js";
 export { buildHonestAcceptedValidationDisputeFixture } from "./validation-dispute-fixtures.build-honest-accepted-validation-dispute-fixture.js";
+export { withLateNativeDonorChunk } from "./validation-dispute-fixtures.forge-late-native-donor-chunk.js";

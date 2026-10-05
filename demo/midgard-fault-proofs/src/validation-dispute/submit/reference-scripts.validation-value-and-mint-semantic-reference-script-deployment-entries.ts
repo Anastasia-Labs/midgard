@@ -108,7 +108,7 @@ export const requireValidationCekSemanticReferenceScriptUtxo = async ({
  * from what the deployment info actually carries (see
  * `validationValueAndMintSemanticReferenceScriptDeploymentEntry`'s call site
  * in the semantic-resolution builder). These entries are consumed the way
- * `validationTraceDisputeItemSemantic` and the CEK entries are: hash-checked
+ * `validationTraceDisputeCanonicalDecodeItemSemantic` and the CEK entries are: hash-checked
  * against the applied contract, no auth-role token.
  */
 export const VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES =

@@ -222,9 +222,14 @@ export const validatePayloadEntryArray = (
   }
 };
 
+/**
+ * The payload's declared counts are not committed by the header: they are
+ * bound only through the DA payload hash, and no on-chain arm reads them.
+ * Reconstruction therefore authenticates counts against the header and only
+ * requires the declared ones to be well formed.
+ */
 export const validateDeclaredCounts = (payload: SDK.DaPayload): void => {
-  const { block_body: body } = payload;
-  const counts = body.counts;
+  const counts = payload.block_body.counts;
   const fields = [
     ["withdrawal_count", counts.withdrawalCount],
     ["forced_transaction_count", counts.forcedTransactionCount],
@@ -239,35 +244,11 @@ export const validateDeclaredCounts = (payload: SDK.DaPayload): void => {
       throw transitionTraceError("countMismatch", `${field} is negative.`);
     }
   }
-  const memberCounts = payloadMemberCounts(payload);
-  const mismatches = countMismatches(counts, memberCounts);
-  if (mismatches.length > 0) {
-    throw transitionTraceError(
-      "countMismatch",
-      `Payload declared counts do not match payload member arrays: ${mismatches.join(
-        ",",
-      )}.`,
-    );
-  }
-  if (BigInt(body.event_to_step.length) !== counts.totalEventCount) {
-    throw transitionTraceError(
-      "countMismatch",
-      "event_to_step member count must equal total_event_count.",
-    );
-  }
-  if (
-    counts.validationTraceCount !==
-      counts.forcedTransactionCount + counts.l2TransactionCount ||
-    BigInt(body.validation_traces.length) !== counts.validationTraceCount
-  ) {
-    throw transitionTraceError(
-      "countMismatch",
-      "validation_traces member count must equal forced_transaction_count + l2_transaction_count.",
-    );
-  }
 };
 
-const payloadMemberCounts = (payload: SDK.DaPayload): PayloadCountSet => ({
+export const payloadMemberCounts = (
+  payload: SDK.DaPayload,
+): PayloadCountSet => ({
   withdrawalCount: BigInt(payload.block_body.withdrawals.length),
   forcedTransactionCount: BigInt(payload.block_body.forced_transactions.length),
   l2TransactionCount: BigInt(payload.block_body.transactions.length),
@@ -280,29 +261,3 @@ const payloadMemberCounts = (payload: SDK.DaPayload): PayloadCountSet => ({
   transitionStepCount: BigInt(payload.block_body.transition_trace.length),
   validationTraceCount: BigInt(payload.block_body.validation_traces.length),
 });
-
-export const countMismatches = (
-  expected: PayloadCountSet,
-  actual: PayloadCountSet,
-): readonly string[] =>
-  [
-    expected.withdrawalCount === actual.withdrawalCount
-      ? null
-      : "withdrawal_count",
-    expected.forcedTransactionCount === actual.forcedTransactionCount
-      ? null
-      : "forced_transaction_count",
-    expected.l2TransactionCount === actual.l2TransactionCount
-      ? null
-      : "l2_transaction_count",
-    expected.depositCount === actual.depositCount ? null : "deposit_count",
-    expected.totalEventCount === actual.totalEventCount
-      ? null
-      : "total_event_count",
-    expected.transitionStepCount === actual.transitionStepCount
-      ? null
-      : "transition_step_count",
-    expected.validationTraceCount === actual.validationTraceCount
-      ? null
-      : "validation_trace_count",
-  ].filter((field): field is string => field !== null);

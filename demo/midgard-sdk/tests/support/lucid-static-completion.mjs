@@ -183,17 +183,21 @@ try {
   report.staticSubmitted = true;
   // Real UPLC fixture: succeeds in both branches, charging more work above a fee threshold.
   const U = lucidRequire("@harmoniclabs/uplc");
-  const { ByteString } = lucidRequire("@harmoniclabs/bytestring");
   const app = (f, ...xs) => xs.reduce((f, x) => new U.Application(f, x), f);
-  // This encoder inserts each builtin's required forces.
-  const bi = (name) => new U.Builtin(U.UPLCBuiltinTag[name]);
+  // The encoder writes the AST as given, so each polymorphic builtin carries
+  // its type-instantiation forces explicitly.
+  const bi = (name, forces = 0) => {
+    let term = new U.Builtin(U.UPLCBuiltinTag[name]);
+    for (let force = 0; force < forces; force += 1) term = new U.Force(term);
+    return term;
+  };
   const fields = (x) => app(bi("sndPair", 2), app(bi("unConstrData"), x));
   const nth = (x, n) => {
     while (n--) x = app(bi("tailList", 1), x);
     return app(bi("headList", 1), x);
   };
   const work = (n) => {
-    let x = U.UPLCConst.byteString(new ByteString("ab".repeat(32)));
+    let x = U.UPLCConst.byteString(Buffer.from("ab".repeat(32), "hex"));
     while (n--) x = app(bi("sha2_256"), x);
     return app(new U.Lambda(U.UPLCConst.unit), x);
   };
@@ -215,7 +219,7 @@ try {
     return {
       type: "PlutusV3",
       script: applyDoubleCborEncoding(
-        Buffer.from(U.compileUPLC(program).toBuffer().buffer).toString("hex"),
+        Buffer.from(U.compileUPLC(program)).toString("hex"),
       ),
     };
   };

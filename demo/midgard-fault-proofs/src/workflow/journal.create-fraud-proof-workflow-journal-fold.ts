@@ -610,10 +610,10 @@ export const createFraudProofWorkflowJournalFold = ({
       if (
         proofCreationTxHash === removalTxHash ||
         !confirmedTransactionHashes.has(proofCreationTxHash) ||
-        !confirmedTransactionHashes.has(removalTxHash)
+        unresolvedSubmissionByAction.size > 0
       ) {
         throw new Error(
-          "journal terminal requires distinct confirmed proof creation and removal transactions",
+          "journal terminal requires confirmed proof creation, distinct removal and no unresolved submissions",
         );
       }
       if (

@@ -1,9 +1,6 @@
-import { Data as LucidData } from "@lucid-evolution/lucid";
-
 import {
   commitSemanticData,
   decodeSemanticConstantType,
-  encodeSemanticData,
 } from "./cek-proof.commit-semantic-data.js";
 import { decodeMidgardCekProgramBlobPreimage } from "./cek-proof.decode-midgard-cek-program-blob-preimage.js";
 import {
@@ -27,6 +24,7 @@ import {
   MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES,
 } from "./cek-proof.encode-midgard-cek-term-node.js";
 import { MIDGARD_CEK_EMPTY_SEQUENCE_ROOT } from "./cek-proof.encode-midgard-cek-value-node.js";
+import { encodeSemanticData } from "./cek-proof.encode-semantic-data.js";
 import {
   greatestPowerOfTwoBelow,
   type MidgardCekProgramConstantMaterial,
@@ -35,8 +33,8 @@ import {
   type NormalizedProgramMaterial,
   type ProgramMaterialBundleCache,
   type ProgramMaterialTask,
-  type SemanticDataValue,
 } from "./cek-proof.program-material-task.js";
+import { makeSemanticDataReconstructor } from "./cek-proof.reconstruct-semantic-data.js";
 import {
   semanticConstantMemory,
   semanticConstantPayloadMatchesType,
@@ -56,6 +54,9 @@ import {
   type MidgardCekDataPairNode,
 } from "./cek-semantic.js";
 import { type Hash32 } from "./codec/hash.js";
+
+const payloadLengthMismatch = (valueKey: string): string =>
+  `CEK constant value ${valueKey} payload length does not match its semantic tree`;
 
 export const verifyOneProgramMaterial = (
   envelope: MidgardCekProgramEnvelope,
@@ -812,108 +813,12 @@ export const verifyOneProgramMaterial = (
     }
   }
 
-  const reconstructedData = new Map<string, SemanticDataValue>();
-  const reconstructDataList = (
-    root: Uint8Array,
-    length: bigint,
-  ): readonly SemanticDataValue[] => {
-    const items: SemanticDataValue[] = [];
-    let cursor = rootKey(root);
-    let remaining = length;
-    while (remaining > 0n) {
-      const link = decodedDataLists.get(cursor);
-      if (link === undefined || link.length !== remaining) {
-        throw new Error("CEK semantic Data list cannot be reconstructed");
-      }
-      items.push(reconstructData(link.head));
-      cursor = rootKey(link.tail);
-      remaining -= 1n;
-    }
-    if (cursor !== rootKey(MIDGARD_CEK_EMPTY_DATA_LIST_ROOT)) {
-      throw new Error("CEK semantic Data list has a non-empty tail");
-    }
-    return items;
-  };
-  const reconstructDataPairs = (
-    root: Uint8Array,
-    length: bigint,
-  ): ReadonlyMap<SemanticDataValue, SemanticDataValue> => {
-    const entries = new Map<SemanticDataValue, SemanticDataValue>();
-    let cursor = rootKey(root);
-    let remaining = length;
-    while (remaining > 0n) {
-      const link = decodedDataPairs.get(cursor);
-      if (link === undefined || link.length !== remaining) {
-        throw new Error("CEK semantic Data map cannot be reconstructed");
-      }
-      entries.set(reconstructData(link.key), reconstructData(link.value));
-      cursor = rootKey(link.tail);
-      remaining -= 1n;
-    }
-    if (cursor !== rootKey(MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT)) {
-      throw new Error("CEK semantic Data map has a non-empty tail");
-    }
-    return entries;
-  };
-  function reconstructData(root: Uint8Array): SemanticDataValue {
-    const key = rootKey(root);
-    const cached = reconstructedData.get(key);
-    if (cached !== undefined) return cached;
-    const node = decodedDataNodes.get(key);
-    if (node === undefined) {
-      throw new Error("CEK semantic Data node is missing");
-    }
-    let value: SemanticDataValue;
-    if (node.kind === "integer") {
-      const bytes = materializeBlob(
-        node.cborRoot,
-        BigInt(MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES),
-        "CEK semantic integer",
-      );
-      const decoded = LucidData.from(bytes.toString("hex"));
-      if (typeof decoded !== "bigint") {
-        throw new Error("CEK semantic integer leaf is invalid");
-      }
-      value = decoded;
-    } else if (node.kind === "bytes") {
-      const bytes = materializeBlob(
-        node.bytesRoot,
-        BigInt(MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES),
-        "CEK semantic bytes",
-      );
-      value = bytes.toString("hex");
-    } else if (node.kind === "list") {
-      value = reconstructDataList(node.itemsRoot, node.itemsCount);
-    } else if (node.kind === "map") {
-      value = reconstructDataPairs(node.entriesRoot, node.entriesCount);
-    } else {
-      let constructor: bigint;
-      if (node.kind === "constrLarge") {
-        const bytes = materializeBlob(
-          node.constructorCborRoot,
-          BigInt(MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES),
-          "CEK semantic constructor",
-        );
-        const decoded = LucidData.from(bytes.toString("hex"));
-        if (typeof decoded !== "bigint") {
-          throw new Error("CEK semantic constructor index is invalid");
-        }
-        constructor = decoded;
-      } else {
-        constructor = node.constructor;
-      }
-      if (constructor < 0n) {
-        throw new Error("CEK semantic constructor index must be non-negative");
-      }
-      value = {
-        kind: "constr",
-        constructor,
-        fields: [...reconstructDataList(node.fieldsRoot, node.fieldsCount)],
-      };
-    }
-    reconstructedData.set(key, value);
-    return value;
-  }
+  const reconstructData = makeSemanticDataReconstructor({
+    dataNodes: decodedDataNodes,
+    dataLists: decodedDataLists,
+    dataPairs: decodedDataPairs,
+    materializeBlob,
+  });
 
   const retainedConstants = new Map<
     string,
@@ -930,18 +835,25 @@ export const verifyOneProgramMaterial = (
         BigInt(MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES),
         `CEK constant value ${valueKey} type`,
       );
+      const declaredRoot = decodedDataNodes.get(rootKey(value.semanticRoot));
+      if (
+        declaredRoot !== undefined &&
+        declaredRoot.cborLength !== value.payloadLength
+      ) {
+        throw new Error(payloadLengthMismatch(valueKey));
+      }
       const decodedPayload = reconstructData(value.semanticRoot);
-      const payloadCbor = encodeSemanticData(decodedPayload);
+      // Committing first checks every node's length, so the encode below is
+      // bounded by the payload length even when subtrees are shared.
       const semantic = commitSemanticData(decodedPayload);
+      const payloadCbor = encodeSemanticData(decodedPayload);
       if (!Buffer.from(semantic.root).equals(value.semanticRoot)) {
         throw new Error(
           `CEK constant value ${valueKey} semantic root does not match its canonical payload`,
         );
       }
       if (semantic.cborLength !== value.payloadLength) {
-        throw new Error(
-          `CEK constant value ${valueKey} payload length does not match its semantic tree`,
-        );
+        throw new Error(payloadLengthMismatch(valueKey));
       }
       const constantType = decodeSemanticConstantType(typeCbor);
       if (!semanticConstantPayloadMatchesType(constantType, decodedPayload)) {

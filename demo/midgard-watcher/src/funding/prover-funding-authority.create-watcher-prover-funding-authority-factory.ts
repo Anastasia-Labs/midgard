@@ -125,7 +125,10 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
             : name === "fraudProofSpend" ||
                 name === "fraudProofCatalogueSpend" ||
                 name === "fieldPreimageCertificateSpend" ||
-                name === "cekProgramMaterialSpend"
+                name === "cekProgramMaterialSpend" ||
+                // Append-only proof-item publication uses the same immutable
+                // spending validator as the fraud-proof certificate carriers.
+                name === "validationTraceDisputeProofItem"
               ? ("field_carrier" as const)
               : (name.startsWith("fraudProof") &&
                     !name.startsWith("fraudProofCatalogue")) ||

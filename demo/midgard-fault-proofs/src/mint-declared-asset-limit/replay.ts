@@ -19,6 +19,11 @@ import {
 } from "../prepare-double-spend.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import {
+  acceptedTransactionSubject,
+  type DetectionSubject,
+  forcedTransactionSubject,
+} from "../workflow/detection-subject.js";
+import {
   buildMintDeclaredAssetLimitArtifact,
   type MintDeclaredAssetLimitArtifact,
   MintDeclaredAssetLimitForcedSourcePayloadSchema,
@@ -36,17 +41,18 @@ export const MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID =
 export const MINT_DECLARED_ASSET_LIMIT_RAW_EVIDENCE =
   "midgard-mint-declared-asset-limit-raw-evidence-v1" as const;
 
-export type MintDeclaredAssetLimitReplayDetection = Readonly<{
-  detectionId: string;
-  headerHash: string;
-  violationId: typeof MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID;
-  position: bigint;
-  transactionId: string;
-  policyIndex: number;
-  source: "accepted" | "forced";
-  direction: "wrongfulAcceptance" | "wrongfulRejection";
-  forcedIndex?: number;
-}>;
+export type MintDeclaredAssetLimitReplayDetection = DetectionSubject &
+  Readonly<{
+    detectionId: string;
+    headerHash: string;
+    violationId: typeof MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID;
+    position: bigint;
+    transactionId: string;
+    policyIndex: number;
+    source: "accepted" | "forced";
+    direction: "wrongfulAcceptance" | "wrongfulRejection";
+    forcedIndex?: number;
+  }>;
 
 export type AuthenticatedMintDeclaredAssetLimitRawTransaction = Readonly<{
   index: number;
@@ -231,6 +237,7 @@ export const detectMintDeclaredAssetLimitAcceptedRawReplay = (
       if (evidence === null) continue;
       detections.push(
         Object.freeze({
+          ...acceptedTransactionSubject(transaction.nodeTxId),
           detectionId: `${MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID}:accepted:${transaction.index.toString()}:${transaction.nodeTxId}:${policyIndex.toString()}`,
           headerHash: block.headerHash,
           violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID,
@@ -293,6 +300,7 @@ export const detectMintDeclaredAssetLimitForcedReplay = (
       if (!mintDeclaredAssetLimitEvidenceCloses(evidence)) return;
       detections.push(
         Object.freeze({
+          ...forcedTransactionSubject(transaction.key),
           detectionId: `${MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${policyIndex.toString()}`,
           headerHash: block.headerHash,
           violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID,

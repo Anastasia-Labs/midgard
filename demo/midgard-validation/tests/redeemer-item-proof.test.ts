@@ -14,9 +14,12 @@ import {
   MidgardRedeemerItemProofStages,
   nextMidgardRedeemerItemProofSpan,
 } from "@al-ft/midgard-core";
+import { ValidationAuxiliaryWitnessSchema } from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { countedMachineFieldTrace } from "../src/validation-machine/index.js";
+import { encodeValidationAuxiliaryWitnessCbor } from "../src/validation-machine-data.js";
 
 type RetainedCorpus = {
   readonly entries: readonly {
@@ -292,4 +295,43 @@ describe("retained V1 redeemer item proof", () => {
       }),
     ).toBeNull();
   }, 120_000);
+
+  it("round-trips every traversal control and head action through the SDK witness schema", () => {
+    // The item wraps constr 200 [{1: 2}, [1, h'00']] in a byte string: a
+    // large-constructor head, a map head, an indefinite-list head and integer
+    // and byte-string scalar heads.
+    const data = Buffer.from("d8668218c89fa101029f014100ffff", "hex");
+    const trace = buildMidgardRedeemerItemProofTrace({
+      itemIndex: 0,
+      itemCount: 1,
+      itemBytes: encodeCbor([0n, 0n, data, [10n, 20n]]),
+      mode: MidgardRedeemerItemProofModes.Data,
+      expectedPurposeTag: 0,
+      expectedPointerIndex: 0,
+    });
+    const heads = new Set<string>();
+    let traversalControls = 0;
+    for (const { control, witness } of trace.steps) {
+      if (witness.action.kind === "traverseData" && witness.action.action) {
+        heads.add(witness.action.action.kind);
+      }
+      if (control.traversal !== null) traversalControls += 1;
+      const cbor = encodeValidationAuxiliaryWitnessCbor({
+        kind: "redeemerItemStep",
+        redeemerControl: null,
+        control,
+        witness,
+      }).toString("hex");
+      expect(
+        Data.to(
+          Data.from(cbor, ValidationAuxiliaryWitnessSchema) as never,
+          ValidationAuxiliaryWitnessSchema as never,
+        ),
+      ).toBe(cbor);
+    }
+    expect([...heads].filter((kind) => kind.startsWith("head")).sort()).toEqual(
+      ["headLargeConstructor", "headMap", "headScalar", "headSequence"],
+    );
+    expect(traversalControls).toBeGreaterThan(0);
+  });
 });

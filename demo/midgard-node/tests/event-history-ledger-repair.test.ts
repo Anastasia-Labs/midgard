@@ -5,6 +5,7 @@ import {
   computeHash32,
   deriveMidgardNativeTxBodyCompact,
   deriveMidgardNativeTxCompact,
+  encodeCbor,
   encodeMidgardNativeTxBodyCompact,
   encodeMidgardNativeTxCanonical,
   MIDGARD_NATIVE_TX_VERSION,
@@ -21,7 +22,6 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { CML, Data, toUnit } from "@lucid-evolution/lucid";
-import { encode } from "cborg";
 import { Effect } from "effect";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -32,7 +32,7 @@ import * as Ledger from "../src/database/mempoolLedger.js";
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import * as Admissions from "../src/database/txAdmissions.js";
 import { formatDatabaseError } from "../src/database/utils/common.js";
-import { collectAcceptedReferenceProgramEnvelopes } from "../src/fibers/tx-queue-processor.js";
+import { collectAcceptedProgramEnvelopes } from "../src/fibers/tx-queue-processor.js";
 import { historyIncarnationEntry } from "../src/l1-event-history-entries.js";
 import {
   type BoundHistoryChainBlock,
@@ -85,7 +85,7 @@ const address = CML.EnterpriseAddress.new(
 const sidecar = Buffer.from(encodeMidgardCekProgramMaterialSidecar([]));
 const empty = Buffer.from([0x80]);
 const byteList = (items: readonly Uint8Array[]) =>
-  Buffer.from(encode(items.map((item) => Buffer.from(item))));
+  Buffer.from(encodeCbor(items.map((item) => Buffer.from(item))));
 const output = (lovelace = 5_000_000n) =>
   Buffer.from(
     makeMidgardTxOutput(
@@ -565,22 +565,21 @@ const readyFixture = async (withdrawalFirst = false) => {
         // Supply persistence metadata from the actual modeled pre-state. This
         // does not claim Phase B validation of these SQL-only fixture bodies.
         const preState = yield* Ledger.retrieve;
-        const referenceProgramEnvelopesByTxId =
-          collectAcceptedReferenceProgramEnvelopes(
-            txs.map((tx) => ({
-              ledgerTx: { txId: tx.txId },
-              submission: { txCbor: tx.txCbor },
-              graph: { produced: tx.produced },
-            })),
-            new Map(
-              preState.map((row) => [row.outref.toString("hex"), row.output]),
-            ),
-          );
+        const programEnvelopesByTxId = collectAcceptedProgramEnvelopes(
+          txs.map((tx) => ({
+            ledgerTx: { txId: tx.txId },
+            submission: { txCbor: tx.txCbor },
+            graph: { produced: tx.produced },
+          })),
+          new Map(
+            preState.map((row) => [row.outref.toString("hex"), row.output]),
+          ),
+        );
         yield* Admissions.markAccepted({
           rows: txs.map((tx) => ({ tx_id: tx.txId })),
           leaseOwner,
           processedTxs: txs,
-          referenceProgramEnvelopesByTxId,
+          programEnvelopesByTxId,
         });
         const writes = yield* WriteBehind;
         yield* writes.flushNow;

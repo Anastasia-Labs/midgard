@@ -44,7 +44,9 @@ validator main(step_05_hash: ScriptHash, thread_policy: PolicyId) {
           outputs,
         )
         expect Some(ReconstructionV1 { subject, descriptor_cbor, control }) = state
-        let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
+        let descriptor = ledger_output_commitment_v1.decode_canonical_schema(
+          descriptor_cbor,
+        )
         when action is {
           Advance { chunk_proof, next_chunk_proof } ->
             when

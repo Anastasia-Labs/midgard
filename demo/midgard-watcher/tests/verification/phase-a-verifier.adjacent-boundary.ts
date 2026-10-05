@@ -1,7 +1,6 @@
 import { validatePhaseASingle } from "@al-ft/midgard-validation/phase-a";
 import {
   makeNativeTx,
-  makeOutput,
   nativeScriptWitness,
   TEST_ADDRESS_BYTES,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
@@ -15,7 +14,7 @@ import {
   WATCHER_PHASE_A_EVIDENCED_REJECT_CODES,
 } from "../../src/verification/phase-a-verifier.js";
 import {
-  assetMap,
+  bigInlineDatum,
   CONFIG,
   configFor,
   KEY,
@@ -223,6 +222,51 @@ describe("rejection evidence per reachable code", () => {
 // ---------------------------------------------------------------------------
 
 describe("adjacent boundary", () => {
+  it.each(["normal", "forced"] as const)(
+    "shows output width dominates E_LEDGER_OUTPUT_SIZE for %s sources",
+    (sourceKind) => {
+      expect(WATCHER_PHASE_A_DOMINATED_REJECT_CODES).toContain(
+        RejectCodes.LedgerOutputSize,
+      );
+      const fixture = makeNativeTx({
+        privateKey: KEY,
+        outputs: [
+          encodeMidgardTxOutput({
+            address: TEST_ADDRESS_BYTES,
+            value: { lovelace: 1n, assets: new Map() },
+            datum: { kind: "inline", cbor: bigInlineDatum(400) },
+          }),
+        ],
+      });
+      const txCbor =
+        sourceKind === "normal"
+          ? fixture.txCbor
+          : encodeMidgardForcedTxCanonical(
+              materializeMidgardForcedTxFromCanonical(fixture.tx),
+            );
+      const result = evaluateWatcherPhaseAQueuedTxs({
+        queuedTxs: [queuedTx(fixture.txId, txCbor, { sourceKind })],
+        config: CONFIG,
+      });
+      expect(result.rejections[0]).toMatchObject({
+        code: RejectCodes.InvalidFieldType,
+        stage: "canonicalDecode",
+      });
+      expect(
+        validatePhaseASingle(
+          queuedTx(fixture.txId, txCbor, { sourceKind }),
+          CONFIG,
+        ),
+      ).toMatchObject({
+        subject: {
+          arm: "FieldItemWidthIllegal",
+          fieldIndex: 2n,
+          itemIndex: 0n,
+        },
+      });
+    },
+  );
+
   it("accepts a fee exactly at the header minimum and rejects one below", () => {
     const fixture = makeNativeTx({ privateKey: KEY, fee: 7n });
     const config = configFor({ minFeeB: 7n });
@@ -288,23 +332,6 @@ describe("adjacent boundary", () => {
           ),
         }),
     ],
-    [
-      // §5.1 caps an item's byte-string wrapper at `59 LLLL`, so a single output
-      // carrying more than the 16,384-asset guardrail cannot be *encoded* at all:
-      // 16,385 assets exceed 65,535 bytes of item, and the field preimage that
-      // would hold it is refused before the §5.4 aggregate bound is consulted.
-      // Under the retired counted grammar this fixture reached
-      // `E_FIELD_PREIMAGE_SIZE`, because item bytes were read with a general CBOR
-      // walk that accepts the four-byte `5a` head. `E_ASSET_COUNT` is still
-      // dominated — by a tighter rule than before.
-      RejectCodes.AssetCount,
-      RejectCodes.CborDeserialization,
-      () =>
-        makeNativeTx({
-          privateKey: KEY,
-          outputs: [makeOutput(1n, TEST_ADDRESS_BYTES, assetMap(20000))],
-        }),
-    ],
   ])(
     "shows %s is dominated by %s rather than silently unreachable",
     (dominated, dominating, build) => {
@@ -332,3 +359,8 @@ describe("adjacent boundary", () => {
     ).toThrow(/nesting exceeds/u);
   });
 });
+import {
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
+import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec/output";

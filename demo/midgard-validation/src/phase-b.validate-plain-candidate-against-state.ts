@@ -6,21 +6,20 @@ import {
   type MidgardValue,
 } from "@al-ft/midgard-core/codec";
 
+import { checkValueAndMint } from "./phase-b.check-value-and-mint.js";
 import {
   type CandidateDecision,
   type CandidateNode,
   type CandidateStatus,
-  minAdaViolation,
   reject,
   resolveReferenceInputs,
 } from "./phase-b.resolve-reference-inputs.js";
-import { PhaseBConfig, RejectCodes, RejectedTx } from "./types.js";
 import {
-  describeValueDelta,
-  isZeroValueDelta,
-  sumMidgardValues,
-  valuePreservationDelta,
-} from "./value-accounting.js";
+  inputOrdinalOf,
+  REJECT_SOURCE_KIND_SPEND,
+  type RejectSubject,
+} from "./reject-subject.js";
+import { PhaseBConfig, RejectCodes, RejectedTx } from "./types.js";
 
 const validatePlainCandidateAgainstState = (
   node: CandidateNode,
@@ -35,11 +34,14 @@ const validatePlainCandidateAgainstState = (
     code: RejectedTx["code"],
     detail: string | null = null,
     consensusPhase: MidgardValidationPhaseName = "resolveInputs",
+    subject?: RejectSubject,
   ) => ({
     index: node.index,
     accepted: false as const,
-    rejection: reject(ledgerTx.txId, code, detail, consensusPhase),
+    rejection: reject(ledgerTx.txId, code, detail, consensusPhase, subject),
   });
+  const spendOrdinal = (outRefHex: string): bigint =>
+    inputOrdinalOf(ledgerTx, REJECT_SOURCE_KIND_SPEND, outRefHex);
 
   if (
     ledgerTx.validityIntervalStart !== undefined &&
@@ -70,14 +72,18 @@ const validatePlainCandidateAgainstState = (
   }
 
   const witnessKeyHashes = new Set(candidate.derived.witnessKeyHashHexes);
-  const inputValues: MidgardValue[] = [];
+  const spentValues = new Map<string, MidgardValue>();
   for (const inputOutRefHex of node.spentOutRefs) {
     if (spentByAccepted.has(inputOutRefHex)) {
       return fail(RejectCodes.DoubleSpend, inputOutRefHex);
     }
     const inputOutput = stateValue(inputOutRefHex);
     if (inputOutput === undefined) {
-      return fail(RejectCodes.InputNotFound, inputOutRefHex);
+      return fail(RejectCodes.InputNotFound, inputOutRefHex, "resolveInputs", {
+        arm: "InputNotFound",
+        sourceKind: REJECT_SOURCE_KIND_SPEND,
+        index: spendOrdinal(inputOutRefHex),
+      });
     }
     try {
       const output = decodeMidgardTxOutput(inputOutput);
@@ -90,13 +96,24 @@ const validatePlainCandidateAgainstState = (
         return fail(
           RejectCodes.MissingRequiredWitness,
           `missing witness for input signer ${inputSigner} (outref ${inputOutRefHex})`,
+          "resolveInputs",
+          {
+            arm: "SpendInputSignerMissing",
+            index: spendOrdinal(inputOutRefHex),
+          },
         );
       }
-      inputValues.push(output.value);
+      spentValues.set(inputOutRefHex, output.value);
     } catch (error) {
       return fail(
         RejectCodes.InvalidOutput,
         `failed to decode input output: ${String(error)}`,
+        "resolveInputs",
+        {
+          arm: "InputSpentOutputNonCanonical",
+          sourceKind: REJECT_SOURCE_KIND_SPEND,
+          index: spendOrdinal(inputOutRefHex),
+        },
       );
     }
   }
@@ -126,25 +143,22 @@ const validatePlainCandidateAgainstState = (
       RejectCodes.InvalidFieldType,
       `script_integrity_hash mismatch: expected ${expectedIntegrityHash.toString("hex")} actual ${ledgerTx.scriptIntegrityHash.toString("hex")} required_languages=`,
       "scriptIntegrity",
+      { arm: "ScriptIntegrityHashMismatch" },
     );
   }
 
-  const underFundedOutput = minAdaViolation(candidate);
-  if (underFundedOutput !== null) {
-    return fail(RejectCodes.MinAda, underFundedOutput.detail, "valueAndMint");
-  }
-
-  const delta = valuePreservationDelta(
-    sumMidgardValues(inputValues),
-    ledgerTx.fee,
-    candidate.derived.mintDelta,
-    candidate.derived.outputSum,
-  );
-  if (!isZeroValueDelta(delta)) {
+  const valueAndMint = checkValueAndMint({
+    candidate,
+    spentOutRefs: node.spentOutRefs,
+    referenceOutRefs: node.referenceOutRefs,
+    spentValues,
+  });
+  if (valueAndMint !== null) {
     return fail(
-      RejectCodes.ValueNotPreserved,
-      `equation mismatch: inputs - fee + mint - outputs = ${describeValueDelta(delta)}`,
+      valueAndMint.code,
+      valueAndMint.detail,
       "valueAndMint",
+      valueAndMint.subject,
     );
   }
   return { index: node.index, accepted: true };

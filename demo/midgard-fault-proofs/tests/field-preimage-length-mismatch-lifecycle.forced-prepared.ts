@@ -22,6 +22,7 @@ export const forcedPrepared = ({
   headerHash,
   transactionId,
   direction,
+  sourceKind: "forced",
   fieldIndex: FIELD_PREIMAGE_LENGTH_FORCED_FIELD_INDEX,
   declaredLength,
   actualLength: preimage.length,

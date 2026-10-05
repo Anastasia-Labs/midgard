@@ -53,6 +53,7 @@ export const setup = async ({
   acceptedPreimageBytes,
   honestAccepted = false,
   forcedLeaf,
+  forcedDaFixture,
 }: SetupOptions = {}) => {
   const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
@@ -97,7 +98,14 @@ export const setup = async ({
               }
             : {}),
         });
-  const forcedHeader = forcedFixture?.header ?? familyForced?.header;
+  const authenticatedForcedDa =
+    forcedDaFixture === undefined
+      ? undefined
+      : await forcedDaFixture(await operator());
+  const forcedHeader =
+    authenticatedForcedDa?.header ??
+    forcedFixture?.header ??
+    familyForced?.header;
   const baseMaterial = committedFieldShapeScenarioMaterial("honest");
   if (baseMaterial.fullTx === null || baseMaterial.canonicalTx === null)
     throw new Error("missing canonical tx");
@@ -290,6 +298,7 @@ export const setup = async ({
     scenario,
     forcedFixture,
     familyForced,
+    authenticatedForcedDa,
     acceptedPrepared,
     sourceCbor,
     transactionsRoot,

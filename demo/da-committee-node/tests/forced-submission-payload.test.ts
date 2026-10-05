@@ -20,6 +20,7 @@ import {
 } from "../src/da/payload.js";
 import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
 import { makePayloadFixture } from "./helpers.js";
+import { fixtureValidationTrace } from "./helpers.validation-trace.js";
 
 const fixture = async (verdict: SDK.OperatorVerdict = "ForcedTxValid") => {
   const base = await makePayloadFixture(1);
@@ -56,6 +57,14 @@ const fixture = async (verdict: SDK.OperatorVerdict = "ForcedTxValid") => {
     l2TransactionCount: 0n,
     forcedTransactionCount: 1n,
   };
+  const validationTrace = fixtureValidationTrace(
+    eventKey,
+    leaf.tx_id,
+    verdict === "ForcedTxValid" ? "accepted" : "rejected",
+    verdict === "ForcedTxValid"
+      ? Buffer.alloc(32)
+      : hashMidgardValidationRejectionCode("E_EMPTY_INPUTS"),
+  );
   const payload: SDK.DaPayload = {
     ...base.payload,
     block_body: {
@@ -88,23 +97,9 @@ const fixture = async (verdict: SDK.OperatorVerdict = "ForcedTxValid") => {
           SDK.EventToStepValue,
         ),
       ]),
-      validation_traces: base.payload.block_body.validation_traces.map(
-        ([, value]) => [
-          eventCbor,
-          Data.to(
-            SDK.validationTraceDescriptorDataFromCore({
-              ...SDK.validationTraceDescriptorCoreFromData(
-                Data.from(value, SDK.ValidationTraceDescriptor),
-              ),
-              verdict: verdict === "ForcedTxValid" ? "accepted" : "rejected",
-              rejectionCodeHash:
-                verdict === "ForcedTxValid"
-                  ? Buffer.alloc(32)
-                  : hashMidgardValidationRejectionCode("E_EMPTY_INPUTS"),
-            }),
-            SDK.ValidationTraceDescriptor,
-          ),
-        ],
+      validation_traces: [validationTrace.entry],
+      validation_trace_witnesses: validationTrace.witnesses.sort(
+        ([left], [right]) => (left < right ? -1 : left > right ? 1 : 0),
       ),
     },
   };

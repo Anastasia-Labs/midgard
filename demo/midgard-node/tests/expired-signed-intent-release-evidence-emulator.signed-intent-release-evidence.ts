@@ -1,3 +1,5 @@
+import { inspect } from "node:util";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect, Ref } from "effect";
@@ -107,11 +109,14 @@ export const finalizeRecordedBlock = async (h: Handle, headerHash: string) => {
     production.nodeConfig,
     { ...production, globals },
   );
-  expect(finalized.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
+  expect(finalized.type, inspect(finalized, { depth: 20 })).toBe(
+    "SuccessfulLocalFinalizationRecoveryOutput",
+  );
   if (finalized.type !== "SuccessfulLocalFinalizationRecoveryOutput")
     throw new Error("The block must be locally finalized");
   expect(finalized.finalizedHeaderHash).toBe(headerHash);
   await synchronizeWithin(h);
+  return finalized;
 };
 
 /** The block local finalization replays next, named by its node's asset. */
@@ -237,7 +242,13 @@ describe.sequential("signed-intent release evidence", () => {
       await landSignedCommitAsFork(h, journal[C.SIGNED_TX_CBOR]!);
       view.setRewrite(mergedIntoRootView(h, "f1".repeat(28)));
       await synchronizeWithin(h);
-      await expectLandedAndFinalizedOnce(h, journal);
+      await expectLandedAndFinalizedOnce(h, journal, async (handle, hash) => {
+        const finalized = await finalizeRecordedBlock(handle, hash);
+        expect(finalized.foreignBaseVerification).toEqual({
+          status: "not_required",
+          baseHeaderHash: hash,
+        });
+      });
       expect(await readImmutableCounts(txIds)).toEqual(
         Object.fromEntries(txIds.map((id) => [id, 1])),
       );

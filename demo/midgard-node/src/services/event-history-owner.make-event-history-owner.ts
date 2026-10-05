@@ -2,9 +2,9 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Runtime } from "effect";
 
 import * as Authority from "../database/eventHistoryAuthority.js";
+import * as ForeignCensus from "../database/eventHistoryForeignCensus.js";
 import * as Journal from "../database/eventHistoryJournal.js";
 import * as ReplayReceipts from "../database/eventHistoryReplayReceipts.js";
-import { settlementRetentionHoldSlot } from "../database/settlement.js";
 import type { DatabaseError } from "../database/utils/common.js";
 import type { HistoryChainTip } from "../l1-event-history-chain.js";
 import {
@@ -48,6 +48,11 @@ import {
   samePoint,
 } from "./event-history-owner.history-owner-change.js";
 import { makeHistoryOwnerNotices } from "./event-history-owner.notices.js";
+import {
+  makeRetainedHistoryAppender,
+  requireRetainedHistoryCheckpoint,
+  type Retained,
+} from "./event-history-owner.retention.js";
 import { isRecoverableHistorySourceFailure } from "./event-history-owner.source-failure.js";
 import {
   HISTORY_SOURCE_RECONNECT_BOUNDS,
@@ -66,7 +71,6 @@ import {
   makeEventHistoryRecovery,
 } from "./event-history-recovery.js";
 import { makePendingReconciliationBackoff } from "./history-pending-backoff.js";
-import { signedHeaderRecoveryHoldSlot } from "./history-signed-header-recovery.js";
 import type { MempoolLedgerCacheService } from "./mempool-ledger-cache.js";
 
 /** One scoped source owner. Only low-level transports are replaceable: capture,
@@ -172,6 +176,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
     let transport = sessionTransport(signal);
     let checkpoint: Journal.Checkpoint | null = null;
     let replay: EventHistoryListReplay | undefined;
+    let reacquiringCensus = false;
     let tip: HistoryChainTip | "origin" | undefined;
     let epoch = 0;
     let ready = false;
@@ -339,19 +344,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
       });
     };
     let startupHealth = monitorStartup(signal);
-    // The chain was verified in full by the startup load; every later step
-    // extends or reverses it by one link verified under the cursor lock, so
-    // the working checkpoint re-verifies only the cursor and its head.
-    const requireCheckpoint = Effect.gen(function* () {
-      const value = yield* Journal.loadCurrent(input.binding);
-      if (value === null)
-        return yield* Effect.fail(
-          new HistoryOwnerUnavailable({
-            cause: "History checkpoint is missing",
-          }),
-        );
-      return value;
-    });
+    const requireCheckpoint = requireRetainedHistoryCheckpoint(input.binding);
     const reconciled = (
       kind: "seed" | "rollback" | "resume",
       before: Journal.Checkpoint | null,
@@ -387,7 +380,13 @@ export const makeEventHistoryOwner = <E, R>(input: {
     // Only a closed gate (first start, rollback, escalated append) runs this
     // full recovery: producer drain, preparation, cache reload and Ready.
     const converge = async () => {
-      if (ready || checkpoint === null || tip === undefined || tip === "origin")
+      if (
+        ready ||
+        reacquiringCensus ||
+        checkpoint === null ||
+        tip === undefined ||
+        tip === "origin"
+      )
         return;
       const head = checkpoint.head;
       if (!samePoint(head, tip) || head.height !== tip.height) return;
@@ -490,46 +489,11 @@ export const makeEventHistoryOwner = <E, R>(input: {
       noteLag();
     };
 
-    const journal = <E2, R2>(
-      prepared: ReturnType<typeof Journal.prepareAppend>,
-      tipHeight: number,
-      reconcile: (
-        appended: Journal.Appended,
-      ) => Effect.Effect<Journal.Checkpoint, E2, R2>,
-    ) =>
-      Effect.all([
-        signedHeaderRecoveryHoldSlot(input.binding.digest),
-        settlementRetentionHoldSlot(input.binding.manifestId),
-      ]).pipe(
-        Effect.map((slots) => {
-          const held = slots.filter(
-            (slot): slot is number => slot !== undefined,
-          );
-          return held.length === 0 ? undefined : Math.min(...held);
-        }),
-        Effect.flatMap((holdSlot) =>
-          Journal.append(input.binding, prepared, reconcile, {
-            tipHeight,
-            horizon: input.rollbackHorizon,
-            holdSlot,
-          }),
-        ),
-        Effect.flatMap((appended) =>
-          appended.applied
-            ? Effect.succeed<Retained>({
-                result: appended.result,
-                hold: appended.hold,
-              })
-            : requireCheckpoint.pipe(
-                Effect.map(
-                  (result): Retained => ({
-                    result,
-                    hold: undefined,
-                  }),
-                ),
-              ),
-        ),
-      );
+    const journal = makeRetainedHistoryAppender({
+      binding: input.binding,
+      rollbackHorizon: input.rollbackHorizon,
+      requireCheckpoint,
+    });
     // A forward block at the head of an open gate, journaled in the Ready
     // generation: no producer drain, no preparation, no cache reload. The
     // follower's own reconciliation must be a pure extension; anything else
@@ -590,7 +554,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
     };
 
     const forward = async (block: BoundHistoryChainBlock) => {
-      if (checkpoint === null) {
+      if (checkpoint === null || reacquiringCensus) {
         const active = await handle;
         const step = await withCreatingBodies(
           transport,
@@ -627,11 +591,36 @@ export const makeEventHistoryOwner = <E, R>(input: {
               receipt: step.receipt,
               replay: step.state,
               maximumReceiptBytes: input.maximumReceiptBytes,
-            }),
+            }).pipe(
+              Effect.zipRight(
+                ForeignCensus.append({
+                  binding: input.binding,
+                  block,
+                  receipt: step.receipt,
+                  activation: step.state.activation,
+                }),
+              ),
+            ),
           ),
         );
         replay = step.state;
         outage.replayed(block.point.height);
+        if (reacquiringCensus) {
+          if (checkpoint === null)
+            throw new Error("Census reacquisition lost its journal checkpoint");
+          if (samePoint(replay.point, checkpoint.head)) {
+            if (replay.point.height !== checkpoint.head.height)
+              throw new Error(
+                "Census reacquisition height differs from journal",
+              );
+            reacquiringCensus = false;
+            replay = undefined;
+          } else if (replay.point.slot >= checkpoint.head.slot)
+            throw new Error(
+              "Census reacquisition passed the retained canonical checkpoint",
+            );
+          return;
+        }
         if (seedCapture === undefined)
           throw new Error("History first-start capture is missing");
         const at = seedCapture.history.ledger.point;
@@ -708,10 +697,6 @@ export const makeEventHistoryOwner = <E, R>(input: {
         if (ready) notifyReadiness();
       }
     };
-    type Retained = Readonly<{
-      result: Journal.Checkpoint;
-      hold: Journal.RetentionHold | undefined;
-    }>;
     const rewind = async (point: LedgerSnapshotPoint | "origin") => {
       if (checkpoint === null || point === "origin")
         throw new Error("History rollback requires a retained journal anchor");
@@ -754,6 +739,23 @@ export const makeEventHistoryOwner = <E, R>(input: {
           expectedTransactionHash: input.expectedInitializationTransactionHash,
         });
         intersections = [activation.predecessor];
+      } else if (
+        !(await run(ForeignCensus.covers(input.binding, checkpoint.head)))
+      ) {
+        // Upgrade/recovery reuses this owner's one follower. Keep the source
+        // gate closed while independently rebuilding the complete census from
+        // activation to the exact retained head; never seed from a current list.
+        const active = await handle;
+        await run(
+          active.persist(ForeignCensus.beginReacquisition(input.binding)),
+        );
+        activation = await locateEventHistoryActivation(transport, {
+          binding: input.binding,
+          capture: checkpoint.capture,
+          expectedTransactionHash: input.expectedInitializationTransactionHash,
+        });
+        reacquiringCensus = true;
+        intersections = [activation.predecessor];
       } else
         intersections = await run(
           Journal.intersections(input.binding, checkpoint),
@@ -771,15 +773,27 @@ export const makeEventHistoryOwner = <E, R>(input: {
         onIntersection: (point) => {
           // Resuming exactly at the head keeps the journal; anything else
           // rewinds it and closes the gate like a rollback.
-          if (checkpoint !== null && !samePoint(checkpoint.head, point))
+          if (
+            !reacquiringCensus &&
+            checkpoint !== null &&
+            !samePoint(checkpoint.head, point)
+          )
             invalidate("history source intersection rewinds the journal");
           void sourceWork(async () => {
-            if (checkpoint !== null) await rewind(point);
+            if (!reacquiringCensus && checkpoint !== null) await rewind(point);
           }).catch(() => undefined);
         },
         // Appending at the head never closes the gate (see appendReady).
         onForward: (block) => sourceWork(() => forward(block)),
         onRollback: (point) => {
+          if (reacquiringCensus) {
+            fail(
+              new Error(
+                "History source rolled back during census reacquisition; restart from authenticated activation",
+              ),
+            );
+            return;
+          }
           invalidate("history source rolled back");
           // The frontier legitimately moves back only here; the response that
           // carried this rollback reports the new tip next.
@@ -853,6 +867,8 @@ export const makeEventHistoryOwner = <E, R>(input: {
         // Session-scoped source state; the journal is reloaded by start().
         tip = undefined;
         replay = undefined;
+        // A census reacquisition restarts from activation in the next session.
+        reacquiringCensus = false;
         seedCapture = undefined;
         activation = undefined;
         convergenceQueued = false;
@@ -898,6 +914,17 @@ export const makeEventHistoryOwner = <E, R>(input: {
       );
     return {
       close,
+      /** A requesting producer must return before this recovery can drain it.
+       * Notification closes the gate synchronously and queues the existing
+       * convergence path; it never awaits producer termination here. */
+      requestReconciliation: (reason: string) =>
+        Effect.sync(() => {
+          if (closing || failed) return;
+          invalidate(reason);
+          notifyReadiness();
+          clearPendingBackoff();
+          scheduleConvergence();
+        }),
       reconciliationStatus: Effect.sync(() => pendingReconciliation),
       /** Whether the source is following, reconnecting or waiting for Kupo,
        * with the current outage's start, attempts and last error. */

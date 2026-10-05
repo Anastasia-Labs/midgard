@@ -1,6 +1,7 @@
 //// Narrow execution-source binding and native structural scan rules.
 
 use aiken/cbor
+use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
@@ -125,6 +126,29 @@ fn event_key_matches_subject(
   }
 }
 
+// Step 01 binds this exact reason and coordinate into the authenticated thread.
+// Keep the canonical subject check while avoiding the unrelated catalogue arms.
+fn bound_rejection_code(bound: BoundExecutionV1) -> ByteArray {
+  when substrate.rejection_reason_of_v1(bound.subject) is {
+    ExecutionNativeScriptMalformed { execution_index } -> {
+      expect execution_index == bound.execution_index
+      expect bound.accused_class == result_malformed
+      rejection_reason_v1.reject_invalid_field_type
+    }
+    ExecutionNativeScriptNodeLimit { execution_index } -> {
+      expect execution_index == bound.execution_index
+      expect bound.accused_class == result_node_limit
+      rejection_reason_v1.reject_native_script_node_count
+    }
+    ExecutionNativeScriptDepthLimit { execution_index } -> {
+      expect execution_index == bound.execution_index
+      expect bound.accused_class == result_depth_limit
+      rejection_reason_v1.reject_native_script_depth
+    }
+    _ -> fail @"reason outside execution-source-script-decoding"
+  }
+}
+
 pub fn authenticate_execution_source_v1(
   bound: BoundExecutionV1,
   trace_membership: transition_trace.RootMembershipProof<
@@ -184,19 +208,19 @@ pub fn authenticate_execution_source_v1(
         cbor.serialise(descriptor),
       ),
       machine_state.transaction_id == bound.subject.transaction_id,
+      substrate.subject_is_canonical_v1(bound.subject),
       if bound.subject.source_kind == substrate.source_kind_accepted {
-        and {
-          machine_state.source_kind == validation_trace_v1.Normal,
-          descriptor.verdict == validation_trace_v1.Accepted,
-        }
+        machine_state.source_kind == validation_trace_v1.Normal
+      } else {
+        machine_state.source_kind == validation_trace_v1.Forced
+      },
+      if bound.subject.direction == substrate.direction_wrongful_acceptance {
+        descriptor.verdict == validation_trace_v1.Accepted
       } else {
         and {
-          machine_state.source_kind == validation_trace_v1.Forced,
           descriptor.verdict == validation_trace_v1.Rejected,
           descriptor.rejection_code_hash == validation_trace_v1.hash_rejection_code(
-            rejection_reason_v1.rejection_code_of(
-              substrate.rejection_reason_of_v1(bound.subject),
-            ),
+            bound_rejection_code(bound),
           ),
         }
       },
@@ -440,4 +464,100 @@ pub fn encode_source_v1(value: AuthenticatedExecutionSourceV1) -> ByteArray {
 
 pub fn encode_scan_state_v1(value: ExecutionSourceScanStateV1) -> ByteArray {
   cbor.serialise(value)
+}
+
+// The publication optimization is equivalent to the catalogue mapping on every
+// reason/index the authenticated Step 01 continuation can produce. Deliberately
+// forged intermediate subjects are refused instead of widening that domain.
+fn publication_test_bound(
+  reason: rejection_reason_v1.RejectionReasonV1,
+  execution_index: Int,
+) -> BoundExecutionV1 {
+  bind_execution_v1(
+    substrate.VerdictSubjectV1 {
+      version: substrate.version,
+      direction: substrate.direction_wrongful_rejection,
+      source_kind: substrate.source_kind_forced,
+      transaction_id: #"0000000000000000000000000000000000000000000000000000000000000000",
+      source_key: #"00",
+      rejection_reason: Some(reason),
+    },
+    #"0000000000000000000000000000000000000000000000000000000000000000",
+    1,
+    execution_index,
+  )
+}
+
+test publication_reason_mapping_matches_catalogue_on_bound_domain() {
+  list.all(
+    [0, 1, 255, 65_536],
+    fn(execution_index) {
+      let reasons = [
+        ExecutionNativeScriptMalformed { execution_index },
+        ExecutionNativeScriptNodeLimit { execution_index },
+        ExecutionNativeScriptDepthLimit { execution_index },
+      ]
+      list.all(
+        reasons,
+        fn(reason) {
+          bound_rejection_code(publication_test_bound(reason, execution_index)) == rejection_reason_v1.rejection_code_of(
+            reason,
+          )
+        },
+      )
+    },
+  )
+}
+
+fn publication_test_valid_bound() -> BoundExecutionV1 {
+  publication_test_bound(
+    rejection_reason_v1.ExecutionNativeScriptMalformed { execution_index: 0 },
+    0,
+  )
+}
+
+test publication_reason_mapping_refuses_noncanonical_subject() fail {
+  let bound = publication_test_valid_bound()
+  let subject = bound.subject
+  bound_rejection_code(
+    BoundExecutionV1 {
+      ..bound,
+      subject: substrate.VerdictSubjectV1 { ..subject, version: 0 },
+    },
+  ) != #""
+}
+
+test publication_reason_mapping_refuses_missing_reason() fail {
+  let bound = publication_test_valid_bound()
+  let subject = bound.subject
+  bound_rejection_code(
+    BoundExecutionV1 {
+      ..bound,
+      subject: substrate.VerdictSubjectV1 { ..subject, rejection_reason: None },
+    },
+  ) != #""
+}
+
+test publication_reason_mapping_refuses_another_execution_index() fail {
+  let bound = publication_test_valid_bound()
+  bound_rejection_code(BoundExecutionV1 { ..bound, execution_index: 1 }) != #""
+}
+
+test publication_reason_mapping_refuses_another_family_reason() fail {
+  let bound = publication_test_valid_bound()
+  let subject = bound.subject
+  bound_rejection_code(
+    BoundExecutionV1 {
+      ..bound,
+      subject: substrate.VerdictSubjectV1 {
+        ..subject,
+        rejection_reason: Some(rejection_reason_v1.EmptyInputs),
+      },
+    },
+  ) != #""
+}
+
+test publication_reason_mapping_refuses_another_accused_class() fail {
+  let bound = publication_test_valid_bound()
+  bound_rejection_code(BoundExecutionV1 { ..bound, accused_class: 17 }) != #""
 }

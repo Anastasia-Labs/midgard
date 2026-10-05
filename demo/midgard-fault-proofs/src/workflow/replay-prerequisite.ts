@@ -18,7 +18,11 @@ import {
   type CanonicalViolationDetection,
   FRAUD_PROOF_CLASSIFICATION_RULES,
 } from "./classification.js";
-import { TYPED_REASON_DISPOSITIONS } from "./reason-disposition.js";
+import {
+  compareEventOrder,
+  detectionEventOrder,
+  eventOrder,
+} from "./detection-subject.js";
 
 export type ReplayPrerequisite =
   | "accepted_terminal"
@@ -112,22 +116,6 @@ export const collectReplayFindings = <T extends CanonicalViolationDetection>(
     }),
   );
 
-const directTransactionCategories = new Set<string>([
-  ...Object.values(TYPED_REASON_DISPOSITIONS)
-    .filter(({ proving }) => proving === "non_interactive")
-    .flatMap(({ categories }) => categories),
-  "doubleSpend",
-  "nonExistentInputNoIndex",
-  "referenceInputNoIdx",
-  "missingNativeScriptTx",
-  "missingNativeScriptUtxo",
-  "withdrawnReferenceInput",
-  "withdrawnInput",
-  "committedFieldShape",
-  "l2TxMistag",
-  "mintItemNonCanonical",
-]);
-
 /** A payable withdrawal of an output the replayed ledger lacks is exactly what
  * the same-block withdrawal families prove: a mistagged leaf, or the second
  * payable leaf of a double withdrawal. Both address the committed leaf index. */
@@ -201,9 +189,47 @@ const fabricatedSourceOriginCovered = (
   );
 };
 
-/** The union may discharge a proof-domain failure only with a direct finding
- * for its exact transaction. Positions in separate source frontiers must never
- * be mistaken for an event identity. */
+/**
+ * Whether a registered finding convicts a transition at or before the event
+ * the replay could not open, on the block's one event order: the authenticated
+ * transition trace's `step_index`, the order the replay walks and so the order
+ * prerequisite failures arise in, independent of the committed
+ * `event_to_step`. Any such finding makes the block
+ * removable, and selection orders on the same axis, so the chosen proof is
+ * never later than the unopened event and no earlier fault the replay did
+ * not reach can hide behind it (GOAL_SPEC §6). The order comes only from each
+ * finding's declared subject events, never from its position or violation id,
+ * and an advisory finding without a classification rule never discharges.
+ */
+const coveredAtOrBefore = (
+  evidence: CanonicalBlockEvidence,
+  failure: ReplayPrerequisiteFailure,
+  detections: readonly CanonicalViolationDetection[],
+): boolean => {
+  const limit = (() => {
+    try {
+      return eventOrder(evidence.reconstruction, failure.eventKeyCbor);
+    } catch {
+      return undefined;
+    }
+  })();
+  if (limit === undefined) return false;
+  return detections.some(
+    (detection) =>
+      detection.headerHash === evidence.headerHash &&
+      FRAUD_PROOF_CLASSIFICATION_RULES.some((rule) =>
+        rule.violationIds.some((id) => id === detection.violationId),
+      ) &&
+      compareEventOrder(
+        detectionEventOrder(evidence.reconstruction, detection),
+        limit,
+      ) <= 0,
+  );
+};
+
+/** Discharges a replay prerequisite, or fails closed. Deposit and withdrawal
+ * events keep their decision-0007 coverage; normal and forced transactions are
+ * covered by any registered finding at or before them. */
 export const assertReplayPrerequisiteCovered = (
   evidence: CanonicalBlockEvidence,
   failure: ReplayPrerequisiteFailure,
@@ -222,84 +248,41 @@ export const assertReplayPrerequisiteCovered = (
     if (fabricatedSourceOriginCovered(evidence, source, detections)) return;
     throw new CanonicalReplayPrerequisiteError([failure]);
   }
-  if (failure.prerequisite === "prior_transition_effect") {
-    if (
-      source !== undefined &&
-      detections.some(
-        (detection) =>
-          detection.headerHash === evidence.headerHash &&
-          detection.violationId === "transition-trace" &&
-          detection.provenTransitionEventKeyCbor === failure.eventKeyCbor,
+  if (source?.phase === "Deposit" || source?.phase === "Withdrawal") {
+    if (failure.prerequisite === "prior_transition_effect") {
+      if (
+        detections.some(
+          (detection) =>
+            detection.headerHash === evidence.headerHash &&
+            detection.violationId === "transition-trace" &&
+            detection.provenTransitionEventKeyCbor === failure.eventKeyCbor,
+        )
       )
-    )
-      return;
-    // A deposit whose output the ledger already holds repeats a settled
-    // event; the cross-block finding at that source position names it.
-    if (
-      source?.phase === "Deposit" &&
-      detections.some(
-        (detection) =>
-          detection.headerHash === evidence.headerHash &&
-          detection.violationId === CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID &&
-          detection.position ===
-            BigInt(evidence.reconstruction.sourceEvents.indexOf(source)),
+        return;
+      // A deposit whose output the ledger already holds repeats a settled
+      // event; the cross-block finding at that source position names it.
+      if (
+        source.phase === "Deposit" &&
+        detections.some(
+          (detection) =>
+            detection.headerHash === evidence.headerHash &&
+            detection.violationId ===
+              CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID &&
+            detection.position ===
+              BigInt(evidence.reconstruction.sourceEvents.indexOf(source)),
+        )
       )
-    )
-      return;
-    throw new CanonicalReplayPrerequisiteError([failure]);
-  }
-  if (source?.phase === "Withdrawal") {
+        return;
+      throw new CanonicalReplayPrerequisiteError([failure]);
+    }
     if (
+      source.phase === "Withdrawal" &&
       failure.prerequisite === "present_spend_input" &&
       withdrawalPrerequisiteCovered(evidence, source.entry, detections)
     )
       return;
     throw new CanonicalReplayPrerequisiteError([failure]);
   }
-  if (source?.phase !== "L2Transaction")
+  if (source === undefined || !coveredAtOrBefore(evidence, failure, detections))
     throw new CanonicalReplayPrerequisiteError([failure]);
-  const position = evidence.transactions.findIndex(
-    (transaction) => transaction.nodeTxId === source.entry.txId,
-  );
-  if (position < 0) throw new CanonicalReplayPrerequisiteError([failure]);
-  const allowed =
-    failure.prerequisite === "present_spend_input"
-      ? new Set([
-          "doubleSpend",
-          "nonExistentInput",
-          "nonExistentInputNoIndex",
-          "inputSetUniqueness",
-          "withdrawnInput",
-        ])
-      : failure.prerequisite === "representable_field_shape"
-        ? new Set(["committedFieldShape", "mintItemNonCanonical"])
-        : failure.prerequisite === "representable_validity_flag"
-          ? new Set(["l2TxMistag"])
-          : directTransactionCategories;
-  const covered = detections.some((detection) => {
-    if (detection.headerHash !== evidence.headerHash) return false;
-    const rule = FRAUD_PROOF_CLASSIFICATION_RULES.find((candidate) =>
-      candidate.violationIds.some((id) => id === detection.violationId),
-    );
-    if (rule === undefined || !allowed.has(rule.category)) return false;
-    if (rule.category === "doubleSpend") {
-      // This proof covers both spenders. Its ordering coordinate identifies
-      // only the second transaction in the canonical transaction vector, which
-      // need not be the second spender in the operator's transition trace.
-      const [family, first, second] = detection.detectionId.split(":");
-      return (
-        family === "double-spend" &&
-        second === detection.position.toString() &&
-        (first === position.toString() || second === position.toString())
-      );
-    }
-    if (detection.position !== BigInt(position)) return false;
-    // Wrongful rejections belong to the forced frontier, even when its ordinal
-    // happens to equal this normal transaction's ordinal.
-    if (detection.violationId.includes("wrongful-rejection")) return false;
-    if (evidence.reconstruction.forcedTransactions[position] !== undefined)
-      return false;
-    return true;
-  });
-  if (!covered) throw new CanonicalReplayPrerequisiteError([failure]);
 };

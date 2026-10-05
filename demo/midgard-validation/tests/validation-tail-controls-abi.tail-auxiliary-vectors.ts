@@ -49,6 +49,7 @@ const mutation = {
   operation: { type: "delete", key: bytes("01") } as const,
   preRoot: fixtureBytes(0x36, 32),
   postRoot: fixtureBytes(0x37, 32),
+  deletionOpening: Buffer.alloc(0),
   proofFoldTrace: {
     descriptor,
     frames: [],
@@ -157,11 +158,12 @@ export const tailAuxiliaryVectors = [
   ],
   [
     34,
-    2,
+    3,
     auxiliary({
       kind: "ledgerDeltaProofFrame",
       frame: proofFrame,
       siblings: [fixtureBytes(0x47, 32)],
+      opening: fixtureBytes(0x48, 32),
     }),
   ],
   [

@@ -55,15 +55,25 @@ import { stagePublishedDepositTrace } from "../support/published-deposit-trace.j
 import { createTerminalRelease } from "../support/terminal-release.js";
 import { startPublishedWatcherJourneyAuthorityFixture } from "../support/trusted-head-process-fixture.js";
 import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
+import { assertPublishedFundingCustodyRoles } from "./watcher-installed-journey.funding-policy-fixture.js";
 
 const transport = vi.hoisted(() => ({
   provider: undefined as Provider | undefined,
+  fundingContracts: [] as Parameters<
+    typeof assertPublishedFundingCustodyRoles
+  >[0],
 }));
 vi.mock("@al-ft/midgard-fault-proofs", async (loadOriginal) => {
   const actual =
     await loadOriginal<typeof import("@al-ft/midgard-fault-proofs")>();
   return {
     ...actual,
+    createWorkflowRuntimeFundingPolicy: (
+      input: Parameters<typeof actual.createWorkflowRuntimeFundingPolicy>[0],
+    ) => {
+      transport.fundingContracts = [...input.contracts];
+      return actual.createWorkflowRuntimeFundingPolicy(input);
+    },
     makeLucidForSubmit: async (
       config: Parameters<typeof actual.makeLucidForSubmit>[0],
     ) => {
@@ -81,9 +91,7 @@ vi.mock("@al-ft/midgard-fault-proofs", async (loadOriginal) => {
     },
   };
 });
-// Every proof submission reaches the actual Lucid emulator. Only the external
-// chain transport is simulated; the watcher application, decision bridge,
-// supervisor, journals and validators execute their normal implementations.
+// Real watcher/validators execute against Lucid; only chain transport is simulated.
 it("detects an invalid commitment, confirms correction, and classifies the honest successor as healthy", async () => {
   const directory = await mkdtemp("/var/tmp/watcher-installed-journey-");
   const recorder = recordCrossBlockRawEmulator();
@@ -174,8 +182,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
           node.protected_until > latest ? node.protected_until : latest,
         0n,
       );
-      // Admission backdates its lower bound by sixty seconds. Advance the
-      // actual ledger so that bound respects the published root's protection.
+      // The backdated admission lower bound must respect root protection.
       const readyAt = Number(protectedUntil) + 60_000;
       expect(Number.isSafeInteger(readyAt)).toBe(true);
       await deployment.chain.awaitLedgerTime(readyAt);
@@ -309,13 +316,8 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       "blocks.json",
     );
     cleanup.push(chain.close);
-    // Settle the setup history to the configured finality depth plus one real
-    // block before the watcher starts, and no further: every extra block ages
-    // the fraudulent commitment towards its merge before detection.
+    // Extra setup blocks age the fraudulent commitment towards merge.
     await chain.grow(native.watcherConfig.l1.finality.depth + 1);
-    // Submission growth supplies the configured finality depth plus one real
-    // block. Background growth matches the fixture's 20-second block interval
-    // so durable ingestion need not race a chain accelerated fourfold.
     chain.start({ intervalMs: 20_000, blocksPerTick: 1 });
     const provider = deployment.emulator;
     transport.provider = provider;
@@ -436,8 +438,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       if (watcher!.status().phase !== "live")
         throw new Error("Watcher stopped while processing the fixture");
     };
-    // The running service owns the journal's admitted cache. This separate
-    // test observer opens a fresh durable view for each observation.
+    // Observe a fresh durable view, independently of the service's cache.
     const readDecisions = async () =>
       (
         await openWatcherFaultDecisionJournal({
@@ -610,11 +611,14 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
           await pause(50);
         }
       },
-      // The deposit proof folds through multiple on-chain checkpoints. Each
-      // transaction must independently reach the configured finality depth.
+      // Each proof checkpoint must independently reach finality depth.
       720_000,
     );
     await stage("corrected on-chain state", async () => {
+      assertPublishedFundingCustodyRoles(
+        transport.fundingContracts,
+        deployment.manifest,
+      );
       const { contracts, emulator } = deployment;
       const targetUnit = toUnit(
         contracts.stateQueue.policyId,
@@ -699,8 +703,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         requiresMutationLease: true,
       });
       expect(checkpoint.txHash).toBe(completion.proofToken.createdByTxHash);
-      // Production uses local retry/reconciliation. This identity is durable;
-      // it does not claim to fence another node's commitment/merge workers.
+      // Local durable retry identity does not fence another node's workers.
       expect(checkpoint.durableRecovery).toEqual({
         stateQueueMutationLease: {
           source: LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
@@ -721,8 +724,6 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       ).toEqual([]);
     });
     requireLiveRuntime();
-    // The following commitment is supplied by the fixture's second operator;
-    // the watcher must observe and classify it through its running service.
     const successor = await stage("new honest commitment", () =>
       chain.withPausedBackgroundGrowth(() =>
         staged.commitHonestSuccessor({
@@ -757,8 +758,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
           await pause(50);
         }
       },
-      // Catch-up authenticates every intervening L1 block, including the
-      // confirmation blocks for all proof and replacement-operator actions.
+      // Catch-up authenticates all proof/replacement confirmation blocks.
       3_000_000,
     );
     const evidenceDirectory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
@@ -817,6 +817,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     for (const close of cleanup.reverse()) await close();
     vi.restoreAllMocks();
     transport.provider = undefined;
+    transport.fundingContracts = [];
     vi.unstubAllEnvs();
     recorder.restore();
     if (succeeded) await rm(directory, { recursive: true, force: true });

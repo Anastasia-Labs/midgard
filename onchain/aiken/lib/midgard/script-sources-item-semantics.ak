@@ -4,45 +4,43 @@ use midgard/cek_data_traverse_v1 as traversal
 use midgard/redeemer_item_proof_v1 as item
 use midgard/script_sources_item_normalization as normalized
 
-pub fn head_scalar(state: normalized.TraversalExecution) -> Bool {
-  expect state.current.stage == traversal.stage_head
-  expect traversal.HeadScalar { item_length } = state.action
+/// A head reads the head window, at `stage_head` or at the `stage_close`
+/// position of an open-ended frame (where the window is the next child).
+fn at_head_window(state: normalized.TraversalExecution) -> ByteArray {
+  expect or {
+      state.current.stage == traversal.stage_head,
+      state.current.stage == traversal.stage_close,
+    }
   expect Some(bytes) = state.source_bytes
-  traversal.prevalidated_head_scalar(state.current, bytes, item_length) == Some(
+  bytes
+}
+
+pub fn head_scalar(state: normalized.TraversalExecution) -> Bool {
+  expect traversal.HeadScalar = state.action
+  traversal.prevalidated_head_scalar(state.current, at_head_window(state)) == Some(
     state.next,
   )
 }
 
 pub fn head_sequence(state: normalized.TraversalExecution) -> Bool {
-  expect state.current.stage == traversal.stage_head
-  expect traversal.HeadSequence { expected_children } = state.action
-  expect Some(bytes) = state.source_bytes
-  traversal.prevalidated_head_sequence(state.current, bytes, expected_children) == Some(
+  expect traversal.HeadSequence = state.action
+  traversal.prevalidated_head_sequence(state.current, at_head_window(state)) == Some(
     state.next,
   )
 }
 
 pub fn head_map(state: normalized.TraversalExecution) -> Bool {
-  expect state.current.stage == traversal.stage_head
   expect traversal.HeadMap = state.action
-  expect Some(bytes) = state.source_bytes
-  traversal.prevalidated_head_map(state.current, bytes) == Some(state.next)
+  traversal.prevalidated_head_map(state.current, at_head_window(state)) == Some(
+    state.next,
+  )
 }
 
 pub fn head_large_constructor(state: normalized.TraversalExecution) -> Bool {
-  expect state.current.stage == traversal.stage_head
-  expect
-      traversal.HeadLargeConstructor {
-        constructor_cbor_length,
-        expected_children,
-      }
-    = state.action
-  expect Some(bytes) = state.source_bytes
+  expect traversal.HeadLargeConstructor = state.action
   traversal.prevalidated_head_large_constructor(
     state.current,
-    bytes,
-    constructor_cbor_length,
-    expected_children,
+    at_head_window(state),
   ) == Some(state.next)
 }
 
@@ -172,7 +170,6 @@ pub fn finalize_frame(state: normalized.TraversalExecution) -> Bool {
     ..state.current,
     stage: transition.next_stage,
     frame_root: transition.next_frame_root,
-    pending_large_expected_children: None,
     integer: None,
     bytes: None,
     result: transition.next_result,
@@ -239,4 +236,15 @@ pub fn invalid_tail(state: normalized.OuterExecution) -> Bool {
   expect state.next == state.current
   expect Some(bytes) = state.source_bytes
   item.prevalidated_open_tail(state.current, bytes) == item.RedeemerItemProofInvalid
+}
+
+// The source authenticator has pinned this exact window to the current item.
+// Decoder failure is never invalidity: only the shared bounded predicate is.
+pub fn invalid_data(state: normalized.OuterExecution) -> Bool {
+  expect state.current.mode == item.mode_data
+  expect state.current.stage == item.stage_data
+  expect item.RedeemerItemTraverseData { action: traversal.NoAction } = state.action
+  expect state.next == state.current
+  expect Some(current) = state.current.traversal
+  traversal.noncanonical_data_head_v1(current, state.source_bytes)
 }

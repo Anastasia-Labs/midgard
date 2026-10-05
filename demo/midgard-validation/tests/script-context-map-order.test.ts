@@ -15,6 +15,7 @@ import {
   Delay,
   ErrorUPLC,
   Force,
+  getNRequiredForces,
   Lambda,
   UPLCBuiltinTag,
   UPLCConst,
@@ -30,14 +31,20 @@ import { describe, expect, it } from "vitest";
 import {
   buildDeterministicValidationMachineTrace,
   buildMidgardCanonicalCekProgram,
+  buildMidgardScriptContext,
+  buildPlutusV3ScriptContext,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  encodeScriptContextCbor,
+  encodeMidgardCekPlutusData,
   MidgardRedeemerTag,
   RejectCodes,
   runPhaseBValidationWithPatch,
   scriptContextTxOutData,
 } from "../src/index.js";
+import {
+  orderingView,
+  redeemerMapEntries,
+} from "./script-context-map-order.ordering-view.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -54,7 +61,8 @@ import {
 // A node evaluates a script over the context it builds; a fault proof
 // adjudicates it over the context the transaction commits, where datum and
 // redeemer maps keep their CBOR entry order and duplicate keys and the redeemer
-// map follows the witness list. These tests pin that the two contexts agree.
+// map is in ledger order, (tag, index) ascending, whatever the witness list
+// order. These tests pin that the two contexts agree.
 
 /** `{h'ff': 1, h'0000': 2}`: not in byte order. */
 const UNSORTED_MAP = "a241ff0142000002";
@@ -65,7 +73,13 @@ const DUPLICATE_KEY_MAP = "a241ff0141ff02";
 
 const EX_UNITS = [1_000_000_000n, 1_000_000_000n] as const;
 
-const builtin = (tag: UPLCBuiltinTag): UPLCTerm => new Builtin(tag);
+const builtin = (tag: UPLCBuiltinTag): UPLCTerm => {
+  let term: UPLCTerm = new Builtin(tag);
+  for (let force = 0; force < getNRequiredForces(tag); force += 1) {
+    term = new Force(term);
+  }
+  return term;
+};
 const apply = (fn: UPLCTerm, ...args: UPLCTerm[]): UPLCTerm =>
   args.reduce<UPLCTerm>((term, arg) => new Application(term, arg), fn);
 const constrFields = (data: UPLCTerm): UPLCTerm =>
@@ -101,9 +115,7 @@ const guard = (condition: UPLCTerm): UPLCTerm =>
     ),
   );
 const flat = (body: UPLCTerm): Buffer =>
-  Buffer.from(
-    UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body)).toBuffer().buffer,
-  );
+  Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body)));
 
 const context = new UPLCVar(0);
 
@@ -148,22 +160,27 @@ const firstOutputDatumKeyIsTwoBytes = firstKeyIsTwoBytes(
   ),
 );
 
-/** A PlutusV3 script: the context's first redeemer is for a spend. */
-const firstRedeemerIsSpend = flat(
-  guard(
-    apply(
-      builtin(UPLCBuiltinTag.equalsInteger),
+/** A PlutusV3 script: the context's first redeemer has purpose `tag`. */
+const firstRedeemerPurposeIs = (tag: number): Buffer =>
+  flat(
+    guard(
       apply(
-        builtin(UPLCBuiltinTag.fstPair),
+        builtin(UPLCBuiltinTag.equalsInteger),
         apply(
-          builtin(UPLCBuiltinTag.unConstrData),
-          firstKey(nth(constrFields(nth(constrFields(context), 0)), 9)),
+          builtin(UPLCBuiltinTag.fstPair),
+          apply(
+            builtin(UPLCBuiltinTag.unConstrData),
+            firstKey(nth(constrFields(nth(constrFields(context), 0)), 9)),
+          ),
         ),
+        UPLCConst.int(tag),
       ),
-      UPLCConst.int(1),
     ),
-  ),
-);
+  );
+
+/** PlutusV3 `ScriptPurpose` is `Minting` (0) or `Spending` (1) here. */
+const firstRedeemerIsMint = firstRedeemerPurposeIs(0);
+const firstRedeemerIsSpend = firstRedeemerPurposeIs(1);
 
 const identity = flat(new Lambda(new UPLCVar(0)));
 
@@ -199,15 +216,11 @@ type Scenario = {
   readonly spendRedeemer?: string;
   /** Adds a mint of the script's own policy; the order of the two redeemers. */
   readonly mint?: "spend-first" | "mint-first";
-  /** Runs the flat script with no CEK program material. */
-  readonly bareScript?: true;
 };
 
 const buildScenario = (scenario: Scenario) => {
   const program = buildMidgardCanonicalCekProgram(scenario.program);
-  const script = plutusV3ScriptWitness(
-    scenario.bareScript === true ? scenario.program : program.envelopeCbor,
-  );
+  const script = plutusV3ScriptWitness(program.envelopeCbor);
   const scriptHash = hashScriptWitness(script);
   const spent = outRefFromByte(0x5b);
   const spentOutput = scriptOutput(scriptHash, scenario.spentDatum);
@@ -253,10 +266,9 @@ const buildScenario = (scenario: Scenario) => {
         }),
     scriptLanguages: ["PlutusV3" as const],
   };
-  const sidecar =
-    scenario.bareScript === true
-      ? null
-      : encodeMidgardCekProgramMaterialSidecar([...program.material.values()]);
+  const sidecar = encodeMidgardCekProgramMaterialSidecar([
+    ...program.material.values(),
+  ]);
   return {
     spent,
     spentOutput,
@@ -322,7 +334,7 @@ const proofVerdict = async (
       blockSlot: 100n,
       transactionId: transaction.txId,
       canonicalTransactionCbor: transaction.txCbor,
-      programMaterialSidecarCbor: sidecar!,
+      programMaterialSidecarCbor: sidecar,
       priorUtxosRoot: preRoot,
       postUtxosRoot:
         verdict === "accepted"
@@ -340,6 +352,35 @@ const proofVerdict = async (
 };
 
 describe("script context map order", () => {
+  it("builds the redeemer map in ledger order from a view in any order", () => {
+    const { view, spend } = orderingView();
+    // MidgardV1: spend (1), mint (0), observe (2), receive (3) purposes.
+    expect(
+      redeemerMapEntries(
+        buildMidgardScriptContext(view, spend.purpose, spend.redeemer),
+        8,
+      ),
+    ).toEqual([
+      [1, 0n],
+      [1, 1n],
+      [0, 2n],
+      [2, 3n],
+      [3, 4n],
+    ]);
+    // PlutusV3 has no receiving purpose, so it omits that redeemer.
+    expect(
+      redeemerMapEntries(
+        buildPlutusV3ScriptContext(view, spend.purpose, spend.redeemer),
+        9,
+      ),
+    ).toEqual([
+      [1, 0n],
+      [1, 1n],
+      [0, 2n],
+      [2, 3n],
+    ]);
+  });
+
   it("builds a TxOut whose datum keeps its key order and duplicate keys", () => {
     for (const datum of [UNSORTED_MAP, SORTED_MAP, DUPLICATE_KEY_MAP]) {
       const outputCbor = scriptOutput("33".repeat(28), datum);
@@ -348,7 +389,9 @@ describe("script context map order", () => {
         "cardano",
       );
       // Script address, 10 ada, the inline datum as written, no script ref.
-      expect(Buffer.from(encodeScriptContextCbor(txOut)).toString("hex")).toBe(
+      expect(
+        Buffer.from(encodeMidgardCekPlutusData(txOut)).toString("hex"),
+      ).toBe(
         `d8799fd8799fd87a9f581c${"33".repeat(28)}ffd87a80ff` +
           `a140a1401a00989680d87b9f${datum}ffd87a80ff`,
       );
@@ -356,22 +399,18 @@ describe("script context map order", () => {
   });
 
   it("gives an order-sensitive script the datum in its own key order", async () => {
-    for (const bareScript of [undefined, true] as const) {
-      await expect(
-        nodeVerdict({
-          program: firstDatumKeyIsTwoBytes,
-          spentDatum: UNSORTED_MAP,
-          bareScript,
-        }),
-      ).resolves.toBe(`rejected ${RejectCodes.PlutusScriptInvalid}`);
-      await expect(
-        nodeVerdict({
-          program: firstDatumKeyIsTwoBytes,
-          spentDatum: SORTED_MAP,
-          bareScript,
-        }),
-      ).resolves.toBe("accepted");
-    }
+    await expect(
+      nodeVerdict({
+        program: firstDatumKeyIsTwoBytes,
+        spentDatum: UNSORTED_MAP,
+      }),
+    ).resolves.toBe(`rejected ${RejectCodes.PlutusScriptInvalid}`);
+    await expect(
+      nodeVerdict({
+        program: firstDatumKeyIsTwoBytes,
+        spentDatum: SORTED_MAP,
+      }),
+    ).resolves.toBe("accepted");
   });
 
   it.each([
@@ -425,20 +464,23 @@ describe("script context map order", () => {
     },
   );
 
-  it.each(["spend-first", "mint-first"] as const)(
-    "orders the redeemer map by the %s witness list",
-    async (mint) => {
-      const expected = mint === "spend-first" ? "accepted" : "rejected";
-      const scenario = { program: firstRedeemerIsSpend, mint };
-      await expect(nodeVerdict(scenario)).resolves.toBe(
-        expected === "accepted"
-          ? "accepted"
-          : `rejected ${RejectCodes.PlutusScriptInvalid}`,
-      );
-      await expect(proofVerdict(scenario, expected)).resolves.toBe(expected);
+  it("orders the redeemer map by purpose whatever the witness list order", async () => {
+    for (const mint of ["spend-first", "mint-first"] as const) {
+      for (const [program, expected] of [
+        [firstRedeemerIsSpend, "accepted"],
+        [firstRedeemerIsMint, "rejected"],
+      ] as const) {
+        const scenario = { program, mint };
+        await expect(nodeVerdict(scenario)).resolves.toBe(
+          expected === "accepted"
+            ? "accepted"
+            : `rejected ${RejectCodes.PlutusScriptInvalid}`,
+        );
+        await expect(proofVerdict(scenario, expected)).resolves.toBe(expected);
+      }
       await expect(
         proofVerdict({ program: identity, mint }, "accepted"),
       ).resolves.toBe("accepted");
-    },
-  );
+    }
+  }, 60_000);
 });

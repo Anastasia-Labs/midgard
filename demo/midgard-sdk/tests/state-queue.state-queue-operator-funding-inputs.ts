@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 
 import {
   applyDoubleCborEncoding,
-  applyParamsToScript,
   type BuildTxWithRedeemer,
   type Data as LucidData,
   type MintingPolicy,
@@ -25,6 +24,7 @@ import {
   resolveFraudProverRewardOutputIndex,
   type SpendingValidator as SdkSpendingValidator,
 } from "../src/index.js";
+import { applyExpectedScriptParams } from "./fault-proof.expected-parameter-application.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 
@@ -261,7 +261,7 @@ export const applyAllBlueprintParamsToScript = (
       `Validator "${title}" requires exactly ${validator.parameters.length.toString()} parameters, received ${params.length.toString()}`,
     );
   }
-  return applyParamsToScript(validator.compiledCode, params);
+  return applyExpectedScriptParams(validator.compiledCode, params);
 };
 
 export const makeMintingValidator = (mintingScriptCBOR: string) => {

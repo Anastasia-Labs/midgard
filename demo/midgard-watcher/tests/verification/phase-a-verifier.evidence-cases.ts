@@ -1,4 +1,3 @@
-import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec/output";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { encodeData } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -20,7 +19,6 @@ import type { WatcherStateQueueHeader } from "../../src/indexers/state-queue-sna
 import { type WatcherHeaderRootReconstructionResult } from "../../src/verification/header-root-reconstruction.js";
 import {
   assetMap,
-  bigInlineDatum,
   CONFIG,
   configFor,
   type EvidenceCase,
@@ -162,20 +160,6 @@ export const EVIDENCE_CASES: readonly EvidenceCase[] = [
     RejectCodes.FieldPreimageSize,
     "canonicalDecode",
     fromNativeTx({ outputs: manyOutputs(2000) }),
-  ),
-  evidenceCase(
-    "single output preimage over the ledger-output bound",
-    RejectCodes.LedgerOutputSize,
-    "canonicalDecode",
-    fromNativeTx({
-      outputs: [
-        encodeMidgardTxOutput({
-          address: TEST_ADDRESS_BYTES,
-          value: { lovelace: 1n, assets: new Map() },
-          datum: { kind: "inline", cbor: bigInlineDatum(400) },
-        }),
-      ],
-    }),
   ),
   evidenceCase(
     "plutus witness is not a canonical bounded program envelope",

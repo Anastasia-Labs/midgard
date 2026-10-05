@@ -7,6 +7,7 @@ import "@lucid-evolution/lucid";
 import "../prepare-double-spend.js";
 import "../step-support.js";
 import "../transition-trace/witnesses.js";
+import "../workflow/detection-subject.js";
 import "./family.js";
 import "./retained-stage-twelve.js";
 import "./replay.build-unused-redeemer-observation-from-retained-da.js";

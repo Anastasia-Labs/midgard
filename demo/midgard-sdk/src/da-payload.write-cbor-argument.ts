@@ -2,7 +2,6 @@ import { encodeCborInteger } from "@al-ft/midgard-core/codec/cbor";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import { ValidationAuxiliaryWitnessSchema } from "./fraud-proof/validation-auxiliary-witness.js";
 import {
   ValidationMachineStateSchema,
   ValidationTraceProofSchema,
@@ -12,6 +11,7 @@ import {
   HeaderHashSchema,
   HeaderSchema,
 } from "./ledger-state.js";
+import { RetainedValidationAuxiliaryWitnessSchema } from "./retained-validation-auxiliary.js";
 
 export const DA_PAYLOAD_VERSION = 1n;
 
@@ -54,7 +54,7 @@ export const RetainedValidationWitnessSchema = Data.Object({
   phase: Data.Integer(),
   program_counter: Data.Integer(),
   witness_cbor: Data.Bytes(),
-  auxiliary: ValidationAuxiliaryWitnessSchema,
+  auxiliary: RetainedValidationAuxiliaryWitnessSchema,
 });
 
 export type RetainedValidationWitness = Data.Static<

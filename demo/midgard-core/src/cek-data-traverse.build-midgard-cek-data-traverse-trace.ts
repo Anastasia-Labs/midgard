@@ -28,12 +28,16 @@ import {
   type MidgardCekDataTraverseTrace,
   type MidgardCekDataTraverseTraceStep,
 } from "./cek-data-traverse.is-well-formed-midgard-cek-data-traverse-control.js";
-import { parseMidgardCekDataNodes } from "./cek-data-traverse.parse-midgard-cek-data-nodes.js";
+import {
+  parseMidgardCekDataNodes,
+  parseMidgardCekDataNodesPrefix,
+} from "./cek-data-traverse.parse-midgard-cek-data-nodes.js";
 import {
   type DataTraceFrame,
   type DataTraceOperation,
   nextMidgardCekDataTraverseSpan,
   type ParsedDataNode,
+  readCanonicalCborArgument,
 } from "./cek-data-traverse.read-canonical-cbor-argument-wide.js";
 import {
   advanceMidgardCekDataTraverse,
@@ -43,15 +47,20 @@ import { type MidgardCekDataSummary } from "./cek-semantic.js";
 import { finalizeMidgardCekSourceBlob } from "./cek-source-blob.js";
 import { buildMidgardValidationMerkleMembershipIndex } from "./validation-merkle.js";
 
-export const buildMidgardCekDataTraverseTrace = ({
+const buildDataTrace = ({
   sourceStart,
   source,
+  stopAtSequenceRefusal,
 }: {
   readonly sourceStart: number;
   readonly source: Uint8Array;
-}): MidgardCekDataTraverseTrace => {
+  readonly stopAtSequenceRefusal: boolean;
+}) => {
   const bytes = Buffer.from(source);
-  const nodes = parseMidgardCekDataNodes(bytes);
+  const parsed = stopAtSequenceRefusal
+    ? parseMidgardCekDataNodesPrefix(bytes)
+    : { nodes: parseMidgardCekDataNodes(bytes), refusalOffset: null };
+  const nodes = parsed.nodes;
   const initial = initialMidgardCekDataTraverseControl({
     sourceStart,
     sourceLength: bytes.length,
@@ -113,20 +122,24 @@ export const buildMidgardCekDataTraverseTrace = ({
         : Buffer.from(hashMidgardCekDataFrame(parent.frame));
     switch (node.kind) {
       case "list":
-        return initialMidgardCekDataListFrame({
-          tail,
-          expectedChildren: node.children.length,
-        });
-      case "map":
+        return initialMidgardCekDataListFrame({ tail });
+      case "map": {
+        // A prefix may stop before all declared map entries have been visited.
+        // The nullary head action derives this count from the same original header.
+        const header = readCanonicalCborArgument(bytes, node.start);
+        if (header === null || header.major !== 5)
+          throw new Error(
+            "V1 CEK Data traversal lost its canonical map header",
+          );
         return initialMidgardCekDataMapFrame({
           tail,
-          expectedChildren: node.children.length,
+          expectedChildren: header.value * 2,
         });
+      }
       case "constrSmall":
         return initialMidgardCekDataSmallConstrFrame({
           constructor: node.constructor,
           tail,
-          expectedChildren: node.children.length,
         });
       case "constrLarge":
         if (largeConstructor === null) {
@@ -137,7 +150,6 @@ export const buildMidgardCekDataTraverseTrace = ({
           constructorCborLength: BigInt(node.constructorCborLength),
           constructorMemory: largeConstructor.memory,
           tail,
-          expectedChildren: node.children.length,
         });
     }
   };
@@ -148,18 +160,36 @@ export const buildMidgardCekDataTraverseTrace = ({
   while (operations.length > 0) {
     const operation = operations.pop()!;
     if (operation.kind === "visit") {
-      const node = nodes[operation.nodeIndex]!;
       if (
-        control.stage !== MidgardCekDataTraverseStages.Head ||
+        parsed.refusalOffset !== null &&
+        operation.nodeIndex === nodes.length
+      ) {
+        if (
+          (control.stage !== MidgardCekDataTraverseStages.Head &&
+            control.stage !== MidgardCekDataTraverseStages.Close) ||
+          control.offset !== parsed.refusalOffset
+        )
+          throw new Error("sequence refusal prefix lost its source position");
+        return {
+          initial,
+          steps: Object.freeze(steps),
+          control,
+          refusalOffset: parsed.refusalOffset,
+        };
+      }
+      const node = nodes[operation.nodeIndex]!;
+      // A first child is read at `Head`; every later child of an open-ended
+      // frame is read from the `Close` window that would otherwise hold the
+      // break.
+      if (
+        (control.stage !== MidgardCekDataTraverseStages.Head &&
+          control.stage !== MidgardCekDataTraverseStages.Close) ||
         control.offset !== node.start
       ) {
         throw new Error("V1 CEK Data traversal evidence lost source position");
       }
       if (node.kind === "scalar") {
-        emit({
-          kind: "headScalar",
-          itemLength: node.end - node.start,
-        });
+        emit({ kind: "headScalar" });
         while (
           (currentStage() === MidgardCekDataTraverseStages.Integer &&
             control.integer!.stage !== MidgardCekDataIntegerStages.Terminal) ||
@@ -190,11 +220,7 @@ export const buildMidgardCekDataTraverseTrace = ({
       if (node.kind === "map") {
         emit({ kind: "headMap" });
       } else if (node.kind === "constrLarge") {
-        emit({
-          kind: "headLargeConstructor",
-          constructorCborLength: node.constructorCborLength,
-          expectedChildren: node.children.length,
-        });
+        emit({ kind: "headLargeConstructor" });
         while (
           currentStage() === MidgardCekDataTraverseStages.LargeConstructor
         ) {
@@ -207,6 +233,17 @@ export const buildMidgardCekDataTraverseTrace = ({
         ) {
           throw new Error("V1 CEK Data traversal rejected a large constructor");
         }
+        if (
+          parsed.refusalOffset !== null &&
+          control.offset === parsed.refusalOffset
+        ) {
+          return {
+            initial,
+            steps: Object.freeze(steps),
+            control,
+            refusalOffset: parsed.refusalOffset,
+          };
+        }
         const root = finalizeMidgardCekSourceBlob(control.integer.blob);
         if (root === null) {
           throw new Error("V1 CEK Data traversal lost constructor bytes");
@@ -216,10 +253,7 @@ export const buildMidgardCekDataTraverseTrace = ({
           memory: control.integer.memory,
         };
       } else {
-        emit({
-          kind: "headSequence",
-          expectedChildren: node.children.length,
-        });
+        emit({ kind: "headSequence" });
       }
       const frame = initialFrame(node, operation.parent, largeConstructor);
       if (node.kind === "constrLarge") {
@@ -340,6 +374,23 @@ export const buildMidgardCekDataTraverseTrace = ({
   return Object.freeze({
     initial,
     steps: Object.freeze(steps),
-    terminal: control,
+    control,
+    refusalOffset: null,
+  });
+};
+
+export const buildMidgardCekDataTraversePrefix = (input: {
+  readonly sourceStart: number;
+  readonly source: Uint8Array;
+}) => buildDataTrace({ ...input, stopAtSequenceRefusal: true });
+export const buildMidgardCekDataTraverseTrace = (input: {
+  readonly sourceStart: number;
+  readonly source: Uint8Array;
+}): MidgardCekDataTraverseTrace => {
+  const trace = buildDataTrace({ ...input, stopAtSequenceRefusal: false });
+  return Object.freeze({
+    initial: trace.initial,
+    steps: trace.steps,
+    terminal: trace.control,
   });
 };
