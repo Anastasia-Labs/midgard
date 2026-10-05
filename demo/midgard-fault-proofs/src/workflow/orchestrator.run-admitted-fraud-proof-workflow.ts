@@ -22,7 +22,6 @@ import {
   reconcileWorkflowFundingSubmissionHandoff,
   releaseIdleWorkflowFundingReservation,
   releaseWorkflowFundingReservation,
-  reobserveWorkflowFundingReservationTransaction,
   type WorkflowFundingCompletionHandoff,
   WorkflowFundingReservationUnavailableError,
   type WorkflowFundingSubmissionHandoff,
@@ -72,6 +71,7 @@ import {
   validateAction,
   validatePreflight,
 } from "./orchestrator.normalize-workflow-terminal.js";
+import { reobserveRequiredWorkflowParent } from "./orchestrator.reobserve-required-parent.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 
 /**
@@ -328,34 +328,19 @@ export const runAdmittedFraudProofWorkflow = async ({
               latestJournalEvent.actionId !== current.action.actionId &&
               !(last?.kind === "reconciled" && last.outcome === "not_found")))
         ) {
-          const fundingAvailable =
-            await reobserveWorkflowFundingReservationTransaction({
-              journal,
-              transactionHash: intent.txHash,
-            });
-          if (!fundingAvailable)
-            return {
-              kind: "pending",
-              resumeOnObservation: true,
-              workflowId,
-              identity,
-              entries,
-              reason:
-                "Required inputs remain reserved by another unresolved transaction",
-            };
-          assertWorkflowJournalActuation({
-            journal,
-            deploymentFingerprint,
-            category,
+          const reobservation = await reobserveRequiredWorkflowParent({
+            adapter,
+            context,
             headerHash,
-            checkpoint: "before_reconcile",
+            journal,
+            intent,
+            hasUnresolvedDescendant: unresolvedEvent !== undefined,
+            append,
+            stalled,
+            resumeOnObservation,
           });
-          await append({
-            kind: "reobserved",
-            actionId: intent.actionId,
-            txHash: intent.txHash,
-          });
-          continue;
+          if (reobservation.kind === "reobserved") continue;
+          if (reobservation.kind !== "included") return reobservation;
         }
       }
     }
