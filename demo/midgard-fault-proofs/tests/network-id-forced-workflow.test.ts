@@ -1014,10 +1014,9 @@ describe("network-id forced (§5.2) production workflow", () => {
       transactionHash,
       signedTransactionCborHex,
     });
+    // Whichever lands wins: expired within the horizon is superseded at once.
     observe.mockResolvedValueOnce(observation("expired"));
-    await expect(reconcile(recovering)).resolves.toMatchObject({
-      kind: "unknown",
-    });
+    await expect(reconcile(recovering)).resolves.toEqual({ kind: "not_found" });
     observe.mockResolvedValueOnce(observation("expired", true));
     await expect(
       reconcile(recovering, { signedTransactionCborHex, retirementOnly: true }),

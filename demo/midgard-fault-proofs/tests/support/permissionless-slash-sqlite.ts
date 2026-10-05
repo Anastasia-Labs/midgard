@@ -411,7 +411,12 @@ export const preparePermissionlessSlashSqlite = async ({
         });
         const confirmed = await record();
         expect(confirmed.pendingTransition).toBeNull();
-        expect(confirmed.activeInputs).toEqual(inputs);
+        // Collateral is released at confirmation (owner ruling G5); the
+        // consumed funding stays leased until final completion.
+        const leasedAfterConfirmation = inputs.filter(
+          (input) => input.role !== "collateral",
+        );
+        expect(confirmed.activeInputs).toEqual(leasedAfterConfirmation);
         expect(confirmed.lastConfirmedTransitionDigest).toBe(
           pending.pendingTransition?.transitionDigest,
         );
@@ -448,7 +453,7 @@ export const preparePermissionlessSlashSqlite = async ({
         expect(
           (await readWorkflowFundingRecovery(journal)).transition,
         ).toBeNull();
-        expect((await record()).activeInputs).toEqual(inputs);
+        expect((await record()).activeInputs).toEqual(leasedAfterConfirmation);
         expect(
           await store.readConfirmedInput({
             reservationId: plan.reservationId,
