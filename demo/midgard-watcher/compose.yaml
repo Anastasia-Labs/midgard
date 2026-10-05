@@ -22,18 +22,38 @@ x-image: &image
   restart: unless-stopped
   logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
 
+x-authority-volumes: &authority-volumes
+  - ./config/authority.json:/etc/midgard/authority.json:ro
+  # `directory`: the append-only trusted-head record chain.
+  - watcher-authority-records:/var/lib/midgard-watcher/authority
+  # Regular files, not compose `secrets:`: the loader refuses a secret path
+  # that resolves through a symlink. The record key is mounted here only.
+  - ${WATCHER_RECORD_KEY_FILE:?}:/run/secrets/record_key:ro
+  - ${WATCHER_BEARER_FILE:?}:/run/secrets/bearer:ro
+
 services:
+  # Selects the SQLite authority backend once. Re-running it with the same
+  # generation and config is a no-op, so every `up` runs it before the
+  # authority; a different generation over existing records is refused.
+  watcher-authority-init:
+    <<: *image
+    command:
+      [
+        "authority-init",
+        "--config",
+        "/etc/midgard/authority.json",
+        "--generation",
+        "${WATCHER_AUTHORITY_GENERATION:?}",
+      ]
+    restart: "no"
+    volumes: *authority-volumes
+
   watcher-authority:
     <<: *image
     command: ["authority", "--config", "/etc/midgard/authority.json"]
-    volumes:
-      - ./config/authority.json:/etc/midgard/authority.json:ro
-      # `directory`: the append-only trusted-head record chain.
-      - watcher-authority-records:/var/lib/midgard-watcher/authority
-      # Regular files, not compose `secrets:`: the loader refuses a secret path
-      # that resolves through a symlink. The record key is mounted here only.
-      - ${WATCHER_RECORD_KEY_FILE:?}:/run/secrets/record_key:ro
-      - ${WATCHER_BEARER_FILE:?}:/run/secrets/bearer:ro
+    depends_on:
+      watcher-authority-init: { condition: service_completed_successfully }
+    volumes: *authority-volumes
     healthcheck:
       # Liveness without the bearer: a 401 proves the server is up.
       test:
