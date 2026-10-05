@@ -281,8 +281,8 @@ export const runAdmittedFraudProofWorkflow = async ({
       entries,
     };
 
-    // The journal records submissions, not permanent progress. Reconcile an old
-    // intent before retrying its action, including after a rollback.
+    // Reconcile rolled-back parents before pending descendants. An action
+    // with its own unresolved intent still reconciles before reobservation.
     const latestJournalEvent = [...entries]
       .reverse()
       .find(({ event }) => event.kind !== "stalled")?.event;
@@ -314,7 +314,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       currentObservation = current;
       if (
         current.kind === "action_required" &&
-        unresolvedEvent === undefined &&
+        unresolvedEvent?.actionId !== current.action.actionId &&
         (latestJournalEvent?.kind !== "reconciled" ||
           latestJournalEvent.outcome !== "confirmed")
       ) {
