@@ -544,7 +544,7 @@ jobs:
           blueprint: "true"
           prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation midgard-fault-proofs
       - name: Build, typecheck, format-check, and test Midgard watcher
-        run: pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run format-check && pnpm --dir demo/midgard-watcher test --shard=${{ matrix.shard }}/3
+        run: pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run format-check && pnpm --dir demo/midgard-watcher run test --shard=${{ matrix.shard }}/3
 
   # The native MPF owner crate, and the offline throughput gates that followed
   # it in the old serial job. The gates are pure `node --test` suites, so they
