@@ -111,10 +111,18 @@ if [[ ${#ts_files[@]} -gt 0 ]]; then
   done
   if [[ ${#lintable[@]} -gt 0 ]]; then
     if [[ -x "$eslint_bin" ]]; then
-      if ! ( cd "$repo_root/demo" && "$eslint_bin" --fix --max-warnings=0 "${lintable[@]}" ); then
-        echo "[midgard hooks] eslint reported problems it could not fix automatically (see above)" >&2
-        status=1
-      fi
+      # Lint in batches: one eslint process over a large merge (~1000 files)
+      # exhausts the default V8 heap and aborts. Staged files the eslint
+      # config ignores (rule fixtures) are not problems, so they must not
+      # count against --max-warnings=0.
+      batch_size=150
+      for ((start = 0; start < ${#lintable[@]}; start += batch_size)); do
+        batch=("${lintable[@]:start:batch_size}")
+        if ! ( cd "$repo_root/demo" && "$eslint_bin" --fix --no-warn-ignored --max-warnings=0 "${batch[@]}" ); then
+          echo "[midgard hooks] eslint reported problems it could not fix automatically (see above)" >&2
+          status=1
+        fi
+      done
     else
       echo "[midgard hooks] demo/node_modules/.bin/eslint missing — lint skipped (run pnpm install in demo/)" >&2
     fi
