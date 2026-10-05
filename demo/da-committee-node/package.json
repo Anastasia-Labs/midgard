@@ -69,6 +69,7 @@
     "build": "node ../../scripts/contrib.mjs build --package da-committee-node",
     "guard:no-http-da-transport": "node scripts/check-no-http-da-transport.mjs",
     "typecheck": "tsc --noEmit",
+    "pretest": "pnpm run build",
     "test": "vitest run",
     "start": "node dist/index.js",
     "clean": "rimraf dist node_modules",
