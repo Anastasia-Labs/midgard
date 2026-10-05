@@ -121,7 +121,10 @@ afterEach(async () => {
   await cleanupFundingRecoveryFixtures();
 });
 
-const setup = async (headerEndTime = BigInt(Date.now())) => {
+const setup = async (
+  headerEndTime = BigInt(Date.now()),
+  terminalBeyondRecoveryHorizon = true,
+) => {
   const fixture = await setupFundingRecoveryFixture(
     false,
     false,
@@ -163,6 +166,11 @@ const setup = async (headerEndTime = BigInt(Date.now())) => {
     verifiedFinality,
     verifiedEconomics,
     proverCredential: key.to_public().hash().to_hex(),
+    // A workflow completes only beyond the recovery horizon (k + 2); a
+    // provisional terminal_included keeps the fixture's shallower depth.
+    confirmationDepth: terminalBeyondRecoveryHorizon
+      ? verifiedFinality.policy.automaticRecoveryMaxDepth + 2
+      : undefined,
   });
   const terminal = await deriveFraudProofRawL1CompletedTerminal({
     snapshot: raw.snapshot,
@@ -680,7 +688,7 @@ describe("proof objective progress with durable funding and journals", () => {
   });
 
   it("resumes a provisionally completed objective under fresh rollback authority", async () => {
-    const test = await setup();
+    const test = await setup(undefined, false);
     await test.fixture.run(await test.fixture.recover());
     await test.writeTerminal(true);
     const rollback = rollBackTerminalFixture(test.raw);
