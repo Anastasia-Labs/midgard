@@ -306,8 +306,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.ts",
-    "max": 552,
-    "reason": "createAuthenticatedFieldCarriagePrerequisitePort is the dominant indivisible declaration (506 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 544,
+    "reason": "createAuthenticatedFieldCarriagePrerequisitePort is the dominant indivisible declaration. Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/workflow/funding-reservation-permit.assert-runtime-transaction-bound.ts",
@@ -361,8 +361,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/execution-source-script-decoding-lifecycle.test.ts",
-    "max": 797,
-    "reason": "Retained test registration \u201cexecutionSourceScriptDecoding registered-chain lifecycle\u201d (709 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 751,
+    "reason": "Retained test registration \u201cexecutionSourceScriptDecoding registered-chain lifecycle\u201d: callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/execution-source-script-decoding.test.ts",
@@ -1221,7 +1221,7 @@
   },
   {
     "file": "midgard-node/tests/forced-transactions.test.ts",
-    "max": 1170,
+    "max": 1169,
     "reason": "Retained test registration \u201cV1 forced transaction material\u201d (866 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. T161 (+236): adds the separate registration \u201cforced transaction program material at its position\u201d (an absent reference judged InputNotFound, a live reference's program committed for a Phase A rejection, node and committee agreement). Combined recovered source removes obsolete lines; cap reduced to the measured final source count."
   },
   {
@@ -1321,7 +1321,7 @@
   },
   {
     "file": "midgard-node/tests/merge-landed-finalization-emulator.test.ts",
-    "max": 718,
+    "max": 716,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
