@@ -78,6 +78,8 @@ describe("splitSqlStatements", () => {
       { version: 2, name: "automatic_settlement", transactional: true },
       { version: 3, name: "operator_membership", transactional: true },
       { version: 4, name: "retained_script_material", transactional: true },
+      { version: 5, name: "foreign_event_census", transactional: true },
+      { version: 6, name: "foreign_native_adoption", transactional: true },
     ]);
   });
 

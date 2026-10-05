@@ -4,10 +4,12 @@ import { describe, expect, it } from "vitest";
 import {
   admitFraudProofRawL1Snapshot,
   admitFraudProofRawL1Transaction,
+  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotRequest,
   LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE,
   type LocalKupmiosFraudProofRawSource,
 } from "../src/workflow/index.js";
+import { createFraudProofAuthenticatedPublicationObserver } from "../src/workflow/raw-l1-publication-observation.js";
 import {
   admit,
   chainPoint,
@@ -16,12 +18,78 @@ import {
   OTHER_UNIT,
   releaseFinality,
   SOURCE,
+  UNIT,
 } from "./workflow-raw-l1-snapshot.fixture.js";
 
 describe("raw L1 snapshot V1 admission", () => {
   it("admits canonical address-scoped bytes and complete unit history", () => {
     const value = fixture();
     expect(admit(value.snapshot, value.request)).toEqual(value.snapshot);
+  });
+
+  it("requires exact admitted certificate references before authenticating a spent publication", async () => {
+    const value = fixture();
+    const snapshot = mutable(value.snapshot);
+    const row = snapshot.transactions[0]!;
+    const originalBody = CML.TransactionBody.from_cbor_hex(row.bodyCbor);
+    const originalOutput = originalBody.outputs().get(0);
+    const datumCbor = "00";
+    const output = CML.TransactionOutput.new(
+      originalOutput.address(),
+      originalOutput.amount(),
+      CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex(datumCbor)),
+    );
+    const outputs = CML.TransactionOutputList.new();
+    outputs.add(output);
+    const body = CML.TransactionBody.new(
+      originalBody.inputs(),
+      outputs,
+      originalBody.fee(),
+    );
+    body.set_reference_inputs(originalBody.reference_inputs()!);
+    body.set_mint(originalBody.mint()!);
+    const txHash = CML.hash_transaction(body).to_hex();
+    row.txHash = txHash;
+    row.bodyCbor = body.to_canonical_cbor_hex();
+    snapshot.history[0]!.transactionHashes = [txHash];
+    const scope = snapshot.scopes[0]!;
+    scope.role = "field_certificate";
+    scope.utxos[0] = {
+      ...scope.utxos[0]!,
+      outRef: `${txHash}#0`,
+      outputCbor: output.to_canonical_cbor_hex(),
+      datumCbor,
+    };
+    const observer = createFraudProofAuthenticatedPublicationObserver({
+      authority: {
+        authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+        capture: async () => snapshot,
+      },
+      releaseFinality,
+    });
+    const request = {
+      headerHash: value.request.headerHash,
+      kind: "field_certificate" as const,
+      address: scope.address,
+      expectedOutRef: `${txHash}#0`,
+      expectedDatumCbor: datumCbor,
+      expectedUnit: UNIT,
+      expectedReferenceOutRef: `${"32".repeat(32)}#1`,
+    };
+    await expect(observer.observeExact(request)).resolves.toEqual({
+      kind: "confirmed",
+      outRef: request.expectedOutRef,
+    });
+    await expect(
+      observer.observeExact({
+        ...request,
+        expectedReferenceOutRef: `${"33".repeat(32)}#1`,
+      }),
+    ).resolves.toEqual({ kind: "not_found" });
+    row.resolvedReferenceInputs = [];
+    await expect(observer.observeExact(request)).rejects.toThrow(
+      /resolvedReferenceInputs do not exactly resolve/u,
+    );
   });
 
   it("preserves legal noncanonical transaction encoding under its exact signed body hash", () => {

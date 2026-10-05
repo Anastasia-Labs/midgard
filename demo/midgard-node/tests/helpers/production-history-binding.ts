@@ -6,6 +6,7 @@ import type { EventHistorySourceBinding } from "../../src/l1-event-history-sourc
 import type { HistoryTransportOptions } from "../../src/l1-event-history-transport.js";
 import { NodeConfig } from "../../src/services/config.js";
 import { makeProductionEventHistoryOwner } from "../../src/services/event-history-runtime.js";
+import { Globals } from "../../src/services/globals.js";
 import { Lucid } from "../../src/services/lucid.js";
 import { MempoolLedgerCache } from "../../src/services/mempool-ledger-cache.js";
 import {
@@ -47,7 +48,8 @@ export const productionRuntimeHistoryBinding = (input: {
       }) as unknown as Effect.Effect<
         unknown,
         unknown,
-        // The echoed owner needs none of the real owner's SQL, scope or globals.
+        // The composition reads Globals before forwarding the echoed owner input.
+        | Globals
         | NodeConfig
         | MidgardContracts
         | ContractDeploymentIdentity
@@ -69,6 +71,7 @@ export const productionRuntimeHistoryBinding = (input: {
       }),
       Effect.provide(
         Layer.mergeAll(
+          Globals.Default,
           Layer.succeed(NodeConfig, {
             NETWORK: input.network,
           } as unknown as Context.Tag.Service<typeof NodeConfig>),
