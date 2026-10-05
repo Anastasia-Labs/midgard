@@ -42,6 +42,7 @@ import {
 } from "./midgard-contracts.js";
 import { initializeArchitectureGOwner } from "./native-mpf-startup.js";
 import {
+  CORRECTION_REWIND_HELD_ON_NATIVE_STATE,
   prepareStateQueueCorrectionRewind,
   stateQueueCorrectionRewindDisposition,
 } from "./state-queue-correction-rewind.js";
@@ -213,7 +214,7 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
             // the removed blocks' journals, and a prepared plan of either kind
             // must be applied before another can be prepared.
             (rewindAuthority === undefined
-              ? Effect.void
+              ? Effect.succeed(undefined)
               : prepareStateQueueCorrectionRewind({
                   bindingDigest: binding.digest,
                   checkpoint,
@@ -222,7 +223,7 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
                   authority: rewindAuthority,
                 })
             ).pipe(
-              Effect.zipRight(
+              Effect.zipLeft(
                 prepareSignedHeaderRecovery({
                   binding,
                   checkpoint,
@@ -240,7 +241,7 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
               // holds its base's state-queue slot: confirmed, replaced (members
               // reopened, Architecture G native root restored) or, when an
               // earlier replaced block of this node won, revived.
-              Effect.zipRight(
+              Effect.zipLeft(
                 rewindAuthority === undefined
                   ? Effect.void
                   : prepareExpiredIntentRelease({
@@ -257,7 +258,7 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
               // With no journal active, a replaced block of this node that
               // holds its base's slot after all (it landed late, or a rollback
               // brought it back) is revived.
-              Effect.zipRight(
+              Effect.zipLeft(
                 rewindAuthority === undefined
                   ? Effect.void
                   : prepareReplacedBlockRevival({
@@ -271,7 +272,16 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
                       deferral: signedIntentDeferral,
                     }),
               ),
-              Effect.zipRight(prepareForeignAdoption(checkpoint, preparation)),
+              // A correction rewind held on the native owner's state still
+              // owns the removed local suffix and that root: foreign adoption
+              // waits for the next pass, as it did when such a refusal failed
+              // the whole preparation, instead of replaying from a root it
+              // cannot place and failing the owner.
+              Effect.flatMap((rewind) =>
+                rewind === CORRECTION_REWIND_HELD_ON_NATIVE_STATE
+                  ? Effect.void
+                  : prepareForeignAdoption(checkpoint, preparation),
+              ),
             ),
       binding,
       histories,

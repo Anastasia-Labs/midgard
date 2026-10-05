@@ -24,4 +24,7 @@ export {
   stateQueueCorrectionRewindDisposition,
 } from "./state-queue-correction-rewind.admitted-removals.js";
 export { inspectStateQueueCorrectionRewindObligation } from "./state-queue-correction-rewind.load-retained-chain.js";
-export { prepareStateQueueCorrectionRewind } from "./state-queue-correction-rewind.prepare-state-queue-correction-rewind.js";
+export {
+  CORRECTION_REWIND_HELD_ON_NATIVE_STATE,
+  prepareStateQueueCorrectionRewind,
+} from "./state-queue-correction-rewind.prepare-state-queue-correction-rewind.js";

@@ -39,9 +39,23 @@ import { loadObligation } from "./state-queue-correction-rewind.prove-unlanded.j
  * preparation. The disposition stays pending (a prepared plan or an
  * unresolved removed header), so the owner backs off and re-evaluates. */
 class Held {
-  constructor(readonly reason: string) {}
+  constructor(
+    readonly reason: string,
+    readonly nativeState = false,
+  ) {}
 }
 const held = (reason: string) => Effect.fail(new Held(reason));
+/** Held on the native owner itself: it cannot open yet, or its durable root
+ * is not one this rewind can prove it restores from. */
+const heldOnNativeState = (reason: string) =>
+  Effect.fail(new Held(reason, true));
+
+/** What a preparation that held on the native owner's state returns. The
+ * removed local suffix stays this rewind's to resolve, so no later recovery
+ * step may act on that native root in the same pass (foreign adoption would
+ * otherwise try to replay from a root it cannot place). */
+export const CORRECTION_REWIND_HELD_ON_NATIVE_STATE =
+  "correction_rewind_held_on_native_state" as const;
 
 const recoverableOpenCodes = new Set([
   "LEVEL_LOCKED",
@@ -73,7 +87,8 @@ export const nativeOwnerOpenWait = (cause: unknown): string | undefined => {
  * obligation and executes it. Returns without effect when nothing is owed,
  * when another domain's plan is retained (its owner resumes it first), or
  * when the obligation or its native owner is blocked (the disposition keeps
- * the gate closed, and the owner re-evaluates it after a backoff).
+ * the gate closed, and the owner re-evaluates it after a backoff). A hold on
+ * the native owner's state returns CORRECTION_REWIND_HELD_ON_NATIVE_STATE.
  */
 export const prepareStateQueueCorrectionRewind = (input: {
   readonly bindingDigest: string;
@@ -168,7 +183,7 @@ export const prepareStateQueueCorrectionRewind = (input: {
               const wait = nativeOwnerOpenWait(cause);
               return wait === undefined
                 ? failure("Retained native rewind owner could not open", cause)
-                : new Held(wait);
+                : new Held(wait, true);
             },
           });
           yield* Ref.set(globals.NATIVE_MPF_OWNER, opened);
@@ -187,7 +202,7 @@ export const prepareStateQueueCorrectionRewind = (input: {
     if (derived.retained !== undefined) {
       expectedRoot = derived.retained.expectedRoot;
       if (durableRoot !== expectedRoot && durableRoot !== targetRoot)
-        return yield* held(
+        return yield* heldOnNativeState(
           `Native MPF durable root ${durableRoot} is neither the retained rewind base ${expectedRoot} nor its target ${targetRoot}`,
         );
     } else {
@@ -197,7 +212,7 @@ export const prepareStateQueueCorrectionRewind = (input: {
       // refusal is held, not terminal: nothing is written and the root is
       // read again on every re-evaluation.
       if (!acceptedRoots.includes(durableRoot))
-        return yield* held(
+        return yield* heldOnNativeState(
           `Native MPF durable root ${durableRoot} is outside the removed chain ${members.map(({ headerHash }) => headerHash).join(",")}; refusing to rewind`,
         );
       expectedRoot = durableRoot;
@@ -329,6 +344,11 @@ export const prepareStateQueueCorrectionRewind = (input: {
   }).pipe(
     Effect.catchIf(
       (error): error is Held => error instanceof Held,
-      ({ reason }) => logBlocked(input.bindingDigest, reason),
+      ({ reason, nativeState }) =>
+        logBlocked(input.bindingDigest, reason).pipe(
+          Effect.as(
+            nativeState ? CORRECTION_REWIND_HELD_ON_NATIVE_STATE : undefined,
+          ),
+        ),
     ),
   );
