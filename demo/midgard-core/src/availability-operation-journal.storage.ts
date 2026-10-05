@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
 import type {
+  AvailabilityOperationActorSnapshot,
   AvailabilityOperationIntent,
   AvailabilityOperationRecord,
   AvailabilityOperationRetirement,
@@ -22,6 +24,140 @@ export const journalTransaction = <T>(db: DatabaseSync, run: () => T): T => {
 
 /** Shared SQL operations; callers hold the journal's actor lease and transaction. */
 export const availabilityJournalStorage = (db: DatabaseSync) => {
+  const actorSnapshot = (
+    actor: string,
+    deploymentIdentity: string,
+  ): AvailabilityOperationActorSnapshot => {
+    if (!actor || !deploymentIdentity)
+      throw new Error("Actor metadata identity is unavailable");
+    const row = db
+      .prepare(
+        `
+      SELECT
+        (SELECT owner FROM availability_operation_leases WHERE scope = ?) AS owner,
+        (SELECT generation FROM availability_operation_leases WHERE scope = ?) AS generation,
+        (SELECT expires_at FROM availability_operation_leases WHERE scope = ?) AS expires_at,
+        (SELECT COUNT(*) FROM availability_operation_intents) AS retained_count,
+        (SELECT COUNT(*) FROM availability_operation_intents WHERE actor = ? AND state IN ('pending','conflict')) AS pending_count,
+        (SELECT COUNT(*) FROM availability_operation_resources WHERE actor = ?) AS resource_count,
+        (SELECT COUNT(*) FROM availability_operation_resources AS r LEFT JOIN availability_operation_intents AS i ON i.id = r.intent_id WHERE r.actor = ? AND (i.id IS NULL OR i.deployment <> ? OR i.state NOT IN ('included','confirmed'))) AS incompatible_count,
+        (SELECT COUNT(*) FROM availability_operation_workflows WHERE actor = ? AND deployment <> ? AND retired_by IS NULL) AS foreign_count,
+        (SELECT COUNT(*) FROM availability_operation_workflows AS w LEFT JOIN availability_operation_intents AS i ON i.id = w.retired_by WHERE w.actor = ? AND w.deployment <> ? AND (w.retired_by IS NULL OR w.release IS NOT NULL OR json_extract(i.record, '$.intent.completesWorkflow') = 1)) AS protected_foreign_count,
+        (SELECT COUNT(*) FROM availability_operation_workflows AS w JOIN availability_operation_intents AS i ON i.id = w.retired_by WHERE w.actor = ? AND w.release IS NOT NULL) AS release_count,
+        (SELECT json_group_array(json_array(id, json_extract(record, '$.intent.headerHash'), json_extract(record, '$.intent.action'), tx_hash, state, json_extract(record, '$.intent.validUntilSlot'))) FROM (SELECT * FROM availability_operation_intents WHERE actor = ? AND deployment = ? ORDER BY id)) AS retained_attempts,
+        (SELECT json_group_array(json_array(scope, owner, generation, expires_at)) FROM (SELECT * FROM availability_operation_leases ORDER BY scope)) AS lease_state,
+        (SELECT json_group_array(json_array(id, deployment, actor, state, tx_hash, json_extract(record, '$.inclusionPoint'), json_extract(record, '$.retentionBlockNo'), json_extract(record, '$.intent.headerHash'), json_extract(record, '$.intent.action'), json_extract(record, '$.intent.validUntilSlot'))) FROM (SELECT * FROM availability_operation_intents ORDER BY id)) AS intent_state,
+        (SELECT json_group_array(json_array(resource, intent_id, kind, actor)) FROM (SELECT * FROM availability_operation_resources ORDER BY resource, intent_id)) AS resource_state,
+        (SELECT json_group_array(json_array(actor, deployment, header_hash, retired_by, release)) FROM (SELECT * FROM availability_operation_workflows ORDER BY actor, deployment, header_hash)) AS workflow_state
+    `,
+      )
+      .get(
+        actor,
+        actor,
+        actor,
+        actor,
+        actor,
+        actor,
+        deploymentIdentity,
+        actor,
+        deploymentIdentity,
+        actor,
+        deploymentIdentity,
+        actor,
+        actor,
+        deploymentIdentity,
+      );
+    if (!row) throw new Error("Actor metadata snapshot is unavailable");
+    const scalar = (value: unknown): number => {
+      const count = Number(value);
+      if (!Number.isSafeInteger(count) || count < 0)
+        throw new Error("Actor metadata count is out of range");
+      return count;
+    };
+    let lease: AvailabilityOperationActorSnapshot["lease"];
+    if (row.owner !== null) {
+      if (
+        typeof row.owner !== "string" ||
+        !row.owner ||
+        row.generation === null ||
+        row.expires_at === null
+      )
+        throw new Error("Actor lease metadata is malformed");
+      const generation = scalar(row.generation);
+      if (generation <= 0)
+        throw new Error("Actor lease generation is malformed");
+      lease = {
+        owner: row.owner,
+        generation,
+        expiresAtMs: scalar(row.expires_at),
+      };
+    } else if (row.generation !== null || row.expires_at !== null)
+      throw new Error("Actor lease metadata is incoherent");
+    const stateDigest = createHash("sha256")
+      .update(
+        JSON.stringify([
+          actor,
+          deploymentIdentity,
+          row.lease_state,
+          row.intent_state,
+          row.resource_state,
+          row.workflow_state,
+        ]),
+      )
+      .digest("hex");
+    const attempts: unknown = JSON.parse(String(row.retained_attempts));
+    if (!Array.isArray(attempts))
+      throw new Error("Retained attempt metadata is malformed");
+    const retainedAttempts = attempts.map(
+      (
+        attempt,
+      ): AvailabilityOperationActorSnapshot["retainedAttempts"][number] => {
+        if (!Array.isArray(attempt) || attempt.length !== 6)
+          throw new Error("Retained attempt metadata is malformed");
+        const values: unknown[] = attempt;
+        const [id, headerHash, action, txHash, state, validUntilSlot] = values;
+        if (
+          typeof id !== "string" ||
+          !id ||
+          typeof headerHash !== "string" ||
+          !headerHash ||
+          typeof action !== "string" ||
+          !action ||
+          typeof txHash !== "string" ||
+          !txHash ||
+          (state !== "pending" &&
+            state !== "included" &&
+            state !== "confirmed" &&
+            state !== "expired" &&
+            state !== "conflict") ||
+          typeof validUntilSlot !== "number"
+        )
+          throw new Error("Retained attempt metadata is malformed");
+        return {
+          id,
+          headerHash,
+          action,
+          txHash,
+          state,
+          validUntilSlot: scalar(validUntilSlot),
+        };
+      },
+    );
+    return {
+      actor,
+      deploymentIdentity,
+      stateDigest,
+      ...(lease === undefined ? {} : { lease }),
+      retainedRecordCount: scalar(row.retained_count),
+      retainedAttempts,
+      pendingIntentCount: scalar(row.pending_count),
+      reservedResourceCount: scalar(row.resource_count),
+      foreignWorkflowCount: scalar(row.foreign_count),
+      protectedForeignWorkflowCount: scalar(row.protected_foreign_count),
+      incompatibleResourceCount: scalar(row.incompatible_count),
+      unsettledReleaseCount: scalar(row.release_count),
+    };
+  };
   const transaction = <T>(run: () => T): T => journalTransaction(db, run);
   const records = (sql: string, ...args: string[]) =>
     db
@@ -146,7 +282,19 @@ export const availabilityJournalStorage = (db: DatabaseSync) => {
     )
       throw new Error("Invalid availability operation retirement evidence");
   };
+  const retainedRecordCount = (): number => {
+    const count = db
+      .prepare("SELECT COUNT(*) AS count FROM availability_operation_intents")
+      .get()?.count;
+    if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0)
+      throw new Error(
+        "Availability journal retained record count is unavailable",
+      );
+    return count;
+  };
   return {
+    retainedRecordCount,
+    actorSnapshot,
     transaction,
     records,
     get,

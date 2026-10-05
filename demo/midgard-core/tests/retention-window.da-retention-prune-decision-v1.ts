@@ -31,6 +31,7 @@ describe("daRetentionPruneDecisionV1", () => {
       blockEndTimeMs,
       headerStatus,
       queueReference,
+      terminalRecoveryFinal: true,
     });
 
   it("retains the L1 confirmed head's payload however old or removed", () => {
@@ -52,6 +53,26 @@ describe("daRetentionPruneDecisionV1", () => {
       });
     }
   });
+
+  it.each(["merged", "removed"] as const)(
+    "retains a provisional %s even past the wall-clock horizon",
+    (headerStatus) => {
+      for (const terminalRecoveryFinal of [undefined, false]) {
+        expect(
+          daRetentionPruneDecision({
+            nowMs: BLOCK_END + HORIZON + 1,
+            blockEndTimeMs: BLOCK_END,
+            headerStatus,
+            queueReference: "none",
+            terminalRecoveryFinal,
+          }),
+        ).toMatchObject({
+          decision: "retain",
+          reasonCode: "terminal_recovery_pending",
+        });
+      }
+    },
+  );
 
   it("prunes a removed header immediately, inside the horizon", () => {
     expect(decide(BLOCK_END, "removed")).toMatchObject({
@@ -155,6 +176,7 @@ describe("daRetentionPruneDecisionV1", () => {
           blockEndTimeMs,
           headerStatus,
           queueReference,
+          terminalRecoveryFinal: true,
         });
         if (decision.decision === "retain") {
           retained += 1;

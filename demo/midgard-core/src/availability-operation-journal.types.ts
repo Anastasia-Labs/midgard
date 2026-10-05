@@ -83,7 +83,42 @@ export type AvailabilityOperationRetirement = Readonly<{
   recoveryDepth: number;
 }>;
 
+/** One SQL read binds actor lease identity and all opaque interference counts.
+ * Expired-but-unreleased lease rows remain busy until audited ownership release. */
+export type AvailabilityOperationActorSnapshot = Readonly<{
+  actor: string;
+  deploymentIdentity: string;
+  /** Exact lease, intent state, resource and workflow identities in this SQL snapshot. */
+  stateDigest: string;
+  lease?: Readonly<{ owner: string; generation: number; expiresAtMs: number }>;
+  retainedRecordCount: number;
+  /** Durable exact attempt identities in this actor/deployment, including expiry.
+   * Consumers count aggregate failures from states; TTL passage is not a state. */
+  retainedAttempts: readonly Readonly<{
+    id: string;
+    headerHash: string;
+    action: string;
+    txHash: string;
+    state: AvailabilityOperationRecord["state"];
+    validUntilSlot: number;
+  }>[];
+  pendingIntentCount: number;
+  reservedResourceCount: number;
+  /** Claims outside included/confirmed intents in this exact deployment. */
+  incompatibleResourceCount: number;
+  foreignWorkflowCount: number;
+  /** Foreign capital guards including provisional terminal workflow shadows. */
+  protectedForeignWorkflowCount: number;
+  unsettledReleaseCount: number;
+}>;
+
 export interface AvailabilityOperationJournal {
+  actorSnapshot(
+    actor: string,
+    deploymentIdentity: string,
+  ): AvailabilityOperationActorSnapshot;
+  /** All retained intent rows across actors, deployments and states; read-only. */
+  retainedRecordCount(): number;
   acquire(
     scope: string,
     owner: string,

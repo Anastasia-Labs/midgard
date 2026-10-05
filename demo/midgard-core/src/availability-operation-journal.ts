@@ -22,6 +22,8 @@ export const openAvailabilityOperationJournal = (
 ): AvailabilityOperationJournal => {
   const db = openAvailabilityJournalDatabase(path, options);
   const {
+    retainedRecordCount,
+    actorSnapshot,
     transaction,
     records,
     get,
@@ -80,8 +82,7 @@ export const openAvailabilityOperationJournal = (
         `Availability wallet capital belongs to an unresolved challenge workflow in another deployment (deployment ${String(blocking.deployment)}, header ${String(blocking.header_hash)})`,
       );
     }
-    // Within one deployment every header's step is admitted. A header whose
-    // Open landed needs no new challenger coin.
+    // One deployment admits every header; a landed Open needs no new challenger coin.
     if (
       action === "prepare" &&
       live.some(
@@ -146,6 +147,8 @@ export const openAvailabilityOperationJournal = (
     return record;
   };
   return {
+    retainedRecordCount,
+    actorSnapshot,
     acquire(scope, owner, nowMs, durationMs) {
       if (
         !scope ||
