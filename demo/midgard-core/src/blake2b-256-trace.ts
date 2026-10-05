@@ -117,11 +117,15 @@ const encodeWordsLe = (words: readonly bigint[]): Buffer => {
   return encoded;
 };
 
-const initialChainingValue = (): Buffer => {
+// The parameter-mixed IV is fixed, so it is encoded once. Well-formedness
+// checks compare against it on every cursor-0 step; fresh controls get a copy.
+const INITIAL_CHAINING_VALUE: Buffer = (() => {
   const words = [...IV];
   words[0] = words[0]! ^ PARAMETER_BLOCK;
   return encodeWordsLe(words);
-};
+})();
+
+const initialChainingValue = (): Buffer => Buffer.from(INITIAL_CHAINING_VALUE);
 
 const initializeWorkingValue = ({
   chainingValue,
@@ -270,7 +274,7 @@ export const isWellFormedMidgardBlake2b256TraceControl = (
   }
   if (
     control.cursor === 0 &&
-    !control.chainingValue.equals(initialChainingValue())
+    !control.chainingValue.equals(INITIAL_CHAINING_VALUE)
   ) {
     return false;
   }
