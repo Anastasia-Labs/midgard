@@ -15,7 +15,6 @@ import {
   validateMidgardConsensusForcedTxCbor,
   validateMidgardConsensusTxCbor,
 } from "@al-ft/midgard-core/consensus-validation";
-import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   hashMidgardValidationRejectionCode,
   MidgardValidationPhase,
@@ -42,9 +41,10 @@ import {
 import {
   canonicalTransaction,
   forcedEntry,
+  makeInlineDatumOutput,
+  makeOutput,
   makeSignedEffectfulTransaction,
   outputReferenceFromHash,
-  TEST_ADDRESS,
 } from "./forced-transactions.make-signed-effectful-transaction.js";
 
 const sidecar = encodeMidgardCekProgramMaterialSidecar([]);
@@ -58,18 +58,14 @@ const validation = {
 };
 const forced = (tx: ReturnType<typeof canonicalTransaction>) =>
   encodeMidgardForcedTxCanonical(materializeMidgardForcedTxFromCanonical(tx));
-const oversizedOutput = encodeMidgardTxOutput({
-  address: TEST_ADDRESS,
-  value: { lovelace: 100_000_000n, assets: new Map() },
-  datum: {
-    kind: "inline",
-    cbor: Buffer.from(
-      aikenSerialisedPlutusDataCbor(Data.to("ab".repeat(17_000))),
-      "hex",
-    ),
-  },
-});
+const oversizedOutput = makeInlineDatumOutput(
+  100_000_000n,
+  "ab".repeat(17_000),
+);
 const input = outputReferenceFromHash(Buffer.alloc(32, 0x31));
+// Individually legal outputs require Certified aggregate carriage, funded by input.
+const legalLargeOutput = makeInlineDatumOutput(50_000_000n, "ab".repeat(8_500));
+const fundedInputOutput = makeOutput(100_000_000n);
 
 /** This composition test needs the ingest encoder, node classification, real
  * trace builder and committee decoder. Codec unit tests cannot catch a consumer
@@ -81,6 +77,7 @@ describe("forced admission screens", () => {
     ["large", true],
     ["large", false],
     ["malformed native", true],
+    ["oversized output", true],
   ] as const)(
     "replays the genuine %s machine verdict with input present=%s",
     async (shape, present) => {
@@ -89,15 +86,16 @@ describe("forced admission screens", () => {
       );
       const output =
         shape === "large"
-          ? oversizedOutput
-          : encodeMidgardTxOutput({
-              address: TEST_ADDRESS,
-              value: { lovelace: 100_000_000n, assets: new Map() },
-            });
+          ? legalLargeOutput
+          : shape === "oversized output"
+            ? oversizedOutput
+            : fundedInputOutput;
       const accepts = shape === "large" && present;
-      const signed = makeSignedEffectfulTransaction(input, output);
+      const signed = makeSignedEffectfulTransaction(input, output, {
+        additionalOutputs: shape === "large" ? [output] : [],
+      });
       const transaction =
-        shape === "large"
+        shape !== "malformed native"
           ? signed
           : {
               ...signed,
@@ -121,12 +119,20 @@ describe("forced admission screens", () => {
       expect(orderMaterial.transactionId).toBe(
         transaction.transactionId.toString("hex"),
       );
-      if (shape === "large")
+      if (shape === "large") {
+        expect(output.length).toBeLessThanOrEqual(
+          MIDGARD_CONSENSUS_LIMITS.maxLedgerOutputPreimageBytes,
+        );
+        expect(
+          signed.transaction.body.outputsPreimageCbor.length,
+        ).toBeGreaterThan(
+          MIDGARD_CONSENSUS_LIMITS.maxLedgerOutputPreimageBytes,
+        );
         expect(
           orderMaterial.carriage.find((field) => field.fieldIndex === 2)?.plan
             .tier,
         ).toBe("Certified");
-      else
+      } else if (shape === "malformed native")
         expect(() =>
           validateMidgardConsensusTxCbor(
             encodeCbor([
@@ -136,8 +142,8 @@ describe("forced admission screens", () => {
           ),
         ).toThrow();
       const spentOutput =
-        shape === "large"
-          ? output
+        shape !== "malformed native"
+          ? fundedInputOutput
           : encodeMidgardTxOutput({
               address: Buffer.concat([
                 Buffer.from([0x70]),
@@ -174,7 +180,9 @@ describe("forced admission screens", () => {
       const expectedReason: SDK.RejectionReason =
         shape === "large"
           ? { InputNotFound: { source_kind: 0n, input_index: 0n } }
-          : { WitnessNativeScriptMalformed: { script_index: 0n } };
+          : shape === "malformed native"
+            ? { WitnessNativeScriptMalformed: { script_index: 0n } }
+            : { FieldItemWidthIllegal: { field_index: 2n, item_index: 0n } };
       const expectedCode = accepts
         ? null
         : shape === "large"
@@ -230,6 +238,16 @@ describe("forced admission screens", () => {
       const descriptor = SDK.validationTraceDescriptorDataFromCore(
         trace.tree.descriptor,
       );
+      if (shape === "malformed native") {
+        expect(
+          trace.witnesses.some(({ phase }) => phase === "phaseANativeScripts"),
+        ).toBe(true);
+        expect(
+          trace.witnesses.some(
+            ({ auxiliary }) => auxiliary?.kind === "nativeExecutionDescriptor",
+          ),
+        ).toBe(false);
+      }
       const witnesses = (["initial", "terminal"] as const).map((endpoint) => {
         const stateIndex = endpoint === "initial" ? 0 : trace.states.length - 1;
         const source = trace.witnesses[stateIndex]!;

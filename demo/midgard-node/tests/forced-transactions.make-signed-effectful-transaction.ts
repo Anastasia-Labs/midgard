@@ -20,6 +20,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -86,14 +87,32 @@ export const makeOutput = (
     value: { lovelace, assets },
   });
 
+export const makeInlineDatumOutput = (
+  lovelace: bigint,
+  datumHex: string,
+): Buffer =>
+  encodeMidgardTxOutput({
+    address: TEST_ADDRESS,
+    value: { lovelace, assets: new Map() },
+    datum: {
+      kind: "inline",
+      cbor: Buffer.from(
+        aikenSerialisedPlutusDataCbor(Data.to(datumHex)),
+        "hex",
+      ),
+    },
+  });
+
 export const makeSignedEffectfulTransaction = (
   spendInput: Buffer,
   output: Buffer,
   {
     referenceInputs = [],
+    additionalOutputs = [],
     networkId = MIDGARD_NATIVE_NETWORK_ID_NONE,
   }: {
     readonly referenceInputs?: readonly Buffer[];
+    readonly additionalOutputs?: readonly Buffer[];
     readonly networkId?: bigint;
   } = {},
 ): {
@@ -107,7 +126,7 @@ export const makeSignedEffectfulTransaction = (
       referenceInputs.length === 0
         ? EMPTY_CBOR_LIST
         : encodeByteList(referenceInputs),
-    outputsPreimageCbor: encodeByteList([output]),
+    outputsPreimageCbor: encodeByteList([output, ...additionalOutputs]),
     fee: 0n,
     validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,

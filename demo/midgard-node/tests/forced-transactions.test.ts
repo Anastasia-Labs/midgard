@@ -20,7 +20,7 @@ import "./forced-transactions.make-signed-effectful-transaction.js";
 
 import { createHash } from "node:crypto";
 
-import { computeHash28 } from "@al-ft/midgard-core";
+import { computeHash28, encodeMidgardNativeScript } from "@al-ft/midgard-core";
 import {
   decodeMidgardCekProgramMaterialSidecar,
   encodeMidgardCekProgramEnvelope,
@@ -33,7 +33,9 @@ import {
 } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxId,
+  encodeMidgardForcedTxCanonical,
   encodeMidgardTxOutput,
+  materializeMidgardForcedTxFromCanonical,
   materializeMidgardNativeTxFromCanonical,
 } from "@al-ft/midgard-core/codec";
 import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec/cbor";
@@ -53,7 +55,6 @@ import { describe, expect, it } from "vitest";
 import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
 import { retainedEndpointsMatchDescriptor } from "../../da-committee-node/tests/helpers.validation-trace.js";
 import {
-  encodeRecomputedNativeTx,
   FUNDED_OUTPUT_LOVELACE,
   makeMintPreimageCbor,
   makeNativeTx,
@@ -548,10 +549,12 @@ describe("V1 forced transaction material", () => {
   it("retains the complete ScriptSources frontier and canonical native execution witness", async () => {
     const spent = outRefFromByte(0x7a);
     const spentOutput = makeValidationOutput(FUNDED_OUTPUT_LOVELACE);
-    const malformedPayload = Buffer.from("820700", "hex");
-    const malformedItem = Buffer.from("820043820700", "hex");
+    const nativePayload = encodeMidgardNativeScript({
+      type: "all",
+      scripts: [],
+    });
     const policyId = computeHash28(
-      Buffer.concat([Buffer.from([0]), malformedPayload]),
+      Buffer.concat([Buffer.from([0]), nativePayload]),
     );
     const assetName = Buffer.from("31", "hex");
     const output = makeValidationOutput(
@@ -561,7 +564,7 @@ describe("V1 forced transaction material", () => {
         [policyId.toString("hex"), new Map([[assetName.toString("hex"), 1n]])],
       ]),
     );
-    const baseline = makeNativeTx({
+    const transaction = makeNativeTx({
       spendInputs: [spent],
       outputs: [output],
       scriptWitnesses: [nativeScriptWitness({ type: "all", scripts: [] })],
@@ -569,22 +572,16 @@ describe("V1 forced transaction material", () => {
         new Map([[policyId, new Map([[assetName, 1n]])]]),
       ),
     });
-    const malformed = encodeRecomputedNativeTx({
-      ...baseline.tx,
-      witnessSet: {
-        ...baseline.tx.witnessSet,
-        scriptTxWitsPreimageCbor: encodeCbor([malformedItem]),
-      },
-    });
+    const ledgerOps = [
+      { type: "delete" as const, key: spent },
+      buildValidationMachineLedgerInsertOp({
+        key: outRefFromTxId(transaction.txId),
+        outputCbor: output,
+      }),
+    ];
     const mutations = await buildValidationMachineLedgerMutationSteps({
       initialEntries: [{ outRef: spent, output: spentOutput }],
-      operations: [
-        { type: "delete", key: spent },
-        buildValidationMachineLedgerInsertOp({
-          key: outRefFromTxId(malformed.txId),
-          outputCbor: output,
-        }),
-      ],
+      operations: ledgerOps,
     });
     const eventKey: SDK.EventKey = {
       ForcedTransactionEventKey: {
@@ -605,26 +602,28 @@ describe("V1 forced transaction material", () => {
         transactions: [
           {
             eventKey,
-            transactionId: malformed.txId,
-            canonicalTransactionCbor: encodeCbor(
-              (decodeSingleCbor(malformed.txCbor) as unknown[]).slice(0, 3),
+            transactionId: transaction.txId,
+            canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
+              materializeMidgardForcedTxFromCanonical(transaction.tx),
             ),
             programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
               [],
             ),
             sourceKind: "forced",
             priorUtxosRoot: mutations[0]!.preRoot.toString("hex"),
-            postUtxosRoot: mutations[0]!.preRoot.toString("hex"),
-            ledgerOps: [],
+            postUtxosRoot: mutations.at(-1)!.postRoot.toString("hex"),
+            ledgerOps,
             ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
-            ledgerMutationSteps: [],
-            verdict: "rejected",
-            rejectionCode: "E_INVALID_FIELD_TYPE",
+            ledgerMutationSteps: mutations,
+            verdict: "accepted",
+            rejectionCode: null,
           },
         ],
       }),
     );
     expect(member).toBeDefined();
+    expect(member!.value.verdict).toBe("Accepted");
+    expect(member!.value.rejection_code_hash).toBe("00".repeat(32));
     const retainedEntries = member!.witnesses.map(([keyHex, valueHex]) => ({
       key: SDK.decodeRetainedValidationWitnessKey(Buffer.from(keyHex, "hex")),
       value: SDK.decodeRetainedValidationWitness(Buffer.from(valueHex, "hex")),
