@@ -27,7 +27,7 @@ afterEach(async () => {
 });
 
 it.each([false, true])(
-  "reconstructs legacy abandonment leases (completed: %s) and releases only after fresh deep canonical proof",
+  "reconstructs legacy abandonment leases (completed: %s) and holds them only until final completion or fresh deep canonical proof",
   async (completed) => {
     const opened = await openStore();
     const owner = plan("aa", "66");
@@ -94,6 +94,17 @@ it.each([false, true])(
       const before = (await reopened.store.readAll())[0] as {
         revision: string;
       };
+      if (completed) {
+        // Final completion ends the legacy attempt's leases; retirement past
+        // k is bookkeeping only and never holds funding.
+        expect(await reopened.store.readReservedOutRefs({})).not.toContain(
+          `${"11".repeat(32)}#0`,
+        );
+        await expect(reopened.store.reserve(plan("bb", "77"))).resolves.toBe(
+          "reserved",
+        );
+        return;
+      }
       expect(await reopened.store.readReservedOutRefs({})).toContain(
         `${"11".repeat(32)}#0`,
       );

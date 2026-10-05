@@ -97,6 +97,9 @@ export const beginWorkflowFundingReservationAction = async ({
     (staleInputs ||
       state.snapshot.activeInputs.length === 0 ||
       state.requiresParameterRefresh ||
+      // Confirmation releases a transaction's collateral lease, so the next
+      // action selects collateral again (the collateral floor is positive).
+      !state.snapshot.activeInputs.some(({ role }) => role === "collateral") ||
       state.snapshot.activeInputs.filter(({ role }) => role === "collateral")
         .length > state.maximumCollateralInputs) &&
     state.port.refreshIdle !== undefined

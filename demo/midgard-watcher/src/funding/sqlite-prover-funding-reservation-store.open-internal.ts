@@ -29,6 +29,7 @@ import {
   pendingProverFundingLineageParameters,
   proverFundingReobservationInputs,
   retainedProverFundingInputs,
+  signedCollateralOutRefs,
 } from "./prover-funding-reservation.retained-signed-inputs.js";
 import {
   type AbandonmentRow,
@@ -522,15 +523,6 @@ export const openInternal = async (
           .map(readAbandonmentRow)
           .filter(
             (saved) => saved.handoff.reconciliation.retirement !== undefined,
-          )
-          .map((saved) => saved.transition.transactionHash),
-      ),
-      unverifiedAbandonedTransactionHashes: new Set(
-        (selectAllAbandonments.all() as AbandonmentRow[])
-          .filter((row) => row.reservation_id === record.reservationId)
-          .map(readAbandonmentRow)
-          .filter(
-            (saved) => saved.handoff.reconciliation.retirement === undefined,
           )
           .map((saved) => saved.transition.transactionHash),
       ),
@@ -1125,7 +1117,16 @@ export const openInternal = async (
         ) {
           throw new Error("prover reservation confirmation mismatch");
         }
-        const consumed = new Set(current.pendingTransition.consumedOutRefs);
+        // A confirmed transaction's collateral lease ends here, so it never
+        // blocks a later action of any reservation. A rollback that finds it
+        // spent re-signs with fresh collateral; this reservation's next action
+        // selects collateral again.
+        const consumed = new Set([
+          ...current.pendingTransition.consumedOutRefs,
+          ...signedCollateralOutRefs(
+            current.pendingTransition.signedTransactionCborHex,
+          ),
+        ]);
         const active = [
           ...current.activeInputs.filter(({ outRef }) => !consumed.has(outRef)),
           ...current.pendingTransition.producedInputs.filter(

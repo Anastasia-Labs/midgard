@@ -32,7 +32,7 @@ it.each([
   { completed: false, missingSubmission: true },
   { completed: true, missingSubmission: true },
 ])(
-  "reconciles overlapping legacy ownership after restart ($completed, missing submission $missingSubmission) while preserving the later pending attempt",
+  "reconciles overlapping legacy ownership after restart (completed $completed, missing submission $missingSubmission) while preserving the later pending attempt",
   async ({ completed, missingSubmission }) => {
     const opened = await openStore();
     const old = plan("aa", "66");
@@ -116,6 +116,24 @@ it.each([
               await runtime.store.isReconciliationOnly!({ reservationId }),
           ),
         );
+      if (completed) {
+        // Final completion ends every lease the legacy attempt held, so it
+        // overlaps nothing; the later attempt proceeds and is unchanged.
+        expect(await held()).toEqual([false, false]);
+        await expect(
+          runtime.store.assertSubmissionAuthority!({
+            reservationId: later.reservationId,
+          }),
+        ).resolves.toBeUndefined();
+        expect(
+          (await runtime.store.readAll()).find(
+            (record) =>
+              (record as { reservationId: string }).reservationId ===
+              later.reservationId,
+          ),
+        ).toEqual(laterPending);
+        return;
+      }
       expect(await held()).toEqual([true, true]);
       await expect(
         runtime.store.assertSubmissionAuthority!({

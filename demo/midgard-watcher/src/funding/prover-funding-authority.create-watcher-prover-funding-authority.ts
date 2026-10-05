@@ -132,10 +132,22 @@ export const createWatcherProverFundingAuthority = async (input: {
         throw new Error(
           "prover funding store cannot reobserve signed attempts",
         );
-      const candidates = await input.store.readReobservationInputs({
-        reservationId: plan.reservationId,
-        transactionHash,
-      });
+      // Collateral never blocks a later action: collateral another reservation
+      // now holds is not reclaimed. The exact bytes still land while it is
+      // unspent; once it is spent the attempt is invalidated and re-signed.
+      const elsewhere = new Set(
+        await input.store.readReservedOutRefs({
+          excludingReservationId: plan.reservationId,
+        }),
+      );
+      const candidates = (
+        await input.store.readReobservationInputs({
+          reservationId: plan.reservationId,
+          transactionHash,
+        })
+      ).filter(
+        ({ outRef, role }) => role !== "collateral" || !elsewhere.has(outRef),
+      );
       const roles = new Map(
         candidates.map(({ outRef, role }) => [outRef, role]),
       );

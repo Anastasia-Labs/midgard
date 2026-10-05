@@ -211,12 +211,16 @@ describe("SQLite prover funding reservation store V1", () => {
         });
         expect(held.state).toBe("active");
         expect(held.activeInputs).toEqual(confirmed.activeInputs);
-        expect(await runtime.store.readReservedOutRefs({})).toEqual(
+        // Consumed and produced capital stays leased for a re-land; the
+        // confirmed transaction's collateral lease ended at confirmation.
+        const reserved = await runtime.store.readReservedOutRefs({});
+        expect(reserved).toEqual(
           expect.arrayContaining([
-            ...first.inputs.map((i) => i.outRef),
+            first.inputs[0]!.outRef,
             signed.producedInputs[0]!.outRef,
           ]),
         );
+        expect(reserved).not.toContain(`${"12".repeat(32)}#0`);
         const competitorBase = plan("bb", "77");
         const competitor = {
           ...competitorBase,

@@ -78,7 +78,6 @@ export const projectRetainedProverFundingLeases = ({
           ({ transactionHash }) => unverified.has(transactionHash),
         ),
         abandonedTransactionHashes: new Set(),
-        unverifiedAbandonedTransactionHashes: unverified,
         completed: false,
       }).map(({ outRef }) => outRef),
     );

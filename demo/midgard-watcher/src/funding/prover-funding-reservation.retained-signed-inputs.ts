@@ -15,47 +15,44 @@ export const finalProverFundingCompletion = (
   handoff.completion.terminal.observedAt.confirmationDepth >
     DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth + 1;
 
-/** Inputs and change of an unresolved signed attempt remain unique rollback leases. */
+/** Consumed inputs and change of a signed attempt stay leased until final
+ * completion: re-landing its exact bytes, or a replacement that must spend one
+ * of its inputs, needs them. Collateral is never retained for an attempt; a
+ * confirmed attempt's collateral is free once the reservation stops using it,
+ * and a rollback whose collateral was spent meanwhile re-signs. */
 export const retainedProverFundingInputs = ({
   record,
   submissions,
   abandonedTransactionHashes,
-  unverifiedAbandonedTransactionHashes,
   completed,
 }: {
   readonly record: WatcherProverFundingReservationRecord;
   readonly submissions: readonly WorkflowFundingPreparedTransition[];
   readonly abandonedTransactionHashes: ReadonlySet<string>;
-  readonly unverifiedAbandonedTransactionHashes: ReadonlySet<string>;
   readonly completed: boolean;
 }) => {
   const inputs = new Map<string, "funding" | "collateral">();
-  for (const transition of submissions) {
-    if (
-      completed &&
-      !unverifiedAbandonedTransactionHashes.has(transition.transactionHash)
-    )
-      continue;
+  for (const transition of completed ? [] : submissions) {
     if (abandonedTransactionHashes.has(transition.transactionHash)) continue;
     for (const outRef of transition.consumedOutRefs)
       inputs.set(outRef, "funding");
     for (const value of transition.producedInputs)
       inputs.set(value.outRef, value.role);
-    const collateral = CML.Transaction.from_cbor_hex(
-      transition.signedTransactionCborHex,
-    )
-      .body()
-      .collateral_inputs();
-    for (let i = 0; i < (collateral?.len() ?? 0); i++) {
-      const ref = collateral!.get(i);
-      inputs.set(
-        `${ref.transaction_id().to_hex()}#${ref.index()}`,
-        "collateral",
-      );
-    }
   }
   for (const { outRef, role } of record.activeInputs) inputs.set(outRef, role);
   return [...inputs].map(([outRef, role]) => ({ outRef, role }));
+};
+
+export const signedCollateralOutRefs = (
+  signedTransactionCborHex: string,
+): readonly string[] => {
+  const collateral = CML.Transaction.from_cbor_hex(signedTransactionCborHex)
+    .body()
+    .collateral_inputs();
+  return Array.from({ length: collateral?.len() ?? 0 }, (_, i) => {
+    const ref = collateral!.get(i);
+    return `${ref.transaction_id().to_hex()}#${ref.index()}`;
+  });
 };
 
 export const proverFundingReobservationInputs = ({
@@ -74,18 +71,10 @@ export const proverFundingReobservationInputs = ({
     if (transition.transactionHash !== transactionHash) continue;
     for (const outRef of transition.consumedOutRefs)
       candidates.set(outRef, "funding");
-    const collateral = CML.Transaction.from_cbor_hex(
+    for (const outRef of signedCollateralOutRefs(
       transition.signedTransactionCborHex,
-    )
-      .body()
-      .collateral_inputs();
-    for (let i = 0; i < (collateral?.len() ?? 0); i++) {
-      const ref = collateral!.get(i);
-      candidates.set(
-        `${ref.transaction_id().to_hex()}#${ref.index()}`,
-        "collateral",
-      );
-    }
+    ))
+      candidates.set(outRef, "collateral");
   }
   return [...candidates].map(([outRef, role]) => ({ outRef, role }));
 };
