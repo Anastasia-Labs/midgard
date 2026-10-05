@@ -9,7 +9,6 @@ import {
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
-import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
 import type { MintAuthorizationContracts } from "../../src/mint-authorization/contracts.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
@@ -31,6 +30,7 @@ import {
   type DecodingBlockFixture,
   type DecodingLedgerFixture,
 } from "./native-script-decoding-emulator.js";
+import { createExactRequestReusingScalusEvaluator } from "./scalus-exact-request-evaluator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
@@ -123,7 +123,11 @@ export const makeMintAuthorizationEmulatorHarness = async ({
       alwaysFraudProofCatalogue: false,
     },
     ...(useScalusEvaluator
-      ? { lucidOptions: { evaluator: createScalusEvaluator() } }
+      ? {
+          lucidOptions: {
+            evaluator: createExactRequestReusingScalusEvaluator(),
+          },
+        }
       : {}),
   });
   const family = harness.contracts.mintAuthorization;
