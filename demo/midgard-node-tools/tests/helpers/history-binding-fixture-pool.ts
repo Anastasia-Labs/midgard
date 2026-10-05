@@ -73,7 +73,10 @@ const writeDirectories = (
  * Fresh signed-history run directories, each written by the real compiled
  * fixture into its own new directory. Directories are written `batch` at a
  * time by one fixture process; every caller still receives a directory no
- * other caller has seen. `close` removes directories nobody took.
+ * other caller has seen. Once half a batch is left, the next batch is written
+ * in the background while tests run. A failed write surfaces in the call that
+ * needed it. `close` waits for a write in flight and removes directories
+ * nobody took.
  */
 export const makeHistoryBindingFixturePool = (input: {
   readonly entry: string;
@@ -83,6 +86,7 @@ export const makeHistoryBindingFixturePool = (input: {
 }) => {
   const ready: string[] = [];
   let filling: Promise<void> | undefined;
+  let failure: { readonly error: unknown } | undefined;
   const fill = async () => {
     const directories = Array.from({ length: input.batch }, () =>
       mkdtempSync(input.prefix),
@@ -96,17 +100,32 @@ export const makeHistoryBindingFixturePool = (input: {
     }
     ready.push(...directories);
   };
+  const start = () => {
+    filling ??= fill()
+      .catch((error: unknown) => {
+        failure = { error };
+      })
+      .finally(() => {
+        filling = undefined;
+      });
+    return filling;
+  };
   return {
     next: async (): Promise<string> => {
       while (ready.length === 0) {
-        filling ??= fill().finally(() => {
-          filling = undefined;
-        });
-        await filling;
+        if (failure !== undefined) {
+          const { error } = failure;
+          failure = undefined;
+          throw error;
+        }
+        await start();
       }
-      return ready.shift()!;
+      const directory = ready.shift()!;
+      if (ready.length * 2 <= input.batch) void start();
+      return directory;
     },
-    close: () => {
+    close: async () => {
+      await filling;
       for (const directory of ready.splice(0))
         rmSync(directory, { recursive: true, force: true });
     },
