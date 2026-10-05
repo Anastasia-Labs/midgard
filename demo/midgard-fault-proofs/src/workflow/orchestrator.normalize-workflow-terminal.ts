@@ -161,9 +161,12 @@ export const normalizeWorkflowTerminal = ({
       )
       .map((entry) => entry.event.txHash),
   );
-  if (!confirmed.has(createdByTxHash) || !confirmed.has(removalTxHash)) {
+  // The terminal verifier authenticates the correction independently. Another
+  // caller can finish it after our included descendant peel, so its removal
+  // need not be one of this workflow's signed submission intents.
+  if (!confirmed.has(createdByTxHash)) {
     throw new Error(
-      "terminal proof-token creation and removal must both be confirmed in this workflow journal",
+      "terminal proof-token creation must be confirmed in this workflow journal",
     );
   }
   if (!/^(?:[0-9a-f]{2}){28,60}$/u.test(terminal.proofToken.unit)) {

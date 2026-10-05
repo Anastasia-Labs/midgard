@@ -1,13 +1,11 @@
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   castConfirmedStateToData,
-  castStateQueueNodeToData,
   encodeLinkedListNodeView,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FraudProofTokenDatum,
   hashBlockHeader,
   makeGenesisConfirmedState,
-  NO_DA_ATTESTATION,
   RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
@@ -32,6 +30,10 @@ import {
   type VerifiedFraudProofReleaseFinalityPolicy,
 } from "../../src/workflow/index.js";
 import { makeHeader } from "./emulator/header-fixtures.js";
+import {
+  descendantStateQueueFixture,
+  stateQueueNodeFixtureDatum,
+} from "./raw-l1-terminal-fixture.descendant-state-queue.js";
 import { finalDescendantRemoval } from "./raw-l1-terminal-fixture.final-descendant-removal.js";
 import {
   DEPLOYMENT,
@@ -49,6 +51,7 @@ import {
   scriptAddress,
   SOURCE,
 } from "./raw-l1-terminal-fixture.output.js";
+import { tokenCreationBody } from "./raw-l1-terminal-fixture.token-creation.js";
 
 export const fixture = async ({
   header: suppliedHeader,
@@ -109,66 +112,47 @@ export const fixture = async ({
     bondStatus === "active" ? activePolicy : retiredPolicy,
     `${bondStatus === "active" ? ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX : RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX}${descendantOperatorCredential ?? OPERATOR}`,
   );
-  const targetDatum = encodeLinkedListNodeView({
-    key: { Key: { key: headerHash } },
-    next: "Empty",
-    data: castStateQueueNodeToData({
-      proven_fraud: null,
-      header,
-      da_attestation: NO_DA_ATTESTATION,
-    }) as never,
-  });
+  const descendantState = descendant
+    ? await descendantStateQueueFixture({
+        header,
+        headerHash,
+        statePolicy,
+        stateAddress,
+        descendantOperatorCredential,
+      })
+    : undefined;
+  const targetDatum = stateQueueNodeFixtureDatum(
+    headerHash,
+    header,
+    descendantState?.childHash,
+  );
   const rootDatum = encodeLinkedListNodeView({
     key: "Empty",
     next: "Empty",
     data: castConfirmedStateToData(makeGenesisConfirmedState(0n)) as never,
   });
   const proofDatum = Data.to({ fraud_prover: PROVER }, FraudProofTokenDatum);
-  const targetOutputs = CML.TransactionOutputList.new();
-  targetOutputs.add(
+  const targetBody = tokenCreationBody(
     output({
       address: stateAddress,
       assets: { lovelace: 3_000_000n, [stateUnit]: 1n },
       datum: targetDatum,
     }),
+    stateUnit,
   );
-  const targetBody = CML.TransactionBody.new(
-    CML.TransactionInputList.new(),
-    targetOutputs,
-    0n,
-  );
-  const targetMint = CML.Mint.new();
-  targetMint.set(
-    CML.ScriptHash.from_hex(statePolicy),
-    CML.AssetName.from_hex(stateUnit.slice(56)),
-    1n,
-  );
-  targetBody.set_mint(targetMint);
   const targetHash = CML.hash_transaction(
     CML.TransactionBody.from_cbor_hex(targetBody.to_canonical_cbor_hex()),
   ).to_hex();
   const targetOutRef = `${proofCreation ? targetHash : hash32("41")}#0`;
   const bondOutRef = `${hash32("42")}#0`;
-  const proofOutputs = CML.TransactionOutputList.new();
-  proofOutputs.add(
+  const proofBody = tokenCreationBody(
     output({
       address: proofAddress,
       assets: { lovelace: 3_000_000n, [proofUnit]: 1n },
       datum: proofDatum,
     }),
+    proofUnit,
   );
-  const proofBody = CML.TransactionBody.new(
-    CML.TransactionInputList.new(),
-    proofOutputs,
-    0n,
-  );
-  const proofMint = CML.Mint.new();
-  proofMint.set(
-    CML.ScriptHash.from_hex(proofPolicy),
-    CML.AssetName.from_hex(assetName),
-    1n,
-  );
-  proofBody.set_mint(proofMint);
   const proofHash = CML.hash_transaction(
     CML.TransactionBody.from_cbor_hex(proofBody.to_canonical_cbor_hex()),
   ).to_hex();
@@ -214,7 +198,7 @@ export const fixture = async ({
       assets: descendant
         ? { lovelace: 3_000_000n, [stateUnit]: 1n }
         : { lovelace: 3_000_000n, [rootUnit]: 1n },
-      datum: descendant ? targetDatum : rootDatum,
+      datum: descendantState?.continuedTargetDatum ?? rootDatum,
     }),
   );
   if (duplicateReward) {
@@ -240,6 +224,8 @@ export const fixture = async ({
   const inputs = CML.TransactionInputList.new();
   inputs.add(input(targetOutRef));
   inputs.add(input(bondOutRef));
+  if (descendantState !== undefined)
+    inputs.add(input(descendantState.child.outRef));
   const slashBody = CML.TransactionBody.new(
     inputs,
     slashOutputs,
@@ -264,6 +250,8 @@ export const fixture = async ({
       CML.AssetName.from_hex(stateUnit.slice(56)),
       -1n,
     );
+  } else {
+    descendantState!.burnChild(mint);
   }
   slashBody.set_mint(mint);
   const slashTxHash = CML.hash_transaction(
@@ -418,7 +406,11 @@ export const fixture = async ({
         isValid: true,
         inclusionPoint: point,
         confirmationDepth: 30,
-        resolvedInputs: [target, bond],
+        resolvedInputs: [
+          target,
+          bond,
+          ...(descendantState === undefined ? [] : [descendantState.child]),
+        ],
         resolvedReferenceInputs: [proof],
       },
       ...(descendant
