@@ -1,11 +1,10 @@
 /**
  * `executionSourceScriptDecoding` registered-chain lifecycle (§5.3 + Wave 4).
  *
- * Every journey runs from the generic `Init` through the five applied
- * validators the catalogue registers, on the shared Van Rossem emulator
- * parameters with local UPLC evaluation. Refusals are asserted on chain
- * (`expectOnchainRefusal`), never through an off-chain guard alone. Coverage
- * is recorded while the journeys run and declared at the end.
+ * Valid sources exercise the registered execution validators. Malformed
+ * inline sources stop earlier in Phase A and exercise witnessScriptDecoding.
+ * Both paths use the shared Van Rossem emulator with local UPLC evaluation;
+ * refusals are asserted on chain and execution coverage is recorded separately.
  */
 import "node:crypto";
 import "node:fs";
@@ -69,6 +68,7 @@ import {
   recorder,
   stand,
 } from "./execution-source-script-decoding-lifecycle.bind-state-of.js";
+import { proveMalformedInlinePhaseAWitness } from "./support/execution-source-phase-a-dominance.js";
 import {
   buildSubjectFixture,
   emptyAllScript,
@@ -87,17 +87,19 @@ import {
 } from "./support/execution-source-script-decoding-emulator.js";
 import { realBlueprintPath } from "./support/submit-init-emulator-shared.js";
 
-describe("executionSourceScriptDecoding registered-chain lifecycle", () => {
-  it("contradicts a wrongful acceptance of a malformed source item at the 32,768-byte field cap: refuses every accepted seam, closes the two-chunk verdict window, mints and removes", async () => {
+// The final declaration consumes the measurements and coverage of prior journeys.
+const lifecycle = "executionSourceScriptDecoding registered-chain lifecycle";
+describe(lifecycle, { shuffle: false }, () => {
+  it("refuses conviction of an honest accepted maximum-width source and preserves every accepted authentication seam", async () => {
     const context = await makeExecutionSourceHarness();
-    const item = maximumMalformedItem();
+    const item = maximumWideScript().script;
     const fixture = await buildSubjectFixture({
       harness: context.harness,
       direction: "accepted",
-      item: { kind: "raw", item },
+      item: { kind: "script", script: item },
     });
-    expect(fixture.canonicalVerdict).toBe("rejected");
-    expect(fixture.evidence.resultClass).toBe(Classes.Malformed);
+    expect(fixture.canonicalVerdict).toBe("accepted");
+    expect(fixture.evidence.resultClass).toBe(Classes.NoFault);
     expect(fixture.evidence.initialControlCbor).not.toBe("");
     expect(fixture.evidence.chunkProofCount).toBe(9);
     expect(fixture.evidence.itemLength).toBeGreaterThan(
@@ -228,10 +230,10 @@ describe("executionSourceScriptDecoding registered-chain lifecycle", () => {
       (await stages.scanState(s3.result.nextThreadOutRef)).result_class,
     ).toBe(BigInt(Classes.Pending));
 
-    progress("step 04 seams and the two-chunk verdict window");
+    progress("step 04 seams and the authenticated scan window");
     const scanThread = s3.result.nextThreadOutRef;
-    const planned = await stages.plan04(scanThread, fixture);
-    expect(planned.closes).toBe(true);
+    const planned = await stages.plan04(scanThread, fixture, 1);
+    expect(planned.closes).toBe(false);
     expect(planned.args.chunk_proof).not.toBeNull();
     expect(planned.args.next_chunk_proof).not.toBeNull();
     // The third chunk in place of the cursor's adjacent chunk: the bounded
@@ -254,42 +256,42 @@ describe("executionSourceScriptDecoding registered-chain lifecycle", () => {
       }),
     );
     coverage.seamMutated("scan_checkpoint");
-    // A refusal must close to step 05; a self-loop successor is refused.
-    const selfHash = context.contracts.steps[3].spendingScriptHash;
+    // An unfinished scan must remain at step 04, not claim a terminal successor.
+    const prematureTerminalHash = context.contracts.steps[4].spendingScriptHash;
     await expectOnchainRefusal(() =>
       stages.step04Raw({
         threadOutRef: scanThread,
         args: planned.args,
         nextState: {
           ...planned.nextState,
-          next_expected_script_hash: selfHash,
+          next_expected_script_hash: prematureTerminalHash,
           checkpoint_hash: executionSourceScriptDecodingCheckpoint({
             evidence: fixture.evidence,
             controlCbor: planned.nextState.control_cbor,
-            nextExpectedScriptHash: selfHash,
+            nextExpectedScriptHash: prematureTerminalHash,
           }),
         },
-        nextStepIndex: 3,
+        nextStepIndex: 4,
       }),
     );
     coverage.seamMutated("wrong_successor");
-    const s4 = await stages.step04(scanThread, fixture);
-    expect(s4.result.closed).toBe(true);
-    record("step04-verdict-malformed", s4.measurement);
-    expect(
-      (await stages.scanState(s4.result.nextThreadOutRef, 4)).result_class,
-    ).toBe(BigInt(Classes.Malformed));
-
-    progress("mint and removal");
-    const s5 = await stages.step05(s4.result.nextThreadOutRef, fixture);
-    expect(s5.result.txHash).toMatch(/^[0-9a-f]{64}$/u);
-    record("step05-mint", s5.measurement);
-    coverage.reason("ExecutionNativeScriptMalformed", "accepted_invalid");
-    coverage.scenario("wrongful_acceptance_success");
-    const removal = await stages.remove();
-    expect(removal.result.txHash).toMatch(/^[0-9a-f]{64}$/u);
-    record("remove", removal.measurement);
-    coverage.scenario("permanent_proof_token_and_descendant_removal");
+    const closed = await stages.step04Loop(
+      scanThread,
+      fixture,
+      (scan, index) => {
+        if (index === 0)
+          record("honest-accepted-step04-scan-00", scan.measurement);
+        if (scan.result.closed)
+          record("honest-accepted-step04-close-exact-end", scan.measurement);
+      },
+      1,
+    );
+    expect((await stages.scanState(closed.threadOutRef, 4)).result_class).toBe(
+      BigInt(Classes.NoFault),
+    );
+    await expectOnchainRefusal(() => stages.step05Raw(closed.threadOutRef));
+    coverage.scenario("honest_accepted_block_refusal");
+    await stages.cancel(closed.threadOutRef, 4);
   }, 900_000);
 
   it("contradicts a wrongful forced NodeLimit rejection of the widest any-of script: refuses every forced-door seam, a substituted window, a premature close and a wrong successor, and resumes the scan across all nine chunk windows", async () => {
@@ -349,7 +351,9 @@ describe("executionSourceScriptDecoding registered-chain lifecycle", () => {
     await door("forced_leaf_reason_coordinate", {
       bound: { ...bound, executionIndex: 1n },
     });
-    await door("forced_leaf_reason_coordinate", { claimedExecutionIndex: 1n });
+    await door("forced_leaf_reason_coordinate", {
+      claimedExecutionIndex: 1n,
+    });
     await door("forced_leaf_reason_coordinate", {
       bound: {
         ...bound,
@@ -596,7 +600,9 @@ describe("executionSourceScriptDecoding registered-chain lifecycle", () => {
       fixture,
       "execution-source-forced-malformed",
     );
-    const small = { maximumShape: "single-node native script, one-chunk item" };
+    const small = {
+      maximumShape: "single-node native script, one-chunk item",
+    };
     const chainTo = async (stepIndex: 0 | 1 | 2 | 3 | 4) => {
       const thread = await stages.freshThread();
       if (stepIndex === 0) return thread;
@@ -627,46 +633,17 @@ describe("executionSourceScriptDecoding registered-chain lifecycle", () => {
     record("forced-sig-step05-mint", s5.measurement, small);
     coverage.reason("ExecutionNativeScriptMalformed", "forced_rejection_wrong");
     coverage.scenario("wrongful_forced_rejection_success");
+    const removal = await stages.remove();
+    expect(removal.result.txHash).toMatch(/^[0-9a-f]{64}$/u);
+    record("forced-malformed-remove", removal.measurement, small);
+    coverage.scenario("permanent_proof_token_and_descendant_removal");
   }, 900_000);
 
-  it("refuses to convict an honest forced Malformed rejection of a malformed item", async () => {
-    const context = await makeExecutionSourceHarness();
-    const fixture = await buildSubjectFixture({
-      harness: context.harness,
-      direction: "forced",
-      item: { kind: "raw", item: rawNativeItem(Buffer.from("820700", "hex")) },
-      reason: forcedReason("ExecutionNativeScriptMalformed"),
-    });
-    expect(fixture.canonicalVerdict).toBe("rejected");
-    expect(fixture.evidence.resultClass).toBe(Classes.Malformed);
-    const stages = await stand(
-      context,
-      fixture,
-      "execution-source-honest-forced",
+  it("keeps an honest malformed-inline rejection in the earlier Phase A witness family", async () => {
+    await proveMalformedInlinePhaseAWitness(
+      rawNativeItem(Buffer.from("820700", "hex")),
+      "forced",
     );
-    const s1 = await stages.step01Forced(await stages.freshThread(), fixture);
-    const s2 = await stages.step02(s1.result.nextThreadOutRef, fixture);
-    const s3 = await stages.step03(s2.result.nextThreadOutRef, fixture);
-    // The bound payload refuses at its first token: no wrongful-rejection
-    // plan exists, so the canonical fold is driven under the
-    // wrongful-acceptance polarity to exhibit the refusal on chain.
-    await expect(
-      stages.plan04(s3.result.nextThreadOutRef, fixture),
-    ).rejects.toThrow(/no wrongful rejection/u);
-    const s4 = await stages.step04(s3.result.nextThreadOutRef, fixture, 0);
-    expect(s4.result.closed).toBe(true);
-    expect(
-      (await stages.scanState(s4.result.nextThreadOutRef, 4)).result_class,
-    ).toBe(BigInt(Classes.Malformed));
-    record("honest-forced-step04-close", s4.measurement, {
-      maximumShape: "malformed payload item, one chunk",
-    });
-    // The operator's rejection is the engine's own verdict: step 05 refuses.
-    await expectOnchainRefusal(() =>
-      stages.step05Raw(s4.result.nextThreadOutRef),
-    );
-    coverage.scenario("honest_forced_rejection_refusal");
-    await stages.cancel(s4.result.nextThreadOutRef, 4);
   }, 900_000);
 
   it("refuses to convict an honest accepted block whose source item decodes to the exact terminal", async () => {
@@ -705,50 +682,25 @@ describe("executionSourceScriptDecoding registered-chain lifecycle", () => {
     await stages.cancel(s4.threadOutRef, 4);
   }, 900_000);
 
-  it("contradicts a wrongful acceptance of an empty native payload at the bind", async () => {
-    const context = await makeExecutionSourceHarness();
-    const fixture = await buildSubjectFixture({
-      harness: context.harness,
-      direction: "accepted",
-      item: { kind: "raw", item: rawNativeItem(Buffer.alloc(0)) },
-    });
-    expect(fixture.scriptItem.toString("hex")).toBe("820040");
-    expect(fixture.canonicalVerdict).toBe("rejected");
-    expect(fixture.evidence.resultClass).toBe(Classes.Malformed);
-    expect(fixture.evidence.initialControlCbor).toBe("");
-    const stages = await stand(context, fixture, "execution-source-empty");
-    const small = { maximumShape: "empty native payload, one chunk" };
-    const s1 = await stages.step01Accepted(await stages.freshThread(), fixture);
-    const s2 = await stages.step02(s1.result.nextThreadOutRef, fixture);
-    const s3 = await stages.step03(s2.result.nextThreadOutRef, fixture);
-    record("accepted-empty-step03-bind-close", s3.measurement, small);
-    expect(
-      (await stages.scanState(s3.result.nextThreadOutRef)).result_class,
-    ).toBe(BigInt(Classes.Malformed));
-    const s4 = await stages.step04(s3.result.nextThreadOutRef, fixture);
-    expect(s4.result.closed).toBe(true);
-    const s5 = await stages.step05(s4.result.nextThreadOutRef, fixture);
-    record("accepted-empty-step05-mint", s5.measurement, small);
-    coverage.reason("ExecutionNativeScriptMalformed", "accepted_invalid");
-    coverage.scenario("wrongful_acceptance_success");
-  }, 900_000);
+  it.each([
+    { label: "empty payload", item: rawNativeItem(Buffer.alloc(0)) },
+    { label: "maximum field", item: maximumMalformedItem() },
+  ])(
+    "proves wrongful acceptance of $label through the earlier Phase A witness family",
+    async ({ item }) => {
+      await proveMalformedInlinePhaseAWitness(item, "accepted");
+    },
+    900_000,
+  );
 
   it("declares the lifecycle coverage it exercised and reproduces the Van Rossem fit ledger", async () => {
-    // Recorded while the journeys above ran, never pre-filled. The declared
-    // omissions are the wrongful-ACCEPTANCE directions of the NodeLimit and
-    // DepthLimit arms and the adjacent-over-bound refusal: the frozen scan
-    // bounds both frontiers at 16,384 and a node costs at least three bytes,
-    // so no item inside the 32,768-byte field cap can reach either limit or
-    // its adjacent edge. No accepted block can carry such a fault, and §5.3
-    // forbids starting from a fabricated mid-thread datum; the exact and
-    // adjacent node/depth edges are pinned at the rule level instead
-    // (`exact_node_boundary_advances_and_adjacent_node_refuses`,
-    // `exact_depth_boundary_advances_and_adjacent_depth_refuses`). The
-    // byte cap on the field-6 preimage is not a bound of this family's chain:
-    // no applied step carries a byte limit of its own, and the deterministic
-    // machine still emits a native execution descriptor for a 32,769-byte
-    // preimage (its `E_FIELD_PREIMAGE_SIZE` bound is not applied ahead of the
-    // native-script phase), so there is no on-chain refusal to exhibit here.
+    // Malformed inline payloads are rejected by the earlier Phase A witness
+    // scan, so an authentic replay never supplies this family's execution
+    // descriptor. Their wrongful acceptance and honest rejection are exercised
+    // above through witnessScriptDecoding, without recording execution success.
+    // Node/depth accepted-invalid edges remain outside the field-size bound.
+    // Keep every omitted execution direction explicit; no fabricated trace or
+    // removed coverage gate can turn these vectors into launch acceptance.
     expect(() =>
       assertCompleteLifecycleCoverage({
         coverage: coverage.snapshot(),
@@ -759,11 +711,13 @@ describe("executionSourceScriptDecoding registered-chain lifecycle", () => {
         hasAdjacentConsensusBound: true,
       }),
     ).toThrow(
-      "incomplete fault-proof lifecycle coverage: ExecutionNativeScriptNodeLimit success directions: accepted_invalid; ExecutionNativeScriptDepthLimit success directions: accepted_invalid; adjacent-over-bound refusal",
+      "incomplete fault-proof lifecycle coverage: ExecutionNativeScriptMalformed success directions: accepted_invalid; ExecutionNativeScriptNodeLimit success directions: accepted_invalid; ExecutionNativeScriptDepthLimit success directions: accepted_invalid; scenarios: wrongful_acceptance_success, honest_forced_rejection_refusal; adjacent-over-bound refusal",
     );
     const blueprintBytes = readFileSync(realBlueprintPath);
     const preamble = JSON.parse(blueprintBytes.toString("utf8")) as {
-      readonly preamble?: { readonly compiler?: { readonly version?: string } };
+      readonly preamble?: {
+        readonly compiler?: { readonly version?: string };
+      };
     };
     const ledger = buildVanRossemFitLedger({
       category: `executionSourceScriptDecoding:${EXECUTION_SOURCE_CATEGORY_ID}:testnet`,

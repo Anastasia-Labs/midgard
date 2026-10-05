@@ -45,6 +45,7 @@ import {
   RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
   RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
   SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
+  WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
@@ -57,10 +58,10 @@ import {
   outRefCbor,
   reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { malformedInlineRetainedFixture } from "./support/execution-source-phase-a-dominance.js";
 import {
   buildSubjectFixture,
   emptyAllScript,
-  rawNativeItem,
 } from "./support/execution-source-script-decoding-emulator.js";
 import { buildWidthForcedFixture } from "./support/field-item-width-illegal-shapes.js";
 import { nativeDecodingFixture } from "./support/native-script-decoding-retained.js";
@@ -87,9 +88,7 @@ const releaseFinalityAuthority = {
   }),
 };
 
-// These are the same small transaction inputs used by the original retained
-// reason suite. Only the committed fee context or field-length declaration
-// changes; no boundary-sized transaction or detector mock is needed.
+// Reuse small retained-suite inputs, varying only fee context or field length.
 const ordinaryTransaction = () =>
   buildFixtureTransaction({
     spendInputs: [outRefCbor(71, 0n)],
@@ -291,8 +290,28 @@ describe("ordinary retained classification polarities", () => {
   );
 
   it.each(["accepted", "honest", "wrongful"] as const)(
-    "ExecutionNativeScriptMalformed: %s operator verdict from the ordinary source fixture",
+    "Native script malformed: %s operator verdict uses its reachable witness or execution subject",
     async (direction) => {
+      if (direction !== "wrongful") {
+        const fixture = await malformedInlineRetainedFixture(direction);
+        const { decision } = await classifyRetainedReasonFixture({
+          observation: authenticatedHeaderObservation(fixture),
+          payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
+          deploymentFingerprint,
+          releaseFinalityAuthority,
+          replayer: WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+        });
+        expect(decision).toMatchObject(
+          direction === "honest"
+            ? { decision: "healthy", headerHash: fixture.headerHash }
+            : {
+                decision: "fault_detected",
+                category: "witnessScriptDecoding",
+                headerHash: fixture.headerHash,
+              },
+        );
+        return;
+      }
       const reason = {
         ExecutionNativeScriptMalformed: { execution_index: 0n },
       } as const;
@@ -301,27 +320,15 @@ describe("ordinary retained classification polarities", () => {
           operatorVkey: "b1".repeat(28),
           startTime: 1_749_999_941_000n,
         },
-        direction: direction === "accepted" ? "accepted" : "forced",
-        item:
-          direction === "wrongful"
-            ? { kind: "script", script: emptyAllScript() }
-            : {
-                kind: "raw",
-                // Exact small case from the existing honest-rejection lifecycle.
-                item: rawNativeItem(Buffer.from("820700", "hex")),
-              },
-        ...(direction === "accepted" ? {} : { reason }),
+        direction: "forced",
+        item: { kind: "script", script: emptyAllScript() },
+        reason,
       });
-      expect(retained.canonicalVerdict).toBe(
-        direction === "wrongful" ? "accepted" : "rejected",
-      );
+      expect(retained.canonicalVerdict).toBe("accepted");
       const traceEntries = retainValidationTrace({
         trace: retained.trace,
         eventKey: retained.eventKey,
-        claim:
-          direction === "accepted"
-            ? { verdict: "accepted" }
-            : { verdict: "rejected", reason },
+        claim: { verdict: "rejected", reason },
       });
       // Match the existing family's retained-DA fixture: its one execution
       // witness opens the real complete trace's committed state/proof.
@@ -331,15 +338,12 @@ describe("ordinary retained classification polarities", () => {
       );
       expect(executionEntries).toHaveLength(1);
       const fixture = await buildRetainedValidationBlockFixture({
-        subject:
-          direction === "accepted"
-            ? { kind: "normal", nativeTx: retained.transaction.tx }
-            : {
-                kind: "forced",
-                nativeTx: retained.transaction.tx,
-                orderKey: retained.orderKey,
-                verdict: { ForcedTxInvalid: { reason } },
-              },
+        subject: {
+          kind: "forced",
+          nativeTx: retained.transaction.tx,
+          orderKey: retained.orderKey,
+          verdict: { ForcedTxInvalid: { reason } },
+        },
         priorLedgerRoot:
           retained.block.reconstruction.traceByStepIndex.get(0n)!.value
             .pre_utxos_root,
@@ -355,15 +359,11 @@ describe("ordinary retained classification polarities", () => {
         releaseFinalityAuthority,
         replayer: EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
       });
-      expect(decision).toMatchObject(
-        direction === "honest"
-          ? { decision: "healthy", headerHash: fixture.headerHash }
-          : {
-              decision: "fault_detected",
-              category: "executionSourceScriptDecoding",
-              headerHash: fixture.headerHash,
-            },
-      );
+      expect(decision).toMatchObject({
+        decision: "fault_detected",
+        category: "executionSourceScriptDecoding",
+        headerHash: fixture.headerHash,
+      });
     },
   );
 

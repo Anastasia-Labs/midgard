@@ -1,15 +1,24 @@
-import { computeMidgardNativeTxId } from "@al-ft/midgard-core";
+import {
+  computeMidgardNativeTxId,
+  encodeMidgardVersionedScript,
+  materializeMidgardNativeTxFromCanonical,
+} from "@al-ft/midgard-core";
 import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
+import {
+  encodeByteList,
+  nativeScriptWitness,
+  outRefFromByte,
+} from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { describe, expect, it } from "vitest";
 
 import { WitnessScriptDecodingResultClasses } from "../src/witness-script-decoding/index.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
 import { decodingItemFromPayload } from "./support/native-script-decoding-emulator.js";
-import { smallCanonicalItem } from "./support/witness-script-decoding-raw.js";
+import { witnessSetCarriageOf } from "./support/witness-script-decoding-raw.js";
 import { makeHarness } from "./witness-script-decoding-lifecycle.make-harness.js";
 import {
   acceptedEvidence,
@@ -28,11 +37,30 @@ import {
  * the written item is refused on chain.
  */
 
-const shape = shapeOf(
-  "all[sig], then [0, h'820700']: a sound native script before a malformed one (Inline)",
-  [smallCanonicalItem(), decodingItemFromPayload(Buffer.from("820700", "hex"))],
+const baseShape = shapeOf(
+  "all[], then [0, h'820700']: a satisfied native script before a malformed one (Inline)",
+  [
+    encodeMidgardVersionedScript(
+      nativeScriptWitness({ type: "all", scripts: [] }),
+    ),
+    decodingItemFromPayload(Buffer.from("820700", "hex")),
+  ],
   1_009n,
 );
+// Phase A authenticates and screens inputs before it scans script witnesses.
+const nativeTx = materializeMidgardNativeTxFromCanonical({
+  ...baseShape.nativeTx,
+  body: {
+    ...baseShape.nativeTx.body,
+    spendInputsPreimageCbor: encodeByteList([outRefFromByte(0x79)]),
+  },
+});
+const shape = {
+  ...baseShape,
+  nativeTx,
+  txId: computeMidgardNativeTxId(nativeTx).toString("hex"),
+  carriage: witnessSetCarriageOf(nativeTx),
+};
 
 const writtenScriptIndex = async (): Promise<bigint> => {
   const forced = materializeMidgardForcedTxFromCanonical(shape.nativeTx);

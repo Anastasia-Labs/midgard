@@ -7,7 +7,6 @@ import {
   DirectoryFraudProofWorkflowJournalStore,
   type JournalJsonObject,
 } from "../src/workflow/journal.js";
-import { type FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import { stageInstalledValidationTraceDisputeJourney } from "./support/installed-validation-trace-dispute-journey.js";
 
 export const testRepeatedRequiredSignerCarriage = (hooks: {
@@ -266,7 +265,7 @@ export const testRepeatedRequiredSignerCarriage = (hooks: {
               event.actionInput.stage === "semantic_resolution" &&
               !semanticChecked
             ) {
-              const route = event.actionInput
+              const route = event.durableRecovery!
                 .durableRouteInput as JournalJsonObject;
               const binding = route.fieldCarriageBinding as JournalJsonObject;
               expect(binding.fieldIndex).toBe(4);
@@ -292,10 +291,10 @@ export const testRepeatedRequiredSignerCarriage = (hooks: {
         expect(publications).toHaveLength(existingCopies === 1 ? 1 : 0);
         if (existingCopies === 1)
           expect(
-            (
-              publications[0]!.actionInput
-                .fieldCarriageAction as unknown as FraudProofWorkflowAction
-            ).input.publicationIndex,
+            {
+              actionId: publications[0]!.actionId,
+              input: publications[0]!.actionInput,
+            }.input.publicationIndex,
           ).toBe(1);
         expect(
           intents.filter(

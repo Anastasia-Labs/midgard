@@ -37,7 +37,6 @@ import {
   DirectoryFraudProofWorkflowJournalStore,
   type JournalJsonObject,
 } from "../src/workflow/journal.js";
-import { type FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import { stageInstalledValidationTraceDisputeJourney } from "./support/installed-validation-trace-dispute-journey.js";
 import { testRepeatedRequiredSignerCarriage } from "./validation-dispute-certified-installed.repeated-required-signers.js";
 
@@ -87,7 +86,7 @@ it.each([false, true])(
               journey.config,
             );
           const recovery = structuredClone(
-            latest.durableRecovery!.fieldCarriageRecovery,
+            latest.durableRecovery!,
           ) as JournalJsonObject;
           const payload = recovery.fieldCarriage as JournalJsonObject;
           const [hash, index] = (payload.outRef as string).split("#");
@@ -102,8 +101,10 @@ it.each([false, true])(
             workflow.fieldCarriage.prerequisite.reconcile({
               headerHash: journey.setup.headerHash,
               txHash: latest.txHash,
-              action: latest.actionInput
-                .fieldCarriageAction as unknown as FraudProofWorkflowAction,
+              action: {
+                actionId: latest.actionId,
+                input: latest.actionInput,
+              },
               artifact: {},
               durableRecovery: forgedRecovery,
             }),
@@ -126,7 +127,7 @@ it.each([false, true])(
             throw new Error(
               "prepared signature route did not reach semantic resolution",
             );
-          const route = latest.actionInput
+          const route = latest.durableRecovery!
             .durableRouteInput as JournalJsonObject;
           const binding = route.fieldCarriageBinding as JournalJsonObject;
           const forged = {
@@ -177,7 +178,7 @@ it.each([false, true])(
           latest?.kind === "submission_intent" &&
           latest.actionInput.stage === "semantic_resolution"
         ) {
-          const route = latest.actionInput
+          const route = latest.durableRecovery!
             .durableRouteInput as JournalJsonObject;
           const binding = route.fieldCarriageBinding as JournalJsonObject;
           expect(binding.fieldIndex).toBe(7);
@@ -219,6 +220,47 @@ it.each([false, true])(
       expect(preparedBindingChecked).toBe(true);
       expect(frozenBindingChecked).toBe(true);
       expect(spentPublication).toBe(spendPreparedPublication);
+      if (spendPreparedPublication) {
+        const cancellation = intents.find(
+          ({ event }) =>
+            event.kind === "submission_intent" &&
+            event.actionInput.stage === "cancel_semantic_route",
+        );
+        if (cancellation?.event.kind !== "submission_intent")
+          throw new Error(
+            "spent publication did not cancel its exact prepared route",
+          );
+        const cancellationEvent = cancellation.event;
+        const confirmedCancellation = entries.find(
+          ({ event }) =>
+            event.kind === "confirmed" &&
+            event.txHash === cancellationEvent.txHash,
+        );
+        expect(confirmedCancellation).toBeDefined();
+        const initialization = intents.filter(
+          ({ event }) =>
+            event.kind === "submission_intent" &&
+            event.actionInput.stage === "init",
+        );
+        // Every hop reopens the journal and constructs a fresh workflow. A
+        // completed cancellation permits exactly one new initialization.
+        expect(initialization).toHaveLength(2);
+        const original = initialization[0]!;
+        const restarted = initialization[1]!;
+        if (
+          original.event.kind !== "submission_intent" ||
+          restarted.event.kind !== "submission_intent"
+        )
+          throw new Error("initialization journal entry changed kind");
+        expect(restarted.event.actionId).not.toBe(original.event.actionId);
+        expect(restarted.sequence).toBeGreaterThan(
+          confirmedCancellation!.sequence,
+        );
+        expect(restarted.event.actionInput.restartAfterCancellation).toEqual({
+          txHash: cancellation.event.txHash,
+          threadOutRef: cancellation.event.actionInput.threadOutRef,
+        });
+      }
       expect(
         intents.filter(
           ({ event }) =>

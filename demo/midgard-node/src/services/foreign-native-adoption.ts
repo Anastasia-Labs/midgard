@@ -22,6 +22,7 @@ import {
   foreignAdoptionRowsForKeys,
 } from "./foreign-native-adoption-projection.js";
 import { prepareForeignNativeReplay } from "./foreign-native-replay.js";
+import { reconcileLandedMergeConfirmedLedger } from "./history-landed-merge-ledger.js";
 import { Lucid } from "./lucid.js";
 import { MidgardContracts } from "./midgard-contracts.js";
 import type {
@@ -169,6 +170,11 @@ export const recoverForeignNativeAdoptions = (input: {
       `foreign-adoption:${randomUUID()}`,
       (leaseOwner) =>
         Effect.gen(function* () {
+          yield* reconcileLandedMergeConfirmedLedger({
+            coverage: input.coverage,
+            preparation: input.preparation,
+            leaseOwner,
+          });
           yield* reconcileForeignConfirmedLedger({
             coverage: input.coverage,
             preparation: input.preparation,

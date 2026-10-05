@@ -2,6 +2,7 @@ import {
   computeHash28,
   deriveMidgardNativeTxFaultEvidenceMaterial,
   encodeCbor,
+  encodeMidgardNativeScript,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -32,6 +33,7 @@ import {
 } from "../src/execution-source-script-decoding/authenticated-replay.js";
 import { buildExecutionSourceMachineAuthenticationFromRetainedDa } from "../src/execution-source-script-decoding/retained-witness.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import { malformedInlinePhaseAReplay } from "./support/execution-source-phase-a-dominance.js";
 
 const entry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
   key.toString("hex"),
@@ -39,13 +41,16 @@ const entry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
 ];
 
 describe("executionSourceScriptDecoding retained-DA production replay", () => {
-  it("reconstructs an accepted malformed source from the exact retained trace witness", async () => {
+  it("reconstructs a valid accepted source from its exact retained execution witness and refuses tampering", async () => {
     const spent = outRefFromByte(0x7a);
     const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
-    const malformedPayload = Buffer.from("820700", "hex");
-    const malformedItem = Buffer.from("820043820700", "hex");
+    const nativePayload = encodeMidgardNativeScript({
+      type: "all",
+      scripts: [],
+    });
+    const nativeItem = encodeCbor([0n, nativePayload]);
     const policyId = computeHash28(
-      Buffer.concat([Buffer.from([0]), malformedPayload]),
+      Buffer.concat([Buffer.from([0]), nativePayload]),
     );
     const assetName = Buffer.from("31", "hex");
     const output = makeOutput(
@@ -63,17 +68,17 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
         new Map([[policyId, new Map([[assetName, 1n]])]]),
       ),
     });
-    const malformed = encodeRecomputedNativeTx({
+    const transaction = encodeRecomputedNativeTx({
       ...baseline.tx,
       witnessSet: {
         ...baseline.tx.witnessSet,
-        scriptTxWitsPreimageCbor: encodeCbor([malformedItem]),
+        scriptTxWitsPreimageCbor: encodeCbor([nativeItem]),
       },
     });
     const acceptedOps = [
       { type: "delete" as const, key: spent },
       buildValidationMachineLedgerInsertOp({
-        key: outRefFromTxId(malformed.txId),
+        key: outRefFromTxId(transaction.txId),
         outputCbor: output,
       }),
     ];
@@ -82,7 +87,7 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
       operations: acceptedOps,
     });
     const eventKey = {
-      L2TransactionEventKey: { tx_id: malformed.txId.toString("hex") },
+      L2TransactionEventKey: { tx_id: transaction.txId.toString("hex") },
     } as const;
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
@@ -97,15 +102,15 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
         minFeeA: 0n,
         minFeeB: 0n,
         blockSlot: 100n,
-        transactionId: malformed.txId,
-        canonicalTransactionCbor: malformed.txCbor,
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
         priorUtxosRoot: mutations[0]!.preRoot.toString("hex"),
-        postUtxosRoot: mutations[0]!.preRoot.toString("hex"),
+        postUtxosRoot: mutations.at(-1)!.postRoot.toString("hex"),
         ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
-        expectedLedgerOps: [],
-        ledgerMutationSteps: [],
-        expectedVerdict: "rejected",
-        expectedRejectionCode: "E_INVALID_FIELD_TYPE",
+        expectedLedgerOps: acceptedOps,
+        ledgerMutationSteps: mutations,
+        expectedVerdict: "accepted",
+        expectedRejectionCode: null,
       }),
     );
     const stateIndex = trace.witnesses.findIndex(
@@ -127,7 +132,7 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
         trace.tree.descriptor.initialStateHash.toString("hex"),
       terminal_state_hash:
         trace.tree.descriptor.terminalStateHash.toString("hex"),
-      verdict: "Rejected",
+      verdict: "Accepted",
       rejection_code_hash:
         trace.tree.descriptor.rejectionCodeHash.toString("hex"),
     };
@@ -174,10 +179,10 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
       ],
     );
     const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-      malformed.txCbor,
+      transaction.txCbor,
     );
     const sourceValue: SDK.L2TransactionSource = {
-      tx_id: malformed.txId.toString("hex"),
+      tx_id: transaction.txId.toString("hex"),
       source: {
         compact_cbor: material.proofSource.compactCbor.toString("hex"),
         witness_set_compact_cbor:
@@ -301,28 +306,40 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
       },
       transactions: [
         {
-          nodeTxId: malformed.txId.toString("hex"),
-          txCbor: malformed.txCbor.toString("hex"),
+          nodeTxId: transaction.txId.toString("hex"),
+          txCbor: transaction.txCbor.toString("hex"),
           l2TransactionSourceCbor: sourceValueCbor,
         },
       ],
     } as unknown as CanonicalBlockEvidence;
     const detections =
       await detectExecutionSourceScriptDecodingCanonicalViolations(block);
-    const artifact = await prepareExecutionSourceScriptDecodingArtifact(block);
-
-    expect(detections).toMatchObject([
-      { violationId: "execution-native-script-malformed", position: 0n },
-    ]);
-    expect(artifact.evidence.finding.subject.direction).toBe(0n);
-    expect(artifact.evidence.descriptor.scriptItemHex).toBe(
-      malformedItem.toString("hex"),
+    expect(detections).toEqual([]);
+    const { authentication } =
+      await buildExecutionSourceMachineAuthenticationFromRetainedDa(
+        retainedInput,
+      );
+    expect(authentication.machine_state).toStrictEqual(
+      SDK.validationMachineStateDataFromCore(trace.states[stateIndex]!),
     );
-    expect(artifact.authentication.trace_proof.state_hash).toBe(
+    expect(authentication.trace_proof.state_hash).toBe(
       trace.tree.proofs[stateIndex]!.stateHash.toString("hex"),
     );
-    expect(artifact.acceptedInclusion).toMatchObject({
-      nativeTxId: malformed.txId.toString("hex"),
-    });
+    expect(authentication.script_hash).toBe(policyId.toString("hex"));
+    await expect(
+      prepareExecutionSourceScriptDecodingArtifact(block),
+    ).rejects.toThrow(
+      "executionSourceScriptDecoding retained replay yielded no contradiction",
+    );
+  });
+  it("retains a malformed-inline Phase A trace without inventing an execution descriptor", async () => {
+    const replay = await malformedInlinePhaseAReplay(
+      Buffer.from("820043820700", "hex"),
+    );
+    expect(
+      replay.canonical.trace.witnesses.some(
+        ({ auxiliary }) => auxiliary?.kind === "nativeScriptToken",
+      ),
+    ).toBe(true);
   });
 });

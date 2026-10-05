@@ -22,6 +22,8 @@ import {
   parseBaseAction,
   PUBLICATION_ENCODINGS,
   type PublicationEncoding,
+  publicationReplacementOutRef,
+  publicationReplacementSuffix,
   publishedContentDigest,
   requirementIdentity,
 } from "./field-carriage-prerequisite.requirement-identity.js";
@@ -219,7 +221,7 @@ export const recordedCarriageRecovery = ({
         (input.publicationIndex !== 0 ||
           input.publicationEncoding !== "structured_data")) ||
       action.actionId !==
-        `publish-${bound ? "bound-data" : raw ? "raw-datum-preimage" : "field-carriage"}:${base.actionId}:${input.requirementSha256}:${input.publicationIndex}` ||
+        `publish-${bound ? "bound-data" : raw ? "raw-datum-preimage" : "field-carriage"}:${base.actionId}:${input.requirementSha256}:${input.publicationIndex}${publicationReplacementSuffix(publicationReplacementOutRef(action))}` ||
       recovered.unit !== null ||
       sha256(recovered.datumCbor) !== input.datumCborSha256 ||
       !PUBLICATION_ENCODINGS.includes(

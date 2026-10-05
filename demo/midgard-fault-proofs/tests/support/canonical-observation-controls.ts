@@ -7,7 +7,6 @@ import {
   DirectoryFraudProofWorkflowJournalStore,
   type JournalJsonObject,
 } from "../../src/workflow/journal.js";
-import type { FraudProofWorkflowAction } from "../../src/workflow/orchestrator.js";
 import type { stageInstalledValidationTraceDisputeJourney } from "./installed-validation-trace-dispute-journey.js";
 
 type Journey = Awaited<
@@ -21,6 +20,8 @@ export const canonicalObservationControls = (journey: Journey) => {
   );
   let checkedReceipt = false;
   let spent = false;
+  let spentPublicationOutRef: string | undefined;
+  let spentPublicationActionId: string | undefined;
   return {
     beforeHop: async (workflowId: string) => {
       const entries = await journal.load(workflowId);
@@ -36,7 +37,7 @@ export const canonicalObservationControls = (journey: Journey) => {
         latest.actionInput.stage === "publish_field_carriage"
       ) {
         const recovery = structuredClone(
-          latest.durableRecovery!.fieldCarriageRecovery,
+          latest.durableRecovery!,
         ) as JournalJsonObject;
         const payload = recovery.fieldCarriage as JournalJsonObject;
         const [hash, index] = (payload.outRef as string).split("#");
@@ -44,8 +45,10 @@ export const canonicalObservationControls = (journey: Journey) => {
           workflow.fieldCarriage.prerequisite.reconcile({
             headerHash: journey.setup.headerHash,
             txHash: latest.txHash,
-            action: latest.actionInput
-              .fieldCarriageAction as unknown as FraudProofWorkflowAction,
+            action: {
+              actionId: latest.actionId,
+              input: latest.actionInput,
+            },
             artifact: {},
             durableRecovery: {
               ...recovery,
@@ -77,6 +80,25 @@ export const canonicalObservationControls = (journey: Journey) => {
           throw new Error(
             "canonical publication was not retained at its actual owner",
           );
+        const publicationOutRef = `${publication.txHash}#${publication.outputIndex}`;
+        const publicationIntent = entries.find(
+          ({ event }) =>
+            event.kind === "submission_intent" &&
+            event.actionInput.stage === "publish_field_carriage" &&
+            (event.durableRecovery?.fieldCarriage as JournalJsonObject)
+              ?.outRef === publicationOutRef,
+        );
+        if (publicationIntent?.event.kind !== "submission_intent")
+          throw new Error("spent publication has no exact journaled intent");
+        const publicationTxHash = publicationIntent.event.txHash;
+        expect(
+          entries.some(
+            ({ event }) =>
+              event.kind === "confirmed" && event.txHash === publicationTxHash,
+          ),
+        ).toBe(true);
+        spentPublicationOutRef = publicationOutRef;
+        spentPublicationActionId = publicationIntent.event.actionId;
         journey.config.signer.selectWallet(journey.config.lucid);
         const unsigned = await journey.config.lucid
           .newTx()
@@ -98,11 +120,25 @@ export const canonicalObservationControls = (journey: Journey) => {
       const intents = entries.flatMap(({ event }) =>
         event.kind === "submission_intent" ? [event] : [],
       );
-      expect(
-        intents.filter(
-          (event) => event.actionInput.stage === "publish_field_carriage",
-        ),
-      ).toHaveLength(3);
+      const publications = intents.filter(
+        (event) => event.actionInput.stage === "publish_field_carriage",
+      );
+      expect(publications).toHaveLength(3);
+      const replacements = intents.filter(
+        (event) =>
+          event.actionInput.stage === "publish_field_carriage" &&
+          event.actionInput.replacementOutRef !== undefined,
+      );
+      // Every hop reopens the journal: one replacement intent demonstrates
+      // that the consumed-output identity stays stable across cold restarts.
+      expect(replacements).toHaveLength(1);
+      expect(spentPublicationOutRef).toBeDefined();
+      expect(spentPublicationActionId).toBeDefined();
+      expect(publications[2]!.actionId).toBe(replacements[0]!.actionId);
+      expect(replacements[0]!.actionInput.replacementOutRef).toBe(
+        spentPublicationOutRef,
+      );
+      expect(replacements[0]!.actionId).not.toBe(spentPublicationActionId);
       expect(
         intents.filter(
           (event) => event.actionInput.stage === "certify_field_carriage",

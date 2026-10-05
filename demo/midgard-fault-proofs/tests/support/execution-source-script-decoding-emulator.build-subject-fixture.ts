@@ -74,12 +74,9 @@ export type SubjectFixture = Awaited<ReturnType<typeof buildSubjectFixture>>;
  * retained step-02 authentication, the block committing it (accepted, or a
  * forced leaf rejected with `reason`), and the retained evidence.
  */
-export const buildSubjectFixture = async ({
-  harness,
-  blockContext,
+export const buildSubjectReplay = async ({
   direction,
   item,
-  reason,
   seed = 0x72,
 }: {
   readonly direction: "accepted" | "forced";
@@ -186,6 +183,31 @@ export const buildSubjectFixture = async ({
       postUtxosRoot: mutations.at(-1)!.postRoot.toString("hex"),
     },
   });
+  return {
+    canonical,
+    transaction,
+    nativeTx,
+    scriptItem,
+    priorLedgerRoot,
+    orderKey,
+    eventKey,
+  };
+};
+
+/** Only replay that reached NativeScripts can authenticate this family. */
+export const buildSubjectFixture = async (
+  input: Parameters<typeof buildSubjectReplay>[0],
+) => {
+  const { harness, blockContext, direction, reason } = input;
+  const {
+    canonical,
+    transaction,
+    nativeTx,
+    scriptItem,
+    priorLedgerRoot,
+    orderKey,
+    eventKey,
+  } = await buildSubjectReplay(input);
   if (direction === "forced" && reason === undefined)
     throw new Error("a forced subject needs the operator's typed reason");
   const arm =

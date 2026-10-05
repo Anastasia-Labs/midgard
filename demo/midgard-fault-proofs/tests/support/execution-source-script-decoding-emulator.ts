@@ -61,6 +61,7 @@ export {
 } from "./execution-source-script-decoding-emulator.build-canonical-trace.js";
 export {
   buildSubjectFixture,
+  buildSubjectReplay,
   commitSubjectBlock,
   foreignForcedMembership,
   type SubjectFixture,

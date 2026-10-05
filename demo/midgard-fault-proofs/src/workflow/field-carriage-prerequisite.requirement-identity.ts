@@ -25,6 +25,7 @@ import {
   exact,
   FIELD_CARRIAGE_PREREQUISITE,
   type FieldCarriageRequirement,
+  OUT_REF,
   outRef,
   type PreimageCarriageRequirement,
   RAW_DATUM_PREIMAGE_PREREQUISITE,
@@ -226,6 +227,22 @@ export const publishedContentDigest = (
       : fieldPreimagePublicationBytes(datumCbor),
   ).toString("hex");
 
+export const publicationReplacementOutRef = (
+  action: FraudProofWorkflowAction,
+): string | undefined => {
+  const value = action.input.replacementOutRef;
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !OUT_REF.test(value))
+    throw new Error(
+      "field publication replacement changed its exact previous output",
+    );
+  return value;
+};
+
+export const publicationReplacementSuffix = (
+  outRef: string | undefined,
+): string => (outRef === undefined ? "" : `:replace:${outRef}`);
+
 export const publicationAction = <
   Category extends FraudProofCatalogueCategoryName,
 >({
@@ -233,14 +250,16 @@ export const publicationAction = <
   baseAction,
   requirement,
   publicationIndex,
+  replacementOutRef,
 }: {
   readonly category: Category;
   readonly baseAction: FraudProofWorkflowAction;
   readonly requirement: Requirement;
   readonly publicationIndex: number;
+  readonly replacementOutRef?: string;
 }): FraudProofWorkflowAction =>
   Object.freeze({
-    actionId: `publish-${"kind" in requirement ? (requirement.kind === "bound_data_publication" ? "bound-data" : "raw-datum-preimage") : "field-carriage"}:${baseAction.actionId}:${requirement.identitySha256}:${publicationIndex.toString()}`,
+    actionId: `publish-${"kind" in requirement ? (requirement.kind === "bound_data_publication" ? "bound-data" : "raw-datum-preimage") : "field-carriage"}:${baseAction.actionId}:${requirement.identitySha256}:${publicationIndex.toString()}${publicationReplacementSuffix(replacementOutRef)}`,
     input: Object.freeze({
       schemaVersion:
         "kind" in requirement
@@ -253,6 +272,7 @@ export const publicationAction = <
       forAction: frozenBaseAction(baseAction),
       requirementSha256: requirement.identitySha256,
       publicationIndex,
+      ...(replacementOutRef === undefined ? {} : { replacementOutRef }),
       publicationEncoding: publicationEncoding(requirement),
       publicationDigest: requirement.publicationDigests[publicationIndex]!,
       datumCborSha256: sha256(requirement.publicationDatums[publicationIndex]!),
@@ -327,6 +347,9 @@ export const carriageActionInputKeys = (
         "forAction",
         "requirementSha256",
         "publicationIndex",
+        ...(action.input.replacementOutRef === undefined
+          ? []
+          : ["replacementOutRef"]),
         "publicationEncoding",
         "publicationDigest",
         "datumCborSha256",
