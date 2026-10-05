@@ -36,6 +36,12 @@ export const availabilityResponderRetryBoundMs = (
   }> = AVAILABILITY_RESPONDER_RETRY_POLICY,
 ): number => policy.retries * policy.backoffCeilingMs;
 
+export type AvailabilityResponseLoopEnforcement = Readonly<{
+  pollIntervalCapMs: number;
+  installed: () => void;
+  scheduled: (expectedMonotonicMs: number) => void;
+}>;
+
 export type AvailabilityResponseLoopDeps = {
   /** One responder drain: every challenge ready to act on, nearest first. */
   readonly drain: () => Promise<AvailabilityResponderReport>;
@@ -43,6 +49,7 @@ export type AvailabilityResponseLoopDeps = {
   readonly pollIntervalMs: number;
   readonly timers?: AvailabilityResponseLoopTimers;
   readonly retryPolicy?: typeof AVAILABILITY_RESPONDER_RETRY_POLICY;
+  readonly enforcement?: AvailabilityResponseLoopEnforcement;
 };
 
 export type AvailabilityResponseLoop = {
@@ -101,6 +108,15 @@ export const createAvailabilityResponseLoop = (
 ): AvailabilityResponseLoop => {
   const timers = deps.timers ?? defaultTimers;
   const retryPolicy = deps.retryPolicy ?? AVAILABILITY_RESPONDER_RETRY_POLICY;
+  if (
+    deps.enforcement &&
+    (!Number.isSafeInteger(deps.pollIntervalMs) ||
+      deps.pollIntervalMs <= 0 ||
+      deps.pollIntervalMs > deps.enforcement.pollIntervalCapMs)
+  )
+    throw new Error(
+      "Availability poll interval exceeds its adopted capability",
+    );
   let inFlight: Promise<void> | undefined;
   let followUp: Promise<void> | undefined;
   let interval: unknown;
@@ -211,7 +227,11 @@ export const createAvailabilityResponseLoop = (
   return {
     start: () => {
       if (interval !== undefined) return;
+      deps.enforcement?.installed();
+      let scheduled = performance.now() + deps.pollIntervalMs;
       interval = timers.setInterval(() => {
+        deps.enforcement?.scheduled(scheduled);
+        scheduled += deps.pollIntervalMs;
         void run();
       }, deps.pollIntervalMs);
       void run();

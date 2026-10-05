@@ -116,6 +116,7 @@ const main = async (): Promise<void> => {
         : availabilityRuntime.responder.drain(),
     write: (stream, line) => process[stream].write(line),
     pollIntervalMs: config.pollIntervalMs,
+    enforcement: availabilityRuntime?.promiseLoopEnforcement,
   });
   const preflight = config.l1SubmissionEnabled
     ? createL1SubmitterPreflightMonitor({
@@ -138,6 +139,7 @@ const main = async (): Promise<void> => {
     // The exemption sets come from the L1 view the poller accepted this tick.
     const options = retentionCycleOptions(config, view, Date.now());
     try {
+      await availabilityRuntime?.compactRetainedPromises?.();
       const { deadlines, prune } = await runRetentionCycle(store, options);
       retentionReadiness = retentionReadinessFromDeadlines(deadlines);
       if (prune.prunedHeaderHashes.length > 0) {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AvailabilityResponderReport } from "../src/availability/responder.js";
 import {
@@ -147,6 +147,50 @@ describe("availability response loop", () => {
     expect(loop.reasons()).toEqual([`${event}:${headerHash}`]);
     await loop.run();
     expect(loop.reasons()).toEqual([]);
+  });
+
+  it("installs the adopted owner and reports each original monotonic poll deadline", async () => {
+    const clock = manualInterval();
+    const installed = vi.fn();
+    const scheduled = vi.fn();
+    const monotonic = vi.spyOn(performance, "now").mockReturnValue(100);
+    const loop = createAvailabilityResponseLoop({
+      drain: async () => ({ challenges: 0, status: "idle" }),
+      write: () => undefined,
+      pollIntervalMs: 15000,
+      timers: clock.timers,
+      enforcement: { pollIntervalCapMs: 15000, installed, scheduled },
+    });
+    try {
+      loop.start();
+      loop.start();
+      expect(installed).toHaveBeenCalledTimes(1);
+      monotonic.mockReturnValue(17101);
+      clock.handles[0]!();
+      await settle();
+      expect(scheduled).toHaveBeenLastCalledWith(15100);
+      monotonic.mockReturnValue(32101);
+      clock.handles[0]!();
+      expect(scheduled).toHaveBeenLastCalledWith(30100);
+    } finally {
+      loop.stop();
+      monotonic.mockRestore();
+    }
+  });
+
+  it("refuses a configured poll interval exceeding the adopted owner's cap", () => {
+    expect(() =>
+      createAvailabilityResponseLoop({
+        drain: async () => ({ challenges: 0, status: "idle" }),
+        write: () => undefined,
+        pollIntervalMs: 15001,
+        enforcement: {
+          pollIntervalCapMs: 15000,
+          installed: () => {},
+          scheduled: () => {},
+        },
+      }),
+    ).toThrow("poll interval exceeds");
   });
 
   it("logs a drain that throws and keeps running", async () => {

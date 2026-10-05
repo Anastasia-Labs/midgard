@@ -7,6 +7,7 @@ import {
 } from "./lucid-network.js";
 import { chainPointBatchDeadlineMs } from "./provider.chain-point-batch.js";
 import { FileChainSyncConsumerCursorStore } from "./provider.file-chain-sync-consumer-cursor-store.js";
+import { joinNativeReads } from "./provider.join-native-reads.js";
 import {
   l1AuthorityProviderSource,
   localAuthorityFingerprint,
@@ -59,7 +60,7 @@ export const providerFromConfig = async (
       localSource.authorityNodeId,
       localSource.chainSyncProviderUrl,
     );
-    const queryProviders = await Promise.all(
+    const queryProviders = await joinNativeReads(
       urls.map(async (url) =>
         requireStateQueueReplaySource(url, await providerFromUrl(url, config)),
       ),

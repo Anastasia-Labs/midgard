@@ -5,6 +5,9 @@ import {
   type CommitteeConfig,
   type CommitteeL1ClientConfig,
 } from "../config.js";
+import { scopedKupmiosCurrentPoint } from "../l1/availability-scoped-boundary.js";
+import { committeeScopedTransactionStatus } from "../l1/availability-scoped-transaction-status.js";
+import { committeeScopedOutRefs } from "../l1/availability-scoped-utxos.js";
 import {
   type CanonicalChainPoint,
   type ChainSyncCursor,
@@ -24,17 +27,37 @@ import {
   type StateQueueReplayWebSocket,
   type StateQueueReplayWebSocketFactory,
 } from "../l1/state-queue-replay-provider.js";
+import { committeeBoundReadContext } from "./committee-owned-read-transports.js";
 import { AvailabilityResponderAwaitingScanError } from "./responder.js";
+import {
+  committeeScopedFetch,
+  committeeScopedOgmiosRpc,
+  committeeScopedWebSocketFactory,
+  type CommitteeSourceReadLimits,
+} from "./scoped-transports.js";
 
 export type AvailabilityResponderL1Readers = Readonly<{
   /** The aligned Kupmios tip: Kupo and Ogmios at one chain point. */
-  currentPoint: () => Promise<CanonicalChainPoint>;
+  currentPoint: (
+    scope?: SDK.DaAvailabilityReadScope,
+  ) => Promise<CanonicalChainPoint>;
   /** The committee node's chain-sync cursor and rollback generation. */
-  currentCursor: () => Promise<ChainSyncCursor>;
+  currentCursor: (
+    scope?: SDK.DaAvailabilityReadScope,
+  ) => Promise<ChainSyncCursor>;
   /** Ogmios's tip block height (`queryNetwork/blockHeight`). */
-  tipBlockNo: () => Promise<number>;
+  tipBlockNo: (scope?: SDK.DaAvailabilityReadScope) => Promise<number>;
+  readTransactionStatus?: (
+    txHash: string,
+    scope?: SDK.DaAvailabilityReadScope,
+  ) => ReturnType<LucidEvolution["transactionStatus"]>;
+  readInputs?: (
+    refs: readonly Readonly<{ txHash: string; outputIndex: number }>[],
+    scope?: SDK.DaAvailabilityReadScope,
+  ) => Promise<UTxO[]>;
   resolveInclusion: (
     output: UTxO,
+    scope?: SDK.DaAvailabilityReadScope,
   ) => Promise<Readonly<{ slot?: number; blockHash?: string; depth?: number }>>;
   foreignSpend: Omit<SDK.DaAvailabilityForeignSpendReaders, "readBoundary">;
 }>;
@@ -52,28 +75,102 @@ export const availabilityResponderL1ReadersFromConfig = (input: {
   readonly lucid: LucidEvolution;
   readonly kupoUrl: string;
   readonly ogmiosUrl: string;
-  readonly currentCursor: () => Promise<ChainSyncCursor>;
+  readonly currentCursor: (
+    scope?: SDK.DaAvailabilityReadScope,
+  ) => Promise<ChainSyncCursor>;
+  readonly sourceReadLimits?: CommitteeSourceReadLimits;
 }): AvailabilityResponderL1Readers => {
   const { config, lucid, kupoUrl, ogmiosUrl } = input;
+  const defaultInclusion = kupmiosChainPointResolver(
+    lucid,
+    kupoUrl,
+    fetch,
+    ogmiosUrl,
+    config.network,
+    config.finalityDepth,
+    config.cardanoL1Source.networkMagic,
+  );
+  const readStatus = (txHash: string, scope?: SDK.DaAvailabilityReadScope) =>
+    scope && input.sourceReadLimits
+      ? committeeScopedTransactionStatus({
+          kupoUrl,
+          limits: input.sourceReadLimits,
+        })(txHash, scope)
+      : lucid.transactionStatus(txHash);
   return {
-    currentPoint: kupmiosCurrentChainPointResolver(
-      config.network,
+    currentPoint: (scope) =>
+      scope && input.sourceReadLimits
+        ? scopedKupmiosCurrentPoint({
+            network: config.network,
+            kupoUrl,
+            ogmiosUrl,
+            networkMagic: config.cardanoL1Source.networkMagic,
+            scope,
+            limits: input.sourceReadLimits,
+          })
+        : kupmiosCurrentChainPointResolver(
+            config.network,
+            kupoUrl,
+            ogmiosUrl,
+            config.cardanoL1Source.networkMagic,
+          )(),
+    currentCursor: (scope) =>
+      scope
+        ? scope.read(() => input.currentCursor(scope))
+        : input.currentCursor(),
+    tipBlockNo: (scope) =>
+      fetchOgmiosTipBlockNo(
+        ogmiosUrl,
+        scope && input.sourceReadLimits
+          ? committeeScopedFetch(scope, input.sourceReadLimits)
+          : fetch,
+      ),
+    readTransactionStatus: readStatus,
+    readInputs: (refs, scope) =>
+      scope && input.sourceReadLimits
+        ? committeeScopedOutRefs({ kupoUrl, limits: input.sourceReadLimits })(
+            refs,
+            scope,
+          )
+        : lucid.utxosByOutRef([...refs]),
+    resolveInclusion: (output, scope) => {
+      if (!scope || !input.sourceReadLimits) return defaultInclusion(output);
+      const limits = input.sourceReadLimits;
+      // This proxy owns only the status callback; it cannot mutate the shared wallet/cache.
+      const scopedLucid = new Proxy(lucid, {
+        get(target, property, receiver) {
+          return property === "transactionStatus"
+            ? (hash: string) => readStatus(hash, scope)
+            : Reflect.get(target, property, receiver);
+        },
+      });
+      return kupmiosChainPointResolver(
+        scopedLucid,
+        kupoUrl,
+        committeeScopedFetch(scope, limits),
+        ogmiosUrl,
+        config.network,
+        config.finalityDepth,
+        config.cardanoL1Source.networkMagic,
+        {
+          openSession: (url) => committeeScopedOgmiosRpc(url, scope, limits),
+          readAlignedTip: () =>
+            scopedKupmiosCurrentPoint({
+              network: config.network,
+              kupoUrl,
+              ogmiosUrl,
+              networkMagic: config.cardanoL1Source.networkMagic,
+              scope,
+              limits,
+            }),
+        },
+      )(output);
+    },
+    foreignSpend: availabilityForeignSpendReaders({
       kupoUrl,
       ogmiosUrl,
-      config.cardanoL1Source.networkMagic,
-    ),
-    currentCursor: input.currentCursor,
-    tipBlockNo: () => fetchOgmiosTipBlockNo(ogmiosUrl, fetch),
-    resolveInclusion: kupmiosChainPointResolver(
-      lucid,
-      kupoUrl,
-      fetch,
-      ogmiosUrl,
-      config.network,
-      config.finalityDepth,
-      config.cardanoL1Source.networkMagic,
-    ),
-    foreignSpend: availabilityForeignSpendReaders({ kupoUrl, ogmiosUrl }),
+      sourceReadLimits: input.sourceReadLimits,
+    }),
   };
 };
 
@@ -103,12 +200,15 @@ export const availabilityResponderOperations = (input: {
   // Still thrown, so the SDK aborts the step and releases its lease; the
   // responder tick reports it as a wait, not a failure.
   const awaitingScan = () => new AvailabilityResponderAwaitingScanError();
-  const readBoundary = async (): Promise<
+  const readBoundary = async (
+    scope?: SDK.DaAvailabilityReadScope,
+  ): Promise<
     SDK.DaAvailabilityCanonicalBoundary &
       Readonly<{ blockHash: string; blockNo: number }>
   > => {
-    const point = await readers.currentPoint();
-    const cursor = await readers.currentCursor();
+    scope?.assertCurrent();
+    const point = await readers.currentPoint(scope);
+    const cursor = await readers.currentCursor(scope);
     if (
       expectedRollbackGeneration !== undefined &&
       cursor.rollbackGeneration !== expectedRollbackGeneration
@@ -124,10 +224,21 @@ export const availabilityResponderOperations = (input: {
     if (!atCursor(point)) throw awaitingScan();
     // The tip's height, bound to the cursor's point by a tip read on each
     // side; the tip's own optional height is never read.
-    const tipBefore = await readers.currentPoint();
-    const blockNo = await readers.tipBlockNo();
-    const tipAfter = await readers.currentPoint();
+    const tipBefore = await readers.currentPoint(scope);
+    const blockNo = await readers.tipBlockNo(scope);
+    const tipAfter = await readers.currentPoint(scope);
     if (!atCursor(tipBefore) || !atCursor(tipAfter)) throw awaitingScan();
+    if (
+      scope !== undefined &&
+      ((tipBefore.blockHeight !== undefined &&
+        tipBefore.blockHeight !== blockNo) ||
+        (tipAfter.blockHeight !== undefined &&
+          tipAfter.blockHeight !== blockNo))
+    )
+      throw new Error(
+        "Scoped boundary native height differs from its selected-chain tip",
+      );
+    scope?.assertCurrent();
     return {
       pointId: `${point.slot}:${point.blockHash}`,
       slot: point.slot,
@@ -135,9 +246,12 @@ export const availabilityResponderOperations = (input: {
       blockNo,
     };
   };
-  const assertActuationCurrent = async (): Promise<void> => {
-    await input.assertSourceHealthy();
-    await readBoundary();
+  const assertActuationCurrent = async (
+    scope?: SDK.DaAvailabilityReadScope,
+  ): Promise<void> => {
+    if (scope) await scope.read(() => input.assertSourceHealthy());
+    else await input.assertSourceHealthy();
+    await readBoundary(scope);
   };
   const context: SDK.DaAvailabilityOperationContext = {
     ...input.context,
@@ -146,23 +260,46 @@ export const availabilityResponderOperations = (input: {
     observe: SDK.createDaAvailabilityOperationObserver({
       lucid: input.lucid,
       readBoundary,
+      readTransactionStatus: readers.readTransactionStatus,
+      readInputs: readers.readInputs,
       resolveInclusion: readers.resolveInclusion,
-      resolveForeignSpend: (outRef) =>
+      resolveForeignSpend: (outRef, scope) =>
         SDK.resolveDaAvailabilityForeignSpend({
           ...readers.foreignSpend,
           outRef,
           readBoundary,
+          scope,
         }),
     }),
   };
-  const reconcile = async (): Promise<
-    "ready" | "pending" | Readonly<{ held: string }>
-  > => {
+  const reconcile = async (
+    scope?: SDK.DaAvailabilityReadScope,
+  ): Promise<"ready" | "pending" | Readonly<{ held: string }>> => {
     // A new tick may adopt a recovered generation only for reconciliation;
     // no new action is selected until every durable intent is checked.
-    expectedRollbackGeneration = (await readers.currentCursor())
+    expectedRollbackGeneration = (await readers.currentCursor(scope))
       .rollbackGeneration;
-    const results = await SDK.reconcileDaAvailabilityOperations(context);
+    scope?.assertCurrent();
+    // The owning routine awaits durable reconciliation; only its evidence
+    // reads inherit this absolute scope through the SDK context.
+    const results = await SDK.reconcileDaAvailabilityOperations(
+      scope === undefined
+        ? context
+        : {
+            ...committeeBoundReadContext(context, scope),
+            observationSignal: scope.signal,
+            observationTimeoutMs: Math.max(
+              1,
+              Math.ceil(
+                Math.min(
+                  context.observationTimeoutMs ?? scope.remainingMs(),
+                  scope.remainingMs(),
+                ),
+              ),
+            ),
+          },
+    );
+    scope?.assertCurrent();
     // A held or conflicting intent stops new signing with its reason; it is
     // read afresh on every pass, so evidence that clears it clears the hold.
     const held = results.find(
@@ -196,19 +333,35 @@ export const availabilityForeignSpendReaders = (input: {
   readonly ogmiosUrl: string;
   readonly fetchImpl?: StateQueueReplayFetch;
   readonly webSocketFactory?: StateQueueReplayWebSocketFactory;
+  readonly sourceReadLimits?: CommitteeSourceReadLimits;
 }): Omit<SDK.DaAvailabilityForeignSpendReaders, "readBoundary"> => {
   const fetchImpl = input.fetchImpl ?? fetch;
+  const transportFetch: typeof fetch = (request, init) =>
+    fetchImpl(
+      typeof request === "string"
+        ? request
+        : request instanceof URL
+          ? request.toString()
+          : request.url,
+      init,
+    );
   const webSocketFactory =
     input.webSocketFactory ??
     ((url: string) =>
       new WebSocket(url) as unknown as StateQueueReplayWebSocket);
   return {
-    fetchSpend: async (outRef) => {
+    fetchSpend: async (outRef, scope) => {
       try {
         const spend = await fetchSpend(
           input.kupoUrl,
           `${outRef.txHash}#${outRef.outputIndex.toString()}`,
-          fetchImpl,
+          scope && input.sourceReadLimits
+            ? committeeScopedFetch(
+                scope,
+                input.sourceReadLimits,
+                transportFetch,
+              )
+            : fetchImpl,
         );
         return spend === null
           ? undefined
@@ -219,14 +372,27 @@ export const availabilityForeignSpendReaders = (input: {
         throw error;
       }
     },
-    fetchAncestor: (slot) => fetchAncestor(input.kupoUrl, slot, fetchImpl),
-    readTransaction: async ({ ancestor, point, txHash }) => {
+    fetchAncestor: (slot, scope) =>
+      fetchAncestor(
+        input.kupoUrl,
+        slot,
+        scope && input.sourceReadLimits
+          ? committeeScopedFetch(scope, input.sourceReadLimits, transportFetch)
+          : fetchImpl,
+      ),
+    readTransaction: async ({ ancestor, point, txHash }, scope) => {
       try {
         const transaction = await readTransaction(
           input.ogmiosUrl,
           ancestor,
           { transactionHash: txHash, point },
-          webSocketFactory,
+          scope && input.sourceReadLimits
+            ? committeeScopedWebSocketFactory(
+                scope,
+                input.sourceReadLimits,
+                webSocketFactory,
+              )
+            : webSocketFactory,
         );
         return {
           txHash: transaction.transactionHash,

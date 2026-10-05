@@ -1,3 +1,7 @@
+import {
+  type CommitteeScopedOgmiosRpc,
+  committeeScopedOgmiosRpc,
+} from "../availability/scoped-transports.js";
 import { type OgmiosChainSyncRequest } from "./provider.local-node-chain-authority.js";
 import {
   assertNetworkMagic,
@@ -5,6 +9,7 @@ import {
   parseOgmiosPoint,
   parseOgmiosPointOrOrigin,
 } from "./provider.ogmios-rpc-session.js";
+import type { ChainSyncReadBudget } from "./provider.parse-persisted-chain-sync-state.js";
 import {
   type CanonicalChainPoint,
   CHAIN_SYNC_INTERSECTION_POINTS,
@@ -16,7 +21,8 @@ import {
 import { L1SourceIntegrityError } from "./source-integrity.js";
 
 export const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
-  let session: OgmiosRpcSession | undefined;
+  let session: OgmiosRpcSession | CommitteeScopedOgmiosRpc | undefined;
+  let sessionScope: ChainSyncReadBudget["scope"] | undefined;
   let sessionUrl: string | undefined;
   let intersection: CanonicalChainPoint | undefined;
   // The caller position this session is synchronized with: the cursor it
@@ -34,6 +40,7 @@ export const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
   const disconnect = (): void => {
     session?.close();
     session = undefined;
+    sessionScope = undefined;
     sessionUrl = undefined;
     intersection = undefined;
     delivered = undefined;
@@ -57,12 +64,15 @@ export const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
     network,
     authorityNodeId,
     networkMagic,
+    readBudget,
   ) => {
     const source = `chain-sync:${authorityNodeId}`;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
+        readBudget?.scope.assertCurrent();
         if (
           session === undefined ||
+          sessionScope !== readBudget?.scope ||
           sessionUrl !== ogmiosUrl ||
           cursor === undefined ||
           delivered === undefined ||
@@ -71,7 +81,15 @@ export const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
           // Only a caller at the session's delivered point may continue it;
           // any other cursor re-intersects so no event is skipped or repeated.
           disconnect();
-          session = await OgmiosRpcSession.open(ogmiosUrl);
+          session =
+            readBudget === undefined
+              ? await OgmiosRpcSession.open(ogmiosUrl)
+              : await committeeScopedOgmiosRpc(
+                  ogmiosUrl,
+                  readBudget.scope,
+                  readBudget.limits,
+                );
+          sessionScope = readBudget?.scope;
           sessionUrl = ogmiosUrl;
           const genesis = getRecord(
             await session.request("queryNetwork/genesisConfiguration", {
@@ -279,6 +297,7 @@ export const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
         );
       } catch (error) {
         disconnect();
+        readBudget?.scope.assertCurrent();
         if (attempt === 1) {
           throw error;
         }

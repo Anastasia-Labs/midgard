@@ -1,6 +1,8 @@
+import type { AvailabilityResponseAdmissionDecision } from "@al-ft/midgard-core";
 import { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 
+import { committeePromisePolicyStatus } from "./availability/promise-profile-selection.js";
 import {
   acknowledgeL1RollbackFeed,
   checkL1RollbackFeed,
@@ -10,6 +12,10 @@ import {
   payloadFetchObservation,
   quarantinedTickResult,
 } from "./committee-service.check-l1-rollback-feed.js";
+import {
+  coordinatorPostFailedMessage,
+  shouldRepublishSignatureForHeader,
+} from "./committee-service.coordinator-post-failed-message.js";
 import {
   type CommitteeL1SubmitterPreflightSnapshot,
   type CommitteeL1View,
@@ -22,6 +28,7 @@ import {
   DA_PARAMS_STARTUP_RETRY,
   type SignedHeaderResult,
 } from "./committee-service.ingest-da-conflict-evidence.js";
+import { signVerifiedCommitteePayload } from "./committee-service.sign-verified-payload.js";
 import { l1SourceAuthorityDigest } from "./config.js";
 import type { DaSubmitterFundingCheck } from "./coordinator/lucid-submitter.js";
 import {
@@ -62,7 +69,6 @@ import {
   deriveExpectedDaAvailabilityCommitment,
   validateDaSignatureRecord,
 } from "./peer/signatures.js";
-import { signDaAttestation } from "./signer.js";
 import {
   decisionEffectId,
   DecisionEffectInFlightError,
@@ -78,6 +84,7 @@ import { hexToBytes } from "./utils/hex.js";
 
 export class CommitteeService {
   private readonly deps: CommitteeServiceDeps;
+  private promiseAdmission?: AvailabilityResponseAdmissionDecision;
   private tickInFlight?: Promise<CommitteeTickResult>;
   private l1View: CommitteeL1View | undefined;
   /**
@@ -97,6 +104,15 @@ export class CommitteeService {
    * single-flight), attached to every decision observation the tick writes
    * so the store can check an output change against them.
    */
+  private retirementDeferredHeaders: ReadonlySet<string> = new Set();
+  readRetirementOperationalPins(): readonly string[] {
+    return [
+      ...new Set([
+        ...this.retirementDeferredHeaders,
+        ...(this.l1View?.liveQueueHeaderHashes ?? []),
+      ]),
+    ];
+  }
   private authenticatedSteps: ReadonlyMap<
     string,
     readonly StateQueueOutputStep[]
@@ -459,8 +475,30 @@ export class CommitteeService {
       );
     }
 
+    const promiseAdmissionPolicy =
+      this.deps.signer === undefined
+        ? undefined
+        : await committeePromisePolicyStatus(this.deps);
+    if (promiseAdmissionPolicy?.status === "unavailable")
+      reasons.push(
+        `da_new_promise_policy_unavailable: ${promiseAdmissionPolicy.reason}`,
+      );
+    if (
+      this.promiseAdmission !== undefined &&
+      this.promiseAdmission.status !== "admitted"
+    ) {
+      reasons.push(
+        `da_new_promise_${this.promiseAdmission.status}: ${this.promiseAdmission.reason}`,
+      );
+    }
     return {
       ready: reasons.length === 0,
+      ...(promiseAdmissionPolicy === undefined
+        ? {}
+        : { promiseAdmissionPolicy }),
+      ...(this.promiseAdmission === undefined
+        ? {}
+        : { promiseAdmission: this.promiseAdmission }),
       l1Source: {
         sourceMode: this.l1SourceMode(),
         status: l1SourceState?.status ?? "uninitialized",
@@ -535,11 +573,12 @@ export class CommitteeService {
       reasons,
     };
   }
-
   private async tickOnceWithStatus(): Promise<CommitteeTickResult> {
     const startedAt = new Date().toISOString();
     try {
-      const result = await this.tickOnce();
+      const result = await this.deps.store.withRetirementDiscovery(() =>
+        this.tickOnce(),
+      );
       this.lastTick = {
         status: result.errors.length === 0 ? "ok" : "degraded",
         startedAt,
@@ -557,7 +596,6 @@ export class CommitteeService {
       throw error;
     }
   }
-
   private async tickOnce(): Promise<CommitteeTickResult> {
     const priorL1State = await this.deps.store.getL1SourceState();
     if (priorL1State?.status === "quarantined") {
@@ -585,6 +623,7 @@ export class CommitteeService {
         stateQueuePolicyId: this.deps.config.stateQueuePolicyId,
         daAttestationPolicyId: this.deps.config.daAttestationPolicyId,
         finalityDepth: this.deps.config.finalityDepth,
+        automaticRecoveryMaxDepth: this.deps.config.automaticRecoveryMaxDepth,
         consensusProfile: this.deps.config.consensusProfile,
         previousHeaders,
         ...(durableReplayAnchor === undefined
@@ -624,6 +663,7 @@ export class CommitteeService {
       this.replayAnchorCandidate = replayAnchorCandidate;
       this.unpersistedReplayAnchor = replayAnchor;
       this.authenticatedSteps = authenticatedSteps;
+      this.retirementDeferredHeaders = deferredHeaders;
     } catch (error) {
       return this.quarantineOnIntegrityFailure(
         "l1_source_integrity_failed",
@@ -637,6 +677,7 @@ export class CommitteeService {
         priorL1State,
         this.deps.stateQueueProvider,
         snapshotChainSyncCursor,
+        this.deps.store,
       );
     } catch (error) {
       return this.quarantineOnIntegrityFailure(
@@ -691,6 +732,7 @@ export class CommitteeService {
         observedAtMs: (this.deps.now?.() ?? new Date()).getTime(),
         confirmedHeadHash: scannedL1View.confirmedHeaderHash,
         liveQueueHeaderHashes: new Set(scannedL1View.liveQueueHeaderHashes),
+        recoveryProofUnavailable: scannedL1View.recoveryProofUnavailable,
       };
     }
     const errors: string[] = [];
@@ -1156,44 +1198,15 @@ export class CommitteeService {
     if (verified === undefined) {
       return undefined;
     }
-    if (
-      this.deps.signer === undefined ||
-      this.deps.signerValidation === undefined ||
-      this.deps.config.signerIndex === undefined
-    ) {
-      throw new Error("DA signer is not configured");
-    }
-    const expectedCommitment = deriveExpectedDaAvailabilityCommitment({
-      authority: {
-        deploymentIdentity: this.deps.config.hubOraclePolicyId,
-        responseGeometry:
-          this.deps.config.availabilityChallenge.responseGeometry,
+    return signVerifiedCommitteePayload(
+      this.deps,
+      record,
+      verified,
+      (decision) => {
+        this.promiseAdmission = decision;
+        this.writeEvent({ event: "da_promise_admission", ...decision });
       },
-      headerHash: record.headerHash,
-      payloadCborHex: verified.storedPayloadCbor.toString("hex"),
-    });
-    const signatureWitness = signDaAttestation({
-      signer: this.deps.signer,
-      signerIndex: this.deps.config.signerIndex,
-      availabilityCommitment: expectedCommitment.commitment,
-    });
-    const signature: DaSignatureRecord = {
-      deploymentFingerprint: this.deps.config.deploymentFingerprint,
-      headerHash: record.headerHash,
-      signerIndex: this.deps.config.signerIndex,
-      signatureWitness,
-      availabilityCommitmentCbor: expectedCommitment.commitmentCbor,
-      availabilityCommitmentDigest: expectedCommitment.commitmentDigest,
-      payloadHash: verified.payloadSha256,
-      committeeSignersHash: this.deps.signerValidation.committeeSignersHash,
-      signedAt: new Date().toISOString(),
-      broadcastStatus: "local",
-      source: "local",
-      verifiedAt: new Date().toISOString(),
-      l1ChainPoint: record.observedChainPoint,
-      validation: verified.validation,
-    };
-    return { signature };
+    );
   }
 
   private async fetchVerifyPayload(
@@ -1722,36 +1735,17 @@ export class CommitteeService {
   private coordinatorPostFailedMessage(
     record: Pick<DaSignatureRecord, "headerHash" | "signerIndex">,
   ): string {
-    const coordinatorError = this.deps.coordinator?.lastPublishError?.(record);
-    return `failed to publish DA signature for ${record.headerHash} signer ${record.signerIndex.toString()}${
-      coordinatorError === undefined ? "" : `: ${coordinatorError}`
-    }`;
-  }
-
-  private shouldRepublishExistingSignature(record: DaSignatureRecord): boolean {
-    const coordinator = this.deps.coordinator;
-    if (coordinator === undefined) {
-      return false;
-    }
-    return (
-      record.broadcastStatus !== "posted" ||
-      coordinator.retryPublishedSignatures === true
-    );
+    return coordinatorPostFailedMessage(this.deps.coordinator, record);
   }
 
   private shouldRepublishExistingSignatureForHeader(
     record: DaSignatureRecord,
-    status: Awaited<ReturnType<typeof scanStateQueue>>[number]["status"],
+    status: StateQueueHeaderRecord["status"],
   ): boolean {
-    if (!this.shouldRepublishExistingSignature(record)) {
-      return false;
-    }
-    if (status === "unattested" || status === "attesting") {
-      return true;
-    }
-    return (
-      status === "attested" &&
-      this.deps.coordinator?.retryPublishedSignaturesForAttestedHeaders === true
+    return shouldRepublishSignatureForHeader(
+      this.deps.coordinator,
+      record,
+      status,
     );
   }
 }

@@ -16,15 +16,12 @@ import type { CommitteeStore } from "../store.js";
 /**
  * Retention enforcement for the committee node store (GOAL_SPEC 9.4 / Q54).
  *
- * A retained DA payload is prunable once its header was removed from the state
- * queue OR its block's challengeability horizon (maturity + worst-case
- * proof-time bound) has strictly passed, unless it is the payload of the L1
- * confirmed head or of a header still live in the L1 state queue. Both
- * exemption sets come from the poller's latest authenticated L1 view, never
- * from local header rows, so the retained set is bounded by one head, the live
- * queue, and the payloads whose block ended within the horizon. The live set
- * is the queue as a release-final reader sees it: the scanner adds
- * `finalityHeldHeaderHashes` to the queue at the tip.
+ * Confirmation admits terminal observations. Retirement is separate: exact
+ * authenticated terminal history must be more than the signed recovery depth
+ * in blocks AFTER inclusion. The replay anchor retains younger history so a
+ * later scan can refresh that proof. Missing authority retains bytes and is
+ * exposed in retention readiness; every scan retries it. The confirmed head,
+ * live queue and newest merged boundary remain held as well.
  */
 
 export type RetentionCandidate = {
@@ -46,6 +43,7 @@ export type RetentionL1View = {
   readonly confirmedHeadHash: string;
   /** Hashes of every header node currently in the L1 state queue. */
   readonly liveQueueHeaderHashes: ReadonlySet<string>;
+  readonly recoveryProofUnavailable?: boolean;
 };
 
 export type RetentionScanOptions = RetentionL1View & {
@@ -55,6 +53,7 @@ export type RetentionScanOptions = RetentionL1View & {
   readonly deploymentFingerprint?: string;
   /** Release-bound L1 depth used by the terminal-history diagnostic. */
   readonly minimumFinalityDepth?: number;
+  readonly automaticRecoveryMaxDepth?: number;
 };
 
 /**
@@ -115,8 +114,8 @@ export const finalityHeldHeaderHashes = (
         "authenticated_state_queue_transition_v1" &&
       typeof observedChainPoint.blockHeight === "number",
   );
-  // Header records are never pruned, so the newest block is found without
-  // spreading every record into one call's arguments.
+  // Paired retirement pins this whole latest merged native block; find its
+  // retained boundary without spreading every record into call arguments.
   const newestBlock = finalMerges.reduce(
     (newest, { observedChainPoint }) =>
       Math.max(newest, observedChainPoint.blockHeight!),
@@ -140,7 +139,7 @@ export const finalityHeldHeaderHashes = (
 const isTerminalStatus = (status: StateQueueHeaderRecord["status"]): boolean =>
   status === "merged" || status === "removed";
 
-const hasAuthenticatedTerminalHistory = (
+export const hasAuthenticatedTerminalHistory = (
   header: StateQueueHeaderRecord | undefined,
   minimumFinalityDepth: number | undefined,
 ): boolean => {
@@ -170,6 +169,26 @@ const hasAuthenticatedTerminalHistory = (
     header.validationErrors.length === 0
   );
 };
+
+/** True only for release-bound, authenticated history beyond the recovery horizon. */
+export const terminalRecoveryFinal = (
+  header: StateQueueHeaderRecord | undefined,
+  options: Pick<
+    RetentionScanOptions,
+    "automaticRecoveryMaxDepth" | "deploymentFingerprint"
+  >,
+  payloadDeploymentFingerprint: string,
+): boolean =>
+  options.automaticRecoveryMaxDepth !== undefined &&
+  Number.isSafeInteger(options.automaticRecoveryMaxDepth) &&
+  options.automaticRecoveryMaxDepth >= 0 &&
+  header?.deploymentFingerprint === payloadDeploymentFingerprint &&
+  (options.deploymentFingerprint === undefined ||
+    header?.deploymentFingerprint === options.deploymentFingerprint) &&
+  hasAuthenticatedTerminalHistory(
+    header,
+    options.automaticRecoveryMaxDepth + 1,
+  );
 
 /**
  * Joins retained DA payloads to their state-queue headers and applies the core
@@ -215,6 +234,11 @@ export const retentionCandidates = async (
         headerStatus,
         queueReference,
         retentionDays: options.retentionDays,
+        terminalRecoveryFinal: terminalRecoveryFinal(
+          header,
+          options,
+          payload.deploymentFingerprint,
+        ),
       }),
     };
   });
@@ -244,6 +268,8 @@ const pruneRetentionCandidates = async (
       retentionDays: options.retentionDays,
       confirmedHeadHash: options.confirmedHeadHash,
       liveQueueHeaderHashes: options.liveQueueHeaderHashes,
+      automaticRecoveryMaxDepth: options.automaticRecoveryMaxDepth,
+      deploymentFingerprint: options.deploymentFingerprint,
     });
     if (deleted) {
       prunedHeaderHashes.push(candidate.headerHash);
@@ -287,6 +313,8 @@ export type RetentionDeadlineReport = {
   readonly prunable: number;
   readonly alerting: number;
   readonly entries: readonly RetentionDeadlineEntry[];
+  /** Missing terminal authority retains bytes and requires another authenticated scan. */
+  readonly recoveryProofUnavailable?: number;
 };
 
 /**
@@ -308,7 +336,10 @@ export type RetentionDeadlineOptions = RetentionScanOptions & {
 export const retentionCycleOptions = (
   config: Pick<
     CommitteeConfig,
-    "retentionAlertThresholdMs" | "deploymentFingerprint" | "finalityDepth"
+    | "retentionAlertThresholdMs"
+    | "deploymentFingerprint"
+    | "finalityDepth"
+    | "automaticRecoveryMaxDepth"
   > & {
     readonly daTransport: Pick<CommitteeConfig["daTransport"], "retentionDays">;
   },
@@ -320,8 +351,10 @@ export const retentionCycleOptions = (
   retentionDays: config.daTransport.retentionDays,
   deploymentFingerprint: config.deploymentFingerprint,
   minimumFinalityDepth: config.finalityDepth,
+  automaticRecoveryMaxDepth: config.automaticRecoveryMaxDepth,
   confirmedHeadHash: view.confirmedHeadHash,
   liveQueueHeaderHashes: view.liveQueueHeaderHashes,
+  recoveryProofUnavailable: view.recoveryProofUnavailable,
 });
 
 const retentionDeadlineReportFromCandidates = (
@@ -374,6 +407,17 @@ const retentionDeadlineReportFromCandidates = (
     prunable,
     alerting: entries.filter((entry) => entry.alerting).length,
     entries,
+    ...(() => {
+      const missing = candidates.filter(
+        (candidate) =>
+          candidate.decision.reasonCode === "terminal_recovery_pending" &&
+          (options.recoveryProofUnavailable === true ||
+            candidate.terminalHistoryAuthorityMismatch ||
+            candidate.fingerprintMismatch ||
+            options.automaticRecoveryMaxDepth === undefined),
+      ).length;
+      return missing === 0 ? {} : { recoveryProofUnavailable: missing };
+    })(),
   };
 };
 

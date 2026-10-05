@@ -28,6 +28,7 @@ export const retentionOptions = (nowMs = NOW) => ({
   nowMs,
   deploymentFingerprint: FINGERPRINT,
   minimumFinalityDepth: 30,
+  automaticRecoveryMaxDepth: 2160,
   confirmedHeadHash: hashOf(200),
   liveQueueHeaderHashes: new Set([hashOf(201), hashOf(202)]),
 });
@@ -59,7 +60,7 @@ const postgresDatabases: string[] = [];
  * (`scripts/start-test-postgres.sh`); fails closed when none is reachable.
  */
 export const openPostgresStore = async (): Promise<PostgresCommitteeStore> => {
-  const databaseName = `committee_retention_${randomBytes(6).toString("hex")}`;
+  const databaseName = `${process.env.MIDGARD_TEST_DATABASE_PREFIX ?? "codex_rel_committee_retention"}_${randomBytes(6).toString("hex")}`;
   const admin = new Client({
     ...postgresAdmin,
     database: process.env.POSTGRES_DB ?? "postgres",
@@ -120,7 +121,7 @@ const headerRecord = (
           slot: 100,
           blockHash: "12".repeat(32),
           blockHeight: 90,
-          depth: 30,
+          depth: 2161,
           finalized: true,
           providerSource: "authenticated_state_queue_transition_v1",
         }

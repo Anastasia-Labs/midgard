@@ -1,10 +1,12 @@
 import { RETENTION_MS_PER_DAY } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
+import { retentionReadinessFromDeadlines } from "../src/committee-service.js";
 import type { StateQueueHeaderStatus } from "../src/domain.js";
 import {
   pruneExpiredDaPayloads,
   retentionCandidates,
+  retentionDeadlineReport,
 } from "../src/store/retention.js";
 import {
   hashOf,
@@ -139,7 +141,7 @@ describe("retentionCandidatesV1", () => {
     ]);
   });
 
-  it("keeps deployment and terminal-history mismatches as diagnostics only", async () => {
+  it("holds a terminal record from a foreign deployment", async () => {
     const store = await openStore();
     await seed(store, [
       {
@@ -155,10 +157,62 @@ describe("retentionCandidatesV1", () => {
     });
     expect(candidate).toMatchObject({
       fingerprintMismatch: true,
-      terminalHistoryAuthorityMismatch: true,
-      decision: { decision: "prune" },
+      terminalHistoryAuthorityMismatch: false,
+      decision: { decision: "retain", reasonCode: "terminal_recovery_pending" },
+    });
+    const report = await retentionDeadlineReport(store, retentionOptions());
+    expect(retentionReadinessFromDeadlines(report)).toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("terminal_recovery_proof_unavailable"),
     });
   });
+});
+
+describe("terminal recovery payload retirement", () => {
+  it.each([
+    ["the JSON file store", openStore],
+    ["the Postgres store", openPostgresStore],
+  ] as const)(
+    "rechecks strict after-inclusion depth and authority in %s",
+    async (_label, open) => {
+      const store = await open();
+      const headerHash = hashOf(14);
+      await seed(store, [
+        { headerHash, endTimeMs: PAST_HORIZON, status: "removed" },
+      ]);
+      const header = (await store.listStateQueueHeaders())[0]!;
+      const request = { ...retentionOptions(), headerHash };
+      for (const depth of [12, 2160]) {
+        await store.upsertStateQueueHeader({
+          ...header,
+          observedChainPoint: { ...header.observedChainPoint, depth },
+        });
+        expect(
+          (await retentionCandidates(store, retentionOptions()))[0]?.decision
+            .reasonCode,
+        ).toBe("terminal_recovery_pending");
+        expect(await store.deleteDaPayloadIfPrunable(request)).toBe(false);
+        expect(await store.getDaPayload(headerHash)).toBeDefined();
+      }
+      await store.upsertStateQueueHeader({
+        ...header,
+        observedChainPoint: { ...header.observedChainPoint, depth: 2161 },
+      });
+      expect(
+        await store.deleteDaPayloadIfPrunable({
+          ...request,
+          automaticRecoveryMaxDepth: undefined,
+        }),
+      ).toBe(false);
+      expect(
+        await store.deleteDaPayloadIfPrunable({
+          ...request,
+          deploymentFingerprint: "ee".repeat(32),
+        }),
+      ).toBe(false);
+      expect(await store.deleteDaPayloadIfPrunable(request)).toBe(true);
+    },
+  );
 });
 
 describe("pruneExpiredDaPayloadsV1", () => {
@@ -197,6 +251,8 @@ describe("pruneExpiredDaPayloadsV1", () => {
         nowMs: NOW,
         confirmedHeadHash: HEAD,
         liveQueueHeaderHashes: new Set<string>(),
+        automaticRecoveryMaxDepth: 2160,
+        deploymentFingerprint: retentionOptions().deploymentFingerprint,
       };
       expect(
         await store.deleteDaPayloadIfPrunable({

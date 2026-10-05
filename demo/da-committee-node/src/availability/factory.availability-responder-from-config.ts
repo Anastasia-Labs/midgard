@@ -3,6 +3,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import type { AvailabilityResponseLoopEnforcement } from "../availability-response-loop.js";
 import { type CommitteeL1ClientConfig } from "../config.js";
 import {
   correctionLockValidatorFromDeploymentInfo,
@@ -12,16 +13,20 @@ import { lucidFromProviderUrl } from "../l1/lucid.js";
 import type { StateQueueProvider } from "../l1/state-queue-scanner.js";
 import { selectL1SubmitterWallet } from "../l1/submitter.js";
 import type { CommitteeStore } from "../store.js";
+import { createCommitteePromiseAdmissionSource } from "./create-promise-admission-source.js";
 import {
   availabilityParametersFromConfig,
   availabilityResponderCollateral,
   availabilityResponderL1ReadersFromConfig,
   availabilityResponderOperations,
 } from "./factory.availability-responder-operations.js";
+import { configuredCommitteePromiseRuntime } from "./factory.configured-promise-runtime.js";
 import {
-  buildAvailabilityResponderTransaction,
+  availabilityResponderTransactionOperation,
   discoverAvailabilityResponderChallenges,
 } from "./factory.discover-availability-responder-challenges.js";
+import type { CommitteePromiseAdmissionSource } from "./promise-admission.js";
+import { assertCommitteePromiseEnrollment } from "./promise-profile-selection.js";
 import { availabilityResponderReferenceScripts } from "./reference-scripts.js";
 import { AvailabilityResponder } from "./responder.js";
 import { assertAvailabilityResponderSourceHealthy } from "./source-authority.js";
@@ -35,8 +40,15 @@ export const availabilityResponderFromConfig = async (
   },
 ): Promise<{
   readonly responder: AvailabilityResponder;
+  readonly promiseAdmissionSource: CommitteePromiseAdmissionSource;
   readonly close: () => void;
+  readonly promiseLoopEnforcement?: AvailabilityResponseLoopEnforcement;
+  readonly bindRetirementOperationalPins?: (
+    read: () => readonly string[],
+  ) => void;
+  readonly compactRetainedPromises?: () => Promise<readonly string[]>;
 }> => {
+  await assertCommitteePromiseEnrollment(config, store);
   if (
     !config.availabilityJournalPath ||
     !config.availabilitySubmitterKeySource
@@ -145,6 +157,24 @@ export const availabilityResponderFromConfig = async (
   const journal = openAvailabilityOperationJournal(
     config.availabilityJournalPath,
   );
+  if (config.availabilityPromiseAdoption) {
+    try {
+      return await configuredCommitteePromiseRuntime({
+        config,
+        store,
+        chainProvider,
+        lucid,
+        deployment,
+        actorId: actor.hash,
+        journal,
+        kupoUrl,
+        ogmiosUrl,
+      });
+    } catch (error) {
+      journal.close();
+      throw error;
+    }
+  }
   const { readBoundary, assertActuationCurrent, context, reconcile } =
     availabilityResponderOperations({
       lucid,
@@ -171,6 +201,20 @@ export const availabilityResponderFromConfig = async (
     });
   return {
     close: () => journal.close(),
+    // Finite preparation/signing/persistence/submission bounds are not yet
+    // established. No policy is inferred from a lease or a read timeout.
+    promiseAdmissionSource: createCommitteePromiseAdmissionSource({
+      config,
+      deployment,
+      actorId: actor.hash,
+      store,
+      journal,
+      lucid,
+      ogmiosUrl,
+      currentCursor: chainProvider.currentChainSyncCursor.bind(chainProvider),
+      readBoundary,
+      assertActuationCurrent,
+    }),
     responder: new AvailabilityResponder({
       deploymentFingerprint: config.deploymentFingerprint,
       deploymentIdentity: deployment.hubOraclePolicyId,
@@ -200,18 +244,10 @@ export const availabilityResponderFromConfig = async (
         return snapshots;
       },
       execute: async (action) => {
-        const result = await SDK.runDaAvailabilityOperation(context, {
-          action: action.kind,
-          headerHash: action.challenge.record.datum.commitment.header_hash,
-          build: async () =>
-            (
-              await buildAvailabilityResponderTransaction(
-                lucid,
-                deployment,
-                action,
-              )
-            ).tx,
-        });
+        const result = await SDK.runDaAvailabilityOperation(
+          context,
+          availabilityResponderTransactionOperation(lucid, deployment, action),
+        );
         if (result.status === "conflict")
           throw new Error(
             "Availability responder transaction conflicts with canonical L1 history",

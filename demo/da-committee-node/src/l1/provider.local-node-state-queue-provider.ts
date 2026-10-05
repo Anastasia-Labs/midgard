@@ -6,7 +6,9 @@ import type {
   ObservedStateQueueNode,
   ObservedStateQueueSnapshot,
 } from "../domain.js";
+import { readAvailabilityCursor } from "./availability-cursor.js";
 import { canonicalJson } from "./canonical-json.js";
+import { joinNativeReads } from "./provider.join-native-reads.js";
 import {
   ChainMovedDuringSnapshotError,
   LOCAL_NODE_SNAPSHOT_ATTEMPTS,
@@ -26,6 +28,7 @@ import {
 } from "./provider.lucid-state-queue-provider.js";
 import { declaredChainPoint } from "./provider.parse-fixture-chain-sync-events.js";
 import {
+  type AvailabilityCursorRefresh,
   type CanonicalChainPoint,
   type ChainSyncAcknowledgement,
   type ChainSyncCatchUpProgress,
@@ -112,7 +115,7 @@ export class LocalNodeStateQueueProvider
         );
       }
     };
-    const results = await Promise.all(
+    const results = await joinNativeReads(
       this.queryProviders.map(async (provider, index) => {
         if (provider.fetchStateQueueSnapshot === undefined) {
           throw new Error(
@@ -211,6 +214,13 @@ export class LocalNodeStateQueueProvider
     return this.authority.currentPoint();
   }
 
+  async refreshAvailabilityCursor(
+    budget: AvailabilityCursorRefresh,
+  ): Promise<ChainSyncCursor> {
+    await this.authority.refreshToTip(budget);
+    return readAvailabilityCursor(this, budget.scope);
+  }
+
   async currentChainSyncCursor(): Promise<ChainSyncCursor> {
     return this.authority.currentCursor();
   }
@@ -254,7 +264,7 @@ export class LocalNodeStateQueueProvider
     tipBlockNo: number,
     limit: number,
   ): Promise<readonly SDK.StateQueueAuthenticatedReplayCheckpoint[]> {
-    const histories = await Promise.all(
+    const histories = await joinNativeReads(
       this.queryProviders.map(async (provider, index) => {
         if (provider.fetchStateQueueReplayCheckpoints === undefined) {
           throw new Error(

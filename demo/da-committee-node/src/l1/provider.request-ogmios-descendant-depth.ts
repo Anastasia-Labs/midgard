@@ -49,6 +49,11 @@ export const kupmiosChainPointResolver = (
   batch: {
     readonly batchDeadlineMs?: number;
     readonly nowMs?: () => number;
+    /** Owning scoped consumer supplies both transports; default callers are unchanged. */
+    readonly openSession?: (
+      url: string,
+    ) => Promise<Pick<OgmiosRpcSession, "request" | "close">>;
+    readonly readAlignedTip?: () => Promise<CanonicalChainPoint>;
   } = {},
 ): ChainPointResolver => {
   const resolveInclusion = lucidChainPointResolver(lucid);
@@ -56,6 +61,7 @@ export const kupmiosChainPointResolver = (
     readonly network: string;
     readonly ogmiosUrl: string;
   }): Promise<CanonicalChainPoint> =>
+    batch.readAlignedTip?.() ??
     alignedKupmiosTip(
       walk.network,
       _kupoUrl,
@@ -85,6 +91,7 @@ export const kupmiosChainPointResolver = (
             observedAt: new Date().toISOString(),
           },
           requiredDepth,
+          openSession: batch.openSession,
         };
   const assertTipHeld = async (
     walk: Parameters<typeof alignedTip>[0],
@@ -169,6 +176,7 @@ const requestOgmiosDescendantDepth = async ({
   inclusion,
   expectedTip,
   requiredDepth,
+  openSession,
 }: {
   readonly ogmiosUrl: string;
   readonly network: string;
@@ -176,9 +184,12 @@ const requestOgmiosDescendantDepth = async ({
   readonly inclusion: CanonicalChainPoint;
   readonly expectedTip: CanonicalChainPoint;
   readonly requiredDepth: number;
+  readonly openSession?: (
+    url: string,
+  ) => Promise<Pick<OgmiosRpcSession, "request" | "close">>;
 }): Promise<number> => {
   const source = `confirmation-depth:${ogmiosUrl}`;
-  const session = await OgmiosRpcSession.open(ogmiosUrl);
+  const session = await (openSession ?? OgmiosRpcSession.open)(ogmiosUrl);
   try {
     const genesis = getRecord(
       await session.request("queryNetwork/genesisConfiguration", {

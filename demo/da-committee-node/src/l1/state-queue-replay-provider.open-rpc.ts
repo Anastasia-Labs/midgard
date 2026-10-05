@@ -29,6 +29,7 @@ export type Transaction = Readonly<{
   slot: number;
   blockNo: number;
   transactionIndex: number;
+  selectedChainTip: Readonly<{ id: string; slot: number; height: number }>;
   mintPolicyIds: readonly string[];
   redeemers: readonly SDK.StateQueueTransitionRedeemer[];
   spentInputOutRefs: readonly string[];

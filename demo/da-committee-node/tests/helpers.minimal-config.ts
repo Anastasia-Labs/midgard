@@ -208,6 +208,7 @@ export const minimalConfig = ({
   },
   cardanoProviderUrls: ["fixture:/tmp/state-queue.json"],
   finalityDepth: 2,
+  automaticRecoveryMaxDepth: 2,
   daTransport: {
     kind: "libp2p",
     deploymentFingerprint: "f".repeat(64),

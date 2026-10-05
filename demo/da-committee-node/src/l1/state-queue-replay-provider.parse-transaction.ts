@@ -20,6 +20,7 @@ const parseTransaction = (
   value: unknown,
   block: { blockHash: string; slot: number; blockNo: number },
   transactionIndex: number,
+  selectedChainTip: Transaction["selectedChainTip"],
 ): Transaction => {
   const tx = value as {
     id?: unknown;
@@ -100,6 +101,7 @@ const parseTransaction = (
     transactionHash: tx.id,
     ...block,
     transactionIndex,
+    selectedChainTip,
     mintPolicyIds,
     redeemers: parsedRedeemers,
     spentInputOutRefs,
@@ -126,6 +128,7 @@ export const readTransaction = async (
       const next = (await rpc.request("nextBlock", {})) as {
         direction?: unknown;
         block?: unknown;
+        tip?: unknown;
       };
       if (next.direction === "backward" && !handshakeRollback) {
         handshakeRollback = true;
@@ -168,10 +171,31 @@ export const readTransaction = async (
         throw new L1SourceIntegrityError(
           "Kupo spend transaction is absent from Ogmios block",
         );
+      const tip = next.tip as
+        | { id?: unknown; slot?: unknown; height?: unknown }
+        | undefined;
+      if (
+        typeof tip?.id !== "string" ||
+        !HEX_32.test(tip.id) ||
+        typeof tip.slot !== "number" ||
+        !Number.isSafeInteger(tip.slot) ||
+        tip.slot < block.slot ||
+        typeof tip.height !== "number" ||
+        !Number.isSafeInteger(tip.height) ||
+        tip.height < block.height ||
+        (tip.height === block.height
+          ? tip.id !== block.id || tip.slot !== block.slot
+          : tip.id === block.id || tip.slot <= block.slot)
+      ) {
+        throw new Error(
+          "Ogmios replay lacks a coherent selected-chain tip on the raw block response",
+        );
+      }
       return parseTransaction(
         block.transactions[index],
         { blockHash: block.id, slot: block.slot, blockNo: block.height },
         index,
+        { id: tip.id, slot: tip.slot, height: tip.height },
       );
     }
     throw new Error("Ogmios replay exceeded its block scan bound");

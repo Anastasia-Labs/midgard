@@ -93,8 +93,12 @@ const clients: readonly (readonly [
     "Ogmios JSON-RPC error: ",
     (error) => {
       vi.stubGlobal("WebSocket", answeringWebSocket(error));
-      // Kupo never answers, so the Ogmios answer decides the read.
-      const kupo = (() => new Promise<Response>(() => {})) as typeof fetch;
+      // Kupo settles only after Ogmios answers, so the Ogmios answer is the
+      // first failure the joined read reports once every started read ends.
+      const kupo = (() =>
+        new Promise<Response>((_resolve, reject) =>
+          setTimeout(() => reject(new Error("Kupo read not under test")), 50),
+        )) as typeof fetch;
       return failureOf(() =>
         alignedKupmiosTip(
           "Custom",

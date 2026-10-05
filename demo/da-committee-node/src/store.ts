@@ -44,3 +44,13 @@ export {
   mergeQuarantinedL1SourceState,
   persistedDecisionTransition,
 } from "./store.persisted-decision-transition.js";
+export type { CommitteeRetirementCertificate } from "./store/retirement-certificate.js";
+export type {
+  CommitteeRetirementBinding,
+  CommitteeRetirementFloor,
+  CommitteeRetirementGuard,
+  CommitteeRetirementPort,
+  CommitteeRetirementSnapshot,
+} from "./store/retirement-model.js";
+export { retirementMetadataGrowthReserve } from "./store/retirement-model.js";
+export { committeeRetirementSource } from "./store/retirement-source.js";

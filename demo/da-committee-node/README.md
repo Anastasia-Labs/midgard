@@ -66,3 +66,25 @@ SELECT-only database role. Give it a separate credential file containing only
 its required reader configuration, rather than the committee's signer,
 database-writer, or L1 submitter credentials. YAML does not replace the bound
 deployment/runtime manifests, database privileges, or readiness checks.
+
+## JSON store ownership
+
+The file backend requires local storage with reliable SQLite/POSIX file locking
+and the declared Node 22 toolchain. A SQLite transaction holds a process mutex
+for the JSON store's entire lifetime, including queued asynchronous writes.
+Its persistent sidecar is `<store-file>.lock.mutex.sqlite`. Never remove or
+replace the lock metadata, mutex sidecar, or its SQLite journal while a writer
+may be alive. Shared network filesystems and uncoordinated writers are outside
+this backend's storage boundary; use the PostgreSQL backend for shared
+multi-host deployment.
+
+A live writer, even a paused one, keeps the mutex, so a successor is refused
+before it reads the lease metadata. Process death releases the mutex. Holding it
+proves no cooperating writer is alive on this filesystem, and only then does a
+successor judge the metadata: a holder whose process or boot is provably gone on
+the same host and PID namespace is taken over at once, and unreadable,
+cross-host or other-namespace metadata (a crashed container) is taken over once
+it is 60 s unrenewed. Until then startup holds unready with
+`starting:store_instance_lock_held` and retries, so a crash never needs an
+operator to remove the lock. Lease metadata publishes atomically so a crash
+during renewal preserves the prior complete owner record.
