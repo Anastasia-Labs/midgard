@@ -46,6 +46,7 @@ import {
   nonEmptyWindowHeader,
   recordForeignTip,
 } from "./foreign-tip-gate.fixtures.js";
+import { seedVerifiedForeignBase } from "./readiness-verified-foreign-base.fixture.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 /**
@@ -151,6 +152,7 @@ const onNode = <A, E>(
         return yield* Effect.gen(function* () {
           yield* clear;
           const globals = yield* Globals;
+          yield* seedVerifiedForeignBase(globals);
           yield* Ref.set(globals.NATIVE_MPF_OWNER, responsiveOwner);
           const readyz = Effect.gen(function* () {
             yield* Ref.update(globals.L1_PROVIDER_HEALTH, (current) =>

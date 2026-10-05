@@ -29,6 +29,7 @@ import {
   header,
   journalFixture,
 } from "./local-mutation-job-abandonment.journal-fixture.js";
+import { seedVerifiedForeignBase } from "./readiness-verified-foreign-base.fixture.js";
 import { withFailingStatements } from "./sql-fault-injection.js";
 import { provideDatabaseLayers } from "./utils.js";
 
@@ -126,12 +127,16 @@ const readyz = ({
   journal = Effect.void,
   ogmiosTipMaxAgeMs,
   forceProviderProbe = false,
+  foreignBaseVerified = true,
 }: {
   readonly provider?: readonly ProviderObservation[];
   readonly databaseDown?: boolean;
   readonly journal?: Effect.Effect<void, unknown, never>;
   readonly ogmiosTipMaxAgeMs?: number;
   readonly forceProviderProbe?: boolean;
+  /** False models a node whose commitment tick has not yet checked the
+   * canonical base of its current history authority. */
+  readonly foreignBaseVerified?: boolean;
 } = {}): Promise<Readyz> =>
   Effect.runPromise(
     provideDatabaseLayers(
@@ -146,6 +151,7 @@ const readyz = ({
         return yield* Effect.gen(function* () {
           yield* journal;
           const globals = yield* Globals;
+          if (foreignBaseVerified) yield* seedVerifiedForeignBase(globals);
           for (const observation of provider)
             yield* Ref.update(globals.L1_PROVIDER_HEALTH, (current) =>
               nextL1ProviderHealthEvidence({
@@ -320,6 +326,13 @@ describe("GET /readyz under internal transients", () => {
     expect(trace.response.reasons).toEqual([
       "foreign_tip_reconciliation_awaiting:2",
     ]);
+  });
+
+  it("holds readiness until the current authority's foreign base is verified", async () => {
+    const response = await readyz({ foreignBaseVerified: false });
+    expect(response.status).toBe(503);
+    expect(response.ready).toBe(false);
+    expect(response.reasons).toEqual(["foreign_base_verification_unobserved"]);
   });
 
   it.each([
