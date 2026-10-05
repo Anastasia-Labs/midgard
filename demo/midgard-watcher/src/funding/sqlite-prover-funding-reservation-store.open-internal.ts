@@ -1226,8 +1226,8 @@ export const openInternal = async (
           unacknowledgedAbandonment(current.reservationId) !== null
         )
           return current;
-        // The workflow authority checks that all signed attempts are resolved;
-        // this also admits refreshing unsigned inputs spent after confirmation.
+        // The workflow authority checks no signed attempt is in flight (confirmed
+        // suffices, retirement is not awaited); this admits spent unsigned inputs.
         const next = nextRecord({ current, activeInputs: [] });
         writeRecord(current.recordDigest, next);
         rebuildLeases();

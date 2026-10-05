@@ -21,7 +21,7 @@ import { runtimeFunding } from "./workflow-runtime.runtime-funding.js";
 
 export const registerIdleFundingRetirementTests = () => {
   it.each([false, true])(
-    "authorizes stale idle refresh only after every signed descendant resolves, and reobservation revokes it (read-only: %s)",
+    "authorizes stale idle refresh once no signed attempt is in flight, without waiting for retirement, and reobservation revokes it (read-only: %s)",
     async (readOnly) => {
       const journal = new MemoryFraudProofWorkflowJournalStore();
       const refreshIdle = vi.fn(
@@ -186,26 +186,27 @@ export const registerIdleFundingRetirementTests = () => {
         outcome: "confirmed",
       });
       await append({ kind: "confirmed", actionId: "child", txHash: childHash });
-      // Ordinary confirmation admits progress but cannot retire reservations
-      // inside the signed recovery horizon.
+      // Confirmation inside the recovery horizon already releases idle inputs
+      // and reprices collateral; retirement only prunes the record later.
       await releaseIdleWorkflowFundingReservation({ journal, workflowId });
-      expect(funding.releaseIdle).not.toHaveBeenCalled();
-      await checkStaleRefresh(false);
+      expect(funding.releaseIdle).toHaveBeenCalledTimes(readOnly ? 1 : 0);
+      await checkStaleRefresh(true);
       await append({
         kind: "signed_attempt_retired",
         txHash: childHash,
         retirement: childProof.retirement,
       });
       await releaseIdleWorkflowFundingReservation({ journal, workflowId });
-      expect(funding.releaseIdle).toHaveBeenCalledTimes(readOnly ? 1 : 0);
+      expect(funding.releaseIdle).toHaveBeenCalledTimes(readOnly ? 2 : 0);
       await checkStaleRefresh(true);
+      // A rollback reopens the confirmed attempt; it is in flight again.
       await append({
         kind: "reobserved",
         actionId: "child",
         txHash: childHash,
       });
       await releaseIdleWorkflowFundingReservation({ journal, workflowId });
-      expect(funding.releaseIdle).toHaveBeenCalledTimes(readOnly ? 1 : 0);
+      expect(funding.releaseIdle).toHaveBeenCalledTimes(readOnly ? 2 : 0);
       await checkStaleRefresh(false);
     },
   );

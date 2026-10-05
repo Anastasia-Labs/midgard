@@ -80,6 +80,15 @@ it("recovers exact signed leases through cap one to three to one, then refreshes
   await fixture.run(journal);
   expect(fixture.adapter.submit).not.toHaveBeenCalled();
   const signedPrefix = await journal.load(fixture.initial.workflowId);
+  // The prior attempt is confirmed inside the recovery horizon, not retired.
+  expect(signedPrefix.map(({ event }) => event.kind)).not.toContain(
+    "signed_attempt_retired",
+  );
+  expect(signedPrefix.at(-1)!.event).toEqual({
+    kind: "confirmed",
+    actionId: "init",
+    txHash: fixture.transactionHash,
+  });
   await beginWorkflowFundingReservationAction({
     journal,
     action: { actionId: "next", input: { actionKind: "step-one" } },

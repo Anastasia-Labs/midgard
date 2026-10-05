@@ -12,7 +12,6 @@ import {
   type SignedTransactionRecoveryObservation,
   type SignedWorkflowTransaction,
   type VerifiedFraudProofReleaseFinalityPolicy,
-  WorkflowFundingReservationUnavailableError,
 } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
@@ -280,13 +279,16 @@ export const assertConfirmedFundingHistoryRetained = async (
   ).toBe(true);
 };
 
-export const authorizeConfirmedFundingRefill = async (
+/** Retirement beyond the recovery horizon is bookkeeping only: a confirmed
+ * attempt has already released its stale inputs, so its receipts change no
+ * reservation, lease or wallet read, and its signed history stays retained. */
+export const retireConfirmedFundingAttempts = async (
   test: FundingFixture,
   journal: FraudProofWorkflowJournalStore,
   checkSourceNegatives = false,
 ) => {
-  const action = { actionId: "next", input: { actionKind: "proof.init" } };
   const records = await test.records();
+  const walletReads = test.readWalletUtxos.mock.calls.length;
   const leases = await test.store.readReservedOutRefs({});
   const entries = await journal.load(test.initial.workflowId);
   const signed = new Map<string, SignedWorkflowTransaction>();
@@ -314,17 +316,9 @@ export const authorizeConfirmedFundingRefill = async (
       [...leases].sort(),
     );
     expect(await journal.load(test.initial.workflowId)).toEqual(entries);
-    expect(test.readWalletUtxos).not.toHaveBeenCalled();
+    expect(test.readWalletUtxos).toHaveBeenCalledTimes(walletReads);
     await assertConfirmedFundingHistoryRetained(test);
   };
-  await releaseIdleWorkflowFundingReservation({
-    journal,
-    workflowId: test.initial.workflowId,
-  });
-  await expect(
-    beginWorkflowFundingReservationAction({ journal, action }),
-  ).rejects.toBeInstanceOf(WorkflowFundingReservationUnavailableError);
-  await assertHeld();
   const policy = await finality.verifyForWorkflow({
     deploymentFingerprint: deploymentIdentity.manifestId,
   });
@@ -396,7 +390,7 @@ export const authorizeConfirmedFundingRefill = async (
   expect([...(await test.store.readReservedOutRefs({}))].sort()).toEqual(
     [...leases].sort(),
   );
-  expect(test.readWalletUtxos).not.toHaveBeenCalled();
+  expect(test.readWalletUtxos).toHaveBeenCalledTimes(walletReads);
   await assertConfirmedFundingHistoryRetained(test);
 };
 
@@ -422,7 +416,7 @@ export const registerConfirmedFundingRefillTest = () => {
         (utxo) => `${utxo.txHash}#${utxo.outputIndex}` !== spent,
       ),
     );
-    await authorizeConfirmedFundingRefill(test, journal, true);
+    // The confirmed attempt is not retired; its stale input refreshes at once.
     await beginWorkflowFundingReservationAction({ journal, action });
     expect(test.readWalletUtxos).toHaveBeenCalledOnce();
     expect(
@@ -432,5 +426,6 @@ export const registerConfirmedFundingRefillTest = () => {
       before[0]!.reservationId,
     );
     await assertConfirmedFundingHistoryRetained(test);
+    await retireConfirmedFundingAttempts(test, journal, true);
   });
 };

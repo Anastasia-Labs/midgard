@@ -136,11 +136,12 @@ const journalHasOnlyResolvedFundingAttempts = (
       event.txHash !== undefined &&
       resolved.has(event.txHash)
     ) {
-      if (event.kind === "signed_attempt_retired")
+      // A confirmed attempt never holds later actions: retirement beyond the
+      // recovery horizon only prunes its record, and its collateral is never
+      // at risk because only locally evaluated scripts are submitted. A
+      // rollback reopens it through `reobserved` below.
+      if (event.kind === "signed_attempt_retired" || event.kind === "confirmed")
         resolved.set(event.txHash, true);
-      // Confirmation may still roll back. It cannot retire an exact signed
-      // descendant or authorize reusing its stale wallet reservation.
-      else if (event.kind === "confirmed") resolved.set(event.txHash, false);
       else if (event.kind === "reconciled")
         resolved.set(
           event.txHash,

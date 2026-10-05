@@ -21,7 +21,7 @@ import {
 } from "../support/fault-proof-funding-fixture.js";
 import {
   assertConfirmedFundingHistoryRetained,
-  authorizeConfirmedFundingRefill,
+  retireConfirmedFundingAttempts,
 } from "./prover-funding-recovery.authenticated-confirmed-refill.js";
 
 it.each([
@@ -195,7 +195,7 @@ describe("additive deployed funding roster recovery", () => {
         (utxo) => `${utxo.txHash}#${utxo.outputIndex}` !== spent,
       ),
     );
-    await authorizeConfirmedFundingRefill(test, journal);
+    // The confirmed attempt is not retired; its stale input refreshes at once.
     await beginWorkflowFundingReservationAction({
       journal,
       action: { actionId: "next", input: { actionKind: "proof.init" } },
@@ -210,5 +210,6 @@ describe("additive deployed funding roster recovery", () => {
     ] as const)
       expect(after[field]).toBe(before[field]);
     await assertConfirmedFundingHistoryRetained(test);
+    await retireConfirmedFundingAttempts(test, journal);
   });
 });
