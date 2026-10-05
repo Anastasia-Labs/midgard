@@ -395,58 +395,71 @@ describe("applied fresh-install schema", () => {
 });
 
 describe("upgrading a database migrated by an earlier release", () => {
-  it("migrates a baseline stamped with the baseline-era manifest and serves it", async () => {
-    const [baseline] = MIGRATIONS;
-    const baselineManifest = manifestHashThrough(baseline!.version);
-    await Effect.runPromise(
-      provideDatabaseLayers(
-        Effect.gen(function* () {
-          const sql = yield* BatchSql;
-          yield* sql.unsafe("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
-          const withSql = <A, E>(
-            effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-          ) => effect.pipe(Effect.provideService(SqlClient.SqlClient, sql));
-          // The state a baseline-only release left: its ledger tables, the
-          // baseline schema, and one row stamped with its own manifest.
-          yield* withSql(MigrationRunner.getStatus);
-          yield* sql.withTransaction(
-            Effect.gen(function* () {
-              for (const statement of splitSqlStatements(baseline!.sql)) {
-                yield* sql.unsafe(statement);
-              }
-              yield* sql`INSERT INTO schema_migrations
-                (version, name, checksum_sha256, manifest_hash_sha256,
-                 app_version, execution_ms, applied_by)
-                VALUES (${baseline!.version}, ${baseline!.name},
-                        ${baseline!.checksumSha256}, ${baselineManifest},
-                        'baseline-release', 1, 'baseline-release')`;
-            }),
-          );
+  // Version 1 is the baseline-only release; version 3 is the last migration
+  // a release shipped before retained script material, the foreign event
+  // census and foreign native adoption (4-6) were added.
+  it.each([1, 3])(
+    "migrates a database a release installed through v%i and serves it",
+    async (through) => {
+      const applied = MIGRATIONS.filter(
+        (migration) => migration.version <= through,
+      );
+      expect(applied.at(-1)?.version).toBe(through);
+      const releaseManifest = manifestHashThrough(through);
+      await Effect.runPromise(
+        provideDatabaseLayers(
+          Effect.gen(function* () {
+            const sql = yield* BatchSql;
+            yield* sql.unsafe(
+              "DROP SCHEMA public CASCADE; CREATE SCHEMA public",
+            );
+            const withSql = <A, E>(
+              effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+            ) => effect.pipe(Effect.provideService(SqlClient.SqlClient, sql));
+            // The state that release left: its ledger tables, its schema, and
+            // one row per migration stamped with its own manifest.
+            yield* withSql(MigrationRunner.getStatus);
+            yield* sql.withTransaction(
+              Effect.gen(function* () {
+                for (const migration of applied) {
+                  for (const statement of splitSqlStatements(migration.sql)) {
+                    yield* sql.unsafe(statement);
+                  }
+                  yield* sql`INSERT INTO schema_migrations
+                    (version, name, checksum_sha256, manifest_hash_sha256,
+                     app_version, execution_ms, applied_by)
+                    VALUES (${migration.version}, ${migration.name},
+                            ${migration.checksumSha256}, ${releaseManifest},
+                            'earlier-release', 1, 'earlier-release')`;
+                }
+              }),
+            );
 
-          const status = yield* withSql(
-            MigrationRunner.migrate({
-              appVersion: "migration-runner-test",
-              actor: "upgrade",
-            }),
-          );
-          expect(status.actualVersion).toBe(MIGRATIONS.at(-1)!.version);
-          yield* withSql(MigrationRunner.assertCompatible);
-          const rows = yield* sql<{
-            readonly version: number;
-            readonly manifest_hash_sha256: string;
-          }>`SELECT version, manifest_hash_sha256
-               FROM schema_migrations ORDER BY version`;
-          expect(rows).toEqual(
-            MIGRATIONS.map((migration) => ({
-              version: migration.version,
-              manifest_hash_sha256:
-                migration.version === baseline!.version
-                  ? baselineManifest
-                  : MIGRATION_MANIFEST_HASH,
-            })),
-          );
-        }),
-      ),
-    );
-  });
+            const status = yield* withSql(
+              MigrationRunner.migrate({
+                appVersion: "migration-runner-test",
+                actor: "upgrade",
+              }),
+            );
+            expect(status.actualVersion).toBe(MIGRATIONS.at(-1)!.version);
+            yield* withSql(MigrationRunner.assertCompatible);
+            const rows = yield* sql<{
+              readonly version: number;
+              readonly manifest_hash_sha256: string;
+            }>`SELECT version, manifest_hash_sha256
+                 FROM schema_migrations ORDER BY version`;
+            expect(rows).toEqual(
+              MIGRATIONS.map((migration) => ({
+                version: migration.version,
+                manifest_hash_sha256:
+                  migration.version <= through
+                    ? releaseManifest
+                    : MIGRATION_MANIFEST_HASH,
+              })),
+            );
+          }),
+        ),
+      );
+    },
+  );
 });

@@ -16,6 +16,7 @@ import {
 } from "../../services/index.js";
 import {
   handleSignSubmitNoConfirmation,
+  type NoInlineSubmitDefer,
   type NoInlineSubmitRecoveryOptions,
   type TxSignError,
   TxSubmitError,
@@ -42,6 +43,30 @@ import {
 } from "./state-queue.js";
 
 const COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS = 4;
+
+/** Whether a no-inline defer left anything to resubmit: the pre-submit check
+ * defers before the signed intent is persisted, so nothing was sent; the
+ * provider-slot and early-validity defers follow the persist and a provider
+ * refusal of the bytes as not yet valid, which the signed-intent rebroadcast
+ * fiber resubmits unchanged once the tip reaches their validity lower bound. */
+export const commitSubmitDeferMessage = (defer: NoInlineSubmitDefer) =>
+  `Commit block submit deferred in no-inline mode (${defer.kind}, current slot ${defer.currentSlot.toString()}, target slot ${defer.targetSlot.toString()}, due slot ${defer.dueSlot.toString()}): ${
+    defer.kind === "pre_submit_validity"
+      ? "before its signed intent was persisted; nothing was sent"
+      : "the provider refused its persisted signed intent as not yet valid; the signed intent is retained for rebroadcast of its exact bytes"
+  }`;
+
+/** The commit's deferred submit as an error that carries the due slot. */
+export const commitSubmitDeferError = (
+  defer: NoInlineSubmitDefer,
+  headerHash: string,
+) =>
+  new TxSubmitError({
+    message: commitSubmitDeferMessage(defer),
+    txHash: headerHash,
+    dueSlot: defer.dueSlot,
+    cause: defer,
+  });
 
 export type BuiltCommitTx = {
   readonly preparedTxHash: string;
@@ -343,6 +368,9 @@ export const buildUnsignedCommitTx = (
           dependencyKey: `commit-block:${newHeaderHash}`,
           invalidationKey: `commit-block:${newHeaderHash}`,
         },
+        // The signed intent is journaled: the history owner releases it once
+        // its base output is spent, and block confirmation records a landing.
+        unknownInputsFailFast: true,
       };
       const signAndSubmitProgram = handleSignSubmitNoConfirmation(
         lucid.api,
@@ -354,12 +382,7 @@ export const buildUnsignedCommitTx = (
             result.status === "submitted"
               ? Effect.succeed(result.txHash)
               : Effect.fail(
-                  new TxSubmitError({
-                    message:
-                      "Commit block submit deferred in no-inline mode before submission",
-                    txHash: newHeaderHash,
-                    cause: result.defer,
-                  }),
+                  commitSubmitDeferError(result.defer, newHeaderHash),
                 ),
           ),
         )

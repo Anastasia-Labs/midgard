@@ -7,11 +7,12 @@ import {
   type WatcherNormalizedL1Block,
 } from ".././l1-adapter.js";
 import { type WatcherMultiProviderConsistency } from ".././multi-provider-consistency.js";
+import { retainReleasedFinality } from "../finality-engine.retain-released-finality.js";
 import {
   authenticatesCanonicalBlock,
   commitRollbackDurableAuthority,
   currentRollbackFinalityState,
-  storeWithAuthenticatedObservations,
+  nextAuthenticatedEvidenceWithinRecoveryHorizon,
 } from "./durable-authority.commit-rollback-durable-authority.js";
 import {
   makeRollbackDurableTrustedHead,
@@ -23,6 +24,7 @@ import {
   type WatcherRollbackCanonicalAncestryLink,
 } from "./durable-authority.persist-watcher-rollback-durable-observation.js";
 import { freezeRollbackSnapshotJson } from "./durable-authority.rollback-authority-canonical.js";
+import { reject } from "./records.js";
 import {
   evaluateWatcherPostFinalityRecovery,
   parseWatcherPostFinalityRecoveryResult,
@@ -79,10 +81,9 @@ export const persistWatcherRollbackDurableCanonicalProgress = async (input: {
         throw new Error("watcher canonical progress bootstrap is invalid");
       })();
   }
-  const finalityResult = evaluateWatcherFinality(
-    runtime.policy,
-    evaluationState,
-    input.consistency,
+  const finalityResult = retainReleasedFinality(
+    evaluateWatcherFinality(runtime.policy, evaluationState, input.consistency),
+    previousFinalityState.finalized,
   );
   if (
     finalityResult.state === null ||
@@ -107,22 +108,14 @@ export const persistWatcherRollbackDurableCanonicalProgress = async (input: {
       finalityResult,
     });
   }
-  const nextStore = storeWithAuthenticatedObservations(
-    runtime.snapshot.currentStore,
-    input.observations,
-  );
-  const nextHistory = Object.freeze([
-    ...runtime.snapshot.consistencyHistory.filter(
-      ({ consistencyDigest }) =>
-        consistencyDigest !== input.consistency.consistencyDigest,
-    ),
-    input.consistency,
-  ]);
-  if (nextHistory.length > 6_483) {
-    throw new Error(
-      "watcher authenticated consistency history exceeds its bound",
-    );
-  }
+  const { store: nextStore, history: nextHistory } =
+    nextAuthenticatedEvidenceWithinRecoveryHorizon({
+      source: runtime.snapshot.currentStore,
+      history: runtime.snapshot.consistencyHistory,
+      observations: input.observations,
+      consistencies: [input.consistency],
+      frontier: finalityResult.state,
+    });
   assertCanonicalProgressEvidence(
     runtime.policy,
     runtime.snapshot.currentStore,
@@ -173,7 +166,7 @@ export const evaluateAndPersistWatcherRollback = async (input: {
   readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
 }): Promise<WatcherRollbackDurableEvaluationResult> => {
   const runtime = runtimeForRollbackDurableAuthority(input.authority);
-  const verified = evaluateWatcherRollbackStep(
+  const ordinary = evaluateWatcherRollbackStep(
     runtime.policy,
     runtime.snapshot.currentStore,
     runtime.snapshot.rollbackState,
@@ -183,6 +176,19 @@ export const evaluateAndPersistWatcherRollback = async (input: {
     input.finalityResult,
     input.transportAttestations,
   );
+  const current = currentRollbackFinalityState(runtime);
+  const incoming = (input.consistency as WatcherMultiProviderConsistency | null)
+    ?.agreement;
+  const crossesReleasedPrefix =
+    current.phase === "pending" &&
+    current.pending !== null &&
+    typeof incoming?.blockNo === "string" &&
+    /^(0|[1-9][0-9]{0,19})$/.test(incoming.blockNo) &&
+    BigInt(incoming.blockNo) < BigInt(current.pending.blockNo);
+  const verified =
+    crossesReleasedPrefix && current.finalized === null
+      ? reject("replacement_evidence_missing")
+      : ordinary;
   if (
     verified.action === "reject" ||
     verified.action === "duplicate_rewind" ||

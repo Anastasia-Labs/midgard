@@ -2,13 +2,10 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import { assertWorkflowJournalActuation } from "../workflow/actuation-permit.js";
 import {
-  abandonWorkflowFundingReservationTransaction,
   assertWorkflowFundingCompletionHandoffJournal,
   assertWorkflowFundingReservationReadyToSubmit,
   beginWorkflowFundingReservationAction,
   confirmWorkflowFundingReservationTransaction,
-  conflictWorkflowFundingReservationTransaction,
-  createWorkflowFundingAbandonmentHandoff,
   createWorkflowFundingSubmissionHandoff,
   prepareWorkflowFundingReservationTransaction,
   readWorkflowFundingRecovery,
@@ -35,6 +32,7 @@ import {
   validateVerifiedFraudProofReleaseFinalityPolicy,
   type VerifiedFraudProofReleaseFinalityPolicy,
 } from "../workflow/release-finality-policy.js";
+import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
   type FraudProofPreSubmitBoundary,
@@ -42,6 +40,7 @@ import {
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "../workflow/transaction-boundary.js";
+import { createMintItemCanonicalReconciliation } from "./central-journal.reconcile-canonical-receipt.js";
 import {
   actionId,
   type DurableRecovery,
@@ -58,6 +57,7 @@ import type {
   MintItemJournalEntry,
   MintItemStage,
 } from "./mint-item-non-canonical.js";
+export { MintItemWorkflowRecoveryPendingError } from "./central-journal.reconcile-canonical-receipt.js";
 
 /** Central-journal bridge with exact post-restart raw-L1 reconciliation. */
 export const createMintItemNonCanonicalCentralJournalAdapter = ({
@@ -66,12 +66,20 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
   headerHash,
   decisionDigest,
   transactionConfirmed,
+  observeSignedTransaction,
+  rebroadcastSignedTransaction,
 }: {
   readonly store: FraudProofWorkflowJournalStore;
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
   readonly decisionDigest: string;
   readonly transactionConfirmed: (txHash: string) => Promise<boolean>;
+  readonly observeSignedTransaction?: Parameters<
+    typeof reconcileSignedWorkflowTransaction
+  >[0]["observe"];
+  readonly rebroadcastSignedTransaction?: Parameters<
+    typeof reconcileSignedWorkflowTransaction
+  >[0]["rebroadcast"];
 }) => {
   const identity: FraudProofWorkflowIdentity = {
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
@@ -184,7 +192,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
     removal?: MintItemRemovalAction,
   ): Promise<void> => {
     await ensurePrepared(familyIdentity);
-    if (unresolvedIntent(await entries()) !== undefined) {
+    if (unresolvedIntent(await entries(), store) !== undefined) {
       throw new Error(
         "mintItemNonCanonical unresolved submission must reconcile before another build",
       );
@@ -233,7 +241,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
           "mintItemNonCanonical removal changed its authenticated inputs",
         );
       const current = await entries();
-      const prior = unresolvedIntent(current);
+      const prior = unresolvedIntent(current, store);
       if (prior?.event.kind === "submission_intent") {
         if (
           prior.event.actionId !== action.actionId ||
@@ -302,54 +310,15 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
       });
     };
 
-  const reconcile = async (observedStage: MintItemStage): Promise<void> => {
-    const intent = unresolvedIntent(await entries());
-    if (intent?.event.kind !== "submission_intent") return;
-    assertActuation("before_reconcile");
-    const recovery = recoveryFrom(intent);
-    const confirmed = await transactionConfirmed(intent.event.txHash);
-    if (confirmed && observedStage === recovery.targetStage) {
-      await confirmWorkflowFundingReservationTransaction({
-        journal: store,
-        transactionHash: intent.event.txHash,
-      });
-      await appendEvent({
-        kind: "reconciled",
-        actionId: intent.event.actionId,
-        outcome: "confirmed",
-        txHash: intent.event.txHash,
-      });
-      await appendEvent({
-        kind: "confirmed",
-        actionId: intent.event.actionId,
-        txHash: intent.event.txHash,
-      });
-      return;
-    }
-    if (!confirmed && observedStage === recovery.sourceStage) {
-      await abandonWorkflowFundingReservationTransaction({
-        journal: store,
-        transactionHash: intent.event.txHash,
-        handoff: createWorkflowFundingAbandonmentHandoff({
-          entries: await entries(),
-          transactionHash: intent.event.txHash,
-        }),
-      });
-      await appendEvent({
-        kind: "reconciled",
-        actionId: intent.event.actionId,
-        outcome: "not_found",
-      });
-      return;
-    }
-    await conflictWorkflowFundingReservationTransaction({
-      journal: store,
-      transactionHash: intent.event.txHash,
-    });
-    throw new Error(
-      "mintItemNonCanonical authenticated stage/transaction identity substitution",
-    );
-  };
+  const reconcile = createMintItemCanonicalReconciliation({
+    store,
+    entries,
+    appendEvent,
+    assertActuation,
+    transactionConfirmed,
+    observeSignedTransaction,
+    rebroadcastSignedTransaction,
+  });
 
   const auxiliaryBoundary =
     (
@@ -360,7 +329,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
     ): FraudProofPreSubmitBoundary =>
     async (transaction) => {
       await ensurePrepared(familyIdentity);
-      const pending = unresolvedIntent(await entries());
+      const pending = unresolvedIntent(await entries(), store);
       if (pending?.event.kind === "submission_intent") {
         if (recoveryFrom(pending).auxiliary !== true) {
           throw new Error(
@@ -447,7 +416,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
     ) {
       return;
     }
-    const intent = unresolvedIntent(current);
+    const intent = unresolvedIntent(current, store);
     if (
       intent?.event.kind !== "submission_intent" ||
       intent.event.txHash !== txHash ||
@@ -514,8 +483,8 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
       );
     assertActuation("before_terminal_verify");
     const inclusionOnly =
-      candidate.observedAt.confirmationDepth <
-      releaseFinality.policy.confirmationDepth;
+      candidate.observedAt.confirmationDepth <=
+      releaseFinality.policy.automaticRecoveryMaxDepth + 1;
     const verify = inclusionOnly ? verifier.verifyIncluded : verifier.verify;
     if (verify === undefined)
       throw new Error(
@@ -554,9 +523,13 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
       ({ event }) => event.kind === "completed",
     )?.event;
     const completed =
-      previous?.kind === "completed"
+      previous?.kind === "completed" &&
+      previous.terminal.observedAt.confirmationDepth >
+        releaseFinality.policy.automaticRecoveryMaxDepth + 1
         ? previous
-        : saved?.completion.kind === "completed"
+        : saved?.completion.kind === "completed" &&
+            saved.completion.terminal.observedAt.confirmationDepth >
+              releaseFinality.policy.automaticRecoveryMaxDepth + 1
           ? saved.completion
           : undefined;
     const sameFacts = (
@@ -592,7 +565,17 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
       ? ("terminal_included" as const)
       : ("completed" as const);
     assertActuation("before_terminal_verify");
-    const existing = current.some(({ event }) => event.kind === kind);
+    const latest = [...current]
+      .reverse()
+      .find(({ event }) => event.kind !== "stalled")?.event;
+    const existing =
+      (previous?.kind === "completed" &&
+        previous.terminal.observedAt.confirmationDepth >
+          releaseFinality.policy.automaticRecoveryMaxDepth + 1) ||
+      (inclusionOnly &&
+        saved?.completion.kind === "terminal_included" &&
+        current.length > saved.expectedJournalSequence) ||
+      (latest?.kind === kind && sameFacts(latest.terminal, terminal));
     if (!existing) {
       const completion: WorkflowFundingCompletionHandoff["completion"] = {
         kind,
@@ -611,9 +594,10 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
             };
       if (handoff === saved) {
         if (
-          terminal.observedAt.confirmationDepth <
+          !inclusionOnly &&
+          (terminal.observedAt.confirmationDepth <
             saved.completion.terminal.observedAt.confirmationDepth ||
-          !sameFacts(terminal, saved.completion.terminal)
+            !sameFacts(terminal, saved.completion.terminal))
         )
           throw new Error(
             "mintItemNonCanonical completion handoff changed its authenticated terminal",
@@ -676,7 +660,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
       return result;
     },
     append: async (entry) => {
-      const intent = unresolvedIntent(await entries());
+      const intent = unresolvedIntent(await entries(), store);
       if (
         intent?.event.kind !== "submission_intent" ||
         intent.event.txHash !== entry.txHash

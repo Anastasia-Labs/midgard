@@ -1,5 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
+import { joinNativeReads } from "./provider.join-native-reads.js";
 import {
   L1SourceIntegrityError,
   StateQueueHistoryNotExtendingAnchorError,
@@ -33,9 +34,8 @@ import {
 } from "./state-queue-replay-provider.parse-transaction.js";
 
 /**
- * The node's tip block height; Ogmios v6 carries it only on this query. A
- * snapshot reads it at the chain point it is taken at, and replay counts
- * checkpoint depths from that height.
+ * Operational snapshot tip height. Replay retirement depth uses the selected
+ * tip on its raw block response; this height is only a conservative cap.
  */
 export const fetchOgmiosTipBlockNo = async (
   ogmiosUrl: string,
@@ -143,7 +143,7 @@ export const createLocalKupmiosStateQueueReplayProvider = ({
     for (;;) {
       if (sameQueue(queue, currentQueue) || checkpoints.length >= limit)
         return checkpoints;
-      const spends = await Promise.all(
+      const spends = await joinNativeReads(
         queue.map(({ outRef }) => fetchSpend(kupoUrl, outRef, fetchImpl)),
       );
       const unique = new Map<string, Spend>();
@@ -165,7 +165,7 @@ export const createLocalKupmiosStateQueueReplayProvider = ({
         throw new StateQueueHistoryNotExtendingAnchorError(
           "committee replay cannot advance its durable queue",
         );
-      const transactions = await Promise.all(
+      const transactions = await joinNativeReads(
         [...unique.values()].map(
           async (spend) =>
             await readTransaction(
@@ -188,6 +188,13 @@ export const createLocalKupmiosStateQueueReplayProvider = ({
           "state-queue snapshot tip precedes a transaction of its history",
         );
       }
+      // Bound age to the selected chain that supplied this exact raw block.
+      // The earlier snapshot height only caps age; it cannot manufacture depth
+      // after a rollback or a contradictory HTTP/chain-sync response.
+      const observedTipHeight = Math.min(
+        tipBlockNo,
+        transaction.selectedChainTip.height,
+      );
       const outputs = await fetchOutputs(
         kupoUrl,
         transaction.transactionHash,
@@ -229,7 +236,7 @@ export const createLocalKupmiosStateQueueReplayProvider = ({
           blockNo: transaction.blockNo,
           transactionIndex: transaction.transactionIndex,
         }),
-        finalityDepth: (tipBlockNo - transaction.blockNo + 1).toString(),
+        finalityDepth: (observedTipHeight - transaction.blockNo + 1).toString(),
         mintPolicyIds: transaction.mintPolicyIds,
         redeemers: transaction.redeemers,
         spentInputOutRefs: transaction.spentInputOutRefs,

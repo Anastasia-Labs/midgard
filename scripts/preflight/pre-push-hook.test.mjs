@@ -13,6 +13,12 @@ const hook = resolve(
   "../../.githooks/pre-push",
 );
 
+// A hook running these tests exports GIT_DIR and GIT_INDEX_FILE. Inherited
+// by the `git init` below, they re-initialise the outer repository as bare
+// instead of the temporary one, which breaks every worktree that shares it.
+for (const key of Object.keys(process.env))
+  if (key.startsWith("GIT_")) delete process.env[key];
+
 const ENV = {
   ...process.env,
   GIT_CONFIG_NOSYSTEM: "1",

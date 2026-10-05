@@ -182,26 +182,36 @@ export const makeEventHistorySourceBinding = (input: {
     }) satisfies EventHistorySourceBinding;
   });
 
+type EventHistoryGenesisSession = {
+  readonly request: (
+    method: string,
+    params: Record<string, unknown>,
+  ) => Promise<unknown>;
+};
+
+/** The one Shelley genesis query and digest: every socket's authentication
+ * and the operator's pin derivation (`history-genesis-pin`) read it here. Its
+ * request implementation must use the lossless JSON parser. */
+export const readEventHistoryGenesisLosslessSha256 = async (
+  session: EventHistoryGenesisSession,
+): Promise<string> =>
+  eventHistoryGenesisLosslessSha256(
+    await session.request("queryNetwork/genesisConfiguration", {
+      era: "shelley",
+    }),
+  );
+
 /** Must run on EACH exact socket before its capture or ChainSync observations
  * are admitted. Its request implementation must use the lossless JSON parser.
  * A separate HTTP preflight or equal endpoint URL is not this receipt. */
 export const authenticateEventHistorySession = async (
-  session: {
-    readonly request: (
-      method: string,
-      params: Record<string, unknown>,
-    ) => Promise<unknown>;
-  },
+  session: EventHistoryGenesisSession,
   binding: EventHistorySourceBinding,
 ): Promise<Readonly<{ bindingDigest: string; genesisSha256: string }>> => {
   requireDigest(binding.genesisSha256);
   if (binding.genesisAlgorithm !== HISTORY_GENESIS_DIGEST_ALGORITHM)
     throw new Error("Unsupported history source genesis digest algorithm");
-  const observed = eventHistoryGenesisLosslessSha256(
-    await session.request("queryNetwork/genesisConfiguration", {
-      era: "shelley",
-    }),
-  );
+  const observed = await readEventHistoryGenesisLosslessSha256(session);
   if (observed !== binding.genesisSha256)
     throw new Error("History source genesis does not match the approved pin");
   return Object.freeze({
@@ -367,6 +377,37 @@ export const readBoundEventHistoryNetworkTip = async ({
     const tip = await session.request("queryNetwork/tip", {});
     signal.throwIfAborted();
     return tip;
+  } finally {
+    session.close();
+  }
+};
+
+/** Derives the value an operator approves as
+ * L1_HISTORY_GENESIS_LOSSLESS_SHA256: one lossless socket and the same query
+ * and digest each runtime socket authenticates against. It reads the chain the
+ * endpoint serves, so the operator still decides that this is the right chain. */
+export const readEventHistoryGenesisPin = async ({
+  ogmiosUrl,
+  timeoutMs,
+  signal,
+  webSocketFactory = (url) => new WebSocket(url) as unknown as WebSocketLike,
+}: {
+  readonly ogmiosUrl: string;
+  readonly timeoutMs: number;
+  readonly signal?: AbortSignal;
+  readonly webSocketFactory?: WebSocketFactory;
+}): Promise<string> => {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const session = await openOgmiosSession({
+    url: normalizeOgmiosWebSocketUrl(ogmiosUrl),
+    timeoutMs,
+    webSocketFactory,
+    signal:
+      signal === undefined ? deadline : AbortSignal.any([signal, deadline]),
+    parseMessage: (text) => lossless.parse(text) as unknown,
+  });
+  try {
+    return await readEventHistoryGenesisLosslessSha256(session);
   } finally {
     session.close();
   }

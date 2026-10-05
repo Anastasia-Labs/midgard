@@ -4,6 +4,10 @@ import JSONBig from "json-bigint";
 
 import type { LedgerSnapshotPoint } from "./l1-ledger-snapshot.js";
 import {
+  L1SourceUnavailable,
+  OgmiosRequestTimeout,
+} from "./l1-source-unavailable.js";
+import {
   normalizeOgmiosWebSocketUrl,
   openOgmiosSession,
   type WebSocketFactory,
@@ -46,21 +50,34 @@ const equal = (a: LedgerSnapshotPoint, b: LedgerSnapshotPoint) =>
 
 /** Ogmios v6 answers queryNetwork/tip with a point only; the height comes from
  * queryNetwork/blockHeight. The height is bound to the tip only when two tip
- * reads bracketing it agree; undefined means the chain moved in between. */
+ * reads bracketing it agree; undefined means the chain moved in between.
+ * One deadline bounds all three reads: the owner sizes its lease to one
+ * heartbeat interval plus one request deadline, not three. */
 const readNetworkTip = async (
   request: (
     method: string,
     params: Record<string, unknown>,
+    options?: { readonly timeoutMs: number | null },
   ) => Promise<unknown>,
+  timeoutMs: number,
   signal: AbortSignal,
 ): Promise<HistoryChainTip | "origin" | undefined> => {
+  const deadline = performance.now() + timeoutMs;
+  const bounded = (method: string) => {
+    const remaining = Math.ceil(deadline - performance.now());
+    if (remaining <= 0)
+      throw new OgmiosRequestTimeout(
+        `Ogmios network tip did not answer within ${timeoutMs.toString()}ms`,
+      );
+    return request(method, {}, { timeoutMs: remaining });
+  };
   const networkTip = async () => {
-    const value = await request("queryNetwork/tip", {});
+    const value = await bounded("queryNetwork/tip");
     signal.throwIfAborted();
     return value === "origin" ? value : point(value);
   };
   const before = await networkTip();
-  const rawHeight = await request("queryNetwork/blockHeight", {});
+  const rawHeight = await bounded("queryNetwork/blockHeight");
   signal.throwIfAborted();
   const height = rawHeight === "origin" ? rawHeight : natural(rawHeight);
   const after = await networkTip();
@@ -132,6 +149,9 @@ const assertAtOrBeforeTip = (
  * work on source loss; a pending acknowledgement cannot delay revocation.
  * On any failure the owner is notified before the socket is closed. Reconnect
  * requires a new invocation and a newly verified retained intersection.
+ * A heartbeat whose request outlives its deadline on a still-open socket is a
+ * miss, not a failure: up to heartbeatToleratedMisses consecutive misses are
+ * reported through onHeartbeatMiss, and the next one fails the session.
  */
 export const followEventHistoryChain = async ({
   ogmiosUrl,
@@ -139,12 +159,14 @@ export const followEventHistoryChain = async ({
   retainedPointLimit,
   requestTimeoutMs = 20_000,
   heartbeatIntervalMs = 5_000,
+  heartbeatToleratedMisses = 2,
   signal,
   onIntersection,
   onForward,
   onRollback,
   onTip,
   onUnavailable,
+  onHeartbeatMiss,
   verifySession,
   webSocketFactory = (url) => new WebSocket(url) as unknown as WebSocketLike,
 }: {
@@ -153,6 +175,7 @@ export const followEventHistoryChain = async ({
   readonly retainedPointLimit: number;
   readonly requestTimeoutMs?: number;
   readonly heartbeatIntervalMs?: number;
+  readonly heartbeatToleratedMisses?: number;
   readonly signal: AbortSignal;
   readonly onIntersection: (point: LedgerSnapshotPoint) => void;
   readonly onForward: (block: HistoryChainBlock) => void | Promise<void>;
@@ -161,6 +184,9 @@ export const followEventHistoryChain = async ({
    * owner may renew readiness only against its admitted path and this tip. */
   readonly onTip: (tip: HistoryChainTip | "origin") => void;
   readonly onUnavailable: (cause: unknown) => void;
+  /** A tolerated heartbeat miss. The socket has not answered for this long, so
+   * the owner closes its gate; the next answer reports a tip again. */
+  readonly onHeartbeatMiss?: (misses: number, cause: unknown) => void;
   /** Source-bound callers verify this exact socket before admitting ancestry. */
   readonly verifySession?: (
     session: Pick<Awaited<ReturnType<typeof openOgmiosSession>>, "request">,
@@ -174,7 +200,9 @@ export const followEventHistoryChain = async ({
     !Number.isSafeInteger(requestTimeoutMs) ||
     requestTimeoutMs <= 0 ||
     !Number.isSafeInteger(heartbeatIntervalMs) ||
-    heartbeatIntervalMs <= 0
+    heartbeatIntervalMs <= 0 ||
+    !Number.isSafeInteger(heartbeatToleratedMisses) ||
+    heartbeatToleratedMisses < 0
   )
     throw new Error("Invalid history ChainSync bounds or empty intersections");
   const requested = intersections.map(point);
@@ -240,8 +268,11 @@ export const followEventHistoryChain = async ({
             )
           ) {
             onRollback(rollback);
+            // This session's path starts at its intersection. A rollback
+            // behind it is judged by the journal: a new session intersects at
+            // the journal's retained points, which refuse a deeper target.
             if (index < 0)
-              throw new Error(
+              throw new L1SourceUnavailable(
                 "History ChainSync rollback exceeds retained ancestry",
               );
             path = path.slice(0, index + 1);
@@ -278,11 +309,30 @@ export const followEventHistoryChain = async ({
       }
     };
     heartbeat = (async () => {
+      let misses = 0;
       while (true) {
         await delay(heartbeatIntervalMs, undefined, { signal: lifetime });
+        let observedTip: HistoryChainTip | "origin" | undefined;
+        try {
+          observedTip = await readNetworkTip(
+            opened.request,
+            requestTimeoutMs,
+            lifetime,
+          );
+        } catch (cause) {
+          if (
+            !(cause instanceof OgmiosRequestTimeout) ||
+            lifetime.aborted ||
+            misses >= heartbeatToleratedMisses
+          )
+            throw cause;
+          misses += 1;
+          onHeartbeatMiss?.(misses, cause);
+          continue;
+        }
+        misses = 0;
         // A moving chain publishes no heartbeat tip: the socket has answered,
         // and nextBlock carries the moved frontier.
-        const observedTip = await readNetworkTip(opened.request, lifetime);
         if (observedTip !== undefined) onTip(observedTip);
       }
     })();

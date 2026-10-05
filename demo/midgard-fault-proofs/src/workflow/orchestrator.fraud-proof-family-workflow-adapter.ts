@@ -81,9 +81,20 @@ export type FraudProofWorkflowSubmitResult =
     };
 
 export type FraudProofWorkflowReconcileResult =
-  | { readonly kind: "confirmed"; readonly txHash: string }
-  | { readonly kind: "pending"; readonly txHash?: string }
-  | { readonly kind: "not_found" }
+  | {
+      readonly kind: "confirmed";
+      readonly txHash: string;
+      readonly retirement?: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement;
+    }
+  | {
+      readonly kind: "pending";
+      readonly txHash?: string;
+      readonly retirement?: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement;
+    }
+  | {
+      readonly kind: "not_found";
+      readonly retirement?: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement;
+    }
   | { readonly kind: "unknown"; readonly reason: string }
   | { readonly kind: "conflict"; readonly reason: string };
 
@@ -188,6 +199,8 @@ export interface FraudProofFamilyWorkflowAdapter {
     context: FraudProofWorkflowAdapterContext & {
       readonly action: FraudProofWorkflowAction;
       readonly txHash?: string;
+      /** Inspects a superseded attempt: inclusion within k is `confirmed`. */
+      readonly retirementOnly?: boolean;
       readonly durableRecovery?: JournalJsonObject;
       readonly signedTransactionCborHex?: string;
       readonly authorizeResubmission?: (input: {

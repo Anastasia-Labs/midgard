@@ -25,6 +25,11 @@ export {
   inspectDaAvailabilitySignedIntent,
 } from "./availability-challenge-operation.inspect-da-availability-signed-intent.js";
 export {
+  createDaAvailabilityReadScope,
+  type DaAvailabilityReadScope,
+  DaAvailabilityReadScopeExpiredError,
+} from "./availability-challenge-operation.read-scope.js";
+export {
   DA_AVAILABILITY_WORKFLOW_RELEASE_MAX_HOPS,
   type DaAvailabilityCanonicalBoundary,
   type DaAvailabilityChainPoint,

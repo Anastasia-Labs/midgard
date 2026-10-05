@@ -1,7 +1,9 @@
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { CML } from "@lucid-evolution/lucid";
 
 import type { FraudProofWorkflowReconcileResult } from "./orchestrator.js";
 import type { FraudProofRawL1Point } from "./raw-l1-snapshot.js";
+import { parseSignedWorkflowTransactionRetirement } from "./signed-transaction-retirement.js";
 
 export type SignedWorkflowTransaction = Readonly<{
   transactionHash: string;
@@ -16,8 +18,12 @@ export type SignedTransactionRecoveryObservation = SignedWorkflowTransaction &
       | "rebroadcast"
       | "expired"
       | "invalidated"
+      /** Absent and impossible at the tip, but not yet beyond the horizon. */
+      | "expired_at_tip"
+      | "invalidated_at_tip"
       | "conflict"
       | "unknown";
+    inclusionPoint?: FraudProofRawL1Point;
     canonicalPoint: FraudProofRawL1Point;
     releaseFinalPoint: FraudProofRawL1Point;
     inputs: readonly Readonly<{ outRef: string; outputCbor: string }>[];
@@ -80,6 +86,7 @@ export const reconcileSignedWorkflowTransaction = async ({
   observe,
   rebroadcast,
   authorizeResubmission,
+  reportInclusion = false,
 }: {
   readonly transactionHash: string;
   readonly signedTransactionCborHex?: string;
@@ -96,6 +103,9 @@ export const reconcileSignedWorkflowTransaction = async ({
   readonly authorizeResubmission?: (
     input: SignedWorkflowTransaction,
   ) => Promise<void>;
+  /** A superseded attempt's inclusion within k is adopted as the result;
+   * deeper, its retirement is bookkeeping. */
+  readonly reportInclusion?: boolean;
 }): Promise<FraudProofWorkflowReconcileResult> => {
   const pending = { kind: "pending", txHash: transactionHash } as const;
   if (signedTransactionCborHex === undefined || observe === undefined)
@@ -123,7 +133,57 @@ export const reconcileSignedWorkflowTransaction = async ({
     throw new Error(
       "Signed recovery observation substituted the durable transaction",
     );
-  if (observed.status === "expired" || observed.status === "invalidated")
+  if (
+    observed.status === "included" &&
+    observed.inclusionPoint !== undefined &&
+    BigInt(observed.canonicalPoint.blockNo) -
+      BigInt(observed.inclusionPoint.blockNo) >
+      BigInt(DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth)
+  )
+    return {
+      ...pending,
+      retirement: parseSignedWorkflowTransactionRetirement(
+        {
+          transactionHash,
+          canonicalPoint: observed.canonicalPoint,
+          releaseFinalPoint: observed.inclusionPoint,
+          reason: "included",
+        },
+        transactionHash,
+      ),
+    };
+  if (observed.status === "included" && reportInclusion)
+    return { kind: "confirmed", txHash: transactionHash };
+  if (observed.status === "expired" || observed.status === "invalidated") {
+    const blocksAfterBoundary =
+      BigInt(observed.canonicalPoint.blockNo) -
+      BigInt(observed.releaseFinalPoint.blockNo);
+    // Impossible at the tip but not yet retirable: superseded, not retired.
+    if (
+      blocksAfterBoundary <=
+      BigInt(DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth)
+    )
+      return { kind: "not_found" };
+    return {
+      kind: "not_found",
+      retirement: parseSignedWorkflowTransactionRetirement(
+        {
+          transactionHash,
+          canonicalPoint: observed.canonicalPoint,
+          releaseFinalPoint: observed.releaseFinalPoint,
+          reason: observed.status,
+        },
+        transactionHash,
+      ),
+    };
+  }
+  // Owner ruling (whichever lands wins): an attempt impossible at the tip no
+  // longer holds the workflow. A replacement must spend one of its funding
+  // inputs, and a late landing after a rollback is adopted as the result.
+  if (
+    observed.status === "expired_at_tip" ||
+    observed.status === "invalidated_at_tip"
+  )
     return { kind: "not_found" };
   if (observed.status === "conflict")
     return { kind: "conflict", reason: observed.reason };

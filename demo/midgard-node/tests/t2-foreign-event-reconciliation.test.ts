@@ -1,46 +1,37 @@
+import "./utils.js";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { computeDaPayloadRoots } from "../src/workers/commit-block-header/da-payload.js";
+import { DepositsDB } from "../src/database/index.js";
 import {
+  assessRetainedForeignTipWindows,
+  reconcileOverdueAwaitingEventsAgainstRetainedForeignTips,
   resolveT2ForeignEventEvidence,
   type T2CandidateEventIds,
 } from "../src/workers/t2-foreign-event-reconciliation.js";
+import { makeDepositEntry } from "./database.test/fixtures.make-deposit-submission-attempt.js";
+import {
+  depositStatus,
+  headerFor,
+  IN_WINDOW,
+  indexDeposit,
+  INGESTED_PAST_WINDOW,
+  nonEmptyWindowHeader,
+  oneDepositPayload,
+  onNode,
+  reconciliationRow,
+  recordForeignTip,
+  storeForeignDa,
+  WINDOW_END_MS,
+  WINDOW_START_MS,
+} from "./foreign-tip-gate.fixtures.js";
 
 const emptyIds = (): T2CandidateEventIds => ({
   deposits: [],
   forcedTransactions: [],
   withdrawals: [],
-});
-
-const headerFor = (overrides: Partial<SDK.Header> = {}): SDK.Header => ({
-  prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  withdrawalCount: 0n,
-  forcedTransactionCount: 0n,
-  l2TransactionCount: 0n,
-  depositCount: 0n,
-  totalEventCount: 0n,
-  transitionStepCount: 0n,
-  validationTraceCount: 0n,
-  startTime: 1n,
-  endTime: 2n,
-  blockSlot: 0n,
-  expectedNetworkId: 0n,
-  minFeeA: 0n,
-  minFeeB: 0n,
-  prevHeaderHash: "11".repeat(28),
-  operatorVkey: "22".repeat(28),
-  protocolVersion: 1n,
-  ...overrides,
 });
 
 const resolve = async ({
@@ -64,64 +55,6 @@ const resolve = async ({
       ),
     ),
   );
-
-const oneDepositPayload = async (depositId: string) => {
-  const counts: SDK.DaPayloadCounts = {
-    withdrawalCount: 0n,
-    forcedTransactionCount: 0n,
-    l2TransactionCount: 0n,
-    depositCount: 1n,
-    totalEventCount: 1n,
-    transitionStepCount: 0n,
-    validationTraceCount: 0n,
-  };
-  const draft: SDK.DaPayload = {
-    version: SDK.DA_PAYLOAD_VERSION,
-    block_body: {
-      header_hash: "00".repeat(28),
-      header: headerFor(),
-      utxos: [],
-      withdrawals: [],
-      forced_transactions: [],
-      transactions: [],
-      deposits: [[depositId, "01"]],
-      transition_trace: [],
-      event_to_step: [],
-      transaction_preimages: [],
-      forced_transaction_preimages: [],
-      cek_program_material: [],
-      validation_traces: [],
-      validation_trace_witnesses: [],
-      counts,
-    },
-  };
-  const roots = await Effect.runPromise(computeDaPayloadRoots(draft));
-  const header = headerFor({
-    utxosRoot: roots.utxosRoot,
-    withdrawalsRoot: roots.withdrawalsRoot,
-    forcedTransactionsRoot: roots.forcedTransactionsRoot,
-    transactionsRoot: roots.transactionsRoot,
-    depositsRoot: roots.depositsRoot,
-    transitionTraceRoot: roots.transitionTraceRoot,
-    eventToStepRoot: roots.eventToStepRoot,
-    validationTracesRoot: roots.validationTracesRoot,
-    depositCount: 1n,
-    totalEventCount: 1n,
-    validationTraceCount: 0n,
-  });
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  return {
-    header,
-    payload: {
-      ...draft,
-      block_body: {
-        ...draft.block_body,
-        header_hash: headerHash,
-        header,
-      },
-    } satisfies SDK.DaPayload,
-  };
-};
 
 describe("T2 foreign event reconciliation evidence", () => {
   it("proves candidate absence from empty category roots without DA", async () => {
@@ -216,5 +149,184 @@ describe("T2 foreign event reconciliation evidence", () => {
       type: "Ready",
       absent: { ...emptyIds(), deposits: [absentId] },
     });
+  });
+});
+
+const gate = (eventsIngestedThrough: Date = INGESTED_PAST_WINDOW) =>
+  reconcileOverdueAwaitingEventsAgainstRetainedForeignTips({
+    eventsIngestedThrough,
+  });
+
+describe("retained foreign-tip commit gate", () => {
+  it("commits past an unverified foreign block whose own window holds no event of the next block", async () => {
+    const result = await onNode(
+      Effect.gen(function* () {
+        const hash = yield* recordForeignTip(nonEmptyWindowHeader());
+        // (start, end] is open at the start: these two lie outside it.
+        yield* indexDeposit({
+          [DepositsDB.Columns.INCLUSION_TIME]: new Date(WINDOW_START_MS),
+        });
+        yield* indexDeposit({
+          [DepositsDB.Columns.INCLUSION_TIME]: new Date(WINDOW_END_MS + 1),
+        });
+        return {
+          gate: yield* gate(),
+          row: yield* reconciliationRow(hash),
+        };
+      }),
+    );
+    expect(result.gate.type).toBe("Ready");
+    // Never marked resolved without verified DA.
+    expect(result.row?.status).toBe("awaiting");
+    expect(result.row?.evidence_kind).toBe("pending_v1");
+  });
+
+  it("still refuses while an event the next block would carry lies inside the window", async () => {
+    for (const status of [
+      DepositsDB.Status.Awaiting,
+      DepositsDB.Status.Projected,
+    ]) {
+      const result = await onNode(
+        Effect.gen(function* () {
+          const hash = yield* recordForeignTip(nonEmptyWindowHeader());
+          yield* indexDeposit({
+            [DepositsDB.Columns.INCLUSION_TIME]: IN_WINDOW,
+            [DepositsDB.Columns.STATUS]: status,
+          });
+          return { hash, gate: yield* gate() };
+        }),
+      );
+      expect(result.gate).toMatchObject({
+        type: "AwaitingForeignDa",
+        foreignHeaderHash: result.hash,
+        reason: "missing",
+      });
+    }
+  });
+
+  it("waits until the window is ingested, proceeds once, and refuses again when a late event lands in it", async () => {
+    const result = await onNode(
+      Effect.gen(function* () {
+        yield* recordForeignTip(nonEmptyWindowHeader());
+        const notYetIngested = yield* gate(new Date(WINDOW_END_MS - 1));
+        const ingested = yield* gate();
+        const ingestedAgain = yield* gate();
+        yield* indexDeposit({ [DepositsDB.Columns.INCLUSION_TIME]: IN_WINDOW });
+        const late = yield* gate();
+        return { notYetIngested, ingested, ingestedAgain, late };
+      }),
+    );
+    expect(result.notYetIngested.type).toBe("AwaitingForeignDa");
+    if (result.notYetIngested.type === "AwaitingForeignDa")
+      expect(result.notYetIngested.detail).toContain(
+        "gate=window_not_yet_ingested",
+      );
+    expect(result.ingested).toEqual({
+      type: "Ready",
+      absent: { deposits: [], forcedTransactions: [], withdrawals: [] },
+    });
+    expect(result.ingestedAgain).toEqual(result.ingested);
+    expect(result.late.type).toBe("AwaitingForeignDa");
+    if (result.late.type === "AwaitingForeignDa")
+      expect(result.late.detail).toContain("gate=pending_event_in_window");
+  });
+
+  it("defers until verified DA arrives, releases an absent event exactly once, and keeps refusing a present one", async () => {
+    const window = {
+      startTime: BigInt(WINDOW_START_MS),
+      endTime: BigInt(WINDOW_END_MS),
+    };
+    const result = await onNode(
+      Effect.gen(function* () {
+        const absentId = yield* indexDeposit({
+          [DepositsDB.Columns.INCLUSION_TIME]: IN_WINDOW,
+        });
+        const presentEntry = makeDepositEntry({
+          [DepositsDB.Columns.INCLUSION_TIME]: IN_WINDOW,
+        });
+        const presentId = presentEntry[DepositsDB.Columns.ID].toString("hex");
+        const { header, payload } = yield* Effect.promise(() =>
+          oneDepositPayload(presentId, window),
+        );
+        const hash = yield* recordForeignTip(header);
+        const beforeDa = yield* gate();
+        yield* storeForeignDa(header, payload);
+        const released = yield* gate();
+        const releasedStatus = yield* depositStatus(absentId);
+        const again = yield* gate();
+        const resolvedRow = yield* reconciliationRow(hash);
+        yield* DepositsDB.insertEntries([presentEntry]);
+        const present = yield* gate();
+        const presentAgain = yield* gate();
+        return {
+          absentId,
+          beforeDa,
+          released,
+          releasedStatus,
+          again,
+          resolvedRow,
+          present,
+          presentAgain,
+        };
+      }),
+    );
+    expect(result.beforeDa).toMatchObject({
+      type: "AwaitingForeignDa",
+      reason: "missing",
+    });
+    expect(result.released).toEqual({
+      type: "Ready",
+      absent: {
+        deposits: [result.absentId],
+        forcedTransactions: [],
+        withdrawals: [],
+      },
+    });
+    expect(result.releasedStatus).toBe(DepositsDB.Status.Projected);
+    expect(result.again).toEqual({
+      type: "Ready",
+      absent: { deposits: [], forcedTransactions: [], withdrawals: [] },
+    });
+    expect(result.resolvedRow?.evidence_kind).toBe("verified_da_v1");
+    for (const refusal of [result.present, result.presentAgain]) {
+      expect(refusal).toMatchObject({
+        type: "AwaitingForeignDa",
+        reason: "foreign_event_present_requires_finalization",
+      });
+    }
+  });
+
+  it("gates a speculative build read-only on the same windows", async () => {
+    const result = await onNode(
+      Effect.gen(function* () {
+        const hash = yield* recordForeignTip(nonEmptyWindowHeader());
+        const empty = yield* assessRetainedForeignTipWindows({
+          eventsIngestedThrough: INGESTED_PAST_WINDOW,
+        });
+        const eventId = yield* indexDeposit({
+          [DepositsDB.Columns.INCLUSION_TIME]: IN_WINDOW,
+        });
+        const before = yield* reconciliationRow(hash);
+        const occupied = yield* assessRetainedForeignTipWindows({
+          eventsIngestedThrough: INGESTED_PAST_WINDOW,
+        });
+        return {
+          hash,
+          empty,
+          occupied,
+          before,
+          after: yield* reconciliationRow(hash),
+          status: yield* depositStatus(eventId),
+        };
+      }),
+    );
+    expect(result.empty.type).toBe("Ready");
+    expect(result.occupied).toMatchObject({
+      type: "AwaitingForeignDa",
+      foreignHeaderHash: result.hash,
+      reason: "replay_required",
+    });
+    expect(result.after).toEqual(result.before);
+    expect(result.status).toBe(DepositsDB.Status.Awaiting);
   });
 });

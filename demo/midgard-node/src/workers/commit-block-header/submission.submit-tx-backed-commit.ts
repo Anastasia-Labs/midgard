@@ -81,6 +81,7 @@ import {
   retainedIntentFailure,
   submitWithDurableIntent,
 } from "./submission.submit-with-durable-intent.js";
+import { type CommitSubmissionHooks } from "./submission-hooks.js";
 import { makeEventCommitments } from "./transition-commitments.js";
 
 export const submitTxBackedCommit = ({
@@ -119,8 +120,9 @@ export const submitTxBackedCommit = ({
   blockEndTimeCapMs,
   beforePendingJournalInsert,
   afterPendingJournalPrepared,
+  afterDaFrameAccepted,
   nativeMpfReplay,
-}: {
+}: CommitSubmissionHooks & {
   readonly contracts: SDK.MidgardValidators;
   readonly consensusProfile: ContractDeploymentIdentityValue["consensusProfile"];
   readonly deploymentMarker: NonNullable<
@@ -157,11 +159,6 @@ export const submitTxBackedCommit = ({
   readonly workerInput: WorkerInput;
   readonly sizeOfProcessedTxs: number;
   readonly blockEndTimeCapMs?: number;
-  readonly beforePendingJournalInsert?: (
-    blockEndTimeMs: number,
-  ) => Effect.Effect<void, DatabaseError, Database>;
-  /** Runs once the pending journal transaction has committed. */
-  readonly afterPendingJournalPrepared?: Effect.Effect<void>;
 }) =>
   Effect.gen(function* () {
     const emptyRoot = yield* emptyRootHexProgram;
@@ -410,6 +407,7 @@ export const submitTxBackedCommit = ({
                   validationTraceMembers,
                   cekProgramMaterial,
                 });
+                yield* afterDaFrameAccepted ?? Effect.void;
                 yield* maybeAbandonPreviousStaleAttempt(
                   previousPendingHeaderHash,
                   headerHashBuffer,

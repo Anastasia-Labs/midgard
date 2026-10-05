@@ -196,7 +196,9 @@ export type NodeConfigDep = {
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: number;
   STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS: number;
   STATE_QUEUE_CORRECTION_FINALITY_DEPTH: number;
-  RETENTION_DAYS: number;
+  /** Explicit housekeeping window in days; undefined when unset, which means
+   * the verified deployment manifest's window (`resolveHousekeepingRetentionDays`). */
+  RETENTION_DAYS: number | undefined;
   WAIT_BETWEEN_RETENTION_SWEEPS: number;
   L1_VIEW_FATAL_MS: number;
   HUB_ORACLE_ONE_SHOT_TX_HASH: string;

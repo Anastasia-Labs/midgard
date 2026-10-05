@@ -1,12 +1,14 @@
 import type { Assets } from "@lucid-evolution/lucid";
 import JSONBig from "json-bigint";
 
+import { L1SourceUnavailable } from "./l1-source-unavailable.js";
 import {
   normalizeOgmiosWebSocketUrl,
   openOgmiosSession,
   type WebSocketFactory,
   type WebSocketLike,
 } from "./l1-tx-order-carriage.js";
+import { ogmiosJsonRpcAnswerCode } from "./l1-tx-order-carriage.open-ogmios-session.js";
 
 export type LedgerSnapshotPoint = Readonly<{ slot: number; id: string }>;
 
@@ -72,6 +74,20 @@ const point = (value: unknown): LedgerSnapshotPoint => {
 const samePoint = (left: LedgerSnapshotPoint, right: LedgerSnapshotPoint) =>
   left.slot === right.slot && left.id === right.id;
 
+/** The node cannot serve ledger state at this exact point: Ogmios refused to
+ * acquire it (it left the node's rollback window or the selected chain) or
+ * acquired another one. It says nothing about what the point holds. A caller
+ * pinned to the point waits for another point of its own; it never reads
+ * this one's state from any other point. */
+export class LedgerPointUnavailable extends L1SourceUnavailable {}
+
+// https://ogmios.dev/mini-protocols/local-state-query/ : 2000 is the only
+// acquisition failure. The session already raises it, like every code that
+// says the node cannot answer now (2001 era mismatch, 2002 a ledger still in
+// Byron, 2003 acquired state expired), as an `L1SourceUnavailable`; any other
+// code refuses the request itself and stays a refusal.
+const ACQUIRE_FAILURE = 2000;
+
 export const decodeLedgerSnapshotOutput = (
   value: unknown,
   addresses: ReadonlySet<string>,
@@ -130,6 +146,7 @@ export const readAcquiredLedgerSnapshot = async ({
   ogmiosUrl,
   addresses,
   at,
+  outputReferences,
   timeoutMs,
   signal,
   verifySession,
@@ -140,6 +157,12 @@ export const readAcquiredLedgerSnapshot = async ({
   /** Acquire this exact retained point or fail; never fall back to the tip.
    * Successful acquisition alone does not establish canonical ancestry. */
   readonly at?: LedgerSnapshotPoint;
+  /** Bounded exact-reference query. Consumers must prove list completeness
+   * from authenticated root links; these candidates alone prove no absence. */
+  readonly outputReferences?: readonly {
+    readonly txHash: string;
+    readonly outputIndex: number;
+  }[];
   /** Required: an address-scope scan walks the whole UTxO set, so no
    * per-request default fits it. Production captures pass
    * LEDGER_SCAN_TIMEOUT_MS. */
@@ -159,6 +182,12 @@ export const readAcquiredLedgerSnapshot = async ({
   )
     throw new Error("Ledger snapshot requires nonempty addresses");
   const selectedPoint = at === undefined ? undefined : point(at);
+  const selectedReferences = outputReferences?.map((ref) => ({
+    transaction: { id: bytes(ref.txHash, "Requested transaction id", 32) },
+    index: natural(ref.outputIndex, "Requested output index"),
+  }));
+  if (selectedReferences?.length === 0)
+    throw new Error("Exact-reference snapshot requires candidates");
   signal?.throwIfAborted();
   const deadline = AbortSignal.timeout(timeoutMs);
   const captureSignal =
@@ -177,17 +206,31 @@ export const readAcquiredLedgerSnapshot = async ({
     const requestedPoint =
       selectedPoint ?? point(await session.request("queryLedgerState/tip", {}));
     const acquired = record(
-      await session.request("acquireLedgerState", { point: requestedPoint }),
+      await session
+        .request("acquireLedgerState", { point: requestedPoint })
+        .catch((cause: unknown) => {
+          if (ogmiosJsonRpcAnswerCode(cause) !== ACQUIRE_FAILURE) throw cause;
+          throw new LedgerPointUnavailable(
+            `Ogmios could not acquire ledger point ${requestedPoint.slot.toString()}.${requestedPoint.id}: ${(cause as Error).message}`,
+            { cause },
+          );
+        }),
       "Ogmios acquisition",
     );
-    if (
-      acquired.acquired !== "ledgerState" ||
-      !samePoint(point(acquired.point), requestedPoint)
-    )
-      throw new Error("Ogmios acquired a different ledger point");
-    const rawOutputs = await session.request("queryLedgerState/utxo", {
-      addresses: requested,
-    });
+    if (acquired.acquired !== "ledgerState")
+      throw new Error("Ogmios acquisition must acquire the ledger state");
+    if (!samePoint(point(acquired.point), requestedPoint))
+      throw new LedgerPointUnavailable(
+        "Ogmios acquired a different ledger point",
+      );
+    const rawOutputs = await session.request(
+      "queryLedgerState/utxo",
+      selectedReferences === undefined
+        ? {
+            addresses: requested,
+          }
+        : { outputReferences: selectedReferences },
+    );
     if (!Array.isArray(rawOutputs))
       throw new Error("Ogmios UTxO response must be a complete array");
     const addressSet = new Set(requested);
@@ -199,15 +242,34 @@ export const readAcquiredLedgerSnapshot = async ({
         .size !== outputs.length
     )
       throw new Error("Ogmios ledger snapshot repeats an output reference");
+    if (selectedReferences !== undefined) {
+      const references = new Set(
+        selectedReferences.map((ref) => `${ref.transaction.id}#${ref.index}`),
+      );
+      if (
+        outputs.length !== references.size ||
+        outputs.some(
+          (entry) => !references.has(`${entry.txHash}#${entry.outputIndex}`),
+        )
+      )
+        throw new Error(
+          "Ogmios exact-reference snapshot omitted or substituted a candidate",
+        );
+    }
     // This query is deliberately still acquired. It checks the state queried,
     // not whether this point remains on the current selected branch.
+    // A different answer means the acquired state was lost under the scan
+    // (Ogmios reconnected to its node): the outputs are discarded and a retry
+    // acquires again.
     if (
       !samePoint(
         point(await session.request("queryLedgerState/tip", {})),
         requestedPoint,
       )
     )
-      throw new Error("Ogmios ledger point changed during acquired capture");
+      throw new L1SourceUnavailable(
+        "Ogmios ledger point changed during acquired capture",
+      );
     const released = record(
       await session.request("releaseLedgerState", {}),
       "Ogmios release",

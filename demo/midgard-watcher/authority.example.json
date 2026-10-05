@@ -41,5 +41,6 @@
   "httpBearerSecretSource": {
     "kind": "file",
     "path": "/run/secrets/bearer"
-  }
+  },
+  "liveRecordLimit": 1
 }

@@ -260,29 +260,4 @@ export const retrievePendingLedgerOutRefHexes: Effect.Effect<
   ),
 );
 
-export const pruneOlderThan = (
-  cutoff: Date,
-): Effect.Effect<number, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const deleted = yield* sql<{ [Columns.ID]: Buffer }>`DELETE FROM ${sql(
-      tableName,
-    )}
-      WHERE ${sql(Columns.INCLUSION_TIME)} < ${cutoff}
-        AND ${sql(Columns.STATUS)} = ${Status.Finalized}
-        AND ${sql(Columns.PROJECTED_HEADER_HASH)} IS NOT NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM ${sql("pending_block_finalization_withdrawals")} pending
-          WHERE pending.${sql("member_id")} = ${sql(tableName)}.${sql(
-            Columns.ID,
-          )}
-        )
-      RETURNING ${sql(Columns.ID)}`;
-    return deleted.length;
-  }).pipe(
-    withHistoryWrite,
-    Effect.withLogSpan(`pruneOlderThan ${tableName}`),
-    sqlErrorToDatabaseError(tableName, "Failed to prune old withdrawals"),
-  );
-
 export const clear = clearTable(tableName);

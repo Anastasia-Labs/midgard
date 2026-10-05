@@ -1,4 +1,5 @@
 import {
+  type AvailabilityCursorRefresh,
   type CanonicalChainPoint,
   CHAIN_SYNC_CHUNK_EVENTS,
   CHAIN_SYNC_INTERSECTION_POINTS,
@@ -11,6 +12,7 @@ import {
   type ChainSyncEventBatch,
   type ChainSyncEventSource,
   ChainSyncNoProgressError,
+  type ChainSyncReadBudget,
   sameCanonicalPoint,
 } from "./provider.parse-persisted-chain-sync-state.js";
 import { samePersistedCursor } from "./provider.same-persisted-cursor.js";
@@ -90,6 +92,63 @@ export class LocalNodeChainAuthority {
     return result!;
   }
 
+  /** One bounded refresh on the same serialized journal writer as full scans. */
+  async refreshToTip(
+    budget: AvailabilityCursorRefresh,
+  ): Promise<ChainSyncCursor> {
+    budget.scope.assertCurrent();
+    if (!Number.isSafeInteger(budget.maxEvents) || budget.maxEvents <= 0)
+      throw new Error("Availability cursor event limit must be positive");
+    let began = false;
+    let signalStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    const run = this.operation.then(async () => {
+      // A queued expired caller never starts a read or a durable append later.
+      budget.scope.assertCurrent();
+      began = true;
+      signalStarted();
+      await this.loadCursor();
+      budget.scope.assertCurrent();
+      const candidates =
+        this.cursor === undefined
+          ? undefined
+          : await this.store.intersectionPoints?.(
+              CHAIN_SYNC_INTERSECTION_POINTS,
+            );
+      budget.scope.assertCurrent();
+      const chunk = await this.synchronizeChunk(
+        budget.maxEvents,
+        candidates,
+        budget,
+      );
+      budget.scope.assertCurrent();
+      if (!chunk.reachedTip)
+        throw new Error(
+          "Availability cursor refresh exceeded its event limit before reaching the tip",
+        );
+      return this.cursor!;
+    });
+    this.operation = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    // Also wake the waiter when the scope expired before this callback began.
+    void run.catch(() => {
+      signalStarted();
+    });
+    try {
+      await budget.scope.read(() => started);
+    } catch (error) {
+      // Once started, await any owned durable append before returning. Only
+      // queue waiting is raced; an append never outlives this method's result.
+      if (began) await run.catch(() => undefined);
+      throw error;
+    }
+    return run;
+  }
+
   /** Set while a synchronization has not reached the tip yet. */
   catchUpProgress(): ChainSyncCatchUpProgress | undefined {
     return this.catchUp;
@@ -98,6 +157,7 @@ export class LocalNodeChainAuthority {
   private async synchronizeChunk(
     maxEvents: number,
     intersectionCandidates: readonly CanonicalChainPoint[] | undefined,
+    readBudget?: ChainSyncReadBudget,
   ): Promise<
     | { readonly reachedTip: true; readonly events: number }
     | {
@@ -108,7 +168,14 @@ export class LocalNodeChainAuthority {
   > {
     let tip: CanonicalChainPoint | undefined;
     for (let count = 0; count < maxEvents; count += 1) {
-      const batch = await this.source.next(this.cursor, intersectionCandidates);
+      readBudget?.scope.assertCurrent();
+      const read = () =>
+        this.source.next(this.cursor, intersectionCandidates, readBudget);
+      const batch =
+        readBudget === undefined
+          ? await read()
+          : await readBudget.scope.read(read);
+      readBudget?.scope.assertCurrent();
       this.assertSourcePoint(batch.tip, "chain-sync tip");
       tip = batch.tip;
       if (batch.event === undefined) {
@@ -133,6 +200,7 @@ export class LocalNodeChainAuthority {
         rollbackGeneration,
       };
       try {
+        readBudget?.scope.assertCurrent();
         await this.store.append(batch.event, cursor);
       } catch (error) {
         // The append may or may not have reached the durable journal (a
@@ -144,6 +212,7 @@ export class LocalNodeChainAuthority {
         throw error;
       }
       this.cursor = cursor;
+      readBudget?.scope.assertCurrent();
       if (sameCanonicalPoint(batch.event.point, batch.tip)) {
         return { reachedTip: true, events: count + 1 };
       }
@@ -315,4 +384,5 @@ export type OgmiosChainSyncRequest = (
   network: string,
   authorityNodeId: string,
   networkMagic: number | undefined,
+  readBudget?: ChainSyncReadBudget,
 ) => Promise<ChainSyncEventBatch>;

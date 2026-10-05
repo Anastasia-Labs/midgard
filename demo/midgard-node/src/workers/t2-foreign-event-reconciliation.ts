@@ -13,8 +13,11 @@ import "./commit-block-header/da-payload.js";
 import "./t2-foreign-event-reconciliation.resolve-t2-foreign-event-evidence.js";
 import "./t2-foreign-event-reconciliation.decode-retained-header.js";
 import "./t2-foreign-event-reconciliation.reconcile-retained-foreign-tip-entry.js";
+import "./t2-foreign-event-reconciliation.foreign-window-gate.js";
 import "./t2-foreign-event-reconciliation.reconcile-overdue-awaiting-events-against-retained-foreign-tips.js";
 export {
+  assessRetainedForeignTipWindows,
+  gateCommitOnRetainedForeignTips,
   reconcileOverdueAwaitingEventsAgainstForeignTip,
   reconcileOverdueAwaitingEventsAgainstRetainedForeignTips,
 } from "./t2-foreign-event-reconciliation.reconcile-overdue-awaiting-events-against-retained-foreign-tips.js";

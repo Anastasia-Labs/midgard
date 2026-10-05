@@ -312,8 +312,14 @@ export const readAdmittedLocalKupmiosBoundary = async ({
   if (
     !Number.isSafeInteger(confirmationDepth) ||
     confirmationDepth <
-      (observationDepth === "inclusion" ? 1 : details.confirmationDepth) ||
-    confirmationDepth > details.automaticRecoveryMaxDepth
+      (observationDepth === "inclusion"
+        ? 1
+        : observationDepth === "recovery_finality"
+          ? details.automaticRecoveryMaxDepth + 2
+          : details.confirmationDepth) ||
+    confirmationDepth >
+      details.automaticRecoveryMaxDepth +
+        (observationDepth === "recovery_finality" ? 2 : 0)
   ) {
     throw new Error("local Kupmios boundary is outside release finality");
   }

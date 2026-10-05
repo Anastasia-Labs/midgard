@@ -1,23 +1,10 @@
-import { createServer } from "node:http";
-
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { NodeSdk } from "@effect/opentelemetry";
-import { HttpServer } from "@effect/platform";
-import { NodeHttpServer } from "@effect/platform-node";
 import { SqlClient } from "@effect/sql";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import {
-  Cause,
-  Duration,
-  Effect,
-  Layer,
-  Option,
-  pipe,
-  Ref,
-  Schedule,
-} from "effect";
+import { Cause, Effect, Option, pipe, Ref } from "effect";
 
 import { closeDaLibp2pPublicationTransport } from "../da/libp2p-producer.js";
 import {
@@ -26,30 +13,15 @@ import {
   runDaIdentityGatedStartupSequence,
 } from "../da/startup.js";
 import { restoreRetainedStatePins } from "../database/cekProgramMaterial.restore-retained-state-pins.js";
+import { PredecessorLeaseWait } from "../database/eventHistoryAuthority.js";
 import { DaPayloadsDB, InitDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { assertPhase1AcceptCrashCheckpointConfiguration } from "../e2e/phase1-accept-crash-checkpoint.js";
 import {
-  admissionBacklogGaugeFiber,
-  attestationTimeoutCorrectionFiber,
-  blockCommitmentFiber,
-  blockConfirmationFiber,
-  daPublicationReconcilerFiber,
   fetchAndInsertTxOrderUTxOs,
-  fetchAndInsertTxOrderUTxOsFiber,
-  mergeFiber,
-  monitorMempoolFiber,
-  mpfPayloadAuditFiber,
-  nativeMpfOwnerSupervisorFiber,
-  operatorWatchdogFiber,
   refreshAdmissionBacklogGauge,
-  retentionSweeperFiber,
-  speculativeCommitBuilderFiber,
-  speculativeCommitSubmitterFiber,
-  txQueueProcessorFiber,
-  userEventBarrierRefresherFiber,
 } from "../fibers/index.js";
-import { settlementFiber } from "../fibers/settlement.js";
+import { untilOperatorRemoved } from "../fibers/operator-membership.js";
 import * as Genesis from "../genesis.js";
 import { makeProductionEventHistoryOwner } from "../services/event-history-runtime.js";
 import {
@@ -67,7 +39,6 @@ import {
   NodeConfig,
   validationPoolLayer,
   WriteBehind,
-  writeBehindFiber,
 } from "../services/index.js";
 import {
   initializeArchitectureGOwner,
@@ -75,18 +46,22 @@ import {
 } from "../services/native-mpf-startup.js";
 import { settlementWalletAddress } from "../services/settlement.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
+import { runNodeFiberSet } from "./listen.node-fibers.js";
 import {
   logStartupFailure,
   retainedPayloadServerThread,
   runStartupProviderStepWithRetry,
 } from "./listen.retained-payload-server-thread.js";
+import type { StartupHttp } from "./listen.startup-http.js";
 import { buildListenRouter } from "./listen-router.js";
 import {
   assertStartupMutationJobsRecoverable,
   ensureProtocolInitializedOnStartup,
   hydratePendingBlockFinalizationOnStartup,
+  releaseStateQueueLeasesOfPreviousNodeProcess,
   seedLatestLocalBlockBoundaryOnStartup,
 } from "./listen-startup.js";
+import { releaseLedgerStoreLeaseOfPreviousNodeProcess } from "./listen-startup.release-ledger-store-lease-of-previous-node-process.js";
 import { shouldRunGenesisOnStartup } from "./startup-policy.js";
 
 /**
@@ -97,6 +72,7 @@ import { shouldRunGenesisOnStartup } from "./startup-policy.js";
  * the node progressing.
  */
 export const runNode = (
+  startup: StartupHttp,
   withMonitoring?: boolean,
 ): Effect.Effect<
   void,
@@ -119,6 +95,7 @@ export const runNode = (
     const nodeConfig = yield* NodeConfig;
     const globals = yield* Globals;
 
+    yield* startup.setStage("local_preflight");
     yield* Effect.try({
       try: () => settlementWalletAddress(nodeConfig),
       catch: (cause) =>
@@ -161,18 +138,30 @@ export const runNode = (
           logStartupFailure("Startup DA identity preflight failed"),
         ),
       ),
-      initializeDatabase: InitDB.program.pipe(Effect.provide(Database.layer)),
-      initializeProtocol: ensureProtocolInitializedOnStartup,
-      providerAssertions: (preflight) =>
-        runStartupProviderStepWithRetry(
-          "Startup DA provider assertions",
-          assertDaHardeningProviderStartup(preflight),
-          startupProviderRetry,
-        ).pipe(
-          Effect.tapError(
-            logStartupFailure("Startup DA provider assertions failed"),
-          ),
+      initializeDatabase: startup
+        .setStage("database_initialization")
+        .pipe(
+          Effect.zipRight(InitDB.program.pipe(Effect.provide(Database.layer))),
         ),
+      initializeProtocol: startup
+        .setStage("protocol_initialization")
+        .pipe(Effect.zipRight(ensureProtocolInitializedOnStartup)),
+      providerAssertions: (preflight) =>
+        startup
+          .setStage("provider_assertions")
+          .pipe(
+            Effect.zipRight(
+              runStartupProviderStepWithRetry(
+                "Startup DA provider assertions",
+                assertDaHardeningProviderStartup(preflight),
+                startupProviderRetry,
+              ).pipe(
+                Effect.tapError(
+                  logStartupFailure("Startup DA provider assertions failed"),
+                ),
+              ),
+            ),
+          ),
     });
 
     let startupPrepared = false;
@@ -185,6 +174,7 @@ export const runNode = (
         }
       }),
     );
+    yield* startup.setStage("history_initialization");
     const historyOwner = yield* makeProductionEventHistoryOwner({
       expectedGenesisLosslessSha256:
         nodeConfig.L1_HISTORY_GENESIS_LOSSLESS_SHA256,
@@ -204,6 +194,7 @@ export const runNode = (
         Effect.gen(function* () {
           yield* preparation.assertCurrent;
           if (startupPrepared) return;
+          yield* startup.setStage("recovery_preparation");
           yield* runStartupProviderStepWithRetry(
             "Startup state-queue boundary seed",
             seedLatestLocalBlockBoundaryOnStartup,
@@ -230,6 +221,8 @@ export const runNode = (
             ),
           );
           yield* hydratePendingBlockFinalizationOnStartup;
+          yield* releaseStateQueueLeasesOfPreviousNodeProcess;
+          yield* releaseLedgerStoreLeaseOfPreviousNodeProcess;
           yield* assertStartupMutationJobsRecoverable;
           yield* runStartupProviderStepWithRetry(
             "Startup tx-order catch-up",
@@ -284,6 +277,13 @@ export const runNode = (
           startupPrepared = true;
         }),
     }).pipe(
+      // A predecessor killed without releasing its history lease is waited
+      // out, not treated as a live owner; a lease still renewed past one
+      // duration plus the margin is one, and startup fails as before.
+      Effect.provideService(PredecessorLeaseWait, {
+        marginMs: 10_000,
+        pollIntervalMs: 2_000,
+      }),
       Effect.mapError(
         (cause) =>
           new DatabaseInitializationError({
@@ -293,6 +293,7 @@ export const runNode = (
       ),
     );
     yield* Ref.set(globals.EVENT_HISTORY_OWNER, historyOwner);
+    yield* startup.setStage("history_sync");
     yield* historyOwner.awaitReady.pipe(
       Effect.mapError(
         (cause) =>
@@ -330,15 +331,6 @@ export const runNode = (
 
     yield* refreshAdmissionBacklogGauge;
 
-    const httpApplicationLayer = HttpServer.serve(
-      buildListenRouter(withMonitoring),
-    ).pipe(Layer.provide(admissionAsDefaultSqlLayer));
-    const appThread = Layer.launch(
-      Layer.provide(
-        httpApplicationLayer,
-        NodeHttpServer.layer(createServer, { port: nodeConfig.PORT }),
-      ),
-    );
     const sql = yield* SqlClient.SqlClient;
     const retrieveRetainedDaPayload = (headerHash: Buffer) =>
       Effect.runPromise(
@@ -350,65 +342,33 @@ export const runNode = (
         ),
       );
 
-    /**
-     * Builds a fixed Effect schedule from a millisecond interval.
-     */
-    const mkSchedule = (millisBetweenRuns: number) =>
-      Schedule.spaced(Duration.millis(millisBetweenRuns));
+    const publishHttp = startup
+      .publish(buildListenRouter(withMonitoring))
+      .pipe(Effect.provide(admissionAsDefaultSqlLayer));
 
-    const program = Effect.all(
-      [
-        admissionBacklogGaugeFiber(
-          mkSchedule(nodeConfig.ADMISSION_BACKLOG_REFRESH_MS),
+    // Membership starts with the node's other fibers; no duty waits on its
+    // first check. Authenticated removal holds the operator duties through
+    // `HaltSource.operatorMembership`; confirmed removal ends the process.
+    const program = publishHttp.pipe(
+      Effect.zipRight(
+        untilOperatorRemoved(
+          Effect.all(
+            runNodeFiberSet({
+              nodeConfig,
+              withMonitoring,
+              startupFibers: {
+                historyOwnerStopped: historyOwner.awaitStopped,
+                retainedPayloadServer: retainedPayloadServerThread(
+                  retrieveRetainedDaPayload,
+                ),
+              },
+            }),
+            {
+              concurrency: "unbounded",
+            },
+          ),
         ),
-        historyOwner.awaitStopped,
-        settlementFiber,
-        writeBehindFiber,
-        appThread,
-        retainedPayloadServerThread(retrieveRetainedDaPayload),
-        daPublicationReconcilerFiber(
-          mkSchedule(nodeConfig.MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS),
-        ),
-        blockCommitmentFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
-        ),
-        blockConfirmationFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
-        ),
-        operatorWatchdogFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
-        ),
-        nodeConfig.SPECULATIVE_COMMIT_BUILD
-          ? userEventBarrierRefresherFiber(
-              mkSchedule(nodeConfig.USER_EVENT_BARRIER_REFRESH_MS),
-            )
-          : Effect.void,
-        nodeConfig.SPECULATIVE_COMMIT_BUILD
-          ? speculativeCommitBuilderFiber
-          : Effect.void,
-        nodeConfig.SPECULATIVE_COMMIT_BUILD
-          ? speculativeCommitSubmitterFiber
-          : Effect.void,
-        fetchAndInsertTxOrderUTxOsFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
-        ),
-        retentionSweeperFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_RETENTION_SWEEPS),
-        ),
-        mergeFiber(mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS)),
-        attestationTimeoutCorrectionFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS),
-        ),
-        mpfPayloadAuditFiber,
-        nativeMpfOwnerSupervisorFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
-        ),
-        withMonitoring ? monitorMempoolFiber(mkSchedule(1000)) : Effect.void,
-        txQueueProcessorFiber(mkSchedule(nodeConfig.TX_QUEUE_POLL_INTERVAL_MS)),
-      ],
-      {
-        concurrency: "unbounded",
-      },
+      ),
     );
 
     if (withMonitoring) {

@@ -11,15 +11,15 @@ import type {
   WatcherNativeChainSyncPoint,
 } from "../l1/native-chain-sync.js";
 import type { WatcherDurableRuntime } from "../storage/durable-runtime.js";
+import { WatcherDurableAuthorityConflict } from "../storage/durable-runtime.load-published-authority.js";
 import type { WatcherBlockRelevance } from "./block-relevance.js";
+import { advanceWatcherCanonical } from "./chain-coordinator.advance-canonical.js";
 import {
   type AdmitRollForward,
-  canonicalPathFromHistory,
   depthAtTip,
   nextBufferedChild,
   pointKey,
   recoverWatcherCoordinatorAfterRestart,
-  WATCHER_AUTHORITY_CHECKPOINT_INTERVAL_BLOCKS,
   WATCHER_CHAIN_COORDINATOR_SCHEMA_VERSION,
   type WatcherChainCoordinator,
   type WatcherChainCoordinatorDependencies,
@@ -27,6 +27,21 @@ import {
   WatcherConsumerDeliveryHeld,
   type WatcherProcessedHead,
 } from "./chain-coordinator.canonical-path-from-history.js";
+import {
+  coordinatorHoldReason,
+  type WatcherCoordinatorHoldReason,
+  WatcherCoordinatorIntegrityHeld,
+} from "./chain-coordinator.integrity-hold.js";
+import {
+  type CapturedWatcherObservation,
+  observeCapturedBlock,
+} from "./chain-coordinator.observe-captured-block.js";
+import { reconcileRollbackReplacement } from "./chain-coordinator.reconcile-rollback-replacement.js";
+import {
+  guardRecoveryEvent,
+  headOf,
+  retryQuarantinedRecovery,
+} from "./chain-coordinator.recovery-evidence.js";
 
 export const createCoordinator = (input: {
   readonly policy: WatcherFinalityPolicy;
@@ -34,9 +49,14 @@ export const createCoordinator = (input: {
   readonly observation: WatcherLocalKupmiosNativeObservationRuntime;
   readonly restartIntersection?: WatcherNativeChainSyncPoint;
   readonly hooks: WatcherChainCoordinatorHooks;
-  readonly dependencies: Readonly<{ admitRollForward: AdmitRollForward }> &
+  readonly dependencies: Readonly<{
+    admitRollForward: AdmitRollForward;
+    unsafeAllowUnprovenancedEvents?: true;
+  }> &
     WatcherChainCoordinatorDependencies;
 }): WatcherChainCoordinator => {
+  let epoch = 0;
+  let stopped = false;
   const buffered = new Map<string, WatcherNativeBlockAdmission>();
   const releaseFinalizedHooked = new Map<
     string,
@@ -58,22 +78,15 @@ export const createCoordinator = (input: {
     captured.delete(key);
     relevances.delete(key);
   };
-  const captured = new Map<
-    string,
-    {
-      first: WatcherLocalKupmiosNativeObservation;
-      firstDepth: string;
-      latest: WatcherLocalKupmiosNativeObservation;
-      latestDepth: string;
-      /** Depth of the newest observation the durable authority has seen. */
-      persistedDepth: string | null;
-    }
-  >();
+  const captured = new Map<string, CapturedWatcherObservation>();
   const retainedFinality = input.durable.readFinality();
   // A sparse queue cursor may lag the finality snapshot after a crash. Only
   // this retained prefix can be replayed without advancing durable finality.
   // A pending successor does not itself belong to the finalized prefix.
-  let replayBoundary =
+  let replayBoundary: Readonly<{
+    point: WatcherProcessedHead;
+    inclusive: boolean;
+  }> | null =
     retainedFinality.phase === "finalized" &&
     retainedFinality.finalized !== null
       ? { point: retainedFinality.finalized, inclusive: true }
@@ -97,14 +110,6 @@ export const createCoordinator = (input: {
         })
       : null;
   };
-  const headOf = (
-    record: Readonly<{ blockHash: string; blockNo: string; slot: string }>,
-  ): WatcherProcessedHead =>
-    Object.freeze({
-      blockHash: record.blockHash,
-      blockNo: record.blockNo,
-      slot: record.slot,
-    });
   // "Processed through": the progress ring first, then the durable finality
   // authority. Everything at or below it is recorded fact until a rollback.
   const recomputeEffectiveHead = (): WatcherProcessedHead | null => {
@@ -157,38 +162,40 @@ export const createCoordinator = (input: {
   let rollbackPoint: WatcherNativeChainSyncPoint | null = null;
   let quarantined = input.durable.readFinality().phase === "quarantined";
 
-  const restartRecovery = recoverWatcherCoordinatorAfterRestart(input).then(
+  let restartRecoveryFailure: Error | null = null;
+  const restartRecovery = recoverWatcherCoordinatorAfterRestart({
+    ...input,
+    assertCurrent: () => {
+      if (stopped || epoch !== 0)
+        throw new WatcherCoordinatorIntegrityHeld(
+          "native_generation_changed",
+          "restart intersection generation changed before recovery CAS",
+        );
+    },
+  }).then(
     (pending) => {
       quarantined = pending;
     },
+    (error: unknown) => {
+      restartRecoveryFailure =
+        error instanceof Error
+          ? error
+          : new Error("watcher restart recovery failed", { cause: error });
+    },
   );
-
-  const observe = async (
-    block: WatcherNativeBlockAdmission,
-    event: Extract<
-      WatcherNativeChainSyncEvent,
-      { readonly kind: "roll_forward" }
-    >,
-  ): Promise<WatcherLocalKupmiosNativeObservation> => {
-    const key = pointKey(block.blockHash, block.slot);
-    const depth = depthAtTip(block, event);
-    const prior = captured.get(key);
-    if (prior?.latestDepth === depth) return prior.latest;
-    const observation = await input.observation.observe({ block, depth });
-    if (prior === undefined) {
-      captured.set(key, {
-        first: observation,
-        firstDepth: depth,
-        latest: observation,
-        latestDepth: depth,
-        persistedDepth: null,
-      });
-    } else {
-      prior.latest = observation;
-      prior.latestDepth = depth;
-    }
-    return observation;
+  const waitForRestartRecovery = async () => {
+    await restartRecovery;
+    const failure = restartRecoveryFailure;
+    restartRecoveryFailure = null;
+    if (failure !== null) throw failure;
   };
+
+  const observe = observeCapturedBlock({
+    captured,
+    observation: input.observation,
+    generation: () => epoch,
+    stopped: () => stopped,
+  });
 
   const recordProgress = (
     block: WatcherNativeBlockAdmission,
@@ -250,6 +257,12 @@ export const createCoordinator = (input: {
     const key = pointKey(block.blockHash, block.slot);
     if (releaseFinalizedHooked.has(key)) return;
     assertCurrentDrain();
+    (
+      observation as
+        | (WatcherLocalKupmiosNativeObservation &
+            Readonly<{ assertCurrent?: () => void }>)
+        | null
+    )?.assertCurrent?.();
     await input.hooks.onFinalized({
       nativeBlock: block,
       localObservation: observation,
@@ -441,6 +454,24 @@ export const createCoordinator = (input: {
     return true;
   };
 
+  const bufferedRollbackReplacement = (): WatcherNativeBlockAdmission => {
+    const target = rollbackPoint;
+    const replacement =
+      target === null
+        ? undefined
+        : target.kind === "origin"
+          ? nextBufferedChild(buffered, null, null)
+          : [...buffered.values()].find(
+              (candidate) => candidate.prevHash === target.blockHash,
+            );
+    if (replacement === null || replacement === undefined)
+      throw new WatcherCoordinatorIntegrityHeld(
+        "rollback_evidence_rejected",
+        "native rollback replacement child is not yet buffered",
+      );
+    return replacement;
+  };
+  let commonPrefixReplay: WatcherNativeBlockAdmission[] = [];
   const processRollbackReplacement = async (
     block: WatcherNativeBlockAdmission,
     event: Extract<
@@ -448,189 +479,56 @@ export const createCoordinator = (input: {
       { readonly kind: "roll_forward" }
     >,
   ): Promise<void> => {
-    const target = rollbackPoint;
-    if (target === null) return;
-    if (target.kind === "point" && block.prevHash !== target.blockHash) {
-      throw new Error(
-        "replacement block is not the child of the native rollback point",
-      );
-    }
-    const before = input.durable.read();
-    const previousFinalityState = before.currentFinalityState;
-    const observed = await observe(block, event);
-    await input.durable.persistObservation(observed);
-    const finalityResult = evaluateWatcherFinality(
-      input.policy,
-      previousFinalityState,
-      observed.consistency,
-    );
-    const rollback = await input.durable.persistRollback({
-      previousFinalityState,
-      consistency: observed.consistency,
-      finalityResult,
-      transportAttestations: observed.transportAttestations,
+    if (rollbackPoint === null) return;
+    const result = await reconcileRollbackReplacement({
+      durable: input.durable,
+      policy: input.policy,
+      block,
+      target: rollbackPoint,
+      observed: await observe(block, event),
     });
-    if (rollback.persistence === "conflict") {
-      throw new Error("watcher rollback persistence conflicted");
+    if (result.kind === "common_prefix") {
+      commonPrefixReplay.push(block);
+      rollbackPoint = result.atFrontier
+        ? null
+        : { kind: "point", blockHash: block.blockHash, slot: block.slot };
+      if (!result.atFrontier) return;
+      if (input.durable.readFinality().phase === "pending")
+        commonPrefixReplay.pop();
+    } else {
+      quarantined = result.quarantined;
+      rollbackPoint = null;
     }
-    if (rollback.result.action === "reject") {
-      throw new Error(
-        "authenticated native rollback was rejected by durable recovery",
-      );
+    const lastCommon = commonPrefixReplay.at(-1);
+    if (lastCommon !== undefined && !quarantined) {
+      replayBoundary = { point: lastCommon, inclusive: true };
+      retainedReplay = Object.freeze([...commonPrefixReplay]);
     }
-    quarantined = rollback.result.protocolDecision === "quarantined";
-    if (
-      quarantined &&
-      target.kind === "point" &&
-      previousFinalityState.phase === "finalized" &&
-      previousFinalityState.finalized !== null
-    ) {
-      const previousPath = canonicalPathFromHistory({
-        history: before.authenticatedConsistencyHistory,
-        ancestor: target,
-        terminal: previousFinalityState.finalized,
-      });
-      const ancestorConsistency = previousPath?.[0];
-      if (previousPath !== null && ancestorConsistency !== undefined) {
-        const recovery = await input.durable.persistPostFinalityRecovery({
-          previousCanonicalPath: previousPath,
-          replacementCanonicalPath: Object.freeze([
-            ancestorConsistency,
-            observed.consistency,
-          ]),
-          transportAttestations: observed.transportAttestations,
-        });
-        if (recovery.persistence === "conflict") {
-          throw new Error(
-            "watcher post-finality recovery persistence conflicted",
-          );
-        }
-        quarantined = recovery.result.protocolDecision !== "resume_replay";
-      }
-    }
-    rollbackPoint = null;
+    commonPrefixReplay = [];
     progressHead = progress?.readHead() ?? null;
     effectiveHead = recomputeEffectiveHead();
   };
 
-  const advanceCanonical = async (
-    event: Extract<
-      WatcherNativeChainSyncEvent,
-      { readonly kind: "roll_forward" }
-    >,
-  ): Promise<void> => {
-    const confirmationDepth = BigInt(input.policy.confirmationDepth);
-    const maximumIterations = buffered.size + 1;
-    for (let iteration = 0; iteration < maximumIterations; iteration += 1) {
-      const state = input.durable.readFinality();
-      if (state.phase === "quarantined") {
-        quarantined = true;
-        return;
-      }
-      if (state.phase === "pending" && state.pending !== null) {
-        const pending = state.pending;
-        const target =
-          [...buffered.values()].find(
-            (block) =>
-              block.blockHash === pending.blockHash &&
-              block.slot === pending.slot &&
-              block.blockNo === pending.blockNo,
-          ) ?? null;
-        if (target === null) return;
-        const depth = depthAtTip(target, event);
-        // Finality needs a second observation at confirmation depth. Every
-        // shallower arrival would only persist another pending snapshot.
-        if (BigInt(depth) < confirmationDepth) return;
-        const key = pointKey(target.blockHash, target.slot);
-        if (captured.get(key)?.persistedDepth === depth) return;
-        const observed = await observe(target, event);
-        const progressed =
-          await input.durable.persistCanonicalProgress(observed);
-        if (progressed.persistence === "conflict") {
-          throw new Error("watcher canonical progress persistence conflicted");
-        }
-        captured.get(key)!.persistedDepth = depth;
-        if (progressed.finalityResult.action !== "finalize") return;
-        await deliverFinalized(target, observed, relevanceOf(target));
-        forget(key);
-        continue;
-      }
-      const finalized = authorityFinalizedHead();
-      const head = effectiveHead;
-      const target = nextBufferedChild(
-        buffered,
-        head?.blockHash ?? null,
-        head?.blockNo ?? null,
-      );
-      if (target === null) return;
-      const key = pointKey(target.blockHash, target.slot);
-      const relevance = relevanceOf(target);
-      const atFinalized =
-        finalized !== null &&
-        finalized.blockHash === target.blockHash &&
-        finalized.slot === target.slot;
-      if (
-        finalized !== null &&
-        !atFinalized &&
-        BigInt(target.blockNo) <= BigInt(finalized.blockNo)
-      ) {
-        throw new Error(
-          "watcher processed head trails durable finality by more than one block",
-        );
-      }
-      if (atFinalized) {
-        // The authority committed this block but its progress row is absent:
-        // the process stopped between them. Re-run its idempotent hooks.
-        const observed =
-          relevance === "touched"
-            ? (captured.get(key)?.latest ?? (await observe(target, event)))
-            : null;
-        await deliverFinalized(target, observed, relevance);
-        forget(key);
-        continue;
-      }
-      const forcedCheckpoint =
-        finalized !== null &&
-        BigInt(target.blockNo) - BigInt(finalized.blockNo) >=
-          WATCHER_AUTHORITY_CHECKPOINT_INTERVAL_BLOCKS;
-      if (relevance === "quiet" && !forcedCheckpoint) {
-        // A quiet block is final once it is deep enough; nothing else about
-        // it is ever consulted.
-        if (BigInt(depthAtTip(target, event)) < confirmationDepth) return;
-        await deliverFinalized(target, null, "quiet");
-        forget(key);
-        continue;
-      }
-      if (!captured.has(key)) await observe(target, event);
-      const arrival = captured.get(key)!;
-      let observed = arrival.first;
-      const ancestry =
-        finalized === null ? [] : ancestryFromFinalized(finalized, target);
-      let progressed = await input.durable.persistCanonicalProgress({
-        ...observed,
-        ancestry,
-      });
-      if (progressed.persistence === "conflict") {
-        throw new Error("watcher canonical progress persistence conflicted");
-      }
-      arrival.persistedDepth = arrival.firstDepth;
-      if (
-        progressed.finalityResult.action !== "finalize" &&
-        BigInt(depthAtTip(target, event)) > BigInt(arrival.firstDepth)
-      ) {
-        observed = await observe(target, event);
-        progressed = await input.durable.persistCanonicalProgress(observed);
-        if (progressed.persistence === "conflict") {
-          throw new Error("watcher canonical progress persistence conflicted");
-        }
-        arrival.persistedDepth = depthAtTip(target, event);
-      }
-      if (progressed.finalityResult.action !== "finalize") return;
-      await deliverFinalized(target, observed, relevance);
-      forget(key);
-    }
-    throw new Error("watcher canonical buffer did not converge");
-  };
+  // A quiet block waiting for its run to grow is already finalizable, so it
+  // skips onIncluded as a quiet block finalized on arrival does.
+  const waitingInRun = new Set<string>();
+  const advanceCanonical = advanceWatcherCanonical({
+    policy: input.policy,
+    durable: input.durable,
+    buffered,
+    captured,
+    authorityFinalizedHead,
+    effectiveHead: () => effectiveHead,
+    onQuarantine: () => {
+      quarantined = true;
+    },
+    observe,
+    deliverFinalized,
+    relevanceOf,
+    forget,
+    waitingInRun,
+    ancestryFromFinalized,
+  });
 
   const includedHooked = new Set<string>();
 
@@ -643,9 +541,20 @@ export const createCoordinator = (input: {
     readonly event: Forward;
   } | null = null;
   let deliveryHeld = false;
-  let epoch = 0;
+  let integrityHold: WatcherCoordinatorHoldReason | null = null;
+  let integrityRetry: ReturnType<typeof setTimeout> | null = null;
+  const scheduleIntegrityRetry = () => {
+    if (stopped || integrityRetry !== null) return;
+    integrityRetry = setTimeout(() => {
+      integrityRetry = null;
+      void resume().catch((error: unknown) => {
+        deliveryFailure = error;
+        settleDeliveryWaiters();
+      });
+    }, 1_000);
+    integrityRetry.unref();
+  };
   let firstArrival = true;
-  let stopped = false;
   let deliveryFailure: unknown = null;
   const deliveryWaiters = new Set<{
     resolve: () => void;
@@ -655,7 +564,10 @@ export const createCoordinator = (input: {
     if (
       deliveryFailure === null &&
       !stopped &&
-      (deliveryHeld || rollbackPoint !== null || quarantined)
+      (deliveryHeld ||
+        integrityHold !== null ||
+        rollbackPoint !== null ||
+        quarantined)
     )
       return;
     for (const waiter of deliveryWaiters) {
@@ -668,6 +580,7 @@ export const createCoordinator = (input: {
   };
   const fenceRollback = (point: WatcherNativeChainSyncPoint) => {
     epoch += 1;
+    captured.clear();
     lastForward = null;
     deliveryHeld = false;
     input.hooks.onRollbackArrived?.(point);
@@ -681,7 +594,16 @@ export const createCoordinator = (input: {
   const enqueue = (work: () => Promise<void>): Promise<void> => {
     const task = serial.then(async () => {
       if (stopped) throw new Error("Watcher coordinator is stopped");
-      await work();
+      try {
+        await work();
+      } catch (error) {
+        const reason = coordinatorHoldReason(error);
+        if (reason === null) throw error;
+        integrityHold = reason;
+        deliveryHeld = true;
+        captured.clear();
+        scheduleIntegrityRetry();
+      }
     });
     serial = task.then(settleDeliveryWaiters, (error: unknown) => {
       deliveryFailure = error;
@@ -719,7 +641,8 @@ export const createCoordinator = (input: {
           );
         includedParent = headOf(candidate);
         const candidateKey = pointKey(candidate.blockHash, candidate.slot);
-        if (includedHooked.has(candidateKey)) continue;
+        if (includedHooked.has(candidateKey) || waitingInRun.has(candidateKey))
+          continue;
         const relevance = relevanceOf(candidate);
         assertCurrentDrain();
         await input.hooks.onIncluded({
@@ -765,6 +688,43 @@ export const createCoordinator = (input: {
       drainingEpoch = null;
     }
   };
+  const resume = () => {
+    const requestedEpoch = epoch;
+    return enqueue(async () => {
+      await waitForRestartRecovery();
+      if (integrityHold !== null) {
+        try {
+          if (input.durable.reconcile === undefined)
+            throw new Error("durable reconciliation is unavailable");
+          await input.durable.reconcile();
+          quarantined = input.durable.readFinality().phase === "quarantined";
+        } catch (error) {
+          throw new WatcherDurableAuthorityConflict(
+            "watcher durable reconciliation remains held",
+            { cause: error },
+          );
+        }
+        integrityHold = null;
+        captured.clear();
+        if (lastForward !== null && rollbackPoint !== null) {
+          await processRollbackReplacement(
+            bufferedRollbackReplacement(),
+            lastForward.event,
+          );
+        }
+      }
+      if (
+        requestedEpoch !== epoch ||
+        !deliveryHeld ||
+        lastForward === null ||
+        rollbackPoint !== null
+      )
+        return;
+      if (quarantined || input.durable.readFinality().phase === "quarantined")
+        return;
+      await drainHeld(lastForward);
+    });
+  };
 
   return Object.freeze({
     schemaVersion: WATCHER_CHAIN_COORDINATOR_SCHEMA_VERSION,
@@ -798,12 +758,27 @@ export const createCoordinator = (input: {
       const arrivalEpoch = epoch;
       return enqueue(async () => {
         if (event.kind === "roll_forward" && arrivalEpoch !== epoch) return;
+        if (integrityHold !== null) {
+          try {
+            if (input.durable.reconcile === undefined)
+              throw new Error("durable reconciliation is unavailable");
+            await input.durable.reconcile();
+            quarantined = input.durable.readFinality().phase === "quarantined";
+          } catch (error) {
+            throw new WatcherDurableAuthorityConflict(
+              "watcher durable reconciliation remains held",
+              { cause: error },
+            );
+          }
+          integrityHold = null;
+          captured.clear();
+        }
         const initialAcknowledgement = acknowledgement;
         if (initialAcknowledgement) {
           // Native FindIntersect acknowledges the selected point with a backward
           // frame. This first exact acknowledgement is not a rewind unless the
           // node intersected below the recorded processed head.
-          await restartRecovery;
+          await waitForRestartRecovery();
           if (!quarantined) {
             // With a progress ring the node was offered the recorded head
             // first, so a lower selection means it lacks that head: a rewind.
@@ -830,6 +805,7 @@ export const createCoordinator = (input: {
           replayBoundary = null;
           retainedReplay = null;
           retainedReplacement = null;
+          commonPrefixReplay = [];
           for (const [key, hooked] of releaseFinalizedHooked) {
             if (
               event.point.kind === "origin" ||
@@ -841,11 +817,19 @@ export const createCoordinator = (input: {
             }
           }
         }
-        await restartRecovery;
+        const heldForRecovery = quarantined;
+        await waitForRestartRecovery();
         if (quarantined) {
-          throw new Error(
-            "watcher is quarantined pending authenticated post-finality recovery",
+          quarantined = await retryQuarantinedRecovery(
+            input.durable,
+            event,
+            guardRecoveryEvent(
+              event,
+              () => !stopped && epoch === arrivalEpoch,
+              input.dependencies.unsafeAllowUnprovenancedEvents === true,
+            ),
           );
+          if (quarantined) return;
         }
         if (event.kind === "roll_backward") {
           const point = event.point;
@@ -899,16 +883,15 @@ export const createCoordinator = (input: {
             deliveryHeld = true;
           }
           const belowAuthority =
-            frontier === null ||
-            frontier === undefined ||
-            point.kind === "origin" ||
-            BigInt(point.slot) < BigInt(frontier.slot) ||
-            (point.slot === frontier.slot &&
-              point.blockHash !== frontier.blockHash);
+            frontier === null || frontier === undefined
+              ? !heldForRecovery
+              : point.kind === "origin" ||
+                BigInt(point.slot) < BigInt(frontier.slot) ||
+                (point.slot === frontier.slot &&
+                  point.blockHash !== frontier.blockHash);
           if (belowAuthority) {
-            // The durable authority itself is contradicted (or has not been
-            // established yet): its dedicated rewind path evaluates the
-            // replacement block.
+            // The durable authority itself is contradicted: its dedicated
+            // rewind path evaluates the replacement block.
             rollbackPoint = point;
             return;
           }
@@ -926,32 +909,19 @@ export const createCoordinator = (input: {
           throw new Error("native buffered block identity was substituted");
         }
         buffered.set(key, block);
+        lastForward = { block, event };
         if (rollbackPoint !== null) {
-          await processRollbackReplacement(block, event);
-          if (quarantined) return;
+          await processRollbackReplacement(
+            bufferedRollbackReplacement(),
+            event,
+          );
+          if (quarantined || rollbackPoint !== null) return;
         }
         lastForward = { block, event };
         await drainHeld({ block, event });
       });
     },
-    resume: () => {
-      const requestedEpoch = epoch;
-      return enqueue(async () => {
-        await restartRecovery;
-        if (
-          requestedEpoch !== epoch ||
-          !deliveryHeld ||
-          lastForward === null ||
-          rollbackPoint !== null
-        )
-          return;
-        if (quarantined || input.durable.readFinality().phase === "quarantined")
-          throw new Error(
-            "Watcher cannot resume consumers during finality quarantine",
-          );
-        await drainHeld(lastForward);
-      });
-    },
+    resume,
     waitForDelivery: () =>
       new Promise<void>((resolve, reject) => {
         // Register behind admitted work, but never await delivery inside this queue.
@@ -961,6 +931,7 @@ export const createCoordinator = (input: {
       }),
     stop: () => {
       stopped = true;
+      if (integrityRetry !== null) clearTimeout(integrityRetry);
       epoch += 1;
       settleDeliveryWaiters();
       return serial;
@@ -969,6 +940,7 @@ export const createCoordinator = (input: {
       Object.freeze({
         rollbackPoint,
         quarantined,
+        integrityHold,
         deliveryHeld,
         bufferedBlockCount: buffered.size,
         processedThrough: effectiveHead,

@@ -21,6 +21,12 @@ import {
 } from "./ci-evidence.mjs";
 import { enrollBuilds } from "../contrib/enroll-builds.mjs";
 
+// A hook running these tests exports GIT_DIR and GIT_INDEX_FILE. Inherited
+// by `git init`, they re-initialise the outer repository instead of the
+// temporary one.
+for (const key of Object.keys(process.env))
+  if (key.startsWith("GIT_")) delete process.env[key];
+
 const fixture = () => {
   const profile = {
     node: "v22.22.2",

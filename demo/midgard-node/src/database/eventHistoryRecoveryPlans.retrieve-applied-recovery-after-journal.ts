@@ -1,9 +1,15 @@
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
+import { eventHistoryCanonicalJson } from "../l1-event-history-source.js";
+import {
+  DISPLACEMENT_COMPENSATION_RECOVERY_DOMAIN,
+  parseDisplacementCompensationIntent,
+} from "./eventHistoryRecoveryPlans.displacement-compensation.js";
 import {
   CORRECTION_REWIND_RECOVERY_DOMAIN,
   type CorrectionRewindIntent,
+  digest,
   fail,
   freezeRewindIntent,
   historyRecoveryKind,
@@ -66,7 +72,17 @@ export const retrieveAppliedRecoveryAfterJournal = (
     const kind =
       decoded?.domain === CORRECTION_REWIND_RECOVERY_DOMAIN
         ? ("correction_rewind" as const)
-        : historyRecoveryKind(decoded?.domain);
+        : decoded?.domain === DISPLACEMENT_COMPENSATION_RECOVERY_DOMAIN
+          ? ("displacement_compensation" as const)
+          : historyRecoveryKind(decoded?.domain);
+    if (kind === "displacement_compensation") {
+      const { domain: _domain, ...fields } = decoded!;
+      if (
+        parseDisplacementCompensationIntent(fields) === undefined ||
+        digest(eventHistoryCanonicalJson(decoded)) !== recoveryId
+      )
+        return yield* Effect.fail(undecodable);
+    }
     const targetRoot = decoded?.targetRoot;
     if (
       kind === undefined ||
@@ -98,6 +114,18 @@ export const correctionRewindRemovedHeaders = (manifestId: string) =>
         decoded = JSON.parse(intent) as Record<string, unknown>;
       } catch {
         return yield* fail("Malformed retained native recovery identity");
+      }
+      if (decoded?.domain === DISPLACEMENT_COMPENSATION_RECOVERY_DOMAIN) {
+        const { domain: _domain, ...fields } = decoded;
+        const compensation = parseDisplacementCompensationIntent(fields);
+        if (compensation === undefined)
+          return yield* fail(
+            "Malformed retained displacement compensation identity",
+          );
+        for (const member of compensation.suffixMembers)
+          if (member.kind === "removed")
+            headers.set(member.headerHash, member.transitionDigest);
+        continue;
       }
       if (decoded?.domain !== CORRECTION_REWIND_RECOVERY_DOMAIN) continue;
       const { domain: _domain, ...fields } = decoded;

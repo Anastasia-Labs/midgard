@@ -159,6 +159,13 @@ const staleCandidateOutRefs = async (
   );
 };
 
+/**
+ * Reads the submitter wallet's readiness, then retries up to `retryCount`
+ * times, `retryDelayMs` apart, while it is not ready. A read that throws
+ * (a provider that is briefly unreachable) is retried within the same
+ * budget; only the last read's error escapes. A wallet that cannot be
+ * selected at all is a configuration fault and is never retried.
+ */
 export const pollReadiness = async (
   lucid: Partial<UtxoOverrideLucid>,
   requirements: L1SubmitterReadinessRequirements & {
@@ -166,31 +173,40 @@ export const pollReadiness = async (
     readonly retryDelayMs: number;
   },
 ): Promise<L1SubmitterReadinessSummary> => {
-  let summary = await refreshL1SubmitterPlainAdaUtxos(lucid, requirements);
-  if (summary === undefined) {
-    throw new Error(
-      "L1 submitter wallet preflight requires a selectable wallet",
-    );
-  }
-  for (
-    let attempt = 0;
-    !summary.ready && attempt < requirements.retryCount;
-    attempt += 1
-  ) {
-    await sleep(requirements.retryDelayMs);
-    const nextSummary = await refreshL1SubmitterPlainAdaUtxos(
-      lucid,
-      requirements,
-    );
-    if (nextSummary === undefined) {
+  for (let attempt = 0; ; attempt += 1) {
+    let summary: L1SubmitterReadinessSummary | undefined;
+    try {
+      summary = await refreshL1SubmitterPlainAdaUtxos(lucid, requirements);
+    } catch (error) {
+      if (attempt >= requirements.retryCount) throw error;
+      await sleep(requirements.retryDelayMs);
+      continue;
+    }
+    if (summary === undefined) {
       throw new Error(
         "L1 submitter wallet preflight requires a selectable wallet",
       );
     }
-    summary = nextSummary;
+    if (summary.ready || attempt >= requirements.retryCount) return summary;
+    await sleep(requirements.retryDelayMs);
   }
-  return summary;
 };
+
+/**
+ * An auto-fund payment failed after it was built, while it was signed,
+ * submitted or awaited. It may have reached the chain, so it must not be
+ * sent again: a retry would fund the submitter twice.
+ */
+export class AutoFundPaymentUnsettledError extends Error {
+  override readonly name = "AutoFundPaymentUnsettledError";
+
+  constructor(cause: unknown) {
+    super(
+      `L1 submitter auto-fund payment may have been submitted but did not settle: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+  }
+}
 
 export const submitAutoFundPayment = async ({
   lucid,
@@ -208,7 +224,13 @@ export const submitAutoFundPayment = async ({
     .newTx()
     .pay.ToAddress(submitterAddress, { lovelace })
     .complete();
-  return signSubmitAndConfirm(lucid, tx, { confirmationPollIntervalMs });
+  try {
+    return await signSubmitAndConfirm(lucid, tx, {
+      confirmationPollIntervalMs,
+    });
+  } catch (error) {
+    throw new AutoFundPaymentUnsettledError(error);
+  }
 };
 
 export const readinessErrors = (

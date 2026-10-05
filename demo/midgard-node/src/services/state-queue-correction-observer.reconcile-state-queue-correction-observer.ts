@@ -20,6 +20,18 @@ import {
   type StateQueueCorrectionObserverSource,
   type StateQueueCorrectionObserverStore,
 } from "./state-queue-correction-observer.parse-state-queue-correction-observer-state.js";
+import {
+  AUTOMATIC_RECOVERY_MAX_DEPTH,
+  type CorrectionObserverJournalDependency,
+  finalityKey,
+  provenFinalTransitions,
+  pruneAdmittedBeyondRollbackHorizon,
+} from "./state-queue-correction-observer.prune-admitted.js";
+
+/** Diagnostic rollback samples only; no recovery reader consumes these arrays.
+ * Keep recent observations bounded; each tick still reports every new incident
+ * to the caller for operational logs. This never prunes recovery evidence. */
+export const CORRECTION_OBSERVER_ROLLBACK_SAMPLE_LIMIT = 256;
 
 /**
  * Reconciles the durable cursor before admitting any action. `reinclude` and
@@ -37,6 +49,11 @@ export const reconcileStateQueueCorrectionObserver = async ({
   persistTerminal,
   revokeTerminal,
   assertRollbackPermitted,
+  journalDependencies,
+  provenFinal = provenFinalTransitions(
+    deploymentIdentityDigest,
+    stateQueuePolicyId,
+  ),
 }: {
   readonly deploymentIdentityDigest: string;
   readonly stateQueuePolicyId: string;
@@ -61,6 +78,14 @@ export const reconcileStateQueueCorrectionObserver = async ({
   readonly assertRollbackPermitted?: (
     transition: StateQueueAuthenticatedTransition,
   ) => Promise<void>;
+  /** All retained journals, including finalized recovery evidence. Without it nothing admitted
+   * is ever dropped. */
+  readonly journalDependencies?: () => Promise<
+    readonly CorrectionObserverJournalDependency[]
+  >;
+  /** Finality keys of transitions proven deeper than k; their depth is never
+   * read again. Defaults to this process's memo for the authority. */
+  readonly provenFinal?: Set<string>;
 }): Promise<StateQueueCorrectionObserverResult> => {
   if (
     !HEX_32.test(deploymentIdentityDigest) ||
@@ -163,6 +188,11 @@ export const reconcileStateQueueCorrectionObserver = async ({
 
   const admittedAfterRollback: StateQueueAuthenticatedTransition[] = [];
   for (const transition of admitted) {
+    // Deeper than k it can never roll back: no Kupo or tip read again.
+    if (provenFinal.has(finalityKey(transition))) {
+      admittedAfterRollback.push(transition);
+      continue;
+    }
     const depth = await depthOf(transition);
     if (depth === null) {
       if (sameQueue(queue, transition.nextQueue)) {
@@ -192,6 +222,8 @@ export const reconcileStateQueueCorrectionObserver = async ({
         incidentsNow.push(transition.transactionHash);
       }
     } else {
+      if (depth > AUTOMATIC_RECOVERY_MAX_DEPTH + 1n)
+        provenFinal.add(finalityKey(transition));
       admittedAfterRollback.push(transition);
     }
   }
@@ -258,10 +290,21 @@ export const reconcileStateQueueCorrectionObserver = async ({
       await reinclude(finalized);
     }
     await persistTerminalTransition(finalized);
+    if (depth > AUTOMATIC_RECOVERY_MAX_DEPTH + 1n)
+      provenFinal.add(finalityKey(finalized));
     admitted.push(finalized);
     admittedNow.push(finalized.transactionHash);
   }
   pending = stillPending;
+
+  if (journalDependencies !== undefined && retractedNow.length === 0) {
+    admitted = pruneAdmittedBeyondRollbackHorizon({
+      pending,
+      admitted,
+      provenFinal: (transition) => provenFinal.has(finalityKey(transition)),
+      dependencies: await journalDependencies(),
+    });
+  }
 
   await store.save(
     makeState({
@@ -271,10 +314,16 @@ export const reconcileStateQueueCorrectionObserver = async ({
       cursorQueue: queue,
       pending,
       admitted,
-      retractedTransactionHashes: [...retracted].sort(),
-      postFinalityRollbackIncidents: incidents,
+      retractedTransactionHashes: [...retracted].slice(
+        -CORRECTION_OBSERVER_ROLLBACK_SAMPLE_LIMIT,
+      ),
+      postFinalityRollbackIncidents: incidents.slice(
+        -CORRECTION_OBSERVER_ROLLBACK_SAMPLE_LIMIT,
+      ),
     }),
   );
+  const saved = new Set(admitted.map(finalityKey));
+  for (const key of provenFinal) if (!saved.has(key)) provenFinal.delete(key);
   return {
     status: "reconciled",
     admittedTransactionHashes: admittedNow,

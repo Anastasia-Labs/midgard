@@ -22,7 +22,7 @@ import {
   makeDeploymentAuthority,
 } from "../support/deployment-authority-fixture.js";
 
-/** The compiled deployment profile's release depth (3 testing, 30 public). */
+/** The compiled deployment profile's release depth (10 live testing, 30 public). */
 export const RELEASE_DEPTH = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
 
 export const RELEASE_DEPTH_TEXT = RELEASE_DEPTH.toString();

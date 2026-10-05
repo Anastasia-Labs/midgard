@@ -49,5 +49,5 @@ export const unsafeCreateWatcherChainCoordinatorForTest = (
         onRollback: async () => undefined,
         onFinalized: async () => undefined,
       }),
-    dependencies,
+    dependencies: { ...dependencies, unsafeAllowUnprovenancedEvents: true },
   });

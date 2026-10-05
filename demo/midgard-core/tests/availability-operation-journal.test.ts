@@ -89,7 +89,7 @@ describe("availability operation journal durability and fencing", () => {
     }
   });
 
-  it("fences superseded builders across connections and preserves same-actor collateral until every child finalizes", () => {
+  it("fences superseded builders across connections and preserves same-actor collateral until every child's validity passes", () => {
     const database = path();
     const first = openAvailabilityOperationJournal(database);
     const second = openAvailabilityOperationJournal(database);
@@ -132,6 +132,15 @@ describe("availability operation journal durability and fencing", () => {
         ),
       ).toThrow(/reserved/);
       second.transition(lease, "child", "confirmed", "block2", null, 109);
+      // A confirmation can still roll back; only passed validity frees inputs.
+      expect(first.reservedOutRefs("actor")).toHaveLength(3);
+      for (const id of ["first", "child"])
+        second.retire(
+          lease,
+          id,
+          { confirmationDepth: 30, currentSlot: 100, recoveryDepth: 2160 },
+          110,
+        );
       expect(first.reservedOutRefs("actor")).toEqual([]);
       first.persist(other, intent("third", "other"), 110);
       expect(first.pending("deployment", "other")).toHaveLength(1);
@@ -141,9 +150,8 @@ describe("availability operation journal durability and fencing", () => {
     }
   });
 
-  it("refuses changed signed bytes and cross-actor transitions, and persists a rollback halt", () => {
-    const database = path();
-    let journal = openAvailabilityOperationJournal(database);
+  it("refuses changed signed bytes and cross-actor transitions", () => {
+    const journal = openAvailabilityOperationJournal(path());
     const lease = journal.acquire("actor", "owner", 0, 100);
     journal.persist(lease, intent(), 1);
     expect(() =>
@@ -153,16 +161,7 @@ describe("availability operation journal durability and fencing", () => {
     expect(() =>
       journal.transition(foreign, "first", "expired", null, null, 3),
     ).toThrow(/different actor/);
-    journal.halt("post-finality rollback");
     journal.close();
-    journal = openAvailabilityOperationJournal(database);
-    try {
-      expect(() => journal.acquire("actor", "retry", 101, 100)).toThrow(
-        /post-finality rollback/,
-      );
-    } finally {
-      journal.close();
-    }
   });
 
   it("admits one challenge workflow per header and keeps each through timeout continuation and finality", () => {
@@ -241,9 +240,7 @@ describe("availability operation journal durability and fencing", () => {
         ),
       ).toThrow(/already has a live challenge workflow/);
       expect(
-        journal
-          .finalizedAnchors("deployment", "actor")
-          .map((record) => record.intent.id),
+        journal.finalizedAnchors("actor").map((record) => record.intent.id),
       ).toEqual(["remove"]);
     } finally {
       journal.close();
@@ -299,6 +296,7 @@ describe("availability operation journal durability and fencing", () => {
       txHash: "ab".repeat(32),
       spendPoint: "10:cd",
       confirmationDepth: 30,
+      recoveryDepth: 2160,
     });
     // Our Open for (deployment, header) and another for (deployment, other
     // header), both landed; each opens its own workflow row.
@@ -360,17 +358,14 @@ describe("availability operation journal durability and fencing", () => {
           6,
         );
         expect(journal.workflows("actor")).toEqual([]);
-        // Admission in another deployment follows; reservations, intents and
-        // the lease are untouched.
+        // Same-deployment progress follows; the provisional terminal still
+        // holds capital against work in another deployment.
         expect(() =>
           journal.assertWorkflow(lease, "other-deployment", "h", "open", 7),
-        ).not.toThrow();
+        ).toThrow(/capital belongs/);
         expect(journal.reservedOutRefs("actor")).toEqual(reserved);
         expect(journal.get("open")?.state).toBe("confirmed");
         expect(() => journal.assertLease(lease, 8)).not.toThrow();
-        expect(() =>
-          journal.releaseWorkflow(lease, "deployment", "header", evidence(), 9),
-        ).toThrow("Availability workflow release names no live workflow");
       } finally {
         journal.close();
       }
@@ -546,7 +541,7 @@ describe("availability operation journal durability and fencing", () => {
             "SELECT value FROM availability_journal_metadata WHERE key = 'schema'",
           )
           .get()?.value,
-      ).toBe("2");
+      ).toBe("3");
       expect(
         migrated
           .prepare(
@@ -574,7 +569,7 @@ describe("availability operation journal durability and fencing", () => {
       CREATE TABLE availability_journal_metadata (
         key TEXT PRIMARY KEY, value TEXT NOT NULL
       );
-      INSERT INTO availability_journal_metadata VALUES ('schema', '3');
+      INSERT INTO availability_journal_metadata VALUES ('schema', '4');
     `);
     future.close();
     expect(() => openAvailabilityOperationJournal(database)).toThrow(

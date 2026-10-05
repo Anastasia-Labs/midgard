@@ -5,16 +5,14 @@ import {
   defaultWebSocketFactory,
   parseOgmiosTip,
 } from "./local-kupmios-http-ogmios-source.acquire-ogmios-session.js";
-import {
-  readAdmittedLocalKupmiosBoundary,
-  requireOgmiosRawTransactionCbor,
-} from "./local-kupmios-http-ogmios-source.admit-local-kupmios-raw-block-at-point.js";
+import { requireOgmiosRawTransactionCbor } from "./local-kupmios-http-ogmios-source.admit-local-kupmios-raw-block-at-point.js";
 import {
   assertMatchOutput,
   rawUtxoFromOutput,
   transactionInputs,
   transactionOutput,
 } from "./local-kupmios-http-ogmios-source.assert-match-output.js";
+import { createLocalKupmiosSignedRecoveryReader } from "./local-kupmios-http-ogmios-source.create-signed-recovery-reader.js";
 import {
   fetchJson,
   parseKupoMatches,
@@ -79,10 +77,6 @@ import {
   type FraudProofRawL1Transaction,
   type FraudProofRawL1Utxo,
 } from "./raw-l1-snapshot.js";
-import {
-  inspectSignedWorkflowTransaction,
-  type SignedTransactionRecoveryObservation,
-} from "./signed-transaction-reconciliation.js";
 
 export const createLocalKupmiosHttpOgmiosRawSource = (
   config: LocalKupmiosHttpOgmiosSourceConfig,
@@ -108,7 +102,9 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
   const minimumObservationDepth =
     observationDepth === "inclusion"
       ? 1
-      : config.releaseFinality.policy.confirmationDepth;
+      : observationDepth === "recovery_finality"
+        ? config.releaseFinality.policy.automaticRecoveryMaxDepth + 2
+        : config.releaseFinality.policy.confirmationDepth;
   const maxResponseBytes = config.maxResponseBytes;
   validateSourceSignal(signal);
   throwIfSourceAborted(signal);
@@ -1082,11 +1078,17 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
       rawBlockCache.clear();
       pointCache.clear();
       const tip = await queryTip();
+      const depthMode = input?.observationDepth ?? observationDepth;
       const minimum =
-        (input?.observationDepth ?? observationDepth) === "inclusion"
+        depthMode === "inclusion"
           ? 1
-          : config.releaseFinality.policy.confirmationDepth;
-      const maximum = config.releaseFinality.policy.automaticRecoveryMaxDepth;
+          : depthMode === "recovery_finality"
+            ? config.releaseFinality.policy.automaticRecoveryMaxDepth + 2
+            : config.releaseFinality.policy.confirmationDepth;
+      const maximum = Math.max(
+        minimum,
+        config.releaseFinality.policy.automaticRecoveryMaxDepth,
+      );
       let lookbackSlots = Math.max(0, minimum - 1);
       let newerSlot = tip.slot + 1;
       for (let attempt = 0; attempt < 12; attempt += 1) {
@@ -1281,207 +1283,22 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
       ),
     });
   });
-  signedTransactionRecoveryReaders.set(source, async (input) => {
-    const signed = inspectSignedWorkflowTransaction(input);
-    // Replacement authorization still requires stable expiry/spend evidence,
-    // even when this source normally observes action prerequisites at inclusion.
-    const boundary = await readAdmittedLocalKupmiosBoundary({ source });
-    const canonicalPoint = boundary.ogmiosTip;
-    const releaseFinalPoint = boundary.kupoCheckpoint;
-    const inputs: { outRef: string; outputCbor: string }[] = [];
-    const result = (
-      status: SignedTransactionRecoveryObservation["status"],
-      reason: string,
-    ): SignedTransactionRecoveryObservation =>
-      Object.freeze({
-        transactionHash: input.transactionHash,
-        signedTransactionCborHex: input.signedTransactionCborHex,
-        status,
-        reason,
-        canonicalPoint,
-        releaseFinalPoint,
-        inputs: Object.freeze(inputs),
-      });
-    const finish = async (
-      status: SignedTransactionRecoveryObservation["status"],
-      reason: string,
-    ) => {
-      const confirmation = exactKeys(
-        await source.confirmCanonicalPoint({ point: releaseFinalPoint }),
-        ["canonical", "point"],
-        [],
-        "signed recovery canonical confirmation",
-      );
-      if (
-        confirmation.canonical !== true ||
-        !sameRawPoint(
-          admitFraudProofRawL1Point(
-            confirmation.point,
-            "signed recovery confirmed point",
-          ),
-          releaseFinalPoint,
-        )
-      )
-        throw new LocalKupmiosCheckpointChangedError(
-          "Signed recovery release-final boundary rolled back",
-        );
-      const after = await queryTip();
-      if (!sameRawPoint(rawPoint(after), canonicalPoint))
-        throw new LocalKupmiosCheckpointChangedError(
-          "Canonical tip changed during signed transaction recovery",
-        );
-      return result(status, reason);
-    };
-    const tipCheckpoint = await getKupoCheckpoint(Number(canonicalPoint.slot));
-    if (
-      !sameKupoPoint(tipCheckpoint, {
-        slot: Number(canonicalPoint.slot),
-        blockHash: canonicalPoint.blockHash,
-      })
-    )
-      return result("unknown", "Kupo has not indexed the exact canonical tip");
-    const inclusion = await source.resolveTransactionInclusion!({
-      txHash: input.transactionHash,
-    });
-    if (inclusion !== null) {
-      const point = admitFraudProofRawL1Point(
-        inclusion,
-        "signed recovery inclusion",
-      );
-      const raw = await readRawTransaction({
-        txHash: input.transactionHash,
-        point: { slot: Number(point.slot), blockHash: point.blockHash },
-      });
-      const included = CML.Transaction.from_cbor_hex(raw.transactionCbor);
-      if (
-        !included.is_valid() ||
-        included.body().to_cbor_hex() !== signed.body.to_cbor_hex() ||
-        included.witness_set().to_canonical_cbor_hex() !==
-          signed.transaction.witness_set().to_canonical_cbor_hex()
-      )
-        throw new Error(
-          "Canonical transaction differs from the recorded signed body",
-        );
-      return finish(
-        "included",
-        "Exact recorded transaction body is on the canonical chain",
-      );
-    }
-    // Stable expiry and exact canonical absence retire the attempt even when a
-    // rollback erased its parent's output creation. Input history is required
-    // for rebroadcast or spend-based invalidation, not for proving elapsed TTL.
-    if (
-      signed.expiresAtSlot !== undefined &&
-      BigInt(releaseFinalPoint.slot) >= signed.expiresAtSlot
-    )
-      return finish(
-        "expired",
-        "Recorded TTL passed at the canonical release-final boundary and the exact transaction is absent",
-      );
-    let status: SignedTransactionRecoveryObservation["status"] = "rebroadcast";
-    let reason =
-      "Canonical transaction absent and every recorded input remains unspent";
-    for (const outRef of signed.inputOutRefs) {
-      const [transactionHash, index] = outRef.split("#");
-      const matches = await fetchMatches(`${index}@${transactionHash}`);
-      if (
-        matches.length !== 1 ||
-        matches[0]!.txHash !== transactionHash ||
-        matches[0]!.outputIndex.toString() !== index
-      ) {
-        status = "unknown";
-        reason = "A recorded input lacks exact canonical creation history";
-        break;
-      }
-      const match = matches[0]!;
-      const output = await utxoFromMatch(match);
-      inputs.push({ outRef, outputCbor: output.outputCbor });
-      if (match.spentAt !== null) {
-        const spending = await readRawTransaction({
-          txHash: match.spentAt.txHash,
-          point: match.spentAt,
-        });
-        if (
-          !transactionConsumesOutRef({
-            transactionCbor: spending.transactionCbor,
-            transactionId: match.spentAt.txHash,
-            outRef,
-          })
-        )
-          throw new Error(
-            "Kupo input spend lacks its exact canonical consuming transaction",
-          );
-        const stableSpend =
-          BigInt(match.spentAt.slot) <= BigInt(releaseFinalPoint.slot);
-        // An exact stable spend makes this signed body impossible regardless of
-        // input role. This retires only the attempt: funding is re-observed and
-        // reserved separately after every recorded signed attempt is resolved.
-        // Keep scanning so missing canonical history still prevents retirement.
-        if (stableSpend) {
-          status = "invalidated";
-          reason =
-            "A recorded input is stably spent by another canonical transaction";
-        } else if (status !== "invalidated") {
-          status = "pending";
-          reason = "A recorded input spend is not yet release-final";
-        }
-      }
-    }
-    if (status !== "rebroadcast") return finish(status, reason);
-    // Missing TTL prevents expiry-based replacement, but does not prevent
-    // observing the mempool or replaying the exact still-valid signed body.
-    if (
-      signed.expiresAtSlot !== undefined &&
-      BigInt(canonicalPoint.slot) >= signed.expiresAtSlot
-    )
-      return finish(
-        "pending",
-        "Recorded TTL passed at the tip; release-final expiry proof is not yet available",
-      );
-    if (
-      signed.validFromSlot !== undefined &&
-      BigInt(canonicalPoint.slot) < signed.validFromSlot
-    )
-      return finish(
-        "pending",
-        "Recorded lower validity bound has not reached the canonical tip",
-      );
-    const mempool = await openOgmiosSession({
-      url: ogmiosWebSocketUrl,
+  signedTransactionRecoveryReaders.set(
+    source,
+    createLocalKupmiosSignedRecoveryReader({
+      source,
+      queryTip,
+      getKupoCheckpoint,
+      readRawTransaction,
+      fetchMatches,
+      utxoFromMatch,
+      ogmiosWebSocketUrl,
       timeoutMs,
       webSocketFactory,
       signal,
       maxResponseBytes,
-    });
-    try {
-      const acquired = record(
-        await mempool.request("acquireMempool", {}),
-        "signed recovery mempool snapshot",
-      );
-      if (
-        acquired.acquired !== "mempool" ||
-        naturalNumber(acquired.slot, "mempool snapshot slot") <
-          Number(canonicalPoint.slot)
-      )
-        return finish(
-          "unknown",
-          "Mempool snapshot predates the observed canonical tip",
-        );
-      const present = await mempool.request("hasTransaction", {
-        id: input.transactionHash,
-      });
-      if (typeof present !== "boolean")
-        throw new Error("Invalid mempool transaction verdict");
-      if (present)
-        return finish(
-          "pending",
-          "Recorded transaction remains in the node mempool",
-        );
-    } finally {
-      await mempool.close();
-    }
-    return finish(status, reason);
-  });
+    }),
+  );
   signedTransactionRebroadcasters.set(source, async (input, authorize) => {
     const session = await openOgmiosSession({
       url: ogmiosWebSocketUrl,

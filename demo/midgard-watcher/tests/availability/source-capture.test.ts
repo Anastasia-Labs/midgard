@@ -1,7 +1,4 @@
-import type {
-  AvailabilityOperationIntent,
-  AvailabilityOperationRecord,
-} from "@al-ft/midgard-core/availability-operation-journal";
+import type { AvailabilityOperationRecord } from "@al-ft/midgard-core/availability-operation-journal";
 import {
   computeFraudProofRawL1PointId,
   type LocalKupmiosFraudProofRawSource,
@@ -21,6 +18,10 @@ import {
   daBondPoolUtxo,
   parametersFixture,
 } from "../support/availability-challenge-fixture.js";
+import {
+  availabilityOperationIntent as intent,
+  deferredAvailabilityRead as deferred,
+} from "../support/availability-operation-intent.js";
 
 const sourcePolicy = vi.hoisted(() => ({
   observationDepth: "release_finality" as "release_finality" | "inclusion",
@@ -41,7 +42,6 @@ vi.mock("@al-ft/midgard-fault-proofs", async (original) => ({
     deploymentIdentityDigest: "11".repeat(32),
     blueprintHash: "22".repeat(32),
     observationDepth: sourcePolicy.observationDepth,
-    // Mocked source release depth; the observations below sit at this depth.
     confirmationDepth: 30,
   }),
   pinAdmittedLocalKupmiosBoundaryAtPoint: io.pin,
@@ -58,12 +58,10 @@ vi.mock("@al-ft/midgard-sdk", async (original) => ({
     _deployment: unknown,
     headerHash: string,
   ) => ({ headerHash }),
-  // The walk itself is the SDK's (its own suite); here it hands back the
-  // readers the watcher wired, so each can be driven directly.
+  // SDK walking is tested separately; drive the actual watcher reader wiring.
   resolveDaAvailabilityWorkflowRelease: io.release,
 }));
-// Admission and decoding have separate fixture suites. Keep the real shared
-// capture lock and sibling-drain helper here, controlling only the I/O edges.
+// Real capture/sibling drain; admission and decoding have separate fixtures.
 vi.mock("../../src/indexers/authenticated-state-queue-observation.js", () => ({
   assertWatcherStateQueueObservation: () => undefined,
 }));
@@ -71,13 +69,6 @@ vi.mock("../../src/runtime/deployment-identity.js", () => ({
   assertVerifiedWatcherDeploymentIdentity: () => undefined,
 }));
 
-const deferred = () => {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-};
 const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve));
 const identity = {
   manifestId: "11".repeat(32),
@@ -123,23 +114,6 @@ const fixture = () => {
       source,
     }),
   };
-};
-const intent = () => {
-  const body = CML.TransactionBody.new(
-    CML.TransactionInputList.new(),
-    CML.TransactionOutputList.new(),
-    0n,
-  );
-  return {
-    txHash: CML.hash_transaction(body).to_hex(),
-    signedCbor: CML.Transaction.new(
-      body,
-      CML.TransactionWitnessSet.new(),
-      true,
-    ).to_cbor_hex(),
-    spentOutRefs: [],
-    collateralOutRefs: [],
-  } as unknown as AvailabilityOperationIntent;
 };
 beforeEach(() => {
   sourcePolicy.observationDepth = "release_finality";
@@ -229,6 +203,32 @@ describe("availability captures sharing a local source", () => {
     expect(io.outrefs.mock.calls[0]![0].point.slot).toBe("11");
   });
 
+  it("preserves the authenticated current block for included-intent history pruning", async () => {
+    const { intake } = fixture();
+    const signed = intent();
+    const body = CML.Transaction.from_cbor_hex(signed.signedCbor).body();
+    io.inclusion.mockResolvedValue({
+      blockNo: "7",
+      pointId: "canonical-inclusion",
+    });
+    io.transaction.mockResolvedValue({
+      bodyCbor: body.to_cbor_hex(),
+      confirmationDepth: 35,
+    });
+    const current = {
+      ...observation(11),
+      nativePoint: { ...observation(11).nativePoint, blockNo: "19" },
+    };
+    await expect(intake.operation(current, signed)).resolves.toEqual({
+      status: "included",
+      txHash: signed.txHash,
+      inclusionPoint: "canonical-inclusion",
+      confirmationDepth: 34,
+      currentSlot: 11,
+      currentBlockNo: 19,
+    });
+  });
+
   it("reports a verified foreign spend with its depth below the finalized tip", async () => {
     const { intake } = fixture();
     const spent = `${"aa".repeat(32)}#0`;
@@ -258,14 +258,13 @@ describe("availability captures sharing a local source", () => {
       status: "inputs_missing",
       currentSlot: 11,
       missingOutRefs: [spent, collateral],
-      // Six blocks above the spend to the observed point, which is itself
-      // thirty deep.
+      // Six blocks to the observed point plus its twenty-nine successors.
       foreignSpends: [
         {
           outRef: spent,
           spendingTxHash: "cc".repeat(32),
           spendPoint: "spend-point",
-          confirmationDepth: 36,
+          confirmationDepth: 35,
         },
       ],
     });
@@ -397,7 +396,7 @@ describe("availability captures sharing a local source", () => {
       return readers;
     };
 
-    it("counts the boundary finalityDepth above the finalized point", async () => {
+    it("projects the actual tip from inclusive native finalityDepth", async () => {
       const readers = await captured(11);
       await expect(readers.readBoundary()).resolves.toStrictEqual({
         pointId: computeFraudProofRawL1PointId({
@@ -405,7 +404,7 @@ describe("availability captures sharing a local source", () => {
           blockNo: "11",
           blockHash: "66".repeat(32),
         }),
-        blockNo: 41,
+        blockNo: 40,
       });
     });
 

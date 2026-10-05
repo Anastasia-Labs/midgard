@@ -1,3 +1,5 @@
+import { setTimeout as delay } from "node:timers/promises";
+
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import type { OutRefLike } from "@al-ft/midgard-core/out-ref";
 import { CML } from "@lucid-evolution/lucid";
@@ -9,6 +11,10 @@ import {
   verifyEventHistoryCaptureHub,
 } from "./l1-event-history-source.js";
 import type { LedgerSnapshotPoint } from "./l1-ledger-snapshot.js";
+import {
+  KupoNotYetIndexed,
+  L1SourceUnavailable,
+} from "./l1-source-unavailable.js";
 import {
   fetchKupoAncestorPoint,
   fetchKupoCreationPoint,
@@ -29,7 +35,16 @@ export type HistoryTransportOptions = Readonly<{
   maximumTransactionBytes: number;
   fetchImpl?: FetchLike;
   webSocketFactory?: WebSocketFactory;
+  /** How long one read waits for Kupo to index a point Ogmios already
+   * served before it reports the source unavailable. */
+  indexLagCeilingMs?: number;
+  /** Called with the lag signal while a read waits on it, then with
+   * undefined once that read stops waiting. */
+  onIndexLag?: (waiting: KupoNotYetIndexed | undefined) => void;
 }>;
+export const DEFAULT_INDEX_LAG_CEILING_MS = 60_000;
+const INDEX_LAG_INITIAL_DELAY_MS = 250;
+const INDEX_LAG_MAXIMUM_DELAY_MS = 5_000;
 const lossless = JSONBig({ useNativeBigInt: true, strict: true });
 const object = (value: unknown): Record<string, unknown> => {
   if (value === null || typeof value !== "object" || Array.isArray(value))
@@ -109,6 +124,77 @@ const bounded = (options: HistoryTransportOptions) => {
   return { signal, fetchImpl };
 };
 
+/** An unreachable, slow or overloaded Kupo says nothing about the chain. Our
+ * own cancellation, and every answer Kupo did give, keep their meaning. */
+const kupoUnavailable = (options: HistoryTransportOptions, cause: unknown) => {
+  if (
+    options.signal.aborted ||
+    !(cause instanceof Error) ||
+    cause instanceof L1SourceUnavailable
+  )
+    return cause;
+  const transient =
+    cause.name === "TimeoutError" ||
+    cause.name === "AbortError" ||
+    (cause instanceof TypeError && cause.message === "fetch failed") ||
+    /^HTTP (?:429|5\d\d) /u.test(cause.message);
+  return transient ? new L1SourceUnavailable(cause.message, { cause }) : cause;
+};
+
+/** Kupo's creating point and the checkpoint before it. A Kupo behind the node
+ * answers "no match" or "no checkpoint" for a block Ogmios already served, so
+ * those two answers wait on a doubling delay up to the lag ceiling. A
+ * checkpoint at or after its target is an answer, and is refused at once. */
+const readKupoPoints = async (
+  options: HistoryTransportOptions,
+  outRef: OutRefLike,
+) => {
+  const ceilingMs = options.indexLagCeilingMs ?? DEFAULT_INDEX_LAG_CEILING_MS;
+  if (!Number.isSafeInteger(ceilingMs) || ceilingMs < 0)
+    throw new Error("History index lag ceiling must be a safe natural");
+  const started = performance.now();
+  let wait = INDEX_LAG_INITIAL_DELAY_MS;
+  let waiting = false;
+  try {
+    while (true) {
+      try {
+        const { fetchImpl } = bounded(options);
+        const target = await fetchKupoCreationPoint({
+          kupoUrl: options.kupoUrl,
+          outRef,
+          fetchImpl,
+          timeoutMs: options.timeoutMs,
+        });
+        const ancestor = await fetchKupoAncestorPoint({
+          kupoUrl: options.kupoUrl,
+          slot: target.slot,
+          fetchImpl,
+          timeoutMs: options.timeoutMs,
+        });
+        return {
+          selected: { id: ancestor.headerHash, slot: ancestor.slot },
+          targetPoint: { id: target.headerHash, slot: target.slot },
+        };
+      } catch (cause) {
+        if (!(cause instanceof KupoNotYetIndexed))
+          throw kupoUnavailable(options, cause);
+        options.signal.throwIfAborted();
+        if (performance.now() - started + wait > ceilingMs)
+          throw new L1SourceUnavailable(
+            `${cause.message}; Kupo did not index it within ${ceilingMs.toString()}ms`,
+            { cause },
+          );
+        waiting = true;
+        options.onIndexLag?.(cause);
+        await delay(wait, undefined, { signal: options.signal });
+        wait = Math.min(wait * 2, INDEX_LAG_MAXIMUM_DELAY_MS);
+      }
+    }
+  } finally {
+    if (waiting) options.onIndexLag?.(undefined);
+  }
+};
+
 /** Point navigation and preimage carriage only. This does not authenticate a
  * branch. The source owner must freshly intersect its bound follower at the
  * returned predecessor and admit the complete activation block there.
@@ -119,23 +205,11 @@ const readLocatedTransaction = async (
 ) => {
   hash(outRef.txHash);
   natural(outRef.outputIndex);
-  const { signal, fetchImpl } = bounded(options);
-  const target = await fetchKupoCreationPoint({
-    kupoUrl: options.kupoUrl,
-    outRef,
-    fetchImpl,
-    timeoutMs: options.timeoutMs,
-  });
-  const ancestor = await fetchKupoAncestorPoint({
-    kupoUrl: options.kupoUrl,
-    slot: target.slot,
-    fetchImpl,
-    timeoutMs: options.timeoutMs,
-  });
-  const selected = { id: ancestor.headerHash, slot: ancestor.slot };
-  const targetPoint = { id: target.headerHash, slot: target.slot };
+  const { selected, targetPoint } = await readKupoPoints(options, outRef);
   if (selected.slot >= targetPoint.slot)
     throw new Error("History locator checkpoint is not before its target");
+  // A fresh deadline: a Kupo lag wait does not spend the Ogmios scan's bound.
+  const { signal } = bounded(options);
   const session = await openOgmiosSession({
     url: normalizeOgmiosWebSocketUrl(options.ogmiosUrl),
     timeoutMs: options.timeoutMs,
@@ -163,7 +237,10 @@ const readLocatedTransaction = async (
       const response = object(await session.request("nextBlock", {}));
       if (response.direction === "backward") {
         if (!acknowledgement || !equal(point(response.point), selected))
-          throw new Error("History locator rolled back during its read");
+          // A navigation read only; the bound follower adjudicates rollbacks.
+          throw new L1SourceUnavailable(
+            "History locator rolled back during its read",
+          );
         acknowledgement = false;
         continue;
       }

@@ -36,7 +36,13 @@ import {
 import { makeAdapter } from "./workflow.make-adapter.js";
 
 it("resumes an included descendant intent twice after another caller completes correction", async () => {
-  const value = await fixture({ descendant: true, proofCreation: true });
+  // The terminal sits beyond the recovery horizon (k + 2), where the
+  // workflow may complete.
+  const value = await fixture({
+    descendant: true,
+    proofCreation: true,
+    confirmationDepth: 2162,
+  });
   const [peel, cleanup] = value.snapshot.transactions;
   if (peel === undefined || cleanup === undefined)
     throw new Error("missing removals");

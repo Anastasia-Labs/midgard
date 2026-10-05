@@ -95,9 +95,9 @@ describe("trusted-head authority connection lifetime", () => {
   it("opens a fresh connection for CAS after reads and preserves single CAS outcomes", async () => {
     let current: WatcherRollbackDurableTrustedHead | null = null;
     const compareAndSwap = vi.fn(async () => {
-      if (current !== null) return false;
+      if (current !== null) return { committed: false, head: current };
       current = head;
-      return true;
+      return { committed: true, head: current };
     });
     await withServer(
       {
@@ -144,7 +144,10 @@ describe("trusted-head authority connection lifetime", () => {
   });
 
   it("also closes rejected and persistence-failure responses before another request", async () => {
-    const compareAndSwap = vi.fn(async () => false);
+    const compareAndSwap = vi.fn(async () => ({
+      committed: false,
+      head: null,
+    }));
     await withServer(
       {
         readRecordAuthenticationKeyId: async () => "77".repeat(32),

@@ -76,6 +76,7 @@ export const readOgmiosBlockTransaction = async ({
       const next = (await session.request("nextBlock", {})) as {
         direction?: unknown;
         block?: unknown;
+        tip?: unknown;
       };
       if (next.direction === "backward") {
         if (rolledBack) {
@@ -134,6 +135,24 @@ export const readOgmiosBlockTransaction = async ({
           blockNo,
         },
         transactionIndex: index,
+        ...(next.tip !== undefined && next.tip !== "origin"
+          ? {
+              selectedChainTip: {
+                id: exactHeaderHash(
+                  (next.tip as { id?: unknown }).id,
+                  "ogmios.nextBlock.tip.id",
+                ),
+                slot: exactSlot(
+                  (next.tip as { slot?: unknown }).slot,
+                  "ogmios.nextBlock.tip.slot",
+                ),
+                height: exactSlot(
+                  (next.tip as { height?: unknown }).height,
+                  "ogmios.nextBlock.tip.height",
+                ),
+              },
+            }
+          : {}),
         ...(typeof transactionCbor === "string" &&
         BASE16_BYTES.test(transactionCbor)
           ? { transactionCbor }

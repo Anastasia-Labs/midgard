@@ -34,7 +34,10 @@ afterEach(async () => {
 const setup = async () => {
   const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
   const journalRoot = await mkdtemp(
-    join(process.cwd(), ".mint-funding-recovery-"),
+    join(
+      process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
+      ".mint-funding-recovery-",
+    ),
   );
   directories.push(journalRoot);
   const launchScope = ["mintItemNonCanonical"] as const;
@@ -153,6 +156,7 @@ const setup = async () => {
   });
   const store: WatcherProverFundingReservationStore = {
     readAll,
+    readReservedOutRefs: async () => [],
     readAbandonmentHandoff: async () => null,
     readPendingHandoff: async () => null,
     readPendingTransition: async () => null,

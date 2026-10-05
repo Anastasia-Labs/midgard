@@ -4,44 +4,27 @@ import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { loadRuntimeConfig } from "@al-ft/midgard-core/runtime-config";
 
 import { createCommitteeApiServer } from "./api/server.js";
-import { availabilityResponderFromConfig } from "./availability/factory.js";
+import { createAvailabilityResponseLoop } from "./availability-response-loop.js";
 import {
   type CommitteeRetentionReadinessSnapshot,
-  CommitteeService,
   retentionReadinessFromDeadlines,
 } from "./committee-service.js";
-import { loadCommitteeConfig } from "./config.js";
-import {
-  l1SubmitterWalletPreflightFromConfig,
-  onChainCoordinatorFromConfig,
-} from "./coordinator/factory.js";
-import type { DaSubmitterFundingCheck } from "./coordinator/lucid-submitter.js";
-import { createDaBondPoolWiring } from "./coordinator/pool-monitor.js";
-import { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
-import {
-  createDaLibp2pAttestationGossipHandlers,
-  createDaLibp2pAttestationRequestHandlers,
-  createDaLibp2pPayloadRequestHandlers,
-  createDaLibp2pProofRequestHandlers,
-  DaLibp2pAttestationExchange,
-  DaLibp2pNode,
-  DaLibp2pPayloadSource,
-  DaPeerRegistry,
-  StoreBackedDaAttestationProtocol,
-} from "./da/libp2p/index.js";
-import { daAttestationReaderFromConfig } from "./l1/da-attestation-reader.js";
-import { providerFromConfig } from "./l1/provider.js";
+import { loadCommitteeConfig, type LoadedCommitteeConfig } from "./config.js";
+import { l1SubmitterWalletPreflightFromConfig } from "./coordinator/factory.js";
+import { DaPeerRegistry } from "./da/libp2p/index.js";
 import { l1SubmitterPreflightResultToJson } from "./l1/submitter.js";
-import { PeerSignatureCoordinator } from "./peer/coordinator.js";
-import { PeerSignaturePoller } from "./peer/poller.js";
-import { daAvailabilityCommitmentAuthorityFromConfig } from "./peer/signatures.js";
-import { resolveRemoteDaAttestationTargets } from "./peer/targets.js";
+import { createL1SubmitterPreflightMonitor } from "./l1-submitter-preflight-monitor.js";
+import {
+  type CommitteeNodeLocalSetup,
+  openCommitteeNodeRuntime,
+} from "./node-runtime.js";
 import {
   loadDaSigner,
   validateDaCommittee,
   validateDaSignerMembership,
 } from "./signer.js";
-import { openCommitteeStore } from "./store/factory.js";
+import { listenStartingServer, retryStartup } from "./startup.js";
+import type { PostgresStoreInstanceLockEvents } from "./store/postgres.instance-lock.js";
 import {
   retentionCycleOptions,
   type RetentionL1View,
@@ -49,6 +32,7 @@ import {
 } from "./store/retention.js";
 import {
   createCommitteeTickRunner,
+  l1ViewStaleMs,
   startCommitteeTickLoop,
 } from "./tick-runner.js";
 
@@ -70,234 +54,79 @@ const main = async (): Promise<void> => {
   await runDaZstdStartupSelfTest();
   const config = await loadCommitteeConfig();
   const startedAtMs = Date.now();
+  const local = await loadLocalSetup(config);
+  const once = process.argv.includes("--once");
+  const write = (line: string): void => {
+    process.stderr.write(line);
+  };
+
   // Bound once shutdown exists; until then a lost lock exits at once.
   // eslint-disable-next-line prefer-const
   let exitForLostStoreInstanceLock: (() => void) | undefined;
-  const store = await openCommitteeStore(config.localState, {
-    // Another process may take the lock now, so this one stops running
+  let storeLockSuspended = false;
+  const storeLockEvents: PostgresStoreInstanceLockEvents = {
+    // Postgres went away: refuse work until the lock is held again.
+    onInstanceLockSuspended: (error) => {
+      storeLockSuspended = true;
+      write(
+        `${JSON.stringify({ event: "committee_store_instance_lock_suspended", error: error.message })}\n`,
+      );
+    },
+    onInstanceLockRestored: () => {
+      storeLockSuspended = false;
+      write(
+        `${JSON.stringify({ event: "committee_store_instance_lock_restored" })}\n`,
+      );
+    },
+    // Another live process holds the lock now, so this one stops running
     // decision effects and exits for its supervisor to restart it.
     onInstanceLockLost: (error) => {
-      process.stderr.write(
+      write(
         `${JSON.stringify({ event: "committee_store_instance_lock_lost", error: error.message })}\n`,
       );
-      if (exitForLostStoreInstanceLock === undefined) {
-        process.exit(1);
-      }
+      if (exitForLostStoreInstanceLock === undefined) process.exit(1);
       exitForLostStoreInstanceLock();
     },
-  });
-  const signer =
-    config.signerKeySource === undefined
-      ? undefined
-      : await loadDaSigner(config.signerKeySource);
-  const committeeValidation = validateDaCommittee({
-    daParams: config.daParams,
-  });
-  const signerValidation =
-    signer === undefined || config.signerIndex === undefined
-      ? undefined
-      : validateDaSignerMembership({
-          daParams: config.daParams,
-          signer,
-          signerIndex: config.signerIndex,
-        });
-  const provider = await providerFromConfig(config);
-  const daChainReader = await daAttestationReaderFromConfig(config);
-  if (config.daTransport.kind !== "libp2p") {
-    throw new Error("da-committee-node requires libp2p DA transport mode");
-  }
-  if (config.libp2pPrivateKeySource === undefined) {
-    throw new Error(
-      "da-committee-node libp2p mode requires DA_LIBP2P_PRIVATE_KEY_SOURCE",
-    );
-  }
-  const daIdentity = await loadDaLibp2pIdentity(config.libp2pPrivateKeySource);
-  const daPeerRegistry = DaPeerRegistry.fromConfig(config.daTransport);
-  daPeerRegistry.requireKnownPeer(daIdentity.peerId);
-  const availabilityCommitmentAuthority =
-    daAvailabilityCommitmentAuthorityFromConfig(config);
-  const daAttestationProtocol = new StoreBackedDaAttestationProtocol({
-    deploymentFingerprint: config.deploymentFingerprint,
-    localPeerId: daIdentity.peerId,
-    committeeValidation,
-    availabilityCommitmentAuthority,
-    store,
-  });
-  const requestHandlers = new Map([
-    ...createDaLibp2pPayloadRequestHandlers({
-      deploymentFingerprint: config.deploymentFingerprint,
-      store,
-      limits: config.daTransport.limits,
-    }),
-    ...createDaLibp2pProofRequestHandlers({
-      deploymentFingerprint: config.deploymentFingerprint,
-      store,
-      limits: config.daTransport.limits,
-      accessPolicy: {
-        kind: "manifest_roles",
-        registry: daPeerRegistry,
-      },
-    }),
-    ...createDaLibp2pAttestationRequestHandlers({
-      deploymentFingerprint: config.deploymentFingerprint,
-      protocol: daAttestationProtocol,
-      limits: config.daTransport.limits,
-    }),
-  ]);
-  const daLibp2pNode = new DaLibp2pNode({
-    config: config.daTransport,
-    registry: daPeerRegistry,
-    privateKeySource: config.libp2pPrivateKeySource,
-    requestHandlers,
-    gossipHandlers: createDaLibp2pAttestationGossipHandlers({
-      deploymentFingerprint: config.deploymentFingerprint,
-      registry: daPeerRegistry,
-      protocol: daAttestationProtocol,
-      committeeValidation,
-      store,
-    }),
-    onGossipMessageError: (error) => {
-      process.stderr.write(
-        `rejected DA gossip message: ${
-          error instanceof Error ? error.message : String(error)
-        }\n`,
+    onInstanceLockTakeover: (reason) => {
+      write(
+        `${JSON.stringify({ event: "committee_store_instance_lock_taken_over", reason })}\n`,
       );
     },
-  });
-  const payloadSource = new DaLibp2pPayloadSource({
-    deploymentFingerprint: config.deploymentFingerprint,
-    node: daLibp2pNode,
-    registry: daPeerRegistry,
-    limits: config.daTransport.limits,
-  });
-  const daAttestationTargets = resolveRemoteDaAttestationTargets({
-    peers: config.daTransport.peers,
-    localPeerId: daIdentity.peerId,
-    signerIndex: config.signerIndex,
-  });
-  const daAttestationPeers = daAttestationTargets.remotePeers;
-  const attestationExchange = new DaLibp2pAttestationExchange({
-    deploymentFingerprint: config.deploymentFingerprint,
-    localPeerId: daIdentity.peerId,
-    node: daLibp2pNode,
-    registry: daPeerRegistry,
-    protocol: daAttestationProtocol,
-    committeeValidation,
-    store,
-    requestTimeoutMs: config.peerRequestTimeoutMs,
-  });
-  // The latest check of the submitter's plain ADA against the next round.
-  let l1SubmitterFunding: DaSubmitterFundingCheck | undefined;
-  // The pooled DA bond as last read; transitions are JSON events on stderr.
-  const daBondPool = createDaBondPoolWiring({
-    writeEvent: (event) => {
-      process.stderr.write(`${JSON.stringify(event)}\n`);
-    },
-  });
-  const onChainCoordinator = config.l1SubmissionEnabled
-    ? await onChainCoordinatorFromConfig(
-        config,
-        daChainReader,
-        store,
-        undefined,
-        {
-          recordSubmitterFunding: (check) => {
-            l1SubmitterFunding = check;
-          },
-          ...daBondPool.coordinatorHooks,
-        },
-      )
-    : undefined;
-  const peerPoller =
-    onChainCoordinator !== undefined && daAttestationPeers.length > 0
-      ? new PeerSignaturePoller({
-          deploymentFingerprint: config.deploymentFingerprint,
-          peers: daAttestationPeers,
-          localPeerId: daIdentity.peerId,
-          attestationExchange,
-          signerValidation: committeeValidation,
-          availabilityCommitmentAuthority,
-          store,
-          requestTimeoutMs: config.peerRequestTimeoutMs,
-        })
-      : undefined;
-  const submitterReconciler =
-    onChainCoordinator === undefined
-      ? undefined
-      : new SubmitterReconciler({
-          deploymentFingerprint: config.deploymentFingerprint,
-          committeeValidation,
-          store,
-          coordinator: onChainCoordinator,
-          peerPoller,
-          availabilityCommitmentAuthority,
-          submitterId: config.l1SubmitterId,
-        });
-  const l1SubmitterPreflight = config.l1SubmissionEnabled
-    ? await l1SubmitterWalletPreflightFromConfig(config)
-        .then((result) => ({
-          status: result.status,
-          detail: l1SubmitterPreflightResultToJson(result),
-        }))
-        .catch((error: unknown) => ({
-          status: "failed" as const,
-          error: error instanceof Error ? error.message : String(error),
-        }))
-    : { status: "not_required" as const };
-  const coordinator =
-    signer !== undefined &&
-    signerValidation !== undefined &&
-    config.signerIndex !== undefined &&
-    (daAttestationPeers.length > 0 || onChainCoordinator !== undefined)
-      ? new PeerSignatureCoordinator({
-          deploymentFingerprint: config.deploymentFingerprint,
-          peers: daAttestationPeers,
-          localPeerId: daIdentity.peerId,
-          signer,
-          signerIndex: config.signerIndex,
-          signerValidation,
-          availabilityCommitmentAuthority,
-          store,
-          attestationExchange,
-          requestTimeoutMs: config.peerRequestTimeoutMs,
-          retryInitialDelayMs: config.peerRetryInitialDelayMs,
-          retryMaxDelayMs: config.peerRetryMaxDelayMs,
-          retryMaxAttempts: config.peerRetryMaxAttempts,
-          onChainCoordinator,
-        })
-      : undefined;
-  const service = new CommitteeService({
-    config,
-    store,
-    stateQueueProvider: provider,
-    payloadSource,
-    signer,
-    signerValidation,
-    coordinator,
-    submitterReconciler,
-    daChainReader,
-    daLibp2pNode,
-    daPeerRegistry,
-  });
-  await service.initialize();
-  const availabilityRuntime = config.l1SubmissionEnabled
-    ? await availabilityResponderFromConfig(config, store, provider)
-    : undefined;
-  await daLibp2pNode.start();
-
-  const runAvailabilityResponse = async (): Promise<void> => {
-    if (availabilityRuntime === undefined) return;
-    const report = await availabilityRuntime.responder.tick();
-    if (report.status !== "idle") {
-      const stream =
-        report.status === "failed" || report.status === "unavailable"
-          ? process.stderr
-          : process.stdout;
-      stream.write(
-        `${JSON.stringify({ event: "availability_responder", ...report })}\n`,
-      );
-    }
   };
+
+  // Dependencies that are not up yet are waited for, not exited on.
+  const starting = once
+    ? undefined
+    : await listenStartingServer(config.apiPort, config.apiHost);
+  const runtime = await retryStartup({
+    attempt: () => openCommitteeNodeRuntime(local, storeLockEvents),
+    onFailure: (reason) => starting?.setReason(reason),
+    write,
+    ...(once ? { isFatal: () => true } : {}),
+  }).catch(async (error: unknown) => {
+    await starting?.close();
+    throw error;
+  });
+  const { store, service, availabilityRuntime } = runtime;
+
+  const responseLoop = createAvailabilityResponseLoop({
+    drain: () =>
+      availabilityRuntime === undefined
+        ? Promise.resolve({ challenges: 0, status: "idle" as const })
+        : availabilityRuntime.responder.drain(),
+    write: (stream, line) => process[stream].write(line),
+    pollIntervalMs: config.pollIntervalMs,
+    enforcement: availabilityRuntime?.promiseLoopEnforcement,
+  });
+  const preflight = config.l1SubmissionEnabled
+    ? createL1SubmitterPreflightMonitor({
+        evaluate: ({ autoFund }) =>
+          l1SubmitterWalletPreflightFromConfig(
+            autoFund ? config : withoutAutoFund(config),
+          ),
+        write,
+      })
+    : undefined;
 
   let retentionReadiness: CommitteeRetentionReadinessSnapshot = {
     status: "not_checked",
@@ -310,6 +139,7 @@ const main = async (): Promise<void> => {
     // The exemption sets come from the L1 view the poller accepted this tick.
     const options = retentionCycleOptions(config, view, Date.now());
     try {
+      await availabilityRuntime?.compactRetainedPromises?.();
       const { deadlines, prune } = await runRetentionCycle(store, options);
       retentionReadiness = retentionReadinessFromDeadlines(deadlines);
       if (prune.prunedHeaderHashes.length > 0) {
@@ -336,18 +166,18 @@ const main = async (): Promise<void> => {
     }
   };
 
-  // Assigned after the tick runner is built: its fatal exit calls shutdown,
-  // which must close whichever of these exist by then.
+  // Assigned after the tick runner is built; shutdown closes whichever of
+  // these exist by then.
   // eslint-disable-next-line prefer-const
   let interval: ReturnType<typeof setInterval> | undefined;
   // eslint-disable-next-line prefer-const
   let api: ReturnType<typeof createCommitteeApiServer> | undefined;
   const shutdown = async (): Promise<void> => {
     clearInterval(interval);
+    responseLoop.stop();
+    preflight?.stop();
     await api?.close();
-    await daLibp2pNode.stop();
-    availabilityRuntime?.close();
-    await store.close?.();
+    await runtime.close();
   };
   exitForLostStoreInstanceLock = () => {
     let grace: ReturnType<typeof setTimeout> | undefined;
@@ -364,52 +194,87 @@ const main = async (): Promise<void> => {
       });
   };
   const tickRunner = createCommitteeTickRunner({
-    tick: () => service.tick(),
-    runAvailabilityResponse,
-    ...daBondPool.tickRunnerDeps(onChainCoordinator),
+    // No decision is attempted while the store's instance lock is being
+    // taken again; the tick reports why and the next one retries.
+    tick: () =>
+      storeLockSuspended
+        ? Promise.resolve(STORE_LOCK_REACQUIRING_TICK)
+        : service.tick(),
+    // The responder runs on its own interval; a scan only nudges it.
+    runAvailabilityResponse: responseLoop.nudge,
+    ...runtime.daBondPool.tickRunnerDeps(runtime.onChainCoordinator),
     runRetention,
     latestL1View: () => service.latestL1View(),
     latestL1ProgressAtMs: () => service.latestL1ProgressAtMs(),
-    setRetentionReadiness: (snapshot) => {
-      retentionReadiness = snapshot;
+    setRetentionReadiness: (update) => {
+      retentionReadiness = update(retentionReadiness);
     },
     l1ViewFatalMs: config.l1ViewFatalMs,
+    l1ViewStaleMs: l1ViewStaleMs(config),
     startedAtMs,
     nowMs: () => Date.now(),
     write: (stream, line) => process[stream].write(line),
-    shutdown,
-    exit: (code) => process.exit(code),
     slowTickMs: config.pollIntervalMs,
   });
 
-  if (process.argv.includes("--once")) {
+  if (once) {
     try {
-      const tickStartedAtMs = Date.now();
+      await preflight?.start();
+      const viewBeforeTick = service.latestL1View();
       const result = await service.tick();
-      await runAvailabilityResponse();
-      await tickRunner.runRetentionStep(tickStartedAtMs);
+      await responseLoop.run();
+      await tickRunner.runRetentionStep(viewBeforeTick);
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     } finally {
-      await daLibp2pNode.stop();
-      availabilityRuntime?.close();
-      await store.close?.();
+      preflight?.stop();
+      await runtime.close();
     }
     return;
   }
 
+  await preflight?.start();
+  const readiness = async () => {
+    const snapshot = await service.readinessSnapshot({
+      localPeerId: local.daIdentity.peerId,
+      ...(preflight === undefined
+        ? {}
+        : { l1SubmitterPreflight: preflight.snapshot() }),
+      l1SubmitterFunding: runtime.submitterFunding(),
+      ...runtime.daBondPool.readiness(),
+      retention: retentionReadiness,
+    });
+    const liveness = tickRunner.liveness();
+    const reasons = [
+      ...snapshot.reasons,
+      ...(liveness.l1ViewUnavailable === undefined
+        ? []
+        : [
+            `l1_view_unavailable:${liveness.l1ViewUnavailable.l1ViewAgeMs.toString()}`,
+          ]),
+      ...(storeLockSuspended ? ["store_instance_lock_reacquiring"] : []),
+      ...(preflight?.reasons() ?? []),
+      ...responseLoop.reasons(),
+    ];
+    return { ...snapshot, ready: reasons.length === 0, reasons, liveness };
+  };
+  await starting?.close();
   api = createCommitteeApiServer({
     deploymentFingerprint: config.deploymentFingerprint,
     signerIndex: config.signerIndex,
-    signerValidation: committeeValidation,
+    signerValidation: local.committeeValidation,
     store,
-    readiness: () =>
-      service.readinessSnapshot({
-        localPeerId: daIdentity.peerId,
-        l1SubmitterPreflight,
-        l1SubmitterFunding,
-        ...daBondPool.readiness(),
-        retention: retentionReadiness,
-      }),
+    readiness,
+    // A tick that has not settled past the L1-view deadline cannot recover
+    // in-process; the supervisor's restart is the repair.
+    health: () => {
+      const hung = tickRunner.liveness().tickHung;
+      return hung === undefined
+        ? { ok: true }
+        : {
+            ok: false,
+            reason: `committee_tick_hung:${hung.inFlightMs.toString()}`,
+          };
+    },
     manifest: config.deploymentManifest,
     peerReplayWindowMs: config.peerReplayWindowMs,
     peerMaxBodyBytes: config.peerMaxBodyBytes,
@@ -421,12 +286,76 @@ const main = async (): Promise<void> => {
     `da-committee-node listening on http://${config.apiHost}:${config.apiPort.toString()}\n`,
   );
 
+  responseLoop.start();
   interval = await startCommitteeTickLoop({
     runTick: tickRunner.runTick,
     pollIntervalMs: config.pollIntervalMs,
     shutdown,
     exit: (code) => process.exit(code),
   });
+};
+
+/** The tick result while the store's instance lock is being taken again. */
+const STORE_LOCK_REACQUIRING_TICK = {
+  scannedHeaders: 0,
+  signedHeaders: 0,
+  reconciledHeaders: 0,
+  skippedHeaders: 0,
+  payloadFetches: [],
+  errors: ["store_instance_lock_reacquiring"],
+} as const;
+
+/** The configuration with automatic funding switched off. */
+const withoutAutoFund = (
+  config: LoadedCommitteeConfig,
+): LoadedCommitteeConfig => {
+  const { autoFundKeySource: _ignored, ...preflight } =
+    config.l1SubmitterPreflight;
+  return { ...config, l1SubmitterPreflight: preflight };
+};
+
+/**
+ * Everything checked and loaded before any dependency is touched. A failure
+ * here is the configuration's or the key material's, and exits at once.
+ */
+const loadLocalSetup = async (
+  config: LoadedCommitteeConfig,
+): Promise<CommitteeNodeLocalSetup> => {
+  const signer =
+    config.signerKeySource === undefined
+      ? undefined
+      : await loadDaSigner(config.signerKeySource);
+  const committeeValidation = validateDaCommittee({
+    daParams: config.daParams,
+  });
+  const signerValidation =
+    signer === undefined || config.signerIndex === undefined
+      ? undefined
+      : validateDaSignerMembership({
+          daParams: config.daParams,
+          signer,
+          signerIndex: config.signerIndex,
+        });
+  if (config.daTransport.kind !== "libp2p") {
+    throw new Error("da-committee-node requires libp2p DA transport mode");
+  }
+  if (config.libp2pPrivateKeySource === undefined) {
+    throw new Error(
+      "da-committee-node libp2p mode requires DA_LIBP2P_PRIVATE_KEY_SOURCE",
+    );
+  }
+  const daIdentity = await loadDaLibp2pIdentity(config.libp2pPrivateKeySource);
+  const daPeerRegistry = DaPeerRegistry.fromConfig(config.daTransport);
+  daPeerRegistry.requireKnownPeer(daIdentity.peerId);
+  return {
+    config,
+    ...(signer === undefined ? {} : { signer }),
+    committeeValidation,
+    ...(signerValidation === undefined ? {} : { signerValidation }),
+    daIdentity,
+    daPeerRegistry,
+    libp2pPrivateKeySource: config.libp2pPrivateKeySource,
+  };
 };
 
 const runL1WalletPreflightCommand = async (

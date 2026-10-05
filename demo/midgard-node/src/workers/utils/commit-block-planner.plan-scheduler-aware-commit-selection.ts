@@ -11,10 +11,8 @@ import {
   type CurrentOperatorSchedulerWindow,
   type SuccessfulCommitBatch,
 } from "./commit-block-planner.commit-scheduler-evidence-key.js";
-import {
-  buildCommitTxCandidateSelection,
-  type SchedulerAwareCommitSelectionPlan,
-} from "./commit-block-planner.plan-earliest-commit-scheduler-due-work.js";
+import { type SchedulerAwareCommitSelectionPlan } from "./commit-block-planner.plan-earliest-commit-scheduler-due-work.js";
+import { buildCommitTxCandidateSelection } from "./commit-block-planner.select-commit-tx-candidates.js";
 import {
   COMMIT_MIN_PRE_WITNESS_BUDGET_MS,
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,

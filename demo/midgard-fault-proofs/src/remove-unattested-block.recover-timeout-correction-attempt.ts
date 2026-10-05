@@ -37,6 +37,7 @@ import {
   type SignedTransactionRecoveryObservation,
   type SignedWorkflowTransaction,
 } from "./workflow/signed-transaction-reconciliation.js";
+import { type SupersededAttemptReadSchedule } from "./workflow/superseded-attempt-read-schedule.js";
 
 /** Same admitted, canonical signed-attempt recovery used by proof workflows. */
 export const createLocalKupmiosTimeoutCorrectionRecovery = (input: {
@@ -108,17 +109,27 @@ export const recoverTimeoutCorrectionAttempt = async (input: {
   });
   if (result.kind === "conflict")
     throw new Error(`Timeout correction canonical conflict: ${result.reason}`);
+  const impossible =
+    result.kind === "not_found" &&
+    (canonical?.status === "expired" ||
+      canonical?.status === "invalidated" ||
+      canonical?.status === "expired_at_tip" ||
+      canonical?.status === "invalidated_at_tip");
   const status =
     canonical?.status === "included"
       ? "confirmed"
-      : result.kind === "not_found" &&
+      : impossible &&
+          result.retirement !== undefined &&
           (canonical?.status === "expired" ||
             canonical?.status === "invalidated")
         ? canonical.status
-        : input.recovery === undefined &&
-            input.transactionStatus === "confirmed"
-          ? "confirmed"
-          : "unknown";
+        : // Impossible at the tip but within k: superseded, not retired.
+          impossible
+          ? "superseded"
+          : input.recovery === undefined &&
+              input.transactionStatus === "confirmed"
+            ? "confirmed"
+            : "unknown";
   return reconcileLastTimeoutCorrectionStep(input.journal, input.queue, status);
 };
 
@@ -132,6 +143,8 @@ export type SubmitUnattestedTimeoutCorrectionParams = {
   readonly nowMs?: () => number;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   readonly recovery?: TimeoutCorrectionRecovery;
+  /** Bounds re-reads of abandoned attempts; process-wide by default. */
+  readonly attemptReadSchedule?: SupersededAttemptReadSchedule;
 };
 
 /**

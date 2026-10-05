@@ -2,25 +2,28 @@
 
 This runbook covers the operator-facing preprod flow for:
 
-1. submitting an L1 deposit,
-2. committing and merging the deposit block, then spending its L2 value,
-3. committing and merging the later transfer block,
-4. absorbing the confirmed deposit into the reserve,
-5. submitting a signed withdrawal order for a selected L2 UTxO,
-6. committing and merging the withdrawal block, and
-7. initializing, funding, and concluding the L1 payout.
+1. submitting an L1 deposit and waiting for its automatic confirmed merge,
+2. spending its L2 value and waiting for the transfer's automatic merge,
+3. waiting for the node to absorb the consumed deposit into the reserve,
+4. submitting a signed withdrawal order for a selected L2 UTxO, and
+5. waiting for automatic withdrawal finalization and the exact L1 payout.
 
-The commands below resolve settlement UTxOs, PHAS proofs, and reference scripts
-internally. No step requires hand-built CBOR or manually assembled proofs.
+Keep `listen` running throughout. Its commit and merge workers advance the
+state queue; its settlement worker absorbs consumed deposits and initializes,
+funds, and concludes valid withdrawal payouts. The normal flow below only
+submits user actions and observes those workers. Do not call `/commit`, `/merge`,
+`absorb-confirmed-deposit-to-reserve`, `initialize-payout`,
+`add-reserve-funds-to-payout`, or `conclude-payout` alongside the workers:
+they compete for the same protocol UTxOs and bypass the worker's receipts.
 
-**The manual `/commit` and `/merge` calls in sections 2, 4 and 8 are for a
-local devnet only.** They bypass the node's commit fiber and automatic merge
-fiber, so a run that uses them is not acceptance evidence. Live acceptance is
-the one-command `e2e-stack` run in
-[live-acceptance.md](../../../.agents/skills/midgard-e2e-acceptance/references/live-acceptance.md),
-which submits the deposit, transfer and withdrawal itself and waits for the
-node to commit, merge and pay out automatically. Do not run this runbook's
-commands by hand against a stack deployment.
+A status of `committed` alone means immutable database inclusion, not confirmed
+ledger merge. Use the explicit merge evidence below. Settlement proof resolution
+is an optional diagnostic while the settlement reference remains unspent;
+automatic absorb or payout may already have spent it by the time you inspect it.
+
+For fresh-deploy acceptance and retained evidence, follow
+[live-acceptance.md](../../../.agents/skills/midgard-e2e-acceptance/references/live-acceptance.md).
+This runbook does not replace the acceptance journey or its failure drills.
 
 ## Prerequisites
 
@@ -33,11 +36,14 @@ configured:
 - `L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX`
 - `L1_REFERENCE_SCRIPT_SEED_PHRASE`
 - `L1_REFERENCE_SCRIPT_ADDRESS`
+- `L1_SETTLEMENT_SEED_PHRASE`: a funded wallet the settlement worker owns,
+  holding fee funds and a separate ADA-only collateral UTxO
+- `L1_HISTORY_GENESIS_LOSSLESS_SHA256` (from `node dist/index.js history-genesis-pin`
+  against the intended chain)
 - `HUB_ORACLE_ONE_SHOT_TX_HASH`
 - `HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX`
 - `POSTGRES_*`
 - `PORT`
-- `ADMIN_API_KEY`
 
 Use user wallets that are distinct from the operator-main, operator-merge, and
 reference-script wallets. The withdrawal signer must control the selected L2
@@ -128,72 +134,47 @@ Expected fields:
 - `metadata.depositAuthUnit`
 - `metadata.inclusionTime`
 
-The running node records and projects the deposit itself. The deposit is due
+The running node ingests, projects, commits, and merges the deposit. It is due
 at `metadata.inclusionTime`, the transaction's validity upper bound plus the
-profile's `event_wait_ms` (300 s on the testing profiles). Wait at most 20
-minutes for `/deposit-status` to report it projected:
+profile's `event_wait_ms` (300 s on the testing profiles). Wait for `consumed`,
+in this fresh flow before spending its output:
 
 ```sh
-DEPOSIT_STATUS=""
-for attempt in $(seq 1 80); do
-  DEPOSIT_STATUS="$(curl -fsS \
-    "$MIDGARD_NODE_URL/deposit-status?eventId=$DEPOSIT_EVENT_ID" \
-    | jq -r '.status')" || DEPOSIT_STATUS=""
-  case "$DEPOSIT_STATUS" in projected | consumed) break ;; esac
+DEPOSIT_STATUS_JSON=""
+DEPOSIT_DEADLINE=$(( $(date +%s) + 1200 ))
+while test "$(date +%s)" -lt "$DEPOSIT_DEADLINE"; do
+  DEPOSIT_STATUS_JSON="$(curl --connect-timeout 5 --max-time 10 -fsS \
+    "$MIDGARD_NODE_URL/deposit-status?eventId=$DEPOSIT_EVENT_ID")" \
+    || DEPOSIT_STATUS_JSON=""
+  if printf '%s\n' "$DEPOSIT_STATUS_JSON" | jq -e '.status == "consumed"' >/dev/null; then
+    break
+  fi
   sleep 15
 done
-printf 'DEPOSIT_STATUS=%s\n' "$DEPOSIT_STATUS"
-case "$DEPOSIT_STATUS" in projected | consumed) ;; *) false ;; esac
-```
-
-The last line fails unless `DEPOSIT_STATUS` is `projected` or `consumed`. A
-`404` or `awaiting` before the deposit is due is not a failure.
-
-Inspect the spendable L2 ledger view (the new deposit remains hidden until
-its header is confirmed):
-
-```sh
+printf '%s\n' "$DEPOSIT_STATUS_JSON" | jq -e '.status == "consumed"'
 node dist/index.js utxos --address "$USER_L2_ADDRESS" | jq .
 ```
 
-Before spending this output, this runbook requires committing the deposit block
-and waiting for its confirmed merge. The runtime exposes the projected output
-once confirmation assigns its header; the runbook waits for settlement as an
-additional sequencing check. Deposits are applied after transactions within a block; projection into
-the local ledger does not make a same-block deposit spend valid.
-
-Devnet only (see the note at the top; for acceptance, wait for the commit
-fiber instead):
-
-```sh
-curl -fsS \
-  -H "x-midgard-admin-key: $ADMIN_API_KEY" \
-  "$MIDGARD_NODE_URL/commit" | jq .
-```
-
-Wait for L1 confirmation, committee DA attestation, and maturity, then merge (devnet only; for acceptance, wait for the automatic
-merge fiber instead):
-
-```sh
-curl -fsS \
-  -H "x-midgard-admin-key: $ADMIN_API_KEY" \
-  "$MIDGARD_NODE_URL/merge" | jq .
-
-node dist/index.js resolve-event-settlement-proof \
-  --kind deposit \
-  --event-id "$DEPOSIT_EVENT_ID" | jq .
-```
-
-Proceed only once the deposit settlement proof resolves. A skipped merge is not
-confirmation of that deposit; inspect its reported blocker and allow the normal
-confirmation/attestation lifecycle to finish.
+The wait has a 20-minute deadline plus the final request/poll interval. A `404`
+or `awaiting` before the deposit is due is expected. `projected` alone does not
+satisfy this wait. Before spending, confirm the ledger view contains the
+expected deposit output (`ledgerTxId` from the status) and value. Deposits are
+applied after transactions within a block, so projection does not permit a
+same-block deposit spend. A locally spent deposit can also have `consumed` status, so the unspent output
+and exact value check are required for this fresh sequence. The deposit ledger ID is not a submitted L2
+transaction ID; query `/deposit-status` for its lifecycle.
 
 ## 3. Submit The L2 Send Transaction
 
-Send part of the deposited value to the destination wallet:
+Send part of the deposited value to the destination wallet. Reuse the same
+`TRANSFER_SUBMISSION_ID` and arguments if you retry an interrupted transfer;
+the rerun returns or resubmits the transaction signed the first time and never
+signs a second one. A new transfer needs a new ID.
 
 ```sh
+export TRANSFER_SUBMISSION_ID="transfer-$(node -p 'crypto.randomUUID()')"
 TRANSFER_JSON="$(node dist/index.js submit-l2-transfer \
+  --submission-id "$TRANSFER_SUBMISSION_ID" \
   --wallet-seed-phrase-env USER_SEED_PHRASE \
   --endpoint "$MIDGARD_NODE_URL" \
   --l2-address "$DEST_L2_ADDRESS" \
@@ -209,53 +190,50 @@ Check admission status:
 curl -fsS "$MIDGARD_NODE_URL/tx-status?tx_hash=$TRANSFER_TX_ID" | jq .
 ```
 
-## 4. Commit And Merge The Transfer Block
+## 4. Wait For The Automatic Transfer Merge
 
-The admin endpoints require a configured `ADMIN_API_KEY`.
-
-Devnet only (see the note at the top; for acceptance, wait for the commit
-fiber instead):
+Poll the exact transfer ID until both canonical merge fields are affirmative:
 
 ```sh
-curl -fsS \
-  -H "x-midgard-admin-key: $ADMIN_API_KEY" \
-  "$MIDGARD_NODE_URL/commit" | jq .
+TRANSFER_STATUS_JSON=""
+TRANSFER_DEADLINE=$(( $(date +%s) + 1200 ))
+while test "$(date +%s)" -lt "$TRANSFER_DEADLINE"; do
+  TRANSFER_STATUS_JSON="$(curl --connect-timeout 5 --max-time 10 -fsS \
+    "$MIDGARD_NODE_URL/tx-status?tx_hash=$TRANSFER_TX_ID")" \
+    || TRANSFER_STATUS_JSON=""
+  if printf '%s\n' "$TRANSFER_STATUS_JSON" | jq -e \
+    '.confirmedLedgerFinalized == true and .mergeStatus == "finalized"' >/dev/null; then
+    break
+  fi
+  if printf '%s\n' "$TRANSFER_STATUS_JSON" | jq -e '.status == "rejected"' >/dev/null; then
+    break
+  fi
+  sleep 15
+done
+printf '%s\n' "$TRANSFER_STATUS_JSON" | jq -e \
+  '.confirmedLedgerFinalized == true and .mergeStatus == "finalized"'
 ```
 
-Wait until the queued block is eligible for merge, then merge (devnet only; for acceptance, wait for the automatic
-merge fiber instead):
+The deadline is 20 minutes plus the final request/poll interval. `committed`,
+`accepted`, `pending_commit`, and `awaiting_local_recovery` require further
+progress. A rejected transaction needs diagnosis; do not sign a replacement
+using an interrupted submission ID.
+
+## 5. Wait For The Deposit To Reach The Reserve
+
+Once a merge folds the deposit into confirmed state, `/deposit-status` reports
+it `consumed` and the settlement worker queues its absorb. Wait for that, then
+check the reserve:
 
 ```sh
-curl -fsS \
-  -H "x-midgard-admin-key: $ADMIN_API_KEY" \
-  "$MIDGARD_NODE_URL/merge" | jq .
-```
-
-The merge response should include `result.status == "merged"`. A skipped status
-means no state-queue block was folded into confirmed state and the next steps
-must wait or resolve the reported blocker.
-
-Resolve the deposit settlement proof as a diagnostic check:
-
-```sh
-node dist/index.js resolve-event-settlement-proof \
-  --kind deposit \
-  --event-id "$DEPOSIT_EVENT_ID" | jq .
-```
-
-The output must include `settlementOutRef`, `root`, and `proofCbor`.
-
-## 5. Absorb The Confirmed Deposit To Reserve
-
-```sh
-ABSORB_JSON="$(node dist/index.js absorb-confirmed-deposit-to-reserve \
-  --deposit-event-id "$DEPOSIT_EVENT_ID")"
-
-printf '%s\n' "$ABSORB_JSON" | jq .
+curl -fsS "$MIDGARD_NODE_URL/deposit-status?eventId=$DEPOSIT_EVENT_ID" | jq .
 node dist/index.js reserve-utxos | jq .
 ```
 
-The reserve output should contain the deposited lovelace and no datum.
+The worker waits for authenticated L1 progress and may retry provider or
+funding failures. Inspect the reserve and the settlement job for this event;
+reserve funding can also spend an absorbed output before a later snapshot. `/readyz` reports the worker's state under
+`settlement`.
 
 ## 6. Select A Destination L2 UTxO For Withdrawal
 
@@ -278,6 +256,13 @@ printf 'WITHDRAW_L2_OUT_REF=%s\n' "$WITHDRAW_L2_OUT_REF"
 ```
 
 ## 7. Submit The Withdrawal Order
+
+Record the destination's current L1 out-refs before submission so the final
+check can distinguish a new payout from an older output with the same value:
+
+```sh
+PAYOUT_BEFORE_JSON="$(node dist/index.js l1-utxos --address "$DEST_L1_ADDRESS")"
+```
 
 Reuse the same `WITHDRAWAL_SUBMISSION_ID` if you retry an interrupted
 submission; a new withdrawal needs a new ID.
@@ -315,135 +300,63 @@ Expected fields:
 - `validTo`
 - `inclusionTime`
 
-## 8. Wait For, Commit, And Merge The Withdrawal
+## 8. Wait For The Automatic Withdrawal Merge
 
-The running node records the withdrawal order itself. `withdrawal-status`
-fails until the order is recorded, so wait at most 20 minutes for it:
+The node records the order, waits for its `inclusionTime`, commits it, and
+merges it after the deployment's confirmation and challenge rules permit it.
+Wait up to 80 attempts at 15-second intervals for finalized, valid status:
 
 ```sh
 WITHDRAWAL_STATUS_JSON=""
 for attempt in $(seq 1 80); do
   WITHDRAWAL_STATUS_JSON="$(node dist/index.js withdrawal-status \
-    --event-id "$WITHDRAWAL_EVENT_ID")" && break
-  WITHDRAWAL_STATUS_JSON=""
+    --event-id "$WITHDRAWAL_EVENT_ID")" || WITHDRAWAL_STATUS_JSON=""
+  if printf '%s\n' "$WITHDRAWAL_STATUS_JSON" | jq -e \
+    '.status == "finalized" and .validity == "WithdrawalIsValid"' >/dev/null; then
+    break
+  fi
   sleep 15
 done
-test -n "$WITHDRAWAL_STATUS_JSON"
-printf '%s\n' "$WITHDRAWAL_STATUS_JSON" | jq .
+printf '%s\n' "$WITHDRAWAL_STATUS_JSON" | jq -e \
+  '.status == "finalized" and .validity == "WithdrawalIsValid"'
 ```
 
-A recorded order is still `awaiting` and is not due until its `inclusionTime`,
-the order's `validTo` plus the profile's `event_wait_ms` (300 s on the testing
-profiles). A block committed before then cannot include it, so wait until that
-time has passed:
+CLI provider calls have their own timeouts; the attempt limit is not a precise
+20-minute wall-clock guarantee. An invalid withdrawal does not enter the valid
+payout path. Diagnose `validity` and `validityDetail` instead.
+
+Do not require `payoutUtxoCount == 0` or a live `settlementOutRef` before
+continuing: the settlement worker may already have initialized or concluded
+this payout. `resolve-event-settlement-proof` can inspect an available
+settlement reference, but its absence after automatic consumption is not proof
+that merge failed.
+
+## 9. Wait For The Automatic Payout
+
+The settlement worker queues the payout as soon as the withdrawal is finalized
+and valid. It initializes the payout, funds it from the reserve with as many
+reserve inputs as it needs, and concludes it by paying exactly the withdrawn
+L2 value to the recorded L1 address. Poll the payout until it is concluded:
 
 ```sh
-WITHDRAWAL_INCLUSION_TIME="$(printf '%s\n' "$WITHDRAWAL_STATUS_JSON" \
-  | jq -r '.inclusionTime')"
-sleep "$(node -e '
-  const due = Date.parse(process.argv[1]);
-  if (Number.isNaN(due)) throw new Error("invalid inclusionTime");
-  console.log(Math.max(0, Math.ceil((due - Date.now()) / 1000)));
-' "$WITHDRAWAL_INCLUSION_TIME")"
-```
-
-Commit the withdrawal block:
-
-Devnet only (see the note at the top; for acceptance, wait for the commit
-fiber instead):
-
-```sh
-curl -fsS \
-  -H "x-midgard-admin-key: $ADMIN_API_KEY" \
-  "$MIDGARD_NODE_URL/commit" | jq .
-```
-
-Wait until it is eligible, then merge (devnet only; for acceptance, wait for the automatic
-merge fiber instead):
-
-```sh
-curl -fsS \
-  -H "x-midgard-admin-key: $ADMIN_API_KEY" \
-  "$MIDGARD_NODE_URL/merge" | jq .
-```
-
-Require `result.status == "merged"` before continuing to payout proof
-resolution.
-
-Verify the withdrawal is finalized and valid:
-
-```sh
-node dist/index.js withdrawal-status \
-  --event-id "$WITHDRAWAL_EVENT_ID" | jq .
-
-node dist/index.js resolve-event-settlement-proof \
-  --kind withdrawal \
-  --event-id "$WITHDRAWAL_EVENT_ID" | jq .
-```
-
-Expected withdrawal status fields:
-
-- `status` is `finalized`
-- `validity` is `WithdrawalIsValid`
-- `settlementOutRef` is non-null
-- `payoutUtxoCount` is `0` before initialization
-
-## 9. Initialize The Payout
-
-```sh
-INIT_PAYOUT_JSON="$(node dist/index.js initialize-payout \
-  --withdrawal-event-id "$WITHDRAWAL_EVENT_ID")"
-
-printf '%s\n' "$INIT_PAYOUT_JSON" | jq .
-
-node dist/index.js payout-status \
-  --withdrawal-event-id "$WITHDRAWAL_EVENT_ID" | jq .
-```
-
-The payout phase should be `initialized` unless the initial payout UTxO already
-contains part of the target value.
-
-## 10. Fund The Payout From Reserve
-
-Run reserve funding until `payout-status.phase` becomes `funded`:
-
-```sh
-while true; do
+PAYOUT_PHASE=""
+for attempt in $(seq 1 120); do
   PAYOUT_STATUS_JSON="$(node dist/index.js payout-status \
-    --withdrawal-event-id "$WITHDRAWAL_EVENT_ID")"
-  printf '%s\n' "$PAYOUT_STATUS_JSON" | jq .
-
-  PAYOUT_PHASE="$(printf '%s\n' "$PAYOUT_STATUS_JSON" | jq -r '.phase')"
-  test "$PAYOUT_PHASE" = "funded" && break
-
-  node dist/index.js add-reserve-funds-to-payout \
-    --withdrawal-event-id "$WITHDRAWAL_EVENT_ID" | jq .
+    --withdrawal-event-id "$WITHDRAWAL_EVENT_ID")" || PAYOUT_STATUS_JSON=""
+  PAYOUT_PHASE="$(printf '%s\n' "$PAYOUT_STATUS_JSON" | jq -r '.phase // empty')"
+  printf 'PAYOUT_PHASE=%s\n' "$PAYOUT_PHASE"
+  test "$PAYOUT_PHASE" = "concluded" && break
+  sleep 15
 done
+test "$PAYOUT_PHASE" = "concluded"
 ```
 
-The funding command picks the reserve UTxO with the largest lovelace
-contribution among those the validators can spend: no datum, no reference
-script, and any change left at least the minimum UTxO lovelace. Anyone can
-pay to the reserve address, so it skips UTxOs outside that shape. If none
-qualifies, it fails closed with a diagnostic. `--reserve-out-ref
-<txHash#outputIndex>` names the reserve UTxO to spend instead, and is refused
-with the reason when that UTxO cannot fund the payout.
+The phase moves through `not_initialized`, `initialized`, `partially_funded`
+and `funded` to `concluded`. The wait is bounded by 120 attempts, plus the CLI calls' own provider
+timeouts. Each step follows the deployment's authenticated confirmation policy.
+`concluded` alone is not an exact-value payment proof; perform the next check.
 
-## 11. Conclude The Payout
-
-```sh
-CONCLUDE_JSON="$(node dist/index.js conclude-payout \
-  --withdrawal-event-id "$WITHDRAWAL_EVENT_ID")"
-
-printf '%s\n' "$CONCLUDE_JSON" | jq .
-
-node dist/index.js payout-status \
-  --withdrawal-event-id "$WITHDRAWAL_EVENT_ID" | jq .
-```
-
-After conclusion, `payout-status.phase` should be `concluded`.
-
-## 12. Final Balance Checks
+## 10. Final Balance Checks
 
 Verify the withdrawn L2 UTxO was removed:
 
@@ -454,23 +367,36 @@ node dist/index.js utxos --address "$DEST_L2_ADDRESS" | jq .
 Verify the L1 payout target received the withdrawn value:
 
 ```sh
-node dist/index.js l1-utxos --address "$DEST_L1_ADDRESS" | jq .
+PAYOUT_AFTER_JSON="$(node dist/index.js l1-utxos --address "$DEST_L1_ADDRESS")"
+printf '%s\n' "$PAYOUT_AFTER_JSON" | jq .
+
+PAYOUT_BEFORE_JSON="$PAYOUT_BEFORE_JSON" \
+PAYOUT_AFTER_JSON="$PAYOUT_AFTER_JSON" \
+WITHDRAWAL_JSON="$WITHDRAWAL_JSON" node --input-type=module <<'JS'
+const before = JSON.parse(process.env.PAYOUT_BEFORE_JSON);
+const after = JSON.parse(process.env.PAYOUT_AFTER_JSON);
+const withdrawal = JSON.parse(process.env.WITHDRAWAL_JSON);
+const outRef = (u) => `${u.txHash}#${u.outputIndex}`;
+const old = new Set(before.utxos.map(outRef));
+const assets = (value) => JSON.stringify(Object.entries(value)
+  .map(([unit, quantity]) => [unit, BigInt(quantity).toString()])
+  .filter(([, quantity]) => quantity !== "0")
+  .sort(([a], [b]) => a.localeCompare(b)));
+const target = assets(withdrawal.l2Value);
+const matching = after.utxos.filter((u) => !old.has(outRef(u)) && assets(u.assets) === target);
+if (matching.length === 0) throw new Error("No new output pays the exact withdrawal value");
+console.log(JSON.stringify({ payoutOutRefs: matching.map(outRef), targetAssets: withdrawal.l2Value }));
+JS
 ```
 
-At minimum, check that the L1 UTxO list includes the concluded payout
-transaction hash from `CONCLUDE_JSON.txHash` and the expected lovelace value.
+Compare every asset, including native tokens, rather than the wallet's total
+balance or an ADA-only lower bound. Keep the user wallet idle during this
+check and retain the new payout transaction/out-ref. Confirm its inclusion on
+the intended canonical L1 chain at the deployment's required depth; an
+unconfirmed provider snapshot or a pre-existing equal-value output is not
+fresh acceptance evidence.
 
 ## Troubleshooting
-
-### Admin Endpoints Return 403
-
-`ADMIN_API_KEY` is empty or not configured on the running node. Set it in the
-node environment and restart `pnpm listen`.
-
-### Admin Endpoints Return 401
-
-The `x-midgard-admin-key` header does not match the running node's
-`ADMIN_API_KEY`.
 
 ### Reserve Or Payout Fails With `WithdrawalsNotInRewardsCERTS`
 
@@ -481,8 +407,10 @@ network. Check the canonical address:
 node dist/index.js deployment-status | jq '.phasMembershipRewardAddress, .missingComponents'
 ```
 
-For a fresh deployment, rerun the clean deployment flow. For an existing
-otherwise-complete deployment, use:
+For an existing otherwise-complete deployment, use the explicit registration
+repair below. Do not reset local durable state to resolve a provider or worker
+failure; follow [state reset rules](../../../docs/agents/state-reset.md) before
+any separately authorized redeploy:
 
 ```sh
 node dist/index.js register-phas-membership-reward-account
@@ -511,16 +439,24 @@ Do not initialize payout for invalid withdrawals. Inspect `validity` and
 `validityDetail`. Invalid withdrawals are committed into the withdrawal root
 and must use the invalid-withdrawal refund path instead of the payout path.
 
-### `initialize-payout` Cannot Resolve Settlement Proof
+### The Deposit Absorb Or Payout Does Not Progress
 
-The withdrawal block has not been merged yet, the event id is not canonical
-`SDK.OutputReference` CBOR hex, or the settlement UTxO for the projected header
-is missing from L1.
+Check `/readyz`: its `settlement` block reports the worker's state and detail.
+The worker retries a failed step with backoff and records the reason in the
+`settlement_jobs` table's `last_error`, so read that row for the event rather
+than rerunning the step by hand. Common causes: the settlement wallet ran out of
+fee funds or lost its ADA-only collateral UTxO; the withdrawal block has not been
+merged yet, so its settlement UTxO does not exist; or the reserve cannot fund
+the payout (next section).
 
-### Payout Funding Is Underfunded
+### The Reserve Cannot Fund A Payout
 
 Run `reserve-utxos` and compare its `spendableTotals` with
 `payout-status.remainingAssets`. `totals` also counts UTxOs marked
 `spendable: false` (their `unspendableReason` names the datum or reference
-script), which the validators refuse to spend. The funding command only
-consumes spendable reserve UTxOs that contribute to the remaining target value.
+script), which the validators refuse to spend. Funding only consumes spendable
+reserve UTxOs that contribute to the remaining target value, and a reserve UTxO
+that holds tokens cannot leave change below the minimum UTxO lovelace. A reserve
+whose lovelace sits only in token-bearing UTxOs can therefore hold enough in
+total and still fail to fund a lovelace-heavy payout. Paying a pure-ADA,
+datum-free UTxO to the reserve address gives the worker an input it can use.

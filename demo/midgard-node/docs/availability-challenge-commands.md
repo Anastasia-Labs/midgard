@@ -91,3 +91,7 @@ itself, use the [DA bond pool commands](da-bond-commands.md).
 It does not submit transactions or disclose stored signed CBOR. Canonical-source
 disagreement or rollback interrupts mutation and requires recovery against the
 current authenticated chain.
+
+For an offline inventory across every actor, deployment and stored state, use
+[availability journal holds](availability-journal-commands.md). Its stored-row
+inventory carries no canonical clearing authority.

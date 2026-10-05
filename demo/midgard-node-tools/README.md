@@ -155,3 +155,127 @@ The vitest suite reuses `midgard-node`'s per-worker Postgres shard scheme under
 its own database prefix (`midgard_tools_test_w<N>`), so it never shares a
 database with a concurrently running node suite. `pnpm test` also runs the
 offline summary-verifier tests and the Phase 4 devnet asset tests.
+
+## Devnet wallet fee runway
+
+Fresh `devnet-stack` runs fund all fourteen roles once from the generated
+chain's genesis UTxO. There is no role-wallet refill loop. The private chain
+has 2 billion ADA total supply, with 1 billion delegated and 1 billion in the
+bootstrap UTxO. This is an isolated-chain funding difference, not a change to
+Preprod protocol parameters. Existing deployments are not changed.
+
+The policy in `devnet/preprod/funding-policy.json` targets **180 days with a
+5× margin**. Nine submitting service wallets reserve 20 ADA per transaction
+at 4,320 transactions/day (one per mean 20-second Cardano block). These are
+**planning estimates**, not measured role burn or enforced admission limits.
+Each reserves 77,760,000 ADA for fees, representing 900 days at that planning
+rate or 180 days at five times the rate. Startup protocol capital is additional.
+Each wallet also receives a separate 50 ADA pure-ADA collateral output, above
+150% of the 20 ADA planning fee. Users retain five independent spending outputs.
+
+| Role                             |         Planned tx/day | Main funding, ADA |
+| -------------------------------- | ---------------------: | ----------------: |
+| operator                         |                  4,320 |        77,960,000 |
+| merge                            |                  4,320 |        77,810,000 |
+| settlement                       |                  4,320 |        77,810,000 |
+| daSubmitter0, daSubmitter1       |             4,320 each |   77,780,000 each |
+| daAvailability0, daAvailability1 |             4,320 each |   77,780,000 each |
+| watcherProver                    |                  4,320 |        77,810,000 |
+| watcherAvailability              |                  4,320 |        77,780,000 |
+| referenceScript                  |           startup only |           100,000 |
+| daCosigner                       | off-chain signing only |             1,000 |
+| userA, userB, userC              |                24 each |      482,000 each |
+
+Total bootstrap role funding including collateral is **701,837,700 ADA**,
+leaving 298,162,300 ADA before bootstrap fees and existing reserve-float costs.
+Reference-script startup capital covers 1,000 publications at the 20 ADA
+planning fee with the same 5× margin. Users reserve 432,000 ADA for fees at
+24 transactions/day plus their original 50,000 ADA journey holdings; transfers
+and deposits consume holdings separately from fees.
+
+Read-only evidence assessed on 2026-10-02: lc1 reference-publication logs from
+2026-09-30 contain 339 and 397 submitted transactions in two deployment runs;
+the largest observed signed transaction is 16,265 bytes. At the pinned 44
+lovelace/byte plus 155,381 fixed fee, that size alone contributes 871,041
+lovelace. Maximum pinned execution charges add 1,730,750 lovelace; reference
+script surcharges are additional. The 20 ADA planning fee leaves a large
+allowance for them and is not claimed as a protocol maximum. The public
+bootstrap and reserve-float signed transactions paid 308,061 and 170,473
+lovelace respectively; these are controller fees, **not measurements of role
+burn**. No representative steady-state role fee series was available in the
+logs, and the watcher availability database checkpoint contained no intents.
+Re-measure actual daily burn after the final fresh run; usage exceeding the
+planning envelope or protocol-cost changes shorten this conditional runway.
+
+The legacy seven-wallet `phase4-process/scripts/fund-wallets.sh` bootstrap
+uses the same policy: 78 million ADA plus 50 ADA collateral per wallet,
+546,000,350 ADA total. It is a separate bootstrap flow, not an additional
+allocation in the fourteen-wallet stack. Both fund once; neither schedules
+online treasury transfers to role wallets.
+
+## Devnet service refusals
+
+`node dist/devnet-stack.js status --run-dir /absolute/run` reports a service
+that exited 78 as `ready: false`, with reason
+`configuration_or_deployment_refused` and a `refusal` record containing its
+current `refusalId` and log path. The refusal survives supervisor replacement.
+Exit 70 and signal exits retain the normal bounded restart policy. Elapsed time
+or changing a file never authorizes another attempt after exit 78.
+
+Correct the cause shown in the role's log using that role's normal operational
+procedure, then request one validation attempt:
+
+```sh
+node dist/devnet-stack.js recover-service --run-dir /absolute/run \
+  --service watcher --refusal-id TOKEN_FROM_STATUS \
+  --note "Operator explanation of the external correction"
+```
+
+The note records an operator's explanation; it is not verified configuration
+or chain evidence. The command checks the existing run, completed deployment,
+public contract-manifest pin, fresh code and running supervisor's service set.
+The queued permission binds that exact runtime code and service set. The daemon
+checks both when consuming it and again after asynchronous prestart work; stale
+or incomplete permissions stay refused and need a new explicit request. Missing
+recorded identities or deployment artifacts are refused without generating or
+copying replacements. Restore exact recorded state or explicitly create a new
+run through the deployment procedure.
+
+The child retains all its normal integrity checks. The refusal clears only
+when that attempt answers its configured readiness probe positively; a failed
+attempt stays held, and another exit 78 creates a new token. Roles without a
+validated readiness probe require an explicit service-specific recovery design.
+
+The public retained-DA reader uses its own `/readyz` on the declared loopback
+port `7406 + portOffset`; `/healthz` alone never clears a refusal. The reader
+checks its bound libp2p listener and a live SELECT with its recorded read-only
+database role. Restore connectivity and the exact recorded SELECT privileges;
+do not substitute committee credentials or recreate retained tables. Request
+`recover-service --service public-retained-da` with the token shown in status
+and an explanation of that correction. The same code, deployment and service
+set guards apply; switching the port or credentials requires the normal
+controller/deployment procedure, not an old queued recovery request.
+
+The authority supports `recover-service --service watcher-authority` with its
+current token and a note after restoring the exact recorded authority config,
+signed release/rules, authentication credentials and retained record chain. Its
+read-only probe verifies the deployment release/finality, configured endpoint,
+the authenticated record-key identity derived from the recorded credential, and
+the current trusted-head policy/MAC. A null head is accepted only after matching
+identity and deployment checks. The probe never opens/repairs the authority store
+or submits CAS. Missing or inconsistent recorded state stays held. Runtime code
+and service generation must still match after the awaited readiness probe.
+
+History archive/tunnel/recorder roles still remain held after an exit 78 until
+an authenticated service-specific readiness check is supported.
+A plain HTTP response or TLS connection is insufficient.
+
+Known watcher refusals require correcting runtime configuration, restoring the
+verified deployment authority/rule bundle for the same deployment, or matching
+the release's finality policy. System errors such as an unavailable file retain
+the watcher's transient classification. A correction that changes deployment
+identity, genesis, protocol parameters or the public manifest requires the
+normal explicitly authorized deployment procedure and a new run when required;
+`recover-service` cannot adopt that change. Broken ancestry or missing retained
+history needs authenticated recovery/backfill, not a configuration guess,
+checkpoint reset or timer clearance.

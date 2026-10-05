@@ -3,6 +3,7 @@ import { access, realpath } from "node:fs/promises";
 import { isAbsolute, normalize } from "node:path";
 
 import { watcherCanonicalJson } from "../storage/durable-store.js";
+import { watcherNativeChildDrain } from "./native-chain-sync.child-drain.js";
 import {
   deriveWatcherNativeGenesisIdentity,
   lines,
@@ -95,10 +96,25 @@ export const startNativeSupervisor = async (
   }
   input.signal?.throwIfAborted();
   const child = (input.unsafeSpawnForTest ?? productionSpawn)(binaryPath);
+  const drainage = watcherNativeChildDrain(child);
   const eventProvenance = { active: true, generation: 0n };
+  let revocationFailure: Error | undefined;
   const revokeEventProvenance = (): void => {
+    const wasActive = eventProvenance.active;
     eventProvenance.active = false;
     eventProvenance.generation += 1n;
+    if (wasActive) {
+      try {
+        input.onAuthorityRevoked?.();
+      } catch (cause) {
+        // Admission stays revoked and cleanup still runs; expose the lifecycle
+        // integrity error through done/close rather than an event-listener throw.
+        revocationFailure = new Error(
+          "native read lifetime revocation failed",
+          { cause },
+        );
+      }
+    }
   };
   // Lifecycle events remain observable while the ordered callback is awaiting.
   child.once("exit", revokeEventProvenance);
@@ -108,13 +124,11 @@ export const startNativeSupervisor = async (
   let closing = false;
   const abortHandler = () => {
     revokeEventProvenance();
-    rejectReady(
-      new Error("native chain-sync startup or session was cancelled"),
-    );
+    rejectReady(input.signal?.reason);
     void close();
   };
   let resolveReady!: (authority: WatcherNativeChainSyncAuthority) => void;
-  let rejectReady!: (error: Error) => void;
+  let rejectReady!: (error: unknown) => void;
   const ready = new Promise<WatcherNativeChainSyncAuthority>(
     (resolve, reject) => {
       resolveReady = resolve;
@@ -317,18 +331,32 @@ export const startNativeSupervisor = async (
           const rollbackSlot =
             event.point.kind === "origin" ? 0n : BigInt(event.point.slot);
           const rollback = knownPoints.get(rollbackHash);
-          if (rollback === undefined || rollback.slot !== rollbackSlot) {
+          if (rollback === undefined) {
+            // The authenticated node can roll back below FindIntersect. That
+            // ancestor has not been delivered in this session; its block
+            // number is learned from the next child. Durable recovery still
+            // proves both fork paths before consumer authority can resume.
+            if (
+              intersection.kind !== "point" ||
+              rollbackSlot >= BigInt(intersection.slot) ||
+              (current !== null && rollbackSlot >= current.slot)
+            )
+              throw new Error(
+                "native chain-sync rollback target is not durable history",
+              );
+            knownPoints.set(rollbackHash, { slot: rollbackSlot, blockNo: -1n });
+          } else if (rollback.slot !== rollbackSlot) {
             throw new Error(
               "native chain-sync rollback target is not durable history",
             );
           }
           current = Object.freeze({
             hash: rollbackHash,
-            slot: rollback.slot,
-            blockNo: rollback.blockNo,
+            slot: rollbackSlot,
+            blockNo: rollback?.blockNo ?? -1n,
           });
           for (const [hash, point] of knownPoints) {
-            if (point.slot > rollback.slot) knownPoints.delete(hash);
+            if (point.slot > rollbackSlot) knownPoints.delete(hash);
           }
           eventProvenance.generation += 1n;
         }
@@ -389,32 +417,26 @@ export const startNativeSupervisor = async (
           ? undefined
           : authorityLiveness.get(mintedAuthority);
       if (liveness !== undefined) liveness.active = false;
+      await drainage.closed;
+      await stderrDrain.catch(() => undefined);
     }
-  })();
+  })()
+    .then(() => {
+      if (revocationFailure !== undefined) throw revocationFailure;
+    })
+    .catch((error: unknown) => {
+      throw revocationFailure ?? error;
+    });
   void done.catch(() => undefined);
 
   let closePromise: Promise<void> | undefined;
   const close = (): Promise<void> => {
     revokeEventProvenance();
     closePromise ??= (async () => {
-      if (!closing) {
-        closing = true;
-        child.kill("SIGTERM");
-      }
-      let forceKillTimer: NodeJS.Timeout | undefined;
-      try {
-        await Promise.race([
-          done.catch(() => undefined),
-          new Promise<void>((resolve) => {
-            forceKillTimer = setTimeout(() => {
-              child.kill("SIGKILL");
-              resolve();
-            }, 5_000);
-          }),
-        ]);
-      } finally {
-        if (forceKillTimer !== undefined) clearTimeout(forceKillTimer);
-      }
+      closing = true;
+      await drainage.terminate();
+      await done.catch(() => undefined);
+      if (revocationFailure !== undefined) throw revocationFailure;
     })();
     return closePromise;
   };
@@ -427,7 +449,7 @@ export const startNativeSupervisor = async (
     ready,
     new Promise<never>((_, reject) => {
       startupTimer = setTimeout(
-        () => reject(new Error("native chain-sync startup timed out")),
+        () => reject(new NativeChainSyncStartupFailure("startup_timed_out")),
         input.startupTimeoutMs,
       );
     }),
@@ -436,8 +458,8 @@ export const startNativeSupervisor = async (
       revokeEventProvenance();
       closing = true;
       child.kill("SIGKILL");
-      if (input.operation.kind === "exact_point") await close();
-      throw error;
+      await close();
+      throw revocationFailure ?? error;
     })
     .finally(() => {
       if (startupTimer !== undefined) clearTimeout(startupTimer);

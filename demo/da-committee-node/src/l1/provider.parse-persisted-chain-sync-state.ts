@@ -1,5 +1,8 @@
 import { open } from "node:fs/promises";
 
+import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+
+import type { CommitteeSourceReadLimits } from "../availability/scoped-transports.js";
 import type { ChainPoint } from "../domain.js";
 
 export type CardanoNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";
@@ -33,10 +36,19 @@ export type ChainSyncEventBatch = {
   readonly tip: CanonicalChainPoint;
 };
 
+export type ChainSyncReadBudget = Readonly<{
+  scope: DaAvailabilityReadScope;
+  limits: CommitteeSourceReadLimits;
+}>;
+
+export type AvailabilityCursorRefresh = ChainSyncReadBudget &
+  Readonly<{ maxEvents: number }>;
+
 export interface ChainSyncEventSource {
   next(
     cursor: ChainSyncCursor | undefined,
     intersectionCandidates?: readonly CanonicalChainPoint[],
+    readBudget?: ChainSyncReadBudget,
   ): Promise<ChainSyncEventBatch>;
 }
 
@@ -94,6 +106,10 @@ export type ChainSyncCatchUpProgress = Readonly<{
 }>;
 
 export interface ChainSyncReplayProvider {
+  /** Explicit bounded progress through the existing durable authority. */
+  refreshAvailabilityCursor?(
+    budget: AvailabilityCursorRefresh,
+  ): Promise<ChainSyncCursor>;
   currentChainSyncCursor(): Promise<ChainSyncCursor>;
   replayChainSyncEvents(
     afterSequence: number,

@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { KupmiosError } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -83,5 +84,52 @@ describe("fetchProtocolDeploymentStatusWithStartupRetry", () => {
       message: "Expected at most one hub-oracle witness UTxO",
     });
     expect(attempts).toBe(1);
+  });
+});
+
+describe("fetchProtocolDeploymentStatusWithStartupRetry honours typed retryability", () => {
+  const attemptsUntilOutcome = async (error: SDK.LucidError) => {
+    let attempts = 0;
+    const outcome = await Effect.runPromise(
+      Effect.either(
+        fetchProtocolDeploymentStatusWithStartupRetry(
+          () => {
+            attempts += 1;
+            return Effect.fail(error);
+          },
+          { maxAttempts: 4, retryDelayMs: 0 },
+        ),
+      ),
+    );
+    expect(outcome._tag).toBe("Left");
+    return attempts;
+  };
+
+  it("does not retry a read wrapper around a Kupo refusal", async () => {
+    const attempts = await attemptsUntilOutcome(
+      new SDK.LucidError({
+        message: "Failed to fetch hub-oracle witness UTxO(s)",
+        cause: new KupmiosError({
+          protocol: "kupo",
+          operation: "getUtxos",
+          status: 400,
+        }),
+      }),
+    );
+    expect(attempts).toBe(1);
+  });
+
+  it("retries, up to its bound, any wrapper around a retryable Kupo answer", async () => {
+    const attempts = await attemptsUntilOutcome(
+      new SDK.LucidError({
+        message: "Could not read the state-queue topology",
+        cause: new KupmiosError({
+          protocol: "kupo",
+          operation: "getUtxos",
+          status: 503,
+        }),
+      }),
+    );
+    expect(attempts).toBe(4);
   });
 });

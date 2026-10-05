@@ -25,6 +25,60 @@ import {
 // ---------------------------------------------------------------------------
 
 describe("WatcherPublicDaClientV1 deadline and permit control", () => {
+  it("bounds a hung content validator by the fetch deadline and releases its permit", async () => {
+    const transport = new ScriptedTransport(honestInlineScript());
+    const client = clientWith(
+      transport,
+      { maxConcurrency: 1 },
+      makeVirtualClock(),
+    );
+    let validationSignal: AbortSignal | undefined;
+    const failure = await expectClientError(
+      client.fetchPayloadByHeader({
+        headerHash: HEADER_HASH,
+        validateInnerPayload: async (_, signal) => {
+          validationSignal = signal;
+          await new Promise(() => undefined);
+        },
+      }),
+    );
+    expect(failure.code).toBe("deadline_exceeded");
+    expect(validationSignal?.aborted).toBe(true);
+    expect(
+      (await client.fetchPayloadByHeader({ headerHash: HEADER_HASH }))
+        .headerHash,
+    ).toBe(HEADER_HASH);
+    client.close();
+  });
+
+  it("closing aborts active requests and rejects queued permits without waiting for their deadlines", async () => {
+    let activeSignal: AbortSignal | undefined;
+    const transport = new ScriptedTransport({
+      [PEERS[0]!]: {
+        capabilities: (request) => {
+          activeSignal = request.signal;
+          return hangUntilAborted(request);
+        },
+      },
+    });
+    const client = clientWith(transport, { maxConcurrency: 1 });
+    const first = client
+      .fetchPayloadByHeader({ headerHash: HEADER_HASH })
+      .catch((error: unknown) => error);
+    const second = client
+      .fetchPayloadByHeader({ headerHash: HEADER_HASH })
+      .catch((error: unknown) => error);
+    await new Promise((resolve) => setImmediate(resolve));
+    client.close();
+    expect(activeSignal?.aborted).toBe(true);
+    expect(await first).toBeInstanceOf(Error);
+    expect(await second).toBeInstanceOf(Error);
+    await expect(
+      client.fetchPayloadByHeader({ headerHash: HEADER_HASH }),
+    ).rejects.toThrow(/closed/);
+    expect(transport.calls).toHaveLength(1);
+  });
+
   type Gate = {
     readonly waitUntilEntered: Promise<void>;
     readonly release: () => void;

@@ -249,6 +249,19 @@ export const makeReserveLifecycleBuilderFixture = async ({
       new Constr(1, []),
     ]),
   );
+  // Published as the live resolution requires: each script holds its role
+  // token under the deployment's reference-script auth policy.
+  const publishedReferenceScripts = [
+    ["deposit minting", contracts.deposit.mintingScript],
+    ["deposit spending", contracts.deposit.spendingScript],
+    ["withdrawal minting", contracts.withdrawal.mintingScript],
+    ["withdrawal spending", contracts.withdrawal.spendingScript],
+    ["reserve spending", contracts.reserve.spendingScript],
+    ["payout spending", contracts.payout.spendingScript],
+    ["payout minting", contracts.payout.mintingScript],
+    ["deposit history retirement", depositRetirementScript],
+    ["withdrawal history retirement", withdrawalRetirementScript],
+  ] as const;
   const emulator = new Emulator(
     [
       makeSeededScriptAccount({
@@ -299,51 +312,19 @@ export const makeReserveLifecycleBuilderFixture = async ({
         address: operator.address,
         assets: { lovelace: 13_000_000n },
       }),
-      makeSeededScriptAccount({
-        address: operator.address,
-        assets: { lovelace: 3_000_000n },
-        scriptRef: contracts.deposit.mintingScript,
-      }),
-      makeSeededScriptAccount({
-        address: operator.address,
-        assets: { lovelace: 3_000_000n },
-        scriptRef: contracts.deposit.spendingScript,
-      }),
-      makeSeededScriptAccount({
-        address: operator.address,
-        assets: { lovelace: 3_000_000n },
-        scriptRef: contracts.withdrawal.mintingScript,
-      }),
-      makeSeededScriptAccount({
-        address: operator.address,
-        assets: { lovelace: 3_000_000n },
-        scriptRef: contracts.withdrawal.spendingScript,
-      }),
-      makeSeededScriptAccount({
-        address: operator.address,
-        assets: { lovelace: 3_000_000n },
-        scriptRef: contracts.reserve.spendingScript,
-      }),
-      makeSeededScriptAccount({
-        address: operator.address,
-        assets: { lovelace: 3_000_000n },
-        scriptRef: contracts.payout.spendingScript,
-      }),
-      makeSeededScriptAccount({
-        address: operator.address,
-        assets: { lovelace: 3_000_000n },
-        scriptRef: contracts.payout.mintingScript,
-      }),
-      makeSeededScriptAccount({
-        address: operator.address,
-        assets: { lovelace: 3_000_000n },
-        scriptRef: depositRetirementScript,
-      }),
-      makeSeededScriptAccount({
-        address: operator.address,
-        assets: { lovelace: 3_000_000n },
-        scriptRef: withdrawalRetirementScript,
-      }),
+      ...publishedReferenceScripts.map(([name, script]) =>
+        makeSeededScriptAccount({
+          address: operator.address,
+          assets: {
+            lovelace: 3_000_000n,
+            [SDK.referenceScriptAuthUnit(
+              contracts.referenceScriptAuth.policyId,
+              name,
+            )]: 1n,
+          },
+          scriptRef: script,
+        }),
+      ),
       makeSeededScriptAccount({
         address: hubOracleAddress,
         assets: { lovelace: 3_000_000n, [hubUnit]: 1n },

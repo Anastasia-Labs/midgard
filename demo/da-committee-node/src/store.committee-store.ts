@@ -1,5 +1,6 @@
 import { type DeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 
+import type { PromiseCapacityEvidence } from "./availability/promise-capacity-evidence.js";
 import type {
   DaAttestationCandidateRecord,
   DaPayloadRecord,
@@ -13,13 +14,30 @@ import type {
   L1SubmissionRecord,
   StateQueueHeaderRecord,
 } from "./domain.js";
+import type {
+  L1RecoveryCertificate,
+  L1RecoverySnapshot,
+} from "./l1/recovery-incident.js";
 import type { StateQueueReplayAnchor } from "./l1/state-queue-scanner.js";
 import type { StateQueueOutputStep } from "./l1/terminal-retention-observation.js";
+import type {
+  PromiseStoreResourceLimits,
+  PromiseStoreResourceUsage,
+} from "./store/promise-resource-usage.js";
+import type { CommitteeRetirementCertificate } from "./store/retirement-certificate.js";
+import type {
+  CommitteeRetirementBreachPoint,
+  CommitteeRetirementFloor,
+  CommitteeRetirementGuard,
+  CommitteeRetirementSnapshot,
+} from "./store/retirement-model.js";
 
 export type RetainedPayloadPruneRequest = {
   readonly headerHash: string;
   readonly nowMs: number;
   readonly retentionDays?: number;
+  readonly automaticRecoveryMaxDepth?: number;
+  readonly deploymentFingerprint?: string;
   /** Header hash in the L1 `ConfirmedState` datum of the caller's view. */
   readonly confirmedHeadHash: string;
   /** Every header hash live in the L1 state queue of the caller's view. */
@@ -27,8 +45,10 @@ export type RetainedPayloadPruneRequest = {
 };
 
 export type StoreData = {
+  readonly promiseCapacityEvidence: Record<string, PromiseCapacityEvidence>;
   readonly deployment?: CommitteeDeploymentRecord;
   readonly chainCursor?: L1SourceState;
+  readonly retirementFloor?: CommitteeRetirementFloor;
   readonly stateQueueHeaders: Record<string, StateQueueHeaderRecord>;
   readonly daPayloads: Record<string, DaStoredPayloadRecord>;
   readonly daSignatures: Record<string, DaSignatureRecordV1>;
@@ -97,6 +117,10 @@ export class InFlightDecisionAttempts {
    * Ends attempt `attemptCount` at `effectId`, whether or not it completed
    * durably: its side effects are over once its caller has stopped.
    */
+  has(effectId: string): boolean {
+    return this.attempts.has(effectId);
+  }
+
   release(effectId: string, attemptCount: number): void {
     if (this.attempts.get(effectId) === attemptCount) {
       this.attempts.delete(effectId);
@@ -185,6 +209,37 @@ export type CommitteeDeploymentRecord = {
 };
 
 export interface CommitteeStore {
+  retirementDiscoveryActive(): boolean;
+  withRetirementDiscovery<T>(run: () => Promise<T>): Promise<T>;
+  getRetirementFloor(): Promise<CommitteeRetirementFloor | undefined>;
+  captureRetirementGuard(): CommitteeRetirementGuard;
+  assertRetirementGuard(
+    token: CommitteeRetirementGuard,
+    record?: StateQueueHeaderRecord,
+  ): void;
+  readRetirementSnapshot(): Promise<CommitteeRetirementSnapshot>;
+  applyRetirementCertificate(
+    certificate: CommitteeRetirementCertificate,
+  ): Promise<readonly string[]>;
+  recordRetirementBreach(
+    reason: string,
+    observedAt: CommitteeRetirementBreachPoint,
+  ): Promise<void>;
+  withRetainedHeaderPin<T>(
+    headerHash: string,
+    run: () => Promise<T>,
+  ): Promise<T>;
+
+  promiseStoreResourceUsage(
+    limits?: PromiseStoreResourceLimits,
+  ): Promise<PromiseStoreResourceUsage>;
+  getPromiseCapacityEvidence(
+    key: string,
+  ): Promise<PromiseCapacityEvidence | undefined>;
+  savePromiseCapacityEvidence(
+    record: PromiseCapacityEvidence,
+    expectedPointId?: string,
+  ): Promise<PromiseCapacityEvidence>;
   close?(): Promise<void>;
   initDeployment(args: {
     readonly marker: DeploymentMarker;
@@ -194,6 +249,8 @@ export interface CommitteeStore {
   }): Promise<void>;
   getDeployment(): Promise<CommitteeDeploymentRecord | undefined>;
   getL1SourceState(): Promise<L1SourceState | undefined>;
+  readL1RecoverySnapshot(): Promise<L1RecoverySnapshot>;
+  applyL1RecoveryCertificate(certificate: L1RecoveryCertificate): Promise<void>;
   saveL1SourceState(state: L1SourceState): Promise<void>;
   getDecisionOutbox(
     effectId: string,
@@ -221,6 +278,20 @@ export interface CommitteeStore {
     readonly lastError?: string;
     readonly signature?: DaSignatureRecord;
   }): Promise<void>;
+  /**
+   * Atomically records the quarantined source and stops every decision that
+   * depends on it: each header with a persisted decision becomes
+   * `conflicted`, and its signature broadcasts, L1 submissions, peer
+   * broadcasts and decision effects fail.
+   *
+   * Retained payloads are deliberately left untouched. Quarantine is a hold
+   * on chain authority, not evidence about bytes: a payload this member
+   * verified and signed keeps its bytes, digest and `verified` status, so it
+   * can still be served and used to answer an availability challenge for the
+   * commitment it was signed under. Divergent bytes stay `conflicted` as
+   * they were. Readers that make a new decision gate on the header and the
+   * source state, never on the payload status alone.
+   */
   quarantineL1Decisions(state: L1SourceState): Promise<void>;
   upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void>;
   listStateQueueHeaders(): Promise<readonly StateQueueHeaderRecord[]>;

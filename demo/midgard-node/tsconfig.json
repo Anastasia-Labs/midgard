@@ -4,7 +4,7 @@
     "allowUnusedLabels": false,
     "declaration": true,
     "forceConsistentCasingInFileNames": true,
-    "lib": ["es2022", "dom"],
+    "lib": ["es2022", "dom", "dom.iterable"],
     "esModuleInterop": true,
     "module": "NodeNext",
     "moduleResolution": "nodenext",
@@ -20,7 +20,8 @@
     "sourceMap": true,
     "strict": true,
     "target": "es2020",
-    "outDir": "dist"
+    "outDir": "dist",
+    "rootDir": ".."
   },
   "ts-node": {
     "esm": true,

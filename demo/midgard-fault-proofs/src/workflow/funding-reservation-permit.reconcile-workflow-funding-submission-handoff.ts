@@ -1,3 +1,4 @@
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { type UTxO } from "@lucid-evolution/lucid";
 
 import {
@@ -77,7 +78,11 @@ export const reconcileWorkflowFundingSubmissionHandoff = (input: {
           "actionId" in event &&
           event.actionId === handoff.submissionIntent.actionId,
       );
-    if (latest?.kind === "reconciled" && latest.outcome === "not_found")
+    if (
+      latest?.kind === "reconciled" &&
+      latest.outcome === "not_found" &&
+      latest.retirement !== undefined
+    )
       throw new Error(
         "funding handoff cannot reopen a resolved absent attempt",
       );
@@ -87,6 +92,9 @@ export const reconcileWorkflowFundingSubmissionHandoff = (input: {
     // descendant, whose journal cursor currently points at the recovered parent.
     return Object.freeze(
       latest?.kind === "confirmed" ||
+        (latest?.kind === "reconciled" &&
+          latest.outcome === "not_found" &&
+          latest.retirement === undefined) ||
         (cursor !== undefined &&
           "actionId" in cursor &&
           cursor.actionId !== handoff.submissionIntent.actionId)
@@ -126,8 +134,15 @@ export const assertWorkflowFundingCompletionHandoffJournal = (input: {
   assertHandoffJournal(handoff, input.entries);
   const tail = input.entries
     .slice(handoff.expectedJournalSequence)
-    .filter(({ event }) => event.kind !== "stalled");
-  if (handoff.completion.kind === "terminal_included") {
+    .filter(
+      ({ event }) =>
+        event.kind !== "stalled" && event.kind !== "signed_attempt_retired",
+    );
+  if (
+    handoff.completion.kind === "terminal_included" ||
+    handoff.completion.terminal.observedAt.confirmationDepth <=
+      DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth + 1
+  ) {
     if (
       tail[0] !== undefined &&
       journalJsonDigest(normalizeJournalJson(tail[0].event)) !==
@@ -248,7 +263,7 @@ export const parseStateSnapshot = (
   const snapshot = parseSnapshot(value);
   assertSnapshotInputBounds({
     snapshot,
-    maximumCollateralInputs: state.maximumCollateralInputs,
+    maximumCollateralInputs: state.reservationMaximumCollateralInputs,
   });
   return snapshot;
 };

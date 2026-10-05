@@ -194,25 +194,3 @@ export const retrieveAllEntries = (
     ),
     sqlErrorToDatabaseError(tableName, "Failed to retrieve the whole table"),
   );
-
-/**
- * Removes transactions older than the given cutoff and returns the number of
- * deleted rows.
- */
-export const pruneOlderThan = (
-  tableName: string,
-  cutoff: Date,
-): Effect.Effect<number, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const deleted = yield* sql`DELETE FROM ${sql(tableName)}
-      WHERE ${sql(Columns.TIMESTAMPTZ)} < ${cutoff}
-      RETURNING ${sql(Columns.TX_ID)}`;
-    return deleted.length;
-  }).pipe(
-    Effect.withLogSpan(`pruneOlderThan ${tableName}`),
-    Effect.tapErrorTag("SqlError", (e) =>
-      logDatabaseError(tableName, "pruneOlderThan", e),
-    ),
-    sqlErrorToDatabaseError(tableName, "Failed to prune old transactions"),
-  );

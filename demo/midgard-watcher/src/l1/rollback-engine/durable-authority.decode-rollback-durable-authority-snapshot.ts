@@ -52,6 +52,9 @@ import {
   type WatcherRollbackState,
 } from "./types.js";
 
+/** Authenticated consistency history admitted by one durable snapshot. */
+export const WATCHER_ROLLBACK_CONSISTENCY_HISTORY_BOUND = 6_483;
+
 export const decodeRollbackDurableAuthoritySnapshot = (
   bytes: Uint8Array,
   policy: WatcherFinalityPolicy,
@@ -189,7 +192,10 @@ export const decodeRollbackDurableAuthoritySnapshot = (
       parseStore,
     );
     const consistencyInputs = exactArray(record.consistencyHistory);
-    if (consistencyInputs === null || consistencyInputs.length > 6_483) {
+    if (
+      consistencyInputs === null ||
+      consistencyInputs.length > WATCHER_ROLLBACK_CONSISTENCY_HISTORY_BOUND
+    ) {
       return null;
     }
     const consistencyHistory =

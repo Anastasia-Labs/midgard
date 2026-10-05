@@ -6,27 +6,53 @@
  * midgard-node and da-committee-node both build their Custom Lucid clients
  * from this one implementation.
  */
-import { createHash } from "node:crypto";
-
 import type { SlotConfig } from "@lucid-evolution/lucid";
+
+import {
+  assertNoOgmiosJsonRpcError,
+  type FetchLike,
+  fetchTextWithTimeout,
+  joinUrl,
+  normalizeOgmiosHttpUrl,
+  type OgmiosHealthEvidence,
+  ogmiosHealthTipFieldsNotYetKnown,
+  OgmiosSlotEvidenceUnavailableError,
+  parseJson,
+  parseOgmiosHealthEvidence,
+  parseOgmiosShelleyGenesisSlotConfig,
+  parseOgmiosTipSlot,
+  type ShelleyGenesisSlotConfig,
+  type ShelleyGenesisSlotEvidence,
+  type SubmitSlotSnapshot,
+} from "./ogmios-slot.parse-ogmios-evidence.js";
+
+export {
+  assertNoOgmiosJsonRpcError,
+  type FetchLike,
+  normalizeOgmiosHttpUrl,
+  ogmiosSlotEvidenceUnavailableCause,
+  OgmiosSlotEvidenceUnavailableError,
+  type OgmiosSlotEvidenceUnavailableReason,
+  parseOgmiosHealthEvidence,
+  parseOgmiosShelleyGenesisSlotConfig,
+  parseOgmiosTipSlot,
+  type ShelleyGenesisSlotConfig,
+  type ShelleyGenesisSlotEvidence,
+  type SubmitSlotSnapshot,
+} from "./ogmios-slot.parse-ogmios-evidence.js";
 
 export const SUBMIT_SLOT_LENGTH_MS = 1_000;
 export const SUBMIT_SLOT_VALIDITY_BUFFER = 2;
 
-const DEFAULT_OGMIOS_HEALTH_MAX_AGE_MS = 120_000;
+/**
+ * The tip-age bound for callers that do not derive one from genesis. The
+ * node and the committee derive theirs with
+ * {@link ogmiosTipMaxAgeMsFromShelleyGenesis}.
+ */
+export const DEFAULT_OGMIOS_HEALTH_MAX_AGE_MS = 120_000;
 
-export type SubmitSlotSnapshot = {
-  readonly source: "local_ogmios_tip" | "emulator" | "test";
-  readonly currentSlot: number;
-  readonly observedAtMs: number;
-  readonly slotLengthMs: number;
-  readonly health?: {
-    readonly connectionStatus?: string;
-    readonly networkSynchronization?: number;
-    readonly lastKnownTipSlot?: number;
-    readonly lastTipUpdate?: string;
-  };
-};
+/** Expected block intervals a healthy tip may go without an update. */
+export const DEFAULT_OGMIOS_TIP_MAX_AGE_BLOCK_INTERVALS = 10;
 
 export type LocalOgmiosSubmitSlotOptions = {
   readonly ogmiosUrl: string;
@@ -37,249 +63,58 @@ export type LocalOgmiosSubmitSlotOptions = {
   readonly signal?: AbortSignal;
 };
 
-export type ShelleyGenesisSlotConfig = {
-  readonly startTimeMs: number;
-  readonly slotLengthMs: number;
-};
-
-export type ShelleyGenesisSlotEvidence = ShelleyGenesisSlotConfig & {
-  readonly configurationSha256: string;
-};
-
 export type LocalOgmiosShelleyGenesisSlotOptions = Pick<
   LocalOgmiosSubmitSlotOptions,
   "ogmiosUrl" | "fetchImpl" | "timeoutMs" | "signal"
 >;
 
-export type FetchLike = (
-  input: string,
-  init?: RequestInit,
-) => Promise<Response>;
-
-type OgmiosHealthEvidence = NonNullable<SubmitSlotSnapshot["health"]>;
-
-const numberFromUnknown = (value: unknown): number | null => {
-  if (typeof value === "number") {
-    return Number.isSafeInteger(value) && value >= 0 ? value : null;
-  }
-  if (typeof value === "bigint") {
-    return value >= 0n && value <= BigInt(Number.MAX_SAFE_INTEGER)
-      ? Number(value)
-      : null;
-  }
-  if (typeof value === "string" && /^\d+$/.test(value)) {
-    const parsed = Number(value);
-    return Number.isSafeInteger(parsed) ? parsed : null;
-  }
-  return null;
-};
-
-const synchronizationFromUnknown = (value: unknown): number | undefined => {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value > 1 ? value / 100 : value;
-  }
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  if (trimmed.endsWith("%")) {
-    const parsed = Number(trimmed.slice(0, -1));
-    return Number.isFinite(parsed) ? parsed / 100 : undefined;
-  }
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed)
-    ? parsed > 1
-      ? parsed / 100
-      : parsed
-    : undefined;
-};
-
-const record = (value: unknown): Record<string, unknown> | null =>
-  typeof value === "object" && value !== null
-    ? (value as Record<string, unknown>)
-    : null;
-
-const canonicalJsonValue = (value: unknown): unknown => {
-  if (Array.isArray(value)) {
-    return value.map(canonicalJsonValue);
-  }
-  const object = record(value);
-  if (object !== null) {
-    return Object.fromEntries(
-      Object.keys(object)
-        .sort()
-        .map((key) => [key, canonicalJsonValue(object[key])]),
-    );
-  }
-  return value;
-};
-
-export const normalizeOgmiosHttpUrl = (url: string): string => {
-  const parsed = new URL(url.trim());
-  if (parsed.protocol === "ws:") {
-    parsed.protocol = "http:";
-  } else if (parsed.protocol === "wss:") {
-    parsed.protocol = "https:";
-  }
-  parsed.hash = "";
-  return parsed.toString().replace(/\/$/, "");
-};
-
-const joinUrl = (base: string, path: string): string =>
-  `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
-
-const fetchTextWithTimeout = async (
-  fetchImpl: FetchLike,
-  url: string,
-  init: RequestInit,
-  timeoutMs: number,
-): Promise<string> => {
-  const controller = new AbortController();
-  const upstreamSignal = init.signal;
-  const abortFromUpstream = () => controller.abort(upstreamSignal?.reason);
-  if (upstreamSignal?.aborted === true) {
-    abortFromUpstream();
-  } else {
-    upstreamSignal?.addEventListener("abort", abortFromUpstream, {
-      once: true,
-    });
-  }
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(url, {
-      ...init,
-      signal: controller.signal,
-    });
-    const body = await response.text();
-    if (!response.ok) {
-      throw new Error(
-        `HTTP ${response.status.toString()} from ${url}: ${body}`,
-      );
-    }
-    return body;
-  } finally {
-    clearTimeout(timeout);
-    upstreamSignal?.removeEventListener("abort", abortFromUpstream);
-  }
-};
-
-const parseJson = (body: string, label: string): unknown => {
-  try {
-    return JSON.parse(body) as unknown;
-  } catch (cause) {
-    throw new Error(`Failed to parse ${label} JSON`, { cause });
-  }
-};
-
-const firstSlot = (...values: readonly unknown[]): number | null => {
-  for (const value of values) {
-    const slot = numberFromUnknown(value);
-    if (slot !== null) {
-      return slot;
-    }
-  }
-  return null;
-};
-
-export const parseOgmiosTipSlot = (payload: unknown): number => {
-  const root = record(payload);
-  const result = record(root?.result);
-  const point = record(result?.point);
-  const tip = record(result?.tip);
-  const slot = firstSlot(result?.slot, point?.slot, tip?.slot);
-  if (slot === null) {
-    throw new Error("Ogmios queryNetwork/tip response did not include a slot");
-  }
-  return slot;
-};
-
-export const parseOgmiosShelleyGenesisSlotConfig = (
-  payload: unknown,
-): ShelleyGenesisSlotEvidence => {
-  const root = record(payload);
-  const result = record(root?.result);
-  const startTime = result?.startTime;
-  if (typeof startTime !== "string" || startTime.trim().length === 0) {
-    throw new Error(
-      "Ogmios Shelley genesis response did not include a startTime",
-    );
-  }
-  const startTimeMs = Date.parse(startTime);
-  if (
-    !Number.isSafeInteger(startTimeMs) ||
-    startTimeMs < 0 ||
-    !/(?:Z|[+-]\d{2}:\d{2})$/i.test(startTime)
-  ) {
-    throw new Error(
-      `Ogmios Shelley genesis startTime is invalid: ${startTime}`,
-    );
-  }
-
-  const slotLength = record(result?.slotLength);
-  const slotLengthMs = numberFromUnknown(slotLength?.milliseconds);
-  if (slotLengthMs === null || slotLengthMs <= 0) {
-    throw new Error(
-      "Ogmios Shelley genesis response did not include a positive integer slotLength.milliseconds",
-    );
-  }
-  return {
-    startTimeMs,
-    slotLengthMs,
-    configurationSha256: createHash("sha256")
-      .update(JSON.stringify(canonicalJsonValue(result)))
-      .digest("hex"),
-  };
-};
-
-export const parseOgmiosHealthEvidence = (
-  payload: unknown,
-): OgmiosHealthEvidence => {
-  const root = record(payload);
-  const lastKnownTip = record(root?.lastKnownTip);
-  return {
-    ...(typeof root?.connectionStatus === "string"
-      ? { connectionStatus: root.connectionStatus }
-      : {}),
-    ...(synchronizationFromUnknown(root?.networkSynchronization) === undefined
-      ? {}
-      : {
-          networkSynchronization: synchronizationFromUnknown(
-            root?.networkSynchronization,
-          )!,
-        }),
-    ...(numberFromUnknown(lastKnownTip?.slot) === null
-      ? {}
-      : { lastKnownTipSlot: numberFromUnknown(lastKnownTip?.slot)! }),
-    ...(typeof root?.lastTipUpdate === "string"
-      ? { lastTipUpdate: root.lastTipUpdate }
-      : {}),
-  };
-};
-
 const assertHealthyOgmios = (
   health: OgmiosHealthEvidence,
+  notYetKnown: ReturnType<typeof ogmiosHealthTipFieldsNotYetKnown>,
   nowMs: number,
   maxHealthAgeMs: number,
 ): void => {
+  // A field Ogmios reports as null before its first block is absent evidence
+  // to wait for; a present field that does not parse is a malformed answer.
+  const missing = (
+    field: "networkSynchronization" | "lastKnownTip" | "lastTipUpdate",
+    message: string,
+  ): Error =>
+    notYetKnown.has(field)
+      ? new OgmiosSlotEvidenceUnavailableError("ogmios_no_tip", message)
+      : new Error(message);
   if (health.connectionStatus === undefined) {
     throw new Error("Ogmios health response is missing connectionStatus");
   }
   if (health.connectionStatus.toLowerCase() !== "connected") {
-    throw new Error(`Ogmios is not connected: ${health.connectionStatus}`);
+    throw new OgmiosSlotEvidenceUnavailableError(
+      "ogmios_not_connected",
+      `Ogmios is not connected: ${health.connectionStatus}`,
+    );
   }
   if (health.networkSynchronization === undefined) {
-    throw new Error("Ogmios health response is missing networkSynchronization");
+    throw missing(
+      "networkSynchronization",
+      "Ogmios health response is missing networkSynchronization",
+    );
   }
   if (health.networkSynchronization < 0.99) {
-    throw new Error(
+    throw new OgmiosSlotEvidenceUnavailableError(
+      "ogmios_not_synchronized",
       `Ogmios is not sufficiently synchronized: ${health.networkSynchronization.toString()}`,
     );
   }
   if (health.lastKnownTipSlot === undefined) {
-    throw new Error("Ogmios health response is missing lastKnownTip.slot");
+    throw missing(
+      "lastKnownTip",
+      "Ogmios health response is missing lastKnownTip.slot",
+    );
   }
   if (health.lastTipUpdate === undefined) {
-    throw new Error("Ogmios health response is missing lastTipUpdate");
+    throw missing(
+      "lastTipUpdate",
+      "Ogmios health response is missing lastTipUpdate",
+    );
   }
   const lastTipUpdateMs = Date.parse(health.lastTipUpdate);
   if (Number.isNaN(lastTipUpdateMs)) {
@@ -288,7 +123,8 @@ const assertHealthyOgmios = (
     );
   }
   if (nowMs - lastTipUpdateMs > maxHealthAgeMs) {
-    throw new Error(
+    throw new OgmiosSlotEvidenceUnavailableError(
+      "ogmios_tip_stale",
       `Ogmios lastTipUpdate is stale: ageMs=${(nowMs - lastTipUpdateMs).toString()},maxAgeMs=${maxHealthAgeMs.toString()}`,
     );
   }
@@ -332,10 +168,14 @@ export const queryLocalOgmiosSubmitSlotSnapshot = async ({
     { signal },
     timeoutMs,
   );
-  const health = parseOgmiosHealthEvidence(
-    parseJson(healthBody, "Ogmios health"),
+  const healthPayload = parseJson(healthBody, "Ogmios health");
+  const health = parseOgmiosHealthEvidence(healthPayload);
+  assertHealthyOgmios(
+    health,
+    ogmiosHealthTipFieldsNotYetKnown(healthPayload),
+    nowMs,
+    maxHealthAgeMs,
   );
-  assertHealthyOgmios(health, nowMs, maxHealthAgeMs);
 
   const tipBody = await fetchTextWithTimeout(
     fetchImpl,
@@ -352,11 +192,14 @@ export const queryLocalOgmiosSubmitSlotSnapshot = async ({
     },
     timeoutMs,
   );
-  const queriedTipSlot = parseOgmiosTipSlot(parseJson(tipBody, "Ogmios tip"));
+  const tipPayload = parseJson(tipBody, "Ogmios tip");
+  assertNoOgmiosJsonRpcError(tipPayload, "Ogmios queryNetwork/tip");
+  const queriedTipSlot = parseOgmiosTipSlot(tipPayload);
   const derivedLiveSlot = deriveLiveSlotFromOgmiosHealth(health, nowMs);
   return {
     source: "local_ogmios_tip",
     currentSlot: Math.max(queriedTipSlot, derivedLiveSlot),
+    ledgerTipSlot: queriedTipSlot,
     observedAtMs: nowMs,
     slotLengthMs: SUBMIT_SLOT_LENGTH_MS,
     health,
@@ -386,9 +229,9 @@ export const queryLocalOgmiosShelleyGenesisSlotConfig = async ({
     },
     timeoutMs,
   );
-  return parseOgmiosShelleyGenesisSlotConfig(
-    parseJson(body, "Ogmios Shelley genesis"),
-  );
+  const payload = parseJson(body, "Ogmios Shelley genesis");
+  assertNoOgmiosJsonRpcError(payload, "Ogmios Shelley genesis");
+  return parseOgmiosShelleyGenesisSlotConfig(payload);
 };
 
 export type CustomSlotConfig = SlotConfig;
@@ -418,19 +261,7 @@ const assertValidSubmitSlotSnapshot = ({
   }
 };
 
-/**
- * Derives Lucid's Custom slot mapping from the authoritative Shelley genesis
- * epoch. The submit-slot snapshot remains a required health and clock-domain
- * check, but its wall-clock observation never defines a slot boundary.
- */
-export const customSlotConfigFromShelleyGenesis = (
-  genesis: ShelleyGenesisSlotConfig,
-  snapshot: Pick<
-    SubmitSlotSnapshot,
-    "currentSlot" | "observedAtMs" | "slotLengthMs"
-  >,
-): CustomSlotConfig => {
-  assertValidSubmitSlotSnapshot(snapshot);
+const assertValidShelleyGenesis = (genesis: ShelleyGenesisSlotConfig) => {
   if (!Number.isSafeInteger(genesis.startTimeMs) || genesis.startTimeMs < 0) {
     throw new Error(
       `Invalid Shelley genesis startTimeMs=${String(genesis.startTimeMs)}`,
@@ -444,13 +275,87 @@ export const customSlotConfigFromShelleyGenesis = (
       `Invalid Shelley genesis slotLengthMs=${String(genesis.slotLengthMs)}`,
     );
   }
+};
+
+/**
+ * The longest a healthy local Ogmios tip may go without an update: a number
+ * of expected block intervals, each `slotLength / f` for the genesis
+ * active-slot coefficient `f` (10 intervals of 20 s on a devnet with
+ * `f = 1/20` and one-second slots is 200 s). A genesis without `f` keeps
+ * {@link DEFAULT_OGMIOS_HEALTH_MAX_AGE_MS}.
+ */
+export const ogmiosTipMaxAgeMsFromShelleyGenesis = (
+  genesis: ShelleyGenesisSlotConfig,
+  blockIntervals: number = DEFAULT_OGMIOS_TIP_MAX_AGE_BLOCK_INTERVALS,
+): number => {
+  assertValidShelleyGenesis(genesis);
+  if (!Number.isFinite(blockIntervals) || blockIntervals <= 0) {
+    throw new Error(
+      `Invalid Ogmios tip-age block interval count=${String(blockIntervals)}`,
+    );
+  }
+  const coefficient = genesis.activeSlotsCoefficient;
+  if (coefficient === undefined) {
+    return DEFAULT_OGMIOS_HEALTH_MAX_AGE_MS;
+  }
+  return Math.ceil((blockIntervals * genesis.slotLengthMs) / coefficient);
+};
+
+/**
+ * Derives Lucid's Custom slot mapping from the Shelley genesis alone. The
+ * mapping is a pure function of the genesis epoch, so no tip evidence enters
+ * it; the wall clock only confirms the epoch has begun (a transient
+ * `genesis_not_started` until it has) and the slot length is the one the
+ * submit-slot arithmetic assumes (terminal otherwise).
+ */
+export const customSlotConfigFromShelleyGenesisAtWallClock = (
+  genesis: ShelleyGenesisSlotConfig,
+  {
+    nowMs,
+    expectedSlotLengthMs = SUBMIT_SLOT_LENGTH_MS,
+  }: { readonly nowMs: number; readonly expectedSlotLengthMs?: number },
+): CustomSlotConfig => {
+  assertValidShelleyGenesis(genesis);
+  if (genesis.slotLengthMs !== expectedSlotLengthMs) {
+    throw new Error(
+      `Custom slot length disagreement: expected=${expectedSlotLengthMs.toString()},genesis=${genesis.slotLengthMs.toString()}`,
+    );
+  }
+  if (nowMs < genesis.startTimeMs) {
+    throw new OgmiosSlotEvidenceUnavailableError(
+      "genesis_not_started",
+      `The Shelley genesis start time is in the future: startTimeMs=${genesis.startTimeMs.toString()},nowMs=${nowMs.toString()}`,
+    );
+  }
+  return {
+    zeroTime: genesis.startTimeMs,
+    zeroSlot: 0,
+    slotLength: genesis.slotLengthMs,
+  };
+};
+
+/**
+ * Derives Lucid's Custom slot mapping from the authoritative Shelley genesis
+ * epoch. The submit-slot snapshot remains a required health and clock-domain
+ * check, but its wall-clock observation never defines a slot boundary.
+ */
+export const customSlotConfigFromShelleyGenesis = (
+  genesis: ShelleyGenesisSlotConfig,
+  snapshot: Pick<
+    SubmitSlotSnapshot,
+    "currentSlot" | "observedAtMs" | "slotLengthMs"
+  >,
+): CustomSlotConfig => {
+  assertValidSubmitSlotSnapshot(snapshot);
+  assertValidShelleyGenesis(genesis);
   if (snapshot.slotLengthMs !== genesis.slotLengthMs) {
     throw new Error(
       `Custom slot length disagreement: snapshot=${snapshot.slotLengthMs.toString()},genesis=${genesis.slotLengthMs.toString()}`,
     );
   }
   if (snapshot.observedAtMs < genesis.startTimeMs) {
-    throw new Error(
+    throw new OgmiosSlotEvidenceUnavailableError(
+      "genesis_not_started",
       "Custom submit-slot observation precedes the Shelley genesis start time",
     );
   }
@@ -462,7 +367,8 @@ export const customSlotConfigFromShelleyGenesis = (
     Math.abs(snapshot.currentSlot - genesisSlotAtObservation) >
       SUBMIT_SLOT_VALIDITY_BUFFER
   ) {
-    throw new Error(
+    throw new OgmiosSlotEvidenceUnavailableError(
+      "ogmios_clock_disagreement",
       `Custom slot clock disagreement: snapshot=${snapshot.currentSlot.toString()},genesisAtObservation=${genesisSlotAtObservation.toString()}`,
     );
   }

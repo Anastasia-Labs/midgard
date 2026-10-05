@@ -89,7 +89,7 @@ const runToCompletion = async (
   if (result.kind === "stalled") throw new Error(result.reason);
   for (let hop = 0; hop < 200 && result.kind !== "completed"; hop++) {
     restarts++;
-    journey.emulator.awaitBlock();
+    await journey.advance(result);
     if (result.kind === "awaiting_counterparty") {
       await onAwaitCounterparty(result.responseDeadline);
       journey.emulator.awaitBlock();
@@ -177,10 +177,10 @@ describe("validation trace dispute installed production workflow", () => {
     try {
       let observedAward = false;
       let { result } = await runObserved();
-      // Included removal remains reversible until the manifest's finality depth.
+      // Included removal remains reversible through the recovery horizon.
       for (let hop = 0; hop < 60 && result.kind !== "completed"; hop++) {
         expect(result.kind).not.toBe("awaiting_counterparty");
-        journey.emulator.awaitBlock();
+        await journey.advance(result);
         const awardUtxos = await journey.config.lucid.utxosAtWithUnit(
           journey.resolvedContracts.contracts.validationTraceDispute.award
             .spendingScriptAddress,

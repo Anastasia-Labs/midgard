@@ -8,6 +8,10 @@ import {
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { publishMempoolLedgerDelta } from "../services/globals.js";
+import {
+  forgetLoggedState,
+  logOnStateChange,
+} from "../services/globals.liveness-reasons.js";
 import { HISTORY_COMMIT_LANDING_MARGIN_MS } from "../services/history-commit-window.js";
 import {
   Database,
@@ -37,6 +41,7 @@ import {
   BLOCK_COMMITMENT_DUE_WORK_KIND,
   publishFullMempoolLedgerReload,
 } from "./block-commitment.promote-or-recover-native-mpf.js";
+import { clearCommitWorkerFailure } from "./block-commitment.worker-readiness.js";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
 import {
   checkSlotAwareDueWork,
@@ -196,6 +201,14 @@ export const shouldSkipScheduledLegacyCommitForSpeculation = ({
     state._tag === "Submitting" ||
     state._tag === "Invalidated");
 
+const COMMIT_PIPELINE_SKIP_LOG_KEY = "block_commitment_idle_skip";
+
+/**
+ * True when the tick has no commitment work, so it skips before the L1
+ * control plane. The skip is logged once per state change (then at debug);
+ * `COMMIT_PIPELINE_IDLE` records whether the tick found no work and
+ * `COMMIT_PIPELINE_BACKLOG` what it counted.
+ */
 export const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment = Effect.gen(
   function* () {
     const globals = yield* Globals;
@@ -211,7 +224,11 @@ export const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment = Effect.gen(
         availableLocalFinalizationBlock,
       })
     ) {
-      yield* Effect.logInfo(
+      yield* Ref.set(globals.COMMIT_PIPELINE_IDLE, false);
+      yield* logOnStateChange(
+        globals,
+        COMMIT_PIPELINE_SKIP_LOG_KEY,
+        "local_finalization_deferred",
         "🔹 Local finalization is pending without a confirmed recovery block; skipping the commit worker until confirmation advances recovery.",
       );
       yield* emitQueueStateMetrics;
@@ -224,6 +241,10 @@ export const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment = Effect.gen(
     const pendingUserEventCount = yield* pendingUserEventCountUpTo(
       new Date(Date.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS),
     );
+    yield* Ref.set(globals.COMMIT_PIPELINE_BACKLOG, {
+      mempoolTxCount: Number(mempoolTxCount),
+      pendingUserEventCount,
+    });
     if (
       shouldAttemptCommitPipeline({
         localFinalizationPending,
@@ -233,9 +254,16 @@ export const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment = Effect.gen(
         pendingUserEventCount,
       })
     ) {
+      yield* Ref.set(globals.COMMIT_PIPELINE_IDLE, false);
+      yield* forgetLoggedState(globals, COMMIT_PIPELINE_SKIP_LOG_KEY);
       return false;
     }
-    yield* Effect.logInfo(
+    yield* Ref.set(globals.COMMIT_PIPELINE_IDLE, true);
+    yield* clearCommitWorkerFailure(globals);
+    yield* logOnStateChange(
+      globals,
+      COMMIT_PIPELINE_SKIP_LOG_KEY,
+      "no_pending_work",
       "🔹 No pending tx/user-event work for block commitment; skipping pre-lease scheduler alignment.",
     );
     yield* emitQueueStateMetrics;

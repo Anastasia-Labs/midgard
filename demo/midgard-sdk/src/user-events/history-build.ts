@@ -95,11 +95,15 @@ const authenticateContext = (context: EventHistoryBuildContext) => {
   }
 };
 
-/** Separate publication only; callers confirm this exact output before admission. */
+/** Separate publication only; callers confirm this exact output before
+ * admission. No script checks its validity, so `validTo` (Unix ms) is the
+ * caller's: durable submission always bounds it, since a publication that
+ * never lands holds its funding inputs until its validity ends. */
 export const buildEventHistoryPublication = async (
   context: EventHistoryBuildContext,
   payload: EventHistoryPayload | string,
   reclaimAuth: CredentialD,
+  validTo?: number,
 ) => {
   authenticateContext(context);
   const plan =
@@ -122,15 +126,19 @@ export const buildEventHistoryPublication = async (
     throw new Error("History publication cannot consume the event nonce");
   }
   requireDistinct(context.fundingInputs);
-  const tx = await context.lucid
+  if (validTo !== undefined && !Number.isSafeInteger(validTo))
+    throw new Error("History publication requires a safe integer validity");
+  const unbounded = context.lucid
     .newTx()
     .collectFrom([...context.fundingInputs])
     .pay.ToContract(
       context.applied.retention.address,
       { kind: "inline", value: plan.datumCbor },
       {},
-    )
-    .complete({ coinSelection: false, localUPLCEval: true });
+    );
+  const tx = await (
+    validTo === undefined ? unbounded : unbounded.validTo(validTo)
+  ).complete({ coinSelection: false, localUPLCEval: true });
   return { tx, plan, publicationOutputIndex: 0 };
 };
 

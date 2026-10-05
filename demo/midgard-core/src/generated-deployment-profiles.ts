@@ -91,7 +91,7 @@ export const DEPLOYMENT_PROFILES = {
     name: "preprod-testing",
     network: "Preprod",
     l1_finality: {
-      confirmation_depth: 3,
+      confirmation_depth: 10,
     },
     timing: {
       block_maturity_ms: 900000,
@@ -104,11 +104,11 @@ export const DEPLOYMENT_PROFILES = {
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
       da_attestation_timeout_ms: 600000,
-      da_small_response_window_ms: 720000,
-      da_full_response_window_ms: 840000,
+      da_small_response_window_ms: 880000,
+      da_full_response_window_ms: 880000,
       da_challenge_window_ms: 720000,
       da_slash_grace_ms: 300000,
-      da_bond_withdraw_delay_ms: 2340000,
+      da_bond_withdraw_delay_ms: 2380000,
     },
     da_bond: {
       da_bond_lovelace: 500000000,
@@ -135,7 +135,7 @@ export const DEPLOYMENT_PROFILES = {
     name: "local-devnet-testing",
     network: "Custom",
     l1_finality: {
-      confirmation_depth: 3,
+      confirmation_depth: 10,
     },
     timing: {
       block_maturity_ms: 900000,
@@ -148,11 +148,11 @@ export const DEPLOYMENT_PROFILES = {
       new_shift_inactivity_grace_period_ms: 300000,
       max_validity_range_ms: 480000,
       da_attestation_timeout_ms: 600000,
-      da_small_response_window_ms: 720000,
-      da_full_response_window_ms: 840000,
+      da_small_response_window_ms: 880000,
+      da_full_response_window_ms: 880000,
       da_challenge_window_ms: 720000,
       da_slash_grace_ms: 300000,
-      da_bond_withdraw_delay_ms: 2340000,
+      da_bond_withdraw_delay_ms: 2380000,
     },
     da_bond: {
       da_bond_lovelace: 500000000,
@@ -226,9 +226,9 @@ export const DEPLOYMENT_PROFILE_DIGESTS = {
   "preprod-public":
     "b2660905760a27e23fdcccc7adb25a7991a1cf16caa806283fa29621622b3ea2",
   "preprod-testing":
-    "6ac7c84ebbcf1dee6659eb5028617b6a565acc70b917e138563f6e95c2dd4cda",
+    "8290001b338095102b661d18b6ff56cd400662be81e69c8914c2c953e5a7f86b",
   "local-devnet-testing":
-    "d830215686d4a23d94dceb93a64e469076efb1f9abc419fa4231eef7575a57a0",
+    "b0d358480e8fd36680bae8d24cbc9746409344f20eeb0adea5dfe4f31995d786",
   "preprod-emulator-testing":
     "482c50df9e885112e61c445def8f410db4770ea7683fcea86353b067182a50f3",
 } as const;

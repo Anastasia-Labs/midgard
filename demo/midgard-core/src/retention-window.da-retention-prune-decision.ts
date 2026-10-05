@@ -56,6 +56,7 @@ export type RetentionQueueReference =
 export type RetentionPruneReasonCode =
   | "confirmed_head_payload"
   | "live_queue_header"
+  | "terminal_recovery_pending"
   | "removed_header"
   | "past_challengeability_horizon"
   | "still_challengeable";
@@ -75,6 +76,8 @@ export type RetentionPruneInput = {
   /** Stored header status; `unobserved` when the store has no header row. */
   readonly headerStatus: RetentionHeaderStatus | "unobserved";
   readonly queueReference: RetentionQueueReference;
+  /** Authenticated terminal history is beyond the signed L1 recovery horizon. */
+  readonly terminalRecoveryFinal?: boolean;
   readonly window?: RetentionWindow;
   readonly retentionDays?: number;
 };
@@ -82,13 +85,12 @@ export type RetentionPruneInput = {
 /**
  * Single authority on whether one retained DA payload may be pruned.
  *
- * A payload is prunable when its header was removed from the state queue OR
- * its challengeability horizon has strictly passed, unless it is the L1
- * confirmed head's payload or its header is still live in the L1 state queue.
- * There is no other arm: every input is required, so no caller can reach a
- * "keep everything" outcome by leaving one out. The retained set of any store
- * is therefore a subset of {confirmed head} + {live queue headers} + {payloads
- * whose block ended within the horizon}.
+ * Terminal headers remain retained until authenticated history is deeper than
+ * the deployment's automatic recovery horizon. That hold also precedes the
+ * wall-clock horizon: a provisional removal or merge can still be rolled back.
+ * After retirement, removed headers can be pruned immediately and merged
+ * headers once challengeability has passed. The L1 head and live queue remain
+ * exempt throughout.
  */
 export const daRetentionPruneDecision = (
   input: RetentionPruneInput,
@@ -119,6 +121,16 @@ export const daRetentionPruneDecision = (
   }
   if (input.queueReference === "live_in_queue") {
     return { decision: "retain", reasonCode: "live_queue_header", ...base };
+  }
+  if (
+    (input.headerStatus === "removed" || input.headerStatus === "merged") &&
+    input.terminalRecoveryFinal !== true
+  ) {
+    return {
+      decision: "retain",
+      reasonCode: "terminal_recovery_pending",
+      ...base,
+    };
   }
   if (input.headerStatus === "removed") {
     return { decision: "prune", reasonCode: "removed_header", ...base };

@@ -277,7 +277,7 @@ describe("pooled DA bond lifecycle on the real validators", () => {
       const delay = f.timing.daBondWithdrawDelayMs;
       // Timing is the generated profile's value, never an SDK constant.
       expect(delay).toBe(PREPROD_TESTING_WITHDRAW_DELAY_MS);
-      expect(delay).toBe(2_340_000n);
+      expect(delay).toBe(2_380_000n);
       const seeded = await f.getPool();
       expect(poolView(seeded).datum).toBe("Bonded");
       expect(seeded.assets.lovelace).toBe(AVAILABILITY_DEFAULT_POOL_LOVELACE);

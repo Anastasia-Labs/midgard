@@ -1,8 +1,3 @@
-import "node:crypto";
-import "node:fs";
-import "node:path";
-import "node:sqlite";
-import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/deployment-manifest-identity";
 import "@al-ft/midgard-sdk";
 import "@al-ft/midgard-validation";
@@ -134,7 +129,9 @@ beforeAll(() => {
     const headerHash = url.pathname.split("/").at(-1) ?? "";
     const fixture = archivedFixtures.get(headerHash);
     if (fixture === undefined) {
-      return new Response("not found", { status: 404 });
+      // The static archive fixture has no pending writer for this header.
+      // Permanent fixture loss is not a transient provider 404.
+      return new Response("fixture permanently absent", { status: 410 });
     }
     const pointBase = {
       slot: "4242",
@@ -733,7 +730,7 @@ describe("Q33/Q34 retained-DA evidence", () => {
         currentEvidence: await evidenceFromFixture(missing),
         sources: [retainedSource([missing])],
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/historical provider archive-[ab] returned HTTP 410/u);
     const substituted = await buildCanonicalBlockFixture({
       transactions: [],
       prevHeaderHash: predecessor.headerHash,

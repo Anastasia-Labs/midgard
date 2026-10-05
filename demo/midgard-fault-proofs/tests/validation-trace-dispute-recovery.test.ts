@@ -130,7 +130,7 @@ it("refuses replay after the canonical action changes and never grants replay un
   expect(f.lease.release).not.toHaveBeenCalled();
 });
 
-it("authenticates reversible inclusion, then closes the journal and funding at release finality after a cold recovery", async () => {
+it("authenticates reversible inclusion, then closes the journal and funding beyond the recovery horizon after a cold recovery", async () => {
   const f = await recordedRecovery();
   f.confirmed.mockResolvedValue(true);
   f.setStage({ kind: "removed" });
@@ -145,7 +145,11 @@ it("authenticates reversible inclusion, then closes the journal and funding at r
       ({ event }) => event.kind === "completed",
     ),
   ).toBe(false);
-  f.setTerminal(terminal(policy.confirmationDepth));
+  // Confirmation depth is not finality: the journal stays open through the
+  // recovery horizon and closes only beyond it.
+  f.setTerminal(terminal(policy.automaticRecoveryMaxDepth + 1));
+  expect((await f.execute()).kind).toBe("terminal_included");
+  f.setTerminal(terminal(policy.automaticRecoveryMaxDepth + 2));
   expect((await f.execute()).kind).toBe("completed");
   expect(f.releaseFunding.mock.calls.at(-1)?.[0].handoff.completion.kind).toBe(
     "completed",

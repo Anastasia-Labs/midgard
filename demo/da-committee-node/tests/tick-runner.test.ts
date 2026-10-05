@@ -1,4 +1,12 @@
-import { describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type MockInstance,
+  vi,
+} from "vitest";
 
 import type {
   CommitteeL1View,
@@ -7,13 +15,14 @@ import type {
 } from "../src/committee-service.js";
 import {
   createCommitteeTickRunner,
-  L1_VIEW_UNAVAILABLE_EXIT_CODE,
   L1ViewUnavailableError,
   startCommitteeTickLoop,
 } from "../src/tick-runner.js";
 
 const FATAL_MS = 60_000;
+const STALE_MS = 6_000;
 const START = 1_000_000;
+const PENDING_HEADER = "cc".repeat(28);
 
 const emptyTick = (errors: readonly string[] = []): CommitteeTickResult => ({
   scannedHeaders: 0,
@@ -24,13 +33,17 @@ const emptyTick = (errors: readonly string[] = []): CommitteeTickResult => ({
   errors,
 });
 
+/**
+ * A runner over a stub service that, like the real one, acts only on a view
+ * its own tick accepted: it attests each pending header once, on the first
+ * tick that reads L1 after the header appeared.
+ */
 const harness = (
   options: {
-    /** Scan state queue, then never settle. */
+    /** Scan state queue, then hold until released. */
     readonly hangAfterView?: boolean;
-    /** Never settle, without reading L1. */
+    /** Hold until released, without reading L1. */
     readonly hangBeforeView?: boolean;
-    readonly shutdown?: () => Promise<void>;
     readonly readDaBondPool?: () => Promise<void>;
   } = {},
 ) => {
@@ -40,15 +53,22 @@ const harness = (
   let catchingUp = false;
   let progressAt: number | undefined;
   let hangs = false;
-  const exits: number[] = [];
+  let release: (() => void) | undefined;
+  const pendingHeaders = new Set<string>();
+  const attestations: string[] = [];
   const lines: string[] = [];
   const retentionRuns: number[] = [];
-  let shutdowns = 0;
   let readiness: CommitteeRetentionReadinessSnapshot | undefined;
+  const hold = (): Promise<void> =>
+    new Promise<void>((resolve) => {
+      release = () => {
+        hangs = false;
+        resolve();
+      };
+    });
   const runner = createCommitteeTickRunner({
     tick: async () => {
-      if (hangs && options.hangBeforeView === true)
-        return new Promise<never>(() => undefined);
+      if (hangs && options.hangBeforeView === true) await hold();
       if (catchingUp) {
         // Authenticated progress toward a view, but no view.
         progressAt = now;
@@ -60,8 +80,11 @@ const harness = (
         confirmedHeadHash: "aa".repeat(28),
         liveQueueHeaderHashes: new Set(["bb".repeat(28)]),
       };
-      if (hangs && options.hangAfterView === true)
-        return new Promise<never>(() => undefined);
+      if (hangs && options.hangAfterView === true) await hold();
+      for (const header of pendingHeaders) {
+        attestations.push(header);
+        pendingHeaders.delete(header);
+      }
       return emptyTick();
     },
     runAvailabilityResponse: async () => undefined,
@@ -80,19 +103,22 @@ const harness = (
     },
     latestL1View: () => view,
     latestL1ProgressAtMs: () => progressAt,
-    setRetentionReadiness: (snapshot) => {
-      readiness = snapshot;
+    setRetentionReadiness: (update) => {
+      readiness = update(
+        readiness ?? {
+          status: "not_checked",
+          scanned: 0,
+          retained: 0,
+          prunable: 0,
+          alerting: 0,
+        },
+      );
     },
     l1ViewFatalMs: FATAL_MS,
+    l1ViewStaleMs: STALE_MS,
     startedAtMs: START,
     nowMs: () => now,
     write: (_stream, line) => lines.push(line),
-    shutdown: async () => {
-      shutdowns += 1;
-      await options.shutdown?.();
-    },
-    exit: (code) => exits.push(code),
-    shutdownGraceMs: 10,
   });
   return {
     runner,
@@ -108,58 +134,103 @@ const harness = (
     startHanging: () => {
       hangs = true;
     },
-    exits,
+    release: () => release?.(),
+    headerAppears: (header: string) => pendingHeaders.add(header),
+    attestations,
     lines,
+    events: (name: string) =>
+      lines
+        .filter((line) => line.includes(`"event":"${name}"`))
+        .map((line) => JSON.parse(line) as Record<string, unknown>),
     retentionRuns,
-    shutdowns: () => shutdowns,
     readiness: () => readiness,
   };
 };
 
-describe("committee tick runner L1-view exit rule", () => {
+const flush = (): Promise<void> =>
+  new Promise((resolve) => setImmediate(resolve));
+
+describe("committee tick runner L1-view action gate", () => {
+  let exitSpy: MockInstance<typeof process.exit>;
+  beforeEach(() => {
+    exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("the tick runner must never exit the process");
+    });
+  });
+  afterEach(() => {
+    expect(exitSpy).not.toHaveBeenCalled();
+    exitSpy.mockRestore();
+  });
+
   it("runs retention only against a view accepted this tick", async () => {
     const h = harness();
     await h.runner.runTick();
     expect(h.retentionRuns).toEqual([START]);
     expect(h.readiness()?.status).toBe("ok");
+    expect(h.runner.liveness()).toEqual({ consecutiveRetentionSkips: 0 });
   });
 
-  it("skips retention and reports l1_view_stale until the deadline, then exits 70 once", async () => {
+  it("stays up past the deadline, refuses every action while the view is stale, and resumes with exactly one attestation", async () => {
     const h = harness();
     await h.runner.runTick();
     h.setL1Readable(false);
+    h.headerAppears(PENDING_HEADER);
 
     h.advance(FATAL_MS);
     await h.runner.runTick();
-    expect(h.exits).toEqual([]);
-    expect(h.retentionRuns).toEqual([START]);
+    expect(h.runner.liveness().l1ViewUnavailable).toBeUndefined();
     expect(h.readiness()).toMatchObject({
       status: "l1_view_stale",
       l1ViewAgeMs: FATAL_MS,
     });
-    const skipped = h.lines
-      .filter((line) => line.includes("retention_pass_skipped"))
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
-    expect(skipped).toEqual([
+    expect(h.events("retention_pass_skipped")).toEqual([
       expect.objectContaining({
         l1ViewAgeMs: FATAL_MS,
+        consecutiveSkips: 1,
         error: "ogmios connection refused",
       }),
     ]);
 
-    h.advance(1);
-    await h.runner.runTick();
-    expect(h.exits).toEqual([L1_VIEW_UNAVAILABLE_EXIT_CODE]);
-    expect(L1_VIEW_UNAVAILABLE_EXIT_CODE).toBe(70);
-    expect(h.shutdowns()).toBe(1);
+    // Past the deadline for several more ticks: still ticking, nothing
+    // attested or pruned, one entry event, readiness names the state.
+    for (let tick = 0; tick < 4; tick += 1) {
+      h.advance(FATAL_MS);
+      await h.runner.runTick();
+    }
+    expect(h.attestations).toEqual([]);
+    expect(h.retentionRuns).toEqual([START]);
+    expect(h.readiness()?.status).toBe("l1_view_stale");
+    expect(h.runner.liveness()).toEqual({
+      l1ViewUnavailable: { l1ViewAgeMs: 5 * FATAL_MS, l1ViewFatalMs: FATAL_MS },
+      consecutiveRetentionSkips: 5,
+    });
+    expect(h.events("l1_view_unavailable")).toEqual([
+      {
+        event: "l1_view_unavailable",
+        l1ViewAgeMs: 2 * FATAL_MS,
+        l1ViewFatalMs: FATAL_MS,
+      },
+    ]);
 
-    h.advance(1);
+    h.setL1Readable(true);
+    h.advance(1_000);
     await h.runner.runTick();
-    expect(h.exits).toEqual([70]);
-    expect(h.shutdowns()).toBe(1);
+    h.advance(1_000);
+    await h.runner.runTick();
+    expect(h.attestations).toEqual([PENDING_HEADER]);
+    expect(h.retentionRuns).toEqual([
+      START,
+      START + 5 * FATAL_MS + 1_000,
+      START + 5 * FATAL_MS + 2_000,
+    ]);
+    expect(h.readiness()?.status).toBe("ok");
+    expect(h.runner.liveness()).toEqual({ consecutiveRetentionSkips: 0 });
+    expect(h.events("l1_view_recovered")).toEqual([
+      expect.objectContaining({ unavailableForMs: 3 * FATAL_MS + 1_000 }),
+    ]);
   });
 
-  it("recovers when a fresh view arrives before the deadline", async () => {
+  it("recovers before the deadline without ever entering the unavailable state", async () => {
     const h = harness();
     await h.runner.runTick();
     h.setL1Readable(false);
@@ -170,19 +241,19 @@ describe("committee tick runner L1-view exit rule", () => {
     h.advance(FATAL_MS - 1);
     await h.runner.runTick();
     expect(h.readiness()?.status).toBe("ok");
-    expect(h.exits).toEqual([]);
+    expect(h.events("l1_view_unavailable")).toEqual([]);
   });
 
-  it("counts catch-up progress toward a view against the deadline, and exits once it stops", async () => {
+  it("counts catch-up progress toward a view against the deadline, and reports unavailable once it stops", async () => {
     const h = harness();
     await h.runner.runTick();
     h.setCatchingUp(true);
     // Catching up for several deadlines' worth of time, progressing on
-    // every tick: no view is accepted, nothing is pruned, and no exit.
+    // every tick: no view is accepted, nothing is pruned, not unavailable.
     for (let tick = 0; tick < 5; tick += 1) {
       h.advance(FATAL_MS);
       await h.runner.runTick();
-      expect(h.exits).toEqual([]);
+      expect(h.runner.liveness().l1ViewUnavailable).toBeUndefined();
       expect(h.readiness()?.status).toBe("l1_view_stale");
     }
     expect(h.retentionRuns).toEqual([START]);
@@ -191,10 +262,13 @@ describe("committee tick runner L1-view exit rule", () => {
     h.setL1Readable(false);
     h.advance(FATAL_MS);
     await h.runner.runTick();
-    expect(h.exits).toEqual([]);
+    expect(h.runner.liveness().l1ViewUnavailable).toBeUndefined();
     h.advance(1);
     await h.runner.runTick();
-    expect(h.exits).toEqual([L1_VIEW_UNAVAILABLE_EXIT_CODE]);
+    expect(h.runner.liveness().l1ViewUnavailable).toEqual({
+      l1ViewAgeMs: FATAL_MS + 1,
+      l1ViewFatalMs: FATAL_MS,
+    });
   });
 
   it("measures the deadline from startup when no view was ever accepted", async () => {
@@ -206,69 +280,67 @@ describe("committee tick runner L1-view exit rule", () => {
       l1ViewAgeMs: 0,
     });
     h.advance(FATAL_MS + 1);
+    expect(h.runner.liveness().l1ViewUnavailable?.l1ViewAgeMs).toBe(
+      FATAL_MS + 1,
+    );
     await h.runner.runTick();
-    expect(h.exits).toEqual([70]);
+    expect(h.events("l1_view_unavailable")).toHaveLength(1);
   });
 
-  it("applies the deadline while a hung tick that never read L1 is still running", async () => {
+  it("reports a hung tick that never read L1 without starting another, and recovers when it settles", async () => {
     const h = harness({ hangBeforeView: true });
     await h.runner.runTick();
     h.startHanging();
     h.advance(1_000);
-    // Never awaited: this tick hangs forever.
-    void h.runner.runTick();
+    const hung = h.runner.runTick();
     h.advance(FATAL_MS - 1_000);
     await h.runner.runTick();
-    expect(h.exits).toEqual([]);
     expect(h.readiness()).toMatchObject({
       status: "l1_view_stale",
       l1ViewAgeMs: FATAL_MS,
     });
-    expect(
-      h.lines.some((line) => line.includes('"reason":"tick_in_flight"')),
-    ).toBe(true);
-    h.advance(1);
+    expect(h.events("committee_tick_overlap_prevented")).toHaveLength(1);
+    expect(h.runner.liveness().tickHung).toBeUndefined();
+    h.advance(1_001);
     await h.runner.runTick();
-    expect(h.exits).toEqual([70]);
-    expect(h.shutdowns()).toBe(1);
-    h.advance(1);
-    await h.runner.runTick();
-    expect(h.exits).toEqual([70]);
+    expect(h.runner.liveness()).toMatchObject({
+      l1ViewUnavailable: { l1ViewAgeMs: FATAL_MS + 1_001 },
+      tickHung: { inFlightMs: FATAL_MS + 1 },
+    });
+    // The held tick settles and reads L1: the next state is live again.
+    h.release();
+    await hung;
+    expect(h.runner.liveness()).toEqual({ consecutiveRetentionSkips: 0 });
+    expect(h.events("l1_view_recovered")).toHaveLength(1);
   });
 
-  it("does not report a slow tick that already read L1 as stale, but still exits past the deadline", async () => {
+  it("does not report a slow tick that already read L1 as stale, and reports it hung past the deadline", async () => {
     const h = harness({ hangAfterView: true });
     await h.runner.runTick();
     h.startHanging();
     h.advance(1_000);
-    void h.runner.runTick();
+    const hung = h.runner.runTick();
+    await flush();
     h.advance(FATAL_MS);
     await h.runner.runTick();
-    expect(h.exits).toEqual([]);
     expect(h.readiness()?.status).toBe("ok");
+    expect(h.runner.liveness().tickHung).toBeUndefined();
     h.advance(1);
-    await h.runner.runTick();
-    expect(h.exits).toEqual([70]);
-  });
-
-  it("exits even when the shutdown hangs", async () => {
-    const h = harness({
-      hangBeforeView: true,
-      shutdown: () => new Promise<never>(() => undefined),
+    expect(h.runner.liveness()).toMatchObject({
+      l1ViewUnavailable: { l1ViewAgeMs: FATAL_MS + 1 },
+      tickHung: { inFlightMs: FATAL_MS + 1 },
     });
-    h.startHanging();
-    void h.runner.runTick();
-    h.advance(FATAL_MS + 1);
-    await h.runner.runTick();
-    expect(h.exits).toEqual([70]);
+    h.release();
+    await hung;
+    expect(h.runner.liveness().tickHung).toBeUndefined();
   });
 
   it("throws the typed error from the single-pass retention step", async () => {
     const h = harness();
     h.advance(FATAL_MS + 1);
-    await expect(
-      h.runner.runRetentionStep(START + FATAL_MS + 1),
-    ).rejects.toBeInstanceOf(L1ViewUnavailableError);
+    await expect(h.runner.runRetentionStep(undefined)).rejects.toBeInstanceOf(
+      L1ViewUnavailableError,
+    );
   });
 });
 
@@ -298,8 +370,6 @@ describe("slow committee tick log", () => {
       startedAtMs: START,
       nowMs: () => now,
       write: (_stream, line) => lines.push(line),
-      shutdown: async () => undefined,
-      exit: () => undefined,
       slowTickMs: 15_000,
     });
     return { runner, lines };
@@ -352,7 +422,6 @@ describe("committee tick runner pooled DA bond read", () => {
     expect(h.lines).toEqual(["pool reader broke\n"]);
     expect(h.retentionRuns).toEqual([START]);
     expect(h.readiness()?.status).toBe("ok");
-    expect(h.exits).toEqual([]);
   });
 });
 

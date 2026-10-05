@@ -1,7 +1,143 @@
-diff --git a/dist/index.js b/dist/index.js
---- a/dist/index.js
-+++ b/dist/index.js
-@@ -2024,15 +2024,22 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index deda7376b033f7432eafd1d9e67a4d39c245e608..fa3c99eab78c2eb31db4444b4257330d7fd9f6e8 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -1065,12 +1065,17 @@ var Kupmios = class {
+   kupoUrl;
+   ogmiosUrl;
+   options;
++  httpLayer;
+   requestTimeoutMs;
+   awaitTxTimeoutMs;
+   constructor(kupoUrl, ogmiosUrl, options = {}) {
+     this.kupoUrl = kupoUrl;
+     this.ogmiosUrl = ogmiosUrl;
+     this.options = options;
++    this.httpLayer = options.fetchImpl === void 0 ? import_platform2.FetchHttpClient.layer : import_effect6.Layer.provide(
++      import_platform2.FetchHttpClient.layer,
++      import_effect6.Layer.succeed(import_platform2.FetchHttpClient.Fetch, options.fetchImpl)
++    );
+     this.requestTimeoutMs = validateTimeout(
+       "requestTimeoutMs",
+       options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS2
+@@ -1100,7 +1105,7 @@ var Kupmios = class {
+         ),
+         import_effect6.Effect.timeout(this.requestTimeoutMs),
+         catchProviderError("ogmios", "queryLedgerState/protocolParameters"),
+-        import_effect6.Effect.provide(import_platform2.FetchHttpClient.layer)
++        import_effect6.Effect.provide(this.httpLayer)
+       ),
+       "ogmios",
+       "queryLedgerState/protocolParameters"
+@@ -1135,7 +1140,7 @@ var Kupmios = class {
+         ),
+         import_effect6.Effect.timeout(this.requestTimeoutMs),
+         catchProviderError("ogmios", "queryLedgerState/treasuryAndReserves"),
+-        import_effect6.Effect.provide(import_platform2.FetchHttpClient.layer)
++        import_effect6.Effect.provide(this.httpLayer)
+       ),
+       "ogmios",
+       "queryLedgerState/treasuryAndReserves"
+@@ -1158,7 +1163,7 @@ var Kupmios = class {
+         import_effect6.Effect.map(kupmiosUtxosToUtxos),
+         import_effect6.Effect.timeout(this.requestTimeoutMs),
+         catchProviderError("kupo", "getUtxos"),
+-        import_effect6.Effect.provide(import_platform2.FetchHttpClient.layer)
++        import_effect6.Effect.provide(this.httpLayer)
+       ),
+       "kupo",
+       "getUtxos"
+@@ -1177,7 +1182,7 @@ var Kupmios = class {
+         import_effect6.Effect.map(kupmiosUtxosToUtxos),
+         import_effect6.Effect.timeout(this.requestTimeoutMs),
+         catchProviderError("kupo", "getUtxosWithUnit"),
+-        import_effect6.Effect.provide(import_platform2.FetchHttpClient.layer)
++        import_effect6.Effect.provide(this.httpLayer)
+       ),
+       "kupo",
+       "getUtxosWithUnit"
+@@ -1201,7 +1206,7 @@ var Kupmios = class {
+         import_effect6.Effect.map(kupmiosUtxosToUtxos),
+         import_effect6.Effect.timeout(this.requestTimeoutMs),
+         catchProviderError("kupo", "getUtxosWithPolicy"),
+-        import_effect6.Effect.provide(import_platform2.FetchHttpClient.layer)
++        import_effect6.Effect.provide(this.httpLayer)
+       ),
+       "kupo",
+       "getUtxosWithPolicy"
+@@ -1217,7 +1222,7 @@ var Kupmios = class {
+         import_effect6.Effect.map(kupmiosUtxosToUtxos),
+         import_effect6.Effect.timeout(this.requestTimeoutMs),
+         catchProviderError("kupo", "getUtxoByUnit"),
+-        import_effect6.Effect.provide(import_platform2.FetchHttpClient.layer)
++        import_effect6.Effect.provide(this.httpLayer)
+       ),
+       "kupo",
+       "getUtxoByUnit"
+@@ -1246,7 +1251,7 @@ var Kupmios = class {
+       )
+     );
+     const utxos = await runProviderEffect(
+-      (0, import_effect6.pipe)(program, import_effect6.Effect.provide(import_platform2.FetchHttpClient.layer)),
++      (0, import_effect6.pipe)(program, import_effect6.Effect.provide(this.httpLayer)),
+       "kupo",
+       "getUtxosByOutRef"
+     );
+@@ -1272,7 +1277,7 @@ var Kupmios = class {
+           schema,
+           this.options.ogmiosHeader
+         ),
+-        import_effect6.Effect.provide(import_platform2.FetchHttpClient.layer),
++        import_effect6.Effect.provide(this.httpLayer),
+         import_effect6.Effect.timeout(this.requestTimeoutMs),
+         catchProviderError("ogmios", "queryLedgerState/rewardAccountSummaries")
+       ),
+@@ -1296,7 +1301,7 @@ var Kupmios = class {
+     const result = await runProviderEffect(
+       (0, import_effect6.pipe)(
+         makeGet(pattern, schema, this.options.kupoHeader),
+-        import_effect6.Effect.provide(import_platform2.FetchHttpClient.layer),
++        import_effect6.Effect.provide(this.httpLayer),
+         import_effect6.Effect.timeout(this.requestTimeoutMs),
+         import_effect6.Effect.flatMap(import_effect6.Effect.fromNullable),
+         catchProviderError("kupo", "getDatum")
+@@ -1316,7 +1321,7 @@ var Kupmios = class {
+         makeGet(pattern, schema, this.options.kupoHeader),
+         import_effect6.Effect.timeout(this.requestTimeoutMs),
+         catchProviderError("kupo", "getTransactionStatus"),
+-        import_effect6.Effect.provide(import_platform2.FetchHttpClient.layer)
++        import_effect6.Effect.provide(this.httpLayer)
+       ),
+       "kupo",
+       "getTransactionStatus",
+@@ -1342,7 +1347,7 @@ var Kupmios = class {
+     const result = await runProviderEffect(
+       (0, import_effect6.pipe)(
+         makeGet(pattern, schema, this.options.kupoHeader),
+-        import_effect6.Effect.provide(import_platform2.FetchHttpClient.layer),
++        import_effect6.Effect.provide(this.httpLayer),
+         import_effect6.Effect.repeat({
+           schedule: import_effect6.Schedule.exponential(checkInterval),
+           until: (result2) => result2.length > 0
+@@ -1380,7 +1385,7 @@ var Kupmios = class {
+           schema,
+           this.options.ogmiosHeader
+         ),
+-        import_effect6.Effect.provide(import_platform2.FetchHttpClient.layer),
++        import_effect6.Effect.provide(this.httpLayer),
+         import_effect6.Effect.timeout(this.requestTimeoutMs),
+         catchProviderError("ogmios", "submitTransaction")
+       ),
+@@ -1413,7 +1418,7 @@ var Kupmios = class {
+           schema,
+           this.options.ogmiosHeader
+         ),
+-        import_effect6.Effect.provide(import_platform2.FetchHttpClient.layer),
++        import_effect6.Effect.provide(this.httpLayer),
+         import_effect6.Effect.timeout(this.requestTimeoutMs),
+         catchProviderError("ogmios", "evaluateTransaction")
+       ),
+@@ -2058,15 +2063,22 @@ It does not exist or was already spent.`
              consumedHashes.add(credential.hash);
              break;
            } else if (nativeHashesOptional[credential.hash]) {
@@ -33,10 +169,197 @@ diff --git a/dist/index.js b/dist/index.js
                throw new Error(
                  `Invalid native script witness. Script hash: ${credential.hash}`
                );
-diff --git a/dist/index.cjs b/dist/index.cjs
---- a/dist/index.cjs
-+++ b/dist/index.cjs
-@@ -2058,15 +2058,22 @@
+diff --git a/dist/index.d.cts b/dist/index.d.cts
+index ffbff9622ef5a457da58bdb23b24b5ccbd4267e0..a960451ccf3fcabb493802e88fb16d5c408bd7a3 100644
+--- a/dist/index.d.cts
++++ b/dist/index.d.cts
+@@ -76,6 +76,8 @@ declare class Blockfrost implements Provider {
+ }
+ 
+ interface KupmiosOptions {
++    /** Per-instance HTTP transport. Receives the provider request abort signal. */
++    readonly fetchImpl?: typeof globalThis.fetch;
+     readonly ogmiosHeader?: Record<string, string>;
+     readonly kupoHeader?: Record<string, string>;
+     /** One-shot Kupo and Ogmios request deadline in milliseconds. @default 30000 */
+@@ -119,6 +121,7 @@ declare class Kupmios implements Provider {
+     private readonly kupoUrl;
+     private readonly ogmiosUrl;
+     private readonly options;
++    private readonly httpLayer;
+     private readonly requestTimeoutMs;
+     private readonly awaitTxTimeoutMs;
+     constructor(kupoUrl: string, ogmiosUrl: string, options?: KupmiosOptions);
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index ffbff9622ef5a457da58bdb23b24b5ccbd4267e0..a960451ccf3fcabb493802e88fb16d5c408bd7a3 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -76,6 +76,8 @@ declare class Blockfrost implements Provider {
+ }
+ 
+ interface KupmiosOptions {
++    /** Per-instance HTTP transport. Receives the provider request abort signal. */
++    readonly fetchImpl?: typeof globalThis.fetch;
+     readonly ogmiosHeader?: Record<string, string>;
+     readonly kupoHeader?: Record<string, string>;
+     /** One-shot Kupo and Ogmios request deadline in milliseconds. @default 30000 */
+@@ -119,6 +121,7 @@ declare class Kupmios implements Provider {
+     private readonly kupoUrl;
+     private readonly ogmiosUrl;
+     private readonly options;
++    private readonly httpLayer;
+     private readonly requestTimeoutMs;
+     private readonly awaitTxTimeoutMs;
+     constructor(kupoUrl: string, ogmiosUrl: string, options?: KupmiosOptions);
+diff --git a/dist/index.js b/dist/index.js
+index 15582610383667f66f7bfb108988b2cf943ccad1..53fd62a9b36d6bbace3d77be2d672b79a3c0f165 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -562,7 +562,7 @@ var lucid = package_default.version;
+ // src/kupmios.ts
+ import { applyDoubleCborEncoding as applyDoubleCborEncoding2, fromUnit as fromUnit2 } from "@lucid-evolution/utils";
+ import { Schema as S3 } from "effect";
+-import { Cause, Effect as Effect2, Exit, pipe as pipe3, Array as _Array, Schedule } from "effect";
++import { Cause, Effect as Effect2, Exit, Layer, pipe as pipe3, Array as _Array, Schedule } from "effect";
+ 
+ // src/internal/ogmios.ts
+ import { Schema as S } from "effect";
+@@ -1027,12 +1027,17 @@ var Kupmios = class {
+   kupoUrl;
+   ogmiosUrl;
+   options;
++  httpLayer;
+   requestTimeoutMs;
+   awaitTxTimeoutMs;
+   constructor(kupoUrl, ogmiosUrl, options = {}) {
+     this.kupoUrl = kupoUrl;
+     this.ogmiosUrl = ogmiosUrl;
+     this.options = options;
++    this.httpLayer = options.fetchImpl === void 0 ? FetchHttpClient.layer : Layer.provide(
++      FetchHttpClient.layer,
++      Layer.succeed(FetchHttpClient.Fetch, options.fetchImpl)
++    );
+     this.requestTimeoutMs = validateTimeout(
+       "requestTimeoutMs",
+       options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS2
+@@ -1062,7 +1067,7 @@ var Kupmios = class {
+         ),
+         Effect2.timeout(this.requestTimeoutMs),
+         catchProviderError("ogmios", "queryLedgerState/protocolParameters"),
+-        Effect2.provide(FetchHttpClient.layer)
++        Effect2.provide(this.httpLayer)
+       ),
+       "ogmios",
+       "queryLedgerState/protocolParameters"
+@@ -1097,7 +1102,7 @@ var Kupmios = class {
+         ),
+         Effect2.timeout(this.requestTimeoutMs),
+         catchProviderError("ogmios", "queryLedgerState/treasuryAndReserves"),
+-        Effect2.provide(FetchHttpClient.layer)
++        Effect2.provide(this.httpLayer)
+       ),
+       "ogmios",
+       "queryLedgerState/treasuryAndReserves"
+@@ -1120,7 +1125,7 @@ var Kupmios = class {
+         Effect2.map(kupmiosUtxosToUtxos),
+         Effect2.timeout(this.requestTimeoutMs),
+         catchProviderError("kupo", "getUtxos"),
+-        Effect2.provide(FetchHttpClient.layer)
++        Effect2.provide(this.httpLayer)
+       ),
+       "kupo",
+       "getUtxos"
+@@ -1139,7 +1144,7 @@ var Kupmios = class {
+         Effect2.map(kupmiosUtxosToUtxos),
+         Effect2.timeout(this.requestTimeoutMs),
+         catchProviderError("kupo", "getUtxosWithUnit"),
+-        Effect2.provide(FetchHttpClient.layer)
++        Effect2.provide(this.httpLayer)
+       ),
+       "kupo",
+       "getUtxosWithUnit"
+@@ -1163,7 +1168,7 @@ var Kupmios = class {
+         Effect2.map(kupmiosUtxosToUtxos),
+         Effect2.timeout(this.requestTimeoutMs),
+         catchProviderError("kupo", "getUtxosWithPolicy"),
+-        Effect2.provide(FetchHttpClient.layer)
++        Effect2.provide(this.httpLayer)
+       ),
+       "kupo",
+       "getUtxosWithPolicy"
+@@ -1179,7 +1184,7 @@ var Kupmios = class {
+         Effect2.map(kupmiosUtxosToUtxos),
+         Effect2.timeout(this.requestTimeoutMs),
+         catchProviderError("kupo", "getUtxoByUnit"),
+-        Effect2.provide(FetchHttpClient.layer)
++        Effect2.provide(this.httpLayer)
+       ),
+       "kupo",
+       "getUtxoByUnit"
+@@ -1208,7 +1213,7 @@ var Kupmios = class {
+       )
+     );
+     const utxos = await runProviderEffect(
+-      pipe3(program, Effect2.provide(FetchHttpClient.layer)),
++      pipe3(program, Effect2.provide(this.httpLayer)),
+       "kupo",
+       "getUtxosByOutRef"
+     );
+@@ -1234,7 +1239,7 @@ var Kupmios = class {
+           schema,
+           this.options.ogmiosHeader
+         ),
+-        Effect2.provide(FetchHttpClient.layer),
++        Effect2.provide(this.httpLayer),
+         Effect2.timeout(this.requestTimeoutMs),
+         catchProviderError("ogmios", "queryLedgerState/rewardAccountSummaries")
+       ),
+@@ -1258,7 +1263,7 @@ var Kupmios = class {
+     const result = await runProviderEffect(
+       pipe3(
+         makeGet(pattern, schema, this.options.kupoHeader),
+-        Effect2.provide(FetchHttpClient.layer),
++        Effect2.provide(this.httpLayer),
+         Effect2.timeout(this.requestTimeoutMs),
+         Effect2.flatMap(Effect2.fromNullable),
+         catchProviderError("kupo", "getDatum")
+@@ -1278,7 +1283,7 @@ var Kupmios = class {
+         makeGet(pattern, schema, this.options.kupoHeader),
+         Effect2.timeout(this.requestTimeoutMs),
+         catchProviderError("kupo", "getTransactionStatus"),
+-        Effect2.provide(FetchHttpClient.layer)
++        Effect2.provide(this.httpLayer)
+       ),
+       "kupo",
+       "getTransactionStatus",
+@@ -1304,7 +1309,7 @@ var Kupmios = class {
+     const result = await runProviderEffect(
+       pipe3(
+         makeGet(pattern, schema, this.options.kupoHeader),
+-        Effect2.provide(FetchHttpClient.layer),
++        Effect2.provide(this.httpLayer),
+         Effect2.repeat({
+           schedule: Schedule.exponential(checkInterval),
+           until: (result2) => result2.length > 0
+@@ -1342,7 +1347,7 @@ var Kupmios = class {
+           schema,
+           this.options.ogmiosHeader
+         ),
+-        Effect2.provide(FetchHttpClient.layer),
++        Effect2.provide(this.httpLayer),
+         Effect2.timeout(this.requestTimeoutMs),
+         catchProviderError("ogmios", "submitTransaction")
+       ),
+@@ -1375,7 +1380,7 @@ var Kupmios = class {
+           schema,
+           this.options.ogmiosHeader
+         ),
+-        Effect2.provide(FetchHttpClient.layer),
++        Effect2.provide(this.httpLayer),
+         Effect2.timeout(this.requestTimeoutMs),
+         catchProviderError("ogmios", "evaluateTransaction")
+       ),
+@@ -2024,15 +2029,22 @@ It does not exist or was already spent.`
              consumedHashes.add(credential.hash);
              break;
            } else if (nativeHashesOptional[credential.hash]) {

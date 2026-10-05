@@ -12,6 +12,7 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import { readProverFundingSubmissionAuthority } from "./prover-funding-authority.reconciliation-only.js";
 import {
   readRecord,
   snapshot,
@@ -29,11 +30,6 @@ import {
 } from "./prover-funding-reservation.js";
 import { isWatcherProverFundingReservationConflict } from "./sqlite-prover-funding-reservation-store.js";
 
-/**
- * Atomically reserves the exact live wallet inputs, then mints the only
- * permit accepted by production runners. Operator config cannot provide a
- * reservation identity, revision, or body transition.
- */
 export const createWatcherProverFundingAuthority = async (input: {
   readonly category: FraudProofCatalogueCategoryName;
   readonly runner: WorkflowAdapterRunner;
@@ -41,8 +37,10 @@ export const createWatcherProverFundingAuthority = async (input: {
   readonly rollbackGeneration: string;
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly calculation: WatcherRuntimeProverFundingCalculation;
+  readonly selectionCalculation?: WatcherRuntimeProverFundingCalculation;
   readonly policy: WorkflowRuntimeFundingPolicy;
   readonly reservationPolicy?: WorkflowRuntimeFundingPolicy;
+  readonly capacityPolicy?: WorkflowRuntimeFundingPolicy;
   readonly decisionDigest: string;
   readonly walletAddress: string;
   readonly walletUtxos: readonly UTxO[];
@@ -81,20 +79,16 @@ export const createWatcherProverFundingAuthority = async (input: {
       "reconciliation funding requires its existing durable reservation",
     );
   const leasedElsewhere = new Set(
-    records
-      .filter((record) => record !== existing && record.state !== "released")
-      .flatMap((record) =>
-        [
-          ...record.activeInputs,
-          ...(record.pendingTransition?.producedInputs ?? []),
-        ].map(({ outRef }) => outRef),
-      ),
+    await input.store.readReservedOutRefs({
+      excludingReservationId: existing?.reservationId,
+    }),
   );
   const plan =
     existing === undefined
       ? planWatcherProverFundingReservation({
           deploymentIdentity: input.deploymentIdentity,
           calculation: input.calculation,
+          selectionCalculation: input.selectionCalculation,
           decisionDigest: input.decisionDigest,
           walletAddress: input.walletAddress,
           utxos: input.walletUtxos.filter(
@@ -109,17 +103,26 @@ export const createWatcherProverFundingAuthority = async (input: {
           walletAddress: input.walletAddress,
           record: existing,
         });
+  const { reconciliationOnly, assertSubmissionAuthority } =
+    await readProverFundingSubmissionAuthority(
+      input.store,
+      plan.reservationId,
+      existing !== undefined,
+    );
   // Released reservations cannot spend; authenticated reobservation can reopen
   // provisional completion before its terminal anchor.
-  if (existing?.state !== "released") await input.store.reserve(plan);
+  if (existing?.state !== "released" && !reconciliationOnly)
+    await input.store.reserve(plan);
 
   const load = async () =>
     await readRecord({ store: input.store, reservationId: plan.reservationId });
   input.onReserved?.(await load());
   const port: WorkflowFundingReservationPort = Object.freeze({
+    assertSubmissionAuthority,
     reobserve: async ({
       expectedRevision,
       transactionHash,
+      adoption,
     }: Parameters<
       NonNullable<WorkflowFundingReservationPort["reobserve"]>
     >[0]) => {
@@ -130,10 +133,22 @@ export const createWatcherProverFundingAuthority = async (input: {
         throw new Error(
           "prover funding store cannot reobserve signed attempts",
         );
-      const candidates = await input.store.readReobservationInputs({
-        reservationId: plan.reservationId,
-        transactionHash,
-      });
+      // Collateral never blocks a later action: collateral another reservation
+      // now holds is not reclaimed. The exact bytes still land while it is
+      // unspent; once it is spent the attempt is invalidated and re-signed.
+      const elsewhere = new Set(
+        await input.store.readReservedOutRefs({
+          excludingReservationId: plan.reservationId,
+        }),
+      );
+      const candidates = (
+        await input.store.readReobservationInputs({
+          reservationId: plan.reservationId,
+          transactionHash,
+        })
+      ).filter(
+        ({ outRef, role }) => role !== "collateral" || !elsewhere.has(outRef),
+      );
       const roles = new Map(
         candidates.map(({ outRef, role }) => [outRef, role]),
       );
@@ -175,6 +190,7 @@ export const createWatcherProverFundingAuthority = async (input: {
             expectedRevision,
             transactionHash,
             inputs,
+            ...(adoption === undefined ? {} : { adoption }),
           }),
           rollbackGeneration: input.rollbackGeneration,
         });
@@ -183,6 +199,39 @@ export const createWatcherProverFundingAuthority = async (input: {
         throw error;
       }
     },
+    readSupersededAttemptFundingOutRefs: async () =>
+      (await input.store.readSupersededAttemptFundingOutRefs?.({
+        reservationId: plan.reservationId,
+      })) ?? [],
+    retireLegacyAbandonment: async ({
+      expectedRevision,
+      transactionHash,
+      retirement,
+    }: Parameters<
+      NonNullable<WorkflowFundingReservationPort["retireLegacyAbandonment"]>
+    >[0]) => {
+      if (input.store.retireLegacyAbandonment === undefined)
+        throw new Error("Funding store cannot authenticate legacy retirement");
+      assertWorkflowActuationPermitIdentity({
+        permit: input.actuationPermit,
+        category: input.category,
+        rollbackGeneration: input.rollbackGeneration,
+      });
+      return snapshot({
+        plan,
+        record: await input.store.retireLegacyAbandonment({
+          plan,
+          expectedRevision,
+          transactionHash,
+          retirement,
+        }),
+        rollbackGeneration: input.rollbackGeneration,
+      });
+    },
+    readLegacyAbandonedTransactions: async () =>
+      (await input.store.readLegacyAbandonedTransactions?.({
+        reservationId: plan.reservationId,
+      })) ?? [],
     readAbandonmentHandoff: async () =>
       await input.store.readAbandonmentHandoff({
         reservationId: plan.reservationId,
@@ -281,33 +330,28 @@ export const createWatcherProverFundingAuthority = async (input: {
       const walletUtxos = await input.readWalletUtxos();
       if (walletUtxos.some((utxo) => utxo.address !== plan.walletAddress))
         throw new Error("refreshed funding wallet returned a foreign address");
-      const others = (await input.store.readAll()).map(
-        parseWatcherProverFundingReservationRecord,
-      );
       const leased = new Set(
-        others
-          .filter(
-            (record) =>
-              record.reservationId !== plan.reservationId &&
-              record.state !== "released",
-          )
-          .flatMap((record) =>
-            [
-              ...record.activeInputs,
-              ...(record.pendingTransition?.producedInputs ?? []),
-            ].map(({ outRef }) => outRef),
-          ),
+        await input.store.readReservedOutRefs({
+          excludingReservationId: plan.reservationId,
+        }),
       );
       try {
         const refreshedPlan = planWatcherProverFundingReservation({
           deploymentIdentity: input.deploymentIdentity,
           calculation: input.calculation,
+          selectionCalculation: input.selectionCalculation,
           decisionDigest: input.decisionDigest,
           walletAddress: input.walletAddress,
           utxos: walletUtxos.filter(
             ({ txHash, outputIndex }) =>
               !leased.has(`${txHash}#${outputIndex}`),
           ),
+          // A replacement spends a superseded attempt's input as funding.
+          avoidCollateralOutRefs: (
+            (await input.store.readSupersededAttemptFundingOutRefs?.({
+              reservationId: plan.reservationId,
+            })) ?? []
+          ).flat(),
         });
         assertSubmission();
         await input.store.reserve(refreshedPlan, current.revision);
@@ -473,6 +517,7 @@ export const createWatcherProverFundingAuthority = async (input: {
     runner: input.runner,
     policy: input.policy,
     reservationPolicy: input.reservationPolicy,
+    capacityPolicy: input.capacityPolicy,
     actuationPermit: input.actuationPermit,
     rollbackGeneration: input.rollbackGeneration,
     port,

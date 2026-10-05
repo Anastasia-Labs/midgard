@@ -19,6 +19,7 @@ import {
   watcherFaultProofQueueIdentityDigest,
   type WatcherFaultProofQueueJournal,
 } from "./fault-proof-queue-journal.js";
+import { admitWatcherProofRunnerCompletion } from "./fault-proof-supervisor.admit-runner-completion.js";
 import {
   CANONICAL_NATURAL,
   DEPLOYMENT_FINGERPRINT,
@@ -186,12 +187,9 @@ export const createSupervisor = (input: {
     left: WatcherFaultProofJob,
     right: WatcherFaultProofJob,
   ): number => {
+    // Deadline work first; deadline-free work keeps arrival order behind it.
     if (left.deadline === null || right.deadline === null)
-      return left.deadline === right.deadline
-        ? 0
-        : left.deadline === null
-          ? -1
-          : 1;
+      return left.deadline === right.deadline ? 0 : left.deadline ? -1 : 1;
     const leftDeadline = BigInt(left.deadline.latestSafeStartAtMs);
     const rightDeadline = BigInt(right.deadline.latestSafeStartAtMs);
     if (leftDeadline !== rightDeadline) {
@@ -272,7 +270,7 @@ export const createSupervisor = (input: {
         const validationKey = `${job.rollbackGeneration}:${watcherSha256CanonicalJson(execution.entries)}`;
         const verification =
           completedValidations.get(key) === validationKey
-            ? { kind: "applicable" as const }
+            ? ({ kind: "applicable", confirmationDepth: 0 } as const)
             : await input.dependencies.verifyCompleted({
                 job,
                 execution,
@@ -286,7 +284,10 @@ export const createSupervisor = (input: {
           });
         if (verification.kind === "applicable") {
           rememberCompletion(key, validationKey);
-          progressAuthority.markCompleted(job);
+          await progressAuthority.markCompleted(job, {
+            execution,
+            confirmationDepth: verification.confirmationDepth,
+          });
           outcome = { kind: "completed", terminal: completed.event };
         } else {
           completedValidations.delete(key);
@@ -363,21 +364,20 @@ export const createSupervisor = (input: {
             "kind" in outcome &&
             outcome.kind === "completed"
           ) {
-            if (updated?.entries.at(-1)?.event.kind !== "completed")
-              throw new Error(
-                "proof runner reported completion without a completed journal",
-              );
-            if (actuationPermit !== null)
-              assertWorkflowActuationPermitIdentity({
-                permit: actuationPermit,
-                category: job.category,
-                rollbackGeneration: job.rollbackGeneration,
-              });
-            rememberCompletion(
-              key,
-              `${job.rollbackGeneration}:${watcherSha256CanonicalJson(updated.entries)}`,
-            );
-            progressAuthority.markCompleted(job);
+            outcome = await admitWatcherProofRunnerCompletion({
+              job,
+              execution: updated,
+              actuationPermit,
+              verifyCompleted: input.dependencies.verifyCompleted,
+              outcome,
+              onApplicable: async (verified) => {
+                rememberCompletion(
+                  key,
+                  `${job.rollbackGeneration}:${watcherSha256CanonicalJson(verified.execution.entries)}`,
+                );
+                await progressAuthority.markCompleted(job, verified);
+              },
+            });
           }
         }
       }

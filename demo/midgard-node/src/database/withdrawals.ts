@@ -25,7 +25,6 @@ export {
 export {
   clear,
   markFinalizedByEventIds,
-  pruneOlderThan,
   reopenAfterStateQueueCorrectionByEventIds,
   restoreCorrectedClassification,
   retrievePendingLedgerOutRefHexes,

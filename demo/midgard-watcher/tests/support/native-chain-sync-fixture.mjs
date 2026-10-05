@@ -34,6 +34,16 @@ if (mode === "retry_intersection" && startup.intersection.kind === "point") {
   process.exit(69);
 }
 
+// The node did not answer: the helper reports the given startup code.
+if (mode.startsWith("fail:")) {
+  emit({
+    code: mode.slice("fail:".length),
+    kind: "error",
+    schemaVersion: startup.schemaVersion,
+  });
+  process.exit(69);
+}
+
 if (mode === "no_ready") {
   setInterval(() => undefined, 1000);
   await new Promise(() => {});
@@ -132,12 +142,21 @@ if (
   emit({
     kind: "roll_backward",
     point: {
-      blockHash:
-        mode === "unknown_rollback" ? "dd".repeat(32) : "aa".repeat(32),
+      blockHash: ["unknown_rollback", "below_intersection"].includes(mode)
+        ? "dd".repeat(32)
+        : "aa".repeat(32),
       kind: "point",
-      slot: "100",
+      slot: mode === "below_intersection" ? "90" : "100",
     },
     schemaVersion: startup.schemaVersion,
     tip,
   });
+  if (mode === "below_intersection")
+    emit({
+      ...forward,
+      blockHash: "ee".repeat(32),
+      prevHash: "dd".repeat(32),
+      slot: "91",
+      blockNo: "9",
+    });
 }

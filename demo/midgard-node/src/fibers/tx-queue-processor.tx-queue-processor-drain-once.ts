@@ -58,7 +58,18 @@ export const hasUnseenTxQueueWake = (
   currentGeneration: bigint,
 ): boolean => currentGeneration !== handledGeneration;
 
-export const txQueueProcessorDrainOnce = (): Effect.Effect<
+/**
+ * Runs one drain loop if a drain slot is free. The slot is claimed and
+ * released as one bracket: the claim cannot be interrupted, and its release
+ * runs however the loop ends, so neither a defect nor a sibling's
+ * interruption between the claim and the loop can leak a slot.
+ */
+export const txQueueProcessorDrainOnce = (
+  hooks: {
+    /** Runs right after a slot is claimed; tests inject failures here. */
+    readonly afterSlotClaimed?: () => Effect.Effect<void>;
+  } = {},
+): Effect.Effect<
   void,
   DatabaseError | Error,
   | SqlClient
@@ -72,46 +83,54 @@ export const txQueueProcessorDrainOnce = (): Effect.Effect<
   Effect.gen(function* () {
     const globals = yield* Globals;
     const config = yield* NodeConfig;
-    const started = yield* Ref.modify(
-      globals.TX_QUEUE_PROCESSOR_ACTIVE,
-      (active) =>
-        active < config.VALIDATION_DRAIN_LOOPS
-          ? [true, active + 1]
-          : [false, active],
-    );
-    if (!started) {
-      yield* Metric.increment(validationCoalescedWakeupCounter);
-      return;
-    }
-    const active = yield* Ref.get(globals.TX_QUEUE_PROCESSOR_ACTIVE);
-    yield* validationDrainLoopsActiveGauge(Effect.succeed(BigInt(active)));
-    let handledGeneration = yield* Ref.get(globals.TX_QUEUE_WAKE_GENERATION);
-    yield* txQueueProcessorDrainLoop().pipe(
-      Effect.tap((generation) =>
-        Effect.sync(() => {
-          handledGeneration = generation;
-        }),
-      ),
-      Effect.asVoid,
-      Effect.ensuring(
+    let handledGeneration = 0n;
+    yield* Effect.acquireUseRelease(
+      Effect.gen(function* () {
+        const claimed = yield* Ref.modify(
+          globals.TX_QUEUE_PROCESSOR_ACTIVE,
+          (active) =>
+            active < config.VALIDATION_DRAIN_LOOPS
+              ? [true, active + 1]
+              : [false, active],
+        );
+        handledGeneration = yield* Ref.get(globals.TX_QUEUE_WAKE_GENERATION);
+        return claimed;
+      }),
+      (claimed) =>
         Effect.gen(function* () {
-          const count = yield* Ref.updateAndGet(
-            globals.TX_QUEUE_PROCESSOR_ACTIVE,
-            (activeCount) => Math.max(0, activeCount - 1),
-          );
-          yield* validationDrainLoopsActiveGauge(Effect.succeed(BigInt(count)));
-          const currentGeneration = yield* Ref.get(
-            globals.TX_QUEUE_WAKE_GENERATION,
-          );
-          if (hasUnseenTxQueueWake(handledGeneration, currentGeneration)) {
-            yield* Effect.forkDaemon(
-              txQueueProcessorDrainOnce().pipe(
-                Effect.catchAllCause(Effect.logWarning),
-              ),
-            );
+          if (!claimed) {
+            yield* Metric.increment(validationCoalescedWakeupCounter);
+            return;
           }
+          yield* hooks.afterSlotClaimed?.() ?? Effect.void;
+          const active = yield* Ref.get(globals.TX_QUEUE_PROCESSOR_ACTIVE);
+          yield* validationDrainLoopsActiveGauge(
+            Effect.succeed(BigInt(active)),
+          );
+          handledGeneration = yield* txQueueProcessorDrainLoop();
         }),
-      ),
+      (claimed) =>
+        claimed
+          ? Effect.gen(function* () {
+              const count = yield* Ref.updateAndGet(
+                globals.TX_QUEUE_PROCESSOR_ACTIVE,
+                (activeCount) => Math.max(0, activeCount - 1),
+              );
+              yield* validationDrainLoopsActiveGauge(
+                Effect.succeed(BigInt(count)),
+              );
+              const currentGeneration = yield* Ref.get(
+                globals.TX_QUEUE_WAKE_GENERATION,
+              );
+              if (hasUnseenTxQueueWake(handledGeneration, currentGeneration)) {
+                yield* Effect.forkDaemon(
+                  txQueueProcessorDrainOnce().pipe(
+                    Effect.catchAllCause(Effect.logWarning),
+                  ),
+                );
+              }
+            })
+          : Effect.void,
     );
   });
 

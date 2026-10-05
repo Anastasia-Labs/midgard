@@ -22,12 +22,14 @@ import {
   type FraudProofWorkflowTerminalVerifier,
   runFraudProofWorkflow,
 } from "../src/workflow/orchestrator.js";
+import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   type FraudProofReleaseFinalityAuthority,
 } from "../src/workflow/release-finality-policy.js";
+import { parseSignedWorkflowTransactionRetirement } from "../src/workflow/signed-transaction-retirement.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -175,9 +177,31 @@ export const terminal = (headerHash: string): FraudProofWorkflowTerminal => ({
   observedAt: {
     slot: "4242",
     blockHash: "44".repeat(32),
-    confirmationDepth: 30,
+    confirmationDepth: RELEASE_FINALITY_POLICY.automaticRecoveryMaxDepth + 2,
   },
 });
+
+/** Absence as canonical recovery reports it past the horizon: the attempt is
+ * retired, so even a journal without a funding reservation may replace it. */
+export const retiredNotFound = (transactionHash: string) => {
+  const release = { slot: "1000", blockNo: "50", blockHash: "ab".repeat(32) };
+  const tip = { slot: "10000", blockNo: "2211", blockHash: "ef".repeat(32) };
+  return {
+    kind: "not_found" as const,
+    retirement: parseSignedWorkflowTransactionRetirement(
+      {
+        transactionHash,
+        reason: "expired",
+        canonicalPoint: { ...tip, pointId: computeFraudProofRawL1PointId(tip) },
+        releaseFinalPoint: {
+          ...release,
+          pointId: computeFraudProofRawL1PointId(release),
+        },
+      },
+      transactionHash,
+    ),
+  };
+};
 
 export const terminalVerifier: FraudProofWorkflowTerminalVerifier = {
   verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,

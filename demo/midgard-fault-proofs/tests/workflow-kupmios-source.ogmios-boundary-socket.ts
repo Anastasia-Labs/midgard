@@ -141,7 +141,7 @@ export class OgmiosBoundarySocket implements FraudProofRawL1WebSocketLike {
             )
           : Promise.resolve(
               request.method === "acquireMempool"
-                ? { acquired: "mempool", slot: 1000 }
+                ? { acquired: "mempool", slot: this.behavior.tipSlot ?? 1000 }
                 : (this.behavior.mempoolPresent ?? false),
             );
       void operation.then((result) =>
@@ -168,21 +168,29 @@ export class OgmiosBoundarySocket implements FraudProofRawL1WebSocketLike {
           : {
               direction: "forward",
               block:
-                this.intersection.slot < 380
+                this.intersection.slot >= 400
                   ? {
-                      slot: 380,
-                      id: ANCESTOR,
-                      height: this.parentHeight,
-                      ancestor: EARLIER,
-                      transactions: this.transactions,
+                      slot: this.behavior.tipSlot ?? 1000,
+                      id: TIP,
+                      height: this.behavior.tipHeight ?? 100,
+                      ancestor: TARGET,
+                      transactions: [],
                     }
-                  : {
-                      slot: 400,
-                      id: TARGET,
-                      height: this.behavior.childHeight ?? 71,
-                      ancestor: this.childAncestor,
-                      transactions: this.transactions,
-                    },
+                  : this.intersection.slot < 380
+                    ? {
+                        slot: 380,
+                        id: ANCESTOR,
+                        height: this.parentHeight,
+                        ancestor: EARLIER,
+                        transactions: this.transactions,
+                      }
+                    : {
+                        slot: 400,
+                        id: TARGET,
+                        height: this.behavior.childHeight ?? 71,
+                        ancestor: this.childAncestor,
+                        transactions: this.transactions,
+                      },
             };
     const text =
       this.behavior.responseText ??

@@ -158,8 +158,9 @@ export const recordHubOracleNonce = async ({
     (state) =>
       transitionDeploymentStep(
         {
+          // `mode` is how the run state was created and must stay equal to
+          // its creation event; a fresh redeploy is recorded on the step.
           ...state,
-          mode: options.freshRedeploy ? "fresh" : state.mode,
           identity: {
             ...state.identity,
             network,
@@ -212,8 +213,9 @@ export const recordHubOracleNonceSubmitted = async ({
     (state) =>
       transitionDeploymentStep(
         {
+          // `mode` is how the run state was created and must stay equal to
+          // its creation event; a fresh redeploy is recorded on the step.
           ...state,
-          mode: options.freshRedeploy ? "fresh" : state.mode,
           identity: {
             ...state.identity,
             network,
@@ -264,8 +266,9 @@ export const recordHubOracleNonceTxHashConfirmed = async ({
     (state) =>
       transitionDeploymentStep(
         {
+          // `mode` is how the run state was created and must stay equal to
+          // its creation event; a fresh redeploy is recorded on the step.
           ...state,
-          mode: options.freshRedeploy ? "fresh" : state.mode,
           identity: {
             ...state.identity,
             network,

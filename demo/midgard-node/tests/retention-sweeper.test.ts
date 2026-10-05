@@ -4,17 +4,19 @@ import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Cause, Effect, Exit, Option, Schedule } from "effect";
+import { Effect, Exit, Ref, Schedule } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RetentionL1View } from "../src/database/daPayloads.js";
 import {
   fetchRetentionL1View,
-  RetentionL1ViewUnavailableError,
+  RETENTION_L1_VIEW_STALE,
+  retentionL1ViewTimeoutMs,
   retentionSweeperFiber,
 } from "../src/fibers/retention-sweeper.js";
 import {
   ContractDeploymentIdentity,
+  Globals,
   Lucid,
   MidgardContracts,
   NodeConfig,
@@ -31,78 +33,140 @@ const VIEW: RetentionL1View = {
 };
 
 /**
- * Runs the sweeper next to a never-ending sibling, as `listen` composes its
- * fibers. `reads` yields the L1 view source's outcome per read. The services a
- * sweep would touch are inert stubs: a sweep swallows their failures, so only
- * the fatal error can end the group. `nowMs` walks `clock`, holding its last
- * value.
+ * Runs the sweeper on fresh node globals. `read` yields the L1 view source's
+ * outcome per read and may inspect the liveness reasons raised so far. The
+ * SQL client counts the statements a sweep issues (each sweep issues one
+ * before its stub fails, which the sweep swallows), so `sweeps` is the number
+ * of sweeps that ran. `nowMs` walks `clock`, holding its last value.
  */
 const runSweeper = (options: {
   readonly clock: readonly number[];
   readonly read: (
     index: number,
+    reasons: () => ReadonlyMap<string, string>,
   ) => Effect.Effect<RetentionL1View, unknown, never>;
   readonly sweeps: number;
   readonly sweepMs?: number;
   readonly fatalMs?: number;
-  readonly withSibling?: boolean;
+  /** Holds the L1 control-plane permit for the whole run. */
+  readonly holdControlPlane?: boolean;
 }) => {
   let reads = 0;
   let tick = 0;
+  let statements = 0;
   const nowMs = () =>
     options.clock[Math.min(tick++, options.clock.length - 1)]!;
-  const fiber = retentionSweeperFiber(Schedule.recurs(options.sweeps - 1), {
-    fetchL1View: Effect.suspend(() => options.read(reads++)),
-    nowMs,
-  });
+  const sql = (first: unknown) => {
+    if (Array.isArray(first) && "raw" in first) {
+      statements += 1;
+      throw new Error("no database in this test");
+    }
+    return first;
+  };
   return Effect.runPromise(
-    Effect.exit(
-      options.withSibling === false
-        ? fiber
-        : Effect.all([fiber, Effect.never], { concurrency: "unbounded" }),
-    ).pipe(
+    Effect.gen(function* () {
+      const globals = yield* Globals;
+      const reasons = () => Effect.runSync(Ref.get(globals.LIVENESS_REASONS));
+      if (options.holdControlPlane === true)
+        yield* globals.L1_CONTROL_PLANE.take(1);
+      const exit = yield* Effect.exit(
+        retentionSweeperFiber(Schedule.recurs(options.sweeps - 1), {
+          fetchL1View: Effect.suspend(() => options.read(reads++, reasons)),
+          nowMs,
+        }).pipe(
+          Effect.timeoutFail({
+            duration: "2 seconds",
+            onTimeout: () => new Error("sweeper blocked"),
+          }),
+        ),
+      );
+      return { exit, reasons: reasons() };
+    }).pipe(
       Effect.provideService(NodeConfig, {
         RETENTION_DAYS: 0,
         WAIT_BETWEEN_RETENTION_SWEEPS: options.sweepMs ?? SWEEP_MS,
         L1_VIEW_FATAL_MS: options.fatalMs ?? FATAL_MS,
       } as never),
-      Effect.provideService(SqlClient.SqlClient, {} as never),
+      Effect.provideService(SqlClient.SqlClient, sql as never),
       Effect.provideService(ContractDeploymentIdentity, {} as never),
       Effect.provideService(Lucid, {} as never),
       Effect.provideService(MidgardContracts, {} as never),
+      Effect.provide(Globals.Default),
     ),
-  ).then((exit) => ({ exit, reads: () => reads }));
+  ).then((result) => ({
+    ...result,
+    reads: () => reads,
+    sweeps: () => statements,
+  }));
 };
 
 const unreadable = () => Effect.fail(new Error("ogmios connection refused"));
 
-const failureOf = (exit: Exit.Exit<unknown, unknown>) =>
-  Exit.isFailure(exit)
-    ? Option.getOrUndefined(Cause.failureOption(exit.cause))
-    : undefined;
+const staleReason = (reasons: ReadonlyMap<string, string>) =>
+  [...reasons.values()].filter((reason) => reason === RETENTION_L1_VIEW_STALE);
 
-describe("retention sweeper L1-view exit rule", () => {
-  it("fails the fiber group once the last L1 view is older than L1_VIEW_FATAL_MS", async () => {
-    // Ref init; sweep 1 reads at the deadline (skip only); sweep 2 reads 1 ms
-    // past it.
-    const { exit, reads } = await runSweeper({
+describe("retention sweeper L1-view deadline", () => {
+  it("reports unavailable DA recovery proof and clears it after the next successful proof read", async () => {
+    const seen: string[][] = [];
+    const result = await runSweeper({
+      clock: [START],
+      sweeps: 2,
+      read: (index, reasons) => {
+        seen.push([...reasons().values()]);
+        return Effect.succeed({
+          ...VIEW,
+          retirementProofUnavailable: index === 0,
+        });
+      },
+    });
+    expect(seen).toEqual([[], ["retention_da_recovery_proof_unavailable"]]);
+    expect([...result.reasons.values()]).not.toContain(
+      "retention_da_recovery_proof_unavailable",
+    );
+    expect(result.reads()).toBe(2);
+  });
+
+  it("past L1_VIEW_FATAL_MS raises retention_l1_view_stale, sweeps nothing and keeps reading", async () => {
+    // Ref init; sweep 1 reads at the deadline (a sweep without DA pruning);
+    // sweeps 2-5 read 1 ms past it.
+    const { exit, reads, sweeps, reasons } = await runSweeper({
       clock: [START, START + FATAL_MS, START + FATAL_MS, START + FATAL_MS + 1],
       read: unreadable,
       sweeps: 5,
     });
-    const failure = failureOf(exit);
-    expect(failure).toBeInstanceOf(RetentionL1ViewUnavailableError);
-    expect(failure).toMatchObject({
-      l1ViewAgeMs: FATAL_MS + 1,
-      l1ViewFatalMs: FATAL_MS,
-    });
-    expect(reads()).toBe(2);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(staleReason(reasons)).toEqual([RETENTION_L1_VIEW_STALE]);
+    expect(reads()).toBe(5);
+    expect(sweeps()).toBe(1);
   });
 
-  it("measures the deadline from the last successful L1 view, so a healthy node never exits", async () => {
+  it("clears the reason on the first good view after the deadline and sweeps once per good view", async () => {
+    // Sweep 1 reads past the deadline and raises; sweep 2's read returns.
+    const raisedAtRead: string[][] = [];
+    const { exit, reads, sweeps, reasons } = await runSweeper({
+      clock: [
+        START,
+        START + FATAL_MS + 1,
+        START + FATAL_MS + 1,
+        START + FATAL_MS + 2,
+      ],
+      read: (index, current) => {
+        raisedAtRead.push(staleReason(current()));
+        return index === 0 ? unreadable() : Effect.succeed(VIEW);
+      },
+      sweeps: 2,
+    });
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(raisedAtRead).toEqual([[], [RETENTION_L1_VIEW_STALE]]);
+    expect(staleReason(reasons)).toEqual([]);
+    expect(reads()).toBe(2);
+    expect(sweeps()).toBe(1);
+  });
+
+  it("measures the deadline from the last successful L1 view, so a healthy node raises nothing", async () => {
     // A good view at START + FATAL_MS, then two failed reads 10 ms and one
     // full deadline after it: neither is past the deadline.
-    const { exit, reads } = await runSweeper({
+    const { exit, reads, sweeps, reasons } = await runSweeper({
       clock: [
         START,
         START + FATAL_MS,
@@ -112,10 +176,11 @@ describe("retention sweeper L1-view exit rule", () => {
       ],
       read: (index) => (index === 0 ? Effect.succeed(VIEW) : unreadable()),
       sweeps: 3,
-      withSibling: false,
     });
     expect(Exit.isSuccess(exit)).toBe(true);
+    expect(staleReason(reasons)).toEqual([]);
     expect(reads()).toBe(3);
+    expect(sweeps()).toBe(3);
   });
 
   it.each([
@@ -125,24 +190,80 @@ describe("retention sweeper L1-view exit rule", () => {
       Effect.uninterruptible(Effect.async<RetentionL1View>(() => {})),
     ],
   ] as const)(
-    "abandons %s hung L1 read after one sweep interval and still fires the deadline",
+    "abandons %s hung L1 read, raises the reason at the deadline and keeps reading",
     async (_label, hung) => {
-      const { exit, reads } = await runSweeper({
+      const { exit, reads, sweeps, reasons } = await runSweeper({
         clock: [START, START + 1, START + 60 + 1],
         read: () => hung,
         sweeps: 5,
         sweepMs: 20,
         fatalMs: 60,
       });
-      expect(failureOf(exit)).toMatchObject({
-        _tag: "RetentionL1ViewUnavailableError",
-        l1ViewAgeMs: 61,
-        l1ViewFatalMs: 60,
-      });
-      expect(reads()).toBe(1);
+      expect(Exit.isSuccess(exit)).toBe(true);
+      expect(staleReason(reasons)).toEqual([RETENTION_L1_VIEW_STALE]);
+      expect(reads()).toBe(5);
+      expect(sweeps()).toBe(0);
     },
     5_000,
   );
+});
+
+describe("retention sweeper tx-order watermark", () => {
+  it("never takes the L1 control plane, so a held permit does not delay a sweep", async () => {
+    const { exit, reads, sweeps } = await runSweeper({
+      clock: [START],
+      read: () => Effect.succeed(VIEW),
+      sweeps: 2,
+      holdControlPlane: true,
+    });
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(reads()).toBe(2);
+    expect(sweeps()).toBe(2);
+  });
+});
+
+describe("retention sweeper L1 read timeout", () => {
+  it("reads a queue whose walk outgrew the sweep interval instead of abandoning every read", async () => {
+    // Each walk takes 70 ms against a 25 ms interval: the reads at 25 ms and
+    // 50 ms are abandoned, the doubled 100 ms read returns, and later reads
+    // get four times the last walk.
+    let completed = 0;
+    const { exit, reads, reasons } = await runSweeper({
+      clock: [START],
+      read: () =>
+        Effect.sleep("70 millis").pipe(
+          Effect.tap(() => {
+            completed += 1;
+          }),
+          Effect.as(VIEW),
+        ),
+      sweeps: 5,
+      sweepMs: 25,
+      fatalMs: 10_000,
+    });
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(staleReason(reasons)).toEqual([]);
+    expect(reads()).toBe(5);
+    expect(completed).toBeGreaterThanOrEqual(2);
+  }, 10_000);
+
+  it("scales with the last walk and consecutive timeouts, and never exceeds the deadline", () => {
+    const at = (lastWalkMs: number | undefined, consecutiveTimeouts: number) =>
+      retentionL1ViewTimeoutMs({
+        sweepMs: 1_000,
+        fatalMs: 60_000,
+        lastWalkMs,
+        consecutiveTimeouts,
+      });
+    expect(at(undefined, 0)).toBe(1_000);
+    expect(at(100, 0)).toBe(1_000);
+    expect(at(5_000, 0)).toBe(20_000);
+    expect(at(undefined, 1)).toBe(2_000);
+    expect(at(undefined, 3)).toBe(8_000);
+    expect(at(5_000, 1)).toBe(40_000);
+    expect(at(5_000, 2)).toBe(60_000);
+    expect(at(undefined, 1_000)).toBe(60_000);
+  });
 });
 
 describe("retention L1 view exemption sets", () => {

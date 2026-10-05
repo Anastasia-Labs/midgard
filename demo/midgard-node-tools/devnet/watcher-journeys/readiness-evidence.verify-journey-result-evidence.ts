@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -35,6 +34,10 @@ import {
   readJourneyNativeEvidencePath,
   sha256,
 } from "./readiness-evidence.read-journey-canonical-transactions.js";
+import {
+  readJourneySuccessorPredecessor,
+  verifyJourneyVerifiedHeaders,
+} from "./verified-headers.js";
 
 /**
  * A result label is a claim. Live completion requires its manifest, validated
@@ -72,13 +75,10 @@ export const verifyJourneyResultEvidence = async (
       "Retained header hash changed",
     );
   assert.equal(result.successor, successor.headerHash);
-  const successorPredecessor = existsSync(
-    join(directory, "successor-predecessor.json"),
-  )
-    ? await readJourneyArtifact<JourneySuccessor>(
-        join(directory, "successor-predecessor.json"),
-      )
-    : staged.predecessor;
+  const successorPredecessor = await readJourneySuccessorPredecessor(
+    directory,
+    staged.predecessor,
+  );
   assert.equal(
     await Effect.runPromise(SDK.hashBlockHeader(successorPredecessor.header)),
     successorPredecessor.headerHash,
@@ -178,20 +178,12 @@ export const verifyJourneyResultEvidence = async (
     "Intended automatic fault decision is missing",
   );
   assert.equal(entries[0]!.identity.decisionDigest, fault.decisionDigest);
-  for (const block of [staged.predecessor, successorPredecessor, successor]) {
-    const decision = decisions.find(
-      (value) => value.headerHash === block.headerHash,
-    );
-    assert.equal(
-      decision?.decision,
-      "healthy",
-      "Healthy predecessor/successor decision is missing",
-    );
-    assert.equal(
-      decision?.payloadEnvelopeSha256,
-      sha256(block.payloadEnvelopeCbor),
-    );
-  }
+  // Healthy decisions are not journaled; the watcher's verified diagnostics are.
+  await verifyJourneyVerifiedHeaders(directory, [
+    staged.predecessor,
+    successorPredecessor,
+    successor,
+  ]);
   assert.equal(
     fault.payloadEnvelopeSha256,
     sha256(staged.current.payloadEnvelopeCbor),

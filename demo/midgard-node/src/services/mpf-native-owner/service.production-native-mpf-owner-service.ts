@@ -33,9 +33,6 @@ import {
   digest,
   EMPTY_ROOT_HEX,
   EVENT_LOG_DIGEST_DOMAIN,
-  EVENT_LOG_HEADER_BYTES,
-  EVENT_STREAM_DIGEST_DOMAIN,
-  FULL_INDEX_MAX_BYTES,
   HASH_BYTES,
   type NativeMpfOwnerServiceOptions,
   type NormalizedNativeMpfOwnerServiceOptions,
@@ -50,7 +47,12 @@ import {
   keyNibbles,
   parsePromotionRecords,
 } from "./service.parse-promotion-records.js";
+import {
+  type NativeOwnerRestartHealth,
+  NativeOwnerRestartPolicy,
+} from "./service.restart-policy.js";
 import { startNativeChild } from "./service.start-native-child.js";
+import { validateEventLog } from "./service.validate-event-log.js";
 
 export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
   private readonly workerPorts = new Set<MessagePort>();
@@ -60,8 +62,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     WorkerGenerationLease
   >();
   private childRestarts = 0;
-  private restartStartedAt: number[] = [];
-  private restartExhaustion: Error | undefined;
+  private readonly restartPolicy: NativeOwnerRestartPolicy;
   private restartPromise: Promise<void> | undefined;
   private closing = false;
   private activeOperations = 0;
@@ -77,7 +78,9 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     private readonly binarySha256: string,
     private durableRoot: string,
     private readonly options: NormalizedNativeMpfOwnerServiceOptions,
-  ) {}
+  ) {
+    this.restartPolicy = new NativeOwnerRestartPolicy(options);
+  }
 
   public static async create(
     options: NativeMpfOwnerServiceOptions,
@@ -160,7 +163,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
       const rpc = await this.ensureRpc();
       this.assertOwnedHandle(handle, rpc);
       const log = Buffer.from(eventLog);
-      const eventCount = this.validateEventLog(handle.baseRoot, log);
+      const eventCount = validateEventLog(handle.baseRoot, log);
       const response = await rpc.request(
         NativeMpfRpcKind.ApplyEvents,
         Buffer.concat([Buffer.from(handle.generationId), log]),
@@ -476,7 +479,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     if (marker === plan.targetRoot && previous === record) {
       if (this.durableRoot !== marker)
         throw new Error(
-          "Native MPF canonical recovery requires process restart",
+          "Native MPF canonical recovery is committed but not installed yet",
         );
       return;
     }
@@ -556,28 +559,54 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     }
   }
 
-  /** A state this process cannot leave: the child restart budget is spent, or
-   * a committed canonical recovery failed to install. Every operation refuses
-   * from then on, so the node must exit rather than stay up unable to commit.
-   */
+  /** Why every operation refuses right now, or undefined: failed child
+   * restarts have exhausted the window (see `NativeOwnerRestartPolicy`), or a
+   * committed canonical recovery has not been installed yet. Neither is
+   * terminal: each call also starts a restart that is due, which loads the
+   * child from the durable root marker exactly as a process start does, and a
+   * restart that succeeds clears both. */
   public terminalFailure(): Error | undefined {
-    if (this.restartExhaustion !== undefined) return this.restartExhaustion;
+    this.resumeRestart();
+    return this.refusal();
+  }
+
+  public restartHealth(): NativeOwnerRestartHealth {
+    return this.restartPolicy.health();
+  }
+
+  private refusal(): Error | undefined {
+    const exhaustion = this.restartPolicy.exhaustion();
+    if (exhaustion !== undefined) return exhaustion;
     if (this.recoveryFailure !== undefined)
       return new Error(
-        "Native MPF canonical recovery requires process restart",
+        "Native MPF canonical recovery is not installed yet; the owner restarts from its durable root",
         { cause: this.recoveryFailure },
       );
     return undefined;
   }
 
+  /** Starts a child restart from the durable root when one is due: the child
+   * is gone or a committed recovery was not installed, and neither a restart,
+   * a restoration nor an exhausted window is in the way. */
+  private resumeRestart(): void {
+    if (
+      this.closing ||
+      this.restartPromise !== undefined ||
+      this.restoration !== undefined ||
+      (this.recoveryFailure === undefined && !this.rpc.isClosed) ||
+      this.restartPolicy.exhaustion() !== undefined
+    )
+      return;
+    void this.scheduleRestart().catch(() => undefined);
+  }
+
   private assertCanOperate(): void {
     if (this.closing) throw new Error("Native MPF owner service is closed");
-    if (this.restartExhaustion !== undefined) throw this.restartExhaustion;
-    if (this.recoveryFailure !== undefined)
-      throw new Error(
-        "Native MPF canonical recovery requires process restart",
-        { cause: this.recoveryFailure },
-      );
+    const refusal = this.refusal();
+    if (refusal !== undefined) {
+      this.resumeRestart();
+      throw refusal;
+    }
     if (this.restoration !== undefined)
       throw new Error("Native MPF canonical recovery is in progress");
   }
@@ -633,6 +662,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     this.workerPortLastRequestId.clear();
     this.workerGenerationLeases.clear();
     await this.restoration?.catch(() => undefined);
+    this.restartPolicy.cancel();
     await this.restartPromise?.catch(() => undefined);
     await this.rpc.close();
     await this.db.close();
@@ -643,34 +673,32 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
       this.lastChildError = error;
       this.workerGenerationLeases.clear();
       if (this.restoration === undefined && this.recoveryFailure === undefined)
-        void this.scheduleRestart(error).catch(() => undefined);
+        void this.scheduleRestart().catch(() => undefined);
     });
   }
 
-  private scheduleRestart(error: Error): Promise<void> {
+  /** Restarts the child from the durable root marker after the policy's
+   * backoff; refused while failed restarts exhaust the window. */
+  private scheduleRestart(): Promise<void> {
     if (this.closing) {
       return Promise.reject(new Error("Native MPF owner service is closing"));
     }
     if (this.restartPromise !== undefined) return this.restartPromise;
-    if (this.restartExhaustion !== undefined)
-      return Promise.reject(this.restartExhaustion);
-    // Monotonic: a wall-clock step must neither refill nor drain the window.
-    const now = performance.now();
-    this.restartStartedAt = this.restartStartedAt.filter(
-      (startedAt) => now - startedAt < this.options.restartWindowMs,
-    );
-    if (this.restartStartedAt.length >= this.options.restartLimit) {
-      this.restartExhaustion = new Error(
-        `Native MPF owner restart limit exhausted: ${this.restartStartedAt.length.toString()} restart(s) within ${this.options.restartWindowMs.toString()} ms: ${error.message}`,
-        { cause: error },
-      );
-      return Promise.reject(this.restartExhaustion);
-    }
-    this.restartStartedAt.push(now);
-    const restart = this.restartChild();
+    const exhaustion = this.restartPolicy.exhaustion();
+    if (exhaustion !== undefined) return Promise.reject(exhaustion);
+    const delayMs = this.restartPolicy.startRestart();
+    // A close during the backoff ends the wait; it must not start a child.
+    const restart = this.restartPolicy.wait(delayMs).then(() => {
+      if (this.closing)
+        throw new Error(
+          "Native MPF owner service closed during restart backoff",
+        );
+      return this.restartChild();
+    });
     this.restartPromise = restart;
     void restart.then(
       () => {
+        this.restartPolicy.recordSuccess();
         if (this.restartPromise === restart) this.restartPromise = undefined;
       },
       (restartError: unknown) => {
@@ -678,6 +706,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
           restartError instanceof Error
             ? restartError
             : new Error(String(restartError));
+        this.restartPolicy.recordFailure(this.lastChildError);
         if (this.restartPromise === restart) this.restartPromise = undefined;
       },
     );
@@ -685,6 +714,8 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
   }
 
   private async restartChild(): Promise<void> {
+    // Never keep two resident native tries alive at production scale.
+    if (!this.rpc.isClosed) await this.rpc.close().catch(() => undefined);
     const marker = assertStoredHash(
       await this.db.get("__root__"),
       "durableRoot",
@@ -706,6 +737,8 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     }
     this.rpc = rpc;
     this.durableRoot = marker;
+    this.workerGenerationLeases.clear();
+    this.recoveryFailure = undefined;
     this.childRestarts += 1;
     this.installFailureHandler(rpc);
   }
@@ -713,9 +746,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
   private async ensureRpc(): Promise<NativeChildRpc> {
     if (this.closing) throw new Error("Native MPF owner service is closed");
     if (!this.rpc.isClosed) return this.rpc;
-    await this.scheduleRestart(
-      this.lastChildError ?? new Error("Native MPF owner child is unavailable"),
-    );
+    await this.scheduleRestart();
     if (this.rpc.isClosed) {
       throw this.lastChildError ?? new Error("Native MPF owner restart failed");
     }
@@ -732,37 +763,6 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         "Native MPF generation handle belongs to a stale owner epoch",
       );
     }
-  }
-
-  private validateEventLog(baseRoot: string, log: Buffer): number {
-    if (
-      log.length < EVENT_LOG_HEADER_BYTES ||
-      log.subarray(0, 4).toString("ascii") !== "MEGO" ||
-      log.readUInt16LE(4) !== 1 ||
-      log.readUInt16LE(6) !== 0 ||
-      log.subarray(28, 60).toString("hex") !== baseRoot
-    ) {
-      throw new Error("Native MPF event log header/base is invalid");
-    }
-    const eventCount = log.readUInt32LE(8);
-    const opCount = log.readUInt32LE(12);
-    if (
-      eventCount > NATIVE_MPF_OWNER_DEFAULT_CAPS.maxEvents ||
-      opCount > NATIVE_MPF_OWNER_DEFAULT_CAPS.maxOps ||
-      log.length > FULL_INDEX_MAX_BYTES
-    ) {
-      throw new Error("Native MPF event log cap exceeded");
-    }
-    const expected = digest(
-      EVENT_STREAM_DIGEST_DOMAIN,
-      log.subarray(8, 28),
-      log.subarray(28, 60),
-      log.subarray(EVENT_LOG_HEADER_BYTES),
-    );
-    if (!timingSafeEqual(expected, log.subarray(60, EVENT_LOG_HEADER_BYTES))) {
-      throw new Error("Native MPF event log digest mismatch");
-    }
-    return eventCount;
   }
 
   private async validatePromotionClosure(

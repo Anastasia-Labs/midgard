@@ -9,6 +9,7 @@ import {
   MIDGARD_FIELD_INDEX,
 } from "@al-ft/midgard-sdk";
 import {
+  CML,
   Emulator,
   generateEmulatorAccount,
   Lucid,
@@ -45,6 +46,7 @@ import {
   type JournalJsonObject,
 } from "../src/workflow/journal.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
+import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.js";
 import type { SignedTransactionRecoveryObservation } from "../src/workflow/signed-transaction-reconciliation.js";
 import {
   type LocallyEvaluatedTransaction,
@@ -76,6 +78,20 @@ const SIGNER: ResolvedProverSigner = {
   paymentKeyHash: "81".repeat(28),
   selectWallet: () => undefined,
 };
+
+const chainPoint = (blockNo: number, slot: number, blockHash: string) => {
+  const value = { blockNo: String(blockNo), slot: String(slot), blockHash };
+  return { ...value, pointId: computeFraudProofRawL1PointId(value) };
+};
+
+const stageObservation = (stage: DoubleSpendWorkflowStage) => ({
+  provenance: {
+    trustClass: "authenticated_cardano_l1",
+    sourceId: "local-node-test",
+    grade: "security",
+  } as const,
+  stage,
+});
 
 const utxo = ({
   txHash,
@@ -224,18 +240,12 @@ describe("Q38 tier-3 workflow action chains", () => {
             "midgard-fraud-proof-authenticated-publication-observer-v1",
           observeExact,
         },
-        observe: async () => ({
-          provenance: {
-            trustClass: "authenticated_cardano_l1",
-            sourceId: "local-node-test",
-            grade: "security",
-          },
-          stage: {
-            kind: "step_03" as const,
+        observe: async () =>
+          stageObservation({
+            kind: "step_03",
             threadOutRef: THREAD_OUT_REF,
             stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
-          },
-        }),
+          }),
       },
       stateQueueMutationLeaseCoordinator: {
         acquire: async () => {
@@ -615,14 +625,7 @@ describe("Q38 tier-3 workflow action chains", () => {
     const adapter = createDoubleSpendConstrainedWorkflowAdapter({
       l1: {
         transactionConfirmed: async () => included,
-        observe: async () => ({
-          provenance: {
-            trustClass: "authenticated_cardano_l1",
-            sourceId: "local-node-test",
-            grade: "security",
-          },
-          stage,
-        }),
+        observe: async () => stageObservation(stage),
       },
     } as unknown as DoubleSpendConstrainedWorkflowAdapterConfig);
     const context = {
@@ -702,16 +705,15 @@ describe("Q38 tier-3 workflow action chains", () => {
     "doubleSpend reconciles %s through canonical signed recovery after only its queue reference changes",
     async (actionStage) => {
       const account = generateEmulatorAccount({ lovelace: 100_000_000n });
-      const lucid = await Lucid(new Emulator([account]), "Custom");
+      const emulator = new Emulator([account]);
+      const lucid = await Lucid(emulator, "Custom");
       lucid.selectWallet.fromSeed(account.seedPhrase);
-      const signed = await (
-        await lucid
-          .newTx()
-          .pay.ToAddress(account.address, { lovelace: 5_000_000n })
-          .complete({ localUPLCEval: true })
-      ).sign
-        .withWallet()
-        .complete();
+      const builder = lucid
+        .newTx()
+        .pay.ToAddress(account.address, { lovelace: 5_000_000n })
+        .validTo(emulator.now() + 30000);
+      const completed = await builder.complete({ localUPLCEval: true });
+      const signed = await completed.sign.withWallet().complete();
       const transaction = {
         transactionHash: signed.toHash(),
         signedTransactionCborHex: signed.toCBOR(),
@@ -725,18 +727,19 @@ describe("Q38 tier-3 workflow action chains", () => {
               threadOutRef: THREAD_OUT_REF,
               stateQueueBlockOutRef: currentQueueOutRef,
             };
-      const point = {
-        slot: "1000",
-        blockNo: "50",
-        blockHash: h32(0xa2),
-        pointId: h32(0xa3),
-      };
+      expect(
+        CML.Transaction.from_cbor_hex(signed.toCBOR()).body().ttl(),
+      ).toBeLessThan(1000n);
+      const point = chainPoint(50, 1000, h32(0xa2));
+      const heldPoint = chainPoint(2210, 3160, h32(0xa3));
+      const finalPoint = chainPoint(2211, 3161, h32(0xa4));
+      let canonicalPoint = heldPoint;
       let status: SignedTransactionRecoveryObservation["status"] =
         "invalidated";
       const observeSignedTransaction = vi.fn(async () => ({
         ...transaction,
         status,
-        canonicalPoint: point,
+        canonicalPoint,
         releaseFinalPoint: point,
         inputs: [],
         reason: "Authenticated signed-input outcome",
@@ -757,14 +760,7 @@ describe("Q38 tier-3 workflow action chains", () => {
           transactionConfirmed: async () => false,
           observeSignedTransaction,
           rebroadcastSignedTransaction,
-          observe: async () => ({
-            provenance: {
-              trustClass: "authenticated_cardano_l1",
-              sourceId: "local-node-test",
-              grade: "security",
-            },
-            stage,
-          }),
+          observe: async () => stageObservation(stage),
         },
       } as unknown as DoubleSpendConstrainedWorkflowAdapterConfig);
       const context = {
@@ -784,25 +780,34 @@ describe("Q38 tier-3 workflow action chains", () => {
         signedTransactionCborHex: transaction.signedTransactionCborHex,
         authorizeResubmission,
       } as const;
-      await expect(adapter.reconcile(context)).resolves.toEqual({
-        kind: "not_found",
-      });
+      for (const retirementStatus of ["invalidated", "expired"] as const) {
+        status = retirementStatus;
+        canonicalPoint = heldPoint;
+        // Superseded at once; the retirement receipt alone waits for k.
+        await expect(adapter.reconcile(context)).resolves.toEqual({
+          kind: "not_found",
+        });
+        expect(rebroadcastSignedTransaction).not.toHaveBeenCalled();
+        expect(authorizeResubmission).not.toHaveBeenCalled();
+        canonicalPoint = finalPoint;
+        await expect(adapter.reconcile(context)).resolves.toEqual({
+          kind: "not_found",
+          retirement: {
+            transactionHash: transaction.transactionHash,
+            canonicalPoint: finalPoint,
+            releaseFinalPoint: point,
+            reason: retirementStatus,
+          },
+        });
+      }
       expect(observeSignedTransaction).toHaveBeenLastCalledWith(transaction);
-      expect(rebroadcastSignedTransaction).not.toHaveBeenCalled();
-      status = "expired";
-      await expect(adapter.reconcile(context)).resolves.toEqual({
-        kind: "not_found",
-      });
-      status = "pending";
-      await expect(adapter.reconcile(context)).resolves.toEqual({
-        kind: "pending",
-        txHash: transaction.transactionHash,
-      });
-      status = "rebroadcast";
-      await expect(adapter.reconcile(context)).resolves.toEqual({
-        kind: "pending",
-        txHash: transaction.transactionHash,
-      });
+      for (const pendingStatus of ["pending", "rebroadcast"] as const) {
+        status = pendingStatus;
+        await expect(adapter.reconcile(context)).resolves.toEqual({
+          kind: "pending",
+          txHash: transaction.transactionHash,
+        });
+      }
       expect(authorizeResubmission).toHaveBeenCalledExactlyOnceWith(
         transaction,
       );
@@ -877,17 +882,11 @@ describe("Q38 tier-3 workflow action chains", () => {
       referenceScripts: { steps: [], witnesses: {} },
       l1: {
         transactionConfirmed: async () => false,
-        observe: async () => ({
-          provenance: {
-            trustClass: "authenticated_cardano_l1",
-            sourceId: "local-node-test",
-            grade: "security",
-          },
-          stage: {
-            kind: "not_started" as const,
+        observe: async () =>
+          stageObservation({
+            kind: "not_started",
             stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
-          },
-        }),
+          }),
       },
     } as unknown as DoubleSpendConstrainedWorkflowAdapterConfig);
     const artifact = {

@@ -11,6 +11,7 @@ import type {
   ObservedStateQueueSnapshot,
   StateQueueHeaderRecord,
 } from "../domain.js";
+import { finalityHeldHeaderHashes } from "../store/retention.js";
 import { bytesToHex, normalizeHex } from "../utils/hex.js";
 import { classifyDaAttestationMarker } from "./attestation-marker.js";
 import type { ChainSyncCursor, ChainSyncEvent } from "./provider.js";
@@ -93,6 +94,7 @@ export type StateQueueScanConfig = {
   readonly stateQueuePolicyId: string;
   readonly daAttestationPolicyId: string;
   readonly finalityDepth: number;
+  readonly automaticRecoveryMaxDepth?: number;
   readonly consensusProfile: MidgardConsensusProfile;
   readonly previousHeaders?: readonly StateQueueHeaderRecord[];
   /** The durable replay anchor recorded by a prior scan; always final. */
@@ -135,8 +137,10 @@ export type StateQueueScanConfig = {
   ) => void;
   /**
    * Receives the retention exemption sets of this scan's L1 snapshot: the
-   * `ConfirmedState` header hash and the hash of every live queue header.
-   * Called only when the provider returned a full state-queue snapshot.
+   * `ConfirmedState` header hash and the hash of every live queue header,
+   * with the headers a release-final reader still sees queued
+   * (`finalityHeldHeaderHashes`). Called only when the provider returned a
+   * full state-queue snapshot.
    */
   readonly recordL1View?: (view: StateQueueL1View) => void;
   /**
@@ -155,6 +159,7 @@ export type StateQueueScanConfig = {
 export type StateQueueL1View = Readonly<{
   confirmedHeaderHash: string;
   liveQueueHeaderHashes: readonly string[];
+  recoveryProofUnavailable?: boolean;
 }>;
 
 export const scanStateQueue = async (
@@ -187,8 +192,11 @@ export const scanStateQueue = async (
     deploymentIdentityDigest: config.deploymentIdentityDigest,
     stateQueuePolicyId: config.stateQueuePolicyId,
     finalityDepth: config.finalityDepth,
+    automaticRecoveryMaxDepth: config.automaticRecoveryMaxDepth,
   };
-  const walkLimit = stateQueueReplayWalkLimit(config.finalityDepth);
+  const walkLimit = stateQueueReplayWalkLimit(
+    config.automaticRecoveryMaxDepth ?? config.finalityDepth,
+  );
   const replayFrom = async (anchor: StateQueueReplayAnchor) => {
     const queueChanged =
       JSON.stringify(anchor.queue) !== JSON.stringify(finalQueue);
@@ -309,10 +317,19 @@ export const scanStateQueue = async (
   });
   if (snapshot !== undefined && config.recordL1View !== undefined) {
     config.recordL1View({
+      recoveryProofUnavailable: observation.recoveryProofUnavailable,
       confirmedHeaderHash: normalizeHex(snapshot.confirmedHeaderHash, {
         fieldName: "state queue confirmed header hash",
       }),
-      liveQueueHeaderHashes: current.map(({ headerHash }) => headerHash),
+      liveQueueHeaderHashes: [
+        ...new Set([
+          ...current.map(({ headerHash }) => headerHash),
+          ...finalityHeldHeaderHashes(observation.deferredHeaderHashes, [
+            ...(config.previousHeaders ?? []),
+            ...observation.records,
+          ]),
+        ]),
+      ],
     });
   }
   if (snapshot !== undefined) {
@@ -323,8 +340,8 @@ export const scanStateQueue = async (
     // Every output the snapshot's queue names is final, so the queue itself
     // is.
     const snapshotFinal =
-      (snapshot.observedChainPoint.finalized === true ||
-        (snapshot.observedChainPoint.depth ?? 0) >= config.finalityDepth) &&
+      (snapshot.observedChainPoint.depth ?? 0) >
+        (config.automaticRecoveryMaxDepth ?? config.finalityDepth - 1) &&
       current.every(({ finalized }) => finalized);
     const bootstrapBlockNo = Math.max(
       snapshot.observedChainPoint.blockHeight ?? 0,

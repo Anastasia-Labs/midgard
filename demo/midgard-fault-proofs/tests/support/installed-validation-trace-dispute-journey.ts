@@ -66,6 +66,7 @@ import { submitSetupTx } from "./emulator/setup-tx.js";
 import { buildAcceptedClaimOverMinAdaRejectingTransactionFixture } from "./emulator/validation-dispute-fixtures.js";
 import { buildInstalledSignatureFixture } from "./installed-signature-fixture.js";
 import { stageInstalledValidationResolutionReferences } from "./installed-validation-resolution-references.js";
+import { installedWorkflowEmulatorClock } from "./installed-workflow.advance-emulator-observation.js";
 import { useCanonicalValidationDisputeCursorReads } from "./validation-trace-dispute-canonical-cursor.js";
 const DEPLOYMENT = "11".repeat(32);
 const PAYLOAD_ENVELOPE_SHA = "ab".repeat(32);
@@ -383,6 +384,8 @@ export const stageInstalledValidationTraceDisputeJourney = async (
       }),
     },
   };
+  const workflowClock = installedWorkflowEmulatorClock(emulator);
+  workflowClock.awaitReleaseDepth();
   const clock = vi.spyOn(Date, "now").mockImplementation(() => emulator.now());
   const threadUnit = toUnit(
     resolvedContracts.contracts.computationThread.policyId,
@@ -466,6 +469,9 @@ export const stageInstalledValidationTraceDisputeJourney = async (
   };
   return {
     emulator,
+    /** One block, or to and across the recovery horizon once the terminal is
+     * included: the workflow completes only beyond it. */
+    advance: workflowClock.advance,
     recorder,
     clock,
     directory,

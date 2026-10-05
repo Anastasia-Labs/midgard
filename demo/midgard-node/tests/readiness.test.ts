@@ -47,6 +47,14 @@ const readinessInput = (
 });
 
 describe("evaluateReadiness", () => {
+  it("leaves unauthenticated membership ready, and removal to its liveness reason", () => {
+    expect(
+      evaluateReadiness(readinessInput({ operatorMembership: "unknown" })),
+    ).toEqual({ ready: true, reasons: [] });
+    expect(
+      evaluateReadiness(readinessInput({ operatorMembership: "removed" })),
+    ).toEqual({ ready: true, reasons: [] });
+  });
   it("returns ready when heartbeats are fresh and queue depth is under threshold", () => {
     const readiness = evaluateReadiness(readinessInput());
 

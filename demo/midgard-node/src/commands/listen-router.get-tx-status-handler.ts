@@ -21,12 +21,14 @@ import {
 import {
   errorMessage,
   TX_STATUS_ENDPOINT,
-} from "./listen-router.run-busy-l1-provider-readiness-probe.js";
+} from "./listen-router.run-exact-gated-direct-l1-provider-probe.js";
 import { resolveTxStatus } from "./tx-status.js";
+import { readTxStatusMergeEvidence } from "./tx-status-merge-evidence.js";
 import * as UtxosCommand from "./utxos.js";
 
 /**
- * `GET /utxos`: returns spendable mempool-ledger UTxOs for an address.
+ * `GET /utxos`: returns spendable mempool-ledger UTxOs for an address, less
+ * the outputs a pending withdrawal names (admission refuses those as inputs).
  */
 export const getUtxosHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
@@ -196,8 +198,10 @@ export const getTxStatusHandler = Effect.gen(function* () {
     txHashBytes,
   ]);
 
+  const headerEvidence = yield* readTxStatusMergeEvidence([txHashBytes]);
   const resolved = resolveTxStatus({
     txIdHex: txHashParam as string,
+    ...headerEvidence.get(txHashBytes.toString("hex")),
     rejection:
       rejected.length > 0
         ? {
@@ -223,6 +227,14 @@ export const getTxStatusHandler = Effect.gen(function* () {
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("GET", TX_STATUS_ENDPOINT, e),
+  ),
+  Effect.catchTag("SqlError", (e) =>
+    failWith500(
+      "GET",
+      TX_STATUS_ENDPOINT,
+      e.cause,
+      "merge evidence query failed",
+    ),
   ),
   Effect.catchTag("DatabaseError", (e) =>
     failWith500(

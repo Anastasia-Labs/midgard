@@ -12,10 +12,19 @@ import {
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
+  isFinalWorkflowCompletion,
   journalJsonDigest,
-  normalizeFraudProofWorkflowIdentity,
   normalizeJournalJson,
 } from "./journal.fraud-proof-workflow-terminal.js";
+import {
+  expectedWorkflowIdentityMatches,
+  requireOutRef,
+  requireTxHash,
+} from "./journal.require-transaction-identity.js";
+import {
+  validateJournalRetirement,
+  validateRetiredJournalAttempt,
+} from "./signed-transaction-retirement-journal.js";
 
 export const createFraudProofWorkflowJournalFold = ({
   workflowId,
@@ -25,15 +34,10 @@ export const createFraudProofWorkflowJournalFold = ({
   readonly expectedIdentity?: FraudProofWorkflowIdentity;
 }): FraudProofWorkflowJournalFold => {
   validateWorkflowId(workflowId);
-  // Every accepted entry's identity derives `workflowId` (checked below), so
-  // an entry matches the requested identity exactly when the requested
-  // identity derives the same id. Hashing it once here replaces a pair of
-  // identity hashes per entry.
-  const expectedIdentityMatches =
-    expectedIdentity === undefined ||
-    computeFraudProofWorkflowId(
-      normalizeFraudProofWorkflowIdentity(expectedIdentity),
-    ) === workflowId;
+  const expectedIdentityMatches = expectedWorkflowIdentityMatches(
+    workflowId,
+    expectedIdentity,
+  );
   const latestPreflightByAction = new Map<
     string,
     Extract<
@@ -56,24 +60,15 @@ export const createFraudProofWorkflowJournalFold = ({
   const confirmedTransactionHashes = new Set<string>();
   const attemptsByAction = new Map<string, number>();
   const broadcastsByTransaction = new Map<string, number>();
+  const knownSignedIntentHashes = new Set<string>();
   let completed = false;
   let previousEvent: FraudProofWorkflowJournalEvent | undefined;
-  const requireTxHash = (value: string, field: string): void => {
-    if (!/^[0-9a-f]{64}$/u.test(value)) {
-      throw new Error(`${field} must be 32-byte lowercase hex`);
-    }
-  };
-  const requireOutRef = (value: string, field: string): void => {
-    if (!/^[0-9a-f]{64}#(0|[1-9][0-9]*)$/u.test(value)) {
-      throw new Error(`${field} must be a canonical transaction outRef`);
-    }
-  };
   let length = 0;
   const step = (
     entry: FraudProofWorkflowJournalEntry,
     sequence: number,
   ): void => {
-    if (completed) {
+    if (completed && entry.event.kind !== "signed_attempt_retired") {
       throw new Error("journal contains an event after terminal completion");
     }
     requireExactKeys(
@@ -289,6 +284,7 @@ export const createFraudProofWorkflowJournalFold = ({
         );
       }
       attemptsByAction.set(event.actionId, event.attempt);
+      knownSignedIntentHashes.add(event.txHash);
       latestIntentByAction.set(event.actionId, event);
       broadcastsByTransaction.set(event.txHash, 1);
       unresolvedSubmissionByAction.set(event.actionId, "intent");
@@ -388,6 +384,8 @@ export const createFraudProofWorkflowJournalFold = ({
       confirmedTransactionHashes.delete(event.txHash);
       return;
     }
+    if (event.kind === "signed_attempt_retired")
+      return validateRetiredJournalAttempt(event, knownSignedIntentHashes);
     if (event.kind === "reconciled") {
       const unresolvedState = unresolvedSubmissionByAction.get(event.actionId);
       if (
@@ -402,7 +400,7 @@ export const createFraudProofWorkflowJournalFold = ({
       requireOptionalExactKeys(
         event,
         ["kind", "actionId", "outcome"],
-        ["txHash"],
+        ["txHash", "retirement"],
         "journal reconciliation event",
       );
       if (
@@ -426,6 +424,7 @@ export const createFraudProofWorkflowJournalFold = ({
           );
         }
       }
+      if (event.retirement !== undefined) validateJournalRetirement(event);
       if (event.outcome === "confirmed") {
         if (event.txHash === undefined) {
           throw new Error(
@@ -628,7 +627,7 @@ export const createFraudProofWorkflowJournalFold = ({
           "journal terminal must retain and exactly reference the permanent proof token",
         );
       }
-      completed = event.kind === "completed";
+      completed = isFinalWorkflowCompletion(event);
       return;
     }
     if (event.kind === "stalled") {

@@ -58,6 +58,25 @@ export type PublicRetainedDaListenerOptions = {
     readonly maxChunkBytes: number;
   };
   readonly libp2pFactory?: PublicRetainedDaLibp2pFactory;
+  /**
+   * How long a request at a full permit pool waits for a permit before it is
+   * refused as overloaded. Defaults to a quarter of the request deadline,
+   * capped at {@link PUBLIC_RETAINED_DA_ADMISSION_WAIT_MS}.
+   */
+  readonly admissionWaitMs?: number;
+  readonly nowMs?: () => number;
+};
+
+/** Ceiling of the default admission wait at a full permit pool. */
+export const PUBLIC_RETAINED_DA_ADMISSION_WAIT_MS = 1_000;
+
+/** What the listener reports to its process's readiness probe. */
+export type PublicRetainedDaListenerStatus = {
+  readonly bound: boolean;
+  readonly lastServedOkAtMs?: number;
+  /** The last request that failed for a reason other than overload. */
+  readonly lastServedErrorAtMs?: number;
+  readonly lastServedError?: string;
 };
 
 /**
@@ -74,8 +93,13 @@ export class PublicRetainedDaListener {
   private readonly peerPermits = new Map<string, AsyncPermitPool>();
   private readonly config: PublicRetainedDaConfig;
   private readonly libp2pFactory: PublicRetainedDaLibp2pFactory;
+  private readonly admissionWaitMs: number;
+  private readonly nowMs: () => number;
   private node?: PublicRetainedDaRuntimeNode;
   private started = false;
+  private lastServedOkAtMs?: number;
+  private lastServedErrorAtMs?: number;
+  private lastServedError?: string;
 
   constructor(options: PublicRetainedDaListenerOptions) {
     if (
@@ -122,11 +146,20 @@ export class PublicRetainedDaListener {
       }),
     );
     this.protocols = Object.freeze([...this.handlers.keys()]);
+    this.admissionWaitMs =
+      options.admissionWaitMs ??
+      Math.min(
+        PUBLIC_RETAINED_DA_ADMISSION_WAIT_MS,
+        Math.floor(options.config.limits.requestTimeoutMs / 4),
+      );
+    this.nowMs = options.nowMs ?? Date.now;
     this.globalPermits = new AsyncPermitPool(
       options.config.limits.maxInflightRequests,
+      this.admissionWaitMs,
     );
     this.proofPermits = new AsyncPermitPool(
       options.config.limits.maxInflightProofRequests,
+      this.admissionWaitMs,
     );
     this.libp2pFactory =
       options.libp2pFactory ?? defaultPublicRetainedDaFactory;
@@ -144,6 +177,23 @@ export class PublicRetainedDaListener {
     return (
       this.node?.getMultiaddrs?.().map((address) => address.toString()) ?? []
     );
+  }
+
+  status(): PublicRetainedDaListenerStatus {
+    return {
+      bound: this.started && this.getMultiaddrs().length > 0,
+      ...(this.lastServedOkAtMs === undefined
+        ? {}
+        : { lastServedOkAtMs: this.lastServedOkAtMs }),
+      ...(this.lastServedErrorAtMs === undefined
+        ? {}
+        : {
+            lastServedErrorAtMs: this.lastServedErrorAtMs,
+            ...(this.lastServedError === undefined
+              ? {}
+              : { lastServedError: this.lastServedError }),
+          }),
+    };
   }
 
   /** Test-only diagnostic: idle peer keys must not survive public request churn. */
@@ -212,7 +262,13 @@ export class PublicRetainedDaListener {
               connection,
               handler,
             );
+            this.lastServedOkAtMs = this.nowMs();
           } catch (cause) {
+            if (!(cause instanceof PublicRetainedDaOverloadError)) {
+              this.lastServedErrorAtMs = this.nowMs();
+              this.lastServedError =
+                cause instanceof Error ? cause.message : String(cause);
+            }
             if (cause instanceof PublicRetainedDaOverloadError) {
               // A rejected admission must tear down the public stream rather
               // than leaving an unconsumed peer-side writer alive. Deadlines
@@ -293,6 +349,7 @@ export class PublicRetainedDaListener {
             this.config.limits.maxStreamsPerPeer,
             this.config.limits.maxInflightRequestsPerPeer,
           ),
+          this.admissionWaitMs,
         );
       this.peerPermits.set(remotePeerId, peerPermits);
       try {
@@ -318,10 +375,20 @@ const isProofProtocol = (protocolId: string): boolean =>
   protocolId.endsWith("/trace-step-by-index/1") ||
   protocolId.endsWith("/event-to-step-by-event/1");
 
+/**
+ * A fixed number of permits. A request at a full pool waits a bounded time
+ * for one (a burst slightly over the limit is served rather than refused),
+ * and the wait queue is itself bounded by the limit, so memory stays bounded
+ * under any load; past either bound the request is refused as overloaded.
+ */
 class AsyncPermitPool {
   private active = 0;
+  private readonly waiters: (() => void)[] = [];
 
-  constructor(private readonly limit: number) {
+  constructor(
+    private readonly limit: number,
+    private readonly waitMs: number,
+  ) {
     if (!Number.isSafeInteger(limit) || limit <= 0) {
       throw new RangeError(
         "public retained DA permit limit must be a positive integer",
@@ -330,27 +397,42 @@ class AsyncPermitPool {
   }
 
   get isIdle(): boolean {
-    return this.active === 0;
+    return this.active === 0 && this.waiters.length === 0;
   }
 
-  acquire(): () => void {
-    if (this.active >= this.limit) {
-      // Do not retain an unbounded queue of public requests. The caller's
-      // stream deadline is not a memory-budget mechanism, so overload is a
-      // deterministic rejection rather than delayed work.
+  async acquire(): Promise<() => void> {
+    if (this.active < this.limit) {
+      this.active += 1;
+    } else if (this.waitMs <= 0 || this.waiters.length >= this.limit) {
       throw new PublicRetainedDaOverloadError();
+    } else {
+      // A released permit is handed straight to the first waiter, so the
+      // active count does not change while it passes between them.
+      await new Promise<void>((resolve, reject) => {
+        const admit = (): void => {
+          clearTimeout(timer);
+          resolve();
+        };
+        const timer = setTimeout(() => {
+          const index = this.waiters.indexOf(admit);
+          if (index >= 0) this.waiters.splice(index, 1);
+          reject(new PublicRetainedDaOverloadError());
+        }, this.waitMs);
+        this.waiters.push(admit);
+      });
     }
-    this.active += 1;
     let released = false;
     return () => {
       if (released) return;
       released = true;
-      this.active -= 1;
+      const next = this.waiters.shift();
+      if (next === undefined) this.active -= 1;
+      else next();
     };
   }
 
   async run<T>(operation: () => Promise<T>): Promise<T> {
-    const release = this.acquire();
+    const release = await this.acquire();
     try {
       return await operation();
     } finally {

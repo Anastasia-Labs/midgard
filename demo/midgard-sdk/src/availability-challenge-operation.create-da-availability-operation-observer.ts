@@ -16,6 +16,7 @@ import {
   type DaAvailabilityOperationContext,
   type DaAvailabilityOperationObservation,
 } from "./availability-challenge-operation.inspect-da-availability-signed-intent.js";
+import type { DaAvailabilityReadScope } from "./availability-challenge-operation.read-scope.js";
 import {
   DA_AVAILABILITY_WORKFLOW_RELEASE_MAX_HOPS,
   type DaAvailabilityCanonicalBoundary,
@@ -78,6 +79,7 @@ export const resolveDaAvailabilityWorkflowRelease = async (
   openIntent: Pick<AvailabilityOperationRecord, "intent" | "state">,
   headerHash: string,
   minimumConfirmationDepth: number,
+  scope?: DaAvailabilityReadScope,
 ): Promise<DaAvailabilityWorkflowRelease | undefined> => {
   if (
     !Number.isSafeInteger(minimumConfirmationDepth) ||
@@ -141,6 +143,7 @@ export const resolveDaAvailabilityWorkflowRelease = async (
     const spend = await resolveDaAvailabilityForeignSpend({
       ...readers,
       outRef: anchor,
+      scope,
     });
     if (
       spend === undefined ||
@@ -179,10 +182,23 @@ export const createDaAvailabilityOperationObserver =
   (
     input: Readonly<{
       lucid: LucidEvolution;
-      readBoundary: () => Promise<DaAvailabilityCanonicalBoundary>;
+      readBoundary: (
+        scope?: DaAvailabilityReadScope,
+      ) => Promise<DaAvailabilityCanonicalBoundary>;
+      /** Cancellable adapters; Lucid's defaults fence late results but its
+       * provider API does not expose an AbortSignal. */
+      readTransactionStatus?: (
+        txHash: string,
+        scope?: DaAvailabilityReadScope,
+      ) => ReturnType<LucidEvolution["transactionStatus"]>;
+      readInputs?: (
+        refs: readonly Readonly<{ txHash: string; outputIndex: number }>[],
+        scope?: DaAvailabilityReadScope,
+      ) => Promise<UTxO[]>;
       /** Needed for providers whose transaction status omits block depth. */
       resolveInclusion?: (
         output: UTxO,
+        scope?: DaAvailabilityReadScope,
       ) => Promise<
         Readonly<{ slot?: number; blockHash?: string; depth?: number }>
       >;
@@ -193,11 +209,14 @@ export const createDaAvailabilityOperationObserver =
        */
       resolveForeignSpend?: (
         outRef: string,
+        scope?: DaAvailabilityReadScope,
       ) => Promise<Omit<DaAvailabilityForeignSpend, "outRef"> | undefined>;
     }>,
   ): DaAvailabilityOperationContext["observe"] =>
-  async (intent) => {
-    const before = await input.readBoundary();
+  async (intent, scope) => {
+    const read = <T>(run: () => Promise<T>) =>
+      scope === undefined ? run() : scope.read(run);
+    const before = await read(() => input.readBoundary(scope));
     if (
       !before.pointId ||
       !Number.isSafeInteger(before.slot) ||
@@ -207,7 +226,11 @@ export const createDaAvailabilityOperationObserver =
         "Availability observer requires an aligned canonical boundary",
       );
     }
-    const status = await input.lucid.transactionStatus(intent.txHash);
+    const status = await read(() =>
+      input.readTransactionStatus === undefined
+        ? input.lucid.transactionStatus(intent.txHash)
+        : input.readTransactionStatus(intent.txHash, scope),
+    );
     let observation: DaAvailabilityOperationObservation;
     if (status.txHash !== intent.txHash)
       throw new Error(
@@ -229,11 +252,16 @@ export const createDaAvailabilityOperationObserver =
           throw new Error("Availability operation has no outputs");
         point = {
           ...point,
-          ...(await input.resolveInclusion({
-            ...coreToTxOutput(body.outputs().get(0)),
-            txHash: intent.txHash,
-            outputIndex: 0,
-          })),
+          ...(await read(() =>
+            input.resolveInclusion!(
+              {
+                ...coreToTxOutput(body.outputs().get(0)),
+                txHash: intent.txHash,
+                outputIndex: 0,
+              },
+              scope,
+            ),
+          )),
         };
       }
       observation =
@@ -252,6 +280,10 @@ export const createDaAvailabilityOperationObserver =
               txHash: intent.txHash,
               inclusionPoint: `${point.slot}:${point.blockHash}`,
               confirmationDepth: point.depth,
+              currentSlot: before.slot,
+              ...(before.blockNo === undefined
+                ? {}
+                : { currentBlockNo: before.blockNo }),
             }
           : {
               status: "unknown",
@@ -264,11 +296,14 @@ export const createDaAvailabilityOperationObserver =
       };
     } else {
       const refs = [...intent.spentOutRefs, ...intent.collateralOutRefs];
-      const available = await input.lucid.utxosByOutRef(
-        refs.map((ref) => {
-          const [txHash, outputIndex] = ref.split("#");
-          return { txHash: txHash!, outputIndex: Number(outputIndex) };
-        }),
+      const inputs = refs.map((ref) => {
+        const [txHash, outputIndex] = ref.split("#");
+        return { txHash: txHash!, outputIndex: Number(outputIndex) };
+      });
+      const available = await read(() =>
+        input.readInputs === undefined
+          ? input.lucid.utxosByOutRef(inputs)
+          : input.readInputs(inputs, scope),
       );
       const keys = new Set(
         available.map((utxo) => `${utxo.txHash}#${utxo.outputIndex}`),
@@ -278,7 +313,9 @@ export const createDaAvailabilityOperationObserver =
       if (input.resolveForeignSpend)
         for (const ref of intent.spentOutRefs) {
           if (keys.has(ref)) continue;
-          const spend = await input.resolveForeignSpend(ref);
+          const spend = await read(() =>
+            input.resolveForeignSpend!(ref, scope),
+          );
           if (spend)
             foreignSpends.push({
               outRef: ref,
@@ -293,12 +330,19 @@ export const createDaAvailabilityOperationObserver =
           : {
               status: "inputs_missing",
               currentSlot: before.slot,
+              ...(before.blockNo === undefined
+                ? {}
+                : { currentBlockNo: before.blockNo }),
               missingOutRefs,
               ...(foreignSpends.length === 0 ? {} : { foreignSpends }),
             };
     }
-    const after = await input.readBoundary();
-    if (before.pointId !== after.pointId || before.slot !== after.slot) {
+    const after = await read(() => input.readBoundary(scope));
+    if (
+      before.pointId !== after.pointId ||
+      before.slot !== after.slot ||
+      before.blockNo !== after.blockNo
+    ) {
       return {
         status: "unknown",
         reason: "Canonical source changed during availability reconciliation",

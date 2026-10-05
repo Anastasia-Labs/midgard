@@ -48,6 +48,7 @@ import {
   assertLibp2pDaRetentionDays,
   deploymentFingerprintConfig,
 } from "./config.parse-libp2p-da-committee-peers.js";
+import { committeePromiseAdoptionConfig } from "./config.promise-admission.js";
 import { parseMidgardNodeDeploymentInfo } from "./l1/deployment.js";
 import { normalizeHex } from "./utils/hex.js";
 
@@ -88,6 +89,7 @@ export const loadCommitteeConfig = async (
     network: contractDeploymentNetwork,
     daRetentionDays: manifestDaRetentionDays,
     finalityDepth: manifestFinalityDepth,
+    automaticRecoveryMaxDepth,
     availabilityChallenge: manifestAvailabilityChallenge,
   } = contractDeploymentManifestConfig(contractDeploymentInfo);
   const network = runtimeManifest.network;
@@ -236,11 +238,13 @@ export const loadCommitteeConfig = async (
     cardanoProviderUrls,
     ...(nativeLedger === undefined ? {} : { nativeLedger }),
     finalityDepth: configuredFinalityDepth,
+    automaticRecoveryMaxDepth,
     daTransport: libp2pDaTransport,
     libp2pPrivateKeySource,
     ...maybeSigner,
     l1SubmitterKeySource,
     l1SubmissionEnabled,
+    availabilityPromiseAdoption: committeePromiseAdoptionConfig(env),
     availabilityJournalPath: availabilityJournalPath(env),
     availabilitySubmitterKeySource: optionalNonEmpty(
       env.DA_AVAILABILITY_SUBMITTER_KEY_SOURCE,

@@ -1,5 +1,16 @@
+import {
+  decodeOgmiosJsonRpcError,
+  formatOgmiosJsonRpcError,
+  isTransientOgmiosJsonRpcErrorCode,
+  OgmiosJsonRpcError,
+  type OgmiosJsonRpcErrorAnswer,
+} from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import { type OutRefLike } from "@al-ft/midgard-core/out-ref";
 
+import {
+  L1SourceUnavailable,
+  OgmiosRequestTimeout,
+} from "./l1-source-unavailable.js";
 import { type OgmiosSession } from "./l1-tx-order-carriage.fetch-kupo-spend.js";
 import {
   HEX_28,
@@ -7,6 +18,46 @@ import {
   type ObservedL1Transaction,
   type WebSocketFactory,
 } from "./l1-tx-order-carriage.l1-chain-point.js";
+
+/**
+ * An Ogmios error answer whose code says the node cannot answer now (still
+ * syncing, crossing an era, the acquired state expired, its node connection
+ * lost): the same outage as a dropped socket, so the history owner reconnects
+ * on it within its bounded outage window instead of stopping.
+ */
+export class OgmiosJsonRpcUnavailable extends L1SourceUnavailable {
+  readonly answer: OgmiosJsonRpcErrorAnswer;
+
+  constructor(message: string, answer: OgmiosJsonRpcErrorAnswer) {
+    super(message);
+    this.name = "OgmiosJsonRpcUnavailable";
+    this.answer = answer;
+  }
+}
+
+/**
+ * The typed failure for an Ogmios JSON-RPC error answer: transient codes are
+ * an `OgmiosJsonRpcUnavailable`, every other code (a malformed request, an
+ * unknown method, a missing intersection, a misconfigured node) a terminal
+ * `OgmiosJsonRpcError`. The text keeps the "Ogmios chain-sync error: <error
+ * JSON>" form operators grep for.
+ */
+export const ogmiosJsonRpcAnswerFailure = (
+  error: unknown,
+): OgmiosJsonRpcUnavailable | OgmiosJsonRpcError => {
+  const message = `Ogmios chain-sync error: ${formatOgmiosJsonRpcError(error)}`;
+  const answer = decodeOgmiosJsonRpcError(error);
+  return isTransientOgmiosJsonRpcErrorCode(answer.code)
+    ? new OgmiosJsonRpcUnavailable(message, answer)
+    : new OgmiosJsonRpcError(message, error);
+};
+
+/** The Ogmios code of a session's error answer; undefined for any other failure. */
+export const ogmiosJsonRpcAnswerCode = (error: unknown): number | undefined =>
+  error instanceof OgmiosJsonRpcUnavailable ||
+  error instanceof OgmiosJsonRpcError
+    ? error.answer.code
+    : undefined;
 
 export const openOgmiosSession = async ({
   url,
@@ -84,22 +135,18 @@ export const openOgmiosSession = async ({
     }
     pending.delete(message.id);
     if (message.error !== undefined) {
-      waiter.reject(
-        new Error(
-          `Ogmios chain-sync error: ${JSON.stringify(message.error, (_key, value: unknown) => (typeof value === "bigint" ? value.toString() : value))}`,
-        ),
-      );
+      waiter.reject(ogmiosJsonRpcAnswerFailure(message.error));
       return;
     }
     waiter.resolve(message.result);
   }) as (event: never) => void);
   socket.addEventListener("error", (() => {
-    failAll(new Error("Ogmios chain-sync socket failed"));
+    failAll(new L1SourceUnavailable("Ogmios chain-sync socket failed"));
     close();
   }) as (event: never) => void);
   socket.addEventListener("close", (() => {
     signal?.removeEventListener("abort", abort);
-    failAll(new Error("Ogmios chain-sync socket closed"));
+    failAll(new L1SourceUnavailable("Ogmios chain-sync socket closed"));
   }) as (event: never) => void);
 
   try {
@@ -108,7 +155,9 @@ export const openOgmiosSession = async ({
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         failAll(
-          new Error(`Ogmios chain-sync did not open within ${timeoutMs}ms`),
+          new L1SourceUnavailable(
+            `Ogmios chain-sync did not open within ${timeoutMs}ms`,
+          ),
         );
         close();
       }, timeoutMs);
@@ -156,7 +205,7 @@ export const openOgmiosSession = async ({
             : setTimeout(() => {
                 pending.delete(id);
                 reject(
-                  new Error(
+                  new OgmiosRequestTimeout(
                     `Ogmios ${method} did not answer within ${requestTimeout}ms`,
                   ),
                 );
@@ -176,7 +225,11 @@ export const openOgmiosSession = async ({
         } catch (cause) {
           clearTimeout(timer);
           pending.delete(id);
-          reject(new Error(`Failed to send Ogmios ${method}`, { cause }));
+          reject(
+            new L1SourceUnavailable(`Failed to send Ogmios ${method}`, {
+              cause,
+            }),
+          );
         }
       });
     },

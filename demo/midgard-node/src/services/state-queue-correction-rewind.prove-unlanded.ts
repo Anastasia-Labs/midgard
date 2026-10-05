@@ -90,7 +90,7 @@ export const OUT_REF = /^([0-9a-f]{64})#(0|[1-9][0-9]*)$/u;
 
 /** True only when the signed transaction's body hashes to `txHash` and spends
  * `outRef`. Undecodable bytes are not evidence. */
-const signedTxSpends = (
+export const signedTxSpends = (
   cbor: Buffer,
   txHash: Buffer,
   outRef: string,

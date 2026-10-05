@@ -16,7 +16,10 @@ import {
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
-import { createMintItemNonCanonicalCentralJournalAdapter } from "./central-journal.js";
+import {
+  createMintItemNonCanonicalCentralJournalAdapter,
+  MintItemWorkflowRecoveryPendingError,
+} from "./central-journal.js";
 import {
   type MintItemEvidence,
   type MintItemJournal,
@@ -218,13 +221,14 @@ export const executeManifestBoundMintItemNonCanonicalWorkflow = async ({
     // Fresh observation authority retains the original durable execution.
     decisionDigest:
       workflowActuationDecisionDigest(journal) ?? workflow.decisionDigest,
+    observeSignedTransaction: workflow.l1.observeSignedTransaction,
+    rebroadcastSignedTransaction: workflow.l1.rebroadcastSignedTransaction,
     transactionConfirmed: async (txHash) =>
       await workflow.l1.transactionConfirmed({ headerHash, txHash }),
   });
   const finish = async (
     terminal: Parameters<typeof centralJournal.finish>[0]["candidate"],
   ) => {
-    await centralJournal.reconcile("removed");
     return await centralJournal.finish({
       candidate: terminal,
       releaseFinality: workflow.binding.releaseFinality,
@@ -234,6 +238,16 @@ export const executeManifestBoundMintItemNonCanonicalWorkflow = async ({
     });
   };
   const observed = await workflow.l1.observe({ headerHash });
+  try {
+    await centralJournal.reconcile(mintItemStageFromL1(observed.stage));
+  } catch (cause) {
+    if (!(cause instanceof MintItemWorkflowRecoveryPendingError)) throw cause;
+    return {
+      kind: "pending" as const,
+      resumeOnObservation: true,
+      reason: cause.message,
+    };
+  }
   if (observed.stage.kind === "removed")
     return await finish(observed.stage.terminal);
   if (workflowJournalIsReconciliationOnly(journal))
@@ -268,7 +282,17 @@ export const executeManifestBoundMintItemNonCanonicalWorkflow = async ({
     stateQueueMutationLeaseCoordinator:
       workflow.stateQueueMutationLeaseCoordinator,
   });
-  const result = await runtime.runOrResume(evidence);
+  let result;
+  try {
+    result = await runtime.runOrResume(evidence);
+  } catch (cause) {
+    if (!(cause instanceof MintItemWorkflowRecoveryPendingError)) throw cause;
+    return {
+      kind: "pending" as const,
+      resumeOnObservation: true,
+      reason: cause.message,
+    };
+  }
   if (result !== "removed") return result;
   const removed = await workflow.l1.observe({ headerHash });
   if (removed.stage.kind !== "removed")

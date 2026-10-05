@@ -330,4 +330,59 @@ describe("deployment run-state command identity guards", () => {
     );
     await expect(loadDeploymentRunState(runStatePath)).resolves.toBeNull();
   });
+
+  it("replaces an expired auth policy over an existing run state on a fresh redeploy", async () => {
+    const dir = await makeTempDir();
+    const runStatePath = join(dir, "run-state.json");
+    const manifestPath = join(dir, "contract-deployment-info.json");
+    const oneShotTxHash = "88".repeat(32);
+    const expired = await createReferenceScriptAuthPolicy(lucid, 1_000, 10_000);
+    const expiredInfo = referenceScriptAuthPolicyDeploymentInfo(expired);
+    await writeDeploymentRunStateAtomic(
+      runStatePath,
+      createDeploymentRunState({
+        mode: "resume",
+        runId: "run-expired-policy",
+        now: new Date("2026-01-01T00:00:00.000Z"),
+        identity: {
+          network: "Preprod",
+          hubOracleOneShot: { txHash: oneShotTxHash, outputIndex: 0 },
+          manifestPath,
+          referenceScriptAuthPolicyId: expiredInfo.policyId,
+          referenceScriptAuthPolicy: {
+            policyId: expiredInfo.policyId,
+            nativeScript: expiredInfo.nativeScript,
+          },
+        },
+      }),
+    );
+
+    const replacement = await Effect.runPromise(
+      resolveReferenceScriptAuthPolicyProgram({
+        options: {
+          runStatePath,
+          freshRedeploy: true,
+          freshRedeployReason:
+            "auth policy expired before publication completed",
+        },
+        lucid,
+        network: "Preprod",
+        hubOracleOneShotTxHash: oneShotTxHash,
+        hubOracleOneShotOutputIndex: 0,
+        timelockDurationMs: 10_000,
+        manifestOutputPath: manifestPath,
+      }),
+    );
+
+    expect(replacement.policyId).not.toBe(expiredInfo.policyId);
+    const state = await loadDeploymentRunState(runStatePath);
+    expect(state?.mode).toBe("resume");
+    expect(state?.identity).toMatchObject({
+      hubOracleOneShot: { txHash: oneShotTxHash, outputIndex: 0 },
+      referenceScriptAuthPolicyId: replacement.policyId,
+    });
+    expect(state?.steps.referenceScriptAuthPolicy?.message).toContain(
+      "fresh_redeploy_reason=auth policy expired before publication completed",
+    );
+  });
 });

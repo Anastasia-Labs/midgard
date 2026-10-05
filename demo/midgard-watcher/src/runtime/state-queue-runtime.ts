@@ -206,12 +206,24 @@ const createRuntime = async (input: {
           recoveryPreparationPending = true;
           await input.store.rollbackTo(point);
           const retained = await input.store.readAll();
+          const restored =
+            retained.length === 0
+              ? await input.source.bootstrap()
+              : await restoreAndRevokeDiscarded(retained);
           if (retained.length === 0) {
-            throw new Error(
-              "native rollback removed the authenticated state-queue bootstrap cursor",
-            );
+            // The oldest row is provisional at confirmation depth too. A
+            // canonical exact-point snapshot reconstructs its replacement;
+            // it must enter the journal before any decision bridge resumes.
+            if (
+              restored.discardedObservationCount !== 0 ||
+              restored.previous.previousObservationDigest !== null ||
+              (await input.store.append(restored.previous)) !== "appended"
+            )
+              throw new Error(
+                "state-queue rollback bootstrap was not durably admitted",
+              );
+            caughtUp = false;
           }
-          const restored = await restoreAndRevokeDiscarded(retained);
           previous = restored.previous;
           included = previous;
           if (!caughtUp) {
@@ -267,14 +279,24 @@ const createRuntime = async (input: {
           localObservation: WatcherLocalKupmiosNativeObservation | null;
           relevance: WatcherBlockRelevance;
         }>) => {
+          // A rebuilt exact-point snapshot can be ahead of the replacement
+          // child being replayed. Its earlier prefix grants no fresh actuation.
+          if (
+            BigInt(nativeBlock.blockNo) < BigInt(previous.nativePoint.blockNo)
+          )
+            return;
           await prepareRecoveredBridge();
           if (relevance === "quiet") {
             // Keep queue evidence cached while waking yielded proofs on fresh
             // canonical progress. Inclusion-capable sources wake once later in
             // coordinator order, after finalized history has advanced.
+            // Without inclusion wakes this is the only later wake, so a
+            // classification deferred on public DA retries here as well.
             admitCatchupProgress(nativeBlock);
-            if (caughtUp && input.source.observeIncluded === undefined)
+            if (caughtUp && input.source.observeIncluded === undefined) {
+              await bridge.retryDeferredClassification(included);
               await bridge.recoverExisting({ nativeProgress: nativeBlock });
+            }
             return;
           }
           if (localObservation === null) {

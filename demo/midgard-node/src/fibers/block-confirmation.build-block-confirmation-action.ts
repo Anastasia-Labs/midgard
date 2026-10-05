@@ -4,6 +4,7 @@ import { Duration, Effect, Metric, Option, Queue, Ref } from "effect";
 import { PendingBlockFinalizationsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { SignedIntentReplacementIntegrityError } from "../services/canonical-journal-recovery.js";
+import { logOnStateChange } from "../services/globals.liveness-reasons.js";
 import { Database, Globals, Lucid, NodeConfig } from "../services/index.js";
 import {
   resolveTransactionConfirmationMetadata,
@@ -11,6 +12,10 @@ import {
 } from "../transaction-confirmation-metadata.js";
 import { deserializeStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import { WorkerError } from "../workers/utils/common.js";
+import {
+  recordConfirmationTickIdleness,
+  skipIdleConfirmationTick,
+} from "./block-confirmation.idle-backoff.js";
 import {
   abandonPendingBlockIfPresent,
   activePendingFinalizationIdentity,
@@ -64,6 +69,9 @@ export const buildBlockConfirmationAction = (
       globals.AVAILABLE_CONFIRMED_BLOCK,
     );
     const pending = yield* PendingBlockFinalizationsDB.retrieveActive();
+    // A provably idle node refreshes its snapshot with growing gaps instead of
+    // spawning a worker every tick; the heartbeat above stays fresh.
+    if (yield* skipIdleConfirmationTick(globals, pending)) return;
 
     yield* Effect.logInfo("🔍 New block confirmation process started.");
     const workerOutput = yield* runWorker({
@@ -328,10 +336,20 @@ export const buildBlockConfirmationAction = (
                 : Math.max(0, confirmationObservedAtMs - submittedAtMs),
           });
         }
-        yield* Effect.logInfo(
-          Option.isSome(pending)
-            ? "🔍 ☑️  Submitted block confirmed."
-            : "🔍 ☑️  Canonical state_queue snapshot refreshed.",
+        if (Option.isSome(pending)) {
+          yield* Effect.logInfo("🔍 ☑️  Submitted block confirmed.");
+        } else {
+          yield* logOnStateChange(
+            globals,
+            "block_confirmation_refresh",
+            metadata.headerHash?.toString("hex") ?? "no_header",
+            "🔍 ☑️  Canonical state_queue snapshot refreshed.",
+          );
+        }
+        yield* recordConfirmationTickIdleness(
+          globals,
+          pending,
+          config.WAIT_BETWEEN_BLOCK_CONFIRMATION,
         );
         break;
       }
@@ -343,7 +361,7 @@ export const buildBlockConfirmationAction = (
         ) {
           // A signed commit is replaced only by the history owner, from its
           // authenticated view at an exact point (whichever block holds the
-          // tail node's slot wins); queue absence here authorizes nothing.
+          // tail node's slot wins).
           yield* Effect.logInfo(
             "Signed commit intent is unresolved; the history owner's signed-intent reconciliation decides whether it is confirmed, replaced or revived.",
           );

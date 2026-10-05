@@ -8,9 +8,6 @@ import "../src/services/state-queue-correction-observer.js";
 import "./state-queue-correction-observer.authenticated-fraud-transition.js";
 import "./state-queue-correction-observer.harness.js";
 
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
-
 import {
   CORRECTION_LOCK_ASSET_NAME,
   CorrectionLockDatum,
@@ -58,7 +55,6 @@ import {
   policy,
   sha256,
   target,
-  tipOnlySource,
   transactionHash,
 } from "./state-queue-correction-observer.authenticated-fraud-transition.js";
 import {
@@ -592,6 +588,7 @@ describe("node-owned state-queue correction observer", () => {
       expect(init?.method).toBe("POST");
       return ogmiosTipResponse(init, { id: h32("9"), slot: 130 }, 119);
     });
+    let selectedTipAvailable = true;
     const webSocketFactory = () => {
       const listeners = new Map<string, ((event: never) => void)[]>();
       let nextBlockCount = 0;
@@ -605,6 +602,7 @@ describe("node-owned state-queue correction observer", () => {
           const request = JSON.parse(payload) as {
             id: number;
             method: string;
+            params?: { points?: readonly { slot: number; id: string }[] };
           };
           queueMicrotask(() => {
             if (request.method === "findIntersection") {
@@ -612,7 +610,8 @@ describe("node-owned state-queue correction observer", () => {
                 data: JSON.stringify({
                   id: request.id,
                   result: {
-                    intersection: { slot: 99, id: h32("6") },
+                    intersection: request.params!.points![0],
+                    tip: { id: h32("f"), slot: 130, height: 119 },
                   },
                 }),
               });
@@ -625,7 +624,13 @@ describe("node-owned state-queue correction observer", () => {
                 result:
                   nextBlockCount === 1
                     ? { direction: "backward" }
-                    : { direction: "forward", block: block() },
+                    : {
+                        direction: "forward",
+                        block: block(),
+                        tip: selectedTipAvailable
+                          ? { id: h32("9"), slot: 130, height: 119 }
+                          : undefined,
+                      },
               }),
             });
           });
@@ -667,6 +672,10 @@ describe("node-owned state-queue correction observer", () => {
         terminalTransition: { finalityDepth: "30" },
       },
     ]);
+    selectedTipAvailable = false;
+    await expect(source.observeTransitions(before, after)).rejects.toThrow(
+      "checkpoint lacks the selected-chain tip",
+    );
   };
 
   it("classifies a timeout from Kupo history plus the exact Ogmios mint arm", () =>
@@ -1003,7 +1012,7 @@ describe("node-owned state-queue correction observer", () => {
             const request = JSON.parse(payload) as {
               id: number;
               method: string;
-              params?: { points?: readonly { slot: number }[] };
+              params?: { points?: readonly { slot: number; id: string }[] };
             };
             queueMicrotask(() => {
               if (request.method === "findIntersection") {
@@ -1012,10 +1021,8 @@ describe("node-owned state-queue correction observer", () => {
                   data: JSON.stringify({
                     id: request.id,
                     result: {
-                      intersection: {
-                        slot: blockSlot - 1,
-                        id: h32("6"),
-                      },
+                      intersection: request.params!.points![0],
+                      tip: { id: h32("f"), slot: 140, height: 130 },
                     },
                   }),
                 });
@@ -1047,6 +1054,7 @@ describe("node-owned state-queue correction observer", () => {
                       ? { direction: "backward" }
                       : {
                           direction: "forward",
+                          tip: { id: h32("f"), slot: 140, height: 130 },
                           block: {
                             id: item.blockHash,
                             slot: item.slot,
@@ -1122,84 +1130,4 @@ describe("node-owned state-queue correction observer", () => {
       ).toHaveLength(1);
     },
   );
-
-  it("binds the Ogmios block height to a tip read on both sides of it", async () => {
-    // The first bracket straddles a tip change; the second agrees.
-    const tips = [h32("8"), h32("9"), h32("9"), h32("9")];
-    let tipReads = 0;
-    const { source, methods } = tipOnlySource((method) =>
-      method === "queryNetwork/tip" ? { id: tips[tipReads++], slot: 130 } : 119,
-    );
-    await expect(source.observeTransitions(before, before)).resolves.toEqual(
-      [],
-    );
-    expect(methods).toEqual([
-      "queryNetwork/tip",
-      "queryNetwork/blockHeight",
-      "queryNetwork/tip",
-      "queryNetwork/tip",
-      "queryNetwork/blockHeight",
-      "queryNetwork/tip",
-    ]);
-  });
-
-  it("refuses a tip that keeps moving across a bounded number of reads", async () => {
-    const { source, methods } = tipOnlySource((method, call) =>
-      method === "queryNetwork/tip"
-        ? { id: h32(call.toString(16).slice(-1)), slot: 100 + call }
-        : 119,
-    );
-    await expect(source.observeTransitions(before, before)).rejects.toThrow(
-      "Ogmios tip moved during each of 5 block height reads",
-    );
-    expect(methods).toHaveLength(15);
-  });
-
-  it.each([["origin"], [undefined], [-1], ["119"], [1.5]])(
-    "fails closed on an invalid Ogmios block height %j",
-    async (height) => {
-      const { source } = tipOnlySource((method) =>
-        method === "queryNetwork/tip" ? { id: h32("9"), slot: 130 } : height,
-      );
-      await expect(source.observeTransitions(before, before)).rejects.toThrow(
-        "Ogmios block height query returned no block height",
-      );
-    },
-  );
-
-  it("fails closed on an origin Ogmios tip", async () => {
-    const { source } = tipOnlySource(() => "origin");
-    await expect(source.observeTransitions(before, before)).rejects.toThrow(
-      "Ogmios tip query returned no canonical point",
-    );
-  });
-
-  it("fails a read from an Ogmios that accepts the request and never answers", async () => {
-    const server = createServer(() => {});
-    await new Promise<void>((resolve) =>
-      server.listen(0, "127.0.0.1", resolve),
-    );
-    const { port } = server.address() as AddressInfo;
-    try {
-      const source = makeLocalKupmiosStateQueueCorrectionSource({
-        deploymentIdentityDigest: deployment,
-        stateQueuePolicyId: policy,
-        stateQueueAddress: "addr_test_state_queue",
-        hubOraclePolicyId: hubPolicy,
-        correctionLockAddress,
-        fraudProofPolicyId: fraudPolicy,
-        fraudProofAddress,
-        kupoUrl: `http://127.0.0.1:${port.toString()}`,
-        ogmiosUrl: `ws://127.0.0.1:${port.toString()}`,
-        readQueue: async () => before,
-        requestTimeoutMs: 200,
-      });
-      await expect(
-        source.observeTransitions(before, before),
-      ).rejects.toMatchObject({ name: "TimeoutError" });
-    } finally {
-      server.closeAllConnections();
-      await new Promise((resolve) => server.close(resolve));
-    }
-  }, 5_000);
 });

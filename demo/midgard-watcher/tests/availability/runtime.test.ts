@@ -1,4 +1,8 @@
-import type { LocalKupmiosFraudProofRawSource } from "@al-ft/midgard-fault-proofs";
+import {
+  type LocalKupmiosFraudProofRawSource,
+  LocalKupmiosTransportUnavailableError,
+} from "@al-ft/midgard-fault-proofs";
+import { DaAvailabilityReadScopeExpiredError } from "@al-ft/midgard-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -9,8 +13,6 @@ import type { WatcherAuthenticatedStateQueueObservation } from "../../src/indexe
 import type { VerifiedWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.js";
 import type { WatcherProcessConfig } from "../../src/runtime/process-config.js";
 
-// Keep the real serialized reconciliation and transition reporting; isolate
-// wallet, source admission and chain I/O, which have their own fixture suites.
 const io = vi.hoisted(() => ({
   reconcile: vi.fn(),
   snapshot: vi.fn(),
@@ -18,10 +20,9 @@ const io = vi.hoisted(() => ({
 }));
 vi.mock("@al-ft/midgard-core/availability-operation-journal", () => ({
   openAvailabilityOperationJournal: () => ({
-    assertRunning() {},
     workflows: () => [],
+    unsettledReleases: () => [],
     close() {},
-    halt() {},
   }),
 }));
 vi.mock("@al-ft/midgard-sdk", async (original) => ({
@@ -68,8 +69,6 @@ vi.mock("../../src/availability/deployment.js", async () => {
     }),
   };
 });
-// The intake carries the verified source's release depth; a sentinel distinct
-// from every profile depth proves the runtime forwards it and substitutes none.
 vi.mock("../../src/availability/observation.js", () => ({
   createWatcherAvailabilityObservation: () => ({
     pool: async () => undefined,
@@ -102,6 +101,7 @@ const fixture = (
     config: {
       watcherConfig: {
         l1: {
+          requestTimeoutMs: 10_000,
           source: {
             sourceMode: "local_node",
             queryServices: [
@@ -281,6 +281,57 @@ describe("availability reconciliation status transitions", () => {
   });
 });
 
+describe("availability reconciliation retry on a quiet queue", () => {
+  const transient = () =>
+    new LocalKupmiosTransportUnavailableError("ogmios is unavailable");
+
+  it.each(["source", "scope"])(
+    "waits out a %s transient on its own timer and reconciles again exactly once",
+    async (kind) => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const events: WatcherAvailabilityStatusTransition[] = [];
+      const runtime = await fixture((event) => events.push(event));
+      io.reconcile.mockRejectedValueOnce(
+        kind === "source"
+          ? transient()
+          : new DaAvailabilityReadScopeExpiredError(),
+      );
+      await runtime.reconcile(observation(1), false);
+      expect(runtime.status()).toMatchObject({
+        phase: "waiting",
+        detail:
+          kind === "source"
+            ? "ogmios is unavailable"
+            : "Availability read attempt expired",
+      });
+      expect(io.reconcile).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(999);
+      expect(io.reconcile).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(io.reconcile).toHaveBeenCalledTimes(2);
+      expect(runtime.status().phase).toBe("ready");
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(io.reconcile).toHaveBeenCalledTimes(2);
+      expect(events).toEqual([]);
+      await runtime.close();
+    },
+  );
+
+  it("reports a genuine refusal blocked, and a block or close supersedes its retry", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const runtime = await fixture();
+    io.reconcile.mockRejectedValueOnce(new Error("snapshot boundary changed"));
+    await runtime.reconcile(observation(1), false);
+    expect(runtime.status().phase).toBe("blocked");
+    io.reconcile.mockRejectedValueOnce(new Error("snapshot boundary changed"));
+    await runtime.reconcile(observation(2), false);
+    expect(io.reconcile).toHaveBeenCalledTimes(2);
+    await runtime.close();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(io.reconcile).toHaveBeenCalledTimes(2);
+  });
+});
+
 it("projects pending availability onto current inclusion without changing finalized actuation", async () => {
   const finalized = {
     ...observation(1),
@@ -430,3 +481,20 @@ it("rejects inclusion classification revoked during public DA lookup", async () 
   );
   await runtime.close();
 });
+
+vi.mock("../../src/l1/local-kupmios-raw-source.js", () => ({
+  createWatcherLocalKupmiosRawSource: () => ({}),
+}));
+vi.mock("../../src/storage/retained-da-runtime.read-scope.js", () => ({
+  withWatcherRetainedDaReadScope: async (
+    input: { scope: SDKScope },
+    read: () => Promise<unknown>,
+  ) => input.scope.read(read),
+}));
+type SDKScope = import("@al-ft/midgard-sdk").DaAvailabilityReadScope;
+vi.mock("../../src/availability/runtime.read-attempt.js", async (original) => ({
+  ...(await original<
+    typeof import("../../src/availability/runtime.read-attempt.js")
+  >()),
+  watcherAvailabilityAuthenticatedOpenDeadline: () => Date.now() + 2_400_000,
+}));

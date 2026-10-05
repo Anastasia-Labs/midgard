@@ -4,6 +4,7 @@ import { CML, coreToUtxo, type TxSigned } from "@lucid-evolution/lucid";
 import { readFraudSlashFundingAuthority } from "../remove-fraudulent-block.js";
 import { assertRuntimeTransactionBound } from "./funding-reservation-permit.assert-runtime-transaction-bound.js";
 import {
+  assertCurrentFundingCollateralLimit,
   assertFundingSubmissionAuthority,
   bodySha256,
 } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
@@ -191,6 +192,7 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
   const state = stateForJournal(journal);
   if (state === undefined) return;
   assertFundingSubmissionAuthority(state);
+  await state.port.assertSubmissionAuthority?.();
   if ((await state.port.readAbandonmentHandoff()) !== null)
     throw new Error(
       "funding abandonment outcome awaits journal acknowledgment",
@@ -198,6 +200,9 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
   const expectedRevision = state.snapshot.revision;
   const expectedPending = state.pendingTransactionHash;
   await refresh(state);
+  assertFundingSubmissionAuthority(state);
+  await state.port.assertSubmissionAuthority?.();
+  assertCurrentFundingCollateralLimit(state);
   if (state.preparedTransaction !== undefined) {
     const { signed, cborHex } = state.preparedTransaction;
     if (
@@ -217,6 +222,12 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
     throw new Error("production funding reservation changed before submission");
   }
 };
+
+/** Whether a funding reservation is bound to the journal. Only then does the
+ * reservation store keep a replacement mutually exclusive with an attempt
+ * superseded without retirement. */
+export const workflowJournalHasFundingReservation = (journal: object) =>
+  stateForJournal(journal) !== undefined;
 
 /** Read durable signed material without requiring its already-spent inputs to remain live. */
 export const readWorkflowFundingRecovery = async (
@@ -319,5 +330,26 @@ export const readWorkflowFundingRecovery = async (
     submissionHandoff,
     completionHandoff,
     abandonmentHandoff,
+  });
+};
+
+export const readLegacyWorkflowFundingAbandonedTransactions = async (
+  journal: object,
+) => {
+  const state = stateForJournal(journal);
+  const saved = (await state?.port.readLegacyAbandonedTransactions?.()) ?? [];
+  return saved.map((value) => {
+    const record = exact(
+      value,
+      ["transition", "handoff"],
+      "legacy funding abandonment",
+    );
+    const transition = parseWorkflowFundingPreparedTransition(
+      record.transition,
+    );
+    const handoff = parseWorkflowFundingAbandonmentHandoff(record.handoff);
+    if (transition.transactionHash !== handoff.submissionIntent.txHash)
+      throw new Error("Legacy funding abandonment changed its exact attempt");
+    return { transition, handoff };
   });
 };

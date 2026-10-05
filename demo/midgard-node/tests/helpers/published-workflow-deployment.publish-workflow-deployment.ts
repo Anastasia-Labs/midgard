@@ -6,6 +6,7 @@ import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-prof
 import {
   Emulator,
   Lucid,
+  type Network,
   PROTOCOL_PARAMETERS_DEFAULT,
   SLOT_CONFIG_NETWORK,
   unixTimeToEnclosingSlot,
@@ -18,6 +19,9 @@ import {
   type PublishedWorkflowDeploymentAccounts,
 } from "./published-workflow-deployment.submit-published-initialization.js";
 import { DEFAULT_PUBLICATION_SCHEDULE } from "./reference-publication-chain.js";
+
+// A parameter keeps this fixture typecheckable for either compiled profile.
+const isPreprodNetwork = (network: Network): boolean => network === "Preprod";
 
 /** Emulator wrapper around the same deployment builders used by live journeys. */
 export const publishWorkflowDeployment = async (
@@ -37,7 +41,7 @@ export const publishWorkflowDeployment = async (
     maxTxExSteps: 10_000_000_000n,
   });
   emulator.time = 1_788_739_200_000;
-  if (network === "Preprod") {
+  if (isPreprodNetwork(network)) {
     emulator.slot = unixTimeToEnclosingSlot(
       emulator.time,
       SLOT_CONFIG_NETWORK.Preprod,

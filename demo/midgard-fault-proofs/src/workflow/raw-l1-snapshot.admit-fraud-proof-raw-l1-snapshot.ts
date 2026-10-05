@@ -45,7 +45,9 @@ export const admitFraudProofRawL1Snapshot = ({
   const minimumConfirmationDepth =
     observationDepth === "inclusion"
       ? 1
-      : releaseFinality.policy.confirmationDepth;
+      : observationDepth === "recovery_finality"
+        ? releaseFinality.policy.automaticRecoveryMaxDepth + 2
+        : releaseFinality.policy.confirmationDepth;
   const root = exact(
     value,
     [

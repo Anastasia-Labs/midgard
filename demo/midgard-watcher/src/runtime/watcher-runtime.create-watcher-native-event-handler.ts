@@ -135,6 +135,7 @@ export const watcherRestartIntersectionCandidates = (input: {
   readonly progressHead: WatcherRestartIntersectionCandidate | null;
   readonly progressCandidates: readonly WatcherRestartIntersectionCandidate[];
   readonly authorityFinalized: WatcherRestartIntersectionCandidate | null;
+  readonly oldestAuthenticatedHint?: WatcherRestartIntersectionCandidate | null;
   readonly stateQueueCursor: WatcherRestartIntersectionCandidate;
 }): readonly WatcherRestartIntersectionCandidate[] => {
   const ordered = [
@@ -142,6 +143,9 @@ export const watcherRestartIntersectionCandidates = (input: {
     ...input.progressCandidates,
     ...(input.authorityFinalized === null ? [] : [input.authorityFinalized]),
     input.stateQueueCursor,
+    ...(input.oldestAuthenticatedHint == null
+      ? []
+      : [input.oldestAuthenticatedHint]),
   ];
   const seen = new Set<string>();
   const candidates: WatcherRestartIntersectionCandidate[] = [];
@@ -177,11 +181,13 @@ export const createWatcherNativeEventHandler =
   (input: {
     readonly coordinator: Promise<Pick<WatcherChainCoordinator, "handle">>;
     readonly onCaughtUp: () => void;
+    readonly onRollbackArrived?: () => void;
     readonly operationsSink?: WatcherOperationsSink;
     readonly sourceIdentityDigest?: string;
     readonly nowMs?: () => bigint;
   }): ((event: WatcherNativeChainSyncEvent) => Promise<void>) =>
   async (event) => {
+    if (event.kind === "roll_backward") input.onRollbackArrived?.();
     const coordinator = await input.coordinator;
     await coordinator.handle(event);
     if (

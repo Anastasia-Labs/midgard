@@ -1,8 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  type ReferenceScriptAuthPolicyRef,
-  referenceScriptAuthTokenNameText,
-} from "@al-ft/midgard-sdk";
+import { type ReferenceScriptAuthPolicyRef } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -59,6 +56,9 @@ const REFERENCE_SCRIPT_PROVIDER_FETCH_RETRY = {
   jitterRatio: 0.25,
 } as const;
 
+export const REFERENCE_SCRIPT_PER_TARGET_READ_LIMIT =
+  SDK.REFERENCE_SCRIPT_PER_TARGET_READ_LIMIT;
+
 export const REFERENCE_SCRIPT_CONFIRMATION_TIMEOUT_MS = 30 * 60 * 1_000;
 
 export const REFERENCE_SCRIPT_CONFIRMATION_OPTIONS = {
@@ -89,38 +89,9 @@ export const isSameScriptRef = SDK.isSameScriptRef;
 
 export const hasReferenceScriptAuthRole = SDK.hasReferenceScriptAuthRole;
 
-/**
- * Whether the live resolution accepts `utxo` for `target`: it sits at the
- * reference-script address, holds the target's role token under the auth
- * policy, and carries the target's script.
- */
-export const acceptsReferenceScriptUtxo = (
-  utxo: UTxO,
-  referenceScriptsAddress: string,
-  target: ReferenceScriptTarget,
-  authPolicy: ReferenceScriptAuthPolicyRef,
-): boolean =>
-  utxo.address === referenceScriptsAddress &&
-  hasReferenceScriptAuthRole(utxo, target, authPolicy) &&
-  isSameScriptRef(utxo.scriptRef, target.script);
+export const acceptsReferenceScriptUtxo = SDK.acceptsReferenceScriptUtxo;
 
-/** The UTxO the live resolution picks for `target`, if any. */
-export const resolveReferenceScriptUtxo = (
-  utxos: readonly UTxO[],
-  referenceScriptsAddress: string,
-  target: ReferenceScriptTarget,
-  authPolicy: ReferenceScriptAuthPolicyRef,
-): UTxO | undefined =>
-  utxos
-    .filter((utxo) =>
-      acceptsReferenceScriptUtxo(
-        utxo,
-        referenceScriptsAddress,
-        target,
-        authPolicy,
-      ),
-    )
-    .sort(compareOutRefs)[0];
+export const resolveReferenceScriptUtxo = SDK.resolveReferenceScriptUtxo;
 
 export const fetchReferenceScriptUtxosAt = (
   lucid: LucidEvolution,
@@ -141,52 +112,28 @@ export const fetchReferenceScriptUtxosAt = (
     REFERENCE_SCRIPT_PROVIDER_FETCH_RETRY,
   );
 
+/**
+ * The SDK's resolution (each target read through its own role token, or the
+ * wallet once for a large set), with every provider read under the node's
+ * retry policy.
+ */
 export const fetchReferenceScriptUtxosProgram = (
   lucid: LucidEvolution,
   referenceScriptsAddress: string,
   targets: readonly ReferenceScriptTarget[],
   authPolicy: ReferenceScriptAuthPolicyRef,
 ): Effect.Effect<readonly ReferenceScriptResolved[], SDK.StateQueueError> =>
-  Effect.gen(function* () {
-    const referenceScriptUtxos = yield* fetchReferenceScriptUtxosAt(
-      lucid,
-      referenceScriptsAddress,
-      `reference-script UTxO fetch at ${referenceScriptsAddress}`,
-      `Failed to fetch reference-script UTxOs at ${referenceScriptsAddress}`,
-    );
-    return yield* Effect.forEach(targets, (target) =>
-      Effect.gen(function* () {
-        const resolved = resolveReferenceScriptUtxo(
-          referenceScriptUtxos,
-          referenceScriptsAddress,
-          target,
-          authPolicy,
-        );
-        if (resolved === undefined) {
-          return yield* Effect.fail(
-            new SDK.StateQueueError({
-              message: "Missing reference script",
-              cause: `${target.name} at ${referenceScriptsAddress} with role token ${referenceScriptAuthTokenNameText(
-                target.name,
-              )}`,
-            }),
-          );
-        }
-        return {
-          name: target.name,
-          utxo: resolved,
-        };
-      }),
-    );
-  }).pipe(
-    Effect.mapError((cause) =>
-      cause instanceof SDK.StateQueueError
-        ? cause
-        : new SDK.StateQueueError({
-            message: "Failed to resolve required reference scripts",
-            cause,
-          }),
-    ),
+  SDK.fetchReferenceScriptUtxosProgram(
+    lucid,
+    referenceScriptsAddress,
+    targets,
+    authPolicy,
+    (label, read) =>
+      runProviderStepWithRetry(
+        label,
+        read,
+        REFERENCE_SCRIPT_PROVIDER_FETCH_RETRY,
+      ),
   );
 
 export const referenceScriptByName = (

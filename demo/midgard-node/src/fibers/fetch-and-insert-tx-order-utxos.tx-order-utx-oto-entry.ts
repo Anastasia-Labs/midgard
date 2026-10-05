@@ -17,7 +17,7 @@ import { type MidgardForcedTxAdmissionStopped } from "@al-ft/midgard-core/consen
 import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Effect, Option, Ref } from "effect";
 
 import {
   CekProgramMaterialDB,
@@ -28,6 +28,7 @@ import { type TxOrderCarriageReadOptions } from "../l1-tx-order-carriage.js";
 import {
   ContractDeploymentIdentity,
   Database,
+  Globals,
   Lucid,
   MidgardContracts,
   NodeConfig,
@@ -212,6 +213,42 @@ export const publishedProgramMaterialEntries = (
   return { entries: Object.freeze(entries), ignoredCount };
 };
 
+/**
+ * The instant through which a successful reconcile proves every forced
+ * transaction ingested, or undefined when its bounds do not cover the whole
+ * past (a lower bound). An order's inclusion time is its mint's validity upper
+ * bound plus `event_wait_duration` (enforced on chain), so an order included
+ * at or before the fetch start was minted before it and is in the visible set
+ * the fetch reads; a later inclusion time may still be unminted. A bounded
+ * fetch reads only inclusion times below its exclusive upper bound. The
+ * watermark is the earlier of the two.
+ */
+export const txOrdersIngestedThroughMs = (
+  fetchStartedAtMs: number,
+  config: UserEventFetchBounds | undefined,
+): number | undefined =>
+  config?.inclusionTimeLowerBound !== undefined
+    ? undefined
+    : config?.inclusionTimeUpperBound === undefined
+      ? fetchStartedAtMs
+      : Math.min(fetchStartedAtMs, Number(config.inclusionTimeUpperBound) - 1);
+
+/**
+ * Advances `Globals.TX_ORDERS_INGESTED_THROUGH_MS`, never moving it back.
+ * The commit worker thread has no `Globals` and records nothing; the periodic
+ * tx-order fiber and the barrier refresher run on the main thread and do.
+ */
+const recordTxOrdersIngestedThrough = (
+  throughMs: number | undefined,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const globals = yield* Effect.serviceOption(Globals);
+    if (throughMs === undefined || Option.isNone(globals)) return;
+    yield* Ref.update(globals.value.TX_ORDERS_INGESTED_THROUGH_MS, (current) =>
+      current === undefined || throughMs > current ? throughMs : current,
+    );
+  });
+
 export const reconcileVisibleTxOrderUTxOs = (
   config?: UserEventFetchBounds,
   /**
@@ -237,6 +274,7 @@ export const reconcileVisibleTxOrderUTxOs = (
         }),
       );
     }
+    const fetchStartedAtMs = Date.now();
     const txOrderUTxOs: SDK.TxOrderUTxOV1[] = [
       ...(yield* fetchTxOrderUTxOs(lucid, consensusProfile, config)),
     ];
@@ -278,7 +316,7 @@ export const reconcileVisibleTxOrderUTxOs = (
         ),
       );
     }
-    return yield* persistVisibleUserEventUTxOs({
+    const reconciled = yield* persistVisibleUserEventUTxOs({
       visibleUtxos: txOrderUTxOs,
       toEntry: (utxo) =>
         txOrderUTxOToEntry(
@@ -292,6 +330,10 @@ export const reconcileVisibleTxOrderUTxOs = (
       emptyLogMessage: "No tx-order UTxOs found.",
       foundLogMessage: (count) => `${count} tx-order UTxO(s) found.`,
     });
+    yield* recordTxOrdersIngestedThrough(
+      txOrdersIngestedThroughMs(fetchStartedAtMs, config),
+    );
+    return reconciled;
   });
 
 export const fetchAndInsertTxOrderUTxOs: Effect.Effect<

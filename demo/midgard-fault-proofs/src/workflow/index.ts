@@ -70,6 +70,7 @@ export * from "./release-finality-policy.js";
 export * from "./replay-requirements.js";
 export * from "./runtime.js";
 export * from "./runtime-funding-policy.js";
+export * from "./superseded-attempt-read-schedule.js";
 export * from "./transaction-boundary.js";
 export * from "./withdrawn-input.js";
 export * from "./withdrawn-reference-input.js";

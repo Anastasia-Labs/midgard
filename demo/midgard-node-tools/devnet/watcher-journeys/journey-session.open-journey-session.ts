@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -24,6 +24,10 @@ import { sourceFacetPaths } from "../../../../scripts/lib/source-facets.mjs";
 import { writeJourneyArtifact } from "./artifacts.js";
 import { startJourneyHistoryArchives } from "./history-archives.js";
 import {
+  journeyAuthorityKeySources,
+  provisionJourneyAuthority,
+} from "./journey-authority-provisioning.js";
+import {
   WATCHER_FAILED_CLOSED_EXIT_CODE,
   WATCHER_RESTART_LIMIT,
 } from "./journey-session.capture-journey-workflow-baseline.js";
@@ -42,7 +46,10 @@ import { measureJourneyStage } from "./stage-timing.js";
 import { verifyJourneyWorkflowBindings } from "./workflow-binding-preflight.js";
 
 /** One immutable deployment and service lifetime, explicitly owned by its suite. */
-export const openJourneySession = async (runDirectory: string) => {
+export const openJourneySession = async (
+  runDirectory: string,
+  options: { initializeAuthority?: boolean } = {},
+) => {
   const context = await loadJourneyContext(runDirectory);
   const { deployment, provider, accounts, runEnv } = context;
   const runtimeDirectory = join(context.runDirectory, "work/journeys/runtime");
@@ -50,10 +57,7 @@ export const openJourneySession = async (runDirectory: string) => {
     context.runDirectory,
     "work/journeys/sessions",
   );
-  await Promise.all([
-    mkdir(runtimeDirectory, { recursive: true, mode: 0o700 }),
-    mkdir(sessionsDirectory, { recursive: true, mode: 0o700 }),
-  ]);
+  await mkdir(sessionsDirectory, { recursive: true, mode: 0o700 });
   const directory = await mkdtemp(join(sessionsDirectory, "session-"));
   const cleanup: (() => Promise<void>)[] = [];
   let closed = false;
@@ -134,32 +138,13 @@ export const openJourneySession = async (runDirectory: string) => {
       deploymentFingerprint: deployment.manifest.manifestId,
     });
     cleanup.push(archives.close);
-    const secret = async (name: string, initial: string) => {
-      const path = join(context.runDirectory, "secrets", name);
-      if (!existsSync(path))
-        await writeFile(path, initial, { mode: 0o600, flag: "wx" });
-      return { kind: "file" as const, path };
-    };
-    const rollbackKey = await secret(
-      "watcher-rollback.key",
-      randomBytes(32).toString("hex"),
-    );
-    const proverKey = await secret(
-      "watcher-prover.seed",
-      accounts.publisher.seedPhrase,
-    );
-    const availabilityKey = await secret(
-      "watcher-availability.seed",
-      accounts.availability.seedPhrase,
-    );
-    const bearerKey = await secret(
-      "watcher-trusted-bearer.key",
-      randomBytes(32).toString("hex"),
-    );
-    const recordKey = await secret(
-      "watcher-trusted-record.key",
-      randomBytes(32).toString("hex"),
-    );
+    const {
+      rollback: rollbackKey,
+      prover: proverKey,
+      availability: availabilityKey,
+      bearer: bearerKey,
+      record: recordKey,
+    } = journeyAuthorityKeySources(context.runDirectory);
     const nativeQuery = await journeyNativeNodeQuery(context.runDirectory);
     if (nativeQuery.watcherConfig.l1.source.sourceMode !== "local_node")
       throw new Error("Native node source required");
@@ -214,6 +199,27 @@ export const openJourneySession = async (runDirectory: string) => {
       },
     };
     const watcherConfig = parseWatcherConfig(watcherInput);
+    const policy = makeWatcherFinalityPolicy(
+      watcherConfig,
+      authority.deploymentAuthority.deploymentIdentity,
+    );
+    if (policy === null) throw new Error("Finality policy was not admitted");
+    const [authorityPort, operationsPort] = await journeyPorts(2);
+    const trustedHeadAuthorityEndpoint = `http://127.0.0.1:${authorityPort}`;
+    const operationsEndpoint = `http://127.0.0.1:${operationsPort}`;
+    const authorityConfigPath = join(directory, "authority-process.json");
+    await stage("explicit trusted-head authority provisioning", () =>
+      provisionJourneyAuthority({
+        runDirectory: context.runDirectory,
+        runtimeDirectory,
+        configPath: authorityConfigPath,
+        endpoint: trustedHeadAuthorityEndpoint,
+        policy,
+        publisherSeed: accounts.publisher.seedPhrase,
+        availabilitySeed: accounts.availability.seedPhrase,
+        initialize: options.initializeAuthority === true,
+      }),
+    );
     const signedCommitSource = createLocalKupmiosHttpOgmiosRawSource({
       sourceId: "journey-signed-header-recovery",
       kupoHttpUrl: context.kupoUrl,
@@ -286,23 +292,6 @@ export const openJourneySession = async (runDirectory: string) => {
       deployment.publisherLucid.overrideUTxOs(
         await provider.getUtxos(publisherAddress),
       );
-    });
-    const policy = makeWatcherFinalityPolicy(
-      watcherConfig,
-      authority.deploymentAuthority.deploymentIdentity,
-    );
-    if (policy === null) throw new Error("Finality policy was not admitted");
-    const [authorityPort, operationsPort] = await journeyPorts(2);
-    const trustedHeadAuthorityEndpoint = `http://127.0.0.1:${authorityPort}`;
-    const operationsEndpoint = `http://127.0.0.1:${operationsPort}`;
-    const authorityConfigPath = join(directory, "authority-process.json");
-    await writeJourneyArtifact(authorityConfigPath, {
-      schemaVersion: "midgard-watcher-trusted-head-authority-process-config-v1",
-      directory: join(runtimeDirectory, "trusted-head"),
-      endpoint: trustedHeadAuthorityEndpoint,
-      policy,
-      recordAuthenticationKeySource: recordKey,
-      httpBearerSecretSource: bearerKey,
     });
     const authorityProcess = launchJourneyWatcherProcess({
       command: "authority",

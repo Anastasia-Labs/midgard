@@ -14,6 +14,7 @@ import { parseStateSnapshot } from "./funding-reservation-permit.reconcile-workf
 import {
   type WorkflowFundingAbandonmentHandoff,
   type WorkflowFundingCompletionHandoff,
+  type WorkflowFundingSubmissionHandoff,
 } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import {
   type FraudProofWorkflowJournalEntry,
@@ -56,6 +57,7 @@ const applyTransition = async ({
   state.currentActionKind = undefined;
   state.currentActionDigest = undefined;
   state.currentFundingOutRefs = Object.freeze([]);
+  state.currentRequiredFundingOutRefs = Object.freeze([]);
   state.currentCollateralOutRefs = Object.freeze([]);
 };
 
@@ -64,9 +66,12 @@ export const confirmWorkflowFundingReservationTransaction = async (input: {
   readonly transactionHash: string;
 }): Promise<void> => await applyTransition({ ...input, outcome: "confirmed" });
 
+/** With `adoption`, re-selects a superseded attempt that landed after a
+ * rollback; its new handoff replaces the old one in the journal. */
 export const reobserveWorkflowFundingReservationTransaction = async (input: {
   readonly journal: object;
   readonly transactionHash: string;
+  readonly adoption?: WorkflowFundingSubmissionHandoff;
 }): Promise<boolean> => {
   const state = stateForJournal(input.journal);
   if (state === undefined) return true;
@@ -76,6 +81,7 @@ export const reobserveWorkflowFundingReservationTransaction = async (input: {
   const observed = await state.port.reobserve({
     expectedRevision: state.snapshot.revision,
     transactionHash: input.transactionHash,
+    ...(input.adoption === undefined ? {} : { adoption: input.adoption }),
   });
   if (observed === null) return false;
   state.snapshot = parseStateSnapshot(state, observed);
@@ -84,6 +90,7 @@ export const reobserveWorkflowFundingReservationTransaction = async (input: {
   state.currentActionKind = undefined;
   state.currentActionDigest = undefined;
   state.currentFundingOutRefs = Object.freeze([]);
+  state.currentRequiredFundingOutRefs = Object.freeze([]);
   state.currentCollateralOutRefs = Object.freeze([]);
   return true;
 };
@@ -95,6 +102,8 @@ export const abandonWorkflowFundingReservationTransaction = async (input: {
 }): Promise<void> => {
   const state = stateForJournal(input.journal);
   if (state === undefined) return;
+  // Without a retirement receipt this supersedes, not retires, the attempt:
+  // its inputs stay leased and the replacement must spend one of them.
   const handoff = parseWorkflowFundingAbandonmentHandoff(input.handoff);
   if (
     handoff.submissionIntent.txHash !== input.transactionHash ||
@@ -116,6 +125,7 @@ export const abandonWorkflowFundingReservationTransaction = async (input: {
   state.currentActionKind = undefined;
   state.currentActionDigest = undefined;
   state.currentFundingOutRefs = Object.freeze([]);
+  state.currentRequiredFundingOutRefs = Object.freeze([]);
   state.currentCollateralOutRefs = Object.freeze([]);
   // The recorded bytes remain available until the exact journal outcome is acknowledged.
   state.pendingTransactionHash = input.transactionHash;
@@ -132,7 +142,13 @@ const journalHasOnlyResolvedFundingAttempts = (
       event.txHash !== undefined &&
       resolved.has(event.txHash)
     ) {
-      if (event.kind === "confirmed") resolved.set(event.txHash, true);
+      // A confirmed attempt never holds later actions: retirement beyond the
+      // recovery horizon only prunes its record, and its collateral is never
+      // at risk because only locally evaluated scripts are submitted. A
+      // rollback reopens it through `reobserved` below.
+      if (event.kind === "signed_attempt_retired" || event.kind === "confirmed")
+        resolved.set(event.txHash, true);
+      // Supersession at the tip resolves an attempt as well as retirement.
       else if (event.kind === "reconciled")
         resolved.set(event.txHash, event.outcome === "not_found");
       else if (
@@ -235,6 +251,7 @@ export const releaseWorkflowFundingReservation = async ({
   state.currentActionKind = undefined;
   state.currentActionDigest = undefined;
   state.currentFundingOutRefs = Object.freeze([]);
+  state.currentRequiredFundingOutRefs = Object.freeze([]);
   state.currentCollateralOutRefs = Object.freeze([]);
   state.pendingTransactionHash = undefined;
   state.preparedTransaction = undefined;
@@ -248,4 +265,22 @@ export const balanceCbor = (utxos: readonly UTxO[]): string => {
     }
   }
   return assetsToValue(assets).to_cbor_hex();
+};
+
+export const retireLegacyWorkflowFundingAbandonment = async (input: {
+  readonly journal: object;
+  readonly transactionHash: string;
+  readonly retirement: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement;
+}) => {
+  const state = stateForJournal(input.journal);
+  if (state === undefined || state.port.retireLegacyAbandonment === undefined)
+    throw new Error("Funding authority cannot authenticate legacy retirement");
+  state.snapshot = parseStateSnapshot(
+    state,
+    await state.port.retireLegacyAbandonment({
+      expectedRevision: state.snapshot.revision,
+      transactionHash: input.transactionHash,
+      retirement: input.retirement,
+    }),
+  );
 };

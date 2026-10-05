@@ -98,6 +98,17 @@ export const stateSemanticsAreValid = (
     return false;
   }
   if (state.phase === "pending") {
+    const released = state.finalized;
+    if (
+      released !== null &&
+      (BigInt(released.blockNo) >= BigInt(observation.blockNo) ||
+        BigInt(released.slot) >= BigInt(observation.slot) ||
+        !stateSemanticsAreValid(
+          { ...state, phase: "finalized", pending: null },
+          policy,
+        ))
+    )
+      return false;
     if (visibilityCount === 1n) {
       return (
         currentDepth === firstSeenDepth &&
@@ -160,7 +171,7 @@ export const parseWatcherFinalityState = (
         incident === null) ||
         (phase === "pending" &&
           pending !== null &&
-          finalized === null &&
+          (state.finalized === null || finalized !== null) &&
           incident === null) ||
         (phase === "finalized" &&
           pending === null &&

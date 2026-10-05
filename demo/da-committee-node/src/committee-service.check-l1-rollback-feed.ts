@@ -90,7 +90,14 @@ export const checkL1RollbackFeed = async (
   previous: L1SourceState | undefined,
   provider: StateQueueProvider,
   snapshotCursor: ChainSyncCursor | undefined,
+  retirementStore?: Pick<
+    CommitteeStore,
+    "getRetirementFloor" | "recordRetirementBreach"
+  >,
 ): Promise<L1RollbackFeedCheck> => {
+  const floor = await retirementStore?.getRetirementFloor();
+  if (floor?.breach)
+    throw new L1SourceIntegrityError("committee retirement floor was breached");
   const replayProvider = durableChainSyncReplayProvider(provider);
   if (replayProvider === undefined) {
     return {};
@@ -106,7 +113,10 @@ export const checkL1RollbackFeed = async (
     previous?.observations.filter(
       ({ hasPersistedDecision }) => hasPersistedDecision,
     ) ?? [];
-  if (previous === undefined || decisions.length === 0) {
+  if (
+    (previous === undefined || decisions.length === 0) &&
+    floor?.point === undefined
+  ) {
     return { cursor: snapshotCursor };
   }
   if (consumed === undefined) {
@@ -141,11 +151,35 @@ export const checkL1RollbackFeed = async (
       "chain-sync rollback replay does not match the durable rollback generation",
     );
   }
+  // A rollback undoes a decision only if it reaches below the chain point the
+  // decision recorded. A decision with no recorded point (one persisted from a
+  // peer's signature on an observation that carried none) cannot be placed
+  // against a rollback point; the tick's observation check judges it instead,
+  // and fails closed if its output is gone or forked.
+  const placed = decisions.filter(
+    (
+      decision,
+    ): decision is L1ObservedDecision & {
+      readonly slot: number;
+      readonly blockHash: string;
+    } => decision.slot !== undefined && decision.blockHash !== undefined,
+  );
   for (const rollback of replayedRollbacks) {
-    for (const decision of decisions) {
+    if (
+      floor?.point &&
+      (rollback.point.slot < floor.point.slot ||
+        (rollback.point.slot === floor.point.slot &&
+          rollback.point.blockHash !== floor.point.blockHash))
+    ) {
+      const failure = `l1_source_retirement_floor_crossed:${rollback.point.slot}:${rollback.point.blockHash}`;
+      await retirementStore!.recordRetirementBreach(failure, {
+        slot: rollback.point.slot,
+        blockHash: rollback.point.blockHash,
+      });
+      return { cursor: snapshotCursor, failure };
+    }
+    for (const decision of placed) {
       if (
-        decision.slot === undefined ||
-        decision.blockHash === undefined ||
         rollback.point.slot < decision.slot ||
         (rollback.point.slot === decision.slot &&
           rollback.point.blockHash !== decision.blockHash)

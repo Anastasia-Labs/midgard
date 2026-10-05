@@ -52,7 +52,7 @@ import {
 describe.sequential(
   "signed-intent release of a root-built commit after merges",
   () => {
-    it("replaces a root-built commit once the observer records the transition after the root was left empty, naming a foreign block, though merges hid the slot from the confirmed state; never before", async () => {
+    it("replaces a root-built commit once the observer records the transition after the root was left empty, naming a foreign block, though merges hid the slot from the confirmed state; never before its TTL while the history journals no spend of its base output (owner ruling 2026-09-26)", async () => {
       const view = makeRewritableQueueTransport();
       const h = await openHistoryProductionOwnerLifecycle({
         transportFactory: view.transportFactory,

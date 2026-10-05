@@ -38,6 +38,11 @@ export type DaLibp2pPayloadProtocolHandlersOptions<
   readonly store: Store;
   readonly limits?: Partial<DaLibp2pPayloadProtocolLimits>;
   readonly now?: () => Date;
+  /**
+   * Where a refused payload-submit over a settled record is reported.
+   * Defaults to `console.warn`.
+   */
+  readonly log?: (message: string) => void;
 };
 
 /**
@@ -177,6 +182,17 @@ export const sameStoredPayload = (
 ): boolean =>
   record.payloadSha256 === payloadHash &&
   record.payloadCborHex === payloadBytes.toString("hex");
+
+/**
+ * Whether a stored record has already been judged against its header.  A
+ * payload-submit never writes over such a record: the verified bytes are the
+ * ones attestation and availability answers depend on, and a rejected record
+ * keeps its verdict rather than being replaced by bytes nothing has checked.
+ */
+export const isSettledPayload = (record: DaPayloadRecord): boolean =>
+  record.validationStatus === "verified" ||
+  record.validationStatus === "malformed_da" ||
+  record.validationStatus === "root_mismatch";
 
 export const payloadBytesFromRecord = (
   record: DaPayloadRecord,

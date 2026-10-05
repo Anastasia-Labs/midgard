@@ -5,6 +5,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  computeFraudProofRawL1PointId,
   computeFraudProofWorkflowId,
   deriveFraudProofRawL1CompletedTerminal,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
@@ -27,7 +28,10 @@ import { rollBackTerminalFixture } from "./support/raw-l1-terminal-fixture.js";
 
 describe("read-only completed workflow verification", () => {
   const completed = async () => {
-    const value = await fixture({ proofCreation: true });
+    const value = await fixture({
+      proofCreation: true,
+      confirmationDepth: 2162,
+    });
     const terminal = await deriveFraudProofRawL1CompletedTerminal({
       ...value,
       releaseEconomics,
@@ -249,5 +253,61 @@ describe("read-only completed workflow verification", () => {
       ),
     };
     await expect(value.verify(tampered)).rejects.toThrow();
+  });
+  it.each([30, 2161] as const)(
+    "keeps a completed receipt pending after bounded rollback to canonical depth %s",
+    async (confirmationDepth) => {
+      const value = await completed();
+      const saved = structuredClone(value.entries);
+      const point = value.snapshot.cursor.point;
+      const tipInput = {
+        slot: (BigInt(point.slot) + BigInt(confirmationDepth)).toString(),
+        blockNo: (
+          BigInt(point.blockNo) +
+          BigInt(confirmationDepth) -
+          1n
+        ).toString(),
+        blockHash: hash32("93"),
+      };
+      const tip = {
+        ...tipInput,
+        pointId: computeFraudProofRawL1PointId(tipInput),
+      };
+      const shallow = {
+        ...value.snapshot,
+        provenance: { ...value.snapshot.provenance, ogmiosTip: tip },
+        cursor: { ...value.snapshot.cursor, tip, confirmationDepth },
+        transactions: value.snapshot.transactions.map((tx) => ({
+          ...tx,
+          confirmationDepth,
+        })),
+      };
+      expect(BigInt(tip.blockNo) - BigInt(point.blockNo) + 1n).toBe(
+        BigInt(confirmationDepth),
+      );
+      expect(
+        BigInt(value.snapshot.cursor.tip.blockNo) - BigInt(tip.blockNo),
+      ).toBeLessThanOrEqual(2160n);
+      await expect(value.verify(shallow)).resolves.toEqual({
+        kind: "pending",
+        reason: "release_finality",
+      });
+      expect(value.entries).toEqual(saved);
+    },
+  );
+
+  it("rejects scalar confirmation depth inconsistent with the canonical tip", async () => {
+    const value = await completed();
+    const forged = {
+      ...value.snapshot,
+      cursor: { ...value.snapshot.cursor, confirmationDepth: 2161 },
+      transactions: value.snapshot.transactions.map((tx) => ({
+        ...tx,
+        confirmationDepth: 2161,
+      })),
+    };
+    await expect(value.verify(forged)).rejects.toThrow(
+      "confirmation depth disagrees with chain points",
+    );
   });
 });

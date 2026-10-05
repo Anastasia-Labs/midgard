@@ -15,7 +15,6 @@ import {
   readAdmittedLocalKupmiosUnitHistoryAtPoint,
   readAdmittedLocalKupmiosUtxosByOutRefAtPoint,
   settleLocalKupmiosReads,
-  withLocalKupmiosSourceCapture,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -38,6 +37,7 @@ import {
   watcherRawTransactionCbor,
 } from "./commitment-source.js";
 import { authenticWatcherDaBondPool } from "./pool-observation.js";
+import { withWatcherAvailabilityReadOperation } from "./read-operation.js";
 
 const outRef = (utxo: Pick<UTxO, "txHash" | "outputIndex">): string =>
   `${utxo.txHash}#${utxo.outputIndex}`;
@@ -47,6 +47,7 @@ export const createWatcherAvailabilityObservation = (input: {
   identity: VerifiedWatcherDeploymentIdentity;
   source: LocalKupmiosFraudProofRawSource;
   deployment: SDK.DaAvailabilityDeployment;
+  scope?: SDK.DaAvailabilityReadScope;
   /** Resolves hashed DAAT datums during commitment recovery (E1). */
   lucid?: Pick<LucidEvolution, "config">;
 }) => {
@@ -65,29 +66,45 @@ export const createWatcherAvailabilityObservation = (input: {
     observation: WatcherAuthenticatedStateQueueObservation,
     read: () => Promise<T>,
   ): Promise<T> =>
-    withLocalKupmiosSourceCapture(input.source, async () => {
-      assertWatcherStateQueueObservation(observation);
-      if (
-        observation.deploymentIdentityDigest !== input.identity.manifestId ||
-        BigInt(observation.nativePoint.finalityDepth) <
-          BigInt(confirmationDepth)
-      ) {
-        throw new Error(
-          "Availability intake requires the exact finalized deployment observation",
-        );
-      }
-      const { blockHash, slot, blockNo } = observation.nativePoint;
-      await pinAdmittedLocalKupmiosBoundaryAtPoint({
-        source: input.source,
-        point: {
-          blockHash,
-          slot,
-          blockNo,
-          pointId: computeFraudProofRawL1PointId({ blockHash, slot, blockNo }),
-        },
-      });
-      return await read();
-    });
+    withWatcherAvailabilityReadOperation(
+      input.source,
+      input.scope,
+      async (assertCurrent) => {
+        assertWatcherStateQueueObservation(observation);
+        if (
+          observation.deploymentIdentityDigest !== input.identity.manifestId ||
+          BigInt(observation.nativePoint.finalityDepth) <
+            BigInt(confirmationDepth)
+        ) {
+          throw new Error(
+            "Availability intake requires the exact finalized deployment observation",
+          );
+        }
+        assertCurrent();
+        // A repin alone retains raw-block/point caches. Reset the complete owning
+        // read before pinning this exact authenticated native point on every retry.
+        if (input.scope !== undefined) await input.source.readBoundary();
+        assertCurrent();
+        const { blockHash, slot, blockNo } = observation.nativePoint;
+        await pinAdmittedLocalKupmiosBoundaryAtPoint({
+          source: input.source,
+          point: {
+            blockHash,
+            slot,
+            blockNo,
+            pointId: computeFraudProofRawL1PointId({
+              blockHash,
+              slot,
+              blockNo,
+            }),
+          },
+        });
+        assertCurrent();
+        const result = await read();
+        assertCurrent();
+        return result;
+      },
+    );
   const pointOf = (observation: WatcherAuthenticatedStateQueueObservation) => {
     const { blockHash, slot, blockNo } = observation.nativePoint;
     return {
@@ -171,6 +188,7 @@ export const createWatcherAvailabilityObservation = (input: {
             input.deployment.contracts.daBondPool.spendingScriptAddress,
           ),
         ]);
+        input.scope?.assertCurrent();
         const snapshot = await SDK.daAvailabilityChallengeSnapshotFromUtxos(
           input.deployment,
           headerHash,
@@ -207,6 +225,7 @@ export const createWatcherAvailabilityObservation = (input: {
       headerHash: string,
       expectedCommitmentHash: string,
     ): Promise<SDK.DaAvailabilityCommitment> {
+      input.scope?.assertCurrent();
       const key = `${headerHash}:${expectedCommitmentHash}`;
       const cached = commitments.get(key);
       if (cached !== undefined) return cached;
@@ -260,6 +279,7 @@ export const createWatcherAvailabilityObservation = (input: {
           },
         });
       });
+      input.scope?.assertCurrent();
       for (const cachedKey of commitments.keys()) {
         const [cachedHeader] = cachedKey.split(":");
         if (
@@ -288,13 +308,14 @@ export const createWatcherAvailabilityObservation = (input: {
         const point = pointOf(observation);
         const spendPoints = new Map<string, FraudProofRawL1Point>();
         const readers: SDK.DaAvailabilityForeignSpendReaders = {
-          // The finalized point is itself `finalityDepth` deep, so the
-          // boundary height counts the blocks above it.
+          // Native finality includes the point itself; SDK depth counts
+          // only blocks after inclusion, so expose the actual tip height.
           readBoundary: async () => ({
             pointId: point.pointId,
             blockNo:
               Number(point.blockNo) +
-              Number(observation.nativePoint.finalityDepth),
+              Number(observation.nativePoint.finalityDepth) -
+              1,
           }),
           fetchSpend: async (ref) => {
             const outRef = `${ref.txHash}#${ref.outputIndex.toString()}`;
@@ -412,7 +433,10 @@ export const createWatcherAvailabilityObservation = (input: {
             status: "included",
             txHash: intent.txHash,
             inclusionPoint: inclusion.pointId,
-            confirmationDepth: transaction.confirmationDepth,
+            // Raw admission counts inclusion itself; SDK evidence does not.
+            confirmationDepth: transaction.confirmationDepth - 1,
+            currentSlot: Number(observation.nativePoint.slot),
+            currentBlockNo: Number(observation.nativePoint.blockNo),
           };
         }
         const consumed = [...intent.spentOutRefs, ...intent.collateralOutRefs];
@@ -438,8 +462,8 @@ export const createWatcherAvailabilityObservation = (input: {
             currentSlot: Number(observation.nativePoint.slot),
           };
         }
-        // The observed point is itself `finalityDepth` deep, so a spend at or
-        // below it is at least that deep plus the blocks between them.
+        // SDK evidence counts blocks after inclusion. Native finality
+        // includes the observed block, so subtract it from the combined depth.
         const foreignSpends = observed.spends.map((spend) => ({
           outRef: spend.outRef,
           spendingTxHash: spend.spendingTxHash,
@@ -447,7 +471,8 @@ export const createWatcherAvailabilityObservation = (input: {
           confirmationDepth:
             Number(blockNo) -
             Number(spend.spendPoint.blockNo) +
-            Number(observation.nativePoint.finalityDepth),
+            Number(observation.nativePoint.finalityDepth) -
+            1,
         }));
         return {
           status: "inputs_missing",

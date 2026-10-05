@@ -115,7 +115,7 @@ export const verifyCompletedFraudProofWorkflow = async ({
     );
   if (
     observed.observedAt.confirmationDepth <
-    binding.releaseFinality.policy.confirmationDepth
+    binding.releaseFinality.policy.automaticRecoveryMaxDepth + 2
   )
     return { kind: "pending", reason: "release_finality" };
   normalizeWorkflowTerminal({

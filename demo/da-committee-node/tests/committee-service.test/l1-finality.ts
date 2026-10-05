@@ -153,7 +153,6 @@ export const registerL1FinalityTests = () => {
       const committee = service();
       await committee.initialize();
       const results: Awaited<ReturnType<CommitteeService["tick"]>>[] = [];
-      const exits: number[] = [];
       const runner = createCommitteeTickRunner({
         tick: async () => {
           const result = await committee.tick();
@@ -169,9 +168,6 @@ export const registerL1FinalityTests = () => {
         startedAtMs: clock.nowMs,
         nowMs: () => clock.nowMs,
         write: () => undefined,
-        shutdown: async () => undefined,
-        exit: (code) => exits.push(code),
-        shutdownGraceMs: 10,
       });
 
       // The signed header is final and the tail when it is signed.
@@ -192,7 +188,7 @@ export const registerL1FinalityTests = () => {
         chain.mine(...block);
         clock.nowMs += blockMs;
         await runner.runTick();
-        expect(exits).toEqual([]);
+        expect(runner.liveness().l1ViewUnavailable).toBeUndefined();
         expect(results).toHaveLength(index + 1);
         expect(results.at(-1)!.errors).toEqual([]);
         expect(committee.latestL1View()?.observedAtMs).toBe(clock.nowMs);
@@ -941,9 +937,10 @@ export const registerL1FinalityTests = () => {
       "catches up after downtime longer than one replay walk, moving its durable anchor, then follows its headers and decides again",
       { timeout: 120_000 },
       async () => {
-        const walkLimit = stateQueueReplayWalkLimit(finalityDepth);
-        const { chain, clock, store, service, events, signed, spare } =
+        const walkLimit = stateQueueReplayWalkLimit(2);
+        const { chain, clock, store, service, events, signed, spare, config } =
           await chainCommittee("6a", 5, walkLimit + 1);
+        expect(config.automaticRecoveryMaxDepth).toBe(2);
         const committee = service();
         await committee.initialize();
         await expect(committee.tick()).resolves.toMatchObject({
@@ -953,7 +950,7 @@ export const registerL1FinalityTests = () => {
         const anchorOf = async () =>
           (await store.getL1SourceState())!.stateQueueReplayAnchor!;
         expect((await anchorOf()).blockNo).toBe("1");
-        // Offline while one more append lands than a single walk takes.
+        // Offline for one more append than the k2 walk allows.
         for (const header of spare) chain.mine({ append: header });
         const view = committee.latestL1View();
         clock.nowMs += 3_600_000;
@@ -978,8 +975,7 @@ export const registerL1FinalityTests = () => {
           catchUps.push((await anchorOf()).blockNo);
           expect(catchUps.length).toBeLessThan(4);
         }
-        // One walk covered all but the last append, and the anchor moved
-        // through its final checkpoints: every block not younger than F.
+        // The anchor is beyond k2: more than two blocks after inclusion.
         expect(catchUps).toEqual([(chain.tip - finalityDepth).toString()]);
         expect(
           events.filter(
@@ -999,8 +995,7 @@ export const registerL1FinalityTests = () => {
           chain.isFinal(state!.stateQueueReplayAnchor!.queue, finalityDepth),
         ).toBe(true);
         expect(committee.latestL1View()?.observedAtMs).toBe(clock.nowMs);
-        // The first offline append moved the signed header; its observation
-        // followed it there.
+        // The observation follows the signed header at its first offline append.
         expect(
           state?.observations.find(({ headerHash }) => headerHash === signed),
         ).toMatchObject({
@@ -1015,17 +1010,17 @@ export const registerL1FinalityTests = () => {
     );
 
     it(
-      "does not exit on the L1 view deadline while a long catch-up keeps moving its anchor, and records the outcome it caught up past",
+      "does not pass the L1 view deadline while a long catch-up keeps moving its anchor, and records the outcome it caught up past",
       { timeout: 120_000 },
       async () => {
-        const walkLimit = stateQueueReplayWalkLimit(finalityDepth);
+        const walkLimit = stateQueueReplayWalkLimit(2);
         const offline = 3 * walkLimit;
-        const { chain, clock, store, service, signed, spare } =
+        const { chain, clock, store, service, signed, spare, config } =
           await chainCommittee("6b", 5, offline + 16);
+        expect(config.automaticRecoveryMaxDepth).toBe(2);
         const committee = service();
         await committee.initialize();
         const results: Awaited<ReturnType<CommitteeService["tick"]>>[] = [];
-        const exits: number[] = [];
         const l1ViewFatalMs = 3 * blockMs;
         const runner = createCommitteeTickRunner({
           tick: async () => {
@@ -1042,9 +1037,6 @@ export const registerL1FinalityTests = () => {
           startedAtMs: clock.nowMs,
           nowMs: () => clock.nowMs,
           write: () => undefined,
-          shutdown: async () => undefined,
-          exit: (code) => exits.push(code),
-          shutdownGraceMs: 10,
         });
         await runner.runTick();
         expect(results).toMatchObject([{ signedHeaders: 1, errors: [] }]);
@@ -1065,7 +1057,7 @@ export const registerL1FinalityTests = () => {
           next += 1;
           clock.nowMs += l1ViewFatalMs + blockMs;
           await runner.runTick();
-          expect(exits).toEqual([]);
+          expect(runner.liveness().l1ViewUnavailable).toBeUndefined();
           const state = await store.getL1SourceState();
           expect(state?.status).toBe("healthy");
           anchors.push(BigInt(state!.stateQueueReplayAnchor!.blockNo));
@@ -1094,7 +1086,7 @@ export const registerL1FinalityTests = () => {
           new Error("provider unreachable"),
         );
         await runner.runTick();
-        expect(exits).toEqual([70]);
+        expect(runner.liveness().l1ViewUnavailable).toBeDefined();
       },
     );
 
@@ -1505,7 +1497,6 @@ export const registerL1FinalityTests = () => {
           for (const header of spare) chain.mine({ append: header });
           chain.mine("merge");
           for (let block = 0; block <= finalityDepth; block += 1) chain.mine();
-          const exits: number[] = [];
           const runner = createCommitteeTickRunner({
             tick: () => committee.tick(),
             runAvailabilityResponse: async () => undefined,
@@ -1517,9 +1508,6 @@ export const registerL1FinalityTests = () => {
             startedAtMs: clock.nowMs,
             nowMs: () => clock.nowMs,
             write: () => undefined,
-            shutdown: async () => undefined,
-            exit: (code) => exits.push(code),
-            shutdownGraceMs: 10,
           });
           clock.nowMs += blockMs;
           await expect(committee.tick()).rejects.toThrow(catchingUp);
@@ -1537,7 +1525,7 @@ export const registerL1FinalityTests = () => {
             expect((await store.getL1SourceState())?.status).toBe("healthy");
             chain.mine();
           }
-          expect(exits).toEqual([]);
+          expect(runner.liveness().l1ViewUnavailable).toBeUndefined();
           await expect(observationOf(store, signed)).resolves.toMatchObject({
             stateQueueStatus: "merged",
             hasPersistedDecision: true,
@@ -1558,7 +1546,7 @@ export const registerL1FinalityTests = () => {
           const { chain, clock, service, events, spare } = await chainCommittee(
             "75",
             5,
-            walkLimit,
+            stateQueueReplayWalkLimit(2),
           );
           const committee = service();
           await committee.initialize();
@@ -1597,7 +1585,6 @@ export const registerL1FinalityTests = () => {
                 .map((header) => ({ append: header })),
             );
           }
-          const exits: number[] = [];
           const l1ViewFatalMs = 3 * blockMs;
           const runner = createCommitteeTickRunner({
             tick: () => committee.tick(),
@@ -1610,9 +1597,6 @@ export const registerL1FinalityTests = () => {
             startedAtMs: clock.nowMs,
             nowMs: () => clock.nowMs,
             write: () => undefined,
-            shutdown: async () => undefined,
-            exit: (code) => exits.push(code),
-            shutdownGraceMs: 10,
           });
           clock.nowMs += blockMs;
           const outcome = await committee.tick().then(
@@ -1631,7 +1615,7 @@ export const registerL1FinalityTests = () => {
           expect(state?.stateQueueReplayAnchor).toEqual(anchor);
           clock.nowMs += l1ViewFatalMs;
           await runner.runTick();
-          expect(exits).toEqual([70]);
+          expect(runner.liveness().l1ViewUnavailable).toBeDefined();
           expect((await store.getL1SourceState())?.status).toBe("healthy");
         },
       );

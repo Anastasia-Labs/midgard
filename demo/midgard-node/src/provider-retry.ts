@@ -1,5 +1,6 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { Duration, Effect } from "effect";
+import { isTransientOgmiosJsonRpcFailure } from "@al-ft/midgard-core/ogmios-json-rpc-error";
+import { Cause, Duration, Effect, Runtime } from "effect";
 
 export type ProviderRetryOptions = {
   readonly maxAttempts: number;
@@ -9,7 +10,187 @@ export type ProviderRetryOptions = {
   readonly isRetryable?: (error: unknown) => boolean;
 };
 
+// Socket- and resolver-level failures of an endpoint that is restarting,
+// briefly unroutable or shedding connections. Node sets these on the error
+// itself or on the `cause` a fetch failure wraps.
+const TRANSIENT_NODE_NET_CODES: ReadonlySet<string> = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ECONNABORTED",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EPIPE",
+  "ENETUNREACH",
+  "ENETDOWN",
+  "EHOSTUNREACH",
+  "EHOSTDOWN",
+]);
+
+// undici (the fetch behind every HTTP provider read) connection failures.
+const TRANSIENT_UNDICI_CODES: ReadonlySet<string> = new Set([
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+  "UND_ERR_SOCKET",
+  "UND_ERR_CLOSED",
+]);
+
+// postgres.js connection-state codes and the SQLSTATEs of a server that is
+// starting, shutting down, in recovery or out of connection slots. A query
+// the server answered with any other SQLSTATE is not a connection failure.
+const TRANSIENT_POSTGRES_CODES: ReadonlySet<string> = new Set([
+  "CONNECTION_CLOSED",
+  "CONNECTION_DESTROYED",
+  "CONNECTION_ENDED",
+  "CONNECT_TIMEOUT",
+  "57P01", // admin_shutdown
+  "57P02", // crash_shutdown
+  "57P03", // cannot_connect_now: starting up or in recovery
+  "53300", // too_many_connections
+  "08000", // connection_exception
+  "08001", // sqlclient_unable_to_establish_sqlconnection
+  "08003", // connection_does_not_exist
+  "08004", // sqlserver_rejected_establishment_of_sqlconnection
+  "08006", // connection_failure
+]);
+
+// undici rejects with these exact messages when a peer drops a response.
+const TRANSIENT_EXACT_MESSAGES: ReadonlySet<string> = new Set([
+  "terminated",
+  "other side closed",
+  "connect timeout",
+]);
+
+const POSTGRES_CONNECTION_MESSAGES: readonly string[] = [
+  "the database system is starting up",
+  "the database system is in recovery mode",
+  "the database system is shutting down",
+  "the database system is not yet accepting connections",
+  "sorry, too many clients already",
+  "remaining connection slots are reserved",
+];
+
+// @effect/sql-pg fails a pool whose first `select 1` outlives
+// `connectTimeout` with this SqlError around an uncoded Error. Its timer
+// starts before postgres.js's own connect_timeout, so a server that accepts
+// the socket and never answers (a stalled host, a network still coming up)
+// usually surfaces as this shape rather than as CONNECT_TIMEOUT.
+const isPgClientPoolOpenTimeout = (link: Record<string, unknown>): boolean =>
+  link._tag === "SqlError" && link.message === "PgClient: Connection timed out";
+
+const errorRecord = (value: unknown): Record<string, unknown> | undefined =>
+  typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
+
+/** The failures and defects an Effect `Cause` carries. */
+const effectCauseMembers = (cause: Cause.Cause<unknown>): unknown[] => [
+  ...Cause.failures(cause),
+  ...Cause.defects(cause),
+];
+
+/**
+ * Every error on `error`'s cause chain, including AggregateError members and
+ * what an Effect `FiberFailure` or `Cause` carries: a provider read run with
+ * `Effect.runPromise` rejects with a FiberFailure around its KupmiosError.
+ */
+const causeChain = (error: unknown): readonly Record<string, unknown>[] => {
+  const seen = new Set<unknown>();
+  const chain: Record<string, unknown>[] = [];
+  const pending: unknown[] = [error];
+  while (pending.length > 0 && chain.length < 64) {
+    const next = pending.shift();
+    if (Cause.isCause(next)) {
+      pending.push(...effectCauseMembers(next));
+      continue;
+    }
+    const current = errorRecord(next);
+    if (current === undefined || seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+    chain.push(current);
+    if (Runtime.isFiberFailure(next)) {
+      pending.push(...effectCauseMembers(next[Runtime.FiberFailureCauseId]));
+    }
+    pending.push(current.cause);
+    if (Array.isArray(current.errors)) {
+      pending.push(...(current.errors as unknown[]));
+    }
+  }
+  return chain;
+};
+
+const hasTransientConnectionShape = (
+  link: Record<string, unknown>,
+  codes: readonly ReadonlySet<string>[],
+): boolean => {
+  const code = link.code;
+  if (typeof code === "string" && codes.some((set) => set.has(code))) {
+    return true;
+  }
+  if (isPgClientPoolOpenTimeout(link)) {
+    return true;
+  }
+  const message =
+    typeof link.message === "string" ? link.message.trim().toLowerCase() : "";
+  return (
+    TRANSIENT_EXACT_MESSAGES.has(message) ||
+    POSTGRES_CONNECTION_MESSAGES.some((known) => message.includes(known))
+  );
+};
+
+/** True when any error on `error`'s cause chain carries the string `code`. */
+export const hasCauseCode = (error: unknown, code: string): boolean =>
+  causeChain(error).some((link) => link.code === code);
+
+/**
+ * True when the database could not be reached or would not take a
+ * connection: the server restarting, in recovery, out of slots, or the
+ * socket dropping. A query the server answered and refused is not one.
+ */
+export const isConnectionClassError = (error: unknown): boolean =>
+  causeChain(error).some((link) =>
+    hasTransientConnectionShape(link, [
+      TRANSIENT_NODE_NET_CODES,
+      TRANSIENT_POSTGRES_CODES,
+    ]),
+  );
+
+/**
+ * True for a provider failure that a later attempt can clear: an error that
+ * declares itself retryable (`KupmiosError`, the Ogmios slot-evidence and DA
+ * quorum errors), an Ogmios error answer whose code says the node cannot
+ * answer now (Kupmios marks every Ogmios error answer non-retryable, because
+ * Ogmios sends them all as HTTP 400), a structured transport, resolver or
+ * connection code on any cause, or a known transient provider message. A
+ * failure that names a logic problem (a malformed datum, a wrong network)
+ * carries none of these, and an error that declares itself non-retryable
+ * keeps its text out of the message fallback (a DA capability mismatch on
+ * `request_timeout_ms` is not a timeout; a Kupo HTTP 400 wrapped in a
+ * "Failed to fetch ..." error is not a transient read).
+ */
 export const isRetryableProviderError = (error: unknown): boolean => {
+  const chain = causeChain(error);
+  if (
+    chain.some(
+      (link) =>
+        link.retryable === true ||
+        isTransientOgmiosJsonRpcFailure(link) ||
+        link.name === "TimeoutError" ||
+        hasTransientConnectionShape(link, [
+          TRANSIENT_NODE_NET_CODES,
+          TRANSIENT_UNDICI_CODES,
+          TRANSIENT_POSTGRES_CODES,
+        ]),
+    )
+  ) {
+    return true;
+  }
+  if (chain.some((link) => link.retryable === false)) {
+    return false;
+  }
   const message = formatUnknownError(error, {
     includeCause: true,
   }).toLowerCase();
@@ -40,7 +221,8 @@ export const isRetryableProviderError = (error: unknown): boolean => {
     message.includes("econnrefused") ||
     message.includes("econnreset") ||
     message.includes("rate limit") ||
-    message.includes("too many requests")
+    message.includes("too many requests") ||
+    POSTGRES_CONNECTION_MESSAGES.some((known) => message.includes(known))
   );
 };
 

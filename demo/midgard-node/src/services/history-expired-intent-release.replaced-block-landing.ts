@@ -1,56 +1,40 @@
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
-import {
-  CANONICAL_COVERAGE_UNAVAILABLE,
-  loadCanonicalHistoryCoverage,
-} from "../database/eventHistoryCanonicalCoverage.js";
 import type { Checkpoint } from "../database/eventHistoryJournal.js";
 import * as Pending from "../database/pendingBlockFinalizations.js";
-import { DatabaseError } from "../database/utils/common.js";
 import { type EventHistorySourceBinding } from "../l1-event-history-source.js";
 import { journalAbandonment } from "./canonical-journal-recovery.js";
+import {
+  journalBase,
+  sameBaseJournals,
+} from "./history-expired-intent-release.base-spend.js";
 import {
   type QueueNode,
   type QueueView,
 } from "./history-expired-intent-release.signed-commit-node.js";
-import { C } from "./history-expired-intent-release.table.js";
+import { C, canonicalDepth } from "./history-expired-intent-release.table.js";
 import { loadStateQueueCorrectionObserverState } from "./state-queue-correction-rewind.js";
 
-/** Which of `txHashes` the retained canonical history (complete transaction
- * rosters from its anchor to the checkpoint head) includes as valid (inputs
- * spending) transactions. Unavailable coverage is no evidence (none is
+/** The retained canonical history's evidence at `checkpoint` (complete
+ * transaction rosters from its anchor to the checkpoint head), read once: the
+ * depth of every valid (inputs spending) transaction in it, and which of
+ * `txHashes` it includes. Unavailable coverage is no evidence (no depth, none
  * included); any other failure (a database error, which aborts the owned
  * transaction) fails the attempt, which recovery retries. */
-export const includedInCanonicalHistory = (
+export const canonicalEvidence = (
   binding: EventHistorySourceBinding,
   checkpoint: Checkpoint,
   txHashes: readonly string[],
 ) =>
-  txHashes.length === 0
-    ? Effect.succeed<ReadonlySet<string>>(new Set())
-    : loadCanonicalHistoryCoverage(binding, checkpoint).pipe(
-        Effect.map((coverage): ReadonlySet<string> => {
-          const wanted = new Set(txHashes);
-          const included = new Set<string>();
-          for (const block of coverage.blocks)
-            for (const tx of block.transactions)
-              if (tx.spends === "inputs" && wanted.has(tx.txHash))
-                included.add(tx.txHash);
-          return included;
-        }),
-        Effect.catchIf(
-          (cause) =>
-            cause instanceof DatabaseError &&
-            cause.message === CANONICAL_COVERAGE_UNAVAILABLE,
-          (cause) =>
-            Effect.logDebug(
-              `Canonical history coverage unavailable as signed-intent evidence: ${formatUnknownError(cause)}`,
-            ).pipe(Effect.as<ReadonlySet<string>>(new Set())),
-        ),
-      );
+  canonicalDepth(binding, checkpoint).pipe(
+    Effect.map((depth) => ({
+      canonicalDepth: depth,
+      canonicalHistory: new Set(
+        txHashes.filter((hash) => depth?.of(hash) !== undefined),
+      ) as ReadonlySet<string>,
+    })),
+  );
 
 type ObserverView = Effect.Effect.Success<
   ReturnType<typeof loadStateQueueCorrectionObserverState>
@@ -104,18 +88,19 @@ export const replacedBlockLanding = (
   return evidence === undefined ? undefined : { onQueue: undefined, evidence };
 };
 
-/** This node's journals built on the same base output as `record` (so their
- * commits spend what its commit spends) that were abandoned for replacement.
- * Sorted by header. */
+/** This node's journals built on the same base as `record` (the same base
+ * output, or another incarnation of the same non-root base node, so their
+ * commits and its commit are mutually exclusive) that were abandoned for
+ * replacement. Sorted by header. */
 export const replacedSiblings = (record: Pending.Record) =>
   Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<{ header_hash: Buffer }>`SELECT header_hash
-      FROM pending_block_finalizations
-      WHERE base_tail_out_ref = ${record[C.BASE_TAIL_OUT_REF]}
-        AND status = ${Pending.Status.Abandoned}
-        AND header_hash <> ${record[C.HEADER_HASH]}
-      ORDER BY header_hash`;
+    const rows = (yield* sameBaseJournals(journalBase(record), [
+      record[C.HEADER_HASH],
+    ]))
+      .filter(({ status }) => status === Pending.Status.Abandoned)
+      .sort((left, right) =>
+        Buffer.compare(left.header_hash, right.header_hash),
+      );
     const siblings: Pending.Record[] = [];
     for (const row of rows) {
       const found = yield* Pending.retrieveByHeaderHash(row.header_hash);

@@ -6,6 +6,7 @@ import {
 } from "@al-ft/midgard-core/consensus-profile";
 import { type DeploymentManifestAvailabilityChallenge } from "@al-ft/midgard-core/deployment-manifest-identity";
 
+import type { CommitteePromiseAdoptionConfig } from "./config.promise-admission.js";
 import type { DaCommitteeMember } from "./domain.js";
 import { type MidgardNodeDeployment } from "./l1/deployment.js";
 
@@ -109,12 +110,15 @@ export type CommitteeConfig = {
   /** Absent when no local node ledger is configured; reward-account reads then fail closed. */
   readonly nativeLedger?: NativeLedgerConfig;
   readonly finalityDepth: number;
+  /** Signed recovery horizon, distinct from confirmation admission. */
+  readonly automaticRecoveryMaxDepth: number;
   readonly daTransport: Libp2pDaTransportConfig;
   readonly libp2pPrivateKeySource?: string;
   readonly signerIndex?: number;
   readonly signerKeySource?: string;
   readonly l1SubmitterKeySource?: string;
   readonly l1SubmissionEnabled: boolean;
+  readonly availabilityPromiseAdoption?: CommitteePromiseAdoptionConfig;
   readonly availabilityJournalPath?: string;
   readonly availabilitySubmitterKeySource?: string;
   readonly l1SubmitterPreflight: L1SubmitterPreflightConfig;

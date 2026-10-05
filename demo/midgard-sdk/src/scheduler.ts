@@ -14,6 +14,8 @@ import {
   authenticateUTxOs,
   AuthenticUTxO,
   fetchSingleAuthenticUTxOProgram,
+  type UnexpectedAuthenticUTxOCountFields,
+  unexpectedAuthenticUTxOCountFields,
 } from "./internals.js";
 
 export const SCHEDULER_ASSET_NAME = fromText("MIDGARD_SCHEDULER");
@@ -160,9 +162,9 @@ export type SchedulerConfig = {
   schedulerPolicyId: PolicyId;
 };
 
-export class SchedulerError extends EffectData.TaggedError(
-  "SchedulerError",
-)<GenericErrorFields> {}
+export class SchedulerError extends EffectData.TaggedError("SchedulerError")<
+  GenericErrorFields & UnexpectedAuthenticUTxOCountFields
+> {}
 
 export const fetchSchedulerUTxOProgram = (
   lucid: LucidEvolution,
@@ -175,11 +177,10 @@ export const fetchSchedulerUTxOProgram = (
       policyId: config.schedulerPolicyId,
       utxoLabel: "scheduler",
       conversionFunction: utxosToSchedulerUTxOs,
-      onUnexpectedAuthenticUTxOCount: () =>
+      onUnexpectedAuthenticUTxOCount: (count) =>
         new SchedulerError({
           message: "Failed to fetch the scheduler UTxO",
-          cause:
-            "Exactly one scheduler UTxO was expected, but none or more were found",
+          ...unexpectedAuthenticUTxOCountFields("scheduler", count),
         }),
     },
   );

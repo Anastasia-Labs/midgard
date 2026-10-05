@@ -20,6 +20,10 @@ import {
   type TimeoutCorrectionJournal,
   type TimeoutCorrectionRecovery,
 } from "../src/remove-unattested-block.js";
+import { assertTimeoutCorrectionExclusion } from "../src/remove-unattested-block.supersede-timeout-correction-attempts.js";
+import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.js";
+import { reconcileSignedWorkflowTransaction } from "../src/workflow/signed-transaction-reconciliation.js";
+import { createSupersededAttemptReadSchedule } from "../src/workflow/superseded-attempt-read-schedule.js";
 
 const seams = vi.hoisted(() => ({
   queue: vi.fn(),
@@ -88,12 +92,17 @@ const root: SDK.StateQueueUTxO = {
   assetName: SDK.STATE_QUEUE_ROOT_ASSET_NAME,
   datum: { key: "Empty", next: { Key: { key: h("01") } }, data: "root" },
 };
-const point = {
-  pointId: "test:9999",
-  blockHash: tx("77"),
-  slot: "9999",
-  blockNo: "100",
+const chainPoint = (blockNo: number, slot: number, byte: string) => {
+  const value = {
+    blockNo: String(blockNo),
+    slot: String(slot),
+    blockHash: tx(byte),
+  };
+  return { ...value, pointId: computeFraudProofRawL1PointId(value) };
 };
+const point = chainPoint(100, 9999, "77");
+const heldPoint = chainPoint(2260, 12159, "78");
+const finalPoint = chainPoint(2261, 12160, "79");
 
 const setup = () => {
   let retained: TimeoutCorrectionJournal | undefined;
@@ -192,16 +201,24 @@ const setup = () => {
     unixTimeToSlot: (unixTime: number) => Math.floor(unixTime / 1000),
     slotToUnixTime: (slot: number) => slot * 1000,
   } as unknown as LucidEvolution;
-  const observed = vi.fn<TimeoutCorrectionRecovery["observeSignedTransaction"]>(
-    async (signed) => ({
+  const observed =
+    vi.fn<TimeoutCorrectionRecovery["observeSignedTransaction"]>();
+  const observe = (
+    status: Awaited<
+      ReturnType<TimeoutCorrectionRecovery["observeSignedTransaction"]>
+    >["status"],
+    canonicalPoint = point,
+    reason = "unresolved",
+  ) =>
+    observed.mockImplementation(async (signed) => ({
       ...signed,
-      status: "unknown",
-      reason: "unresolved",
-      canonicalPoint: point,
+      status,
+      reason,
+      canonicalPoint,
       releaseFinalPoint: point,
       inputs: [],
-    }),
-  );
+    }));
+  observe("unknown");
   const rebroadcast =
     vi.fn<TimeoutCorrectionRecovery["rebroadcastSignedTransaction"]>();
   const params = {
@@ -227,9 +244,13 @@ const setup = () => {
     submit,
     save,
     observed,
+    observe,
     retained: () => retained,
     changeFee: () => {
       wallet = [utxo("de")];
+    },
+    setWallet: (values: UTxO[]) => {
+      wallet = values;
     },
     removeTarget: () => {
       seams.queue.mockReturnValue([
@@ -257,14 +278,7 @@ it("journals signed bytes before an ambiguous submit and resumes exact inclusion
   expect(seams.build).toHaveBeenCalledOnce();
   const retainedBytes = f.retained()!.steps[0]!.signedCbor;
   f.removeTarget();
-  f.observed.mockImplementation(async (signed) => ({
-    ...signed,
-    status: "included",
-    reason: "exact canonical body",
-    canonicalPoint: point,
-    releaseFinalPoint: point,
-    inputs: [],
-  }));
+  f.observe("included", point, "exact canonical body");
   const resumed = await submitUnattestedTimeoutCorrection(f.params);
   expect(resumed.status).toBe("complete");
   expect(f.retained()?.completed).toBe(true);
@@ -273,7 +287,7 @@ it("journals signed bytes before an ambiguous submit and resumes exact inclusion
   expect(f.submit).toHaveBeenCalledOnce();
 });
 
-it("keeps unknown attempts intact, then refreshes the fee input only after canonical invalidation", async () => {
+it("keeps unknown attempts intact, then re-signs at once when canonical invalidation is still within k", async () => {
   const f = setup();
   f.submit.mockRejectedValueOnce(new Error("unknown acknowledgement"));
   await submitUnattestedTimeoutCorrection(f.params);
@@ -282,21 +296,29 @@ it("keeps unknown attempts intact, then refreshes the fee input only after canon
   expect(seams.build).toHaveBeenCalledOnce();
   expect(f.retained()!.steps).toEqual([original]);
   f.changeFee();
-  f.observed.mockImplementation(async (signed) => ({
-    ...signed,
-    status: "invalidated",
-    reason: "fee input canonically spent",
-    canonicalPoint: point,
-    releaseFinalPoint: point,
-    inputs: [],
-  }));
-  const retried = await submitUnattestedTimeoutCorrection(f.params);
-  expect(retried.status).toBe("pending");
+  f.observe("invalidated", heldPoint, "fee input canonically spent");
+  await expect(
+    reconcileSignedWorkflowTransaction({
+      transactionHash: original.txHash,
+      signedTransactionCborHex: original.signedCbor,
+      observe: f.observed,
+    }),
+  ).resolves.toEqual({ kind: "not_found" });
+  // No wait for a retirement receipt: the attempt is abandoned and replaced.
+  const replaced = await submitUnattestedTimeoutCorrection(f.params);
+  expect(replaced.status).toBe("pending");
   expect(seams.build).toHaveBeenCalledTimes(2);
-  expect(f.retained()!.steps[0]).toEqual({ ...original, status: "superseded" });
-  expect(f.retained()!.steps[1]?.txHash).not.toBe(original.txHash);
-  expect(f.retained()!.steps[1]?.inputOutRefs).toContain(`${tx("de")}#0`);
-  expect(f.retained()!.steps[1]?.inputOutRefs).not.toContain(`${tx("dd")}#0`);
+  expect(f.retained()!.steps[0]).toEqual({ ...original, status: "abandoned" });
+  const replacement = f.retained()!.steps[1]!;
+  expect(replacement.txHash).not.toBe(original.txHash);
+  expect(replacement.inputOutRefs).toContain(`${tx("de")}#0`);
+  expect(replacement.inputOutRefs).not.toContain(`${tx("dd")}#0`);
+  // Mutually exclusive through the shared node and correction-lock inputs.
+  expect(
+    replacement.inputOutRefs.filter((outRef) =>
+      original.inputOutRefs.includes(outRef),
+    ),
+  ).toEqual([`${tx("01")}#0`, `${tx("11")}#0`, `${tx("cc")}#0`]);
 });
 
 it("waits for a competing timeout lock without replacing the retained objective or poisoning its lease", async () => {
@@ -382,18 +404,11 @@ it("archives resolved displaced attempts before writing the locked target and re
   await submitUnattestedTimeoutCorrection(f.params);
   const original = structuredClone(f.retained()!);
   f.takeLock();
-  f.observed.mockImplementation(async (signed) => ({
-    ...signed,
-    status: "invalidated",
-    reason: "correction input canonically consumed",
-    canonicalPoint: point,
-    releaseFinalPoint: point,
-    inputs: [],
-  }));
+  f.observe("invalidated", finalPoint, "correction input canonically consumed");
   const archive = vi.fn(async (journal: TimeoutCorrectionJournal) => {
     expect(f.retained()?.targetHeaderHash).toBe(h("11"));
     expect(journal.steps).toEqual([
-      { ...original.steps[0], status: "superseded" },
+      { ...original.steps[0], status: "retired" },
     ]);
   });
   const result = await submitUnattestedTimeoutCorrection({
@@ -412,15 +427,11 @@ it("archives resolved displaced attempts before writing the locked target and re
 it("does not switch objectives when archival fails", async () => {
   const f = competingTimeout();
   await submitUnattestedTimeoutCorrection(f.params);
+  const signed = f.retained()!.steps[0]!.signedCbor;
+  const ttl = CML.Transaction.from_cbor_hex(signed).body().ttl();
+  expect(ttl).toBeLessThan(BigInt(point.slot));
   f.takeLock();
-  f.observed.mockImplementation(async (signed) => ({
-    ...signed,
-    status: "expired",
-    reason: "stable expiry",
-    canonicalPoint: point,
-    releaseFinalPoint: point,
-    inputs: [],
-  }));
+  f.observe("expired", finalPoint, "stable expiry");
   const archive = vi.fn(async () => {
     throw new Error("archive disk unavailable");
   });
@@ -439,14 +450,7 @@ it("never rebroadcasts an unresolved displaced attempt or switches to another co
   await submitUnattestedTimeoutCorrection(f.params);
   const original = structuredClone(f.retained());
   f.takeLock();
-  f.observed.mockImplementation(async (signed) => ({
-    ...signed,
-    status: "rebroadcast",
-    reason: "inputs still available",
-    canonicalPoint: point,
-    releaseFinalPoint: point,
-    inputs: [],
-  }));
+  f.observe("rebroadcast", point, "inputs still available");
   const archive = vi.fn(async () => undefined);
   const params = {
     ...f.params,
@@ -498,4 +502,165 @@ it("archives the exact journal idempotently and refuses to overwrite conflicting
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+const statusByHash = (
+  f: ReturnType<typeof setup>,
+  statuses: Readonly<Record<string, string>>,
+  fallback = "unknown",
+) =>
+  f.observed.mockImplementation(async (signed) => ({
+    ...signed,
+    status: (statuses[signed.transactionHash] ?? fallback) as Awaited<
+      ReturnType<TimeoutCorrectionRecovery["observeSignedTransaction"]>
+    >["status"],
+    reason: "per attempt",
+    canonicalPoint: point,
+    releaseFinalPoint: point,
+    inputs: [],
+  }));
+const funded = (byte: string, lovelace: bigint): UTxO => ({
+  ...utxo(byte),
+  assets: { lovelace },
+});
+/** Another correction moved the lock and the nodes, so no protocol input of
+ * the first attempt is left for a replacement to share. */
+const moveProtocolInputs = () => {
+  seams.lock.mockImplementation(() => ({
+    utxo: utxo("c1"),
+    datum: "Idle",
+    assetName: SDK.CORRECTION_LOCK_ASSET_NAME,
+  }));
+  seams.queue.mockReturnValue([
+    root,
+    { ...node("01", "11", true), utxo: utxo("a1") },
+    { ...node("11"), utxo: utxo("b1") },
+  ]);
+};
+
+it("draws a replacement onto an abandoned attempt's wallet input when no protocol input is shared, topping up from the wallet", async () => {
+  const f = setup();
+  await submitUnattestedTimeoutCorrection(f.params);
+  const original = structuredClone(f.retained()!.steps[0]!);
+  expect(original.inputOutRefs).toContain(`${tx("dd")}#0`);
+  moveProtocolInputs();
+  // The old fee input is still unspent but no longer the largest.
+  f.setWallet([funded("dd", 2_000_000n), funded("de", 90_000_000n)]);
+  statusByHash(f, { [original.txHash]: "expired_at_tip" });
+  await submitUnattestedTimeoutCorrection(f.params);
+  expect(seams.build).toHaveBeenCalledTimes(2);
+  expect(f.retained()!.steps[0]!.status).toBe("abandoned");
+  const replacement = f.retained()!.steps[1]!;
+  // The shared input is too small on its own; the largest wallet input pays.
+  expect(replacement.inputOutRefs).toContain(`${tx("dd")}#0`);
+  expect(replacement.inputOutRefs).toContain(`${tx("de")}#0`);
+});
+
+it("admits a replacement with no shared input only when none of the abandoned attempt's inputs is left", async () => {
+  const f = setup();
+  await submitUnattestedTimeoutCorrection(f.params);
+  const original = structuredClone(f.retained()!.steps[0]!);
+  moveProtocolInputs();
+  f.changeFee();
+  statusByHash(f, { [original.txHash]: "invalidated_at_tip" });
+  await submitUnattestedTimeoutCorrection(f.params);
+  const replacement = f.retained()!.steps[1]!;
+  expect(
+    replacement.inputOutRefs.some((outRef) =>
+      original.inputOutRefs.includes(outRef),
+    ),
+  ).toBe(false);
+  // Negative: had the old wallet input been left, the same replacement is refused.
+  expect(() =>
+    assertTimeoutCorrectionExclusion({
+      journal: f.retained()!,
+      inputOutRefs: replacement.inputOutRefs,
+      walletUtxos: [utxo("dd"), utxo("de")],
+    }),
+  ).toThrow("must share an input with each abandoned attempt");
+});
+
+it("adopts an abandoned attempt that a rollback lands, and completes without waiting for k", async () => {
+  const f = setup();
+  const schedule = createSupersededAttemptReadSchedule();
+  const params = { ...f.params, attemptReadSchedule: schedule };
+  await submitUnattestedTimeoutCorrection(params);
+  const original = structuredClone(f.retained()!.steps[0]!);
+  f.changeFee();
+  statusByHash(f, { [original.txHash]: "expired_at_tip" });
+  await submitUnattestedTimeoutCorrection(params);
+  const replacement = structuredClone(f.retained()!.steps[1]!);
+  expect(f.retained()!.steps.map(({ status }) => status)).toEqual([
+    "abandoned",
+    "submitted",
+  ]);
+  // A rollback lands the original; the replacement, which shares its node
+  // inputs, is now impossible at the tip.
+  f.removeTarget();
+  statusByHash(f, {
+    [original.txHash]: "included",
+    [replacement.txHash]: "invalidated_at_tip",
+  });
+  const result = await submitUnattestedTimeoutCorrection(params);
+  expect(result.status).toBe("complete");
+  expect(f.retained()!.steps.map(({ status }) => status)).toEqual([
+    "confirmed",
+    "abandoned",
+  ]);
+  expect(result.removedHeaderHashes).toEqual([original.removedHeaderHash]);
+  expect(seams.build).toHaveBeenCalledTimes(2);
+  expect(f.submit).toHaveBeenCalledTimes(2);
+});
+
+it("re-reads abandoned attempts on a backoff schedule, a bounded number per pass", async () => {
+  let now = 4_000_000;
+  const f = setup();
+  const schedule = createSupersededAttemptReadSchedule({ perPass: 1 });
+  const params = {
+    ...f.params,
+    nowMs: () => now,
+    attemptReadSchedule: schedule,
+  };
+  await submitUnattestedTimeoutCorrection(params);
+  const original = structuredClone(f.retained()!.steps[0]!);
+  f.changeFee();
+  statusByHash(f, { [original.txHash]: "expired_at_tip" }, "pending");
+  await submitUnattestedTimeoutCorrection(params);
+  const reads = () =>
+    f.observed.mock.calls.filter(
+      ([signed]) => signed.transactionHash === original.txHash,
+    ).length;
+  const before = reads();
+  // First pass after abandonment reads it once; then it backs off.
+  for (let pass = 0; pass < 3; pass += 1)
+    await submitUnattestedTimeoutCorrection(params);
+  expect(reads()).toBe(before + 1);
+  now += 19_999;
+  await submitUnattestedTimeoutCorrection(params);
+  expect(reads()).toBe(before + 1);
+  now += 1;
+  await submitUnattestedTimeoutCorrection(params);
+  expect(reads()).toBe(before + 2);
+  // The delay doubles after another unresolved read.
+  now += 20_000;
+  await submitUnattestedTimeoutCorrection(params);
+  expect(reads()).toBe(before + 2);
+  now += 20_000;
+  await submitUnattestedTimeoutCorrection(params);
+  expect(reads()).toBe(before + 3);
+  // Past k the read retires it and it leaves the schedule.
+  f.observed.mockImplementation(async (signed) => ({
+    ...signed,
+    status: signed.transactionHash === original.txHash ? "expired" : "pending",
+    reason: "stable expiry",
+    canonicalPoint: finalPoint,
+    releaseFinalPoint: point,
+    inputs: [],
+  }));
+  now += 80_000;
+  await submitUnattestedTimeoutCorrection(params);
+  expect(f.retained()!.steps[0]!.status).toBe("retired");
+  now += 600_000;
+  await submitUnattestedTimeoutCorrection(params);
+  expect(reads()).toBe(before + 4);
 });

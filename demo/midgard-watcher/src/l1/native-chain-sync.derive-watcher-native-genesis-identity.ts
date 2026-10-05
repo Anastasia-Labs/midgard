@@ -250,6 +250,8 @@ export type NativeStreamInput = {
   readonly intersection: WatcherNativeChainSyncPoint;
   readonly startupTimeoutMs: number;
   readonly onEvent: (event: WatcherNativeChainSyncEvent) => Promise<void>;
+  /** Private runtime lifetime hook, after native admission is revoked. */
+  readonly onAuthorityRevoked?: () => void;
   readonly unsafeSpawnForTest?: SpawnProcess;
   readonly unsafeReadIdentityFileForTest?: ReadIdentityFile;
 };

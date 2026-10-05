@@ -31,6 +31,12 @@ import {
   settlementWaitUntil,
   settlementWalletAddress,
 } from "./settlement.reconcile-attempt.js";
+import {
+  settlementCall,
+  settlementCauseDetail,
+  settlementCheck,
+  settlementJobError,
+} from "./settlement-call.js";
 
 /** Fair scheduling must not reuse a rollback-restored coin before recovering
  * the old signed body that reserved it. Only visible wallet coins are queried. */
@@ -40,7 +46,7 @@ export const reconcileRestoredSettlementFees = (
 ) =>
   Effect.gen(function* () {
     const config = yield* NodeConfig;
-    const wallet = yield* Effect.tryPromise(() =>
+    const wallet = yield* settlementCall("settlement wallet utxosAt", () =>
       lucid.utxosAt(owner.walletAddress),
     );
     const receipt = yield* Journal.restoredFeeReceipt(
@@ -48,7 +54,7 @@ export const reconcileRestoredSettlementFees = (
       wallet.map((u) => `${u.txHash}#${u.outputIndex}`),
     );
     if (receipt === undefined) return true;
-    yield* Effect.tryPromise(() =>
+    yield* settlementCall("indexer sync", () =>
       synchronizePublicationIndexerPoint(
         config.L1_OGMIOS_KEY,
         config.L1_KUPO_KEY,
@@ -60,7 +66,7 @@ export const reconcileRestoredSettlementFees = (
       return false;
     }
     // The initial wallet query may itself have been behind the receipt query.
-    const refreshed = yield* Effect.tryPromise(() =>
+    const refreshed = yield* settlementCall("settlement wallet utxosAt", () =>
       lucid.utxosAt(owner.walletAddress),
     );
     if (
@@ -115,11 +121,13 @@ const buildJob = (
       Effect.provideService(ReservePayoutTransport, {
         prepare: (tx, required) =>
           Effect.gen(function* () {
-            const signed = yield* Effect.tryPromise(() =>
-              tx.sign.withWallet().complete(),
+            const signed = yield* settlementCall(
+              "sign settlement transaction",
+              () => tx.sign.withWallet().complete(),
             );
-            const walletUtxos = yield* Effect.tryPromise(() =>
-              lucid.utxosAt(owner.walletAddress),
+            const walletUtxos = yield* settlementCall(
+              "settlement wallet utxosAt",
+              () => lucid.utxosAt(owner.walletAddress),
             );
             const bodyInputs = CML.Transaction.from_cbor_hex(signed.toCBOR())
               .body()
@@ -143,7 +151,9 @@ const buildJob = (
                 .map((u) => `${u.txHash}#${u.outputIndex}`)
                 .filter((out) => selectedInputs.includes(out)),
             };
-            yield* Effect.try(() => inspectSettlementAttempt(attempt));
+            yield* settlementCheck("inspect settlement attempt", () =>
+              inspectSettlementAttempt(attempt),
+            );
             yield* Journal.saveAttempt(owner, attempt);
             return attempt.tx_hash;
           }).pipe(
@@ -174,7 +184,16 @@ export const settlementTick = (
     const generation = yield* Journal.assertOwner(owner);
     const pending = yield* Journal.pending(owner.deploymentId);
     if (pending !== undefined) {
-      const detail = yield* reconcileAttempt(owner, pending, lucid, generation);
+      const detail = yield* reconcileAttempt(
+        owner,
+        pending,
+        lucid,
+        generation,
+      ).pipe(
+        Effect.mapError((cause) =>
+          settlementJobError(pending, `${pending.phase} reconcile`, cause),
+        ),
+      );
       report({ observedAt: Date.now(), state: "waiting", detail });
       return;
     }
@@ -185,7 +204,14 @@ export const settlementTick = (
         buildJob(owner, job, lucid, generation),
       );
       if (result._tag === "Failure") {
-        const detail = Cause.pretty(result.cause);
+        // Name the job and phase in the stored error and the health report,
+        // so an operator (and the devnet journey) can tell which event's
+        // settlement is failing and what the failing call answered.
+        const detail = settlementJobError(
+          job,
+          job.phase,
+          settlementCauseDetail(result.cause),
+        ).message.slice(0, 2000);
         const failure = Cause.failureOption(result.cause);
         const due = Option.isSome(failure)
           ? settlementWaitUntil(failure.value, Date.now())
@@ -212,7 +238,7 @@ export const settlementTick = (
           job.phase,
           job.verified_generation,
           delay,
-          detail.slice(0, 2000),
+          detail,
         );
         return yield* Effect.fail(new Error(detail));
       }
@@ -236,9 +262,51 @@ export const settlementTick = (
   });
 };
 
+/** A restarted node holds a new token; its previous process's lease still
+ * runs for up to a minute. Only that live lease is waited out, reported as
+ * 'starting' so the node's supervisor does not mistake it for a worker that
+ * stays up. Any other refusal (a changed settlement wallet, a database
+ * error), or a lease that outlives the wait, fails the run with its cause. */
+const acquireOwnership = (
+  owner: Journal.SettlementOwner,
+  report: (health: SettlementHealth) => void,
+) =>
+  Journal.renew(owner).pipe(
+    Effect.catchAll((error) =>
+      Effect.gen(function* () {
+        const failure = (leaseHeld: boolean, cause: Error = error) => ({
+          leaseHeld,
+          error: cause,
+        });
+        const boundWallet =
+          error instanceof Journal.SettlementOwnershipRefused
+            ? yield* Journal.boundWalletAddress(owner.deploymentId).pipe(
+                Effect.mapError((cause) => failure(false, cause)),
+              )
+            : undefined;
+        if (boundWallet !== owner.walletAddress)
+          return yield* Effect.fail(failure(false));
+        report({
+          observedAt: Date.now(),
+          state: "starting",
+          detail: `waiting for the previous settlement ownership lease: ${error.message.split("\n", 1)[0]}`,
+        });
+        return yield* Effect.fail(failure(true));
+      }),
+    ),
+    Effect.retry({
+      schedule: Schedule.spaced("5 seconds").pipe(Schedule.upTo("70 seconds")),
+      while: ({ leaseHeld }) => leaseHeld,
+    }),
+    Effect.mapError(({ error }) => error),
+  );
+
 /** One serial transaction stream; waits happen between ticks, never in a node
  * control-plane or ledger lease. Local UPLC evaluation runs in the worker. */
-export const settlementProgram = (report: (health: SettlementHealth) => void) =>
+export const settlementProgram = (
+  report: (health: SettlementHealth) => void,
+  ownerToken: string = randomUUID(),
+) =>
   Effect.gen(function* () {
     const config = yield* NodeConfig;
     const identity = yield* ContractDeploymentIdentity;
@@ -248,8 +316,9 @@ export const settlementProgram = (report: (health: SettlementHealth) => void) =>
           "Automatic settlement requires a canonical deployment manifest",
         ),
       );
-    const walletAddress = yield* Effect.try(() =>
-      settlementWalletAddress(config),
+    const walletAddress = yield* settlementCheck(
+      "settlement wallet address",
+      () => settlementWalletAddress(config),
     );
     const baseLucid = yield* Lucid;
     baseLucid.api.selectWallet.fromSeed(config.L1_SETTLEMENT_SEED_PHRASE!);
@@ -262,10 +331,14 @@ export const settlementProgram = (report: (health: SettlementHealth) => void) =>
     const owner: Journal.SettlementOwner = {
       deploymentId: identity.manifestId,
       walletAddress,
-      token: randomUUID(),
+      token: ownerToken,
     };
-    yield* Journal.renew(owner);
-    const tick = settlementTick(owner, baseLucid.api, report).pipe(
+    yield* acquireOwnership(owner, report);
+    // A report from inside a tick means the tick ran to its end without
+    // failing; the supervisor clears a worker's failure streak only on one.
+    const tickReport = (health: SettlementHealth) =>
+      report({ ...health, tickCompleted: true });
+    const tick = settlementTick(owner, baseLucid.api, tickReport).pipe(
       Effect.provideService(Lucid, settlementLucid),
       Effect.timeout("120 seconds"),
       Effect.catchAllCause((cause) =>
@@ -273,7 +346,7 @@ export const settlementProgram = (report: (health: SettlementHealth) => void) =>
           report({
             observedAt: Date.now(),
             state: "error",
-            detail: Cause.pretty(cause).slice(0, 2000),
+            detail: settlementCauseDetail(cause),
           });
         }),
       ),

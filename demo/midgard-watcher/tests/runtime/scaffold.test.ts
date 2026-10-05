@@ -38,6 +38,49 @@ const ready = (
 });
 
 describe("production watcher command arguments", () => {
+  it("parses only explicit authority initialization with its retained generation", () => {
+    const generation = "generation-00000000-0000-0000-0000-000000000001";
+    expect(
+      parseWatcherArguments([
+        "authority-init",
+        "--config",
+        "/etc/authority.json",
+        "--generation",
+        generation,
+      ]),
+    ).toEqual({
+      kind: "initialize",
+      command: "authority-init",
+      configPath: "/etc/authority.json",
+      generation,
+    });
+  });
+
+  it.each([
+    ["authority-init", "--config", "/etc/authority.json"],
+    ["authority-init", "--config", "/etc/authority.json", "--generation", ""],
+    [
+      "authority-init",
+      "--config",
+      "/etc/authority.json",
+      "--attempt",
+      "generation-00000000-0000-0000-0000-000000000001",
+    ],
+    [
+      "authority-init",
+      "--config",
+      "/etc/authority.json",
+      "--generation",
+      "generation-00000000-0000-0000-0000-000000000001",
+      "--force",
+    ],
+  ])(
+    "refuses incomplete or additional authority initialization args %s",
+    (...argv) => {
+      expect(parseWatcherArguments(argv)).toMatchObject({ kind: "invalid" });
+    },
+  );
+
   it.each([
     {
       name: "start",

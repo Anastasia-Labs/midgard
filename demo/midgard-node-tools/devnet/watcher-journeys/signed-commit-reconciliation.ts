@@ -73,8 +73,13 @@ export const reconcileSignedCommit = async ({
     switch (observed.status) {
       case "included":
         return { kind: "included", txHash: attempt.txHash };
+      // Impossible at the tip counts too: whichever lands wins, and a
+      // replacement spends the same state-queue input, so it cannot
+      // double-commit.
       case "expired":
       case "invalidated":
+      case "expired_at_tip":
+      case "invalidated_at_tip":
         return { kind: "retired", reason: observed.reason };
       case "conflict":
         throw new Error(

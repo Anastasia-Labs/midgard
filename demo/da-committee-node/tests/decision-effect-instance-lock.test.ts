@@ -62,31 +62,33 @@ const jsonLocation = async (): Promise<StoreLocation> => {
 
 const postgresLocation = async (): Promise<StoreLocation> => {
   const database = await databases.create();
-  const lostLocks = new Map<CommitteeStore, Promise<void>>();
+  const endedSessions = new Map<CommitteeStore, Promise<void>>();
   const terminateLockSession = async (): Promise<void> => {
     expect(await terminateInstanceLockSessions(database)).toBe(1);
   };
   return {
     open: async (options = {}) => {
-      let signalLost!: () => void;
-      const lost = new Promise<void>((resolve) => {
-        signalLost = resolve;
+      let signalEnded!: () => void;
+      const ended = new Promise<void>((resolve) => {
+        signalEnded = resolve;
       });
       const store = await PostgresCommitteeStore.open(database.url, {
-        onInstanceLockLost: (error) => {
-          options.onInstanceLockLost?.(error);
-          signalLost();
+        ...options,
+        onInstanceLockSuspended: (error) => {
+          options.onInstanceLockSuspended?.(error);
+          signalEnded();
         },
       });
       openStores.add(store);
-      lostLocks.set(store, lost);
+      endedSessions.set(store, ended);
       return store;
     },
     // The server ends the session that holds the instance lock, exactly as it
-    // does when the process holding it dies.
+    // does when the process holding it dies; the process is gone, so the
+    // store is closed before it could take the lock again.
     kill: async (store) => {
       await terminateLockSession();
-      await lostLocks.get(store);
+      await endedSessions.get(store);
       openStores.delete(store);
       await store.close?.();
     },
@@ -238,26 +240,69 @@ describe("decision effect attempts across committee node processes", () => {
     },
   );
 
-  it("fail closed in a Postgres store whose instance lock session ends", async () => {
+  it("refuse every effect while a Postgres store's lock session is gone, then resume exactly once when the lock is free again", async () => {
     const at = await postgresLocation();
     const onInstanceLockLost = vi.fn();
-    const orphaned = await at.open({ onInstanceLockLost });
+    const onInstanceLockSuspended = vi.fn();
+    const onInstanceLockRestored = vi.fn();
+    const live = await at.open({
+      onInstanceLockLost,
+      onInstanceLockSuspended,
+      onInstanceLockRestored,
+    });
     await at.terminateLockSession!();
     await vi.waitFor(() => {
-      expect(onInstanceLockLost).toHaveBeenCalledOnce();
+      expect(onInstanceLockSuspended).toHaveBeenCalledOnce();
     });
+    await expect(
+      live.beginDecisionEffect({ effect: reconcile, sourceState }),
+    ).rejects.toThrow(/suspended its instance lock/u);
+    await expect(
+      live.getDecisionOutbox(reconcile.effectId),
+    ).resolves.toBeUndefined();
+
+    await vi.waitFor(
+      () => {
+        expect(onInstanceLockRestored).toHaveBeenCalledOnce();
+      },
+      { timeout: 5_000 },
+    );
+    await live.beginDecisionEffect({ effect: reconcile, sourceState });
+    await complete(live, 1);
+    await expect(
+      live.getDecisionOutbox(reconcile.effectId),
+    ).resolves.toMatchObject({ status: "reconciled", attemptCount: 1 });
+    expect(onInstanceLockLost).not.toHaveBeenCalled();
+    // Held again: a second process is still refused.
+    await expect(at.open()).rejects.toThrow(/already exclusively leased/u);
+  });
+
+  it("fail closed for good, and tell the process to stop, when another process holds the lock by the time it is tried again", async () => {
+    const at = await postgresLocation();
+    const onInstanceLockLost = vi.fn();
+    const onInstanceLockRestored = vi.fn();
+    const orphaned = await at.open({
+      onInstanceLockLost,
+      onInstanceLockRestored,
+    });
+    await at.terminateLockSession!();
+    // A successor takes the free lock before the orphan tries again.
+    const successor = await at.open();
+    await vi.waitFor(
+      () => {
+        expect(onInstanceLockLost).toHaveBeenCalledOnce();
+      },
+      { timeout: 5_000 },
+    );
     expect(onInstanceLockLost.mock.calls[0]?.[0]).toBeInstanceOf(Error);
+    expect(onInstanceLockRestored).not.toHaveBeenCalled();
     await expect(
       orphaned.beginDecisionEffect({ effect: reconcile, sourceState }),
     ).rejects.toThrow(/lost its instance lock/u);
     await expect(complete(orphaned, 1)).rejects.toThrow(
       /lost its instance lock/u,
     );
-    await expect(
-      orphaned.getDecisionOutbox(reconcile.effectId),
-    ).resolves.toBeUndefined();
 
-    const successor = await at.open();
     await successor.beginDecisionEffect({ effect: reconcile, sourceState });
     await complete(successor, 1);
   });

@@ -1390,8 +1390,8 @@ pnpm exec vitest run --config vitest.watcher-journeys.config.ts \
 
 The test is skipped when `MIDGARD_WATCHER_JOURNEY_RUN_DIR` is unset.
 `MIDGARD_DA_BOND_JOURNEY_REPORT_PATH` is optional. Expect about 90 minutes: the
-withdraw delay (39 minutes on the local-devnet profile) and B1's response
-window (12 minutes, the small-payload window) dominate. Each dependent step also waits for one block after inclusion
+withdraw delay (39 minutes 40 seconds on the local-devnet profile) and B1's
+response window (14 minutes 40 seconds, the small-payload window) dominate. Each dependent step also waits for one block after inclusion
 (`JOURNEY_ACTION_DEPTH`), roughly 20 seconds on this devnet. The test's own
 timeout is three hours.
 

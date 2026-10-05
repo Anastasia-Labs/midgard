@@ -277,6 +277,7 @@ export {
   type WatcherNativeChainSyncAuthorityDetails,
   watcherNativeChainSyncAuthorityDetails,
   type WatcherNativeChainSyncEvent,
+  type WatcherNativeChainSyncPoint,
   type WatcherNativeChainSyncRollBackward,
   type WatcherNativeChainSyncRollForward,
   type WatcherNativeChainSyncRuntime,
@@ -468,16 +469,7 @@ export {
   WATCHER_STATE_QUEUE_RUNTIME_SCHEMA_VERSION,
   type WatcherStateQueueRuntime,
 } from "./runtime/state-queue-runtime.js";
-export {
-  createWatcherTrustedHeadAuthorityClient,
-  openWatcherTrustedHeadAuthorityStore,
-  startWatcherTrustedHeadAuthorityServer,
-  WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_SCHEMA_VERSION,
-  WATCHER_TRUSTED_HEAD_AUTHORITY_SCHEMA_VERSION,
-  type WatcherTrustedHeadAuthorityClient,
-  type WatcherTrustedHeadAuthorityServer,
-  type WatcherTrustedHeadAuthorityStore,
-} from "./runtime/trusted-head-authority.js";
+export * from "./runtime/trusted-head-authority.js";
 export {
   createWatcherTrustedHeadClientRuntime,
   startWatcherTrustedHeadAuthorityProcess,

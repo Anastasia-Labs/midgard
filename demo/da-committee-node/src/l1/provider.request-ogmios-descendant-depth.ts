@@ -1,6 +1,13 @@
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import type { ChainPoint } from "../domain.js";
+import {
+  CHAIN_POINT_BATCH_DEADLINE_MS,
+  CHAIN_POINT_RESOLUTION_CONCURRENCY,
+  ChainPointBatchDeadlineError,
+  type ChainPointResolver,
+  mapWithConcurrency,
+} from "./provider.chain-point-batch.js";
 import { ChainMovedDuringSnapshotError } from "./provider.local-node-chain-authority.js";
 import { lucidChainPointResolver } from "./provider.local-node-chain-authority-from-config.js";
 import {
@@ -18,6 +25,19 @@ import {
 } from "./provider.parse-persisted-chain-sync-state.js";
 import { alignedKupmiosTip } from "./provider.run-ogmios-session.js";
 
+/**
+ * Resolves state-queue chain points over Kupmios. A point whose inclusion
+ * lookup carries no depth gets one counted from real descendant blocks,
+ * pinned to an aligned Kupo/Ogmios tip read before the walk and read again
+ * after it: a tip that moved in between fails the resolution.
+ *
+ * Called per UTxO, each resolution brackets its own walk. `resolveAll`
+ * resolves a whole snapshot inside ONE bracket: one aligned tip read before
+ * the first walk, every walk pinned to it, and one read after the last, at
+ * most `CHAIN_POINT_RESOLUTION_CONCURRENCY` UTxOs at a time and within
+ * `batchDeadlineMs`; past the deadline no further UTxO starts and the pass
+ * fails as an observation failure.
+ */
 export const kupmiosChainPointResolver = (
   lucid: LucidEvolution,
   _kupoUrl: string,
@@ -26,58 +46,117 @@ export const kupmiosChainPointResolver = (
   network?: string,
   requiredDepth = 2160,
   networkMagic?: number,
-): ((utxo: UTxO) => Promise<ChainPoint>) => {
+  batch: {
+    readonly batchDeadlineMs?: number;
+    readonly nowMs?: () => number;
+    /** Owning scoped consumer supplies both transports; default callers are unchanged. */
+    readonly openSession?: (
+      url: string,
+    ) => Promise<Pick<OgmiosRpcSession, "request" | "close">>;
+    readonly readAlignedTip?: () => Promise<CanonicalChainPoint>;
+  } = {},
+): ChainPointResolver => {
   const resolveInclusion = lucidChainPointResolver(lucid);
-  return async (utxo) => {
-    const inclusion = await resolveInclusion(utxo);
-    if (inclusion.depth !== undefined) {
-      return inclusion;
-    }
-    if (
-      ogmiosUrl === undefined ||
-      network === undefined ||
-      inclusion.slot === undefined ||
-      inclusion.blockHash === undefined
-    ) {
-      // Empty slots are not confirmations. Keep depth unknown unless the
-      // aligned node can count actual descendant blocks.
-      return inclusion;
-    }
-    const before = await alignedKupmiosTip(
-      network,
+  const alignedTip = (walk: {
+    readonly network: string;
+    readonly ogmiosUrl: string;
+  }): Promise<CanonicalChainPoint> =>
+    batch.readAlignedTip?.() ??
+    alignedKupmiosTip(
+      walk.network,
       _kupoUrl,
-      ogmiosUrl,
+      walk.ogmiosUrl,
       _fetchFn,
       networkMagic,
     );
-    const depth = await requestOgmiosDescendantDepth({
-      ogmiosUrl,
-      network,
-      networkMagic,
-      inclusion: {
-        network,
-        slot: inclusion.slot,
-        blockHash: inclusion.blockHash,
-        providerSource: `kupmios:${_kupoUrl}|${ogmiosUrl}`,
-        observedAt: new Date().toISOString(),
-      },
-      expectedTip: before,
-      requiredDepth,
-    });
-    const after = await alignedKupmiosTip(
-      network,
-      _kupoUrl,
-      ogmiosUrl,
-      _fetchFn,
-      networkMagic,
-    );
-    if (!sameCanonicalPoint(before, after)) {
+  /** The walk's input when the inclusion needs a counted depth. */
+  const walkFor = (inclusion: ChainPoint) =>
+    inclusion.depth !== undefined ||
+    ogmiosUrl === undefined ||
+    network === undefined ||
+    inclusion.slot === undefined ||
+    inclusion.blockHash === undefined
+      ? undefined
+      : {
+          ogmiosUrl,
+          network,
+          networkMagic,
+          // Empty slots are not confirmations. Keep depth unknown unless the
+          // aligned node can count actual descendant blocks.
+          inclusion: {
+            network,
+            slot: inclusion.slot,
+            blockHash: inclusion.blockHash,
+            providerSource: `kupmios:${_kupoUrl}|${ogmiosUrl}`,
+            observedAt: new Date().toISOString(),
+          },
+          requiredDepth,
+          openSession: batch.openSession,
+        };
+  const assertTipHeld = async (
+    walk: Parameters<typeof alignedTip>[0],
+    before: CanonicalChainPoint,
+  ): Promise<void> => {
+    if (!sameCanonicalPoint(before, await alignedTip(walk))) {
       throw new ChainMovedDuringSnapshotError(
         "Kupmios chain point changed while deriving block confirmations",
       );
     }
+  };
+  const resolveOne = async (utxo: UTxO): Promise<ChainPoint> => {
+    const inclusion = await resolveInclusion(utxo);
+    const walk = walkFor(inclusion);
+    if (walk === undefined) return inclusion;
+    const before = await alignedTip(walk);
+    const depth = await requestOgmiosDescendantDepth({
+      ...walk,
+      expectedTip: before,
+    });
+    await assertTipHeld(walk, before);
     return { ...inclusion, depth };
   };
+  const resolveAll = async (
+    utxos: readonly UTxO[],
+  ): Promise<readonly ChainPoint[]> => {
+    const nowMs = batch.nowMs ?? Date.now;
+    const deadlineMs = batch.batchDeadlineMs ?? CHAIN_POINT_BATCH_DEADLINE_MS;
+    const deadline = nowMs() + deadlineMs;
+    const assertWithinDeadline = (): void => {
+      if (nowMs() > deadline) {
+        throw new ChainPointBatchDeadlineError(deadlineMs);
+      }
+    };
+    // Read once, by the first UTxO that needs a walk.
+    let pinned:
+      | {
+          readonly walk: Parameters<typeof alignedTip>[0];
+          readonly before: Promise<CanonicalChainPoint>;
+        }
+      | undefined;
+    const points = await mapWithConcurrency(
+      utxos,
+      CHAIN_POINT_RESOLUTION_CONCURRENCY,
+      async (utxo) => {
+        assertWithinDeadline();
+        const inclusion = await resolveInclusion(utxo);
+        const walk = walkFor(inclusion);
+        if (walk === undefined) return inclusion;
+        pinned ??= { walk, before: alignedTip(walk) };
+        const expectedTip = await pinned.before;
+        assertWithinDeadline();
+        const depth = await requestOgmiosDescendantDepth({
+          ...walk,
+          expectedTip,
+        });
+        return { ...inclusion, depth };
+      },
+    );
+    if (pinned !== undefined) {
+      await assertTipHeld(pinned.walk, await pinned.before);
+    }
+    return points;
+  };
+  return Object.assign(resolveOne, { resolveAll });
 };
 
 export const kupmiosCurrentChainPointResolver =
@@ -97,6 +176,7 @@ const requestOgmiosDescendantDepth = async ({
   inclusion,
   expectedTip,
   requiredDepth,
+  openSession,
 }: {
   readonly ogmiosUrl: string;
   readonly network: string;
@@ -104,9 +184,12 @@ const requestOgmiosDescendantDepth = async ({
   readonly inclusion: CanonicalChainPoint;
   readonly expectedTip: CanonicalChainPoint;
   readonly requiredDepth: number;
+  readonly openSession?: (
+    url: string,
+  ) => Promise<Pick<OgmiosRpcSession, "request" | "close">>;
 }): Promise<number> => {
   const source = `confirmation-depth:${ogmiosUrl}`;
-  const session = await OgmiosRpcSession.open(ogmiosUrl);
+  const session = await (openSession ?? OgmiosRpcSession.open)(ogmiosUrl);
   try {
     const genesis = getRecord(
       await session.request("queryNetwork/genesisConfiguration", {

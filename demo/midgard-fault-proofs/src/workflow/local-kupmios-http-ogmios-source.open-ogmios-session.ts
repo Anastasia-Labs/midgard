@@ -161,8 +161,13 @@ export const openOgmiosSession = async ({
     if (waiter === undefined) return;
     pending.delete(message.id);
     if (message.error !== undefined) {
+      const text = `Ogmios error: ${JSON.stringify(message.error)}`;
+      // Ogmios answers -32000 when it lost its own node connection: the
+      // request was never evaluated, so it says nothing about the chain.
       waiter.reject(
-        new Error(`Ogmios error: ${JSON.stringify(message.error)}`),
+        ogmiosLostNode(message.error)
+          ? new LocalKupmiosTransportUnavailableError(text)
+          : new Error(text),
       );
     } else {
       waiter.resolve(message.result);
@@ -301,6 +306,16 @@ export const openOgmiosSession = async ({
       }
     },
   };
+};
+
+const ogmiosLostNode = (error: unknown): boolean => {
+  if (typeof error !== "object" || error === null) return false;
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  return (
+    code === -32000 ||
+    (typeof message === "string" &&
+      /connection with the node lost/iu.test(message))
+  );
 };
 
 export const sameKupoPoint = (left: KupoPoint, right: KupoPoint): boolean =>

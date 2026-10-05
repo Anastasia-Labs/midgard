@@ -155,6 +155,42 @@ describe("provider diagnostics", () => {
     });
   });
 
+  it.each([
+    { boundMs: 200_000, ageMs: 150_000, healthy: true },
+    { boundMs: 10_000, ageMs: 15_000, healthy: false },
+    { boundMs: 600_000, ageMs: 350_000, healthy: true },
+  ])(
+    "preflights a $ageMs ms tip using the resolved $boundMs ms bound",
+    async ({ boundMs, ageMs, healthy }) => {
+      const nowMs = 1_000_000;
+      const report = await runL1ProviderPreflight({
+        config: { ...config, L1_OGMIOS_TIP_MAX_AGE_MS: boundMs },
+        nowMs,
+        fetchImpl: async (url) => {
+          if (url === `${config.L1_KUPO_KEY}/health`) return textResponse("ok");
+          return textResponse(
+            JSON.stringify(
+              url.endsWith("/health")
+                ? {
+                    connectionStatus: "connected",
+                    networkSynchronization: 1,
+                    lastKnownTip: { slot: 41 },
+                    lastTipUpdate: new Date(nowMs - ageMs).toISOString(),
+                  }
+                : { jsonrpc: "2.0", result: { slot: 41 } },
+            ),
+          );
+        },
+      });
+      expect(report.ok).toBe(healthy);
+      if (!healthy)
+        expect(report.sources[0]).toMatchObject({
+          failureKind: "local_ogmios_slot_unavailable",
+          bodySummary: expect.stringContaining("Ogmios lastTipUpdate is stale"),
+        });
+    },
+  );
+
   it("preserves the nested network cause needed to diagnose local provider failures", async () => {
     const failure = new TypeError("fetch failed", {
       cause: new Error("getaddrinfo EAI_AGAIN kupo"),

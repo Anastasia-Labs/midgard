@@ -24,6 +24,7 @@ export const reobserveRequiredWorkflowParent = async ({
   journal,
   intent,
   hasUnresolvedDescendant,
+  supersedeDisplacedAttempt,
   append,
   stalled,
   resumeOnObservation,
@@ -37,6 +38,8 @@ export const reobserveRequiredWorkflowParent = async ({
     { kind: "submission_intent" }
   >;
   readonly hasUnresolvedDescendant: boolean;
+  /** Retires the pending later attempt that reobserving `intent` displaces. */
+  readonly supersedeDisplacedAttempt: () => Promise<void>;
   readonly append: (event: FraudProofWorkflowJournalEvent) => Promise<void>;
   readonly stalled: (reason: string) => Promise<FraudProofWorkflowRunResult>;
   readonly resumeOnObservation: (reason: string) => FraudProofWorkflowRunResult;
@@ -104,6 +107,7 @@ export const reobserveRequiredWorkflowParent = async ({
     }
   }
   if (parentIncluded) return { kind: "included" };
+  await supersedeDisplacedAttempt();
   const fundingAvailable = await reobserveWorkflowFundingReservationTransaction(
     {
       journal,

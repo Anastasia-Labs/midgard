@@ -6,6 +6,7 @@ export default defineConfig({
   // its own workers.
   entry: {
     index: "src/index.ts",
+    "devnet-stack": "src/devnet-stack.ts",
     "corpus-chain-builder": "src/workers/corpus-chain-builder.ts",
   },
   format: ["esm"],
@@ -22,6 +23,8 @@ export default defineConfig({
   // for anyone to resolve. Every other dependency stays external and resolves
   // from this package's own node_modules at runtime.
   noExternal: [/^midgard-node(\/|$)/],
+  // Recorder callbacks and public receipt readers must share watcher WeakMaps.
+  external: [/^midgard-watcher(\/|$)/],
   esbuildOptions(options) {
     options.conditions = [...(options.conditions ?? []), "midgard-source"];
     options.loader = {

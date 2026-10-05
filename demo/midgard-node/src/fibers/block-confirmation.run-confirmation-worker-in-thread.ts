@@ -1,5 +1,4 @@
 import { Effect } from "effect";
-import { Worker } from "worker_threads";
 
 import {
   DepositsDB,
@@ -21,7 +20,12 @@ import {
 } from "../workers/utils/confirm-block-commitments.js";
 import { type ConfirmationWorkerRunner } from "./block-confirmation.record-confirmed-pending-block.js";
 import { resolveWorkerEntry } from "./resolve-worker-entry.js";
-import { makeAwaitedWorkerTerminator } from "./worker-lifecycle.js";
+import {
+  makeAwaitedWorkerTerminator,
+  type SpawnWorker,
+  spawnWorkerThread,
+  WORKER_TERMINATION_WAIT_MS,
+} from "./worker-lifecycle.js";
 
 export const abandonUnsubmittedPendingBlockIfStillPresent = (
   record: PendingBlockFinalizationsDB.Record,
@@ -66,89 +70,153 @@ export const reviveCanonicalPayloadJournalFromWorkerSnapshot = (
     });
   });
 
-export const runConfirmationWorkerInThread: ConfirmationWorkerRunner = (
-  input,
-) =>
-  Effect.async<BlockConfirmationWorkerOutput, WorkerError, never>((resume) => {
-    Effect.runSync(Effect.logInfo("🔍 Starting block confirmation worker..."));
-    const worker = new Worker(
-      resolveWorkerEntry(import.meta.url, "confirm-block-commitments.js"),
-      {
-        workerData: input,
-      },
-    );
-    const terminate = makeAwaitedWorkerTerminator(worker);
-    let settled = false;
-    const cleanup = () => {
-      worker.off("message", onMessage);
-      worker.off("error", onError);
-      worker.off("exit", onExit);
-    };
-    const settle = (
-      result: Effect.Effect<BlockConfirmationWorkerOutput, WorkerError>,
-    ) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      void terminate().then(
-        () => resume(result),
-        (cause) =>
-          resume(
+/** Old-generation cap of one confirmation worker. Loading its module graph
+ * takes about 140 MiB of heap; a worker past the cap fails with a
+ * WorkerError, retried on the next tick, instead of growing the process. */
+export const CONFIRMATION_WORKER_HEAP_MB = 1024;
+
+/** Longest one confirmation job may run before its worker is terminated and
+ * the job fails. Above the worker's own provider waits, below the
+ * confirmation fiber's 180 s L1 control-plane hold. */
+export const CONFIRMATION_WORKER_JOB_TIMEOUT_MS = 150_000;
+
+const confirmationWorkerError = (message: string, cause: unknown) =>
+  new WorkerError({ worker: "confirm-block-commitments", message, cause });
+
+/**
+ * Runs one confirmation job in a fresh worker thread. Every exit path
+ * terminates the worker and waits for that at most
+ * `WORKER_TERMINATION_WAIT_MS`: a worker that does not stop in time fails
+ * the job (settled) or is left to stop on its own (interrupted), so neither
+ * path can hold the L1 control plane past its bound.
+ */
+export const makeConfirmationWorkerRunner =
+  (
+    options: {
+      readonly workerEntry?: string | URL;
+      readonly jobTimeoutMs?: number;
+      readonly terminationWaitMs?: number;
+      readonly heapMb?: number;
+      readonly spawnWorker?: SpawnWorker;
+    } = {},
+  ): ConfirmationWorkerRunner =>
+  (input) =>
+    Effect.async<BlockConfirmationWorkerOutput, WorkerError, never>(
+      (resume) => {
+        Effect.runSync(
+          Effect.logInfo("🔍 Starting block confirmation worker..."),
+        );
+        const worker = (options.spawnWorker ?? spawnWorkerThread)(
+          options.workerEntry ??
+            resolveWorkerEntry(import.meta.url, "confirm-block-commitments.js"),
+          {
+            workerData: input,
+            resourceLimits: {
+              maxOldGenerationSizeMb:
+                options.heapMb ?? CONFIRMATION_WORKER_HEAP_MB,
+            },
+          },
+        );
+        const terminate = makeAwaitedWorkerTerminator(worker, undefined, {
+          waitTimeoutMs:
+            options.terminationWaitMs ?? WORKER_TERMINATION_WAIT_MS,
+        });
+        const jobTimeoutMs =
+          options.jobTimeoutMs ?? CONFIRMATION_WORKER_JOB_TIMEOUT_MS;
+        let settled = false;
+        const cleanup = () => {
+          clearTimeout(jobTimer);
+          worker.off("message", onMessage);
+          worker.off("error", onError);
+          worker.off("exit", onExit);
+        };
+        const settle = (
+          result: Effect.Effect<BlockConfirmationWorkerOutput, WorkerError>,
+        ) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          void terminate().then(
+            () => resume(result),
+            (cause) =>
+              resume(
+                Effect.fail(
+                  confirmationWorkerError(
+                    "Failed to terminate confirmation worker.",
+                    cause,
+                  ),
+                ),
+              ),
+          );
+        };
+        const onMessage = (output: BlockConfirmationWorkerOutput) => {
+          if (output.type === "FailedConfirmationOutput") {
+            settle(
+              Effect.fail(
+                confirmationWorkerError(
+                  "Confirmation worker failed.",
+                  output.error,
+                ),
+              ),
+            );
+          } else {
+            settle(Effect.succeed(output));
+          }
+        };
+        const onError = (error: Error) => {
+          settle(
             Effect.fail(
-              new WorkerError({
-                worker: "confirm-block-commitments",
-                message: "Failed to terminate confirmation worker.",
-                cause,
-              }),
+              confirmationWorkerError(
+                `Error in confirmation worker: ${error}`,
+                error,
+              ),
+            ),
+          );
+        };
+        const onExit = (code: number) => {
+          settle(
+            Effect.fail(
+              confirmationWorkerError(
+                `Confirmation worker exited before producing output with code: ${code}`,
+                `exit code ${code}`,
+              ),
+            ),
+          );
+        };
+        const jobTimer = setTimeout(
+          () =>
+            settle(
+              Effect.fail(
+                confirmationWorkerError(
+                  `Confirmation worker produced no output within ${jobTimeoutMs.toString()} ms.`,
+                  `timeout_ms=${jobTimeoutMs.toString()}`,
+                ),
+              ),
+            ),
+          jobTimeoutMs,
+        );
+        worker.on("message", onMessage);
+        worker.on("error", onError);
+        worker.on("exit", onExit);
+        // An interrupted job stops waiting for the worker after the bounded
+        // termination wait. The worker holds no lease, so nothing is released
+        // early; a worker that never stops is logged, not awaited forever.
+        return Effect.tryPromise(() => {
+          if (!settled) {
+            settled = true;
+            cleanup();
+          }
+          return terminate();
+        }).pipe(
+          Effect.catchAll((error) =>
+            Effect.logError(
+              `Confirmation worker termination after interruption was not confirmed: ${String(error.cause)}`,
             ),
           ),
-      );
-    };
-    const onMessage = (output: BlockConfirmationWorkerOutput) => {
-      if (output.type === "FailedConfirmationOutput") {
-        settle(
-          Effect.fail(
-            new WorkerError({
-              worker: "confirm-block-commitments",
-              message: "Confirmation worker failed.",
-              cause: output.error,
-            }),
-          ),
+          Effect.asVoid,
         );
-      } else {
-        settle(Effect.succeed(output));
-      }
-    };
-    const onError = (error: Error) => {
-      settle(
-        Effect.fail(
-          new WorkerError({
-            worker: "confirm-block-commitments",
-            message: `Error in confirmation worker: ${error}`,
-            cause: error,
-          }),
-        ),
-      );
-    };
-    const onExit = (code: number) => {
-      settle(
-        Effect.fail(
-          new WorkerError({
-            worker: "confirm-block-commitments",
-            message: `Confirmation worker exited before producing output with code: ${code}`,
-            cause: `exit code ${code}`,
-          }),
-        ),
-      );
-    };
-    worker.on("message", onMessage);
-    worker.on("error", onError);
-    worker.on("exit", onExit);
-    return Effect.promise(async () => {
-      if (!settled) {
-        settled = true;
-        cleanup();
-      }
-      await terminate();
-    });
-  });
+      },
+    );
+
+export const runConfirmationWorkerInThread: ConfirmationWorkerRunner =
+  makeConfirmationWorkerRunner();

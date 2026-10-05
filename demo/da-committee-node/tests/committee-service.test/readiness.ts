@@ -14,10 +14,7 @@ import { DaPeerRegistry } from "../../src/da/libp2p/DaPeerRegistry.js";
 import { type StateQueueProvider } from "../../src/l1/state-queue-scanner.js";
 import { loadDaSigner } from "../../src/signer.js";
 import { JsonFileCommitteeStore } from "../../src/store.js";
-import {
-  createCommitteeTickRunner,
-  L1_VIEW_UNAVAILABLE_EXIT_CODE,
-} from "../../src/tick-runner.js";
+import { createCommitteeTickRunner } from "../../src/tick-runner.js";
 import {
   minimalConfig,
   payloadSourceFromBytes,
@@ -283,9 +280,6 @@ export const registerReadinessTests = () => {
       startedAtMs: Date.now(),
       nowMs: () => Date.now(),
       write: () => undefined,
-      shutdown: async () => undefined,
-      exit: () => undefined,
-      shutdownGraceMs: 10,
     });
     expect(wiring.tickRunnerDeps(undefined)).toEqual({});
 
@@ -364,7 +358,6 @@ export const registerReadinessTests = () => {
     });
     await service.initialize();
     const fatalMs = 240_000;
-    const exits: number[] = [];
     const runner = createCommitteeTickRunner({
       // The first tick of a member far behind: synchronizeToTip walks
       // chain-sync for longer than the deadline before any view exists.
@@ -378,9 +371,6 @@ export const registerReadinessTests = () => {
       startedAtMs: nowMs,
       nowMs: () => nowMs,
       write: () => undefined,
-      shutdown: async () => undefined,
-      exit: (code) => exits.push(code),
-      shutdownGraceMs: 10,
     });
     void runner.runTick();
 
@@ -392,11 +382,11 @@ export const registerReadinessTests = () => {
         tipSlot: 90_000,
       };
       await runner.runTick();
-      expect(exits).toEqual([]);
+      expect(runner.liveness().l1ViewUnavailable).toBeUndefined();
     }
     // A cursor that stops moving is no progress.
     nowMs += fatalMs + 1;
     await runner.runTick();
-    expect(exits).toEqual([L1_VIEW_UNAVAILABLE_EXIT_CODE]);
+    expect(runner.liveness().l1ViewUnavailable).toBeDefined();
   });
 };

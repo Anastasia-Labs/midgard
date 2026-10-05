@@ -56,25 +56,40 @@ export const reconcileLastTimeoutCorrectionStep = (
   if (transactionStatus === "expired" || transactionStatus === "invalidated") {
     return {
       disposition: "superseded",
-      journal: replaceJournalStepStatus(journal, stepIndex, "superseded"),
+      journal: replaceJournalStepStatus(journal, stepIndex, "retired"),
     };
   }
-
-  const currentOutRefs = new Set(outRefsOf(queue));
-  const recordedInputsAreSpent = lastStep.inputOutRefs.every(
-    (outRef) => !currentOutRefs.has(outRef),
-  );
-  const removedHeaderIsAbsent = !queue.some(
-    (node, index) =>
-      index > 0 && headerHashOf(node) === lastStep.removedHeaderHash,
-  );
-  if (!recordedInputsAreSpent || !removedHeaderIsAbsent) {
+  // Owner ruling (whichever lands wins): an attempt impossible at the tip no
+  // longer holds the correction. It is replaced at once by an attempt that
+  // shares one of its inputs, and adopted if a rollback lands it after all.
+  if (transactionStatus === "superseded") {
+    return {
+      disposition: "superseded",
+      journal: replaceJournalStepStatus(journal, stepIndex, "abandoned"),
+    };
+  }
+  if (!timeoutCorrectionEffectIsCanonical(lastStep, queue)) {
     return { disposition: "pending", journal };
   }
   return {
     disposition: "confirmed",
     journal: replaceJournalStepStatus(journal, stepIndex, "confirmed"),
   };
+};
+
+/** The exact spent outrefs and the removed header are gone from the queue. */
+export const timeoutCorrectionEffectIsCanonical = (
+  step: TimeoutCorrectionJournal["steps"][number],
+  queue: readonly StateQueueUTxO[],
+): boolean => {
+  const currentOutRefs = new Set(outRefsOf(queue));
+  return (
+    step.inputOutRefs.every((outRef) => !currentOutRefs.has(outRef)) &&
+    !queue.some(
+      (node, index) =>
+        index > 0 && headerHashOf(node) === step.removedHeaderHash,
+    )
+  );
 };
 
 export type TimeoutCorrectionPlan = {
@@ -185,7 +200,7 @@ export const reopenRolledBackTimeoutCorrectionSteps = (
   let reopened = false;
   const steps = journal.steps.map((step) => {
     if (
-      step.status !== "confirmed" ||
+      (step.status !== "confirmed" && step.status !== "superseded") ||
       (!liveHeaders.has(step.removedHeaderHash) &&
         !step.inputOutRefs.some((input) => liveInputs.has(input)))
     )

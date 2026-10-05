@@ -23,6 +23,10 @@ import {
 import { openWatcherFaultDecisionJournal } from "./fault-decision-journal.js";
 import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 import {
+  isWatcherProofCompletionMarked,
+  markWatcherProofCompletionBeyondRecovery,
+} from "./fault-proof-completion-marker.js";
+import {
   readWatcherProofExecution,
   type WatcherProofExecution,
   type WatcherProofObjective,
@@ -54,7 +58,14 @@ export type WatcherFaultProofProgressAuthority = Readonly<{
   ): Promise<readonly WatcherFaultProofProgressContext[]>;
   revokeAuthority(reason: string): void;
   unfinishedCount(): number;
-  markCompleted(objective: WatcherProofObjective): void;
+  /** A completion verified beyond rollback recovery is also marked durably. */
+  markCompleted(
+    objective: WatcherProofObjective,
+    verified?: Readonly<{
+      execution: WatcherProofExecution;
+      confirmationDepth: number;
+    }>,
+  ): Promise<void>;
   updateExecution(input: {
     readonly objective: WatcherProofObjective;
     readonly execution: WatcherProofExecution;
@@ -80,6 +91,8 @@ type Objective = {
 const keyOf = ({ category, headerHash }: WatcherProofObjective): string =>
   `${category}:${headerHash}`;
 const MAX_OBJECTIVES = 2_048;
+const isCompletedJournal = (objective: Objective): boolean =>
+  objective.entries?.some(({ event }) => event.kind === "completed") === true;
 
 /** Restored decisions authorize observation of signed work only. The supervisor
  * revalidates the latest selected execution immediately before funding. */
@@ -124,6 +137,16 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       }
     }
     return undefined;
+  };
+  // Completed journals stay indexed until canonical verification retires
+  // them, but they hold no unfinished work and are never erased, so counting
+  // them would refuse every restart once enough proofs had completed.
+  const assertRecoveryBound = (): void => {
+    let unfinished = 0;
+    for (const objective of objectives.values())
+      if (!isCompletedJournal(objective)) unfinished += 1;
+    if (unfinished > MAX_OBJECTIVES)
+      throw new Error("proof progress exceeds its recovery bound");
   };
   const pruneDecisions = (): void => {
     const retained = new Set(
@@ -183,6 +206,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     if ((await realpath(root)) !== root)
       throw new Error("proof progress journal traverses a symlink");
     const categories = new Set<string>(input.categories);
+    let unfinished = 0;
     for (const category of await readdir(root, { withFileTypes: true })) {
       if (!category.isDirectory() || !categories.has(category.name))
         throw new Error("proof progress journal contains an unknown category");
@@ -194,6 +218,10 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       })) {
         if (!header.isDirectory() || !/^[0-9a-f]{56}$/u.test(header.name))
           throw new Error("proof progress journal contains an invalid target");
+        // A completion verified beyond rollback recovery holds no work.
+        const target = { category: category.name, headerHash: header.name };
+        if (await isWatcherProofCompletionMarked({ ...input, target }))
+          continue;
         const candidates = [...decisions.values()].filter(
           (decision) =>
             decision.category === category.name &&
@@ -206,11 +234,9 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           );
         const objective: Objective = { decision: candidate };
         await loadExecution(objective);
-        if (objective.entries?.some(({ event }) => event.kind === "completed"))
-          continue;
         if (objective.entries !== undefined) {
           objectives.set(keyOf(candidate), objective);
-          if (objectives.size > MAX_OBJECTIVES)
+          if (!isCompletedJournal(objective) && ++unfinished > MAX_OBJECTIVES)
             throw new Error("proof progress exceeds its recovery bound");
         }
       }
@@ -263,8 +289,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     objective.entries = execution.entries;
     objective.workflowId = execution.workflowId;
     objectives.set(keyOf(key), objective);
-    if (objectives.size > MAX_OBJECTIVES)
-      throw new Error("proof progress exceeds its recovery bound");
+    assertRecoveryBound();
     pruneDecisions();
   };
   return Object.freeze({
@@ -378,8 +403,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           rollbackGeneration: request.rollbackGeneration,
         });
       }
-      if (objectives.size > MAX_OBJECTIVES)
-        throw new Error("proof progress exceeds its recovery bound");
+      assertRecoveryBound();
       if (changed) {
         for (const [key, objective] of objectives) {
           if (key === currentKey) continue;
@@ -387,13 +411,6 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           // historical observation. Already restored identities stay indexed.
           if (objective.entries === undefined) await loadExecution(objective);
           if (epoch !== startedEpoch) return [];
-          if (
-            objective.entries?.some(({ event }) => event.kind === "completed")
-          ) {
-            // Only the supervisor's canonical terminal verification can retire
-            // an indexed objective; a durable marker alone grants no acceptance.
-            continue;
-          }
           if (
             objective.entries === undefined ||
             !objective.entries.some(
@@ -461,9 +478,15 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       };
       return controller.permit;
     },
-    markCompleted: (objective) => {
+    markCompleted: async (objective, verified) => {
       objectives.delete(keyOf(objective));
       pruneDecisions();
+      if (verified !== undefined)
+        await markWatcherProofCompletionBeyondRecovery({
+          ...input,
+          objective,
+          ...verified,
+        });
     },
   });
 };

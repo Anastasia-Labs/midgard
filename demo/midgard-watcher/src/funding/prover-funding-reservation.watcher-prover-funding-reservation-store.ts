@@ -71,6 +71,17 @@ export type WatcherProverFundingReservationRecord = Readonly<{
 
 export type WatcherProverFundingReservationStore = Readonly<{
   readAll(): Promise<readonly unknown[]>;
+  /** A reservation whose claims overlap a legacy signed attempt permits reads
+   * and exact retirement, never fresh actuation; other reservations proceed. */
+  isReconciliationOnly?(input: {
+    readonly reservationId: string;
+  }): Promise<boolean>;
+  assertSubmissionAuthority?(input: {
+    readonly reservationId: string;
+  }): Promise<void>;
+  readReservedOutRefs(input: {
+    readonly excludingReservationId?: string;
+  }): Promise<readonly string[]>;
   /** Includes resolved handoffs and lineage, not just the current pending attempt. */
   hasSignedHistory?(input: {
     readonly reservationId: string;
@@ -86,6 +97,24 @@ export type WatcherProverFundingReservationStore = Readonly<{
     readonly expectedRevision: string;
     readonly transactionHash: string;
     readonly inputs: readonly WatcherProverFundingReservationInput[];
+    /** Adopts a superseded attempt that landed, under this submission handoff. */
+    readonly adoption?: unknown;
+  }): Promise<WatcherProverFundingReservationRecord>;
+  /** Per superseded, unretired attempt that no recorded attempt shares an
+   * input with, the funding inputs it spent; empty when there is none. */
+  readSupersededAttemptFundingOutRefs?(input: {
+    readonly reservationId: string;
+  }): Promise<readonly (readonly string[])[]>;
+  readLegacyAbandonedTransactions?(input: {
+    readonly reservationId: string;
+  }): Promise<readonly unknown[]>;
+  retireLegacyAbandonment?(input: {
+    readonly plan: WatcherProverFundingReservationPlan;
+    readonly expectedRevision: string;
+    readonly transactionHash: string;
+    readonly retirement: NonNullable<
+      WorkflowFundingAbandonmentHandoff["reconciliation"]["retirement"]
+    >;
   }): Promise<WatcherProverFundingReservationRecord>;
   readAbandonmentHandoff(input: {
     readonly reservationId: string;

@@ -19,8 +19,12 @@ import {
   watcherDeploymentReleaseEconomicsAuthority,
 } from "../runtime/deployment-identity.js";
 import {
+  assertWatcherProtocolParameterHistory,
   assertWatcherProtocolParameterRuntimeAuthority,
+  refreshWatcherProtocolParameterRuntimeAuthority,
+  type WatcherProtocolParameterHistory,
   type WatcherProtocolParameterRuntimeAuthority,
+  watcherSignedDeploymentProtocolParameterRecoveryAuthority,
 } from "./prover-funding.js";
 import { createWatcherProverFundingAuthority } from "./prover-funding-authority.create-watcher-prover-funding-authority.js";
 import {
@@ -38,6 +42,7 @@ import {
   parseWatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationStore,
+  WatcherProverFundingUnavailableError,
 } from "./prover-funding-reservation.js";
 
 /**
@@ -50,12 +55,22 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly protocolParameters: WatcherProtocolParameterRuntimeAuthority;
   readonly store: WatcherProverFundingReservationStore;
+  readonly protocolParameterHistory?: WatcherProtocolParameterHistory;
 }): WatcherProverFundingAuthorityFactory => {
   assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
   assertWatcherProtocolParameterRuntimeAuthority(input.protocolParameters);
+  if (input.protocolParameterHistory !== undefined)
+    assertWatcherProtocolParameterHistory(input.protocolParameterHistory);
   // One immutable policy calculation, never an authority, lease or wallet view.
   // A changed admitted policy/parameter/economics basis replaces this entry.
+  const signedParameters =
+    watcherSignedDeploymentProtocolParameterRecoveryAuthority(
+      input.deploymentIdentity,
+    );
   let lastCalculation: WatcherRuntimeProverFundingCalculation | undefined;
+  let lastSelectionCalculation:
+    | WatcherRuntimeProverFundingCalculation
+    | undefined;
   const reservationByPermit = new WeakMap<
     WorkflowActuationPermit,
     WatcherProverFundingReservationRecord
@@ -75,7 +90,11 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
     },
     create: async (request) => {
       assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
-      assertWatcherProtocolParameterRuntimeAuthority(input.protocolParameters);
+      let protocolParameters =
+        await refreshWatcherProtocolParameterRuntimeAuthority(
+          input.protocolParameters,
+        );
+      const currentParameters = protocolParameters;
       const credential = getAddressDetails(
         request.walletAddress,
       ).paymentCredential;
@@ -157,7 +176,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         runner: request.runner,
         deploymentFingerprint: input.deploymentIdentity.manifestId,
         fundingPaymentKeyHash: credential.hash,
-        protocolParameters: input.protocolParameters.snapshot,
+        protocolParameters: protocolParameters.snapshot,
         economics,
         contracts: [...uniqueContracts.values()],
         referenceScripts: [...referenceScripts.values()],
@@ -198,35 +217,57 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         existing.policyDigest !==
           readWorkflowRuntimeFundingPolicy(policy).policyDigest
       ) {
-        // Reconstruct the exact previously deployed selector. Preserve aliases
-        // already admitted by that selector, and never infer authority from a
-        // persisted digest alone. All other identity mismatches remain errors.
-        const priorPolicy = createWorkflowRuntimeFundingPolicy({
-          ...policyInput,
-          contracts: policyInput.contracts.filter(({ address }) =>
-            priorAddresses.has(address),
-          ),
-        });
-        if (
-          existing.policyDigest !==
-          readWorkflowRuntimeFundingPolicy(priorPolicy).policyDigest
-        )
-          throw new Error(
-            "restored prover funding reservation identity mismatch",
+        // Recover only an actually admitted historical snapshot, never a digest
+        // supplied by the durable record. Signed attempts retain their leases.
+        let recovered = false;
+        for (const historical of [
+          input.protocolParameterHistory?.read(existing),
+          signedParameters,
+          input.protocolParameters,
+        ]) {
+          if (historical == null) continue;
+          const historicalInput = {
+            ...policyInput,
+            protocolParameters: historical.snapshot,
+          };
+          const historicalPolicy =
+            createWorkflowRuntimeFundingPolicy(historicalInput);
+          const priorPolicy = createWorkflowRuntimeFundingPolicy({
+            ...historicalInput,
+            contracts: policyInput.contracts.filter(({ address }) =>
+              priorAddresses.has(address),
+            ),
+          });
+          for (const candidate of [historicalPolicy, priorPolicy]) {
+            if (
+              existing.policyDigest !==
+              readWorkflowRuntimeFundingPolicy(candidate).policyDigest
+            )
+              continue;
+            protocolParameters = historical;
+            reservationPolicy = candidate;
+            recovered = true;
+            break;
+          }
+          if (recovered) break;
+        }
+        if (!recovered) {
+          throw new WatcherProverFundingUnavailableError(
+            "restored prover funding reservation identity mismatch: original protocol parameters are unavailable; signed attempts must reconcile before repricing",
           );
-        reservationPolicy = priorPolicy;
+        }
       }
       const selectedPolicy =
         readWorkflowRuntimeFundingPolicy(reservationPolicy);
       const calculation =
         lastCalculation?.policyDigest === selectedPolicy.policyDigest &&
         lastCalculation.protocolParametersDigest ===
-          input.protocolParameters.snapshotDigest &&
+          protocolParameters.snapshotDigest &&
         lastCalculation.economicsPolicyDigest === economics.policyDigest
           ? lastCalculation
           : await calculateWatcherRuntimeProverFunding({
               deploymentIdentity: input.deploymentIdentity,
-              protocolParameters: input.protocolParameters,
+              protocolParameters,
               policy: reservationPolicy,
             });
       // Original durable leases remain authoritative on every generation,
@@ -241,6 +282,20 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
           "restored prover funding reservation identity mismatch",
         );
       lastCalculation = calculation;
+      const currentPolicy = readWorkflowRuntimeFundingPolicy(policy);
+      const selectionCalculation =
+        currentParameters.snapshotDigest ===
+        calculation.protocolParametersDigest
+          ? calculation
+          : lastSelectionCalculation?.policyDigest ===
+              currentPolicy.policyDigest
+            ? lastSelectionCalculation
+            : await calculateWatcherRuntimeProverFunding({
+                deploymentIdentity: input.deploymentIdentity,
+                protocolParameters: currentParameters,
+                policy,
+              });
+      lastSelectionCalculation = selectionCalculation;
       const authority = await createWatcherProverFundingAuthority({
         category: request.category,
         runner: request.runner,
@@ -248,11 +303,28 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         rollbackGeneration: request.rollbackGeneration,
         deploymentIdentity: input.deploymentIdentity,
         calculation,
+        selectionCalculation,
         policy,
+        capacityPolicy:
+          existing === undefined
+            ? policy
+            : createWorkflowRuntimeFundingPolicy({
+                ...policyInput,
+                protocolParameters:
+                  input.protocolParameterHistory?.readCapacity(existing)
+                    ?.snapshot ?? policyInput.protocolParameters,
+              }),
         reservationPolicy,
         decisionDigest: execution.executionDecisionDigest,
-        onReserved: (record) =>
-          reservationByPermit.set(request.actuationPermit, record),
+        onReserved: (record) => {
+          // Persist the original admitted basis before any signed intent exists.
+          input.protocolParameterHistory?.remember(record, protocolParameters);
+          input.protocolParameterHistory?.rememberCapacity(
+            record,
+            currentParameters,
+          );
+          reservationByPermit.set(request.actuationPermit, record);
+        },
         walletAddress: request.walletAddress,
         walletUtxos:
           existing === undefined

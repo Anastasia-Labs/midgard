@@ -10,6 +10,7 @@ import { Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import * as Journal from "../src/database/eventHistorySubmissions.js";
+import { DatabaseError } from "../src/database/utils/common.js";
 import {
   decodeHistorySubmissionRequest,
   encodeHistorySubmissionRequest,
@@ -216,6 +217,85 @@ describe("durable history submission journal", () => {
     expect(rawRestored).toEqual(rawRequest);
     expect(plutusConstrFieldCbor(rawRestored.payloadCbor, [0, 1, 2, 0])).toBe(
       raw,
+    );
+  });
+
+  it("refuses a pending body spending another submission's input as a reservation wait, recording nothing", async () => {
+    const first = input();
+    const second = input("Withdrawal");
+    const outRef = (seed: string) =>
+      createHash("sha256").update(seed).digest("hex");
+    const head = outRef(first.submission_id);
+    const own = outRef(second.submission_id);
+    const pending = (
+      ...txHashes: readonly string[]
+    ): SDK.EventHistorySubmissionAttempt => {
+      const transactionCbor = `84a3008${txHashes.length}${txHashes
+        .map((txHash) => `825820${txHash}00`)
+        .join("")}01800200a0f5f6`;
+      return {
+        phase: "Admission",
+        outputIndex: 0,
+        transactionCbor,
+        txHash: CML.hash_transaction(
+          CML.Transaction.from_cbor_hex(transactionCbor).body(),
+        ).to_hex(),
+      };
+    };
+    await Effect.runPromise(
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          const winner = yield* Journal.reserve(first);
+          yield* Journal.saveCheckpoint(winner, {
+            ...winner.checkpoint,
+            pending: pending(head),
+          });
+          const loser = yield* Journal.reserve(second);
+          const outcome = yield* Effect.either(
+            Journal.saveCheckpoint(loser, {
+              ...loser.checkpoint,
+              pending: pending(own, head),
+            }),
+          );
+          if (outcome._tag !== "Left") throw new Error("Shared input saved");
+          expect(outcome.left).toBeInstanceOf(
+            Journal.HistoryInputReservedError,
+          );
+          expect(outcome.left).toMatchObject({
+            outRef: `${head}#0`,
+            holder: first.submission_id,
+          });
+          // The rollback also released the loser's own input.
+          const reserved = yield* Journal.reservedInputs(first.wallet_address);
+          expect(reserved.has(`${own}#0`)).toBe(false);
+          const stored = yield* Journal.retrieve(second.submission_id);
+          if (Option.isNone(stored)) throw new Error("Missing loser intent");
+          expect(stored.value).toEqual(loser);
+          // The loser's rebuild without the held input then saves normally.
+          expect(
+            (yield* Journal.saveCheckpoint(loser, {
+              ...loser.checkpoint,
+              pending: pending(own),
+            })).revision,
+          ).toBe(1);
+          // A nonce another ID holds, as its nonce or a pending input, is a
+          // conflicting intent, not a wait.
+          for (const [held, message] of [
+            [first.nonce_out_ref, "Failed to reserve history submission nonce"],
+            [
+              `${own}#0`,
+              "History transaction input is reserved by another submission",
+            ],
+          ] as const) {
+            const nonce = yield* Effect.either(
+              Journal.reserve({ ...input(), nonce_out_ref: held }),
+            );
+            if (nonce._tag !== "Left") throw new Error("Nonce reused");
+            expect(nonce.left).toBeInstanceOf(DatabaseError);
+            expect(nonce.left.message).toBe(message);
+          }
+        }),
+      ),
     );
   });
 

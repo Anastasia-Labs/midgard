@@ -27,7 +27,8 @@ export const requestForeignNativeAdoption = ({
       );
     const state = yield* Effect.tryPromise({
       try: () => owner.diagnostics(),
-      catch: (cause) => cause,
+      catch: (cause) =>
+        new Error("Native MPF owner diagnostics failed", { cause }),
     });
     const sql = yield* SqlClient.SqlClient;
     const stamped = yield* sql<{

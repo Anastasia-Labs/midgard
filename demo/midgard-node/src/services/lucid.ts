@@ -1,12 +1,14 @@
 import * as LE from "@lucid-evolution/lucid";
-import { Effect, Schedule } from "effect";
+import { Config, Effect, Option, Schedule } from "effect";
 
-import { fetchLocalOgmiosShelleyGenesisSlotConfig } from "../local-ledger-slot.js";
+import {
+  resolveCustomSlotMapping,
+  retryTransientSubmitSlotSnapshot,
+} from "../custom-slot-mapping.js";
 import {
   fetchLocalOgmiosSubmitSlotSnapshot,
   type SubmitSlotSnapshot,
 } from "../local-ogmios-slot.js";
-import { customSlotConfigFromShelleyGenesis } from "../lucid-time.js";
 import { providerRouteSummary } from "../provider-diagnostics.js";
 import { configureReferencePublication } from "../transactions/reference-publication.js";
 import { synchronizePublicationIndexer } from "../transactions/reference-publication-provider.js";
@@ -28,6 +30,9 @@ const makeLucid: Effect.Effect<
     referenceScriptsWalletAddress: string;
     referenceScriptsAddress: string;
     submitSlotSnapshot: () => Effect.Effect<SubmitSlotSnapshot, Error>;
+    // Optional so hand-built test services need not supply them.
+    readSubmitSlotSnapshotOnce?: () => Effect.Effect<SubmitSlotSnapshot, Error>;
+    ogmiosTipMaxAgeMs?: number;
     switchToOperatorsMainWallet: Effect.Effect<void>;
     switchToOperatorsMergingWallet: Effect.Effect<void>;
     switchToReferenceScriptWallet: Effect.Effect<void>;
@@ -36,54 +41,55 @@ const makeLucid: Effect.Effect<
   NodeConfig
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
-  let slotConfig: LE.SlotConfig | undefined;
-  if (nodeConfig.NETWORK === "Custom") {
-    const snapshot = yield* fetchLocalOgmiosSubmitSlotSnapshot({
-      ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-      timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
-    }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ConfigError({
-            message: "Failed to initialize the Custom Lucid slot mapping",
-            cause,
-            fieldsAndValues: [
-              ["NETWORK", nodeConfig.NETWORK],
-              ["L1_OGMIOS_KEY", nodeConfig.L1_OGMIOS_KEY],
-            ],
-          }),
-      ),
-    );
-    const genesis = yield* fetchLocalOgmiosShelleyGenesisSlotConfig({
-      ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-      timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
-    }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ConfigError({
-            message:
-              "Failed to query the authoritative Custom network slot epoch",
-            cause,
-            fieldsAndValues: [
-              ["NETWORK", nodeConfig.NETWORK],
-              ["L1_OGMIOS_KEY", nodeConfig.L1_OGMIOS_KEY],
-            ],
-          }),
-      ),
-    );
-    slotConfig = yield* Effect.try({
-      try: () => customSlotConfigFromShelleyGenesis(genesis, snapshot),
-      catch: (cause) =>
+  // Optional override of the genesis-derived local-Ogmios tip-age bound.
+  const tipMaxAgeOverride = yield* Config.option(
+    Config.integer("L1_OGMIOS_TIP_MAX_AGE_MS").pipe(
+      Config.validate({
+        message: "L1_OGMIOS_TIP_MAX_AGE_MS must be a positive integer",
+        validation: (value) => value > 0,
+      }),
+    ),
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
         new ConfigError({
-          message: "Failed to validate the Custom Lucid slot mapping",
+          message: "Invalid L1_OGMIOS_TIP_MAX_AGE_MS",
+          cause,
+          fieldsAndValues: [],
+        }),
+    ),
+  );
+  // The genesis-derived mapping is built once in the main thread and
+  // inherited by every worker; a block gap or an Ogmios restart makes this
+  // wait with a logged unready reason, never exit.
+  const slotMapping = yield* resolveCustomSlotMapping({
+    ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
+    timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
+    custom: nodeConfig.NETWORK === "Custom",
+    ...(Option.isSome(tipMaxAgeOverride)
+      ? { tipMaxAgeMs: tipMaxAgeOverride.value }
+      : {}),
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ConfigError({
+          message: "Failed to initialize the Lucid slot mapping",
           cause,
           fieldsAndValues: [
             ["NETWORK", nodeConfig.NETWORK],
             ["L1_OGMIOS_KEY", nodeConfig.L1_OGMIOS_KEY],
           ],
         }),
+    ),
+  );
+  const slotConfig = slotMapping.slotConfig;
+  const ogmiosTipMaxAgeMs = slotMapping.tipMaxAgeMs;
+  const readSubmitSlotSnapshotOnce = () =>
+    fetchLocalOgmiosSubmitSlotSnapshot({
+      ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
+      timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
+      maxHealthAgeMs: ogmiosTipMaxAgeMs,
     });
-  }
   const operatorMainAddress = LE.walletFromSeed(
     nodeConfig.L1_OPERATOR_SEED_PHRASE,
     {
@@ -222,11 +228,13 @@ const makeLucid: Effect.Effect<
     operatorMergeAddress,
     referenceScriptsWalletAddress,
     referenceScriptsAddress,
+    // Submit time re-reads briefly on a transient stale tip, then refuses.
     submitSlotSnapshot: () =>
-      fetchLocalOgmiosSubmitSlotSnapshot({
-        ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-        timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
-      }),
+      retryTransientSubmitSlotSnapshot(readSubmitSlotSnapshotOnce),
+    // One read under the same bound, for probes that schedule their own
+    // retries (the readiness refresher).
+    readSubmitSlotSnapshotOnce,
+    ogmiosTipMaxAgeMs,
     switchToOperatorsMainWallet: Effect.sync(() =>
       lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE),
     ),

@@ -11,7 +11,14 @@ export const openCommitteeStore = async (
 ): Promise<CommitteeStore> => {
   switch (localState.kind) {
     case "file":
-      return JsonFileCommitteeStore.open(localState.path);
+      return JsonFileCommitteeStore.open(localState.path, {
+        ...(options.onInstanceLockLost === undefined
+          ? {}
+          : { onLost: options.onInstanceLockLost }),
+        ...(options.onInstanceLockTakeover === undefined
+          ? {}
+          : { onTakeover: options.onInstanceLockTakeover }),
+      });
     case "database":
       return PostgresCommitteeStore.open(localState.url, options);
   }

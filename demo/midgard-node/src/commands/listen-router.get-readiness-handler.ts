@@ -1,24 +1,16 @@
 import "./listen-router.post-tx-status-batch-handler.js";
 
 import { HttpServerResponse } from "@effect/platform";
-import { SqlClient } from "@effect/sql/SqlClient";
 import { Effect, Option, Ref } from "effect";
 
 import * as HistoryAuthority from "../database/eventHistoryAuthority.js";
 import {
-  DaPayloadPublicationsDB,
   DaPayloadTerminalOutcomesDB,
-  ForeignTipReconciliationsDB,
-  MempoolDB,
-  MutationJobsDB,
   StateQueueMutationLeasesDB,
-  TxAdmissionsDB,
 } from "../database/index.js";
 import { attestationTimeoutCorrectionReadinessBounds } from "../fibers/index.js";
-import {
-  localOgmiosSubmitSlotEvidence,
-  readLocalOgmiosSubmitSlot,
-} from "../local-ogmios-slot.js";
+import { READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS } from "../l1-provider-readiness-probe.js";
+import { localOgmiosSubmitSlotEvidence } from "../local-ogmios-slot.js";
 import { foreignBaseVerificationForAuthority } from "../services/foreign-base-verification.js";
 import {
   DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
@@ -28,53 +20,79 @@ import {
   ContractDeploymentIdentity,
   Globals,
   Lucid,
-  MidgardContracts,
-  nextL1ProviderHealthEvidence,
   NodeConfig,
-  withL1ControlPlaneIfAvailable,
 } from "../services/index.js";
-import * as Initialization from "../transactions/initialization.js";
+import { activeLivenessReasons } from "../services/liveness-halt.js";
+import { settlementReadinessReason } from "../services/settlement-readiness.js";
 import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   planMergePreflight,
 } from "../transactions/state-queue/merge-readiness.js";
 import { runL1ProviderPreflight } from "./l1-provider-preflight.js";
 import {
+  l1ProviderReadiness,
+  pendingFinalizationAgeDetail,
+  readinessDatabaseError,
+  readinessL1ProviderUnhealthyAfterMs,
+  readReadinessDatabaseState,
+} from "./listen-router.get-readiness-handler.inputs.js";
+import {
   l1ProviderReadinessEvidenceIsFresh,
   type L1ProviderReadinessProbe,
-  READINESS_L1_PROVIDER_LIVE_TIMEOUT_MS,
   runBoundedDirectL1ProviderPreflight,
 } from "./listen-router.l1-provider-readiness-evidence-is-fresh.js";
 import {
   resolveL1ProviderReadinessSnapshot,
-  runBusyL1ProviderReadinessProbe,
-  runCombinedL1ReadinessProbe,
-} from "./listen-router.run-busy-l1-provider-readiness-probe.js";
+  runExactGatedDirectL1ProviderProbe,
+} from "./listen-router.run-exact-gated-direct-l1-provider-probe.js";
 import { evaluateReadiness } from "./readiness.js";
 
 /**
  * `GET /readyz`: readiness endpoint that checks worker heartbeats, queue depth,
- * local recovery state, and database connectivity.
+ * local recovery state, and database connectivity. A database that does not
+ * answer is `db_unhealthy` (503), never a server error. `details` names
+ * degradations that do not stop admission, so they leave the node ready.
+ * Every raised liveness reason (a hold on block production, or a stalled
+ * fiber) is a reason, and `livenessReasons` gives each one's source, age and
+ * escalation. Readiness only reports: no admission route reads it.
  */
 export const getReadinessHandler = Effect.gen(function* () {
   const globals = yield* Globals;
+  const operatorMembership = yield* Ref.get(globals.OPERATOR_MEMBERSHIP);
   const nodeConfig = yield* NodeConfig;
-  const sql = yield* SqlClient;
   const validationPool = yield* ValidationPool;
   const validationPoolStats = yield* validationPool.stats;
 
-  const durableAdmissionBacklog = yield* TxAdmissionsDB.countBacklog;
-  const durableAdmissionOldestAgeMs = yield* TxAdmissionsDB.oldestQueuedAgeMs;
-  const unfinishedMutationJobs = yield* MutationJobsDB.countUnfinished;
-  const daPublicationConflicts = yield* DaPayloadPublicationsDB.conflictCount(
-    15,
-    DaPayloadTerminalOutcomesDB.deploymentIdentityDigestOf(
-      yield* ContractDeploymentIdentity,
+  const databaseState = yield* Effect.either(
+    readReadinessDatabaseState(
+      DaPayloadTerminalOutcomesDB.deploymentIdentityDigestOf(
+        yield* ContractDeploymentIdentity,
+      ),
     ),
   );
-  const awaitingForeignTipReconciliations =
-    yield* ForeignTipReconciliationsDB.countAwaiting;
-  const foreignVerificationAuthority = yield* HistoryAuthority.retrieve;
+  if (databaseState._tag === "Left") {
+    return yield* HttpServerResponse.json(
+      {
+        settlement: yield* Ref.get(globals.SETTLEMENT_HEALTH),
+        ready: false,
+        reasons: ["db_unhealthy"],
+        details: [],
+        dbError: readinessDatabaseError(databaseState.left),
+      },
+      { status: 503 },
+    );
+  }
+  const {
+    durableAdmissionBacklog,
+    durableAdmissionOldestAgeMs,
+    unfinishedMutationJobs,
+    daPublicationConflicts,
+    awaitingForeignTipReconciliations,
+    mempoolTxCount,
+    leaseInspection,
+    journalAges,
+    foreignVerificationAuthority,
+  } = databaseState.right;
   const foreignBaseVerification = foreignBaseVerificationForAuthority(
     yield* Ref.get(globals.FOREIGN_BASE_VERIFICATION),
     Option.isSome(foreignVerificationAuthority) &&
@@ -82,7 +100,6 @@ export const getReadinessHandler = Effect.gen(function* () {
       ? HistoryAuthority.tokenFromRow(foreignVerificationAuthority.value)
       : undefined,
   );
-  const mempoolTxCount = yield* MempoolDB.retrieveTxCount;
   const nowMillis = Date.now();
   const stateQueueBlocksInQueue = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
   const resetInProgress = yield* Ref.get(globals.RESET_IN_PROGRESS);
@@ -116,10 +133,7 @@ export const getReadinessHandler = Effect.gen(function* () {
       ? 0
       : nowMillis - unconfirmedSubmittedBlockSinceMs;
 
-  const dbProbe = yield* Effect.either(sql`SELECT 1 AS ok`);
-  const dbHealthy = dbProbe._tag === "Right";
-  const lucid = yield* Lucid;
-  const contracts = yield* MidgardContracts;
+  const lucidService = yield* Effect.serviceOption(Lucid);
   const providerHealthBefore = yield* Ref.get(globals.L1_PROVIDER_HEALTH);
   const cachedProviderEvidenceIsFresh = l1ProviderReadinessEvidenceIsFresh({
     evidence: providerHealthBefore,
@@ -127,101 +141,42 @@ export const getReadinessHandler = Effect.gen(function* () {
     maxAgeMs: nodeConfig.READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS,
     maxExactAgeMs: DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
   });
-  const liveProviderProbeTimeoutMs = Math.min(
+  const providerProbeTimeoutMs = Math.min(
     nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
-    READINESS_L1_PROVIDER_LIVE_TIMEOUT_MS,
+    READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS,
   );
-  let readinessProbe: L1ProviderReadinessProbe = {
-    mode: "cached_fresh",
-    baseRevision: providerHealthBefore.evidenceRevision,
-  };
-  if (!cachedProviderEvidenceIsFresh) {
-    const primaryProbeAttempt = yield* Effect.either(
-      withL1ControlPlaneIfAvailable(
+  // Exact HubOracle evidence comes only from the background refresher, which
+  // queues for the shared Lucid control plane. Between refreshes a raw
+  // provider probe extends it without touching Lucid.
+  const readinessProbe: L1ProviderReadinessProbe = cachedProviderEvidenceIsFresh
+    ? {
+        mode: "cached_fresh",
+        baseRevision: providerHealthBefore.evidenceRevision,
+      }
+    : yield* runExactGatedDirectL1ProviderProbe({
         globals,
-        {
-          scope: "readiness_l1_provider",
-          maxHoldMs: liveProviderProbeTimeoutMs,
-        },
-        runCombinedL1ReadinessProbe(
-          Initialization.fetchHubOracleWitness(lucid.api, contracts),
-          readLocalOgmiosSubmitSlot({
-            ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-            timeoutMs: liveProviderProbeTimeoutMs,
-          }),
-        ),
-      ),
-    );
-    if (primaryProbeAttempt._tag === "Left") {
-      const observedAtMs = Date.now();
-      const error = String(primaryProbeAttempt.left);
-      const published = yield* Ref.modify(
-        globals.L1_PROVIDER_HEALTH,
-        (current) => {
-          const updated = nextL1ProviderHealthEvidence({
-            current,
-            healthy: false,
-            error,
-            observedAtMs,
-            successKind: "exact",
-          });
-          return [updated, updated] as const;
-        },
-      );
-      readinessProbe = {
-        mode: "live",
-        healthy: false,
-        error,
-        publishedRevision: published.evidenceRevision,
-      };
-    } else if (Option.isSome(primaryProbeAttempt.right)) {
-      const observedAtMs = Date.now();
-      const ogmiosSlot = primaryProbeAttempt.right.value;
-      const published = yield* Ref.modify(
-        globals.L1_PROVIDER_HEALTH,
-        (current) => {
-          const updated = nextL1ProviderHealthEvidence({
-            current,
-            healthy: true,
-            observedAtMs,
-            ogmiosSlot,
-            successKind: "exact",
-          });
-          return [updated, updated] as const;
-        },
-      );
-      readinessProbe = {
-        mode: "live",
-        healthy: true,
-        ogmiosSlot,
-        publishedRevision: published.evidenceRevision,
-      };
-    } else {
-      const directProbe = runBoundedDirectL1ProviderPreflight({
-        runPreflight: (signal) =>
-          runL1ProviderPreflight({
-            config: {
-              L1_PROVIDER: nodeConfig.L1_PROVIDER,
-              L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: liveProviderProbeTimeoutMs,
-              L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS:
-                nodeConfig.L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS,
-              L1_OGMIOS_KEY: nodeConfig.L1_OGMIOS_KEY,
-              L1_KUPO_KEY: nodeConfig.L1_KUPO_KEY,
-              NETWORK: nodeConfig.NETWORK,
-            },
-            signal,
-          }),
-        timeoutMs: liveProviderProbeTimeoutMs,
-      });
-      readinessProbe = yield* runBusyL1ProviderReadinessProbe({
-        globals,
-        directProbe,
+        directProbe: runBoundedDirectL1ProviderPreflight({
+          runPreflight: (signal) =>
+            runL1ProviderPreflight({
+              config: {
+                L1_PROVIDER: nodeConfig.L1_PROVIDER,
+                L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: providerProbeTimeoutMs,
+                L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS:
+                  nodeConfig.L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS,
+                L1_OGMIOS_KEY: nodeConfig.L1_OGMIOS_KEY,
+                L1_KUPO_KEY: nodeConfig.L1_KUPO_KEY,
+                NETWORK: nodeConfig.NETWORK,
+                L1_OGMIOS_TIP_MAX_AGE_MS:
+                  Option.getOrUndefined(lucidService)?.ogmiosTipMaxAgeMs,
+              },
+              signal,
+            }),
+          timeoutMs: providerProbeTimeoutMs,
+        }),
         now: Date.now,
         maxAgeMs: nodeConfig.READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS,
         maxExactAgeMs: DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
       });
-    }
-  }
   const providerHealthAfter = yield* Ref.get(globals.L1_PROVIDER_HEALTH);
   const providerEvidenceObservedAtMs = Date.now();
   const providerProbe = resolveL1ProviderReadinessSnapshot({
@@ -230,9 +185,6 @@ export const getReadinessHandler = Effect.gen(function* () {
     nowMs: providerEvidenceObservedAtMs,
     maxAgeMs: nodeConfig.READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS,
     maxExactAgeMs: DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
-  });
-  const leaseInspection = yield* StateQueueMutationLeasesDB.inspect({
-    recentLimit: 3,
   });
   const encodedLeaseInspection =
     StateQueueMutationLeasesDB.encodeInspectionJson(leaseInspection);
@@ -257,8 +209,9 @@ export const getReadinessHandler = Effect.gen(function* () {
     localFinalizationPending,
     unresolvedBlockSubmissionAgeMs,
     maxUnresolvedBlockSubmissionAgeMs: nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS,
-    dbHealthy,
+    dbHealthy: true,
     awaitingForeignTipReconciliations,
+    operatorMembership,
     foreignBaseVerification,
     validationPool: {
       configuredWorkers: validationPool.poolSize,
@@ -285,8 +238,10 @@ export const getReadinessHandler = Effect.gen(function* () {
   });
   const reasons = [...baseReadiness.reasons];
   const settlement = yield* Ref.get(globals.SETTLEMENT_HEALTH);
-  // Settlement health is reported separately: an L1 payout delay must not
-  // take healthy L2 admission out of service.
+  // An L1 payout delay must not take healthy L2 admission out of service;
+  // only a settlement worker that keeps dying does.
+  const settlementReason = settlementReadinessReason(settlement, Date.now());
+  if (settlementReason !== undefined) reasons.push(settlementReason);
   // Informational: pending signed-header recovery holding history retention
   // more than the rollback horizon back grows the journal until it resolves.
   const historyOwner = yield* Ref.get(globals.EVENT_HISTORY_OWNER);
@@ -322,9 +277,54 @@ export const getReadinessHandler = Effect.gen(function* () {
   } else if (nativeMpfDiagnostics?._tag === "Left") {
     reasons.push("native_mpf_owner_unhealthy");
   }
-  if (!providerProbe.healthy) {
-    reasons.push("provider_query_unhealthy:l1-provider");
+  const details: string[] = [];
+  const daFramePressure = yield* Ref.get(globals.COMMIT_DA_FRAME_PRESSURE);
+  const commitDaFramePressure =
+    daFramePressure === null
+      ? null
+      : {
+          ...daFramePressure,
+          ageMs: Math.max(0, nowMillis - daFramePressure.observedAtMs),
+        };
+  if (daFramePressure !== null) {
+    for (const [kind, stage] of [
+      ["candidate", daFramePressure.candidateStagePercent],
+      ["initial_candidate", daFramePressure.initialCandidateStagePercent],
+      ["base_ledger", daFramePressure.baseLedgerStagePercent],
+      ["required_work", daFramePressure.requiredWorkStagePercent],
+    ] as const) {
+      if (stage !== null && stage > 0)
+        details.push(`commit_da_frame_pressure:${kind}:${stage.toString()}`);
+    }
   }
+
+  // No membership check has authenticated yet (or none can): duties run, so
+  // this is reported but leaves the node ready. Removal is a liveness reason.
+  if (operatorMembership === "unknown")
+    details.push("operator_membership_unavailable");
+  const providerReadiness = l1ProviderReadiness({
+    healthy: providerProbe.healthy,
+    lastSuccessAtMs: providerHealthAfter.lastSuccessAtMs,
+    lastExactSuccessAtMs: providerHealthAfter.lastExactSuccessAtMs,
+    nowMs: providerEvidenceObservedAtMs,
+    unhealthyAfterMs: readinessL1ProviderUnhealthyAfterMs(
+      Option.getOrUndefined(lucidService)?.ogmiosTipMaxAgeMs,
+    ),
+  });
+  if (providerReadiness.reason !== undefined)
+    reasons.push(providerReadiness.reason);
+  // A raised reason holds the fibers its source halts for as long as it is
+  // raised, possibly for good, while every heartbeat stays fresh.
+  const livenessReasons = yield* activeLivenessReasons(globals);
+  for (const { reason } of livenessReasons)
+    if (!reasons.includes(reason)) reasons.push(reason);
+  if (providerReadiness.detail !== undefined)
+    details.push(providerReadiness.detail);
+  const pendingFinalizationDetail = pendingFinalizationAgeDetail(
+    journalAges.pendingFinalizationAgeMs,
+  );
+  if (pendingFinalizationDetail !== undefined)
+    details.push(pendingFinalizationDetail);
   if (
     durableAdmissionOldestAgeMs >
     nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS
@@ -360,6 +360,9 @@ export const getReadinessHandler = Effect.gen(function* () {
     settlement,
     ready: reasons.length === 0,
     reasons,
+    details,
+    pendingFinalizationAgeMs: journalAges.pendingFinalizationAgeMs,
+    signedIntentUnresolvedAgeMs: journalAges.signedIntentUnresolvedAgeMs,
     durableAdmissionBacklog: durableAdmissionBacklog.toString(),
     durableAdmissionOldestAgeMs,
     mempoolTxCount: mempoolTxCount.toString(),
@@ -424,6 +427,8 @@ export const getReadinessHandler = Effect.gen(function* () {
             },
     eventHistoryRetentionHold,
     eventHistoryFrontier,
+    livenessReasons,
+    commitDaFramePressure,
     mergeReadiness,
   };
 

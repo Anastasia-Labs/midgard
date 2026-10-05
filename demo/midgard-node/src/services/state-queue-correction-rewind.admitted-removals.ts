@@ -14,6 +14,8 @@ import {
 } from "./state-queue-correction-observer.js";
 import { authorizeStateQueueCorrectionReinclusion } from "./state-queue-correction-recovery.js";
 
+export { UNLANDED_STATUSES } from "./state-queue-correction-recovery.js";
+
 /**
  * Architecture G rewind for a state-queue correction (attestation timeout or
  * fraud removal) that removed blocks this node committed. Every such block
@@ -44,14 +46,6 @@ const REMOVABLE_STATUSES: readonly Pending.Status[] = [
   Pending.Status.SubmittedUnconfirmed,
   Pending.Status.ObservedWaitingStability,
   Pending.Status.Finalized,
-];
-
-/** Journal statuses of a block this node never observed on L1. Observed and
- * finalized journals landed; they are never treated as unlanded. */
-export const UNLANDED_STATUSES: readonly Pending.Status[] = [
-  Pending.Status.PendingSubmission,
-  Pending.Status.SubmittedLocalFinalizationPending,
-  Pending.Status.SubmittedUnconfirmed,
 ];
 
 /** A removed header's journal may still read pending_submission when the

@@ -307,10 +307,10 @@ describe("watcher deployment identity", () => {
   });
 
   it("binds release confirmation depth to the compiled deployment profile end to end", async () => {
-    // The profile family fixes the depth: testing profiles run at 3, public
-    // profiles at 30. Verification admits only the compiled selection, so the
-    // accepted depth is the selected profile's (3 in a testing build) and the
-    // other family's depth is refused whichever profile is compiled in.
+    // The profile family fixes the depth: live testing at 10, public at 30.
+    // Verification admits only the compiled selection, so the accepted depth
+    // is the selected profile's (10 in a testing build) and the other family's
+    // depth is refused whichever profile is compiled in.
     expect(
       [
         "preprod-testing",
@@ -322,7 +322,7 @@ describe("watcher deployment identity", () => {
           DEPLOYMENT_PROFILES[name as keyof typeof DEPLOYMENT_PROFILES]
             .l1_finality.confirmation_depth,
       ),
-    ).toEqual([3, 3, 30, 30]);
+    ).toEqual([10, 10, 30, 30]);
     const selectedDepth =
       SELECTED_DEPLOYMENT_PROFILE.l1_finality.confirmation_depth;
     expect(DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth).toBe(
@@ -351,7 +351,7 @@ describe("watcher deployment identity", () => {
       watcherDeploymentReleaseFinalityPolicy({ ...identity }),
     ).toThrow("invalid_field");
 
-    const otherDepth = selectedDepth === 3 ? 30 : 3;
+    const otherDepth = selectedDepth === 10 ? 30 : 10;
     const mismatched = structuredClone(fixture.signedIdentity);
     mismatched.manifest.l1Finality = {
       ...mismatched.manifest.l1Finality,

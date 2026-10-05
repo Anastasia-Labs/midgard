@@ -5,33 +5,23 @@ import {
   type DaPayloadChunkManifest,
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
-  decodeDaCapabilitiesResponseCbor,
   decodeDaEventToStepByEventResponseCbor,
   decodeDaPayloadByHeaderResponseCbor,
   decodeDaPayloadChunkResponseCbor,
   decodeDaProofBundleByHeaderResponseCbor,
   decodeDaTraceStepByIndexResponseCbor,
-  encodeDaCapabilitiesRequestCbor,
   encodeDaEventToStepByEventRequestCbor,
   encodeDaPayloadByHeaderRequestCbor,
   encodeDaPayloadChunkRequestCbor,
   encodeDaProofBundleByHeaderRequestCbor,
   encodeDaTraceStepByIndexRequestCbor,
 } from "@al-ft/midgard-core/da-transport";
-import {
-  assertDeploymentMarkerMatches,
-  makeDeploymentMarker,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import {
-  parseWatcherConfig,
   type WatcherConfig,
   type WatcherDaPeerConfig,
 } from "../runtime/config.js";
-import {
-  assertVerifiedWatcherDeploymentIdentity,
-  type VerifiedWatcherDeploymentIdentity,
-} from "../runtime/deployment-identity.js";
+import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import {
   assertEqualBytes,
   boundedBytes,
@@ -41,6 +31,13 @@ import {
   exactNatural,
   uniqueHashes,
 } from "./public-da-client.exact-event-key.js";
+import {
+  assertPublicDaClientTransport,
+  type ManifestPublicDaClientOptions,
+  parsePublicDaClientAuthority,
+  type PublicDaFetchConfig,
+} from "./public-da-client.manifest-config.js";
+import { negotiatePublicDaLimits } from "./public-da-client.negotiate.js";
 import {
   admittedPublicDaProvenance,
   decodeResponse,
@@ -53,7 +50,6 @@ import {
   REAL_PUBLIC_DA_CLOCK,
   requiredValue,
   strictInnerPayload,
-  validateCapabilities,
   validateChunkManifest,
   WATCHER_PUBLIC_DA_CLIENT_SCHEMA_VERSION,
   type WatcherPublicDaAttempt,
@@ -66,66 +62,49 @@ import {
   type WatcherPublicDaRequest,
   type WatcherPublicDaTraceStep,
 } from "./public-da-client.strict-inner-payload.js";
+import {
+  closePublicDaRequests,
+  validateWithinDeadline,
+} from "./public-da-client.validate-inner-payload.js";
 
 export class WatcherPublicDaClient {
   readonly deploymentFingerprint: string;
 
-  private readonly config: WatcherConfig;
+  private readonly config: PublicDaFetchConfig;
   private readonly deploymentFingerprintBytes: Buffer;
   private readonly transport: WatcherPublicDaLibp2pTransportV1;
   private readonly clock: WatcherPublicDaClock;
   private readonly customNetwork?: WatcherPublicDaRequest["customNetwork"];
+  private readonly manifestNetwork?: WatcherPublicDaRequest["manifestNetwork"];
   private activeRequests = 0;
   private readonly permitWaiters: PermitWaiter[] = [];
+  private readonly requestControllers = new Set<AbortController>();
+  private closed = false;
 
-  constructor(options: {
-    readonly config: WatcherConfig;
-    readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
-    readonly transport: WatcherPublicDaLibp2pTransportV1;
-    /** Test seam. Omitted in production, where the real clock is used. */
-    readonly clock?: WatcherPublicDaClock;
-  }) {
+  constructor(
+    options: (
+      | {
+          readonly config: WatcherConfig;
+          readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+        }
+      | ManifestPublicDaClientOptions
+    ) & {
+      readonly transport: WatcherPublicDaLibp2pTransportV1;
+      /** Test seam. Omitted in production, where the real clock is used. */
+      readonly clock?: WatcherPublicDaClock;
+    },
+  ) {
     try {
-      this.config = parseWatcherConfig(options.config);
-      this.deploymentFingerprint = options.deploymentIdentity.manifestId;
+      const authority = parsePublicDaClientAuthority(options);
+      this.config = authority.config;
+      this.deploymentFingerprint = authority.fingerprint;
+      this.customNetwork = authority.customNetwork;
+      this.manifestNetwork = authority.manifestNetwork;
       this.deploymentFingerprintBytes = daDeploymentFingerprintFromHex(
         this.deploymentFingerprint,
       );
-      assertDeploymentMarkerMatches(
-        makeDeploymentMarker(this.deploymentFingerprint),
-        options.deploymentIdentity.durableMarker,
-        "watcher public DA client",
-      );
-      if (this.config.targetNetwork !== options.deploymentIdentity.network) {
-        throw new Error("target network mismatch");
-      }
-      if (this.config.targetNetwork === "Custom") {
-        assertVerifiedWatcherDeploymentIdentity(options.deploymentIdentity);
-        this.customNetwork = Object.freeze({
-          watcherConfig: this.config,
-          deploymentIdentity: options.deploymentIdentity,
-        });
-      }
-      if (
-        typeof options.transport !== "object" ||
-        options.transport === null ||
-        typeof options.transport.request !== "function"
-      ) {
-        throw new Error("invalid libp2p transport");
-      }
-      if (
-        options.clock !== undefined &&
-        (typeof options.clock.now !== "function" ||
-          typeof options.clock.setTimeout !== "function" ||
-          typeof options.clock.clearTimeout !== "function")
-      ) {
-        throw new Error("invalid clock");
-      }
+      assertPublicDaClientTransport(options);
     } catch (cause) {
-      // Never swallow the cause: network mismatch, a rejected deployment
-      // marker, an unusable transport, and an outright bug in this constructor
-      // all collapse into `invalid_configuration`, and only the chained cause
-      // keeps a real defect from being misread as operator misconfiguration.
       throw new WatcherPublicDaClientError("invalid_configuration", [], {
         cause,
       });
@@ -137,6 +116,11 @@ export class WatcherPublicDaClient {
   async fetchPayloadByHeader(input: {
     readonly headerHash: string;
     readonly acceptedPayloadHashes?: readonly string[];
+    /** Reject a peer's content before choosing it over another peer. */
+    readonly validateInnerPayload?: (
+      bytes: Buffer,
+      signal: AbortSignal,
+    ) => Promise<void>;
   }): Promise<WatcherPublicDaPayload> {
     const headerHash = exactHex(input.headerHash, LOWER_HEX_28);
     const acceptedPayloadHashes =
@@ -241,6 +225,23 @@ export class WatcherPublicDaClient {
           headerHash,
           limits.maxPayloadBytes,
         );
+        if (input.validateInnerPayload !== undefined) {
+          try {
+            await validateWithinDeadline(
+              input.validateInnerPayload,
+              innerPayloadCbor,
+              deadlineAt,
+              {
+                clock: this.clock,
+                controllers: this.requestControllers,
+                isClosed: () => this.closed,
+              },
+            );
+          } catch (error) {
+            if (error instanceof PeerFailure || this.closed) throw error;
+            invalidContent(DaRequestResponseProtocol.payloadByHeader);
+          }
+        }
         const payloadHashHex = payloadHash.toString("hex");
         return {
           protocol: DaRequestResponseProtocol.payloadByHeader,
@@ -532,6 +533,7 @@ export class WatcherPublicDaClient {
   ): Promise<T> {
     const attempts: WatcherPublicDaAttempt[] = [];
     for (const peer of this.config.da.peers) {
+      if (this.closed) throw new WatcherPublicDaClientError("closed");
       try {
         const limits = await this.negotiate(peer, deadlineAt);
         const success = await fetch(peer, limits);
@@ -545,6 +547,7 @@ export class WatcherPublicDaClient {
           attempts: Object.freeze(attempts),
         }) as T;
       } catch (error) {
+        if (this.closed) throw new WatcherPublicDaClientError("closed");
         const failure =
           error instanceof PeerFailure
             ? error
@@ -562,55 +565,26 @@ export class WatcherPublicDaClient {
         }
       }
     }
-    // Tie-break: the peer list can run out in the same instant the fetch
-    // budget does — the last dial only ever gets `min(remaining, timeout)`, so
-    // a peer failure and an exhausted deadline can both hold at once. A spent
-    // budget is the stronger fact: it says the caller's deadline contract was
-    // violated, which is actionable (raise `daFetchMs`, or shorten the peer
-    // list), whereas `all_peers_failed` would claim the peer set was fully and
-    // fairly evaluated when the deadline is exactly what stopped it.
+    // An exhausted fetch budget takes precedence over peer exhaustion: it means
+    // the deadline stopped evaluation before the peer set was fairly tried.
     if (this.clock.now() >= deadlineAt) {
       throw new WatcherPublicDaClientError("deadline_exceeded", attempts);
     }
     throw new WatcherPublicDaClientError("all_peers_failed", attempts);
   }
 
-  private async negotiate(
+  private negotiate(
     peer: WatcherDaPeerConfig,
     deadlineAt: number,
   ): Promise<NegotiatedLimits> {
-    const response = decodeResponse(
-      await this.request(
+    return negotiatePublicDaLimits(this.deploymentFingerprintBytes, (cbor) =>
+      this.request(
         peer,
         DaRequestResponseProtocol.capabilities,
-        encodeDaCapabilitiesRequestCbor({
-          deploymentFingerprint: this.deploymentFingerprintBytes,
-        }),
+        cbor,
         deadlineAt,
       ),
-      decodeDaCapabilitiesResponseCbor,
-      DaRequestResponseProtocol.capabilities,
     );
-    if (
-      !response.deploymentFingerprint.equals(this.deploymentFingerprintBytes)
-    ) {
-      invalidContent(DaRequestResponseProtocol.capabilities);
-    }
-    validateCapabilities(response);
-    return {
-      maxPayloadBytes: Math.min(
-        response.maxPayloadBytes,
-        DA_TRANSPORT_LIMITS.maxPayloadBytes,
-      ),
-      maxInlineResponseBytes: Math.min(
-        response.maxInlineResponseBytes,
-        DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
-      ),
-      maxChunkBytes: Math.min(
-        response.maxChunkBytes,
-        DA_TRANSPORT_LIMITS.maxChunkBytes,
-      ),
-    };
   }
 
   private async fetchPayloadChunks(
@@ -700,13 +674,9 @@ export class WatcherPublicDaClient {
     requestCbor: Buffer,
     deadlineAt: number,
   ): Promise<Buffer> {
-    // A dial needs at least a whole millisecond of budget to be worth making:
-    // the transport timeout is expressed in whole milliseconds, so anything
-    // shorter would have to be rounded UP into budget the fetch does not own.
-    // Spending that sliver on another peer is also how an exhausted fetch used
-    // to end up reporting a peer failure instead of its deadline — the peer
-    // list could run out before the budget check ever saw a non-positive
-    // remainder (#535).
+    if (this.closed) throw new WatcherPublicDaClientError("closed");
+    // Transport timeouts use whole milliseconds. Rounding a sub-millisecond
+    // remainder up would spend budget this fetch does not own (#535).
     const remainingMs = deadlineAt - this.clock.now();
     if (remainingMs < 1) {
       throw new PeerFailure("deadline_exceeded", protocol);
@@ -722,12 +692,18 @@ export class WatcherPublicDaClient {
       ),
     );
     const controller = new AbortController();
+    this.requestControllers.add(controller);
     let timer: unknown;
+    let onAbort: (() => void) | undefined;
     try {
+      const aborted = new Promise<never>((_, reject) => {
+        onAbort = () => reject(new Error("Public DA client closed"));
+        controller.signal.addEventListener("abort", onAbort, { once: true });
+      });
       const timeout = new Promise<never>((_, reject) => {
         timer = this.clock.setTimeout(() => {
-          controller.abort();
           reject(new PeerFailure("timeout", protocol));
+          controller.abort();
         }, timeoutMs);
       });
       const response = await Promise.race([
@@ -748,8 +724,12 @@ export class WatcherPublicDaClient {
             : {
                 customNetwork: this.customNetwork,
               }),
+          ...(this.manifestNetwork === undefined
+            ? {}
+            : { manifestNetwork: this.manifestNetwork }),
         }),
         timeout,
+        aborted,
       ]);
       if (!(response instanceof Uint8Array)) {
         throw new PeerFailure("invalid_content", protocol);
@@ -771,6 +751,9 @@ export class WatcherPublicDaClient {
         protocol,
       );
     } finally {
+      this.requestControllers.delete(controller);
+      if (onAbort !== undefined)
+        controller.signal.removeEventListener("abort", onAbort);
       if (timer !== undefined) {
         this.clock.clearTimeout(timer);
       }
@@ -783,6 +766,7 @@ export class WatcherPublicDaClient {
     const deadlineAt = this.clock.now() + this.config.deadlines.daFetchMs;
     await this.acquirePermit(deadlineAt);
     try {
+      if (this.closed) throw new WatcherPublicDaClientError("closed");
       if (this.clock.now() >= deadlineAt) {
         throw new WatcherPublicDaClientError("deadline_exceeded");
       }
@@ -793,6 +777,7 @@ export class WatcherPublicDaClient {
   }
 
   private async acquirePermit(deadlineAt: number): Promise<void> {
+    if (this.closed) throw new WatcherPublicDaClientError("closed");
     if (this.activeRequests < this.config.da.maxConcurrency) {
       this.activeRequests += 1;
       return;
@@ -825,5 +810,14 @@ export class WatcherPublicDaClient {
       this.activeRequests += 1;
       waiter.resolve();
     }
+  }
+
+  close(): void {
+    this.closed = true;
+    closePublicDaRequests(
+      this.requestControllers,
+      this.permitWaiters,
+      this.clock,
+    );
   }
 }

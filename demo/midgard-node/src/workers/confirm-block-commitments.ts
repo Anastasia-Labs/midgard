@@ -363,12 +363,17 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
     // A signed commit is replaced (or a replaced one revived) in one place:
     // the history owner's signed-intent reconciliation, which decides from
     // its authenticated exact-point view of the tail node's slot once the
-    // signed validity window has closed. This unauthenticated snapshot only
-    // defers to it.
+    // intent is past its TTL or the journaled history shows its base output
+    // spent. This unauthenticated snapshot only defers to it.
+    // Only the journal's age since its last update is reported here (age_ms,
+    // as in the lines above); past the warning age it is logged as a warning.
+    // Readiness reports signedIntentUnresolvedAgeMs from the journal's
+    // creation instead.
     if (pendingBlock.intendedTxHash != null) {
-      yield* Effect.logInfo(
-        `🔍 Pending block header ${pendingBlock.expectedHeaderHash} holds a signed commit intent and is not on the queue; deferring to the history owner's signed-intent reconciliation.`,
-      );
+      const deferral = `🔍 Pending block header ${pendingBlock.expectedHeaderHash} holds a signed commit intent and is not on the queue; deferring to the history owner's signed-intent reconciliation (age_ms=${pendingAgeMs}, warning_age_ms=${nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS}).`;
+      yield* pendingAgeMs >= nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS
+        ? Effect.logWarning(deferral)
+        : Effect.logInfo(deferral);
       return { type: "NoTxForConfirmationOutput" } satisfies WorkerOutput;
     }
     yield* Effect.logWarning(

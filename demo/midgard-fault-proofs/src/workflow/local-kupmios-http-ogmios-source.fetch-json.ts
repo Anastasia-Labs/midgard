@@ -136,7 +136,13 @@ export const fetchJson = async ({
     controller.signal.throwIfAborted();
     if (!response.ok) {
       const message = `HTTP ${response.status.toString()} from ${url}: ${body.slice(0, 256)}`;
-      if (response.status === 429 || response.status >= 500)
+      // A busy or restarting provider, not an answer about the chain.
+      if (
+        response.status === 408 ||
+        response.status === 425 ||
+        response.status === 429 ||
+        response.status >= 500
+      )
         throw new LocalKupmiosTransportUnavailableError(message);
       throw new Error(message);
     }
@@ -221,6 +227,8 @@ const parseKupoSpentPoint = (
   };
 };
 
+const KUPO_ASSET_KEY = /^[0-9a-f]{56}(?:\.(?:[0-9a-f]{2}){1,32})?$/u;
+
 const kupoQuantity = (value: unknown, label: string): bigint => {
   if (typeof value === "bigint" && value >= 0n) return value;
   if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0)
@@ -260,7 +268,8 @@ export const parseKupoMatch = (value: unknown, label: string): KupoMatch => {
     lovelace: kupoQuantity(valueRecord.coins, `${label}.value.coins`),
   };
   for (const [unit, quantity] of Object.entries(assets)) {
-    if (!/^[0-9a-f]{56}\.(?:[0-9a-f]{2}){0,32}$/u.test(unit)) {
+    // Kupo writes an empty asset name as the bare policy id, never "<policy>.".
+    if (!KUPO_ASSET_KEY.test(unit)) {
       throw new Error(`${label}.value.assets is not canonical Kupo value JSON`);
     }
     normalizedAssets[unit.replace(".", "")] = kupoQuantity(

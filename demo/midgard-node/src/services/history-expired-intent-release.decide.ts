@@ -1,6 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
-import { Effect, Option } from "effect";
+import { Effect, Option, Ref } from "effect";
 
 import * as Pending from "../database/pendingBlockFinalizations.js";
 import {
@@ -8,6 +6,15 @@ import {
   REVIVAL_BLOCKING_SIBLING_STATUSES,
   SignedIntentReplacementIntegrityError,
 } from "./canonical-journal-recovery.js";
+import { Globals } from "./globals.globals.js";
+import {
+  journalBase,
+  sameBaseJournals,
+} from "./history-expired-intent-release.base-spend.js";
+import {
+  displacement,
+  observedRemoval,
+} from "./history-expired-intent-release.displacement.js";
 import {
   chainOrder,
   replacedBlockLanding,
@@ -18,7 +25,19 @@ import {
   type ReleaseEvidence,
   signedCommitNode,
 } from "./history-expired-intent-release.signed-commit-node.js";
-import { C } from "./history-expired-intent-release.table.js";
+import {
+  C,
+  ROOT_TAIL_HEADER_HASH,
+} from "./history-expired-intent-release.table.js";
+import {
+  clearLivenessIncident,
+  HISTORY_SIGNED_INTENT_RELEASE_SOURCE as UNDECIDED_SOURCE,
+  raiseLivenessIncident,
+} from "./liveness-halt.js";
+import {
+  SIGNED_INTENT_UNDECIDED,
+  SIGNED_INTENT_UNDECIDED_ESCALATION_MS,
+} from "./signed-intent-undecided.js";
 import { loadStateQueueCorrectionObserverState } from "./state-queue-correction-rewind.js";
 
 /** Reads which block holds the active journal's base slot (see the module
@@ -27,6 +46,43 @@ import { loadStateQueueCorrectionObserverState } from "./state-queue-correction-
  * retracted) only explains a correction of E, or why neither E nor its base D
  * is on the checkpoint's queue. Read-only; runs in the recovery transaction. */
 export const decide = (record: Pending.Record, evidence: ReleaseEvidence) =>
+  decideRelease(record, evidence).pipe(
+    Effect.tap((decision) =>
+      Effect.flatMap(Globals, (globals) =>
+        decision.kind === "wait" &&
+        decision.reason.startsWith(SIGNED_INTENT_UNDECIDED)
+          ? raiseLivenessIncident(
+              globals,
+              UNDECIDED_SOURCE,
+              SIGNED_INTENT_UNDECIDED,
+              `signed intent of block ${record[C.HEADER_HASH].toString("hex")}: ${decision.reason}`,
+              { escalateAfterMs: SIGNED_INTENT_UNDECIDED_ESCALATION_MS },
+            )
+          : // Only its own reason: an integrity hold raised under the same
+            // source (see `heldOnIntegrityFailure`) clears when its
+            // preparation next completes.
+            Effect.flatMap(Ref.get(globals.LIVENESS_REASONS), (reasons) =>
+              reasons.get(UNDECIDED_SOURCE) === SIGNED_INTENT_UNDECIDED
+                ? clearLivenessIncident(globals, UNDECIDED_SOURCE)
+                : Effect.void,
+            ),
+      ),
+    ),
+  );
+
+/** A replaced block of this node holds the base slot while a sibling on the
+ * same base is already locally finalized: until L1 evidence shows that
+ * sibling displaced (see `displacement`), no release can be decided without
+ * writing over one of them, so none is. The intent stays in place, the
+ * history gate stays closed, and the next evaluation decides again. Two
+ * landed siblings of one base stay an integrity failure. */
+const undecided = (winner: string, detail: string) =>
+  ({
+    kind: "wait",
+    reason: `${SIGNED_INTENT_UNDECIDED}: this node's replaced block ${winner} holds its base's slot, but ${detail}`,
+  }) satisfies Decision;
+
+const decideRelease = (record: Pending.Record, evidence: ReleaseEvidence) =>
   Effect.gen(function* () {
     const { queue, contracts } = evidence;
     const header = record[C.HEADER_HASH].toString("hex");
@@ -51,19 +107,8 @@ export const decide = (record: Pending.Record, evidence: ReleaseEvidence) =>
       true,
     );
     /** The observed removal of `hash` of one kind, an admitted one first. */
-    const removing = (hash: string, merge: boolean) => {
-      if (observer.kind !== "observed") return undefined;
-      const matches = (transition: SDK.StateQueueAuthenticatedTransition) =>
-        (transition.transitionKind === "merge") === merge &&
-        transition.removedHeaderHashes.includes(hash);
-      const admitted = observer.state.admitted.find(matches);
-      if (admitted !== undefined)
-        return { transition: admitted, admitted: true };
-      const pending = observer.state.pending.find(matches);
-      return pending === undefined
-        ? undefined
-        : { transition: pending, admitted: false };
-    };
+    const removing = (hash: string, merge: boolean) =>
+      observedRemoval(observer, hash, merge);
     /** Only an admitted correction is resolved by the correction path, so
      * only it makes the deferral sticky. A pending one may be retracted; the
      * next change of the observer's view decides again. */
@@ -116,68 +161,89 @@ export const decide = (record: Pending.Record, evidence: ReleaseEvidence) =>
             cause: `foreign block ${winner} holds its base's slot`,
           } satisfies Decision;
         const revived = found.value;
+        // The same base: the same output, or (a replacement built on a later
+        // incarnation of a non-root base node, after its output was spent in
+        // place) the same base header and ledger root.
         if (
           revived[C.STATUS] !== Pending.Status.Abandoned ||
           journalAbandonment(revived) !== "replacement" ||
           !revived[C.BASE_TAIL_HEADER_HASH].equals(
             record[C.BASE_TAIL_HEADER_HASH],
           ) ||
-          revived[C.BASE_TAIL_OUT_REF] !== record[C.BASE_TAIL_OUT_REF] ||
+          (revived[C.BASE_TAIL_OUT_REF] !== record[C.BASE_TAIL_OUT_REF] &&
+            record[C.BASE_TAIL_HEADER_HASH].equals(ROOT_TAIL_HEADER_HASH)) ||
           revived[C.BASE_UTXOS_ROOT] !== record[C.BASE_UTXOS_ROOT]
         )
           return {
             kind: "wait",
             reason: `this node's block ${winner} (status ${revived[C.STATUS]}, abandonment ${revived[C.STATUS] === Pending.Status.Abandoned ? journalAbandonment(revived) : "none"}) holds its base's slot but is not a replaced block on the same base`,
           } satisfies Decision;
-        // Scope limit: reconcile only while nothing built on this base has
-        // written local finalization. Fatal before anything is persisted.
-        if (record[C.STATUS] === Pending.Status.SubmittedUnconfirmed)
-          return yield* Effect.fail(
-            new SignedIntentReplacementIntegrityError(
-              winner,
-              `active block ${header} built on the same base is already locally finalized`,
-            ),
-          );
-        const sql = yield* SqlClient.SqlClient;
-        const siblings = yield* sql<{
-          header_hash: Buffer;
-          status: Pending.Status;
-        }>`SELECT header_hash, status FROM pending_block_finalizations
-          WHERE base_tail_out_ref = ${record[C.BASE_TAIL_OUT_REF]}
-            AND header_hash NOT IN (${record[C.HEADER_HASH]}, ${revived[C.HEADER_HASH]})
-          ORDER BY created_at, header_hash`;
-        const blocking = siblings.find(({ status }) =>
+        // The active block's own local finalization, if written, is reversed
+        // by the repair like any other unlanded block's.
+        const siblings = yield* sameBaseJournals(journalBase(record), [
+          record[C.HEADER_HASH],
+          revived[C.HEADER_HASH],
+        ]);
+        const blocking = siblings.filter(({ status }) =>
           REVIVAL_BLOCKING_SIBLING_STATUSES.includes(status),
         );
-        if (blocking !== undefined)
-          return yield* Effect.fail(
-            new SignedIntentReplacementIntegrityError(
-              winner,
-              `block ${blocking.header_hash.toString("hex")} built on the same base is already ${blocking.status}`,
-            ),
-          );
+        const finalized = blocking.map(
+          ({ header_hash, status }) =>
+            `block ${header_hash.toString("hex")} built on the same base is already ${status}`,
+        );
+        if (blocking.length > 0 && evidence.canonicalDepth === undefined)
+          return undecided(winner, finalized.join("; "));
         const onQueue = find(winner);
-        const node =
-          onQueue !== undefined && onQueue !== queue.root
-            ? onQueue
-            : merged
-              ? yield* signedCommitNode(revived, contracts)
-              : undefined;
+        const queued = onQueue !== undefined && onQueue !== queue.root;
+        const node = queued
+          ? onQueue
+          : merged
+            ? yield* signedCommitNode(revived, contracts)
+            : undefined;
         if (node === undefined)
+          return blocking.length > 0
+            ? undecided(winner, finalized.join("; "))
+            : ({
+                kind: "wait",
+                reason: `the queue names ${winner} as its base's successor but its node is absent`,
+              } satisfies Decision);
+        if (blocking.length === 0)
           return {
-            kind: "wait",
-            reason: `the queue names ${winner} as its base's successor but its node is absent`,
+            kind: "revive",
+            revived,
+            node,
+            displaced: [],
           } satisfies Decision;
-        return { kind: "revive", revived, node } satisfies Decision;
+        const displaced = yield* displacement({
+          blocking: blocking.map(({ header_hash }) =>
+            header_hash.toString("hex"),
+          ),
+          node,
+          queued,
+          winner: revived,
+          base,
+          baseRoot: record[C.BASE_UTXOS_ROOT],
+          queue,
+          observer,
+          depth: evidence.canonicalDepth!,
+          required: evidence.rewindAuthority.requiredFinalityDepth,
+        });
+        if (typeof displaced === "string")
+          return undecided(winner, `${finalized.join("; ")}, and ${displaced}`);
+        return { kind: "revive", revived, node, displaced } satisfies Decision;
       });
 
     const tail = find(base);
     if (tail !== undefined) {
       const next = tail.node.datum.next;
+      const at = `${tail.node.utxo.txHash}#${tail.node.utxo.outputIndex.toString()}`;
       if (next === "Empty")
         return {
           kind: "replace",
-          cause: `its base ${base} is still the queue tail`,
+          cause:
+            at === record[C.BASE_TAIL_OUT_REF]
+              ? `its base ${base} is still the queue tail`
+              : `its base output ${record[C.BASE_TAIL_OUT_REF]} was spent by ${evidence.baseSpend ?? "another transaction"}, and its base ${base} continues as the queue tail at ${at}`,
         } satisfies Decision;
       return yield* successor(next.Key.key, false);
     }

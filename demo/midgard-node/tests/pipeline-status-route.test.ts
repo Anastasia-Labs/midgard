@@ -1,5 +1,7 @@
 import "./utils.js";
 
+import { randomUUID } from "node:crypto";
+
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
@@ -11,6 +13,7 @@ import {
   PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES,
   type PipelineStatusOldestActiveRow,
 } from "../src/commands/listen-router.js";
+import * as Authority from "../src/database/eventHistoryAuthority.js";
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import { BatchSql } from "../src/services/database.js";
 import { Globals } from "../src/services/index.js";
@@ -107,6 +110,10 @@ const getPipelineStatus = Effect.gen(function* () {
     readonly pendingBlockFinalizations: {
       readonly countsByStatus: Record<string, string>;
       readonly oldestActive: Record<string, unknown> | null;
+    };
+    readonly settlement: {
+      readonly unfinishedJobs: string;
+      readonly failingJobs: readonly Record<string, unknown>[];
     };
   };
   return { status: webResponse.status, body };
@@ -282,5 +289,55 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
         new Date("2026-07-29T00:00:05.000Z"),
       ),
     ).toBeNull();
+  });
+
+  it("counts the deployment's unfinished settlement jobs and names the failing ones with their last error", async () => {
+    const deploymentId = "a1".repeat(32);
+    const unpayable =
+      "No spendable reserve UTxO can fund the payout of withdrawal 02";
+    const result = await runAgainstShard(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`TRUNCATE settlement_attempts, settlement_jobs, settlement_owners, event_history_authority CASCADE`;
+        const token = yield* Authority.acquire({
+          deploymentIdentity: deploymentId,
+          ownerToken: randomUUID(),
+          leaseDurationMs: 60_000,
+        });
+        yield* Authority.publishReady(token, {
+          point: { slot: 10, id: "b1".repeat(32) },
+          snapshotDigest: "c1".repeat(32),
+        });
+        const job = (
+          deployment: string,
+          kind: "deposit" | "withdrawal",
+          eventId: string,
+          phase: string,
+          lastError: string | null,
+        ) => sql`INSERT INTO settlement_jobs
+          (deployment_id, kind, event_id, phase, last_error, failures)
+          VALUES (${deployment}, ${kind}, ${eventId}, ${phase}, ${lastError},
+            ${lastError === null ? 0 : 3})`;
+        yield* job(deploymentId, "deposit", "01", "absorb", null);
+        yield* job(deploymentId, "withdrawal", "02", "fund", unpayable);
+        yield* job(deploymentId, "withdrawal", "03", "complete", null);
+        // Another deployment's leftovers are not this node's backlog.
+        yield* job("b2".repeat(32), "withdrawal", "04", "fund", "stale");
+        return yield* getPipelineStatus;
+      }),
+    );
+
+    expect(result.status).toBe(200);
+    expect(result.body.settlement.unfinishedJobs).toBe("2");
+    expect(result.body.settlement.failingJobs).toEqual([
+      {
+        kind: "withdrawal",
+        eventId: "02",
+        phase: "fund",
+        failures: 3,
+        lastError: unpayable,
+        dueAt: expect.any(String),
+      },
+    ]);
   });
 });

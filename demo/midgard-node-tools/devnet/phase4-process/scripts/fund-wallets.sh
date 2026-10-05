@@ -5,6 +5,10 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 require_command jq
 require_command node
 require_run_dir
+funding_policy="$script_dir/../../preprod/funding-policy.json"
+main_budget=$(jq -er '.legacyMainBudgetLovelace' "$funding_policy")
+collateral=$(jq -er '.collateralLovelace' "$funding_policy")
+required_balance=$((main_budget + collateral))
 set -a
 . "$MIDGARD_PHASE4_RUN_DIR/secrets/wallets.env"
 set +a
@@ -28,7 +32,7 @@ cli query utxo --socket-path /run/cardano/ipc/node.socket --testnet-magic "$MIDG
 tx_in=$(jq -r 'to_entries | max_by(.value.value.lovelace) | .key' "$MIDGARD_PHASE4_RUN_DIR/work/genesis-utxos.json")
 [ "$tx_in" != null ] || die "genesis UTxO not available"
 set --
-while IFS= read -r address; do set -- "$@" --tx-out "$address+9990000000" --tx-out "$address+10000000"; done <<EOF
+while IFS= read -r address; do set -- "$@" --tx-out "${address}+${main_budget}" --tx-out "${address}+${collateral}"; done <<EOF
 $(jq -r '.[].address' "$MIDGARD_PHASE4_RUN_DIR/work/wallet-addresses.json")
 EOF
 cli transaction build --socket-path /run/cardano/ipc/node.socket --testnet-magic "$MIDGARD_PHASE4_NETWORK_MAGIC" --tx-in "$tx_in" "$@" --change-address "$genesis_address" --out-file /run/work/fund-wallets.txbody
@@ -45,7 +49,7 @@ while [ "$attempts" -gt 0 ]; do
     cli query utxo --socket-path /run/cardano/ipc/node.socket --testnet-magic "$MIDGARD_PHASE4_NETWORK_MAGIC" --address "$address" --out-file "$output"
     lovelace=$(jq '[to_entries[].value.value.lovelace // 0] | add // 0' "$MIDGARD_PHASE4_RUN_DIR/work/funding-$name.json")
     jq -n --arg name "$name" --arg address "$address" --argjson lovelace "$lovelace" '{name:$name,address:$address,lovelace:$lovelace}' >>"$MIDGARD_PHASE4_RUN_DIR/work/funding-confirmation.ndjson"
-    [ "$lovelace" -ge 10000000000 ] || confirmed=false
+    [ "$lovelace" -ge "$required_balance" ] || confirmed=false
   done <<EOF
 $(jq -c '.[]' "$MIDGARD_PHASE4_RUN_DIR/work/wallet-addresses.json")
 EOF

@@ -71,6 +71,18 @@ CommonJS builds are patched. The reclaim builder test in
 verifies deposit and withdrawal reclamation through reference-only native owner
 authorization, including mismatched script and reference refusals.
 
+The same provider patch adds optional `KupmiosOptions.fetchImpl` using the
+public Effect `FetchHttpClient.Fetch` service in an instance-owned HTTP layer.
+It preserves the provider's request abort signal, protocol decoder, errors,
+timeouts and retries. Without the option the original fetch layer is unchanged.
+Configured consumers own the fetch implementation, merge their operation signal
+with the provider signal, bound response reads and physically close/join their
+transport before handing off resources. The seam itself supplies no operation
+budget or response-size policy. Both ESM/CommonJS and declaration formats are
+patched. `midgard-core/tests/kupmios-owned-http.test.ts` exercises the actual
+public provider/Lucid initialization, default decoding parity, scoped transport
+refusals and physical HTTP cancellation without replacing global fetch.
+
 `postgres@3.4.9.patch` applies the unreleased upstream fix for a reserved
 connection waiter that never settles (porsager/postgres#1195, fixed by the open
 pull request porsager/postgres#1229). When a pooled connection closes while

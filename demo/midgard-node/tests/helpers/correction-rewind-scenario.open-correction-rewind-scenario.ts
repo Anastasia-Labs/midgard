@@ -6,6 +6,7 @@ import { reconcileStateQueueCorrections } from "../../src/fibers/attestation-tim
 import { Database } from "../../src/services/database.js";
 import { Globals } from "../../src/services/globals.js";
 import type { StateQueueCorrectionObserverSource } from "../../src/services/state-queue-correction-observer.js";
+import { blockedReasons } from "../../src/services/state-queue-correction-rewind.load-retained-chain.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   SDK,
@@ -73,7 +74,9 @@ export const openCorrectionRewindScenario = async ({
     );
     expect(requiredFinalityDepth).toBeGreaterThan(1n);
     // The shared worker shard keeps earlier suites' observer and recovery
-    // plan rows; the production lifecycle reset does not own them.
+    // plan rows (and their logged rewind gates); the production lifecycle
+    // reset does not own them.
+    blockedReasons.clear();
     await read(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;

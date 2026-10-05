@@ -51,6 +51,11 @@ Sources:
 - Both watcher healthchecks accept 200 **or 401**, so they prove only that the
   HTTP server answers (bar 2). Nothing without the operations bearer shows
   watcher readiness. `[review]`
+- The devnet journey's idle phase ends by waiting for node `/readyz` to return
+  200 (`journey.waitReady()` in
+  `demo/midgard-node-tools/src/devnet-stack/journey-scenario.ts`, up to the
+  30-minute `readyMs` deadline). Any reason `/readyz` publishes, including one
+  that stays raised after its cause is gone, stops the journey there.
 - Node `/readyz` reasons you will meet at startup include
   `history_owner_not_ready`, `history_follower_lagging:<lag>:<max>`,
   `provider_query_unhealthy:l1-provider`, `native_mpf_owner_unavailable` and

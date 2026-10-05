@@ -50,9 +50,70 @@ export type AvailabilityResponderReport = Readonly<{
     | "included"
     | "confirmed"
     | "unavailable"
+    | "awaiting_scan"
+    | "held"
     | "failed";
   detail?: string;
+  /**
+   * Challenges this step found past their response deadline with an
+   * unanswered tranche: no answer can land any more, so each is a challenge
+   * this committee has lost unless the challenger never times it out.
+   */
+  missedDeadlines?: readonly AvailabilityResponderMissedDeadline[];
 }>;
+
+export type AvailabilityResponderMissedDeadline = Readonly<{
+  headerHash: string;
+  responseDeadline: string;
+}>;
+
+/** Steps one drain runs at most, so a drain always ends. */
+export const AVAILABILITY_RESPONDER_MAX_DRAIN_STEPS = 32;
+
+/**
+ * The committee's chain-sync cursor is not at the aligned Kupmios tip, or the
+ * tip moved while a boundary was read. Every responder step is refused until
+ * the committee's next L1 scan catches the cursor up, so this aborts the step
+ * like any error; but it is the normal wait for that scan, not a failure, and
+ * the tick reports it as `awaiting_scan` instead of throwing it.
+ */
+export class AvailabilityResponderAwaitingScanError extends Error {
+  constructor() {
+    super(
+      "Availability responder awaits the next canonical committee node L1 scan before acting",
+    );
+    this.name = "AvailabilityResponderAwaitingScanError";
+  }
+}
+
+const awaitingScanReport = (
+  error: AvailabilityResponderAwaitingScanError,
+): Pick<AvailabilityResponderReport, "status" | "detail"> => ({
+  status: "awaiting_scan",
+  detail: error.message,
+});
+
+/**
+ * The log line for one tick's report: none when idle, and stderr only for a
+ * report an operator must look at. Waiting on the committee's next scan is
+ * routine, so it is one compact stdout line.
+ */
+export const availabilityResponderReportLine = (
+  report: AvailabilityResponderReport,
+):
+  | { readonly stream: "stdout" | "stderr"; readonly line: string }
+  | undefined =>
+  report.status === "idle"
+    ? undefined
+    : {
+        stream:
+          report.status === "failed" ||
+          report.status === "unavailable" ||
+          report.status === "held"
+            ? "stderr"
+            : "stdout",
+        line: `${JSON.stringify({ event: "availability_responder", ...report })}\n`,
+      };
 
 export type AvailabilityResponderDeps = Readonly<{
   deploymentFingerprint: string;
@@ -60,23 +121,80 @@ export type AvailabilityResponderDeps = Readonly<{
   store: Pick<CommitteeStore, "getDaPayload">;
   /** The concrete adapter authenticates policy units and all linked datums. */
   discover: () => Promise<readonly AvailabilityResponderChallenge[]>;
-  /** Called before discovery so an ambiguous submission never creates new work. */
-  reconcile: () => Promise<"ready" | "pending">;
+  /**
+   * Called before discovery so an ambiguous submission never creates new
+   * work. A held intent carries its reason, and nothing new is signed.
+   */
+  reconcile: () => Promise<"ready" | "pending" | Readonly<{ held: string }>>;
   execute: (
     action: AvailabilityResponderAction,
   ) => Promise<"confirmed" | "included" | "pending">;
   now?: () => number;
 }>;
 
-/** One mutation per tick; each subsequent tick derives progress from live L1 state. */
+/**
+ * One mutation per step; each later step derives progress from live L1 state.
+ * Challenges are taken nearest response deadline first.
+ */
 export class AvailabilityResponder {
   constructor(private readonly deps: AvailabilityResponderDeps) {}
 
+  /**
+   * Steps until one leaves nothing ready to act on: another step follows
+   * only one whose action confirmed, since anything else (an inclusion still
+   * pending, a lagging cursor, a failure) needs L1 to move first. Ends after
+   * `maxSteps` steps. Resolves the last step's report, carrying every missed
+   * deadline the drain saw.
+   */
+  async drain(
+    maxSteps = AVAILABILITY_RESPONDER_MAX_DRAIN_STEPS,
+  ): Promise<AvailabilityResponderReport> {
+    const missed = new Map<string, AvailabilityResponderMissedDeadline>();
+    let report: AvailabilityResponderReport;
+    let steps = 0;
+    do {
+      report = await this.tick();
+      steps += 1;
+      for (const entry of report.missedDeadlines ?? []) {
+        missed.set(entry.headerHash, entry);
+      }
+    } while (report.status === "confirmed" && steps < maxSteps);
+    return missed.size === 0
+      ? report
+      : { ...report, missedDeadlines: [...missed.values()] };
+  }
+
+  /**
+   * One responder step. A step refused while the committee's cursor lags the
+   * L1 tip is reported as `awaiting_scan`; every other error still throws.
+   */
   async tick(): Promise<AvailabilityResponderReport> {
-    if ((await this.deps.reconcile()) === "pending") {
-      return { challenges: 0, status: "pending" };
+    try {
+      return await this.step();
+    } catch (error) {
+      if (!(error instanceof AvailabilityResponderAwaitingScanError))
+        throw error;
+      return { challenges: 0, ...awaitingScanReport(error) };
     }
-    const challenges = await this.deps.discover();
+  }
+
+  private async step(): Promise<AvailabilityResponderReport> {
+    const reconciled = await this.deps.reconcile();
+    if (reconciled === "pending") return { challenges: 0, status: "pending" };
+    if (reconciled !== "ready")
+      return { challenges: 0, status: "held", detail: reconciled.held };
+    const challenges = [...(await this.deps.discover())].sort((a, b) =>
+      a.record.datum.response_deadline < b.record.datum.response_deadline
+        ? -1
+        : a.record.datum.response_deadline > b.record.datum.response_deadline
+          ? 1
+          : 0,
+    );
+    const missedDeadlines: AvailabilityResponderMissedDeadline[] = [];
+    const withMissed = (
+      report: AvailabilityResponderReport,
+    ): AvailabilityResponderReport =>
+      missedDeadlines.length === 0 ? report : { ...report, missedDeadlines };
     let deferred: AvailabilityResponderReport | undefined;
     for (const challenge of challenges) {
       const record = challenge.record.datum;
@@ -87,6 +205,19 @@ export class AvailabilityResponder {
       let executionStarted = false;
       try {
         const action = await this.nextAction(challenge);
+        if (action === "deadline_passed") {
+          missedDeadlines.push({
+            headerHash: record.commitment.header_hash,
+            responseDeadline: record.response_deadline.toString(),
+          });
+          deferred ??= {
+            ...base,
+            status: "unavailable",
+            detail:
+              "The response deadline has passed; no answer can land and terminal timeout remains available to the challenger",
+          };
+          continue;
+        }
         if (action === undefined) {
           deferred ??= {
             ...base,
@@ -98,23 +229,27 @@ export class AvailabilityResponder {
         }
         executionStarted = true;
         const status = await this.deps.execute(action);
-        return { ...base, action: action.kind, status };
+        return withMissed({ ...base, action: action.kind, status });
       } catch (error) {
+        if (error instanceof AvailabilityResponderAwaitingScanError)
+          return withMissed({ ...base, ...awaitingScanReport(error) });
         const failure = {
           ...base,
           status: "failed" as const,
           detail: error instanceof Error ? error.message : String(error),
         };
-        if (executionStarted) return failure;
+        if (executionStarted) return withMissed(failure);
         deferred ??= failure;
       }
     }
-    return deferred ?? { challenges: challenges.length, status: "idle" };
+    return withMissed(
+      deferred ?? { challenges: challenges.length, status: "idle" },
+    );
   }
 
   private async nextAction(
     challenge: AvailabilityResponderChallenge,
-  ): Promise<AvailabilityResponderAction | undefined> {
+  ): Promise<AvailabilityResponderAction | "deadline_passed" | undefined> {
     const record = challenge.record.datum;
     const terminal = challenge.terminal.datum;
     if (
@@ -138,7 +273,7 @@ export class AvailabilityResponder {
       return { kind: "settle", challenge, tranche: nextTranche };
     }
     const now = BigInt((this.deps.now ?? Date.now)());
-    if (now >= record.response_deadline) return undefined;
+    if (now >= record.response_deadline) return "deadline_passed";
     const payload = await retainedAvailabilityPayload({
       store: this.deps.store,
       deploymentFingerprint: this.deps.deploymentFingerprint,

@@ -1,6 +1,9 @@
+import "../support/chain-coordinator-unit-fixture.js";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WatcherFaultDecisionRetired } from "../../src/fault-proofs/fault-decision-bridge.js";
+import { WatcherStateQueueReadRetired } from "../../src/indexers/authenticated-state-queue-observation.read-scopes.js";
 import type { WatcherNativeBlockAdmission } from "../../src/l1/native-block-admission.js";
 import type { WatcherNativeChainSyncEvent } from "../../src/l1/native-chain-sync.js";
 import { unsafeCreateWatcherChainCoordinatorForTest } from "../../src/runtime/chain-coordinator.js";
@@ -382,5 +385,27 @@ describe("production history recovery coordination", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(h.finalized).not.toHaveBeenCalled();
+  });
+  it("holds a retired bounded native read and retries delivery at the same frontier", async () => {
+    const h = harness();
+    h.finalized.mockRejectedValueOnce(new WatcherStateQueueReadRetired());
+    await h.coordinator.handle(forward);
+    expect(h.coordinator.status().deliveryHeld).toBe(true);
+    expect(h.coordinator.status().processedThrough).toBeNull();
+    await vi.waitFor(() => expect(h.finalized).toHaveBeenCalledTimes(2));
+    expect(h.coordinator.status().deliveryHeld).toBe(false);
+    expect(h.coordinator.status().processedThrough?.blockHash).toBe(
+      point.blockHash,
+    );
+  });
+
+  it("does not resume retired native reads after lifecycle close", async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    h.finalized.mockRejectedValue(new WatcherStateQueueReadRetired());
+    await h.coordinator.handle(forward);
+    h.recovery.close();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(h.finalized).toHaveBeenCalledOnce();
   });
 });

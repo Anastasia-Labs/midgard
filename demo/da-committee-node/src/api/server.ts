@@ -14,8 +14,18 @@ export type CommitteeApiServer = {
   readonly close: () => Promise<void>;
 };
 
+/**
+ * Process liveness for `/healthz`. Unhealthy only when the process cannot
+ * recover by itself (its tick loop is wedged), so a supervisor restart is the
+ * repair; anything that clears on its own belongs to `/readyz`.
+ */
+export type CommitteeHealth =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: string };
+
 export const createCommitteeApiServer = ({
   readiness,
+  health = () => ({ ok: true }),
   manifest = {},
 }: {
   readonly deploymentFingerprint: string;
@@ -25,6 +35,7 @@ export const createCommitteeApiServer = ({
   readonly readiness: () =>
     | CommitteeReadinessSnapshot
     | Promise<CommitteeReadinessSnapshot>;
+  readonly health?: () => CommitteeHealth;
   readonly manifest?: Record<string, unknown>;
   readonly peerReplayWindowMs?: number;
   readonly peerMaxBodyBytes?: number;
@@ -37,6 +48,7 @@ export const createCommitteeApiServer = ({
         request,
         response,
         readiness,
+        health,
         manifest,
       }).catch((error: unknown) => {
         json(response, 500, {
@@ -68,6 +80,7 @@ const routeRequest = ({
   request,
   response,
   readiness,
+  health,
   manifest,
 }: {
   readonly request: IncomingMessage;
@@ -75,12 +88,14 @@ const routeRequest = ({
   readonly readiness: () =>
     | CommitteeReadinessSnapshot
     | Promise<CommitteeReadinessSnapshot>;
+  readonly health: () => CommitteeHealth;
   readonly manifest: Record<string, unknown>;
 }): Promise<void> => {
   const method = request.method ?? "GET";
   const url = new URL(request.url ?? "/", "http://committee.local");
   if (method === "GET" && url.pathname === "/healthz") {
-    json(response, 200, { ok: true });
+    const status = health();
+    json(response, status.ok ? 200 : 503, status);
     return Promise.resolve();
   }
   if (method === "GET" && url.pathname === "/readyz") {

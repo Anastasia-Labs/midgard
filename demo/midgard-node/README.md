@@ -67,12 +67,35 @@ It is responsible for:
   deleted once its block end time is past the challengeability horizon (10.5
   days) or its header was removed from the state queue under this deployment.
   The payload of the L1 confirmed head and the payload of every header live in
-  the L1 state queue are never deleted. `RETENTION_DAYS` governs only the
-  wall-clock tables (`tx_rejections`, `address_history`, `deposits_utxos`,
-  `withdrawal_utxos`): `0` keeps them forever, any other value must be at least
-  the manifest's `da.transportProfile.retentionDays`. That manifest value is
-  validated at load but does not govern DA payload pruning; it currently only
-  feeds the `retainUntilMs` field of retention reports.
+  the L1 state queue are never deleted. Housekeeping follows a window derived
+  from the verified deployment manifest's `da.transportProfile.retentionDays`
+  (15 days today) when `RETENTION_DAYS` is unset. An explicit `RETENTION_DAYS`
+  shorter than that window refuses startup, a longer one is honoured, and `0`
+  keeps the housekeeping tables forever. The window never reaches inside the
+  DA challengeability horizon. It prunes `tx_rejections`, `address_history`
+  (except entries of a transaction still in the mempool or processed
+  mempool), ended `state_queue_mutation_leases` that no retained journal
+  names, and finalized `pending_block_finalizations` journals whose confirmed
+  merge completed locally before the correction observer last saved its
+  state. A journal is kept while its header is the L1 confirmed head, live in
+  the L1 state queue, held for finality, still in the correction observer's
+  cursor queue, or named by a pending or admitted correction transition, and
+  while one of its deposit or withdrawal members belongs to an event-history
+  incarnation that L1 rolled back (signed-header recovery and ledger repair
+  read those). The newest finalized journal is always kept, and no journal is
+  pruned while the deployment has no correction-observer record. Unfinished
+  and abandoned journals retain their bases, same-base siblings and
+  descendants; retained recovery plans retain all their journal members. The
+  journal prune runs under the history-producer
+  permit. It takes no permit while the history owner is recovering, holds the
+  permit for a bounded time, and skips to the next sweep when refused.
+  `deposits_utxos` and `withdrawal_utxos` are retained because settlement proofs
+  recompute the whole header's root, including completed siblings of unpaid
+  events. Local consumed/finalized status and a completed settlement job do not
+  prove L1 payout finality: confirmed settlement receipts currently retain no
+  block identity or depth. Bounded event retirement requires durable canonical
+  terminal receipts beyond the manifest recovery depth and whole-header proof
+  material retirement after every event exit and recovery obligation completes.
 - Each sweep reads the state queue from L1 first. If that read fails, the
   sweeper logs `retention_pass_skipped` and deletes no DA payload. Once the last
   successful read is older than `L1_VIEW_FATAL_MS`, the node exits non-zero.
@@ -238,7 +261,22 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    #   -> the --out path must equal MIDGARD_DEPLOYMENT_MANIFEST_PATH in .env
    node dist/index.js register-operator
    node dist/index.js activate-operator
+   node dist/index.js history-genesis-pin
+   #   -> after approving the chain, copy its sha256 into .env as
+   #      L1_HISTORY_GENESIS_LOSSLESS_SHA256
    ```
+
+   `L1_HISTORY_GENESIS_LOSSLESS_SHA256` pins the L1 chain the node's event
+   history is read from: the lowercase SHA-256 of the Shelley genesis that
+   Ogmios returns for `queryNetwork/genesisConfiguration`, decoded without
+   rounding its integers (algorithm `ogmios-shelley-result-lossless-v1`).
+   `listen` re-checks it on every Ogmios socket its history source opens and
+   fails at startup when it is unset or when the chain differs. The operator
+   approves this value: `history-genesis-pin` (`--ogmios-url` overrides
+   `L1_OGMIOS_KEY`) prints the pin of whatever chain the endpoint serves, so
+   run it against an L1 you trust to be the deployment's chain and keep the
+   same value across restarts. A changed pin means a different chain, not a
+   setting to refresh.
 
    `listen` fails closed without `deploymentInfo/contract-deployment-info.json`
    and the DA producer manifest. `deploymentInfo/` is gitignored and mounted
@@ -530,12 +568,15 @@ from `dist/`.
 ## Submit A Midgard L2 Transfer
 
 Build and submit a key-signed Midgard-native transfer directly against the
-running node.
+running node. Give each transfer its own `--submission-id`, and reuse that ID
+to retry an interrupted transfer.
 
 ```sh
 cd midgard-node
 pnpm build
+export TRANSFER_SUBMISSION_ID="transfer-$(node -p 'crypto.randomUUID()')"
 node dist/index.js submit-l2-transfer \
+  --submission-id "$TRANSFER_SUBMISSION_ID" \
   --l2-address <destination-l2-address> \
   --lovelace 5000000
 ```
@@ -543,14 +584,17 @@ node dist/index.js submit-l2-transfer \
 Useful options:
 
 ```sh
+# Each example is a separate transfer: export a new TRANSFER_SUBMISSION_ID first.
 # Override the default USER_WALLET seed source.
 node dist/index.js submit-l2-transfer \
+  --submission-id "$TRANSFER_SUBMISSION_ID" \
   --l2-address <destination-l2-address> \
   --lovelace 5000000 \
   --wallet-seed-phrase-env USER_WALLET
 
 # Provide the seed phrase directly and send additional assets.
 node dist/index.js submit-l2-transfer \
+  --submission-id "$TRANSFER_SUBMISSION_ID" \
   --l2-address <destination-l2-address> \
   --lovelace 5000000 \
   --wallet-seed-phrase "<seed phrase>" \
@@ -568,6 +612,23 @@ Notes:
   deposit and L2 transfer flows.
 - The command queries `/utxos`, builds a balanced Midgard-native transaction
   with explicit change, and submits it to `/submit`.
+- With `--submission-id`, the signed transaction is written to a local journal
+  before it is submitted. If the command fails or is killed, rerun it with the
+  same ID and the same arguments: it never selects inputs or signs again. When
+  the node already knows the journaled transaction (any `/tx-status` other than
+  `not_found`) the rerun prints the saved result with that status; otherwise it
+  resubmits the exact journaled bytes. A failure that leaves the outcome
+  unknown (connection refused or reset, timeout, 5xx) says to rerun with the
+  same ID. Reusing an ID with a different signer, destination or value is
+  refused; a new transfer needs a new ID. The result also carries
+  `submissionId` and `signedTxCbor`.
+- The journal lives in `--submission-journal-dir`, else
+  `$MIDGARD_L2_TRANSFER_JOURNAL_DIR`, else `~/.midgard/l2-transfer-submissions`.
+  A rerun must see the same directory, so keep it on durable storage (not an
+  ephemeral container filesystem).
+- Without `--submission-id` every run builds, signs and submits a new
+  transfer. Rerunning after an ambiguous failure can then pay twice when the
+  wallet has other UTxOs.
 
 ## Build An Unsigned L1 Deposit
 

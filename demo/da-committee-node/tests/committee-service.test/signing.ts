@@ -315,7 +315,7 @@ export const registerSigningTests = () => {
       lockLost = resolve;
     });
     const crashedStore = await PostgresCommitteeStore.open(database.url, {
-      onInstanceLockLost: () => lockLost(),
+      onInstanceLockSuspended: () => lockLost(), // the session ending is the crash
     });
     let crashedStoreOpen = true;
     let restartedStore: PostgresCommitteeStore | undefined;

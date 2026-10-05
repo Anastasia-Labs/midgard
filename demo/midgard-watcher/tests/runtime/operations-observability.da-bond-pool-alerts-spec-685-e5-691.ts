@@ -68,6 +68,7 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
       ]),
     );
     expect([...WATCHER_INFORMATIONAL_ALERT_CODES].sort()).toEqual([
+      "chain_rollback",
       "da_bond_pool_under_backed",
       "da_bond_pool_withdrawing",
     ]);
@@ -164,7 +165,7 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
     ]);
     expect(observability.api.status().readiness).toBe("ready");
     observability.sink.setAlert({
-      code: "chain_rollback",
+      code: "root_mismatch",
       subjectDigest: MANIFEST,
       active: true,
       observedAtMs: "100000",

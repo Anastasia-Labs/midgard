@@ -52,6 +52,7 @@ import {
   submitSecondHeaderTx,
   submitSetupTx,
 } from "./support/emulator/setup-tx.js";
+import { installedWorkflowEmulatorClock } from "./support/installed-workflow.advance-emulator-observation.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 import {
   makeWithdrawalMistagEmulatorHarness,
@@ -59,7 +60,6 @@ import {
 } from "./support/withdrawal-mistag-emulator.js";
 import { runWithdrawalMistagMaximumProof } from "./support/withdrawal-mistag-maximum-proof.js";
 import { withdrawalMistagRetainedFixture } from "./support/withdrawal-mistag-retained.js";
-
 const finalityPolicy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const economicsPolicy = {
   profile: "bounded-acceptance-v1",
@@ -102,7 +102,6 @@ afterAll(async () => {
     }),
   );
 });
-
 describe("withdrawalMistag installed cursor actuator", () => {
   it.each([
     {
@@ -214,6 +213,7 @@ describe("withdrawalMistag installed cursor actuator", () => {
         clock = vi
           .spyOn(Date, "now")
           .mockImplementation(() => h.emulator.now());
+        installedWorkflowEmulatorClock(h.emulator).awaitReleaseDepth();
         const binding = {
           definition: { headerHash: setup.headerHash },
           blueprint: h.realBlueprint,

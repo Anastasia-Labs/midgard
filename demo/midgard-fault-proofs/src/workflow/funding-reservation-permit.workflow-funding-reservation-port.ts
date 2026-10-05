@@ -93,16 +93,33 @@ export type WorkflowFundingAbandonmentHandoff = WorkflowFundingJournalHandoff &
  */
 export interface WorkflowFundingReservationPort {
   load(): Promise<unknown>;
+  /** Recheck durable resource holds before building, signing or submitting. */
+  assertSubmissionAuthority?(): Promise<void>;
   readPendingTransition(): Promise<unknown>;
   readPendingHandoff(): Promise<unknown>;
   readCompletionHandoff(): Promise<unknown>;
   readAbandonmentHandoff(): Promise<unknown>;
+  readLegacyAbandonedTransactions?(): Promise<readonly unknown[]>;
+  retireLegacyAbandonment?(input: {
+    readonly expectedRevision: string;
+    readonly transactionHash: string;
+    readonly retirement: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement;
+  }): Promise<unknown>;
   /** Re-select a recorded attempt for reconciliation after canonical re-observation. */
   /** Null means another unresolved attempt currently owns the required inputs. */
   reobserve?(input: {
     readonly expectedRevision: string;
     readonly transactionHash: string;
+    /** Adopts a superseded attempt that landed: this handoff replaces its own. */
+    readonly adoption?: WorkflowFundingSubmissionHandoff;
   }): Promise<unknown>;
+  /** Per superseded, unretired attempt that no recorded attempt outside its
+   * lineage shares an input with, its exclusion set: the inputs of the
+   * attempt and of every recorded attempt whose outputs it spends,
+   * recursively. Empty when there is none. */
+  readSupersededAttemptFundingOutRefs?(): Promise<
+    readonly (readonly string[])[]
+  >;
   resolveInputs(outRefs: readonly string[]): Promise<readonly UTxO[]>;
   /** Exact confirmed output from this reservation, or null if it has no lineage. */
   resolveConfirmedInput(input: { readonly outRef: string }): Promise<unknown>;
@@ -162,12 +179,17 @@ export type PermitState = {
   readonly actuationPermit: WorkflowActuationPermit;
   readonly port: WorkflowFundingReservationPort;
   readonly maximumCollateralInputs: number;
+  readonly reservationMaximumCollateralInputs: number;
+  requiresParameterRefresh: boolean;
   snapshot: WorkflowFundingReservationSnapshot;
   resolvedInputs: ReadonlyMap<string, UTxO>;
   boundJournal: object | undefined;
   currentActionKind: string | undefined;
   currentActionDigest: string | undefined;
   currentFundingOutRefs: readonly string[];
+  /** Funding inputs every transaction of the current action must spend, one
+   * per superseded attempt, so that it is mutually exclusive with each. */
+  currentRequiredFundingOutRefs: readonly string[];
   currentCollateralOutRefs: readonly string[];
   pendingTransactionHash: string | undefined;
   idleReleaseAuthorized: boolean;

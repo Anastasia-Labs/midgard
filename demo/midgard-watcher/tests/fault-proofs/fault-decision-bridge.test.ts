@@ -481,9 +481,9 @@ describe("production fault decision bridge", () => {
     });
     const prepared = await h.bridge.reconcileAndDispatch(current);
     expect(prepared.target).toBeNull();
-    expect(h.appended.map((entry) => entry.headerHash)).toEqual([
-      healthy!.headerHash,
-    ]);
+    // The healthy prefix is decided but, not being a fault, not journaled.
+    expect(prepared.decisionDigests).toHaveLength(1);
+    expect(h.appended).toEqual([]);
     expect(h.enqueued).toEqual([]);
     expect(h.application.classifyHeader).toHaveBeenCalledTimes(3);
     await h.bridge.retryDeferredClassification(current);

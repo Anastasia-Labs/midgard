@@ -11,7 +11,7 @@ import { openWatcherLocalHistoricalCapture } from "../../src/l1/local-historical
 import { createWatcherLocalKupmiosRawSource } from "../../src/l1/local-kupmios-raw-source.js";
 import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
 
-/** The compiled deployment profile's release depth (3 testing, 30 public). */
+/** The compiled deployment profile's release depth (10 live testing, 30 public). */
 const RELEASE_DEPTH = BigInt(DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth);
 
 describe("local watcher fixture finality chronology", () => {

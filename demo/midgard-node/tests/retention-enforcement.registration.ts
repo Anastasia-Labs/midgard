@@ -83,9 +83,11 @@ describe.skipIf(!dbEnabled)(
 
     it("collects and reloads terminal authority through the durable observer store", async () => {
       const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
-      const deleted = await run(
+      const outcome = await run(
         Effect.gen(function* () {
           const f = yield* seedPublished(old);
+          // The later final merge releases f; the newest final head stays held.
+          const later = yield* seedPublished(old, 2);
           const sql = yield* SqlClient.SqlClient;
           const canonicalJson = (value: unknown): string =>
             value === null || typeof value !== "object"
@@ -105,9 +107,9 @@ describe.skipIf(!dbEnabled)(
             deploymentIdentityDigest: deploymentManifest.manifestId,
             stateQueuePolicyId:
               deploymentManifest.contracts.stateQueueMint.scriptHash,
-            cursorQueue: f.transition.nextQueue,
+            cursorQueue: later.transition.nextQueue,
             pending: [],
-            admitted: [f.transition],
+            admitted: [f.transition, later.transition],
             retractedTransactionHashes: [],
             postFinalityRollbackIncidents: [],
           };
@@ -128,10 +130,15 @@ describe.skipIf(!dbEnabled)(
               yield* Effect.promise(() => store.load()),
             ),
           ).toEqual(state);
-          return yield* prune();
+          return {
+            deleted: yield* prune(),
+            remaining: yield* remainingHashes,
+            later: later.headerHash.toString("hex"),
+          };
         }),
       );
-      expect(deleted).toBe(1);
+      expect(outcome.deleted).toBe(1);
+      expect(outcome.remaining).toEqual([outcome.later]);
     });
     it("retains a block_end_time exactly at the horizon and prunes 1ms past it", async () => {
       const cutoff = computeChallengeableCutoff(NOW);
@@ -351,7 +358,7 @@ describe.skipIf(!dbEnabled)(
 
     it("prunes DA payloads with RETENTION_DAYS=0 but leaves the wall-clock tables alone", async () => {
       const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
-      const sweep = (retentionDays: number) =>
+      const sweep = (retentionDays: number | undefined) =>
         run(
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
@@ -379,6 +386,11 @@ describe.skipIf(!dbEnabled)(
         );
       expect(await sweep(0)).toEqual({ daPayloads: 0, txRejections: 1 });
       expect(await sweep(15)).toEqual({ daPayloads: 0, txRejections: 0 });
+      // Unset: the verified manifest's 15-day window applies.
+      expect(await sweep(undefined)).toEqual({
+        daPayloads: 0,
+        txRejections: 0,
+      });
     });
 
     it("prunes no DA payload in a sweep without an L1 view", async () => {

@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  publicProfiles,
+  testingProfiles,
+  withDelayAtFloor,
+} from "./deployment-profiles.test-helpers.mjs";
+import {
   daBondWithdrawDelayFloorMs,
   emulatorOnlyProfileNames,
   generateProfiles,
@@ -17,15 +22,14 @@ import {
 
 test("confirmation policy is explicit, validated, and bound into profile identity", () => {
   const profiles = readProfiles();
-  assert.equal(
-    profiles["local-devnet-testing"].l1_finality.confirmation_depth,
-    3,
-  );
-  assert.equal(profiles["preprod-testing"].l1_finality.confirmation_depth, 3);
+  const depth = (name) => profiles[name].l1_finality.confirmation_depth;
+  assert.equal(depth("local-devnet-testing"), 10);
+  assert.equal(depth("preprod-testing"), 10);
+  assert.equal(depth("preprod-emulator-testing"), 3);
   for (const name of ["mainnet", "preprod-public"]) {
-    assert.equal(profiles[name].l1_finality.confirmation_depth, 30);
+    assert.equal(depth(name), 30);
   }
-  const profile = structuredClone(profiles["preprod-testing"]);
+  const profile = structuredClone(profiles.mainnet);
   const originalDigest = profileDigest(profile);
   profile.l1_finality.confirmation_depth += 1;
   assert.notEqual(profileDigest(profile), originalDigest);
@@ -92,11 +96,11 @@ test("fast testing profiles exclude interactive disputes without weakening publi
     assert.equal(testing.timing.da_attestation_timeout_ms, 600_000);
     assert.equal(testing.timing.operator_shift_ms, 1_800_000);
     assert.equal(testing.timing.registration_ms, 30_000);
-    assert.equal(testing.timing.da_small_response_window_ms, 720_000);
-    assert.equal(testing.timing.da_full_response_window_ms, 840_000);
+    assert.equal(testing.timing.da_small_response_window_ms, 880_000);
+    assert.equal(testing.timing.da_full_response_window_ms, 880_000);
     assert.equal(testing.timing.da_challenge_window_ms, 720_000);
     assert.equal(testing.timing.da_slash_grace_ms, 300_000);
-    assert.equal(testing.timing.da_bond_withdraw_delay_ms, 2_340_000);
+    assert.equal(testing.timing.da_bond_withdraw_delay_ms, 2_380_000);
     assert.equal(testing.limits.max_bisection_rounds, 32);
     validateProfile(testing, name);
     testing.timing.dispute_response_window_ms = 1_000;
@@ -119,8 +123,8 @@ test("every DA response window covers the minimum response budget, and the bound
   const expected = {
     mainnet: 1_440_000,
     "preprod-public": 1_440_000,
-    "preprod-testing": 360_000,
-    "local-devnet-testing": 360_000,
+    "preprod-testing": 640_000,
+    "local-devnet-testing": 640_000,
     "preprod-emulator-testing": 360_000,
   };
   for (const [name, profile] of Object.entries(profiles)) {
@@ -348,17 +352,6 @@ test("dispute schedule accepts the exact half-maturity bound", () => {
   );
 });
 
-const publicProfiles = ["mainnet", "preprod-public"];
-const testingProfiles = ["preprod-testing", "local-devnet-testing"];
-// Moves the withdrawal delay onto its enforced floor, so a test can vary one
-// timing input without also tripping the delay relation.
-const withDelayAtFloor = (profile) => {
-  profile.timing.da_bond_withdraw_delay_ms = daBondWithdrawDelayFloorMs(
-    profile.timing,
-  );
-  return profile;
-};
-
 test("every profile carries the pooled DA bond amounts and timing, rendered into env", () => {
   const profiles = readProfiles();
   const expected = {
@@ -387,7 +380,7 @@ test("every profile carries the pooled DA bond amounts and timing, rendered into
       timing: {
         da_challenge_window_ms: 720_000,
         da_slash_grace_ms: 300_000,
-        da_bond_withdraw_delay_ms: 2_340_000,
+        da_bond_withdraw_delay_ms: 2_380_000,
       },
     },
   };
@@ -466,9 +459,9 @@ test("every profile's withdrawal delay meets the spec relation and the head-remo
     // 480,000 + 259,200,000 + 172,800,000 + 172,800,000 (spec) and
     // 480,000 + max(432,000,000, 604,800,000) + 172,800,000 (enforced).
     public: { spec: 605_280_000, enforced: 778_080_000 },
-    // 480,000 + 720,000 + 840,000 + 300,000; the challenge path dominates
+    // 480,000 + 720,000 + 880,000 + 300,000; the challenge path dominates
     // the 900,000 maturity, so the two forms coincide.
-    testing: { spec: 2_340_000, enforced: 2_340_000 },
+    testing: { spec: 2_380_000, enforced: 2_380_000 },
   };
   for (const [name, original] of Object.entries(profiles)) {
     const want =
@@ -492,7 +485,7 @@ test("every profile's withdrawal delay meets the spec relation and the head-remo
     assert.throws(
       () => validateProfile(profile, name),
       want.enforced === want.spec
-        ? /slash grace, at least 2340000 ms/u
+        ? /slash grace, at least 2380000 ms/u
         : new RegExp(
             `the later of the challenge response deadline and block maturity, and the slash grace, at least ${want.enforced} ms`,
             "u",
@@ -515,7 +508,7 @@ test("every profile's withdrawal delay meets the spec relation and the head-remo
   for (const name of testingProfiles) {
     const profile = structuredClone(profiles[name]);
     profile.timing.block_maturity_ms = 2_000_000;
-    assert.equal(specDaBondWithdrawDelayFloorMs(profile.timing), 2_340_000);
+    assert.equal(specDaBondWithdrawDelayFloorMs(profile.timing), 2_380_000);
     assert.equal(daBondWithdrawDelayFloorMs(profile.timing), 2_780_000);
     assert.throws(
       () => validateProfile(profile, name),

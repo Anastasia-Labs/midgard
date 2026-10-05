@@ -14,6 +14,7 @@ import {
   type TimeoutCorrectionJournal,
   type TimeoutCorrectionRecovery,
 } from "../src/remove-unattested-block.js";
+import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.js";
 import type { SignedTransactionRecoveryObservation } from "../src/workflow/signed-transaction-reconciliation.js";
 const h = (byte: string) => byte.repeat(28);
 const tx = (byte: string) => byte.repeat(32);
@@ -84,7 +85,12 @@ const queue = (...nodes: SDK.StateQueueUTxO[]) => {
   return all;
 };
 const journal = (
-  status: "prepared" | "submitted" | "confirmed" = "submitted",
+  status:
+    | "prepared"
+    | "submitted"
+    | "confirmed"
+    | "superseded"
+    | "retired" = "submitted",
 ): TimeoutCorrectionJournal => {
   const inputs = CML.TransactionInputList.new();
   for (const byte of ["11", "22", "cc", "dd"])
@@ -122,11 +128,14 @@ const journal = (
     ],
   };
 };
-const canonicalPoint = {
-  pointId: "test:40",
+const canonicalPointFields = {
   slot: "40",
   blockHash: tx("77"),
   blockNo: "10",
+};
+const canonicalPoint = {
+  ...canonicalPointFields,
+  pointId: computeFraudProofRawL1PointId(canonicalPointFields),
 };
 const recovery = (status: SignedTransactionRecoveryObservation["status"]) => ({
   observeSignedTransaction: vi.fn(
@@ -138,7 +147,18 @@ const recovery = (status: SignedTransactionRecoveryObservation["status"]) => ({
       ...signed,
       status,
       reason: status,
-      canonicalPoint,
+      canonicalPoint: {
+        ...canonicalPoint,
+        slot: "10000",
+        blockHash: tx("88"),
+        blockNo: "2210",
+        pointId: computeFraudProofRawL1PointId({
+          ...canonicalPoint,
+          slot: "10000",
+          blockHash: tx("88"),
+          blockNo: "2210",
+        }),
+      },
       releaseFinalPoint: canonicalPoint,
       inputs: [],
     }),
@@ -338,7 +358,18 @@ describe("generalized attestation-timeout recovery", () => {
       transactionHash: tx("ff"),
       status: "expired",
       reason: "substituted",
-      canonicalPoint,
+      canonicalPoint: {
+        ...canonicalPoint,
+        slot: "10000",
+        blockHash: tx("88"),
+        blockNo: "2210",
+        pointId: computeFraudProofRawL1PointId({
+          ...canonicalPoint,
+          slot: "10000",
+          blockHash: tx("88"),
+          blockNo: "2210",
+        }),
+      },
       releaseFinalPoint: canonicalPoint,
       inputs: [],
     }));
@@ -362,6 +393,25 @@ describe("generalized attestation-timeout recovery", () => {
         queue(block("01", 1n, true)),
       ),
     ).toBeUndefined();
+  });
+  it("reopens legacy superseded steps with restored canonical inputs and retains the exact signed attempt", () => {
+    const retained = journal("superseded");
+    const restoredQueue = queue(
+      block("01", 1n, true),
+      block("11"),
+      block("22"),
+    );
+    const reopened = reopenRolledBackTimeoutCorrectionSteps(
+      retained,
+      restoredQueue,
+    );
+    expect(reopened.steps).toEqual([
+      { ...retained.steps[0], status: "prepared" },
+    ]);
+    const retired = journal("retired");
+    expect(reopenRolledBackTimeoutCorrectionSteps(retired, restoredQueue)).toBe(
+      retired,
+    );
   });
   it("reopens reverted confirmed steps while the objective is still incomplete", async () => {
     const retained = journal("confirmed");

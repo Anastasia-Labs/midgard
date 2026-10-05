@@ -10,6 +10,10 @@ import {
   type NativeMpfRpcFrame,
   NativeMpfRpcKind,
 } from "./protocol.js";
+import {
+  DEFAULT_RESTART_BACKOFF_BASE_MS,
+  DEFAULT_RESTART_BACKOFF_MAX_MS,
+} from "./service.restart-policy.js";
 
 export const EMPTY_ROOT_HEX = MPF_EMPTY_ROOT.toString("hex");
 
@@ -118,9 +122,14 @@ export type NativeMpfOwnerServiceOptions = {
   readonly maxFrameBytes?: number;
   readonly maxChunkBytes?: number;
   readonly requestTimeoutMs?: number;
+  /** Failed child restarts inside `restartWindowMs` that exhaust the owner
+   * until the oldest leaves the window (see `NativeOwnerRestartPolicy`); 0
+   * counts as 1. A child that dies and restarts is never counted. */
   readonly restartLimit?: number;
-  /** Sliding window in which at most `restartLimit` child restarts may start. */
+  /** Sliding window of the restart backoff and of `restartLimit`. */
   readonly restartWindowMs?: number;
+  readonly restartBackoffBaseMs?: number;
+  readonly restartBackoffMaxMs?: number;
   readonly sidecarPath?: string;
   /** Process-crash and interleaving test seam; production callers must leave
    * this undefined. */
@@ -143,6 +152,8 @@ export type NormalizedNativeMpfOwnerServiceOptions =
     readonly requestTimeoutMs: number;
     readonly restartLimit: number;
     readonly restartWindowMs: number;
+    readonly restartBackoffBaseMs: number;
+    readonly restartBackoffMaxMs: number;
   };
 
 export const digest = (...parts: readonly Uint8Array[]): Buffer => {
@@ -162,10 +173,16 @@ export const normalizeOwnerOptions = (
     options.requestTimeoutMs ?? NATIVE_MPF_OWNER_DEFAULT_CAPS.loadTimeoutMs;
   const restartLimit = options.restartLimit ?? 3;
   const restartWindowMs = options.restartWindowMs ?? DEFAULT_RESTART_WINDOW_MS;
+  const restartBackoffBaseMs =
+    options.restartBackoffBaseMs ?? DEFAULT_RESTART_BACKOFF_BASE_MS;
+  const restartBackoffMaxMs =
+    options.restartBackoffMaxMs ?? DEFAULT_RESTART_BACKOFF_MAX_MS;
   positiveSafeInteger(maxFrameBytes, "maxFrameBytes");
   positiveSafeInteger(maxChunkBytes, "maxChunkBytes");
   positiveSafeInteger(requestTimeoutMs, "requestTimeoutMs");
   positiveSafeInteger(restartWindowMs, "restartWindowMs");
+  positiveSafeInteger(restartBackoffBaseMs, "restartBackoffBaseMs");
+  positiveSafeInteger(restartBackoffMaxMs, "restartBackoffMaxMs");
   if (!Number.isSafeInteger(restartLimit) || restartLimit < 0) {
     throw new Error("restartLimit must be a non-negative safe integer");
   }
@@ -185,6 +202,8 @@ export const normalizeOwnerOptions = (
     requestTimeoutMs,
     restartLimit,
     restartWindowMs,
+    restartBackoffBaseMs,
+    restartBackoffMaxMs,
   };
 };
 

@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { Context, Data, Deferred, Effect } from "effect";
+import { Context, Data, Deferred, Effect, Option } from "effect";
 
 import * as Authority from "../database/eventHistoryAuthority.js";
+import { reclaimLapsedLease } from "../database/eventHistoryAuthority.reclaim-lapsed-lease.js";
 import type { DatabaseError } from "../database/utils/common.js";
 import type {
   CanonicalCacheRecovery,
@@ -68,13 +69,76 @@ export const makeEventHistoryRecovery = (input: {
           ? Effect.void
           : Effect.fail(unavailable()),
       );
+    // A lease that lapsed while this process held it, and that nobody else
+    // claimed, is re-taken as a new Recovering generation, as a restart would
+    // re-take it, instead of stopping the owner. One attempt per failure,
+    // under the control lock, and only while `held` is still the current
+    // generation: a live, foreign or suspended lease is never taken, and then
+    // the original failure stands. A reclaim supersedes every handle and the
+    // readiness of the lapsed generation, so the owner reconnects into one
+    // fresh recovery.
+    const reclaimLapsed = (expected: number, held: Authority.Token) =>
+      Effect.uninterruptible(
+        control.withPermits(1)(
+          Effect.suspend(() =>
+            closed || revision !== expected || token !== held
+              ? Effect.succeed(false)
+              : reclaimLapsedLease(
+                  held,
+                  input.leaseDurationMs,
+                  "history lease lapsed and was reclaimed",
+                ).pipe(
+                  Effect.map(
+                    Option.match({
+                      onNone: () => false,
+                      onSome: (next) => {
+                        token = next;
+                        ready = undefined;
+                        revision += 1;
+                        return true;
+                      },
+                    }),
+                  ),
+                ),
+          ),
+        ),
+      ).pipe(
+        Effect.orElseSucceed(() => false),
+        Effect.tap((reclaimed) =>
+          reclaimed ? input.cache.retireCanonicalEpoch : Effect.void,
+        ),
+      );
+    const supersedeIfLapsed = <A, E, R>(
+      expected: number,
+      held: Authority.Token,
+      work: Effect.Effect<A, E, R>,
+    ) =>
+      work.pipe(
+        Effect.catchAll((error) =>
+          reclaimLapsed(expected, held).pipe(
+            Effect.flatMap(
+              (
+                reclaimed,
+              ): Effect.Effect<never, E | HistoryRecoverySuperseded> =>
+                reclaimed
+                  ? Effect.fail(
+                      new HistoryRecoverySuperseded({
+                        message:
+                          "History lease lapsed while held and was reclaimed as a new recovery generation",
+                      }),
+                    )
+                  : Effect.fail(error),
+            ),
+          ),
+        ),
+      );
 
     const handle = (
       expected: number,
       recoveryToken: Authority.Token,
       cache: CanonicalCacheRecovery,
     ) => {
-      const afterProducerDrain = <A, E, R>(work: Effect.Effect<A, E, R>) =>
+      const drainThen = <A, E, R>(work: Effect.Effect<A, E, R>) =>
         Effect.acquireUseRelease(
           Effect.gen(function* () {
             const done = yield* Deferred.make<void>();
@@ -108,6 +172,8 @@ export const makeEventHistoryRecovery = (input: {
               yield* Deferred.succeed(done, undefined);
             }),
         );
+      const afterProducerDrain = <A, E, R>(work: Effect.Effect<A, E, R>) =>
+        supersedeIfLapsed(expected, recoveryToken, drainThen(work));
       const ownedRepair = <A, E, R>(repair: Effect.Effect<A, E, R>) =>
         Authority.withRecovery(
           recoveryToken,
@@ -232,7 +298,24 @@ export const makeEventHistoryRecovery = (input: {
             const next = yield* control.withPermits(1)(
               Effect.gen(function* () {
                 yield* requireRevision(expected);
-                token = yield* Authority.beginRecovery(token, reason);
+                const lapsed = token;
+                token = yield* Authority.beginRecovery(lapsed, reason).pipe(
+                  Effect.catchAll((error) =>
+                    reclaimLapsedLease(
+                      lapsed,
+                      input.leaseDurationMs,
+                      reason,
+                    ).pipe(
+                      Effect.orElseFail(() => error),
+                      Effect.flatMap(
+                        Option.match({
+                          onNone: () => Effect.fail(error),
+                          onSome: Effect.succeed,
+                        }),
+                      ),
+                    ),
+                  ),
+                );
                 return token;
               }),
             );
@@ -251,12 +334,16 @@ export const makeEventHistoryRecovery = (input: {
           const token = ready;
           const expected = revision;
           if (closed || token === undefined) return Effect.fail(unavailable());
-          return Effect.uninterruptible(
-            Authority.withReadyAppend(
-              token,
-              requireRevision(expected).pipe(
-                Effect.zipRight(work),
-                Effect.tap(() => requireRevision(expected)),
+          return supersedeIfLapsed(
+            expected,
+            token,
+            Effect.uninterruptible(
+              Authority.withReadyAppend(
+                token,
+                requireRevision(expected).pipe(
+                  Effect.zipRight(work),
+                  Effect.tap(() => requireRevision(expected)),
+                ),
               ),
             ),
           );
@@ -264,22 +351,26 @@ export const makeEventHistoryRecovery = (input: {
       /** The source owner must renew only while its monitor is healthy. A
        * failed renewal immediately retires local readiness; expiry still
        * fences SQL independently if this process stops executing altogether. */
-      renew: control
-        .withPermits(1)(
-          Effect.gen(function* () {
-            if (closed) return yield* Effect.fail(unavailable());
-            yield* Authority.renew(token, input.leaseDurationMs);
-          }),
-        )
-        .pipe(
-          Effect.onError(() =>
+      renew: Effect.suspend(() =>
+        supersedeIfLapsed(
+          revision,
+          token,
+          control.withPermits(1)(
             Effect.gen(function* () {
-              ready = undefined;
-              revision += 1;
-              yield* input.cache.retireCanonicalEpoch;
+              if (closed) return yield* Effect.fail(unavailable());
+              yield* Authority.renew(token, input.leaseDurationMs);
             }),
           ),
         ),
+      ).pipe(
+        Effect.onError(() =>
+          Effect.gen(function* () {
+            ready = undefined;
+            revision += 1;
+            yield* input.cache.retireCanonicalEpoch;
+          }),
+        ),
+      ),
       /** Register before claims/fetch/build/SQL, release after final publication.
        * The callback token is immutable; never refresh it midway through work.
        * Use assertCurrent at asynchronous boundaries, and withReady at each

@@ -79,6 +79,20 @@ vi.mock("../src/database/index.js", async () => {
   };
 });
 
+// No signed commit intent awaits reconciliation.
+vi.mock(
+  "../src/database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js",
+  async (importOriginal) => {
+    const { Effect: EffectModule } = await import("effect");
+    return {
+      ...(await importOriginal<
+        typeof import("../src/database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js")
+      >()),
+      retrieveUnreconciledSignedSubmission: EffectModule.succeed(undefined),
+    };
+  },
+);
+
 import { blockCommitmentAction } from "../src/fibers/block-commitment.js";
 import { slotAwareDueWorkRegistry } from "../src/fibers/slot-aware-due-work.js";
 

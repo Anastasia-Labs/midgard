@@ -123,7 +123,10 @@ export interface NativeMpfOwnerService extends NativeMpfOwnerClient {
   recover(replay: PersistedNativeMpfReplay): Promise<void>;
   restoreCanonicalRoot(plan: NativeMpfCanonicalRootRecovery): Promise<void>;
   diagnostics(): Promise<NativeMpfOwnerDiagnostics>;
-  /** Set once the owner can no longer operate in this process. */
+  /** Why the owner refuses work, while it does: failed restarts exhaust the
+   * restart window, or a committed recovery is not installed yet. Each call
+   * also starts a due restart from the durable root, so the refusal clears
+   * once the oldest failure leaves the window and the restart succeeds. */
   terminalFailure(): Error | undefined;
   close(): Promise<void>;
 }

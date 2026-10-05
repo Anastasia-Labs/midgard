@@ -13,7 +13,7 @@ import {
   authenticatesCanonicalBlock,
   commitRollbackDurableAuthority,
   currentRollbackFinalityState,
-  storeWithAuthenticatedObservations,
+  nextAuthenticatedEvidenceWithinRecoveryHorizon,
 } from "./durable-authority.commit-rollback-durable-authority.js";
 import {
   makeRollbackDurableTrustedHead,
@@ -86,45 +86,84 @@ export const assertCanonicalProgressEvidence = (
   }
 };
 
+/** One authenticated canonical block and the evidence that admitted it. */
+export type WatcherRollbackDurableObservationEntry = Readonly<{
+  block: WatcherNormalizedL1Block;
+  observations: readonly WatcherNormalizedL1Block[];
+  consistency: WatcherMultiProviderConsistency;
+  transportAttestations: readonly WatcherL1TransportAttestationContext[];
+}>;
+
 /**
  * Journals authenticated replacement evidence before a rewind/incident is
  * evaluated. This operation changes no finality or rollback decision and its
  * emitted head still requires external CAS publication before use.
  */
-export const persistWatcherRollbackDurableObservation = async (input: {
+export const persistWatcherRollbackDurableObservation = async (
+  input: WatcherRollbackDurableObservationEntry &
+    Readonly<{ authority: WatcherRollbackDurableAuthority }>,
+): Promise<WatcherRollbackDurableObservationResult> =>
+  await persistWatcherRollbackDurableObservations({
+    authority: input.authority,
+    entries: [input],
+  });
+
+/**
+ * Journals several authenticated blocks in one durable revision. Every entry
+ * is authenticated and verified exactly as a single observation would be; the
+ * retained-store encode, MAC and CAS run once, so catching up a run of quiet
+ * blocks costs one commit of the retained store rather than one per block.
+ */
+export const persistWatcherRollbackDurableObservations = async (input: {
   readonly authority: WatcherRollbackDurableAuthority;
-  readonly block: WatcherNormalizedL1Block;
-  readonly observations: readonly WatcherNormalizedL1Block[];
-  readonly consistency: WatcherMultiProviderConsistency;
-  readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
+  readonly entries: readonly WatcherRollbackDurableObservationEntry[];
 }): Promise<WatcherRollbackDurableObservationResult> => {
   const runtime = runtimeForRollbackDurableAuthority(input.authority);
-  if (!authenticatesCanonicalBlock(input)) {
+  if (
+    input.entries.length === 0 ||
+    !input.entries.every((entry) => authenticatesCanonicalBlock(entry))
+  ) {
     throw new Error(
       "watcher durable observation lacks authenticated local-node agreement",
     );
   }
+  // A run journals distinct blocks; one block's successive depths would each
+  // stay protected here although block-by-block journaling compacts them.
+  if (
+    new Set(input.entries.map(({ block }) => block.chainPoint.pointDigest))
+      .size !== input.entries.length
+  ) {
+    throw new Error("watcher durable observation run repeats a block");
+  }
+  const observations = input.entries.flatMap(
+    ({ observations: entryObservations }) => entryObservations,
+  );
   const existingById = new Map(
     runtime.snapshot.currentStore.l1Observations.map((observation) => [
       observation.observationId,
       observation,
     ]),
   );
-  const alreadyStored = input.observations.every((observation) => {
+  const storedAs = (observation: WatcherNormalizedL1Block) => {
     const existing = existingById.get(observation.observationDigest);
-    return (
-      existing !== undefined &&
-      existing.providerId === observation.provider.providerId &&
-      existing.chainPointId === observation.chainPoint.chainPointId &&
-      existing.payload.cborHex ===
-        encodeWatcherNormalizedL1Block(observation).toString("hex")
-    );
-  });
+    return existing === undefined
+      ? "absent"
+      : existing.providerId === observation.provider.providerId &&
+          existing.chainPointId === observation.chainPoint.chainPointId &&
+          existing.payload.cborHex ===
+            encodeWatcherNormalizedL1Block(observation).toString("hex")
+        ? "same"
+        : "substituted";
+  };
+  const retainedDigests = new Set(
+    runtime.snapshot.consistencyHistory.map(
+      ({ consistencyDigest }) => consistencyDigest,
+    ),
+  );
   if (
-    alreadyStored &&
-    runtime.snapshot.consistencyHistory.some(
-      ({ consistencyDigest }) =>
-        consistencyDigest === input.consistency.consistencyDigest,
+    observations.every((observation) => storedAs(observation) === "same") &&
+    input.entries.every(({ consistency }) =>
+      retainedDigests.has(consistency.consistencyDigest),
     )
   ) {
     return Object.freeze({
@@ -139,16 +178,7 @@ export const persistWatcherRollbackDurableObservation = async (input: {
     });
   }
   if (
-    input.observations.some((observation) => {
-      const existing = existingById.get(observation.observationDigest);
-      return (
-        existing !== undefined &&
-        (existing.providerId !== observation.provider.providerId ||
-          existing.chainPointId !== observation.chainPoint.chainPointId ||
-          existing.payload.cborHex !==
-            encodeWatcherNormalizedL1Block(observation).toString("hex"))
-      );
-    })
+    observations.some((observation) => storedAs(observation) === "substituted")
   ) {
     throw new Error("watcher durable observation identity was substituted");
   }
@@ -160,28 +190,21 @@ export const persistWatcherRollbackDurableObservation = async (input: {
       "watcher quarantined observation requires post-finality recovery",
     );
   }
-  const nextStore = storeWithAuthenticatedObservations(
-    runtime.snapshot.currentStore,
-    input.observations,
-  );
-  const nextHistory = Object.freeze([
-    ...runtime.snapshot.consistencyHistory.filter(
-      ({ consistencyDigest }) =>
-        consistencyDigest !== input.consistency.consistencyDigest,
-    ),
-    input.consistency,
-  ]);
-  if (nextHistory.length > 6_483) {
-    throw new Error(
-      "watcher authenticated consistency history exceeds its bound",
+  const { store: nextStore, history: nextHistory } =
+    nextAuthenticatedEvidenceWithinRecoveryHorizon({
+      source: runtime.snapshot.currentStore,
+      history: runtime.snapshot.consistencyHistory,
+      observations,
+      consistencies: input.entries.map(({ consistency }) => consistency),
+      frontier: currentRollbackFinalityState(runtime),
+    });
+  for (const entry of input.entries)
+    assertCanonicalProgressEvidence(
+      runtime.policy,
+      runtime.snapshot.currentStore,
+      nextStore,
+      entry,
     );
-  }
-  assertCanonicalProgressEvidence(
-    runtime.policy,
-    runtime.snapshot.currentStore,
-    nextStore,
-    input,
-  );
   freezeRollbackSnapshotJson(nextStore);
   // Persist the new evidence and its store binding in the same revision.
   // Finality and the authenticated prior transition lineage stay unchanged.

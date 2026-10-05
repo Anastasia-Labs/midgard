@@ -19,6 +19,7 @@ import {
   isDurableAdmissionFailure,
   type NativeTransferSubmitRetryPolicy,
   type PreparedL2Transfer,
+  ResumableNativeTransferSubmitError,
   RetryableNativeTransferSubmitError,
   type SubmitL2TransferConfig,
   toError,
@@ -88,6 +89,9 @@ export const submitNativeTransferTx = (
             if (isDurableAdmissionFailure(response.status, responseText)) {
               throw new RetryableNativeTransferSubmitError(message);
             }
+            if (response.status >= 500) {
+              throw new ResumableNativeTransferSubmitError(message);
+            }
             throw new Error(message);
           }
           let parsed: {
@@ -136,17 +140,25 @@ export const submitNativeTransferTx = (
       }
       throw new Error("Native transfer submit retry loop exhausted");
     },
-    catch: (cause) =>
-      new Error(`Failed to submit Midgard-native transfer: ${String(cause)}`),
+    catch: (cause) => {
+      const message = `Failed to submit Midgard-native transfer: ${String(cause)}`;
+      return cause instanceof ResumableNativeTransferSubmitError
+        ? new ResumableNativeTransferSubmitError(message)
+        : new Error(message);
+    },
   });
 
+/** The signing wallet of an L2 transfer, resolved and network-checked. */
+export type L2TransferSender = {
+  readonly senderAddress: string;
+  readonly paymentKey: string;
+};
+
 /**
- * Builds and signs an L2 transfer without submitting it.
- *
- * The flow derives the sender wallet, gathers its inputs from the node's
- * public `/utxos` endpoint, and builds a fee-balanced Midgard-native transfer.
+ * Derives the transfer signer and checks that it, the destination and the
+ * node all use one network. It reads nothing from the node.
  */
-export const prepareL2TransferProgram = ({
+export const resolveL2TransferSenderProgram = ({
   config,
   resolvedWalletSeedPhrase,
   assertWalletAddress,
@@ -154,14 +166,9 @@ export const prepareL2TransferProgram = ({
   readonly config: SubmitL2TransferConfig;
   readonly resolvedWalletSeedPhrase: ResolvedWalletSeedPhrase;
   readonly assertWalletAddress?: (walletAddress: string) => void;
-}): Effect.Effect<
-  PreparedL2Transfer,
-  Error,
-  NodeConfigService | ContractDeploymentIdentity
-> =>
+}): Effect.Effect<L2TransferSender, Error, NodeConfigService> =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfigService;
-    const deploymentIdentity = yield* ContractDeploymentIdentity;
     const nodeNetworkId = networkIdFromName(nodeConfig.NETWORK);
     if (config.networkId !== nodeNetworkId) {
       return yield* Effect.fail(
@@ -193,17 +200,46 @@ export const prepareL2TransferProgram = ({
         ),
       );
     }
+    return { senderAddress, paymentKey: wallet.paymentKey };
+  });
 
+/**
+ * Selects the sender's inputs from the node's public `/utxos` endpoint, less
+ * the outputs `config.excludedOutRefs` names, and builds and signs a
+ * fee-balanced Midgard-native transfer without submitting it.
+ */
+export const buildL2TransferForSenderProgram = ({
+  config,
+  sender,
+  walletSeedSource,
+}: {
+  readonly config: SubmitL2TransferConfig;
+  readonly sender: L2TransferSender;
+  readonly walletSeedSource: string;
+}): Effect.Effect<
+  PreparedL2Transfer,
+  Error,
+  NodeConfigService | ContractDeploymentIdentity
+> =>
+  Effect.gen(function* () {
+    const nodeConfig = yield* NodeConfigService;
+    const deploymentIdentity = yield* ContractDeploymentIdentity;
+    const { senderAddress } = sender;
     const requestedAssets = buildRequestedAssets(config);
-    const availableUtxos = yield* fetchNodeUtxos(
+    const nodeUtxos = yield* fetchNodeUtxos(
       config.nodeEndpoint,
       senderAddress,
       config.utxoRequestTimeoutMs,
     );
+    const excluded = new Set(config.excludedOutRefs);
+    const availableUtxos = nodeUtxos.filter(
+      (utxo) => !excluded.has(outRefLabel(utxo)),
+    );
     if (availableUtxos.length === 0) {
+      const skipped = nodeUtxos.length - availableUtxos.length;
       return yield* Effect.fail(
         new Error(
-          `No Midgard L2 UTxOs found for sender address ${senderAddress}.`,
+          `No Midgard L2 UTxOs found for sender address ${senderAddress}${skipped === 0 ? "" : ` outside the ${skipped.toString()} excluded by --exclude-out-ref`}.`,
         ),
       );
     }
@@ -213,7 +249,7 @@ export const prepareL2TransferProgram = ({
         buildTransferTxWithMinFee({
           senderAddress,
           destinationAddress: config.l2Address,
-          signer: wallet.paymentKey,
+          signer: sender.paymentKey,
           availableUtxos,
           requestedAssets,
           network: nodeConfig.NETWORK,
@@ -233,7 +269,39 @@ export const prepareL2TransferProgram = ({
       selectedInputs: built.selectedInputs.map(outRefLabel),
       requestedAssets: built.requestedAssets,
       changeAssets: built.changeAssets,
-      walletSeedSource: resolvedWalletSeedPhrase.resolvedFrom,
+      walletSeedSource,
       nodeEndpoint: config.nodeEndpoint,
     };
+  });
+
+/**
+ * Builds and signs an L2 transfer without submitting it.
+ *
+ * The flow derives the sender wallet, gathers its inputs from the node's
+ * public `/utxos` endpoint, and builds a fee-balanced Midgard-native transfer.
+ */
+export const prepareL2TransferProgram = ({
+  config,
+  resolvedWalletSeedPhrase,
+  assertWalletAddress,
+}: {
+  readonly config: SubmitL2TransferConfig;
+  readonly resolvedWalletSeedPhrase: ResolvedWalletSeedPhrase;
+  readonly assertWalletAddress?: (walletAddress: string) => void;
+}): Effect.Effect<
+  PreparedL2Transfer,
+  Error,
+  NodeConfigService | ContractDeploymentIdentity
+> =>
+  Effect.gen(function* () {
+    const sender = yield* resolveL2TransferSenderProgram({
+      config,
+      resolvedWalletSeedPhrase,
+      assertWalletAddress,
+    });
+    return yield* buildL2TransferForSenderProgram({
+      config,
+      sender,
+      walletSeedSource: resolvedWalletSeedPhrase.resolvedFrom,
+    });
   });

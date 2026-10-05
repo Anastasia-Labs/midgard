@@ -321,18 +321,27 @@ describe("native canonical root recovery", () => {
         `injected:${point}`,
       );
       if (point === "after_root_restore_batch_before_ack") {
-        // Committed but not installed: the node must exit, not stay up refusing.
-        const terminal = service.terminalFailure();
-        expect(terminal?.message).toMatch(/requires process restart/);
-        expect((terminal?.cause as Error | undefined)?.message).toBe(
+        // Committed but not installed: the owner refuses every operation and
+        // restarts its child from the durable marker, the target, in-process.
+        const refusal = service.terminalFailure();
+        expect(refusal?.message).toMatch(/not installed yet/);
+        expect((refusal?.cause as Error | undefined)?.message).toBe(
           `injected:${point}`,
         );
         await expect(service.diagnostics()).rejects.toThrow(
-          /requires process restart/,
+          /not installed yet/,
         );
         await expect(service.fork(plan.expectedRoot)).rejects.toThrow(
-          /requires process restart/,
+          /not installed yet/,
         );
+        const deadline = Date.now() + 30_000;
+        while (service.terminalFailure() !== undefined && Date.now() < deadline)
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(service.terminalFailure()).toBeUndefined();
+        expect((await service.diagnostics()).durableRoot).toBe(plan.targetRoot);
+        // The retained plan now completes as already applied.
+        await service.restoreCanonicalRoot(plan);
+        await assertAncestorContents(service, plan.targetRoot);
       } else {
         // Refused before the marker moved: the old root still serves.
         expect(service.terminalFailure()).toBeUndefined();

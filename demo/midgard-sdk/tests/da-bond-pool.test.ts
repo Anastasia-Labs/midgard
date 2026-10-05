@@ -315,10 +315,10 @@ describe("DA bond pool arithmetic", () => {
     const withdrawDelayMs = BigInt(
       SELECTED_DEPLOYMENT_PROFILE.timing.da_bond_withdraw_delay_ms,
     );
-    expect(withdrawDelayMs).toBe(2_340_000n);
+    expect(withdrawDelayMs).toBe(2_380_000n);
     expect(
       daBondPoolUnlockAt({ validToMs: 1_790_000_000_000n, withdrawDelayMs }),
-    ).toBe(1_790_002_339_999n);
+    ).toBe(1_790_002_379_999n);
     expect(daBondPoolUnlockAt({ validToMs: 1n, withdrawDelayMs: 0n })).toBe(0n);
   });
 });

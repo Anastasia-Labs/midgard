@@ -197,6 +197,7 @@ export const buildAddReserveFundsToPayoutTxProgram = (
         { name: "reserve spending", script: contracts.reserve.spendingScript },
         { name: "payout spending", script: contracts.payout.spendingScript },
       ],
+      contracts.referenceScriptAuth,
       config.referenceScripts,
     );
     const refs = mergeReferenceScripts(

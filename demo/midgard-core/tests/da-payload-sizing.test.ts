@@ -8,6 +8,7 @@ import {
   canonicalCborArgumentSize,
   canonicalCborByteStringSize,
   daPayloadEnvelopeEncodedSize,
+  daPayloadFramePressureStage,
   daPayloadSubmitEncodedSize,
   maxDaPayloadInnerBytes,
   projectDaPayloadSizes,
@@ -33,6 +34,24 @@ const submitRequestBytes = (
   }).length;
 
 describe("DA V1 payload sizing", () => {
+  it.each(["identity", "zstd"] as const)(
+    "stages measured bytes at each effective %s boundary",
+    (mode) => {
+      const limit = maxDaPayloadInnerBytes(mode);
+      for (const [stage, previous] of [
+        [50, 0],
+        [75, 50],
+        [90, 75],
+      ] as const) {
+        const boundary = Math.ceil((limit * stage) / 100);
+        expect(daPayloadFramePressureStage(boundary - 1, limit)).toBe(previous);
+        expect(daPayloadFramePressureStage(boundary, limit)).toBe(stage);
+      }
+      expect(daPayloadFramePressureStage(limit, limit)).toBe(90);
+      expect(daPayloadFramePressureStage(limit + 1, limit)).toBe(90);
+    },
+  );
+
   it("matches canonical CBOR argument and byte-string boundaries", () => {
     const cases = [
       [0, 1],

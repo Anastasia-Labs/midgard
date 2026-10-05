@@ -1,3 +1,4 @@
+import type { AvailabilityResponseAdmissionDecision } from "@al-ft/midgard-core";
 import {
   computeDaSha256Hash,
   DaGossipTopic,
@@ -8,6 +9,10 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 
+import type {
+  CommitteePromiseAdmission,
+  CommitteePromiseAdmissionPolicyStatus,
+} from "./availability/promise-admission.js";
 import { type CommitteeConfig } from "./config.js";
 import type { AttestationCoordinator } from "./coordinator/coordinator.js";
 import type { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
@@ -36,6 +41,7 @@ export type CommitteeServiceDeps = {
   readonly payloadSource: DaPayloadSource;
   readonly signer?: DaSigner;
   readonly signerValidation?: DaSignerValidation;
+  readonly promiseAdmission?: CommitteePromiseAdmission;
   readonly coordinator?: AttestationCoordinator;
   readonly submitterReconciler?: Pick<SubmitterReconciler, "reconcileHeader">;
   readonly daChainReader?: DaAttestationChainReader;
@@ -95,10 +101,29 @@ export type CommitteeL1SubmitterPreflightSnapshot = {
 };
 
 export type CommitteeRetentionReadinessSnapshot = {
-  readonly status: "not_checked" | "ok" | "failed" | "l1_view_stale";
+  /**
+   * `skipped`: no pass has run since the view was last stale, and the last
+   * pass was skipped on a view younger than the staleness bound. Only
+   * `not_checked`, `failed` and `l1_view_stale` make the committee not ready.
+   */
+  readonly status:
+    | "not_checked"
+    | "ok"
+    | "failed"
+    | "l1_view_stale"
+    | "skipped";
   readonly checkedAt?: string;
   /** Age of the last fresh authenticated L1 view, when it is stale. */
   readonly l1ViewAgeMs?: number;
+  /**
+   * The last pass skipped for want of a view from its own tick while the
+   * last accepted view was younger than the staleness bound. Detail only.
+   */
+  readonly skippedPass?: {
+    readonly reason: "l1_view_unavailable" | "tick_in_flight";
+    readonly checkedAt: string;
+    readonly l1ViewAgeMs: number;
+  };
   readonly scanned: number;
   readonly retained: number;
   readonly prunable: number;
@@ -121,7 +146,13 @@ export type CommitteeRetentionReadinessSnapshot = {
 export const retentionReadinessFromDeadlines = (
   deadlines: RetentionDeadlineReport,
 ): CommitteeRetentionReadinessSnapshot => ({
-  status: "ok",
+  status: (deadlines.recoveryProofUnavailable ?? 0) > 0 ? "failed" : "ok",
+  ...((deadlines.recoveryProofUnavailable ?? 0) > 0
+    ? {
+        error:
+          "terminal_recovery_proof_unavailable: bytes retained; the next authenticated scan retries",
+      }
+    : {}),
   checkedAt: new Date(deadlines.nowMs).toISOString(),
   scanned: deadlines.scanned,
   retained: deadlines.retained,
@@ -145,6 +176,8 @@ export type CommitteeReadinessPeerSnapshot = {
 
 export type CommitteeReadinessSnapshot = {
   readonly ready: boolean;
+  readonly promiseAdmissionPolicy?: CommitteePromiseAdmissionPolicyStatus;
+  readonly promiseAdmission?: AvailabilityResponseAdmissionDecision;
   readonly l1Source?: {
     readonly sourceMode: "local_node" | "external_providers";
     readonly status: "uninitialized" | "healthy" | "quarantined";
@@ -211,6 +244,7 @@ export type CommitteeL1View = {
   readonly observedAtMs: number;
   readonly confirmedHeadHash: string;
   readonly liveQueueHeaderHashes: ReadonlySet<string>;
+  readonly recoveryProofUnavailable?: boolean;
 };
 
 export const ingestDaConflictEvidence = async (args: {

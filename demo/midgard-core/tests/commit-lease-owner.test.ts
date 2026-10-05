@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   commitLeaseOwner,
+  nodeProcessCommitLeaseOwner,
   parseCommitLeaseOwner,
 } from "../src/commit-lease-owner.js";
 
@@ -13,8 +14,15 @@ describe("commit parent/worker owner contract", () => {
       id,
     });
   });
+  it("round trips the node process owner", () => {
+    expect(parseCommitLeaseOwner(nodeProcessCommitLeaseOwner(id))).toEqual({
+      kind: "node-commit",
+      id,
+    });
+  });
   it.each([
-    `node-commit:${id}`,
+    `node-audit:${id}`,
+    `audit:${id}`,
     "commit:test",
     `commit:${id}suffix`,
     undefined,
@@ -24,5 +32,6 @@ describe("commit parent/worker owner contract", () => {
   });
   it("refuses constructing an unparseable parent owner", () => {
     expect(() => commitLeaseOwner("test")).toThrow("UUID v4");
+    expect(() => nodeProcessCommitLeaseOwner("test")).toThrow("UUID v4");
   });
 });

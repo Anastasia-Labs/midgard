@@ -1,4 +1,7 @@
-import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import {
+  DaPayloadEnvelopeError,
+  unwrapDaPayload,
+} from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS,
@@ -10,8 +13,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { DaPayloadRecord } from "../../domain.js";
 import { hexToBytes, normalizeHex } from "../../utils/hex.js";
 import {
-  DaLibp2pPayloadProtocolError,
   localPayloadStatus,
+  metadataAbsentResponse,
   rootSummaryHash,
 } from "./payload-protocols.validate-limits.js";
 
@@ -21,17 +24,28 @@ export const metadataForPayload = async (
   payloadBytes: Buffer,
   record: DaPayloadRecord,
 ): Promise<DaMetadataByHeaderResponse> => {
-  if (record.payloadSchemaVersion !== Number(SDK.DA_PAYLOAD_VERSION)) {
-    throw new DaLibp2pPayloadProtocolError(
-      "stored payload schema version is not canonical V1",
-    );
-  }
-  await unwrapDaPayload(payloadBytes, {
-    maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
-  });
   // Metadata establishes only that the retained bytes are a valid bounded
   // outer envelope.  Inner DA parsing and header/root validation stay in the
   // watcher so a fetched record cannot be mistaken for a verified payload.
+  // Bytes that fail either check are answered as rejected, never by aborting
+  // the stream.
+  const unservable = metadataAbsentResponse(headerHash, {
+    kind: "invalid",
+    reasonCode: "stored_payload_bytes_malformed",
+  });
+  if (record.payloadSchemaVersion !== Number(SDK.DA_PAYLOAD_VERSION)) {
+    return unservable;
+  }
+  try {
+    await unwrapDaPayload(payloadBytes, {
+      maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+    });
+  } catch (cause) {
+    if (cause instanceof DaPayloadEnvelopeError) {
+      return unservable;
+    }
+    throw cause;
+  }
   return {
     status: "found",
     headerHash,

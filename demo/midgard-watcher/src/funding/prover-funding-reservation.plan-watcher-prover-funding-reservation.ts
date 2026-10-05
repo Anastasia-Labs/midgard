@@ -121,8 +121,19 @@ export const planWatcherProverFundingReservation = (input: {
   readonly decisionDigest: string;
   readonly walletAddress: string;
   readonly utxos: readonly UTxO[];
+  readonly selectionCalculation?: WatcherRuntimeProverFundingCalculation;
+  /** Kept as funding when other collateral suffices. */
+  readonly avoidCollateralOutRefs?: readonly string[];
 }): WatcherProverFundingReservationPlan => {
   const identity = reservationIdentity(input);
+  const selection = input.selectionCalculation ?? input.calculation;
+  assertWatcherRuntimeProverFundingCalculation(selection);
+  if (
+    selection.deploymentFingerprint !== identity.deploymentFingerprint ||
+    selection.fundingPaymentKeyHash !== identity.fundingPaymentKeyHash ||
+    selection.economicsPolicyDigest !== input.calculation.economicsPolicyDigest
+  )
+    throw new Error("prover funding selection changed reservation authority");
   const seen = new Set<string>();
   const candidates: Candidate[] = [];
   for (const utxo of input.utxos) {
@@ -134,9 +145,7 @@ export const planWatcherProverFundingReservation = (input: {
     seen.add(candidate.outRef);
     candidates.push(candidate);
   }
-  const maximumCollateralInputs = Number(
-    input.calculation.maximumCollateralInputs,
-  );
+  const maximumCollateralInputs = Number(selection.maximumCollateralInputs);
   if (
     !Number.isSafeInteger(maximumCollateralInputs) ||
     maximumCollateralInputs < 1
@@ -144,18 +153,29 @@ export const planWatcherProverFundingReservation = (input: {
     throw new Error("prover funding maximum collateral inputs is invalid");
   }
   const collateralRequired = [
-    input.calculation.collateralFloorLovelace,
-    input.calculation.maximumCollateralLovelace,
-    input.calculation.maximumSlashCollateralLovelace,
+    selection.collateralFloorLovelace,
+    selection.maximumCollateralLovelace,
+    selection.maximumSlashCollateralLovelace,
   ].reduce((maximum, value) => {
     const required = BigInt(value);
     return required > maximum ? required : maximum;
   }, 0n);
-  const collateral = selectCollateral({
-    candidates,
-    required: collateralRequired,
-    maximumInputs: maximumCollateralInputs,
-  });
+  const avoided = new Set(input.avoidCollateralOutRefs ?? []);
+  const collateralFrom = (pool: readonly Candidate[]) =>
+    selectCollateral({
+      candidates: pool,
+      required: collateralRequired,
+      maximumInputs: maximumCollateralInputs,
+    });
+  let collateral: readonly Candidate[];
+  try {
+    collateral = collateralFrom(
+      candidates.filter(({ outRef }) => !avoided.has(outRef)),
+    );
+  } catch (error) {
+    if (!(error instanceof WatcherProverFundingUnavailableError)) throw error;
+    collateral = collateralFrom(candidates);
+  }
   const collateralOutRefs = new Set(
     collateral.map((candidate) => candidate.outRef),
   );

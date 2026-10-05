@@ -248,6 +248,13 @@ export const submitSpeculativeCandidateOnConfirmation = (
     );
   });
 
+/**
+ * How often an idle speculative wake loop refreshes its heartbeat. A loop
+ * whose heartbeat is older than this plus its longest pass is stuck in a
+ * pass, not waiting for a wake.
+ */
+export const SPECULATIVE_WAKE_HEARTBEAT_MS = 30_000;
+
 export const speculativeCommitBuilderFiber: Effect.Effect<
   void,
   never,
@@ -290,10 +297,12 @@ export const speculativeCommitBuilderFiber: Effect.Effect<
     }
   }
   while (true) {
+    yield* Ref.set(globals.HEARTBEAT_SPECULATIVE_COMMIT_BUILDER, Date.now());
     const baseHeaderHash = yield* Queue.take(
       globals.SPECULATIVE_BUILD_WAKE_QUEUE,
-    );
-    yield* runSpeculativeCommitBuilderOnce(baseHeaderHash).pipe(
+    ).pipe(Effect.timeoutOption(SPECULATIVE_WAKE_HEARTBEAT_MS));
+    if (Option.isNone(baseHeaderHash)) continue;
+    yield* runSpeculativeCommitBuilderOnce(baseHeaderHash.value).pipe(
       Effect.catchAllCause(Effect.logWarning),
     );
   }
@@ -312,8 +321,12 @@ export const speculativeCommitSubmitterFiber: Effect.Effect<
   const globals = yield* Globals;
   yield* Effect.logInfo("🟦 Speculative commit submitter wake fiber started.");
   while (true) {
-    const wake = yield* Queue.take(globals.COMMIT_SUBMIT_WAKE_QUEUE);
-    yield* submitSpeculativeCandidateOnConfirmation(wake).pipe(
+    yield* Ref.set(globals.HEARTBEAT_SPECULATIVE_COMMIT_SUBMITTER, Date.now());
+    const wake = yield* Queue.take(globals.COMMIT_SUBMIT_WAKE_QUEUE).pipe(
+      Effect.timeoutOption(SPECULATIVE_WAKE_HEARTBEAT_MS),
+    );
+    if (Option.isNone(wake)) continue;
+    yield* submitSpeculativeCandidateOnConfirmation(wake.value).pipe(
       Effect.catchAllCause(Effect.logWarning),
     );
   }

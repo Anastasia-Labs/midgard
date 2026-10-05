@@ -1,8 +1,15 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { mkdir, open, readdir, readFile, realpath } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, unlink } from "node:fs/promises";
 import { isAbsolute, join, normalize } from "node:path";
 
 import { watcherCanonicalJson } from "../storage/durable-store.js";
+import {
+  isTornJsonRecord,
+  publishExclusiveFile,
+  removeStagedRecordFiles,
+  stagedRecordPath,
+  syncDirectory,
+} from "../storage/exclusive-record-file.js";
 
 export const WATCHER_FAULT_PROOF_QUEUE_RECORD =
   "midgard-watcher-production-fault-proof-queue-record-v1" as const;
@@ -112,6 +119,9 @@ export type WatcherFaultProofQueueJournal = Readonly<{
 const sha256 = (value: Uint8Array | string): string =>
   createHash("sha256").update(value).digest("hex");
 
+const recordName = (revision: bigint): string =>
+  `${revision.toString().padStart(20, "0")}.json`;
+
 const exactDirectory = async (path: string): Promise<string> => {
   if (
     !isAbsolute(path) ||
@@ -177,11 +187,27 @@ export const openWatcherFaultProofQueueJournal = async (input: {
   const states = new Map<string, QueueState>();
   let lastRecordSha256: string | null = null;
   let nextRevision = 0n;
+  await removeStagedRecordFiles(directory);
   const entries = await readdir(directory, { withFileTypes: true });
   entries.sort((left, right) => left.name.localeCompare(right.name));
   if (entries.length > MAXIMUM_RECORDS) {
     throw new Error("fault-proof queue journal exceeds its recovery bound");
   }
+  // Appends now stage every record, so only the earlier writer, which created
+  // the revision name before writing and fsyncing it, leaves a final record
+  // that is empty or not UTF-8 JSON when it is killed. That append never
+  // returned, and every caller changes its state only after the append
+  // returns, so replaying without the record gives the state a kill just
+  // before that call would have left. Drop it once every earlier record is
+  // admitted; a torn record that is not final still fails closed.
+  const finalEntry = entries.at(-1);
+  const tornFinal =
+    finalEntry !== undefined &&
+    finalEntry.isFile() &&
+    finalEntry.name === recordName(BigInt(entries.length - 1)) &&
+    isTornJsonRecord(await readFile(join(directory, finalEntry.name)))
+      ? entries.pop()!.name
+      : null;
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index]!;
     const match = RECORD_FILE.exec(entry.name);
@@ -196,7 +222,12 @@ export const openWatcherFaultProofQueueJournal = async (input: {
     if (bytes.byteLength === 0 || bytes.byteLength > MAXIMUM_RECORD_BYTES) {
       throw new Error("fault-proof queue journal record size is invalid");
     }
-    const parsed = JSON.parse(bytes.toString("utf8")) as QueueRecord;
+    let parsed: QueueRecord;
+    try {
+      parsed = JSON.parse(bytes.toString("utf8")) as QueueRecord;
+    } catch {
+      throw new Error("fault-proof queue journal record is malformed");
+    }
     const body = recordBody(parsed);
     const expectedMac = Buffer.from(mac(body), "hex");
     const claimedMac = Buffer.from(parsed.authenticationMac ?? "", "hex");
@@ -248,6 +279,10 @@ export const openWatcherFaultProofQueueJournal = async (input: {
     lastRecordSha256 = sha256(bytes);
     nextRevision += 1n;
   }
+  if (tornFinal !== null) {
+    await unlink(join(directory, tornFinal));
+    await syncDirectory(directory);
+  }
 
   let serial = Promise.resolve();
   const serialize = <T>(action: () => Promise<T>): Promise<T> => {
@@ -276,20 +311,15 @@ export const openWatcherFaultProofQueueJournal = async (input: {
     } as const;
     const record = Object.freeze({ ...body, authenticationMac: mac(body) });
     const bytes = Buffer.from(`${watcherCanonicalJson(record)}\n`, "utf8");
-    const name = `${nextRevision.toString().padStart(20, "0")}.json`;
-    const handle = await open(join(directory, name), "wx", 0o600);
-    try {
-      await handle.writeFile(bytes);
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    const directoryHandle = await open(directory, "r");
-    try {
-      await directoryHandle.sync();
-    } finally {
-      await directoryHandle.close();
-    }
+    // Linking a fsynced staging file fails with EEXIST when another writer
+    // already holds this revision, like an exclusive create, and never
+    // exposes a partial record under the revision name.
+    await publishExclusiveFile({
+      stagingPath: stagedRecordPath(directory),
+      path: join(directory, recordName(nextRevision)),
+      bytes,
+    });
+    await syncDirectory(directory);
     lastRecordSha256 = sha256(bytes);
     nextRevision += 1n;
   };

@@ -36,6 +36,7 @@ import { bindFamilyRecoveryFixture } from "./support/bound-family-recovery-fixtu
 import {
   customWorkflowRecoveryFixture as fixture,
   verifyCompletionHandoffRestart,
+  verifyTerminalRecoveryFinality,
 } from "./support/custom-workflow-recovery.js";
 
 const cases = [
@@ -106,19 +107,8 @@ for (const [spec, execute] of cases) {
       ),
     ).toBe(true);
   });
-  it(`${spec.category}: records completion after exact removal made the target absent`, async () => {
-    const f = await fixture(spec, true);
-    f.advance();
-    const result = await run(f);
-    expect(result.kind, "reason" in result ? result.reason : "unknown").toBe(
-      "completed",
-    );
-    expect(f.observeHeader).not.toHaveBeenCalled();
-    expect(f.capture).not.toHaveBeenCalled();
-    expect(f.built.submit).not.toHaveBeenCalled();
-    expect((await f.journal.load(f.workflowId)).at(-1)?.event.kind).toBe(
-      "completed",
-    );
+  it(`${spec.category}: retains shallow inclusion and completes beyond the recovery horizon`, async () => {
+    await verifyTerminalRecoveryFinality(await fixture(spec, true), run);
   });
   it(`${spec.category}: resumes the exact terminal handoff after funding release precedes journal completion`, async () => {
     await verifyCompletionHandoffRestart(await fixture(spec, true), run);

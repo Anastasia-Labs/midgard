@@ -335,3 +335,63 @@ describe("terminalRetentionOutcomesV1", () => {
     },
   );
 });
+
+describe("confirmation admission and strict recovery retirement", () => {
+  it.each([13, 2161, 2162])(
+    "keeps replay until inclusive checkpoint depth %i",
+    (inclusiveDepth) => {
+      const prior = record(h28("1"), outRef("1", 0));
+      const initial = [
+        { headerHash: null, outRef: outRef("0", 0) },
+        { headerHash: prior.headerHash, outRef: prior.stateQueueOutRef },
+      ];
+      const checkpoint = merge(1, initial, inclusiveDepth);
+      const observation = terminalRetentionOutcomes(
+        [prior],
+        [],
+        [checkpoint],
+        snapshot(prior.headerHash, checkpoint.nextQueue[0]!.outRef),
+        {
+          ...config(initial),
+          finalityDepth: 12,
+          automaticRecoveryMaxDepth: 2160,
+        },
+      );
+      // Admission remains at confirmation depth; retained replay refreshes the
+      // exact transition's depth on later scans, including after restart.
+      expect(observation.records[0]).toMatchObject({
+        status: "merged",
+        finalized: true,
+        observedChainPoint: { depth: inclusiveDepth - 1 },
+      });
+      expect(observation.finalSteps.has(prior.headerHash)).toBe(true);
+      expect(observation.finalAnchor?.blockNo).toBe(
+        inclusiveDepth > 2161 ? checkpoint.blockNo : undefined,
+      );
+    },
+  );
+});
+
+describe("retained terminal authority after restart", () => {
+  it("reports a provisional terminal whose checkpoint fell behind the replay anchor", () => {
+    const prior = {
+      ...record(h28("1"), outRef("1", 0)),
+      status: "merged" as const,
+      finalized: true,
+      observedChainPoint: { ...point(1, 12), finalized: true },
+    };
+    const observation = terminalRetentionOutcomes(
+      [prior],
+      [],
+      [],
+      snapshot(h28("2"), outRef("0", 0)),
+      {
+        ...config([{ headerHash: null, outRef: outRef("0", 0) }]),
+        finalityDepth: 12,
+        automaticRecoveryMaxDepth: 2160,
+      },
+    );
+    expect(observation.recoveryProofUnavailable).toBe(true);
+    expect(observation.records[0]).toEqual(prior);
+  });
+});

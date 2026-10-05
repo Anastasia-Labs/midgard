@@ -3,6 +3,10 @@
 import { loadRuntimeConfig } from "@al-ft/midgard-core/runtime-config";
 
 import {
+  isWatcherPermanentRefusal,
+  WATCHER_PERMANENT_REFUSAL_EXIT_CODE,
+} from "./runtime/permanent-refusal.js";
+import {
   runWatcherCommand,
   WATCHER_COMMAND_FAILURE_EXIT_CODE,
   WATCHER_PACKAGE_NAME,
@@ -12,12 +16,19 @@ import {
 const USAGE = `${WATCHER_PACKAGE_NAME}
 
 Usage:
+  midgard-watcher authority-init --config /absolute/path/authority.json --generation generation-UUID
   midgard-watcher authority --config /absolute/path/authority.json
   midgard-watcher start --config /absolute/path/watcher-process.json
   midgard-watcher replay --config /absolute/path/watcher-process.json
 `;
 
 type ParsedArguments =
+  | Readonly<{
+      kind: "initialize";
+      command: "authority-init";
+      configPath: string;
+      generation: string;
+    }>
   | Readonly<{ kind: "command"; command: WatcherCommand; configPath: string }>
   | Readonly<{ kind: "help" }>
   | Readonly<{ kind: "invalid"; reason: string }>;
@@ -40,6 +51,15 @@ export const watcherFailureCauses = (error: unknown) => {
   return causes;
 };
 
+/**
+ * A refusal no restart can clear exits with its own code, so a supervisor can
+ * stop restarting on it; every other failure keeps exit code 70.
+ */
+export const watcherFailureExitCode = (error: unknown): number =>
+  isWatcherPermanentRefusal(error)
+    ? WATCHER_PERMANENT_REFUSAL_EXIT_CODE
+    : WATCHER_COMMAND_FAILURE_EXIT_CODE;
+
 export const parseWatcherArguments = (
   arguments_: readonly string[],
 ): ParsedArguments => {
@@ -50,6 +70,23 @@ export const parseWatcherArguments = (
     return { kind: "help" };
   }
   const [command, flag, configPath] = arguments_;
+  if (
+    arguments_.length === 5 &&
+    command === "authority-init" &&
+    flag === "--config" &&
+    typeof configPath === "string" &&
+    configPath.length > 0 &&
+    arguments_[3] === "--generation" &&
+    typeof arguments_[4] === "string" &&
+    arguments_[4].length > 0
+  ) {
+    return {
+      kind: "initialize",
+      command,
+      configPath,
+      generation: arguments_[4],
+    };
+  }
   if (
     arguments_.length === 3 &&
     ["authority", "start", "replay"].includes(command ?? "") &&
@@ -88,6 +125,19 @@ export const main = async (arguments_: readonly string[]): Promise<number> => {
   }
   try {
     loadRuntimeConfig();
+    if (parsed.kind === "initialize") {
+      const { initializeWatcherTrustedHeadAuthorityCommand } = await import(
+        "./runtime/trusted-head-initialization-command.js"
+      );
+      const result = await initializeWatcherTrustedHeadAuthorityCommand(
+        parsed.configPath,
+        parsed.generation,
+      );
+      process.stdout.write(
+        `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, command: parsed.command, state: "initialized", productionReady: false, ...result })}\n`,
+      );
+      return 0;
+    }
     return await runWatcherCommand(parsed.command, parsed.configPath, {
       writeOutput: (text) => process.stdout.write(text),
       writeError: (text) => process.stderr.write(text),
@@ -99,13 +149,14 @@ export const main = async (arguments_: readonly string[]): Promise<number> => {
         command: parsed.command,
         state: "failed_closed",
         productionReady: false,
+        permanentRefusal: isWatcherPermanentRefusal(error),
         error:
           error instanceof Error ? error.message : "unknown production failure",
         errorStack: error instanceof Error ? error.stack : undefined,
         errorCauses: watcherFailureCauses(error),
       })}\n`,
     );
-    return WATCHER_COMMAND_FAILURE_EXIT_CODE;
+    return watcherFailureExitCode(error);
   }
 };
 
@@ -113,4 +164,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   process.exitCode = await main(process.argv.slice(2));
 }
 
-export { WATCHER_COMMAND_FAILURE_EXIT_CODE };
+export {
+  WATCHER_COMMAND_FAILURE_EXIT_CODE,
+  WATCHER_PERMANENT_REFUSAL_EXIT_CODE,
+};

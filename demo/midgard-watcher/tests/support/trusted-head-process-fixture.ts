@@ -1,14 +1,37 @@
 import { fork } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { build } from "esbuild";
 
+import {
+  decodeWatcherAuthenticationKey32,
+  loadWatcherSecretText,
+} from "../../src/runtime/process-config.js";
+import { initializeSelectedAuthorityStore } from "../../src/runtime/trusted-head-authority.js";
 import type { startWatcherTrustedHeadAuthorityProcess } from "../../src/runtime/trusted-head-runtime.js";
 
 type Input = Parameters<typeof startWatcherTrustedHeadAuthorityProcess>[0];
 const supportDirectory = dirname(fileURLToPath(import.meta.url));
+
+/** Explicit test-only provisioning, separate from ordinary runtime startup. */
+export const provisionWatcherTrustedHeadAuthorityFixture = async (
+  input: Input,
+): Promise<void> => {
+  const recordText = await loadWatcherSecretText(
+    input.config.recordAuthenticationKeySource,
+    input.unsafeEnvironmentForTest,
+  );
+  await initializeSelectedAuthorityStore({
+    directory: input.config.directory,
+    policy: input.config.policy,
+    recordAuthenticationKey: decodeWatcherAuthenticationKey32(recordText),
+    liveRecordLimit: input.config.liveRecordLimit,
+    generation: `generation-${randomUUID()}`,
+  });
+};
 
 /** Runs the current authority source on its own event loop, as the deployed sidecar does. */
 export const startWatcherTrustedHeadAuthorityChildForTest = async (
@@ -155,4 +178,35 @@ export const startWatcherTrustedHeadAuthorityChildForTest = async (
     await close();
     throw error;
   }
+};
+
+/** Explicitly provisioned, synthetic authority for the published emulator journey. */
+export const startPublishedWatcherJourneyAuthorityFixture = async (input: {
+  directory: string;
+  policy: Input["config"]["policy"];
+}) => {
+  const processInput: Input = {
+    config: {
+      schemaVersion: "midgard-watcher-trusted-head-authority-process-config-v1",
+      directory: input.directory,
+      liveRecordLimit: 8,
+      endpoint: "http://127.0.0.1:0",
+      policy: input.policy,
+      recordAuthenticationKeySource: {
+        kind: "environment",
+        variable: "MIDGARD_TEST_RECORD_KEY",
+      },
+      httpBearerSecretSource: {
+        kind: "environment",
+        variable: "MIDGARD_WATCHER_TRUSTED_HEAD_BEARER",
+      },
+    },
+    unsafeEnvironmentForTest: {
+      MIDGARD_TEST_RECORD_KEY: "5c".repeat(32),
+      MIDGARD_WATCHER_TRUSTED_HEAD_BEARER: "39".repeat(32),
+    },
+    unsafeAllowEphemeralPortForTest: true,
+  };
+  await provisionWatcherTrustedHeadAuthorityFixture(processInput);
+  return await startWatcherTrustedHeadAuthorityChildForTest(processInput);
 };

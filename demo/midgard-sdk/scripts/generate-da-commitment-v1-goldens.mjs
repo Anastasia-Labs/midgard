@@ -119,7 +119,7 @@ const VECTOR_SHAPES = [
     responseGeometry: DEPLOYED_GEOMETRY,
     outputIndex: 0n,
     openedAt: 1_790_000_000_000n,
-    responseWindow: 720_000n,
+    responseWindow: 880_000n,
   },
   {
     label: "tranches_16",
@@ -128,7 +128,7 @@ const VECTOR_SHAPES = [
     responseGeometry: DEPLOYED_GEOMETRY,
     outputIndex: 24n,
     openedAt: 1_790_000_600_000n,
-    responseWindow: 840_000n,
+    responseWindow: 880_000n,
   },
   {
     label: "tranches_64",

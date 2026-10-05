@@ -117,6 +117,12 @@ export type ObservedL1Transaction = {
 export type ObservedL1TransactionAtPoint = ObservedL1Transaction & {
   readonly blockPoint: L1ChainPoint & { readonly blockNo: number };
   readonly transactionIndex: number;
+  /** Selected-chain tip from the same chain-sync response carrying this block. */
+  readonly selectedChainTip?: {
+    readonly id: string;
+    readonly slot: number;
+    readonly height: number;
+  };
   /** The raw transaction, when Ogmios serves it (`--include-transaction-cbor`). */
   readonly transactionCbor?: string;
 };

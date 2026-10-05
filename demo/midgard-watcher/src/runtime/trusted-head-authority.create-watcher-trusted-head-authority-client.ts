@@ -13,6 +13,7 @@ import {
   MAX_REQUEST_BYTES,
   parseJson,
   sameHead,
+  TrustedHeadAuthorityUnavailableError,
   TrustedHeadCallerError,
   type WatcherTrustedHeadAuthorityStore,
 } from "./trusted-head-authority.exact-record.js";
@@ -125,20 +126,21 @@ export const startWatcherTrustedHeadAuthorityServer = async (input: {
           replyJson(response, 400, { error: "invalid_request" });
           return;
         }
-        const committed = await input.store.compareAndSwap({
+        const result = await input.store.compareAndSwap({
           expectedTrustedHead: body.expectedTrustedHead,
           nextTrustedHead: body.nextTrustedHead,
         });
-        replyJson(response, committed ? 200 : 409, {
-          committed,
-          head: await input.store.readCurrent(),
-        });
+        replyJson(response, result.committed ? 200 : 409, result);
         return;
       }
       replyJson(response, 404, { error: "not_found" });
     } catch (error) {
       if (error instanceof TrustedHeadCallerError) {
         replyJson(response, 400, { error: "invalid_request" });
+      } else if (error instanceof TrustedHeadAuthorityUnavailableError) {
+        // Transient: the store recovered its handle and the caller holds
+        // readiness and reconciles.
+        replyJson(response, 503, { error: "unavailable" });
       } else {
         replyJson(response, 500, { error: "persistence_failure" });
       }
@@ -169,6 +171,22 @@ export const startWatcherTrustedHeadAuthorityServer = async (input: {
       ),
   });
 };
+
+/** Connection failures before the request reached the authority. */
+const CONNECT_FAILURE_CODES: ReadonlySet<string> = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
+/** Transport loss after the request may have reached the authority. */
+const IN_FLIGHT_LOSS_CODES: ReadonlySet<string> = new Set([
+  "UND_ERR_SOCKET",
+  "ECONNRESET",
+  "EPIPE",
+]);
 
 export const createWatcherTrustedHeadAuthorityClient = (input: {
   readonly endpoint: string;
@@ -215,18 +233,31 @@ export const createWatcherTrustedHeadAuthorityClient = (input: {
         return value;
       } catch (error) {
         const cause = error instanceof TypeError ? error.cause : undefined;
+        const code =
+          cause instanceof Error &&
+          "code" in cause &&
+          typeof cause.code === "string"
+            ? cause.code
+            : undefined;
+        // A listener that is down (a restarting authority) never saw the
+        // request, so it is waited for until the deadline. A connection lost
+        // in flight keeps its three-attempt bound.
+        const transient =
+          code !== undefined &&
+          (CONNECT_FAILURE_CODES.has(code) ||
+            (attempt < 2 && IN_FLIGHT_LOSS_CODES.has(code)));
         if (
           init !== undefined ||
-          attempt >= 2 ||
           signal.aborted ||
           (response !== undefined && !response.ok) ||
-          !(cause instanceof Error) ||
-          !("code" in cause) ||
-          typeof cause.code !== "string" ||
-          !["UND_ERR_SOCKET", "ECONNRESET", "EPIPE"].includes(cause.code)
+          !transient
         )
           throw error;
-        await retryDelay(100 * 2 ** attempt, undefined, { signal });
+        await retryDelay(Math.min(100 * 2 ** attempt, 1_000), undefined, {
+          signal,
+        }).catch(() => {
+          throw error;
+        });
       }
     }
   };

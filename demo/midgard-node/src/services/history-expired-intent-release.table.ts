@@ -4,14 +4,28 @@ import { SqlClient } from "@effect/sql";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  CANONICAL_COVERAGE_UNAVAILABLE,
+  loadCanonicalHistoryCoverage,
+} from "../database/eventHistoryCanonicalCoverage.js";
+import type { Checkpoint } from "../database/eventHistoryJournal.js";
 import * as Pending from "../database/pendingBlockFinalizations.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { type EventHistorySourceBinding } from "../l1-event-history-source.js";
 import type { HistoryOwnerChange } from "./event-history-owner.js";
 import {
+  type BaseSpend,
+  describeBaseSpend,
+  type JournalBase,
+  scanBaseSpend,
+} from "./history-expired-intent-release.base-spend.js";
+import { UNLANDED_STATUSES } from "./state-queue-correction-recovery.js";
+import {
   loadStateQueueCorrectionObserverState,
   type StateQueueCorrectionRewindAuthority,
 } from "./state-queue-correction-rewind.js";
+
+export { UNLANDED_STATUSES };
 
 /**
  * Reconciliation of a signed commit that missed its validity window, by the
@@ -28,10 +42,15 @@ import {
  * authenticated, exact-point view of the queue bound to the canonical
  * checkpoint it has journaled, with native recovery plans and generation
  * fencing; it also runs at startup before hydration and the local job gate.
- * The confirmation worker only defers to it. Once the observed head slot has
+ * The confirmation worker only defers to it. Once E cannot land on the
+ * current chain, authenticated evidence decides: the observed head slot has
  * reached the signed commit's TTL (its exclusive validity upper bound, so E
- * can never be included in any later block of this chain), authenticated
- * evidence decides. Evidence bound to the checkpoint decides first (the
+ * can never be included in any later block of this chain), or, before it, the
+ * journaled canonical history shows D's output spent by another transaction
+ * or a replaced sibling's commit included (see
+ * `history-expired-intent-release.base-spend`). Before the TTL, evidence that
+ * does not decide leaves the gate open until the TTL or a rollback, instead
+ * of holding it closed. Evidence bound to the checkpoint decides first (the
  * exact-point queue and the canonical history the owner journaled); the
  * correction observer's persisted view of every state-queue removal
  * (corrections and merges, pending or admitted), which is not bound to the
@@ -54,8 +73,10 @@ import {
  *    view changes, since it may be retracted. Without a journal of D nothing
  *    else ever resolves E, and the correction consumed the node E spends: E
  *    is replaced.
- *  - D's `next` is still empty, or holds a block that is not this node's
- *    replaced sibling of E (a foreign block): E is replaced. Its journal is
+ *  - D's `next` is still empty (on a later incarnation of D's node when its
+ *    output was spent in place), or holds a block that is not this node's
+ *    replaced sibling of E (a foreign block): E is replaced, and its
+ *    replacement builds on the node now on the queue. Its journal is
  *    abandoned under its replacement digest, its local-finalization job row
  *    and lease are retired, every member is reopened, the native root and SQL
  *    marker return to its base; the commit worker then builds anew.
@@ -90,13 +111,18 @@ import {
  *    before the observer first ran), a foreign block took that slot, and two
  *    or more merges passed it before this decision.
  *  - Anything else (another own block of a different kind in D's slot, D's
- *    successor node absent) keeps the gate closed and says why.
- * A signed commit is never replaced before its TTL, and never on wall-clock
- * time or queue absence alone. With E's replacement plan already retained, a
- * landed E discards it (after replaying E natively when the plan was prepared
- * from E's candidate root, so its rewind may have run), and a deferral to the
- * correction path resumes it instead, since the correction path waits for
- * every retained plan.
+ *    successor node absent) keeps the gate closed and says why (before the
+ *    TTL, leaves it open until the TTL).
+ * By the owner ruling "replace an intent once it can't land on the current
+ * chain", a signed commit is replaced once the observed head is past its TTL
+ * or its base output is already spent by something else, and never on
+ * wall-clock time. The abandoned journal keeps its signed content, bounded by
+ * the rollback horizon, so a rollback that lands it revives it (the reviver
+ * reads siblings on any incarnation of the same base). With E's replacement
+ * plan already retained, a landed E discards it (after replaying E natively
+ * when the plan was prepared from E's candidate root, so its rewind may have
+ * run), and a deferral to the correction path resumes it instead, since the
+ * correction path waits for every retained plan.
  *
  * With no journal active, a replaced block of this node can still win its
  * base's slot (it landed late, or a rollback brought it back);
@@ -119,13 +145,14 @@ export const ROOT_TAIL_HEADER_HASH = Buffer.alloc(28);
 export const REPLACEMENT_EVIDENCE_DOMAIN =
   "midgard-signed-intent-replacement-evidence-v1";
 
-/** Active journal statuses that record no L1 observation of the commit. */
-export const UNLANDED_STATUSES: readonly Pending.Status[] = [
-  Pending.Status.PendingSubmission,
-  Pending.Status.SubmittedLocalFinalizationPending,
-  Pending.Status.SubmittedUnconfirmed,
-];
-
+/** The statuses of the one active journal. Its unlanded statuses include
+ * submitted_unconfirmed, which no production code writes any more (its only
+ * writer, `markLocalFinalizationComplete`, has no caller; pinned by
+ * history-expired-intent-release-submitted-unconfirmed.test.ts): only a row
+ * persisted by an earlier version reads it, and the release reopens it as a
+ * locally finalized journal (its withdrawals' ledger effects restored, see
+ * `reincludeStateQueueCorrectedBlocks`). The fatal guard that once refused it is gone, so a new
+ * writer must re-establish that it is safe to replace. */
 const ACTIVE_STATUSES: readonly Pending.Status[] = [
   ...UNLANDED_STATUSES,
   Pending.Status.ObservedWaitingStability,
@@ -154,6 +181,7 @@ type ActiveSignedIntent = Readonly<{
   status: Pending.Status;
   signedTxCbor: Buffer;
   intendedTxHash: Buffer;
+  base: JournalBase;
 }>;
 
 /** The node's single active journal when it holds a signed intent and records
@@ -165,7 +193,11 @@ export const activeSignedIntent = Effect.gen(function* () {
     status: Pending.Status;
     signed_tx_cbor: Buffer | null;
     intended_tx_hash: Buffer | null;
-  }>`SELECT header_hash, status, signed_tx_cbor, intended_tx_hash
+    base_tail_out_ref: string;
+    base_tail_header_hash: Buffer;
+    base_utxos_root: string;
+  }>`SELECT header_hash, status, signed_tx_cbor, intended_tx_hash,
+      base_tail_out_ref, base_tail_header_hash, base_utxos_root
     FROM pending_block_finalizations WHERE status IN ${sql.in(ACTIVE_STATUSES)}`;
   if (rows.length !== 1) return undefined;
   const row = rows[0]!;
@@ -180,8 +212,55 @@ export const activeSignedIntent = Effect.gen(function* () {
     status: row.status,
     signedTxCbor: row.signed_tx_cbor,
     intendedTxHash: row.intended_tx_hash,
+    base: {
+      outRef: row.base_tail_out_ref,
+      headerHash: row.base_tail_header_hash,
+      utxosRoot: row.base_utxos_root,
+    },
   } satisfies ActiveSignedIntent;
 });
+
+/** How deep the checkpoint's journaled canonical chain holds a transaction:
+ * `of(txHash)` counts the blocks from the checkpoint head down to and
+ * including the block that holds it as a valid (input-spending) transaction,
+ * or is undefined when the retained coverage does not hold it. The coverage
+ * is the complete, gap-free canonical chain of its last `retained` blocks up
+ * to the head, so a transaction known to be canonical at the head but absent
+ * from it lies deeper than `retained`. */
+export type CanonicalDepth = Readonly<{
+  of: (txHash: string) => bigint | undefined;
+  retained: bigint;
+}>;
+
+/** The canonical depth evidence of `checkpoint`, read in the source owner's
+ * transaction as `loadCanonicalHistoryCoverage` requires. Unavailable
+ * coverage is no evidence (undefined); any other failure fails the attempt,
+ * which recovery retries. */
+export const canonicalDepth = (
+  binding: EventHistorySourceBinding,
+  checkpoint: Checkpoint,
+) =>
+  loadCanonicalHistoryCoverage(binding, checkpoint).pipe(
+    Effect.map((coverage): CanonicalDepth | undefined => {
+      const head = BigInt(coverage.head.height);
+      const heights = new Map<string, bigint>();
+      for (const block of coverage.blocks)
+        for (const tx of block.transactions)
+          if (tx.spends === "inputs")
+            heights.set(tx.txHash, BigInt(block.point.height));
+      const of = (txHash: string) => {
+        const height = heights.get(txHash);
+        return height === undefined ? undefined : head - height + 1n;
+      };
+      return { of, retained: head - BigInt(coverage.start.height) + 1n };
+    }),
+    Effect.catchIf(
+      (cause) =>
+        cause instanceof DatabaseError &&
+        cause.message === CANONICAL_COVERAGE_UNAVAILABLE,
+      () => Effect.succeed(undefined),
+    ),
+  );
 
 /** Whether any journal is active, landed or not. */
 export const anyActiveJournal = Effect.gen(function* () {
@@ -215,17 +294,26 @@ export const reportOnce = (key: string, message: string | undefined) =>
  * without a change of that view or a rollback, the same evidence decides the
  * same way, so nothing is captured again). `revival`: the replaced blocks and
  * source point at which no authenticated evidence showed one of them holding
- * its base's slot. Owned by one history runtime: a restart starts empty. */
+ * its base's slot. `beforeTtl`: the transactions whose base-spend evidence,
+ * before the intent's TTL, reconciliation declined; that evidence does not
+ * reopen it before the TTL or a rollback, while other evidence still does.
+ * `scanned`: the source height to which the canonical history holds no
+ * base-spend evidence for the intent, so a forward change scans only the
+ * blocks it adds. Owned by one history runtime: a restart starts empty. */
 export type SignedIntentDeferral = {
   current: string | undefined;
   untilObserved: string | undefined;
   revival: string | undefined;
+  beforeTtl: Readonly<{ key: string; declined: Set<string> }> | undefined;
+  scanned: string | undefined;
 };
 
 export const makeSignedIntentDeferral = (): SignedIntentDeferral => ({
   current: undefined,
   untilObserved: undefined,
   revival: undefined,
+  beforeTtl: undefined,
+  scanned: undefined,
 });
 
 /** The correction observer's persisted view, named by its state digest (or
@@ -244,6 +332,24 @@ export const observerFingerprint = (
 export const deferredUntilObserved = (key: string, fingerprint: string) =>
   `${key}#${fingerprint}`;
 
+/** Records `spend` as declined before the TTL for the intent `key`. */
+export const deferBeforeTtl = (
+  deferral: SignedIntentDeferral,
+  key: string,
+  spend: BaseSpend,
+) => {
+  if (deferral.beforeTtl?.key !== key)
+    deferral.beforeTtl = { key, declined: new Set() };
+  deferral.beforeTtl.declined.add(spend.txHash);
+};
+
+/** The transactions whose evidence was declined before the TTL for `key`. */
+export const declinedBeforeTtl = (
+  deferral: SignedIntentDeferral,
+  key: string,
+): ReadonlySet<string> =>
+  deferral.beforeTtl?.key === key ? deferral.beforeTtl.declined : new Set();
+
 export const deferralKey = (intent: {
   readonly headerHash: Buffer;
   readonly intendedTxHash: Buffer;
@@ -251,13 +357,17 @@ export const deferralKey = (intent: {
   `${intent.headerHash.toString("hex")}:${intent.intendedTxHash.toString("hex")}`;
 
 /** Forward-append and resume disposition: pending exactly when the active
- * signed intent's TTL has been reached at this checkpoint, so the gate closes
- * and recovery reconciles its base's state-queue slot. Before the TTL the
- * normal confirmation path stays in charge, and after a deferral to the
- * correction path (its base was removed) it stays open until a rollback, and
- * after a deferral to the correction observer until its view changes. SQL
- * only; the reason is stable while the journal is unchanged, so the owner's
- * retry backoff applies. */
+ * signed intent cannot land at this checkpoint (its TTL has been reached, or
+ * the canonical history shows its base output spent by another transaction
+ * or a replaced sibling's commit included), so the gate closes and recovery
+ * reconciles its base's state-queue slot. Otherwise the normal confirmation
+ * path stays in charge; after a deferral to the correction path (its base
+ * was removed) it stays open until a rollback, after a deferral to the
+ * correction observer until its view changes, and after base-spend evidence
+ * that decided nothing before the TTL until other evidence, the TTL or a
+ * rollback. SQL only (a forward change scans only the blocks it adds); the
+ * reason is stable while the journal is unchanged, so the owner's retry
+ * backoff applies. */
 export const expiredIntentReleaseDisposition = (input: {
   readonly binding: EventHistorySourceBinding;
   readonly change: HistoryOwnerChange;
@@ -271,6 +381,8 @@ export const expiredIntentReleaseDisposition = (input: {
       input.deferral.current = undefined;
       input.deferral.untilObserved = undefined;
       input.deferral.revival = undefined;
+      input.deferral.beforeTtl = undefined;
+      input.deferral.scanned = undefined;
     }
     const intent = yield* activeSignedIntent;
     if (intent === undefined) return undefined;
@@ -293,10 +405,34 @@ export const expiredIntentReleaseDisposition = (input: {
         ? `Signed commit intent of block ${header} does not decode to a transaction with a finite validity upper bound; it is never replaced and stays fail-closed.`
         : undefined,
     );
-    if (ttl === undefined || BigInt(input.change.after.head.slot) < ttl)
+    if (ttl === undefined) return undefined;
+    const head = input.change.after.head;
+    if (BigInt(head.slot) >= ttl)
+      return {
+        status: "pending" as const,
+        reason: `Signed commit ${intent.intendedTxHash.toString("hex")} of block ${header} reached its validity upper bound (TTL slot ${ttl.toString()}) unobserved; whichever block holds its base's state-queue slot must be reconciled`,
+      };
+    const scannedTo =
+      input.change.kind === "forward" &&
+      input.deferral.scanned ===
+        `${key}@${input.change.before.head.height.toString()}`
+        ? input.change.before.head.height
+        : -1;
+    const spend = yield* scanBaseSpend({
+      binding: input.binding,
+      headerHash: intent.headerHash,
+      intendedTxHash: intent.intendedTxHash,
+      base: intent.base,
+      fromHeight: scannedTo,
+      toHeight: head.height,
+      declined: declinedBeforeTtl(input.deferral, key),
+    });
+    if (spend === undefined) {
+      input.deferral.scanned = `${key}@${head.height.toString()}`;
       return undefined;
+    }
     return {
       status: "pending" as const,
-      reason: `Signed commit ${intent.intendedTxHash.toString("hex")} of block ${header} reached its validity upper bound (TTL slot ${ttl.toString()}) unobserved; whichever block holds its base's state-queue slot must be reconciled`,
+      reason: `Signed commit ${intent.intendedTxHash.toString("hex")} of block ${header} cannot land before its TTL slot ${ttl.toString()}: ${describeBaseSpend(spend, intent.base.outRef)}; whichever block holds its base's state-queue slot must be reconciled`,
     };
   });

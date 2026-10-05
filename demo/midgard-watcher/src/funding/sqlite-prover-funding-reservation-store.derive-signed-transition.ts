@@ -5,6 +5,7 @@ import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deploym
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
 import { watcherCanonicalJson } from "../storage/durable-store.js";
+import type { WatcherProtocolParameterHistory } from "./prover-funding.js";
 import {
   parseWatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationInput,
@@ -47,6 +48,7 @@ export const isWatcherProverFundingReservationConflict = (
 export type WatcherSqliteProverFundingReservationStoreRuntime = Readonly<{
   schemaVersion: typeof WATCHER_SQLITE_PROVER_FUNDING_RESERVATION_STORE;
   store: WatcherProverFundingReservationStore;
+  protocolParameterHistory?: WatcherProtocolParameterHistory;
   close(): void;
 }>;
 
@@ -193,7 +195,7 @@ export const makeTransition = (input: {
   return transition;
 };
 
-const transactionInputOutRefs = (inputs: {
+export const transactionInputOutRefs = (inputs: {
   readonly len: () => number;
   readonly get: (index: number) => {
     readonly transaction_id: () => { readonly to_hex: () => string };

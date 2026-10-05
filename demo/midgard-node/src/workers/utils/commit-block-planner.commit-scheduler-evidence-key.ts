@@ -1,4 +1,5 @@
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
 
 import { EntryWithTimeStamp } from "../../database/utils/tx.js";
 import { slotAwareDueWorkFromSubmitTiming } from "../../transactions/submit-timing-due-work.js";
@@ -39,6 +40,13 @@ export type CommitBatchBudgetLimits = {
   readonly estimatedLedgerOpsPerTx: number;
   readonly estimatedTransitionStepsPerTx: number;
   readonly estimatedDaOverheadBytesPerTx: number;
+  /**
+   * DA bytes a transaction adds beyond its two copies and its ledger growth:
+   * its program material and its retained validation trace. Neither is known
+   * before the block is built, so this is an allowance, not a bound; the
+   * post-build measurement steps the selection down when it is exceeded.
+   */
+  readonly estimatedDaTraceAllowanceBytesPerTx?: number;
   readonly estimatedCommitTxOverheadBytes: number;
   readonly estimatedCommitBuildMsPerTx: number;
 };
@@ -61,18 +69,43 @@ export type PlannedCommitBatchSelection = {
   readonly prunedTxCount: number;
 };
 
+/** Complete accepted-prefix accounting; maximum-header bytes are provisional. */
+export type CommitDaFrameMeasurement = {
+  readonly innerBytesUpperBound: number;
+  readonly acceptedTxCount: number;
+  readonly acceptedTxIds: readonly Buffer[];
+  readonly rejectedTxIds: readonly Buffer[];
+  readonly hasMandatoryWork: boolean;
+  readonly prefixes: readonly {
+    readonly innerBytesUpperBound: number;
+    readonly materialDigest: string;
+  }[];
+};
+
+export type CommitDaFrameStepDown =
+  | { readonly status: "fits" }
+  | { readonly status: "exact_check_required" }
+  | { readonly status: "incomplete" }
+  | { readonly status: "step_down"; readonly nextTxCount: number };
+
 export const DEFAULT_COMMIT_BATCH_BUDGET_LIMITS: CommitBatchBudgetLimits = {
   maxL2TxCount: MIDGARD_CONSENSUS_LIMITS.maxL2TransactionCount,
   maxCanonicalTxBytes:
     MIDGARD_CONSENSUS_LIMITS.maxCanonicalTransactionBytesPerBlock,
   maxLedgerOpCount: MIDGARD_CONSENSUS_LIMITS.maxLedgerOperationCount,
   maxTransitionStepCount: MIDGARD_CONSENSUS_LIMITS.maxTransitionStepCount,
-  maxDaPayloadBytes: MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
+  // Inner DaPayloadV1 bytes. Zstd has the smaller limit, so this default fits
+  // either envelope mode; the commit program passes its configured mode's.
+  maxDaPayloadBytes: maxDaPayloadInnerBytes("zstd"),
   maxCommitTxBytes: 128 * 1024,
   maxEstimatedCommitBuildMs: 30_000,
   estimatedLedgerOpsPerTx: 2,
   estimatedTransitionStepsPerTx: 1,
   estimatedDaOverheadBytesPerTx: 128,
+  // lc1 measured 169-196 KB of DA per plain transfer on a 9-11 UTxO ledger,
+  // almost all of it validation-trace witnesses. Witness proofs deepen as
+  // the ledger grows and script transactions carry far longer traces.
+  estimatedDaTraceAllowanceBytesPerTx: 256 * 1024,
   estimatedCommitTxOverheadBytes: 512,
   estimatedCommitBuildMsPerTx: 1,
 };

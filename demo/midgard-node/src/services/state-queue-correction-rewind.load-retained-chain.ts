@@ -7,8 +7,8 @@ import {
   C,
   chainIdentity,
   type ChainMember,
-  failure,
   journal,
+  type Obligation,
   type StateQueueCorrectionRewindAuthority,
 } from "./state-queue-correction-rewind.admitted-removals.js";
 import {
@@ -18,25 +18,28 @@ import {
 } from "./state-queue-correction-rewind.prove-unlanded.js";
 
 /** Re-derives a retained plan's chain from fresh authority. The members are
- * the plan's identity, so a later admission never widens an interrupted one. */
+ * the plan's identity, so a later admission never widens an interrupted one.
+ * A chain that does not prove right now is blocked with its reason, never a
+ * failure: its authority may return (an observer that re-scores a removal's
+ * finality admits it again) and its members may prove again, so the caller
+ * holds the plan behind a closed gate and re-evaluates it. */
 export const loadRetainedChain = (
   authority: StateQueueCorrectionRewindAuthority,
   intent: CorrectionRewindIntent,
   lock = false,
 ) =>
   Effect.gen(function* () {
+    const blocked = (reason: string): Obligation => ({
+      kind: "blocked",
+      reason,
+    });
     const admitted = yield* admittedRemovals(authority, lock);
     if (admitted.kind === "blocked")
-      return yield* Effect.fail(
-        failure(
-          `Retained correction rewind ${intent.headerHash} lost its authority: ${admitted.reason}`,
-        ),
+      return blocked(
+        `Retained correction rewind ${intent.headerHash} lost its authority: ${admitted.reason}`,
       );
     const chain: ChainMember[] = [];
     for (const member of intent.members) {
-      const lost = failure(
-        `Retained correction rewind member ${member.headerHash} lost its admitted correction or journal`,
-      );
       if (member.kind === "unlanded") {
         const proof = yield* proveUnlanded(
           chain.at(-1)!,
@@ -47,10 +50,8 @@ export const loadRetainedChain = (
           proof.kind !== "unlanded" ||
           proof.member.transitionDigest !== member.transitionDigest
         )
-          return yield* Effect.fail(
-            failure(
-              `Retained correction rewind member ${member.headerHash} is no longer provably unlanded: ${proof.kind === "blocked" ? proof.reason : "its proving correction changed"}`,
-            ),
+          return blocked(
+            `Retained correction rewind member ${member.headerHash} is no longer provably unlanded: ${proof.kind === "blocked" ? proof.reason : "its proving correction changed"}`,
           );
         chain.push(proof.member);
         continue;
@@ -61,7 +62,9 @@ export const loadRetainedChain = (
         Option.isNone(record) ||
         record.value[C.STATUS] === Pending.Status.Abandoned
       )
-        return yield* Effect.fail(lost);
+        return blocked(
+          `Retained correction rewind member ${member.headerHash} lost its admitted correction or journal`,
+        );
       chain.push({
         record: record.value,
         transitionDigest: member.transitionDigest,
@@ -70,19 +73,15 @@ export const loadRetainedChain = (
     }
     const validated = yield* validateChain(chain, authority.manifestId);
     if (validated.kind !== "ready")
-      return yield* Effect.fail(
-        failure(
-          `Retained correction rewind ${intent.headerHash} is no longer provable: ${validated.kind === "blocked" ? validated.reason : "no chain"}`,
-        ),
+      return blocked(
+        `Retained correction rewind ${intent.headerHash} is no longer provable: ${validated.kind === "blocked" ? validated.reason : "no chain"}`,
       );
     if (
       chainIdentity(chain) !== intent.journalDigest ||
       chain[0]!.record[C.BASE_UTXOS_ROOT] !== intent.targetRoot
     )
-      return yield* Effect.fail(
-        failure(
-          `Retained correction rewind ${intent.headerHash} journal identity changed`,
-        ),
+      return blocked(
+        `Retained correction rewind ${intent.headerHash} journal identity changed`,
       );
     return validated;
   });

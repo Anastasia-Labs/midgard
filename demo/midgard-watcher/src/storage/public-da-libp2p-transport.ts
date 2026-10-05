@@ -3,6 +3,7 @@ import {
   DA_TRANSPORT_LIMITS,
   daRequestResponseProtocolId,
 } from "@al-ft/midgard-core/da-transport";
+import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
 import { peerIdFromString } from "@libp2p/peer-id";
@@ -12,6 +13,7 @@ import { multiaddr } from "@multiformats/multiaddr";
 import { createLibp2p, type Libp2pOptions } from "libp2p";
 
 import { parseWatcherConfig } from "../runtime/config.js";
+import { parseDaPeers } from "../runtime/config.parse-providers.js";
 import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import type {
   WatcherPublicDaLibp2pTransportV1,
@@ -74,8 +76,9 @@ export class WatcherPublicDaLibp2pTransport
     this.factory = options.libp2pFactory ?? defaultLibp2pFactory;
   }
 
-  async start(): Promise<void> {
+  async start(signal?: AbortSignal): Promise<void> {
     if (this.node !== undefined) return;
+    signal?.throwIfAborted();
     const node = await this.factory({
       start: false,
       transports: [tcp()],
@@ -99,8 +102,22 @@ export class WatcherPublicDaLibp2pTransport
         denyOutboundRelayedConnection: () => true,
       },
     });
-    await node.start();
     this.node = node;
+    const onAbort = () => {
+      void node.stop().catch(() => undefined);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    try {
+      signal?.throwIfAborted();
+      await node.start();
+      signal?.throwIfAborted();
+    } catch (error) {
+      this.node = undefined;
+      await node.stop();
+      throw error;
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
+    }
   }
 
   async stop(): Promise<void> {
@@ -293,6 +310,22 @@ const parseExpectedPeer = (
   const components = address.getComponents();
   const names = components.map((component) => component.name);
   let customIp4 = false;
+  if (names[0] === "ip4" && request.manifestNetwork !== undefined) {
+    const manifest = verifyFinalizedDeploymentManifest(
+      request.manifestNetwork.deploymentManifest,
+    );
+    const peers = parseDaPeers(request.manifestNetwork.peers, manifest.network);
+    customIp4 =
+      manifest.network === "Custom" &&
+      request.protocolId ===
+        daRequestResponseProtocolId(manifest.manifestId, request.protocol) &&
+      peers.some(
+        (peer) =>
+          peer.identity === request.peerIdentity &&
+          peer.peerId === request.peerId &&
+          peer.multiaddr === request.multiaddr,
+      );
+  }
   if (names[0] === "ip4" && request.customNetwork !== undefined) {
     const { deploymentIdentity } = request.customNetwork;
     assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);

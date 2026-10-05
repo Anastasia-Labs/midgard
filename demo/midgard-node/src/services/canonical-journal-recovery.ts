@@ -21,6 +21,7 @@ import { eventHistoryCanonicalJson } from "../l1-event-history-source.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import { withHistoryWrite } from "./event-history-producer.js";
 import { Database, Lucid, MidgardContracts } from "./index.js";
+import { ROOT_TAIL_HEADER_HASH } from "./state-queue-correction-rewind.admitted-removals.js";
 
 export type CanonicalCommittedHeaderIdentity = {
   readonly headerHash: Buffer;
@@ -56,7 +57,10 @@ const SIGNED_INTENT_REPLACEMENT_DOMAIN = "midgard-signed-intent-replacement-v1";
  * replaced this way.
  */
 export const signedIntentReplacementDigest = (
-  record: PendingBlockFinalizationsDB.Record,
+  record: Pick<
+    PendingBlockFinalizationsDB.Record,
+    typeof J.HEADER_HASH | typeof J.INTENDED_TX_HASH | typeof J.SIGNED_TX_CBOR
+  >,
 ): string | undefined => {
   const intended = record[J.INTENDED_TX_HASH];
   const signed = record[J.SIGNED_TX_CBOR];
@@ -95,12 +99,12 @@ export const journalAbandonment = (
  * slot, but the node has already moved its local ledger past the replaced
  * block's base (a sibling built on the same base was locally finalized, a
  * member was committed elsewhere, or the ledger root advanced). The node
- * cannot reconcile to the landed block and refuses to continue. */
+ * cannot reconcile to the landed block; whoever meets it holds instead. */
 export class SignedIntentReplacementIntegrityError extends Error {
   readonly headerHash: string;
   constructor(headerHash: string, detail: string) {
     super(
-      `Signed-intent replacement integrity failure: replaced block ${headerHash} won its state-queue slot on the observed chain, but ${detail}. This node cannot reconcile to the landed block and refuses to continue.`,
+      `Signed-intent replacement integrity failure: replaced block ${headerHash} won its state-queue slot on the observed chain, but ${detail}. This node cannot reconcile to the landed block.`,
     );
     this.name = "SignedIntentReplacementIntegrityError";
     this.headerHash = headerHash;
@@ -200,7 +204,9 @@ export const reviveReplacedCanonicalJournal = (
           header_hash: Buffer;
           status: PendingBlockFinalizationsDB.Status;
         }>`SELECT header_hash, status FROM pending_block_finalizations
-          WHERE base_tail_out_ref = ${record[J.BASE_TAIL_OUT_REF]}
+          WHERE (base_tail_out_ref = ${record[J.BASE_TAIL_OUT_REF]}
+              OR (${!record[J.BASE_TAIL_HEADER_HASH].equals(ROOT_TAIL_HEADER_HASH)}
+                AND base_tail_header_hash = ${record[J.BASE_TAIL_HEADER_HASH]} AND base_utxos_root = ${record[J.BASE_UTXOS_ROOT]}))
             AND header_hash <> ${headerHash}
           ORDER BY created_at, header_hash FOR UPDATE`;
         const landed = siblings.find(({ status }) =>
@@ -307,7 +313,7 @@ export const reviveReplacedCanonicalJournal = (
 
 /** Read-only: a replaced block reported on the queue after a sibling on its
  * base landed or was locally finalized is the explicit integrity failure (see
- * reviveReplacedCanonicalJournal); the node refuses to continue. */
+ * reviveReplacedCanonicalJournal); the revival refuses it and writes nothing. */
 const assertNoLandedReplacementSibling = (
   record: PendingBlockFinalizationsDB.Record,
 ) =>
@@ -317,7 +323,9 @@ const assertNoLandedReplacementSibling = (
       header_hash: Buffer;
       status: PendingBlockFinalizationsDB.Status;
     }>`SELECT header_hash, status FROM pending_block_finalizations
-      WHERE base_tail_out_ref = ${record[J.BASE_TAIL_OUT_REF]}
+      WHERE (base_tail_out_ref = ${record[J.BASE_TAIL_OUT_REF]}
+          OR (${!record[J.BASE_TAIL_HEADER_HASH].equals(ROOT_TAIL_HEADER_HASH)}
+            AND base_tail_header_hash = ${record[J.BASE_TAIL_HEADER_HASH]} AND base_utxos_root = ${record[J.BASE_UTXOS_ROOT]}))
         AND header_hash <> ${record[J.HEADER_HASH]}
       ORDER BY created_at, header_hash`;
     const landed = siblings.find(({ status }) =>
@@ -409,7 +417,7 @@ export const findEarliestCanonicalPayloadJournal = (
  * observer alone reconciles a retracted correction. One a signed-intent
  * replacement abandoned is revived only by the history owner, from its
  * authenticated view (reviveReplacedCanonicalJournal); this unauthenticated
- * view only refuses to continue when such a block is reported on the queue
+ * view only refuses the revival when such a block is reported on the queue
  * after a sibling on its base already landed or was locally finalized.
  */
 export const reviveEarliestCanonicalPayloadJournal = ({

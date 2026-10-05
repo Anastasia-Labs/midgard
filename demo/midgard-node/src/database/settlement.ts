@@ -30,6 +30,8 @@ export type SettlementOwner = {
   walletAddress: string;
   token: string;
 };
+/** Renew's refusal, as opposed to a database failure. */
+export class SettlementOwnershipRefused extends Error {}
 
 export const renew = (owner: SettlementOwner) =>
   Effect.gen(function* () {
@@ -43,10 +45,21 @@ export const renew = (owner: SettlementOwner) =>
     RETURNING deployment_id`;
     if (rows.length !== 1)
       return yield* Effect.fail(
-        new Error(
+        new SettlementOwnershipRefused(
           "Settlement wallet identity changed or another node owns settlement",
         ),
       );
+  });
+
+/** The settlement wallet a deployment's ownership row is bound to. Tells a
+ * renew refused by another owner's live lease, which expiry resolves, from
+ * one refused because the settlement wallet changed, which nothing does. */
+export const boundWalletAddress = (deploymentId: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ wallet_address: string }>`SELECT wallet_address
+    FROM settlement_owners WHERE deployment_id = ${deploymentId}`;
+    return rows[0]?.wallet_address;
   });
 
 /** Fences every journal write and submit against worker takeover and history recovery. */
@@ -121,6 +134,43 @@ export const nextDeferredJob = (owner: SettlementOwner) =>
     FROM settlement_jobs WHERE deployment_id = ${owner.deploymentId} AND phase <> 'complete'
     ORDER BY due_at, created_at LIMIT 1`;
     return rows[0];
+  });
+
+export type SettlementFailingJob = {
+  kind: SettlementKind;
+  event_id: string;
+  phase: SettlementPhase;
+  failures: number;
+  last_error: string;
+  due_at: Date;
+};
+
+/** Read-only backlog of the current deployment's settlement jobs: how many
+ * are unfinished, and the earliest-due unfinished ones whose last attempt
+ * failed, with the worker's error. Jobs of another deployment never count. */
+export const inspectBacklog = (failingLimit: number) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const [counts, failing] = yield* Effect.all(
+      [
+        sql<{ count: string }>`SELECT COUNT(*)::text AS count
+        FROM settlement_jobs j JOIN event_history_authority a ON a.singleton
+        WHERE j.deployment_id = encode(a.deployment_identity, 'hex')
+          AND j.phase <> 'complete'`,
+        sql<SettlementFailingJob>`SELECT j.kind, j.event_id, j.phase, j.failures,
+          j.last_error, j.due_at
+        FROM settlement_jobs j JOIN event_history_authority a ON a.singleton
+        WHERE j.deployment_id = encode(a.deployment_identity, 'hex')
+          AND j.phase <> 'complete' AND j.last_error IS NOT NULL
+        ORDER BY j.due_at, j.created_at, j.kind, j.event_id
+        LIMIT ${failingLimit}`,
+      ],
+      { concurrency: "unbounded" },
+    );
+    return {
+      unfinishedJobs: BigInt(counts[0]?.count ?? "0"),
+      failingJobs: failing,
+    };
   });
 
 /** A rollback can restore the fee coin of a receipt still marked confirmed.

@@ -609,6 +609,7 @@ export const clearNodeTables = Effect.gen(function* () {
         ForcedTransactionsDB.clear,
         CommonUtils.clearTable(TxAdmissionsDB.tableName),
         CommonUtils.clearTable(MutationJobsDB.tableName),
+        CommonUtils.clearTable(StateQueueMutationLeasesDB.tableName),
         CommonUtils.clearTable(DepositsDB.tableName),
         CommonUtils.clearTable(WithdrawalsDB.tableName),
       ],
@@ -1793,17 +1794,16 @@ export const configureEmulatorDaRuntimeManifest = async (published?: {
   vi.stubEnv("MIDGARD_DEPLOYMENT_MANIFEST_PATH", manifestPath);
   vi.stubEnv("DA_LIBP2P_PRIVATE_KEY_SOURCE", EMULATOR_DA_PRIVATE_KEY_SOURCE);
 };
-
 afterEach(async () => {
   vi.useRealTimers();
+  if (activeRuntimePaths !== null) {
+    await cleanupRuntimePaths(activeRuntimePaths);
+    activeRuntimePaths = null;
+  }
   try {
     await initializeNodeRuntime();
   } catch {
     // Leave cleanup best-effort so a failed test can still report the primary error.
-  }
-  if (activeRuntimePaths !== null) {
-    await cleanupRuntimePaths(activeRuntimePaths);
-    activeRuntimePaths = null;
   }
   vi.unstubAllEnvs();
   if (activeDaManifestDirectory !== null) {

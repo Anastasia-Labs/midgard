@@ -17,7 +17,11 @@ export type TimeoutCorrectionTxStatus =
   | "prepared"
   | "submitted"
   | "confirmed"
-  | "superseded";
+  | "superseded"
+  /** Impossible at the tip but not retired: replaced at once, and adopted
+   * as confirmed if a rollback lands it after all. */
+  | "abandoned"
+  | "retired";
 
 export type TimeoutCorrectionJournalStep = {
   readonly kind: TimeoutCorrectionTxKind;
@@ -138,7 +142,9 @@ export const parseTimeoutCorrectionJournal = (
       (step.status !== "prepared" &&
         step.status !== "submitted" &&
         step.status !== "confirmed" &&
-        step.status !== "superseded") ||
+        step.status !== "superseded" &&
+        step.status !== "abandoned" &&
+        step.status !== "retired") ||
       !Array.isArray(step.inputOutRefs) ||
       step.inputOutRefs.length < 3 ||
       step.inputOutRefs.some(
@@ -206,6 +212,8 @@ export type TimeoutCorrectionTransactionStatus =
   | "not_found"
   | "expired"
   | "invalidated"
+  /** Impossible at the tip, not yet retirable. */
+  | "superseded"
   | "unknown";
 
 export type TimeoutCorrectionStepReconciliation = {
@@ -296,7 +304,7 @@ export const outRefsOf = (
 export const replaceJournalStepStatus = (
   journal: TimeoutCorrectionJournal,
   stepIndex: number,
-  status: "confirmed" | "superseded",
+  status: "confirmed" | "superseded" | "abandoned" | "retired",
 ): TimeoutCorrectionJournal => {
   return {
     ...journal,

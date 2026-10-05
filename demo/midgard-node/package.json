@@ -172,6 +172,7 @@
     "level": "^10.0.0",
     "libp2p": "3.3.4",
     "libsodium-wrappers-sumo": "0.7.15",
+    "midgard-watcher": "workspace:*",
     "rimraf": "^6.0.1",
     "undici": "^7.25.0",
     "vitest": "^3.0.7"

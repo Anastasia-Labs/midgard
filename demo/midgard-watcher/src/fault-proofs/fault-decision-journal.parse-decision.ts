@@ -1,14 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-  type FileHandle,
-  link,
-  mkdir,
-  open,
-  readdir,
-  readFile,
-  realpath,
-  unlink,
-} from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import {
@@ -18,6 +9,10 @@ import {
   type HeaderDecision,
 } from "@al-ft/midgard-fault-proofs";
 
+import {
+  publishExclusiveFile,
+  syncDirectory,
+} from "../storage/exclusive-record-file.js";
 import {
   canonicalDigest,
   DETECTION_IDENTIFIER,
@@ -210,16 +205,6 @@ export const readBounded = async (
   return Uint8Array.from(bytes);
 };
 
-const syncDirectory = async (directory: string): Promise<void> => {
-  let handle: FileHandle | undefined;
-  try {
-    handle = await open(directory, "r");
-    await handle.sync();
-  } finally {
-    await handle?.close();
-  }
-};
-
 export const productionStorage: UnsafeWatcherFaultDecisionJournalStorage =
   Object.freeze({
     prepare: async (parent, directory) => {
@@ -242,22 +227,14 @@ export const productionStorage: UnsafeWatcherFaultDecisionJournalStorage =
     writeExclusive: async (path, bytes) => {
       // Stage outside the strictly scanned journal, on the same filesystem.
       // Linking publishes complete, fsynced bytes without replacing a revision.
-      const temporaryPath = join(
-        dirname(dirname(path)),
-        `.fault-decision-${randomUUID()}.tmp`,
-      );
-      const handle = await open(temporaryPath, "wx", 0o600);
-      try {
-        try {
-          await handle.writeFile(bytes);
-          await handle.sync();
-        } finally {
-          await handle.close();
-        }
-        await link(temporaryPath, path);
-      } finally {
-        await unlink(temporaryPath);
-      }
+      await publishExclusiveFile({
+        stagingPath: join(
+          dirname(dirname(path)),
+          `.fault-decision-${randomUUID()}.tmp`,
+        ),
+        path,
+        bytes,
+      });
     },
     syncDirectory,
   });

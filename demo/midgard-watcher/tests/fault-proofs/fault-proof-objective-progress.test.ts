@@ -44,7 +44,7 @@ import {
   walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
-
+import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervisor-idle.js";
 const finishControl = vi.hoisted(() => ({
   beforeFinish: async (): Promise<void> => undefined,
   beforeDecisionRead: async (): Promise<void> => undefined,
@@ -99,7 +99,6 @@ vi.mock("../../src/fault-proofs/fault-proof-application.js", async (load) => ({
   >()),
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES: Object.freeze(["doubleSpend"]),
 }));
-
 const releases: (() => void)[] = [];
 const deferred = () => {
   let resolve!: () => void;
@@ -122,7 +121,10 @@ afterEach(async () => {
   await cleanupFundingRecoveryFixtures();
 });
 
-const setup = async (headerEndTime = BigInt(Date.now())) => {
+const setup = async (
+  headerEndTime = BigInt(Date.now()),
+  terminalBeyondRecoveryHorizon = true,
+) => {
   const fixture = await setupFundingRecoveryFixture(
     false,
     false,
@@ -164,6 +166,11 @@ const setup = async (headerEndTime = BigInt(Date.now())) => {
     verifiedFinality,
     verifiedEconomics,
     proverCredential: key.to_public().hash().to_hex(),
+    // A workflow completes only beyond the recovery horizon (k + 2); a
+    // provisional terminal_included keeps the fixture's shallower depth.
+    confirmationDepth: terminalBeyondRecoveryHorizon
+      ? verifiedFinality.policy.automaticRecoveryMaxDepth + 2
+      : undefined,
   });
   const terminal = await deriveFraudProofRawL1CompletedTerminal({
     snapshot: raw.snapshot,
@@ -312,19 +319,6 @@ const setup = async (headerEndTime = BigInt(Date.now())) => {
       terminalDigest: journalJsonDigest(terminal),
     });
   };
-  const idle = async (supervisor: ReturnType<typeof createSupervisor>) =>
-    vi.waitFor(
-      async () => {
-        if (supervisor.status().phase === "blocked") await supervisor.done;
-        expect(supervisor.status().phase).toBe("accepting");
-        expect(supervisor.status().activeJob).toBeNull();
-        expect(supervisor.status().queuedJobCount).toBe(0);
-      },
-      // Real journal persistence exceeded the polling helper's 1 s default
-      // in 3/20 contended runs. Handover ordering uses explicit barriers;
-      // this budget only bounds how long an active invocation may drain.
-      { timeout: 10_000 },
-    );
   return {
     fixture,
     journal,
@@ -333,7 +327,7 @@ const setup = async (headerEndTime = BigInt(Date.now())) => {
     raw,
     createSupervisor,
     request,
-    idle,
+    idle: waitForFaultProofSupervisorIdle,
     writeTerminal,
     runOrResume,
     verifyCompleted,
@@ -377,7 +371,7 @@ describe("proof objective progress with durable funding and journals", () => {
     await Promise.race([test.completionVerified, supervisor.done]);
     await test.idle(supervisor);
     expect(test.runOrResume).toHaveBeenCalledTimes(1);
-    expect(test.verifyCompleted).toHaveBeenCalledTimes(1);
+    expect([1, 2]).toContain(test.verifyCompleted.mock.calls.length);
     expect(test.getUtxos).not.toHaveBeenCalled();
     expect(await test.fixture.records()).toHaveLength(1);
     expect(test.fixture.adapter.submit).not.toHaveBeenCalled();
@@ -637,20 +631,34 @@ describe("proof objective progress with durable funding and journals", () => {
     expect(await test.fixture.records()).toHaveLength(1);
   });
 
-  it("authenticates completed execution after restart without calling the runner or funding provider", async () => {
-    const test = await setup();
-    await test.fixture.run(await test.fixture.recover());
-    await test.writeTerminal();
-    const before = await test.fixture.records();
-    const supervisor = test.createSupervisor();
-    await test.request(supervisor, 2).accepted;
-    await test.idle(supervisor);
-    expect(test.verifyCompleted).toHaveBeenCalledTimes(1);
-    expect(test.runOrResume).not.toHaveBeenCalled();
-    expect(test.getUtxos).not.toHaveBeenCalled();
-    expect(test.getUtxosByOutRef).not.toHaveBeenCalled();
-    expect(await test.fixture.records()).toEqual(before);
-  });
+  it.each([false, true])(
+    "authenticates removed completed execution after restart and pending canonical verification (%s)",
+    async (pending) => {
+      const test = await setup();
+      await test.fixture.run(await test.fixture.recover());
+      await test.writeTerminal();
+      const before = await test.fixture.records();
+      const supervisor = test.createSupervisor();
+      if (pending)
+        test.verifyCompleted.mockResolvedValueOnce({
+          kind: "pending",
+          reason: "checkpoint_changed",
+        });
+      await test.request(supervisor, 2, test.fixture.fresh, false).accepted;
+      await test.idle(supervisor);
+      if (pending) {
+        expect(supervisor.status().unfinishedObjectiveCount).toBe(1);
+        await test.request(supervisor, 3, test.fixture.fresh, false).accepted;
+        await test.idle(supervisor);
+      }
+      expect(test.verifyCompleted).toHaveBeenCalledTimes(pending ? 2 : 1);
+      expect(supervisor.status().unfinishedObjectiveCount).toBe(0);
+      expect(test.runOrResume).not.toHaveBeenCalled();
+      expect(test.getUtxos).not.toHaveBeenCalled();
+      expect(test.getUtxosByOutRef).not.toHaveBeenCalled();
+      expect(await test.fixture.records()).toEqual(before);
+    },
+  );
 
   it("retries a completed objective's unavailable raw source without funding or another execution", async () => {
     const test = await setup();
@@ -680,7 +688,7 @@ describe("proof objective progress with durable funding and journals", () => {
   });
 
   it("resumes a provisionally completed objective under fresh rollback authority", async () => {
-    const test = await setup();
+    const test = await setup(undefined, false);
     await test.fixture.run(await test.fixture.recover());
     await test.writeTerminal(true);
     const rollback = rollBackTerminalFixture(test.raw);

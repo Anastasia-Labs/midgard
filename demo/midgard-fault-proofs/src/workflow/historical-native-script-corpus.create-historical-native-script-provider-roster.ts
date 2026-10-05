@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
 
+import {
+  isNetworkFailure,
+  LocalKupmiosTransportUnavailableError,
+} from "./local-kupmios-http-ogmios-source.read-admitted-local-kupmios-signed-transaction-recovery.js";
 import { type FraudProofRawL1Point } from "./raw-l1-snapshot.js";
 
 export const HISTORICAL_NATIVE_SCRIPT_CORPUS =
@@ -279,21 +283,102 @@ export const createHistoricalNativeScriptHttpHistoryProvider = ({
       const url = new URL(
         `${canonicalEndpoint}/midgard/v1/historical-payload/${deploymentFingerprint}/${headerHash}`,
       );
-      const response = await fetch(url, {
-        method: "GET",
-        headers: { accept: "application/json" },
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (!response.ok) {
-        throw new Error(
-          `historical provider ${sourceId} returned HTTP ${response.status.toString()}`,
-        );
-      }
-      return (await response.json()) as unknown;
+      return await fetchHistoricalProviderRecord({ url, sourceId });
     },
   });
   admittedHistoryProviders.add(provider);
   return provider;
+};
+
+/**
+ * A history provider that did not answer, answered 404 or 408/425/429/5xx.
+ * Archive providers restart and are written one after the other, so this is
+ * the absence of a record, never evidence about one. It is a transport error
+ * to every caller that already waits on one; the exact-bytes comparison
+ * between providers is untouched.
+ */
+export class HistoricalNativeScriptProviderUnavailableError extends LocalKupmiosTransportUnavailableError {
+  constructor(
+    readonly sourceId: string,
+    message: string,
+    options?: Readonly<{ cause?: unknown }>,
+  ) {
+    super(message, options);
+    this.name = "HistoricalNativeScriptProviderUnavailableError";
+  }
+}
+
+const HISTORICAL_PROVIDER_DEADLINE_MS = 30_000;
+const HISTORICAL_PROVIDER_RETRY_FIRST_MS = 100;
+const HISTORICAL_PROVIDER_RETRY_CAP_MS = 2_000;
+
+const transientHistoricalStatus = (status: number): boolean =>
+  status === 404 ||
+  status === 408 ||
+  status === 425 ||
+  status === 429 ||
+  status >= 500;
+
+/**
+ * Reads one provider's record, retrying a transient outcome with capped
+ * backoff inside the one 30 s deadline the single read had. Any other HTTP
+ * status or an unreadable body fails at once, as before.
+ */
+export const fetchHistoricalProviderRecord = async ({
+  url,
+  sourceId,
+  fetchImpl = fetch,
+  deadlineMs = HISTORICAL_PROVIDER_DEADLINE_MS,
+  sleep = async (ms) =>
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, ms).unref();
+    }),
+}: {
+  readonly url: URL;
+  readonly sourceId: string;
+  readonly fetchImpl?: typeof fetch;
+  readonly deadlineMs?: number;
+  readonly sleep?: (ms: number) => Promise<void>;
+}): Promise<unknown> => {
+  const signal = AbortSignal.timeout(deadlineMs);
+  const startedAt = performance.now();
+  let delayMs = HISTORICAL_PROVIDER_RETRY_FIRST_MS;
+  let last: Readonly<{ message: string; cause?: unknown }>;
+  while (true) {
+    try {
+      const response = await fetchImpl(url, {
+        method: "GET",
+        headers: { accept: "application/json" },
+        signal,
+      });
+      if (response.ok) return (await response.json()) as unknown;
+      const message = `historical provider ${sourceId} returned HTTP ${response.status.toString()}`;
+      await response.body?.cancel().catch(() => undefined);
+      if (!transientHistoricalStatus(response.status)) throw new Error(message);
+      last = { message };
+    } catch (cause) {
+      const timedOut =
+        signal.aborted ||
+        (cause instanceof DOMException && cause.name === "TimeoutError");
+      if (!timedOut && !isNetworkFailure(cause)) throw cause;
+      last = {
+        message: timedOut
+          ? `historical provider ${sourceId} did not answer within ${deadlineMs.toString()}ms`
+          : `historical provider ${sourceId} transport is unavailable`,
+        cause,
+      };
+      if (timedOut) break;
+    }
+    const remainingMs = deadlineMs - (performance.now() - startedAt);
+    if (remainingMs <= delayMs) break;
+    await sleep(delayMs);
+    delayMs = Math.min(HISTORICAL_PROVIDER_RETRY_CAP_MS, delayMs * 2);
+  }
+  throw new HistoricalNativeScriptProviderUnavailableError(
+    sourceId,
+    last.message,
+    last.cause === undefined ? undefined : { cause: last.cause },
+  );
 };
 
 export interface HistoricalNativeScriptHistorySource {

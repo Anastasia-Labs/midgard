@@ -9,9 +9,13 @@ import {
 import { Effect } from "effect";
 
 export {
+  type FetchLike,
   type LocalOgmiosShelleyGenesisSlotOptions,
   type LocalOgmiosSubmitSlotOptions,
   normalizeOgmiosHttpUrl,
+  ogmiosSlotEvidenceUnavailableCause,
+  OgmiosSlotEvidenceUnavailableError,
+  type OgmiosSlotEvidenceUnavailableReason,
   parseOgmiosHealthEvidence,
   parseOgmiosShelleyGenesisSlotConfig,
   parseOgmiosTipSlot,

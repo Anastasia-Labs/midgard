@@ -21,10 +21,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
-import {
-  parseWatcherConfig,
-  WATCHER_CONFIG_SCHEMA_VERSION,
-} from "../../src/runtime/config.js";
+import { parseWatcherConfig } from "../../src/runtime/config.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.js";
 import {
   createWatcherOperationsObservability,
@@ -48,10 +45,14 @@ import {
   type WatcherWorkflowInfrastructure,
 } from "../../src/storage/retained-da-runtime.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import {
+  PEER_ID,
+  rawConfig,
+  transportFactory,
+} from "./retained-da-runtime.fixtures.js";
 
 const AUTHORITY = makeWatcherDeploymentAuthorityFixture();
 const DEPLOYMENT = AUTHORITY.result.manifestId;
-const PEER_ID = "12D3KooWAbcdefghijkmnopqrstuvwxyz12345";
 
 type TestDoubleSpendWorkflow = Readonly<{
   binding: Readonly<{
@@ -87,82 +88,8 @@ const builtInfrastructure = (
   },
 });
 
-const rawConfig = (multiaddr = `/dns4/da-a.example/tcp/443/p2p/${PEER_ID}`) =>
-  ({
-    schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-    mode: "acceptance",
-    targetNetwork: "Preprod",
-    l1: {
-      source: {
-        sourceMode: "external_providers",
-        providers: [
-          {
-            identity: "provider-a",
-            operatorIdentitySha256: "11".repeat(32),
-            endpoint: "https://cardano-a.example",
-          },
-          {
-            identity: "provider-b",
-            operatorIdentitySha256: "22".repeat(32),
-            endpoint: "https://cardano-b.example",
-          },
-        ],
-      },
-      requestTimeoutMs: 10_000,
-      maxConcurrency: 8,
-      finality: {
-        depth: 30,
-        rollback: {
-          beforeFinality: "rewind",
-          afterFinality: "quarantine",
-          maxDepth: 30,
-        },
-      },
-    },
-    da: {
-      peers: [{ identity: "da-peer-a", multiaddr }],
-      requestTimeoutMs: 10_000,
-      maxConcurrency: 8,
-    },
-    storage: {
-      driver: "sqlite",
-      path: "/var/lib/midgard-watcher/watcher.sqlite",
-      rollbackAuthorityKeySource: {
-        kind: "environment",
-        variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
-      },
-    },
-    proverWallet: {
-      keySource: {
-        kind: "environment",
-        variable: "MIDGARD_WATCHER_PROVER_KEY",
-      },
-    },
-    deadlines: {
-      daFetchMs: 60_000,
-      daPublishMs: 60_000,
-      proofConstructMs: 300_000,
-      proofSubmitMs: 120_000,
-    },
-  }) as const;
-
 const deploymentIdentity = (): VerifiedWatcherDeploymentIdentity =>
   AUTHORITY.result;
-
-const transportFactory = () => {
-  const request = vi.fn(
-    async (_request: WatcherPublicDaRequest) => new Uint8Array([0xf6]),
-  );
-  const stop = vi.fn(async () => undefined);
-  const transport = Object.create(
-    WatcherPublicDaLibp2pTransport.prototype,
-  ) as WatcherPublicDaLibp2pTransport;
-  Object.defineProperties(transport, {
-    request: { value: request },
-    stop: { value: stop },
-  });
-  return { request, stop, factory: vi.fn(async () => transport) };
-};
 
 const invocation = (
   overrides: Partial<WorkflowAdapterRunnerInput> = {},
@@ -990,7 +917,7 @@ describe("retained-DA runtime owner", () => {
     expect(owner.transportStatus()).toEqual({ state: "closed", failure: null });
   });
 
-  it("reports a sticky transport start failure with its message so operations status can surface it", async () => {
+  it("reports a transport start failure with its message and refuses leases until the retry delay passes", async () => {
     const factory = vi.fn(async (): Promise<WatcherPublicDaLibp2pTransport> => {
       throw new Error("dial failed: connection refused");
     });

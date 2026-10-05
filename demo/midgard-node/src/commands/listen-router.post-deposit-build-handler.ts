@@ -2,6 +2,7 @@ import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { Effect, Ref } from "effect";
 
+import { runProviderStepWithRetry } from "../provider-retry.js";
 import { Globals, Lucid, MidgardContracts } from "../services/index.js";
 import {
   operatorStatusCommand,
@@ -17,7 +18,7 @@ import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.j
 import { failWith500 } from "./listen-response.js";
 import { OPERATOR_STATUS_ENDPOINT } from "./listen-router.get-state-queue-handler.js";
 import { DEPOSIT_BUILD_ENDPOINT } from "./listen-router.l1-provider-readiness-evidence-is-fresh.js";
-import { errorMessage } from "./listen-router.run-busy-l1-provider-readiness-probe.js";
+import { errorMessage } from "./listen-router.run-exact-gated-direct-l1-provider-probe.js";
 
 /**
  * `GET /operator/status[?operatorKeyHash=<hex>]` (admin): the same report as
@@ -129,9 +130,20 @@ export const getLogGlobalsHandler = Effect.gen(function* () {
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "logGlobals", e)),
 );
 
+/** The build reads protocol parameters and the hub oracle from the provider
+ * and writes nothing, so a transient provider failure is retried in place. */
+export const DEPOSIT_BUILD_PROVIDER_RETRY = {
+  maxAttempts: 4,
+  baseDelayMs: 500,
+  maxDelayMs: 4_000,
+} as const;
+
 /**
  * `POST /deposit/build`: builds an unsigned L1 deposit transaction from a
- * caller-supplied wallet view and returns the CBOR for external signing.
+ * caller-supplied wallet view and returns the CBOR for external signing. A
+ * transient provider failure is retried (the reference-script reads retry on
+ * their own); an invalid request, or a failure no retry can clear, is
+ * answered at once.
  */
 export const postDepositBuildHandler = Effect.gen(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest;
@@ -171,12 +183,15 @@ export const postDepositBuildHandler = Effect.gen(function* () {
       depositMinting: referenceScriptByName(resolved, "deposit minting"),
     })),
   );
-  const built =
-    yield* SubmitDeposit.buildUnsignedDepositTxFromFundingContextProgram(
+  const built = yield* runProviderStepWithRetry(
+    `POST /${DEPOSIT_BUILD_ENDPOINT} build`,
+    SubmitDeposit.buildUnsignedDepositTxFromFundingContextProgram(
       lucid.api,
       contracts,
       { ...buildRequest, referenceScripts: depositReferenceScripts },
-    );
+    ),
+    DEPOSIT_BUILD_PROVIDER_RETRY,
+  );
   return yield* HttpServerResponse.json(built);
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>

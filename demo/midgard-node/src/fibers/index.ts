@@ -9,6 +9,7 @@ export * from "./da-publication-reconciler.js";
 export * from "./fetch-and-insert-deposit-utxos.js";
 export * from "./fetch-and-insert-tx-order-utxos.js";
 export * from "./fetch-and-insert-withdrawal-utxos.js";
+export * from "./l1-provider-readiness-refresher.js";
 export * from "./merge.js";
 export * from "./monitor-mempool.js";
 export * from "./mpf-payload-audit.js";

@@ -17,6 +17,7 @@ import {
 } from "../runtime/config.js";
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import { type WatcherDaProofInput } from "./durable-store.js";
+import type { ManifestPublicDaClientOptions } from "./public-da-client.manifest-config.js";
 
 export const WATCHER_PUBLIC_DA_CLIENT_SCHEMA_VERSION =
   "midgard-watcher-public-da-client-v1" as const;
@@ -41,6 +42,11 @@ export type WatcherPublicDaRequest = Readonly<{
     watcherConfig: WatcherConfig;
     deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   }>;
+  /** A finalized node deployment and its exact read-peer configuration. */
+  manifestNetwork?: Pick<
+    ManifestPublicDaClientOptions,
+    "deploymentManifest" | "peers"
+  >;
 }>;
 
 /**
@@ -68,6 +74,7 @@ export type WatcherPublicDaAttempt = Readonly<{
 }>;
 
 export type WatcherPublicDaClientErrorCode =
+  | "closed"
   | "all_peers_failed"
   | "deadline_exceeded"
   | "invalid_configuration"

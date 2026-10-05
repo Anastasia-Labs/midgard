@@ -123,6 +123,12 @@ export type NoInlineSubmitRecoveryOptions = Omit<
 > & {
   readonly inlineWaitPolicy: "defer_positive_wait";
   readonly noInlineSubmitDefer: NoInlineSubmitDeferEvidence;
+  /**
+   * Fail at once when the provider reports unknown inputs, without waiting
+   * inline for the exact transaction: the caller retains a durable signed
+   * intent that its own reconciliation resolves (a commit block).
+   */
+  readonly unknownInputsFailFast?: boolean;
 };
 
 export type SubmitRecoveryOptions =

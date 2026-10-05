@@ -71,7 +71,7 @@ it.each([
       let { result } = await journey.runCold();
       const roles = new Set<string>();
       for (let hop = 0; hop < 250 && result.kind !== "completed"; hop++) {
-        journey.emulator.awaitBlock();
+        await journey.advance(result);
         if (result.kind === "awaiting_counterparty") {
           await journey.operatorResponds();
           journey.emulator.awaitBlock();

@@ -2,6 +2,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Ref, Schedule } from "effect";
 
 import { StateQueueMutationLeasesDB } from "../database/index.js";
+import {
+  PENDING_FINALIZATION_AGE_BOUND_MS,
+  retrieveUnreconciledSignedSubmission,
+} from "../database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
 import { DatabaseError } from "../database/utils/common.js";
 import {
   ContractDeploymentIdentity,
@@ -25,10 +29,64 @@ import {
   shouldSkipForRegisteredCommitDueWork,
   tryAcquireCommitMutationWorkerPhase,
 } from "./block-commitment.should-skip-for-registered-commit-due-work.js";
+import { verifyForeignBaseOnIdleTick } from "./block-commitment.verify-idle-foreign-base.js";
 import {
   publishFinalizedDaPayloadBestEffort,
   runAfterL1ControlPlaneRelease,
 } from "./da-publication-trigger.js";
+
+export const SKIPPED_ACTIVE_PENDING_FINALIZATION =
+  "skipped_active_pending_finalization";
+
+let reportedHeaderHex: string | undefined;
+let reportedOverBound = false;
+
+/**
+ * True while a signed commit intent awaits the history owner's signed-intent
+ * reconciliation: the commit worker would only refuse at its signed-submission
+ * preflight, so the tick takes neither the L1 control plane nor the
+ * state-queue lease and spawns no worker. Logged once per journal, again once
+ * it outlives the bound, and once when it resolves. A pending local
+ * finalization recovery always runs.
+ */
+export const shouldSkipForActivePendingFinalization = Effect.gen(function* () {
+  const globals = yield* Globals;
+  const localFinalizationPending = yield* Ref.get(
+    globals.LOCAL_FINALIZATION_PENDING,
+  );
+  const localFinalizationBlock = yield* Ref.get(
+    globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
+  );
+  if (localFinalizationPending && localFinalizationBlock !== "") return false;
+  const signed = yield* retrieveUnreconciledSignedSubmission;
+  if (signed === undefined) {
+    if (reportedHeaderHex !== undefined) {
+      yield* Effect.logInfo(
+        `🔹 Resuming block commitment: signed commit intent header=${reportedHeaderHex} is reconciled.`,
+      );
+      reportedHeaderHex = undefined;
+      reportedOverBound = false;
+    }
+    return false;
+  }
+  const headerHex = signed.headerHash.toString("hex");
+  if (headerHex !== reportedHeaderHex) {
+    reportedHeaderHex = headerHex;
+    reportedOverBound = false;
+    yield* Effect.logInfo(
+      `🔹 Skipping block commitment ticks (${SKIPPED_ACTIVE_PENDING_FINALIZATION}): signed commit intent header=${headerHex} awaits the history owner's signed-intent reconciliation; pending_finalization_age:${signed.ageMs.toString()}.`,
+    );
+  } else if (
+    !reportedOverBound &&
+    signed.ageMs > PENDING_FINALIZATION_AGE_BOUND_MS
+  ) {
+    reportedOverBound = true;
+    yield* Effect.logWarning(
+      `🔹 Block commitment still skipped (${SKIPPED_ACTIVE_PENDING_FINALIZATION}): signed commit intent header=${headerHex} is unresolved past the bound; pending_finalization_age:${signed.ageMs.toString()}:${PENDING_FINALIZATION_AGE_BOUND_MS.toString()}.`,
+    );
+  }
+  return true;
+});
 
 /**
  * Single scheduled commitment tick with a guard that prevents overlapping
@@ -78,6 +136,11 @@ export const blockCommitmentAction: Effect.Effect<
       }
     }
     if (yield* shouldSkipIdleCommitPipelineBeforeSchedulerAlignment) {
+      // Readiness evidence must not wait for work to commit.
+      yield* verifyForeignBaseOnIdleTick;
+      return;
+    }
+    if (yield* shouldSkipForActivePendingFinalization) {
       return;
     }
     yield* runAfterL1ControlPlaneRelease(

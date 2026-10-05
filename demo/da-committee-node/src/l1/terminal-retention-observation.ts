@@ -18,6 +18,7 @@ export type TerminalRetentionObservationConfig = {
   readonly deploymentIdentityDigest: string;
   readonly stateQueuePolicyId: string;
   readonly finalityDepth: number;
+  readonly automaticRecoveryMaxDepth?: number;
   /**
    * Queue/cursor the history extends: the durable anchor recorded by a prior
    * authenticated scan, or the scanner's not-yet-final bootstrap candidate.
@@ -73,15 +74,13 @@ export type TerminalRetentionObservation = Readonly<{
    */
   finalSteps: ReadonlyMap<string, readonly StateQueueOutputStep[]>;
   /**
-   * Queue and cursor after the final checkpoints, when at least one is final.
-   * Only a final point may become the durable replay anchor: a rollback
-   * shallower than the finality depth cannot undo it. It stops before the
-   * first final checkpoint of a deferred header, so that header's history is
-   * replayed again, whole, once it is all final: its final steps would
-   * otherwise pass behind the anchor while its recorded output stays put,
-   * and nothing could explain the change later.
+   * Only checkpoints beyond the signed recovery horizon advance this cursor.
+   * It stops before deferred headers and keeps confirmation-depth checkpoints
+   * replayable until later scans can prove payload retirement.
    */
   finalAnchor?: StateQueueReplayCursor;
+  /** A stored provisional terminal point is no longer in retained authenticated replay. */
+  recoveryProofUnavailable?: boolean;
 }>;
 
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
@@ -151,9 +150,19 @@ const authenticateHistory = (
       "state-queue final checkpoint history is non-canonical or does not extend the durable cursor",
     );
   }
-  return { replay, finalCheckpoints, finalReplay };
+  // Output depth counts blocks after the transition; strict > k retirement
+  // therefore requires inclusive checkpoint depth >= k + 2.
+  const retirementDepth =
+    BigInt(config.automaticRecoveryMaxDepth ?? config.finalityDepth - 1) + 2n;
+  const firstNotRetired = finalCheckpoints.findIndex(
+    ({ finalityDepth }) => BigInt(finalityDepth) < retirementDepth,
+  );
+  const retirementCheckpoints =
+    firstNotRetired < 0
+      ? finalCheckpoints
+      : finalCheckpoints.slice(0, firstNotRetired);
+  return { replay, finalCheckpoints, finalReplay, retirementCheckpoints };
 };
-
 /**
  * What an authenticated checkpoint did to each header: the difference between
  * its previous and next queue.
@@ -314,10 +323,8 @@ export const terminalRetentionOutcomes = (
     );
   }
   assertAnchorRelease(config);
-  const { replay, finalCheckpoints, finalReplay } = authenticateHistory(
-    checkpointInputs,
-    config,
-  );
+  const { replay, finalCheckpoints, finalReplay, retirementCheckpoints } =
+    authenticateHistory(checkpointInputs, config);
   const transitions: readonly StateQueueAuthenticatedTransition[] =
     replay?.terminals ?? [];
   const finalTransitionCount = finalReplay?.terminals.length ?? 0;
@@ -345,19 +352,17 @@ export const terminalRetentionOutcomes = (
       deferredHeaderHashes.add(headerHash);
     }
   }
-  const anchorCheckpointCount = replayed
-    .slice(0, finalCheckpoints.length)
-    .findIndex((checkpoint) =>
-      stepsOf(checkpoint).some(({ headerHash }) =>
-        deferredHeaderHashes.has(headerHash),
-      ),
-    );
+  const anchorCheckpointCount = retirementCheckpoints.findIndex((checkpoint) =>
+    stepsOf(checkpoint).some(({ headerHash }) =>
+      deferredHeaderHashes.has(headerHash),
+    ),
+  );
   const anchorCheckpoint =
     finalReplay === null
       ? undefined
       : replayed[
           (anchorCheckpointCount < 0
-            ? finalCheckpoints.length
+            ? retirementCheckpoints.length
             : anchorCheckpointCount) - 1
         ];
   const latestMergedHeaderHash = applyTerminalTransitions(
@@ -395,6 +400,17 @@ export const terminalRetentionOutcomes = (
     ),
     deferredHeaderHashes: [...deferredHeaderHashes],
     finalSteps,
+    ...(config.automaticRecoveryMaxDepth !== undefined &&
+    [...terminalByHash.values()].some(
+      (record) =>
+        (record.observedChainPoint.depth ?? -1) <=
+          config.automaticRecoveryMaxDepth! &&
+        !transitions.some((transition) =>
+          transition.removedHeaderHashes.includes(record.headerHash),
+        ),
+    )
+      ? { recoveryProofUnavailable: true }
+      : {}),
     ...(anchorCheckpoint === undefined
       ? {}
       : {
@@ -441,26 +457,29 @@ export const catchUpRetentionOutcomes = (
     );
   }
   assertAnchorRelease(config);
-  const { replay, finalCheckpoints, finalReplay } = authenticateHistory(
+  const { replay, finalReplay, retirementCheckpoints } = authenticateHistory(
     checkpoints,
     config,
   );
-  const lastFinal = finalCheckpoints.at(-1);
+  const lastFinal = retirementCheckpoints.at(-1);
   if (replay === null || finalReplay === null || lastFinal === undefined) {
     return undefined;
   }
-  const finalSteps = stepsByHeader(finalCheckpoints);
+  const retiredTerminals = finalReplay.terminals.filter(
+    (transition) => BigInt(transition.blockNo) <= BigInt(lastFinal.blockNo),
+  );
+  const finalSteps = stepsByHeader(retirementCheckpoints);
   const terminalByHash = new Map<string, StateQueueHeaderRecord>();
   applyTerminalTransitions(
-    replay.terminals,
-    finalReplay.terminals.length,
+    retiredTerminals,
+    retiredTerminals.length,
     new Map(previous.map((record) => [record.headerHash, record])),
     new Map(),
     finalSteps,
     terminalByHash,
   );
   const terminalStatuses = new Map<string, "merged" | "removed">();
-  for (const transition of finalReplay.terminals) {
+  for (const transition of retiredTerminals) {
     for (const headerHash of transition.removedHeaderHashes) {
       terminalStatuses.set(
         headerHash,

@@ -9,7 +9,12 @@ import type {
   ObservedStateQueueNode,
   ObservedStateQueueSnapshot,
 } from "../domain.js";
+import {
+  type ChainPointResolver,
+  resolveChainPoints,
+} from "./provider.chain-point-batch.js";
 import { createOgmiosChainSyncRequest } from "./provider.create-ogmios-chain-sync-request.js";
+import { joinNativeReads } from "./provider.join-native-reads.js";
 import { type OgmiosChainSyncRequest } from "./provider.local-node-chain-authority.js";
 import {
   type CanonicalChainPoint,
@@ -17,6 +22,7 @@ import {
   type ChainSyncEvent,
   type ChainSyncEventBatch,
   type ChainSyncEventSource,
+  type ChainSyncReadBudget,
   getRecord,
   safeBlockHash,
   safeSlot,
@@ -40,6 +46,7 @@ export class OgmiosChainSyncEventSource implements ChainSyncEventSource {
   async next(
     cursor: ChainSyncCursor | undefined,
     intersectionCandidates?: readonly CanonicalChainPoint[],
+    readBudget?: ChainSyncReadBudget,
   ): Promise<ChainSyncEventBatch> {
     const response = await this.request(
       this.ogmiosUrl,
@@ -48,6 +55,7 @@ export class OgmiosChainSyncEventSource implements ChainSyncEventSource {
       this.network,
       this.authorityNodeId,
       this.networkMagic,
+      readBudget,
     );
     return response;
   }
@@ -121,25 +129,23 @@ export class FixtureStateQueueProvider implements StateQueueProvider {
   }
 }
 
-export const stateQueueUtxosToObservedNodes = async (
+const observedNodes = async (
   stateQueueUtxos: readonly SDK.StateQueueUTxO[],
   providerSource: string,
-  chainPointResolver?: (utxo: UTxO) => Promise<ChainPoint>,
+  chainPoints: readonly ChainPoint[] | undefined,
 ): Promise<readonly ObservedStateQueueNode[]> => {
   const observed: ObservedStateQueueNode[] = [];
-  for (const stateQueueUtxo of stateQueueUtxos) {
-    if (stateQueueUtxo.datum.key === "Empty") {
-      continue;
-    }
+  for (const [index, stateQueueUtxo] of stateQueueUtxos.entries()) {
+    // Callers pass the non-root UTxOs; the guard narrows the datum key.
+    if (stateQueueUtxo.datum.key === "Empty") continue;
     const stateQueueNode = await Effect.runPromise(
       SDK.getStateQueueNodeFromStateQueueDatum(stateQueueUtxo.datum),
     );
+    const resolved = chainPoints?.[index];
     const chainPoint = {
       providerSource,
       observedAt: new Date().toISOString(),
-      ...(chainPointResolver === undefined
-        ? {}
-        : declaredChainPoint(await chainPointResolver(stateQueueUtxo.utxo))),
+      ...(resolved === undefined ? {} : declaredChainPoint(resolved)),
     } satisfies ChainPoint;
     observed.push({
       outRef: outRefLabel(stateQueueUtxo.utxo),
@@ -154,31 +160,67 @@ export const stateQueueUtxosToObservedNodes = async (
   return observed;
 };
 
+const nonRootUtxos = (
+  stateQueueUtxos: readonly SDK.StateQueueUTxO[],
+): readonly SDK.StateQueueUTxO[] =>
+  stateQueueUtxos.filter(
+    (stateQueueUtxo) => stateQueueUtxo.datum.key !== "Empty",
+  );
+
+export const stateQueueUtxosToObservedNodes = async (
+  stateQueueUtxos: readonly SDK.StateQueueUTxO[],
+  providerSource: string,
+  chainPointResolver?: ChainPointResolver,
+): Promise<readonly ObservedStateQueueNode[]> => {
+  const nodes = nonRootUtxos(stateQueueUtxos);
+  return observedNodes(
+    nodes,
+    providerSource,
+    chainPointResolver === undefined
+      ? undefined
+      : await resolveChainPoints(
+          chainPointResolver,
+          nodes.map(({ utxo }) => utxo),
+        ),
+  );
+};
+
+/**
+ * One snapshot's nodes and confirmed root. Their chain points are resolved
+ * together, through the resolver's `resolveAll` when it has one, so the
+ * whole snapshot is judged against one pinned chain tip.
+ */
 export const stateQueueUtxosToObservedSnapshot = async (
   stateQueueUtxos: readonly SDK.StateQueueUTxO[],
   providerSource: string,
-  chainPointResolver?: (utxo: UTxO) => Promise<ChainPoint>,
+  chainPointResolver?: ChainPointResolver,
 ): Promise<ObservedStateQueueSnapshot> => {
   const confirmed = stateQueueUtxos[0];
   if (confirmed === undefined || confirmed.datum.key !== "Empty") {
     throw new Error("state queue snapshot has no confirmed root node");
   }
-  const [{ data }, nodes] = await Promise.all([
+  const nodeUtxos = nonRootUtxos(stateQueueUtxos);
+  const [{ data }, chainPoints] = await joinNativeReads([
     Effect.runPromise(
       SDK.getConfirmedStateFromStateQueueDatum(confirmed.datum),
     ),
-    stateQueueUtxosToObservedNodes(
-      stateQueueUtxos,
-      providerSource,
-      chainPointResolver,
-    ),
+    chainPointResolver === undefined
+      ? undefined
+      : resolveChainPoints(chainPointResolver, [
+          confirmed.utxo,
+          ...nodeUtxos.map(({ utxo }) => utxo),
+        ]),
   ]);
+  const [confirmedPoint, ...nodePoints] = chainPoints ?? [];
+  const nodes = await observedNodes(
+    nodeUtxos,
+    providerSource,
+    chainPoints === undefined ? undefined : nodePoints,
+  );
   const observedChainPoint = {
     providerSource,
     observedAt: new Date().toISOString(),
-    ...(chainPointResolver === undefined
-      ? {}
-      : declaredChainPoint(await chainPointResolver(confirmed.utxo))),
+    ...(confirmedPoint === undefined ? {} : declaredChainPoint(confirmedPoint)),
   } satisfies ChainPoint;
   return {
     nodes,

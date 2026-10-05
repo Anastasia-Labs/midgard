@@ -4,16 +4,16 @@ import * as AddressFromSeed from "./commands/address-from-seed.js";
 import {
   failCli,
   provideDatabaseServices,
-  provideNodeRuntimeServices,
   runCliEffect,
   writeJson,
 } from "./commands/cli-runtime.js";
 import { parseAddressArgument } from "./commands/command-utils.js";
 import * as DaBondCommand from "./commands/da-bond.js";
 import * as DaBondFiles from "./commands/da-bond-files.js";
+import * as HistoryGenesisPinCommand from "./commands/history-genesis-pin.js";
 import * as L1ProviderPreflightCommand from "./commands/l1-provider-preflight.js";
 import * as L1UtxosCommand from "./commands/l1-utxos.js";
-import { runNode } from "./commands/listen.js";
+import { runListen } from "./commands/listen.cli-runtime.js";
 import * as MigrationRunner from "./database/migrations/runner.js";
 import {
   daBond,
@@ -207,6 +207,23 @@ program
   });
 
 program
+  .command("history-genesis-pin")
+  .description(
+    "Print the Shelley genesis pin of the chain Ogmios serves, for the operator to approve as L1_HISTORY_GENESIS_LOSSLESS_SHA256",
+  )
+  .option(
+    "--ogmios-url <url>",
+    "Override Ogmios URL; defaults to L1_OGMIOS_KEY",
+  )
+  .action(async (options: { ogmiosUrl?: string }) => {
+    try {
+      writeJson(await HistoryGenesisPinCommand.runHistoryGenesisPin(options));
+    } catch (error) {
+      failCli("history-genesis-pin", error);
+    }
+  });
+
+program
   .command("l1-provider-preflight")
   .description(
     "Check the configured L1 provider route and fail before state-changing work when no source is healthy",
@@ -269,7 +286,7 @@ program
     console.log("🌳 Midgard");
 
     const { withMonitoring } = options.opts();
-    const mainEffect = provideNodeRuntimeServices(runNode(withMonitoring));
+    const mainEffect = runListen(withMonitoring);
 
     runCliEffect(mainEffect);
   });

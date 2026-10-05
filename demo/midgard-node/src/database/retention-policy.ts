@@ -6,67 +6,82 @@ import {
 const DAY_IN_MILLIS = RETENTION_MS_PER_DAY;
 
 /**
- * Minimum non-zero `RETENTION_DAYS`, in days.
- *
- * Derived from the canonical V1 retention window (block maturity plus the
- * worst-case proof-time bound plus the deployed margin), never a literal, so
- * the floor cannot drift away from the deployment manifest's
- * `da.transportProfile.retentionDays`. It floors only the wall-clock tables:
- * DA payload availability is not governed by `RETENTION_DAYS` or by the
- * manifest value. A DA payload is kept until its block is past the
- * challengeability horizon or its header is removed from the state queue, and
- * always while it is the L1 confirmed head or live in the L1 state queue.
+ * The retention window, in days, of a contract bundle derived from the
+ * compiled profile rather than loaded from a deployment manifest. Such a
+ * bundle's deployment IS the compiled profile, so this is its declared window.
+ * A node running a verified manifest never reads it: its housekeeping window
+ * is the manifest's `da.transportProfile.retentionDays`
+ * (`resolveHousekeepingRetentionDays`). DA payload availability follows
+ * neither: a DA payload is kept until its block is past the challengeability
+ * horizon or its header is removed from the state queue, and always while it
+ * is the L1 confirmed head or live in the L1 state queue.
  */
 export const MIN_DA_PAYLOAD_RETENTION_DAYS =
   MIDGARD_RETENTION_WINDOW.retentionDays;
 
+/** Shape check only. The window it is compared with is the deployment's,
+ * which config load cannot see: `resolveHousekeepingRetentionDays` decides. */
 export const validateRetentionDays = (retentionDays: number): number => {
   if (!Number.isSafeInteger(retentionDays) || retentionDays < 0) {
     throw new Error("RETENTION_DAYS must be a non-negative safe integer.");
-  }
-  if (retentionDays > 0 && retentionDays < MIN_DA_PAYLOAD_RETENTION_DAYS) {
-    throw new Error(
-      `RETENTION_DAYS must be 0 or at least ${MIN_DA_PAYLOAD_RETENTION_DAYS.toString()} days (the deployment manifest da.transportProfile.retentionDays floor); it governs only the wall-clock tables, never DA payloads.`,
-    );
   }
   return retentionDays;
 };
 
 /**
- * Binds enabled retention to deployment identity: a node may retain longer than
- * the deployment manifest promises, never shorter. Fails closed at config load.
+ * The housekeeping retention window in days; 0 means nothing is pruned.
+ *
+ * Derived from the verified deployment manifest's declared
+ * `da.transportProfile.retentionDays`, never from a compiled constant or an
+ * env default:
+ *  - unset `RETENTION_DAYS` uses the manifest window;
+ *  - an explicit value at or above the manifest window is honoured;
+ *  - an explicit value below it is a config fault and throws, so the node
+ *    refuses to start rather than prune records the deployment promises;
+ *  - an explicit 0 keeps the wall-clock tables forever (longer than any
+ *    window), which is always allowed.
+ * Without a manifest (a derived contract bundle) an unset value prunes
+ * nothing, and an explicit one must cover the compiled profile's window.
  */
-export const assertRetentionDaysMatchesDeployment = (
-  retentionDays: number,
-  manifestRetentionDays: number = MIDGARD_RETENTION_WINDOW.retentionDays,
-): number => {
-  const days = validateRetentionDays(retentionDays);
+export const resolveHousekeepingRetentionDays = ({
+  configured,
+  manifestRetentionDays,
+}: {
+  readonly configured: number | undefined;
+  readonly manifestRetentionDays: number | undefined;
+}): number => {
   if (
-    !Number.isSafeInteger(manifestRetentionDays) ||
-    manifestRetentionDays < 0
+    manifestRetentionDays !== undefined &&
+    (!Number.isSafeInteger(manifestRetentionDays) || manifestRetentionDays < 1)
   ) {
     throw new Error(
-      "Deployment manifest da.transportProfile.retentionDays must be a non-negative safe integer.",
+      "Deployment manifest da.transportProfile.retentionDays must be a positive safe integer.",
     );
   }
-  if (days === 0) {
-    // Wall-clock pruning disabled. DA payloads never follow RETENTION_DAYS:
-    // they are pruned on the challengeability horizon and the L1 exemption
-    // sets, so the window is covered either way.
+  if (configured === undefined) return manifestRetentionDays ?? 0;
+  const days = validateRetentionDays(configured);
+  if (days === 0) return 0;
+  if (manifestRetentionDays === undefined) {
+    if (days < MIN_DA_PAYLOAD_RETENTION_DAYS) {
+      throw new Error(
+        `RETENTION_DAYS=${days.toString()} is shorter than the derived deployment's retention window of ${MIN_DA_PAYLOAD_RETENTION_DAYS.toString()} days; set it to 0, leave it unset, or raise it to at least ${MIN_DA_PAYLOAD_RETENTION_DAYS.toString()}.`,
+      );
+    }
     return days;
   }
   if (days < manifestRetentionDays) {
     throw new Error(
-      `RETENTION_DAYS=${days.toString()} is shorter than the deployment manifest da.transportProfile.retentionDays=${manifestRetentionDays.toString()}; a wall-clock retention window shorter than the deployment manifest's is refused.`,
+      `RETENTION_DAYS=${days.toString()} is shorter than the verified deployment manifest da.transportProfile.retentionDays=${manifestRetentionDays.toString()}; unset it to use the manifest window, set it to 0 to keep records forever, or raise it to at least ${manifestRetentionDays.toString()}.`,
     );
   }
   return days;
 };
 
 /**
- * Whether the wall-clock retention tables (tx rejections, address history,
- * deposits, withdrawals) are pruned. DA payload pruning is not governed by
- * this switch and always runs.
+ * Whether the housekeeping prunes run at all: the wall-clock tables (tx
+ * rejections, address history), finalized journals and ended lease rows.
+ * Deposit and withdrawal rows are never pruned. DA payload pruning is not
+ * governed by this switch and always runs.
  */
 export const shouldPruneRetention = (retentionDays: number): boolean =>
   validateRetentionDays(retentionDays) > 0;
@@ -87,3 +102,19 @@ export const computeRetentionCutoff = (
  */
 export const computeChallengeableCutoff = (now: Date): Date =>
   new Date(now.getTime() - MIDGARD_RETENTION_WINDOW.requiredRetentionMs);
+
+/**
+ * The housekeeping cutoff: the older of the retention window's cutoff and
+ * the challengeability cutoff, so no housekeeping prune ever reaches a record
+ * still inside the DA challenge horizon, whatever window was configured.
+ */
+export const computeHousekeepingCutoff = (
+  now: Date,
+  retentionDays: number,
+): Date => {
+  const retention = computeRetentionCutoff(now, retentionDays);
+  const challengeable = computeChallengeableCutoff(now);
+  return retention.getTime() < challengeable.getTime()
+    ? retention
+    : challengeable;
+};

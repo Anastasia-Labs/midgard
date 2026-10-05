@@ -5,15 +5,13 @@ import { runL1ProviderPreflight } from "../src/commands/l1-provider-preflight.js
 import {
   l1ProviderEvidenceIsFresh,
   l1ProviderReadinessEvidenceIsFresh,
-  reconcileReadinessProbeWithExactEvidence,
-  resolveL1ProviderReadinessEvidence,
   resolveL1ProviderReadinessSnapshot,
   runBoundedDirectL1ProviderPreflight,
-  runBusyL1ProviderReadinessProbe,
-  runCombinedL1ReadinessProbe,
+  runExactGatedDirectL1ProviderProbe,
 } from "../src/commands/listen-router.js";
 import { withScheduledMergeControlPlaneWait } from "../src/fibers/merge.js";
 import { makeAwaitedWorkerTerminator } from "../src/fibers/worker-lifecycle.js";
+import { runCombinedL1ReadinessProbe } from "../src/l1-provider-readiness-probe.js";
 import {
   Globals,
   L1ControlPlaneTimeoutError,
@@ -306,7 +304,7 @@ describe("L1 control-plane serialization", () => {
     expect(cleanup).not.toHaveBeenCalled();
   });
 
-  it("resolves live and cached readiness evidence without stale errors", () => {
+  it("judges evidence freshness at its max age and clears a stale failure on exact success", () => {
     const nowMs = 100_000;
     const ogmiosSlot = {
       source: "local_ogmios_tip" as const,
@@ -314,97 +312,6 @@ describe("L1 control-plane serialization", () => {
       observedAtMs: nowMs - 5_000,
       slotLengthMs: 1_000,
     };
-    expect(
-      resolveL1ProviderReadinessEvidence({
-        probe: { mode: "busy", baseRevision: 1 },
-        lastSuccessAtMs: nowMs - 5_000,
-        lastFailure: null,
-        cachedOgmiosSlot: ogmiosSlot,
-        nowMs,
-        maxAgeMs: 30_000,
-      }),
-    ).toEqual({
-      healthy: true,
-      mode: "cached_control_plane_busy",
-      evidenceAgeMs: 5_000,
-      error: null,
-      ogmiosSlot,
-    });
-    expect(
-      resolveL1ProviderReadinessEvidence({
-        probe: { mode: "busy", baseRevision: 1 },
-        lastSuccessAtMs: nowMs - 30_001,
-        lastFailure: "provider failed",
-        cachedOgmiosSlot: ogmiosSlot,
-        nowMs,
-        maxAgeMs: 30_000,
-      }),
-    ).toEqual({
-      healthy: false,
-      mode: "cached_control_plane_busy",
-      evidenceAgeMs: 30_001,
-      error: "provider failed",
-      ogmiosSlot: null,
-    });
-    expect(
-      resolveL1ProviderReadinessEvidence({
-        probe: {
-          mode: "live",
-          healthy: true,
-          ogmiosSlot,
-          publishedRevision: 1,
-        },
-        lastSuccessAtMs: 0,
-        lastFailure: "old failure",
-        cachedOgmiosSlot: null,
-        nowMs,
-        maxAgeMs: 30_000,
-      }),
-    ).toEqual({
-      healthy: true,
-      mode: "live",
-      evidenceAgeMs: 0,
-      error: null,
-      ogmiosSlot,
-    });
-    expect(
-      resolveL1ProviderReadinessEvidence({
-        probe: {
-          mode: "live",
-          healthy: false,
-          error: "live failure",
-          publishedRevision: 1,
-        },
-        lastSuccessAtMs: nowMs - 1_000,
-        lastFailure: null,
-        cachedOgmiosSlot: ogmiosSlot,
-        nowMs,
-        maxAgeMs: 30_000,
-      }),
-    ).toEqual({
-      healthy: false,
-      mode: "live",
-      evidenceAgeMs: 1_000,
-      error: "live failure",
-      ogmiosSlot: null,
-    });
-
-    expect(
-      resolveL1ProviderReadinessEvidence({
-        probe: { mode: "cached_fresh", baseRevision: 1 },
-        lastSuccessAtMs: nowMs - 1_000,
-        lastFailure: null,
-        cachedOgmiosSlot: ogmiosSlot,
-        nowMs,
-        maxAgeMs: 30_000,
-      }),
-    ).toEqual({
-      healthy: true,
-      mode: "cached_fresh",
-      evidenceAgeMs: 1_000,
-      error: null,
-      ogmiosSlot,
-    });
     expect(
       l1ProviderEvidenceIsFresh({
         lastSuccessAtMs: nowMs - 30_000,
@@ -457,7 +364,7 @@ describe("L1 control-plane serialization", () => {
     });
   });
 
-  it("runs HubOracle and Ogmios as one fail-closed live readiness probe", async () => {
+  it("runs HubOracle and Ogmios as one fail-closed exact readiness probe", async () => {
     const ogmiosSlot = {
       source: "local_ogmios_tip" as const,
       currentSlot: 456,
@@ -517,7 +424,7 @@ describe("L1 control-plane serialization", () => {
     expect(calls).toEqual(["hub", "ogmios"]);
   });
 
-  it("returns a concurrent busy-path request immediately while one direct probe publishes success", async () => {
+  it("returns a concurrent request immediately from the cache while one direct probe publishes success", async () => {
     const nowMs = 200_000;
     const ogmiosSlot = {
       source: "local_ogmios_tip" as const,
@@ -550,7 +457,7 @@ describe("L1 control-plane serialization", () => {
           Effect.zipRight(Deferred.await(release)),
           Effect.as(ogmiosSlot),
         );
-        const run = runBusyL1ProviderReadinessProbe({
+        const run = runExactGatedDirectL1ProviderProbe({
           globals,
           directProbe,
           now: () => nowMs,
@@ -577,16 +484,19 @@ describe("L1 control-plane serialization", () => {
     );
 
     expect(result.first).toEqual({
-      mode: "live_preflight_control_plane_busy",
+      mode: "exact_gated_direct_preflight",
       healthy: true,
       ogmiosSlot,
       publishedRevision: 2,
     });
     expect(Option.getOrUndefined(result.secondBeforeRelease)).toEqual({
-      mode: "busy",
+      mode: "direct_preflight_in_flight",
       baseRevision: 1,
     });
-    expect(result.second).toEqual({ mode: "busy", baseRevision: 1 });
+    expect(result.second).toEqual({
+      mode: "direct_preflight_in_flight",
+      baseRevision: 1,
+    });
     expect(result.callsBeforeRelease).toBe(1);
     expect(result.calls).toBe(1);
     expect(result.evidence.lastSuccessAtMs).toBe(nowMs);
@@ -594,7 +504,7 @@ describe("L1 control-plane serialization", () => {
     expect(result.evidence.lastSuccessKind).toBe("direct");
   });
 
-  it("returns a concurrent busy-path request immediately while one direct probe publishes failure", async () => {
+  it("returns a concurrent request immediately from the cache while one direct probe publishes failure", async () => {
     const nowMs = 200_000;
     const result = await Effect.runPromise(
       Effect.gen(function* () {
@@ -621,7 +531,7 @@ describe("L1 control-plane serialization", () => {
           Effect.zipRight(Deferred.await(release)),
           Effect.zipRight(Effect.fail("direct provider unavailable")),
         );
-        const run = runBusyL1ProviderReadinessProbe({
+        const run = runExactGatedDirectL1ProviderProbe({
           globals,
           directProbe,
           now: () => nowMs,
@@ -647,21 +557,24 @@ describe("L1 control-plane serialization", () => {
     );
 
     expect(result.first).toEqual({
-      mode: "live_preflight_control_plane_busy",
+      mode: "exact_gated_direct_preflight",
       healthy: false,
       error: "direct provider unavailable",
       publishedRevision: 2,
     });
     expect(Option.getOrUndefined(result.secondBeforeRelease)).toEqual({
-      mode: "busy",
+      mode: "direct_preflight_in_flight",
       baseRevision: 1,
     });
-    expect(result.second).toEqual({ mode: "busy", baseRevision: 1 });
+    expect(result.second).toEqual({
+      mode: "direct_preflight_in_flight",
+      baseRevision: 1,
+    });
     expect(result.callsBeforeRelease).toBe(1);
     expect(result.calls).toBe(1);
   });
 
-  it("allows a later busy request to retry after a direct failure using prior exact success", async () => {
+  it("allows a later request to retry the direct probe after a direct failure using prior exact success", async () => {
     const nowMs = 200_000;
     const ogmiosSlot = {
       source: "local_ogmios_tip" as const,
@@ -696,7 +609,7 @@ describe("L1 control-plane serialization", () => {
               : Effect.succeed(ogmiosSlot),
           ),
         );
-        const run = runBusyL1ProviderReadinessProbe({
+        const run = runExactGatedDirectL1ProviderProbe({
           globals,
           directProbe,
           now: () => nowMs,
@@ -716,13 +629,13 @@ describe("L1 control-plane serialization", () => {
     );
 
     expect(result.first).toEqual({
-      mode: "live_preflight_control_plane_busy",
+      mode: "exact_gated_direct_preflight",
       healthy: false,
       error: "direct provider unavailable",
       publishedRevision: 2,
     });
     expect(result.second).toEqual({
-      mode: "live_preflight_control_plane_busy",
+      mode: "exact_gated_direct_preflight",
       healthy: true,
       ogmiosSlot,
       publishedRevision: 3,
@@ -737,7 +650,7 @@ describe("L1 control-plane serialization", () => {
     });
   });
 
-  it("fails the busy fallback when exact evidence is 180001ms old", async () => {
+  it("refuses the direct probe when exact evidence is 180001ms old", async () => {
     const nowMs = 200_000;
     const result = await Effect.runPromise(
       Effect.gen(function* () {
@@ -757,7 +670,7 @@ describe("L1 control-plane serialization", () => {
           lastOgmiosSlot: null,
         });
         const calls = yield* Ref.make(0);
-        const probe = yield* runBusyL1ProviderReadinessProbe({
+        const probe = yield* runExactGatedDirectL1ProviderProbe({
           globals,
           directProbe: Ref.update(calls, (count) => count + 1).pipe(
             Effect.as({
@@ -776,7 +689,7 @@ describe("L1 control-plane serialization", () => {
     );
 
     expect(result.probe).toEqual({
-      mode: "live_preflight_control_plane_busy",
+      mode: "exact_gated_direct_preflight",
       healthy: false,
       error: "Exact HubOracle evidence is 180001ms old (max 180000ms)",
       publishedRevision: 1,
@@ -806,7 +719,7 @@ describe("L1 control-plane serialization", () => {
         const entered = yield* Deferred.make<void>();
         const release = yield* Deferred.make<void>();
         const fallback = yield* Effect.fork(
-          runBusyL1ProviderReadinessProbe({
+          runExactGatedDirectL1ProviderProbe({
             globals,
             directProbe: Deferred.succeed(entered, undefined).pipe(
               Effect.zipRight(Deferred.await(release)),
@@ -833,7 +746,7 @@ describe("L1 control-plane serialization", () => {
           }),
         );
         const concurrentCalls = yield* Ref.make(0);
-        const concurrent = yield* runBusyL1ProviderReadinessProbe({
+        const concurrent = yield* runExactGatedDirectL1ProviderProbe({
           globals,
           directProbe: Ref.update(concurrentCalls, (count) => count + 1).pipe(
             Effect.as({
@@ -870,16 +783,19 @@ describe("L1 control-plane serialization", () => {
     );
 
     expect(result.probe).toEqual({
-      mode: "live_preflight_control_plane_busy",
+      mode: "exact_gated_direct_preflight",
       healthy: false,
       error: "exact HubOracle query failed",
       publishedRevision: 2,
     });
-    expect(result.concurrent).toEqual({ mode: "busy", baseRevision: 2 });
+    expect(result.concurrent).toEqual({
+      mode: "direct_preflight_in_flight",
+      baseRevision: 2,
+    });
     expect(result.concurrentCalls).toBe(0);
     expect(result.concurrentSnapshot).toEqual({
       healthy: false,
-      mode: "cached_control_plane_busy",
+      mode: "cached_direct_preflight_in_flight",
       evidenceAgeMs: 100_000,
       error: "exact HubOracle query failed",
       ogmiosSlot: null,
@@ -942,7 +858,7 @@ describe("L1 control-plane serialization", () => {
               ? Effect.succeed(directSlot)
               : Effect.fail("direct provider unavailable");
           const fallback = yield* Effect.fork(
-            runBusyL1ProviderReadinessProbe({
+            runExactGatedDirectL1ProviderProbe({
               globals,
               directProbe: Deferred.succeed(entered, undefined).pipe(
                 Effect.zipRight(Deferred.await(release)),
@@ -1023,22 +939,17 @@ describe("L1 control-plane serialization", () => {
       observedAtMs: nowMs - 1,
       successKind: "exact",
     });
-    const reconciled = reconcileReadinessProbeWithExactEvidence({
+    const response = resolveL1ProviderReadinessSnapshot({
       probe: {
-        mode: "live_preflight_control_plane_busy",
+        mode: "exact_gated_direct_preflight",
         healthy: true,
         ogmiosSlot: directSlot,
         publishedRevision: afterDirect.evidenceRevision,
       },
       evidence: afterExactFailure,
-    });
-    const response = resolveL1ProviderReadinessEvidence({
-      probe: reconciled,
-      lastSuccessAtMs: afterExactFailure.lastSuccessAtMs,
-      lastFailure: afterExactFailure.lastFailure,
-      cachedOgmiosSlot: afterExactFailure.lastOgmiosSlot,
       nowMs,
       maxAgeMs: 30_000,
+      maxExactAgeMs: 180_000,
     });
 
     expect(afterExactFailure).toMatchObject({
@@ -1047,15 +958,9 @@ describe("L1 control-plane serialization", () => {
       lastExactFailureAtMs: nowMs - 1,
       lastExactFailure: "exact HubOracle query failed after direct settlement",
     });
-    expect(reconciled).toEqual({
-      mode: "live_preflight_control_plane_busy",
-      healthy: false,
-      error: "exact HubOracle query failed after direct settlement",
-      publishedRevision: afterExactFailure.evidenceRevision,
-    });
     expect(response).toEqual({
       healthy: false,
-      mode: "live_preflight_control_plane_busy",
+      mode: "snapshot_exact",
       evidenceAgeMs: 0,
       error: "exact HubOracle query failed after direct settlement",
       ogmiosSlot: null,
@@ -1104,22 +1009,17 @@ describe("L1 control-plane serialization", () => {
       ogmiosSlot: exactSlot,
       successKind: "exact",
     });
-    const reconciled = reconcileReadinessProbeWithExactEvidence({
+    const response = resolveL1ProviderReadinessSnapshot({
       probe: {
-        mode: "live_preflight_control_plane_busy",
+        mode: "exact_gated_direct_preflight",
         healthy: true,
         ogmiosSlot: directSlot,
         publishedRevision: afterDirect.evidenceRevision,
       },
       evidence: afterExactSuccess,
-    });
-    const response = resolveL1ProviderReadinessEvidence({
-      probe: reconciled,
-      lastSuccessAtMs: afterExactSuccess.lastSuccessAtMs,
-      lastFailure: afterExactSuccess.lastFailure,
-      cachedOgmiosSlot: afterExactSuccess.lastOgmiosSlot,
       nowMs,
       maxAgeMs: 30_000,
+      maxExactAgeMs: 180_000,
     });
 
     expect(afterExactSuccess).toMatchObject({
@@ -1131,13 +1031,9 @@ describe("L1 control-plane serialization", () => {
       lastFailure: null,
       lastOgmiosSlot: exactSlot,
     });
-    expect(reconciled).toEqual({
-      mode: "cached_fresh",
-      baseRevision: 3,
-    });
     expect(response).toEqual({
       healthy: true,
-      mode: "cached_fresh",
+      mode: "snapshot_exact",
       evidenceAgeMs: 1,
       error: null,
       ogmiosSlot: exactSlot,
@@ -1150,64 +1046,6 @@ describe("L1 control-plane serialization", () => {
         maxExactAgeMs: 180_000,
       }),
     ).toBe(true);
-  });
-
-  it("makes a newer exact failure override a primary-success response", () => {
-    const nowMs = 200_000;
-    const exactSlot = {
-      source: "local_ogmios_tip" as const,
-      currentSlot: 10,
-      observedAtMs: nowMs,
-      slotLengthMs: 1_000,
-    };
-    const initial = {
-      evidenceRevision: 1,
-      lastObservationKind: "exact_success" as const,
-      lastExactEvidenceRevision: 1,
-      lastExactObservationKind: "exact_success" as const,
-      lastSuccessAtMs: 100_000,
-      lastExactSuccessAtMs: 100_000,
-      lastExactFailureAtMs: 0,
-      lastExactFailure: null,
-      lastSuccessKind: "exact" as const,
-      lastFailureAtMs: 0,
-      lastFailure: null,
-      lastOgmiosSlot: null,
-    };
-    const afterPrimary = nextL1ProviderHealthEvidence({
-      current: initial,
-      healthy: true,
-      observedAtMs: nowMs,
-      ogmiosSlot: exactSlot,
-      successKind: "exact",
-    });
-    const afterFailure = nextL1ProviderHealthEvidence({
-      current: afterPrimary,
-      healthy: false,
-      error: "newer exact failure",
-      observedAtMs: nowMs - 10_000,
-      successKind: "exact",
-    });
-    const response = resolveL1ProviderReadinessSnapshot({
-      probe: {
-        mode: "live",
-        healthy: true,
-        ogmiosSlot: exactSlot,
-        publishedRevision: afterPrimary.evidenceRevision,
-      },
-      evidence: afterFailure,
-      nowMs,
-      maxAgeMs: 30_000,
-      maxExactAgeMs: 180_000,
-    });
-
-    expect(response).toEqual({
-      healthy: false,
-      mode: "snapshot_exact",
-      evidenceAgeMs: 0,
-      error: "newer exact failure",
-      ogmiosSlot: null,
-    });
   });
 
   it("makes a newer exact failure override a cached-success response", () => {
@@ -1301,7 +1139,7 @@ describe("L1 control-plane serialization", () => {
     });
     const response = resolveL1ProviderReadinessSnapshot({
       probe: {
-        mode: "live_preflight_control_plane_busy",
+        mode: "exact_gated_direct_preflight",
         healthy: true,
         ogmiosSlot: slot(2),
         publishedRevision: firstDirect.evidenceRevision,

@@ -5,7 +5,9 @@ import {
   assertOgmiosNetworkMagic,
   committeeLucidSlotOptions,
 } from "./lucid-network.js";
+import { chainPointBatchDeadlineMs } from "./provider.chain-point-batch.js";
 import { FileChainSyncConsumerCursorStore } from "./provider.file-chain-sync-consumer-cursor-store.js";
+import { joinNativeReads } from "./provider.join-native-reads.js";
 import {
   l1AuthorityProviderSource,
   localAuthorityFingerprint,
@@ -58,7 +60,7 @@ export const providerFromConfig = async (
       localSource.authorityNodeId,
       localSource.chainSyncProviderUrl,
     );
-    const queryProviders = await Promise.all(
+    const queryProviders = await joinNativeReads(
       urls.map(async (url) =>
         requireStateQueueReplaySource(url, await providerFromUrl(url, config)),
       ),
@@ -115,6 +117,8 @@ export const providerFromUrl = async (
   > & {
     readonly deploymentFingerprint?: string;
     readonly finalityDepth?: number;
+    /** Bounds one snapshot's chain-point resolution; see the batch module. */
+    readonly l1ViewFatalMs?: number;
     readonly hubOraclePolicyId?: string;
     readonly correctionLockAddress?: string;
     readonly fraudProofPolicyId?: string;
@@ -190,6 +194,11 @@ export const providerFromUrl = async (
         config.network,
         Math.max(1, config.finalityDepth),
         config.cardanoL1Source.networkMagic,
+        config.l1ViewFatalMs === undefined
+          ? {}
+          : {
+              batchDeadlineMs: chainPointBatchDeadlineMs(config.l1ViewFatalMs),
+            },
       ),
       currentChainPointResolver: kupmiosCurrentChainPointResolver(
         config.network,

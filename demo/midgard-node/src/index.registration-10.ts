@@ -4,6 +4,7 @@ import { Effect, pipe } from "effect";
 
 import {
   assertUserCliWalletIsOperationallyIsolated,
+  collectStringOption,
   errorMessage,
   failCli,
   provideDatabaseServices,
@@ -30,7 +31,15 @@ import * as Services from "./services/index.js";
 program
   .command("submit-l2-transfer")
   .description(
-    "Build, sign, and submit a Midgard-native L2 transfer from USER_WALLET by default or a provided seed phrase",
+    "Build, sign, and submit a Midgard-native L2 transfer from USER_WALLET by default or a provided seed phrase. With --submission-id the signed transfer is journaled before it is submitted, and a rerun with the same ID returns or resubmits that transaction instead of signing a new one; without it, every run builds and submits a new transfer",
+  )
+  .option(
+    "--submission-id <id>",
+    "Stable request ID; reuse this ID to resume an interrupted transfer",
+  )
+  .option(
+    "--submission-journal-dir <dir>",
+    `Directory holding the signed transfers of --submission-id runs (env ${SubmitL2Transfer.TRANSFER_SUBMISSION_JOURNAL_DIR_ENV}; default ~/.midgard/l2-transfer-submissions)`,
   )
   .requiredOption(
     "--l2-address <address>",
@@ -54,6 +63,12 @@ program
     "Midgard node HTTP endpoint used for /utxos and /submit",
     defaultMidgardNodeEndpoint(),
   )
+  .option(
+    "--exclude-out-ref <txHash#outputIndex>",
+    "Never spend this sender output, e.g. one a submitted withdrawal already names; repeatable. Part of a --submission-id's intent",
+    collectStringOption,
+    [],
+  )
   .argument(
     "[assetSpecs...]",
     "Optional additional assets in policyId.assetName:amount form (hex policy/asset name, integer amount)",
@@ -62,21 +77,44 @@ program
     async (
       assetSpecs: string[],
       options: {
+        readonly submissionId?: string;
+        readonly submissionJournalDir?: string;
         readonly l2Address: string;
         readonly lovelace: string;
         readonly walletSeedPhrase?: string;
         readonly walletSeedPhraseEnv: string;
         readonly endpoint: string;
+        readonly excludeOutRef: readonly string[];
       },
     ) => {
       let transferConfig: SubmitL2Transfer.SubmitL2TransferConfig;
       let resolvedWalletSeedPhrase: ResolvedWalletSeedPhrase;
+      let submission: SubmitL2Transfer.SubmitL2TransferSubmission | undefined;
       try {
+        if (
+          options.submissionId === undefined &&
+          options.submissionJournalDir !== undefined
+        ) {
+          throw new Error("--submission-journal-dir requires --submission-id.");
+        }
+        submission =
+          options.submissionId === undefined
+            ? undefined
+            : {
+                submissionId: SubmitL2Transfer.parseTransferSubmissionId(
+                  options.submissionId,
+                ),
+                journalDir:
+                  options.submissionJournalDir ??
+                  SubmitL2Transfer.defaultTransferSubmissionJournalDir(),
+              };
         transferConfig = SubmitL2Transfer.parseSubmitL2TransferConfig({
           l2Address: options.l2Address,
           lovelace: options.lovelace,
           assetSpecs,
           nodeEndpoint: options.endpoint,
+          submitRequestTimeoutMs: 30_000,
+          excludeOutRefs: options.excludeOutRef,
         });
         resolvedWalletSeedPhrase = resolveWalletSeedPhrase({
           walletSeedPhrase: options.walletSeedPhrase,
@@ -90,19 +128,22 @@ program
       const mainEffect = pipe(
         Effect.gen(function* () {
           const lucidService = yield* Services.Lucid;
-          const result = yield* SubmitL2Transfer.submitL2TransferProgram({
-            config: transferConfig,
-            resolvedWalletSeedPhrase,
-            assertWalletAddress: (walletAddress) =>
-              assertUserCliWalletIsOperationallyIsolated({
-                commandName: "submit-l2-transfer",
-                walletAddress,
-                operatorMainAddress: lucidService.operatorMainAddress,
-                operatorMergeAddress: lucidService.operatorMergeAddress,
-                referenceScriptsAddress:
-                  lucidService.referenceScriptsWalletAddress,
-              }),
-          });
+          const result = yield* SubmitL2Transfer.submitL2TransferCommandProgram(
+            {
+              config: transferConfig,
+              submission,
+              resolvedWalletSeedPhrase,
+              assertWalletAddress: (walletAddress) =>
+                assertUserCliWalletIsOperationallyIsolated({
+                  commandName: "submit-l2-transfer",
+                  walletAddress,
+                  operatorMainAddress: lucidService.operatorMainAddress,
+                  operatorMergeAddress: lucidService.operatorMergeAddress,
+                  referenceScriptsAddress:
+                    lucidService.referenceScriptsWalletAddress,
+                }),
+            },
+          );
           return result;
         }).pipe(
           tapJson(),

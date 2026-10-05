@@ -17,6 +17,7 @@ import {
   type WatcherBlockRelevance,
   type WatcherBlockRelevancePolicy,
 } from "./block-relevance.js";
+import { WATCHER_PACKAGE_NAME } from "./scaffold.js";
 
 export const MAX_BATCH = 64;
 
@@ -72,6 +73,73 @@ export type FirstObservation = Readonly<{
   raw: string;
   evidenceBytes: number;
 }>;
+
+/**
+ * Recently covered chain points by height, event and quiet alike, so that a
+ * point inside the covered stretch resolves without any request. Nothing here
+ * is authority: the publisher's coverage checkpoint and the durable row are,
+ * and a miss falls back to one node lookup.
+ */
+export const createWatcherUserEventCoveredRing = () => {
+  const coveredRing = new Map<
+    string,
+    Readonly<{ blockHash: string; slot: string }>
+  >();
+  const remember = (point: Readonly<QuietHeader | FraudProofRawL1Point>) => {
+    coveredRing.delete(point.blockNo);
+    coveredRing.set(
+      point.blockNo,
+      Object.freeze({ blockHash: point.blockHash, slot: point.slot }),
+    );
+    while (coveredRing.size > COVERED_RING_CAPACITY) {
+      const oldest = coveredRing.keys().next();
+      if (oldest.done) break;
+      coveredRing.delete(oldest.value);
+    }
+  };
+  const forgetAbove = (blockNo: bigint) => {
+    for (const height of coveredRing.keys())
+      if (BigInt(height) > blockNo) coveredRing.delete(height);
+  };
+  const rememberedHeight = (
+    point: Readonly<{ blockHash: string; slot: string }>,
+  ): string | null => {
+    for (const [height, known] of coveredRing)
+      if (known.blockHash === point.blockHash && known.slot === point.slot)
+        return height;
+    return null;
+  };
+  return { coveredRing, remember, forgetAbove, rememberedHeight };
+};
+
+/** One warning per L1 outage seen by a user-event operation. */
+export type WatcherUserEventL1Wait = Readonly<{
+  event: "user_event_l1_wait";
+  error: string;
+  retryAfterMs: number;
+}>;
+
+const writeL1Wait = (warning: WatcherUserEventL1Wait): void => {
+  process.stderr.write(
+    `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, level: "warn", ...warning })}\n`,
+  );
+};
+
+/** Retry options for one operation: warns on its first wait only. */
+export const watcherUserEventL1Wait =
+  (warn: ((warning: WatcherUserEventL1Wait) => void) | undefined) =>
+  (signal: AbortSignal) =>
+    Object.freeze({
+      signal,
+      onRetry: (error: Error, retry: number, retryAfterMs: number) => {
+        if (retry === 1)
+          (warn ?? writeL1Wait)({
+            event: "user_event_l1_wait",
+            error: error.message,
+            retryAfterMs,
+          });
+      },
+    });
 
 export const runtimeBrand = Symbol("watcher-user-event-runtime");
 

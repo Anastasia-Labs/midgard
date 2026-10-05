@@ -4,7 +4,9 @@ import { Effect } from "effect";
 import { Database } from "../services/database.js";
 import { withHistoryWrite } from "../services/event-history-producer.js";
 import * as DaPayloadsDB from "./daPayloads.js";
+import * as MutationJobsDB from "./mutationJobs.js";
 import {
+  ACTIVE_STATUSES,
   Columns,
   MemberColumns,
   type RawRow,
@@ -17,6 +19,12 @@ import {
 import { decodePendingBlockFinalizationRow } from "./pendingBlockFinalizations.decode-pending-block-finalization-row.js";
 import { type Record } from "./pendingBlockFinalizations.parse-ledger-delta.js";
 import { retrieveRecord } from "./pendingBlockFinalizations.retrieve-record.js";
+import {
+  challengeRelevantHeader,
+  orphanMemberJournal,
+  pruneInBatches,
+  recoveryRelevantJournal,
+} from "./retention-holds.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 import * as WithdrawalsDB from "./withdrawals.js";
 
@@ -90,6 +98,84 @@ export const retrieveFinalizedMissingDaPayloads = ({
     ),
   );
 
+/** A signed commit intent no acknowledgement, landing or replacement has
+ * resolved: only the history owner's signed-intent reconciliation clears it. */
+const unreconciledSignedSubmission = (sql: SqlClient.SqlClient) =>
+  sql`status = ${Status.PendingSubmission} AND intended_tx_hash IS NOT NULL`;
+
+/** How long an active journal may stay unresolved before the node reports it:
+ * well past the signed-intent replacement window, so an honest replacement
+ * never trips it. */
+export const PENDING_FINALIZATION_AGE_BOUND_MS = 15 * 60_000;
+
+export type UnreconciledSignedSubmission = {
+  readonly headerHash: Buffer;
+  /** Since the journal was prepared, on the database clock. */
+  readonly ageMs: number;
+};
+
+/** The journal `assertNoUnreconciledSignedSubmission` refuses on, if any. A
+ * read for deciding whether a commit attempt can do anything; it never stands
+ * in for that assertion or for the prepare guard. */
+export const retrieveUnreconciledSignedSubmission: Effect.Effect<
+  UnreconciledSignedSubmission | undefined,
+  DatabaseError,
+  Database
+> = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{
+    header_hash: Buffer;
+    age_ms: number;
+  }>`SELECT header_hash, GREATEST(0, EXTRACT(EPOCH FROM (NOW() - ${sql(
+    Columns.CREATED_AT,
+  )})) * 1000)::float8 AS age_ms
+    FROM ${sql(tableName)} WHERE ${unreconciledSignedSubmission(sql)}
+    ORDER BY ${sql(Columns.CREATED_AT)} ASC LIMIT 1`;
+  const row = rows[0];
+  return row === undefined
+    ? undefined
+    : { headerHash: row.header_hash, ageMs: Math.floor(Number(row.age_ms)) };
+}).pipe(sqlErrorToDatabaseError(tableName, "Failed signed submission lookup"));
+
+export type ActiveJournalAges = {
+  /** The oldest journal not yet finalized or abandoned; null when none. */
+  readonly pendingFinalizationAgeMs: number | null;
+  /** The oldest unreconciled signed commit intent; null when none. */
+  readonly signedIntentUnresolvedAgeMs: number | null;
+};
+
+/** Ages of the journals that hold back the next commit, on the database
+ * clock. */
+export const retrieveActiveJournalAges: Effect.Effect<
+  ActiveJournalAges,
+  DatabaseError,
+  Database
+> = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  // NULL over no rows; GREATEST would turn that into 0, so clamp below.
+  const age = sql`(EXTRACT(EPOCH FROM (NOW() - MIN(${sql(
+    Columns.CREATED_AT,
+  )}))) * 1000)::float8`;
+  const [row] = yield* sql<{
+    active_age_ms: number | null;
+    signed_age_ms: number | null;
+  }>`SELECT
+      (SELECT ${age} FROM ${sql(tableName)}
+        WHERE ${sql(Columns.STATUS)} IN ${sql.in(ACTIVE_STATUSES)}) AS active_age_ms,
+      (SELECT ${age} FROM ${sql(tableName)}
+        WHERE ${unreconciledSignedSubmission(sql)}) AS signed_age_ms`;
+  const toMs = (value: number | null | undefined) =>
+    value === null || value === undefined
+      ? null
+      : Math.max(0, Math.floor(Number(value)));
+  return {
+    pendingFinalizationAgeMs: toMs(row?.active_age_ms),
+    signedIntentUnresolvedAgeMs: toMs(row?.signed_age_ms),
+  };
+}).pipe(
+  sqlErrorToDatabaseError(tableName, "Failed to read active journal ages"),
+);
+
 /** A lost submit response requires reconciliation before another candidate build.
  * The transactional prepare guard remains authoritative against later races. */
 export const assertNoUnreconciledSignedSubmission = Effect.gen(function* () {
@@ -97,7 +183,7 @@ export const assertNoUnreconciledSignedSubmission = Effect.gen(function* () {
   const rows = yield* sql<{
     header_hash: Buffer;
   }>`SELECT header_hash FROM pending_block_finalizations
-    WHERE status = ${Status.PendingSubmission} AND intended_tx_hash IS NOT NULL LIMIT 1`;
+    WHERE ${unreconciledSignedSubmission(sql)} LIMIT 1`;
   if (rows.length !== 0)
     return yield* Effect.fail(
       new DatabaseError({
@@ -122,3 +208,143 @@ export const withdrawalMemberToAssignment = (
   validity: member[WithdrawalMemberColumns.VALIDITY],
   validityDetail: member[WithdrawalMemberColumns.VALIDITY_DETAIL],
 });
+
+/**
+ * Deletes finalized journals whose block ended before `challengeableCutoff`,
+ * `batchLimit` rows per statement until a batch comes up short, `maxBatches`
+ * ran, or the clock passes `deadlineMs`; each journal's member rows go with it
+ * by cascade. Never removed: any journal not finalized (an abandoned one may
+ * still be revived), the newest finalized journal (the local block boundary),
+ * any journal whose confirmed-merge finalization job has not completed (the
+ * landed-merge walk stops at a header with no journal, so pruning one before
+ * its merge is folded locally would skip that merge silently), and any
+ * journal whose header is still challenge-relevant (`challengeRelevantHeader`:
+ * the confirmed head, a live queue header, a header DA retention holds for
+ * finality, or one any recorded correction-observer transition, pending or
+ * admitted, merged or removed, or the observer's durable cursor still names,
+ * so a merge admitted at confirmation depth keeps its journal until it is
+ * final at k), any journal whose merge the observer has not recorded since it
+ * was folded locally (or every journal, while the deployment has no observer
+ * record), and any journal with an orphaned event member
+ * (`orphanMemberJournal`). Recovery dependencies are also kept:
+ * unfinished/abandoned journals' bases, same-base siblings and descendants,
+ * and every retained native recovery plan's primary/member headers. Each batch
+ * is its own history write, so it needs the history producer permit and holds
+ * it for one statement at a time. Returns the number removed.
+ */
+export const pruneFinalizedBeyondChallengeability = ({
+  challengeableCutoff,
+  view,
+  deploymentIdentityDigest,
+  // Each batch cascades into the journal's tx, trace and witness rows while
+  // holding the history write lock, so batches stay small.
+  batchLimit = 50,
+  maxBatches = 100,
+  deadlineMs,
+}: {
+  readonly challengeableCutoff: Date;
+  readonly view: DaPayloadsDB.RetentionL1View;
+  readonly deploymentIdentityDigest: Buffer;
+  readonly batchLimit?: number;
+  readonly maxBatches?: number;
+  readonly deadlineMs?: number;
+}): Effect.Effect<number, DatabaseError, Database> =>
+  pruneInBatches({
+    batchLimit,
+    maxBatches,
+    deadlineMs,
+    batch: (limit) =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const rows = yield* sql<{ header_hash: Buffer }>`DELETE FROM ${sql(
+          tableName,
+        )}
+        WHERE ${sql(Columns.HEADER_HASH)} IN (
+          SELECT ${sql(Columns.HEADER_HASH)} FROM ${sql(tableName)}
+          WHERE ${sql(Columns.STATUS)} = ${Status.Finalized}
+            AND ${sql(Columns.BLOCK_END_TIME)} < ${challengeableCutoff}
+            AND NOT ${challengeRelevantHeader(sql, `${tableName}.${Columns.HEADER_HASH}`, { view, deploymentIdentityDigest })}
+            AND NOT ${recoveryRelevantJournal(sql, `${tableName}.${Columns.HEADER_HASH}`, deploymentIdentityDigest)}
+            AND NOT ${orphanMemberJournal(sql, `${tableName}.${Columns.HEADER_HASH}`)}
+            AND EXISTS (
+              SELECT 1 FROM ${sql(MutationJobsDB.tableName)} AS job
+              WHERE job.${sql(MutationJobsDB.Columns.JOB_ID)} =
+                  ${MutationJobsDB.confirmedMergeFinalizationJobId("")}::text ||
+                  encode(${sql(tableName)}.${sql(Columns.HEADER_HASH)}, 'hex')
+                AND job.${sql(MutationJobsDB.Columns.STATUS)} = ${MutationJobsDB.Status.Completed}
+                -- The observer saved its record after the merge was folded
+                -- locally. The journal is past the retention window, so its
+                -- header was committed long before that save: the record
+                -- still queues the header, names its merge, or dropped the
+                -- merge as final beyond k. No record (NULL) keeps every
+                -- journal.
+                AND job.${sql(MutationJobsDB.Columns.COMPLETED_AT)} < (
+                  SELECT observer.updated_at
+                  FROM state_queue_terminal_observer_states AS observer
+                  WHERE observer.deployment_identity_digest = ${deploymentIdentityDigest}))
+            AND ${sql(Columns.HEADER_HASH)} <> (
+              SELECT newest.${sql(Columns.HEADER_HASH)} FROM ${sql(
+                tableName,
+              )} AS newest
+              WHERE newest.${sql(Columns.STATUS)} = ${Status.Finalized}
+              ORDER BY newest.${sql(Columns.BLOCK_END_TIME)} DESC,
+                newest.${sql(Columns.CREATED_AT)} DESC
+              LIMIT 1)
+          ORDER BY ${sql(Columns.BLOCK_END_TIME)} ASC
+          LIMIT ${limit})
+        RETURNING ${sql(Columns.HEADER_HASH)}`;
+        return rows.length;
+      }).pipe(
+        withHistoryWrite,
+        Effect.withLogSpan(`pruneFinalizedBeyondChallengeability ${tableName}`),
+        sqlErrorToDatabaseError(
+          tableName,
+          "Failed to prune finalized journals beyond challengeability",
+        ),
+      ),
+  });
+
+/** Retained journals recovery still reads, plus merges not finalized locally.
+ * Finalized same-base siblings/descendants and recovery-plan members need
+ * recorded landing evidence too. Settled finalized journals alone do not hold
+ * their observer transition forever: that would cycle with journal retention. */
+export const retrieveCorrectionObserverJournalDependencies: Effect.Effect<
+  readonly Readonly<{
+    headerHash: string;
+    baseTailHeaderHash: string;
+    baseTailOutRef: string;
+    abandoned: boolean;
+  }>[],
+  DatabaseError,
+  Database
+> = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{
+    readonly header_hash: Buffer;
+    readonly base_tail_header_hash: Buffer;
+    readonly base_tail_out_ref: string;
+    readonly status: Status;
+  }>`SELECT ${sql(Columns.HEADER_HASH)}, ${sql(Columns.BASE_TAIL_HEADER_HASH)},
+      ${sql(Columns.BASE_TAIL_OUT_REF)}, ${sql(Columns.STATUS)}
+    FROM ${sql(tableName)}
+    WHERE ${sql(Columns.STATUS)} <> ${Status.Finalized}
+      OR ${recoveryRelevantJournal(sql, `${tableName}.${Columns.HEADER_HASH}`)}
+      OR NOT EXISTS (
+        SELECT 1 FROM ${sql(MutationJobsDB.tableName)} AS job
+        WHERE job.${sql(MutationJobsDB.Columns.JOB_ID)} =
+            ${MutationJobsDB.confirmedMergeFinalizationJobId("")}::text ||
+            encode(${sql(tableName)}.${sql(Columns.HEADER_HASH)}, 'hex')
+          AND job.${sql(MutationJobsDB.Columns.STATUS)} = ${MutationJobsDB.Status.Completed})
+    ORDER BY ${sql(Columns.HEADER_HASH)}`;
+  return rows.map((row) => ({
+    headerHash: row.header_hash.toString("hex"),
+    baseTailHeaderHash: row.base_tail_header_hash.toString("hex"),
+    baseTailOutRef: row.base_tail_out_ref,
+    abandoned: row.status === Status.Abandoned,
+  }));
+}).pipe(
+  sqlErrorToDatabaseError(
+    tableName,
+    "Failed to read the journals the correction observer depends on",
+  ),
+);

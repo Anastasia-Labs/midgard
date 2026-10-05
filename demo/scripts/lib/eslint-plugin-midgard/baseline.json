@@ -466,8 +466,7 @@
         "left.headerHash.localeCompare(right.headerHash) ||",
         "left.availabilityCommitmentDigest.localeCompare(",
         "left.peerId.localeCompare(right.peerId),",
-        "left.peerId.localeCompare(right.peerId),",
-        "left.headerHash.localeCompare(right.headerHash),"
+        "left.peerId.localeCompare(right.peerId),"
       ]
     },
     "da-committee-node/tests/conflict-evidence.conflict-fixture.ts": {
@@ -940,7 +939,7 @@
       "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
     },
-    "midgard-watcher/src/runtime/operations-observability.create-watcher-operations-observability.ts": {
+    "midgard-watcher/src/runtime/operations-observability.alert-book.ts": {
       "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
       "sites": [
         "left.code.localeCompare(right.code) ||",
@@ -986,12 +985,7 @@
     },
     "midgard-watcher/tests/funding/sqlite-prover-funding-reservation-store.test.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        "(a, b) => a.outRef.localeCompare(b.outRef),",
-        ".sort((a, b) => a.outRef.localeCompare(b.outRef)),",
-        "].sort((a, b) => a.outRef.localeCompare(b.outRef)),",
-        "left.outRef.localeCompare(right.outRef),"
-      ]
+      "sites": ["left.outRef.localeCompare(right.outRef),"]
     },
     "midgard-watcher/tests/l1/local-historical-capture.test.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",

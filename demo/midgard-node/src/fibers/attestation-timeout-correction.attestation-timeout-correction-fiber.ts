@@ -7,19 +7,20 @@ import {
   Lucid,
   MidgardContracts,
   NodeConfig,
-  StateQueueCorrectionRewindIntegrityError,
 } from "../services/index.js";
 import {
   attestationTimeoutCorrectionAction,
   attestationTimeoutCorrectionStep,
 } from "./attestation-timeout-correction.attestation-timeout-correction-action.js";
 
-/** Operator-owned correction scheduler. Watcher processes remain observe-only. */
+/** Operator-owned correction scheduler. Watcher processes remain observe-only.
+ * It never fails: a rewind integrity failure holds the commit and settlement
+ * fibers through readiness instead (see `attestationTimeoutCorrectionStep`). */
 export const attestationTimeoutCorrectionFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<
   void,
-  StateQueueCorrectionRewindIntegrityError,
+  never,
   | Lucid
   | MidgardContracts
   | ContractDeploymentIdentity
@@ -36,6 +37,7 @@ export const attestationTimeoutCorrectionFiber = (
           Effect.withSpan("attestation-timeout-correction-fiber"),
         ),
         globals.ATTESTATION_TIMEOUT_CORRECTION_HEALTH,
+        globals,
       ),
       schedule,
     );

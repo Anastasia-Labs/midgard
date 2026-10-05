@@ -72,12 +72,12 @@ test challenge_window_past_block_maturity_is_refused() {
 
 test withdraw_delay_spec_form_bound_is_exact() {
   and {
-    // 480,000 + 720,000 + 840,000 + 300,000 = 2,340,000 (testing figures).
+    // 480,000 + 720,000 + 880,000 + 300,000 = 2,380,000 (testing figures).
     profile.withdraw_delay_covers_challenge_v1(
-      2_340_000,
+      2_380_000,
       480_000,
       720_000,
-      840_000,
+      880_000,
       300_000,
     ),
     // 480,000 + 259,200,000 + 172,800,000 + 172,800,000 = 605,280,000.
@@ -93,10 +93,10 @@ test withdraw_delay_spec_form_bound_is_exact() {
 
 test withdraw_delay_below_spec_form_is_refused() {
   !profile.withdraw_delay_covers_challenge_v1(
-    2_339_999,
+    2_379_999,
     480_000,
     720_000,
-    840_000,
+    880_000,
     300_000,
   )
 }
@@ -112,12 +112,12 @@ test withdraw_delay_head_removal_bound_is_exact() {
       604_800_000,
       172_800_000,
     ),
-    // 480,000 + max(1,560,000, 900,000) + 300,000 = 2,340,000.
+    // 480,000 + max(1,600,000, 900,000) + 300,000 = 2,380,000.
     profile.withdraw_delay_covers_head_removal_v1(
-      2_340_000,
+      2_380_000,
       480_000,
       720_000,
-      840_000,
+      880_000,
       900_000,
       300_000,
     ),
@@ -160,10 +160,10 @@ test spec_public_withdraw_delay_is_refused_by_head_removal_form() {
 
 test withdraw_delay_head_removal_counts_the_challenge_path_when_it_dominates() {
   !profile.withdraw_delay_covers_head_removal_v1(
-    2_339_999,
+    2_379_999,
     480_000,
     720_000,
-    840_000,
+    880_000,
     900_000,
     300_000,
   )

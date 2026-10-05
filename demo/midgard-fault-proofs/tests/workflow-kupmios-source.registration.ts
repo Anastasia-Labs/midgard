@@ -29,7 +29,7 @@ import { sourceFixture } from "./workflow-kupmios-source.source-fixture.js";
 
 it.each([
   [{ referenceSpent: "stable", scriptOrdinary: true }, "not_found"],
-  [{ referenceSpent: "volatile", scriptOrdinary: true }, "pending"],
+  [{ referenceSpent: "volatile", scriptOrdinary: true }, "not_found"],
   [
     { referenceSpent: "stable", scriptOrdinary: true, spent: true },
     "not_found",
@@ -43,11 +43,11 @@ it.each([
     "unknown",
   ],
   [{ referenceSpent: "stable", keyCollateral: true }, "not_found"],
-  [{ referenceSpent: "volatile", keyCollateral: true }, "pending"],
+  [{ referenceSpent: "volatile", keyCollateral: true }, "not_found"],
   [{ referenceSpent: "stable" }, "not_found"],
   [{ referenceSpent: "stable", ttl: null }, "not_found"],
-  [{ referenceSpent: "volatile", spent: true }, "pending"],
-  [{ referenceSpent: "volatile" }, "pending"],
+  [{ referenceSpent: "volatile", spent: true }, "not_found"],
+  [{ referenceSpent: "volatile" }, "not_found"],
   [{ referenceSpent: "stable", spent: true }, "not_found"],
   [{ referenceSpent: "stable", missing: true }, "unknown"],
   [{ ttl: 399 }, "not_found"],
@@ -268,7 +268,7 @@ it("restarts at most three complete signed-recovery captures after typed head ch
       await expect(result).rejects.toBeInstanceOf(
         LocalKupmiosCheckpointChangedError,
       );
-    expect(capture).toHaveBeenCalledTimes(3);
+    expect(capture).toHaveBeenCalledTimes(changes === 2 ? 4 : 3);
     expect(fixture.submissions).toEqual([]);
   }
 });

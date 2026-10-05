@@ -249,7 +249,7 @@ export class StateQueueCorrectionRewindIntegrityError extends Error {
   readonly headerHash: string;
   constructor(headerHash: string, detail: string) {
     super(
-      `State-queue correction integrity failure: block ${headerHash} was rewound out of the native ledger by an admitted correction, but ${detail}. The removal rolled back below its release depth; this node cannot re-apply a rewound block and refuses to continue.`,
+      `State-queue correction integrity failure: block ${headerHash} was rewound out of the native ledger by an admitted correction, but ${detail}. The removal rolled back below its release depth; this node cannot re-apply a rewound block.`,
     );
     this.name = "StateQueueCorrectionRewindIntegrityError";
     this.headerHash = headerHash;

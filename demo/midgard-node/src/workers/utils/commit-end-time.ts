@@ -108,6 +108,15 @@ export const alignedUnixTimeStrictlyAfter = (
   return strictlyAfter;
 };
 
+/**
+ * The commit's validity interval for a fixed `validToMs`. On-chain only the
+ * upper bound and the range width are checked, but the signed lower bound is
+ * the earliest-inclusion boundary that signed-intent canonical coverage and
+ * its retention hold read, so it is backdated from the ledger tip rather than
+ * widened to the full range. The ledger tip, not the wall-clock submit slot:
+ * between blocks the submit slot runs ahead, and a lower bound past the tip is
+ * refused by the mempool as outside its validity interval.
+ */
 export const resolveCommitValidityInterval = ({
   lucid,
   submitSlotSnapshot,
@@ -120,23 +129,23 @@ export const resolveCommitValidityInterval = ({
   if (!Number.isSafeInteger(validToMs)) {
     throw new Error(`Commit validTo is invalid: ${String(validToMs)}`);
   }
-  const currentSlotStartMs = lucid.slotToUnixTime(
-    submitSlotSnapshot.currentSlot,
+  const ledgerTipSlotStartMs = lucid.slotToUnixTime(
+    submitSlotSnapshot.ledgerTipSlot ?? submitSlotSnapshot.currentSlot,
   );
-  if (!Number.isSafeInteger(currentSlotStartMs)) {
+  if (!Number.isSafeInteger(ledgerTipSlotStartMs)) {
     throw new Error(
-      `Commit submit-slot start is invalid: ${String(currentSlotStartMs)}`,
+      `Commit ledger-tip slot start is invalid: ${String(ledgerTipSlotStartMs)}`,
     );
   }
-  const backdatedCurrentSlotStartMs = Math.max(
+  const backdatedLedgerTipStartMs = Math.max(
     0,
-    currentSlotStartMs - COMMIT_VALIDITY_BACKDATE_MS,
+    ledgerTipSlotStartMs - COMMIT_VALIDITY_BACKDATE_MS,
   );
   const minimumRangeBoundedValidFromMs =
     validToMs - SDK.COMMIT_MAX_VALIDITY_RANGE_MS;
   let validFromMs = alignUnixTimeToSlotBoundary(
     lucid,
-    Math.max(backdatedCurrentSlotStartMs, minimumRangeBoundedValidFromMs),
+    Math.max(backdatedLedgerTipStartMs, minimumRangeBoundedValidFromMs),
   );
   if (validToMs - validFromMs > SDK.COMMIT_MAX_VALIDITY_RANGE_MS) {
     validFromMs = alignedUnixTimeStrictlyAfter(
@@ -252,11 +261,13 @@ export const resolveCommitEndTimeFit = ({
 
 /**
  * The latest inclusive header end a commit built in `currentSlot` can carry.
- * The header end is the transaction's inclusive upper bound, and
- * `resolveCommitValidityInterval` backdates the lower bound to one minute
- * before the submit slot within the profile's validity range. An end past this
- * point would push the lower bound after the submit slot, and the ledger would
- * not admit the transaction yet.
+ * The header end is the transaction's inclusive upper bound, and the lower
+ * bound can be no earlier than the profile's validity range before it. At this
+ * cap that floor sits `COMMIT_VALIDITY_BACKDATE_MS` before the submit slot; an
+ * end past it would push the lower bound closer to or after the submit slot,
+ * and the ledger would not admit the transaction yet. Near the cap, a ledger
+ * tip more than that backdate behind the submit slot can still refuse it until
+ * the next block.
  */
 export const commitValidityEndTimeCapMs = (
   lucid: LucidEvolution,

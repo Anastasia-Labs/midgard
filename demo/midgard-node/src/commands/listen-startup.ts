@@ -22,12 +22,17 @@ import "./contract-deployment-info.js";
 import "./startup-policy.js";
 import "./listen-startup.ensure-protocol-initialized-on-startup.js";
 import "./listen-startup.seed-latest-local-block-boundary-on-startup.js";
+import "./listen-startup.release-state-queue-leases-of-previous-node-process.js";
 import "./listen-startup.assert-startup-mutation-jobs-recoverable.js";
 export { assertStartupMutationJobsRecoverable } from "./listen-startup.assert-startup-mutation-jobs-recoverable.js";
 export {
   ensureProtocolInitializedOnStartup,
   fetchProtocolDeploymentStatusWithStartupRetry,
 } from "./listen-startup.ensure-protocol-initialized-on-startup.js";
+export {
+  NODE_PROCESS_STATE_QUEUE_LEASE_HOLDERS,
+  releaseStateQueueLeasesOfPreviousNodeProcess,
+} from "./listen-startup.release-state-queue-leases-of-previous-node-process.js";
 export {
   classifyUnfinishedMutationJobOnStartup,
   hydratePendingBlockFinalizationOnStartup,

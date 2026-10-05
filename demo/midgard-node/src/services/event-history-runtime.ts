@@ -17,7 +17,7 @@ import { makeEventHistoryOwner } from "./event-history-owner.js";
 import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
 import { HistoryPreparation } from "./event-history-recovery.js";
 import { recoverForeignNativeAdoptions } from "./foreign-native-adoption.js";
-import { Globals } from "./globals.js";
+import { Globals } from "./globals.globals.js";
 import {
   expiredIntentReleaseDisposition,
   makeSignedIntentDeferral,
@@ -25,7 +25,15 @@ import {
   prepareReplacedBlockRevival,
   replacedBlockRevivalDisposition,
 } from "./history-expired-intent-release.js";
+import {
+  activeSignedIntent,
+  deferralKey,
+} from "./history-expired-intent-release.table.js";
 import { prepareSignedHeaderRecovery } from "./history-signed-header-recovery.js";
+import {
+  clearLivenessIncident,
+  HISTORY_SIGNED_INTENT_RELEASE_SOURCE,
+} from "./liveness-halt.js";
 import { Lucid } from "./lucid.js";
 import { MempoolLedgerCache } from "./mempool-ledger-cache.js";
 import {
@@ -34,12 +42,48 @@ import {
 } from "./midgard-contracts.js";
 import { initializeArchitectureGOwner } from "./native-mpf-startup.js";
 import {
+  CORRECTION_REWIND_HELD_ON_NATIVE_STATE,
   prepareStateQueueCorrectionRewind,
   stateQueueCorrectionRewindDisposition,
 } from "./state-queue-correction-rewind.js";
 import { WriteBehind } from "./write-behind.js";
 
 type OwnerOptions<E, R> = Parameters<typeof makeEventHistoryOwner<E, R>>[0];
+
+/** The active signed intent the release disposition last saw. */
+export type ReleaseIncidentJournal = { current: string | undefined };
+
+/**
+ * `expiredIntentReleaseDisposition`, clearing the undecided-release incident
+ * (`signed_intent_undecided`, which only `decide` raises) once its condition
+ * no longer holds: when no release is in question (no active signed intent,
+ * one that can still land, or a deferral), and when the active journal
+ * changes, since the incident was raised for the one before. Only `decide`
+ * clears it otherwise, and `decide` runs only while a release is in question.
+ */
+export const expiredIntentReleaseClearingIncident = (
+  input: Parameters<typeof expiredIntentReleaseDisposition>[0],
+  journal: ReleaseIncidentJournal,
+) =>
+  Effect.gen(function* () {
+    const globals = yield* Globals;
+    const intent = yield* activeSignedIntent;
+    const key = intent === undefined ? undefined : deferralKey(intent);
+    if (key !== journal.current) {
+      journal.current = key;
+      yield* clearLivenessIncident(
+        globals,
+        HISTORY_SIGNED_INTENT_RELEASE_SOURCE,
+      );
+    }
+    const release = yield* expiredIntentReleaseDisposition(input);
+    if (release === undefined)
+      yield* clearLivenessIncident(
+        globals,
+        HISTORY_SIGNED_INTENT_RELEASE_SOURCE,
+      );
+    return release;
+  });
 
 /** Production composition shared by listen and acceptance. Only source IO and
  * recovery preparation are injected; journal materialization and deposit
@@ -113,6 +157,9 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
     // correction path; this runtime remembers it until a rollback. A replaced
     // block without evidence it landed is re-read at the next source point.
     const signedIntentDeferral = makeSignedIntentDeferral();
+    const releaseIncidentJournal: ReleaseIncidentJournal = {
+      current: undefined,
+    };
     // The ledger root is a promoted native owner: a correction that removes a
     // committed block rewinds it through this owner's recovery.
     const rewindAuthority =
@@ -167,7 +214,7 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
             // the removed blocks' journals, and a prepared plan of either kind
             // must be applied before another can be prepared.
             (rewindAuthority === undefined
-              ? Effect.void
+              ? Effect.succeed(undefined)
               : prepareStateQueueCorrectionRewind({
                   bindingDigest: binding.digest,
                   checkpoint,
@@ -176,7 +223,7 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
                   authority: rewindAuthority,
                 })
             ).pipe(
-              Effect.zipRight(
+              Effect.zipLeft(
                 prepareSignedHeaderRecovery({
                   binding,
                   checkpoint,
@@ -189,11 +236,12 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
                   slotToUnixTime: lucid.api.slotToUnixTime,
                 }),
               ),
-              // A signed commit past its TTL is reconciled to whichever block
+              // A signed commit past its TTL, or once the journaled history
+              // shows its base output spent, is reconciled to whichever block
               // holds its base's state-queue slot: confirmed, replaced (members
               // reopened, Architecture G native root restored) or, when an
               // earlier replaced block of this node won, revived.
-              Effect.zipRight(
+              Effect.zipLeft(
                 rewindAuthority === undefined
                   ? Effect.void
                   : prepareExpiredIntentRelease({
@@ -210,7 +258,7 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
               // With no journal active, a replaced block of this node that
               // holds its base's slot after all (it landed late, or a rollback
               // brought it back) is revived.
-              Effect.zipRight(
+              Effect.zipLeft(
                 rewindAuthority === undefined
                   ? Effect.void
                   : prepareReplacedBlockRevival({
@@ -224,7 +272,16 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
                       deferral: signedIntentDeferral,
                     }),
               ),
-              Effect.zipRight(prepareForeignAdoption(checkpoint, preparation)),
+              // A correction rewind held on the native owner's state still
+              // owns the removed local suffix and that root: foreign adoption
+              // waits for the next pass, as it did when such a refusal failed
+              // the whole preparation, instead of replaying from a root it
+              // cannot place and failing the owner.
+              Effect.flatMap((rewind) =>
+                rewind === CORRECTION_REWIND_HELD_ON_NATIVE_STATE
+                  ? Effect.void
+                  : prepareForeignAdoption(checkpoint, preparation),
+              ),
             ),
       binding,
       histories,
@@ -248,12 +305,15 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
             const rewind =
               yield* stateQueueCorrectionRewindDisposition(rewindAuthority);
             if (rewind !== undefined) return rewind;
-            const release = yield* expiredIntentReleaseDisposition({
-              binding,
-              change,
-              deferral: signedIntentDeferral,
-              rewindAuthority,
-            });
+            const release = yield* expiredIntentReleaseClearingIncident(
+              {
+                binding,
+                change,
+                deferral: signedIntentDeferral,
+                rewindAuthority,
+              },
+              releaseIncidentJournal,
+            );
             if (release !== undefined) return release;
             const revival = yield* replacedBlockRevivalDisposition({
               change,

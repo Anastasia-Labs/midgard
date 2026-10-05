@@ -38,7 +38,7 @@ import "./readiness.js";
 import "./tx-status.js";
 import "./utxos.js";
 import "./listen-router.l1-provider-readiness-evidence-is-fresh.js";
-import "./listen-router.run-busy-l1-provider-readiness-probe.js";
+import "./listen-router.run-exact-gated-direct-l1-provider-probe.js";
 import "./listen-router.get-tx-handler.js";
 import "./listen-router.get-tx-status-handler.js";
 import "./listen-router.post-tx-status-batch-handler.js";
@@ -75,12 +75,9 @@ export {
   l1ProviderReadinessEvidenceIsFresh,
   type L1ProviderReadinessProbe,
   localOgmiosSlotFromPreflight,
-  reconcileReadinessProbeWithExactEvidence,
   runBoundedDirectL1ProviderPreflight,
 } from "./listen-router.l1-provider-readiness-evidence-is-fresh.js";
 export {
-  resolveL1ProviderReadinessEvidence,
   resolveL1ProviderReadinessSnapshot,
-  runBusyL1ProviderReadinessProbe,
-  runCombinedL1ReadinessProbe,
-} from "./listen-router.run-busy-l1-provider-readiness-probe.js";
+  runExactGatedDirectL1ProviderProbe,
+} from "./listen-router.run-exact-gated-direct-l1-provider-probe.js";

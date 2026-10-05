@@ -20,7 +20,8 @@
     "sourceMap": true,
     "strict": true,
     "target": "es2020",
-    "outDir": "dist"
+    "outDir": "dist",
+    "rootDir": ".."
   },
   "include": ["src", "tests", "../midgard-node/src/types"],
   "exclude": ["node_modules", "dist"]

@@ -1,3 +1,8 @@
+import {
+  formatOgmiosJsonRpcError,
+  OgmiosJsonRpcError,
+} from "@al-ft/midgard-core/ogmios-json-rpc-error";
+
 import { LocalNodeChainAuthority } from "./provider.local-node-chain-authority.js";
 import {
   type CanonicalChainPoint,
@@ -72,8 +77,11 @@ export class OgmiosRpcSession {
           );
         }
         if (envelope.error !== undefined) {
-          throw new Error(
-            `Ogmios JSON-RPC error: ${JSON.stringify(envelope.error)}`,
+          // Typed for its code and transience; every failure here, a refused
+          // request included, fails the tick for the next one to retry.
+          throw new OgmiosJsonRpcError(
+            `Ogmios JSON-RPC error: ${formatOgmiosJsonRpcError(envelope.error)}`,
+            envelope.error,
           );
         }
         clearTimeout(pending.timeout);

@@ -16,6 +16,7 @@ import {
   type WatcherRollbackDurableAuthorityRead,
   type WatcherRollbackDurableCanonicalProgressResult,
   type WatcherRollbackDurableEvaluationResult,
+  type WatcherRollbackDurableObservationEntry,
   type WatcherRollbackDurableObservationResult,
   type WatcherRollbackDurableRecoveryResult,
   type WatcherRollbackDurableTrustedHead,
@@ -33,17 +34,29 @@ import {
 export const WATCHER_DURABLE_RUNTIME_SCHEMA_VERSION =
   "midgard-watcher-production-durable-runtime-v1" as const;
 
+/** A live coordinator must reauthenticate both owners before retrying. */
+export class WatcherDurableAuthorityConflict extends Error {}
+
 export type WatcherDurableRuntime = Readonly<{
   schemaVersion: typeof WATCHER_DURABLE_RUNTIME_SCHEMA_VERSION;
   read(): WatcherRollbackDurableAuthorityRead;
   readFinality(): WatcherFinalityState;
+  /** Reauthenticate both durable owners; admits only an exact direct successor. */
+  reconcile?(): Promise<void>;
   persistObservation(input: {
+    readonly assertCurrent?: () => void;
     readonly block: WatcherNormalizedL1Block;
     readonly observations: readonly WatcherNormalizedL1Block[];
     readonly consistency: WatcherMultiProviderConsistency;
     readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
   }): Promise<WatcherRollbackDurableObservationResult>;
+  /** Journals a run of authenticated blocks in one durable revision. */
+  persistObservations(input: {
+    readonly assertCurrent?: () => void;
+    readonly entries: readonly WatcherRollbackDurableObservationEntry[];
+  }): Promise<WatcherRollbackDurableObservationResult>;
   persistCanonicalProgress(input: {
+    readonly assertCurrent?: () => void;
     readonly block: WatcherNormalizedL1Block;
     readonly observations: readonly WatcherNormalizedL1Block[];
     readonly consistency: WatcherMultiProviderConsistency;
@@ -51,12 +64,14 @@ export type WatcherDurableRuntime = Readonly<{
     readonly ancestry?: readonly WatcherRollbackCanonicalAncestryLink[];
   }): Promise<WatcherRollbackDurableCanonicalProgressResult>;
   persistRollback(input: {
+    readonly assertCurrent?: () => void;
     readonly previousFinalityState: unknown;
     readonly consistency: unknown;
     readonly finalityResult: unknown;
     readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
   }): Promise<WatcherRollbackDurableEvaluationResult>;
   persistPostFinalityRecovery(input: {
+    readonly assertCurrent?: () => void;
     readonly previousCanonicalPath: unknown;
     readonly replacementCanonicalPath: unknown;
     readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
@@ -241,7 +256,9 @@ export const publishDirectSuccessor = async (input: {
       nextTrustedHead: input.nextHead,
     }))
   ) {
-    throw new Error("watcher trusted-head direct-successor CAS conflicted");
+    throw new WatcherDurableAuthorityConflict(
+      "watcher trusted-head direct-successor CAS conflicted",
+    );
   }
   return await loadPublishedAuthority({
     backend: input.backend,

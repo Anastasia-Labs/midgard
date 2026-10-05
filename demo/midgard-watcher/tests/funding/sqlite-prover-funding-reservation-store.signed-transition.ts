@@ -3,6 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
+  computeFraudProofRawL1PointId,
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   journalJsonDigest,
@@ -37,7 +38,10 @@ export const signedTransition = ({
   feeLovelace = 1_000_000n,
   collateralHash,
   validityUpperBound,
+  protocolInputHashes = [],
 }: {
+  /** Further ordinary inputs the reservation does not own, such as a node. */
+  readonly protocolInputHashes?: readonly string[];
   readonly inputHash?: string;
   readonly outputLovelace?: bigint;
   readonly nonCanonicalBody?: boolean;
@@ -46,9 +50,10 @@ export const signedTransition = ({
   readonly validityUpperBound?: bigint;
 } = {}) => {
   const inputs = CML.TransactionInputList.new();
-  inputs.add(
-    CML.TransactionInput.new(CML.TransactionHash.from_hex(inputHash), 0n),
-  );
+  for (const hash of [inputHash, ...protocolInputHashes])
+    inputs.add(
+      CML.TransactionInput.new(CML.TransactionHash.from_hex(hash), 0n),
+    );
   const outputs = CML.TransactionOutputList.new();
   outputs.add(
     CML.TransactionOutput.new(
@@ -106,7 +111,10 @@ export const openStore = async (explicitPath?: string) => {
   let path = explicitPath;
   if (path === undefined) {
     const directory = await mkdtemp(
-      join(process.cwd(), ".watcher-funding-reservation-test-"),
+      join(
+        process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
+        ".watcher-funding-reservation-test-",
+      ),
     );
     temporaryDirectories.push(directory);
     path = join(directory, "watcher.sqlite");
@@ -210,6 +218,20 @@ export const prepareTransition = (
   >,
 ) => store.prepareTransition({ ...input, handoff: submissionHandoff(input) });
 
+export const retirementFixture = (transactionHash: string) => {
+  const boundary = { slot: "1000", blockNo: "50", blockHash: "ab".repeat(32) };
+  const tip = { slot: "10000", blockNo: "2211", blockHash: "cd".repeat(32) };
+  return {
+    transactionHash,
+    reason: "invalidated" as const,
+    releaseFinalPoint: {
+      ...boundary,
+      pointId: computeFraudProofRawL1PointId(boundary),
+    },
+    canonicalPoint: { ...tip, pointId: computeFraudProofRawL1PointId(tip) },
+  };
+};
+
 export const abandonmentHandoff = (
   plan: WatcherProverFundingReservationPlan,
   transactionHash: string,
@@ -228,6 +250,7 @@ export const abandonmentHandoff = (
     actionId: actionKind,
     outcome: "not_found",
     txHash: transactionHash,
+    retirement: retirementFixture(transactionHash),
   },
 });
 
@@ -248,3 +271,23 @@ export const completionHandoff = (
     },
   };
 };
+
+export const substituteAbandonmentTransactionHash = (
+  handoff: WorkflowFundingAbandonmentHandoff,
+  txHash: string,
+): WorkflowFundingAbandonmentHandoff => ({
+  ...handoff,
+  submissionIntent: { ...handoff.submissionIntent, txHash },
+  reconciliation: {
+    ...handoff.reconciliation,
+    txHash,
+    ...(handoff.reconciliation.retirement === undefined
+      ? {}
+      : {
+          retirement: {
+            ...handoff.reconciliation.retirement,
+            transactionHash: txHash,
+          },
+        }),
+  },
+});

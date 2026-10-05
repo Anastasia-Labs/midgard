@@ -266,6 +266,24 @@ describe("raw admission assembly (mocked completion; no ledger acceptance claim)
       localUPLCEval: true,
       coinSelection: false,
     });
+    expect(tx.validTo).not.toHaveBeenCalled();
+    // A durable submission bounds the body, so a publication that never
+    // lands stops holding its funding inputs.
+    await buildEventHistoryPublication(
+      prepared.context,
+      prepared.request.payloadCbor,
+      auth,
+      1_060_000,
+    );
+    expect(tx.validTo.mock.calls).toEqual([[1_060_000]]);
+    await expect(
+      buildEventHistoryPublication(
+        prepared.context,
+        prepared.request.payloadCbor,
+        auth,
+        1.5,
+      ),
+    ).rejects.toThrow("History publication requires a safe integer validity");
   });
 
   it("retains raw Withdrawal body and refund wrappers and counts duplicate funding bytes", async () => {

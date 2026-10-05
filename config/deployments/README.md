@@ -65,28 +65,38 @@ journey files belong in `interactiveTests` in the fault-proof Vitest config.
 `preprod-testing` and `local-devnet-testing` use fifteen-minute block maturity,
 a thirty-minute operator shift, 30-second registration, and the existing eight-minute
 maximum transaction validity. DA attestation has a ten-minute timeout; full
-responses have fourteen minutes and small responses have twelve minutes. A
+and small responses both have fourteen minutes forty seconds. A
 response window opens at the challenge open's inclusive upper validity bound,
 so a backdated open cannot shorten it. Validation requires every profile's
 windows to cover a minimum response budget: the confirmation depth, the five
 chained publications of a 64 KiB payload and one poll block, at twice the
-twenty-second mean block time (six minutes for the testing profiles, 24 minutes
-for the public ones). The fourteen-minute full window still holds only about 38
-chained publications per tranche at twenty-second blocks, roughly 530 KB, far
-short of the 300 publications of a whole 4 MiB tranche. On these profiles a
+twenty-second mean block time (ten minutes forty seconds for the testing
+profiles, 24 minutes for the public ones). The full budget also counts every
+bounded wait on the way to an answer;
+`demo/da-committee-node/tests/availability-response-budget.test.ts` adds them up
+for both testing profiles and both public profiles. The 880-second full
+window still holds only about 33 chained publications per tranche at
+twenty-second blocks after the ten-block confirmation wait and the poll block,
+roughly 460 KB, far short of the 300 publications of a
+whole 4 MiB tranche. On these profiles a
 challenge against a larger payload cannot be answered in full. Attestation waits
-for three descendant blocks before signing and then lands three
-confirmation-serialized transactions, about two and a half minutes on average at
-twenty-second blocks; a four-minute timeout missed about one block in ten, and a
-single dropped transaction alone costs 160 seconds. Economics remain the bounded
+for ten descendant blocks before signing and then lands three
+confirmation-serialized transactions, about four and a third minutes on average
+at twenty-second blocks (520 seconds at twice the mean, inside the ten-minute
+timeout); a single dropped transaction alone costs 160 seconds, which takes that
+doubled estimate past the timeout. Economics remain the bounded
 testing schedule. The node derives its retention defaults from the DA timeout:
 the retention poll runs every quarter timeout (150 seconds) and the L1 view
 deadline, `L1_VIEW_FATAL_MS`, is the timeout itself (ten minutes).
 
-`l1_finality.confirmation_depth` selects the L1 confirmation count. All three testing
-profiles use 3; `mainnet` and `preprod-public` use 30. The count is included in
+`l1_finality.confirmation_depth` selects the L1 confirmation count. The two live
+testing profiles use 10 (owner ruling, 2026-10-01) and `preprod-emulator-testing`
+uses 3; `mainnet` and `preprod-public` use 30. Raising the testing profiles to
+30 also requires longer response and maturity windows. The count is included in
 the profile digest and finalized manifest, and runtime services must match it.
-Three confirmations are a testing policy, not a production security guarantee.
+The testing counts are a testing policy, not a production security guarantee.
+Existing deployments keep their signed finality policy; a changed count applies
+to newly prepared manifests, not a reset of deployed state.
 
 Fault proofs are **accepted as non-functional** on the two live testing
 profiles (owner ruling, 2026-09-27), and neither profile provides production
@@ -125,16 +135,16 @@ configuration, while `deployment:build` also compiles and binds its blueprint.
 The committee backs every block it attests from one pooled bond. Each profile's
 `da_bond` section holds its amounts, and three `timing` keys hold its windows:
 
-| Key                                   | Public profiles         | Live testing profiles |
-| ------------------------------------- | ----------------------- | --------------------- |
-| `da_bond.da_bond_lovelace`            | 100,000 ADA             | 500 tADA              |
-| `da_bond.da_slash_penalty_lovelace`   | 25,000 ADA              | 100 tADA              |
-| `da_bond.da_bond_min_top_up_lovelace` | 1,000 ADA               | 5 tADA                |
-| `da_bond.da_bond_pool_floor_lovelace` | 5 ADA                   | 5 tADA                |
-| `da_bond.challenge_record_lovelace`   | 27 ADA                  | 27 tADA               |
-| `timing.da_challenge_window_ms`       | 259,200,000 (3 d)       | 720,000 (12 min)      |
-| `timing.da_slash_grace_ms`            | 172,800,000 (2 d)       | 300,000 (5 min)       |
-| `timing.da_bond_withdraw_delay_ms`    | 778,080,000 (9 d 8 min) | 2,340,000 (39 min)    |
+| Key                                   | Public profiles         | Live testing profiles   |
+| ------------------------------------- | ----------------------- | ----------------------- |
+| `da_bond.da_bond_lovelace`            | 100,000 ADA             | 500 tADA                |
+| `da_bond.da_slash_penalty_lovelace`   | 25,000 ADA              | 100 tADA                |
+| `da_bond.da_bond_min_top_up_lovelace` | 1,000 ADA               | 5 tADA                  |
+| `da_bond.da_bond_pool_floor_lovelace` | 5 ADA                   | 5 tADA                  |
+| `da_bond.challenge_record_lovelace`   | 27 ADA                  | 27 tADA                 |
+| `timing.da_challenge_window_ms`       | 259,200,000 (3 d)       | 720,000 (12 min)        |
+| `timing.da_slash_grace_ms`            | 172,800,000 (2 d)       | 300,000 (5 min)         |
+| `timing.da_bond_withdraw_delay_ms`    | 778,080,000 (9 d 8 min) | 2,380,000 (39 min 40 s) |
 
 A slash burns the penalty as fee and pays the rest of one DA bond to the
 challenger. The pool floor stays in the pool UTxO for its minimum ADA and never

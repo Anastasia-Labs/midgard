@@ -2,8 +2,8 @@
 
 Status: Active
 
-Last reviewed: 2026-09-12 (forced-submission merge, installed scope, and live
-acceptance status; not deployment acceptance).
+Last reviewed: 2026-10-02 (unattended lifecycle operating guidance; final
+release acceptance remains outstanding).
 
 `midgard-watcher` is the independent verifier and challenger. The DA committee
 service is a separate package, `demo/da-committee-node`.
@@ -40,6 +40,15 @@ Startup requires admitted proof runners, recovered workflows, an accepting
 supervisor, and safe proof deadlines before emitting `productionReady: true`.
 That field describes this runtime's readiness checks, not public-testnet launch
 approval. Invalid arguments exit 64; runtime failures fail closed with exit 70.
+
+Use `GET /readyz` for readiness: HTTP 200 carries `ready: true`; HTTP 503
+carries `ready: false` and current `reasons`. `GET /v1/status` remains the
+detailed runtime status and can return 200 while the watcher is held. The
+operations endpoint is loopback and currently has no application bearer gate;
+keep it internal. An alive process or authority identity endpoint does not
+establish watcher readiness. A held runtime must remain visible for diagnosis
+without admitting proof or availability work. Readiness must come from a live
+runtime snapshot, never a persisted supervisor status file.
 
 Two surfaces report readiness and they prove different things. The
 fault-proof application's startup readiness binds the verified deployment and
@@ -81,8 +90,10 @@ head is published. Ordinary event-history restart restores its authenticated
 semantic validation and corroborates the exact current native head. Full replay
 remains an explicit recovery operation.
 
-The prelaunch database format is replaced in place: earlier development databases
-must be redeployed, not migrated. Evidence remains pinned by event, recovery, and
+Earlier development formats have no automatic compatibility fallback. A
+format refusal requires explicit audited recovery or a separately authorized
+fresh deployment; it does not authorize discarding an existing deployment's
+durable state. Follow [state reset rules](../../docs/agents/state-reset.md). Evidence remains pinned by event, recovery, and
 proof dependencies; this change does not delete archives. See the
 [persistence record inventory](../../docs/midgard/decisions/watcher-persistence.md)
 for consumers and retention rules.
@@ -194,15 +205,19 @@ another watcher's Timeout, a prune or removal of the header) releases this
 actor's workflow for that header, in any deployment, once a finalized, verified
 transaction burns the header's queue node or closes its challenge; the release
 is reported under `workflowReleased`, and a failed release check keeps the row
-and is reported under `workflowReleaseDeferred`. Our own Timeout keeps the
+and is reported under `workflowReleaseDeferred`. Until that transaction reaches
+`automaticRecoveryMaxDepth` (2160) the release is checked again on every
+reconciliation; if it is no longer canonical the row is live again and the
+change is reported under `workflowReleaseDeferred`. Our own Timeout keeps the
 wallet reserved while descendants remain to be pruned. The actor settles answered or expired tranches, closes complete responses, and
 prunes descendants before removing an unavailable head. None of `openRefused`,
 `timeoutsDeferred`, `workflowRefused`, `workflowReleased` or
 `workflowReleaseDeferred` blocks actuation or readiness. Pending availability is not a healthy or faulty classification. After
 close, canonical L1 publication history supplies the committed envelope if the
 original peers still withhold it. Startup reconciles signed intents before new
-actions; rollback revokes actuation immediately. A rollback through finalized
-availability state halts the journal and requires authenticated recovery.
+actions; rollback revokes actuation immediately and re-derives from the fork
+point. A confirmed intent the new chain contradicts is rewound and its identical
+signed bytes rebroadcast; no replacement is signed while it can still land.
 
 A withheld header can be timed out only once it is the queue head. Its Timeout
 slashes the DA bond pool once, removes that head and prunes every descendant
@@ -254,8 +269,9 @@ External-provider mode requires independent provider identities. The installed
 CLI process parser is narrower: it requires `mode: "acceptance"`,
 `targetNetwork` of `"Preprod"` or `"Custom"`, and `local_node` authority, with
 confirmation depth and prefinality rollback depth equal to the compiled
-deployment profile's `l1_finality.confirmation_depth` (3 for the testing
-profiles, 30 for `mainnet` and `preprod-public`), and postfinality recovery
+deployment profile's `l1_finality.confirmation_depth` (10 for the live testing
+profiles, 3 for `preprod-emulator-testing`, 30 for `mainnet` and
+`preprod-public`), and postfinality recovery
 bound 2160. `Custom` admits an explicitly bound isolated devnet, the network the
 automatic watcher journeys run against; it is not a relaxation of finality or
 rollback policy. The authority process enforces the same policy.
@@ -341,6 +357,38 @@ Prerequisites on the host:
   value. Copy [.env.example](.env.example) to `.env` and point each variable at
   its file.
 
+Before starting the sidecar, explicitly provision its independently owned authority
+volume with `initializeSelectedAuthorityStore` from `midgard-watcher`, supplying
+the verified policy, authority record key, a persisted `generation-<UUID>` attempt
+identity, and the chosen `liveRecordLimit`. For an existing legacy authority,
+stop every old writer and prevent restart, then use `importLegacyAuthorityStore`
+with a separate legacy archive directory. Both operations are offline ownership
+contracts; their source recheck does not fence an old writer. Preserve the legacy
+bytes and the initialization attempt identity. A torn, unparseable final legacy
+record can be removed only with the explicit offline
+`repairLegacyWatcherTrustedHeadAuthorityFinalRecord` helper: supply the exact
+expected prior head, final filename/raw digest, stable repair UUID and reason,
+and retain its separate evidence directory. It verifies the complete prior chain,
+keeps original torn bytes plus authenticated intent/completion receipts, and resumes
+only that exact repair after interruption. Parseable invalid records and interior
+corruption remain held. Every old writer must stay quiescent with restart excluded;
+this helper does not provide a live fleet fence. Ordinary `authority` startup only
+opens the authenticated selected backend. Missing or corrupt state fails closed;
+it never initializes, repairs, or falls back to the archive.
+
+`liveRecordLimit` is mandatory, counts authority revisions, and must match the
+initialized store. The example's explicit value `1` illustrates the smallest
+supported geometry; it is not a production default or a block rollback horizon.
+Choose a deployed value from measurements of the intended storage and workload.
+The live SQLite store retains the exact current head, one authenticated boundary
+checkpoint, and the latest `min(liveRecordLimit, revision + 1)` records. Current
+reads verify that entire live suffix. Retired archive edits are detected by
+`auditLegacyWatcherTrustedHeadAuthority`, not current reads. Keep the selected
+authority volume, selector, SQLite DB/WAL/SHM, and record key outside watcher write
+ownership. Whole-volume replay remains outside this independent freshness trust
+assumption. Filesystem deletion or replacement concurrent with SQLite access is
+outside the supported storage contract.
+
 Then `docker compose up -d`. `watcher` starts only once `watcher-authority`
 answers `/v1/identity`. Both restart `unless-stopped`: if the authority dies,
 `start` fails closed with exit 70, compose restarts it, and it keeps exiting
@@ -354,6 +402,26 @@ image, so nothing on the host produces the genesis file the watcher hashes
 (`genesisIdentitySha256`). Until the L1 stack exports them, place them in
 `MIDGARD_L1_CONFIG_DIR` yourself. The devnet journeys have the file only
 because the harness generates the devnet genesis.
+
+## Unattended lifecycle verification
+
+Rebuild every changed package and the native binary before starting a journey;
+record the source revision and artifact hashes. Preserve existing deployment
+state on a provider outage. A retry may re-observe a fresh canonical source,
+but it cannot substitute guessed history, release unresolved wallet inputs,
+clear quarantine on a timer, or sign a replacement while old signed bytes can
+still land. Inspect live readiness reasons and follow explicit recovery only
+after the cause and retained residue have been verified.
+
+The reliability program's final acceptance requires a fresh deployment,
+automatic deposit/transfer/merge/withdrawal and exact payout, then separate
+Cardano restart, Kupo stop, Ogmios stop, and public retained-DA loss drills.
+The running services must recover without manual commit, merge, or database
+repair. Focused tests and provider-only calibration do not close these gates.
+The response-budget decision must include actual source/cursor cost, signed
+attempt expiry and retry, and the full response workflow; a local timing
+measurement does not establish a public-network deadline guarantee. See the
+[release checklist](../../docs/public_testnet_readiness.md#release-verification).
 
 ## Source and verification map
 

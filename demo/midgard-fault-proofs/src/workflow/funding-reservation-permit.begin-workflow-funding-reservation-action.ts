@@ -56,6 +56,18 @@ export const assertFundingSubmissionAuthority = (state: PermitState): void => {
     );
 };
 
+export const assertCurrentFundingCollateralLimit = (
+  state: PermitState,
+): void => {
+  // Recovery reads and confirmation use the original admitted bounds. A new
+  // action must use the current limit even if its old inputs still exist.
+  if (
+    state.snapshot.activeInputs.filter(({ role }) => role === "collateral")
+      .length > state.maximumCollateralInputs
+  )
+    throw new WorkflowFundingReservationUnavailableError();
+};
+
 export const beginWorkflowFundingReservationAction = async ({
   journal,
   action,
@@ -68,6 +80,7 @@ export const beginWorkflowFundingReservationAction = async ({
   if (state.policy === undefined)
     throw new Error("test-only funding permit cannot build transactions");
   assertFundingSubmissionAuthority(state);
+  await state.port.assertSubmissionAuthority?.();
   if ((await state.port.readAbandonmentHandoff()) !== null)
     throw new Error(
       "funding abandonment outcome awaits journal acknowledgment",
@@ -81,7 +94,14 @@ export const beginWorkflowFundingReservationAction = async ({
     staleInputs = true;
   }
   if (
-    (staleInputs || state.snapshot.activeInputs.length === 0) &&
+    (staleInputs ||
+      state.snapshot.activeInputs.length === 0 ||
+      state.requiresParameterRefresh ||
+      // Confirmation releases a transaction's collateral lease, so the next
+      // action selects collateral again (the collateral floor is positive).
+      !state.snapshot.activeInputs.some(({ role }) => role === "collateral") ||
+      state.snapshot.activeInputs.filter(({ role }) => role === "collateral")
+        .length > state.maximumCollateralInputs) &&
     state.port.refreshIdle !== undefined
   ) {
     const refreshed = await state.port.refreshIdle({
@@ -92,21 +112,45 @@ export const beginWorkflowFundingReservationAction = async ({
       throw new WorkflowFundingReservationUnavailableError();
     state.snapshot = parseStateSnapshot(state, refreshed);
     await refresh(state);
+    state.requiresParameterRefresh = false;
   } else if (staleInputs) {
     throw new WorkflowFundingReservationUnavailableError();
   }
   assertFundingSubmissionAuthority(state);
+  await state.port.assertSubmissionAuthority?.();
   if (state.snapshot.state !== "active")
     throw new Error("production funding reservation is not active");
+  assertCurrentFundingCollateralLimit(state);
   state.currentActionKind = actionKind(action);
   state.currentActionDigest = computeDeploymentManifestJsonDigest(action);
+  const funding = state.snapshot.activeInputs
+    .filter(({ role }) => role === "funding")
+    .map(({ outRef }) => outRef);
+  // Owner ruling (whichever lands wins): a replacement must be mutually
+  // exclusive with each superseded attempt. A shared protocol input already
+  // makes it so; one shared funding input per attempt also does, and the rest
+  // of the reserved pool still tops up fees and outputs. An attempt with no
+  // input left in the pool needs none: it cannot land without a rollback, and
+  // whatever lands first wins. Nothing waits for retirement past k. Each set
+  // spans the attempt's lineage, so the input most sets share is drawn first:
+  // a common ancestor's input excludes its descendants too.
+  const required: string[] = [];
+  let open = (
+    (await state.port.readSupersededAttemptFundingOutRefs?.()) ?? []
+  ).filter((attempt) => attempt.some((outRef) => funding.includes(outRef)));
+  while (open.length !== 0) {
+    const count = (outRef: string) =>
+      open.filter((attempt) => attempt.includes(outRef)).length;
+    const shared = [...funding]
+      .sort()
+      .reduce((best, outRef) => (count(outRef) > count(best) ? outRef : best));
+    required.push(shared);
+    open = open.filter((attempt) => !attempt.includes(shared));
+  }
   // The real builder selects from durable leased candidates; admission below
   // derives the exact consumed subset from its signed transaction.
-  state.currentFundingOutRefs = Object.freeze(
-    state.snapshot.activeInputs
-      .filter(({ role }) => role === "funding")
-      .map(({ outRef }) => outRef),
-  );
+  state.currentFundingOutRefs = Object.freeze(funding);
+  state.currentRequiredFundingOutRefs = Object.freeze(required.sort());
   state.currentCollateralOutRefs = Object.freeze(
     state.snapshot.activeInputs
       .filter(({ role }) => role === "collateral")

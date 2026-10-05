@@ -45,6 +45,7 @@ import {
   encodePayloadChunkNotFound,
   encodeSubmitAccepted,
   encodeSubmitConflict,
+  isSettledPayload,
   metadataAbsentResponse,
   payloadByHeaderAbsentResponse,
   payloadBytesFromRecord,
@@ -62,6 +63,7 @@ export class DaLibp2pPayloadProtocolHandlers<
   private readonly deploymentFingerprint: string;
   private readonly deploymentFingerprintBytes: Buffer;
   private readonly limits: DaLibp2pPayloadProtocolLimits;
+  private readonly log: (message: string) => void;
   private readonly now: () => Date;
   private readonly store: Store;
 
@@ -89,19 +91,17 @@ export class DaLibp2pPayloadProtocolHandlers<
         DA_TRANSPORT_LIMITS.requestTimeoutMs,
     };
     this.now = options.now ?? (() => new Date());
+    this.log = options.log ?? ((message) => console.warn(message));
     validateLimits(this.limits);
   }
 
   async handleCapabilities(requestCbor: Uint8Array): Promise<Buffer> {
-    const request = decodeRequest(
+    decodeRequest(
       () => decodeDaCapabilitiesRequestCbor(requestCbor),
       "capabilities request",
     );
-    if (!this.matchesDeployment(request.deploymentFingerprint)) {
-      throw new DaLibp2pPayloadProtocolError(
-        "capabilities request deployment fingerprint mismatch",
-      );
-    }
+    // A foreign fingerprint is answered, not aborted: the response carries
+    // the local fingerprint, which every prober compares against its own.
     return encodeDaCapabilitiesResponseCbor({
       deploymentFingerprint: this.deploymentFingerprintBytes,
       transportProtocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
@@ -178,19 +178,18 @@ export class DaLibp2pPayloadProtocolHandlers<
           retryAfterMs: null,
         });
       }
-      const saved = await this.retainInlinePayloadUnverified(
-        headerHashHex,
-        payloadHashHex,
-        payloadBytes,
-        checked.admission.payloadSchemaVersion,
-      );
-      return saved.validationStatus === "conflicted"
-        ? encodeSubmitConflict(
-            headerHash,
-            payloadHash,
-            "conflicting_payload_bytes",
-          )
-        : encodeSubmitAccepted(headerHash, payloadHash);
+      if (isSettledPayload(existing)) {
+        // First settled bytes win.  The refusal is reported here rather than
+        // written into the record that gates attestation and availability.
+        this.log(
+          `refused payload-submit for ${headerHashHex}: sha256 ${payloadHashHex} conflicts with ${existing.validationStatus} sha256 ${existing.payloadSha256}`,
+        );
+        return encodeSubmitConflict(
+          headerHash,
+          payloadHash,
+          "conflicting_payload_bytes",
+        );
+      }
     }
 
     const saved = await this.retainInlinePayloadUnverified(

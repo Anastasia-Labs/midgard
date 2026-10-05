@@ -29,6 +29,7 @@ export const withDerivedPayloadFetchStatus = (
 };
 
 export const emptyStoreData = (): StoreData => ({
+  promiseCapacityEvidence: {},
   stateQueueHeaders: {},
   daPayloads: {},
   daSignatures: {},

@@ -1,6 +1,10 @@
 import { readFile, realpath } from "node:fs/promises";
 
 import {
+  resolveWatcherCanonicalRetentionWindow,
+  type WatcherCanonicalRetentionWindow,
+} from "../storage/canonical-block-store.js";
+import {
   type LoadedWatcherRuleBundle,
   loadWatcherRuleBundle,
 } from "../verification/rule-bundle.js";
@@ -15,6 +19,7 @@ type ReadDeploymentAuthorityFile = (path: string) => Promise<Uint8Array>;
 export type VerifiedWatcherDeploymentAuthority = Readonly<{
   deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   ruleBundle: LoadedWatcherRuleBundle;
+  retentionWindow: WatcherCanonicalRetentionWindow;
 }>;
 
 const admittedDeploymentAuthorities = new WeakSet<object>();
@@ -121,6 +126,8 @@ export const loadWatcherVerifiedDeploymentAuthority = async (input: {
   const admitted = Object.freeze({
     deploymentIdentity,
     ruleBundle: loadedRuleBundle,
+    retentionWindow:
+      resolveWatcherCanonicalRetentionWindow(verificationInput).window,
   });
   admittedDeploymentAuthorities.add(admitted);
   return admitted;

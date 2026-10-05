@@ -21,6 +21,17 @@ export {
   type WatcherTrustedHeadAuthorityStore,
 } from "./trusted-head-authority.exact-record.js";
 export {
+  repairLegacyWatcherTrustedHeadAuthorityFinalRecord,
+  type WatcherLegacyAuthorityRepairInput,
+} from "./trusted-head-authority.legacy-repair.js";
+export {
   openWatcherTrustedHeadAuthorityStore,
   type WatcherTrustedHeadAuthorityClient,
 } from "./trusted-head-authority.open-watcher-trusted-head-authority-store.js";
+export {
+  auditLegacyWatcherTrustedHeadAuthority,
+  type AuthorityInitializationInput,
+  type AuthorityStorageInput,
+  importLegacyAuthorityStore,
+  initializeSelectedAuthorityStore,
+} from "./trusted-head-authority.selected-store.js";

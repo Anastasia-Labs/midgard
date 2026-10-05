@@ -151,7 +151,8 @@ export type SupervisorDependencies = Readonly<{
       actuationPermit: WorkflowActuationPermit | null;
     }>,
   ): Promise<
-    Readonly<{ kind: "applicable" | "pending" | "retryable"; reason?: string }>
+    | Readonly<{ kind: "applicable"; confirmationDepth: number }>
+    | Readonly<{ kind: "pending" | "retryable"; reason?: string }>
   >;
   isActuationRevokedError(
     error: unknown,

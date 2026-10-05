@@ -53,6 +53,7 @@ import {
   type WatcherNativeChainSyncPoint,
   type WatcherNativeChainSyncRuntime,
 } from "../l1/native-chain-sync.js";
+import { retryWatcherL1Transient } from "../l1/transient-retry.js";
 import {
   readWatcherProtectedUserEventCheckpoint,
   readWatcherProtectedUserEventCheckpointReceipt,
@@ -78,7 +79,7 @@ import {
 import {
   ACQUISITION_TIMEOUT_MS,
   type Capture,
-  COVERED_RING_CAPACITY,
+  createWatcherUserEventCoveredRing,
   type FirstObservation,
   LOOKUP_TIMEOUT_MS,
   MAX_BATCH,
@@ -92,6 +93,8 @@ import {
   type RoundItem,
   runtimeBrand,
   runtimes,
+  type WatcherUserEventL1Wait,
+  watcherUserEventL1Wait,
   WatcherUserEventOperationRetired,
   type WatcherUserEventRuntime,
 } from "./user-event-runtime.watcher-user-event-runtime.js";
@@ -109,6 +112,8 @@ export const createWatcherUserEventRuntime = async (
     /** The single mutable coverage record, authenticated by the store. */
     coverage: WatcherUserEventCoverageStore;
     signal?: AbortSignal;
+    /** Defaults to one JSON line on stderr per L1 outage. */
+    warn?: (warning: WatcherUserEventL1Wait) => void;
   }>,
 ): Promise<WatcherUserEventRuntime> => {
   const {
@@ -140,6 +145,7 @@ export const createWatcherUserEventRuntime = async (
   if (finalityPolicy === null)
     throw new Error("User-event runtime finality policy is unavailable");
   const confirmationDepth = BigInt(finalityPolicy.confirmationDepth);
+  const l1Wait = watcherUserEventL1Wait(input.warn);
   const shutdown = new AbortController();
   const signal =
     requestSignal === undefined
@@ -160,38 +166,8 @@ export const createWatcherUserEventRuntime = async (
   // Closed first captures are private W12 facts, never published authority.
   // Publication still follows each caller's exact requested prefix.
   const prefetchedFirst = new Map<string, FirstObservation>();
-  // Recently covered chain points by height, event and quiet alike, so that
-  // a point inside the covered stretch resolves without any request. Nothing
-  // here is authority: the publisher's coverage checkpoint and the durable
-  // row are, and a miss falls back to one node lookup.
-  const coveredRing = new Map<
-    string,
-    Readonly<{ blockHash: string; slot: string }>
-  >();
-  const remember = (point: Readonly<QuietHeader | FraudProofRawL1Point>) => {
-    coveredRing.delete(point.blockNo);
-    coveredRing.set(
-      point.blockNo,
-      Object.freeze({ blockHash: point.blockHash, slot: point.slot }),
-    );
-    while (coveredRing.size > COVERED_RING_CAPACITY) {
-      const oldest = coveredRing.keys().next();
-      if (oldest.done) break;
-      coveredRing.delete(oldest.value);
-    }
-  };
-  const forgetAbove = (blockNo: bigint) => {
-    for (const height of coveredRing.keys())
-      if (BigInt(height) > blockNo) coveredRing.delete(height);
-  };
-  const rememberedHeight = (
-    point: Readonly<{ blockHash: string; slot: string }>,
-  ): string | null => {
-    for (const [height, known] of coveredRing)
-      if (known.blockHash === point.blockHash && known.slot === point.slot)
-        return height;
-    return null;
-  };
+  const { coveredRing, remember, forgetAbove, rememberedHeight } =
+    createWatcherUserEventCoveredRing();
   const captures = new Set<Capture>();
   const streams = new Set<WatcherNativeChainSyncRuntime>();
   let resolveDone!: () => void;
@@ -869,14 +845,17 @@ export const createWatcherUserEventRuntime = async (
   ): Promise<T> => {
     const expected = generation;
     const operationSignal = AbortSignal.any([signal, operationAbort.signal]);
+    // An L1 transient repeats the operation in place, never fails the runtime.
     const task = tail.then(async () => {
-      if (expected !== generation)
-        throw new WatcherUserEventOperationRetired(
-          "User-event operation was retired",
-        );
-      assertReady();
-      operationSignal.throwIfAborted();
-      const value = await work(operationSignal);
+      const value = await retryWatcherL1Transient(async () => {
+        if (expected !== generation)
+          throw new WatcherUserEventOperationRetired(
+            "User-event operation was retired",
+          );
+        assertReady();
+        operationSignal.throwIfAborted();
+        return await work(operationSignal);
+      }, l1Wait(operationSignal));
       if (expected !== generation)
         throw new WatcherUserEventOperationRetired(
           "User-event operation changed generation",

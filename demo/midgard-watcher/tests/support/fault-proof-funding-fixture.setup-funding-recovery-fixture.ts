@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -44,7 +43,6 @@ import {
 import { expect, vi } from "vitest";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
-import { unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest } from "../../src/funding/prover-funding.js";
 import {
   createWatcherProverFundingAuthority,
   createWatcherProverFundingAuthorityFactory,
@@ -60,6 +58,8 @@ import {
   watcherDeploymentProtocolScriptAuthority,
   watcherDeploymentReleaseEconomicsAuthority,
 } from "../../src/runtime/deployment-identity.js";
+import { runtimeAuthority } from "../funding/prover-funding-calculation.runtime-authority.js";
+import { signFundingRecoveryFixtureBody } from "./fault-proof-funding-fixture.sign-body.js";
 import {
   closers,
   deploymentIdentity,
@@ -69,6 +69,7 @@ import {
   sourcesFor,
   walletAddress,
 } from "./fault-proof-funding-fixture.sources-for.js";
+import { createFundingRecoveryDirectory } from "./test-storage-root.js";
 
 export const setupFundingRecoveryFixture = async (
   interruptAfterPreparation: boolean | "after_preflight" = false,
@@ -77,13 +78,19 @@ export const setupFundingRecoveryFixture = async (
   withCollateral = false,
   priorRoster: boolean | "changed-role" = false,
   headerEndTime = 20n,
+  protocolMinFeeCoefficient = 44,
+  protocolMaxCollateralInputs = 3,
 ) => {
-  const journalRoot = await mkdtemp(
-    join(process.cwd(), ".watcher-funding-recovery-"),
-  );
+  const journalRoot = await createFundingRecoveryDirectory();
   directories.push(journalRoot);
   const path = join(journalRoot, "watcher.sqlite");
-  let database = await openWatcherSqliteProverFundingReservationStore({ path });
+  let database = await openWatcherSqliteProverFundingReservationStore({
+    path,
+    protocolParameterHistory: {
+      deploymentIdentity,
+      authenticationKey: Buffer.alloc(32, 0x91),
+    },
+  });
   closers.push(() => database.close());
   const sharedInput = outRefCbor(91, 0n);
   const fixture = await buildCanonicalBlockFixture({
@@ -138,45 +145,11 @@ export const setupFundingRecoveryFixture = async (
       grade: "security",
     },
   });
-  const protocolParameters =
-    await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
-      deploymentIdentity,
-      ogmiosUrl: "http://127.0.0.1:1337",
-      timeoutMs: 10_000,
-      fetchImpl: async (_url, init) => {
-        const request = JSON.parse(String(init?.body)) as { id: string };
-        return new Response(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: request.id,
-            result: {
-              minFeeCoefficient: 44,
-              minFeeConstant: { ada: { lovelace: 155381 } },
-              scriptExecutionPrices: {
-                memory: "577/10000",
-                cpu: "721/10000000",
-              },
-              minUtxoDepositCoefficient: 4310,
-              collateralPercentage: 150,
-              maxCollateralInputs: 3,
-              maxTransactionSize: { bytes: 16384 },
-              maxValueSize: { bytes: 5000 },
-              maxExecutionUnitsPerTransaction: {
-                memory: 16_500_000,
-                cpu: 10_000_000_000,
-              },
-              minFeeReferenceScripts: {
-                base: 15,
-                range: 25_600,
-                multiplier: 1.2,
-              },
-              maxReferenceScriptsSizePerTransaction: { bytes: 204_800 },
-            },
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      },
-    });
+  const protocolParameters = await runtimeAuthority(
+    deploymentIdentity,
+    protocolMinFeeCoefficient,
+    protocolMaxCollateralInputs,
+  );
   const runner = WORKFLOW_RUNNER_FACTORIES.doubleSpend(async () => {
     throw new Error("adapter runner must not build in reconciliation test");
   });
@@ -199,6 +172,7 @@ export const setupFundingRecoveryFixture = async (
       journalRoot,
       deploymentIdentity,
       protocolParameters,
+      protocolParameterHistory: database.protocolParameterHistory,
       store: {
         ...database.store,
         releaseUnused: (record) => database.store.releaseUnused!(record),
@@ -434,6 +408,7 @@ export const setupFundingRecoveryFixture = async (
     ),
   );
   const body = CML.TransactionBody.new(inputs, outputs, 1_000_000n);
+  body.set_ttl(100n);
   if (withCollateral) {
     const collateral = CML.TransactionInputList.new();
     for (const reserved of plan.inputs.filter(
@@ -449,22 +424,8 @@ export const setupFundingRecoveryFixture = async (
     }
     body.set_collateral_inputs(collateral);
   }
-  const witnesses = CML.TransactionWitnessSet.new();
-  const vkeys = CML.VkeywitnessList.new();
-  vkeys.add(
-    CML.Vkeywitness.new(
-      key.to_public(),
-      key.sign(CML.hash_transaction(body).to_raw_bytes()),
-    ),
-  );
-  witnesses.set_vkeywitnesses(vkeys);
-  const signedTransactionCborHex = CML.Transaction.new(
-    body,
-    witnesses,
-    true,
-    undefined,
-  ).to_cbor_hex();
-  const transactionHash = CML.hash_transaction(body).to_hex();
+  const { signedTransactionCborHex, transactionHash } =
+    signFundingRecoveryFixtureBody(body);
   const prepared = (await journal.load(initial.workflowId)).find(
     ({ event }) => event.kind === "prepared",
   )!;
@@ -588,7 +549,13 @@ export const setupFundingRecoveryFixture = async (
       legacy.close();
     }
   }
-  database = await openWatcherSqliteProverFundingReservationStore({ path });
+  database = await openWatcherSqliteProverFundingReservationStore({
+    path,
+    protocolParameterHistory: {
+      deploymentIdentity,
+      authenticationKey: Buffer.alloc(32, 0x91),
+    },
+  });
   vi.mocked(adapter.observe).mockClear();
   vi.mocked(adapter.prepare).mockClear();
   const originalEntries = await journal.load(initial.workflowId);
@@ -666,7 +633,16 @@ export const setupFundingRecoveryFixture = async (
     records,
     restartStore: async () => {
       database.close();
-      database = await openWatcherSqliteProverFundingReservationStore({ path });
+      database = await openWatcherSqliteProverFundingReservationStore({
+        path,
+        protocolParameterHistory: {
+          deploymentIdentity,
+          authenticationKey: Buffer.alloc(32, 0x91),
+        },
+      });
+    },
+    get protocolParameterHistory() {
+      return database.protocolParameterHistory!;
     },
     get store() {
       return database.store;

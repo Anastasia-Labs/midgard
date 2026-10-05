@@ -3,6 +3,7 @@ import { Command } from "commander";
 
 import packageJson from "../package.json" with { type: "json" };
 import * as AvailabilityChallengeCommand from "./commands/availability-challenge.js";
+import { runAvailabilityJournalHolds } from "./commands/availability-journal.js";
 import {
   failCli,
   parseNonNegativeIntegerOption,
@@ -195,6 +196,21 @@ program.version(VERSION).description(
           ${"Midgard Node – Demo CLI Application"}
   ${ENV_VARS_GUIDE}`,
 );
+
+program
+  .command("availability-journal")
+  .description(
+    "Inspect persisted availability journal rows without mutation or chain authority",
+  )
+  .command("holds")
+  .description(
+    "Stream a bounded read-only inventory of every stored actor and deployment",
+  )
+  .requiredOption(
+    "--journal <path>",
+    "Existing canonical absolute SQLite journal file",
+  )
+  .action(runAvailabilityJournalHolds);
 
 const availabilityChallenge = program
   .command("availability-challenge")

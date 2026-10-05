@@ -33,7 +33,7 @@ type PersistedDeployment = Omit<
  * L1 depth the journey watcher requires before a block is finalized. Finality
  * anchors evidence: the finalized audit anchor of a completed workflow, its
  * incident records and its evidence stamp. It no longer gates the actions the
- * journey drives. It is the compiled deployment profile's release depth (3
+ * journey drives. It is the compiled deployment profile's release depth (10
  * for local-devnet-testing), which the watcher process config must match.
  */
 export const JOURNEY_FINALITY_DEPTH =

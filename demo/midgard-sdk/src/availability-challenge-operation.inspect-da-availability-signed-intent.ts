@@ -12,6 +12,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { type DaAvailabilityParameters } from "./availability-challenge.js";
+import type { DaAvailabilityReadScope } from "./availability-challenge-operation.read-scope.js";
 
 export type DaAvailabilityOperationObservation =
   | Readonly<{
@@ -19,6 +20,9 @@ export type DaAvailabilityOperationObservation =
       txHash: string;
       inclusionPoint: string;
       confirmationDepth: number;
+      /** The observation point's slot; lets a confirmed intent past validity free its inputs. */
+      currentSlot?: number;
+      currentBlockNo?: number;
     }>
   | Readonly<{ status: "unspent"; currentSlot: number }>
   | Readonly<{
@@ -51,9 +55,16 @@ export type DaAvailabilityOperationResult = Readonly<{
     | "confirmed"
     | "waiting"
     | "expired"
-    | "conflict";
+    | "conflict"
+    /**
+     * Evidence about this confirmed intent neither confirms nor contradicts
+     * it. Nothing changed; the next pass reads it afresh. Other intents and
+     * the journal are unaffected.
+     */
+    | "held";
   txHash: string;
   expectedOutRefs: readonly string[];
+  detail?: string;
 }>;
 
 export type DaAvailabilityOperationContext = Readonly<{
@@ -64,15 +75,26 @@ export type DaAvailabilityOperationContext = Readonly<{
   minimumConfirmationDepth: number;
   transactionLimits: DaAvailabilityOperationLimits;
   /** Must revoke before awaiting rollback recovery; rechecked after signing. */
-  assertActuationCurrent: () => void | Promise<void>;
+  assertActuationCurrent: (
+    scope?: DaAvailabilityReadScope,
+  ) => void | Promise<void>;
   /** Exact canonical tx inclusion, or positive evidence ALL normal inputs survive. */
   observe: (
     intent: AvailabilityOperationIntent,
+    scope?: DaAvailabilityReadScope,
   ) => Promise<DaAvailabilityOperationObservation>;
   /** Broadcast these exact persisted bytes. An ambiguous error retains reservations. */
   submit: (signedCbor: string) => Promise<string>;
+  /** An aligned canonical boundary for bounded expiry-history pruning. */
+  readBoundary?: (
+    scope?: DaAvailabilityReadScope,
+  ) => Promise<Readonly<{ blockNo: number }>>;
   nowMs?: () => number;
   leaseDurationMs?: number;
+  /** Independent bounded evidence attempt; never a signed intent lifetime. */
+  observationTimeoutMs?: number;
+  observationSignal?: AbortSignal;
+  monotonicMs?: () => number;
 }>;
 
 export type DaAvailabilityOperationLimits = Readonly<{

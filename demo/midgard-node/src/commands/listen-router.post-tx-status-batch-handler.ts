@@ -9,7 +9,6 @@ import { failWith500 } from "./listen-response.js";
 import { parseFixedHexParam } from "./listen-router.get-tx-handler.js";
 import {
   type TxStatusBatchAdmissionRow,
-  type TxStatusBatchHeaderRow,
   type TxStatusBatchMembershipRow,
   type TxStatusBatchRejectionRow,
 } from "./listen-router.get-tx-status-handler.js";
@@ -18,8 +17,9 @@ import {
   errorMessage,
   HEALTH_ENDPOINT,
   TX_STATUS_ENDPOINT,
-} from "./listen-router.run-busy-l1-provider-readiness-probe.js";
+} from "./listen-router.run-exact-gated-direct-l1-provider-probe.js";
 import { resolveTxStatusBatch } from "./tx-status.js";
+import { readTxStatusMergeEvidence } from "./tx-status-merge-evidence.js";
 
 export const postTxStatusBatchHandler = Effect.gen(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest;
@@ -65,7 +65,7 @@ export const postTxStatusBatchHandler = Effect.gen(function* () {
     immutableRows,
     mempoolRows,
     processedMempoolRows,
-    headerRows,
+    headerEvidenceByTxId,
   ] = yield* Effect.all(
     [
       sql<TxStatusBatchRejectionRow>`SELECT DISTINCT ON (tx_id)
@@ -93,14 +93,7 @@ export const postTxStatusBatchHandler = Effect.gen(function* () {
           encode(tx_id, 'hex') AS tx_hash
         FROM processed_mempool
         WHERE ${sql.in("tx_id", txIds)}`,
-      sql<TxStatusBatchHeaderRow>`SELECT
-          encode(member.member_id, 'hex') AS tx_hash,
-          encode(member.header_hash, 'hex') AS header_hash,
-          pending.status
-        FROM pending_block_finalization_txs AS member
-        JOIN pending_block_finalizations AS pending
-          ON pending.header_hash = member.header_hash
-        WHERE ${sql.in("member.member_id", txIds)}`,
+      readTxStatusMergeEvidence(txIds),
     ],
     { concurrency: "unbounded" },
   );
@@ -121,17 +114,6 @@ export const postTxStatusBatchHandler = Effect.gen(function* () {
   const mempoolTxIds = new Set(mempoolRows.map((row) => row.tx_hash));
   const processedMempoolTxIds = new Set(
     processedMempoolRows.map((row) => row.tx_hash),
-  );
-  const headerEvidenceByTxId = new Map(
-    headerRows.map((row) => [
-      row.tx_hash,
-      {
-        headerHash: row.header_hash,
-        headerStatus: row.status,
-        mergeStatus: row.status === "finalized" ? "finalized" : "not_finalized",
-        confirmedLedgerFinalized: row.status === "finalized",
-      },
-    ]),
   );
   const results = resolveTxStatusBatch({
     txIdsHex: normalized,

@@ -8,15 +8,16 @@ import {
   workflowJournalIsReconciliationOnly,
 } from "./actuation-permit.js";
 import {
-  abandonWorkflowFundingReservationTransaction,
-  acknowledgeWorkflowFundingAbandonment,
+  assertFinalWorkflowTerminalReceipt,
+  isFinalWorkflowCompletion,
+} from "./completion-finality.js";
+import {
   assertWorkflowFundingAbandonmentHandoffJournal,
   assertWorkflowFundingCompletionHandoffJournal,
   assertWorkflowFundingReservationReadyToSubmit,
   beginWorkflowFundingReservationAction,
   confirmWorkflowFundingReservationTransaction,
   conflictWorkflowFundingReservationTransaction,
-  createWorkflowFundingAbandonmentHandoff,
   prepareWorkflowFundingReservationTransaction,
   readWorkflowFundingRecovery,
   reconcileWorkflowFundingSubmissionHandoff,
@@ -25,6 +26,7 @@ import {
   type WorkflowFundingCompletionHandoff,
   WorkflowFundingReservationUnavailableError,
   type WorkflowFundingSubmissionHandoff,
+  workflowJournalHasFundingReservation,
 } from "./funding-reservation-permit.js";
 import {
   computeFraudProofWorkflowId,
@@ -42,6 +44,7 @@ import {
 } from "./journal.js";
 import { LocalKupmiosTransportUnavailableError } from "./local-kupmios-http-ogmios-source.js";
 import { LocalKupmiosCheckpointChangedError } from "./local-kupmios-raw-l1-authority.js";
+import { adoptLandedSupersededAttempt } from "./orchestrator.adopt-landed-superseded-attempt.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofFamilyWorkflowAdapter,
@@ -71,8 +74,12 @@ import {
   validateAction,
   validatePreflight,
 } from "./orchestrator.normalize-workflow-terminal.js";
+import { assertWorkflowJournalReconciliation } from "./orchestrator.reconcile-legacy-abandonments.js";
+import { reconcileLegacyFraudProofAbandonments } from "./orchestrator.reconcile-legacy-abandonments.js";
 import { reobserveRequiredWorkflowParent } from "./orchestrator.reobserve-required-parent.js";
+import { supersedeWorkflowFundingAttempt } from "./orchestrator.supersede-funding-attempt.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
+import { supersededAttemptReadSchedule } from "./superseded-attempt-read-schedule.js";
 
 /**
  * Q51/W-O4 single-command core. Preparation, every submission intent,
@@ -174,6 +181,8 @@ export const runAdmittedFraudProofWorkflow = async ({
     await journal.append(entry, entries.length);
     entries = [...entries, entry];
   };
+  const assertReconcile = () =>
+    assertWorkflowJournalReconciliation(journal, identity);
   const stalled = async (
     reason: string,
     phase?: "preflight",
@@ -281,6 +290,25 @@ export const runAdmittedFraudProofWorkflow = async ({
       entries,
     };
 
+    const landed = await reconcileLegacyFraudProofAbandonments(
+      context,
+      journal,
+      adapter,
+      append,
+      now().getTime(),
+    );
+    if (
+      landed !== null &&
+      (await adoptLandedSupersededAttempt({
+        journal,
+        entries: () => entries,
+        landed,
+        append,
+      }))
+    ) {
+      supersededAttemptReadSchedule.forget(landed.transition.transactionHash);
+      continue;
+    }
     // Reconcile rolled-back parents before pending descendants. An action
     // with its own unresolved intent still reconciles before reobservation.
     const latestJournalEvent = [...entries]
@@ -299,8 +327,10 @@ export const runAdmittedFraudProofWorkflow = async ({
         : undefined);
     let currentObservation: FraudProofWorkflowObservation | undefined;
     if (
-      latestJournalEvent?.kind !== "completed" &&
-      fundingRecovery.completionHandoff?.completion.kind !== "completed" &&
+      !isFinalWorkflowCompletion(latestJournalEvent) &&
+      !isFinalWorkflowCompletion(
+        fundingRecovery.completionHandoff?.completion,
+      ) &&
       entries.some(({ event }) => event.kind === "confirmed")
     ) {
       assertWorkflowJournalActuation({
@@ -335,6 +365,24 @@ export const runAdmittedFraudProofWorkflow = async ({
             journal,
             intent,
             hasUnresolvedDescendant: unresolvedEvent !== undefined,
+            // The reobserved intent displaces the pending later attempt. It is
+            // superseded, never silently dropped: a dropped attempt would count
+            // as live coverage, so a replacement could skip its inputs and both
+            // could land, the second failing its script at inclusion.
+            supersedeDisplacedAttempt: async () => {
+              const displaced = await readWorkflowFundingRecovery(journal);
+              const pending = displaced.transition?.transactionHash;
+              if (pending !== undefined && pending !== intent.txHash)
+                await supersedeWorkflowFundingAttempt({
+                  journal,
+                  assertReconcile,
+                  entries: () => entries,
+                  append,
+                  transactionHash: pending,
+                  retirement: undefined,
+                  savedHandoff: displaced.abandonmentHandoff,
+                });
+            },
             append,
             stalled,
             resumeOnObservation,
@@ -384,14 +432,17 @@ export const runAdmittedFraudProofWorkflow = async ({
       let reconciled: FraudProofWorkflowReconcileResult;
       let rebroadcastAttempted = false;
       try {
-        assertWorkflowJournalActuation({
-          journal,
-          deploymentFingerprint,
-          category,
-          headerHash,
-          checkpoint: "before_reconcile",
-        });
-        reconciled = await adapter.reconcile({
+        assertWorkflowJournalReconciliation(journal, identity);
+        // A committed supersession is final for this attempt: completing its
+        // acknowledgement never waits on a fresh read, and a late landing is
+        // adopted separately.
+        const reconcile: typeof adapter.reconcile =
+          fundingRecovery.abandonmentHandoff !== null &&
+          fundingRecovery.abandonmentHandoff.reconciliation.retirement ===
+            undefined
+            ? async () => ({ kind: "not_found" })
+            : (input) => adapter.reconcile(input);
+        reconciled = await reconcile({
           ...context,
           action,
           ...(priorTxHash === undefined ? {} : { txHash: priorTxHash }),
@@ -481,13 +532,7 @@ export const runAdmittedFraudProofWorkflow = async ({
                     }),
               }),
         });
-        assertWorkflowJournalActuation({
-          journal,
-          deploymentFingerprint,
-          category,
-          headerHash,
-          checkpoint: "before_reconcile",
-        });
+        assertWorkflowJournalReconciliation(journal, identity);
       } catch (cause) {
         // A capture exhausted its bounded retries because the canonical head
         // moved. It establishes neither inclusion nor replacement authority;
@@ -580,41 +625,26 @@ export const runAdmittedFraudProofWorkflow = async ({
           entries,
         };
       }
-      const abandonmentHandoff =
-        fundingRecovery.abandonmentHandoff ??
-        createWorkflowFundingAbandonmentHandoff({
-          entries,
-          transactionHash: intent.txHash,
-        });
-      await abandonWorkflowFundingReservationTransaction({
-        journal,
-        transactionHash: intent.txHash,
-        handoff: abandonmentHandoff,
-      });
-      assertWorkflowJournalActuation({
-        journal,
-        deploymentFingerprint,
-        category,
-        headerHash,
-        checkpoint: "before_reconcile",
-      });
+      // Owner ruling (whichever lands wins): an attempt that expired or was
+      // invalidated at the tip no longer holds the workflow or its funding.
+      // The replacement must spend one of its funding inputs. Without a bound
+      // funding reservation nothing enforces that, so absence without
+      // retirement stays unresolved until retirement past k.
       if (
-        !assertWorkflowFundingAbandonmentHandoffJournal({
-          handoff: abandonmentHandoff,
-          entries,
-        })
+        reconciled.retirement === undefined &&
+        !workflowJournalHasFundingReservation(journal)
       )
-        await append(abandonmentHandoff.reconciliation);
-      assertWorkflowJournalActuation({
+        return resumeOnObservation(
+          `reconciliation remains unknown for ${action.actionId}: absent without retirement, and no funding reservation keeps a replacement exclusive`,
+        );
+      await supersedeWorkflowFundingAttempt({
         journal,
-        deploymentFingerprint,
-        category,
-        headerHash,
-        checkpoint: "before_reconcile",
-      });
-      await acknowledgeWorkflowFundingAbandonment({
-        journal,
-        handoff: abandonmentHandoff,
+        assertReconcile,
+        entries: () => entries,
+        append,
+        transactionHash: intent.txHash,
+        retirement: reconciled.retirement,
+        savedHandoff: fundingRecovery.abandonmentHandoff,
       });
       fundingRecovery = await readWorkflowFundingRecovery(journal);
       context = { ...context, entries };
@@ -631,7 +661,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       checkpoint: "before_observe",
     });
     const observation: FraudProofWorkflowObservation =
-      fundingRecovery.completionHandoff?.completion.kind !== "completed"
+      !isFinalWorkflowCompletion(fundingRecovery.completionHandoff?.completion)
         ? (currentObservation ??
           (await adapter.observe({
             ...context,
@@ -653,9 +683,8 @@ export const runAdmittedFraudProofWorkflow = async ({
     if (observation.kind === "completed") {
       let terminal: FraudProofWorkflowTerminal;
       const inclusionOnly =
-        observation.terminal.observedAt.confirmationDepth <
-          releaseFinality.policy.confirmationDepth &&
-        terminalVerifier.verifyIncluded !== undefined;
+        observation.terminal.observedAt.confirmationDepth <=
+        releaseFinality.policy.automaticRecoveryMaxDepth + 1;
       try {
         assertWorkflowJournalActuation({
           journal,
@@ -668,7 +697,7 @@ export const runAdmittedFraudProofWorkflow = async ({
           identity,
           terminal: await (
             inclusionOnly
-              ? terminalVerifier.verifyIncluded!
+              ? (terminalVerifier.verifyIncluded ?? terminalVerifier.verify)
               : terminalVerifier.verify
           )({
             identity,
@@ -683,25 +712,12 @@ export const runAdmittedFraudProofWorkflow = async ({
           inclusionOnly,
         });
         if (
-          fundingRecovery.completionHandoff?.completion.kind === "completed"
+          isFinalWorkflowCompletion(
+            fundingRecovery.completionHandoff?.completion,
+          )
         ) {
           const saved = fundingRecovery.completionHandoff.completion.terminal;
-          const withoutDepth = (value: FraudProofWorkflowTerminal) => ({
-            ...value,
-            observedAt: {
-              slot: value.observedAt.slot,
-              blockHash: value.observedAt.blockHash,
-            },
-          });
-          if (
-            terminal.observedAt.confirmationDepth <
-              saved.observedAt.confirmationDepth ||
-            journalJsonDigest(normalizeJournalJson(withoutDepth(saved))) !==
-              journalJsonDigest(normalizeJournalJson(withoutDepth(terminal)))
-          )
-            throw new Error(
-              "released workflow terminal facts changed on the canonical chain",
-            );
+          assertFinalWorkflowTerminalReceipt(saved, terminal);
           terminal = normalizeWorkflowTerminal({
             identity,
             terminal: saved,
@@ -729,13 +745,14 @@ export const runAdmittedFraudProofWorkflow = async ({
       const savedInclusion = fundingRecovery.completionHandoff;
       if (
         inclusionOnly &&
-        savedInclusion?.completion.kind === "terminal_included"
+        savedInclusion?.completion.kind === "terminal_included" &&
+        entries.length > savedInclusion.expectedJournalSequence
       ) {
         // Its signed actions and original inclusion handoff already survive a
         // restart. Re-observe next time rather than persisting every depth tick.
         return { kind, workflowId, identity, terminal, entries };
       }
-      if (entries.at(-1)?.event.kind !== "completed") {
+      if (!isFinalWorkflowCompletion(latestJournalEvent)) {
         const handoff: WorkflowFundingCompletionHandoff = (fundingRecovery
           .completionHandoff?.completion.kind === kind
           ? fundingRecovery.completionHandoff

@@ -10,9 +10,17 @@ import { verifyJourneyResultEvidence } from "./readiness-evidence.js";
 export const runAutonomousWatcherJourney = async (
   runDirectory: string,
   fixture: JourneyFixture,
-  options: { waitForAnchors?: boolean; session?: JourneySession } = {},
+  options: {
+    waitForAnchors?: boolean;
+    session?: JourneySession;
+    initializeAuthority?: boolean;
+  } = {},
 ) => {
-  const session = options.session ?? (await openJourneySession(runDirectory));
+  const session =
+    options.session ??
+    (await openJourneySession(runDirectory, {
+      initializeAuthority: options.initializeAuthority,
+    }));
   try {
     await runJourney(
       runDirectory,
@@ -32,7 +40,10 @@ export const runAutonomousWatcherJourney = async (
 };
 
 /** Start the real maturity clock after the verified trace baseline has completed. */
-export const prepareAutonomousWatcherHistory = async (runDirectory: string) => {
+export const prepareAutonomousWatcherHistory = async (
+  runDirectory: string,
+  options: { initializeAuthority?: boolean } = {},
+) => {
   const context = await loadJourneyContext(runDirectory);
   await verifyJourneyResultEvidence(
     context.runDirectory,
@@ -40,7 +51,7 @@ export const prepareAutonomousWatcherHistory = async (runDirectory: string) => {
     "transitionTrace",
     context.deployment,
   );
-  const session = await openJourneySession(runDirectory);
+  const session = await openJourneySession(runDirectory, options);
   try {
     await runJourney(
       runDirectory,

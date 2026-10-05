@@ -26,7 +26,7 @@ import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 
 export const directories: string[] = [];
 
-/** The compiled deployment profile's release depth (3 testing, 30 public). */
+/** The compiled deployment profile's release depth (10 live testing, 30 public). */
 export const RELEASE_DEPTH = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
 
 export const watcherConfigValue = () => ({

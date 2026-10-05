@@ -2,8 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   assertWatcherProtocolParameterRuntimeAuthority,
+  refreshWatcherProtocolParameterRuntimeAuthority,
   unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest,
 } from "../../src/funding/prover-funding.js";
+import { WatcherProverFundingUnavailableError } from "../../src/funding/prover-funding-reservation.js";
+import { isWatcherL1TransientFailure } from "../../src/l1/transient-failure.js";
+import { retryWatcherL1Transient } from "../../src/l1/transient-retry.js";
 import {
   makeWatcherDeploymentAuthorityFixture,
   WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
@@ -103,7 +107,7 @@ describe("production prover protocol-parameter authority V1", () => {
     ).toThrow("not admitted");
   });
 
-  it("rejects protocol drift, remote sources, and structural deployment identities", async () => {
+  it("accepts legitimate parameter updates while rejecting remote sources and structural deployment identities", async () => {
     const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
     const fetchImpl = vi.fn(
       async (_url: string | URL | Request, init?: RequestInit) => {
@@ -126,7 +130,21 @@ describe("production prover protocol-parameter authority V1", () => {
         fetchImpl,
       });
 
-    await expect(invoke()).rejects.toThrow("differ from the signed deployment");
+    const updated = await invoke();
+    expect(updated.snapshot.minFeeA).toBe("45");
+    expect(updated.snapshotDigest).not.toBe(
+      (
+        await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
+          deploymentIdentity,
+          ogmiosUrl: "http://127.0.0.1:1337",
+          timeoutMs: 10_000,
+          fetchImpl: vi.fn(async (_url, init) => {
+            const request = JSON.parse(String(init?.body)) as { id: string };
+            return response(request.id, ogmiosParameters());
+          }) as unknown as typeof fetch,
+        })
+      ).snapshotDigest,
+    );
     await expect(
       invoke({ ogmiosUrl: "https://provider.example/ogmios" }),
     ).rejects.toThrow("loopback");
@@ -134,4 +152,165 @@ describe("production prover protocol-parameter authority V1", () => {
       invoke({ deploymentIdentity: { ...deploymentIdentity } }),
     ).rejects.toThrow("invalid_field");
   });
+
+  it("types an Ogmios that is down or busy as an L1 transient, so startup waits and then binds once", async () => {
+    const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
+    const outages: (() => Response)[] = [
+      () => {
+        throw new DOMException("The operation timed out.", "TimeoutError");
+      },
+      () => {
+        throw new TypeError("fetch failed", {
+          cause: Object.assign(new Error("connect ECONNREFUSED"), {
+            code: "ECONNREFUSED",
+          }),
+        });
+      },
+      () => new Response("starting", { status: 503 }),
+    ];
+    const fetchImpl = vi.fn(
+      async (_url: string | URL | Request, init?: RequestInit) => {
+        const outage = outages.shift();
+        if (outage !== undefined) return outage();
+        const request = JSON.parse(String(init?.body)) as {
+          readonly id: string;
+        };
+        return response(request.id, ogmiosParameters());
+      },
+    ) as unknown as typeof fetch;
+    const retries: string[] = [];
+    const authority = await retryWatcherL1Transient(
+      () =>
+        unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
+          deploymentIdentity,
+          ogmiosUrl: "http://127.0.0.1:1337",
+          timeoutMs: 10_000,
+          fetchImpl,
+        }),
+      { delayMs: () => 1, onRetry: (error) => retries.push(error.message) },
+    );
+    expect(authority.snapshot).toEqual(
+      WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+    expect(retries).toEqual([
+      "Current local funding parameters are temporarily unavailable",
+      "Current local funding parameters are temporarily unavailable",
+      "prover funding Ogmios query failed with HTTP 503",
+    ]);
+  });
+
+  it("keeps a refused protocol-parameter query hard", async () => {
+    const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
+    const failure =
+      await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
+        deploymentIdentity,
+        ogmiosUrl: "http://127.0.0.1:1337",
+        timeoutMs: 10_000,
+        fetchImpl: (async () =>
+          new Response("bad request", { status: 400 })) as typeof fetch,
+      }).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe(
+      "prover funding Ogmios query failed with HTTP 400",
+    );
+    expect(isWatcherL1TransientFailure(failure)).toBe(false);
+  });
+
+  const queryOnce = async (answer: (id: string) => Response) =>
+    unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
+      deploymentIdentity: makeWatcherDeploymentAuthorityFixture().result,
+      ogmiosUrl: "http://127.0.0.1:1337",
+      timeoutMs: 10_000,
+      fetchImpl: (async (_url: string | URL | Request, init?: RequestInit) => {
+        const { id } = JSON.parse(String(init?.body)) as { id: string };
+        return answer(id);
+      }) as typeof fetch,
+    }).catch((error: unknown) => error);
+
+  const jsonRpcError = (id: string, code: number, status: number): Response =>
+    new Response(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id,
+        error: { code, message: `ogmios error ${code.toString()}` },
+      }),
+      { status, headers: { "content-type": "application/json" } },
+    );
+
+  it("types a JSON-RPC answer that says the node cannot answer now as an L1 transient", async () => {
+    // Ogmios's HTTP endpoint answers every JSON-RPC error with status 400.
+    for (const [code, status] of [
+      [2001, 400],
+      [2003, 400],
+      [-32000, 400],
+      [-32603, 400],
+      [2002, 200],
+    ] as const) {
+      const failure = await queryOnce((id) => jsonRpcError(id, code, status));
+      expect(failure).toBeInstanceOf(WatcherProverFundingUnavailableError);
+      expect(isWatcherL1TransientFailure(failure)).toBe(true);
+    }
+  });
+
+  it("keeps a JSON-RPC refusal of the request hard", async () => {
+    for (const [code, status] of [
+      [-32601, 400],
+      [-32602, 400],
+      [-32600, 200],
+    ] as const) {
+      const failure = await queryOnce((id) => jsonRpcError(id, code, status));
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).not.toBeInstanceOf(WatcherProverFundingUnavailableError);
+      expect(isWatcherL1TransientFailure(failure)).toBe(false);
+    }
+  });
+
+  it("types a body that fails to arrive and HTTP 425 as L1 transients", async () => {
+    const lostBody = await queryOnce(() => {
+      const answer = new Response("{}", { status: 200 });
+      vi.spyOn(answer, "text").mockRejectedValue(
+        new TypeError("terminated", { cause: new Error("other side closed") }),
+      );
+      return answer;
+    });
+    expect(lostBody).toBeInstanceOf(WatcherProverFundingUnavailableError);
+    expect(isWatcherL1TransientFailure(lostBody)).toBe(true);
+    const tooEarly = await queryOnce(
+      () => new Response("too early", { status: 425 }),
+    );
+    expect(tooEarly).toBeInstanceOf(WatcherProverFundingUnavailableError);
+    expect((tooEarly as Error).message).toBe(
+      "prover funding Ogmios query failed with HTTP 425",
+    );
+    expect(isWatcherL1TransientFailure(tooEarly)).toBe(true);
+  });
+});
+
+it("defers a temporary parameter-query outage without admitting malformed replies", async () => {
+  const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
+  let status = "live";
+  const authority =
+    await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
+      deploymentIdentity,
+      ogmiosUrl: "http://127.0.0.1:1337",
+      timeoutMs: 10_000,
+      fetchImpl: vi.fn(async (_url, init) => {
+        if (status === "outage")
+          return new Response("unavailable", { status: 503 });
+        if (status === "malformed") return new Response("invalid JSON");
+        const { id } = JSON.parse(String(init?.body)) as { id: string };
+        return response(id, ogmiosParameters());
+      }) as unknown as typeof fetch,
+    });
+  status = "outage";
+  const outage = await refreshWatcherProtocolParameterRuntimeAuthority(
+    authority,
+  ).catch((error: unknown) => error);
+  expect(outage).toBeInstanceOf(WatcherProverFundingUnavailableError);
+  expect(isWatcherL1TransientFailure(outage)).toBe(true);
+  status = "malformed";
+  await expect(
+    refreshWatcherProtocolParameterRuntimeAuthority(authority),
+  ).rejects.toThrow("not JSON");
 });

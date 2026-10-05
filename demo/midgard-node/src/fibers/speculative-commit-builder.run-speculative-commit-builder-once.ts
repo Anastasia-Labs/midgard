@@ -1,9 +1,9 @@
-import { randomUUID } from "node:crypto";
-
-import { commitLeaseOwner } from "@al-ft/midgard-core/commit-lease-owner";
 import { Duration, Effect, Option, Ref } from "effect";
 
-import { PendingBlockFinalizationsDB } from "../database/index.js";
+import {
+  MpfEngineStateDB,
+  PendingBlockFinalizationsDB,
+} from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { canonicalSlotConfigForLucid } from "../lucid-time.js";
 import { Database, Globals, Lucid, NodeConfig } from "../services/index.js";
@@ -135,7 +135,7 @@ export const runSpeculativeCommitBuilderOnce = (
               PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
             ].getTime(),
           forcedValidationSlotConfig: canonicalSlotConfigForLucid(lucid.api),
-          ledgerStoreLeaseOwner: commitLeaseOwner(randomUUID()),
+          ledgerStoreLeaseOwner: MpfEngineStateDB.nodeProcessCommitLeaseOwner(),
           localFinalizationPending: false,
           mempoolTxsCountSoFar: 0,
           sizeOfProcessedTxsSoFar: 0,

@@ -257,12 +257,8 @@ export const createSyntheticUserEventOriginFixture = async (
           const multiAsset = own(value.multi_asset());
           const policies = own(multiAsset.keys());
           const assets: Record<string, string> = {};
-          for (
-            let policyIndex = 0;
-            policyIndex < policies.len();
-            policyIndex++
-          ) {
-            const policy = own(policies.get(policyIndex));
+          for (let index = 0; index < policies.len(); index++) {
+            const policy = own(policies.get(index));
             const policyAssets = own(multiAsset.get_assets(policy));
             if (policyAssets === undefined)
               throw new Error("Synthetic output lost its asset policy");
@@ -272,7 +268,9 @@ export const createSyntheticUserEventOriginFixture = async (
               const amount = policyAssets.get(name);
               if (amount === undefined)
                 throw new Error("Synthetic output lost its asset quantity");
-              assets[`${policy.to_hex()}.${name.to_hex()}`] = amount.toString();
+              // Kupo writes an empty asset name as the bare policy id.
+              const key = `${policy.to_hex()}.${name.to_hex()}`;
+              assets[key.replace(/\.$/u, "")] = amount.toString();
             }
           }
           const datum = own(output.datum());
@@ -346,8 +344,9 @@ export const createSyntheticUserEventOriginFixture = async (
         const addressRows = outputsByAddress.get(output.address) ?? [];
         addressRows.push(output);
         outputsByAddress.set(output.address, addressRows);
-        for (const [unit, amount] of Object.entries(output.value.assets)) {
+        for (const [key, amount] of Object.entries(output.value.assets)) {
           if (amount === "0") continue;
+          const unit = key.replace(".", "");
           const unitRows = outputsByUnit.get(unit) ?? [];
           unitRows.push(output);
           outputsByUnit.set(unit, unitRows);
@@ -657,7 +656,7 @@ setInterval(()=>{
         : null;
       let rows: readonly CreatingOutput[];
       if (unit !== null) {
-        rows = outputsByUnit.get(pattern) ?? [];
+        rows = outputsByUnit.get(unit) ?? [];
       } else if (address !== null) {
         rows = outputsByAddress.get(address) ?? [];
       } else {

@@ -1,8 +1,15 @@
+import type { DatabaseSync } from "node:sqlite";
+
 import {
   computeDeploymentManifestJsonDigest,
   type DeploymentManifestCardanoProtocolParameters,
   deriveDeploymentManifestCardanoProtocolParametersFromOgmios,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  isTransientOgmiosJsonRpcFailure,
+  OgmiosJsonRpcError,
+} from "@al-ft/midgard-core/ogmios-json-rpc-error";
+import { LocalKupmiosTransportUnavailableError } from "@al-ft/midgard-fault-proofs";
 
 import {
   assertVerifiedWatcherDeploymentIdentity,
@@ -10,6 +17,11 @@ import {
   type VerifiedWatcherDeploymentIdentity,
   watcherDeploymentProtocolParameterAuthority,
 } from "../runtime/deployment-identity.js";
+import { createWatcherProtocolParameterHistoryStorage } from "./prover-funding-parameter-history.js";
+import {
+  type WatcherProverFundingReservationRecord,
+  WatcherProverFundingUnavailableError,
+} from "./prover-funding-reservation.js";
 
 export const WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY =
   "midgard-watcher-production-protocol-parameter-runtime-authority-v1" as const;
@@ -17,7 +29,7 @@ export const WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY =
 export type WatcherProtocolParameterRuntimeAuthority = Readonly<{
   schemaVersion: typeof WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY;
   deploymentFingerprint: string;
-  source: "local_ogmios";
+  source: "local_ogmios" | "signed_deployment" | "authenticated_history";
   sourceEndpoint: string;
   snapshot: DeploymentManifestCardanoProtocolParameters;
   snapshotDigest: string;
@@ -25,6 +37,10 @@ export type WatcherProtocolParameterRuntimeAuthority = Readonly<{
 }>;
 
 const admittedRuntimeAuthorities = new WeakSet<object>();
+const refreshRuntimeAuthorities = new WeakMap<
+  object,
+  () => Promise<WatcherProtocolParameterRuntimeAuthority>
+>();
 
 export const assertWatcherProtocolParameterRuntimeAuthority = (
   authority: WatcherProtocolParameterRuntimeAuthority,
@@ -62,6 +78,40 @@ const canonicalLoopbackOgmiosUrl = (value: string): string => {
   return parsed.toString().replace(/\/$/u, "");
 };
 
+/**
+ * Throws the funding outage for a JSON-RPC `error` answer whose code says the
+ * node cannot answer now (syncing, crossing an era, lost its node). Ogmios's
+ * HTTP endpoint answers every JSON-RPC error with HTTP 400, so only the code
+ * tells such an answer apart from a refused request; a refusal returns here
+ * and stays hard at the caller.
+ */
+const throwIfTransientJsonRpcAnswer = (body: string): void => {
+  let value: unknown;
+  try {
+    value = JSON.parse(body) as unknown;
+  } catch {
+    return;
+  }
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !Object.prototype.hasOwnProperty.call(value, "error")
+  )
+    return;
+  const message =
+    "Current local funding parameters are temporarily unavailable";
+  const answer = new OgmiosJsonRpcError(
+    "prover funding Ogmios answered with a JSON-RPC error",
+    (value as { readonly error: unknown }).error,
+  );
+  if (!isTransientOgmiosJsonRpcFailure(answer)) return;
+  throw new WatcherProverFundingUnavailableError(message, {
+    cause: new LocalKupmiosTransportUnavailableError(message, {
+      cause: answer,
+    }),
+  });
+};
+
 const queryLiveProtocolParameters = async ({
   endpoint,
   timeoutMs,
@@ -79,21 +129,43 @@ const queryLiveProtocolParameters = async ({
     throw new Error("prover funding Ogmios timeout is out of bounds");
   }
   const id = "midgard-watcher-prover-funding-parameters-v1";
-  const response = await fetchImpl(endpoint, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      method: "queryLedgerState/protocolParameters",
-      id,
-    }),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  const body = await response.text();
+  let response: Response;
+  let body: string;
+  try {
+    response = await fetchImpl(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "queryLedgerState/protocolParameters",
+        id,
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    body = await response.text();
+  } catch (cause) {
+    // This try covers only trusted read transport, never parsers or signers.
+    // The transport cause keeps it classified as an L1 transient as well.
+    const message =
+      "Current local funding parameters are temporarily unavailable";
+    throw new WatcherProverFundingUnavailableError(message, {
+      cause: new LocalKupmiosTransportUnavailableError(message, { cause }),
+    });
+  }
   if (!response.ok) {
-    throw new Error(
-      `prover funding Ogmios query failed with HTTP ${response.status.toString()}`,
-    );
+    const message = `prover funding Ogmios query failed with HTTP ${response.status.toString()}`;
+    // A busy or restarting Ogmios, not an answer about the parameters.
+    if (
+      response.status === 408 ||
+      response.status === 425 ||
+      response.status === 429 ||
+      response.status >= 500
+    )
+      throw new WatcherProverFundingUnavailableError(message, {
+        cause: new LocalKupmiosTransportUnavailableError(message),
+      });
+    throwIfTransientJsonRpcAnswer(body);
+    throw new Error(message);
   }
   let value: unknown;
   try {
@@ -110,6 +182,7 @@ const queryLiveProtocolParameters = async ({
     throw new Error("prover funding Ogmios response is not a plain object");
   }
   const envelope = value as Readonly<Record<string, unknown>>;
+  throwIfTransientJsonRpcAnswer(body);
   if (
     envelope.jsonrpc !== "2.0" ||
     envelope.id !== id ||
@@ -141,14 +214,8 @@ const createRuntimeAuthority = async ({
     await queryLiveProtocolParameters({ endpoint, timeoutMs, fetchImpl }),
   );
   const liveDigest = computeDeploymentManifestJsonDigest(live);
-  if (
-    liveDigest !== signed.snapshotDigest ||
-    computeDeploymentManifestJsonDigest(signed.snapshot) !== liveDigest
-  ) {
-    throw new Error(
-      "live local-node protocol parameters differ from the signed deployment",
-    );
-  }
+  // The signed snapshot authenticates deployment-time measurements, not future
+  // L1 fees. Local native startup continues to authenticate the chain identity.
   const identity = Object.freeze({
     schemaVersion: WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY,
     deploymentFingerprint: deploymentIdentity.manifestId,
@@ -162,6 +229,14 @@ const createRuntimeAuthority = async ({
     authorityDigest: computeDeploymentManifestJsonDigest(identity),
   });
   admittedRuntimeAuthorities.add(authority);
+  refreshRuntimeAuthorities.set(authority, () =>
+    createRuntimeAuthority({
+      deploymentIdentity,
+      ogmiosUrl,
+      timeoutMs,
+      fetchImpl,
+    }),
+  );
   return authority;
 };
 
@@ -185,3 +260,128 @@ export const unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest =
     }>,
   ): Promise<WatcherProtocolParameterRuntimeAuthority> =>
     await createRuntimeAuthority(input);
+
+/** One bounded local query; transport and admission failures remain failures. */
+export const refreshWatcherProtocolParameterRuntimeAuthority = async (
+  authority: WatcherProtocolParameterRuntimeAuthority,
+): Promise<WatcherProtocolParameterRuntimeAuthority> => {
+  assertWatcherProtocolParameterRuntimeAuthority(authority);
+  const refresh = refreshRuntimeAuthorities.get(authority);
+  if (refresh === undefined)
+    throw new Error(
+      "Historical funding parameters cannot authorize a fresh live query",
+    );
+  const current = await refresh();
+  return current.snapshotDigest === authority.snapshotDigest
+    ? authority
+    : current;
+};
+
+/** Authenticated historical evidence for exact lease recovery, never fresh funding. */
+export const watcherSignedDeploymentProtocolParameterRecoveryAuthority = (
+  deploymentIdentity: VerifiedWatcherDeploymentIdentity,
+): WatcherProtocolParameterRuntimeAuthority => {
+  assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
+  const signed =
+    watcherDeploymentProtocolParameterAuthority(deploymentIdentity);
+  assertWatcherDeploymentProtocolParameterAuthority(signed);
+  const identity = Object.freeze({
+    schemaVersion: WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY,
+    deploymentFingerprint: deploymentIdentity.manifestId,
+    source: "signed_deployment" as const,
+    sourceEndpoint: "",
+    snapshot: signed.snapshot,
+    snapshotDigest: signed.snapshotDigest,
+  });
+  const authority = Object.freeze({
+    ...identity,
+    authorityDigest: computeDeploymentManifestJsonDigest(identity),
+  });
+  admittedRuntimeAuthorities.add(authority);
+  return authority;
+};
+
+export type WatcherProtocolParameterHistory = Readonly<{
+  read(
+    record: WatcherProverFundingReservationRecord,
+  ): WatcherProtocolParameterRuntimeAuthority | null;
+  readCapacity(
+    record: WatcherProverFundingReservationRecord,
+  ): WatcherProtocolParameterRuntimeAuthority | null;
+  rememberCapacity(
+    record: WatcherProverFundingReservationRecord,
+    authority: WatcherProtocolParameterRuntimeAuthority,
+  ): void;
+  remember(
+    record: WatcherProverFundingReservationRecord,
+    authority: WatcherProtocolParameterRuntimeAuthority,
+  ): void;
+}>;
+const admittedParameterHistories = new WeakSet<object>();
+export const assertWatcherProtocolParameterHistory = (
+  history: WatcherProtocolParameterHistory,
+): void => {
+  if (!admittedParameterHistories.has(history))
+    throw new Error("Funding parameter history is not admitted");
+};
+
+/** Only authenticated durable evidence can re-admit a historical local snapshot. */
+export const createWatcherProtocolParameterHistory = (input: {
+  readonly database: DatabaseSync;
+  readonly authenticationKey: Uint8Array;
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+}): WatcherProtocolParameterHistory => {
+  assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
+  const storage = createWatcherProtocolParameterHistoryStorage({
+    ...input,
+    deploymentFingerprint: input.deploymentIdentity.manifestId,
+  });
+  const read = (
+    record: WatcherProverFundingReservationRecord,
+    capacity = false,
+  ) => {
+    const snapshot = capacity
+      ? storage.readCapacity(record)
+      : storage.read(record);
+    if (snapshot === null) return null;
+    const identity = Object.freeze({
+      schemaVersion: WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY,
+      deploymentFingerprint: input.deploymentIdentity.manifestId,
+      source: "authenticated_history" as const,
+      sourceEndpoint: "",
+      snapshot,
+      snapshotDigest: computeDeploymentManifestJsonDigest(snapshot),
+    });
+    const authority = Object.freeze({
+      ...identity,
+      authorityDigest: computeDeploymentManifestJsonDigest(identity),
+    });
+    admittedRuntimeAuthorities.add(authority);
+    return authority;
+  };
+  const history: WatcherProtocolParameterHistory = Object.freeze({
+    read,
+    readCapacity: (record) => read(record, true),
+    rememberCapacity: (record, authority) => {
+      assertWatcherProtocolParameterRuntimeAuthority(authority);
+      if (
+        authority.source !== "local_ogmios" ||
+        authority.deploymentFingerprint !== input.deploymentIdentity.manifestId
+      )
+        throw new Error(
+          "Funding capacity requires admitted live local parameters",
+        );
+      storage.remember(record, authority.snapshot, true);
+    },
+    remember: (record, authority) => {
+      assertWatcherProtocolParameterRuntimeAuthority(authority);
+      if (
+        authority.deploymentFingerprint !== input.deploymentIdentity.manifestId
+      )
+        throw new Error("Funding parameter history changed deployment");
+      storage.remember(record, authority.snapshot);
+    },
+  });
+  admittedParameterHistories.add(history);
+  return history;
+};

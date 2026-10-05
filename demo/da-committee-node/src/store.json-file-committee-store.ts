@@ -1,13 +1,4 @@
-import { randomUUID } from "node:crypto";
-import {
-  type FileHandle,
-  mkdir,
-  open as openFile,
-  readFile,
-  rename,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, open, readFile, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { daRetentionPruneDecision } from "@al-ft/midgard-core";
@@ -35,111 +26,242 @@ import {
   parseDaStoredConflictEvidenceRecord,
   parseDaStoredPayloadRecord,
 } from "./domain.js";
-import type { StateQueueOutputStep } from "./l1/terminal-retention-observation.js";
 import {
   type CommitteeDeploymentRecord,
   type CommitteeStore,
   conflictEvidenceKey,
   type DecisionOutboxRecord,
   type DecisionOutboxStatus,
-  hasPayloadBytes,
   InFlightDecisionAttempts,
-  type L1ObservedDecision,
   type L1SourceState,
   peerBroadcastKey,
   peerNonceKey,
   type RetainedPayloadPruneRequest,
   signatureKey,
   type StoreData,
-  UNKNOWN_STATE_QUEUE_STATUS,
 } from "./store.committee-store.js";
+import {
+  JsonStoreLease,
+  type JsonStoreLeaseOptions,
+} from "./store.json-file-lease.js";
 import {
   assertDecisionRetry,
   emptyStoreData,
-  isCanonicalIsoTimestamp,
-  parseCommitteeDeploymentRecord,
   parseDecisionOutboxRecord,
-  withDerivedPayloadFetchStatus,
 } from "./store.parse-decision-outbox-record.js";
 import {
   committeeStoreFilePath,
   isNodeError,
   jsonReplacer,
   jsonReviver,
-  parseStoredRecordMap,
 } from "./store.parse-stored-record-map.js";
 import {
   assertDecisionSignature,
   assertDecisionSourceState,
   mergeL1SourceState,
   mergeQuarantinedL1SourceState,
-  parseStateQueueReplayAnchor,
 } from "./store.persisted-decision-transition.js";
+import {
+  jsonApplyL1Recovery,
+  jsonL1RecoverySnapshot,
+} from "./store/l1-recovery-json.js";
+import {
+  jsonCapacityReader,
+  jsonCapacityWriter,
+} from "./store/promise-capacity-json.js";
+import { jsonPromiseResources } from "./store/promise-resource-usage.js";
+import { resolveDaPayloadSave } from "./store/resolve-da-payload-save.js";
+export { resolveDaPayloadSave } from "./store/resolve-da-payload-save.js";
+import { normalizeStoreData } from "./store.normalize-store-data.js";
+import { parseL1SourceState } from "./store.parse-l1-source-state.js";
 import {
   retentionBlockEndTimeMs,
   retentionQueueReference,
+  terminalRecoveryFinal,
 } from "./store/retention.js";
+export { parseL1SourceState } from "./store.parse-l1-source-state.js";
+import {
+  type CommitteeRetirementCertificate,
+  consumeRetirementCertificate,
+  readRetirementCertificate,
+} from "./store/retirement-certificate.js";
+import {
+  type CommitteeRetirementBreachPoint,
+  CommitteeRetirementController,
+  type CommitteeRetirementFloor,
+  type CommitteeRetirementGuard,
+  type CommitteeRetirementSnapshot,
+  makeRetirementFloor,
+  parseRetirementBreachPoint,
+} from "./store/retirement-model.js";
+import {
+  applyRetirementPlan,
+  assertRetirementWrite,
+  retirementStoreDigest,
+} from "./store/retirement-transition.js";
 
 export class JsonFileCommitteeStore implements CommitteeStore {
+  promiseStoreResourceUsage = jsonPromiseResources(() => this.filePath);
   private readonly filePath: string;
-  private readonly lockPath: string;
-  private readonly lockHandle: FileHandle;
-  private readonly lockOwner: string;
+  private readonly lease: JsonStoreLease;
+  private readonly retirement = new CommitteeRetirementController();
   private writeQueue: Promise<void> = Promise.resolve();
   private readonly inFlightDecisions = new InFlightDecisionAttempts();
   private closePromise: Promise<void> | undefined;
   private closing = false;
   private closed = false;
 
+  readL1RecoverySnapshot = jsonL1RecoverySnapshot(
+    () => this.writeQueue,
+    () => this.lease.assertHeld(),
+    () => this.read(),
+  );
+  applyL1RecoveryCertificate = jsonApplyL1Recovery(
+    this.retirement,
+    () => this.read(),
+    (data) => this.write(data),
+    () => this.lease.assertHeld(),
+    () => this.closing || this.closed,
+    (run) => {
+      const operation = this.writeQueue.then(run);
+      this.writeQueue = operation.catch(() => undefined);
+      return operation;
+    },
+  );
+
   private constructor(args: {
     readonly filePath: string;
-    readonly lockPath: string;
-    readonly lockHandle: FileHandle;
-    readonly lockOwner: string;
+    readonly lease: JsonStoreLease;
   }) {
     this.filePath = args.filePath;
-    this.lockPath = args.lockPath;
-    this.lockHandle = args.lockHandle;
-    this.lockOwner = args.lockOwner;
+    this.lease = args.lease;
   }
 
-  static async open(path: string): Promise<JsonFileCommitteeStore> {
+  static async open(
+    path: string,
+    options: JsonStoreLeaseOptions = {},
+  ): Promise<JsonFileCommitteeStore> {
     const filePath = path.endsWith(".json")
       ? path
       : await committeeStoreFilePath(path);
     await mkdir(dirname(filePath), { recursive: true });
-    const lockPath = `${filePath}.lock`;
-    const lockOwner = `${process.pid.toString()}:${randomUUID()}`;
-    let lockHandle: FileHandle;
+    const lease = await JsonStoreLease.acquire(`${filePath}.lock`, options);
+    const store = new JsonFileCommitteeStore({ filePath, lease });
     try {
-      lockHandle = await openFile(lockPath, "wx", 0o600);
-    } catch (error) {
-      if (isNodeError(error) && error.code === "EEXIST") {
-        throw new Error(
-          `committee node file store is already exclusively leased: ${lockPath}; close the active committee node or perform explicit stale-lock recovery`,
-        );
-      }
-      throw error;
-    }
-    const store = new JsonFileCommitteeStore({
-      filePath,
-      lockPath,
-      lockHandle,
-      lockOwner,
-    });
-    try {
-      await lockHandle.writeFile(
-        `${JSON.stringify({ schemaVersion: 1, owner: lockOwner })}\n`,
-        "utf8",
-      );
-      await lockHandle.sync();
-      await store.read();
+      store.retirement.load((await store.read()).retirementFloor);
       return store;
     } catch (error) {
-      await lockHandle.close().catch(() => undefined);
-      await unlink(lockPath).catch(() => undefined);
+      await lease.release().catch(() => undefined);
       throw error;
     }
+  }
+
+  retirementDiscoveryActive(): boolean {
+    return this.retirement.discoveryActive();
+  }
+  async withRetirementDiscovery<T>(run: () => Promise<T>): Promise<T> {
+    const release = this.retirement.discovery();
+    try {
+      return await run();
+    } finally {
+      release();
+    }
+  }
+  captureRetirementGuard(): CommitteeRetirementGuard {
+    return this.retirement.capture();
+  }
+  assertRetirementGuard(
+    token: CommitteeRetirementGuard,
+    record?: StateQueueHeaderRecord,
+  ): void {
+    this.retirement.assert(token, record);
+  }
+  async getRetirementFloor(): Promise<CommitteeRetirementFloor | undefined> {
+    return (await this.read()).retirementFloor;
+  }
+  async readRetirementSnapshot(): Promise<CommitteeRetirementSnapshot> {
+    const guard = this.captureRetirementGuard();
+    const data = await this.read();
+    this.assertRetirementGuard(guard);
+    return { data, digest: retirementStoreDigest(data), guard };
+  }
+  async withRetainedHeaderPin<T>(
+    headerHash: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const release = this.retirement.pin(headerHash);
+    try {
+      return await run();
+    } finally {
+      release();
+    }
+  }
+  async applyRetirementCertificate(
+    certificate: CommitteeRetirementCertificate,
+  ): Promise<readonly string[]> {
+    const verified = readRetirementCertificate(certificate);
+    await verified.assertCurrent();
+    if (this.closing || this.closed)
+      throw new Error("Committee store is closed");
+    this.retirement.begin(verified.snapshot.guard);
+    const operation = this.writeQueue.then(async () => {
+      const data = await this.read();
+      if (retirementStoreDigest(data) !== verified.snapshot.digest)
+        throw new Error("Retirement store snapshot changed");
+      if (
+        verified.plan.headerHashes.some((h) =>
+          this.retirement.pinned().has(h),
+        ) ||
+        Object.values(data.decisionOutbox).some(
+          (e) =>
+            verified.plan.headerHashes.includes(e.headerHash) &&
+            this.inFlightDecisions.has(e.effectId),
+        )
+      )
+        throw new Error("Retirement cohort acquired a live callback");
+      await verified.assertCurrent();
+      verified.assertScopeCurrent();
+      const next = applyRetirementPlan(data, verified.plan);
+      await this.write(next);
+      this.retirement.load(next.retirementFloor);
+      return verified.plan.headerHashes;
+    });
+    this.writeQueue = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    try {
+      return await operation;
+    } finally {
+      consumeRetirementCertificate(certificate);
+      this.retirement.end();
+    }
+  }
+  async recordRetirementBreach(
+    reason: string,
+    observedAt: CommitteeRetirementBreachPoint,
+  ): Promise<void> {
+    const point = parseRetirementBreachPoint(observedAt);
+    this.retirement.holdBreach();
+    const operation = this.writeQueue.then(async () => {
+      const data = await this.read();
+      const floor = data.retirementFloor;
+      if (!floor || floor.breach) {
+        this.retirement.persistedBreach();
+        return;
+      }
+      const { digest: _digest, ...prior } = floor;
+      const next = makeRetirementFloor({
+        ...prior,
+        generation: floor.generation + 1,
+        breach: { reason, observedAt: point },
+      });
+      await this.write({ ...data, retirementFloor: next });
+      this.retirement.load(next);
+      this.retirement.persistedBreach();
+    });
+    this.writeQueue = operation.catch(() => undefined);
+    await operation;
   }
 
   async close(): Promise<void> {
@@ -147,8 +269,7 @@ export class JsonFileCommitteeStore implements CommitteeStore {
       this.closing = true;
       this.closePromise = (async () => {
         await this.writeQueue.catch(() => undefined);
-        await this.lockHandle.close();
-        await unlink(this.lockPath);
+        await this.lease.release();
         this.closed = true;
       })();
     }
@@ -392,18 +513,8 @@ export class JsonFileCommitteeStore implements CommitteeStore {
               : record,
           ]),
         ),
-        daPayloads: Object.fromEntries(
-          Object.entries(data.daPayloads).map(([key, record]) => [
-            key,
-            affectedHeaders.has(record.headerHash)
-              ? {
-                  ...record,
-                  validationStatus: "conflicted",
-                  validationError: errorCode,
-                }
-              : record,
-          ]),
-        ),
+        // Retained payloads are left exactly as they were: see
+        // `CommitteeStore.quarantineL1Decisions`.
         daSignatures: Object.fromEntries(
           Object.entries(data.daSignatures).map(([key, record]) => [
             key,
@@ -473,14 +584,12 @@ export class JsonFileCommitteeStore implements CommitteeStore {
       left.headerHash.localeCompare(right.headerHash),
     );
   }
-
   async getStateQueueHeader(
     headerHash: string,
   ): Promise<StateQueueHeaderRecord | undefined> {
     const data = await this.read();
     return data.stateQueueHeaders[headerHash];
   }
-
   async saveDaPayload(record: DaPayloadRecord): Promise<DaStoredPayloadRecord> {
     const canonicalRecord = parseDaStoredPayloadRecord(record);
     let saved: DaStoredPayloadRecord = canonicalRecord;
@@ -497,26 +606,24 @@ export class JsonFileCommitteeStore implements CommitteeStore {
     });
     return saved;
   }
-
   async getDaPayload(
     headerHash: string,
   ): Promise<DaStoredPayloadRecord | undefined> {
     const data = await this.read();
     return data.daPayloads[headerHash];
   }
-
   async listDaPayloads(): Promise<readonly DaStoredPayloadRecord[]> {
     const data = await this.read();
     return Object.values(data.daPayloads).sort((left, right) =>
       left.headerHash.localeCompare(right.headerHash),
     );
   }
-
   async deleteDaPayloadIfPrunable(
     request: RetainedPayloadPruneRequest,
   ): Promise<boolean> {
     let deleted = false;
     await this.mutate((data) => {
+      if (data.retirementFloor !== undefined) return data;
       const payload = data.daPayloads[request.headerHash];
       if (payload === undefined) {
         return data;
@@ -528,6 +635,11 @@ export class JsonFileCommitteeStore implements CommitteeStore {
         headerStatus: header?.status ?? "unobserved",
         queueReference: retentionQueueReference(request.headerHash, request),
         retentionDays: request.retentionDays,
+        terminalRecoveryFinal: terminalRecoveryFinal(
+          header,
+          request,
+          payload.deploymentFingerprint,
+        ),
       });
       if (decision.decision !== "prune") {
         return data;
@@ -540,6 +652,8 @@ export class JsonFileCommitteeStore implements CommitteeStore {
     return deleted;
   }
 
+  getPromiseCapacityEvidence = jsonCapacityReader(this.read.bind(this));
+  savePromiseCapacityEvidence = jsonCapacityWriter(this.mutate.bind(this));
   async saveDaSignature(record: DaSignatureRecord): Promise<void> {
     const canonicalRecord = parseDaSignatureRecord(record);
     await this.mutate((data) => {
@@ -561,7 +675,6 @@ export class JsonFileCommitteeStore implements CommitteeStore {
       };
     });
   }
-
   async getDaSignature(args: {
     readonly headerHash: string;
     readonly availabilityCommitmentDigest: string;
@@ -576,7 +689,6 @@ export class JsonFileCommitteeStore implements CommitteeStore {
       )
     ];
   }
-
   async listDaSignatures(
     headerHash?: string,
   ): Promise<readonly DaSignatureRecordV1[]> {
@@ -595,7 +707,6 @@ export class JsonFileCommitteeStore implements CommitteeStore {
           left.signerIndex - right.signerIndex,
       );
   }
-
   async saveDaConflictEvidence(
     record: DaStoredConflictEvidenceRecord,
   ): Promise<boolean> {
@@ -617,7 +728,6 @@ export class JsonFileCommitteeStore implements CommitteeStore {
     });
     return accepted;
   }
-
   async listDaConflictEvidence(
     headerHash?: string,
   ): Promise<readonly DaStoredConflictEvidenceRecord[]> {
@@ -634,7 +744,6 @@ export class JsonFileCommitteeStore implements CommitteeStore {
           left.evidenceHash.localeCompare(right.evidenceHash),
       );
   }
-
   async saveDaAttestationCandidate(
     record: DaAttestationCandidateRecord,
   ): Promise<void> {
@@ -646,7 +755,6 @@ export class JsonFileCommitteeStore implements CommitteeStore {
       },
     }));
   }
-
   async listDaAttestationCandidates(
     headerHash?: string,
   ): Promise<readonly DaAttestationCandidateRecord[]> {
@@ -662,7 +770,6 @@ export class JsonFileCommitteeStore implements CommitteeStore {
           left.outRef.localeCompare(right.outRef),
       );
   }
-
   async saveL1Submission(record: L1SubmissionRecord): Promise<void> {
     await this.mutate((data) => ({
       ...data,
@@ -672,7 +779,6 @@ export class JsonFileCommitteeStore implements CommitteeStore {
       },
     }));
   }
-
   async listL1Submissions(): Promise<readonly L1SubmissionRecord[]> {
     const data = await this.read();
     return Object.values(data.l1Submissions).sort(
@@ -682,7 +788,6 @@ export class JsonFileCommitteeStore implements CommitteeStore {
         left.txHash.localeCompare(right.txHash),
     );
   }
-
   async savePeerBroadcast(record: DaPeerBroadcastRecord): Promise<void> {
     await this.mutate((data) => ({
       ...data,
@@ -697,7 +802,6 @@ export class JsonFileCommitteeStore implements CommitteeStore {
       },
     }));
   }
-
   async getPeerBroadcast(args: {
     readonly peerId: string;
     readonly headerHash: string;
@@ -714,7 +818,6 @@ export class JsonFileCommitteeStore implements CommitteeStore {
       )
     ];
   }
-
   async listPeerBroadcasts(
     headerHash?: string,
   ): Promise<readonly DaPeerBroadcastRecord[]> {
@@ -734,7 +837,6 @@ export class JsonFileCommitteeStore implements CommitteeStore {
           left.peerId.localeCompare(right.peerId),
       );
   }
-
   async savePeerHealth(record: DaPeerHealthRecord): Promise<void> {
     await this.mutate((data) => ({
       ...data,
@@ -744,14 +846,12 @@ export class JsonFileCommitteeStore implements CommitteeStore {
       },
     }));
   }
-
   async listPeerHealth(): Promise<readonly DaPeerHealthRecord[]> {
     const data = await this.read();
     return Object.values(data.peerHealth).sort((left, right) =>
       left.peerId.localeCompare(right.peerId),
     );
   }
-
   async recordPeerNonce(record: DaPeerNonceRecord): Promise<boolean> {
     let accepted = false;
     await this.mutate((data) => {
@@ -774,19 +874,21 @@ export class JsonFileCommitteeStore implements CommitteeStore {
     });
     return accepted;
   }
-
   private async mutate(update: (data: StoreData) => StoreData): Promise<void> {
     if (this.closing || this.closed) {
       throw new Error("committee node file store is closed");
     }
+    const generation = this.retirement.generation();
     const operation = this.writeQueue.then(async () => {
       const data = await this.read();
-      await this.write(update(data));
+      this.retirement.assertGeneration(generation);
+      const next = update(data);
+      assertRetirementWrite(data, next);
+      await this.write(next);
     });
     this.writeQueue = operation.catch(() => undefined);
     await operation;
   }
-
   private async read(): Promise<StoreData> {
     try {
       const raw = await readFile(this.filePath, "utf8");
@@ -800,300 +902,22 @@ export class JsonFileCommitteeStore implements CommitteeStore {
       throw error;
     }
   }
-
   private async write(data: StoreData): Promise<void> {
-    const tmpPath = `${this.filePath}.${this.lockOwner.replace(":", "-")}.tmp`;
-    await writeFile(tmpPath, `${JSON.stringify(data, jsonReplacer, 2)}\n`);
+    await this.lease.assertHeld();
+    const tmpPath = `${this.filePath}.${this.lease.owner.replace(":", "-")}.tmp`;
+    const file = await open(tmpPath, "w", 0o600);
+    try {
+      await file.writeFile(`${JSON.stringify(data, jsonReplacer, 2)}\n`);
+      await file.sync();
+    } finally {
+      await file.close();
+    }
     await rename(tmpPath, this.filePath);
+    const directory = await open(dirname(this.filePath), "r");
+    try {
+      await directory.sync();
+    } finally {
+      await directory.close();
+    }
   }
 }
-
-const terminalPayloadStatuses = new Set<DaPayloadRecord["validationStatus"]>([
-  "verified",
-  "malformed_da",
-  "root_mismatch",
-  "conflicted",
-]);
-
-export const resolveDaPayloadSave = (
-  existing: DaStoredPayloadRecord | undefined,
-  record: DaStoredPayloadRecord,
-): DaStoredPayloadRecord => {
-  if (existing === undefined) {
-    return withDerivedPayloadFetchStatus(record);
-  }
-  if (hasPayloadBytes(existing) && !hasPayloadBytes(record)) {
-    return existing;
-  }
-  if (
-    hasPayloadBytes(existing) &&
-    hasPayloadBytes(record) &&
-    existing.payloadSha256 !== record.payloadSha256
-  ) {
-    return {
-      ...withDerivedPayloadFetchStatus(record),
-      validationStatus: "conflicted",
-      conflictStatus: "conflicting_bytes",
-      validationError: `payload bytes conflict with existing sha256 ${existing.payloadSha256}`,
-    };
-  }
-  if (
-    hasPayloadBytes(existing) &&
-    hasPayloadBytes(record) &&
-    existing.payloadSha256 === record.payloadSha256 &&
-    terminalPayloadStatuses.has(existing.validationStatus) &&
-    !terminalPayloadStatuses.has(record.validationStatus)
-  ) {
-    return existing;
-  }
-  return withDerivedPayloadFetchStatus(record);
-};
-
-const normalizeStoreData = (value: unknown): StoreData => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("committee node store data must be an object");
-  }
-  const record = value as Partial<StoreData>;
-  return {
-    ...(record.deployment === undefined
-      ? {}
-      : { deployment: parseCommitteeDeploymentRecord(record.deployment) }),
-    chainCursor:
-      record.chainCursor === undefined
-        ? undefined
-        : parseL1SourceState(record.chainCursor),
-    stateQueueHeaders: record.stateQueueHeaders ?? {},
-    daPayloads: parseStoredRecordMap(
-      record.daPayloads,
-      parseDaStoredPayloadRecord,
-      (entry) => entry.headerHash,
-      "DA stored payload records V1",
-    ),
-    daSignatures: parseStoredRecordMap(
-      record.daSignatures,
-      parseDaSignatureRecord,
-      (entry) =>
-        signatureKey(
-          entry.headerHash,
-          entry.availabilityCommitmentDigest,
-          entry.signerIndex,
-        ),
-      "DA signature records V1",
-    ),
-    daConflictEvidence: parseStoredRecordMap(
-      record.daConflictEvidence,
-      parseDaStoredConflictEvidenceRecord,
-      conflictEvidenceKey,
-      "DA conflict evidence records V1",
-    ),
-    daAttestationCandidates: record.daAttestationCandidates ?? {},
-    l1Submissions: record.l1Submissions ?? {},
-    peerBroadcasts: record.peerBroadcasts ?? {},
-    peerHealth: record.peerHealth ?? {},
-    peerNonces: record.peerNonces ?? {},
-    decisionOutbox: parseStoredRecordMap(
-      record.decisionOutbox,
-      parseDecisionOutboxRecord,
-      (entry) => entry.effectId,
-      "decision outbox records V1",
-    ),
-  };
-};
-
-const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
-
-/** A non-empty list of well-formed steps, or undefined. */
-const parseStateQueueOutputSteps = (
-  value: unknown,
-): readonly StateQueueOutputStep[] | undefined => {
-  if (!Array.isArray(value) || value.length === 0) return undefined;
-  const steps: StateQueueOutputStep[] = [];
-  for (const entry of value as unknown[]) {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      return undefined;
-    }
-    const step = entry as Partial<StateQueueOutputStep>;
-    if (
-      Object.keys(step).some(
-        (key) => !["fromOutRef", "toOutRef", "slot", "blockHash"].includes(key),
-      ) ||
-      typeof step.fromOutRef !== "string" ||
-      !OUT_REF.test(step.fromOutRef) ||
-      (step.toOutRef !== undefined &&
-        (typeof step.toOutRef !== "string" || !OUT_REF.test(step.toOutRef))) ||
-      typeof step.slot !== "number" ||
-      !Number.isSafeInteger(step.slot) ||
-      step.slot < 0 ||
-      typeof step.blockHash !== "string" ||
-      !/^[0-9a-f]{64}$/u.test(step.blockHash)
-    ) {
-      return undefined;
-    }
-    steps.push({
-      fromOutRef: step.fromOutRef,
-      ...(step.toOutRef === undefined ? {} : { toOutRef: step.toOutRef }),
-      slot: step.slot,
-      blockHash: step.blockHash,
-    });
-  }
-  return steps;
-};
-
-export const parseL1SourceState = (value: unknown): L1SourceState => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("committee node L1 source state must be an object");
-  }
-  const state = value as Partial<L1SourceState>;
-  const stateKeys = new Set([
-    "schemaVersion",
-    "sourceMode",
-    "network",
-    "authoritySha256",
-    "status",
-    "observations",
-    "observedAt",
-    "stateQueueReplayAnchor",
-    "quarantineReason",
-    "quarantinedAt",
-  ]);
-  if (
-    Object.keys(state).some((key) => !stateKeys.has(key)) ||
-    state.schemaVersion !== 1 ||
-    (state.sourceMode !== "local_node" &&
-      state.sourceMode !== "external_providers") ||
-    typeof state.network !== "string" ||
-    state.network.trim() !== state.network ||
-    state.network.length === 0 ||
-    typeof state.authoritySha256 !== "string" ||
-    !/^[0-9a-f]{64}$/u.test(state.authoritySha256) ||
-    (state.status !== "healthy" && state.status !== "quarantined") ||
-    typeof state.observedAt !== "string" ||
-    !isCanonicalIsoTimestamp(state.observedAt) ||
-    !Array.isArray(state.observations)
-  ) {
-    throw new Error("committee node L1 source state is malformed");
-  }
-  if (
-    state.status === "quarantined" &&
-    (typeof state.quarantineReason !== "string" ||
-      state.quarantineReason.length === 0 ||
-      typeof state.quarantinedAt !== "string" ||
-      !isCanonicalIsoTimestamp(state.quarantinedAt))
-  ) {
-    throw new Error(
-      "quarantined committee node L1 source state lacks evidence",
-    );
-  }
-  if (
-    state.status === "healthy" &&
-    (state.quarantineReason !== undefined || state.quarantinedAt !== undefined)
-  ) {
-    throw new Error(
-      "healthy committee node L1 source state contains quarantine fields",
-    );
-  }
-  const observations = state.observations.map((entry) => {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      throw new Error("committee node L1 source observation is malformed");
-    }
-    const record = entry as Partial<L1ObservedDecision>;
-    const observationKeys = new Set([
-      "headerHash",
-      "stateQueueOutRef",
-      "stateQueueStatus",
-      "lastKnownStatus",
-      "slot",
-      "blockHash",
-      "finalized",
-      "hasPersistedDecision",
-      "authenticatedSteps",
-    ]);
-    const authenticatedSteps = parseStateQueueOutputSteps(
-      record.authenticatedSteps,
-    );
-    if (
-      Object.keys(record).some((key) => !observationKeys.has(key)) ||
-      typeof record.headerHash !== "string" ||
-      !/^[0-9a-f]{56}$/u.test(record.headerHash) ||
-      typeof record.stateQueueOutRef !== "string" ||
-      !/^[0-9a-f]{64}#[0-9]+$/u.test(record.stateQueueOutRef) ||
-      (record.stateQueueStatus !== "unattested" &&
-        record.stateQueueStatus !== "attesting" &&
-        record.stateQueueStatus !== "attested" &&
-        record.stateQueueStatus !== "merged" &&
-        record.stateQueueStatus !== "removed" &&
-        record.stateQueueStatus !== "conflicted" &&
-        record.stateQueueStatus !== UNKNOWN_STATE_QUEUE_STATUS) ||
-      (record.stateQueueStatus === UNKNOWN_STATE_QUEUE_STATUS
-        ? record.lastKnownStatus !== "unattested" &&
-          record.lastKnownStatus !== "attesting" &&
-          record.lastKnownStatus !== "attested" &&
-          record.lastKnownStatus !== "merged" &&
-          record.lastKnownStatus !== "removed" &&
-          record.lastKnownStatus !== "conflicted"
-        : record.lastKnownStatus !== undefined) ||
-      typeof record.finalized !== "boolean" ||
-      typeof record.hasPersistedDecision !== "boolean" ||
-      (record.slot !== undefined &&
-        (!Number.isSafeInteger(record.slot) || record.slot < 0)) ||
-      (record.blockHash !== undefined &&
-        (typeof record.blockHash !== "string" ||
-          !/^[0-9a-f]{64}$/u.test(record.blockHash))) ||
-      (record.authenticatedSteps !== undefined &&
-        authenticatedSteps === undefined)
-    ) {
-      throw new Error("committee node L1 source observation is malformed");
-    }
-    return {
-      headerHash: record.headerHash,
-      stateQueueOutRef: record.stateQueueOutRef,
-      stateQueueStatus: record.stateQueueStatus,
-      ...(record.lastKnownStatus === undefined
-        ? {}
-        : { lastKnownStatus: record.lastKnownStatus }),
-      ...(record.slot === undefined ? {} : { slot: record.slot }),
-      ...(record.blockHash === undefined
-        ? {}
-        : { blockHash: record.blockHash }),
-      finalized: record.finalized,
-      hasPersistedDecision: record.hasPersistedDecision,
-      ...(authenticatedSteps === undefined ? {} : { authenticatedSteps }),
-    };
-  });
-  observations.sort((left, right) =>
-    left.headerHash.localeCompare(right.headerHash),
-  );
-  if (
-    new Set(observations.map(({ headerHash }) => headerHash)).size !==
-    observations.length
-  ) {
-    throw new Error(
-      "committee node L1 source observations contain duplicate headers",
-    );
-  }
-  const stateQueueReplayAnchor = parseStateQueueReplayAnchor(
-    state.stateQueueReplayAnchor,
-  );
-  if (
-    state.stateQueueReplayAnchor !== undefined &&
-    stateQueueReplayAnchor === undefined
-  ) {
-    throw new Error("committee node L1 source replay anchor is malformed");
-  }
-  return {
-    schemaVersion: 1,
-    sourceMode: state.sourceMode,
-    network: state.network,
-    authoritySha256: state.authoritySha256,
-    status: state.status,
-    observations,
-    observedAt: state.observedAt,
-    ...(stateQueueReplayAnchor === undefined ? {} : { stateQueueReplayAnchor }),
-    ...(state.quarantineReason === undefined
-      ? {}
-      : { quarantineReason: state.quarantineReason }),
-    ...(state.quarantinedAt === undefined
-      ? {}
-      : { quarantinedAt: state.quarantinedAt }),
-  };
-};

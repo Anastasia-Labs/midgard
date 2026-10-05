@@ -9,7 +9,7 @@ import {
 import { sourceFixture } from "./workflow-kupmios-source.source-fixture.js";
 
 describe("typed raw-source transport failures", () => {
-  it.each([429, 500, 502, 503, 504])(
+  it.each([408, 425, 429, 500, 502, 503, 504])(
     "marks HTTP %i temporary without accepting response data",
     async (status) => {
       const fixture = sourceFixture({
@@ -181,6 +181,31 @@ describe("typed raw-source transport failures", () => {
     expect(error).toBeInstanceOf(Error);
     expect(error).not.toBeInstanceOf(LocalKupmiosTransportUnavailableError);
   });
+
+  it.each([
+    JSON.stringify({
+      id: 0,
+      error: { code: -32000, message: "Connection with the node lost." },
+    }),
+    // The code alone types the frame: this message does not match.
+    JSON.stringify({
+      id: 0,
+      error: { code: -32000, message: "node unavailable" },
+    }),
+    JSON.stringify({
+      id: 0,
+      error: { code: 1, message: "connection with the node lost" },
+    }),
+  ])(
+    "types an Ogmios frame that lost its own node as transport: %s",
+    async (responseText) => {
+      const fixture = sourceFixture({ socketBehavior: { responseText } });
+      const error = await fixture.source
+        .readBoundary()
+        .catch((cause: unknown) => cause);
+      expect(error).toBeInstanceOf(LocalKupmiosTransportUnavailableError);
+    },
+  );
 
   it("does not conceal malformed data with a later socket-close timeout", async () => {
     const fixture = sourceFixture({

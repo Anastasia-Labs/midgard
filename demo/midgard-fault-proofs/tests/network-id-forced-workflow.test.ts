@@ -81,6 +81,7 @@ import {
   h32,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { signedRecoveryObservationFixture } from "./helpers/signed-recovery-observation-fixture.js";
 import { makeHeader } from "./support/emulator/header-fixtures.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 
@@ -945,8 +946,7 @@ describe("network-id forced (§5.2) production workflow", () => {
     ).resolves.toEqual({ kind: "confirmed", txHash: h32(0x41) });
   });
 
-  // Regression: one second after submission the chain has not advanced, so
-  // the adapter used to answer `not_found`, which makes the orchestrator
+  // Before the chain advances, shallow absence must retain the exact signed body;
   // abandon the funding transition and rebuild the identical transaction while
   // the original is still landing. An unconfirmed submission now resolves
   // through canonical signed-transaction recovery.
@@ -968,22 +968,9 @@ describe("network-id forced (§5.2) production workflow", () => {
     );
     const transactionHash = CML.hash_transaction(body).to_hex();
     const signedTransactionCborHex = signed.to_cbor_hex();
-    const point = {
-      slot: "1",
-      blockHash: h32(0x21),
-      blockNo: "1",
-      pointId: "1",
-    };
-    const observation = (
-      status: SignedTransactionRecoveryObservation["status"],
-    ): SignedTransactionRecoveryObservation => ({
+    const observation = signedRecoveryObservationFixture({
       transactionHash,
       signedTransactionCborHex,
-      status,
-      canonicalPoint: point,
-      releaseFinalPoint: point,
-      inputs: [],
-      reason: status,
     });
     const observe = vi.fn(async () => observation("pending"));
     const notStarted: FraudProofRawL1FamilyStage = {
@@ -992,7 +979,10 @@ describe("network-id forced (§5.2) production workflow", () => {
     };
     const reconcile = async (
       harness: ReturnType<typeof forcedHarness>,
-      overrides: { readonly signedTransactionCborHex?: string } = {
+      overrides: {
+        readonly signedTransactionCborHex?: string;
+        readonly retirementOnly?: boolean;
+      } = {
         signedTransactionCborHex,
       },
     ) => {
@@ -1024,9 +1014,15 @@ describe("network-id forced (§5.2) production workflow", () => {
       transactionHash,
       signedTransactionCborHex,
     });
+    // Whichever lands wins: expired within the horizon is superseded at once.
     observe.mockResolvedValueOnce(observation("expired"));
-    await expect(reconcile(recovering)).resolves.toEqual({
+    await expect(reconcile(recovering)).resolves.toEqual({ kind: "not_found" });
+    observe.mockResolvedValueOnce(observation("expired", true));
+    await expect(
+      reconcile(recovering, { signedTransactionCborHex, retirementOnly: true }),
+    ).resolves.toMatchObject({
       kind: "not_found",
+      retirement: { transactionHash, reason: "expired" },
     });
     observe.mockResolvedValueOnce(observation("conflict"));
     await expect(reconcile(recovering)).resolves.toEqual({

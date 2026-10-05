@@ -117,6 +117,7 @@ const signedTransaction = () => {
 const terminal = (
   category: FraudProofCatalogueCategoryName,
   txHash: string,
+  confirmationDepth: number,
 ): FraudProofWorkflowTerminal => ({
   schemaVersion: "midgard-fraud-proof-workflow-terminal-v1",
   category,
@@ -144,7 +145,7 @@ const terminal = (
     removalFeeLovelace: "200000",
     duplicateRewardAbsent: true,
   },
-  observedAt: { slot: "1234", blockHash: hash("cc"), confirmationDepth: 30 },
+  observedAt: { slot: "1234", blockHash: hash("cc"), confirmationDepth },
 });
 export const customWorkflowRecoveryFixture = async (
   spec: CursorFamilySpec,
@@ -338,9 +339,14 @@ export const customWorkflowRecoveryFixture = async (
       verifyForWorkflow: async () => releaseFinality,
     },
   };
-  const advance = () => {
+  const removalBlockNo = 71n;
+  const advance = (canonicalTipBlockNo = 100n) => {
+    const confirmationDepth = Number(canonicalTipBlockNo - removalBlockNo + 1n);
     stage.value = removed
-      ? { kind: "removed", terminal: terminal(category, built.txHash) }
+      ? {
+          kind: "removed",
+          terminal: terminal(category, built.txHash, confirmationDepth),
+        }
       : {
           kind: "step",
           step: 1,
@@ -355,6 +361,7 @@ export const customWorkflowRecoveryFixture = async (
     workflowId,
     built,
     stage,
+    removalBlockNo,
     advance,
     forbidden,
     observeHeader,
@@ -366,6 +373,54 @@ export const customWorkflowRecoveryFixture = async (
   };
 };
 
+/** Scripted canonical observations check handoff kind; no physical funding store is bound here. */
+export const verifyTerminalRecoveryFinality = async (
+  fixture: Awaited<ReturnType<typeof customWorkflowRecoveryFixture>>,
+  run: (
+    input: Awaited<ReturnType<typeof customWorkflowRecoveryFixture>>,
+  ) => Promise<FraudProofWorkflowRunResult>,
+) => {
+  const release = vi.spyOn(funding, "releaseWorkflowFundingReservation");
+  try {
+    const originalIntents = (
+      await fixture.journal.load(fixture.workflowId)
+    ).filter(({ event }) => event.kind === "submission_intent");
+    for (const [tipBlockNo, depth] of [
+      [100n, 30],
+      [2231n, 2161],
+    ] as const) {
+      expect(tipBlockNo - fixture.removalBlockNo + 1n).toBe(BigInt(depth));
+      fixture.advance(tipBlockNo);
+      expect((await run(fixture)).kind).toBe("terminal_included");
+      const entries = await fixture.journal.load(fixture.workflowId);
+      expect(entries.some(({ event }) => event.kind === "completed")).toBe(
+        false,
+      );
+      expect(
+        entries.filter(({ event }) => event.kind === "submission_intent"),
+      ).toEqual(originalIntents);
+      expect(
+        release.mock.calls.every(
+          ([input]) => input.handoff.completion.kind === "terminal_included",
+        ),
+      ).toBe(true);
+    }
+    fixture.advance(2232n);
+    expect((await run(fixture)).kind).toBe("completed");
+    expect(release.mock.calls.at(-1)?.[0].handoff.completion.kind).toBe(
+      "completed",
+    );
+    expect(
+      (await fixture.journal.load(fixture.workflowId)).at(-1)?.event.kind,
+    ).toBe("completed");
+    expect(fixture.observeHeader).not.toHaveBeenCalled();
+    expect(fixture.capture).not.toHaveBeenCalled();
+    expect(fixture.built.submit).not.toHaveBeenCalled();
+  } finally {
+    release.mockRestore();
+  }
+};
+
 /** Model a crash at the real terminal handoff boundary; atomic-store persistence has separate tests. */
 export const verifyCompletionHandoffRestart = async (
   fixture: Awaited<ReturnType<typeof customWorkflowRecoveryFixture>>,
@@ -373,7 +428,7 @@ export const verifyCompletionHandoffRestart = async (
     input: Awaited<ReturnType<typeof customWorkflowRecoveryFixture>>,
   ) => Promise<FraudProofWorkflowRunResult>,
 ) => {
-  fixture.advance();
+  fixture.advance(2232n);
   let durable: funding.WorkflowFundingCompletionHandoff | undefined;
   const release = vi
     .spyOn(funding, "releaseWorkflowFundingReservation")

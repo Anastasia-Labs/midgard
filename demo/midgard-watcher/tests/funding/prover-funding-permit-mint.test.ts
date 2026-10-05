@@ -250,7 +250,7 @@ describe("watcher production prover funding permit mint V1", () => {
     const { store } = await openStore();
     const admitted = createWatcherProverFundingAuthorityFactory({
       launchScope: ["doubleSpend"],
-      journalRoot: process.cwd(),
+      journalRoot: process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
       deploymentIdentity: makeWatcherDeploymentAuthorityFixture().result,
       protocolParameters:
         await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
@@ -277,7 +277,7 @@ describe("watcher production prover funding permit mint V1", () => {
     const { store } = await openStore();
     const factory = createWatcherProverFundingAuthorityFactory({
       launchScope: ["doubleSpend"],
-      journalRoot: process.cwd(),
+      journalRoot: process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
       deploymentIdentity,
       protocolParameters:
         await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
@@ -304,7 +304,7 @@ describe("watcher production prover funding permit mint V1", () => {
       });
     const factory = createWatcherProverFundingAuthorityFactory({
       launchScope: ["doubleSpend"],
-      journalRoot: process.cwd(),
+      journalRoot: process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
       deploymentIdentity,
       protocolParameters,
       store,
@@ -342,7 +342,10 @@ describe("watcher production prover funding permit mint V1", () => {
 
 const openStore = async () => {
   const directory = await mkdtemp(
-    join(process.cwd(), ".watcher-funding-permit-mint-test-"),
+    join(
+      process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
+      ".watcher-funding-permit-mint-test-",
+    ),
   );
   directories.push(directory);
   return await openWatcherSqliteProverFundingReservationStore({

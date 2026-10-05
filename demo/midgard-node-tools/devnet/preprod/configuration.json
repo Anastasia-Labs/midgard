@@ -21,6 +21,12 @@
     "maxLovelaceSupply": 45000000000000000,
     "updateQuorum": 5
   },
+  "isolatedChain": {
+    "reason": "Applied over consensus for the isolated single-pool chain only. Its one operational certificate is never reissued, and Preprod's 36-hour KES period would stop its block production 93 days after genesis; 60-day periods let the key forge for ten years.",
+    "consensus": {
+      "slotsPerKESPeriod": 5184000
+    }
+  },
   "protocolParameters": {
     "collateralPercentage": 150,
     "committeeMaxTermLength": 146,

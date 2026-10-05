@@ -1,3 +1,9 @@
+import {
+  formatOgmiosJsonRpcError,
+  OgmiosJsonRpcError,
+} from "@al-ft/midgard-core/ogmios-json-rpc-error";
+
+import { joinNativeReads } from "./provider.join-native-reads.js";
 import { fetchKupoCheckpoint } from "./provider.local-node-chain-authority-from-config.js";
 import {
   assertNetworkMagic,
@@ -20,7 +26,7 @@ export const alignedKupmiosTip = async (
   networkMagic: number | undefined,
 ): Promise<CanonicalChainPoint> => {
   for (let attempt = 1; ; attempt += 1) {
-    const [kupoPoint, ogmiosTip] = await Promise.all([
+    const [kupoPoint, ogmiosTip] = await joinNativeReads([
       fetchKupoCheckpoint(kupoUrl, fetchFn),
       requestOgmiosTip(ogmiosUrl),
     ]);
@@ -172,8 +178,9 @@ const runOgmiosSession = async (
           "Ogmios JSON-RPC response",
         );
         if (envelope.error !== undefined) {
-          throw new Error(
-            `Ogmios JSON-RPC error: ${JSON.stringify(envelope.error)}`,
+          throw new OgmiosJsonRpcError(
+            `Ogmios JSON-RPC error: ${formatOgmiosJsonRpcError(envelope.error)}`,
+            envelope.error,
           );
         }
         const id = envelope.id;

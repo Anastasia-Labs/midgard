@@ -137,7 +137,18 @@ it("continues the retained terminal journal under refreshed authority without ch
     await expect(execute()).resolves.toMatchObject({ kind: "pending" });
     expect(await store.load(entries[0]!.workflowId)).toEqual(entries);
     expect(release).not.toHaveBeenCalled();
-    Object.assign(terminal.observedAt, { confirmationDepth: 30 });
+    for (const confirmationDepth of [30, 2161]) {
+      Object.assign(terminal.observedAt, { confirmationDepth });
+      await expect(execute()).resolves.toMatchObject({ kind: "pending" });
+      expect(await store.load(entries[0]!.workflowId)).toEqual(entries);
+      expect(release).not.toHaveBeenCalled();
+    }
+    Object.assign(terminal.observedAt, { confirmationDepth: 2162 });
+    transactionConfirmed.mockResolvedValue(false);
+    await expect(execute()).rejects.toThrow("not authenticated on L1");
+    expect(await store.load(entries[0]!.workflowId)).toEqual(entries);
+    expect(release).not.toHaveBeenCalled();
+    transactionConfirmed.mockResolvedValue(true);
     await expect(execute()).resolves.toMatchObject({ kind: "completed" });
     const completed = await store.load(entries[0]!.workflowId);
     expect(completed.slice(0, entries.length)).toEqual(entries);

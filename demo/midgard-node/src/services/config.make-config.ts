@@ -17,10 +17,7 @@ import {
   VERIFICATION_KEY_HASH_HEX_LENGTH,
   VERIFICATION_KEY_HEX_LENGTH,
 } from "../da/local-signers.js";
-import {
-  assertRetentionDaysMatchesDeployment,
-  validateRetentionDays,
-} from "../database/retention-policy.js";
+import { validateRetentionDays } from "../database/retention-policy.js";
 import {
   boundedValidationInteger,
   CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES,
@@ -531,13 +528,15 @@ const makeConfig = Effect.gen(function* () {
       return value;
     }),
   );
-  const retentionDays = yield* Config.integer("RETENTION_DAYS").pipe(
-    Config.withDefault(0),
-    Config.mapAttempt(validateRetentionDays),
-    // Q54: enabled wall-clock pruning must cover the deployment manifest's
-    // da.transportProfile.retentionDays window; a shorter env value fails the
-    // config load. DA payload pruning does not follow RETENTION_DAYS.
-    Config.mapAttempt((value) => assertRetentionDaysMatchesDeployment(value)),
+  // B5: no default; unset means the verified manifest's retention window. A
+  // shorter explicit value refuses startup in
+  // assertDeploymentManifestMatchesConfig. DA payload pruning ignores it.
+  const retentionDays = yield* Config.option(
+    Config.integer("RETENTION_DAYS"),
+  ).pipe(
+    Config.mapAttempt((value) =>
+      Option.isNone(value) ? undefined : validateRetentionDays(value.value),
+    ),
   );
   const waitBetweenRetentionSweeps = yield* Config.integer(
     "WAIT_BETWEEN_RETENTION_SWEEPS",

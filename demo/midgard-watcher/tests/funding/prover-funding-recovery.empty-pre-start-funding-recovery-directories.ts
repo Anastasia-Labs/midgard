@@ -7,6 +7,7 @@ import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-pr
 import { describe, expect, it, vi } from "vitest";
 
 import { setupFundingRecoveryFixture as setup } from "../support/fault-proof-funding-fixture.js";
+import { expiredNotFound } from "./prover-funding-recovery.retirement-fixture.js";
 
 describe("empty pre-start funding recovery directories", () => {
   const emptyExecution = async (test: Awaited<ReturnType<typeof setup>>) => {
@@ -112,7 +113,9 @@ describe("empty pre-start funding recovery directories", () => {
     const test = await setup();
     test.useUnspentPendingInputs();
     const journal = await test.recover();
-    vi.mocked(test.adapter.reconcile).mockResolvedValue({ kind: "not_found" });
+    vi.mocked(test.adapter.reconcile).mockResolvedValue(
+      expiredNotFound(test.transactionHash),
+    );
     await test.run(journal);
     const before = await test.records();
     expect(before[0]!.pendingTransition).toBeNull();

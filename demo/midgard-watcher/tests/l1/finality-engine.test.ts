@@ -1,3 +1,4 @@
+import "../support/chain-coordinator-unit-fixture.js";
 import "node:child_process";
 import "node:crypto";
 import "node:fs/promises";

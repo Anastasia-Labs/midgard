@@ -54,10 +54,17 @@ export const startDaLibp2pRetainedPayloadServerFromEnv = async ({
     mode: "bind-listen",
     requestHandlers,
   });
+  let localPeerId: string;
+  try {
+    localPeerId = await transport.localPeerId();
+  } catch (error) {
+    await transport.close?.().catch(() => undefined);
+    throw error;
+  }
   return {
     configured: true,
     deploymentFingerprint: manifest.deploymentFingerprint,
-    localPeerId: await transport.localPeerId(),
+    localPeerId,
     listenMultiaddrs: manifest.listenMultiaddrs,
     announceMultiaddrs: manifest.announceMultiaddrs,
     close: async () => {
@@ -175,18 +182,27 @@ export const createDaLibp2pProducerTransport = async (
       }),
     },
   });
-  for (const [protocolId, handler] of requestHandlers ?? []) {
-    await node.handle(
-      protocolId,
-      async (stream) => {
-        await handler(stream as DaProducerStream);
-      },
-      {
-        maxInboundStreams: manifest.maxStreamsPerPeer,
-        maxOutboundStreams: manifest.maxStreamsPerPeer,
-        runOnLimitedConnection: false,
-      },
-    );
+  // createLibp2p has already bound the listen address. Any failure from here
+  // on must release it, or every start retry hits EADDRINUSE on our own socket.
+  try {
+    for (const [protocolId, handler] of requestHandlers ?? []) {
+      await node.handle(
+        protocolId,
+        async (stream) => {
+          await handler(stream as DaProducerStream);
+        },
+        {
+          maxInboundStreams: manifest.maxStreamsPerPeer,
+          maxOutboundStreams: manifest.maxStreamsPerPeer,
+          runOnLimitedConnection: false,
+        },
+      );
+    }
+  } catch (error) {
+    await Promise.resolve()
+      .then(() => node.stop())
+      .catch(() => undefined);
+    throw error;
   }
   return {
     localPeerId: () => localPeerId,

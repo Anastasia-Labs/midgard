@@ -13,6 +13,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { type DaAvailabilityOperationContext } from "./availability-challenge-operation.inspect-da-availability-signed-intent.js";
+import {
+  createDaAvailabilityReadScope,
+  type DaAvailabilityReadScope,
+} from "./availability-challenge-operation.read-scope.js";
 import { STATE_QUEUE_NODE_ASSET_NAME_PREFIX } from "./linked-list.js";
 
 /**
@@ -28,8 +32,11 @@ export const buildDaAvailabilityFundingPreparationTx = async (
     validFrom: bigint;
     validTo: bigint;
   }>,
+  scope?: DaAvailabilityReadScope,
 ): Promise<TxSignBuilder> => {
-  const walletAddress = await lucid.wallet().address();
+  const read = <T>(run: () => Promise<T>) =>
+    scope === undefined ? run() : scope.read(run);
+  const walletAddress = await read(() => lucid.wallet().address());
   const funding = input.fundingInput;
   if (
     funding.address !== walletAddress ||
@@ -68,7 +75,7 @@ export const buildDaAvailabilityFundingPreparationTx = async (
         "Availability funding preparation has insufficient working capital or min-ADA change",
       );
   }
-  const live = await lucid.utxosByOutRef([funding]);
+  const live = await read(() => lucid.utxosByOutRef([funding]));
   if (
     live.length !== 1 ||
     live[0]!.address !== funding.address ||
@@ -82,11 +89,13 @@ export const buildDaAvailabilityFundingPreparationTx = async (
     .collectFrom([funding])
     .pay.ToAddress(walletAddress, { lovelace: input.outputLovelace });
   if (change > 0n) tx = tx.pay.ToAddress(walletAddress, { lovelace: change });
-  const built = await tx
-    .setMinFee(input.feeLovelace)
-    .validFrom(Number(input.validFrom))
-    .validTo(Number(input.validTo))
-    .complete({ localUPLCEval: true, coinSelection: false });
+  const built = await read(() =>
+    tx
+      .setMinFee(input.feeLovelace)
+      .validFrom(Number(input.validFrom))
+      .validTo(Number(input.validTo))
+      .complete({ localUPLCEval: true, coinSelection: false }),
+  );
   const body = built.toTransaction().body();
   if (
     body.fee() !== input.feeLovelace ||
@@ -97,6 +106,7 @@ export const buildDaAvailabilityFundingPreparationTx = async (
       "Availability funding preparation changed the reserved layout",
     );
   }
+  scope?.assertCurrent();
   return built;
 };
 
@@ -138,7 +148,8 @@ export const withLease = async <T>(
   context: DaAvailabilityOperationContext,
   run: (
     lease: AvailabilityOperationLease,
-    assertCurrent: () => Promise<void>,
+    assertCurrent: (scope?: DaAvailabilityReadScope) => Promise<void>,
+    observationScope: () => DaAvailabilityReadScope,
   ) => Promise<T>,
 ): Promise<T> => {
   assertContext(context);
@@ -149,15 +160,30 @@ export const withLease = async <T>(
     now(),
     context.leaseDurationMs ?? 300_000,
   );
-  const assertCurrent = async (): Promise<void> => {
+  const assertCurrent = async (
+    scope?: DaAvailabilityReadScope,
+  ): Promise<void> => {
+    scope?.assertCurrent();
     context.journal.assertLease(lease, now());
-    await context.assertActuationCurrent();
+    await context.assertActuationCurrent(scope);
+    scope?.assertCurrent();
     context.journal.assertLease(lease, now());
   };
+  let observed: DaAvailabilityReadScope | undefined;
+  const observationScope = () =>
+    (observed ??= createDaAvailabilityReadScope({
+      attemptTimeoutMs:
+        context.observationTimeoutMs ?? context.leaseDurationMs ?? 300_000,
+      signal: context.observationSignal,
+      nowMs: context.nowMs,
+      monotonicMs: context.monotonicMs,
+    }));
   try {
-    await assertCurrent();
-    return await run(lease, assertCurrent);
+    // The caller performs this read inside its preparation/observation scope
+    // before any journal mutation; read-only pending selection precedes it.
+    return await run(lease, assertCurrent, observationScope);
   } finally {
+    observed?.close();
     context.journal.release(lease);
   }
 };

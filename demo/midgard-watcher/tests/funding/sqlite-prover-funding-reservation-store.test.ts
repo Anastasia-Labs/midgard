@@ -14,7 +14,10 @@ import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 
-import { type WorkflowFundingCompletionHandoff } from "@al-ft/midgard-fault-proofs";
+import {
+  journalJsonDigest,
+  type WorkflowFundingCompletionHandoff,
+} from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -31,6 +34,7 @@ import {
   prepareTransition,
   signedTransition,
   submissionHandoff,
+  substituteAbandonmentTransactionHash,
   temporaryDirectories,
 } from "./sqlite-prover-funding-reservation-store.signed-transition.js";
 
@@ -103,288 +107,6 @@ describe("SQLite prover funding reservation store V1", () => {
     }
   });
 
-  it("releases expired child collateral so its rolled-back parent can recover, then refills the child", async () => {
-    const opened = await openStore();
-    let runtime = opened.runtime;
-    const parentPlan = plan("aa", "66");
-    const parentTx = signedTransition({
-      collateralHash: "12".repeat(32),
-      validityUpperBound: 1000n,
-    });
-    try {
-      await runtime.store.reserve(parentPlan);
-      const prepared = await prepareTransition(runtime.store, {
-        plan: parentPlan,
-        expectedRevision: "0",
-        actionKind: "proof.remove",
-        ...parentTx,
-        consumedOutRefs: [parentPlan.inputs[0]!.outRef],
-      });
-      const confirmed = await runtime.store.confirmTransition({
-        plan: parentPlan,
-        expectedRevision: prepared.revision,
-        transactionHash: parentTx.transactionHash,
-        transitionDigest: prepared.pendingTransition!.transitionDigest,
-      });
-      const final = completionHandoff(parentPlan);
-      const provisional: WorkflowFundingCompletionHandoff = {
-        ...final,
-        completion: { ...final.completion, kind: "terminal_included" },
-      };
-      const released = await runtime.store.release({
-        plan: parentPlan,
-        expectedRevision: confirmed.revision,
-        handoff: provisional,
-      });
-      // A downgraded running permit can revisit idle cleanup after inclusion
-      // already released its reservation; the exact snapshot remains intact.
-      expect(
-        await runtime.store.releaseIdle!({
-          plan: parentPlan,
-          expectedRevision: released.revision,
-        }),
-      ).toEqual(released);
-      const childBase = plan("bb", "77", parentTx.producedInputs[0]!.outRef);
-      const childPlan = {
-        ...childBase,
-        fundingLovelace: "99000000",
-        inputs: [parentTx.producedInputs[0]!, childBase.inputs[1]!].sort(
-          (a, b) => a.outRef.localeCompare(b.outRef),
-        ),
-      };
-      await runtime.store.reserve(childPlan);
-      const childTx = signedTransition({
-        inputHash: parentTx.transactionHash,
-        outputLovelace: 98_000_000n,
-        collateralHash: "12".repeat(32),
-        validityUpperBound: 900n,
-      });
-      const child = await prepareTransition(runtime.store, {
-        plan: childPlan,
-        expectedRevision: "0",
-        actionKind: "proof.init",
-        ...childTx,
-        consumedOutRefs: [parentTx.producedInputs[0]!.outRef],
-      });
-      const reopenParent = () =>
-        runtime.store.reobserveTransition!({
-          plan: parentPlan,
-          expectedRevision: released.revision,
-          transactionHash: parentTx.transactionHash,
-          inputs: parentPlan.inputs,
-        });
-      await expect(reopenParent()).rejects.toThrow("already reserved");
-      // Unknown/unexpired signed attempts never yield collateral.
-      expect(
-        await runtime.store.releaseIdle!({
-          plan: childPlan,
-          expectedRevision: child.revision,
-        }),
-      ).toEqual(child);
-      await expect(
-        runtime.store.reserve(childPlan, child.revision),
-      ).rejects.toThrow("cannot refresh idle");
-      const abandonment = abandonmentHandoff(
-        childPlan,
-        childTx.transactionHash,
-        "proof.init",
-      );
-      const abandoned = await runtime.store.abandonPendingTransition({
-        plan: childPlan,
-        expectedRevision: child.revision,
-        transitionDigest: child.pendingTransition!.transitionDigest,
-        handoff: abandonment,
-      });
-      expect(
-        await runtime.store.releaseIdle!({
-          plan: childPlan,
-          expectedRevision: abandoned.revision,
-        }),
-      ).toEqual(abandoned);
-      const acknowledged = await runtime.store.acknowledgeAbandonment({
-        plan: childPlan,
-        expectedRevision: abandoned.revision,
-        handoff: abandonment,
-      });
-      // Restart after the durable journal acknowledgement but before idle release.
-      runtime.close();
-      runtime =
-        await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
-          { path: opened.path },
-          () => undefined,
-        );
-      const idle = await runtime.store.releaseIdle!({
-        plan: childPlan,
-        expectedRevision: acknowledged.revision,
-      });
-      expect(idle.activeInputs).toEqual([]);
-      expect(
-        await runtime.store.releaseIdle!({
-          plan: childPlan,
-          expectedRevision: idle.revision,
-        }),
-      ).toEqual(idle);
-      const restored = await reopenParent();
-      expect(restored.pendingTransition?.signedTransactionCborHex).toBe(
-        parentTx.signedTransactionCborHex,
-      );
-      const reincluded = await runtime.store.confirmTransition({
-        plan: parentPlan,
-        expectedRevision: restored.revision,
-        transactionHash: parentTx.transactionHash,
-        transitionDigest: restored.pendingTransition!.transitionDigest,
-      });
-      await runtime.store.release({
-        plan: parentPlan,
-        expectedRevision: reincluded.revision,
-        handoff: provisional,
-      });
-      const freshPlan = {
-        ...childPlan,
-        inputs: childPlan.inputs
-          .map((input) =>
-            input.role === "collateral"
-              ? { ...input, outRef: `${"14".repeat(32)}#0` }
-              : input,
-          )
-          .sort((a, b) => a.outRef.localeCompare(b.outRef)),
-      };
-      await expect(
-        runtime.store.reserve(freshPlan, acknowledged.revision),
-      ).rejects.toThrow("cannot refresh idle");
-      await expect(
-        runtime.store.reserve(freshPlan, idle.revision),
-      ).resolves.toBe("reserved");
-      const records = (await runtime.store.readAll()).map(
-        parseWatcherProverFundingReservationRecord,
-      );
-      expect(
-        records.find(
-          (record) => record.reservationId === childPlan.reservationId,
-        )?.activeInputs,
-      ).toEqual(freshPlan.inputs);
-      runtime.close();
-      runtime =
-        await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
-          { path: opened.path },
-          () => undefined,
-        );
-      await expect(runtime.store.readAll()).resolves.toEqual(records);
-    } finally {
-      runtime.close();
-    }
-  });
-
-  it.each([false, true])(
-    "reconciles a rolled-back producer without taking downstream change (child first: %s)",
-    async (childFirst) => {
-      const opened = await openStore();
-      let runtime = opened.runtime;
-      const first = plan("aa", "66");
-      const producer = signedTransition();
-      try {
-        await runtime.store.reserve(first);
-        const prepared = await prepareTransition(runtime.store, {
-          plan: first,
-          expectedRevision: "0",
-          actionKind: "proof.remove",
-          ...producer,
-          consumedOutRefs: [first.inputs[0]!.outRef],
-        });
-        const confirmed = await runtime.store.confirmTransition({
-          plan: first,
-          expectedRevision: prepared.revision,
-          transactionHash: producer.transactionHash,
-          transitionDigest: prepared.pendingTransition!.transitionDigest,
-        });
-        const final = completionHandoff(first);
-        const provisional: WorkflowFundingCompletionHandoff = {
-          ...final,
-          completion: { ...final.completion, kind: "terminal_included" },
-        };
-        const released = await runtime.store.release({
-          plan: first,
-          expectedRevision: confirmed.revision,
-          handoff: provisional,
-        });
-        const secondBase = plan("bb", "77", producer.producedInputs[0]!.outRef);
-        const second = {
-          ...secondBase,
-          fundingLovelace: "99000000",
-          inputs: [
-            producer.producedInputs[0]!,
-            {
-              ...secondBase.inputs[1]!,
-              outRef: `${"13".repeat(32)}#0`,
-            },
-          ].sort((a, b) => a.outRef.localeCompare(b.outRef)),
-        };
-        await runtime.store.reserve(second);
-        const consumer = signedTransition({
-          inputHash: producer.transactionHash,
-          outputLovelace: 98_000_000n,
-        });
-        const child = await prepareTransition(runtime.store, {
-          plan: second,
-          expectedRevision: "0",
-          actionKind: "proof.init",
-          ...consumer,
-          consumedOutRefs: [producer.producedInputs[0]!.outRef],
-        });
-        const reopened = await runtime.store.reobserveTransition!({
-          plan: first,
-          expectedRevision: released.revision,
-          transactionHash: producer.transactionHash,
-          inputs: first.inputs.filter(({ role }) => role === "funding"),
-        });
-        runtime.close();
-        runtime =
-          await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
-            { path: opened.path },
-            () => undefined,
-          );
-        await expect(runtime.store.readAll()).resolves.toHaveLength(2);
-        const confirmChild = async () => {
-          const completedChild = await runtime.store.confirmTransition({
-            plan: second,
-            expectedRevision: child.revision,
-            transactionHash: consumer.transactionHash,
-            transitionDigest: child.pendingTransition!.transitionDigest,
-          });
-          expect(completedChild.activeInputs).toContainEqual(
-            consumer.producedInputs[0],
-          );
-        };
-        if (childFirst) {
-          await confirmChild();
-          // The pending producer regains the unique output lease when the
-          // downstream claim closes, within that same database transaction.
-          await expect(runtime.store.readAll()).resolves.toHaveLength(2);
-        }
-        const parent = await runtime.store.confirmTransition({
-          plan: first,
-          expectedRevision: reopened.revision,
-          transactionHash: producer.transactionHash,
-          transitionDigest: reopened.pendingTransition!.transitionDigest,
-        });
-        if (!childFirst) {
-          expect(parent.activeInputs).not.toContainEqual(
-            producer.producedInputs[0],
-          );
-          await confirmChild();
-        }
-        await runtime.store.release({
-          plan: first,
-          expectedRevision: parent.revision,
-          handoff: provisional,
-        });
-        await expect(runtime.store.readAll()).resolves.toHaveLength(2);
-      } finally {
-        runtime.close();
-      }
-    },
-  );
-
   it("reobserves a confirmed attempt with current inputs and retains its signed bytes across restart", async () => {
     const opened = await openStore();
     const currentPlan = plan("aa", "66");
@@ -437,65 +159,133 @@ describe("SQLite prover funding reservation store V1", () => {
     }
   });
 
-  it("releases provisional capital, anchors later, and refuses overlapping rollback reservations", async () => {
-    const opened = await openStore();
-    const store = opened.runtime.store;
-    const first = plan("aa", "66");
-    const signed = signedTransition();
-    try {
-      await store.reserve(first);
-      const prepared = await prepareTransition(store, {
-        plan: first,
-        expectedRevision: "0",
-        actionKind: "proof.init",
-        ...signed,
-        consumedOutRefs: [first.inputs[0]!.outRef],
+  it.each([
+    ["terminal_included", 30],
+    ["completed", 30],
+    ["terminal_included", 2161],
+  ] as const)(
+    "retains depth-%s:%s capital and exact signed receipts through rollback and restart",
+    async (kind, depth) => {
+      const opened = await openStore();
+      let runtime = opened.runtime;
+      const first = plan("aa", "66");
+      const signed = signedTransition({
+        collateralHash: "12".repeat(32),
+        validityUpperBound: 1000n,
       });
-      const confirmed = await store.confirmTransition({
-        plan: first,
-        expectedRevision: prepared.revision,
-        transactionHash: signed.transactionHash,
-        transitionDigest: prepared.pendingTransition!.transitionDigest,
-      });
-      const finalHandoff = completionHandoff(first);
-      const provisional: WorkflowFundingCompletionHandoff = {
-        ...finalHandoff,
-        completion: { ...finalHandoff.completion, kind: "terminal_included" },
-      };
-      const released = await store.release({
-        plan: first,
-        expectedRevision: confirmed.revision,
-        handoff: provisional,
-      });
-      expect(released.activeInputs).toEqual([]);
-      const second = plan("bb", "77");
-      await store.reserve(second);
-      await expect(
-        store.reobserveTransition!({
+      try {
+        await runtime.store.reserve(first);
+        const prepared = await prepareTransition(runtime.store, {
           plan: first,
-          expectedRevision: released.revision,
+          expectedRevision: "0",
+          actionKind: "proof.remove",
+          ...signed,
+          consumedOutRefs: [first.inputs[0]!.outRef],
+        });
+        const confirmed = await runtime.store.confirmTransition({
+          plan: first,
+          expectedRevision: prepared.revision,
+          transactionHash: signed.transactionHash,
+          transitionDigest: prepared.pendingTransition!.transitionDigest,
+        });
+        const final = completionHandoff(first);
+        const terminal = {
+          ...final.completion.terminal,
+          observedAt: {
+            ...final.completion.terminal.observedAt,
+            confirmationDepth: depth,
+          },
+        };
+        const provisional: WorkflowFundingCompletionHandoff = {
+          ...final,
+          completion: {
+            kind,
+            terminal,
+            terminalDigest: journalJsonDigest(terminal),
+          },
+        };
+        const held = await runtime.store.release({
+          plan: first,
+          expectedRevision: confirmed.revision,
+          handoff: provisional,
+        });
+        expect(held.state).toBe("active");
+        expect(held.activeInputs).toEqual(confirmed.activeInputs);
+        // Consumed and produced capital stays leased for a re-land; the
+        // confirmed transaction's collateral lease ended at confirmation.
+        const reserved = await runtime.store.readReservedOutRefs({});
+        expect(reserved).toEqual(
+          expect.arrayContaining([
+            first.inputs[0]!.outRef,
+            signed.producedInputs[0]!.outRef,
+          ]),
+        );
+        expect(reserved).not.toContain(`${"12".repeat(32)}#0`);
+        const competitorBase = plan("bb", "77");
+        const competitor = {
+          ...competitorBase,
+          inputs: competitorBase.inputs.map((i) =>
+            i.role === "collateral"
+              ? { ...i, outRef: `${"13".repeat(32)}#0` }
+              : i,
+          ),
+        };
+        await expect(runtime.store.reserve(competitor)).rejects.toThrow(
+          "already reserved",
+        );
+        runtime.close();
+        runtime =
+          await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
+            { path: opened.path },
+            () => undefined,
+          );
+        const reopened = await runtime.store.reobserveTransition!({
+          plan: first,
+          expectedRevision: held.revision,
           transactionHash: signed.transactionHash,
           inputs: first.inputs,
-        }),
-      ).rejects.toThrow("already reserved");
-      await expect(store.readAll()).resolves.toHaveLength(2);
-      await store.release({
-        plan: first,
-        expectedRevision: released.revision,
-        handoff: finalHandoff,
-      });
-      await expect(
-        store.reobserveTransition!({
+        });
+        expect(reopened.pendingTransition?.signedTransactionCborHex).toBe(
+          signed.signedTransactionCborHex,
+        );
+        expect(reopened.pendingTransition?.transactionHash).toBe(
+          signed.transactionHash,
+        );
+        const reincluded = await runtime.store.confirmTransition({
           plan: first,
-          expectedRevision: released.revision,
+          expectedRevision: reopened.revision,
           transactionHash: signed.transactionHash,
-          inputs: [],
-        }),
-      ).rejects.toThrow("anchored");
-    } finally {
-      opened.runtime.close();
-    }
-  });
+          transitionDigest: reopened.pendingTransition!.transitionDigest,
+        });
+        await runtime.store.release({
+          plan: first,
+          expectedRevision: reincluded.revision,
+          handoff: provisional,
+        });
+        const current = parseWatcherProverFundingReservationRecord(
+          (await runtime.store.readAll())[0],
+        );
+        const anchored = await runtime.store.release({
+          plan: first,
+          expectedRevision: current.revision,
+          handoff: final,
+        });
+        expect(anchored.state).toBe("released");
+        expect(await runtime.store.readReservedOutRefs({})).toEqual([]);
+        await runtime.store.reserve(competitor);
+        await expect(
+          runtime.store.reobserveTransition!({
+            plan: first,
+            expectedRevision: anchored.revision,
+            transactionHash: signed.transactionHash,
+            inputs: [],
+          }),
+        ).rejects.toThrow("anchored");
+      } finally {
+        runtime.close();
+      }
+    },
+  );
 
   it("atomically rejects a handoff for another decision or signed transaction", async () => {
     const opened = await openStore();
@@ -692,14 +482,7 @@ describe("SQLite prover funding reservation store V1", () => {
     ).rejects.toThrow("release mismatch");
     for (const changed of [
       { ...handoff, expectedJournalSequence: 3 },
-      {
-        ...handoff,
-        submissionIntent: {
-          ...handoff.submissionIntent,
-          txHash: "99".repeat(32),
-        },
-        reconciliation: { ...handoff.reconciliation, txHash: "99".repeat(32) },
-      },
+      substituteAbandonmentTransactionHash(handoff, "99".repeat(32)),
     ])
       await expect(
         opened.runtime.store.acknowledgeAbandonment({
