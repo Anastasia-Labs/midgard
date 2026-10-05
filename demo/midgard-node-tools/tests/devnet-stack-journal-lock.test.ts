@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -379,24 +378,26 @@ describe("the devnet run journal across processes", () => {
     expect(existsSync(`${path}.lock`)).toBe(false);
   });
 
-  it("clears the takeover claim of a writer that died taking over a dead holder's lock", async () => {
+  it("takes over a dead holder's lock after the writer taking it over dies", async () => {
     const dir = tempDir();
     writeFileSync(join(dir, "writer.mjs"), writer);
     const path = join(dir, "journal.json");
     new Journal(path).set("seed", 1);
-    const dead = `${process.pid.toString()} 0`;
-    writeFileSync(`${path}.lock`, dead);
-    const digest = createHash("sha256").update(dead).digest("hex");
-    writeFileSync(
-      `${path}.lock.takeover-${digest.slice(0, 16)}`,
-      `${process.pid.toString()} 1`,
-    );
+    writeFileSync(`${path}.lock`, `${process.pid.toString()} 0`);
+    const gate = join(dir, "gate");
+    mkdirSync(gate);
+    // Killed at its takeover unlink, holding the kernel mutex.
+    const crashed = startWriter(dir, path, "uncommitted", "", "", gate);
+    await waitForFile(join(gate, "unlink"));
+    expect(crashed.child.kill("SIGKILL")).toBe(true);
+    await crashed.exited;
     const after = startWriter(dir, path, "after-crash");
     expect(await after.exited).toBe(0);
-    expect(new Journal(path).get("after-crash")).toBeDefined();
-    expect(readdirSync(dir).filter((name) => name.includes(".lock"))).toEqual(
-      [],
-    );
+    expect(after.stderr()).toBe("");
+    const journal = new Journal(path);
+    expect(journal.get("uncommitted")).toBeUndefined();
+    expect(journal.get("after-crash")).toBeDefined();
+    expect(existsSync(`${path}.lock`)).toBe(false);
   });
 
   it("lets exactly one of two writers waiting on a dead holder take its lock over", async () => {
@@ -413,8 +414,8 @@ describe("the devnet run journal across processes", () => {
     const writers = gates.map((gate, index) =>
       startWriter(dir, path, `writer-${index.toString()}`, gate, "", gate),
     );
-    // Hold the first takeover just before its unlink, and give the other
-    // writer time to see the same dead holder and reach its own.
+    // Hold the first takeover just before its unlink. The kernel mutex keeps
+    // the other writer from even reaching its own takeover meanwhile.
     const atUnlink = () =>
       gates.findIndex((gate) => existsSync(join(gate, "unlink")));
     const deadline = Date.now() + 20_000;
@@ -424,7 +425,7 @@ describe("the devnet run journal across processes", () => {
     }
     const first = atUnlink();
     const second = 1 - first;
-    await appears(join(gates[second]!, "unlink"), 3_000);
+    expect(await appears(join(gates[second]!, "unlink"), 1_500)).toBe(false);
     writeFileSync(join(gates[first]!, "unlink-go"), "");
     await waitForFile(join(gates[first]!, "read"));
     writeFileSync(join(gates[second]!, "unlink-go"), "");

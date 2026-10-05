@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import {
   linkSync,
   mkdirSync,
@@ -62,46 +61,12 @@ const liveHolder = (lock: string) => {
 };
 
 /**
- * Removes the lock `held` names, a holder that has exited, unless the lock
- * has moved on. Two waiters can both see the same dead holder; reading the
- * lock again and then removing it is safe only for the one waiter that owns
- * `<lock>.takeover-<digest of held>`, linked into place like the lock: the
- * lock still naming that exited holder can then be removed by nobody else,
- * so it cannot turn into another waiter's live lock between the read and the
- * unlink. False when another waiter's takeover of the same holder is under
- * way. A claimer that exited mid-takeover has its claim cleared, by a plain
- * read then unlink: that is only unsafe if a second waiter dies inside the
- * same few-syscall window.
- */
-const takeOverDeadHolder = (
-  lock: string,
-  held: string,
-  staging: string,
-): boolean => {
-  const claim = `${lock}.takeover-${createHash("sha256").update(held).digest("hex").slice(0, 16)}`;
-  try {
-    linkSync(staging, claim);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    const claimed = readIfPresent(claim);
-    if (claimed !== undefined && liveHolder(claim) === undefined)
-      if (readIfPresent(claim) === claimed) unlinkIfPresent(claim);
-    return false;
-  }
-  try {
-    if (readIfPresent(lock) === held) unlinkIfPresent(lock);
-  } finally {
-    unlinkIfPresent(claim);
-  }
-  return true;
-};
-
-/**
  * Runs `body` holding `<path>.lock`, which names this process by PID and
  * start time. The lock is linked into place from a file already holding
  * that record, so another process never reads a half-written lock as a
- * dead holder's. A lock whose holder has exited is taken over by exactly one
- * waiter; a live holder is waited for, up to `waitMs`.
+ * dead holder's. A lock whose holder has exited is taken over; the kernel
+ * mutex around this lock admits one waiter at a time, so exactly one takes
+ * it over. A live holder is waited for, up to `waitMs`.
  */
 const withPidJournalLock = <T>(
   path: string,
@@ -127,13 +92,13 @@ const withPidJournalLock = <T>(
       if (held === undefined) continue;
       const holder = liveHolder(lock);
       if (holder === null) continue;
-      if (holder === undefined && takeOverDeadHolder(lock, held, staging))
+      if (holder === undefined) {
+        if (readIfPresent(lock) === held) unlinkIfPresent(lock);
         continue;
+      }
       if (performance.now() > deadline)
         throw new Error(
-          holder === undefined
-            ? `${lock} names an exited holder whose takeover by another writer has not finished in ${waitMs.toString()} ms; the journal is unchanged`
-            : `${lock} is held by live pid ${holder.toString()} for over ${waitMs.toString()} ms; the journal is unchanged`,
+          `${lock} is held by live pid ${holder.toString()} for over ${waitMs.toString()} ms; the journal is unchanged`,
         );
       pause(LOCK_POLL_MS);
     }
