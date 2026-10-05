@@ -12,15 +12,12 @@ import {
   isFinalWorkflowCompletion,
 } from "./completion-finality.js";
 import {
-  abandonWorkflowFundingReservationTransaction,
-  acknowledgeWorkflowFundingAbandonment,
   assertWorkflowFundingAbandonmentHandoffJournal,
   assertWorkflowFundingCompletionHandoffJournal,
   assertWorkflowFundingReservationReadyToSubmit,
   beginWorkflowFundingReservationAction,
   confirmWorkflowFundingReservationTransaction,
   conflictWorkflowFundingReservationTransaction,
-  createWorkflowFundingAbandonmentHandoff,
   prepareWorkflowFundingReservationTransaction,
   readWorkflowFundingRecovery,
   reconcileWorkflowFundingSubmissionHandoff,
@@ -80,6 +77,7 @@ import {
 } from "./orchestrator.normalize-workflow-terminal.js";
 import { assertWorkflowJournalReconciliation } from "./orchestrator.reconcile-legacy-abandonments.js";
 import { reconcileLegacyFraudProofAbandonments } from "./orchestrator.reconcile-legacy-abandonments.js";
+import { supersedeWorkflowFundingAttempt } from "./orchestrator.supersede-funding-attempt.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 import { supersededAttemptReadSchedule } from "./superseded-attempt-read-schedule.js";
 
@@ -343,6 +341,22 @@ export const runAdmittedFraudProofWorkflow = async ({
               priorLifecycle.actionId !== current.action.actionId &&
               !(last?.kind === "reconciled" && last.outcome === "not_found")))
         ) {
+          // The reobserved intent displaces the pending later attempt. It is
+          // superseded, never silently dropped: a dropped attempt would count
+          // as live coverage, so a replacement could skip its inputs and both
+          // could land, the second failing its script at inclusion.
+          const displaced = await readWorkflowFundingRecovery(journal);
+          const pending = displaced.transition?.transactionHash;
+          if (pending !== undefined && pending !== intent.txHash)
+            await supersedeWorkflowFundingAttempt({
+              journal,
+              identity,
+              entries: () => entries,
+              append,
+              transactionHash: pending,
+              retirement: undefined,
+              savedHandoff: displaced.abandonmentHandoff,
+            });
           const fundingAvailable =
             await reobserveWorkflowFundingReservationTransaction({
               journal,
@@ -628,30 +642,14 @@ export const runAdmittedFraudProofWorkflow = async ({
         return resumeOnObservation(
           `reconciliation remains unknown for ${action.actionId}: absent without retirement, and no funding reservation keeps a replacement exclusive`,
         );
-      const abandonmentHandoff =
-        fundingRecovery.abandonmentHandoff ??
-        createWorkflowFundingAbandonmentHandoff({
-          entries,
-          transactionHash: intent.txHash,
-          retirement: reconciled.retirement,
-        });
-      await abandonWorkflowFundingReservationTransaction({
+      await supersedeWorkflowFundingAttempt({
         journal,
+        identity,
+        entries: () => entries,
+        append,
         transactionHash: intent.txHash,
-        handoff: abandonmentHandoff,
-      });
-      assertWorkflowJournalReconciliation(journal, identity);
-      if (
-        !assertWorkflowFundingAbandonmentHandoffJournal({
-          handoff: abandonmentHandoff,
-          entries,
-        })
-      )
-        await append(abandonmentHandoff.reconciliation);
-      assertWorkflowJournalReconciliation(journal, identity);
-      await acknowledgeWorkflowFundingAbandonment({
-        journal,
-        handoff: abandonmentHandoff,
+        retirement: reconciled.retirement,
+        savedHandoff: fundingRecovery.abandonmentHandoff,
       });
       fundingRecovery = await readWorkflowFundingRecovery(journal);
       context = { ...context, entries };

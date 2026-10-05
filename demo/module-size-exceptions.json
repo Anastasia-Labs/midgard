@@ -331,8 +331,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/workflow/orchestrator.run-admitted-fraud-proof-workflow.ts",
-    "max": 983,
-    "reason": "runAdmittedFraudProofWorkflow is the dominant indivisible declaration (893 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 981,
+    "reason": "runAdmittedFraudProofWorkflow is the dominant indivisible declaration (892 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/tests/bin.test.ts",
