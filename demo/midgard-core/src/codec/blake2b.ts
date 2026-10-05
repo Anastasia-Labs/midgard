@@ -1,3 +1,8 @@
+// The ambient declaration has to travel with this file: every workspace
+// package type-checks midgard-core from source, and only a reference pulls
+// the declaration into their programs.
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference
+/// <reference path="./libsodium-wrappers-sumo.d.ts" />
 import { blake2b as nobleBlake2b } from "@noble/hashes/blake2.js";
 import sodium from "libsodium-wrappers-sumo";
 
