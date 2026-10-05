@@ -1,10 +1,4 @@
-import { createHash } from "node:crypto";
-
-import {
-  beginWorkflowFundingReservationAction,
-  type FraudProofWorkflowJournalStore,
-} from "@al-ft/midgard-fault-proofs";
-import { CML } from "@lucid-evolution/lucid";
+import { beginWorkflowFundingReservationAction } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it, vi } from "vitest";
 
 import {
@@ -12,120 +6,17 @@ import {
   setupFundingRecoveryFixture,
   walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
-import { signFundingRecoveryFixtureBody } from "../support/fault-proof-funding-fixture.sign-body.js";
+import {
+  type Fixture,
+  fundingOf,
+  recordReplacement,
+  signReplacement,
+} from "./superseded-attempt-replacement.js";
 
 afterEach(async () => {
   vi.restoreAllMocks();
   await cleanupFundingRecoveryFixtures();
 });
-
-type Fixture = Awaited<ReturnType<typeof setupFundingRecoveryFixture>>;
-
-const fundingOf = (fixture: Fixture) =>
-  fixture.plan.inputs.find(({ role }) => role === "funding")!;
-
-/** A signed replacement spending `outRef` with `collateral`, as a builder
- * would produce it for the current action. */
-const signReplacement = (
-  outRef: string,
-  lovelace: bigint,
-  ttl: bigint,
-  collateral: readonly string[] = [],
-) => {
-  const [hash, index] = outRef.split("#");
-  const inputs = CML.TransactionInputList.new();
-  inputs.add(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(hash!),
-      BigInt(index!),
-    ),
-  );
-  const outputs = CML.TransactionOutputList.new();
-  const remaining = lovelace - 1_000_000n;
-  outputs.add(
-    CML.TransactionOutput.new(
-      CML.Address.from_bech32(walletAddress),
-      CML.Value.from_coin(remaining),
-    ),
-  );
-  const body = CML.TransactionBody.new(inputs, outputs, 1_000_000n);
-  body.set_ttl(ttl);
-  if (collateral.length !== 0) {
-    const list = CML.TransactionInputList.new();
-    for (const value of collateral) {
-      const [txHash, outputIndex] = value.split("#");
-      list.add(
-        CML.TransactionInput.new(
-          CML.TransactionHash.from_hex(txHash!),
-          BigInt(outputIndex!),
-        ),
-      );
-    }
-    body.set_collateral_inputs(list);
-  }
-  const signed = signFundingRecoveryFixtureBody(body);
-  return {
-    ...signed,
-    transactionBodySha256: createHash("sha256")
-      .update(Buffer.from(body.to_cbor_hex(), "hex"))
-      .digest("hex"),
-    consumedOutRefs: [outRef],
-    producedInputs: [
-      {
-        outRef: `${signed.transactionHash}#0`,
-        role: "funding" as const,
-        lovelace: remaining.toString(),
-        assets: [],
-      },
-    ],
-  };
-};
-
-/** Records a replacement for the init action exactly as a submission does:
- * the store handoff, then preflight, intent, submitted and pending. */
-const recordReplacement = async (
-  fixture: Fixture,
-  journal: FraudProofWorkflowJournalStore,
-  replacement: ReturnType<typeof signReplacement>,
-  attempt: number,
-) => {
-  const entries = await journal.load(fixture.initial.workflowId);
-  const [record] = await fixture.records();
-  const handoff = {
-    ...fixture.handoff,
-    expectedJournalSequence: entries.length,
-    preflight: {
-      ...fixture.handoff.preflight,
-      txHash: replacement.transactionHash,
-    },
-    submissionIntent: {
-      ...fixture.handoff.submissionIntent,
-      attempt,
-      txHash: replacement.transactionHash,
-    },
-  };
-  await fixture.store.prepareTransition({
-    handoff,
-    plan: fixture.plan,
-    expectedRevision: record!.revision,
-    actionKind: "proof.init",
-    ...replacement,
-  });
-  await fixture.append(handoff.preflight);
-  await fixture.append(handoff.submissionIntent);
-  await fixture.append({
-    kind: "submitted",
-    actionId: "init",
-    attempt,
-    txHash: replacement.transactionHash,
-  });
-  await fixture.append({
-    kind: "reconciled",
-    actionId: "init",
-    outcome: "pending",
-    txHash: replacement.transactionHash,
-  });
-};
 
 /** The fixture's attempt expires at the tip: its funding input is unspent and
  * the reader reports absence without retirement. */

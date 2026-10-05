@@ -131,13 +131,21 @@ export const beginWorkflowFundingReservationAction = async ({
   // makes it so; one shared funding input per attempt also does, and the rest
   // of the reserved pool still tops up fees and outputs. An attempt with no
   // input left in the pool needs none: it cannot land without a rollback, and
-  // whatever lands first wins. Nothing waits for retirement past k.
+  // whatever lands first wins. Nothing waits for retirement past k. Each set
+  // spans the attempt's lineage, so the input most sets share is drawn first:
+  // a common ancestor's input excludes its descendants too.
   const required: string[] = [];
-  for (const attempt of (await state.port.readSupersededAttemptFundingOutRefs?.()) ??
-    []) {
-    if (attempt.some((outRef) => required.includes(outRef))) continue;
-    const shared = attempt.find((outRef) => funding.includes(outRef));
-    if (shared !== undefined) required.push(shared);
+  let open = (
+    (await state.port.readSupersededAttemptFundingOutRefs?.()) ?? []
+  ).filter((attempt) => attempt.some((outRef) => funding.includes(outRef)));
+  while (open.length !== 0) {
+    const count = (outRef: string) =>
+      open.filter((attempt) => attempt.includes(outRef)).length;
+    const shared = [...funding]
+      .sort()
+      .reduce((best, outRef) => (count(outRef) > count(best) ? outRef : best));
+    required.push(shared);
+    open = open.filter((attempt) => !attempt.includes(shared));
   }
   // The real builder selects from durable leased candidates; admission below
   // derives the exact consumed subset from its signed transaction.

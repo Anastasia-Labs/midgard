@@ -113,8 +113,10 @@ export interface WorkflowFundingReservationPort {
     /** Adopts a superseded attempt that landed: this handoff replaces its own. */
     readonly adoption?: WorkflowFundingSubmissionHandoff;
   }): Promise<unknown>;
-  /** Per superseded, unretired attempt that no recorded attempt shares an
-   * input with, the funding inputs it spent; empty when there is none. */
+  /** Per superseded, unretired attempt that no recorded attempt outside its
+   * lineage shares an input with, its exclusion set: the inputs of the
+   * attempt and of every recorded attempt whose outputs it spends,
+   * recursively. Empty when there is none. */
   readSupersededAttemptFundingOutRefs?(): Promise<
     readonly (readonly string[])[]
   >;

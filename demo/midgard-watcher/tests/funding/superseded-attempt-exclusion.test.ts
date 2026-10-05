@@ -20,6 +20,12 @@ import {
   signedTransition,
   temporaryDirectories,
 } from "./sqlite-prover-funding-reservation-store.signed-transition.js";
+import {
+  abandoned,
+  attempt,
+  hash,
+  ref,
+} from "./superseded-attempt-transitions.js";
 
 afterEach(async () => {
   await Promise.all(
@@ -354,33 +360,11 @@ it("accepts a shared protocol input as the exclusion, and refuses a replacement 
   }
 });
 
-const attempt = (
-  inputHashes: readonly string[],
-  consumedOutRefs: readonly string[],
-) => {
-  const [inputHash, ...protocolInputHashes] = inputHashes;
-  return {
-    ...signedTransition({ inputHash, protocolInputHashes }),
-    consumedOutRefs,
-  } as unknown as Parameters<
-    typeof excludesEveryUncoveredAttempt
-  >[0]["uncovered"][number];
-};
-const hash = (byte: string) => byte.repeat(32);
-const ref = (byte: string) => `${hash(byte)}#0`;
-
 it("computes the uncovered attempts and admits replacements in both polarities", () => {
   // a spends funding x and node n; b spends funding y and z.
   const a = attempt([hash("a1"), hash("e1")], [ref("a1")]);
   const b = attempt([hash("b1"), hash("b2")], [ref("b1"), ref("b2")]);
   const live = attempt([hash("c1"), hash("e1")], [ref("c1")]);
-  const abandoned = (transition: ReturnType<typeof attempt>, retired = false) =>
-    ({
-      transition,
-      handoff: { reconciliation: retired ? { retirement: {} } : {} },
-    }) as unknown as Parameters<
-      typeof uncoveredSupersededAttempts
-    >[0]["abandoned"][number];
 
   // A retired attempt is bookkeeping; one covered by a shared protocol input
   // (the node e1) needs nothing more.
@@ -401,9 +385,12 @@ it("computes the uncovered attempts and admits replacements in both polarities",
     abandoned: [abandoned(a), abandoned(b)],
     submissions: [a, b],
   });
-  expect(uncovered).toEqual([a, b]);
+  expect(uncovered).toEqual([
+    { transition: a, exclusion: [ref("a1"), ref("e1")] },
+    { transition: b, exclusion: [ref("b1"), ref("b2")] },
+  ]);
   expect(supersededAttemptFundingOutRefs(uncovered)).toEqual([
-    [ref("a1")],
+    [ref("a1"), ref("e1")],
     [ref("b1"), ref("b2")],
   ]);
   const admits = (inputs: readonly string[], reserved: readonly string[]) =>
