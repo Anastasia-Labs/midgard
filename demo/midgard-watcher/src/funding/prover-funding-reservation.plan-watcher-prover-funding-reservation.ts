@@ -122,6 +122,8 @@ export const planWatcherProverFundingReservation = (input: {
   readonly walletAddress: string;
   readonly utxos: readonly UTxO[];
   readonly selectionCalculation?: WatcherRuntimeProverFundingCalculation;
+  /** Kept as funding when other collateral suffices. */
+  readonly avoidCollateralOutRefs?: readonly string[];
 }): WatcherProverFundingReservationPlan => {
   const identity = reservationIdentity(input);
   const selection = input.selectionCalculation ?? input.calculation;
@@ -158,11 +160,22 @@ export const planWatcherProverFundingReservation = (input: {
     const required = BigInt(value);
     return required > maximum ? required : maximum;
   }, 0n);
-  const collateral = selectCollateral({
-    candidates,
-    required: collateralRequired,
-    maximumInputs: maximumCollateralInputs,
-  });
+  const avoided = new Set(input.avoidCollateralOutRefs ?? []);
+  const collateralFrom = (pool: readonly Candidate[]) =>
+    selectCollateral({
+      candidates: pool,
+      required: collateralRequired,
+      maximumInputs: maximumCollateralInputs,
+    });
+  let collateral: readonly Candidate[];
+  try {
+    collateral = collateralFrom(
+      candidates.filter(({ outRef }) => !avoided.has(outRef)),
+    );
+  } catch (error) {
+    if (!(error instanceof WatcherProverFundingUnavailableError)) throw error;
+    collateral = collateralFrom(candidates);
+  }
   const collateralOutRefs = new Set(
     collateral.map((candidate) => candidate.outRef),
   );

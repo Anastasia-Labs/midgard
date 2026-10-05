@@ -10,6 +10,13 @@ import type {
 import type { FraudProofWorkflowReconcileResult } from "./orchestrator.js";
 import { parseSignedWorkflowTransactionRetirement } from "./signed-transaction-retirement.js";
 
+type SupersededAttempt = Awaited<
+  ReturnType<typeof readLegacyWorkflowFundingAbandonedTransactions>
+>[number];
+
+/** Owner ruling (whichever lands wins): a superseded attempt never holds the
+ * workflow. Its retirement past k is bookkeeping, and its late landing after a
+ * rollback is returned so the caller adopts it as the result. */
 export const reconcileLegacyWorkflowFundingAbandonment = async ({
   journal,
   entries,
@@ -20,11 +27,9 @@ export const reconcileLegacyWorkflowFundingAbandonment = async ({
   readonly entries: readonly FraudProofWorkflowJournalEntry[];
   readonly append: (event: FraudProofWorkflowJournalEvent) => Promise<unknown>;
   readonly reconcile: (
-    saved: Awaited<
-      ReturnType<typeof readLegacyWorkflowFundingAbandonedTransactions>
-    >[number],
+    saved: SupersededAttempt,
   ) => Promise<FraudProofWorkflowReconcileResult>;
-}): Promise<boolean> => {
+}): Promise<SupersededAttempt | null> => {
   const current = await readWorkflowFundingRecovery(journal);
   return await reconcileLegacyFundingAbandonmentRecords({
     // The current certified handoff has its own journal acknowledgement path.
@@ -54,21 +59,17 @@ export const reconcileLegacyFundingAbandonmentRecords = async ({
   reconcile,
   retire,
 }: {
-  readonly savedAttempts: Awaited<
-    ReturnType<typeof readLegacyWorkflowFundingAbandonedTransactions>
-  >;
+  readonly savedAttempts: readonly SupersededAttempt[];
   readonly entries: readonly FraudProofWorkflowJournalEntry[];
   readonly append: (event: FraudProofWorkflowJournalEvent) => Promise<unknown>;
   readonly reconcile: (
-    saved: Awaited<
-      ReturnType<typeof readLegacyWorkflowFundingAbandonedTransactions>
-    >[number],
+    saved: SupersededAttempt,
   ) => Promise<FraudProofWorkflowReconcileResult>;
   readonly retire: (
     hash: string,
     retirement: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement,
   ) => Promise<void>;
-}): Promise<boolean> => {
+}): Promise<SupersededAttempt | null> => {
   for (const saved of savedAttempts) {
     const hash = saved.transition.transactionHash;
     if (
@@ -97,13 +98,14 @@ export const reconcileLegacyFundingAbandonmentRecords = async ({
       continue;
     }
     const result = await reconcile(saved);
+    if (result.kind === "confirmed") return saved;
+    // Unresolved, absent or impossible at the tip: no hold, try again later.
     if (
-      (result.kind !== "not_found" &&
-        result.kind !== "confirmed" &&
-        result.kind !== "pending") ||
+      result.kind === "conflict" ||
+      result.kind === "unknown" ||
       result.retirement === undefined
     )
-      return false;
+      continue;
     const retirement = parseSignedWorkflowTransactionRetirement(
       result.retirement,
       hash,
@@ -115,5 +117,5 @@ export const reconcileLegacyFundingAbandonmentRecords = async ({
       retirement,
     });
   }
-  return true;
+  return null;
 };

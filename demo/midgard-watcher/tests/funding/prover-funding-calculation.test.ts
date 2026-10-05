@@ -713,6 +713,54 @@ describe("production prover funding calculation V1", () => {
       }),
     ).toThrow("insufficient plain-Ada collateral");
 
+    // A replacement for a superseded attempt must spend one of its inputs as
+    // funding, so selection keeps that input out of collateral when it can...
+    const twins = [1_000_000_000n, 1_000_000_000n, 30_000_000n].map(
+      (lovelace, index) => ({
+        txHash: String(index + 7)
+          .padStart(2, "0")
+          .repeat(32),
+        outputIndex: 0,
+        address: walletAddress,
+        assets: { lovelace },
+      }),
+    );
+    const plainTwins = planWatcherProverFundingReservation({
+      deploymentIdentity,
+      calculation,
+      decisionDigest: "77".repeat(32),
+      walletAddress,
+      utxos: twins,
+    });
+    const chosen = plainTwins.inputs.find(
+      ({ role }) => role === "collateral",
+    )!.outRef;
+    const avoiding = planWatcherProverFundingReservation({
+      deploymentIdentity,
+      calculation,
+      decisionDigest: "77".repeat(32),
+      walletAddress,
+      utxos: twins,
+      avoidCollateralOutRefs: [chosen],
+    });
+    expect(avoiding.inputs).toContainEqual(
+      expect.objectContaining({ outRef: chosen, role: "funding" }),
+    );
+    expect(
+      avoiding.inputs.filter(({ role }) => role === "collateral"),
+    ).toHaveLength(1);
+    // ...and falls back to it rather than refusing when nothing else can
+    // serve as collateral.
+    const fallback = planWatcherProverFundingReservation({
+      deploymentIdentity,
+      calculation,
+      decisionDigest: "77".repeat(32),
+      walletAddress,
+      utxos: candidates,
+      avoidCollateralOutRefs: [`${"02".repeat(32)}#0`],
+    });
+    expect(fallback.inputs).toEqual(first.inputs);
+
     // The wallet owns the budget. Actual signed transaction admission selects
     // and checks its subset instead of enforcing a measured input-count recipe.
     const smaller = planWatcherProverFundingReservation({

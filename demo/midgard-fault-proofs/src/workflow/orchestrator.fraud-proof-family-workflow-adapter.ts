@@ -199,6 +199,7 @@ export interface FraudProofFamilyWorkflowAdapter {
     context: FraudProofWorkflowAdapterContext & {
       readonly action: FraudProofWorkflowAction;
       readonly txHash?: string;
+      /** Inspects a superseded attempt: inclusion within k is `confirmed`. */
       readonly retirementOnly?: boolean;
       readonly durableRecovery?: JournalJsonObject;
       readonly signedTransactionCborHex?: string;

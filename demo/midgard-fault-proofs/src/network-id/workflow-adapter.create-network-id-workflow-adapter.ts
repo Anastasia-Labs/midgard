@@ -1278,6 +1278,7 @@ export const createNetworkIdWorkflowAdapter = (
           transactionHash: context.txHash,
           signedTransactionCborHex: context.signedTransactionCborHex,
           observe: config.rawL1?.observeSignedTransaction,
+          reportInclusion: true,
         });
       const admitted = admitNetworkIdWorkflowArtifact(context.artifact);
       const prepared = admitted.prepared;

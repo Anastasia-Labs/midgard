@@ -97,7 +97,14 @@ export type WatcherProverFundingReservationStore = Readonly<{
     readonly expectedRevision: string;
     readonly transactionHash: string;
     readonly inputs: readonly WatcherProverFundingReservationInput[];
+    /** Adopts a superseded attempt that landed, under this submission handoff. */
+    readonly adoption?: unknown;
   }): Promise<WatcherProverFundingReservationRecord>;
+  /** Outputs a fresh attempt must draw from to exclude every superseded,
+   * unretired attempt; null when there is none. */
+  readSupersededExclusionOutRefs?(input: {
+    readonly reservationId: string;
+  }): Promise<readonly string[] | null>;
   readLegacyAbandonedTransactions?(input: {
     readonly reservationId: string;
   }): Promise<readonly unknown[]>;

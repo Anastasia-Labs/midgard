@@ -783,10 +783,9 @@ describe("Q38 tier-3 workflow action chains", () => {
       for (const retirementStatus of ["invalidated", "expired"] as const) {
         status = retirementStatus;
         canonicalPoint = heldPoint;
+        // Superseded at once; the retirement receipt alone waits for k.
         await expect(adapter.reconcile(context)).resolves.toEqual({
-          kind: "unknown",
-          reason:
-            "Signed attempt retirement is still inside the canonical recovery horizon",
+          kind: "not_found",
         });
         expect(rebroadcastSignedTransaction).not.toHaveBeenCalled();
         expect(authorizeResubmission).not.toHaveBeenCalled();

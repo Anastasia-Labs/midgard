@@ -402,6 +402,7 @@ export const createLinearFamilyWorkflowAdapter = <
           transactionHash: txHash,
           signedTransactionCborHex,
           observe: l1.observeSignedTransaction,
+          reportInclusion: true,
         });
       if (
         identity.category !== category ||

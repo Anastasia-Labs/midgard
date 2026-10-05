@@ -198,9 +198,12 @@ export const createLocalKupmiosSignedRecoveryReader =
           "expired",
           "Recorded TTL passed beyond the canonical recovery horizon and the exact transaction is absent",
         );
+      // No later block can include it. It can still land only if a rollback
+      // restores a fork that already included it, so it supersedes but does
+      // not retire the attempt.
       return finish(
-        "pending",
-        "Recorded TTL passed at the tip but remains inside the canonical recovery horizon",
+        "expired_at_tip",
+        "Recorded TTL passed at the canonical tip and the exact transaction is absent",
       );
     }
     let status: SignedTransactionRecoveryObservation["status"] = "rebroadcast";
@@ -248,8 +251,9 @@ export const createLocalKupmiosSignedRecoveryReader =
           reason =
             "A recorded input is stably spent by another canonical transaction";
         } else if (status !== "invalidated") {
-          status = "pending";
-          reason = "A recorded input spend is not yet release-final";
+          status = "invalidated_at_tip";
+          reason =
+            "A recorded input is spent at the canonical tip by another transaction";
         }
       }
     }

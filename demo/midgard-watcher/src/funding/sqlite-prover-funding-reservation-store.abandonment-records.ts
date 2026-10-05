@@ -77,12 +77,19 @@ export const createProverFundingAbandonmentRecords = (
       handoff,
     };
   };
-  const unacknowledgedAbandonment = (reservationId: string) => {
-    const row = selectUnacknowledgedAbandonment.get(reservationId) as
+  /** A superseded attempt's row awaits its journal acknowledgement before
+   * anything else happens. A row without retirement under a newer pending
+   * transition predates that rule and stays hidden. */
+  const unacknowledgedAbandonment = (record: {
+    readonly reservationId: string;
+    readonly pendingTransition: unknown;
+  }) => {
+    const row = selectUnacknowledgedAbandonment.get(record.reservationId) as
       | AbandonmentRow
       | undefined;
     const saved = row === undefined ? null : readAbandonmentRow(row);
-    return saved?.handoff.reconciliation.retirement === undefined
+    return saved?.handoff.reconciliation.retirement === undefined &&
+      record.pendingTransition !== null
       ? null
       : saved;
   };

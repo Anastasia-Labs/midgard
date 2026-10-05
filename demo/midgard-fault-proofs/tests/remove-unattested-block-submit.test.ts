@@ -298,11 +298,8 @@ it("keeps unknown attempts intact, then refreshes the fee input only after canon
       signedTransactionCborHex: original.signedCbor,
       observe: f.observed,
     }),
-  ).resolves.toEqual({
-    kind: "unknown",
-    reason:
-      "Signed attempt retirement is still inside the canonical recovery horizon",
-  });
+  ).resolves.toEqual({ kind: "not_found" });
+  // The correction objective still re-signs only on a retirement receipt.
   const held = await submitUnattestedTimeoutCorrection(f.params);
   expect(held.status).toBe("pending");
   expect(seams.build).toHaveBeenCalledOnce();

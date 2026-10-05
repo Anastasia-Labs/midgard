@@ -7,7 +7,7 @@ import { setupFundingRecoveryFixture as setup } from "../support/fault-proof-fun
 import { expiredNotFound } from "./prover-funding-recovery.retirement-fixture.js";
 
 it.each(["status_only", "shallow"] as const)(
-  "keeps exact attempts and funding after %s absence, and retires only after deep evidence",
+  "keeps the exact attempt's consumed input leased after %s absence, and retires it only after deep evidence",
   async (mode) => {
     const test = await setup();
     test.useUnspentPendingInputs();
@@ -28,18 +28,27 @@ it.each(["status_only", "shallow"] as const)(
           },
     );
     const attempt = test.run(await test.recover());
-    if (mode === "shallow")
+    if (mode === "shallow") {
       await expect(attempt).rejects.toThrow("recovery horizon");
-    else await attempt;
-    expect(await test.records()).toEqual([test.pending]);
+      expect(await test.records()).toEqual([test.pending]);
+      expect(test.adapter.observe).not.toHaveBeenCalled();
+    } else {
+      // Owner ruling (whichever lands wins): absence at the tip supersedes the
+      // attempt at once. The workflow is free; the attempt's consumed input
+      // stays leased until retirement so a replacement must spend it.
+      await attempt;
+      const [superseded] = await test.records();
+      expect(superseded!.pendingTransition).toBeNull();
+      expect(test.adapter.observe).toHaveBeenCalled();
+    }
     expect(await test.store.readReservedOutRefs({})).toContain(
       test.pending.pendingTransition!.consumedOutRefs[0],
     );
-    expect(test.adapter.observe).not.toHaveBeenCalled();
     expect(test.adapter.preflight).not.toHaveBeenCalled();
     expect(test.adapter.submit).not.toHaveBeenCalled();
+    const beforeRestart = await test.records();
     await test.restartStore();
-    expect(await test.records()).toEqual([test.pending]);
+    expect(await test.records()).toEqual(beforeRestart);
     vi.mocked(test.adapter.reconcile).mockResolvedValue(deep);
     await test.run(await test.recover());
     expect((await test.records())[0]).toMatchObject({

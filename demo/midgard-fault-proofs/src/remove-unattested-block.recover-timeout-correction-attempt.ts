@@ -112,6 +112,8 @@ export const recoverTimeoutCorrectionAttempt = async (input: {
     canonical?.status === "included"
       ? "confirmed"
       : result.kind === "not_found" &&
+          // Supersession at the tip is not retirement here.
+          result.retirement !== undefined &&
           (canonical?.status === "expired" ||
             canonical?.status === "invalidated")
         ? canonical.status

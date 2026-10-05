@@ -122,6 +122,7 @@ export const createWatcherProverFundingAuthority = async (input: {
     reobserve: async ({
       expectedRevision,
       transactionHash,
+      adoption,
     }: Parameters<
       NonNullable<WorkflowFundingReservationPort["reobserve"]>
     >[0]) => {
@@ -189,6 +190,7 @@ export const createWatcherProverFundingAuthority = async (input: {
             expectedRevision,
             transactionHash,
             inputs,
+            ...(adoption === undefined ? {} : { adoption }),
           }),
           rollbackGeneration: input.rollbackGeneration,
         });
@@ -197,6 +199,10 @@ export const createWatcherProverFundingAuthority = async (input: {
         throw error;
       }
     },
+    readSupersededExclusionOutRefs: async () =>
+      (await input.store.readSupersededExclusionOutRefs?.({
+        reservationId: plan.reservationId,
+      })) ?? null,
     retireLegacyAbandonment: async ({
       expectedRevision,
       transactionHash,
@@ -340,6 +346,11 @@ export const createWatcherProverFundingAuthority = async (input: {
             ({ txHash, outputIndex }) =>
               !leased.has(`${txHash}#${outputIndex}`),
           ),
+          // A replacement spends a superseded attempt's input as funding.
+          avoidCollateralOutRefs:
+            (await input.store.readSupersededExclusionOutRefs?.({
+              reservationId: plan.reservationId,
+            })) ?? [],
         });
         assertSubmission();
         await input.store.reserve(refreshedPlan, current.revision);

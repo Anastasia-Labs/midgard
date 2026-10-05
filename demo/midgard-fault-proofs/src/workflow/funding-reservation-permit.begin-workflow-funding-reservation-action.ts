@@ -123,13 +123,20 @@ export const beginWorkflowFundingReservationAction = async ({
   assertCurrentFundingCollateralLimit(state);
   state.currentActionKind = actionKind(action);
   state.currentActionDigest = computeDeploymentManifestJsonDigest(action);
+  // Owner ruling (whichever lands wins): a replacement for a superseded
+  // attempt draws only from that attempt's own funding inputs, so at most one
+  // of them lands. Without such an input it waits for the retirement.
+  const exclusion =
+    (await state.port.readSupersededExclusionOutRefs?.()) ?? null;
+  const funding = state.snapshot.activeInputs
+    .filter(({ role }) => role === "funding")
+    .map(({ outRef }) => outRef)
+    .filter((outRef) => exclusion === null || exclusion.includes(outRef));
+  if (funding.length === 0 && exclusion !== null)
+    throw new WorkflowFundingReservationUnavailableError();
   // The real builder selects from durable leased candidates; admission below
   // derives the exact consumed subset from its signed transaction.
-  state.currentFundingOutRefs = Object.freeze(
-    state.snapshot.activeInputs
-      .filter(({ role }) => role === "funding")
-      .map(({ outRef }) => outRef),
-  );
+  state.currentFundingOutRefs = Object.freeze(funding);
   state.currentCollateralOutRefs = Object.freeze(
     state.snapshot.activeInputs
       .filter(({ role }) => role === "collateral")

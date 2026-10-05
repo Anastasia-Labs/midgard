@@ -12,7 +12,10 @@ import { signedRecoveryFixture } from "./workflow-kupmios-source.signed-recovery
 describe("production signed intent recovery through concrete Kupo/Ogmios transports", () => {
   it.each([
     [{ referenceSpent: "stable", scriptOrdinary: true }, "invalidated"],
-    [{ referenceSpent: "volatile", scriptOrdinary: true }, "pending"],
+    [
+      { referenceSpent: "volatile", scriptOrdinary: true },
+      "invalidated_at_tip",
+    ],
     [
       { referenceSpent: "stable", scriptOrdinary: true, spent: true },
       "invalidated",
@@ -71,19 +74,19 @@ describe("production signed intent recovery through concrete Kupo/Ogmios transpo
 
   it.each([
     [{ referenceSpent: "stable", keyCollateral: true }, "invalidated"],
-    [{ referenceSpent: "volatile", keyCollateral: true }, "pending"],
+    [{ referenceSpent: "volatile", keyCollateral: true }, "invalidated_at_tip"],
     [
       { referenceSpent: "stable", keyCollateral: true, missing: true },
       "unknown",
     ],
     [{ referenceSpent: "stable" }, "invalidated"],
     [{ referenceSpent: "stable", ttl: null }, "invalidated"],
-    [{ referenceSpent: "volatile", spent: true }, "pending"],
+    [{ referenceSpent: "volatile", spent: true }, "invalidated_at_tip"],
     [
       { referenceSpent: "mixed_volatile_first", keyCollateral: true },
       "invalidated",
     ],
-    [{ referenceSpent: "volatile" }, "pending"],
+    [{ referenceSpent: "volatile" }, "invalidated_at_tip"],
     [{ referenceSpent: "mixed_stable_first" }, "invalidated"],
     [{ referenceSpent: "mixed_volatile_first" }, "invalidated"],
     [{ referenceSpent: "mixed_stable_first", spent: true }, "invalidated"],
@@ -124,7 +127,7 @@ describe("production signed intent recovery through concrete Kupo/Ogmios transpo
   it.each([
     [{ ttl: 399, missing: true }, "expired"],
     [{ ttl: 399, missing: true, referenceSpent: "stable" }, "expired"],
-    [{ ttl: 900, missing: true }, "pending"],
+    [{ ttl: 900, missing: true }, "expired_at_tip"],
     [{ ttl: 399, missing: true, included: true }, "included"],
   ] as const)(
     "recovers dependent attempts after a parent rollback only with stable expiry or inclusion: %j",
@@ -143,7 +146,7 @@ describe("production signed intent recovery through concrete Kupo/Ogmios transpo
     expect(
       (await readAdmittedLocalKupmiosSignedTransactionRecovery(fixture.input))
         .status,
-    ).toBe("pending");
+    ).toBe("expired_at_tip");
     expect(fixture.submissions).toEqual([]);
   });
 

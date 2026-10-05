@@ -11,7 +11,7 @@ import { readAdmittedLocalKupmiosSignedTransactionRecovery } from "../src/workfl
 import { reconcileSignedWorkflowTransaction } from "../src/workflow/signed-transaction-reconciliation.js";
 import { signedRecoveryFixture } from "./workflow-kupmios-source.signed-recovery-fixture.js";
 
-it("holds legacy absence without proof then certifies the exact old bytes without replacing a later same-action cursor", async () => {
+it("never holds on a superseded legacy attempt, then certifies the exact old bytes without replacing a later same-action cursor", async () => {
   const fixture = await signedRecoveryFixture({ ttl: 100 });
   const txHash = fixture.input.transactionHash;
   const identity = {
@@ -91,7 +91,7 @@ it("holds legacy absence without proof then certifies the exact old bytes withou
       retire,
       reconcile: unknown,
     }),
-  ).resolves.toBe(false);
+  ).resolves.toBeNull();
   expect(retire).not.toHaveBeenCalled();
   expect(append).not.toHaveBeenCalled();
   await expect(
@@ -102,7 +102,7 @@ it("holds legacy absence without proof then certifies the exact old bytes withou
       retire,
       reconcile: async () => ({ kind: "not_found" }),
     }),
-  ).resolves.toBe(false);
+  ).resolves.toBeNull();
   expect(retire).not.toHaveBeenCalled();
   expect(append).not.toHaveBeenCalled();
   const proof = await reconcileSignedWorkflowTransaction({
@@ -131,7 +131,7 @@ it("holds legacy absence without proof then certifies the exact old bytes withou
         return proof;
       },
     }),
-  ).resolves.toBe(true);
+  ).resolves.toBeNull();
   expect(retire).toHaveBeenCalledOnce();
   expect(append).toHaveBeenCalledWith(
     expect.objectContaining({ kind: "signed_attempt_retired", txHash }),
@@ -162,8 +162,103 @@ it("holds legacy absence without proof then certifies the exact old bytes withou
       retire,
       reconcile: unknown,
     }),
-  ).resolves.toBe(true);
+  ).resolves.toBeNull();
   expect(append).toHaveBeenCalledOnce();
   expect(retire).not.toHaveBeenCalled();
   expect(unknown).not.toHaveBeenCalled();
+});
+
+it("returns a superseded attempt that landed within k for adoption, and nothing for one still unresolved", async () => {
+  const fixture = await signedRecoveryFixture({ ttl: 100 });
+  const txHash = fixture.input.transactionHash;
+  const identity = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+    deploymentFingerprint: "11".repeat(32),
+    category: "doubleSpend" as const,
+    target: {
+      kind: "state_queue_header" as const,
+      headerHash: "22".repeat(28),
+    },
+  };
+  const oldIntent = {
+    kind: "submission_intent" as const,
+    actionId: "proof.init",
+    actionInput: {},
+    attempt: 1,
+    txHash,
+  };
+  const replacement = { ...oldIntent, attempt: 2, txHash: "33".repeat(32) };
+  const entry = (
+    event: FraudProofWorkflowJournalEvent,
+    sequence: number,
+  ): FraudProofWorkflowJournalEntry => ({
+    schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+    workflowId: "44".repeat(32),
+    identity,
+    sequence,
+    recordedAt: "2026-10-02T00:00:00.000Z",
+    event,
+  });
+  const entries = [
+    entry(oldIntent, 0),
+    entry(
+      {
+        kind: "reconciled",
+        actionId: oldIntent.actionId,
+        txHash,
+        outcome: "not_found",
+      },
+      1,
+    ),
+    entry(replacement, 2),
+  ];
+  const saved = {
+    transition: {
+      ...fixture.input,
+      actionKind: "proof.init",
+      transactionBodySha256: "55".repeat(32),
+      consumedOutRefs: [],
+      producedInputs: [],
+    },
+    handoff: {
+      workflowId: "44".repeat(32),
+      identity,
+      preparedArtifactDigest: "66".repeat(32),
+      expectedJournalSequence: 1,
+      submissionIntent: oldIntent,
+      reconciliation: {
+        kind: "reconciled" as const,
+        actionId: oldIntent.actionId,
+        txHash,
+        outcome: "not_found" as const,
+      },
+    },
+  };
+  const retire = vi.fn(async () => {});
+  const append = vi.fn(async (_event: FraudProofWorkflowJournalEvent) => {});
+  for (const result of [
+    { kind: "pending" as const, txHash },
+    { kind: "conflict" as const, reason: "spent by an unrelated transaction" },
+    { kind: "not_found" as const },
+  ])
+    await expect(
+      reconcileLegacyFundingAbandonmentRecords({
+        savedAttempts: [saved],
+        entries,
+        append,
+        retire,
+        reconcile: async () => result,
+      }),
+    ).resolves.toBeNull();
+  await expect(
+    reconcileLegacyFundingAbandonmentRecords({
+      savedAttempts: [saved],
+      entries,
+      append,
+      retire,
+      reconcile: async () => ({ kind: "confirmed", txHash }),
+    }),
+  ).resolves.toBe(saved);
+  expect(retire).not.toHaveBeenCalled();
+  expect(append).not.toHaveBeenCalled();
 });

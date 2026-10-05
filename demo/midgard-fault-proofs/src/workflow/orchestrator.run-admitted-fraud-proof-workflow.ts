@@ -47,6 +47,7 @@ import {
 } from "./journal.js";
 import { LocalKupmiosTransportUnavailableError } from "./local-kupmios-http-ogmios-source.js";
 import { LocalKupmiosCheckpointChangedError } from "./local-kupmios-raw-l1-authority.js";
+import { adoptLandedSupersededAttempt } from "./orchestrator.adopt-landed-superseded-attempt.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofFamilyWorkflowAdapter,
@@ -287,17 +288,22 @@ export const runAdmittedFraudProofWorkflow = async ({
       entries,
     };
 
+    const landed = await reconcileLegacyFraudProofAbandonments(
+      context,
+      journal,
+      adapter,
+      append,
+    );
     if (
-      !(await reconcileLegacyFraudProofAbandonments(
-        context,
+      landed !== null &&
+      (await adoptLandedSupersededAttempt({
         journal,
-        adapter,
+        entries: () => entries,
+        landed,
         append,
-      ))
+      }))
     )
-      return resumeOnObservation(
-        "Legacy abandoned attempt requires authenticated canonical retirement evidence",
-      );
+      continue;
     // The journal records submissions, not permanent progress. When the current
     // chain asks for an older action, reconcile that exact intent first. This
     // also covers restart after rollback without a separate per-family undo log.
@@ -413,7 +419,16 @@ export const runAdmittedFraudProofWorkflow = async ({
       let rebroadcastAttempted = false;
       try {
         assertWorkflowJournalReconciliation(journal, identity);
-        reconciled = await adapter.reconcile({
+        // A committed supersession is final for this attempt: completing its
+        // acknowledgement never waits on a fresh read, and a late landing is
+        // adopted separately.
+        const reconcile: typeof adapter.reconcile =
+          fundingRecovery.abandonmentHandoff !== null &&
+          fundingRecovery.abandonmentHandoff.reconciliation.retirement ===
+            undefined
+            ? async () => ({ kind: "not_found" })
+            : (input) => adapter.reconcile(input);
+        reconciled = await reconcile({
           ...context,
           action,
           ...(priorTxHash === undefined ? {} : { txHash: priorTxHash }),
@@ -596,13 +611,9 @@ export const runAdmittedFraudProofWorkflow = async ({
           entries,
         };
       }
-      if (
-        fundingRecovery.transition !== null &&
-        reconciled.retirement === undefined
-      )
-        return resumeOnObservation(
-          "Exact funding retirement requires authenticated canonical evidence",
-        );
+      // Owner ruling (whichever lands wins): an attempt that expired or was
+      // invalidated at the tip no longer holds the workflow or its funding.
+      // The replacement must spend one of its funding inputs.
       const abandonmentHandoff =
         fundingRecovery.abandonmentHandoff ??
         createWorkflowFundingAbandonmentHandoff({

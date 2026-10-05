@@ -51,21 +51,19 @@ export const createMintItemCanonicalReconciliation =
     >[0]["rebroadcast"];
   }) =>
   async (observedStage: MintItemStage): Promise<void> => {
-    if (
-      !(await reconcileLegacyWorkflowFundingAbandonment({
-        journal: store,
-        entries: await entries(),
-        append: appendEvent,
-        reconcile: async ({ transition }) =>
-          await reconcileSignedWorkflowTransaction({
-            ...transition,
-            observe: observeSignedTransaction,
-          }),
-      }))
-    )
-      throw new MintItemWorkflowRecoveryPendingError(
-        "Legacy abandoned attempt requires authenticated canonical retirement evidence",
-      );
+    // Superseded attempts never hold this journal. Stage observation drives
+    // the mint item, so a late-landed superseded attempt is read from the
+    // chain rather than adopted into the journal.
+    await reconcileLegacyWorkflowFundingAbandonment({
+      journal: store,
+      entries: await entries(),
+      append: appendEvent,
+      reconcile: async ({ transition }) =>
+        await reconcileSignedWorkflowTransaction({
+          ...transition,
+          observe: observeSignedTransaction,
+        }),
+    });
     const current = await entries();
     const reverted = [...current].reverse().find((entry) => {
       if (entry.event.kind !== "submission_intent") return false;
@@ -173,13 +171,7 @@ export const createMintItemCanonicalReconciliation =
         transactionHash: intent.event.txHash,
         handoff,
       });
-      await appendEvent({
-        kind: "reconciled",
-        actionId: intent.event.actionId,
-        outcome: "not_found",
-        txHash: intent.event.txHash,
-        retirement: result.retirement,
-      });
+      await appendEvent(handoff.reconciliation);
       await acknowledgeWorkflowFundingAbandonment({ journal: store, handoff });
       return;
     }

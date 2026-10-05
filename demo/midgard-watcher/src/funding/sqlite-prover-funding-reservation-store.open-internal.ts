@@ -49,6 +49,11 @@ import {
   type WatcherSqliteProverFundingReservationStoreRuntime,
 } from "./sqlite-prover-funding-reservation-store.derive-signed-transition.js";
 import { projectRetainedProverFundingLeases } from "./sqlite-prover-funding-reservation-store.lease-claims.js";
+import {
+  spendsEveryUncoveredAttempt,
+  supersededExclusionOutRefs,
+  uncoveredSupersededAttempts,
+} from "./sqlite-prover-funding-reservation-store.superseded-exclusion.js";
 
 export const openInternal = async (
   input: Readonly<{ path: string; busyTimeoutMs?: number }>,
@@ -590,6 +595,52 @@ export const openInternal = async (
       .map(readHandoffRow)
       .filter((row): row is SubmissionHandoff => row.kind === "submission");
 
+  /** A superseded attempt that landed becomes the pending transition again,
+   * under the handoff that re-records its intent in the journal. */
+  const adoptSupersededAttempt = (
+    current: WatcherProverFundingReservationRecord,
+    transition: ReturnType<typeof makeTransition>,
+    adoption: unknown,
+  ) => {
+    const handoff = parseWorkflowFundingSubmissionHandoff(adoption);
+    const superseded = legacyAbandonedTransactions(current.reservationId).find(
+      (saved) =>
+        saved.transition.transactionHash === transition.transactionHash,
+    );
+    if (
+      current.pendingTransition !== null ||
+      superseded === undefined ||
+      superseded.handoff.reconciliation.retirement !== undefined ||
+      handoff.submissionIntent.txHash !== transition.transactionHash ||
+      handoff.submissionIntent.actionId !==
+        superseded.handoff.submissionIntent.actionId
+    )
+      throw new Error("prover reservation adoption mismatch");
+    database
+      .prepare(
+        "DELETE FROM watcher_prover_funding_abandonment_v1 WHERE reservation_id = ? AND transition_digest = ?",
+      )
+      .run(current.reservationId, transition.transitionDigest);
+    database
+      .prepare(
+        "DELETE FROM watcher_prover_funding_handoff_v1 WHERE reservation_id = ? AND kind = 'submission' AND identity_digest = ?",
+      )
+      .run(current.reservationId, transition.transitionDigest);
+    const { transitionDigest: _digest, ...signedTransition } = transition;
+    persistHandoff(current, "submission", transition.transitionDigest, {
+      transition: signedTransition,
+      handoff,
+    });
+  };
+
+  const uncoveredSuperseded = (reservationId: string) =>
+    uncoveredSupersededAttempts({
+      abandoned: legacyAbandonedTransactions(reservationId),
+      submissions: recordedSubmissions(reservationId).map(
+        ({ transition }) => transition,
+      ),
+    });
+
   const reobservationInputs = (
     reservationId: string,
     transactionHash: string,
@@ -815,8 +866,11 @@ export const openInternal = async (
       return legacyAbandonedTransactions(reservationId);
     },
     readAbandonmentHandoff: async ({ reservationId }) => {
-      auditRead();
-      const abandoned = unacknowledgedAbandonment(reservationId);
+      const record = auditRead().find(
+        (value) => value.reservationId === reservationId,
+      );
+      const abandoned =
+        record === undefined ? null : unacknowledgedAbandonment(record);
       return abandoned === null
         ? null
         : { transition: abandoned.transition, handoff: abandoned.handoff };
@@ -846,6 +900,10 @@ export const openInternal = async (
         throw new Error("prover funding pending handoff kind mismatch");
       return { transition: recovered.transition, handoff: recovered.handoff };
     },
+    readSupersededExclusionOutRefs: async ({ reservationId }) => {
+      auditRead();
+      return supersededExclusionOutRefs(uncoveredSuperseded(reservationId));
+    },
     readReobservationInputs: async ({ reservationId, transactionHash }) => {
       auditRead();
       return reobservationInputs(reservationId, transactionHash);
@@ -855,6 +913,7 @@ export const openInternal = async (
       expectedRevision,
       transactionHash,
       inputs,
+      adoption,
     }) => {
       assertPlan(plan);
       return transaction(() => {
@@ -864,7 +923,7 @@ export const openInternal = async (
         if (
           current.revision !== expectedRevision ||
           current.state === "conflict" ||
-          unacknowledgedAbandonment(current.reservationId) !== null
+          unacknowledgedAbandonment(current) !== null
         )
           throw new Error("prover reservation reobservation mismatch");
         const completionRow = selectCompletionHandoff.get(
@@ -888,6 +947,8 @@ export const openInternal = async (
           ),
         );
         const transition = makeTransition(recorded.transition);
+        if (adoption !== undefined)
+          adoptSupersededAttempt(current, transition, adoption);
         const produced = new Set(
           transition.producedInputs.map(({ outRef }) => outRef),
         );
@@ -1001,7 +1062,7 @@ export const openInternal = async (
               current.revision !== expectedIdleRevision ||
               current.activeInputs.length !== 0 ||
               current.pendingTransition !== null ||
-              unacknowledgedAbandonment(current.reservationId) !== null
+              unacknowledgedAbandonment(current) !== null
             )
               throw new Error("prover reservation cannot refresh idle inputs");
             for (const value of plan.inputs)
@@ -1033,7 +1094,7 @@ export const openInternal = async (
         if (
           current.state !== "active" ||
           current.pendingTransition !== null ||
-          unacknowledgedAbandonment(current.reservationId) !== null ||
+          unacknowledgedAbandonment(current) !== null ||
           current.revision !== transitionInput.expectedRevision
         ) {
           throw new Error("prover reservation cannot prepare transition");
@@ -1048,6 +1109,15 @@ export const openInternal = async (
         ) {
           throw new Error("prover transition consumes an unreserved input");
         }
+        if (
+          !spendsEveryUncoveredAttempt(
+            uncoveredSuperseded(current.reservationId),
+            transitionInput.consumedOutRefs,
+          )
+        )
+          throw new Error(
+            "prover transition must spend an input of each superseded attempt",
+          );
         const transition = makeTransition(
           deriveSignedTransition({
             plan: transitionInput.plan,
@@ -1175,17 +1245,15 @@ export const openInternal = async (
           abandonment.handoff,
         );
         assertHandoffReservation(handoff, current);
-        if (handoff.reconciliation.retirement === undefined)
-          throw new Error(
-            "Funding abandonment requires a verified canonical retirement receipt",
-          );
+        // Without a retirement receipt the attempt is superseded, not retired:
+        // its funding stays leased and the replacement must spend some of it.
         if (
           current.state !== "active" ||
           current.revision !== abandonment.expectedRevision
         )
           throw new Error("prover reservation abandonment mismatch");
         if (current.pendingTransition === null) {
-          const saved = unacknowledgedAbandonment(current.reservationId);
+          const saved = unacknowledgedAbandonment(current);
           if (
             saved === null ||
             saved.transitionDigest !== abandonment.transitionDigest ||
@@ -1223,11 +1291,14 @@ export const openInternal = async (
         assertPlanMatchesRecord(plan, current);
         if (current.revision !== expectedRevision)
           throw new Error("prover reservation idle release revision changed");
+        // Releasing frees leases and is not actuation, but a held reservation's
+        // leases are part of the legacy overlap, so they stay until it resolves.
         if (
+          leaseProjection().heldReservationIds.has(plan.reservationId) ||
           current.state !== "active" ||
           current.activeInputs.length === 0 ||
           current.pendingTransition !== null ||
-          unacknowledgedAbandonment(current.reservationId) !== null
+          unacknowledgedAbandonment(current) !== null
         )
           return current;
         // The workflow authority checks no signed attempt is in flight (confirmed
@@ -1236,7 +1307,7 @@ export const openInternal = async (
         writeRecord(current.recordDigest, next);
         rebuildLeases();
         return next;
-      }, plan.reservationId);
+      }, null);
     },
     acknowledgeAbandonment: async (acknowledgement) => {
       assertPlan(acknowledgement.plan);
@@ -1332,7 +1403,7 @@ export const openInternal = async (
         if (
           current.revision !== release.expectedRevision ||
           current.pendingTransition !== null ||
-          unacknowledgedAbandonment(current.reservationId) !== null
+          unacknowledgedAbandonment(current) !== null
         )
           throw new Error("prover reservation release mismatch");
         const digest = computeDeploymentManifestJsonDigest(handoff);

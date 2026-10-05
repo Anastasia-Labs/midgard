@@ -110,7 +110,12 @@ export interface WorkflowFundingReservationPort {
   reobserve?(input: {
     readonly expectedRevision: string;
     readonly transactionHash: string;
+    /** Adopts a superseded attempt that landed: this handoff replaces its own. */
+    readonly adoption?: WorkflowFundingSubmissionHandoff;
   }): Promise<unknown>;
+  /** Outputs every superseded, unretired attempt consumed, of which a fresh
+   * attempt must spend one so that at most one of them lands; null if none. */
+  readSupersededExclusionOutRefs?(): Promise<readonly string[] | null>;
   resolveInputs(outRefs: readonly string[]): Promise<readonly UTxO[]>;
   /** Exact confirmed output from this reservation, or null if it has no lineage. */
   resolveConfirmedInput(input: { readonly outRef: string }): Promise<unknown>;

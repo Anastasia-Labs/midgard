@@ -14,6 +14,7 @@ import { parseStateSnapshot } from "./funding-reservation-permit.reconcile-workf
 import {
   type WorkflowFundingAbandonmentHandoff,
   type WorkflowFundingCompletionHandoff,
+  type WorkflowFundingSubmissionHandoff,
 } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import {
   type FraudProofWorkflowJournalEntry,
@@ -64,9 +65,12 @@ export const confirmWorkflowFundingReservationTransaction = async (input: {
   readonly transactionHash: string;
 }): Promise<void> => await applyTransition({ ...input, outcome: "confirmed" });
 
+/** With `adoption`, re-selects a superseded attempt that landed after a
+ * rollback; its new handoff replaces the old one in the journal. */
 export const reobserveWorkflowFundingReservationTransaction = async (input: {
   readonly journal: object;
   readonly transactionHash: string;
+  readonly adoption?: WorkflowFundingSubmissionHandoff;
 }): Promise<boolean> => {
   const state = stateForJournal(input.journal);
   if (state === undefined) return true;
@@ -76,6 +80,7 @@ export const reobserveWorkflowFundingReservationTransaction = async (input: {
   const observed = await state.port.reobserve({
     expectedRevision: state.snapshot.revision,
     transactionHash: input.transactionHash,
+    ...(input.adoption === undefined ? {} : { adoption: input.adoption }),
   });
   if (observed === null) return false;
   state.snapshot = parseStateSnapshot(state, observed);
@@ -95,11 +100,9 @@ export const abandonWorkflowFundingReservationTransaction = async (input: {
 }): Promise<void> => {
   const state = stateForJournal(input.journal);
   if (state === undefined) return;
+  // Without a retirement receipt this supersedes, not retires, the attempt:
+  // its inputs stay leased and the replacement must spend one of them.
   const handoff = parseWorkflowFundingAbandonmentHandoff(input.handoff);
-  if (handoff.reconciliation.retirement === undefined)
-    throw new Error(
-      "Funding cannot retire an attempt without authenticated canonical evidence",
-    );
   if (
     handoff.submissionIntent.txHash !== input.transactionHash ||
     (state.pendingTransactionHash !== undefined &&
@@ -142,11 +145,9 @@ const journalHasOnlyResolvedFundingAttempts = (
       // rollback reopens it through `reobserved` below.
       if (event.kind === "signed_attempt_retired" || event.kind === "confirmed")
         resolved.set(event.txHash, true);
+      // Supersession at the tip resolves an attempt as well as retirement.
       else if (event.kind === "reconciled")
-        resolved.set(
-          event.txHash,
-          event.outcome === "not_found" && event.retirement !== undefined,
-        );
+        resolved.set(event.txHash, event.outcome === "not_found");
       else if (
         event.kind === "reobserved" ||
         event.kind === "submitted" ||

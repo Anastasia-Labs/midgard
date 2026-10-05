@@ -755,6 +755,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           transactionHash: txHash,
           signedTransactionCborHex,
           observe: config.l1?.observeSignedTransaction,
+          reportInclusion: true,
         });
       if (txHash === undefined) {
         return { kind: "conflict", reason: "durable intent omitted tx hash" };
