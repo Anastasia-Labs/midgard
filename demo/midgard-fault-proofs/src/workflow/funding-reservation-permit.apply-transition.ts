@@ -57,6 +57,7 @@ const applyTransition = async ({
   state.currentActionKind = undefined;
   state.currentActionDigest = undefined;
   state.currentFundingOutRefs = Object.freeze([]);
+  state.currentRequiredFundingOutRefs = Object.freeze([]);
   state.currentCollateralOutRefs = Object.freeze([]);
 };
 
@@ -89,6 +90,7 @@ export const reobserveWorkflowFundingReservationTransaction = async (input: {
   state.currentActionKind = undefined;
   state.currentActionDigest = undefined;
   state.currentFundingOutRefs = Object.freeze([]);
+  state.currentRequiredFundingOutRefs = Object.freeze([]);
   state.currentCollateralOutRefs = Object.freeze([]);
   return true;
 };
@@ -123,6 +125,7 @@ export const abandonWorkflowFundingReservationTransaction = async (input: {
   state.currentActionKind = undefined;
   state.currentActionDigest = undefined;
   state.currentFundingOutRefs = Object.freeze([]);
+  state.currentRequiredFundingOutRefs = Object.freeze([]);
   state.currentCollateralOutRefs = Object.freeze([]);
   // The recorded bytes remain available until the exact journal outcome is acknowledged.
   state.pendingTransactionHash = input.transactionHash;
@@ -248,6 +251,7 @@ export const releaseWorkflowFundingReservation = async ({
   state.currentActionKind = undefined;
   state.currentActionDigest = undefined;
   state.currentFundingOutRefs = Object.freeze([]);
+  state.currentRequiredFundingOutRefs = Object.freeze([]);
   state.currentCollateralOutRefs = Object.freeze([]);
   state.pendingTransactionHash = undefined;
   state.preparedTransaction = undefined;

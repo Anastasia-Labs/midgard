@@ -104,7 +104,8 @@ it("opens the existing production funding permit read-only under a legacy overla
   vi.mocked(test.adapter.reconcile).mockResolvedValue(
     expiredNotFound(test.transactionHash),
   );
-  await test.run(journal);
+  // An unresolved read backs the attempt off; it is read again once due.
+  await test.run(journal, () => new Date(Date.now() + 60_000));
   expect(await held()).toEqual([false, false]);
   expect(
     (await test.records()).find(

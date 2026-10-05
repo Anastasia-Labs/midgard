@@ -147,10 +147,10 @@ it("admits a replacement for an attempt that expired at the tip at once, drawing
     (await journal.load(fixture.initial.workflowId)).at(-1)!.event,
   ).toMatchObject({ kind: "reconciled", outcome: "not_found" });
   expect(
-    await fixture.store.readSupersededExclusionOutRefs!({
+    await fixture.store.readSupersededAttemptFundingOutRefs!({
       reservationId: fixture.plan.reservationId,
     }),
-  ).toEqual([funding.outRef]);
+  ).toEqual([[funding.outRef]]);
 
   // The workflow is free at once: no retirement past k is awaited.
   await beginWorkflowFundingReservationAction({
@@ -179,7 +179,7 @@ it("admits a replacement for an attempt that expired at the tip at once, drawing
       actionKind: "proof.init",
       ...signReplacement(other!.outRef, BigInt(other!.lovelace), 300n),
     }),
-  ).rejects.toThrow("must spend an input of each superseded attempt");
+  ).rejects.toThrow("must share an input with each superseded attempt");
   const replacement = signReplacement(
     funding.outRef,
     BigInt(funding.lovelace),
@@ -224,7 +224,10 @@ it("adopts the expired attempt as the result when it lands late, and retires the
       ? { kind: "confirmed", txHash }
       : { kind: "not_found" },
   );
-  for (let run = 0; run < 3; run += 1) await fixture.run(journal);
+  // A landing that cannot be adopted yet backs off like any unresolved read,
+  // so each run is a minute apart.
+  for (let run = 0; run < 3; run += 1)
+    await fixture.run(journal, () => new Date(Date.now() + run * 60_000));
   const events = (await journal.load(fixture.initial.workflowId)).map(
     ({ event }) => event,
   );
@@ -260,10 +263,10 @@ it("adopts the expired attempt as the result when it lands late, and retires the
   expect(reserved).toContain(`${fixture.transactionHash}#0`);
   expect(reserved).toContain(`${replacement.transactionHash}#0`);
   expect(
-    await fixture.store.readSupersededExclusionOutRefs!({
+    await fixture.store.readSupersededAttemptFundingOutRefs!({
       reservationId: fixture.plan.reservationId,
     }),
-  ).toBeNull();
+  ).toEqual([]);
   expect(fixture.adapter.preflight).not.toHaveBeenCalled();
   expect(fixture.adapter.submit).not.toHaveBeenCalled();
 });
@@ -388,10 +391,10 @@ it("re-signs a mutually exclusive proof with fresh collateral when a rollback dr
   // wait for retirement past k.
   expect(fixture.adapter.preflight).toHaveBeenCalled();
   expect(
-    await fixture.store.readSupersededExclusionOutRefs!({
+    await fixture.store.readSupersededAttemptFundingOutRefs!({
       reservationId: fixture.plan.reservationId,
     }),
-  ).toEqual([funding.outRef]);
+  ).toEqual([[funding.outRef]]);
   const [record] = await fixture.records();
   const fresh = record!.activeInputs
     .filter(({ role }) => role === "collateral")
@@ -413,7 +416,7 @@ it("re-signs a mutually exclusive proof with fresh collateral when a rollback dr
       actionKind: "proof.init",
       ...signReplacement(other!.outRef, BigInt(other!.lovelace), 300n, fresh),
     }),
-  ).rejects.toThrow("must spend an input of each superseded attempt");
+  ).rejects.toThrow("must share an input with each superseded attempt");
   const resigned = signReplacement(
     funding.outRef,
     BigInt(funding.lovelace),

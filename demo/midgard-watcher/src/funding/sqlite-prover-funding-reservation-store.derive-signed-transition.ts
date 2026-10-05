@@ -195,7 +195,7 @@ export const makeTransition = (input: {
   return transition;
 };
 
-const transactionInputOutRefs = (inputs: {
+export const transactionInputOutRefs = (inputs: {
   readonly len: () => number;
   readonly get: (index: number) => {
     readonly transaction_id: () => { readonly to_hex: () => string };

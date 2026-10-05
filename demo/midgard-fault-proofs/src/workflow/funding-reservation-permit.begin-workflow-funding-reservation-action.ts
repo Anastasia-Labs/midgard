@@ -123,20 +123,26 @@ export const beginWorkflowFundingReservationAction = async ({
   assertCurrentFundingCollateralLimit(state);
   state.currentActionKind = actionKind(action);
   state.currentActionDigest = computeDeploymentManifestJsonDigest(action);
-  // Owner ruling (whichever lands wins): a replacement for a superseded
-  // attempt draws only from that attempt's own funding inputs, so at most one
-  // of them lands. Without such an input it waits for the retirement.
-  const exclusion =
-    (await state.port.readSupersededExclusionOutRefs?.()) ?? null;
   const funding = state.snapshot.activeInputs
     .filter(({ role }) => role === "funding")
-    .map(({ outRef }) => outRef)
-    .filter((outRef) => exclusion === null || exclusion.includes(outRef));
-  if (funding.length === 0 && exclusion !== null)
-    throw new WorkflowFundingReservationUnavailableError();
+    .map(({ outRef }) => outRef);
+  // Owner ruling (whichever lands wins): a replacement must be mutually
+  // exclusive with each superseded attempt. A shared protocol input already
+  // makes it so; one shared funding input per attempt also does, and the rest
+  // of the reserved pool still tops up fees and outputs. An attempt with no
+  // input left in the pool needs none: it cannot land without a rollback, and
+  // whatever lands first wins. Nothing waits for retirement past k.
+  const required: string[] = [];
+  for (const attempt of (await state.port.readSupersededAttemptFundingOutRefs?.()) ??
+    []) {
+    if (attempt.some((outRef) => required.includes(outRef))) continue;
+    const shared = attempt.find((outRef) => funding.includes(outRef));
+    if (shared !== undefined) required.push(shared);
+  }
   // The real builder selects from durable leased candidates; admission below
   // derives the exact consumed subset from its signed transaction.
   state.currentFundingOutRefs = Object.freeze(funding);
+  state.currentRequiredFundingOutRefs = Object.freeze(required.sort());
   state.currentCollateralOutRefs = Object.freeze(
     state.snapshot.activeInputs
       .filter(({ role }) => role === "collateral")

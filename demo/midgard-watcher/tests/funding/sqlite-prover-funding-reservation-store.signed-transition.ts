@@ -38,7 +38,10 @@ export const signedTransition = ({
   feeLovelace = 1_000_000n,
   collateralHash,
   validityUpperBound,
+  protocolInputHashes = [],
 }: {
+  /** Further ordinary inputs the reservation does not own, such as a node. */
+  readonly protocolInputHashes?: readonly string[];
   readonly inputHash?: string;
   readonly outputLovelace?: bigint;
   readonly nonCanonicalBody?: boolean;
@@ -47,9 +50,10 @@ export const signedTransition = ({
   readonly validityUpperBound?: bigint;
 } = {}) => {
   const inputs = CML.TransactionInputList.new();
-  inputs.add(
-    CML.TransactionInput.new(CML.TransactionHash.from_hex(inputHash), 0n),
-  );
+  for (const hash of [inputHash, ...protocolInputHashes])
+    inputs.add(
+      CML.TransactionInput.new(CML.TransactionHash.from_hex(hash), 0n),
+    );
   const outputs = CML.TransactionOutputList.new();
   outputs.add(
     CML.TransactionOutput.new(

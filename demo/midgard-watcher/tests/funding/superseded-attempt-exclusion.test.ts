@@ -7,8 +7,8 @@ import { afterEach, expect, it } from "vitest";
 import type { WatcherProverFundingReservationPlan } from "../../src/funding/prover-funding-reservation.js";
 import { unsafeOpenWatcherSqliteProverFundingReservationStoreForTest } from "../../src/funding/sqlite-prover-funding-reservation-store.js";
 import {
-  spendsEveryUncoveredAttempt,
-  supersededExclusionOutRefs,
+  excludesEveryUncoveredAttempt,
+  supersededAttemptFundingOutRefs,
   uncoveredSupersededAttempts,
 } from "../../src/funding/sqlite-prover-funding-reservation-store.superseded-exclusion.js";
 import { watcherCanonicalJson } from "../../src/storage/durable-store.js";
@@ -101,10 +101,10 @@ it("refuses a replacement that avoids every input of an attempt superseded at th
     // unacknowledged abandonment, and it needs no retirement first.
     expect(record.pendingTransition).toBeNull();
     expect(
-      await store.readSupersededExclusionOutRefs!({
+      await store.readSupersededAttemptFundingOutRefs!({
         reservationId: owner.reservationId,
       }),
-    ).toEqual([first]);
+    ).toEqual([[first]]);
     // Its consumed input stays leased against every other reservation.
     await expect(store.reserve(plan("bb", "77"))).rejects.toThrow("reserved");
 
@@ -120,7 +120,7 @@ it("refuses a replacement that avoids every input of an attempt superseded at th
         ...avoiding,
         consumedOutRefs: [second],
       }),
-    ).rejects.toThrow("must spend an input of each superseded attempt");
+    ).rejects.toThrow("must share an input with each superseded attempt");
 
     const replacement = signedTransition({
       inputHash: "11".repeat(32),
@@ -139,10 +139,10 @@ it("refuses a replacement that avoids every input of an attempt superseded at th
     );
     // The recorded replacement covers the superseded attempt.
     expect(
-      await store.readSupersededExclusionOutRefs!({
+      await store.readSupersededAttemptFundingOutRefs!({
         reservationId: owner.reservationId,
       }),
-    ).toBeNull();
+    ).toEqual([]);
   } finally {
     opened.runtime.close();
   }
@@ -206,10 +206,10 @@ it("applies the same exclusion to a legacy abandonment written without retiremen
     }[];
     expect(record!.pendingTransition).toBeNull();
     expect(
-      await reopened.store.readSupersededExclusionOutRefs!({
+      await reopened.store.readSupersededAttemptFundingOutRefs!({
         reservationId: owner.reservationId,
       }),
-    ).toEqual([first]);
+    ).toEqual([[first]]);
     await expect(
       prepareTransition(reopened.store, {
         plan: owner,
@@ -221,7 +221,7 @@ it("applies the same exclusion to a legacy abandonment written without retiremen
         }),
         consumedOutRefs: [second],
       }),
-    ).rejects.toThrow("must spend an input of each superseded attempt");
+    ).rejects.toThrow("must share an input with each superseded attempt");
     const replacement = signedTransition({
       outputLovelace: 98_000_000n,
       validityUpperBound: 200n,
@@ -259,10 +259,10 @@ it("asks a replacement to exclude every uncovered superseded attempt at once", a
     });
     // ...until B is itself superseded: both are uncovered, sharing one input.
     expect(
-      await store.readSupersededExclusionOutRefs!({
+      await store.readSupersededAttemptFundingOutRefs!({
         reservationId: owner.reservationId,
       }),
-    ).toEqual([first]);
+    ).toEqual([[first], [first]]);
     await expect(
       prepareTransition(store, {
         plan: owner,
@@ -274,21 +274,106 @@ it("asks a replacement to exclude every uncovered superseded attempt at once", a
         }),
         consumedOutRefs: [second],
       }),
-    ).rejects.toThrow("must spend an input of each superseded attempt");
+    ).rejects.toThrow("must share an input with each superseded attempt");
   } finally {
     opened.runtime.close();
   }
 });
 
-const attempt = (transactionHash: string, consumedOutRefs: string[]) =>
-  ({ transactionHash, consumedOutRefs }) as unknown as Parameters<
-    typeof spendsEveryUncoveredAttempt
-  >[0][number];
+it("accepts a shared protocol input as the exclusion, and refuses a replacement that shares nothing while a funding input is left", async () => {
+  const opened = await openStore();
+  const { store } = opened.runtime;
+  const node = "a1".repeat(32);
+  try {
+    const owner = twoFundingPlan();
+    await store.reserve(owner);
+    const signed = signedTransition({
+      protocolInputHashes: [node],
+      validityUpperBound: 100n,
+    });
+    const pending = await prepareTransition(store, {
+      plan: owner,
+      expectedRevision: "0",
+      actionKind: "proof.init",
+      ...signed,
+      consumedOutRefs: [first],
+    });
+    const {
+      reconciliation: { retirement: _retirement, ...reconciliation },
+      ...rest
+    } = abandonmentHandoff(owner, signed.transactionHash, "proof.init");
+    const handoff = { ...rest, reconciliation };
+    const abandoned = await store.abandonPendingTransition({
+      plan: owner,
+      expectedRevision: pending.revision,
+      transitionDigest: pending.pendingTransition!.transitionDigest,
+      handoff,
+    });
+    const record = await store.acknowledgeAbandonment({
+      plan: owner,
+      expectedRevision: abandoned.revision,
+      handoff,
+    });
+    await expect(
+      prepareTransition(store, {
+        plan: owner,
+        expectedRevision: record.revision,
+        actionKind: "proof.init",
+        ...signedTransition({
+          inputHash: "13".repeat(32),
+          protocolInputHashes: ["a2".repeat(32)],
+          validityUpperBound: 200n,
+        }),
+        consumedOutRefs: [second],
+      }),
+    ).rejects.toThrow("must share an input with each superseded attempt");
+    // The same challenged node, other funding: mutually exclusive.
+    const replacement = signedTransition({
+      inputHash: "13".repeat(32),
+      protocolInputHashes: [node],
+      validityUpperBound: 200n,
+    });
+    await expect(
+      prepareTransition(store, {
+        plan: owner,
+        expectedRevision: record.revision,
+        actionKind: "proof.init",
+        ...replacement,
+        consumedOutRefs: [second],
+      }),
+    ).resolves.toMatchObject({
+      pendingTransition: { transactionHash: replacement.transactionHash },
+    });
+    expect(
+      await store.readSupersededAttemptFundingOutRefs!({
+        reservationId: owner.reservationId,
+      }),
+    ).toEqual([]);
+  } finally {
+    opened.runtime.close();
+  }
+});
 
-it("computes the uncovered attempts and their common inputs in both polarities", () => {
-  const a = attempt("a", ["x", "y"]);
-  const b = attempt("b", ["y", "z"]);
-  const live = attempt("l", ["x"]);
+const attempt = (
+  inputHashes: readonly string[],
+  consumedOutRefs: readonly string[],
+) => {
+  const [inputHash, ...protocolInputHashes] = inputHashes;
+  return {
+    ...signedTransition({ inputHash, protocolInputHashes }),
+    consumedOutRefs,
+  } as unknown as Parameters<
+    typeof excludesEveryUncoveredAttempt
+  >[0]["uncovered"][number];
+};
+const hash = (byte: string) => byte.repeat(32);
+const ref = (byte: string) => `${hash(byte)}#0`;
+
+it("computes the uncovered attempts and admits replacements in both polarities", () => {
+  // a spends funding x and node n; b spends funding y and z.
+  const a = attempt([hash("a1"), hash("e1")], [ref("a1")]);
+  const b = attempt([hash("b1"), hash("b2")], [ref("b1"), ref("b2")]);
+  const live = attempt([hash("c1"), hash("e1")], [ref("c1")]);
   const abandoned = (transition: ReturnType<typeof attempt>, retired = false) =>
     ({
       transition,
@@ -297,7 +382,8 @@ it("computes the uncovered attempts and their common inputs in both polarities",
       typeof uncoveredSupersededAttempts
     >[0]["abandoned"][number];
 
-  // A retired attempt is bookkeeping; a covered one needs nothing more.
+  // A retired attempt is bookkeeping; one covered by a shared protocol input
+  // (the node e1) needs nothing more.
   expect(
     uncoveredSupersededAttempts({
       abandoned: [abandoned(a, true)],
@@ -316,10 +402,29 @@ it("computes the uncovered attempts and their common inputs in both polarities",
     submissions: [a, b],
   });
   expect(uncovered).toEqual([a, b]);
-  expect(supersededExclusionOutRefs([])).toBeNull();
-  expect(supersededExclusionOutRefs(uncovered)).toEqual(["y"]);
-  expect(supersededExclusionOutRefs([a, attempt("c", ["w"])])).toEqual([]);
-  expect(spendsEveryUncoveredAttempt(uncovered, ["y"])).toBe(true);
-  expect(spendsEveryUncoveredAttempt(uncovered, ["x"])).toBe(false);
-  expect(spendsEveryUncoveredAttempt([], [])).toBe(true);
+  expect(supersededAttemptFundingOutRefs(uncovered)).toEqual([
+    [ref("a1")],
+    [ref("b1"), ref("b2")],
+  ]);
+  const admits = (inputs: readonly string[], reserved: readonly string[]) =>
+    excludesEveryUncoveredAttempt({
+      uncovered,
+      signedTransactionCborHex: attempt(inputs, []).signedTransactionCborHex,
+      reservedFundingOutRefs: reserved,
+    });
+  const reserved = [ref("a1"), ref("b1"), ref("b2"), ref("d1")];
+  // Shared node with a, shared funding with b.
+  expect(admits([hash("e1"), hash("b2")], reserved)).toBe(true);
+  // Shares nothing with b although b's funding is still reserved.
+  expect(admits([hash("e1"), hash("d1")], reserved)).toBe(false);
+  // Nothing of b is left: no shared input is possible, so it is admitted.
+  expect(admits([hash("e1"), hash("d1")], [ref("a1"), ref("d1")])).toBe(true);
+  expect(
+    excludesEveryUncoveredAttempt({
+      uncovered: [],
+      signedTransactionCborHex: attempt([hash("d1")], [])
+        .signedTransactionCborHex,
+      reservedFundingOutRefs: reserved,
+    }),
+  ).toBe(true);
 });

@@ -113,9 +113,11 @@ export interface WorkflowFundingReservationPort {
     /** Adopts a superseded attempt that landed: this handoff replaces its own. */
     readonly adoption?: WorkflowFundingSubmissionHandoff;
   }): Promise<unknown>;
-  /** Outputs every superseded, unretired attempt consumed, of which a fresh
-   * attempt must spend one so that at most one of them lands; null if none. */
-  readSupersededExclusionOutRefs?(): Promise<readonly string[] | null>;
+  /** Per superseded, unretired attempt that no recorded attempt shares an
+   * input with, the funding inputs it spent; empty when there is none. */
+  readSupersededAttemptFundingOutRefs?(): Promise<
+    readonly (readonly string[])[]
+  >;
   resolveInputs(outRefs: readonly string[]): Promise<readonly UTxO[]>;
   /** Exact confirmed output from this reservation, or null if it has no lineage. */
   resolveConfirmedInput(input: { readonly outRef: string }): Promise<unknown>;
@@ -183,6 +185,9 @@ export type PermitState = {
   currentActionKind: string | undefined;
   currentActionDigest: string | undefined;
   currentFundingOutRefs: readonly string[];
+  /** Funding inputs every transaction of the current action must spend, one
+   * per superseded attempt, so that it is mutually exclusive with each. */
+  currentRequiredFundingOutRefs: readonly string[];
   currentCollateralOutRefs: readonly string[];
   pendingTransactionHash: string | undefined;
   idleReleaseAuthorized: boolean;

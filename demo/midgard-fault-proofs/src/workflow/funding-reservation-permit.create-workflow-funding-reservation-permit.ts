@@ -335,6 +335,7 @@ export const createWorkflowFundingReservationPermit = async ({
     currentActionKind: undefined,
     currentActionDigest: undefined,
     currentFundingOutRefs: Object.freeze([]),
+    currentRequiredFundingOutRefs: Object.freeze([]),
     currentCollateralOutRefs: Object.freeze([]),
     pendingTransactionHash: undefined,
     idleReleaseAuthorized: false,

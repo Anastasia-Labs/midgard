@@ -63,3 +63,48 @@ it("rechecks durable funding authority before building, signing and submitting t
   await expect(runtime.begin()).resolves.toBeUndefined();
   await expect(wallet.signTx(signed.toTransaction())).resolves.toBeDefined();
 });
+
+const replacementInputs = async (
+  supersededAttemptFundingOutRefs?: readonly (readonly string[])[],
+) => {
+  const runtime = await runtimeFunding("step-one", {
+    collateral: true,
+    ...(supersededAttemptFundingOutRefs === undefined
+      ? {}
+      : { supersededAttemptFundingOutRefs }),
+  });
+  const lucid = await Lucid(new Emulator([]), "Preprod");
+  restrictWorkflowFundingSigner({
+    permit: runtime.permit,
+    signer: {
+      source: "funding-test",
+      address: fundingAddress,
+      paymentKeyHash: fundingKey.to_public().hash().to_hex(),
+      selectWallet: (instance) =>
+        instance.selectWallet.fromPrivateKey(fundingKey.to_bech32()),
+    },
+  }).selectWallet(lucid);
+  const unsigned = await lucid
+    .newTx()
+    .pay.ToAddress(fundingAddress, { lovelace: 5_000_000n })
+    .complete();
+  const inputs = unsigned.toTransaction().body().inputs();
+  return Array.from({ length: inputs.len() }, (_, index) => {
+    const input = inputs.get(index);
+    return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+  }).sort();
+};
+
+it("spends a superseded attempt's input even when it is too small, topping up from the reserved pool", async () => {
+  const small = `${"72".repeat(32)}#0`;
+  const large = `${"73".repeat(32)}#0`;
+  // Largest-first selection alone never reaches the 2 ADA input.
+  expect(await replacementInputs()).toEqual([large]);
+  // The superseded attempt spent the 2 ADA input (and a gone one): the
+  // replacement must share it, and the pool pays the 5 ADA output and fee.
+  const shared = await replacementInputs([[`${"70".repeat(32)}#0`, small]]);
+  expect(shared).toContain(small);
+  expect(shared).toContain(large);
+  // An attempt none of whose inputs is still reserved asks for nothing.
+  expect(await replacementInputs([[`${"70".repeat(32)}#0`]])).toEqual([large]);
+});

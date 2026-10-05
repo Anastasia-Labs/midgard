@@ -9,6 +9,10 @@ import type {
 } from "./journal.js";
 import type { FraudProofWorkflowReconcileResult } from "./orchestrator.js";
 import { parseSignedWorkflowTransactionRetirement } from "./signed-transaction-retirement.js";
+import {
+  type SupersededAttemptReadSchedule,
+  supersededAttemptReadSchedule,
+} from "./superseded-attempt-read-schedule.js";
 
 type SupersededAttempt = Awaited<
   ReturnType<typeof readLegacyWorkflowFundingAbandonedTransactions>
@@ -22,6 +26,8 @@ export const reconcileLegacyWorkflowFundingAbandonment = async ({
   entries,
   append,
   reconcile,
+  nowMs = Date.now(),
+  schedule = supersededAttemptReadSchedule,
 }: {
   readonly journal: object;
   readonly entries: readonly FraudProofWorkflowJournalEntry[];
@@ -29,6 +35,8 @@ export const reconcileLegacyWorkflowFundingAbandonment = async ({
   readonly reconcile: (
     saved: SupersededAttempt,
   ) => Promise<FraudProofWorkflowReconcileResult>;
+  readonly nowMs?: number;
+  readonly schedule?: SupersededAttemptReadSchedule;
 }): Promise<SupersededAttempt | null> => {
   const current = await readWorkflowFundingRecovery(journal);
   return await reconcileLegacyFundingAbandonmentRecords({
@@ -43,6 +51,7 @@ export const reconcileLegacyWorkflowFundingAbandonment = async ({
     entries,
     append,
     reconcile,
+    reads: { schedule, nowMs },
     retire: async (transactionHash, retirement) =>
       await retireLegacyWorkflowFundingAbandonment({
         journal,
@@ -58,6 +67,7 @@ export const reconcileLegacyFundingAbandonmentRecords = async ({
   append,
   reconcile,
   retire,
+  reads,
 }: {
   readonly savedAttempts: readonly SupersededAttempt[];
   readonly entries: readonly FraudProofWorkflowJournalEntry[];
@@ -69,7 +79,13 @@ export const reconcileLegacyFundingAbandonmentRecords = async ({
     hash: string,
     retirement: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement,
   ) => Promise<void>;
+  /** Bounds the L1 reads of one pass; without it every attempt is read. */
+  readonly reads?: Readonly<{
+    schedule: SupersededAttemptReadSchedule;
+    nowMs: number;
+  }>;
 }): Promise<SupersededAttempt | null> => {
+  const unread: SupersededAttempt[] = [];
   for (const saved of savedAttempts) {
     const hash = saved.transition.transactionHash;
     if (
@@ -97,15 +113,32 @@ export const reconcileLegacyFundingAbandonmentRecords = async ({
       });
       continue;
     }
+    unread.push(saved);
+  }
+  const due =
+    reads === undefined
+      ? null
+      : reads.schedule.due(
+          unread.map(({ transition }) => transition.transactionHash),
+          reads.nowMs,
+        );
+  for (const saved of unread) {
+    const hash = saved.transition.transactionHash;
+    if (due !== null && !due.includes(hash)) continue;
     const result = await reconcile(saved);
-    if (result.kind === "confirmed") return saved;
-    // Unresolved, absent or impossible at the tip: no hold, try again later.
     if (
+      result.kind === "confirmed" ||
       result.kind === "conflict" ||
       result.kind === "unknown" ||
       result.retirement === undefined
-    )
+    ) {
+      // Unresolved, absent or impossible at the tip: no hold, read again
+      // later. A landing backs off too until the caller adopts it.
+      reads?.schedule.unresolved(hash, reads.nowMs);
+      if (result.kind === "confirmed") return saved;
       continue;
+    }
+    reads?.schedule.forget(hash);
     const retirement = parseSignedWorkflowTransactionRetirement(
       result.retirement,
       hash,

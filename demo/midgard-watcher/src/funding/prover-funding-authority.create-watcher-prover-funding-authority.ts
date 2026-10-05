@@ -199,10 +199,10 @@ export const createWatcherProverFundingAuthority = async (input: {
         throw error;
       }
     },
-    readSupersededExclusionOutRefs: async () =>
-      (await input.store.readSupersededExclusionOutRefs?.({
+    readSupersededAttemptFundingOutRefs: async () =>
+      (await input.store.readSupersededAttemptFundingOutRefs?.({
         reservationId: plan.reservationId,
-      })) ?? null,
+      })) ?? [],
     retireLegacyAbandonment: async ({
       expectedRevision,
       transactionHash,
@@ -347,10 +347,11 @@ export const createWatcherProverFundingAuthority = async (input: {
               !leased.has(`${txHash}#${outputIndex}`),
           ),
           // A replacement spends a superseded attempt's input as funding.
-          avoidCollateralOutRefs:
-            (await input.store.readSupersededExclusionOutRefs?.({
+          avoidCollateralOutRefs: (
+            (await input.store.readSupersededAttemptFundingOutRefs?.({
               reservationId: plan.reservationId,
-            })) ?? [],
+            })) ?? []
+          ).flat(),
         });
         assertSubmission();
         await input.store.reserve(refreshedPlan, current.revision);

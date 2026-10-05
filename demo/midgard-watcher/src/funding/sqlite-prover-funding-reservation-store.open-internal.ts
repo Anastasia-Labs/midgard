@@ -50,8 +50,8 @@ import {
 } from "./sqlite-prover-funding-reservation-store.derive-signed-transition.js";
 import { projectRetainedProverFundingLeases } from "./sqlite-prover-funding-reservation-store.lease-claims.js";
 import {
-  spendsEveryUncoveredAttempt,
-  supersededExclusionOutRefs,
+  excludesEveryUncoveredAttempt,
+  supersededAttemptFundingOutRefs,
   uncoveredSupersededAttempts,
 } from "./sqlite-prover-funding-reservation-store.superseded-exclusion.js";
 
@@ -900,9 +900,11 @@ export const openInternal = async (
         throw new Error("prover funding pending handoff kind mismatch");
       return { transition: recovered.transition, handoff: recovered.handoff };
     },
-    readSupersededExclusionOutRefs: async ({ reservationId }) => {
+    readSupersededAttemptFundingOutRefs: async ({ reservationId }) => {
       auditRead();
-      return supersededExclusionOutRefs(uncoveredSuperseded(reservationId));
+      return supersededAttemptFundingOutRefs(
+        uncoveredSuperseded(reservationId),
+      );
     },
     readReobservationInputs: async ({ reservationId, transactionHash }) => {
       auditRead();
@@ -1110,13 +1112,16 @@ export const openInternal = async (
           throw new Error("prover transition consumes an unreserved input");
         }
         if (
-          !spendsEveryUncoveredAttempt(
-            uncoveredSuperseded(current.reservationId),
-            transitionInput.consumedOutRefs,
-          )
+          !excludesEveryUncoveredAttempt({
+            uncovered: uncoveredSuperseded(current.reservationId),
+            signedTransactionCborHex: transitionInput.signedTransactionCborHex,
+            reservedFundingOutRefs: current.activeInputs
+              .filter(({ role }) => role === "funding")
+              .map(({ outRef }) => outRef),
+          })
         )
           throw new Error(
-            "prover transition must spend an input of each superseded attempt",
+            "prover transition must share an input with each superseded attempt",
           );
         const transition = makeTransition(
           deriveSignedTransition({

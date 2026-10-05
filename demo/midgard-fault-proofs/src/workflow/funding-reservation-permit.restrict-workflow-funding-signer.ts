@@ -111,9 +111,57 @@ export const restrictWorkflowFundingSigner = ({
         }),
       });
       lucid.selectWallet.fromAPI(api);
+      const wallet = lucid.wallet();
+      requiredFundingInputs.set(lucid, () =>
+        // Only while this API is the wallet and an action is under way.
+        lucid.wallet() !== wallet || state.currentActionKind === undefined
+          ? []
+          : state.currentRequiredFundingOutRefs
+              .filter((outRef) => state.currentFundingOutRefs.includes(outRef))
+              .map((outRef) => state.resolvedInputs.get(outRef)!),
+      );
+      collectRequiredFundingInputs(lucid);
     },
   });
 };
+
+const requiredFundingInputs = new WeakMap<
+  LucidEvolution,
+  () => readonly UTxO[]
+>();
+const collectingLucids = new WeakSet<LucidEvolution>();
+
+/**
+ * Coin selection spends wallet inputs largest first and stops once it is
+ * covered, so offering a superseded attempt's input does not make a
+ * replacement spend it. Every transaction this Lucid builds while an action
+ * requires such inputs collects them explicitly, and coin selection tops up
+ * from the rest of the reserved pool when they do not cover fees or outputs.
+ */
+const collectRequiredFundingInputs = (lucid: LucidEvolution): void => {
+  if (collectingLucids.has(lucid)) return;
+  collectingLucids.add(lucid);
+  const newTx = lucid.newTx;
+  lucid.newTx = () => {
+    const builder = newTx();
+    const required = requiredFundingInputs.get(lucid)?.() ?? [];
+    if (required.length === 0) return builder;
+    const forced = new Set(required.map(outRefLabel));
+    const collectFrom = builder.collectFrom;
+    // A builder that collects one of these itself must not spend it twice.
+    builder.collectFrom = (utxos, redeemer) => {
+      if (redeemer !== undefined) return collectFrom(utxos, redeemer);
+      const rest = utxos.filter((utxo) => !forced.has(outRefLabel(utxo)));
+      return rest.length === 0 && utxos.length !== 0
+        ? builder
+        : collectFrom(rest);
+    };
+    return collectFrom([...required]);
+  };
+};
+
+const outRefLabel = ({ txHash, outputIndex }: UTxO): string =>
+  `${txHash}#${outputIndex.toString()}`;
 
 /** Test-only identity seam for runtime lifecycle tests that never build a tx. */
 export const unsafeCreateWorkflowFundingReservationPermitForTest = ({
@@ -194,6 +242,7 @@ export const unsafeCreateWorkflowFundingReservationPermitForTest = ({
     currentActionKind: undefined,
     currentActionDigest: undefined,
     currentFundingOutRefs: Object.freeze([]),
+    currentRequiredFundingOutRefs: Object.freeze([]),
     currentCollateralOutRefs: Object.freeze([]),
     pendingTransactionHash: undefined,
     preparedTransaction: undefined,

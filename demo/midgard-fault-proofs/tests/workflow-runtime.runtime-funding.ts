@@ -59,6 +59,7 @@ export const runtimeFunding = async (
       expectedRevision: string;
       releaseStaleInputs: boolean;
     }) => Promise<unknown>;
+    supersededAttemptFundingOutRefs?: readonly (readonly string[])[];
   }> = {},
 ) => {
   const actuation = await admittedActuation();
@@ -160,6 +161,12 @@ export const runtimeFunding = async (
         ? {}
         : { reobserve: options.reobserve }),
       releaseIdle,
+      ...(options.supersededAttemptFundingOutRefs === undefined
+        ? {}
+        : {
+            readSupersededAttemptFundingOutRefs: async () =>
+              options.supersededAttemptFundingOutRefs!,
+          }),
       ...(options.refreshIdle === undefined
         ? {}
         : { refreshIdle: options.refreshIdle }),

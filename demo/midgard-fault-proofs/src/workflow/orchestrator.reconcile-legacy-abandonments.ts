@@ -10,11 +10,13 @@ export const reconcileLegacyFraudProofAbandonments = async (
   journal: object,
   adapter: FraudProofFamilyWorkflowAdapter,
   append: (event: FraudProofWorkflowJournalEvent) => Promise<unknown>,
+  nowMs: number,
 ) =>
   await reconcileLegacyWorkflowFundingAbandonment({
     journal,
     entries: context.entries,
     append,
+    nowMs,
     reconcile: async ({ transition, handoff }) =>
       await adapter.reconcile({
         ...context,

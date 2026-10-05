@@ -80,6 +80,7 @@ import {
 import { assertWorkflowJournalReconciliation } from "./orchestrator.reconcile-legacy-abandonments.js";
 import { reconcileLegacyFraudProofAbandonments } from "./orchestrator.reconcile-legacy-abandonments.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
+import { supersededAttemptReadSchedule } from "./superseded-attempt-read-schedule.js";
 
 /**
  * Q51/W-O4 single-command core. Preparation, every submission intent,
@@ -293,6 +294,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       journal,
       adapter,
       append,
+      now().getTime(),
     );
     if (
       landed !== null &&
@@ -302,8 +304,10 @@ export const runAdmittedFraudProofWorkflow = async ({
         landed,
         append,
       }))
-    )
+    ) {
+      supersededAttemptReadSchedule.forget(landed.transition.transactionHash);
       continue;
+    }
     // The journal records submissions, not permanent progress. When the current
     // chain asks for an older action, reconcile that exact intent first. This
     // also covers restart after rollback without a separate per-family undo log.
