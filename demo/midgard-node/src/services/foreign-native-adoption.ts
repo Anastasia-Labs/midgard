@@ -23,6 +23,7 @@ import {
 } from "./foreign-native-adoption-projection.js";
 import { prepareForeignNativeReplay } from "./foreign-native-replay.js";
 import { reconcileLandedMergeConfirmedLedger } from "./history-landed-merge-ledger.js";
+import { retainedLocalNativeRoot } from "./history-local-native-root.js";
 import { Lucid } from "./lucid.js";
 import { MidgardContracts } from "./midgard-contracts.js";
 import type {
@@ -242,6 +243,23 @@ export const recoverForeignNativeAdoptions = (input: {
           const { durableRoot } = yield* promise(() =>
             input.owner.diagnostics(),
           );
+          // An all-local prefix has no foreign projection to adopt. A removed
+          // local native suffix belongs to the existing authenticated correction
+          // or signed-header disposition, including while its proof is pending.
+          if (
+            !base.importedBlocks.some((block) => block.kind === "foreign") &&
+            (durableRoot === base.root ||
+              (yield* retainedLocalNativeRoot({
+                base,
+                durableRoot,
+                ownerBinarySha256: input.ownerBinarySha256,
+              })))
+          ) {
+            yield* revalidateForeignCommitBase(base);
+            for (const request of requests)
+              yield* withHistoryWrite(Adoptions.discardRequest(request));
+            return;
+          }
           if (
             durableRoot === base.root &&
             (yield* withHistoryWrite(Adoptions.hasAppliedForeignBase(base)))

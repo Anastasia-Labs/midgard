@@ -1051,7 +1051,7 @@
   },
   {
     "file": "midgard-node/tests/attestation-timeout-reinclusion-emulator.test.ts",
-    "max": 530,
+    "max": 504,
     "reason": "Retained test registration \u201cresumes a rewind to a retained non-empty base interrupted after the native root moved and before reinclusion committed\u201d (70 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {

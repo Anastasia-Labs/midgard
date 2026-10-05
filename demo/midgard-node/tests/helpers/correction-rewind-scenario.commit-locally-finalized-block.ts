@@ -2,12 +2,15 @@ import { inspect } from "node:util";
 
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { SqlClient } from "@effect/sql";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import { expect, vi } from "vitest";
 
 import * as MutationJobs from "../../src/database/mutationJobs.js";
+import * as Pending from "../../src/database/pendingBlockFinalizations.js";
 import { Database } from "../../src/services/database.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../../src/services/history-commit-window.js";
+import { materializeConfirmedLedgerSnapshot } from "../../src/transactions/state-queue/confirmed-ledger-snapshot.js";
+import { withLocalBlockFinalizationJob } from "../../src/workers/utils/commit-submission.with-local-block-finalization-job.js";
 import {
   advanceEmulatorPastUnixTime,
   advanceHistoryAdmissionClock,
@@ -59,7 +62,12 @@ export type Lifecycle = Awaited<
 
 export type Handle = Pick<
   Lifecycle,
-  "fixture" | "lucidService" | "globals" | "production" | "synchronize"
+  | "fixture"
+  | "lucidService"
+  | "globals"
+  | "production"
+  | "synchronize"
+  | "runWithoutSynchronizing"
 >;
 
 export type Removal = Awaited<
@@ -204,8 +212,9 @@ export const commitLocallyFinalizedBlock = async (
     return finalizeLocally(h, committed.submittedHeaderHash);
   const headerHash = committed.submittedHeaderHash;
   await corruptLedgerDelta(headerHash);
-  // The commit worker retries a failed finalization while its block is live;
-  // two attempts fail the same way.
+  // Current verification refuses the corrupt journal before starting a job.
+  // Reproduce the historical failed job through its real job wrapper and
+  // authenticated materializer, while retaining the current worker's refusal.
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const outcome = await runLocalFinalization(h).then(
       (output) => output,
@@ -215,6 +224,36 @@ export const commitLocallyFinalizedBlock = async (
       }),
     );
     expect(outcome.type).not.toBe("SuccessfulLocalFinalizationRecoveryOutput");
+    await h
+      .runWithoutSynchronizing(
+        Effect.gen(function* () {
+          const journal = yield* Pending.retrieveByHeaderHash(
+            Buffer.from(headerHash, "hex"),
+          );
+          if (Option.isNone(journal))
+            return yield* Effect.fail(
+              new Error("Historical failed finalization lacks its journal"),
+            );
+          const record = journal.value;
+          return yield* withLocalBlockFinalizationJob(
+            {
+              headerHash,
+              mempoolTxCount: record.mempoolTxIds.length,
+              includedDepositCount: record.depositEventIds.length,
+              includedForcedTransactionCount:
+                record.forcedTransactionEventIds.length,
+              includedWithdrawalCount: record.withdrawalEventIds.length,
+            },
+            materializeConfirmedLedgerSnapshot(record),
+          );
+        }),
+      )
+      .then(
+        () => {
+          throw new Error("Invalid historical delta unexpectedly materialized");
+        },
+        () => undefined,
+      );
     const job = await readLocalFinalizationJob(headerHash);
     expect(
       job?.[MutationJobs.Columns.STATUS],
