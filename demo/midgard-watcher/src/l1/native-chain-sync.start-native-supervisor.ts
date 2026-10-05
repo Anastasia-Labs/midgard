@@ -13,6 +13,7 @@ import {
   productionSpawn,
   sha256,
 } from "./native-chain-sync.derive-watcher-native-genesis-identity.js";
+import { exactPointServiceSession } from "./native-chain-sync.exact-point-service.js";
 import {
   authorityDetails,
   authorityLiveness,
@@ -95,7 +96,14 @@ export const startNativeSupervisor = async (
     throw new Error("native chain-sync startup exceeds its byte bound");
   }
   input.signal?.throwIfAborted();
-  const child = (input.unsafeSpawnForTest ?? productionSpawn)(binaryPath);
+  // Exact-point queries are sessions of the persistent helper; a stream owns
+  // its helper process for the stream's whole lifetime.
+  const child = (
+    input.unsafeSpawnForTest ??
+    (input.operation.kind === "exact_point"
+      ? exactPointServiceSession
+      : productionSpawn)
+  )(binaryPath);
   const drainage = watcherNativeChildDrain(child);
   const eventProvenance = { active: true, generation: 0n };
   let revocationFailure: Error | undefined;

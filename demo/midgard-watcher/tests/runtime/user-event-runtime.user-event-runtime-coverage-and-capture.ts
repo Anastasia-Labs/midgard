@@ -153,6 +153,8 @@ describe("user-event runtime coverage and capture", () => {
       });
 
       // A real native rollback frame suspends the service between calls.
+      // Its recovery query is held so the suspension is observed, not raced.
+      await fixture.holdExactQueries(true);
       await fixture.rollbackNativeStream({
         blockHash: quietF.point.blockHash,
         blockNo: quietF.point.blockNo,
@@ -160,6 +162,7 @@ describe("user-event runtime coverage and capture", () => {
       });
       await expect.poll(() => runtime!.read().status).toBe("suspended");
       expect(() => assertWatcherUserEventRuntime(runtime!)).toThrow();
+      await fixture.holdExactQueries(false);
       await runtime.handleRollback({
         kind: "point",
         blockHash: quietF.point.blockHash,

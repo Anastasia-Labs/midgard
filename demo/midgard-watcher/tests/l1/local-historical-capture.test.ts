@@ -147,7 +147,7 @@ const fixture = async (options: FixtureOptions = {}) => {
   await writeFile(
     binaryPath,
     `#!${process.execPath}
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs"; if (process.argv[2] === "--exact-point-service") await import(${JSON.stringify(new URL("../support/native-exact-point-service-shim.mjs", import.meta.url).href)});
 const logPath = ${JSON.stringify(logPath)};
 const records = readFileSync(logPath, "utf8").trim().split("\\n").filter(Boolean).map(JSON.parse);
 const query = records.filter(x => x.kind === "start").length + 1;

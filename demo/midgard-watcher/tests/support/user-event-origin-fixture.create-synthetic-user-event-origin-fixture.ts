@@ -47,6 +47,7 @@ import {
   type SyntheticUserEventBlock,
   withFixtureCml,
 } from "./user-event-origin-fixture.make-config.js";
+import { syntheticNativeHelperScript } from "./user-event-origin-fixture.native-helper-script.js";
 
 export const createSyntheticUserEventOriginFixture = async (
   options: Readonly<{
@@ -173,8 +174,10 @@ export const createSyntheticUserEventOriginFixture = async (
     commands: StreamCommand[];
     closed: boolean;
     canonicalBranchSelected: boolean;
+    exactQueriesHeld: boolean;
   } = {
     canonicalBranchSelected: false,
+    exactQueriesHeld: false,
     mode: nativeTipMode,
     tip: {
       blockHash: createHash("sha256")
@@ -379,90 +382,15 @@ export const createSyntheticUserEventOriginFixture = async (
   await persistBlocks();
   await writeFile(
     binaryPath,
-    `#!${process.execPath}
-import { appendFileSync, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
-import { createInterface } from 'node:readline';
-const reader=createInterface({input:process.stdin,crlfDelay:Infinity});
-const line=await new Promise(resolve=>reader.once('line',resolve));
-const startup=JSON.parse(line);
-// The producer replaces these files atomically. Poll metadata every tick, but
-// parse growing block registries only when their file identity changes.
-const cachedJson=path=>{
-  let identity;
-  let value;
-  return ()=>{
-    const stat=statSync(path,{bigint:true});
-    const next=[stat.dev,stat.ino,stat.size,stat.mtimeNs,stat.ctimeNs].join(':');
-    if(next!==identity){
-      value=JSON.parse(readFileSync(path,'utf8'));
-      identity=next;
-    }
-    return value;
-  };
-};
-const readControl=cachedJson(${JSON.stringify(controlPath)});
-const readBlocks=cachedJson(${JSON.stringify(registryPath)});
-const initialControl=readControl();
-if(initialControl.closed) throw new Error('Synthetic fixture is closed');
-if(startup.operation.kind!=='exact_point'&&startup.operation.kind!=='stream') throw new Error('Unknown synthetic native operation');
-const exact=startup.operation.kind==='exact_point';
-const block=exact?readBlocks().find(block=>block.point.blockHash===startup.operation.target.blockHash):null;
-if(initialControl.canonicalBranchSelected) {
-  const requested=exact?startup.operation.target:startup.intersection;
-  const registered=requested.kind==='origin'||readBlocks().some(candidate=>candidate.point.blockHash===requested.blockHash||candidate.parentPoint.blockHash===requested.blockHash);
-  if(!registered||exact&&!block){process.stdout.write(JSON.stringify({code:'intersection_failed',kind:'error',schemaVersion:startup.schemaVersion})+'\\n');process.exit(1);}
-}
-if(exact&&!block) throw new Error('Unknown synthetic fixture block');
-let legacyTip;
-if(initialControl.mode==='query_counter') {
-  if(exact) {
-    const query=Number(readFileSync(${JSON.stringify(counterPath)},'utf8'))+1;
-    writeFileSync(${JSON.stringify(counterPath)},String(query));
-    legacyTip={kind:'point',blockHash:createHash('sha256').update('synthetic-tip-'+query).digest('hex'),blockNo:String(BigInt(block.point.blockNo)+BigInt(${nativeTipBaseDepth}+query)),slot:String(BigInt(block.point.slot)+BigInt(${Math.max(600, nativeTipBaseDepth)}+query))};
-    writeFileSync(${JSON.stringify(tipPath + ".next")}+process.pid,JSON.stringify(legacyTip));
-    renameSync(${JSON.stringify(tipPath + ".next")}+process.pid,${JSON.stringify(tipPath)});
-  } else {
-    legacyTip=existsSync(${JSON.stringify(tipPath)})?JSON.parse(readFileSync(${JSON.stringify(tipPath)},'utf8')):{kind:'point',...initialControl.tip};
-  }
-}
-const tipAt=control=>control.mode==='controlled'?{kind:'point',...control.tip}:legacyTip;
-const canonical=value=>Array.isArray(value)?value.map(canonical):value!==null&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value;
-const emit=value=>process.stdout.write(JSON.stringify(canonical(value))+'\\n');
-const emitBlock=(block,tip)=>emit({blockHash:block.point.blockHash,blockNo:block.point.blockNo,slot:block.point.slot,blockType:'7',kind:'roll_forward',prevHash:block.parentPoint.blockHash,rawBlockCbor:block.nativeBlock.rawBlockCbor,schemaVersion:startup.schemaVersion,tip});
-const startupDigest=createHash('sha256').update(line,'utf8').digest('hex');
-const tip=tipAt(initialControl);
-emit({authorityNodeId:startup.authorityNodeId,currentTip:tip,genesisIdentitySha256:startup.genesisIdentitySha256,kind:'ready',network:startup.network,networkMagic:startup.networkMagic,operation:startup.operation,schemaVersion:startup.schemaVersion,selectedIntersection:startup.intersection,socketPath:startup.socketPath,startupDigest});
-if(!exact&&${JSON.stringify(nativeStreamInitialAcknowledgement)})
-  emit({schemaVersion:startup.schemaVersion,kind:'roll_backward',point:startup.intersection,tip});
-if(exact) {
-  appendFileSync(${JSON.stringify(queryLogPath)},JSON.stringify({startupDigest,target:{blockHash:block.point.blockHash,blockNo:block.point.blockNo,slot:block.point.slot},tip:{blockHash:tip.blockHash,blockNo:tip.blockNo,slot:tip.slot}})+'\\n');
-  emitBlock(block,tip);
-}
-let position=startup.intersection;
-let commandCursor=initialControl.commands.length;
-setInterval(()=>{
-  const control=readControl();
-  if(control.closed) process.exit(0);
-  if(exact&&!control.canonicalBranchSelected) return;
-  const tip=tipAt(control);
-  while(commandCursor<control.commands.length) {
-    const command=control.commands[commandCursor++];
-    if(command.kind==='exit') {
-      process.stderr.write('Synthetic native stream exit requested\\n');
-      process.exit(command.exitCode);
-    }
-    position=command.point==='origin'?{kind:'origin'}:{kind:'point',blockHash:command.point.blockHash,slot:command.point.slot};
-    emit({schemaVersion:startup.schemaVersion,kind:'roll_backward',point:position,tip});
-  }
-  if(exact) return;
-  const blocks=readBlocks();
-  const next=position.kind==='origin'?blocks[0]:blocks.find(block=>block.parentPoint.blockHash===position.blockHash&&block.parentPoint.slot===position.slot);
-  if(!next||BigInt(next.point.blockNo)>BigInt(tip.blockNo)||BigInt(next.point.slot)>BigInt(tip.slot)) return;
-  emitBlock(next,tip);
-  position={kind:'point',blockHash:next.point.blockHash,slot:next.point.slot};
-},10);
-`,
+    syntheticNativeHelperScript({
+      controlPath,
+      registryPath,
+      counterPath,
+      tipPath,
+      queryLogPath,
+      nativeTipBaseDepth,
+      nativeStreamInitialAcknowledgement,
+    }),
   );
   await chmod(binaryPath, 0o700);
   class BoundarySocket extends EventTarget {
@@ -930,6 +858,11 @@ setInterval(()=>{
       kind: "rollback",
       point: point === "origin" ? point : snapshotTip(point),
     });
+  const holdExactQueries = (held: boolean) =>
+    changeControl(async () => {
+      control.exactQueriesHeld = held;
+      await persistControl();
+    });
   const exitNativeStream = (exitCode = 1) => {
     if (!Number.isSafeInteger(exitCode) || exitCode < 1 || exitCode > 255)
       throw new Error(
@@ -1046,6 +979,7 @@ setInterval(()=>{
     appendNativeBlock,
     growNativeTip,
     rollbackNativeStream,
+    holdExactQueries,
     selectCanonicalBranch,
     exitNativeStream,
     readNativeQueries,

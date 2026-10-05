@@ -289,6 +289,9 @@ not assume all old-fork inputs are available or hold all capital until finality.
 
 Local authority binds the Cardano node socket, node/genesis configuration, and
 genesis identity; the native chain-sync process provides ordered chain evidence.
+Exact-point queries run as framed sessions of one persistent helper process per
+binary (`--exact-point-service`); a helper crash, hang or protocol violation
+kills it and fails every in-flight query, and the next query starts a new one.
 Configured query services are subordinate to that authority. Authenticated
 rollback recovery and the independent trusted head protect durable replay.
 DA retrieval authenticates the configured peer and payload commitments.
