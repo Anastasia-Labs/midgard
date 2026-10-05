@@ -1,3 +1,5 @@
+import "./journey-authority-session-test-mock.js";
+
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -163,7 +165,6 @@ vi.mock("./workflow-binding-preflight.js", () => ({
     };
   },
 }));
-
 import { runAutonomousWatcherJourney } from "./journey-runner.js";
 import {
   captureJourneyWorkflowBaseline,
@@ -200,7 +201,6 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   await rm(state.runDirectory, { recursive: true, force: true });
 });
-
 it("keeps one observer and authenticated-history service lifetime across targets", async () => {
   const session = await openJourneySession(state.runDirectory);
   try {

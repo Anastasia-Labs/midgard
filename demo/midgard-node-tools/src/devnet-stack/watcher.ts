@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { authorityReadinessProbe } from "./authority-readiness.js";
 import { LOCAL_AUTHORITY_ID } from "./da.js";
 import type { DeployContext } from "./deploy.js";
 import { writeDurableFile, writeOnceFile } from "./durable.js";
@@ -11,6 +12,11 @@ import type { HistoryReadinessSpecification } from "./history-role-context.js";
 import { type Layout, type RunEnv, servicePorts } from "./layout.js";
 import type { HubOracleOneShot } from "./node-env.js";
 import type { ServiceSpec } from "./supervisor.js";
+import {
+  finishWatcherAuthorityProvisioning,
+  FRESH_AUTHORITY_PROFILE,
+  prepareWatcherAuthorityProvisioning,
+} from "./watcher-authority-provisioning.js";
 import {
   ensureHistoryProviders,
   HISTORY_ROLES,
@@ -41,15 +47,25 @@ const hex32 = () => randomBytes(32).toString("hex");
  * `watcherProver` / `watcherAvailability` identities; the three keys are
  * random and belong to this run only.
  */
-const ensureSecrets = (context: DeployContext) => {
+const ensureSecrets = (context: DeployContext, allowMissing: boolean) => {
   const { layout, identities } = context;
   const random = (name: string): SecretSource => {
     const path = layout.watcherSecret(name);
-    if (!existsSync(path)) writeDurableFile(path, hex32(), 0o600);
+    if (!existsSync(path)) {
+      if (!allowMissing)
+        throw new Error(
+          "established watcher secret is missing; it is never regenerated",
+        );
+      writeDurableFile(path, hex32(), 0o600);
+    }
     return { kind: "file", path };
   };
   const fixed = (name: string, value: string): SecretSource => {
     const path = layout.watcherSecret(name);
+    if (!existsSync(path) && !allowMissing)
+      throw new Error(
+        "established watcher secret is missing; it is never regenerated",
+      );
     writeOnceFile(path, value, 0o600);
     return { kind: "file", path };
   };
@@ -203,6 +219,7 @@ const configText = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 export const ensureWatcherRelease = async (
   context: DeployContext,
   oneShot: HubOracleOneShot,
+  initializeAuthority = false,
 ): Promise<void> => {
   const { layout, run, artifacts } = context;
   const manifest = readFinalizedManifest(layout);
@@ -213,7 +230,6 @@ export const ensureWatcherRelease = async (
     throw new Error(
       `${layout.contractManifest} belongs to another hub-oracle nonce`,
     );
-  mkdirSync(layout.watcherData, { recursive: true, mode: 0o700 });
   const watcher = await loadWatcherModule(layout);
   const identity = await ensureWatcherReleaseBundle(layout, watcher, manifest);
   const releaseFinality = await watcher
@@ -225,7 +241,12 @@ export const ensureWatcherRelease = async (
     releaseFinality,
     manifest.manifestId,
   );
-  const secrets = ensureSecrets(context);
+  const secrets = Object.fromEntries(
+    Object.entries(SECRETS).map(([name, file]) => [
+      name,
+      { kind: "file" as const, path: layout.watcherSecret(file) },
+    ]),
+  ) as Record<keyof typeof SECRETS, SecretSource>;
   const paths = releasePaths(layout);
   const { authority, operations } = endpoints(run);
 
@@ -245,14 +266,30 @@ export const ensureWatcherRelease = async (
     schemaVersion:
       watcher.WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
     policy,
+    liveRecordLimit: FRESH_AUTHORITY_PROFILE.liveRecordLimit,
     directory: join(layout.watcherData, "trusted-head"),
     endpoint: authority,
     recordAuthenticationKeySource: secrets.record,
     httpBearerSecretSource: secrets.bearer,
   };
-  watcher.parseWatcherTrustedHeadAuthorityProcessConfig(
+  const authorityConfig = watcher.parseWatcherTrustedHeadAuthorityProcessConfig(
     JSON.parse(JSON.stringify(authorityInput)),
   );
+  const descriptorPath = join(layout.watcher, "authority-provisioning.json");
+  const prepared = prepareWatcherAuthorityProvisioning({
+    config: authorityConfig,
+    descriptorPath,
+    secretPaths: Object.values(secrets).map((source) => source.path),
+    protectedPaths: [
+      layout.watcherRuntimeConfig,
+      layout.watcherAuthorityConfig,
+      layout.watcherProcessConfig,
+      layout.watcherData,
+    ],
+    initialize: initializeAuthority,
+  });
+  ensureSecrets(context, prepared.allowMissingSecrets);
+  mkdirSync(layout.watcherData, { recursive: true, mode: 0o700 });
   const processInput = {
     schemaVersion: watcher.WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
     watcherConfig: watcherInput,
@@ -281,6 +318,13 @@ export const ensureWatcherRelease = async (
   writeOnceFile(layout.watcherRuntimeConfig, configText(watcherInput));
   writeOnceFile(layout.watcherAuthorityConfig, configText(authorityInput));
   writeOnceFile(layout.watcherProcessConfig, configText(processInput));
+  await finishWatcherAuthorityProvisioning({
+    prepared,
+    config: authorityConfig,
+    configPath: layout.watcherAuthorityConfig,
+    descriptorPath,
+    cliPath: join(layout.watcherRoot, "dist/cli.js"),
+  });
 };
 
 const WATCHER_ENV = {
@@ -348,6 +392,7 @@ export const watcherServiceSpecs = (
   return [
     {
       name: "watcher-authority",
+      readyProbe: authorityReadinessProbe(layout, run),
       command: process.execPath,
       args: [cli, "authority", "--config", layout.watcherAuthorityConfig],
       cwd: layout.watcherRoot,
@@ -379,7 +424,7 @@ export const watcherServiceSpecs = (
       cwd: layout.watcherRoot,
       env: { ...WATCHER_ENV, ...historyTransportEnvironment(layout, run) },
       healthUrl: `${operations}/v1/status`,
-      readyUrl: `${operations}/v1/status`,
+      readyUrl: `${operations}/readyz`,
       startGraceMs: 60 * 60_000,
       prestart: () => authorityAnswers(layout, run),
     },
