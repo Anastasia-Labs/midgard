@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  publicProfiles,
+  testingProfiles,
+  withDelayAtFloor,
+} from "./deployment-profiles.test-helpers.mjs";
+import {
   daBondWithdrawDelayFloorMs,
   emulatorOnlyProfileNames,
   generateProfiles,
@@ -346,17 +351,6 @@ test("dispute schedule accepts the exact half-maturity bound", () => {
     /Dispute schedule/u,
   );
 });
-
-const publicProfiles = ["mainnet", "preprod-public"];
-const testingProfiles = ["preprod-testing", "local-devnet-testing"];
-// Moves the withdrawal delay onto its enforced floor, so a test can vary one
-// timing input without also tripping the delay relation.
-const withDelayAtFloor = (profile) => {
-  profile.timing.da_bond_withdraw_delay_ms = daBondWithdrawDelayFloorMs(
-    profile.timing,
-  );
-  return profile;
-};
 
 test("every profile carries the pooled DA bond amounts and timing, rendered into env", () => {
   const profiles = readProfiles();
