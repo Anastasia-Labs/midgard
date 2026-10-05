@@ -188,7 +188,11 @@ it("starts one actual async handler while timed-out valid challenges are drained
     expect(await first).toBeNull();
     for (let i = 0; i < 20; i++)
       expect(await client.request(null, 2)).toBeNull();
-    await new Promise((r) => setTimeout(r, 150));
+    // The one handler finishes its 200 ms answer on the child's clock; wait
+    // for its report rather than a fixed delay a slow runner can miss.
+    const deadline = Date.now() + 5000;
+    while (counts.length < 2 && Date.now() < deadline)
+      await new Promise((r) => setTimeout(r, 10));
     expect(counts).toEqual([
       { active: 1, started: 1 },
       { active: 0, started: 1 },

@@ -10,10 +10,13 @@ const prefix = process.env.MIDGARD_TEST_DATABASE_PREFIX;
 if (prefix === undefined || !/^[a-z][a-z0-9_]*$/u.test(prefix))
   throw new Error("payout SQL probe requires a safe unique test prefix");
 const database = `${prefix}_sql_${process.pid}`;
+// CI runs Postgres on POSTGRES_PORT (5432); the local test server is 5433.
+const host = process.env.POSTGRES_HOST ?? "127.0.0.1";
+const port = Number(process.env.POSTGRES_PORT ?? "5433");
 const deployment = "33".repeat(32);
 const maintenance = postgres({
-  host: "127.0.0.1",
-  port: 5433,
+  host,
+  port,
   user: "postgres",
   password: "postgres",
   database: "postgres",
@@ -21,8 +24,8 @@ const maintenance = postgres({
   onnotice: () => {},
 });
 const sql = postgres({
-  host: "127.0.0.1",
-  port: 5433,
+  host,
+  port,
   user: "postgres",
   password: "postgres",
   database,
@@ -30,7 +33,7 @@ const sql = postgres({
   onnotice: () => {},
 });
 const run = {
-  postgresPort: 5433,
+  postgresPort: port,
   postgresUser: "postgres",
   postgresPassword: "postgres",
   postgresDatabase: database,
