@@ -13,7 +13,6 @@ import {
 import {
   CML,
   Data,
-  getAddressDetails,
   PROTOCOL_PARAMETERS_DEFAULT,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -57,24 +56,16 @@ import {
   SCRIPT_SOURCES_OBSERVER_YIELD_ROLES,
 } from "../../../src/validation-dispute/script-sources-yields.js";
 import { submitInit } from "../legacy-submit-emulator.js";
-import {
-  alwaysSucceedsBlueprintPath,
-  network,
-  readBlueprint,
-  realBlueprintPath,
-} from "./blueprints.js";
-import { buildCatalogueDeploymentInfo } from "./catalogue.js";
-import { buildMinimalFaultProofContracts } from "./contracts.js";
+import { network } from "./blueprints.js";
+import { branchDisputeDeployPrefix } from "./dispute-prefix.js";
 import {
   createRealL1TargetLucids,
-  createValidationDisputeParties,
   stageAuthenticatedValidationDisputePublication,
   withRealL1MaxTxSize,
 } from "./dispute-staging.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   expectSingleUtxoWithUnit,
-  registerPhasMembershipRewardAccount,
   runEmulatorLifecycleStage,
 } from "./emulator-context.js";
 import {
@@ -87,11 +78,8 @@ import {
   PHASE_A_ITEM_YIELD_SPECS,
   preparePhaseAItemCarriage,
 } from "./phase-a-item-carriage.js";
-import { createReferenceScriptPublisher } from "./reference-script-publisher.js";
 import {
   publishAuthenticatedValidationDisputeControl,
-  publishFaultProofWitnessReferenceScripts,
-  publishOperatorLifecycleReferenceScripts,
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
 } from "./reference-scripts.js";
@@ -177,9 +165,10 @@ export const runForcedValidationDisputeScenario = async (
     scriptSourcesItemMaximum ||
     signatureItemMaximum ||
     canonicalItemMaximum;
-  const realBlueprint = readBlueprint(realBlueprintPath);
-  const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
+  // The scenario-independent deploy prefix is built once per test file and
+  // branched here; see dispute-prefix.ts.
   const {
+    realBlueprint,
     emulator,
     operator,
     challenger,
@@ -188,62 +177,14 @@ export const runForcedValidationDisputeScenario = async (
     operatorSigner,
     challengerSigner,
     validityRange,
-  } = await createValidationDisputeParties();
-
-  if (onSubmittedTransaction !== undefined) {
-    const submit = emulator.submitTx.bind(emulator);
-    emulator.submitTx = async (transaction) => {
-      const hash = await submit(transaction);
-      onSubmittedTransaction(
-        measureCompleteSignedTransaction(transaction),
-        transaction,
-      );
-      return hash;
-    };
-  }
-  await registerPhasMembershipRewardAccount(operatorLucid, realBlueprint);
-  const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
-    await createReferenceScriptPublisher(operatorLucid, emulator.now());
-  const baseContracts = {
-    ...(await buildMinimalFaultProofContracts(
-      realBlueprint,
-      alwaysBlueprint,
-      nonceUtxo,
-      {
-        referenceScriptAuthPolicyId: referenceScriptAuth.policyId,
-        realValidationTraceDispute: true,
-        alwaysFraudProofCatalogue: true,
-      },
-    )),
+    nonceUtxo,
     referenceScriptAuth,
     referenceScriptPublisher,
-  };
-  // Publish the four directory validators before operator setup samples time.
-  const contracts = {
-    ...baseContracts,
-    operatorLifecycleReferenceScripts:
-      await publishOperatorLifecycleReferenceScripts({
-        lucid: challengerLucid,
-        contracts: baseContracts,
-      }),
-  };
-  const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
-  const witnessReferenceScripts =
-    await publishFaultProofWitnessReferenceScripts({
-      lucid: challengerLucid,
-      realBlueprint,
-      computationThreadMintingScript: contracts.computationThread.mintingScript,
-      fraudProofMintingScript: contracts.fraudProof.mintingScript,
-    });
-  const operatorPaymentCredential = getAddressDetails(
-    await operatorLucid.wallet().address(),
-  ).paymentCredential;
-  if (
-    operatorPaymentCredential === undefined ||
-    operatorPaymentCredential.type !== "Key"
-  ) {
-    throw new Error("Expected operator wallet to expose a payment key hash");
-  }
+    contracts,
+    catalogue,
+    witnessReferenceScripts,
+    operatorPaymentKeyHash,
+  } = await branchDisputeDeployPrefix(onSubmittedTransaction);
   const headerStartTime =
     alignUnixTimeToEmulatorSlotBoundary(
       operatorLucid,
@@ -283,7 +224,7 @@ export const runForcedValidationDisputeScenario = async (
           },
         }
       : {}),
-    operatorVkey: operatorPaymentCredential.hash,
+    operatorVkey: operatorPaymentKeyHash,
     now: headerStartTime,
   });
   emulator.awaitSlot(
