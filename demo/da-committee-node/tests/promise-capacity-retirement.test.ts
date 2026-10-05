@@ -85,18 +85,24 @@ const fixture = async () => {
   };
 };
 describe("durable recovery-safe capacity release", () => {
-  it("retains at2160 blocks AFTER cutoff inclusion, releases at2161 and reconstructs its protected floor on restart", async () => {
+  it("releases at the observed cutoff, certifies only beyond 2160 blocks and reconstructs its protected floor on restart", async () => {
     const f = await fixture();
-    expect(await f.run()).toEqual(new Set());
+    const certifiedAt = async () =>
+      (await f.getStore().getPromiseCapacityEvidence(f.key))?.certifiedAt;
+    // Confirmed but unretired: the observation alone releases capacity.
+    expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
     const captured = await f.getStore().getPromiseCapacityEvidence(f.key);
     expect(captured).toMatchObject({
       point: f.getBoundary(),
       retirementKind: "open_cutoff",
     });
+    expect(await certifiedAt()).toBeUndefined();
     f.setBoundary({ slot: 2260, blockNo: 2260, blockHash: "78".repeat(32) });
-    expect(await f.run()).toEqual(new Set());
+    expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
+    expect(await certifiedAt()).toBeUndefined();
     f.setBoundary({ slot: 2261, blockNo: 2261, blockHash: "9a".repeat(32) });
     expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
+    expect((await certifiedAt())?.blockNo).toBe(2261);
     await f.reopen();
     expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
     // The certified floor is monotonic even after the current tip becomes shallow.
@@ -107,7 +113,7 @@ describe("durable recovery-safe capacity release", () => {
         ?.blockNo,
     ).toBe(2261);
   });
-  it("does not capture early time or active state; a later shallow Close starts a new full horizon", async () => {
+  it("does not capture early time or active state; a later shallow Close releases at once and starts a new certification horizon", async () => {
     const f = await fixture();
     f.setBoundary({ slot: 99, blockNo: 99, blockHash: "56".repeat(32) });
     expect(await f.run()).toEqual(new Set());
@@ -121,16 +127,19 @@ describe("durable recovery-safe capacity release", () => {
       await f.getStore().getPromiseCapacityEvidence(f.key),
     ).toBeUndefined();
     f.setLiability({ ...liability, hasActiveChallenge: false });
-    expect(await f.run()).toEqual(new Set());
+    expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
     expect(
       (await f.getStore().getPromiseCapacityEvidence(f.key))?.point.blockNo,
     ).toBe(3000);
     f.setBoundary({ slot: 3001, blockNo: 3001, blockHash: "9a".repeat(32) });
-    expect(await f.run()).toEqual(new Set());
+    expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
+    expect(
+      (await f.getStore().getPromiseCapacityEvidence(f.key))?.certifiedAt,
+    ).toBeUndefined();
   });
-  it("reanchors an owned shallow orphan and retains work after within-k Open restoration", async () => {
+  it("reanchors an owned shallow orphan, charges it while a within-k Open restores a challenge and releases it at the reanchored cutoff", async () => {
     const f = await fixture();
-    await f.run();
+    expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
     f.setAbsent(true);
     f.setBoundary({ slot: 110, blockNo: 110, blockHash: "78".repeat(32) });
     f.setLiability({ ...liability, hasActiveChallenge: true });
@@ -139,10 +148,34 @@ describe("durable recovery-safe capacity release", () => {
       (await f.getStore().getPromiseCapacityEvidence(f.key))?.point.blockNo,
     ).toBe(100);
     f.setLiability({ ...liability, hasActiveChallenge: false });
-    expect(await f.run()).toEqual(new Set());
+    expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
     expect(
       (await f.getStore().getPromiseCapacityEvidence(f.key))?.point.blockNo,
     ).toBe(110);
+    expect(
+      (await f.getStore().getPromiseCapacityEvidence(f.key))?.certifiedAt,
+    ).toBeUndefined();
+  });
+  it("charges a released promise again when a rollback within k returns the chain before its cutoff", async () => {
+    const f = await fixture();
+    expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
+    // The new fork is shallower than k and its tip precedes the cutoff.
+    f.setAbsent(true);
+    f.setBoundary({ slot: 99, blockNo: 99, blockHash: "78".repeat(32) });
+    expect(await f.run()).toEqual(new Set());
+    expect(
+      (await f.getStore().getPromiseCapacityEvidence(f.key))?.point.blockNo,
+    ).toBe(100);
+    // Its cutoff is observed again on the new fork.
+    f.setBoundary({ slot: 101, blockNo: 101, blockHash: "9a".repeat(32) });
+    expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
+    expect(await f.getStore().getPromiseCapacityEvidence(f.key)).toMatchObject({
+      point: { blockNo: 101, blockHash: "9a".repeat(32) },
+      retirementKind: "open_cutoff",
+    });
+    expect(
+      (await f.getStore().getPromiseCapacityEvidence(f.key))?.certifiedAt,
+    ).toBeUndefined();
   });
   it("persists a crossed certified floor and refuses after restart or a healthy-looking return", async () => {
     const f = await fixture();
@@ -222,7 +255,7 @@ describe("durable recovery-safe capacity release", () => {
       ),
     ).rejects.toThrow("protected capacity rollback floor");
   });
-  it("uses a freshly authenticated k-safe terminal point before Open cutoff, with the same protected floor", async () => {
+  it("releases at a freshly authenticated terminal point before Open cutoff, and certifies it with the same protected floor", async () => {
     const f = await fixture();
     const terminal = { slot: 90, blockNo: 90, blockHash: "56".repeat(32) };
     f.setLiability({
@@ -231,12 +264,16 @@ describe("durable recovery-safe capacity release", () => {
       terminalPoint: terminal,
     });
     f.setBoundary({ slot: 2250, blockNo: 2250, blockHash: "78".repeat(32) });
-    expect(await f.run()).toEqual(new Set());
-    f.setBoundary({ slot: 2251, blockNo: 2251, blockHash: "9a".repeat(32) });
     expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
     expect(
-      (await f.getStore().getPromiseCapacityEvidence(f.key))?.retirementKind,
-    ).toBe("terminal");
+      (await f.getStore().getPromiseCapacityEvidence(f.key))?.certifiedAt,
+    ).toBeUndefined();
+    f.setBoundary({ slot: 2251, blockNo: 2251, blockHash: "9a".repeat(32) });
+    expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
+    expect(await f.getStore().getPromiseCapacityEvidence(f.key)).toMatchObject({
+      retirementKind: "terminal",
+      certifiedAt: { blockNo: 2251 },
+    });
     f.setAbsent(true);
     await expect(f.run()).rejects.toThrow(
       "protected promise capacity rollback floor",

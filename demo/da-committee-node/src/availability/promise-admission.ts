@@ -212,7 +212,8 @@ const active = (
       responseDeadlineMs: scalar(challenge.record.datum.response_deadline),
     };
   // Shallow publications/settlements can roll back. Reserve their complete
-  // signed demand until a k-safe terminal or cutoff retires the promise.
+  // signed demand until the cutoff or terminal is observed on the selected
+  // chain, which releases the promise (promise-cutoff-source.ts).
   return {
     ...potential(commitment, config),
     kind: publications === 0 ? "potential" : "active",

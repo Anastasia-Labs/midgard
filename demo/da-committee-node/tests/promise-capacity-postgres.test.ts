@@ -47,7 +47,7 @@ const open = async (url: string) => {
 };
 
 describe("Postgres durable promise capacity evidence", () => {
-  it("initializes its schema, certifies only beyond k, and reconstructs exact bindings and protected floor on restart", async () => {
+  it("initializes its schema, releases at the observed cutoff, certifies only beyond k, and reconstructs exact bindings and protected floor on restart", async () => {
     const database = await databases.create();
     let store = await open(database.url);
     await store.saveL1SourceState(source);
@@ -66,9 +66,17 @@ describe("Postgres durable promise capacity evidence", () => {
         readCanonicalPoint: async (point) => ({ point, tip: boundary }),
         assertCurrent: async () => {},
       });
-    expect(await run()).toEqual(new Set());
+    const certifiedAt = async () =>
+      (
+        await store.getPromiseCapacityEvidence(
+          promiseCapacityEvidenceKey(record),
+        )
+      )?.certifiedAt;
+    expect(await run()).toEqual(new Set([record.commitmentDigest]));
+    expect(await certifiedAt()).toBeUndefined();
     boundary = { slot: 2260, blockNo: 2260, blockHash: "9a".repeat(32) };
-    expect(await run()).toEqual(new Set());
+    expect(await run()).toEqual(new Set([record.commitmentDigest]));
+    expect(await certifiedAt()).toBeUndefined();
     boundary = { slot: 2261, blockNo: 2261, blockHash: "bc".repeat(32) };
     expect(await run()).toEqual(new Set([record.commitmentDigest]));
     await store.close();

@@ -144,6 +144,7 @@ export const retiredPromiseCutoffs = async (
           { ...identity, retirementKind: "open_cutoff", point: selected.point },
           promiseCapacityPointId(evidence.point),
         );
+        retired.add(liability.commitmentDigest);
       }
       continue;
     }
@@ -162,17 +163,21 @@ export const retiredPromiseCutoffs = async (
       retired.add(liability.commitmentDigest);
       continue;
     }
-    if (
-      liability.hasActiveChallenge ||
-      selected.tip.blockNo - evidence.point.blockNo <= args.recoveryDepth
-    )
-      continue;
+    if (liability.hasActiveChallenge) continue;
     if (
       evidence.retirementKind === "terminal" &&
       (liability.terminalPoint === undefined ||
         promiseCapacityPointId(liability.terminalPoint) !==
           promiseCapacityPointId(evidence.point))
     )
+      continue;
+    // Capacity is released once the cutoff or terminal is observed on the
+    // selected chain. Certification past the recovery depth is bookkeeping
+    // for store retirement and never holds new signing. A rollback of an
+    // uncertified observation charges the promise again above until the
+    // cutoff is observed on the new chain.
+    retired.add(liability.commitmentDigest);
+    if (selected.tip.blockNo - evidence.point.blockNo <= args.recoveryDepth)
       continue;
     const certified: PromiseCapacityEvidence = {
       ...evidence,
@@ -182,7 +187,6 @@ export const retiredPromiseCutoffs = async (
       certified,
       promiseCapacityPointId(evidence.point),
     );
-    retired.add(liability.commitmentDigest);
   }
   await args.assertCurrent();
   return retired;
