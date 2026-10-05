@@ -198,33 +198,36 @@ const workspaceBundleGuard = fileURLToPath(
  * used to have Vite transform and evaluate the whole workspace graph it
  * reaches, module by module, over the worker RPC — 2,300–2,600 modules for a
  * file that touches the fault-proofs barrel, most of a file's start-up time.
- * Here the workspace packages the suite depends on are bundled by esbuild ONCE
- * per run and each fork imports the bundle natively.
+ * Here the workspace code the suite reaches, this package's own `src/`
+ * included, is bundled by esbuild ONCE per run and each fork imports the
+ * bundle natively. Only the test files and this package's `tests/` directory
+ * (the source region) still load module by module.
  *
  * What still holds: the bundle is built from current source (the
  * `midgard-source` targets), never from a dist, and it is keyed by the full
  * contents of every bundled package directory and the lockfile, so no edit can
  * be served a stale bundle (`workspace-bundle.js`). Dependency imports inside
  * the bundle are resolved by the same Vite resolver the source-mode run uses,
- * so bundled and unbundled code share one instance of every dependency. The
- * code under test (this package) is never bundled, nor is any package whose
- * runtime closure contains it.
+ * so bundled and unbundled code share one instance of every dependency.
  *
  * What a bundle changes, and how each is held:
- * - A `vi.mock` of anything outside this package, and `vi.resetModules`, no
- *   longer reach bundled code. Files using them (directly or through local
- *   helpers) are routed to the source project; `workspace-bundle-guard.js`
- *   fails any file the routing misses.
- * - A file that would load a bundled module from source as well (a relative
- *   import into another package, or a test-support entry that cannot be
- *   bundled) would see two instances of it. Those files are routed to the
- *   source project too, and the bundle plugin fails any load it misses.
+ * - A `vi.mock` of anything outside the source region (a package, a builtin,
+ *   or this package's `src/`), a `vi.spyOn` on a bundled module's namespace,
+ *   and `vi.resetModules` no longer reach bundled code. Files using them
+ *   (directly or through local helpers) are routed to the source project;
+ *   `workspace-bundle-guard.js` fails any mock or reset the routing misses.
+ * - A file that would load a bundled module from source as well (an entry
+ *   that cannot be bundled because it reaches back into the source region)
+ *   would see two instances of it. Those files are routed to the source
+ *   project too, and the bundle plugin fails any load it misses.
+ * - Circular imports: bundled modules evaluate in esbuild's order, as native
+ *   ESM does; a cycle that only worked under vite-node's partial exports
+ *   fails loudly (a TDZ ReferenceError), never silently.
  * - Bundling renames colliding identifiers; `keepNames` keeps `.name`.
  * - Only Vite plugins of this project that transform workspace source would
  *   be skipped by the bundle, so never wrap a project that has one (the
  *   interactive-emulator projects rewrite a midgard-core module and stay
  *   source-mode).
- *
  * - A `globalSetup` that imports a bundled package must be declared on the
  *   project passed here, not on the root config, so the analysis sees it and
  *   serves that import from the bundle too; otherwise the bundle plugin
@@ -271,7 +274,10 @@ export const workspaceBundleProjects = (project, { packageDirectory }) => {
         ...test,
         exclude: [...exclude, ...routed],
         setupFiles: [workspaceBundleGuard, ...(test.setupFiles ?? [])],
-        env: { ...test.env, MIDGARD_WORKSPACE_BUNDLE_SELF: analysis.self },
+        env: {
+          ...test.env,
+          MIDGARD_WORKSPACE_BUNDLE_SOURCE_ROOT: analysis.sourceRoot,
+        },
       },
     },
     ...(routed.length === 0

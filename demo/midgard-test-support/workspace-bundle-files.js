@@ -42,27 +42,6 @@ export const workspacePackages = () => {
   return packages;
 };
 
-const runtimeClosure = (packages, name, found = new Set()) => {
-  if (found.has(name) || !packages.has(name)) return found;
-  found.add(name);
-  for (const dependency of packages.get(name).dependencies)
-    runtimeClosure(packages, dependency, found);
-  return found;
-};
-
-/**
- * The packages that may be bundled for a suite of package `self`: every
- * workspace package except `self`, except any package whose runtime closure
- * contains `self` (its bundle would carry a second copy of the code under
- * test). What a run actually bundles is the subset its test files reach.
- */
-export const bundleablePackages = (packages, self) =>
-  new Set(
-    [...packages.keys()].filter(
-      (name) => name !== self && !runtimeClosure(packages, name).has(self),
-    ),
-  );
-
 export const packageOfFile = (packages, file) => {
   for (const pkg of packages.values())
     if (

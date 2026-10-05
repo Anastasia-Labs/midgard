@@ -81,16 +81,9 @@ creates a randomly named database per test instead. See the identity with
 ## Suites that need a built dist
 
 Vitest resolves the workspace packages to `src/` through the `midgard-source`
-export condition (`midgardSourceSsr` in `demo/midgard-test-support/vitest.js`).
-Plain `node` does not: it follows the `import` condition to `dist/`. So
-anything a suite runs outside vitest needs dist built first.
-
-A single run (`vitest run`, CI, non-interactive stdin) loads the other
-workspace packages from a per-run esbuild bundle of that same source
-(`workspaceBundleProjects`), not module by module. Files that mock a workspace
-package, spy on its namespace or reset modules run in the `<name>:source`
-project instead. `MIDGARD_TEST_WORKSPACE_BUNDLE=0` forces plain source mode;
-`MIDGARD_TEST_WORKSPACE_BUNDLE_REPORT=1` prints the routing.
+export condition, and a single run bundles that source ([the workspace
+bundle](references/running-suites.md#the-workspace-bundle)). Plain `node`
+follows the `import` condition to `dist/`, so code run outside vitest needs it.
 
 `contrib prepare` expands declared pretest builds and their runtime dependency
 closure in order. Node suites need their bundled workers; tooling also needs

@@ -109,3 +109,18 @@ switching branches leaves both describing the old sources.
   | `midgard-node-tools` suites                 | `pnpm --dir demo/midgard-node-tools run pretest`      |
   | what `doctor` reports as a missing dist     | `pnpm --dir demo --filter <package name> run build`   |
   | every package                               | `pnpm --dir demo build` (checks profiles, builds all) |
+
+## The workspace bundle
+
+A single run (`vitest run`, CI, non-interactive stdin) loads all workspace
+code outside the package's own `tests/`, its own `src/` included, from a
+per-run esbuild bundle of that same source (`workspaceBundleProjects` in
+`demo/midgard-test-support/vitest.js`); `tests/` loads module by module. The
+bundle's key covers every byte it could read, so an edited source file means a
+new bundle. Watch mode never bundles.
+
+- Files that mock code outside `tests/`, spy on its namespace or reset modules
+  run in the `<name>:source` project. A computed mock or import the routing
+  misses fails by name instead of passing. [runtime: workspace-bundle-guard.js]
+- `MIDGARD_TEST_WORKSPACE_BUNDLE=0` forces plain source mode, `=1` forces the
+  bundle; `MIDGARD_TEST_WORKSPACE_BUNDLE_REPORT=1` prints the routing.

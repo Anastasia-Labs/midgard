@@ -39,20 +39,26 @@ const BUNDLE_SCHEMA = "midgard-test-bundle/v1";
 /** Bundles not used for this long are pruned when a new one is published. */
 const PRUNE_AFTER_MS = 24 * 60 * 60 * 1000;
 
-const hashTree = (hash, directory) => {
+const hashTree = (hash, directory, hashed) => {
   const walk = (current) => {
-    for (const entry of readdirSync(current, { withFileTypes: true }).sort(
+    const entries = readdirSync(current, { withFileTypes: true }).sort(
       (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
-    )) {
+    );
+    // A Cargo crate's build output is rewritten by every build (global setup
+    // builds the native owner binary) and is never bundled code.
+    const crate = entries.some((entry) => entry.name === "Cargo.toml");
+    for (const entry of entries) {
       if (
         entry.name === "node_modules" ||
         entry.name === "dist" ||
-        entry.name.startsWith(".")
+        entry.name.startsWith(".") ||
+        (crate && entry.name === "target")
       )
         continue;
       const path = join(current, entry.name);
       if (entry.isDirectory()) walk(path);
       else if (entry.isFile()) {
+        hashed.add(relative(demoDirectory, path));
         hash.update(`${relative(demoDirectory, path)}\0`);
         hash.update(readFileSync(path));
         hash.update("\0");
@@ -68,12 +74,12 @@ const esbuildVersion = async () => (await import("esbuild")).version;
  * Bundle `entries` (specifier -> source file) into a content-addressed
  * directory and return specifier -> bundled file.
  *
- * The key covers the full contents of every bundleable package directory (not
- * just the files a previous build read, so a newly added file that changes
- * resolution changes the key), the lockfile, the esbuild version and every
- * option below. A changed byte anywhere means a new bundle, never a reused
- * one; the directory is published by an atomic rename, so concurrent runs
- * either build the same content or reuse a complete one.
+ * The key covers this file's own text, the full contents of every bundleable
+ * package directory (not just the files a previous build read, so a newly
+ * added file that changes resolution changes the key), the lockfile, the
+ * esbuild version and every option below. A changed byte anywhere means a new
+ * bundle, never a reused one; the directory is published by an atomic rename,
+ * so concurrent runs either build the same content or reuse a complete one.
  */
 export const buildWorkspaceBundle = async ({
   analysis,
@@ -82,15 +88,17 @@ export const buildWorkspaceBundle = async ({
   resolveExternal,
 }) => {
   const packages = workspacePackages();
-  const bundled = new Set(analysis.bundleable);
   const started = performance.now();
   const version = await esbuildVersion();
   const options = { target, conditions, version, schema: BUNDLE_SCHEMA };
   const hash = createHash("sha256");
   hash.update(JSON.stringify({ options, entries: [...analysis.entries] }));
+  // This file's own text decides how the bundle is built.
+  hash.update(readFileSync(new URL(import.meta.url)));
   hash.update(readFileSync(join(demoDirectory, "pnpm-lock.yaml")));
+  const hashed = new Set();
   for (const name of [...analysis.bundleable].sort())
-    hashTree(hash, packages.get(name).directory);
+    hashTree(hash, packages.get(name).directory, hashed);
   const key = hash.digest("hex").slice(0, 32);
   const directory = join(bundleRoot, key);
   const manifestPath = join(directory, "manifest.json");
@@ -126,6 +134,9 @@ export const buildWorkspaceBundle = async ({
       format: "esm",
       platform: "node",
       target,
+      // The bundle runs as native ESM, where top-level await is supported;
+      // `target` only lowers syntax.
+      supported: { "top-level-await": true },
       conditions,
       mainFields: ["module", "jsnext:main", "jsnext", "main"],
       outExtension: { ".js": ".mjs" },
@@ -160,7 +171,9 @@ export const buildWorkspaceBundle = async ({
                 dirname: dirname(args.path),
               });
               return {
-                contents: `const __midgardSourceImportMeta = ${meta};\n${text.replace(/\bimport\.meta\b/gu, "__midgardSourceImportMeta")}`,
+                // Same line as the source's first, so line numbers hold; a
+                // shebang is only legal as the very first bytes, so it goes.
+                contents: `const __midgardSourceImportMeta = ${meta};${text.replace(/^#!.*/u, "").replace(/\bimport\.meta\b/gu, "__midgardSourceImportMeta")}`,
                 loader: /\.tsx$/u.test(args.path)
                   ? "tsx"
                   : /\.m?ts$/u.test(args.path)
@@ -178,7 +191,7 @@ export const buildWorkspaceBundle = async ({
                   : resolveRelative(args.importer, args.path);
                 if (target === undefined) return undefined;
                 const owner = packageOfFile(packages, target);
-                if (owner !== undefined && !bundled.has(owner.name))
+                if (isInside(analysis.sourceRoot, target))
                   escapes.push(
                     `${relative(demoDirectory, args.importer)} -> ${args.path}`,
                   );
@@ -195,7 +208,7 @@ export const buildWorkspaceBundle = async ({
               const owner = packageOfFile(packages, resolved);
               if (owner === undefined)
                 return { path: resolved, external: true };
-              if (!bundled.has(owner.name)) {
+              if (isInside(analysis.sourceRoot, resolved)) {
                 escapes.push(
                   `${relative(demoDirectory, args.importer)} -> ${args.path}`,
                 );
@@ -216,7 +229,7 @@ export const buildWorkspaceBundle = async ({
     if (escapes.length > 0) {
       rmSync(staging, { recursive: true, force: true });
       throw new Error(
-        `[workspace-bundle] the bundle would carry code from an unbundled workspace package, which the static analysis in workspace-bundle-analysis.js did not predict:\n  ${escapes.slice(0, 20).join("\n  ")}`,
+        `[workspace-bundle] the bundle would carry code from the source region (${analysis.sourceRoot}), which the static analysis in workspace-bundle-analysis.js did not predict:\n  ${escapes.slice(0, 20).join("\n  ")}`,
       );
     }
     const outputs = {};
@@ -238,6 +251,14 @@ export const buildWorkspaceBundle = async ({
     const inputs = Object.keys(result.metafile.inputs).map((input) =>
       relative(demoDirectory, resolve(demoDirectory, input)),
     );
+    // A bundled file the key did not read could change without a rebuild.
+    const unhashed = inputs.filter((input) => !hashed.has(input));
+    if (unhashed.length > 0) {
+      rmSync(staging, { recursive: true, force: true });
+      throw new Error(
+        `[workspace-bundle] the bundle would carry files its key does not cover:\n  ${unhashed.slice(0, 20).join("\n  ")}`,
+      );
+    }
     writeFileSync(
       join(staging, "manifest.json"),
       JSON.stringify({ schema: BUNDLE_SCHEMA, key, options, files, inputs }),

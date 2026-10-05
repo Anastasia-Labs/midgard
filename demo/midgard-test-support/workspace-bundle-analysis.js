@@ -2,7 +2,6 @@ import { existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
 import {
-  bundleablePackages,
   demoDirectory,
   isInside,
   isNodeBuiltin,
@@ -29,19 +28,22 @@ import {
  * which of those can be bundled, and which test files must keep loading
  * workspace code from source (with the reasons).
  *
+ * Only the suite's test files and its package's `tests/` directory (the
+ * source region) load from source; every other workspace file, the package
+ * under test's own `src/` included, is bundleable.
+ *
  * Two import graphs, each walked once and propagated backwards (so the cost is
  * linear in the graph, not in files x graph):
- * - the source side: everything Vite still loads from source in the forks —
- *   the suite's own files, source-only packages, and any file reached by a
- *   relative path — stopping at bare imports of a bundleable package, which
- *   become candidate entry points;
- * - the bundle side: everything a candidate entry reaches inside the
- *   bundleable packages. An entry that reaches an unbundleable workspace file,
- *   or a file that mocks modules, is not bundled.
- * A test file is routed to source when anything on its source side mocks a
- * module outside the package or resets the registry, reaches an entry that is
- * not bundled, or loads from source a module that an entry it imports also
- * carries (a second instance).
+ * - the source side: the source region as the tests reach it, stopping at
+ *   each import of a bundleable file (bare or relative), which becomes a
+ *   candidate entry point;
+ * - the bundle side: everything a candidate entry reaches. An entry that
+ *   reaches back into the source region, or a file that mocks modules, is not
+ *   bundled.
+ * A test file is routed to source when anything on its source side mocks or
+ * spies on bundleable code, mocks a package or builtin, resets the registry,
+ * reaches an entry that is not bundled, or loads from source a module that an
+ * entry it imports also carries (a second instance).
  *
  * `setupRoots` are the project's `globalSetup` files. They run in the main
  * process, never beside a test, so they are never routed; they are walked so
@@ -59,7 +61,11 @@ export const analyzeSuite = ({
     throw new Error(
       `[workspace-bundle] ${packageDirectory} is not a workspace package`,
     );
-  const bundleable = bundleablePackages(packages, self.name);
+  const bundleable = new Set(packages.keys());
+  const sourceRoot = join(self.directory, "tests");
+  const regionFiles = new Set([...testFiles, ...setupRoots]);
+  const inRegion = (file) =>
+    isInside(sourceRoot, file) || regionFiles.has(file);
   const label = (file) => relative(demoDirectory, file);
 
   const ownerOf = new Map();
@@ -68,6 +74,7 @@ export const analyzeSuite = ({
       ownerOf.set(file, packageOfFile(packages, file) ?? null);
     return ownerOf.get(file);
   };
+  const bundleableFile = (file) => owner(file) !== null && !inRegion(file);
   const resolvedRelative = new Map();
   const relativeTarget = (from, specifier) => {
     const key = `${dirname(from)}\0${specifier}`;
@@ -115,18 +122,10 @@ export const analyzeSuite = ({
         if (specifier.startsWith("."))
           target = relativeTarget(current, specifier);
         else if (!isNodeBuiltin(specifier)) {
-          const bare = bareTarget(specifier);
-          if (bare === undefined) continue;
-          if (!bundleable.has(bare.pkg.name)) {
-            bundleDirect.set(current, `${label(current)} imports ${specifier}`);
-            continue;
-          }
-          target = bare.target;
+          target = bareTarget(specifier)?.target;
         }
-        if (target === undefined) continue;
-        const targetOwner = owner(target);
-        if (targetOwner === null) continue;
-        if (!bundleable.has(targetOwner.name)) {
+        if (target === undefined || owner(target) === null) continue;
+        if (inRegion(target)) {
           bundleDirect.set(
             current,
             `${label(current)} reaches ${label(target)}`,
@@ -163,23 +162,22 @@ export const analyzeSuite = ({
         const target =
           relativeTarget(current, specifier) ??
           resolve(dirname(current), specifier);
-        if (!isInside(self.directory, target))
+        if (!inRegion(target))
           addReason(
             current,
-            `${label(current)}: vi.mock(${specifier}) outside the package`,
+            `${label(current)}: vi.mock(${specifier}) of bundled code`,
           );
         continue;
       }
-      if (splitSpecifier(specifier)?.name === self.name) continue;
       addReason(current, `${label(current)}: vi.mock(${specifier})`);
     }
     for (const specifier of scanned.spiedNamespaces) {
-      const spiedOwner = specifier.startsWith(".")
-        ? owner(relativeTarget(current, specifier) ?? "")
+      const spied = specifier.startsWith(".")
+        ? relativeTarget(current, specifier)
         : isNodeBuiltin(specifier)
           ? undefined
-          : bareTarget(specifier)?.pkg;
-      if (bundleable.has(spiedOwner?.name))
+          : bareTarget(specifier)?.target;
+      if (spied !== undefined && bundleableFile(spied))
         addReason(
           current,
           `${label(current)}: vi.spyOn(${specifier} namespace)`,
@@ -189,17 +187,16 @@ export const analyzeSuite = ({
       let target;
       if (specifier.startsWith(".")) {
         target = relativeTarget(current, specifier);
-        // A relative path into a bundleable package names the same module
-        // its package specifier does, so it is served from the bundle too
-        // (keyed by the absolute file).
-        if (target !== undefined && bundleable.has(owner(target)?.name)) {
+        // A relative import of a bundleable file is served from the bundle
+        // too, keyed by the absolute file.
+        if (target !== undefined && bundleableFile(target)) {
           crossings.push({ specifier: target, target });
           continue;
         }
       } else if (!isNodeBuiltin(specifier)) {
         const bare = bareTarget(specifier);
         if (bare === undefined) continue;
-        if (bundleable.has(bare.pkg.name)) {
+        if (bare.target === undefined || bundleableFile(bare.target)) {
           crossings.push({ specifier, target: bare.target });
           continue;
         }
@@ -283,6 +280,7 @@ export const analyzeSuite = ({
   }
   return {
     self: self.name,
+    sourceRoot,
     bundleable: [...bundleable].sort(),
     entries: new Map(
       [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
