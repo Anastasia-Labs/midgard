@@ -525,11 +525,18 @@ jobs:
   # The watcher's TypeScript surface. Its eslint pass is the workspace-wide one
   # in the `lint` job; the Go helper, compose stack and image are covered by
   # midgard-watcher-ci.yml.
+  # Every test file runs in its own fork and re-imports the SDK and validation
+  # graph, so on a two-fork hosted runner wall time grows with the file count.
+  # Sharded like fault-proofs once ~210 files outgrew one 45-minute job.
   midgard-watcher:
-    name: midgard-watcher
+    name: midgard-watcher (${{ matrix.shard }}/3)
     needs: [aiken-fork, blueprint]
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/demo-setup
@@ -537,7 +544,7 @@ jobs:
           blueprint: "true"
           prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation midgard-fault-proofs
       - name: Build, typecheck, format-check, and test Midgard watcher
-        run: pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run format-check && pnpm --dir demo/midgard-watcher test
+        run: pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run format-check && pnpm --dir demo/midgard-watcher test --shard=${{ matrix.shard }}/3
 
   # The native MPF owner crate, and the offline throughput gates that followed
   # it in the old serial job. The gates are pure `node --test` suites, so they
