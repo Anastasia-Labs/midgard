@@ -192,7 +192,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
     removal?: MintItemRemovalAction,
   ): Promise<void> => {
     await ensurePrepared(familyIdentity);
-    if (unresolvedIntent(await entries()) !== undefined) {
+    if (unresolvedIntent(await entries(), store) !== undefined) {
       throw new Error(
         "mintItemNonCanonical unresolved submission must reconcile before another build",
       );
@@ -241,7 +241,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
           "mintItemNonCanonical removal changed its authenticated inputs",
         );
       const current = await entries();
-      const prior = unresolvedIntent(current);
+      const prior = unresolvedIntent(current, store);
       if (prior?.event.kind === "submission_intent") {
         if (
           prior.event.actionId !== action.actionId ||
@@ -329,7 +329,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
     ): FraudProofPreSubmitBoundary =>
     async (transaction) => {
       await ensurePrepared(familyIdentity);
-      const pending = unresolvedIntent(await entries());
+      const pending = unresolvedIntent(await entries(), store);
       if (pending?.event.kind === "submission_intent") {
         if (recoveryFrom(pending).auxiliary !== true) {
           throw new Error(
@@ -416,7 +416,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
     ) {
       return;
     }
-    const intent = unresolvedIntent(current);
+    const intent = unresolvedIntent(current, store);
     if (
       intent?.event.kind !== "submission_intent" ||
       intent.event.txHash !== txHash ||
@@ -660,7 +660,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
       return result;
     },
     append: async (entry) => {
-      const intent = unresolvedIntent(await entries());
+      const intent = unresolvedIntent(await entries(), store);
       if (
         intent?.event.kind !== "submission_intent" ||
         intent.event.txHash !== entry.txHash

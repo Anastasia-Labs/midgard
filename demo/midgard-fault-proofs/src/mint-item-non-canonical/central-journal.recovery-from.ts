@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { workflowJournalHasFundingReservation } from "../workflow/funding-reservation-permit.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
@@ -98,6 +99,7 @@ const actionFinishedAfter = (
   entries: readonly FraudProofWorkflowJournalEntry[],
   sequence: number,
   wantedActionId: string,
+  superseding: boolean,
 ): boolean =>
   (() => {
     const latest = entries
@@ -110,7 +112,8 @@ const actionFinishedAfter = (
       latest?.kind === "confirmed" ||
       (latest?.kind === "reconciled" &&
         latest.outcome === "not_found" &&
-        (latest.retirement !== undefined ||
+        (superseding ||
+          latest.retirement !== undefined ||
           entries.some(
             ({ event }) =>
               event.kind === "signed_attempt_retired" &&
@@ -119,13 +122,23 @@ const actionFinishedAfter = (
     );
   })();
 
+/**
+ * The latest intent whose action has no result. An attempt absent at the tip
+ * (not_found) is a result once it is retired past k, or at once when
+ * `journal` binds a funding reservation: it keeps its inputs as an
+ * exclusion set, so a replacement must spend one of them (owner ruling,
+ * whichever lands wins). Without one it stays unresolved until retirement.
+ */
 export const unresolvedIntent = (
   entries: readonly FraudProofWorkflowJournalEntry[],
-): FraudProofWorkflowJournalEntry | undefined =>
-  [...entries].reverse().find((entry) => {
+  journal: object,
+): FraudProofWorkflowJournalEntry | undefined => {
+  const superseding = workflowJournalHasFundingReservation(journal);
+  return [...entries].reverse().find((entry) => {
     const event = entry.event;
     return (
       event.kind === "submission_intent" &&
-      !actionFinishedAfter(entries, entry.sequence, event.actionId)
+      !actionFinishedAfter(entries, entry.sequence, event.actionId, superseding)
     );
   });
+};

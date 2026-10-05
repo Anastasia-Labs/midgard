@@ -7,6 +7,7 @@ import {
   createWorkflowFundingAbandonmentHandoff,
   readWorkflowFundingRecovery,
   reobserveWorkflowFundingReservationTransaction,
+  workflowJournalHasFundingReservation,
 } from "../workflow/funding-reservation-permit.js";
 import { reconcileLegacyWorkflowFundingAbandonment } from "../workflow/funding-reservation-permit.reopen-legacy-abandonment.js";
 import type {
@@ -93,7 +94,7 @@ export const createMintItemCanonicalReconciliation =
         txHash: reverted.event.txHash,
       });
     }
-    const intent = unresolvedIntent(await entries());
+    const intent = unresolvedIntent(await entries(), store);
     if (intent?.event.kind !== "submission_intent") return;
     assertActuation("before_reconcile");
     const recovery = recoveryFrom(intent);
@@ -160,6 +161,16 @@ export const createMintItemCanonicalReconciliation =
       if (result.kind !== "not_found")
         throw new MintItemWorkflowRecoveryPendingError(
           `Exact mint transaction remains unresolved: ${result.kind}`,
+        );
+      // As in the workflow path: without a bound funding reservation nothing
+      // makes a replacement spend this attempt's inputs, so absence without
+      // retirement is held until retirement past k and is not recorded.
+      if (
+        result.retirement === undefined &&
+        !workflowJournalHasFundingReservation(store)
+      )
+        throw new MintItemWorkflowRecoveryPendingError(
+          "Exact mint transaction is absent without retirement, and no funding reservation keeps a replacement exclusive",
         );
       const handoff = createWorkflowFundingAbandonmentHandoff({
         entries: await entries(),
