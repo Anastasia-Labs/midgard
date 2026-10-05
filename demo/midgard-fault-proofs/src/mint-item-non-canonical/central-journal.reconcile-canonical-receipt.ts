@@ -15,6 +15,7 @@ import type {
   FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import { lastActionEvent } from "../workflow/orchestrator.normalize-workflow-terminal.js";
+import { supersedeWorkflowFundingAttempt } from "../workflow/orchestrator.supersede-funding-attempt.js";
 import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
 import {
   recoveryFrom,
@@ -79,6 +80,22 @@ export const createMintItemCanonicalReconciliation =
       reverted?.event.kind === "submission_intent" &&
       !(await transactionConfirmed(reverted.event.txHash))
     ) {
+      // The reobserved intent displaces a pending descendant. It is
+      // superseded, never silently dropped: a dropped attempt would count as
+      // live coverage and its later reconciliation would wedge on the
+      // changed pending identity.
+      const displaced = await readWorkflowFundingRecovery(store);
+      const pending = displaced.transition?.transactionHash;
+      if (pending !== undefined && pending !== reverted.event.txHash)
+        await supersedeWorkflowFundingAttempt({
+          journal: store,
+          assertReconcile: () => assertActuation("before_reconcile"),
+          entries,
+          append: appendEvent,
+          transactionHash: pending,
+          retirement: undefined,
+          savedHandoff: displaced.abandonmentHandoff,
+        });
       if (
         !(await reobserveWorkflowFundingReservationTransaction({
           journal: store,

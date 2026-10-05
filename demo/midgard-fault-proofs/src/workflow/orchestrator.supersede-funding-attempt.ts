@@ -10,8 +10,6 @@ import type {
   FraudProofWorkflowJournalEvent,
   FraudProofWorkflowJournalStore,
 } from "./journal.js";
-import type { FraudProofWorkflowAdapterContext } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
-import { assertWorkflowJournalReconciliation } from "./orchestrator.reconcile-legacy-abandonments.js";
 import type { SignedWorkflowTransactionRetirement } from "./signed-transaction-retirement.js";
 
 /**
@@ -22,7 +20,7 @@ import type { SignedWorkflowTransactionRetirement } from "./signed-transaction-r
  */
 export const supersedeWorkflowFundingAttempt = async ({
   journal,
-  identity,
+  assertReconcile,
   entries,
   append,
   transactionHash,
@@ -30,8 +28,11 @@ export const supersedeWorkflowFundingAttempt = async ({
   savedHandoff,
 }: {
   readonly journal: FraudProofWorkflowJournalStore;
-  readonly identity: FraudProofWorkflowAdapterContext["identity"];
-  readonly entries: () => readonly FraudProofWorkflowJournalEntry[];
+  /** The family's actuation check before a reconciliation write. */
+  readonly assertReconcile: () => void;
+  readonly entries: () =>
+    | readonly FraudProofWorkflowJournalEntry[]
+    | Promise<readonly FraudProofWorkflowJournalEntry[]>;
   readonly append: (event: FraudProofWorkflowJournalEvent) => Promise<void>;
   readonly transactionHash: string;
   readonly retirement: SignedWorkflowTransactionRetirement | undefined;
@@ -40,7 +41,7 @@ export const supersedeWorkflowFundingAttempt = async ({
   const handoff =
     savedHandoff ??
     createWorkflowFundingAbandonmentHandoff({
-      entries: entries(),
+      entries: await entries(),
       transactionHash,
       retirement,
     });
@@ -49,14 +50,14 @@ export const supersedeWorkflowFundingAttempt = async ({
     transactionHash,
     handoff,
   });
-  assertWorkflowJournalReconciliation(journal, identity);
+  assertReconcile();
   if (
     !assertWorkflowFundingAbandonmentHandoffJournal({
       handoff,
-      entries: entries(),
+      entries: await entries(),
     })
   )
     await append(handoff.reconciliation);
-  assertWorkflowJournalReconciliation(journal, identity);
+  assertReconcile();
   await acknowledgeWorkflowFundingAbandonment({ journal, handoff });
 };

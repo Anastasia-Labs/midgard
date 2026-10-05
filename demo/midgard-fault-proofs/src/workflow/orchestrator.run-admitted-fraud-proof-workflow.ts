@@ -181,6 +181,8 @@ export const runAdmittedFraudProofWorkflow = async ({
     await journal.append(entry, entries.length);
     entries = [...entries, entry];
   };
+  const assertReconcile = () =>
+    assertWorkflowJournalReconciliation(journal, identity);
   const stalled = async (
     reason: string,
     phase?: "preflight",
@@ -350,7 +352,7 @@ export const runAdmittedFraudProofWorkflow = async ({
           if (pending !== undefined && pending !== intent.txHash)
             await supersedeWorkflowFundingAttempt({
               journal,
-              identity,
+              assertReconcile,
               entries: () => entries,
               append,
               transactionHash: pending,
@@ -644,7 +646,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         );
       await supersedeWorkflowFundingAttempt({
         journal,
-        identity,
+        assertReconcile,
         entries: () => entries,
         append,
         transactionHash: intent.txHash,
