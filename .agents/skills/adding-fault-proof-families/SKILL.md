@@ -112,7 +112,7 @@ is stated next to it.
 7. **Never raise transaction limits to make a family fit.** Emulator tests run
    at `VAN_ROSSEM_TRANSACTION_LIMITS` (16,384 bytes, 16.5M memory, 10G steps,
    `tests/support/emulator/protocol-parameters.ts`). Split the family instead.
-   [ci: Midgard Node CI/Build, typecheck, and test fault-proof tooling]
+   [ci: Midgard Node CI/Test fault-proof tooling]
    The test "finds no positive limit escape across the fault-proof TypeScript
    surface" (`tests/wave0-shared-substrate.test.ts:130`) scans only
    `demo/midgard-fault-proofs`; a negative diagnostic needs the
@@ -211,13 +211,14 @@ you checked it by reading.
       [ci: Midgard Node CI/Test Midgard node]
       (`da-deployment-fixture-generation.test.ts` fails on drift)
 - [ ] Family record in `FAMILY_APPLICATION_REGISTRY`, roster names deployed
-      contracts. [ci: Midgard Node CI/Build, typecheck, and test fault-proof tooling]
+      contracts. [ci: Midgard Node CI/Typecheck fault-proof tooling]
+      [ci: Midgard Node CI/Test fault-proof tooling]
       (typecheck fails on an omitted category; `family-application-registry.test.ts:312`)
 - [ ] Classification rule at the catalogue position.
       [runtime: FRAUD_PROOF_CLASSIFICATION_RULES]
       (the module throws at load; `tests/workflow.test.ts` pins the order)
 - [ ] Every typed reason the family serves is routed to it.
-      [ci: Midgard Node CI/Build, typecheck, and test fault-proof tooling]
+      [ci: Midgard Node CI/Test fault-proof tooling]
       (`typed-reason-disposition.test.ts`; it cannot tell whether a reason
       belongs to your family rather than another)
 - [ ] Both polarities, negatives refused in the validator. [review]

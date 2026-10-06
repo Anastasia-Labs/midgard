@@ -22,7 +22,7 @@ the deployed, parameterized validator behaves as intended. [review]
 Each blueprint validator and fault-proof family names its passing and failing
 scenarios in `demo/midgard-fault-proofs/tests/support/validator-scenario-registry.ts`,
 or sits in its shrink-only unmapped list with a reason.
-[ci: Midgard Node CI/Build, typecheck, and test fault-proof tooling]
+[ci: Midgard Node CI/Test fault-proof tooling]
 
 When validator parameters are added, removed, reordered, or retyped, update every
 affected off-chain builder, parameter application, deployment fixture, and

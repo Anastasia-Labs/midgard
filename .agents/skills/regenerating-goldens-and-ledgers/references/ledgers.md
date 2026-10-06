@@ -115,7 +115,7 @@ is the authority. Its rules:
   `blueprintSha256` to equal the SHA-256 of the current blueprint, and the
   scenario and row roster to equal a fresh run's; the budgets themselves may
   differ (`demo/midgard-fault-proofs/tests/support/pinned-fit-ledger.ts`)
-  [ci: Midgard Node CI/Build, typecheck, and test fault-proof tooling]. Any
+  [ci: Midgard Node CI/Test fault-proof tooling]. Any
   change that moves blueprint bytes makes both stale.
 - Regenerate by running the owning lifecycle suite with
   `MIDGARD_WRITE_FIT_LEDGER=1` against a freshly built blueprint. Without the

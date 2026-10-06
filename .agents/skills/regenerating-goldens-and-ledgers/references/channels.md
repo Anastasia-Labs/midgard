@@ -130,21 +130,21 @@ The ten execution ledgers `onchain/aiken/scripts/*-exec-ledger-v1.json` and the
 fit ledgers under `docs/fault-proofs/size-plans/` are channels too. Their triage
 differs from goldens, so they have their own page: [ledgers.md](ledgers.md).
 
-| Channel                                     | Check (CI)                                                                                                  |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `exec-ledger-carriage`                      | `node scripts/verify-carriage-exec-ledger-v1.mjs` [ci: Aiken CI/Pin the §8.10 carriage execution ledger]    |
-| `exec-ledger-q1x`                           | [ci: Aiken CI/Pin the Q1x family execution ledger]                                                          |
-| `exec-ledger-q31`                           | [ci: Aiken CI/Pin the Q31 reference-input-no-idx family execution ledger]                                   |
-| `exec-ledger-q21`                           | [ci: Aiken CI/Pin the Q21 transition-trace family execution ledger]                                         |
-| `exec-ledger-tx-order-mint`                 | [ci: Aiken CI/Pin the tx-order mint material-carriage execution ledger]                                     |
-| `exec-ledger-canonical-decodability`        | [ci: Aiken CI/Pin the canonical-decodability committed-preimage execution ledger]                           |
-| `exec-ledger-committed-field-shape`         | [ci: Aiken CI/Pin the committed-field-shape slot-verdict execution ledger]                                  |
-| `exec-ledger-native-script-decoding-engine` | [review]: no CI step                                                                                        |
-| `exec-ledger-native-script-scan`            | [review]: no CI step                                                                                        |
-| `exec-ledger-transition-trace-descriptor`   | [review]: no CI step; needs `MIDGARD_AIKEN_ENV=testnet`                                                     |
-| `forced-window-fit-ledger`                  | the transition-trace subvariants suite [ci: Midgard Node CI/Build, typecheck, and test fault-proof tooling] |
-| `workflow-fit-ledger`                       | the transition-trace installed suite [ci: Midgard Node CI/Build, typecheck, and test fault-proof tooling]   |
-| `fault-proof-fit-ledgers`                   | [review]: nothing compares them with the current build                                                      |
+| Channel                                     | Check (CI)                                                                                               |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `exec-ledger-carriage`                      | `node scripts/verify-carriage-exec-ledger-v1.mjs` [ci: Aiken CI/Pin the §8.10 carriage execution ledger] |
+| `exec-ledger-q1x`                           | [ci: Aiken CI/Pin the Q1x family execution ledger]                                                       |
+| `exec-ledger-q31`                           | [ci: Aiken CI/Pin the Q31 reference-input-no-idx family execution ledger]                                |
+| `exec-ledger-q21`                           | [ci: Aiken CI/Pin the Q21 transition-trace family execution ledger]                                      |
+| `exec-ledger-tx-order-mint`                 | [ci: Aiken CI/Pin the tx-order mint material-carriage execution ledger]                                  |
+| `exec-ledger-canonical-decodability`        | [ci: Aiken CI/Pin the canonical-decodability committed-preimage execution ledger]                        |
+| `exec-ledger-committed-field-shape`         | [ci: Aiken CI/Pin the committed-field-shape slot-verdict execution ledger]                               |
+| `exec-ledger-native-script-decoding-engine` | [review]: no CI step                                                                                     |
+| `exec-ledger-native-script-scan`            | [review]: no CI step                                                                                     |
+| `exec-ledger-transition-trace-descriptor`   | [review]: no CI step; needs `MIDGARD_AIKEN_ENV=testnet`                                                  |
+| `forced-window-fit-ledger`                  | the transition-trace subvariants suite [ci: Midgard Node CI/Test fault-proof tooling]                    |
+| `workflow-fit-ledger`                       | the transition-trace installed suite [ci: Midgard Node CI/Test fault-proof tooling]                      |
+| `fault-proof-fit-ledgers`                   | [review]: nothing compares them with the current build                                                   |
 
 ## Blueprint-bound fixtures
 

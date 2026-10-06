@@ -547,13 +547,34 @@ jobs:
       - name: Build, typecheck, and test Midgard validation
         run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test
 
+  # The fault-proof package's build and typecheck, once per run. The test
+  # shards below resolve every workspace package from source through the
+  # `midgard-source` condition and read no dist, so they neither prebuild nor
+  # repeat this work.
+  midgard-fault-proofs-build:
+    name: midgard-fault-proofs build and typecheck
+    needs: [aiken-fork, blueprint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/demo-setup
+        with:
+          blueprint: "true"
+          prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation
+      - name: Build fault-proof tooling
+        run: pnpm --dir demo/midgard-fault-proofs run build
+      - name: Typecheck fault-proof tooling
+        if: ${{ !cancelled() }}
+        run: pnpm --dir demo/midgard-fault-proofs run typecheck
+
   # Six shards keep each job under 20 minutes. The suite is ~7,500 fork-seconds
   # on two forks (the five-run median per file in the package's
-  # tests/support/ci-file-durations.json), each job adds about six minutes of
-  # setup, build, typecheck and Vitest overhead, and shard 1 also runs the
-  # ~300 s traced-refusal step, which that table reserves. At the median each
-  # shard projects ~675 s (~17.3 min jobs); three shards projected ~28.5 min,
-  # five ~19.5. Change the count here, in the test-durations job below and in
+  # tests/support/ci-file-durations.json), each job adds a few minutes of setup
+  # and Vitest overhead, and shard 1 also runs the ~300 s traced-refusal step,
+  # which that table reserves. At the median each shard projects ~675 s (~17.3
+  # min jobs, measured with a build and typecheck on every shard); three
+  # shards projected ~28.5 min, five ~19.5. Change the count here, in the test-durations job below and in
   # tests/duration-shards.test.ts together, and rekey the table's reserve.
   midgard-fault-proofs:
     name: midgard-fault-proofs (${{ matrix.shard }}/6)
@@ -575,15 +596,14 @@ jobs:
           interactive-blueprint: "true"
           # Only shard 1 runs the traced-refusal step.
           traced-blueprints: ${{ matrix.shard == 1 }}
-          prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation
       # The test run records each file's seconds (durationShards in
       # midgard-test-support); `test-durations` merges the shards' records into
       # the refreshed shard table. Step-scoped so the traced-refusal rerun below
       # never overwrites it.
-      - name: Build, typecheck, and test fault-proof tooling
+      - name: Test fault-proof tooling
         env:
           MIDGARD_FILE_DURATIONS_OUT: ${{ runner.temp }}/file-durations.json
-        run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs run test --shard=${{ matrix.shard }}/6
+        run: pnpm --dir demo/midgard-fault-proofs run test --shard=${{ matrix.shard }}/6
       - name: Upload this shard's per-file test seconds
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -785,13 +805,27 @@ jobs:
       - name: Verify DA committee transport and admission
         run: pnpm --dir demo/da-committee-node run guard:no-http-da-transport && pnpm --dir demo/da-committee-node run typecheck && pnpm --dir demo/da-committee-node test
 
+  # The node's typecheck, once per run and alongside the test shards rather
+  # than on one of them, where it would add about a minute to that shard's
+  # wall time. It resolves workspace packages from source and needs no dist.
+  midgard-node-typecheck:
+    name: midgard-node typecheck
+    needs: [aiken-fork, blueprint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/demo-setup
+        with:
+          blueprint: "true"
+      - name: Typecheck Midgard node
+        run: pnpm --dir demo/midgard-node run typecheck
+
   # Sharded like fault-proofs and watcher once ~450 files made one job take
   # 53.5 minutes (Node CI run 37448078028: 38 minutes of Vitest on four forks).
   # Every shard is its own job with its own Postgres service and runs the
   # isolated migration itself, so the per-worker database shards the suite
-  # pins (tests/test-env.ts) never span two shards. The typecheck repeats on
-  # every shard: about a minute of idempotent work, where running it on one
-  # shard only would add that minute to that shard's wall time.
+  # pins (tests/test-env.ts) never span two shards.
   midgard-node:
     name: midgard-node (${{ matrix.shard }}/3)
     needs: [aiken-fork, blueprint]
@@ -826,10 +860,7 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: demo/midgard-node/native/mpf-event-flat-wasm
-      - name: Typecheck Midgard node
-        run: pnpm --dir demo/midgard-node run typecheck
       - name: Build Midgard node and migrate isolated CI database
-        if: ${{ !cancelled() }}
         env:
           MIDGARD_DEPLOYMENT_PROFILE: preprod-testing
         run: pnpm --dir demo/midgard-node run db:migrate
@@ -939,12 +970,14 @@ jobs:
       - midgard-core
       - midgard-sdk
       - midgard-validation
+      - midgard-fault-proofs-build
       - midgard-fault-proofs
       - midgard-watcher
       - test-durations
       - native-mpf
       - lint
       - da-committee-node
+      - midgard-node-typecheck
       - midgard-node
       - midgard-node-tools
       - da-e2e

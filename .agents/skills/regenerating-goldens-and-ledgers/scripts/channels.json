@@ -1041,7 +1041,7 @@
       },
       "ci": {
         "workflow": ".github/workflows/midgard-node-ci.yml",
-        "step": "Build, typecheck, and test fault-proof tooling",
+        "step": "Test fault-proof tooling",
         "via": "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts"
       }
     },
@@ -1070,7 +1070,7 @@
       },
       "ci": {
         "workflow": ".github/workflows/midgard-node-ci.yml",
-        "step": "Build, typecheck, and test fault-proof tooling",
+        "step": "Test fault-proof tooling",
         "via": "demo/midgard-fault-proofs/tests/transition-trace-installed-lifecycle.test.ts"
       }
     },
