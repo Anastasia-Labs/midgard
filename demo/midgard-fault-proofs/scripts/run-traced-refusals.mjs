@@ -217,12 +217,17 @@ const interactiveFiles = new Set(
 const projects = [
   {
     name: "testing-profile",
+    // workspaceBundleProjects routes the files that need module-by-module
+    // loading to `testing-profile:source`; a `--project` filter must name
+    // both, or such a file is reported as "No test files found".
+    projects: ["testing-profile", "testing-profile:source"],
     files: files.filter((file) => !interactiveFiles.has(file)),
     blueprint: () => plainBlueprint,
     overlayVariable: "MIDGARD_REAL_BLUEPRINT_PATH",
   },
   {
     name: "interactive-emulator",
+    projects: ["interactive-emulator"],
     files: files.filter((file) => interactiveFiles.has(file)),
     blueprint: async () => {
       await prepareInteractiveBlueprint();
@@ -279,8 +284,7 @@ for (const project of projects) {
       label: `${project.name}: ${module}`,
       args: [
         "run",
-        "--project",
-        project.name,
+        ...project.projects.flatMap((name) => ["--project", name]),
         "-t",
         casePattern(names),
         ...moduleFiles,
