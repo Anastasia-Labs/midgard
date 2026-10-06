@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import { SqlClient } from "@effect/sql";
-import { Clock, Effect, Option } from "effect";
+import { PgClient } from "@effect/sql-pg";
+import { Clock, Effect, Option, Redacted } from "effect";
 import { describe, expect, it } from "vitest";
 
 import * as Journal from "../src/database/eventHistorySubmissions.js";
@@ -15,6 +16,7 @@ import {
   run,
   untilAdvisoryLock,
 } from "./event-history-submission-reservations.fixture.js";
+import { testDatabaseName } from "./test-env.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 const pending = (row: Journal.Row, txHashes: readonly string[], ttl?: number) =>
@@ -415,26 +417,37 @@ describe("history submission input reservations", () => {
     ).toBe(true);
   }, 60_000);
 
-  it("ends a nonce choice whose chooser vanished once it idles past the bound plus a margin", async () => {
+  it("sets a nonce choice's idle-in-transaction timeout to the bound plus a margin, for that transaction only", async () => {
     const { wallet_address } = input();
     const idleTimeout = Effect.flatMap(
       SqlClient.SqlClient,
-      (sql) => sql<{ timeout: string }>`SELECT current_setting(
-        'idle_in_transaction_session_timeout') AS timeout`,
+      (sql) => sql<{ pid: number; timeout: string }>`SELECT pg_backend_pid()
+        AS pid, current_setting('idle_in_transaction_session_timeout') AS timeout`,
     );
-    const [during, after] = await Effect.runPromise(
-      provideDatabaseLayers(
-        Effect.gen(function* () {
-          const during = yield* Journal.choosingNonce(
-            wallet_address,
-            idleTimeout,
-          );
-          return [during, yield* idleTimeout] as const;
+    // One connection, so every read is on the session that made the choice.
+    const [before, during, after] = await Effect.runPromise(
+      Effect.provide(
+        Effect.all([
+          idleTimeout,
+          Journal.choosingNonce(wallet_address, idleTimeout),
+          idleTimeout,
+        ]),
+        PgClient.layer({
+          host: process.env.POSTGRES_HOST ?? "127.0.0.1",
+          port: Number(process.env.POSTGRES_PORT ?? "5433"),
+          username: process.env.POSTGRES_USER ?? "postgres",
+          password: Redacted.make(process.env.POSTGRES_PASSWORD ?? "postgres"),
+          database: testDatabaseName(),
+          maxConnections: 1,
         }),
       ),
     );
+    expect(new Set([before, during, after].map(([row]) => row!.pid)).size).toBe(
+      1,
+    );
     expect(during[0]!.timeout).toBe("90s");
-    expect(after[0]!.timeout).not.toBe("90s");
+    expect(before[0]!.timeout).not.toBe("90s");
+    expect(after[0]!.timeout).toBe(before[0]!.timeout);
   });
 
   it("names every nonce of the wallet's submissions, and none of their pending inputs", async () => {
