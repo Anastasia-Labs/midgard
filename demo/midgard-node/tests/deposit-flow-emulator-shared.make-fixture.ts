@@ -36,10 +36,7 @@ import {
   recreateLucid,
 } from "./helpers/emulator-snapshot.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
-import {
-  readRunSharedFixture,
-  shareRunSharedFixture,
-} from "./helpers/run-shared-fixture-directory.js";
+import { loadOrCreateRunSharedFixture } from "./helpers/run-shared-fixture-directory.js";
 
 export const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
@@ -353,21 +350,24 @@ let deployedFixture: DeployedFixture | undefined;
  *
  * The deployment reads no per-file setting and no module a test file mocks,
  * so every call of a run restores one deployment instead of publishing its
- * own: the first call in the run deploys and shares it
+ * own: the first call in the run deploys and shares it while calls in files
+ * that start at the same time wait for it
  * (`helpers/run-shared-fixture-directory.ts`), and each call returns an
  * independent copy (its own emulator, lucid instances and records) of the
  * chain the deployment left. Without the package's global setup each file
  * deploys once and restores from that.
  */
 export const makeFixture = async (): Promise<EmulatorFixture> => {
-  deployedFixture ??= (await readRunSharedFixture(SHARED_FIXTURE_NAME)) as
-    | DeployedFixture
-    | undefined;
   if (deployedFixture !== undefined) return restoreFixture(deployedFixture);
-  const { fixture, deployed } = await deployFixture();
-  deployedFixture = deployed;
-  await shareRunSharedFixture(SHARED_FIXTURE_NAME, deployed);
-  return fixture;
+  const { shared, created } = await loadOrCreateRunSharedFixture(
+    SHARED_FIXTURE_NAME,
+    async () => {
+      const { fixture, deployed } = await deployFixture();
+      return { shared: deployed, created: fixture };
+    },
+  );
+  deployedFixture = shared;
+  return created ?? restoreFixture(shared);
 };
 
 export const runNodeDatabaseEffect = <A, E>(

@@ -49,10 +49,7 @@ import {
 } from "./published-workflow-deployment.js";
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 import { DEFAULT_PUBLICATION_SCHEDULE } from "./reference-publication-chain.js";
-import {
-  readRunSharedFixture,
-  shareRunSharedFixture,
-} from "./run-shared-fixture-directory.js";
+import { loadOrCreateRunSharedFixture } from "./run-shared-fixture-directory.js";
 
 const preprodEmulatorLucid = (emulator: Emulator) =>
   createMainnetEmulatorLucid(emulator, "Preprod");
@@ -271,24 +268,23 @@ const clearRestoredDeploymentRows = () =>
   runNodeDatabaseEffect(resetApplicationTables);
 
 /** One deployment per protection duration per run: the first file to need
- * it deploys and shares it (`run-shared-fixture-directory.ts`), and every
- * later file restores that same plain-data prefix. The deployment path reads
- * no per-file setting and no module a test file mocks. Without the package's
- * global setup each file deploys its own, as before. */
+ * it deploys and shares it while files that start at the same time wait for
+ * it (`run-shared-fixture-directory.ts`), and every later file restores that
+ * same plain-data prefix. The deployment path reads no per-file setting and
+ * no module a test file mocks. Without the package's global setup each file
+ * deploys its own, as before. */
 const loadOrDeployHistorySource = async (
   eventHistoryProtectionDurationMs: bigint | undefined,
 ): Promise<DeployedHistorySource> => {
-  const key = String(eventHistoryProtectionDurationMs);
-  const shared = (await readRunSharedFixture(`history-source-${key}`)) as
-    | DeployedHistorySource
-    | undefined;
-  if (shared !== undefined) {
-    deepFreeze(shared.contracts);
-    return shared;
-  }
-  const prefix = await deployHistorySource(eventHistoryProtectionDurationMs);
-  await shareRunSharedFixture(`history-source-${key}`, prefix);
-  return prefix;
+  const { shared } = await loadOrCreateRunSharedFixture(
+    `history-source-${String(eventHistoryProtectionDurationMs)}`,
+    async () => ({
+      shared: await deployHistorySource(eventHistoryProtectionDurationMs),
+      created: undefined,
+    }),
+  );
+  deepFreeze(shared.contracts);
+  return shared;
 };
 
 /** Every lifecycle opened by one test file restores the same captured prefix,
