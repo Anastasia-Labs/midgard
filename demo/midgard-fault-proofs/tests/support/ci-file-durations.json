@@ -2,7 +2,7 @@
   "$comment": "CI seconds per test file (fork start, import, collection and tests, as FileDurationsReporter records them) that durationShards in @al-ft/midgard-test-support packs --shard by. Each file is the median of Node CI runs 37454959053, 37462102856, 37467882891, 37483010029 and 37496803570 (commits 25b6b1715..1bd0a5bcb): one run's records carry its runners' speeds, which ranged 0.80x-1.57x shard to shard. forksPerShard is the CI fork cap (MIDGARD_FAULT_PROOF_FORKS). reservedSeconds is the traced-refusal step that only shard 1 runs after its tests: 313/376/299/243/240 s in those runs, median 299. Refresh with demo/midgard-test-support/scripts/ci-file-durations.mjs --run <id> --run <id> ... A stale or missing entry only costs balance, never coverage.",
   "forksPerShard": 2,
   "reservedSeconds": {
-    "1/3": 300
+    "1/6": 300
   },
   "defaultSeconds": 3.6,
   "files": {

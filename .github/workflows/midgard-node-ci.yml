@@ -500,15 +500,23 @@ jobs:
       - name: Build, typecheck, and test Midgard validation
         run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test
 
+  # Six shards keep each job under 20 minutes. The suite is ~7,500 fork-seconds
+  # on two forks (the five-run median per file in the package's
+  # tests/support/ci-file-durations.json), each job adds about six minutes of
+  # setup, build, typecheck and Vitest overhead, and shard 1 also runs the
+  # ~300 s traced-refusal step, which that table reserves. At the median each
+  # shard projects ~675 s (~17.3 min jobs); three shards projected ~28.5 min,
+  # five ~19.5. Change the count here, in the test-durations job below and in
+  # tests/duration-shards.test.ts together, and rekey the table's reserve.
   midgard-fault-proofs:
-    name: midgard-fault-proofs (${{ matrix.shard }}/3)
+    name: midgard-fault-proofs (${{ matrix.shard }}/6)
     needs: [aiken-fork, blueprint]
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5, 6]
     # Bound evaluator parallelism on the standard hosted runner.
     env:
       MIDGARD_FAULT_PROOF_FORKS: "2"
@@ -525,7 +533,7 @@ jobs:
       - name: Build, typecheck, and test fault-proof tooling
         env:
           MIDGARD_FILE_DURATIONS_OUT: ${{ runner.temp }}/file-durations.json
-        run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs run test --shard=${{ matrix.shard }}/3
+        run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs run test --shard=${{ matrix.shard }}/6
       - name: Upload this shard's per-file test seconds
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -618,7 +626,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ci-file-durations"
           # `-[0-9]*`: one package's name may prefix another's (midgard-node,
           # midgard-node-tools), so match only the shard-numbered artifacts.
-          for package in midgard-fault-proofs midgard-watcher midgard-node; do
+          # Each package is paired with the shard count its job runs.
+          for entry in midgard-fault-proofs:6 midgard-watcher:3 midgard-node:3; do
+            package="${entry%%:*}"
+            shards="${entry##*:}"
             records=("$RUNNER_TEMP"/file-durations/file-durations-"$package"-[0-9]*/file-durations.json)
             if [ ! -e "${records[0]}" ]; then
               echo "::warning::no per-file test seconds were recorded for $package"
@@ -629,7 +640,7 @@ jobs:
               --package "demo/$package" \
               --table "demo/$package/tests/support/ci-file-durations.json" \
               --out "$RUNNER_TEMP/ci-file-durations/demo/$package/tests/support/ci-file-durations.json" \
-              --project-shards 3 \
+              --project-shards "$shards" \
               "${records[@]}"
           done
       - name: Upload the refreshed tables
