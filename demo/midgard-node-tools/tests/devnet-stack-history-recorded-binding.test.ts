@@ -58,7 +58,7 @@ beforeAll(async () => {
   await build({
     config: join(root, "tsup.config.ts"),
     entry: ["tests/helpers/history-binding-fixture.ts"],
-    outDir: "dist/history-binding-fixture",
+    outDir: ".probe-dist/history-binding-fixture",
     clean: true,
     target: "node22",
     noExternal: [
@@ -68,7 +68,10 @@ beforeAll(async () => {
   });
 }, 30000);
 const pool = makeHistoryBindingFixturePool({
-  entry: join(root, "dist/history-binding-fixture/history-binding-fixture.js"),
+  entry: join(
+    root,
+    ".probe-dist/history-binding-fixture/history-binding-fixture.js",
+  ),
   cwd: root,
   prefix: "/var/tmp/codex-rel-history-binding-",
   batch: 8,

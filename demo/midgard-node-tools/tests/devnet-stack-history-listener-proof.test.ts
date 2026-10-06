@@ -40,7 +40,7 @@ beforeAll(async () => {
   await build({
     config: join(root, "tsup.config.ts"),
     entry: ["tests/helpers/history-listener-child.ts"],
-    outDir: "dist/history-listener-probe",
+    outDir: ".probe-dist/history-listener-probe",
     clean: true,
     noExternal: ["midgard-watcher/tests/l1/native-chain-sync.config"],
   });
@@ -130,7 +130,10 @@ const child = async (input: {
   const processChild = spawn(
     process.execPath,
     [
-      join(root, "dist/history-listener-probe/history-listener-child.js"),
+      join(
+        root,
+        ".probe-dist/history-listener-probe/history-listener-child.js",
+      ),
       config,
     ],
     {
