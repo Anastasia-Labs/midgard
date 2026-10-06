@@ -30,17 +30,17 @@ const publicationsFor = (preimage: Buffer, chunkBytes = 15_000) => {
   return Object.freeze(publications);
 };
 
-/** Immutable bytes and ordered content identities; the consumer authenticates their meaning. */
-const createRawRequirement = ({
+/** The requirement together with the publications it was derived from. */
+const rawRequirementWithPublications = ({
   preimage,
   chunkBytes,
 }: {
   readonly preimage: Uint8Array;
   readonly chunkBytes: 4096 | 15000;
-}): RawDatumPreimageRequirement => {
+}) => {
   const bytes = Buffer.from(preimage);
   const publications = publicationsFor(bytes, chunkBytes);
-  return Object.freeze({
+  const requirement: RawDatumPreimageRequirement = Object.freeze({
     kind:
       chunkBytes === 4096 ? "chunked_raw_datum_preimage" : "raw_datum_preimage",
     preimageHex: bytes.toString("hex"),
@@ -51,7 +51,15 @@ const createRawRequirement = ({
       publications.map(({ digest }) => digest.toString("hex")),
     ),
   });
+  return { requirement, publications };
 };
+
+/** Immutable bytes and ordered content identities; the consumer authenticates their meaning. */
+const createRawRequirement = (input: {
+  readonly preimage: Uint8Array;
+  readonly chunkBytes: 4096 | 15000;
+}): RawDatumPreimageRequirement =>
+  rawRequirementWithPublications(input).requirement;
 
 export const createRawDatumPreimageRequirement = (input: {
   readonly preimage: Uint8Array;
@@ -90,7 +98,8 @@ export const rawDatumPreimagePublicationPlan = (
   const preimage = Buffer.from(requirement.preimageHex, "hex");
   const chunkBytes =
     requirement.kind === "chunked_raw_datum_preimage" ? 4096 : 15000;
-  const expected = createRawRequirement({ preimage, chunkBytes });
+  const { requirement: expected, publications } =
+    rawRequirementWithPublications({ preimage, chunkBytes });
   if (
     JSON.stringify(requirement.publicationDatums) !==
       JSON.stringify(expected.publicationDatums) ||
@@ -101,7 +110,7 @@ export const rawDatumPreimagePublicationPlan = (
   return Object.freeze({
     plan: Object.freeze({
       tier: "RawDatums" as const,
-      publications: publicationsFor(preimage, chunkBytes),
+      publications,
     }),
     publicationDatums: expected.publicationDatums,
     publicationDigests: expected.publicationDigests,
