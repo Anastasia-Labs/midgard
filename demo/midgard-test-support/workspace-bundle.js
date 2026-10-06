@@ -70,36 +70,55 @@ const hashTree = (hash, directory, hashed) => {
 
 const esbuildVersion = async () => (await import("esbuild")).version;
 
-/**
- * Bundle `entries` (specifier -> source file) into a content-addressed
- * directory and return specifier -> bundled file.
- *
- * The key covers this file's own text, the full contents of every bundleable
- * package directory (not just the files a previous build read, so a newly
- * added file that changes resolution changes the key), the lockfile, the
- * esbuild version and every option below. A changed byte anywhere means a new
- * bundle, never a reused one; the directory is published by an atomic rename,
- * so concurrent runs either build the same content or reuse a complete one.
- */
-export const buildWorkspaceBundle = async ({
-  analysis,
-  target,
-  conditions,
-  resolveExternal,
-}) => {
-  const packages = workspacePackages();
-  const started = performance.now();
-  const version = await esbuildVersion();
-  const options = { target, conditions, version, schema: BUNDLE_SCHEMA };
+/** This file and the helpers that resolve and route what it bundles. */
+const BUNDLER_MODULES = [
+  "./workspace-bundle.js",
+  "./workspace-bundle-files.js",
+  "./workspace-bundle-analysis.js",
+];
+/** Builds whose inputs changed underneath them before one is published. */
+const BUILD_ATTEMPTS = 3;
+
+const bundleKey = ({ analysis, options, packages }) => {
   const hash = createHash("sha256");
   hash.update(JSON.stringify({ options, entries: [...analysis.entries] }));
-  // This file's own text decides how the bundle is built.
-  hash.update(readFileSync(new URL(import.meta.url)));
+  // The bundler's own text decides how the bundle is built.
+  for (const module of BUNDLER_MODULES) {
+    hash.update(`${module}\0`);
+    hash.update(readFileSync(new URL(module, import.meta.url)));
+    hash.update("\0");
+  }
   hash.update(readFileSync(join(demoDirectory, "pnpm-lock.yaml")));
   const hashed = new Set();
   for (const name of [...analysis.bundleable].sort())
     hashTree(hash, packages.get(name).directory, hashed);
-  const key = hash.digest("hex").slice(0, 32);
+  return { key: hash.digest("hex").slice(0, 32), hashed };
+};
+
+/**
+ * Bundle `entries` (specifier -> source file) into a content-addressed
+ * directory and return specifier -> bundled file.
+ *
+ * The key covers the text of this file and its two helper modules, the full
+ * contents of every bundleable package directory (not just the files a
+ * previous build read, so a newly added file that changes resolution changes
+ * the key), the lockfile, the esbuild version and every option below. A
+ * changed byte anywhere means a new bundle, never a reused one. The key is
+ * recomputed after esbuild finishes: if an input changed during the build, the
+ * output may mix old and new source, so it is discarded and rebuilt rather
+ * than published under either key. The directory is published by an atomic
+ * rename, so concurrent runs either build the same content or reuse a
+ * complete one.
+ */
+export const buildWorkspaceBundle = async (
+  { analysis, target, conditions, resolveExternal },
+  attempt = 1,
+) => {
+  const packages = workspacePackages();
+  const started = performance.now();
+  const version = await esbuildVersion();
+  const options = { target, conditions, version, schema: BUNDLE_SCHEMA };
+  const { key, hashed } = bundleKey({ analysis, options, packages });
   const directory = join(bundleRoot, key);
   const manifestPath = join(directory, "manifest.json");
 
@@ -257,6 +276,18 @@ export const buildWorkspaceBundle = async ({
       rmSync(staging, { recursive: true, force: true });
       throw new Error(
         `[workspace-bundle] the bundle would carry files its key does not cover:\n  ${unhashed.slice(0, 20).join("\n  ")}`,
+      );
+    }
+    // An input edited while esbuild ran: the output matches neither key.
+    if (bundleKey({ analysis, options, packages }).key !== key) {
+      rmSync(staging, { recursive: true, force: true });
+      if (attempt >= BUILD_ATTEMPTS)
+        throw new Error(
+          `[workspace-bundle] the bundled sources changed during each of ${String(BUILD_ATTEMPTS)} builds; refusing to publish a bundle that may not match its key`,
+        );
+      return buildWorkspaceBundle(
+        { analysis, target, conditions, resolveExternal },
+        attempt + 1,
       );
     }
     writeFileSync(
