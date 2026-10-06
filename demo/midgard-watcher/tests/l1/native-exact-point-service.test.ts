@@ -194,6 +194,26 @@ describe("persistent native exact-point helper", () => {
     expect(watcherNativeExactPointServicePids()).toEqual([]);
   }, 30_000);
 
+  it("kills a helper that frames output for a session it already ended", async () => {
+    const { open, log, starts } = await helper("out_after_end");
+    const query = await open(target);
+    const pid = (await starts())[0]!.pid;
+    // A concurrent in-flight session fails as the helper process exits; its
+    // own deadline is far longer than the helper's kill.
+    const pending = open(silent, 20_000);
+    const refusal = expect(pending).rejects.toThrow(
+      "native chain-sync process exited unexpectedly",
+    );
+    await expect
+      .poll(async () => (await log()).filter((e) => e.kind === "open").length)
+      .toBe(2);
+    await query.close();
+    await refusal;
+    await exited(pid);
+    expect((await log()).map((entry) => entry.kind)).not.toContain("eof");
+    expect(watcherNativeExactPointServicePids()).toEqual([]);
+  }, 30_000);
+
   it.each(["unknown_session", "malformed"])(
     "kills a helper whose output is %s",
     async (mode) => {

@@ -26,6 +26,8 @@ export const serve = ({ mode, logPath }) => {
     if (verb === "close") {
       log("close", { id });
       if (mode !== "ignore_close") frame(`end ${id} 0\n`);
+      // A frame for a session the helper has already ended.
+      if (mode === "out_after_end") frame(`out ${id} {}\n`);
       return;
     }
     const line = request.slice(verb.length + id.length + 2);
