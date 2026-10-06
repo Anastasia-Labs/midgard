@@ -8,7 +8,10 @@ import {
   type WatcherEncodedRecord,
   type WatcherRecordEncoding,
 } from "./durable-record-codec.js";
-import type { WatcherDurableAtomicBackend } from "./durable-store.js";
+import {
+  registerWatcherDurableInPlaceComparison,
+  type WatcherDurableAtomicBackend,
+} from "./durable-store.js";
 import {
   copyWatcherUserEventArchiveBytes,
   type WatcherUserEventArchive,
@@ -285,6 +288,16 @@ export const createWatcherSqliteRecordStore = (
       });
     },
   };
+  // The same transaction and checked read as `read`, minus the copy: the
+  // compared bytes are this module's own and the caller's are not retained.
+  registerWatcherDurableInPlaceComparison(backend, async (expected) =>
+    transaction(() => {
+      const current = readSnapshot();
+      return current === null
+        ? null
+        : Buffer.compare(current.bytes, expected) === 0;
+    }),
+  );
   archiveIntegrity.set(userEventArchive, (digests) =>
     transaction(() => {
       for (const key of digests) {

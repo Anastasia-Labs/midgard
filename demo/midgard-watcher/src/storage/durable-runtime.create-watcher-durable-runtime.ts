@@ -36,6 +36,7 @@ import {
   type WatcherProtectedUserEventCheckpoint,
 } from "./durable-runtime.load-published-authority.js";
 import {
+  inheritWatcherDurableInPlaceComparison,
   makeEmptyWatcherDurableStore,
   type WatcherDurableAtomicBackend,
 } from "./durable-store.js";
@@ -97,6 +98,7 @@ export const createWatcherDurableRuntime = async (input: {
       }
     },
   });
+  inheritWatcherDurableInPlaceComparison(backend, input.backend);
   const runtimeInput = { ...input, backend };
   let externallyProtectedHead = await input.client.readCurrent();
   const stored = await input.backend.read();

@@ -118,6 +118,36 @@ export const readWatcherDurableAtomicSnapshot = async (
   });
 };
 
+type InPlaceSnapshotComparison = (
+  expected: Uint8Array,
+) => Promise<boolean | null>;
+
+// Only backends this package creates over its own storage, and its own pure
+// delegating wrappers of them, may compare the current snapshot where it is
+// held. A caller-supplied object with the same methods grants nothing.
+const inPlaceSnapshotComparisons = new WeakMap<
+  WatcherDurableAtomicBackend,
+  InPlaceSnapshotComparison
+>();
+
+/** Package-internal: `compare` must read the complete current snapshot with
+ * the same freshness and integrity checks as `backend.read()`. */
+export const registerWatcherDurableInPlaceComparison = (
+  backend: WatcherDurableAtomicBackend,
+  compare: InPlaceSnapshotComparison,
+): void => {
+  inPlaceSnapshotComparisons.set(backend, compare);
+};
+
+/** Package-internal: only for a wrapper whose `read` delegates unchanged. */
+export const inheritWatcherDurableInPlaceComparison = (
+  wrapper: WatcherDurableAtomicBackend,
+  inner: WatcherDurableAtomicBackend,
+): void => {
+  const compare = inPlaceSnapshotComparisons.get(inner);
+  if (compare !== undefined) inPlaceSnapshotComparisons.set(wrapper, compare);
+};
+
 /**
  * Reports whether the backend's complete current snapshot is exactly
  * `expected` (null when absent). The comparison runs synchronously on the
@@ -127,6 +157,14 @@ export const readWatcherDurableAtomicSnapshotMatches = async (
   backend: WatcherDurableAtomicBackend,
   expected: Uint8Array,
 ): Promise<boolean | null> => {
+  const compare = inPlaceSnapshotComparisons.get(backend);
+  if (compare !== undefined) {
+    try {
+      return await compare(expected);
+    } catch {
+      return fail("persistence_failure", "$.backend.read");
+    }
+  }
   const bytes = await readBackend(backend);
   return bytes === null ? null : Buffer.compare(bytes, expected) === 0;
 };

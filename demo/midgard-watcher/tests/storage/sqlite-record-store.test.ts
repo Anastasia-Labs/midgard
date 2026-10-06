@@ -6,11 +6,15 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   encodeWatcherDurableStore,
+  inheritWatcherDurableInPlaceComparison,
   makeEmptyWatcherDurableStore,
   makeWatcherDurablePayload,
   makeWatcherDurableStore,
+  readWatcherDurableAtomicSnapshotMatches,
   watcherCanonicalJson,
+  type WatcherDurableAtomicBackend,
   watcherDurableStoreBytesSha256,
+  WatcherDurableStoreError,
 } from "../../src/storage/durable-store.js";
 import { openWatcherSqliteDurableBackend } from "../../src/storage/sqlite-durable-backend.js";
 
@@ -230,6 +234,96 @@ describe("SQLite incremental watcher records", () => {
       await expect(opened.backend.read()).rejects.toThrow("digest mismatch");
     } finally {
       inspection.close();
+      opened.close();
+    }
+  });
+
+  it("compares the snapshot in place with the answers and refusals of a copied read", async () => {
+    const { path, opened } = await open();
+    const writer = await openWatcherSqliteDurableBackend({ path });
+    const inspection = new DatabaseSync(path);
+    // An unregistered delegating backend takes the copied-read path.
+    let copiedReads = 0;
+    const copied: WatcherDurableAtomicBackend = {
+      read: () => {
+        copiedReads += 1;
+        return opened.backend.read();
+      },
+      compareAndSwap: opened.backend.compareAndSwap,
+    };
+    const answers = async (expected: Uint8Array) => {
+      const inPlace = await readWatcherDurableAtomicSnapshotMatches(
+        opened.backend,
+        expected,
+      );
+      const before = copiedReads;
+      const viaCopy = await readWatcherDurableAtomicSnapshotMatches(
+        copied,
+        expected,
+      );
+      expect(copiedReads).toBe(before + 1);
+      expect(inPlace).toBe(viaCopy);
+      return inPlace;
+    };
+    const refusal = (backend: WatcherDurableAtomicBackend, bytes: Uint8Array) =>
+      readWatcherDurableAtomicSnapshotMatches(backend, bytes).catch(
+        (error: unknown) => error,
+      );
+    try {
+      const first = encodeWatcherDurableStore(store(2));
+      const next = encodeWatcherDurableStore(store(3));
+      expect(await answers(first)).toBeNull();
+      await opened.backend.compareAndSwap(null, first);
+      expect(await answers(first)).toBe(true);
+      const flipped = Uint8Array.from(first);
+      flipped[first.length - 1] = flipped[first.length - 1]! ^ 1;
+      expect(await answers(flipped)).toBe(false);
+      expect(await answers(first.slice(0, -1))).toBe(false);
+      expect(await answers(Uint8Array.from([...first, 0x20]))).toBe(false);
+      expect(await answers(next)).toBe(false);
+      // Another connection's commit replaces the snapshot behind warm state.
+      expect(
+        await writer.backend.compareAndSwap(
+          watcherDurableStoreBytesSha256(first),
+          next,
+        ),
+      ).toBe(true);
+      expect(await answers(first)).toBe(false);
+      expect(await answers(next)).toBe(true);
+      // Same methods, different object: no in-place trust is inherited.
+      const impostor: WatcherDurableAtomicBackend = {
+        ...opened.backend,
+        read: async () => first,
+      };
+      expect(
+        await readWatcherDurableAtomicSnapshotMatches(impostor, next),
+      ).toBe(false);
+      // A pure delegating wrapper may inherit the in-place comparison.
+      inheritWatcherDurableInPlaceComparison(copied, opened.backend);
+      const before = copiedReads;
+      expect(await readWatcherDurableAtomicSnapshotMatches(copied, next)).toBe(
+        true,
+      );
+      expect(copiedReads).toBe(before);
+      inspection.exec(`
+        UPDATE watcher_user_event_archive_v1 SET bytes = x'00'
+        WHERE digest = (SELECT digest FROM watcher_user_event_archive_v1 ORDER BY length(bytes) DESC LIMIT 1);
+      `);
+      const unregistered: WatcherDurableAtomicBackend = {
+        read: () => opened.backend.read(),
+        compareAndSwap: opened.backend.compareAndSwap,
+      };
+      for (const backend of [opened.backend, unregistered]) {
+        const error = await refusal(backend, next);
+        expect(error).toBeInstanceOf(WatcherDurableStoreError);
+        expect((error as WatcherDurableStoreError).code).toBe(
+          "persistence_failure",
+        );
+        expect((error as WatcherDurableStoreError).path).toBe("$.backend.read");
+      }
+    } finally {
+      inspection.close();
+      writer.close();
       opened.close();
     }
   });
