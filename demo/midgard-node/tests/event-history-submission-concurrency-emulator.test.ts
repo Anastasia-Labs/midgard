@@ -436,19 +436,22 @@ it("continues a concurrent run of the same submission ID with the nonce that run
   const second = run(() =>
     Effect.die(new Error("A second run of one submission ID chose a nonce")),
   );
-  const [landed, rerun] = await Promise.allSettled([first, second]);
-  if (landed.status === "rejected") throw landed.reason;
-  // The second run took the first's reservation instead of choosing again,
-  // then either landed the same admission or stopped on the first's progress.
-  if (rerun.status === "rejected")
-    expect(String(rerun.reason)).toMatch(
-      /Concurrent history submission changed; reload and reconcile/u,
-    );
-  else expect(rerun.value.admission.txHash).toBe(landed.value.admission.txHash);
+  const outcomes = await Promise.allSettled([first, second]);
+  // The second run took the first's reservation instead of choosing again.
+  // Both then build on one journal row, so whichever saves first lands; the
+  // other lands the same admission or stops on the winner's progress.
+  const landed = outcomes.flatMap((outcome) =>
+    outcome.status === "fulfilled" ? [outcome.value.admission.txHash] : [],
+  );
+  if (landed.length === 0) throw (outcomes[0] as PromiseRejectedResult).reason;
+  expect(new Set(landed).size).toBe(1);
+  for (const outcome of outcomes)
+    if (outcome.status === "rejected")
+      expect(String(outcome.reason)).toMatch(
+        /Concurrent history submission changed; reload and reconcile/u,
+      );
   const saved = await journal(submissionId);
   if (Option.isNone(saved)) throw new Error("Missing submission journal");
   expect(saved.value.nonce_out_ref).toBe(outRefLabel(nonce!));
-  expect(saved.value.checkpoint.admission?.txHash).toBe(
-    landed.value.admission.txHash,
-  );
+  expect(saved.value.checkpoint.admission?.txHash).toBe(landed[0]);
 }, 300_000);
