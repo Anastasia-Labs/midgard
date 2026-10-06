@@ -84,8 +84,6 @@ export const startProxy = async (answer: (n: number) => ProxyAnswer) => {
   return {
     port,
     accepted: () => accepted,
-    /** How many forwarded connections are still open. */
-    forwarding: () => clients.size,
     /** Closes every forwarded connection, as a backend that went away. */
     dropForwarded: () => clients.forEach((client) => client.end()),
   };
