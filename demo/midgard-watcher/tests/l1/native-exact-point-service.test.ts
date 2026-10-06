@@ -135,6 +135,37 @@ describe("persistent native exact-point helper", () => {
     );
   });
 
+  it("holds an open beyond the helper's session bound until a session ends", async () => {
+    const { open, log, starts } = await helper();
+    const opens = async () =>
+      (await log()).filter((entry) => entry.kind === "open").length;
+    // The fixture, like the real helper, refuses a 257th live session.
+    const live = await Promise.all(
+      Array.from({ length: 256 }, () => open(target)),
+    );
+    // A waiting open that expires leaves without ever reaching the helper.
+    await expect(open(other, 150)).rejects.toThrow(/expired|timed out|cancel/);
+    const waiting = open(other, 20_000);
+    let settled = false;
+    void waiting.then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(settled).toBe(false);
+    expect(await opens()).toBe(256);
+    await live[0]!.close();
+    const query = await waiting;
+    expect(
+      readWatcherNativeExactPointQuery(query.receipt).event.blockHash,
+    ).toBe(other.blockHash);
+    expect(await opens()).toBe(257);
+    expect(await starts()).toHaveLength(1);
+    expect((await log()).map((entry) => entry.kind)).not.toContain(
+      "session_limit",
+    );
+  }, 60_000);
+
   it("fails live and in-flight queries when the helper crashes and starts a fresh helper next", async () => {
     const { open, starts } = await helper("crash_on_second_open");
     const live = await open(target);

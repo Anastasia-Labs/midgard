@@ -1,10 +1,14 @@
 // A persistent exact-point helper for lifecycle tests. Every session answers
 // from its own startup line, so concurrent sessions prove request-id routing;
 // a target of "cc" bytes never rolls forward; the mode selects the helper
-// failure under test.
+// failure under test. Like the real helper, it refuses an open beyond its
+// live-session bound with service_session_limit.
 import { appendFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { createInterface } from "node:readline";
+
+// maxServiceSessions in native-chain-sync/service.go.
+const SESSION_LIMIT = 256;
 
 export const serve = ({ mode, logPath }) => {
   const log = (kind, value = {}) =>
@@ -20,12 +24,17 @@ export const serve = ({ mode, logPath }) => {
   const frame = (text) => process.stdout.write(text);
   const out = (id, value) => frame(`out ${id} ${JSON.stringify(value)}\n`);
   let opened = 0;
+  const live = new Set();
   const reader = createInterface({ input: process.stdin, crlfDelay: Infinity });
   reader.on("line", (request) => {
     const [verb, id] = request.split(" ", 2);
     if (verb === "close") {
       log("close", { id });
-      if (mode !== "ignore_close") frame(`end ${id} 0\n`);
+      if (!live.has(id)) return;
+      if (mode !== "ignore_close") {
+        live.delete(id);
+        frame(`end ${id} 0\n`);
+      }
       // A frame for a session the helper has already ended.
       if (mode === "out_after_end") frame(`out ${id} {}\n`);
       return;
@@ -34,6 +43,16 @@ export const serve = ({ mode, logPath }) => {
     const startup = JSON.parse(line);
     opened += 1;
     log("open", { id, target: startup.operation.target.blockHash });
+    if (live.size >= SESSION_LIMIT) {
+      log("session_limit", { id });
+      out(id, {
+        code: "service_session_limit",
+        kind: "error",
+        schemaVersion: startup.schemaVersion,
+      });
+      return frame(`end ${id} 69\n`);
+    }
+    live.add(id);
     if (mode === "unknown_session") return frame(`out 999 {}\n`);
     if (mode === "malformed") return frame("malformed\n");
     if (mode === "crash_on_second_open" && opened === 2) process.exit(23);

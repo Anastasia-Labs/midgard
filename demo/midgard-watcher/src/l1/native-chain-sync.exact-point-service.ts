@@ -16,7 +16,9 @@ import {
  * line on stdin, the same stdout lines and stderr bytes, and an exit when the
  * session ends. A helper crash, hang or protocol violation kills the helper
  * and ends every in-flight session exactly as its own process exiting would;
- * nothing is retried. The next query starts a fresh helper.
+ * nothing is retried. The next query starts a fresh helper. The helper admits
+ * at most MAX_HELPER_SESSIONS live sessions; opens beyond that wait, in
+ * order, for a session to end instead of being refused.
  *
  * Wire protocol (one line per frame):
  *   owner -> helper: "open <id> <startup line>", "close <id>"
@@ -35,6 +37,11 @@ const KILLED_SESSION_RELEASE_MS = 5_000;
 const SERVICE_SHUTDOWN_MS = 5_000;
 const SERVICE_IDLE_MS = 2_000;
 const MAX_SESSION_ID = Number.MAX_SAFE_INTEGER;
+// The helper's own session bound (maxServiceSessions in service.go). A
+// session counts here from its open frame until its end frame, and the helper
+// stops counting it before it frames that end, so the owner's count is never
+// below the helper's and the helper never refuses an admitted open.
+const MAX_HELPER_SESSIONS = 256;
 const SESSION_ID = /^[1-9][0-9]{0,15}$/u;
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/u;
 const NEWLINE = Buffer.from("\n");
@@ -103,7 +110,12 @@ class ExactPointSession extends EventEmitter {
       return;
     }
     this.#service = serviceFor(this.binaryPath, this.spawnService);
-    this.#id = this.#service.open(this, line.subarray(0, line.length - 1));
+    this.#service.open(this, line.subarray(0, line.length - 1));
+  }
+
+  /** The helper session id, once the open frame has been written. */
+  opened(id: number): void {
+    this.#id = id;
   }
 
   /** Forwards one stdout line; output beyond the session bound is dropped. */
@@ -146,6 +158,7 @@ class ExactPointSession extends EventEmitter {
     this.killed = true;
     const service = this.#service;
     const id = this.#id;
+    // An unopened or still waiting session ends as an unstarted process.
     if (service === undefined || id === undefined) {
       this.finish(null, typeof signal === "number" ? "SIGKILL" : signal);
       return true;
@@ -165,6 +178,8 @@ class ExactPointService {
   readonly #sessions = new Map<number, ExactPointSession>();
   // Locally ended sessions whose helper end frame is still outstanding.
   readonly #releasing = new Map<number, NodeJS.Timeout | undefined>();
+  // Opens waiting, in order, for a helper session slot.
+  #waiting: { session: ExactPointSession; startup: Buffer }[] = [];
   #lastId = 0;
   #dead = false;
   #inputEnded = false;
@@ -210,18 +225,37 @@ class ExactPointService {
     return this.#dead;
   }
 
-  open(session: ExactPointSession, startup: Buffer): number | undefined {
-    if (this.#dead || this.#inputEnded || this.#lastId >= MAX_SESSION_ID) {
+  open(session: ExactPointSession, startup: Buffer): void {
+    if (this.#dead || this.#inputEnded) {
       session.finish(null, "SIGKILL");
-      return undefined;
+      return;
     }
-    const id = ++this.#lastId;
-    this.#sessions.set(id, session);
+    this.#waiting.push({ session, startup });
+    this.#admit();
+  }
+
+  // Writes waiting opens while the helper has a session slot for them.
+  #admit(): void {
+    while (
+      this.#waiting.length > 0 &&
+      !this.#dead &&
+      !this.#inputEnded &&
+      this.#sessions.size + this.#releasing.size < MAX_HELPER_SESSIONS
+    ) {
+      const { session, startup } = this.#waiting.shift()!;
+      if (session.finished) continue;
+      if (this.#lastId >= MAX_SESSION_ID) {
+        session.finish(null, "SIGKILL");
+        continue;
+      }
+      const id = ++this.#lastId;
+      this.#sessions.set(id, session);
+      session.opened(id);
+      this.#child.stdin.write(`open ${id} `);
+      this.#child.stdin.write(startup);
+      this.#child.stdin.write(NEWLINE);
+    }
     this.#refresh();
-    this.#child.stdin.write(`open ${id} `);
-    this.#child.stdin.write(startup);
-    this.#child.stdin.write(NEWLINE);
-    return id;
   }
 
   close(id: number): void {
@@ -245,6 +279,10 @@ class ExactPointService {
       this.#sessions.delete(id);
       if (!this.#dead) this.#releasing.set(id, undefined);
     }
+    if (id === undefined)
+      this.#waiting = this.#waiting.filter(
+        (entry) => entry.session !== session,
+      );
     this.#refresh();
   }
 
@@ -258,7 +296,7 @@ class ExactPointService {
       this.#child.stdout,
       this.#child.stderr,
     ] as unknown as { ref?(): void; unref?(): void }[];
-    if (this.#sessions.size > 0) {
+    if (this.#sessions.size > 0 || this.#waiting.length > 0) {
       if (this.#idleTimer !== undefined) clearTimeout(this.#idleTimer);
       this.#idleTimer = undefined;
       for (const handle of handles) handle.ref?.();
@@ -268,7 +306,8 @@ class ExactPointService {
     if (this.#idleTimer === undefined) {
       this.#idleTimer = setTimeout(() => {
         this.#idleTimer = undefined;
-        if (this.#sessions.size === 0) void this.shutdown();
+        if (this.#sessions.size === 0 && this.#waiting.length === 0)
+          void this.shutdown();
       }, SERVICE_IDLE_MS);
       this.#idleTimer.unref();
     }
@@ -341,6 +380,7 @@ class ExactPointService {
       const timer = this.#releasing.get(id);
       if (timer !== undefined) clearTimeout(timer);
       this.#releasing.delete(id);
+      this.#admit();
     } else {
       this.fail("native exact-point service emitted an invalid frame");
     }
@@ -373,8 +413,14 @@ class ExactPointService {
       this.#stderrTail,
       Buffer.from(`${this.#stderrTail.length === 0 ? "" : "\n"}${reason}\n`),
     ]);
-    const sessions = [...this.#sessions.values()];
+    // Waiting opens end with the helper they were queued on, like in-flight
+    // sessions; the next query starts a fresh helper.
+    const sessions = [
+      ...this.#sessions.values(),
+      ...this.#waiting.map((entry) => entry.session),
+    ];
     this.#sessions.clear();
+    this.#waiting = [];
     for (const session of sessions) {
       session.deliverStderr(diagnostic);
       session.finish(code, signal);
@@ -387,6 +433,10 @@ class ExactPointService {
     if (!this.#dead) {
       this.onDead(this);
       this.#inputEnded = true;
+      // An open still waiting for a slot was never sent; it ends as an open
+      // refused by a closing helper does.
+      for (const { session } of this.#waiting.splice(0))
+        session.finish(null, "SIGKILL");
       this.#child.stdin.end();
       const timer = setTimeout(
         () => this.#child.kill("SIGKILL"),
