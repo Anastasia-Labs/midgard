@@ -20,6 +20,7 @@ import {
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { redeemerItemExecutor } from "../src/redeemer-item-plan.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
+import { searchExactLengthPadding } from "./support/exact-length-padding.js";
 import {
   buildForgedOperatorSuccessorValidationDisputeFixture,
   runForcedValidationDisputeScenario as runScenario,
@@ -116,29 +117,23 @@ const redeemerFieldLength = (redeemerCbor: Uint8Array) =>
 // the structural arms run against real list, map and large-constructor frames.
 // The trailing canonical byte string absorbs the remaining width without
 // adding traversal breadth.
-//
-// The padding search costs about a second, so it runs once per file; every
-// caller receives its own copy of the bytes.
-let maximumItemRedeemerBytes: Buffer | undefined;
-const maximumItemRedeemer = (): Uint8Array => {
-  maximumItemRedeemerBytes ??= searchMaximumItemRedeemer();
-  return Buffer.from(maximumItemRedeemerBytes);
-};
-
-const searchMaximumItemRedeemer = (): Buffer => {
-  for (let padding = 30_000; padding < 32_800; padding++) {
-    const candidate = Buffer.concat([
-      Buffer.from([0x9f]),
-      Buffer.from("9f0001ff", "hex"),
-      Buffer.from("a200010203", "hex"),
-      Buffer.from("d8668218809f01ff", "hex"),
-      Buffer.from(Data.to("ab".repeat(padding)), "hex"),
-      Buffer.from([0xff]),
-    ]);
-    if (redeemerFieldLength(candidate) === 32_768) return candidate;
-  }
-  throw new Error("Could not construct an exact 32,768-byte redeemer field");
-};
+const maximumItemRedeemerCandidate = (padding: number): Uint8Array =>
+  Buffer.concat([
+    Buffer.from([0x9f]),
+    Buffer.from("9f0001ff", "hex"),
+    Buffer.from("a200010203", "hex"),
+    Buffer.from("d8668218809f01ff", "hex"),
+    Buffer.from(Data.to("ab".repeat(padding)), "hex"),
+    Buffer.from([0xff]),
+  ]);
+const maximumItemRedeemer = (): Uint8Array =>
+  searchExactLengthPadding({
+    target: 32_768,
+    from: 30_000,
+    to: 32_800,
+    candidate: maximumItemRedeemerCandidate,
+    measure: redeemerFieldLength,
+  });
 
 const SHARED_ITEM_EXECUTOR_ARMS = Array.from({ length: 17 }, (_, i) => i);
 
