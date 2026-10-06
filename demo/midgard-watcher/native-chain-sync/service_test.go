@@ -181,7 +181,12 @@ func TestExactPointServiceRejectsProtocolViolations(t *testing.T) {
 func TestExactPointServiceFramesConcurrentSessionsAndSealsClosedOutput(t *testing.T) {
 	config, _, _ := exactFixture(t)
 	valid := startupLine(t, config)
-	var lateWrites sync.WaitGroup
+	// The first stopped session keeps its writer and diagnostics unsealed and
+	// writes through them only after its end frame, while the pipe stays open
+	// for the other session; the session framing alone must refuse them.
+	lateWrite := make(chan struct{})
+	lateResult := make(chan error, 1)
+	var firstStopped sync.Once
 	h := startService(t, func(s *exactPointService) {
 		s.run = func(config startupConfig, _ []byte, writer *canonicalWriter, diagnostics io.Writer, stop <-chan struct{}) int {
 			_, _ = diagnostics.Write([]byte("diagnostic\nfor " + config.Operation.Target.BlockNo + "\n"))
@@ -189,16 +194,13 @@ func TestExactPointServiceFramesConcurrentSessionsAndSealsClosedOutput(t *testin
 				t.Error(err)
 			}
 			<-stop
-			// A callback abandoned by the owner's close cannot reach stdout.
-			lateWrites.Add(1)
-			go func() {
-				defer lateWrites.Done()
-				time.Sleep(50 * time.Millisecond)
-				if err := writer.write(errorEvent{Code: "late", Kind: "error", SchemaVersion: schemaVersion}); err == nil {
-					t.Error("late session write admitted")
-				}
-			}()
-			writer.seal()
+			firstStopped.Do(func() {
+				go func() {
+					<-lateWrite
+					_, _ = diagnostics.Write([]byte("late diagnostic\n"))
+					lateResult <- writer.write(errorEvent{Code: "late", Kind: "error", SchemaVersion: schemaVersion})
+				}()
+			})
 			return 0
 		}
 	})
@@ -229,7 +231,12 @@ func TestExactPointServiceFramesConcurrentSessionsAndSealsClosedOutput(t *testin
 	if frame := h.next(); frame != (serviceFrame{verb: "end", id: "7", payload: "0"}) {
 		t.Fatalf("close end: %+v", frame)
 	}
-	// Closing an ended session is idempotent; the other session stays live.
+	close(lateWrite)
+	if err := <-lateResult; err == nil {
+		t.Error("late session write admitted after its end frame")
+	}
+	// Closing an ended session is idempotent; the other session stays live,
+	// so any admitted late frame would precede its end.
 	h.send("close 7")
 	_ = h.input.Close()
 	if frame := h.next(); frame != (serviceFrame{verb: "end", id: "9", payload: "0"}) {
@@ -238,7 +245,6 @@ func TestExactPointServiceFramesConcurrentSessionsAndSealsClosedOutput(t *testin
 	if status := h.exit(); status != 0 {
 		t.Fatalf("EOF status %d", status)
 	}
-	lateWrites.Wait()
 	for frame := range h.frames {
 		t.Fatalf("frame after end: %+v", frame)
 	}
