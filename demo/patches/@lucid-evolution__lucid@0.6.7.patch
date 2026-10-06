@@ -312,25 +312,29 @@ diff --git a/dist/index.cjs b/dist/index.cjs
      toTransaction: () => config.txComplete,
      toScriptContext: (purpose, options2) => makeScriptContext(
        config.txComplete,
-@@ -3983,6 +4218,7 @@
+@@ -3983,6 +4218,11 @@
    const hasPlutusScriptExecutions = Array.from(
      config.scripts.values()
    ).some((value) => value.type !== "Native");
 +  const provisionalEvaluation = hasPlutusScriptExecutions && internalOptions.provisionalEvaluation === true;
++  // The collateral-free draft only sizes collateral. A delayed-redeemer replay
++  // evaluates it once: a replay that evaluates the draft is never returned,
++  // because a later replay must re-complete with the evaluated execution units.
++  const provisionalDraftEvaluation = provisionalEvaluation || hasPlutusScriptExecutions && internalOptions.provisionalDraftEvaluation === true;
    let evaluatedScriptBody = yield* selectionAndEvaluation(
      walletInputs,
      changeAddress,
-@@ -3993,7 +4229,8 @@
+@@ -3993,7 +4233,8 @@
      false,
      internalOptions.bootstrapExUnits === true,
      internalOptions.knownRedeemerExUnits,
 -    internalOptions.redeemerInputFingerprint
 +    internalOptions.redeemerInputFingerprint,
-+    provisionalEvaluation
++    provisionalDraftEvaluation
    );
    if (hasPlutusScriptExecutions) {
      const estimatedFee = yield* estimateFee(config, true);
-@@ -4005,10 +4242,14 @@
+@@ -4005,10 +4246,14 @@
          )
        )
      );
@@ -346,7 +350,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
      );
      yield* applyCollateral(totalCollateral, collateralInput, changeAddress);
      evaluatedScriptBody = (yield* selectionAndEvaluation(
-@@ -4043,9 +4284,7 @@
+@@ -4043,9 +4288,7 @@
      catch: (error) => completeTxError(error)
    });
    const shouldCanonicalize = canonical || internalOptions.forceCanonical;
@@ -357,7 +361,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    const normalizedTransaction = yield* import_effect22.Effect.try({
      try: () => normalizeGovernanceRedeemerIndices(
        transactionBeforeScriptDataHash,
-@@ -4060,6 +4299,19 @@
+@@ -4060,6 +4303,19 @@
      config
    );
    if (transaction !== normalizedTransaction) normalizedTransaction.free();
@@ -377,7 +381,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    const derivedInputs = deriveInputsFromTransaction(transaction);
    const derivedWalletInputs = derivedInputs.filter(
      (utxo) => utxo.address === walletAddress
-@@ -4085,12 +4337,12 @@
+@@ -4085,12 +4341,12 @@
      })
    );
  }).pipe(import_effect22.Effect.catchAllDefect((cause) => new RunTimeError({ cause })));
@@ -392,7 +396,26 @@ diff --git a/dist/index.cjs b/dist/index.cjs
      }),
      import_effect22.Effect.provide(import_effect22.Layer.succeed(TxConfig, { config: replayConfig })),
      // The completed transaction is copied out of the builder; nothing keeps
-@@ -4213,7 +4465,7 @@
+@@ -4098,7 +4354,7 @@
+     import_effect22.Effect.ensuring(import_effect22.Effect.sync(() => replayConfig.txBuilder.free()))
+   );
+ };
+-var completeDelayedFromActions = (sourceConfig, options) => import_effect22.Effect.gen(function* () {
++var completeDelayedFromActions = (sourceConfig, options, provisionalDraftEvaluation = false) => import_effect22.Effect.gen(function* () {
+   const wallet = yield* (0, import_effect22.pipe)(
+     import_effect22.Effect.fromNullable(sourceConfig.lucidConfig.wallet),
+     import_effect22.Effect.orElseFail(() => completeTxError(ERROR_MESSAGE.MISSING_WALLET))
+@@ -4132,7 +4388,8 @@
+             bootstrapExUnits: missingRedeemers,
+             walletInputs: fixedWalletInputs,
+             knownRedeemerExUnits,
+-            redeemerInputFingerprint
++            redeemerInputFingerprint,
++            provisionalDraftEvaluation
+           }
+         );
+       }),
+@@ -4213,7 +4470,7 @@
  });
  var canonicalInputFingerprint = (tx) => (0, import_core_utils14.withCMLScope)((own) => {
    const canonical = own(
@@ -401,7 +424,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    );
    const inputs = own(own(canonical.body()).inputs());
    return Array.from(
-@@ -4266,14 +4518,25 @@
+@@ -4266,14 +4523,30 @@
  });
  var complete = (options = {}) => import_effect22.Effect.gen(function* () {
    const { config } = yield* TxConfig;
@@ -411,17 +434,22 @@ diff --git a/dist/index.cjs b/dist/index.cjs
 +    options.evaluator == null && config.lucidConfig.evaluator == null
 +    ? { ...options, evaluator: makeDefaultAikenEvaluator() }
 +    : options;
++  const defaultLocalEvaluation = options.localUPLCEval !== false &&
++    options.evaluator == null && config.lucidConfig.evaluator == null;
 +  const internalOptions = {
 +    provisionalEvaluation: options.coinSelection === false &&
-+      options.localUPLCEval !== false && options.evaluator == null &&
-+      config.lucidConfig.evaluator == null && !hasDelayedActions(config)
++      defaultLocalEvaluation && !hasDelayedActions(config)
 +  };
    if (config.actions.length === 0)
 -    return yield* completeCurrentConfig(options);
 +    return yield* completeCurrentConfig(completionOptions, internalOptions);
    if (hasDelayedActions(config)) {
 -    return yield* completeDelayedFromActions(config, options);
-+    return yield* completeDelayedFromActions(config, completionOptions);
++    return yield* completeDelayedFromActions(
++      config,
++      completionOptions,
++      defaultLocalEvaluation
++    );
    }
 -  return yield* completeStaticFromActions(config, options);
 +  return yield* completeStaticFromActions(config, completionOptions, internalOptions);
@@ -431,7 +459,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    const { config } = yield* TxConfig;
    const refScriptInputs = config.readInputs.filter(
      (input) => input.scriptRef
-@@ -4334,7 +4597,8 @@
+@@ -4334,7 +4607,8 @@
      localUPLCEval,
      evaluator,
      bootstrapExUnits,
@@ -441,7 +469,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    );
  }).pipe(import_effect22.Effect.catchAllDefect((cause) => new RunTimeError({ cause })));
  var completePartialPrograms = () => import_effect22.Effect.gen(function* () {
-@@ -4907,9 +5171,7 @@
+@@ -4907,9 +5181,7 @@
    return yield* buildEvaluationDraft(config, changeAddress);
  });
  var prepareRedeemerContextCandidate = (candidate, config) => import_effect22.Effect.gen(function* () {
@@ -452,7 +480,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    const normalized = yield* import_effect22.Effect.try({
      try: () => normalizeGovernanceRedeemerIndices(
        canonical,
-@@ -4990,7 +5252,7 @@
+@@ -4990,7 +5262,7 @@
      if (zeroed !== tx) zeroed.free();
    }
  };
@@ -461,7 +489,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    let previousFingerprint;
    let forceExplicitFee = config.minFee !== void 0;
    for (let attempt = 0; attempt < MAX_EVALUATION_ATTEMPTS; attempt++) {
-@@ -5012,8 +5274,11 @@
+@@ -5012,8 +5284,11 @@
        applyBootstrapRedeemerExUnits(
          redeemers,
          config.txBuilder,
@@ -475,7 +503,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
        );
        (0, import_core_utils14.freeCML)(redeemers, candidate);
        return true;
-@@ -5041,6 +5306,9 @@
+@@ -5041,6 +5316,9 @@
        localUPLCEval,
        evaluator
      ).pipe(import_effect22.Effect.ensuring(import_effect22.Effect.sync(() => candidate.free())));
@@ -485,7 +513,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    }
    return yield* completeTxError(
      `Phase-two evaluation did not converge after ${MAX_EVALUATION_ATTEMPTS} attempts. Check for scripts that depend on transaction fees, change outputs, or execution-unit-driven transaction shape.`
-@@ -5063,33 +5331,81 @@
+@@ -5063,33 +5341,81 @@
    name: "provider",
    evaluate: ({ tx, additionalUTxOs }) => provider.evaluateTx(tx, additionalUTxOs)
  });
@@ -908,25 +936,29 @@ diff --git a/dist/index.js b/dist/index.js
      toTransaction: () => config.txComplete,
      toScriptContext: (purpose, options2) => makeScriptContext(
        config.txComplete,
-@@ -3881,6 +4116,7 @@
+@@ -3881,6 +4116,11 @@
    const hasPlutusScriptExecutions = Array.from(
      config.scripts.values()
    ).some((value) => value.type !== "Native");
 +  const provisionalEvaluation = hasPlutusScriptExecutions && internalOptions.provisionalEvaluation === true;
++  // The collateral-free draft only sizes collateral. A delayed-redeemer replay
++  // evaluates it once: a replay that evaluates the draft is never returned,
++  // because a later replay must re-complete with the evaluated execution units.
++  const provisionalDraftEvaluation = provisionalEvaluation || hasPlutusScriptExecutions && internalOptions.provisionalDraftEvaluation === true;
    let evaluatedScriptBody = yield* selectionAndEvaluation(
      walletInputs,
      changeAddress,
-@@ -3891,7 +4127,8 @@
+@@ -3891,7 +4131,8 @@
      false,
      internalOptions.bootstrapExUnits === true,
      internalOptions.knownRedeemerExUnits,
 -    internalOptions.redeemerInputFingerprint
 +    internalOptions.redeemerInputFingerprint,
-+    provisionalEvaluation
++    provisionalDraftEvaluation
    );
    if (hasPlutusScriptExecutions) {
      const estimatedFee = yield* estimateFee(config, true);
-@@ -3903,10 +4140,14 @@
+@@ -3903,10 +4144,14 @@
          )
        )
      );
@@ -942,7 +974,7 @@ diff --git a/dist/index.js b/dist/index.js
      );
      yield* applyCollateral(totalCollateral, collateralInput, changeAddress);
      evaluatedScriptBody = (yield* selectionAndEvaluation(
-@@ -3941,9 +4182,7 @@
+@@ -3941,9 +4186,7 @@
      catch: (error) => completeTxError(error)
    });
    const shouldCanonicalize = canonical || internalOptions.forceCanonical;
@@ -953,7 +985,7 @@ diff --git a/dist/index.js b/dist/index.js
    const normalizedTransaction = yield* Effect21.try({
      try: () => normalizeGovernanceRedeemerIndices(
        transactionBeforeScriptDataHash,
-@@ -3958,6 +4197,19 @@
+@@ -3958,6 +4201,19 @@
      config
    );
    if (transaction !== normalizedTransaction) normalizedTransaction.free();
@@ -973,7 +1005,7 @@ diff --git a/dist/index.js b/dist/index.js
    const derivedInputs = deriveInputsFromTransaction(transaction);
    const derivedWalletInputs = derivedInputs.filter(
      (utxo) => utxo.address === walletAddress
-@@ -3983,12 +4235,12 @@
+@@ -3983,12 +4239,12 @@
      })
    );
  }).pipe(Effect21.catchAllDefect((cause) => new RunTimeError({ cause })));
@@ -988,7 +1020,26 @@ diff --git a/dist/index.js b/dist/index.js
      }),
      Effect21.provide(Layer.succeed(TxConfig, { config: replayConfig })),
      // The completed transaction is copied out of the builder; nothing keeps
-@@ -4111,7 +4363,7 @@
+@@ -3996,7 +4252,7 @@
+     Effect21.ensuring(Effect21.sync(() => replayConfig.txBuilder.free()))
+   );
+ };
+-var completeDelayedFromActions = (sourceConfig, options) => Effect21.gen(function* () {
++var completeDelayedFromActions = (sourceConfig, options, provisionalDraftEvaluation = false) => Effect21.gen(function* () {
+   const wallet = yield* pipe10(
+     Effect21.fromNullable(sourceConfig.lucidConfig.wallet),
+     Effect21.orElseFail(() => completeTxError(ERROR_MESSAGE.MISSING_WALLET))
+@@ -4030,7 +4286,8 @@
+             bootstrapExUnits: missingRedeemers,
+             walletInputs: fixedWalletInputs,
+             knownRedeemerExUnits,
+-            redeemerInputFingerprint
++            redeemerInputFingerprint,
++            provisionalDraftEvaluation
+           }
+         );
+       }),
+@@ -4111,7 +4368,7 @@
  });
  var canonicalInputFingerprint = (tx) => withCMLScope12((own) => {
    const canonical = own(
@@ -997,7 +1048,7 @@ diff --git a/dist/index.js b/dist/index.js
    );
    const inputs = own(own(canonical.body()).inputs());
    return Array.from(
-@@ -4164,14 +4416,25 @@
+@@ -4164,14 +4421,30 @@
  });
  var complete = (options = {}) => Effect21.gen(function* () {
    const { config } = yield* TxConfig;
@@ -1007,17 +1058,22 @@ diff --git a/dist/index.js b/dist/index.js
 +    options.evaluator == null && config.lucidConfig.evaluator == null
 +    ? { ...options, evaluator: makeDefaultAikenEvaluator() }
 +    : options;
++  const defaultLocalEvaluation = options.localUPLCEval !== false &&
++    options.evaluator == null && config.lucidConfig.evaluator == null;
 +  const internalOptions = {
 +    provisionalEvaluation: options.coinSelection === false &&
-+      options.localUPLCEval !== false && options.evaluator == null &&
-+      config.lucidConfig.evaluator == null && !hasDelayedActions(config)
++      defaultLocalEvaluation && !hasDelayedActions(config)
 +  };
    if (config.actions.length === 0)
 -    return yield* completeCurrentConfig(options);
 +    return yield* completeCurrentConfig(completionOptions, internalOptions);
    if (hasDelayedActions(config)) {
 -    return yield* completeDelayedFromActions(config, options);
-+    return yield* completeDelayedFromActions(config, completionOptions);
++    return yield* completeDelayedFromActions(
++      config,
++      completionOptions,
++      defaultLocalEvaluation
++    );
    }
 -  return yield* completeStaticFromActions(config, options);
 +  return yield* completeStaticFromActions(config, completionOptions, internalOptions);
@@ -1027,7 +1083,7 @@ diff --git a/dist/index.js b/dist/index.js
    const { config } = yield* TxConfig;
    const refScriptInputs = config.readInputs.filter(
      (input) => input.scriptRef
-@@ -4232,7 +4495,8 @@
+@@ -4232,7 +4505,8 @@
      localUPLCEval,
      evaluator,
      bootstrapExUnits,
@@ -1037,7 +1093,7 @@ diff --git a/dist/index.js b/dist/index.js
    );
  }).pipe(Effect21.catchAllDefect((cause) => new RunTimeError({ cause })));
  var completePartialPrograms = () => Effect21.gen(function* () {
-@@ -4805,9 +5069,7 @@
+@@ -4805,9 +5079,7 @@
    return yield* buildEvaluationDraft(config, changeAddress);
  });
  var prepareRedeemerContextCandidate = (candidate, config) => Effect21.gen(function* () {
@@ -1048,7 +1104,7 @@ diff --git a/dist/index.js b/dist/index.js
    const normalized = yield* Effect21.try({
      try: () => normalizeGovernanceRedeemerIndices(
        canonical,
-@@ -4888,7 +5150,7 @@
+@@ -4888,7 +5160,7 @@
      if (zeroed !== tx) zeroed.free();
    }
  };
@@ -1057,7 +1113,7 @@ diff --git a/dist/index.js b/dist/index.js
    let previousFingerprint;
    let forceExplicitFee = config.minFee !== void 0;
    for (let attempt = 0; attempt < MAX_EVALUATION_ATTEMPTS; attempt++) {
-@@ -4910,8 +5172,11 @@
+@@ -4910,8 +5182,11 @@
        applyBootstrapRedeemerExUnits(
          redeemers,
          config.txBuilder,
@@ -1071,7 +1127,7 @@ diff --git a/dist/index.js b/dist/index.js
        );
        freeCML(redeemers, candidate);
        return true;
-@@ -4939,6 +5204,9 @@
+@@ -4939,6 +5214,9 @@
        localUPLCEval,
        evaluator
      ).pipe(Effect21.ensuring(Effect21.sync(() => candidate.free())));
@@ -1081,7 +1137,7 @@ diff --git a/dist/index.js b/dist/index.js
    }
    return yield* completeTxError(
      `Phase-two evaluation did not converge after ${MAX_EVALUATION_ATTEMPTS} attempts. Check for scripts that depend on transaction fees, change outputs, or execution-unit-driven transaction shape.`
-@@ -4961,33 +5229,81 @@
+@@ -4961,33 +5239,81 @@
    name: "provider",
    evaluate: ({ tx, additionalUTxOs }) => provider.evaluateTx(tx, additionalUTxOs)
  });

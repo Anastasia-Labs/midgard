@@ -58,10 +58,20 @@ selection. The complete fee/change/collateral context still runs the full
 convergence loop. The final built body's collateral must cover the exact ceiling
 of its fee times the protocol collateral percentage; insufficient coverage fails
 completion and reports the amount needed for a rebuild with `setCollateral`.
-Automatic coin selection, delayed redeemers, and custom evaluators retain their
-existing evaluation paths. Both formats are covered by
+Automatic coin selection and custom evaluators retain their existing
+evaluation paths. Both formats are covered by
 `midgard-sdk/tests/lucid-static-completion.test.ts`, including a real UPLC
 fee-dependent execution-cost fixture and insufficient collateral refusal/retry.
+
+Delayed-redeemer completion with the default local evaluator also evaluates
+each collateral-free draft once. That draft only sizes collateral, and a replay
+that evaluates it is never the one returned: its draft holds a redeemer whose
+units the previous replay did not produce, so the next replay re-completes with
+the evaluated units, runs the full fee/change/collateral convergence loop, and
+must reproduce the previous replay's transaction, budgets included. Custom and
+provider evaluators keep the full draft loop. Both formats are covered by
+`midgard-sdk/tests/lucid-completion-evaluation.test.ts`, which pins two
+evaluations and the unchanged signed transaction.
 
 The production SDK lifecycle tests in
 `midgard-node/tests/availability-challenge-sdk-lifecycle.test.ts` verify signed
