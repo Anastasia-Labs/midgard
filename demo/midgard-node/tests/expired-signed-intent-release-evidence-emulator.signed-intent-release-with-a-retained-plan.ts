@@ -1,5 +1,6 @@
 import { inspect } from "node:util";
 
+import { SqlClient } from "@effect/sql";
 import { Effect, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -9,15 +10,12 @@ import { advanceEmulatorPastLatestBlockEndTime } from "./deposit-flow-emulator-s
 import {
   C,
   expectLandedAndFinalizedOnce,
-} from "./expired-signed-intent-release-evidence-emulator.signed-intent-release-evidence.js";
-import {
-  INJECTED_REPLAY_INTERRUPT,
-  refusePlanApplication,
-} from "./expired-signed-intent-release-evidence-emulator.signed-intent-release-of-a-root-built-commit-after-merges.js";
+} from "./expired-signed-intent-release-evidence-emulator.expect-landed-and-finalized-once.js";
 import {
   closeLifecycle,
   finalizeLocally,
   openCorrectionRewindScenario,
+  read,
   readDeposits,
   readJournal,
   readObserver,
@@ -39,6 +37,33 @@ import {
   UNLANDED,
   updateJournal,
 } from "./helpers/signed-intent-replacement.js";
+
+const INJECTED_PLAN_FAILURE =
+  "injected crash while marking the release applied";
+
+const INJECTED_REPLAY_INTERRUPT = "injected crash after the native replay";
+
+/** A database fault at the plan's final state change, inside the release's
+ * own transaction. */
+const refusePlanApplication = (refuse: boolean) =>
+  read(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      if (!refuse) {
+        yield* sql`DROP TRIGGER IF EXISTS midgard_test_refuse_plan_applied
+          ON event_history_recovery_plans`;
+        yield* sql`DROP FUNCTION IF EXISTS midgard_test_refuse_plan_applied()`;
+        return;
+      }
+      yield* sql.unsafe(`CREATE OR REPLACE FUNCTION midgard_test_refuse_plan_applied()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION '${INJECTED_PLAN_FAILURE}'; END $$`);
+      yield* sql.unsafe(`CREATE TRIGGER midgard_test_refuse_plan_applied
+        BEFORE UPDATE ON event_history_recovery_plans FOR EACH ROW
+        WHEN (NEW.state = 'applied' AND OLD.state = 'prepared')
+        EXECUTE FUNCTION midgard_test_refuse_plan_applied()`);
+    }),
+  );
 
 describe(
   "signed-intent release with a retained plan",

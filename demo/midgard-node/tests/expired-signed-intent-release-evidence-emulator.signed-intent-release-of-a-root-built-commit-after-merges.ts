@@ -1,5 +1,4 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import { Effect, Ref } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
@@ -15,21 +14,20 @@ import {
   snapshotRevival,
 } from "./expired-signed-intent-release-evidence-emulator.append-then-merge.js";
 import {
+  availableBlockAssetName,
+  C,
+  finalizeRecordedBlock,
+  mergedIntoRootView,
+} from "./expired-signed-intent-release-evidence-emulator.expect-landed-and-finalized-once.js";
+import {
   extendTransitions,
   observeMerges,
   observerContext,
   recordTransitions,
 } from "./expired-signed-intent-release-evidence-emulator.merge-checkpoint.js";
 import {
-  availableBlockAssetName,
-  C,
-  finalizeRecordedBlock,
-  mergedIntoRootView,
-} from "./expired-signed-intent-release-evidence-emulator.signed-intent-release-evidence.js";
-import {
   closeLifecycle,
   openCorrectionRewindScenario,
-  read,
   readJournal,
   readSqlLedgerRoot,
   submitDeposit,
@@ -279,31 +277,3 @@ describe("replaced-block revival evidence", { concurrent: false }, () => {
     }
   }, 900_000);
 });
-
-const INJECTED_PLAN_FAILURE =
-  "injected crash while marking the release applied";
-
-export const INJECTED_REPLAY_INTERRUPT =
-  "injected crash after the native replay";
-
-/** A database fault at the plan's final state change, inside the release's
- * own transaction. */
-export const refusePlanApplication = (refuse: boolean) =>
-  read(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      if (!refuse) {
-        yield* sql`DROP TRIGGER IF EXISTS midgard_test_refuse_plan_applied
-          ON event_history_recovery_plans`;
-        yield* sql`DROP FUNCTION IF EXISTS midgard_test_refuse_plan_applied()`;
-        return;
-      }
-      yield* sql.unsafe(`CREATE OR REPLACE FUNCTION midgard_test_refuse_plan_applied()
-        RETURNS trigger LANGUAGE plpgsql AS $$
-        BEGIN RAISE EXCEPTION '${INJECTED_PLAN_FAILURE}'; END $$`);
-      yield* sql.unsafe(`CREATE TRIGGER midgard_test_refuse_plan_applied
-        BEFORE UPDATE ON event_history_recovery_plans FOR EACH ROW
-        WHEN (NEW.state = 'applied' AND OLD.state = 'prepared')
-        EXECUTE FUNCTION midgard_test_refuse_plan_applied()`);
-    }),
-  );
