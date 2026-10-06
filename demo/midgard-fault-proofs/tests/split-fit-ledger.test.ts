@@ -13,6 +13,7 @@ const ledger: SplitFitLedger = {
   compilerVersion: "aiken test",
   caseCount: 3,
   parts: ["big", "rest"],
+  source: "/nowhere/example-cases.ts",
 };
 
 const row = (stem: string, signedBytes: number) => ({
@@ -28,12 +29,14 @@ const part = (
   name: string,
   cases: StoredSplitFitPart["cases"],
   blueprintSha256 = "ab".repeat(32),
+  sourceSha256 = "cd".repeat(32),
 ): StoredSplitFitPart => ({
   schemaVersion: "midgard-split-fit-ledger-part-v1",
   ledger: "example-fit-ledger",
   category: "example",
   compilerVersion: "aiken test",
   blueprintSha256,
+  sourceSha256,
   caseCount: 3,
   part: name,
   cases,
@@ -89,6 +92,12 @@ describe("split fit ledger merge", () => {
     expect(() =>
       mergeSplitFitLedgerParts(ledger, [
         part("big", big.cases, "cd".repeat(32)),
+        rest,
+      ]),
+    ).toThrow("does not belong");
+    expect(() =>
+      mergeSplitFitLedgerParts(ledger, [
+        part("big", big.cases, "ab".repeat(32), "ef".repeat(32)),
         rest,
       ]),
     ).toThrow("does not belong");

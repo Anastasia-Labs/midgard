@@ -691,7 +691,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/value-conservation-lifecycle-cases.ts",
-    "max": 1297,
+    "max": 1298,
     "reason": "registerValueConservationCases is the dominant indivisible declaration: the retained test registration “universal value conservation”, moved here unchanged so its three part files (value-conservation-lifecycle{,-forced-assets,-non-forced-assets}.test.ts) run disjoint cases in parallel. Its callback shares suite-local fixtures and staged control flow; dividing it changes fixture lifetime or requires a separate harness refactor."
   },
   {

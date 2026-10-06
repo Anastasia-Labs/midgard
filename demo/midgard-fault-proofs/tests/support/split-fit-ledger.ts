@@ -24,6 +24,12 @@ export type SplitFitLedger = {
   readonly compilerVersion: string;
   readonly caseCount: number;
   readonly parts: readonly string[];
+  /**
+   * The module holding the case table and its bodies. Parts measured against
+   * different versions of it never merge, so a retry after an edit cannot
+   * combine old rows with new ones under a reused run token.
+   */
+  readonly source: string;
 };
 
 /** A row before numbering; its name becomes `${stem}:${position}`. */
@@ -45,6 +51,7 @@ export type StoredSplitFitPart = {
   readonly category: string;
   readonly compilerVersion: string;
   readonly blueprintSha256: string;
+  readonly sourceSha256: string;
   readonly caseCount: number;
   readonly part: string;
   readonly cases: readonly {
@@ -53,10 +60,12 @@ export type StoredSplitFitPart = {
   }[];
 };
 
-const blueprintSha256 = async (): Promise<string> =>
+const fileSha256 = async (path: string): Promise<string> =>
   createHash("sha256")
-    .update(await readFile(realBlueprintPath))
+    .update(await readFile(path))
     .digest("hex");
+
+const blueprintSha256 = (): Promise<string> => fileSha256(realBlueprintPath);
 
 const ledgerName = (ledger: SplitFitLedger): string =>
   basename(ledger.path, extname(ledger.path));
@@ -131,7 +140,8 @@ export const mergeSplitFitLedgerParts = (
       part.compilerVersion !== ledger.compilerVersion ||
       part.caseCount !== ledger.caseCount ||
       part.part !== ledger.parts[index] ||
-      part.blueprintSha256 !== first.blueprintSha256
+      part.blueprintSha256 !== first.blueprintSha256 ||
+      part.sourceSha256 !== first.sourceSha256
     )
       throw new Error(
         `fit ledger part ${part.part} does not belong to this ${basename(ledger.path)} run`,
@@ -191,9 +201,12 @@ export const createSplitFitLedgerPart = (
     throw new Error(`${part} names an invalid case`);
   const rows = new Map<number, SplitFitRow[]>();
   const passed = new Set<number>();
-  const initialBlueprint = blueprintSha256();
+  const writing = process.env.MIDGARD_WRITE_FIT_LEDGER === "1";
+  // Read at registration so a blueprint rebuilt mid-measurement is refused.
+  const initialBlueprint = writing ? blueprintSha256() : undefined;
+  const initialSource = writing ? fileSha256(ledger.source) : undefined;
   afterAll(async () => {
-    if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
+    if (!initialBlueprint || !initialSource) return;
     const directory = partDirectory(ledger);
     const unpassed = ordinals.filter((ordinal) => !passed.has(ordinal));
     if (unpassed.length > 0)
@@ -203,6 +216,9 @@ export const createSplitFitLedgerPart = (
     const blueprint = await initialBlueprint;
     if ((await blueprintSha256()) !== blueprint)
       throw new Error("The blueprint changed while its fit was measured");
+    const source = await initialSource;
+    if ((await fileSha256(ledger.source)) !== source)
+      throw new Error(`${ledger.source} changed while its fit was measured`);
     await mkdir(directory, { recursive: true });
     await writePart(join(directory, `${part}.json`), {
       schemaVersion: PART_SCHEMA_VERSION,
@@ -210,6 +226,7 @@ export const createSplitFitLedgerPart = (
       category: ledger.category,
       compilerVersion: ledger.compilerVersion,
       blueprintSha256: blueprint,
+      sourceSha256: source,
       caseCount: ledger.caseCount,
       part,
       cases: [...ordinals]

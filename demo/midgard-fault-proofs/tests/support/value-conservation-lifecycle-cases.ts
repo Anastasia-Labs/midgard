@@ -218,6 +218,7 @@ const VALUE_CONSERVATION_FIT_LEDGER: SplitFitLedger = {
   compilerVersion: "aiken v1.1.23+5adf783",
   caseCount: VALUE_CONSERVATION_CASES.length,
   parts: ["forced-assets", "non-forced-assets", "rest"],
+  source: fileURLToPath(import.meta.url),
 };
 
 /** Registers one part of the suite; the three part files together run every case. */
