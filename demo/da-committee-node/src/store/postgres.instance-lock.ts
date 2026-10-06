@@ -18,11 +18,6 @@ export type PostgresStoreInstanceLockEvents = {
   readonly onInstanceLockSuspended?: (error: Error) => void;
   /** Called when a suspended lock is held again. */
   readonly onInstanceLockRestored?: () => void;
-  /**
-   * File store only: called when a lock left by a holder that is provably
-   * gone, or whose lease went stale, is taken over.
-   */
-  readonly onInstanceLockTakeover?: (reason: string) => void;
 };
 
 export type PostgresStoreInstanceLockTimers = {

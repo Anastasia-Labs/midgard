@@ -2,7 +2,10 @@ import { DatabaseSync } from "node:sqlite";
 
 /** SQLite owns kernel locks on a persistent local sidecar; death releases them.
  * Removing/replacing this file or using a filesystem without reliable SQLite
- * locking violates the JSON backend's supported storage boundary. */
+ * locking violates the JSON backend's supported storage boundary.
+ * This process must never open the sidecar by any other means: closing any
+ * descriptor to it drops every POSIX lock this process holds on it, and with
+ * it the mutex. */
 export class JsonStoreProcessMutex {
   private closed = false;
   private constructor(private readonly database: DatabaseSync) {}

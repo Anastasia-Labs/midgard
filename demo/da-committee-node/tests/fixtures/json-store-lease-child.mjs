@@ -10,11 +10,7 @@ const open = fs.open;
 fs.open = async (...args) => {
   const handle = await open(...args);
   const path = String(args[0]);
-  if (
-    path.startsWith(`${storePath}.`) &&
-    path.endsWith(".tmp") &&
-    !path.endsWith(".metadata.tmp")
-  ) {
+  if (path.startsWith(`${storePath}.`) && path.endsWith(".tmp")) {
     const writeFile = handle.writeFile.bind(handle);
     handle.writeFile = async (...writeArgs) => {
       const result = await writeFile(...writeArgs);
@@ -32,10 +28,7 @@ syncBuiltinESMExports();
 const { JsonFileCommitteeStore } = await import(bundle);
 let store;
 try {
-  store = await JsonFileCommitteeStore.open(storePath, {
-    renewMs: 1_000_000_000,
-    ...(role === "contender" ? { now: () => Date.now() + 120_000 } : {}),
-  });
+  store = await JsonFileCommitteeStore.open(storePath);
 } catch (error) {
   send({ event: "refused", message: error.message });
   process.disconnect();

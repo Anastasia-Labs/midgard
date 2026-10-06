@@ -51,8 +51,9 @@ const jsonLocation = async (): Promise<StoreLocation> => {
       openStores.add(store);
       return store;
     },
-    // The JSON store's lock file outlives a crash and needs explicit
-    // stale-lock recovery; closing leaves the same durable rows behind.
+    // A crash drops the JSON store's process mutex and leaves its stamp,
+    // which the next holder overwrites; closing does the same, and leaves
+    // the same durable rows behind.
     kill: async (store) => {
       openStores.delete(store);
       await store.close?.();

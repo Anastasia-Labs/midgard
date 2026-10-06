@@ -1,500 +1,422 @@
-import { type ChildProcess, fork, spawn } from "node:child_process";
-import { existsSync, readlinkSync } from "node:fs";
-import fileSystem from "node:fs/promises";
-import { mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
-import { syncBuiltinESMExports } from "node:module";
+import {
+  closeSync,
+  openSync,
+  readFileSync,
+  readlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { readFile, rename, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
-import { build } from "tsup";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { retryStartup, startupReason } from "../src/startup.js";
 import { JsonFileCommitteeStore } from "../src/store.js";
 import {
-  JSON_STORE_LEASE_STALE_MS,
-  type JsonStoreLeaseOptions,
-  type JsonStoreLeaseRecord,
-} from "../src/store.json-file-lease.js";
+  JSON_STORE_INSTANCE_LOCK_CHECK_MS,
+  type JsonStoreInstanceLockOptions,
+} from "../src/store.json-file-instance-lock.js";
 import { tempDir } from "./helpers.js";
+import {
+  committeeChild,
+  type FsPatch,
+  liveProcess,
+  mutexHolder,
+  patchFs,
+  removeCommitteeBundle,
+  stop,
+  stopChildren,
+} from "./helpers/json-store-lock.js";
 
 const openStores = new Set<JsonFileCommitteeStore>();
-const children = new Set<ChildProcess>();
 
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all([...openStores].map((store) => store.close()));
   openStores.clear();
-  for (const child of children) child.kill("SIGKILL");
-  children.clear();
+  await stopChildren();
 });
+afterAll(removeCommitteeBundle);
 
 const open = async (
   dir: string,
-  options: JsonStoreLeaseOptions = {},
+  options: JsonStoreInstanceLockOptions = {},
 ): Promise<JsonFileCommitteeStore> => {
   const store = await JsonFileCommitteeStore.open(dir, options);
   openStores.add(store);
   return store;
 };
 
+const closeStore = async (store: JsonFileCommitteeStore): Promise<void> => {
+  await store.close();
+  openStores.delete(store);
+};
+
 const lockPath = (dir: string) => join(dir, "committee.json.lock");
+const sidecarPath = (dir: string) => `${lockPath(dir)}.mutex.sqlite`;
+const leaveLock = (dir: string, content: string) =>
+  writeFile(lockPath(dir), content);
+const heldLockError = /already exclusively leased/u;
+const takenOver = /taken over by another process/u;
+const health = (peerId: string) => ({
+  peerId,
+  consecutiveFailures: 0,
+  updatedAt: new Date().toISOString(),
+});
+const peers = async (store: JsonFileCommitteeStore) =>
+  (await store.listPeerHealth()).map((peer) => peer.peerId);
+const lockOf = (store: JsonFileCommitteeStore) =>
+  Reflect.get(store, "instanceLock") as { assertHeld(): Promise<void> };
 
-const liveProcess = (): ChildProcess => {
-  const child = spawn("sleep", ["60"], { stdio: "ignore" });
-  children.add(child);
-  return child;
-};
-
-const exitedPid = async (): Promise<number> => {
-  const child = spawn("true", [], { stdio: "ignore" });
-  await new Promise((resolve) => child.once("exit", resolve));
-  return child.pid!;
-};
-
-const bootId = (): string => "11111111-2222-3333-4444-555555555555";
-const ownPidNamespace = readlinkSync("/proc/self/ns/pid");
-
-const leaseOf = (
-  overrides: Partial<JsonStoreLeaseRecord>,
-): JsonStoreLeaseRecord => ({
-  schemaVersion: 2,
-  owner: `${(overrides.pid ?? 1).toString()}:holder`,
-  pid: 1,
-  bootId: bootId(),
-  pidNamespace: ownPidNamespace,
+/**
+ * A successor's stamp. It shares this process's pid, as a restarted
+ * container's pid 1 shares its predecessor's, so only the whole stamp tells
+ * the two holders apart.
+ */
+const successorStamp = `${JSON.stringify({
+  owner: `${process.pid.toString()}:successor`,
+  pid: process.pid,
   hostname: hostname(),
   acquiredAt: new Date().toISOString(),
-  renewedAt: new Date().toISOString(),
-  ...overrides,
-});
+})}\n`;
 
-const leaveLock = async (dir: string, lease: JsonStoreLeaseRecord | string) =>
-  writeFile(
-    lockPath(dir),
-    typeof lease === "string" ? lease : `${JSON.stringify(lease)}\n`,
+/** The renewed lease an earlier binary left in the lock file. */
+const legacyLease = (overrides: Record<string, unknown>): string =>
+  `${JSON.stringify({
+    schemaVersion: 2,
+    owner: "1:holder",
+    pid: 1,
+    bootId: readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim(),
+    pidNamespace: readlinkSync("/proc/self/ns/pid"),
+    hostname: hostname(),
+    acquiredAt: new Date().toISOString(),
+    renewedAt: new Date().toISOString(),
+    ...overrides,
+  })}\n`;
+
+describe("the JSON store's instance lock", () => {
+  it("refuses every write, and reports the loss once, after another process took it over between two checks", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const dir = await tempDir();
+    const onLost = vi.fn();
+    const store = await open(dir, { onLost });
+    await store.savePeerHealth(health("before"));
+    // The successor's stamp lands while the holder maintains its lock: on
+    // the first lock-file open the holder makes from here on, if any.
+    let tookOver = false;
+    const restore = patchFs({
+      open:
+        (original) =>
+        async (...args) => {
+          const handle = await original(...args);
+          if (!tookOver && String(args[0]).startsWith(lockPath(dir))) {
+            tookOver = true;
+            writeFileSync(lockPath(dir), successorStamp);
+          }
+          return handle;
+        },
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(JSON_STORE_INSTANCE_LOCK_CHECK_MS);
+      // A write queues behind any maintenance the check period started.
+      await store.savePeerHealth(health("during"));
+      if (!tookOver) await leaveLock(dir, successorStamp);
+      for (const peerId of ["after-1", "after-2", "after-3"]) {
+        await expect(store.savePeerHealth(health(peerId))).rejects.toThrow(
+          takenOver,
+        );
+      }
+    } finally {
+      restore();
+    }
+    expect(onLost).toHaveBeenCalledOnce();
+    expect(onLost.mock.calls[0]![0]).toBeInstanceOf(Error);
+    await closeStore(store);
+    expect(await readFile(lockPath(dir), "utf8")).toBe(successorStamp);
+  });
+
+  it("never writes, renames, touches or removes its lock file after taking it", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const dir = await tempDir();
+    const store = await open(dir);
+    const touched: string[] = [];
+    const observe =
+      (name: string, pathArgs: number[]): FsPatch =>
+      (original) =>
+      (...args) => {
+        for (const index of pathArgs) {
+          const path = String(args[index]);
+          if (path.startsWith(lockPath(dir))) touched.push(`${name} ${path}`);
+        }
+        return original(...args);
+      };
+    const restore = patchFs({
+      appendFile: observe("appendFile", [0]),
+      chmod: observe("chmod", [0]),
+      copyFile: observe("copyFile", [1]),
+      link: observe("link", [1]),
+      lutimes: observe("lutimes", [0]),
+      rename: observe("rename", [0, 1]),
+      rm: observe("rm", [0]),
+      symlink: observe("symlink", [1]),
+      truncate: observe("truncate", [0]),
+      unlink: observe("unlink", [0]),
+      utimes: observe("utimes", [0]),
+      writeFile: observe("writeFile", [0]),
+      open:
+        (original) =>
+        (...args) =>
+          args[1] === undefined || args[1] === "r"
+            ? original(...args)
+            : observe("open", [0])(original)(...args),
+    });
+    try {
+      for (let period = 0; period < 10; period += 1) {
+        await vi.advanceTimersByTimeAsync(JSON_STORE_INSTANCE_LOCK_CHECK_MS);
+        await store.savePeerHealth(health(`peer-${period.toString()}`));
+      }
+      await closeStore(store);
+    } finally {
+      restore();
+    }
+    expect(touched).toEqual([]);
+  });
+
+  it.each([
+    [
+      "a renewed lease naming a live process on this host and pid namespace",
+      () => legacyLease({ pid: liveProcess().pid }),
+    ],
+    [
+      "a fresh lease from another host",
+      () => legacyLease({ hostname: "another-host" }),
+    ],
+    [
+      "a fresh lease from another pid namespace",
+      () => legacyLease({ pidNamespace: "pid:[4026539999]" }),
+    ],
+    ["an unreadable lock file", () => ""],
+  ])(
+    "never lets %s block a successor that holds the process mutex",
+    async (_kind, leftover) => {
+      const dir = await tempDir();
+      const left = leftover();
+      await leaveLock(dir, left);
+      const store = await open(dir);
+      await store.savePeerHealth(health("successor"));
+      const stamp = await readFile(lockPath(dir), "utf8");
+      expect(stamp).not.toBe(left);
+      expect(JSON.parse(stamp)).toMatchObject({
+        pid: process.pid,
+        hostname: hostname(),
+      });
+    },
   );
 
-const heldLockError = /already exclusively leased/u;
-
-describe("the JSON store's lease on its lock file", () => {
-  it("is refused while a live process on this host holds it, and reports the lock as held", async () => {
-    const dir = await tempDir();
-    await leaveLock(dir, leaseOf({ pid: liveProcess().pid! }));
-    const refused = open(dir, { bootId });
-    await expect(refused).rejects.toThrow(heldLockError);
-    expect(startupReason(await refused.catch((error: unknown) => error))).toBe(
-      "starting:store_instance_lock_held",
-    );
-  });
-
-  it("is taken over, once, from a holder whose process is gone or whose boot ended", async () => {
-    for (const lease of [
-      leaseOf({ pid: await exitedPid() }),
-      leaseOf({ pid: liveProcess().pid!, bootId: "an-earlier-boot" }),
-      leaseOf({ pid: process.pid, owner: `${process.pid.toString()}:old` }),
-    ]) {
-      const dir = await tempDir();
-      await leaveLock(dir, lease);
-      const onTakeover = vi.fn();
-      const store = await open(dir, { bootId, onTakeover });
-      expect(onTakeover).toHaveBeenCalledOnce();
-      expect(await store.listStateQueueHeaders()).toEqual([]);
-      const held = JSON.parse(
-        await readFile(lockPath(dir), "utf8"),
-      ) as JsonStoreLeaseRecord;
-      expect(held).toMatchObject({ pid: process.pid, hostname: hostname() });
-      expect(held.owner).not.toBe(lease.owner);
-    }
-  });
-
-  it("judges a holder in another pid namespace (a container sharing this hostname and boot) by its lease alone", async () => {
-    for (const pid of [await exitedPid(), process.pid]) {
-      const dir = await tempDir();
-      const renewedAt = Date.now();
-      await leaveLock(
-        dir,
-        leaseOf({
-          pid,
-          pidNamespace: "pid:[4026539999]",
-          renewedAt: new Date(renewedAt).toISOString(),
-        }),
-      );
-      const pinned = new Date(renewedAt);
-      await utimes(lockPath(dir), pinned, pinned);
-      await expect(open(dir, { bootId })).rejects.toThrow(heldLockError);
-      const onTakeover = vi.fn();
-      await open(dir, {
-        bootId,
-        now: () => renewedAt + JSON_STORE_LEASE_STALE_MS + 1_000,
-        onTakeover,
-      });
-      expect(onTakeover).toHaveBeenCalledExactlyOnceWith("lease_stale");
-    }
-  });
-
-  it("is refused while another host's lease is fresh, and taken over once it goes stale", async () => {
-    const dir = await tempDir();
-    const renewedAt = Date.now();
-    await leaveLock(
-      dir,
-      leaseOf({
-        hostname: "another-host",
-        renewedAt: new Date(renewedAt).toISOString(),
-      }),
-    );
-    // The lease's age runs from the later of renewedAt and the file's mtime,
-    // so the mtime is pinned to renewedAt rather than left to the write.
-    const pinned = new Date(renewedAt);
-    await utimes(lockPath(dir), pinned, pinned);
-    await expect(open(dir, { bootId })).rejects.toThrow(heldLockError);
-    const onTakeover = vi.fn();
-    await open(dir, {
-      bootId,
-      now: () => renewedAt + JSON_STORE_LEASE_STALE_MS + 1_000,
-      onTakeover,
-    });
-    expect(onTakeover).toHaveBeenCalledExactlyOnceWith("lease_stale");
-  });
-
-  it("judges an unreadable lock (a crash mid-write) by its age alone", async () => {
-    const dir = await tempDir();
-    await leaveLock(dir, "");
-    await expect(open(dir, { bootId })).rejects.toThrow(heldLockError);
-    const old = new Date(Date.now() - JSON_STORE_LEASE_STALE_MS - 1_000);
-    await utimes(lockPath(dir), old, old);
-    const onTakeover = vi.fn();
-    await open(dir, { bootId, onTakeover });
-    expect(onTakeover).toHaveBeenCalledExactlyOnceWith(
-      "unreadable_lease_stale",
-    );
-  });
-
-  it("is renewed while held, so a live holder is never judged stale", async () => {
-    const dir = await tempDir();
-    let nowMs = Date.parse("2026-10-01T00:00:00.000Z");
-    await open(dir, { bootId, renewMs: 10, now: () => nowMs });
-    nowMs += 5 * JSON_STORE_LEASE_STALE_MS;
-    await vi.waitFor(async () => {
-      const held = JSON.parse(
-        await readFile(lockPath(dir), "utf8"),
-      ) as JsonStoreLeaseRecord;
-      expect(Date.parse(held.renewedAt)).toBe(nowMs);
-    });
-    await expect(
-      open(dir, { bootId, hostname: () => "another-host", now: () => nowMs }),
-    ).rejects.toThrow(heldLockError);
-  });
-
-  it("is never reported lost by a write that checks it while a renewal rewrites the lock file", async () => {
+  it("is never reported lost by its honest holder, however often it checks", async () => {
     const dir = await tempDir();
     const onLost = vi.fn();
-    const store = await open(dir, { bootId, renewMs: 1, onLost });
-    // The check every store write makes first, many times over while the
-    // lease renews each millisecond.
-    const lease = Reflect.get(store, "lease") as {
-      assertHeld(): Promise<void>;
-    };
-    for (let round = 0; round < 100; round += 1) {
-      await Promise.all(Array.from({ length: 10 }, () => lease.assertHeld()));
-    }
+    const store = await open(dir, { checkMs: 1, onLost });
+    await Promise.all([
+      ...Array.from({ length: 1000 }, () => lockOf(store).assertHeld()),
+      ...Array.from({ length: 50 }, (_, index) =>
+        store.savePeerHealth(health(`peer-${index.toString()}`)),
+      ),
+    ]);
     expect(onLost).not.toHaveBeenCalled();
+    expect(await peers(store)).toHaveLength(50);
   }, 20_000);
 
-  it("refuses every write, and reports the loss once, after another process took it over", async () => {
-    const dir = await tempDir();
-    const onLost = vi.fn();
-    const store = await open(dir, { bootId, renewMs: 10, onLost });
-    const health = {
-      peerId: "peer-a",
-      consecutiveFailures: 0,
-      updatedAt: new Date().toISOString(),
-    };
-    await store.savePeerHealth(health);
-    await leaveLock(dir, leaseOf({ hostname: "another-host" }));
-    await expect(store.savePeerHealth(health)).rejects.toThrow(
-      /lease was taken over by another process/u,
-    );
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(onLost).toHaveBeenCalledOnce();
-    // Closing leaves the new holder's lock in place.
-    await store.close();
-    openStores.delete(store);
-    expect(await readFile(lockPath(dir), "utf8")).toContain("another-host");
-  });
+  it.each([
+    [
+      "its mutex sidecar was replaced",
+      async (dir: string) => {
+        await writeFile(`${sidecarPath(dir)}.replacement`, "");
+        await rename(`${sidecarPath(dir)}.replacement`, sidecarPath(dir));
+      },
+    ],
+    [
+      "this process opened and closed its mutex sidecar, dropping the lock",
+      (dir: string) => {
+        closeSync(openSync(sidecarPath(dir), "r"));
+        return Promise.resolve();
+      },
+    ],
+  ])(
+    "fails closed once a successor gets in because %s",
+    async (_cause, breakLocking) => {
+      const dir = await tempDir();
+      const onLost = vi.fn();
+      const store = await open(dir, { onLost });
+      await store.savePeerHealth(health("old-peer"));
+      await breakLocking(dir);
+      const successor = await committeeChild(
+        join(dir, "committee.json"),
+        "contender",
+      );
+      expect((await successor.wait("opened", "refused")).event).toBe("opened");
+      for (const peerId of ["late-1", "late-2"]) {
+        await expect(store.savePeerHealth(health(peerId))).rejects.toThrow(
+          takenOver,
+        );
+      }
+      expect(onLost).toHaveBeenCalledOnce();
+      expect(String(onLost.mock.calls[0]![0])).toMatch(
+        /locking failed[\s\S]*JSON store ownership/u,
+      );
+      successor.child.send("save");
+      expect((await successor.wait("saved")).peers).toEqual([
+        "new-peer",
+        "old-peer",
+      ]);
+    },
+    30_000,
+  );
 
-  it("is waited for at startup, and opened exactly once when its holder goes", async () => {
+  it("is refused to a second open in this process, which leaves the first holder's mutex in force", async () => {
     const dir = await tempDir();
-    const holder = liveProcess();
-    await leaveLock(dir, leaseOf({ pid: holder.pid! }));
+    const store = await open(dir);
+    const second = open(dir);
+    await expect(second).rejects.toThrow(/its process mutex is held/u);
+    expect(startupReason(await second.catch((error: unknown) => error))).toBe(
+      "starting:store_instance_lock_held",
+    );
+    const contender = await committeeChild(
+      join(dir, "committee.json"),
+      "contender",
+    );
+    const refusal = await contender.wait("opened", "refused");
+    expect(refusal.event).toBe("refused");
+    expect(refusal.message).toMatch(heldLockError);
+    await store.savePeerHealth(health("holder"));
+    expect(await peers(store)).toEqual(["holder"]);
+  }, 30_000);
+
+  it("is waited for at startup while another process holds the mutex, and opened exactly once when that process dies", async () => {
+    const dir = await tempDir();
+    const holder = await mutexHolder(sidecarPath(dir));
     const reasons: string[] = [];
     let opens = 0;
     const store = await retryStartup({
       attempt: async () => {
-        const opened = await open(dir, { bootId });
+        const opened = await open(dir);
         opens += 1;
         return opened;
       },
       onFailure: (reason) => reasons.push(reason),
       write: () => undefined,
-      sleep: async () => {
-        holder.kill("SIGKILL");
-        await new Promise((resolve) => holder.once("exit", resolve));
-      },
+      sleep: () => stop(holder),
     });
     expect(reasons).toEqual(["starting:store_instance_lock_held"]);
     expect(opens).toBe(1);
     expect(await store.listStateQueueHeaders()).toEqual([]);
   });
 
-  it("starts a committee restarted in a new pid namespace by taking over its crashed holder's lease", async () => {
-    const dir = await tempDir();
-    const renewedAt = Date.now();
-    // The crashed holder ran in another container: another pid namespace and
-    // another hostname. Its death released the process mutex.
-    await leaveLock(
-      dir,
-      leaseOf({
-        pid: 1,
-        pidNamespace: "pid:[4026539999]",
-        hostname: "crashed-container",
-        renewedAt: new Date(renewedAt).toISOString(),
-      }),
-    );
-    const pinned = new Date(renewedAt);
-    await utimes(lockPath(dir), pinned, pinned);
-    let nowMs = renewedAt;
-    const reasons: string[] = [];
-    const onTakeover = vi.fn();
-    const store = await retryStartup({
-      attempt: () => open(dir, { bootId, now: () => nowMs, onTakeover }),
-      onFailure: (reason) => reasons.push(reason),
-      write: () => undefined,
-      sleep: async () => {
-        nowMs += JSON_STORE_LEASE_STALE_MS + 1_000;
-      },
-    });
-    expect(reasons).toEqual(["starting:store_instance_lock_held"]);
-    expect(onTakeover).toHaveBeenCalledExactlyOnceWith("lease_stale");
-    expect(await store.listStateQueueHeaders()).toEqual([]);
-    expect(
-      JSON.parse(await readFile(lockPath(dir), "utf8")) as JsonStoreLeaseRecord,
-    ).toMatchObject({ pid: process.pid, hostname: hostname() });
-  });
-
   it.each(["another namespace", "another host", "unreadable"])(
-    "never takes over a live holder that keeps the process mutex, even with stale %s metadata",
+    "never takes over a live holder that keeps the process mutex, whatever %s lock file it left",
     async (kind) => {
       const dir = await tempDir();
-      const holder = spawn(
-        process.execPath,
-        [
-          "--experimental-transform-types",
-          "--no-warnings",
-          "--input-type=module",
-          "-e",
-          `const { JsonStoreProcessMutex } = await import(${JSON.stringify(
-            fileURLToPath(
-              new URL(
-                "../src/store.json-file-process-mutex.ts",
-                import.meta.url,
-              ),
-            ),
-          )});
-JsonStoreProcessMutex.acquire(${JSON.stringify(`${lockPath(dir)}.mutex.sqlite`)});
-process.stdout.write("held\\n");
-setInterval(() => {}, 1_000);`,
-        ],
-        { stdio: ["ignore", "pipe", "inherit"] },
-      );
-      children.add(holder);
-      await new Promise<void>((resolve, reject) => {
-        holder.stdout!.on("data", (chunk: Buffer) => {
-          if (chunk.toString().includes("held")) resolve();
-        });
-        holder.once("exit", (code) =>
-          reject(new Error(`mutex holder exited with ${String(code)}`)),
-        );
-      });
-      const renewedAt = Date.now() - 10 * JSON_STORE_LEASE_STALE_MS;
+      const holder = await mutexHolder(sidecarPath(dir));
       const metadata =
         kind === "unreadable"
           ? ""
-          : `${JSON.stringify(
-              leaseOf({
-                ...(kind === "another namespace"
-                  ? { pidNamespace: "pid:[4026539999]" }
-                  : { hostname: "another-host" }),
-                renewedAt: new Date(renewedAt).toISOString(),
-              }),
-            )}\n`;
+          : legacyLease(
+              kind === "another namespace"
+                ? { pidNamespace: "pid:[4026539999]" }
+                : { hostname: "another-host" },
+            );
       await leaveLock(dir, metadata);
-      const pinned = new Date(renewedAt);
-      await utimes(lockPath(dir), pinned, pinned);
-      const onTakeover = vi.fn();
-      const refused = open(dir, { bootId, onTakeover });
+      const refused = open(dir);
       await expect(refused).rejects.toThrow(/its process mutex is held/u);
       expect(
         startupReason(await refused.catch((error: unknown) => error)),
       ).toBe("starting:store_instance_lock_held");
-      expect(onTakeover).not.toHaveBeenCalled();
       expect(await readFile(lockPath(dir), "utf8")).toBe(metadata);
-      // The mutex alone kept it: once the holder dies the same stale
-      // metadata is taken over.
-      const exited = new Promise((resolve) => holder.once("exit", resolve));
-      holder.kill("SIGKILL");
-      await exited;
-      await open(dir, { bootId, onTakeover });
-      expect(onTakeover).toHaveBeenCalledExactlyOnceWith(
-        kind === "unreadable" ? "unreadable_lease_stale" : "lease_stale",
-      );
+      // The mutex alone kept it: once the holder dies the same lock file is
+      // overwritten at once.
+      await stop(holder);
+      await open(dir);
+      expect(await readFile(lockPath(dir), "utf8")).not.toBe(metadata);
     },
   );
 });
 
 it("old release preserves successor metadata even before observing ownership loss", async () => {
   const dir = await tempDir();
-  const store = await open(dir, { bootId, renewMs: 1_000_000_000 });
-  const successor = leaseOf({ owner: "successor", hostname: "another-host" });
-  await leaveLock(dir, successor);
-  await store.close();
-  openStores.delete(store);
-  expect(existsSync(lockPath(dir))).toBe(true);
-  expect(JSON.parse(await readFile(lockPath(dir), "utf8"))).toEqual(successor);
+  const store = await open(dir);
+  await leaveLock(dir, successorStamp);
+  await closeStore(store);
+  expect(await readFile(lockPath(dir), "utf8")).toBe(successorStamp);
   await store.close();
 });
 
 it("fences a paused live writer, then admits exactly one real successor after process death", async () => {
-  const fixtureRoot = await mkdtemp(
-    join(dirname(fileURLToPath(import.meta.url)), ".json-lease-fixture-"),
-  );
   const dir = await tempDir();
   const storePath = join(dir, "committee.json");
-  const worker = fileURLToPath(
-    new URL("./fixtures/json-store-lease-child.mjs", import.meta.url),
+  const old = await committeeChild(storePath, "paused");
+  expect((await old.wait("opened", "refused")).event).toBe("opened");
+  old.child.send("save");
+  await old.wait("write-paused");
+  const contender = await committeeChild(storePath, "contender");
+  const refusal = await contender.wait("opened", "refused");
+  expect(refusal.event).toBe("refused");
+  expect(refusal.message).toMatch(heldLockError);
+  expect(old.child.exitCode).toBeNull();
+  old.child.send("resume");
+  expect((await old.wait("saved")).peers).toEqual(["old-peer"]);
+  await stop(old.child);
+  const candidates = [
+    await committeeChild(storePath, "contender"),
+    await committeeChild(storePath, "contender"),
+  ];
+  const results = await Promise.all(
+    candidates.map((candidate) => candidate.wait("opened", "refused")),
   );
-  const owned: ChildProcess[] = [];
-  const start = (role: string) => {
-    const child = fork(
-      worker,
-      [
-        join(fixtureRoot, "store.json-file-committee-store.js"),
-        storePath,
-        role,
-      ],
-      { stdio: ["ignore", "ignore", "inherit", "ipc"], execArgv: [] },
-    );
-    owned.push(child);
-    const events: { event: string; peers?: string[]; message?: string }[] = [];
-    child.on("message", (message) =>
-      events.push(message as (typeof events)[number]),
-    );
-    const wait = async (...kinds: string[]) => {
-      await vi.waitFor(
-        () =>
-          expect(events.some((event) => kinds.includes(event.event))).toBe(
-            true,
-          ),
-        { timeout: 5000, interval: 10 },
-      );
-      return events.find((event) => kinds.includes(event.event))!;
-    };
-    return { child, wait };
-  };
-  const stop = async (child: ChildProcess) => {
-    if (child.exitCode !== null || child.signalCode !== null) return;
-    const exited = new Promise((resolve) => child.once("exit", resolve));
-    child.kill("SIGKILL");
-    await exited;
-  };
-  try {
-    await build({
-      entry: ["src/store.json-file-committee-store.ts"],
-      outDir: fixtureRoot,
-      format: ["esm"],
-      bundle: true,
-      splitting: false,
-      dts: false,
-      silent: true,
-      skipNodeModulesBundle: true,
-      esbuildOptions(options) {
-        options.conditions = ["node", "import"];
-      },
-    });
-    const old = start("paused");
-    expect((await old.wait("opened", "refused")).event).toBe("opened");
-    old.child.send("save");
-    await old.wait("write-paused");
-    const contender = start("contender");
-    const refusal = await contender.wait("opened", "refused");
-    expect(refusal.event).toBe("refused");
-    expect(refusal.message).toMatch(heldLockError);
-    expect(old.child.exitCode).toBeNull();
-    old.child.send("resume");
-    expect((await old.wait("saved")).peers).toEqual(["old-peer"]);
-    await stop(old.child);
-    const candidates = [start("contender"), start("contender")];
-    const results = await Promise.all(
-      candidates.map((candidate) => candidate.wait("opened", "refused")),
-    );
-    expect(results.filter((result) => result.event === "opened")).toHaveLength(
-      1,
-    );
-    expect(results.filter((result) => result.event === "refused")).toHaveLength(
-      1,
-    );
-    const successor =
-      candidates[results.findIndex((result) => result.event === "opened")];
-    successor.child.send("save");
-    expect((await successor.wait("saved")).peers).toEqual([
-      "new-peer",
-      "old-peer",
-    ]);
-    successor.child.send("close");
-    await successor.wait("closed");
-    const reopened = await open(dir);
-    expect(
-      (await reopened.listPeerHealth()).map((peer) => peer.peerId),
-    ).toEqual(["new-peer", "old-peer"]);
-  } finally {
-    await Promise.all(owned.map(stop));
-    await rm(fixtureRoot, { recursive: true, force: true });
-  }
-}, 20_000);
+  expect(results.filter((result) => result.event === "opened")).toHaveLength(1);
+  expect(results.filter((result) => result.event === "refused")).toHaveLength(
+    1,
+  );
+  const successor =
+    candidates[results.findIndex((result) => result.event === "opened")]!;
+  successor.child.send("save");
+  expect((await successor.wait("saved")).peers).toEqual([
+    "new-peer",
+    "old-peer",
+  ]);
+  successor.child.send("close");
+  await successor.wait("closed");
+  const reopened = await open(dir);
+  expect(await peers(reopened)).toEqual(["new-peer", "old-peer"]);
+}, 30_000);
 
-it("releases the process mutex and temporary handle after failed metadata publication", async () => {
+it("releases the process mutex after failing to write its stamp", async () => {
   const dir = await tempDir();
-  const original = fileSystem.open;
   let injected = false;
-  fileSystem.open = async (...args: Parameters<typeof fileSystem.open>) => {
-    const handle = await original(...args);
-    if (!injected && String(args[0]).endsWith(".metadata.tmp")) {
-      injected = true;
-      handle.sync = () =>
-        Promise.reject(new Error("synthetic metadata sync failure"));
-    }
-    return handle;
-  };
-  syncBuiltinESMExports();
+  const restore = patchFs({
+    writeFile:
+      (original) =>
+      async (...args) => {
+        if (injected || String(args[0]) !== lockPath(dir))
+          return original(...args);
+        injected = true;
+        await original(args[0], '{"owner":');
+        throw new Error("synthetic stamp write failure");
+      },
+  });
   try {
     await expect(JsonFileCommitteeStore.open(dir)).rejects.toThrow(
-      "synthetic metadata sync failure",
+      "synthetic stamp write failure",
     );
     expect(injected).toBe(true);
-    expect(existsSync(lockPath(dir))).toBe(false);
   } finally {
-    fileSystem.open = original;
-    syncBuiltinESMExports();
+    restore();
   }
+  // The torn stamp left behind blocks nothing: the mutex was released.
   const store = await open(dir);
-  expect(await store.listPeerHealth()).toEqual([]);
-});
-
-it("releases an acquired process mutex when constructing its owner timestamp fails", async () => {
-  const dir = await tempDir();
-  await expect(
-    JsonFileCommitteeStore.open(dir, { now: () => Number.NaN }),
-  ).rejects.toThrow("Invalid time value");
-  expect(existsSync(lockPath(dir))).toBe(false);
-  expect(await (await open(dir)).listPeerHealth()).toEqual([]);
+  await store.savePeerHealth(health("after"));
+  expect(await peers(store)).toEqual(["after"]);
+  expect(JSON.parse(await readFile(lockPath(dir), "utf8"))).toMatchObject({
+    pid: process.pid,
+  });
 });

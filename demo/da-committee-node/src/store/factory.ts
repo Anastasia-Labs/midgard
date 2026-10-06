@@ -15,9 +15,6 @@ export const openCommitteeStore = async (
         ...(options.onInstanceLockLost === undefined
           ? {}
           : { onLost: options.onInstanceLockLost }),
-        ...(options.onInstanceLockTakeover === undefined
-          ? {}
-          : { onTakeover: options.onInstanceLockTakeover }),
       });
     case "database":
       return PostgresCommitteeStore.open(localState.url, options);

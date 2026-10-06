@@ -73,18 +73,28 @@ The file backend requires local storage with reliable SQLite/POSIX file locking
 and the declared Node 22 toolchain. A SQLite transaction holds a process mutex
 for the JSON store's entire lifetime, including queued asynchronous writes.
 Its persistent sidecar is `<store-file>.lock.mutex.sqlite`. Never remove or
-replace the lock metadata, mutex sidecar, or its SQLite journal while a writer
-may be alive. Shared network filesystems and uncoordinated writers are outside
-this backend's storage boundary; use the PostgreSQL backend for shared
-multi-host deployment.
+replace the mutex sidecar or its SQLite journal while a writer may be alive.
+Shared network filesystems, one store shared across kernels or virtual
+machines, and uncoordinated writers are outside this backend's storage
+boundary; use the PostgreSQL backend for shared multi-host deployment.
 
-A live writer, even a paused one, keeps the mutex, so a successor is refused
-before it reads the lease metadata. Process death releases the mutex. Holding it
-proves no cooperating writer is alive on this filesystem, and only then does a
-successor judge the metadata: a holder whose process or boot is provably gone on
-the same host and PID namespace is taken over at once, and unreadable,
-cross-host or other-namespace metadata (a crashed container) is taken over once
-it is 60 s unrenewed. Until then startup holds unready with
-`starting:store_instance_lock_held` and retries, so a crash never needs an
-operator to remove the lock. Lease metadata publishes atomically so a crash
-during renewal preserves the prior complete owner record.
+The mutex is the only authority. A live writer, even a paused one, keeps it,
+so a successor is refused with `starting:store_instance_lock_held` and startup
+holds unready and retries. Process death, including a crash or a container
+restart, releases it, and the next process to start takes the store over at
+once: holding the mutex proves no other writer is alive, so whatever an
+earlier holder left in the lock file, `<store-file>.lock`, is overwritten
+without being judged. A crash never needs an operator to remove a lock.
+
+The lock file is a stamp naming the current holder, written once when the
+mutex is taken. The holder never writes it again; it reads it before every
+store write and every 10 s while idle. Within the storage boundary it never
+changes under its holder. Outside the boundary, the mutex can fail (the
+sidecar removed or replaced, a network filesystem, a store shared across
+kernels, or the holder's own process opening and closing the sidecar by other
+means), and a successor can then get in while the old holder still runs. The
+successor's stamp replaces the old one, and the old holder fails closed at its
+next check or write: it refuses every write from then on, logs
+`committee_store_instance_lock_lost`, and exits for its supervisor to restart
+it. A write the old holder had already checked before the successor got in
+can still land.
