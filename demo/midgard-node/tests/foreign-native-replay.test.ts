@@ -1,6 +1,6 @@
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import { Effect } from "effect";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   type ForeignNativeReplayBlock,
@@ -12,6 +12,7 @@ import {
   digest,
   EVENT_LOG_DIGEST_DOMAIN,
 } from "../src/services/mpf-native-owner/service.normalize-owner-options.js";
+import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
 
 const root = (byte: string) => byte.repeat(32);
@@ -95,6 +96,10 @@ const fixture = (
 };
 
 describe("verified foreign native replay", () => {
+  // The production owner service awaits this at startup; these fixtures
+  // build event logs without it, so they must not race the digest's load.
+  beforeAll(() => prepareEventFlatDigest());
+
   it("prepares exact restart material without promoting durable state", async () => {
     const f = fixture();
     const result = await f.run();
