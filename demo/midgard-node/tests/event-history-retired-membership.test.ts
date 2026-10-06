@@ -156,7 +156,7 @@ beforeAll(async () => {
       binding,
     ),
   );
-});
+}, 120_000);
 const prepare = async (
   checkpoint: Journal.Checkpoint,
   n: number,

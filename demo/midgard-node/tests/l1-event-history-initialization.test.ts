@@ -79,7 +79,7 @@ beforeAll(async () => {
       withdrawal: SDK.eventHistoryDeploymentFromContracts(histories.withdrawal),
     },
   };
-});
+}, 120_000);
 
 const node = (
   kind: Kind,

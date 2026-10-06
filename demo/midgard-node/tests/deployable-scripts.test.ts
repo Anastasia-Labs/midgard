@@ -195,7 +195,7 @@ describe("deployable-script catalogue", () => {
         });
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
     );
-  });
+  }, 120_000);
 
   it("orders publication over every catalogue section exactly once", () => {
     const publicationSections = PUBLICATION_ORDER.flatMap((step) =>

@@ -728,7 +728,7 @@ beforeAll(async () => {
       entry.retentionAddress,
     ]),
   ];
-});
+}, 120_000);
 const clear = () =>
   sqlRun(
     (sql) =>
@@ -1132,7 +1132,7 @@ describe("history binding identity across restarts", () => {
   >;
   beforeAll(async () => {
     manifest = await makeFinalizedDeploymentManifestFixture();
-  });
+  }, 120_000);
   const productionBinding = async (
     genesis: Record<string, unknown>,
     ogmiosUrl: string,

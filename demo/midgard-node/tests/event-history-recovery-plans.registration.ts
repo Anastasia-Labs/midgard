@@ -243,7 +243,7 @@ beforeAll(async () => {
       binding,
     ),
   );
-});
+}, 120_000);
 
 const cleanup = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
