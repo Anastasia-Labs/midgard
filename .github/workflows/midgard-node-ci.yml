@@ -512,8 +512,21 @@ jobs:
         with:
           blueprint: "true"
           prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation
+      # The test run records each file's seconds (durationShards in
+      # midgard-test-support); `test-durations` merges the shards' records into
+      # the refreshed shard table. Step-scoped so the traced-refusal rerun below
+      # never overwrites it.
       - name: Build, typecheck, and test fault-proof tooling
+        env:
+          MIDGARD_FILE_DURATIONS_OUT: ${{ runner.temp }}/file-durations.json
         run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs run test --shard=${{ matrix.shard }}/3
+      - name: Upload this shard's per-file test seconds
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: file-durations-midgard-fault-proofs-${{ matrix.shard }}
+          path: ${{ runner.temp }}/file-durations.json
+          if-no-files-found: warn
       # A plain build carries no traces, so the run above sees only that some
       # validator refused each pinned negative. This one swaps every validator
       # a pin names for its verbose-traced build and fails unless each pin is
@@ -544,7 +557,72 @@ jobs:
           blueprint: "true"
           prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation midgard-fault-proofs
       - name: Build, typecheck, format-check, and test Midgard watcher
+        env:
+          MIDGARD_FILE_DURATIONS_OUT: ${{ runner.temp }}/file-durations.json
         run: pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run format-check && pnpm --dir demo/midgard-watcher run test --shard=${{ matrix.shard }}/3
+      - name: Upload this shard's per-file test seconds
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: file-durations-midgard-watcher-${{ matrix.shard }}
+          path: ${{ runner.temp }}/file-durations.json
+          if-no-files-found: warn
+
+  # Keeps the duration tables the fault-proof and watcher shards pack by
+  # current. It merges the per-file seconds every shard above recorded into a
+  # refreshed table per package (artifact `ci-file-durations`; commit it to
+  # rebalance), prints the projected seconds of each shard under it, and warns
+  # -- never fails -- when files the committed table does not know, or weighs
+  # far from this run, carry more than a tenth of the run's seconds. A stale
+  # table only costs balance: every file still runs in exactly one shard.
+  test-durations:
+    name: Refresh the CI shard duration tables
+    if: ${{ !cancelled() }}
+    needs: [midgard-fault-proofs, midgard-watcher]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: |
+            demo/.nvmrc
+            demo/midgard-test-support
+            demo/midgard-fault-proofs/tests
+            demo/midgard-watcher/tests
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: demo/.nvmrc
+      - name: Download every shard's per-file test seconds
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: file-durations-*
+          path: ${{ runner.temp }}/file-durations
+      - name: Merge them into refreshed tables and check the committed ones for drift
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ci-file-durations"
+          for package in midgard-fault-proofs midgard-watcher; do
+            records=("$RUNNER_TEMP"/file-durations/file-durations-"$package"-*/file-durations.json)
+            if [ ! -e "${records[0]}" ]; then
+              echo "::warning::no per-file test seconds were recorded for $package"
+              continue
+            fi
+            mkdir -p "$RUNNER_TEMP/ci-file-durations/demo/$package/tests/support"
+            node demo/midgard-test-support/scripts/ci-file-durations.mjs \
+              --package "demo/$package" \
+              --table "demo/$package/tests/support/ci-file-durations.json" \
+              --out "$RUNNER_TEMP/ci-file-durations/demo/$package/tests/support/ci-file-durations.json" \
+              --project-shards 3 \
+              "${records[@]}"
+          done
+      - name: Upload the refreshed tables
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ci-file-durations
+          path: ${{ runner.temp }}/ci-file-durations
+          if-no-files-found: warn
 
   # The native MPF owner crate, and the offline throughput gates that followed
   # it in the old serial job. The gates are pure `node --test` suites, so they
@@ -761,6 +839,7 @@ jobs:
       - midgard-validation
       - midgard-fault-proofs
       - midgard-watcher
+      - test-durations
       - native-mpf
       - lint
       - da-committee-node

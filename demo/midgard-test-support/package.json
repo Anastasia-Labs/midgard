@@ -48,6 +48,10 @@
     "./duration-shards": {
       "types": "./duration-shards.d.ts",
       "default": "./duration-shards.js"
+    },
+    "./duration-shards-contract": {
+      "midgard-source": "./src/duration-shards-contract.ts",
+      "types": "./src/duration-shards-contract.ts"
     }
   },
   "files": [
@@ -64,7 +68,8 @@
     "database-identity.js",
     "database-identity.d.ts",
     "duration-shards.js",
-    "duration-shards.d.ts"
+    "duration-shards.d.ts",
+    "duration-plan.js"
   ],
   "scripts": {
     "capture:l1-recordings": "node scripts/capture-l1-recordings.mjs",

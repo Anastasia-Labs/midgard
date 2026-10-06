@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 
+import { durationShards } from "@al-ft/midgard-test-support/duration-shards";
 import {
   blueprintStampGlobalSetup,
   interactiveEmulatorBlueprint,
@@ -12,7 +13,6 @@ import {
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
 
-import { EmulatorSequencer } from "./tests/support/emulator-sequencer.js";
 import { interactiveTests } from "./vitest.interactive-tests.mjs";
 
 /**
@@ -82,8 +82,18 @@ export default defineConfig({
         },
       },
     ],
-    reporters: "verbose",
-    sequence: { sequencer: EmulatorSequencer },
+    // Packs `--shard=i/n` by the CI seconds each file took and starts the
+    // longest files first: a few emulator files run for many minutes while
+    // most take seconds, Vitest's default hash sharding put 75 minutes of them
+    // in one CI shard and 41 in another, and a whale that starts late sets a
+    // fork's wall time by itself. The table refreshes itself from CI; see
+    // `@al-ft/midgard-test-support/duration-shards`.
+    ...durationShards({
+      tablePath: fileURLToPath(
+        new URL("./tests/support/ci-file-durations.json", import.meta.url),
+      ),
+      reporters: ["verbose"],
+    }),
     // The one-process-per-file requirement, and why `isolate` must stay
     // `true`, are stated once in `isolatedForksPool`; 7c7162cb reverting
     // `singleFork` here is the same story.

@@ -1,7 +1,19 @@
-import { readFileSync } from "node:fs";
-import { relative, sep } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, relative, sep } from "node:path";
 
 import { BaseSequencer } from "vitest/node";
+
+import {
+  byWeightThenKey,
+  planDurationShards,
+  readShardDurationTable,
+} from "./duration-plan.js";
+
+export {
+  planDurationShards,
+  projectShardSeconds,
+  readShardDurationTable,
+} from "./duration-plan.js";
 
 /**
  * Duration-aware `--shard` for packages whose CI job runs as several shards.
@@ -25,86 +37,18 @@ import { BaseSequencer } from "vitest/node";
  * is a partition: each file lands in exactly one shard. A file the table does
  * not know (new or renamed) weighs `defaultSeconds` and is placed like any
  * other, so it still runs exactly once. A stale table only costs balance.
- * Regenerate it from CI logs with `scripts/ci-file-durations.mjs`.
- */
-
-/**
- * @param {string} path absolute or package-relative path of the table
- */
-export const readShardDurationTable = (path) => {
-  const raw = JSON.parse(readFileSync(path, "utf8"));
-  const files = new Map();
-  for (const [key, seconds] of Object.entries(raw.files ?? {})) {
-    if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0)
-      throw new Error(`${path}: ${key} has no finite non-negative seconds`);
-    files.set(key, seconds);
-  }
-  const defaultSeconds = raw.defaultSeconds;
-  if (
-    typeof defaultSeconds !== "number" ||
-    !Number.isFinite(defaultSeconds) ||
-    defaultSeconds < 0
-  )
-    throw new Error(`${path}: defaultSeconds must be a non-negative number`);
-  const forksPerShard = raw.forksPerShard;
-  if (!Number.isInteger(forksPerShard) || forksPerShard < 1)
-    throw new Error(`${path}: forksPerShard must be a positive integer`);
-  const reservedSeconds = new Map();
-  for (const [shard, seconds] of Object.entries(raw.reservedSeconds ?? {})) {
-    if (!/^\d+\/\d+$/u.test(shard) || typeof seconds !== "number")
-      throw new Error(`${path}: reservedSeconds keys are "index/count"`);
-    reservedSeconds.set(shard, seconds);
-  }
-  return { files, defaultSeconds, forksPerShard, reservedSeconds };
-};
-
-const byWeightThenKey = (left, right) =>
-  right.seconds - left.seconds ||
-  (left.key < right.key ? -1 : left.key > right.key ? 1 : 0);
-
-/**
- * Partition test files into `count` shards. Each entry is `{ id, file }`: `id`
- * is unique per scheduled file (project name and path) and `file` is the
- * package-relative path the table is keyed by. Returns a Map from id to its
- * 1-based shard index. Deterministic: the result depends only on the SET of
- * entries (not their order), the table and `count` -- never on the machine
- * or the fork cap of the run computing it, so every shard of one CI run
- * computes the same partition.
  *
- * `reservedSeconds["i/n"]` is serial work the CI job for shard i of n does
- * after its tests (shard 1's traced-refusal reruns); it is charged to every
- * fork of that shard.
+ * The table maintains itself from CI. A package adopts all of this through
+ * {@link durationShards}, whose reporter records every file's seconds when
+ * `MIDGARD_FILE_DURATIONS_OUT` names a file; each CI shard uploads that record,
+ * and Node CI's `test-durations` job merges a run's records into a refreshed
+ * table (artifact `ci-file-durations`), warning when files the committed table
+ * does not know, or knows wrongly, carry more than a tenth of the run's
+ * seconds. Refresh the committed table from any run with one command:
  *
- * @param {{ entries: readonly { id: string, file: string }[], count: number,
- *   table: ReturnType<typeof readShardDurationTable> }} input
+ *   node demo/midgard-test-support/scripts/ci-file-durations.mjs \
+ *     --package demo/<package> --table <its table> --run <run id>
  */
-export const planDurationShards = ({ entries, count, table }) => {
-  if (!Number.isInteger(count) || count < 1)
-    throw new Error(`shard count must be a positive integer, got ${count}`);
-  const forks = table.forksPerShard;
-  const loads = Array.from(
-    { length: count * forks },
-    (_, slot) =>
-      table.reservedSeconds.get(`${Math.floor(slot / forks) + 1}/${count}`) ??
-      0,
-  );
-  const plan = new Map();
-  const weighted = entries
-    .map(({ id, file }) => ({
-      key: id,
-      seconds: table.files.get(file) ?? table.defaultSeconds,
-    }))
-    .sort(byWeightThenKey);
-  for (const { key, seconds } of weighted) {
-    if (plan.has(key)) throw new Error(`duplicate test file id ${key}`);
-    let lightest = 0;
-    for (let slot = 1; slot < loads.length; slot++)
-      if (loads[slot] < loads[lightest]) lightest = slot;
-    loads[lightest] += seconds;
-    plan.set(key, Math.floor(lightest / forks) + 1);
-  }
-  return plan;
-};
 
 const specFile = (root, spec) =>
   relative(root, spec.moduleId).split(sep).join("/");
@@ -146,5 +90,89 @@ export const durationShardSequencer = ({ tablePath }) => {
         .sort(byWeightThenKey)
         .map(({ spec }) => spec);
     }
+  };
+};
+
+/**
+ * Seconds a file kept its fork busy: preparing the worker, loading the
+ * environment, importing the setup files and the file's own module graph
+ * (collection), and running its tests and hooks.
+ *
+ * @param {{ prepareDuration?: number, environmentLoad?: number,
+ *   setupDuration?: number, collectDuration?: number,
+ *   result?: { duration?: number } }} file a Vitest file task
+ */
+export const fileTaskSeconds = (file) =>
+  ((file.prepareDuration ?? 0) +
+    (file.environmentLoad ?? 0) +
+    (file.setupDuration ?? 0) +
+    (file.collectDuration ?? 0) +
+    (file.result?.duration ?? 0)) /
+  1000;
+
+/**
+ * A Vitest reporter that writes, at the end of the run, the seconds each test
+ * file took (see {@link fileTaskSeconds}) to `outputPath`, keyed by the
+ * package-relative path the duration table uses:
+ * `{ "schema": "midgard-file-durations/v1", "shard": "i/n" | null,
+ *    "files": { "tests/x.test.ts": 12.3 } }`.
+ * `scripts/ci-file-durations.mjs` turns these records into a table.
+ */
+export class FileDurationsReporter {
+  /** @param {string} outputPath */
+  constructor(outputPath) {
+    this.outputPath = outputPath;
+  }
+
+  onInit(ctx) {
+    this.ctx = ctx;
+  }
+
+  onFinished(files = []) {
+    const { root, shard } = this.ctx.config;
+    const seconds = {};
+    for (const file of files) {
+      const key = relative(root, file.filepath).split(sep).join("/");
+      seconds[key] = Math.max(seconds[key] ?? 0, fileTaskSeconds(file));
+    }
+    mkdirSync(dirname(this.outputPath), { recursive: true });
+    writeFileSync(
+      this.outputPath,
+      JSON.stringify(
+        {
+          schema: "midgard-file-durations/v1",
+          shard: shard ? `${shard.index}/${shard.count}` : null,
+          files: Object.fromEntries(
+            Object.entries(seconds)
+              .sort(([left], [right]) =>
+                left < right ? -1 : left > right ? 1 : 0,
+              )
+              .map(([key, value]) => [key, Math.round(value * 10) / 10]),
+          ),
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+  }
+}
+
+/**
+ * The Vitest config fragment a package spreads into `test` to shard by its
+ * duration table: the duration sequencer, and `reporters` plus a
+ * {@link FileDurationsReporter} when `MIDGARD_FILE_DURATIONS_OUT` is set (as
+ * Node CI sets it), so the run records the timings its table is refreshed
+ * from. Every test file the package adds is timed and packed with no further
+ * wiring.
+ *
+ * @param {{ tablePath: string, reporters: readonly unknown[] }} options
+ */
+export const durationShards = ({ tablePath, reporters }) => {
+  const outputPath = process.env.MIDGARD_FILE_DURATIONS_OUT?.trim();
+  return {
+    reporters: outputPath
+      ? [...reporters, new FileDurationsReporter(outputPath)]
+      : [...reporters],
+    sequence: { sequencer: durationShardSequencer({ tablePath }) },
   };
 };

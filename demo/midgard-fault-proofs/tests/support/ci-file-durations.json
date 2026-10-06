@@ -1,5 +1,5 @@
 {
-  "$comment": "CI seconds per test file (tests plus 5 s fork/import overhead) that tests/support/emulator-sequencer.ts packs --shard by. Measured from Node CI run 37347096651 (commit 15f9e7423, jobs 111889304915/111889305029/111889304886). forksPerShard is the CI fork cap (MIDGARD_FAULT_PROOF_FORKS). reservedSeconds 1/3 is the traced-refusal step that only shard 1 runs after its tests. A stale or missing entry only costs balance, never coverage.",
+  "$comment": "CI seconds per test file (tests plus 5 s fork/import overhead) that durationShards in @al-ft/midgard-test-support packs --shard by. Measured from Node CI run 37347096651 (commit 15f9e7423, jobs 111889304915/111889305029/111889304886). forksPerShard is the CI fork cap (MIDGARD_FAULT_PROOF_FORKS). reservedSeconds 1/3 is the traced-refusal step that only shard 1 runs after its tests. Refresh with demo/midgard-test-support/scripts/ci-file-durations.mjs --run <id>, or take the ci-file-durations artifact of any Node CI run. A stale or missing entry only costs balance, never coverage.",
   "forksPerShard": 2,
   "reservedSeconds": {
     "1/3": 508
