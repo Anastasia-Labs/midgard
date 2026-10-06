@@ -74,8 +74,10 @@ is stated next to it.
    blueprint it cannot tell which check refused, so pin the check with
    `expectOnchainRefusal(build, { refusedBy: "<module>", check: /<trace>/u })`
    (`refusedBy` a string literal). The fault-proofs script
-   `test:traced-refusals`, which CI runs, swaps each named module for its
-   verbose-traced build and fails any pin not checked against that trace.
+   `test:traced-refusals`, which CI runs whenever a change touches one of its
+   inputs (`scripts/ci/traced-refusal-inputs.mjs`), swaps each named module
+   for its verbose-traced build and fails any pin not checked against that
+   trace.
    `assertCompleteLifecycleCoverage`
    (`src/testing/complete-lifecycle.ts:35`) fails a lifecycle missing any of
    the seven `COMPLETE_LIFECYCLE_BASE_SCENARIOS`, but only in tests that opt in

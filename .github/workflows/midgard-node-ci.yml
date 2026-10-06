@@ -182,7 +182,11 @@ jobs:
   # built by the same code the suites would otherwise run, with its build
   # record beside it. The consumers set MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS,
   # so a copy whose record no longer matches the checkout, the profile or the
-  # pinned compiler fails the run rather than being rebuilt in place.
+  # pinned compiler fails the run rather than being rebuilt in place. The two
+  # traced builds run only when the traced-refusal step below will read them:
+  # on a pull request that touches one of that check's inputs
+  # (scripts/ci/traced-refusal-inputs.mjs lists them), and on every other
+  # event. Otherwise their steps are skipped and the job still succeeds.
   test-blueprints:
     name: Test blueprint (${{ matrix.blueprint }})
     needs: [aiken-fork]
@@ -196,23 +200,36 @@ jobs:
             build: node demo/midgard-test-support/interactive-emulator.js
             directory: onchain/aiken/build/interactive-emulator
             record: plutus.json.deployment.json
+            traced: false
           - blueprint: traced-preprod-testing
             build: node demo/midgard-fault-proofs/scripts/traced-blueprint.mjs preprod-testing
             directory: onchain/aiken/build/traced-refusals/preprod-testing
             record: traced-build.json
+            traced: true
           - blueprint: traced-preprod-emulator-testing
             build: node demo/midgard-fault-proofs/scripts/traced-blueprint.mjs preprod-emulator-testing
             directory: onchain/aiken/build/traced-refusals/preprod-emulator-testing
             record: traced-build.json
+            traced: true
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The pull request merge commit and its base parent, for the diff.
+          fetch-depth: 2
+      - name: Decide whether this change can alter a traced refusal
+        id: traced
+        if: matrix.traced
+        run: node scripts/ci/traced-refusal-inputs.mjs
       - uses: ./.github/actions/demo-setup
+        if: ${{ !matrix.traced || steps.traced.outputs.run == 'true' }}
         with:
           aiken: "true"
           install-filter: midgard-demo
       - name: Build the ${{ matrix.blueprint }} blueprint
+        if: ${{ !matrix.traced || steps.traced.outputs.run == 'true' }}
         run: ${{ matrix.build }}
       - name: Share the blueprint and its build record with later jobs
+        if: ${{ !matrix.traced || steps.traced.outputs.run == 'true' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: test-blueprint-${{ matrix.blueprint }}
@@ -575,7 +592,9 @@ jobs:
   # which that table reserves. At the median each shard projects ~675 s (~17.3
   # min jobs, measured with a build and typecheck on every shard); three
   # shards projected ~28.5 min, five ~19.5. Change the count here, in the test-durations job below and in
-  # tests/duration-shards.test.ts together, and rekey the table's reserve.
+  # tests/duration-shards.test.ts together, and rekey the table's reserve. On
+  # a pull request that skips the traced-refusal step, shard 1 finishes that
+  # much earlier.
   midgard-fault-proofs:
     name: midgard-fault-proofs (${{ matrix.shard }}/6)
     needs: [aiken-fork, blueprint, test-blueprints]
@@ -590,12 +609,22 @@ jobs:
       MIDGARD_FAULT_PROOF_FORKS: "2"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The pull request merge commit and its base parent, for the diff.
+          fetch-depth: 2
+      # Only shard 1 runs the traced-refusal step, and only when this change
+      # touches one of its inputs (any event but a pull request always runs
+      # it). The test-blueprints job makes the same decision from the same
+      # merge commit to build the traced blueprints this step restores.
+      - name: Decide whether this change can alter a traced refusal
+        id: traced
+        if: matrix.shard == 1
+        run: node scripts/ci/traced-refusal-inputs.mjs
       - uses: ./.github/actions/demo-setup
         with:
           blueprint: "true"
           interactive-blueprint: "true"
-          # Only shard 1 runs the traced-refusal step.
-          traced-blueprints: ${{ matrix.shard == 1 }}
+          traced-blueprints: ${{ steps.traced.outputs.run == 'true' }}
       # The test run records each file's seconds (durationShards in
       # midgard-test-support); `test-durations` merges the shards' records into
       # the refreshed shard table. Step-scoped so the traced-refusal rerun below
@@ -616,7 +645,7 @@ jobs:
       # a pin names for its verbose-traced build and fails unless each pin is
       # checked against the trace of the check it names.
       - name: Check pinned emulator refusals against traced validators
-        if: ${{ !cancelled() && matrix.shard == 1 }}
+        if: ${{ !cancelled() && steps.traced.outputs.run == 'true' }}
         run: pnpm --dir demo/midgard-fault-proofs run test:traced-refusals
 
   # The watcher's TypeScript surface. Its eslint pass is the workspace-wide one

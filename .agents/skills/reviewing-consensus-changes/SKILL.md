@@ -135,8 +135,10 @@ and those commands destroy uncommitted work. [review]
 A negative test must fail at the check it names, not somewhere earlier. For
 emulator negatives, `expectOnchainRefusal` rejects a failure that did not come
 from script execution, and `pnpm --dir demo/midgard-fault-proofs run
-test:traced-refusals` (run in CI) checks each `{ refusedBy, check }` pin
-against the named module's verbose trace. Blind spot: a negative without a pin
+test:traced-refusals` (run in CI on every push to main, and on a pull request
+that touches one of its inputs listed in `scripts/ci/traced-refusal-inputs.mjs`)
+checks each `{ refusedBy, check }` pin against the named module's verbose
+trace. Blind spot: a negative without a pin
 still shows only that some validator refused, so pin the check when it matters.
 [runtime: expectOnchainRefusal]
 
