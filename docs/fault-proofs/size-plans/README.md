@@ -40,6 +40,16 @@ path, and naming it is the opt-in, so they need no flag:
 `<name>-deep-deposit<ext>`. Some producers regenerate only historical tables.
 Never replace a blueprint digest without remeasuring the transactions.
 
+`value-not-preserved-fit-ledger.json` is measured by three files that each run
+a disjoint part of one case table: `value-conservation-lifecycle.test.ts` and
+its `-forced-assets` and `-non-forced-assets` siblings. Regenerating it also
+needs `MIDGARD_FIT_FRAGMENT_DIR` and a fresh `MIDGARD_FIT_MEASUREMENT_RUN`
+token. Each part stores its rows there once all its cases pass, and the last
+part of the run to pass merges them into the ledger
+(`tests/support/split-fit-ledger.ts`), numbered as one file running every case
+in order numbers them. A run that misses a part, or a part with a failed or
+filtered-out case, leaves the ledger untouched.
+
 ## Fresh acceptance artifacts
 
 Run the normal testnet build and the complete registered lifecycle scenarios

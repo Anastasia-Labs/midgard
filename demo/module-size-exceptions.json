@@ -690,6 +690,11 @@
     "reason": "UNMAPPED_VALIDATORS: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Combined recovered source removes obsolete lines; cap reduced to the measured final source count. Registered Data executor coverage removes five obsolete unmapped entries; cap ratchets down."
   },
   {
+    "file": "midgard-fault-proofs/tests/support/value-conservation-lifecycle-cases.ts",
+    "max": 1297,
+    "reason": "registerValueConservationCases is the dominant indivisible declaration: the retained test registration “universal value conservation”, moved here unchanged so its three part files (value-conservation-lifecycle{,-forced-assets,-non-forced-assets}.test.ts) run disjoint cases in parallel. Its callback shares suite-local fixtures and staged control flow; dividing it changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
     "file": "midgard-fault-proofs/tests/transaction-output-non-canonical-lifecycle.test.ts",
     "max": 946,
     "reason": "Retained test registration “transactionOutputNonCanonical registered-chain lifecycle” (858 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
@@ -728,11 +733,6 @@
     "file": "midgard-fault-proofs/tests/validation-dispute-submit.test.ts",
     "max": 2331,
     "reason": "Retained test registration “validation-dispute transaction validity” (2231 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-fault-proofs/tests/value-conservation-lifecycle.test.ts",
-    "max": 1286,
-    "reason": "Retained test registration “universal value conservation” (1178 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/withdrawal-mistag-installed-lifecycle.test.ts",
