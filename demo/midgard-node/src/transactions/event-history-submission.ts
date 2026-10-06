@@ -28,7 +28,8 @@ import {
   settleExpiredHistoryAttempt,
 } from "./event-history-submission.indexed-l1-slot.js";
 import {
-  plainUnreservedOutputs,
+  fundingOutputs,
+  inputsUnspent,
   unreservedNonce,
 } from "./event-history-submission.unreserved-outputs.js";
 import {
@@ -298,9 +299,32 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
     return yield* Effect.tryPromise({
       try: async () => {
         let heldInput: string | undefined;
+        // Funding outputs another local submission held when `funding` last
+        // read the wallet; they apply to the attempt built from that read.
+        let heldAtFunding: ReadonlySet<string> | undefined;
         const save = async (
           checkpoint: SDK.EventHistorySubmissionCheckpoint,
         ) => {
+          // A funding output held at the read is still held, or its holder
+          // settled since and may have spent it: the view is stale. Either
+          // way record nothing and rebuild from a current view.
+          const held = heldAtFunding;
+          if (checkpoint.pending !== undefined && held !== undefined) {
+            heldAtFunding = undefined;
+            const outRef = Journal.attemptSpend(checkpoint.pending).inputs.find(
+              (input) => held.has(input),
+            );
+            if (outRef !== undefined) {
+              if (outRef !== heldInput)
+                await run(
+                  Effect.logInfo(
+                    `History submission ${submissionId} is waiting for another local submission to settle its transaction on input ${outRef}, which it held when this submission read its funding, then rebuilds against the current wallet`,
+                  ),
+                );
+              heldInput = outRef;
+              throw new SDK.EventHistoryInputReservedError(outRef);
+            }
+          }
           // The indexed slot lets this attempt take over inputs of another
           // submission's expired attempt, which would otherwise wedge it.
           const tipSlot =
@@ -358,7 +382,13 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
           retryDelayMs,
           driver: {
             save,
-            submit,
+            // A new attempt was never broadcast, so a spent input means it
+            // can never land: spent since this run read the chain, such as a
+            // list predecessor shared with another wallet's submission.
+            submit: async (tx, attempt) =>
+              (await inputsUnspent(lucid, attempt))
+                ? submit(tx, attempt)
+                : { kind: "InputConflict" },
             reconcile: async (attempt) => {
               assertHistorySubmissionAttempt(attempt);
               const status = await transport.observe(attempt);
@@ -378,12 +408,16 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
             // Another submission's pending inputs stay on offer: an attempt
             // spending one meets its reservation at `save` and waits for it
             // to settle, rather than failing for lack of free funding.
-            funding: async () =>
-              plainUnreservedOutputs(
-                await lucid.utxosAt(walletAddress),
-                await run(Journal.reservedNonces(walletAddress)),
+            funding: async () => {
+              const funding = await fundingOutputs({
+                lucid,
+                walletAddress,
                 historyPolicyIds,
-              ),
+                run,
+              });
+              heldAtFunding = funding.held;
+              return funding.offered;
+            },
             now,
             waitUntil: (target) => {
               const waitMs = Math.max(0, target - now());

@@ -67,13 +67,11 @@ export class HistoryInputReservedError extends Data.TaggedError(
   readonly holder: string | undefined;
 }> {}
 
-/** Inputs and validity upper bound (TTL slot) of the pending attempt. */
-const pendingSpend = (checkpoint: SDK.EventHistorySubmissionCheckpoint) => {
-  if (checkpoint.pending === undefined) return { inputs: [], ttl: undefined };
-  const body = CML.Transaction.from_cbor_hex(
-    checkpoint.pending.transactionCbor,
-  ).body();
-  if (CML.hash_transaction(body).to_hex() !== checkpoint.pending.txHash)
+/** Inputs, collateral included, and validity upper bound (TTL slot) of a
+ * completed attempt. */
+export const attemptSpend = (attempt: SDK.EventHistorySubmissionAttempt) => {
+  const body = CML.Transaction.from_cbor_hex(attempt.transactionCbor).body();
+  if (CML.hash_transaction(body).to_hex() !== attempt.txHash)
     throw new Error("Pending history hash does not match its completed body");
   const refs: string[] = [];
   for (const inputs of [body.inputs(), body.collateral_inputs()]) {
@@ -87,6 +85,12 @@ const pendingSpend = (checkpoint: SDK.EventHistorySubmissionCheckpoint) => {
   }
   return { inputs: refs, ttl: body.ttl() };
 };
+
+/** Inputs and validity upper bound (TTL slot) of the pending attempt. */
+const pendingSpend = (checkpoint: SDK.EventHistorySubmissionCheckpoint) =>
+  checkpoint.pending === undefined
+    ? { inputs: [], ttl: undefined }
+    : attemptSpend(checkpoint.pending);
 
 /** A holder can no longer spend a reserved input other than its nonce once
  * its current checkpoint has no pending attempt spending it (the attempt
