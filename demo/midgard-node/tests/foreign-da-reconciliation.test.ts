@@ -48,13 +48,14 @@ const peers = ["peer-a", "peer-b"].map((identity, index) => ({
 let manifest: DeploymentManifest;
 let fixture: Awaited<ReturnType<typeof oneDepositPayload>>;
 let envelope: Buffer;
+// Loads and parameterises the real contracts: ~10 s on a 4-vCPU CI runner.
 beforeAll(async () => {
   manifest = await makeFinalizedDeploymentManifestFixture();
   fixture = await oneDepositPayload(depositId);
   envelope = await wrapDaPayload(SDK.encodeDaPayload(fixture.payload), {
     mode: "identity",
   });
-});
+}, 120_000);
 
 const clientFor = (transport: WatcherPublicDaLibp2pTransportV1) =>
   new WatcherPublicDaClient({
