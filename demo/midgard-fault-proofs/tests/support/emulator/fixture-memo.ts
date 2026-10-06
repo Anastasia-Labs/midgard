@@ -4,7 +4,12 @@
  * A memo entry is keyed by a SHA-256 digest of a canonical, type-tagged
  * encoding of the builder's complete input: every byte, every key (including
  * keys whose value is `undefined`) and the distinction between a `Buffer`, a
- * plain `Uint8Array`, a number and a bigint. Anything the encoding cannot
+ * plain `Uint8Array`, a number and a bigint. A plain object's keys are encoded
+ * in sorted order, so two objects with the same entries in a different order
+ * are equal as data: the builders memoized here (`native-trace-memo.ts`) read
+ * their input by field name and check the consensus profile as canonical JSON,
+ * so key order never reaches what they build. A `Map` keeps its insertion
+ * order, which iterating it observes. Anything the encoding cannot
  * describe exactly (a class instance, a function, a symbol, a typed array
  * other than a `Uint8Array`, a sparse array, a cycle) is refused rather than
  * approximated, so two inputs share an entry only when they are equal as
