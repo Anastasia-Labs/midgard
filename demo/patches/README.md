@@ -29,6 +29,13 @@ same preservation helper; convergence checks also distinguish changes in ordered
 redeemer data. Both published formats are covered by
 `midgard-sdk/tests/lucid-inline-datum-preservation.test.ts`.
 
+Canonicalization is a pure function of the transaction bytes, and one
+completion canonicalizes the same transaction at several stages: redeemer
+context, input and fixed-point fingerprints, governance index normalization.
+The patch keeps the last eight results keyed by the exact input bytes; a hit
+decodes the stored canonical bytes into a fresh transaction, which serializes
+identically to the one canonicalization built. A miss canonicalizes as before.
+
 The Lucid patch also selects collateral from an explicit wallet
 `getCollateral()` method when supplied. Wallets without that method retain the
 existing selection from wallet inputs; an explicitly empty collateral list does
