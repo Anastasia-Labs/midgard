@@ -172,17 +172,33 @@ export type AcceptedHistoryObservation = Awaited<
 /** Observe the pipeline's own submissions and confirmations without advancing
  * its clock or changing signed bytes. Exact references are captured before
  * submission, while the referenced frontier still exists. */
+/** What an observer has seen so far, as plain data: a restored emulator
+ * (see `openHistorySourceOwnerLifecycle`) resumes observing from it. */
+export type HistoryObservationState = {
+  readonly pending: ReadonlyMap<
+    string,
+    { readonly signedCbor: string; readonly historical: readonly UTxO[] }
+  >;
+  readonly observed: ReadonlySet<string>;
+};
+
 export const captureConfirmedHistoryObservations = (
   lucid: LucidEvolution,
   emulator: Emulator,
   onConfirmed: (
     observations: readonly AcceptedHistoryObservation[],
   ) => Promise<void>,
+  initial?: HistoryObservationState,
 ) => {
   const submit = emulator.submitTx.bind(emulator);
   const awaitTx = emulator.awaitTx.bind(emulator);
-  const pending = new Map<string, { signedCbor: string; historical: UTxO[] }>();
-  const observed = new Set<string>();
+  const pending = new Map<string, { signedCbor: string; historical: UTxO[] }>(
+    [...(initial?.pending ?? [])].map(([hash, item]) => [
+      hash,
+      structuredClone({ ...item, historical: [...item.historical] }),
+    ]),
+  );
+  const observed = new Set<string>(initial?.observed);
   const flush = async () => {
     const confirmed: AcceptedHistoryObservation[] = [];
     for (const [hash, item] of pending) {
@@ -231,5 +247,7 @@ export const captureConfirmedHistoryObservations = (
       emulator.submitTx = submit;
       emulator.awaitTx = awaitTx;
     },
+    state: (): HistoryObservationState =>
+      structuredClone({ pending, observed }),
   };
 };

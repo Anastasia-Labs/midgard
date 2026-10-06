@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -9,85 +8,11 @@ import {
   readWatcherNativeExactPointQuery,
   watcherNativeChainSyncAuthorityDetails,
 } from "../../src/l1/native-chain-sync.js";
+import { parseWatcherConfig } from "../../src/runtime/config.js";
 import {
-  parseWatcherConfig,
-  WATCHER_CONFIG_SCHEMA_VERSION,
-} from "../../src/runtime/config.js";
-const GENESIS_BYTES = JSON.stringify({ networkMagic: 1 });
-const GENESIS = createHash("sha256").update(GENESIS_BYTES).digest("hex");
-const config = (NODE_CONFIG_PATH: string, GENESIS_CONFIG_PATH: string) =>
-  Object.freeze({
-    schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-    mode: "acceptance",
-    targetNetwork: "Preprod",
-    l1: Object.freeze({
-      source: Object.freeze({
-        sourceMode: "local_node",
-        authorityNodeId: "watcher-node",
-        chainSync: Object.freeze({
-          kind: "cardano_node_socket",
-          socketPath: "/run/cardano/node.socket",
-          nodeConfigPath: NODE_CONFIG_PATH,
-          genesisConfigPath: GENESIS_CONFIG_PATH,
-          genesisIdentitySha256: GENESIS,
-        }),
-        queryServices: Object.freeze([
-          Object.freeze({
-            kind: "ogmios",
-            identity: "local-ogmios",
-            endpoint: "ws://127.0.0.1:1337",
-          }),
-          Object.freeze({
-            kind: "kupo",
-            identity: "local-kupo",
-            endpoint: "http://127.0.0.1:1442",
-          }),
-        ]),
-      }),
-      requestTimeoutMs: 10_000,
-      maxConcurrency: 4,
-      finality: Object.freeze({
-        depth: 30,
-        rollback: Object.freeze({
-          beforeFinality: "rewind",
-          afterFinality: "quarantine",
-          maxDepth: 30,
-        }),
-      }),
-    }),
-    da: Object.freeze({
-      peers: Object.freeze([
-        {
-          identity: "da-peer-a",
-          multiaddr:
-            "/dns4/da-a.example/tcp/443/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
-        },
-      ]),
-      requestTimeoutMs: 10_000,
-      maxConcurrency: 4,
-    }),
-    storage: Object.freeze({
-      driver: "sqlite",
-      path: "/var/lib/midgard-watcher/watcher.sqlite",
-      rollbackAuthorityKeySource: Object.freeze({
-        kind: "environment",
-        variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
-      }),
-    }),
-    proverWallet: Object.freeze({
-      keySource: Object.freeze({
-        kind: "environment",
-        variable: "MIDGARD_WATCHER_PROVER_KEY",
-      }),
-    }),
-    deadlines: Object.freeze({
-      daFetchMs: 60_000,
-      daPublishMs: 60_000,
-      proofConstructMs: 300_000,
-      proofSubmitMs: 120_000,
-    }),
-  });
-
+  exactPointWatcherConfig as config,
+  GENESIS_BYTES,
+} from "../support/native-exact-point-query-config.js";
 const predecessor = { blockHash: "aa".repeat(32), blockNo: "9", slot: "100" };
 const target = { blockHash: "bb".repeat(32), blockNo: "10", slot: "101" };
 const cleanup: (() => Promise<void>)[] = [];
@@ -109,6 +34,7 @@ const input = async (mode = "query_idle", timeoutMs = 2000) => {
   await writeFile(
     binaryPath,
     `#!${process.execPath}
+if (process.argv[2] === "--exact-point-service") await import(${JSON.stringify(new URL("../support/native-exact-point-service-shim.mjs", import.meta.url).href)});
 process.argv[2] = ${JSON.stringify(mode)};
 await import(${JSON.stringify(new URL("../support/native-chain-sync-fixture.mjs", import.meta.url).href)});
 `,

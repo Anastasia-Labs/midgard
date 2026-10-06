@@ -289,6 +289,9 @@ not assume all old-fork inputs are available or hold all capital until finality.
 
 Local authority binds the Cardano node socket, node/genesis configuration, and
 genesis identity; the native chain-sync process provides ordered chain evidence.
+Exact-point queries run as framed sessions of one persistent helper process per
+binary (`--exact-point-service`); a helper crash, hang or protocol violation
+kills it and fails every in-flight query, and the next query starts a new one.
 Configured query services are subordinate to that authority. Authenticated
 rollback recovery and the independent trusted head protect durable replay.
 DA retrieval authenticates the configured peer and payload commitments.
@@ -453,6 +456,8 @@ measurement does not establish a public-network deadline guarantee. See the
   The interactive `validationTraceDispute` family is installed but outside
   that harness.
 - `pnpm run typecheck`, `pnpm run lint`, and `pnpm test` check this package.
+  `pnpm test` also drives the compiled helper, so run `pnpm run native:build`
+  first.
   The journey harness runs the built `dist`; rebuild before a live run or the
   child process executes stale code while the test process reads source.
 

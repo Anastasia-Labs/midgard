@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { setImmediate as yieldToIo } from "node:timers/promises";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -29,7 +28,15 @@ import { type AtomicProtocolInitReferenceScripts } from "../src/transactions/ini
 import { deployReferenceScriptCommandProgram } from "../src/transactions/register-active-operator.js";
 import { type SubmitDepositReferenceScripts } from "../src/transactions/submit-deposit.js";
 import { type SubmitWithdrawalReferenceScripts } from "../src/transactions/submit-withdrawal.js";
+import {
+  type EmulatorState,
+  emulatorState,
+  pinnedWalletUtxos,
+  recreateLucid,
+} from "./helpers/emulator-snapshot.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
+import { loadOrCreateRunSharedFixture } from "./helpers/run-shared-fixture-directory.js";
+import { resetApplicationTables } from "./utils.js";
 
 export const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
@@ -161,7 +168,30 @@ export const publishDepositFlowReferenceScripts = async ({
   };
 };
 
-export const makeFixture = async (): Promise<EmulatorFixture> => {
+const makeCustomLucid = (emulator: Emulator) => makeLucid(emulator, "Custom");
+
+/** A deployed fixture as plain data: the emulator ledger the moment the
+ * reference scripts are published, the accounts, contracts and published
+ * references, and the wallet pins the deployment left. */
+type DeployedFixture = {
+  readonly emulator: EmulatorState;
+  readonly creation: { readonly time: number; readonly slot: number };
+  readonly accounts: Pick<
+    EmulatorFixture,
+    "operatorAccount" | "depositorAccount" | "referenceScriptsAccount"
+  >;
+  readonly contracts: SDK.MidgardValidators;
+  readonly referenceScripts: DepositFlowReferenceScripts;
+  readonly operatorKeyHash: string;
+  readonly wallets: Readonly<
+    Record<"operator" | "depositor" | "referenceScripts", UTxO[] | undefined>
+  >;
+};
+
+const deployFixture = async (): Promise<{
+  readonly fixture: EmulatorFixture;
+  readonly deployed: DeployedFixture;
+}> => {
   const operatorAccount = generateEmulatorAccount({
     lovelace: 60_000_000_000n,
   });
@@ -175,21 +205,11 @@ export const makeFixture = async (): Promise<EmulatorFixture> => {
     [operatorAccount, depositorAccount, referenceScriptsAccount],
     EMULATOR_PROTOCOL_PARAMETERS,
   );
-  const submitTx = emulator.submitTx.bind(emulator);
-  emulator.submitTx = async (tx) => {
-    // Publishing hundreds of scripts through immediately resolved provider
-    // calls can starve worker IPC for over Vitest's 60s reporting deadline.
-    // Service I/O between transactions without advancing the protocol clock.
-    // Vitest 4 removed that deadline (vitest-dev/vitest#8297, first shipped in
-    // v4.0.0); delete this wrapper once the workspace is on Vitest 4 or later.
-    // Stable @effect/vitest supports only Vitest 3; later Vitest needs Effect 4.
-    await yieldToIo();
-    return submitTx(tx);
-  };
+  const creation = { time: emulator.time, slot: emulator.slot };
   const emulatorCreationTimeMs = emulator.now();
-  const operatorLucid = await makeLucid(emulator, "Custom");
-  const depositorLucid = await makeLucid(emulator, "Custom");
-  const referenceScriptsLucid = await makeLucid(emulator, "Custom");
+  const operatorLucid = await makeCustomLucid(emulator);
+  const depositorLucid = await makeCustomLucid(emulator);
+  const referenceScriptsLucid = await makeCustomLucid(emulator);
   operatorLucid.selectWallet.fromSeed(operatorAccount.seedPhrase);
   depositorLucid.selectWallet.fromSeed(depositorAccount.seedPhrase);
   referenceScriptsLucid.selectWallet.fromSeed(
@@ -219,20 +239,123 @@ export const makeFixture = async (): Promise<EmulatorFixture> => {
     referenceScriptsLucid,
     contracts,
   });
+  const deployed: DeployedFixture = {
+    emulator: emulatorState(emulator),
+    creation,
+    accounts: structuredClone({
+      operatorAccount,
+      depositorAccount,
+      referenceScriptsAccount,
+    }),
+    contracts: structuredClone(contracts),
+    referenceScripts: structuredClone(referenceScripts),
+    operatorKeyHash,
+    wallets: {
+      operator: await pinnedWalletUtxos(operatorLucid, emulator),
+      depositor: await pinnedWalletUtxos(depositorLucid, emulator),
+      referenceScripts: await pinnedWalletUtxos(
+        referenceScriptsLucid,
+        emulator,
+      ),
+    },
+  };
 
   return {
+    fixture: {
+      emulator,
+      emulatorCreationTimeMs,
+      contracts,
+      referenceScripts,
+      operatorAccount,
+      depositorAccount,
+      referenceScriptsAccount,
+      operatorLucid,
+      depositorLucid,
+      referenceScriptsLucid,
+      operatorKeyHash,
+    },
+    deployed,
+  };
+};
+
+/** A fresh emulator and fresh lucid instances holding exactly the chain,
+ * wallets and pins `deployed` captured; nothing is shared with any other
+ * restored copy. */
+const restoreFixture = async (
+  deployed: DeployedFixture,
+): Promise<EmulatorFixture> => {
+  const emulator = new Emulator([], EMULATOR_PROTOCOL_PARAMETERS);
+  Object.assign(emulator, structuredClone(deployed.emulator));
+  const { operatorAccount, depositorAccount, referenceScriptsAccount } =
+    structuredClone(deployed.accounts);
+  const recreate = (seedPhrase: string, pinned: UTxO[] | undefined) =>
+    recreateLucid(
+      emulator,
+      deployed.creation,
+      seedPhrase,
+      pinned,
+      makeCustomLucid,
+    );
+  return {
     emulator,
-    emulatorCreationTimeMs,
-    contracts,
-    referenceScripts,
+    emulatorCreationTimeMs: deployed.creation.time,
+    contracts: structuredClone(deployed.contracts),
+    referenceScripts: structuredClone(deployed.referenceScripts),
     operatorAccount,
     depositorAccount,
     referenceScriptsAccount,
-    operatorLucid,
-    depositorLucid,
-    referenceScriptsLucid,
-    operatorKeyHash,
+    operatorLucid: await recreate(
+      operatorAccount.seedPhrase,
+      deployed.wallets.operator,
+    ),
+    depositorLucid: await recreate(
+      depositorAccount.seedPhrase,
+      deployed.wallets.depositor,
+    ),
+    referenceScriptsLucid: await recreate(
+      referenceScriptsAccount.seedPhrase,
+      deployed.wallets.referenceScripts,
+    ),
+    operatorKeyHash: deployed.operatorKeyHash,
   };
+};
+
+const SHARED_FIXTURE_NAME = "deposit-flow-fixture";
+
+/** The deployment this file restores from: read once from the run's shared
+ * fixtures, or deployed by the first call and shared. */
+let deployedFixture: DeployedFixture | undefined;
+
+/**
+ * A freshly deployed emulator chain: three funded accounts, the real Midgard
+ * contracts, and every reference script the node runtime reads, published
+ * through the production command program.
+ *
+ * The deployment reads no per-file setting and no module a test file mocks,
+ * so every call of a run restores one deployment instead of publishing its
+ * own: the first call in the run deploys and shares it while calls in files
+ * that start at the same time wait for it
+ * (`helpers/run-shared-fixture-directory.ts`), and each call returns an
+ * independent copy (its own emulator, lucid instances and records) of the
+ * chain the deployment left. Without the package's global setup each file
+ * deploys once and restores from that.
+ */
+export const makeFixture = async (): Promise<EmulatorFixture> => {
+  // Every fixture of the run restores the same deployment, so node rows an
+  // earlier test on this worker's database keyed to it would otherwise be
+  // found by this one. Each fixture starts from freshly migrated application
+  // tables, seed rows included, as `restoreHistorySource` does.
+  await runNodeDatabaseEffect(resetApplicationTables);
+  if (deployedFixture !== undefined) return restoreFixture(deployedFixture);
+  const { shared, created } = await loadOrCreateRunSharedFixture(
+    SHARED_FIXTURE_NAME,
+    async () => {
+      const { fixture, deployed } = await deployFixture();
+      return { shared: deployed, created: fixture };
+    },
+  );
+  deployedFixture = shared;
+  return created ?? restoreFixture(shared);
 };
 
 export const runNodeDatabaseEffect = <A, E>(

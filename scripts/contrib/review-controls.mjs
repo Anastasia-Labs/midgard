@@ -106,9 +106,9 @@ const controls = [
     file: "files.mjs",
     change: (text) =>
       text
-        .replace('    "scripts/bin",\n', "")
-        .replace('    "scripts/pnpm.mjs",\n', "")
-        .replace('    "scripts/bin/pnpm",\n', ""),
+        .replace('  "scripts/bin",\n', "")
+        .replace('  "scripts/pnpm.mjs",\n', "")
+        .replace('  "scripts/bin/pnpm",\n', ""),
     match: "lockfile, exports, native sources and dependency facets invalidate",
     failure: /AssertionError/u,
     testFile: "identity.test.mjs",

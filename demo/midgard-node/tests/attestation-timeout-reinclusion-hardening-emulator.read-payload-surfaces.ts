@@ -112,3 +112,28 @@ export const openNativeOwner = async (handle: Scenario["h"]) => {
   if (owner === undefined) throw new Error("Native owner is not open");
   return owner;
 };
+
+export const INJECTED_PLAN_FAILURE =
+  "injected crash while marking the rewind applied";
+
+/** A database fault at the plan's final state change, inside the repair's own
+ * transaction. */
+export const refusePlanApplication = (refuse: boolean) =>
+  read(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      if (!refuse) {
+        yield* sql`DROP TRIGGER IF EXISTS midgard_test_refuse_plan_applied
+          ON event_history_recovery_plans`;
+        yield* sql`DROP FUNCTION IF EXISTS midgard_test_refuse_plan_applied()`;
+        return;
+      }
+      yield* sql.unsafe(`CREATE OR REPLACE FUNCTION midgard_test_refuse_plan_applied()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION '${INJECTED_PLAN_FAILURE}'; END $$`);
+      yield* sql.unsafe(`CREATE TRIGGER midgard_test_refuse_plan_applied
+        BEFORE UPDATE ON event_history_recovery_plans FOR EACH ROW
+        WHEN (NEW.state = 'applied' AND OLD.state = 'prepared')
+        EXECUTE FUNCTION midgard_test_refuse_plan_applied()`);
+    }),
+  );

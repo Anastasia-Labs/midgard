@@ -61,20 +61,31 @@ export const interactiveEmulatorPlugin = () => ({
   },
 });
 
-const fresh = () => {
-  if (
-    checkBlueprintStamp({ blueprintPath: interactiveEmulatorBlueprint })
-      .status !== "fresh"
-  )
-    return false;
+/** Why the cached blueprint cannot be used, or undefined when it can. */
+const staleness = () => {
+  const verdict = checkBlueprintStamp({
+    blueprintPath: interactiveEmulatorBlueprint,
+  });
+  if (verdict.status !== "fresh") return verdict.detail;
   const record = JSON.parse(
     readFileSync(buildRecordPath(interactiveEmulatorBlueprint), "utf8"),
   );
-  return (
-    record.profileDigest ===
+  if (
+    record.profileDigest !==
     profileDigest(readProfiles()[interactiveEmulatorProfile])
-  );
+  )
+    return `${interactiveEmulatorBlueprint} was built for another ${interactiveEmulatorProfile} profile`;
+  return undefined;
 };
+
+const fresh = () => staleness() === undefined;
+
+/**
+ * Set where an earlier job built the blueprint (CI's `test-blueprints`), so a
+ * stale or mismatched copy fails the run instead of being rebuilt in place.
+ */
+const prebuiltBlueprintsRequired = () =>
+  process.env.MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS === "1";
 
 const lock = `${interactiveEmulatorBlueprint}.lock`;
 
@@ -150,6 +161,14 @@ const breakStaleLock = () => {
 export default async function setup() {
   // A stamp alone cannot prove generated constants agree with their producer.
   await generateProfiles("preprod-testing", true);
+  if (prebuiltBlueprintsRequired()) {
+    const reason = staleness();
+    if (reason !== undefined)
+      throw new Error(
+        `MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS=1 forbids rebuilding the interactive emulator blueprint, and the prebuilt one is unusable: ${reason}`,
+      );
+    return;
+  }
   mkdirSync(dirname(interactiveEmulatorBlueprint), { recursive: true });
   const deadline = Date.now() + 600_000;
   for (;;) {
@@ -211,3 +230,11 @@ export default async function setup() {
     discardLock();
   }
 }
+
+// CLI: `node demo/midgard-test-support/interactive-emulator.js` builds the
+// blueprint, or leaves a fresh one in place, outside Vitest.
+if (
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+)
+  await setup();

@@ -1,10 +1,9 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
 import { buildMidgardBoundedItem } from "./bounded-item.js";
 import {
   decodeMidgardCekProgramEnvelope,
   type MidgardCekProgramEnvelope,
 } from "./cek-proof.js";
+import { midgardBlake2b } from "./codec/blake2b.js";
 import { decodeSingleCbor, encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
@@ -73,7 +72,7 @@ export const RESOLVED_CONTEXT_ITEM_LEAF_DOMAIN = Buffer.from(
 );
 
 export const hash32 = (bytes: Uint8Array): Hash32 =>
-  ensureHash32(blake2b(bytes, { dkLen: 32 }), "script_proof_hash");
+  ensureHash32(midgardBlake2b(bytes, { dkLen: 32 }), "script_proof_hash");
 
 /**
  * Decodes the only canonical V1 reference-script source key. That key *is* the

@@ -1,4 +1,5 @@
 import {
+  callerFile,
   recordCheckedPin,
   TRACED_REFUSAL_MODULE,
   TRACED_REFUSALS,
@@ -8,9 +9,10 @@ import {
  * The check a negative expects to refuse it. `refusedBy` names the validator
  * module that holds the check (for example
  * "fraud_proofs/missing_signature/forced_witness");
- * scripts/run-traced-refusals.mjs reads these names from the suites to decide
- * which validators to trace, so it must be a string literal. `check` matches
- * that validator's trace.
+ * scripts/run-traced-refusals.mjs reads these names from the test sources to
+ * decide which validators to trace, so it must be a string literal written in
+ * the file that calls `expectOnchainRefusal`, a test file or a support module.
+ * `check` matches that validator's trace.
  */
 export type RefusalPin = {
   readonly refusedBy: string;
@@ -51,6 +53,8 @@ export const expectOnchainRefusal = async (
   build: () => Promise<unknown>,
   pin?: RefusalPin,
 ): Promise<string> => {
+  // Read before the first await, while the caller is still on the stack.
+  const site = TRACED_REFUSALS ? callerFile() : undefined;
   let failure: unknown;
   try {
     await build();
@@ -87,6 +91,6 @@ export const expectOnchainRefusal = async (
       `expected the check in ${refusedBy} matching ${String(check)} to refuse, but another check refused: ${text}`,
     );
   }
-  recordCheckedPin(refusedBy);
+  recordCheckedPin(refusedBy, site);
   return text;
 };

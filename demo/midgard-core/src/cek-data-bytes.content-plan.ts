@@ -6,6 +6,7 @@ import {
   definiteHeaderLength,
   indefiniteMidgardCekDataBytesLength,
   isWellFormedMidgardCekDataBytesControl,
+  isWellFormedMidgardCekDataBytesControlWithValidatedBlob,
   MIDGARD_CEK_DATA_BYTES_MAX_SOURCE_SPAN,
   MIDGARD_CEK_DATA_BYTES_SYNTAX_BYTES,
   type MidgardCekDataBytesControl,
@@ -19,13 +20,15 @@ import {
   midgardCekDataBytesMemory,
 } from "./cek-semantic.js";
 import {
-  advanceMidgardCekSourceBlob,
-  finalizeMidgardCekSourceBlob,
+  advanceValidatedMidgardCekSourceBlob,
+  finalizeValidatedMidgardCekSourceBlob,
   initialMidgardCekSourceBlobControl,
   type MidgardCekSourceBlobSpan,
   MidgardCekSourceBlobStages,
-  nextMidgardCekSourceBlobSpan,
+  nextValidatedMidgardCekSourceBlobSpan,
 } from "./cek-source-blob.js";
+
+/** `control` must be a validated control; its blob child is not re-validated. */
 
 const contentPlan = (
   control: MidgardCekDataBytesControl,
@@ -36,7 +39,7 @@ const contentPlan = (
   ) {
     return null;
   }
-  const virtualSpan = nextMidgardCekSourceBlobSpan(control.blob);
+  const virtualSpan = nextValidatedMidgardCekSourceBlobSpan(control.blob);
   if (virtualSpan === null) return null;
   const contentStart = virtualSpan.absoluteStart;
   const contentEnd = contentStart + virtualSpan.length;
@@ -177,10 +180,20 @@ const measureSpan = (
 export const nextMidgardCekDataBytesSpan = (
   control: MidgardCekDataBytesControl,
   sourceEnd: number,
+): MidgardCekSourceBlobSpan | null =>
+  isWellFormedMidgardCekDataBytesControl(control)
+    ? nextValidatedMidgardCekDataBytesSpan(control, sourceEnd)
+    : null;
+
+/**
+ * Package-internal (not re-exported by the `cek-data-bytes` facade): for a
+ * control the caller has already validated in the same synchronous call chain,
+ * either directly or as the nested child of a validated parent control.
+ */
+export const nextValidatedMidgardCekDataBytesSpan = (
+  control: MidgardCekDataBytesControl,
+  sourceEnd: number,
 ): MidgardCekSourceBlobSpan | null => {
-  if (!isWellFormedMidgardCekDataBytesControl(control)) {
-    return null;
-  }
   if (control.stage === MidgardCekDataBytesStages.Syntax) {
     return {
       absoluteStart: control.sourceStart,
@@ -231,7 +244,10 @@ const advanceMeasure = (
         sourceLength: bytesLength,
       }),
     } satisfies MidgardCekDataBytesControl;
-    return isWellFormedMidgardCekDataBytesControl(next) ? next : null;
+    // The new blob is an initial blob, which validates itself.
+    return isWellFormedMidgardCekDataBytesControlWithValidatedBlob(next)
+      ? next
+      : null;
   }
   const chunkLength =
     first >= 0x41 && first <= 0x57
@@ -260,13 +276,29 @@ export const advanceMidgardCekDataBytes = ({
   readonly control: MidgardCekDataBytesControl;
   readonly sourceBytes?: Uint8Array | null;
   readonly sourceEnd: number;
+}): MidgardCekDataBytesControl | null =>
+  isWellFormedMidgardCekDataBytesControl(control)
+    ? advanceValidatedMidgardCekDataBytes({ control, sourceBytes, sourceEnd })
+    : null;
+
+/**
+ * Package-internal; see `nextValidatedMidgardCekDataBytesSpan`. The successor
+ * is still checked before it is returned; only its blob child, which is an
+ * initial blob, unchanged, or the blob machine's exit-checked successor, is
+ * not re-validated.
+ */
+export const advanceValidatedMidgardCekDataBytes = ({
+  control,
+  sourceBytes,
+  sourceEnd,
+}: {
+  readonly control: MidgardCekDataBytesControl;
+  readonly sourceBytes?: Uint8Array | null;
+  readonly sourceEnd: number;
 }): MidgardCekDataBytesControl | null => {
   try {
-    if (!isWellFormedMidgardCekDataBytesControl(control)) {
-      return null;
-    }
     if (control.stage === MidgardCekDataBytesStages.Syntax) {
-      const span = nextMidgardCekDataBytesSpan(control, sourceEnd)!;
+      const span = nextValidatedMidgardCekDataBytesSpan(control, sourceEnd)!;
       if (
         sourceBytes === null ||
         sourceBytes === undefined ||
@@ -288,7 +320,9 @@ export const advanceMidgardCekDataBytes = ({
           sourceLength: bytesLength,
         }),
       } satisfies MidgardCekDataBytesControl;
-      return isWellFormedMidgardCekDataBytesControl(next) ? next : null;
+      return isWellFormedMidgardCekDataBytesControlWithValidatedBlob(next)
+        ? next
+        : null;
     }
     if (control.stage === MidgardCekDataBytesStages.Measure) {
       return advanceMeasure(control, sourceEnd, sourceBytes);
@@ -307,7 +341,10 @@ export const advanceMidgardCekDataBytes = ({
         ...control,
         stage: MidgardCekDataBytesStages.Terminal,
       } satisfies MidgardCekDataBytesControl;
-      return isWellFormedMidgardCekDataBytesControl(next) ? next : null;
+      // The blob child is unchanged and was validated with this control.
+      return isWellFormedMidgardCekDataBytesControlWithValidatedBlob(next)
+        ? next
+        : null;
     }
     const plan = contentPlan(control);
     const expectsSource = plan !== null;
@@ -322,13 +359,16 @@ export const advanceMidgardCekDataBytes = ({
             sourceBytes: sourceBytes!,
           });
     if (plan !== null && content === null) return null;
-    const blob = advanceMidgardCekSourceBlob({
+    const blob = advanceValidatedMidgardCekSourceBlob({
       control: control.blob,
       sourceBytes: content,
     });
     if (blob === null) return null;
     const next = { ...control, blob };
-    return isWellFormedMidgardCekDataBytesControl(next) ? next : null;
+    // A non-null blob successor passed the blob machine's exit check.
+    return isWellFormedMidgardCekDataBytesControlWithValidatedBlob(next)
+      ? next
+      : null;
   } catch {
     return null;
   }
@@ -336,14 +376,19 @@ export const advanceMidgardCekDataBytes = ({
 
 export const finalizeMidgardCekDataBytes = (
   control: MidgardCekDataBytesControl,
+): MidgardCekDataBytesSummary | null =>
+  isWellFormedMidgardCekDataBytesControl(control)
+    ? finalizeValidatedMidgardCekDataBytes(control)
+    : null;
+
+/** Package-internal; see `nextValidatedMidgardCekDataBytesSpan`. */
+export const finalizeValidatedMidgardCekDataBytes = (
+  control: MidgardCekDataBytesControl,
 ): MidgardCekDataBytesSummary | null => {
-  if (
-    !isWellFormedMidgardCekDataBytesControl(control) ||
-    control.stage !== MidgardCekDataBytesStages.Terminal
-  ) {
+  if (control.stage !== MidgardCekDataBytesStages.Terminal) {
     return null;
   }
-  const bytesRoot = finalizeMidgardCekSourceBlob(control.blob!);
+  const bytesRoot = finalizeValidatedMidgardCekSourceBlob(control.blob!);
   if (bytesRoot === null) return null;
   const memory = midgardCekDataBytesMemory(BigInt(control.bytesLength));
   return Object.freeze({

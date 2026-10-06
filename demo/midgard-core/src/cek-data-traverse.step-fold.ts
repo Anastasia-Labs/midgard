@@ -82,10 +82,25 @@ export const advanceMidgardCekDataTraverse = ({
   readonly control: MidgardCekDataTraverseControl;
   readonly sourceBytes?: Uint8Array | null;
   readonly action: MidgardCekDataTraverseAction;
+}): MidgardCekDataTraverseControl | null =>
+  isWellFormedMidgardCekDataTraverseControl(control)
+    ? advanceValidatedMidgardCekDataTraverse({ control, sourceBytes, action })
+    : null;
+
+/**
+ * Package-internal (not re-exported by the `cek-data-traverse` facade): for a
+ * control the caller has already validated in the same synchronous call chain.
+ * The successor is still checked (`advanced`) before it is returned.
+ */
+export const advanceValidatedMidgardCekDataTraverse = ({
+  control,
+  sourceBytes,
+  action,
+}: {
+  readonly control: MidgardCekDataTraverseControl;
+  readonly sourceBytes?: Uint8Array | null;
+  readonly action: MidgardCekDataTraverseAction;
 }): MidgardCekDataTraverseControl | null => {
-  if (!isWellFormedMidgardCekDataTraverseControl(control)) {
-    return null;
-  }
   try {
     switch (control.stage) {
       case MidgardCekDataTraverseStages.Head:

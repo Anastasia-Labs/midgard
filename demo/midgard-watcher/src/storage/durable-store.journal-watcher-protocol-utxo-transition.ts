@@ -16,6 +16,7 @@ import {
   exactString,
   fail,
   HEX_32,
+  immutableCanonicalJson,
   WATCHER_DURABLE_CACHE_SCHEMA_VERSION,
   WATCHER_DURABLE_MIGRATION_MANIFEST_SHA256,
   WATCHER_DURABLE_MIGRATION_VERSION,
@@ -330,3 +331,27 @@ export const immutableStoreEncodings = new WeakMap<
   object,
   Readonly<{ encoded: string; caches: WatcherDurableCaches }>
 >();
+
+const freezeOwnedStoreJson = (value: unknown): void => {
+  if (typeof value !== "object" || value === null) return;
+  if (immutableCanonicalJson.has(value)) return;
+  for (const child of Object.values(value)) freezeOwnedStoreJson(child);
+  Object.freeze(value);
+};
+
+/** Builds the same validated store as makeWatcherDurableStore, deep-frozen
+ * before any other code can reach it, and records its canonical encoding so
+ * later encodings and digests of this exact object skip a second validation.
+ * Only for callers that never mutate the result. */
+export const makeImmutableWatcherDurableStore = (
+  input: Parameters<typeof makeWatcherDurableStore>[0],
+): WatcherDurableStore => {
+  // Every parsed record is process-owned, so freezing never reaches caller input.
+  const store = makeWatcherDurableStore(input);
+  freezeOwnedStoreJson(store);
+  const encoded = canonicalJson(store as CanonicalJson);
+  if (immutableCanonicalJson.has(store)) {
+    immutableStoreEncodings.set(store, { encoded, caches: store.caches });
+  }
+  return store;
+};

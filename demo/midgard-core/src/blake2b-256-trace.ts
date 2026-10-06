@@ -117,11 +117,15 @@ const encodeWordsLe = (words: readonly bigint[]): Buffer => {
   return encoded;
 };
 
-const initialChainingValue = (): Buffer => {
+// The parameter-mixed IV is fixed, so it is encoded once. Well-formedness
+// checks compare against it on every cursor-0 step; fresh controls get a copy.
+const INITIAL_CHAINING_VALUE: Buffer = (() => {
   const words = [...IV];
   words[0] = words[0]! ^ PARAMETER_BLOCK;
   return encodeWordsLe(words);
-};
+})();
+
+const initialChainingValue = (): Buffer => Buffer.from(INITIAL_CHAINING_VALUE);
 
 const initializeWorkingValue = ({
   chainingValue,
@@ -249,6 +253,13 @@ const emptyActiveState = {
   round: 0,
 } as const;
 
+const isZeroFrom = (bytes: Uint8Array, start: number): boolean => {
+  for (let index = start; index < bytes.length; index += 1) {
+    if (bytes[index] !== 0) return false;
+  }
+  return true;
+};
+
 export const isWellFormedMidgardBlake2b256TraceControl = (
   control: MidgardBlake2b256TraceControl,
 ): boolean => {
@@ -270,7 +281,7 @@ export const isWellFormedMidgardBlake2b256TraceControl = (
   }
   if (
     control.cursor === 0 &&
-    !control.chainingValue.equals(initialChainingValue())
+    !control.chainingValue.equals(INITIAL_CHAINING_VALUE)
   ) {
     return false;
   }
@@ -299,9 +310,7 @@ export const isWellFormedMidgardBlake2b256TraceControl = (
     control.activeBlock.length === MIDGARD_BLAKE2B_256_BLOCK_BYTES &&
     control.activeBlockLength === expectedLength &&
     (control.activeBlockLength === MIDGARD_BLAKE2B_256_BLOCK_BYTES ||
-      control.activeBlock
-        .subarray(control.activeBlockLength)
-        .every((byte) => byte === 0)) &&
+      isZeroFrom(control.activeBlock, control.activeBlockLength)) &&
     control.workingValue.length === 128 &&
     (control.stage === MidgardBlake2b256TraceStages.Round
       ? control.round >= 0 && control.round < MIDGARD_BLAKE2B_256_ROUNDS

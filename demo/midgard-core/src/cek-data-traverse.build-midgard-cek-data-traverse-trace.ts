@@ -1,7 +1,5 @@
-import {
-  finalizeMidgardCekDataBytes,
-  MidgardCekDataBytesStages,
-} from "./cek-data-bytes.js";
+import { finalizeValidatedMidgardCekDataBytes } from "./cek-data-bytes.content-plan.js";
+import { MidgardCekDataBytesStages } from "./cek-data-bytes.js";
 import {
   appendMidgardCekDataFrameChild,
   finalizeMidgardCekDataFrame,
@@ -16,12 +14,11 @@ import {
   type MidgardCekDataFrame,
 } from "./cek-data-frame.js";
 import {
-  finalizeMidgardCekDataInteger,
+  finalizeValidatedMidgardCekDataInteger,
   MidgardCekDataIntegerStages,
 } from "./cek-data-integer.js";
 import {
   initialMidgardCekDataTraverseControl,
-  isWellFormedMidgardCekDataTraverseControl,
   type MidgardCekDataTraverseAction,
   type MidgardCekDataTraverseStage,
   MidgardCekDataTraverseStages,
@@ -35,16 +32,16 @@ import {
 import {
   type DataTraceFrame,
   type DataTraceOperation,
-  nextMidgardCekDataTraverseSpan,
+  nextValidatedMidgardCekDataTraverseSpan,
   type ParsedDataNode,
   readCanonicalCborArgument,
 } from "./cek-data-traverse.read-canonical-cbor-argument-wide.js";
 import {
-  advanceMidgardCekDataTraverse,
+  advanceValidatedMidgardCekDataTraverse,
   finalizeMidgardCekDataTraverse,
 } from "./cek-data-traverse.step-fold.js";
 import { type MidgardCekDataSummary } from "./cek-semantic.js";
-import { finalizeMidgardCekSourceBlob } from "./cek-source-blob.js";
+import { finalizeValidatedMidgardCekSourceBlob } from "./cek-source-blob.js";
 import { buildMidgardValidationMerkleMembershipIndex } from "./validation-merkle.js";
 
 const buildDataTrace = ({
@@ -69,8 +66,10 @@ const buildDataTrace = ({
   let control = initial;
   const currentStage = (): MidgardCekDataTraverseStage => control.stage;
 
+  // `control` is always the validated initial control or a successor that
+  // passed the machine's exit check.
   const emit = (action: MidgardCekDataTraverseAction): void => {
-    const span = nextMidgardCekDataTraverseSpan(control);
+    const span = nextValidatedMidgardCekDataTraverseSpan(control);
     const sourceBytes =
       span === null
         ? null
@@ -78,12 +77,12 @@ const buildDataTrace = ({
             span.absoluteStart - sourceStart,
             span.absoluteStart - sourceStart + span.length,
           );
-    const next = advanceMidgardCekDataTraverse({
+    const next = advanceValidatedMidgardCekDataTraverse({
       control,
       sourceBytes,
       action,
     });
-    if (next === null || !isWellFormedMidgardCekDataTraverseControl(next)) {
+    if (next === null) {
       throw new Error("V1 CEK Data traversal evidence failed closed");
     }
     steps.push({
@@ -200,8 +199,8 @@ const buildDataTrace = ({
         }
         const summary =
           control.integer !== null
-            ? finalizeMidgardCekDataInteger(control.integer)
-            : finalizeMidgardCekDataBytes(control.bytes!);
+            ? finalizeValidatedMidgardCekDataInteger(control.integer)
+            : finalizeValidatedMidgardCekDataBytes(control.bytes!);
         if (summary === null) {
           throw new Error("V1 CEK Data traversal rejected a scalar");
         }
@@ -244,7 +243,9 @@ const buildDataTrace = ({
             refusalOffset: parsed.refusalOffset,
           };
         }
-        const root = finalizeMidgardCekSourceBlob(control.integer.blob);
+        const root = finalizeValidatedMidgardCekSourceBlob(
+          control.integer.blob,
+        );
         if (root === null) {
           throw new Error("V1 CEK Data traversal lost constructor bytes");
         }

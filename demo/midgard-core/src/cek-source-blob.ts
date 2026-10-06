@@ -116,8 +116,15 @@ const initialActiveHash = (
     chunkPrefix(chunkLength).length + chunkLength,
   );
 
-export const isWellFormedMidgardCekSourceBlobControl = (
+/**
+ * `hashValidated` is true only inside this package's own call chains, when the
+ * active BLAKE2b trace was just validated by its own machine (an entry check
+ * of this control, an initial trace, or the trace's exit check). Every
+ * exported entry point validates with it false.
+ */
+const wellFormedSourceBlob = (
   control: MidgardCekSourceBlobControl,
+  hashValidated: boolean,
 ): boolean => {
   try {
     if (
@@ -154,7 +161,8 @@ export const isWellFormedMidgardCekSourceBlobControl = (
     if (
       control.frontier.count >= chunkCount ||
       control.activeHash === null ||
-      !isWellFormedMidgardBlake2b256TraceControl(control.activeHash)
+      (!hashValidated &&
+        !isWellFormedMidgardBlake2b256TraceControl(control.activeHash))
     ) {
       return false;
     }
@@ -168,6 +176,10 @@ export const isWellFormedMidgardCekSourceBlobControl = (
     return false;
   }
 };
+
+export const isWellFormedMidgardCekSourceBlobControl = (
+  control: MidgardCekSourceBlobControl,
+): boolean => wellFormedSourceBlob(control, false);
 
 export const initialMidgardCekSourceBlobControl = ({
   sourceStart,
@@ -211,7 +223,18 @@ export const encodeMidgardCekSourceBlobControl = (
   if (!isWellFormedMidgardCekSourceBlobControl(control)) {
     throw new Error("Invalid V1 CEK source blob control");
   }
-  return encodeCborArrayRaw([
+  return encodeValidatedMidgardCekSourceBlobControl(control);
+};
+
+/**
+ * Package-internal (not re-exported by the package index): for a control the
+ * caller has already validated in the same synchronous call chain, either
+ * directly or as the nested child of a validated parent control.
+ */
+export const encodeValidatedMidgardCekSourceBlobControl = (
+  control: MidgardCekSourceBlobControl,
+): Buffer =>
+  encodeCborArrayRaw([
     encodeCbor(BigInt(MIDGARD_CEK_SOURCE_BLOB_VERSION)),
     encodeCbor(BigInt(control.stage)),
     encodeCbor(BigInt(control.sourceStart)),
@@ -219,13 +242,19 @@ export const encodeMidgardCekSourceBlobControl = (
     encodeMidgardCekBlobFrontier(control.frontier),
     optionalActiveHashDataCbor(control.activeHash),
   ]);
-};
 
 export const nextMidgardCekSourceBlobSpan = (
   control: MidgardCekSourceBlobControl,
+): MidgardCekSourceBlobSpan | null =>
+  isWellFormedMidgardCekSourceBlobControl(control)
+    ? nextValidatedMidgardCekSourceBlobSpan(control)
+    : null;
+
+/** Package-internal; see `encodeValidatedMidgardCekSourceBlobControl`. */
+export const nextValidatedMidgardCekSourceBlobSpan = (
+  control: MidgardCekSourceBlobControl,
 ): MidgardCekSourceBlobSpan | null => {
   if (
-    !isWellFormedMidgardCekSourceBlobControl(control) ||
     control.stage !== MidgardCekSourceBlobStages.Active ||
     control.activeHash!.stage !== MidgardBlake2b256TraceStages.Ready
   ) {
@@ -256,7 +285,7 @@ const activeMessageBlock = ({
   readonly control: MidgardCekSourceBlobControl;
   readonly sourceBytes: Uint8Array;
 }): Buffer | null => {
-  const span = nextMidgardCekSourceBlobSpan(control);
+  const span = nextValidatedMidgardCekSourceBlobSpan(control);
   if (span === null || sourceBytes.length !== span.length) return null;
   const hashControl = control.activeHash!;
   const prefix = chunkPrefix(activeChunkLength(control));
@@ -279,12 +308,25 @@ export const advanceMidgardCekSourceBlob = ({
 }: {
   readonly control: MidgardCekSourceBlobControl;
   readonly sourceBytes?: Uint8Array | null;
+}): MidgardCekSourceBlobControl | null =>
+  isWellFormedMidgardCekSourceBlobControl(control)
+    ? advanceValidatedMidgardCekSourceBlob({ control, sourceBytes })
+    : null;
+
+/**
+ * Package-internal; see `encodeValidatedMidgardCekSourceBlobControl`. The
+ * successor is still checked before it is returned; only its active trace,
+ * which its own machine has just validated, is not re-validated.
+ */
+export const advanceValidatedMidgardCekSourceBlob = ({
+  control,
+  sourceBytes,
+}: {
+  readonly control: MidgardCekSourceBlobControl;
+  readonly sourceBytes?: Uint8Array | null;
 }): MidgardCekSourceBlobControl | null => {
   try {
-    if (
-      !isWellFormedMidgardCekSourceBlobControl(control) ||
-      control.stage !== MidgardCekSourceBlobStages.Active
-    ) {
+    if (control.stage !== MidgardCekSourceBlobStages.Active) {
       return null;
     }
     const hashControl = control.activeHash!;
@@ -313,7 +355,8 @@ export const advanceMidgardCekSourceBlob = ({
               ),
             ),
       } satisfies MidgardCekSourceBlobControl;
-      return isWellFormedMidgardCekSourceBlobControl(next) ? next : null;
+      // The new trace is null or an initial trace, which validates itself.
+      return wellFormedSourceBlob(next, true) ? next : null;
     }
     const ready = hashControl.stage === MidgardBlake2b256TraceStages.Ready;
     if (ready !== (sourceBytes !== null && sourceBytes !== undefined)) {
@@ -332,7 +375,8 @@ export const advanceMidgardCekSourceBlob = ({
     });
     if (activeHash === null) return null;
     const next = { ...control, activeHash };
-    return isWellFormedMidgardCekSourceBlobControl(next) ? next : null;
+    // A non-null trace successor passed the trace machine's exit check.
+    return wellFormedSourceBlob(next, true) ? next : null;
   } catch {
     return null;
   }
@@ -341,7 +385,14 @@ export const advanceMidgardCekSourceBlob = ({
 export const finalizeMidgardCekSourceBlob = (
   control: MidgardCekSourceBlobControl,
 ): Buffer | null =>
-  isWellFormedMidgardCekSourceBlobControl(control) &&
+  isWellFormedMidgardCekSourceBlobControl(control)
+    ? finalizeValidatedMidgardCekSourceBlob(control)
+    : null;
+
+/** Package-internal; see `encodeValidatedMidgardCekSourceBlobControl`. */
+export const finalizeValidatedMidgardCekSourceBlob = (
+  control: MidgardCekSourceBlobControl,
+): Buffer | null =>
   control.stage === MidgardCekSourceBlobStages.Terminal
     ? finalizeMidgardCekBlobFrontier(control.frontier)
     : null;
@@ -360,8 +411,10 @@ export const buildMidgardCekSourceBlobTrace = ({
   });
   const steps: MidgardCekSourceBlobTraceStep[] = [];
   let control = initial;
+  // Every control here is the validated initial control or a successor that
+  // passed the machine's exit check.
   while (control.stage !== MidgardCekSourceBlobStages.Terminal) {
-    const span = nextMidgardCekSourceBlobSpan(control);
+    const span = nextValidatedMidgardCekSourceBlobSpan(control);
     const sourceBytes =
       span === null
         ? null
@@ -369,11 +422,11 @@ export const buildMidgardCekSourceBlobTrace = ({
             span.absoluteStart - sourceStart,
             span.absoluteStart - sourceStart + span.length,
           );
-    const next = advanceMidgardCekSourceBlob({
+    const next = advanceValidatedMidgardCekSourceBlob({
       control,
       sourceBytes,
     });
-    if (next === null || !isWellFormedMidgardCekSourceBlobControl(next)) {
+    if (next === null) {
       throw new Error("V1 CEK source blob trace failed closed");
     }
     steps.push({ control, sourceBytes, next });

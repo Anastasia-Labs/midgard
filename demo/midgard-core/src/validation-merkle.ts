@@ -1,5 +1,4 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
+import { midgardBlake2b } from "./codec/blake2b.js";
 import { encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 
@@ -42,7 +41,7 @@ type PrecomputedMidgardValidationMerklePeak = {
 };
 
 const hash32 = (bytes: Uint8Array): Hash32 =>
-  ensureHash32(blake2b(bytes, { dkLen: 32 }), "validation_merkle_hash");
+  ensureHash32(midgardBlake2b(bytes, { dkLen: 32 }), "validation_merkle_hash");
 
 const boundedCount = (count: number, field: string): number => {
   if (

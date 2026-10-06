@@ -130,8 +130,9 @@ const withNativeRootMarker = async <A>(
   }
 };
 
-describe.sequential(
+describe(
   "state reconciliation against the emulator pipeline",
+  { concurrent: false },
   () => {
     it("reconciles a committed deposit block, fails the targeted check per injected inconsistency, and reconciles again after merge", async () => {
       await resetActiveRuntimePaths();

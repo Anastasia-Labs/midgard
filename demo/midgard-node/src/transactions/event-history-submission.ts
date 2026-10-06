@@ -1,9 +1,8 @@
-import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  type Assets,
   CML,
-  coreToTxOutput,
   Data,
   type LucidEvolution,
   type UTxO,
@@ -21,9 +20,19 @@ import {
 import * as Journal from "../database/eventHistorySubmissions.js";
 import { Database } from "../services/database.js";
 import {
+  assertHistorySubmissionAttempt,
+  decodeHistorySubmissionRequest,
+  encodeHistorySubmissionRequest,
+} from "./event-history-submission.codec.js";
+import {
   indexedL1Slot,
   settleExpiredHistoryAttempt,
 } from "./event-history-submission.indexed-l1-slot.js";
+import {
+  fundingOutputs,
+  inputsUnspent,
+  unreservedNonce,
+} from "./event-history-submission.unreserved-outputs.js";
 import {
   awaitSubmittedTransactionConfirmation,
   submitSignedTxWithRecovery,
@@ -38,99 +47,15 @@ export class HistorySubmissionError extends EffectData.TaggedError(
   readonly cause: unknown;
 }> {}
 
+export {
+  assertHistorySubmissionAttempt,
+  decodeHistorySubmissionRequest,
+  encodeHistorySubmissionRequest,
+  historyAdmissionMetadata,
+} from "./event-history-submission.codec.js";
+
 type Prepared = {
   readonly request: SDK.EventHistorySubmissionRequest;
-};
-
-const encodeAssets = (assets: Assets) =>
-  Object.fromEntries(
-    Object.entries(assets).map(([unit, amount]) => [unit, amount.toString()]),
-  );
-const decodeAssets = (assets: Readonly<Record<string, string>>): Assets =>
-  Object.fromEntries(
-    Object.entries(assets).map(([unit, amount]) => [unit, BigInt(amount)]),
-  );
-
-export const encodeHistorySubmissionRequest = (
-  request: SDK.EventHistorySubmissionRequest,
-): Journal.StoredRequest => {
-  if (
-    request.nonce.datum != null ||
-    request.nonce.datumHash != null ||
-    request.nonce.scriptRef != null
-  )
-    throw new Error("History nonce must be a plain wallet output");
-  if (request.payload !== undefined && request.payloadCbor !== undefined)
-    throw new Error("History payload must have exactly one encoding source");
-  const payloadCbor =
-    request.payloadCbor ?? Data.to(request.payload, SDK.EventHistoryPayload);
-  Data.from(payloadCbor, SDK.EventHistoryPayload);
-  return {
-    payloadCbor,
-    reclaimAuthCbor: Data.to(request.reclaimAuth, SDK.CredentialD),
-    assets: encodeAssets(request.assets),
-    structuralLovelace: request.structuralLovelace.toString(),
-    structuralRefundKey: request.structuralRefundKey,
-    nonce: {
-      txHash: request.nonce.txHash,
-      outputIndex: request.nonce.outputIndex,
-      address: request.nonce.address,
-      assets: encodeAssets(request.nonce.assets),
-    },
-  };
-};
-
-export const decodeHistorySubmissionRequest = (
-  request: Journal.StoredRequest,
-): Extract<SDK.EventHistorySubmissionRequest, { payloadCbor: string }> => {
-  Data.from(request.payloadCbor, SDK.EventHistoryPayload);
-  return {
-    payloadCbor: request.payloadCbor,
-    reclaimAuth: Data.from(request.reclaimAuthCbor, SDK.CredentialD),
-    assets: decodeAssets(request.assets),
-    structuralLovelace: BigInt(request.structuralLovelace),
-    structuralRefundKey: request.structuralRefundKey,
-    nonce: { ...request.nonce, assets: decodeAssets(request.nonce.assets) },
-  };
-};
-
-export const assertHistorySubmissionAttempt = (
-  attempt: SDK.EventHistorySubmissionAttempt,
-) => {
-  const transaction = CML.Transaction.from_cbor_hex(attempt.transactionCbor);
-  if (
-    CML.hash_transaction(transaction.body()).to_hex() !== attempt.txHash ||
-    !Number.isSafeInteger(attempt.outputIndex) ||
-    attempt.outputIndex < 0 ||
-    attempt.outputIndex >= transaction.body().outputs().len()
-  )
-    throw new Error("History attempt does not match its completed transaction");
-};
-
-export const historyAdmissionMetadata = (
-  lucid: LucidEvolution,
-  attempt: SDK.EventHistorySubmissionAttempt,
-) => {
-  assertHistorySubmissionAttempt(attempt);
-  if (attempt.phase !== "Admission")
-    throw new Error("Expected history admission attempt");
-  const body = CML.Transaction.from_cbor_hex(attempt.transactionCbor).body();
-  const output = coreToTxOutput(body.outputs().get(attempt.outputIndex));
-  if (output.datum == null || body.ttl() === undefined)
-    throw new Error("History admission lacks a datum or finite validity bound");
-  const node = Data.from(output.datum, SDK.EventHistoryNode);
-  if (
-    node.position === "Root" ||
-    node.payload === "RootContent" ||
-    !("Order" in node.payload)
-  )
-    throw new Error("History admission output is not an Order");
-  return {
-    output,
-    key: node.position.Key[0],
-    facts: node.payload.Order.facts,
-    validTo: lucid.slotToUnixTime(Number(body.ttl())),
-  };
 };
 
 export const historyIntentOptionsData = (
@@ -275,16 +200,10 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
       catch: wrap,
     });
     const history = kind === "Deposit" ? pair.deposit : pair.withdrawal;
-    const plainUnreserved = (reserved: ReadonlySet<string>) => (utxo: UTxO) =>
-      !reserved.has(outRefLabel(utxo)) &&
-      utxo.datum == null &&
-      utxo.datumHash == null &&
-      utxo.scriptRef == null &&
-      !Object.keys(utxo.assets).some(
-        (unit) =>
-          unit.startsWith(pair.deposit.list.policyId) ||
-          unit.startsWith(pair.withdrawal.list.policyId),
-      );
+    const historyPolicyIds = [
+      pair.deposit.list.policyId,
+      pair.withdrawal.list.policyId,
+    ];
     const walletAddress = yield* Effect.tryPromise({
       try: () => lucid.wallet().address(),
       catch: wrap,
@@ -309,44 +228,56 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
     } else {
       // Outputs a dead submission's expired attempt holds are free to take.
       const tipSlot = yield* indexedL1Slot(lucid);
-      const reserved = yield* Journal.reservedInputs(walletAddress, tipSlot);
-      const candidates = yield* Effect.tryPromise({
-        try: () => lucid.utxosAt(walletAddress),
-        catch: wrap,
-      });
-      const nonce = candidates
-        .filter(
-          (utxo) =>
-            plainUnreserved(reserved)(utxo) &&
-            (nonceInput === undefined ||
-              outRefLabel(nonceInput) === outRefLabel(utxo)),
-        )
-        .sort(compareOutRefs)[0];
-      if (nonce === undefined)
-        return yield* Effect.fail(
-          wrap("No unreserved plain wallet nonce is available"),
-        );
-      const prepared = yield* prepare(nonce);
-      const stored = yield* Effect.try({
-        try: () => ({
-          ...identity,
-          nonce_out_ref: outRefLabel(prepared.request.nonce),
-          request: encodeHistorySubmissionRequest(prepared.request),
-          checkpoint: {
-            requestHash: SDK.eventHistorySubmissionRequestHash(
-              history.list.policyId,
-              prepared.request,
-              history.recipe,
-            ),
-          },
+      row = yield* Journal.choosingNonce(
+        walletAddress,
+        Effect.gen(function* () {
+          // A concurrent run of this submission ID may have reserved it
+          // while this one waited for the lock: continue with that winner.
+          const winner = yield* Journal.retrieve(submissionId);
+          if (Option.isSome(winner)) {
+            if (!Journal.matchesIdentity(winner.value, identity))
+              return yield* Effect.fail(
+                wrap(
+                  "Submission ID belongs to a different intent, wallet or deployment",
+                ),
+              );
+            return winner.value;
+          }
+          const nonce = yield* unreservedNonce({
+            lucid,
+            walletAddress,
+            historyPolicyIds,
+            tipSlot,
+            nonceInput,
+            wrap,
+          });
+          if (nonce === undefined)
+            return yield* Effect.fail(
+              wrap("No unreserved plain wallet nonce is available"),
+            );
+          const prepared = yield* prepare(nonce);
+          const stored = yield* Effect.try({
+            try: () => ({
+              ...identity,
+              nonce_out_ref: outRefLabel(prepared.request.nonce),
+              request: encodeHistorySubmissionRequest(prepared.request),
+              checkpoint: {
+                requestHash: SDK.eventHistorySubmissionRequestHash(
+                  history.list.policyId,
+                  prepared.request,
+                  history.recipe,
+                ),
+              },
+            }),
+            catch: wrap,
+          });
+          if (stored.nonce_out_ref !== outRefLabel(nonce))
+            return yield* Effect.fail(
+              wrap("Prepared request changed its reserved nonce"),
+            );
+          return yield* Journal.reserve(stored, tipSlot);
         }),
-        catch: wrap,
-      });
-      if (stored.nonce_out_ref !== outRefLabel(nonce))
-        return yield* Effect.fail(
-          wrap("Prepared request changed its reserved nonce"),
-        );
-      row = yield* Journal.reserve(stored, tipSlot);
+      );
     }
     const request = yield* Effect.try({
       try: () => decodeHistorySubmissionRequest(row.request),
@@ -381,9 +312,32 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
     return yield* Effect.tryPromise({
       try: async () => {
         let heldInput: string | undefined;
+        // Funding outputs another local submission held when `funding` last
+        // read the wallet; they apply to the attempt built from that read.
+        let heldAtFunding: ReadonlySet<string> | undefined;
         const save = async (
           checkpoint: SDK.EventHistorySubmissionCheckpoint,
         ) => {
+          // A funding output held at the read is still held, or its holder
+          // settled since and may have spent it: the view is stale. Either
+          // way record nothing and rebuild from a current view.
+          const held = heldAtFunding;
+          if (checkpoint.pending !== undefined && held !== undefined) {
+            heldAtFunding = undefined;
+            const outRef = Journal.attemptSpend(checkpoint.pending).inputs.find(
+              (input) => held.has(input),
+            );
+            if (outRef !== undefined) {
+              if (outRef !== heldInput)
+                await run(
+                  Effect.logInfo(
+                    `History submission ${submissionId} is waiting for another local submission to settle its transaction on input ${outRef}, which it held when this submission read its funding, then rebuilds against the current wallet`,
+                  ),
+                );
+              heldInput = outRef;
+              throw new SDK.EventHistoryInputReservedError(outRef);
+            }
+          }
           // The indexed slot lets this attempt take over inputs of another
           // submission's expired attempt, which would otherwise wedge it.
           const tipSlot =
@@ -441,7 +395,22 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
           retryDelayMs,
           driver: {
             save,
-            submit,
+            // A new attempt was never broadcast, so a spent input means it
+            // can never land: spent since this run read the chain, such as a
+            // list predecessor shared with another wallet's submission. A
+            // failed read abandons it too: it holds every swept output, so
+            // leaving it pending would stall the wallet until its TTL.
+            submit: async (tx, attempt) =>
+              (await inputsUnspent(lucid, attempt).catch(async (cause) => {
+                await run(
+                  Effect.logWarning(
+                    `History submission ${submissionId} could not read the inputs of its unsent attempt ${attempt.txHash}, so abandons it and rebuilds: ${formatUnknownError(cause)}`,
+                  ),
+                );
+                return false;
+              }))
+                ? submit(tx, attempt)
+                : { kind: "InputConflict" },
             reconcile: async (attempt) => {
               assertHistorySubmissionAttempt(attempt);
               const status = await transport.observe(attempt);
@@ -458,16 +427,18 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
               assertHistorySubmissionAttempt(attempt);
               return transport.observe(attempt);
             },
+            // Another submission's pending inputs stay on offer: an attempt
+            // spending one meets its reservation at `save` and waits for it
+            // to settle, rather than failing for lack of free funding.
             funding: async () => {
-              const reserved = await run(
-                Journal.reservedInputs(
-                  walletAddress,
-                  await run(indexedL1Slot(lucid)),
-                ),
-              );
-              return (await lucid.utxosAt(walletAddress))
-                .filter(plainUnreserved(reserved))
-                .sort(compareOutRefs);
+              const funding = await fundingOutputs({
+                lucid,
+                walletAddress,
+                historyPolicyIds,
+                run,
+              });
+              heldAtFunding = funding.held;
+              return funding.offered;
             },
             now,
             waitUntil: (target) => {

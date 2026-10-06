@@ -30,7 +30,7 @@ const fragmentPath = (family: string, source: string): string => {
   const run = process.env.MIDGARD_FIT_MEASUREMENT_RUN;
   if (!directory || !run || !/^[a-zA-Z0-9_-]+$/u.test(run))
     throw new Error(
-      "Measured fit regeneration requires MIDGARD_FIT_FRAGMENT_DIR and a fresh MIDGARD_FIT_MEASUREMENT_RUN token",
+      "Measured fit fragments are written only inside a regeneration run: use `pnpm --dir demo/midgard-fault-proofs fit:regenerate <ledger>`, which sets MIDGARD_FIT_FRAGMENT_DIR and a fresh MIDGARD_FIT_MEASUREMENT_RUN for that run",
     );
   return join(directory, run, family, `${source}.json`);
 };

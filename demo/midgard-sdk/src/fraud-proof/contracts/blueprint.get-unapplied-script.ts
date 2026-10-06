@@ -46,6 +46,46 @@ export const getUnappliedScript = (
   return validator.compiledCode;
 };
 
+/**
+ * A Plutus V3 script's hash, and the enterprise address it yields on a given
+ * network, are pure functions of the script bytes (and the network): Lucid
+ * decodes the script through CML and hashes it on every call, which costs
+ * milliseconds per validator and dominated repeated contract resolution (each
+ * submit path re-derives its whole family chain from the blueprint). Memoizing
+ * on the exact inputs cannot change any hash or address: a hit is a proof the
+ * inputs were byte-identical, a miss runs the same Lucid function, and a throw
+ * caches nothing. Only immutable strings are cached; every caller still gets
+ * fresh validator objects.
+ *
+ * Each cache holds at most PLUTUS_V3_SCRIPT_CACHE_LIMIT entries and evicts its
+ * oldest first. The blueprint compiles about 570 distinct scripts, so one
+ * deployment's whole set fits and a running node never evicts; a process that
+ * applies many parameter sets (tests, multi-deployment tooling) stops growing
+ * at the cap instead of keeping every script it ever hashed.
+ */
+export const PLUTUS_V3_SCRIPT_CACHE_LIMIT = 1024;
+const plutusV3ScriptHashCache = new Map<string, string>();
+const plutusV3EnterpriseAddressCache = new Map<string, string>();
+
+export const memoized = (
+  cache: Map<string, string>,
+  key: string,
+  compute: () => string,
+  limit: number = PLUTUS_V3_SCRIPT_CACHE_LIMIT,
+): string => {
+  const cached = cache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const value = compute();
+  if (cache.size >= limit) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(key, value);
+  return value;
+};
+
 export const makeMintingPolicy = (
   mintingScriptCBOR: string,
 ): MintingValidator => {
@@ -56,7 +96,9 @@ export const makeMintingPolicy = (
   return {
     mintingScriptCBOR,
     mintingScript,
-    policyId: mintingPolicyToId(mintingScript),
+    policyId: memoized(plutusV3ScriptHashCache, mintingScriptCBOR, () =>
+      mintingPolicyToId(mintingScript),
+    ),
   };
 };
 
@@ -71,8 +113,16 @@ export const makeSpendingValidator = (
   return {
     spendingScriptCBOR,
     spendingScript,
-    spendingScriptAddress: validatorToAddress(network, spendingScript),
-    spendingScriptHash: validatorToScriptHash(spendingScript),
+    spendingScriptAddress: memoized(
+      plutusV3EnterpriseAddressCache,
+      `${network}|${spendingScriptCBOR}`,
+      () => validatorToAddress(network, spendingScript),
+    ),
+    spendingScriptHash: memoized(
+      plutusV3ScriptHashCache,
+      spendingScriptCBOR,
+      () => validatorToScriptHash(spendingScript),
+    ),
   };
 };
 
@@ -86,7 +136,11 @@ export const makeWithdrawalValidator = (
   return {
     withdrawalScriptCBOR,
     withdrawalScript,
-    withdrawalScriptHash: validatorToScriptHash(withdrawalScript),
+    withdrawalScriptHash: memoized(
+      plutusV3ScriptHashCache,
+      withdrawalScriptCBOR,
+      () => validatorToScriptHash(withdrawalScript),
+    ),
   };
 };
 

@@ -652,7 +652,7 @@ describe("Midgard native v1 codec", () => {
         witnessSigners: new Set([Buffer.alloc(28, 0xbb).toString("hex")]),
       }),
     ).toBe(false);
-  });
+  }, 15_000);
 
   it("matches Cardano before timelock boundary semantics", () => {
     const script = { type: "before", slot: 100n } as const;

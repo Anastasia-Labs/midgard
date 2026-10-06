@@ -8,7 +8,10 @@ run that takes longer than one tool call allows.
 
 Measured 2026-09-28 with vitest 3.0.7 by counting `vitest list` output in
 `demo/midgard-core` (4 tests in the file, 682 in the package) and
-`vitest list --filesOnly` in `demo/midgard-node` (1 file against 270).
+`vitest list --filesOnly` in `demo/midgard-node` (1 file against 270); the
+kebab-case trap below still held on vitest 5.0.3 (2026-10-06). Since Vitest 5,
+`vitest list` parses test files statically and misses generated tests; pass
+`--no-staticParse` to collect them by running each file.
 
 **A multi-word boolean flag written in kebab case swallows the next
 argument.** vitest registers its options with camelCase names and hands those
@@ -109,3 +112,18 @@ switching branches leaves both describing the old sources.
   | `midgard-node-tools` suites                 | `pnpm --dir demo/midgard-node-tools run pretest`      |
   | what `doctor` reports as a missing dist     | `pnpm --dir demo --filter <package name> run build`   |
   | every package                               | `pnpm --dir demo build` (checks profiles, builds all) |
+
+## The workspace bundle
+
+A single run (`vitest run`, CI, non-interactive stdin) loads all workspace
+code outside the package's own `tests/`, its own `src/` included, from a
+per-run esbuild bundle of that same source (`workspaceBundleProjects` in
+`demo/midgard-test-support/vitest.js`); `tests/` loads module by module. The
+bundle's key covers every byte it could read, so an edited source file means a
+new bundle. Watch mode never bundles.
+
+- Files that mock code outside `tests/`, spy on its namespace or reset modules
+  run in the `<name>:source` project. A computed mock or import the routing
+  misses fails by name instead of passing. [runtime: workspace-bundle-guard.js]
+- `MIDGARD_TEST_WORKSPACE_BUNDLE=0` forces plain source mode, `=1` forces the
+  bundle; `MIDGARD_TEST_WORKSPACE_BUNDLE_REPORT=1` prints the routing.

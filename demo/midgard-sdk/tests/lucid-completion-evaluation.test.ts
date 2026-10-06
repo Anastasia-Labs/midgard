@@ -11,12 +11,15 @@ type Completion = {
   cbor: string;
   hash: string;
   collateral: string;
+  fee: string;
 };
 type EvaluationReport = {
   first: Completion;
   second: Completion;
   changed: Completion;
   changedCollateral: Completion;
+  finalFeeCollateralError: string | undefined;
+  lowCollateral: Completion;
   customRequests: string[];
   configuredCustomRequests: string[];
   submittedHash: string;
@@ -46,11 +49,12 @@ describe.each(["esm", "cjs"])(
       report = JSON.parse(stdout) as EvaluationReport;
     }, 35_000);
 
-    it("evaluates A, B and C once despite the delayed redeemer's repeated C pass", () => {
-      // The fixed fixture resolves A/B/C before replaying C: keep convergence
-      // behavior explicit while asserting that only its duplicate evaluation goes.
-      expect(report.first.requests).toHaveLength(3);
-      expect(new Set(report.first.requests).size).toBe(3);
+    it("evaluates the draft and the final context once despite the delayed redeemer's repeated final pass", () => {
+      // The fixed fixture evaluates the collateral-free draft once, then the
+      // final context C, before replaying C: keep convergence behavior explicit
+      // while asserting that neither a draft re-check nor the duplicate C runs.
+      expect(report.first.requests).toHaveLength(2);
+      expect(new Set(report.first.requests).size).toBe(2);
       expect(report.first.callbacks).toEqual(["0", "0", "0"]);
       // Fixed private key and fixture: the pre-optimization signed body remains
       // byte-identical and is accepted by the actual emulator ledger.
@@ -74,7 +78,7 @@ describe.each(["esm", "cjs"])(
     });
 
     it("reevaluates changed transaction and collateral context", () => {
-      expect(new Set(report.changed.requests).size).toBe(3);
+      expect(new Set(report.changed.requests).size).toBe(2);
       expect(
         report.changed.requests.every(
           (hash) => !report.first.requests.includes(hash),
@@ -84,12 +88,24 @@ describe.each(["esm", "cjs"])(
       expect(report.first.collateral).toBe("5000000");
       expect(report.changedCollateral.collateral).toBe("8000000");
       expect(report.changedCollateral.hash).not.toBe(report.first.hash);
-      expect(new Set(report.changedCollateral.requests).size).toBe(3);
+      expect(new Set(report.changedCollateral.requests).size).toBe(2);
       // The first balancing pass precedes collateral selection and may match A;
       // the final request must reflect the independently changed collateral.
       expect(report.changedCollateral.requests.at(-1)).not.toBe(
         report.first.requests.at(-1),
       );
+    });
+
+    it("refuses collateral below the final fee's percentage", () => {
+      // 150% of the returned fee, rounded up, is the ledger's requirement.
+      expect(report.finalFeeCollateralError).toMatch(
+        /Final transaction requires \d+ Lovelace collateral, but only \d+ was selected/,
+      );
+      expect(report.lowCollateral.collateral).toBe("1000000");
+      expect(
+        BigInt(report.lowCollateral.collateral) >=
+          (BigInt(report.lowCollateral.fee) * 150n + 99n) / 100n,
+      ).toBe(true);
     });
 
     it("preserves repeated custom evaluator calls and their deliberate failure", () => {

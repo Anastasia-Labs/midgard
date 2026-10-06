@@ -1,5 +1,6 @@
 import { expect, vi } from "vitest";
 
+import type { HistoryChainTip } from "../src/l1-event-history-chain.js";
 import { followEventHistoryChain } from "../src/l1-event-history-chain.js";
 import type { WebSocketLike } from "../src/l1-tx-order-carriage.js";
 
@@ -85,7 +86,7 @@ export const start = (
     return consume();
   });
   const onRollback = vi.fn(() => events.push("rollback"));
-  const onTip = vi.fn();
+  const onTip = vi.fn<(tip: HistoryChainTip | "origin") => void>();
   const onUnavailable = vi.fn(() => events.push("unavailable"));
   const completion = followEventHistoryChain({
     ogmiosUrl: "http://localhost:1337",

@@ -171,6 +171,11 @@ export type SyntheticUserEventOriginFixture = Readonly<{
     minimumFirstSlot?: number,
   ) => Promise<SyntheticNativeTip>;
   rollbackNativeStream: (point: SyntheticNativeTip | "origin") => Promise<void>;
+  /**
+   * Hold new exact-point sessions before readiness until released, so a test
+   * can observe the state a native recovery passes through while it waits.
+   */
+  holdExactQueries: (held: boolean) => Promise<void>;
   /** Select a registered branch; orphan exact-point queries and intersections fail. */
   selectCanonicalBranch: (tip: SyntheticNativeTip) => Promise<void>;
   exitNativeStream: (exitCode?: number) => Promise<void>;

@@ -8,7 +8,7 @@ export const intersectionSocket = (
     params: { points: { slot: number; id: string }[] };
   }) => { readonly result?: unknown; readonly error?: unknown },
 ) => {
-  const close = vi.fn();
+  const close = vi.fn<() => void>();
   const requests: unknown[] = [];
   const factory: WebSocketFactory = () => {
     const listeners = new Map<string, ((event: never) => void)[]>();

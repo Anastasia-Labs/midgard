@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func socketFixture(t *testing.T) string {
@@ -127,6 +128,21 @@ func TestCanonicalOriginWireShape(t *testing.T) {
 	wanted := `{"kind":"roll_backward","point":{"kind":"origin"},"schemaVersion":"` + schemaVersion + `","tip":{"kind":"origin"}}`
 	if string(encoded) != wanted {
 		t.Fatalf("non-canonical Origin event\n got: %s\nwant: %s", encoded, wanted)
+	}
+}
+
+func TestCloseWithinBoundsAWedgedClose(t *testing.T) {
+	if !closeWithin(func() error { return nil }, time.Second) {
+		t.Fatal("a returning close was reported as exceeding its bound")
+	}
+	wedged := make(chan struct{})
+	defer close(wedged)
+	started := time.Now()
+	if closeWithin(func() error { <-wedged; return nil }, 50*time.Millisecond) {
+		t.Fatal("a wedged close was reported as returned")
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("a wedged close held its caller for %v", elapsed)
 	}
 }
 

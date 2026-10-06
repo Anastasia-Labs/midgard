@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
@@ -52,6 +50,7 @@ import {
   publishWorkflowDeploymentOnChain,
 } from "./helpers/published-workflow-deployment.js";
 import { DEFAULT_PUBLICATION_SCHEDULE } from "./helpers/reference-publication-chain.js";
+import { makeJournalDirectory } from "./helpers/run-journal-directory.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 // Deployment manifests admit only the compiled profile's network.
@@ -160,7 +159,7 @@ it("bootstraps both histories from accepted atomic initialization and subsequent
       },
       protocolParameters: snapshot,
       publicationJournalPath: join(
-        await mkdtemp(join(tmpdir(), "midgard-history-origin-")),
+        await makeJournalDirectory("midgard-history-origin-"),
         "transactions.ndjson",
       ),
       publicationSchedule: DEFAULT_PUBLICATION_SCHEDULE,

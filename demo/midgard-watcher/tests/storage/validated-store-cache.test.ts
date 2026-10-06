@@ -120,6 +120,61 @@ it.each(["payload", "cache"] as const)(
   },
 );
 
+it("builds an immutable store with the exact validated encoding and refusals of the mutable builder", () => {
+  const input = () => {
+    const source = fixture();
+    return {
+      deploymentMarker: { ...marker },
+      revision: "2",
+      records: {
+        ...source,
+        l1Observations: source.l1Observations.map((entry) => ({
+          ...entry,
+          payload: { ...entry.payload },
+        })),
+        chainPoints: source.chainPoints.map((entry) => ({ ...entry })),
+      },
+    };
+  };
+  const callerInput = input();
+  const store = stores.makeImmutableWatcherDurableStore(callerInput);
+  const deepFrozen = (value: unknown): boolean =>
+    typeof value !== "object" ||
+    value === null ||
+    (Object.isFrozen(value) && Object.values(value).every(deepFrozen));
+  expect(deepFrozen(store)).toBe(true);
+  expect(stores.readValidatedWatcherDurableStoreCaches(store)).toBe(
+    store.caches,
+  );
+  // Caller-owned input is never frozen.
+  expect(deepFrozen(callerInput)).toBe(false);
+  expect(Object.isFrozen(callerInput.records.l1Observations[0]!.payload)).toBe(
+    false,
+  );
+  const mutable = stores.makeWatcherDurableStore(input());
+  expect(Buffer.from(stores.encodeWatcherDurableStore(store))).toEqual(
+    Buffer.from(stores.encodeWatcherDurableStore(mutable)),
+  );
+  expect(Buffer.from(stores.encodeWatcherDurableStore(store))).toEqual(
+    Buffer.from(stores.encodeWatcherDurableStore(structuredClone(store))),
+  );
+  for (const kind of ["payload", "reference"] as const) {
+    const corrupt = () => {
+      const value = input();
+      if (kind === "payload")
+        value.records.l1Observations[0]!.payload.sha256 = hash(99);
+      else value.records.l1Observations[0]!.chainPointId = hash(99);
+      return value;
+    };
+    const code = kind === "payload" ? "integrity_mismatch" : "broken_reference";
+    expectStoreError(() => stores.makeWatcherDurableStore(corrupt()), code);
+    expectStoreError(
+      () => stores.makeImmutableWatcherDurableStore(corrupt()),
+      code,
+    );
+  }
+});
+
 it.runIf(process.env.MIDGARD_STORE_CACHE_BENCHMARK === "1")(
   "measures the same codec work with and without the validated immutable receipt",
   async () => {

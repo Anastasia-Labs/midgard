@@ -46,7 +46,9 @@ beforeAll(async () => {
       "tests/helpers/history-binding-fixture.ts",
       "tests/helpers/history-startup-command-child.ts",
     ],
-    outDir: "dist/history-startup-fixture",
+    // Never under dist/: codeStamp hashes all of dist/, so a fixture another
+    // test file builds there mid-run changes the stamp the children check.
+    outDir: ".probe-dist/history-startup-fixture",
     clean: true,
     target: "node22",
     noExternal: [
@@ -58,7 +60,7 @@ beforeAll(async () => {
 const ownChild = (entry: string, args: string[], env = process.env) => {
   const child = spawn(
     process.execPath,
-    [join(root, "dist/history-startup-fixture", entry), ...args],
+    [join(root, ".probe-dist/history-startup-fixture", entry), ...args],
     {
       cwd: root,
       env,

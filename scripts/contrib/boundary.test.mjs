@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 
+import { BUILD_TRACE, buildEnvironment } from "./build-inputs.mjs";
 import { checkBuild } from "./build.mjs";
 import { checkBoundaries } from "./discovery.mjs";
 import {
@@ -20,7 +21,9 @@ const stamp = (root, name) =>
     schema: "midgard-contrib-build/v1",
     root,
     package: name,
+    reads: BUILD_TRACE,
     inputs: inputIdentity(root, name),
+    environment: buildEnvironment(root, name),
     outputs: outputIdentity(root, `demo/${name}/dist`),
     dependencies: compiledDependencies(root, name),
   });
@@ -40,7 +43,7 @@ test("compiled dependency substitution invalidates a consumer with unchanged sou
     resolve(root, "demo/dependency/package.json"),
     JSON.stringify({
       name: "dependency",
-      scripts: { build: "compiler", "build:contrib-raw": "compiler" },
+      scripts: { build: "compiler", "build:contrib-raw": "tsup src/index.ts" },
     }),
   );
   writeFileSync(

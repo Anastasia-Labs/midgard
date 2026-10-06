@@ -1,7 +1,6 @@
 import "./finalized.validate-finalized-contracts.js";
 
 import { getAddressDetails } from "@lucid-evolution/lucid";
-import { blake2b } from "@noble/hashes/blake2.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
 import { decodeMidgardNativeScript } from ".././codec/native-script.js";
@@ -14,6 +13,7 @@ import {
   MIDGARD_RETENTION_WINDOW,
   retentionDaysCoverWindow,
 } from ".././retention-window.js";
+import { midgardBlake2b } from "../codec/blake2b.js";
 import {
   normalizeDeploymentManifestJsonValueInternal,
   stableJson,
@@ -50,7 +50,7 @@ export const validateFinalizedDa = (value: unknown): void => {
     "da.committeeSignersHash",
   );
   const expectedCommitteeSignersHash = bytesToHex(
-    blake2b(hexToBytes(committeeVkeys.join("")), { dkLen: 32 }),
+    midgardBlake2b(hexToBytes(committeeVkeys.join("")), { dkLen: 32 }),
   );
   if (committeeSignersHash !== expectedCommitteeSignersHash) {
     throw new Error(

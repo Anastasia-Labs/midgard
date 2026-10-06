@@ -114,13 +114,27 @@ type errorEvent struct {
 type canonicalWriter struct {
 	encoder *json.Encoder
 	mutex   sync.Mutex
+	sealed  bool
 }
+
+var errWriterSealed = errors.New("native chain-sync output is sealed")
 
 func (w *canonicalWriter) write(value any) error {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
+	if w.sealed {
+		return errWriterSealed
+	}
 	w.encoder.SetEscapeHTML(false)
 	return w.encoder.Encode(value)
+}
+
+// seal ends the session's stdout: callbacks still running on an abandoned
+// connection cannot emit chain-sync data after the owner stopped the session.
+func (w *canonicalWriter) seal() {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	w.sealed = true
 }
 
 func canonicalJSON(value any) ([]byte, error) {
@@ -136,7 +150,14 @@ func readStartup() (startupConfig, []byte, error) {
 	if len(line) < 2 || len(line) > maxStartupBytes || line[len(line)-1] != '\n' {
 		return startupConfig{}, nil, errors.New("startup line size is invalid")
 	}
-	line = line[:len(line)-1]
+	return parseStartupLine(line[:len(line)-1])
+}
+
+// parseStartupLine admits one startup line without its newline terminator.
+func parseStartupLine(line []byte) (startupConfig, []byte, error) {
+	if len(line) < 1 || len(line)+1 > maxStartupBytes {
+		return startupConfig{}, nil, errors.New("startup line size is invalid")
+	}
 	decoder := json.NewDecoder(bytes.NewReader(line))
 	decoder.DisallowUnknownFields()
 	var config startupConfig

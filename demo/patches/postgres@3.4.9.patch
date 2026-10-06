@@ -36,6 +36,28 @@ index f09c61c7e998f411560b95c9a8e1ed6a97972c11..9a1d90d07fc444df86ae7a3810d50121
      move(c, connecting)
      c.connect(query)
      return c
+diff --git a/cjs/src/query.js b/cjs/src/query.js
+index 45327f2fabcdbf8f8ec5020675012c310c04fee6..ce4ef6302a8b1c61ab1ce5871d576d78a37f13b7 100644
+--- a/cjs/src/query.js
++++ b/cjs/src/query.js
+@@ -50,7 +50,16 @@ const Query = module.exports.Query = class Query extends Promise {
+   }
+ 
+   cancel() {
+-    return this.canceller && (this.canceller(this), this.canceller = null)
++    if (!this.cancelling && this.canceller) {
++      this.cancelling = this.canceller(this)
++      // The cancel request runs on a connection of its own; a failure there
++      // (the connection cannot be opened, or is reset) leaves the query
++      // running and must not become an unhandled rejection, which ends a
++      // Node process by default. Callers that want the outcome use the
++      // returned promise.
++      this.cancelling.catch(() => { /* observed */ })
++    }
++    return this.cancelling || null
+   }
+ 
+   simple() {
 diff --git a/src/connection.js b/src/connection.js
 index 1b1cccde43b4570d5d071d6ffaab2669b3c2065a..3adb2a5c42b93744c252e5cd3a71161fdd90069b 100644
 --- a/src/connection.js
@@ -74,3 +96,25 @@ index c7fba3dace20173f4cb13f3f138bb6d213b43683..8b62a7f775d180ff3d27dfb307659ffe
      move(c, connecting)
      c.connect(query)
      return c
+diff --git a/src/query.js b/src/query.js
+index 0d44a15cd9e42beaf11d4be6ccde60223e09508a..506fb592a2dcf4666485d3242f7488646404f1ba 100644
+--- a/src/query.js
++++ b/src/query.js
+@@ -50,7 +50,16 @@ export class Query extends Promise {
+   }
+ 
+   cancel() {
+-    return this.canceller && (this.canceller(this), this.canceller = null)
++    if (!this.cancelling && this.canceller) {
++      this.cancelling = this.canceller(this)
++      // The cancel request runs on a connection of its own; a failure there
++      // (the connection cannot be opened, or is reset) leaves the query
++      // running and must not become an unhandled rejection, which ends a
++      // Node process by default. Callers that want the outcome use the
++      // returned promise.
++      this.cancelling.catch(() => { /* observed */ })
++    }
++    return this.cancelling || null
+   }
+ 
+   simple() {

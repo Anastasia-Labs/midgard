@@ -1,15 +1,18 @@
+import { fileURLToPath } from "node:url";
+
+import { durationShards } from "@al-ft/midgard-test-support/duration-shards";
 import {
   blueprintStampGlobalSetup,
   interactiveEmulatorBlueprint,
   interactiveEmulatorPlugin,
   interactiveEmulatorSetup,
   isolatedForksPool,
-  midgardSourceSsr,
+  midgardSourceEnvironments,
   rawSqlLoaderPlugin,
+  workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
 
-import { EmulatorSequencer } from "./tests/support/emulator-sequencer.js";
 import { interactiveTests } from "./vitest.interactive-tests.mjs";
 
 /**
@@ -46,16 +49,22 @@ export default defineConfig({
   plugins: [rawSqlLoaderPlugin()],
   test: {
     // Refuses the run when onchain/aiken/plutus.json is stale.
-    workspace: [
-      {
-        extends: true,
-        test: {
-          name: "testing-profile",
-          include: ["./tests/**/*.test.{ts,tsx}"],
-          exclude: interactiveTests,
-          globalSetup: [blueprintStampGlobalSetup],
+    projects: [
+      // Workspace packages load from a per-run source bundle; files that need
+      // them module-by-module run in `testing-profile:source`.
+      ...workspaceBundleProjects(
+        {
+          extends: true,
+          test: {
+            name: "testing-profile",
+            include: ["./tests/**/*.test.{ts,tsx}"],
+            exclude: interactiveTests,
+            globalSetup: [blueprintStampGlobalSetup],
+          },
         },
-      },
+        { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
+      ),
+      // Not bundled: its plugin rewrites a midgard-core module.
       {
         extends: true,
         plugins: [interactiveEmulatorPlugin()],
@@ -73,11 +82,21 @@ export default defineConfig({
         },
       },
     ],
-    reporters: "verbose",
-    sequence: { sequencer: EmulatorSequencer },
+    // Packs `--shard=i/n` by the CI seconds each file took and starts the
+    // longest files first: a few emulator files run for many minutes while
+    // most take seconds, Vitest's default hash sharding put 75 minutes of them
+    // in one CI shard and 41 in another, and a whale that starts late sets a
+    // fork's wall time by itself. The table refreshes itself from CI; see
+    // `@al-ft/midgard-test-support/duration-shards`.
+    ...durationShards({
+      tablePath: fileURLToPath(
+        new URL("./tests/support/ci-file-durations.json", import.meta.url),
+      ),
+      reporters: ["verbose"],
+    }),
     // The one-process-per-file requirement, and why `isolate` must stay
-    // `true`, are stated once in `isolatedForksPool`; 7c7162cb reverting
-    // `singleFork` here is the same story.
+    // `true`, are stated once in `isolatedForksPool`; 7c7162cb, which moved
+    // this suite off one shared fork for every file, is the same story.
     //
     // This suite's own choice is only the scheduling cap. 5b9982a8 serialized
     // it outright for a 2-core CI runner; that is now expressed as a cap
@@ -86,5 +105,5 @@ export default defineConfig({
     // down to one file at a time.
     ...isolatedForksPool({ maxForks }),
   },
-  ssr: midgardSourceSsr(),
+  environments: midgardSourceEnvironments(),
 });

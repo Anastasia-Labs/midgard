@@ -376,8 +376,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/field-preimage-length-recovery.test.ts",
-    "max": 603,
-    "reason": "Retained test registration (386 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 604,
+    "reason": "Retained test registration (385 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. Vitest 5 (+1): a spy on one of four submitters no longer types its implementation's input, so the test names that input type."
   },
   {
     "file": "midgard-fault-proofs/tests/header-classifier.test.ts",
@@ -408,11 +408,6 @@
     "file": "midgard-fault-proofs/tests/min-ada-wrongful-rejection-lifecycle.test.ts",
     "max": 674,
     "reason": "Retained test registration “minimum-Ada forced rejection” (566 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-fault-proofs/tests/mint-authorization-installed-lifecycle.test.ts",
-    "max": 835,
-    "reason": "Retained test registration “mintAuthorization installed cursor actuator” (678 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/mint-declared-asset-limit-lifecycle.test.ts",
@@ -636,7 +631,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/dispute-scenario.ts",
-    "max": 1706,
+    "max": 1647,
     "reason": "runForcedValidationDisputeScenario is the dominant indivisible declaration (1478 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Direct committed-step fixture: adds the source-only signer-refusal checkpoint with consistent trace indices, adjacent-proof handoff, and canonical-decode ItemObserve and source/proof/settlement reference publication. These stages share the lifecycle locals; extraction requires a separate function-body refactor. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count."
   },
   {
@@ -658,6 +653,11 @@
     "file": "midgard-fault-proofs/tests/support/invalid-signature-wrongful-emulator.run-invalid-signature-wrongful-rejection-scenario.ts",
     "max": 577,
     "reason": "runInvalidSignatureWrongfulRejectionScenario is the dominant indivisible declaration (524 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+  },
+  {
+    "file": "midgard-fault-proofs/tests/support/mint-authorization-installed-lifecycle-cases.ts",
+    "max": 831,
+    "reason": "captureAndRestart is the dominant indivisible declaration: the body of the retained test registration “mintAuthorization installed cursor actuator”, moved here unchanged so its five part files (mint-authorization-installed-lifecycle{,-native-wide,-native-deep,-reference,-field-maxima}.test.ts) run disjoint cases in parallel. Its staged control flow shares one scenario's harness, journal and adapter; dividing it changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/support/resolved-output-non-canonical-emulator.make-resolved-output-stages.ts",
@@ -690,6 +690,11 @@
     "reason": "UNMAPPED_VALIDATORS: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Combined recovered source removes obsolete lines; cap reduced to the measured final source count. Registered Data executor coverage removes five obsolete unmapped entries; cap ratchets down."
   },
   {
+    "file": "midgard-fault-proofs/tests/support/value-conservation-lifecycle-cases.ts",
+    "max": 1298,
+    "reason": "registerValueConservationCases is the dominant indivisible declaration: the retained test registration “universal value conservation”, moved here unchanged so its three part files (value-conservation-lifecycle{,-forced-assets,-non-forced-assets}.test.ts) run disjoint cases in parallel. Its callback shares suite-local fixtures and staged control flow; dividing it changes fixture lifetime or requires a separate harness refactor."
+  },
+  {
     "file": "midgard-fault-proofs/tests/transaction-output-non-canonical-lifecycle.test.ts",
     "max": 946,
     "reason": "Retained test registration “transactionOutputNonCanonical registered-chain lifecycle” (858 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
@@ -701,7 +706,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/transition-trace-installed-lifecycle.test.ts",
-    "max": 996,
+    "max": 995,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -728,11 +733,6 @@
     "file": "midgard-fault-proofs/tests/validation-dispute-submit.test.ts",
     "max": 2331,
     "reason": "Retained test registration “validation-dispute transaction validity” (2231 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-fault-proofs/tests/value-conservation-lifecycle.test.ts",
-    "max": 1286,
-    "reason": "Retained test registration “universal value conservation” (1178 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/withdrawal-mistag-installed-lifecycle.test.ts",
@@ -981,7 +981,7 @@
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
-    "max": 1129,
+    "max": 1127,
     "reason": "makeConfig is the dominant indivisible declaration (1077 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1045,14 +1045,9 @@
     "reason": "Retained test registration “durable admission microbatch writer” (437 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
-    "file": "midgard-node/tests/attestation-timeout-reinclusion-emulator.test.ts",
-    "max": 504,
-    "reason": "Retained test registration “resumes a rewind to a retained non-empty base interrupted after the native root moved and before reinclusion committed” (70 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
     "file": "midgard-node/tests/attestation-timeout-reinclusion-hardening-emulator.test.ts",
-    "max": 998,
-    "reason": "Retained test registration “returns a removed block” (209 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 526,
+    "reason": "Five independent emulator scenarios of the unlanded-descendant and rollback hardening, the largest “abandons a removed block's unlanded descendant…” (152 lines); the held, retained and rolled-back repairs already moved to attestation-timeout-reinclusion-held-repair-emulator.test.ts for the per-file time budget. Splitting the remaining five again would add another file's module load and fixture restore for 26 lines."
   },
   {
     "file": "midgard-node/tests/availability-challenge-command.test.ts",
@@ -1251,12 +1246,12 @@
   },
   {
     "file": "midgard-node/tests/l1-event-history-authenticated-replay-emulator.test.ts",
-    "max": 895,
+    "max": 894,
     "reason": "Retained test registration “replays actual initialized lists and joins current external orders whose retained bodies predate activation” (818 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/l1-event-history-initialization-emulator.test.ts",
-    "max": 682,
+    "max": 681,
     "reason": "Retained test registration “bootstraps both histories from accepted atomic initialization and subsequent public admissions” (614 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1281,7 +1276,7 @@
   },
   {
     "file": "midgard-node/tests/l1-event-history-raw-deposit-emulator.test.ts",
-    "max": 562,
+    "max": 561,
     "reason": "Retained test registration “preserves actual inline and external Deposit raw map pair order and duplicates through continuation, capture and node conversion” (482 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1301,7 +1296,7 @@
   },
   {
     "file": "midgard-node/tests/l1-event-history-source.test.ts",
-    "max": 879,
+    "max": 883,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -1781,7 +1776,7 @@
   },
   {
     "file": "midgard-watcher/tests/support/user-event-origin-fixture.create-synthetic-user-event-origin-fixture.ts",
-    "max": 1054,
+    "max": 988,
     "reason": "createSyntheticUserEventOriginFixture is the dominant indivisible declaration (1006 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {

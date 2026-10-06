@@ -77,7 +77,7 @@ import {
   walletFromSeed,
 } from "./deposit-flow-emulator-shared.js";
 
-describe.sequential("deposit flow emulator", () => {
+describe("deposit flow emulator", { concurrent: false }, () => {
   // 900s leaves headroom for the full real-contract workflow. Protocol
   // bring-up publishes the 153-target reference-script roster in 39 planned
   // batches (with size-driven splits where required).

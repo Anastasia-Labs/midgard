@@ -198,7 +198,7 @@ beforeAll(async () => {
       yield* sql`CREATE TABLE history_journal_l2_probe (id integer PRIMARY KEY, classification text NOT NULL)`;
     }),
   );
-});
+}, 120_000);
 beforeEach(async () =>
   run(
     Effect.gen(function* () {

@@ -175,6 +175,70 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+  # The blueprints only test runs read, built here once rather than in every
+  # shard that reads them: the interactive-emulator one that the fault-proof
+  # and watcher suites' interactive project stamps for itself, and the two
+  # verbose-traced ones the traced-refusal step swaps modules out of. Each is
+  # built by the same code the suites would otherwise run, with its build
+  # record beside it. The consumers set MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS,
+  # so a copy whose record no longer matches the checkout, the profile or the
+  # pinned compiler fails the run rather than being rebuilt in place. The two
+  # traced builds run only when the traced-refusal step below will read them:
+  # on a pull request that touches one of that check's inputs
+  # (scripts/ci/traced-refusal-inputs.mjs lists them), and on every other
+  # event. Otherwise their steps are skipped and the job still succeeds.
+  test-blueprints:
+    name: Test blueprint (${{ matrix.blueprint }})
+    needs: [aiken-fork]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - blueprint: interactive-emulator
+            build: node demo/midgard-test-support/interactive-emulator.js
+            directory: onchain/aiken/build/interactive-emulator
+            record: plutus.json.deployment.json
+            traced: false
+          - blueprint: traced-preprod-testing
+            build: node demo/midgard-fault-proofs/scripts/traced-blueprint.mjs preprod-testing
+            directory: onchain/aiken/build/traced-refusals/preprod-testing
+            record: traced-build.json
+            traced: true
+          - blueprint: traced-preprod-emulator-testing
+            build: node demo/midgard-fault-proofs/scripts/traced-blueprint.mjs preprod-emulator-testing
+            directory: onchain/aiken/build/traced-refusals/preprod-emulator-testing
+            record: traced-build.json
+            traced: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The pull request merge commit and its base parent, for the diff.
+          fetch-depth: 2
+      - name: Decide whether this change can alter a traced refusal
+        id: traced
+        if: matrix.traced
+        run: node scripts/ci/traced-refusal-inputs.mjs
+      - uses: ./.github/actions/demo-setup
+        if: ${{ !matrix.traced || steps.traced.outputs.run == 'true' }}
+        with:
+          aiken: "true"
+          install-filter: midgard-demo
+      - name: Build the ${{ matrix.blueprint }} blueprint
+        if: ${{ !matrix.traced || steps.traced.outputs.run == 'true' }}
+        run: ${{ matrix.build }}
+      - name: Share the blueprint and its build record with later jobs
+        if: ${{ !matrix.traced || steps.traced.outputs.run == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: test-blueprint-${{ matrix.blueprint }}
+          path: |
+            ${{ matrix.directory }}/plutus.json
+            ${{ matrix.directory }}/${{ matrix.record }}
+          if-no-files-found: error
+          retention-days: 3
+
   # The launch surface. Every compose stack an operator can be told to run
   # must render from `.env.example` alone, and the node image must build from
   # a fresh checkout plus the blueprint the `blueprint` job produced; none of
@@ -452,6 +516,15 @@ jobs:
           prebuild: lucid-midgard
       - name: Build and test Midgard core DA transport
         run: pnpm --dir demo/midgard-core run build && pnpm --dir demo/midgard-core test
+      # Repository tool tests skip this file where the demo packages are not
+      # installed; here the flag turns that skip into a failure.
+      - name: Check build freshness against real core and validation builds
+        env:
+          MIDGARD_REQUIRE_REAL_BUILDS: "1"
+        run: node --test scripts/contrib/build-freshness.test.mjs
+      # The workspace source bundle every package's tests import through.
+      - name: Test the shared test-support tooling
+        run: pnpm --dir demo/midgard-test-support test
 
   midgard-sdk:
     name: midgard-sdk
@@ -494,43 +567,124 @@ jobs:
       - name: Build, typecheck, and test Midgard validation
         run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test
 
-  midgard-fault-proofs:
-    name: midgard-fault-proofs (${{ matrix.shard }}/3)
+  # The fault-proof package's build, typecheck and plain-node script tests,
+  # once per run. The test shards below resolve every workspace package from
+  # source through the `midgard-source` condition and read no dist, so they
+  # neither prebuild nor repeat this work.
+  midgard-fault-proofs-build:
+    name: midgard-fault-proofs build and typecheck
     needs: [aiken-fork, blueprint]
     runs-on: ubuntu-latest
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
-    # Bound evaluator parallelism on the standard hosted runner.
-    env:
-      MIDGARD_FAULT_PROOF_FORKS: "2"
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/demo-setup
         with:
           blueprint: "true"
           prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation
-      - name: Build, typecheck, and test fault-proof tooling
-        run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs run test --shard=${{ matrix.shard }}/3
+      - name: Build fault-proof tooling
+        run: pnpm --dir demo/midgard-fault-proofs run build
+      - name: Typecheck fault-proof tooling
+        if: ${{ !cancelled() }}
+        run: pnpm --dir demo/midgard-fault-proofs run typecheck
+      - name: Test the fit-ledger regeneration script
+        if: ${{ !cancelled() }}
+        run: node --test demo/midgard-fault-proofs/scripts/regenerate-fit-ledger.test.mjs
+
+  # Six shards keep each job under 20 minutes. The suite is ~7,500 fork-seconds
+  # on two forks (the five-run median per file in the package's
+  # tests/support/ci-file-durations.json), each job adds a few minutes of setup
+  # and Vitest overhead, and shard 1 also runs the ~300 s traced-refusal step,
+  # which that table reserves. At the median each shard projects ~675 s (~17.3
+  # min jobs, measured with a build and typecheck on every shard); three
+  # shards projected ~28.5 min, five ~19.5. The matrix is the one count this
+  # workflow reads (the jobs and test-durations take it from the matrix);
+  # change it together with tests/duration-shards.test.ts, which
+  # scripts/ci/shard-counts.test.mjs pins to it, and rekey the table's reserve. On
+  # a pull request that skips the traced-refusal step, shard 1 finishes that
+  # much earlier.
+  midgard-fault-proofs:
+    name: midgard-fault-proofs (${{ matrix.shard }}/${{ strategy.job-total }})
+    needs: [aiken-fork, blueprint, test-blueprints]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    # Bound evaluator parallelism on the standard hosted runner.
+    env:
+      MIDGARD_FAULT_PROOF_FORKS: "2"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The pull request merge commit and its base parent, for the diff.
+          fetch-depth: 2
+      # Only shard 1 runs the traced-refusal step, and only when this change
+      # touches one of its inputs (any event but a pull request always runs
+      # it). The test-blueprints job makes the same decision from the same
+      # merge commit to build the traced blueprints this step restores.
+      - name: Decide whether this change can alter a traced refusal
+        id: traced
+        if: matrix.shard == 1
+        run: node scripts/ci/traced-refusal-inputs.mjs
+      - uses: ./.github/actions/demo-setup
+        with:
+          blueprint: "true"
+          interactive-blueprint: "true"
+          traced-blueprints: ${{ steps.traced.outputs.run == 'true' }}
+      # The test run records each file's seconds (durationShards in
+      # midgard-test-support); `test-durations` merges the shards' records into
+      # the refreshed shard table. Step-scoped so the traced-refusal rerun below
+      # never overwrites it.
+      - name: Test fault-proof tooling
+        env:
+          MIDGARD_FILE_DURATIONS_OUT: ${{ runner.temp }}/file-durations.json
+        run: pnpm --dir demo/midgard-fault-proofs run test --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+      - name: Upload this shard's per-file test seconds
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: file-durations-midgard-fault-proofs-${{ matrix.shard }}-of-${{ strategy.job-total }}
+          path: ${{ runner.temp }}/file-durations.json
+          if-no-files-found: warn
       # A plain build carries no traces, so the run above sees only that some
       # validator refused each pinned negative. This one swaps every validator
       # a pin names for its verbose-traced build and fails unless each pin is
       # checked against the trace of the check it names.
       - name: Check pinned emulator refusals against traced validators
-        if: ${{ !cancelled() && matrix.shard == 1 }}
+        if: ${{ !cancelled() && steps.traced.outputs.run == 'true' }}
         run: pnpm --dir demo/midgard-fault-proofs run test:traced-refusals
 
-  # The watcher's TypeScript surface. Its eslint pass is the workspace-wide one
-  # in the `lint` job; the Go helper, compose stack and image are covered by
-  # midgard-watcher-ci.yml.
+  # The watcher's typecheck and format check, once per run rather than on
+  # every shard below. The typecheck resolves workspace packages from source
+  # and needs no dist. Its eslint pass is the workspace-wide one in the
+  # `lint` job.
+  midgard-watcher-typecheck:
+    name: midgard-watcher typecheck and format-check
+    needs: [aiken-fork, blueprint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/demo-setup
+        with:
+          blueprint: "true"
+      - name: Typecheck Midgard watcher
+        run: pnpm --dir demo/midgard-watcher run typecheck
+      - name: Format-check Midgard watcher
+        if: ${{ !cancelled() }}
+        run: pnpm --dir demo/midgard-watcher run format-check
+
+  # The watcher suite. The Go helper's own tests, compose stack and image are
+  # covered by midgard-watcher-ci.yml. The helper is compiled here because the
+  # watcher suite drives the built binary through its TypeScript owner.
   # Every test file runs in its own fork and re-imports the SDK and validation
   # graph, so on a two-fork hosted runner wall time grows with the file count.
   # Sharded like fault-proofs once ~210 files outgrew one 45-minute job.
   midgard-watcher:
-    name: midgard-watcher (${{ matrix.shard }}/3)
-    needs: [aiken-fork, blueprint]
+    name: midgard-watcher (${{ matrix.shard }}/${{ strategy.job-total }})
+    needs: [aiken-fork, blueprint, test-blueprints]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -539,12 +693,108 @@ jobs:
         shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26.0"
+          cache-dependency-path: demo/midgard-watcher/native-chain-sync/go.sum
       - uses: ./.github/actions/demo-setup
         with:
           blueprint: "true"
-          prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation midgard-fault-proofs
-      - name: Build, typecheck, format-check, and test Midgard watcher
-        run: pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run format-check && pnpm --dir demo/midgard-watcher run test --shard=${{ matrix.shard }}/3
+          interactive-blueprint: "true"
+      # The guarded build stamps the binary with its source and compiler
+      # identity; verbose so a compiler error reaches this log.
+      - name: Build the native chain-sync helper the watcher suite drives
+        env:
+          MIDGARD_CONTRIB_VERBOSE: "1"
+        run: pnpm --dir demo/midgard-watcher run native:build
+      # Vitest loads every workspace package from source, but
+      # tests/runtime/authority-initialization-command.test.ts runs the built
+      # CLI (dist/cli.js) in a plain Node child, which imports the built core,
+      # SDK, validation and fault-proof packages. The guarded build builds
+      # that closure first.
+      - name: Build the watcher CLI the suite runs
+        run: pnpm --dir demo/midgard-watcher run build
+      # The test run records each file's seconds (durationShards in
+      # midgard-test-support); `test-durations` merges the shards' records into
+      # the refreshed shard table.
+      - name: Test Midgard watcher
+        env:
+          MIDGARD_FILE_DURATIONS_OUT: ${{ runner.temp }}/file-durations.json
+        run: pnpm --dir demo/midgard-watcher run test --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+      - name: Upload this shard's per-file test seconds
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: file-durations-midgard-watcher-${{ matrix.shard }}-of-${{ strategy.job-total }}
+          path: ${{ runner.temp }}/file-durations.json
+          if-no-files-found: warn
+
+  # Keeps the duration tables the fault-proof, watcher and node shards pack by
+  # current. It merges the per-file seconds every shard above recorded into a
+  # refreshed table per package (artifact `ci-file-durations`; commit it to
+  # rebalance), prints the projected seconds of each shard under it, and warns
+  # -- never fails -- when files the committed table does not know, or weighs
+  # far from this run, carry more than a tenth of the run's seconds. A stale
+  # table only costs balance: every file still runs in exactly one shard.
+  test-durations:
+    name: Refresh the CI shard duration tables
+    if: ${{ !cancelled() }}
+    needs: [midgard-fault-proofs, midgard-watcher, midgard-node]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: |
+            demo/.nvmrc
+            demo/midgard-test-support
+            demo/midgard-fault-proofs/tests
+            demo/midgard-watcher/tests
+            demo/midgard-node/tests
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: demo/.nvmrc
+      - name: Download every shard's per-file test seconds
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: file-durations-*
+          path: ${{ runner.temp }}/file-durations
+      # Pure reporting: a failure here costs only the refreshed tables, so it
+      # never fails the run.
+      # workflow-lint: allow continue-on-error — reporting step; its tables are advisory and every file still runs
+      - name: Merge them into refreshed tables and check the committed ones for drift
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ci-file-durations"
+          # `-[0-9]*-of-`: one package's name may prefix another's
+          # (midgard-node, midgard-node-tools), so match only the
+          # shard-numbered artifacts. Each is named `<shard>-of-<count>` by the
+          # job that recorded it, so the count comes from that job's matrix.
+          for package in midgard-fault-proofs midgard-watcher midgard-node; do
+            records=("$RUNNER_TEMP"/file-durations/file-durations-"$package"-[0-9]*-of-[0-9]*/file-durations.json)
+            if [ ! -e "${records[0]}" ]; then
+              echo "::warning::no per-file test seconds were recorded for $package"
+              continue
+            fi
+            artifact="$(basename "$(dirname "${records[0]}")")"
+            shards="${artifact##*-of-}"
+            mkdir -p "$RUNNER_TEMP/ci-file-durations/demo/$package/tests/support"
+            node demo/midgard-test-support/scripts/ci-file-durations.mjs \
+              --package "demo/$package" \
+              --table "demo/$package/tests/support/ci-file-durations.json" \
+              --out "$RUNNER_TEMP/ci-file-durations/demo/$package/tests/support/ci-file-durations.json" \
+              --project-shards "$shards" \
+              "${records[@]}"
+          done
+      - name: Upload the refreshed tables
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ci-file-durations
+          path: ${{ runner.temp }}/ci-file-durations
+          if-no-files-found: warn
 
   # The native MPF owner crate, and the offline throughput gates that followed
   # it in the old serial job. The gates are pure `node --test` suites, so they
@@ -629,11 +879,36 @@ jobs:
       - name: Verify DA committee transport and admission
         run: pnpm --dir demo/da-committee-node run guard:no-http-da-transport && pnpm --dir demo/da-committee-node run typecheck && pnpm --dir demo/da-committee-node test
 
-  midgard-node:
-    name: midgard-node
+  # The node's typecheck, once per run and alongside the test shards rather
+  # than on one of them, where it would add about a minute to that shard's
+  # wall time. It resolves workspace packages from source and needs no dist.
+  midgard-node-typecheck:
+    name: midgard-node typecheck
     needs: [aiken-fork, blueprint]
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/demo-setup
+        with:
+          blueprint: "true"
+      - name: Typecheck Midgard node
+        run: pnpm --dir demo/midgard-node run typecheck
+
+  # Sharded like fault-proofs and watcher once ~450 files made one job take
+  # 53.5 minutes (Node CI run 37448078028: 38 minutes of Vitest on four forks).
+  # Every shard is its own job with its own Postgres service and runs the
+  # isolated migration itself, so the per-worker database shards the suite
+  # pins (tests/test-env.ts) never span two shards.
+  midgard-node:
+    name: midgard-node (${{ matrix.shard }}/${{ strategy.job-total }})
+    needs: [aiken-fork, blueprint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     services:
       postgres:
         image: postgres:16-alpine
@@ -659,16 +934,25 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: demo/midgard-node/native/mpf-event-flat-wasm
-      - name: Typecheck Midgard node
-        run: pnpm --dir demo/midgard-node run typecheck
       - name: Build Midgard node and migrate isolated CI database
-        if: ${{ !cancelled() }}
         env:
           MIDGARD_DEPLOYMENT_PROFILE: preprod-testing
         run: pnpm --dir demo/midgard-node run db:migrate
+      # The test run records each file's seconds (durationShards in
+      # midgard-test-support); `test-durations` merges the shards' records into
+      # the refreshed shard table.
       - name: Test Midgard node
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-node test
+        env:
+          MIDGARD_FILE_DURATIONS_OUT: ${{ runner.temp }}/file-durations.json
+        run: pnpm --dir demo/midgard-node run test --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+      - name: Upload this shard's per-file test seconds
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: file-durations-midgard-node-${{ matrix.shard }}-of-${{ strategy.job-total }}
+          path: ${{ runner.temp }}/file-durations.json
+          if-no-files-found: warn
 
   # Its eslint pass is the workspace-wide one in the `lint` job.
   midgard-node-tools:
@@ -752,6 +1036,7 @@ jobs:
     needs:
       - aiken-fork
       - blueprint
+      - test-blueprints
       - compose-render
       - node-image
       - golden-channels
@@ -759,11 +1044,15 @@ jobs:
       - midgard-core
       - midgard-sdk
       - midgard-validation
+      - midgard-fault-proofs-build
       - midgard-fault-proofs
+      - midgard-watcher-typecheck
       - midgard-watcher
+      - test-durations
       - native-mpf
       - lint
       - da-committee-node
+      - midgard-node-typecheck
       - midgard-node
       - midgard-node-tools
       - da-e2e

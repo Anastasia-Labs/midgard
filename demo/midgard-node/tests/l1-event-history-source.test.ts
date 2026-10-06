@@ -611,14 +611,18 @@ describe("history source's approved lossless genesis pin", () => {
     );
   });
 
-  it.each([NaN, Infinity, undefined, 9007199254740992, 1.5, new Date(0)])(
-    "refuses lossy or unsupported genesis value %s",
-    (quantity) => {
-      expect(() => eventHistoryGenesisLosslessSha256({ quantity })).toThrow(
-        /losslessly/,
-      );
-    },
-  );
+  it.each([
+    ["NaN", NaN],
+    ["Infinity", Infinity],
+    ["undefined", undefined],
+    ["9007199254740992", 9007199254740992],
+    ["1.5", 1.5],
+    ["1970-01-01T00:00:00.000Z", new Date(0)],
+  ])("refuses lossy or unsupported genesis value %s", (_label, quantity) => {
+    expect(() => eventHistoryGenesisLosslessSha256({ quantity })).toThrow(
+      /losslessly/,
+    );
+  });
 
   it("checks each exact supplied session and never adopts a changed response", async () => {
     const request = vi

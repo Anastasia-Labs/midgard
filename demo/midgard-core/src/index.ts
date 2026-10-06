@@ -9,11 +9,47 @@ export * from "./capability-parity.js";
 export * from "./cek-blob-frontier.js";
 export * from "./cek-data-bytes.js";
 export * from "./cek-data-frame.js";
-export * from "./cek-data-integer.js";
+// Explicit lists: these modules also export package-internal
+// pre-validated variants that must stay off the package surface.
+export {
+  advanceMidgardCekDataInteger,
+  buildMidgardCekDataIntegerTrace,
+  encodeMidgardCekDataIntegerControl,
+  finalizeMidgardCekDataInteger,
+  initialMidgardCekDataIntegerControl,
+  initialMidgardCekDataIntegerMeasureControl,
+  isWellFormedMidgardCekDataIntegerControl,
+  MIDGARD_CEK_DATA_INTEGER_SYNTAX_BYTES,
+  MIDGARD_CEK_DATA_INTEGER_VERSION,
+  type MidgardCekDataIntegerControl,
+  type MidgardCekDataIntegerStage,
+  MidgardCekDataIntegerStages,
+  type MidgardCekDataIntegerSummary,
+  type MidgardCekDataIntegerTrace,
+  type MidgardCekDataIntegerTraceStep,
+  nextMidgardCekDataIntegerSpan,
+  parseMidgardCekDataIntegerSyntax,
+  parseMidgardCekDataLargeConstructorSyntax,
+} from "./cek-data-integer.js";
 export * from "./cek-data-traverse.js";
 export * from "./cek-proof.js";
 export * from "./cek-semantic.js";
-export * from "./cek-source-blob.js";
+export {
+  advanceMidgardCekSourceBlob,
+  buildMidgardCekSourceBlobTrace,
+  encodeMidgardCekSourceBlobControl,
+  finalizeMidgardCekSourceBlob,
+  initialMidgardCekSourceBlobControl,
+  isWellFormedMidgardCekSourceBlobControl,
+  MIDGARD_CEK_SOURCE_BLOB_VERSION,
+  type MidgardCekSourceBlobControl,
+  type MidgardCekSourceBlobSpan,
+  type MidgardCekSourceBlobStage,
+  MidgardCekSourceBlobStages,
+  type MidgardCekSourceBlobTrace,
+  type MidgardCekSourceBlobTraceStep,
+  nextMidgardCekSourceBlobSpan,
+} from "./cek-source-blob.js";
 export * from "./codec/index.js";
 export * from "./consensus-profile.js";
 export * from "./consensus-validation.js";

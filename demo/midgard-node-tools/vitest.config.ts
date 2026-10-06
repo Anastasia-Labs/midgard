@@ -1,7 +1,10 @@
+import { fileURLToPath } from "node:url";
+
 import {
   isolatedForksPool,
-  midgardSourceSsr,
+  midgardSourceEnvironments,
   rawSqlLoaderPlugin,
+  workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
 import { configDefaults, defineConfig } from "vitest/config";
 
@@ -28,18 +31,31 @@ export default defineConfig({
   plugins: [rawSqlLoaderPlugin()],
   test: {
     ...isolatedForksPool({ maxForks: testMaxForks() }),
-    globalSetup: ["./tests/global-setup.ts"],
     reporters: [["default", { summary: false }]],
-    include: ["./tests/**/*.test.ts"],
-    exclude: [
-      ...configDefaults.exclude,
-      "./tests/phase4-pipelined-process-summary-verifier.test.mjs",
-    ],
+    // Workspace packages load from a per-run source bundle; files that need
+    // them module-by-module run in `midgard-node-tools:source`.
+    projects: workspaceBundleProjects(
+      {
+        extends: true,
+        test: {
+          name: "midgard-node-tools",
+          // On the project, so the bundle serves the midgard-node helpers it
+          // imports (see `workspaceBundleProjects`).
+          globalSetup: ["./tests/global-setup.ts"],
+          include: ["./tests/**/*.test.ts"],
+          exclude: [
+            ...configDefaults.exclude,
+            "./tests/phase4-pipelined-process-summary-verifier.test.mjs",
+          ],
+        },
+      },
+      { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
+    ),
     testTimeout: 420_000,
     ...(bail === undefined ? {} : { bail }),
     environment: "node",
   },
-  ssr: midgardSourceSsr(),
+  environments: midgardSourceEnvironments(),
   esbuild: {
     target: "es2020",
   },

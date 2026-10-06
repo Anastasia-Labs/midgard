@@ -38,6 +38,89 @@ file contents; timestamps cannot establish freshness. Doctor and preflight use
 the same dist verdict. Inputs conservatively include dependency tests and
 fixtures, so some unrelated edits can require an extra rebuild.
 
+The closure also binds the installed packages
+(`demo/node_modules/.pnpm/lock.yaml`), the variables a recipe names, and the
+dist bytes of every workspace package a build source imports. A dist can be
+fresh only when all of these hold (`scripts/contrib/build-inputs.mjs`):
+
+- `build:contrib-raw` is an `&&` sequence of `tsup` (without `--onSuccess`,
+  `--config`, `--tsconfig` or watch flags) and `node [flags] script.mjs|.cjs|.js`
+  (without flags that load or evaluate other code or read an env file), each
+  optionally preceded by `NAME=value`. Words may be quoted and may expand
+  `$NAME`, `${NAME}` or `${NAME:-literal}`; each such name is bound. Any other
+  program (`pnpm`, `npx`, `tsx`, `sh`, a `.ts` script) or shell syntax is
+  refused, with the reason. The package defines no `prebuild:contrib-raw` or
+  `postbuild:contrib-raw` script, and the build runs pnpm with pre/post
+  scripts disabled, `/bin/sh` as the script shell and no shell emulator.
+- The tsup config (which sets no `onSuccess` or `tsconfig`) and node scripts,
+  and every local module they import, are closure files that import only
+  `fs`, `fs/promises`, `path`, `url`, `crypto`, `util` and `os` (and `tsup`),
+  load no code dynamically (no `eval`, `Function`, global object,
+  `constructor`, `_load`, `getBuiltinModule`, bindings, `dlopen`,
+  `mainModule`, `createRequire`, or `require`/`import` without a literal
+  specifier), name no network global (`fetch`, `WebSocket`, `EventSource`,
+  `XMLHttpRequest`), and read `process.env` only by literal name; each name
+  is bound. These scans skip comments, and the network scan also skips string
+  text. `child_process`, `worker_threads`, `vm`, `net`, `http` and every
+  other builtin are refused.
+- A tsup public directory (`--publicDir`, or `publicDir` in the config as a
+  string literal or `true`) is inside the closure.
+- The nearest `tsconfig.json` of the package and of every workspace package its
+  sources inline, its `extends` chain, and its `include`, `files`,
+  `references`, `baseUrl`, `paths` and `typeRoots` targets are closure files or
+  installed packages, and no relative import in the package's or an inlined
+  package's `src` leaves the closure.
+- `ESBUILD_BINARY_PATH` is unset, and `NODE_OPTIONS` loads no code
+  (`--require`, `-r`, `--import`, loaders and the like). `NODE_OPTIONS` is
+  split as Node splits it, so a quoted path with a space is one argument.
+- After the build, the trace (`scripts/contrib/build-trace.cjs`, preloaded into
+  every Node process and worker of the recipe except the corepack executable
+  the build `PATH` resolves) accounts for everything the build did. Every
+  file opened with read access (`r+`, `a+` and `O_RDWR` included, and
+  `openAsBlob`), every copy, rename, link or symlink source (recursively for
+  `cp`), every module loaded (ES modules included, recorded by
+  `module.registerHooks` as their own kind) and every input esbuild's
+  metafile lists is a closure input, an installed package, a dist of the
+  package or a compiled dependency, or a file the build created before it
+  read it. Only a successful truncating create (`w`, `writeFile` without an
+  append flag, a copy or rename destination) counts as created; an append or
+  a failed create does not. The default is to refuse: anything the tracer
+  cannot classify is recorded as untraced and leaves the dist unstamped. That
+  covers any child process but esbuild's installed service binary, a worker
+  given its own `execArgv` or an environment that changes the trace or
+  `NODE_OPTIONS`, any network connection or use of `fetch`, `WebSocket` or
+  `EventSource`, a Node option that loads other code, an esbuild context, an
+  fs call on a path it cannot name, and a Node without module hooks. Every
+  traced process must report at least one module load, every `tsup` the
+  recipe runs must appear as a process that reports an esbuild bundle, and
+  every recipe script must appear as a process. Otherwise the build succeeds
+  but the dist stays unstamped: the stamp file holds the reasons instead, so
+  the next check reports it missing and rebuilds.
+- A `node_modules/@types` above the checkout (TypeScript includes every
+  ancestor's) leaves every dist unstamped. The reason names it, and the
+  doctor and preflight fix advise moving it aside if nothing else needs it,
+  then rebuilding. The fix never deletes anything outside the repository.
+
+The guard catches mistakes and ordinary build code, not deliberate evasion.
+It does not bind:
+
+- existence probes, `stat`, `readlink` and directory listings, which read no
+  file contents;
+- package-manager configuration (`.npmrc`) beyond the pinned settings, which
+  the exempt launcher reads;
+- the files the esbuild binary reads for its own use (it reports what it
+  bundled);
+- variables tsup or esbuild read internally (`PATH` included).
+
+Installed packages are bound by the install record, not scanned. Code in
+them that bypasses Node's fs and module layers (a native addon, an internal
+binding, a substituted `process.env`) is outside the trace, as is build code
+written to defeat the static scan in ways it does not pattern-match.
+Building a fresh dist is a verified no-op: it prints `fresh: skipped` and writes a receipt with
+`"status": "fresh"` that points at the receipt of the build that made the dist.
+`--force`, or `MIDGARD_CONTRIB_FORCE_BUILD=1` for builds reached through
+`pnpm run build`, rebuilds the requested package anyway.
+
 The Go helper disables ambient Git stamping with `-buildvcs=false`: linked
 worktrees and source archives must not discover an unrelated ancestor repository.
 Its native receipt records source, compiler and binary identities instead.

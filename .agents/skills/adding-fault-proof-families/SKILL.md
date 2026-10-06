@@ -73,9 +73,13 @@ is stated next to it.
    builder refused (it requires "failed script execution"). On the plain
    blueprint it cannot tell which check refused, so pin the check with
    `expectOnchainRefusal(build, { refusedBy: "<module>", check: /<trace>/u })`
-   (`refusedBy` a string literal). The fault-proofs script
-   `test:traced-refusals`, which CI runs, swaps each named module for its
-   verbose-traced build and fails any pin not checked against that trace.
+   (`refusedBy` a string literal in the file that calls
+   `expectOnchainRefusal`; a support module's pin runs in every `it` case
+   that reaches it). The fault-proofs script
+   `test:traced-refusals`, which CI runs whenever a change touches one of its
+   inputs (`scripts/ci/traced-refusal-inputs.mjs`), swaps each named module
+   for its verbose-traced build and fails any pin not checked against that
+   trace.
    `assertCompleteLifecycleCoverage`
    (`src/testing/complete-lifecycle.ts:35`) fails a lifecycle missing any of
    the seven `COMPLETE_LIFECYCLE_BASE_SCENARIOS`, but only in tests that opt in
@@ -112,7 +116,7 @@ is stated next to it.
 7. **Never raise transaction limits to make a family fit.** Emulator tests run
    at `VAN_ROSSEM_TRANSACTION_LIMITS` (16,384 bytes, 16.5M memory, 10G steps,
    `tests/support/emulator/protocol-parameters.ts`). Split the family instead.
-   [ci: Midgard Node CI/Build, typecheck, and test fault-proof tooling]
+   [ci: Midgard Node CI/Test fault-proof tooling]
    The test "finds no positive limit escape across the fault-proof TypeScript
    surface" (`tests/wave0-shared-substrate.test.ts:130`) scans only
    `demo/midgard-fault-proofs`; a negative diagnostic needs the
@@ -211,13 +215,14 @@ you checked it by reading.
       [ci: Midgard Node CI/Test Midgard node]
       (`da-deployment-fixture-generation.test.ts` fails on drift)
 - [ ] Family record in `FAMILY_APPLICATION_REGISTRY`, roster names deployed
-      contracts. [ci: Midgard Node CI/Build, typecheck, and test fault-proof tooling]
+      contracts. [ci: Midgard Node CI/Typecheck fault-proof tooling]
+      [ci: Midgard Node CI/Test fault-proof tooling]
       (typecheck fails on an omitted category; `family-application-registry.test.ts:312`)
 - [ ] Classification rule at the catalogue position.
       [runtime: FRAUD_PROOF_CLASSIFICATION_RULES]
       (the module throws at load; `tests/workflow.test.ts` pins the order)
 - [ ] Every typed reason the family serves is routed to it.
-      [ci: Midgard Node CI/Build, typecheck, and test fault-proof tooling]
+      [ci: Midgard Node CI/Test fault-proof tooling]
       (`typed-reason-disposition.test.ts`; it cannot tell whether a reason
       belongs to your family rather than another)
 - [ ] Both polarities, negatives refused in the validator. [review]
@@ -230,7 +235,7 @@ you checked it by reading.
       [ci: Aiken CI/Compile and run the Aiken test suite with the pinned fork]
 - [ ] No generated Aiken edited by hand. [review]
 - [ ] Watcher deployment identity lists the category.
-      [ci: Midgard Node CI/Build, typecheck, format-check, and test Midgard watcher]
+      [ci: Midgard Node CI/Test Midgard watcher]
       (inferred: its `exactRecord` parse rejects the core-built catalogue
       fixture; not observed failing)
 - [ ] Devnet journey owner assigned and owner counts updated.

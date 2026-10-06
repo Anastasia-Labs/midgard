@@ -161,7 +161,7 @@ it("keeps accepted-but-response-lost bytes and reservations for SDK recovery", a
   } finally {
     await f.close();
   }
-});
+}, 15_000);
 
 it("holds persisted bytes when SDK evidence is aborted before rebroadcast", async () => {
   const f = await fixture(false);

@@ -5,6 +5,7 @@ import {
 import { KupmiosError } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { NativeChainSyncStartupFailure } from "../../src/l1/native-chain-sync.exact-record.js";
 import { isWatcherL1TransientFailure } from "../../src/l1/transient-failure.js";
 
 const fetchFailed = (code: string) =>
@@ -26,6 +27,14 @@ describe("watcher L1 transient failure", () => {
     [
       "a provider HTTP 503",
       new KupmiosError({ protocol: "kupo", operation: "x", status: 503 }),
+    ],
+    [
+      "a native node that did not answer",
+      new NativeChainSyncStartupFailure("node_handshake_failed"),
+    ],
+    [
+      "a native helper at its session bound",
+      new NativeChainSyncStartupFailure("service_session_limit"),
     ],
     [
       "a transient wrapped in a workflow error",
@@ -60,6 +69,10 @@ describe("watcher L1 transient failure", () => {
       }),
     ],
     ["an HTTP refusal", fetchFailed("EACCES")],
+    [
+      "a native startup the helper refused",
+      new NativeChainSyncStartupFailure("invalid_startup"),
+    ],
     ["a non-error", "ECONNREFUSED"],
     [
       "a transient buried past the cause depth bound",

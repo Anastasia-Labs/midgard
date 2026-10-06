@@ -8,7 +8,7 @@ import { reconcileStateQueueCorrections } from "../src/fibers/attestation-timeou
 import { Database } from "../src/services/database.js";
 import { Globals } from "../src/services/globals.js";
 import type { StateQueueCorrectionObserverSource } from "../src/services/state-queue-correction-observer.js";
-import { type Scenario } from "./expired-signed-intent-release-evidence-emulator.signed-intent-release-evidence.js";
+import { type Scenario } from "./expired-signed-intent-release-evidence-emulator.expect-landed-and-finalized-once.js";
 import { read, readObserver } from "./helpers/correction-rewind-scenario.js";
 import { type Handle } from "./helpers/signed-intent-replacement.js";
 

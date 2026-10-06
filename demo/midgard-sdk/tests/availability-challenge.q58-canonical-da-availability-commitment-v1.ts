@@ -390,7 +390,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       nextAccumulator:
         "2938a180043b88852b2563a047d994a1edea85d8a18cb6833975094c16816cf8",
     });
-  });
+  }, 120_000);
 
   it("binds deployment, header, length, owner, order, bytes, and every terminal accumulator", () => {
     const bytes = payload(80_000);

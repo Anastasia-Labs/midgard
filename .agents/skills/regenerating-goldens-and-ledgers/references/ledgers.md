@@ -115,16 +115,24 @@ is the authority. Its rules:
   `blueprintSha256` to equal the SHA-256 of the current blueprint, and the
   scenario and row roster to equal a fresh run's; the budgets themselves may
   differ (`demo/midgard-fault-proofs/tests/support/pinned-fit-ledger.ts`)
-  [ci: Midgard Node CI/Build, typecheck, and test fault-proof tooling]. Any
+  [ci: Midgard Node CI/Test fault-proof tooling]. Any
   change that moves blueprint bytes makes both stale.
-- Regenerate by running the owning lifecycle suite with
-  `MIDGARD_WRITE_FIT_LEDGER=1` against a freshly built blueprint. Without the
-  flag the writer throws `FitLedgerWriteRefusedError` for every checked-in
-  ledger, so no ledger changes; only the caller-named outputs
+- Regenerate against a freshly built blueprint with
+  `pnpm --dir demo/midgard-fault-proofs fit:regenerate <ledger>` (or `--all`;
+  `--list` shows each ledger's owning test files). It finds the owning files
+  in the test sources, runs exactly those under `MIDGARD_WRITE_FIT_LEDGER=1`
+  with a fragment directory and run token it makes for the run, and keeps the
+  ledger only if every owning file passed and rewrote it; otherwise it puts
+  the ledger back and exits 1. It sets `MIDGARD_FIT_FRAGMENT_DIR` and
+  `MIDGARD_FIT_MEASUREMENT_RUN` itself. Thirteen checked-in ledgers have no
+  suite writer, and the command refuses each with the reason
+  (`LEDGERS_WITHOUT_SUITE_WRITER` in
+  `demo/midgard-fault-proofs/scripts/fit-ledger-owners.mjs`)
+  [ci: Midgard Node CI/Test the fit-ledger regeneration script].
+- Without the flag the writer throws `FitLedgerWriteRefusedError` for every
+  checked-in ledger, so no ledger changes; only the caller-named outputs
   (`MIN_ADA_FIT_LEDGER_PATH`, `TRANSITION_TRACE_FIT_LEDGER_PATH`) write without
-  it [runtime: writeVanRossemFitLedger]. The fragment
-  recorder also needs `MIDGARD_FIT_FRAGMENT_DIR` and a fresh
-  `MIDGARD_FIT_MEASUREMENT_RUN` (`measured-fit-ledger.ts:28-35`).
+  it [runtime: writeVanRossemFitLedger].
 - Never replace a blueprint digest without re-measuring the transactions. A
   digest edited by hand makes an old measurement claim a new build [review].
 - Do not recommit a historical report just because a test run rewrote it.

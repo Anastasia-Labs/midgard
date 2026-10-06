@@ -28,7 +28,7 @@ beforeAll(async () => {
       "tests/helpers/history-custom-role-fixture.ts",
       "tests/helpers/history-recorder-cancellation-fixture.ts",
     ],
-    outDir: "dist/history-recorder-cancellation-fixture",
+    outDir: ".probe-dist/history-recorder-cancellation-fixture",
     clean: true,
     target: "node22",
     noExternal: [/^midgard-node(\/|$)/, /^@al-ft\/midgard-test-support(\/|$)/],
@@ -54,7 +54,7 @@ it
         [
           join(
             root,
-            "dist/history-recorder-cancellation-fixture/history-custom-role-fixture.js",
+            ".probe-dist/history-recorder-cancellation-fixture/history-custom-role-fixture.js",
           ),
           layout.runDir,
         ],
@@ -146,7 +146,7 @@ it
         [
           join(
             root,
-            "dist/history-recorder-cancellation-fixture/history-recorder-cancellation-fixture.js",
+            ".probe-dist/history-recorder-cancellation-fixture/history-recorder-cancellation-fixture.js",
           ),
           layout.runDir,
           mode,

@@ -9,10 +9,10 @@ import type {
 import {
   type DecisionOutboxRecord,
   jsonReplacer,
-  jsonReviver,
   type L1SourceState,
   mergeL1SourceState,
   parseL1SourceState,
+  parseStoredJson,
   UNKNOWN_STATE_QUEUE_STATUS,
 } from "../store.js";
 import type { PostgresStoreInstanceLockEvents } from "./postgres.instance-lock.js";
@@ -304,4 +304,4 @@ export const assertPostgresDecisionSignature = (
 };
 
 export const decodeRecord = <T>(record: unknown): T =>
-  JSON.parse(JSON.stringify(record), jsonReviver) as T;
+  parseStoredJson(JSON.stringify(record)) as T;

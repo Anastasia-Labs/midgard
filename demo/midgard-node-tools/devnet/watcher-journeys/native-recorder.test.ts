@@ -27,7 +27,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   io.authority.mockReturnValue({});
 });
-afterEach(() => vi.restoreAllMocks());
+// Vitest 4's restoreAllMocks only restores spies; resetting first keeps the
+// Vitest 3 reset of these module-scope mocks between tests.
+afterEach(() => {
+  vi.resetAllMocks();
+  vi.restoreAllMocks();
+});
 
 it("revokes the old fork height before rollback I/O and restores it only from an admitted forward", async () => {
   let onEvent!: Parameters<typeof startWatcherNativeChainSync>[0]["onEvent"];

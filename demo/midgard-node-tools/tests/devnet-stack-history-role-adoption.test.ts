@@ -37,7 +37,7 @@ beforeAll(async () => {
       "tests/helpers/history-custom-role-fixture.ts",
       "tests/helpers/history-role-controller-fixture.ts",
     ],
-    outDir: "dist/history-custom-role-fixture",
+    outDir: ".probe-dist/history-custom-role-fixture",
     clean: true,
     target: "node22",
     noExternal: [/^midgard-node(\/|$)/, /^@al-ft\/midgard-test-support(\/|$)/],
@@ -101,7 +101,7 @@ const exerciseRoles = async (
       [
         join(
           root,
-          "dist/history-custom-role-fixture/history-custom-role-fixture.js",
+          ".probe-dist/history-custom-role-fixture/history-custom-role-fixture.js",
         ),
         layout.runDir,
         mode,
@@ -249,7 +249,7 @@ const exerciseRoles = async (
       [
         join(
           root,
-          "dist/history-custom-role-fixture/history-role-controller-fixture.js",
+          ".probe-dist/history-custom-role-fixture/history-role-controller-fixture.js",
         ),
         layout.runDir,
         mode,

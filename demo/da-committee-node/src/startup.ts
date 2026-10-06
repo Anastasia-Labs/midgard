@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 
 import { L1NetworkMagicUnconfiguredError } from "./l1/provider.ogmios-rpc-session.js";
 import { L1SourceIntegrityError } from "./l1/source-integrity.js";
-import { JsonStoreLeaseHeldError } from "./store.json-file-lease.js";
+import { JsonStoreLeaseHeldError } from "./store.json-file-instance-lock.js";
 import { isInstanceLockHeldElsewhere } from "./store/postgres.instance-lock.js";
 
 /** First wait before re-trying a startup that failed on a dependency. */

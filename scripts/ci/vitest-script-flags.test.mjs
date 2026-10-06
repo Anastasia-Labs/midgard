@@ -1,8 +1,8 @@
 // No package script passes vitest a kebab-case multi-word flag without a value.
 //
-// vitest 3.0.7 tells its argument parser which options are booleans by their
-// camelCase names, so `--disable-console-intercept` is not recognised as a
-// boolean and takes the next argument as its value. pnpm appends a caller's
+// vitest tells its argument parser which options are booleans by their
+// camelCase names (3.0.7, and still 5.0.3), so `--disable-console-intercept`
+// is not recognised as a boolean and takes the next argument as its value. pnpm appends a caller's
 // arguments to the end of the script, so a script ending in that flag turns
 // `pnpm test <file>` into a run of the whole package (measured 2026-09-28:
 // midgard-node listed 270 files instead of 1). The camelCase spelling and the
@@ -42,7 +42,7 @@ test("finds only kebab-case multi-word flags without a value", () => {
   for (const safe of [
     "vitest run --disableConsoleIntercept",
     "vitest run --disable-console-intercept=true",
-    "vitest run --no-file-parallelism --silent --reporter=basic",
+    "vitest run --no-file-parallelism --silent --reporter=dot",
     "vitest run --config vitest.bench.config.ts tests/x.bench.ts",
     "node --test-reporter=tap --experimental-vm-modules x.mjs",
     "tsc --no-emit-on-error && eslint --max-warnings=0 .",

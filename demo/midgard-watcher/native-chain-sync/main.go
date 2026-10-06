@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -25,8 +27,21 @@ func writeChainSyncFailure(writer *canonicalWriter, diagnostics io.Writer, cause
 
 func main() {
 	writer := &canonicalWriter{encoder: json.NewEncoder(os.Stdout)}
+	if len(os.Args) == 2 && os.Args[1] == exactPointServiceFlag {
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+		service := newExactPointService(os.Stdout)
+		go func() {
+			<-signals
+			service.shutdown()
+			os.Exit(0)
+		}()
+		os.Exit(service.serve(os.Stdin))
+	}
 	config, startupCanonical, err := readStartup()
-	if err != nil {
+	// Exact-point queries are sessions of the persistent service only; one
+	// spawned process per query is not an admitted operation mode.
+	if err != nil || len(os.Args) != 1 || config.Operation.Kind == "exact_point" {
 		_ = writer.write(errorEvent{Code: "invalid_startup", Kind: "error", SchemaVersion: schemaVersion})
 		os.Exit(64)
 	}
@@ -38,58 +53,143 @@ func main() {
 		}
 		return
 	}
+	// A stream helper keeps the default signal disposition until it is ready,
+	// so an owner signal before ready still ends it by that signal; after
+	// ready, a signal is an orderly stop with exit status 0.
+	stop := make(chan struct{})
+	armStop := func() {
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			<-signals
+			close(stop)
+		}()
+	}
+	if status := runChainSync(config, startupCanonical, writer, os.Stderr, stop, armStop); status != 0 {
+		os.Exit(status)
+	}
+}
 
+// connectionCloseBound bounds how long a session end waits for its node
+// connection to stop. cancel has already closed the socket, so Close only
+// waits for the connection's own goroutines; the bound stays below the owner's
+// 5 s release and drain bounds, so a wedged Close cannot fail other sessions.
+const connectionCloseBound = 2 * time.Second
+
+// closeWithin runs release and waits at most bound for it to return, reporting
+// whether it did. A release still running after the bound is abandoned.
+func closeWithin(release func() error, bound time.Duration) bool {
+	closed := make(chan struct{})
+	go func() {
+		_ = release()
+		close(closed)
+	}()
+	timer := time.NewTimer(bound)
+	defer timer.Stop()
+	select {
+	case <-closed:
+		return true
+	case <-timer.C:
+		return false
+	}
+}
+
+// runChainSync owns one node connection for one admitted startup and returns
+// the helper exit status for its outcome; 0 means the owner closed stop. A
+// stopped session seals its writer before its connection is interrupted, so
+// no chain-sync line follows the owner's close.
+func runChainSync(config startupConfig, startupCanonical []byte, writer *canonicalWriter, diagnostics io.Writer, stop <-chan struct{}, onReady func()) int {
+	exact := config.Operation.Kind == "exact_point"
 	errorChannel := make(chan error, 4)
 	readyGate := make(chan struct{})
+	var releaseReadyGate sync.Once
 	chainSyncConfig := makeChainSyncConfig(config, writer, readyGate)
 	dialTimeout := 10 * time.Second
 	var queryDeadline time.Time
-	if config.Operation.Kind == "exact_point" {
+	if exact {
 		queryDeadline = time.Now().Add(time.Duration(config.Operation.TimeoutMs) * time.Millisecond)
 		dialTimeout = min(dialTimeout, time.Until(queryDeadline))
 	}
-	socket, err := net.DialTimeout("unix", config.SocketPath, dialTimeout)
-	if err != nil {
-		_ = writer.write(errorEvent{Code: "node_handshake_failed", Kind: "error", SchemaVersion: schemaVersion})
-		os.Exit(69)
+	ctx, cancel := context.WithCancel(context.Background())
+	var connection *ouroboros.Connection
+	defer func() {
+		// Seal before releasing callbacks parked on the ready gate, then
+		// interrupt every connection-owned read through the socket. The
+		// session ends once its connection has stopped, so a service slot is
+		// not reused while the connection still runs; a Close that outlives
+		// its bound is reported and abandoned, so a session end cannot wedge.
+		writer.seal()
+		cancel()
+		releaseReadyGate.Do(func() { close(readyGate) })
+		if connection != nil && !closeWithin(connection.Close, connectionCloseBound) {
+			_, _ = fmt.Fprintln(diagnostics, "native chain-sync connection close exceeded its bound")
+		}
+	}()
+	go func() {
+		select {
+		case <-stop:
+			writer.seal()
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	stopped := func() bool {
+		select {
+		case <-stop:
+			return true
+		default:
+			return false
+		}
 	}
-	defer socket.Close()
+	fail := func(code string, status int) int {
+		if stopped() {
+			return 0
+		}
+		_ = writer.write(errorEvent{Code: code, Kind: "error", SchemaVersion: schemaVersion})
+		return status
+	}
+	dialer := net.Dialer{Timeout: dialTimeout}
+	socket, err := dialer.DialContext(ctx, "unix", config.SocketPath)
+	if err != nil {
+		return fail("node_handshake_failed", 69)
+	}
+	context.AfterFunc(ctx, func() { _ = socket.Close() })
 	var transport net.Conn = &streamSegmentConn{Conn: socket}
-	if config.Operation.Kind == "exact_point" {
+	if exact {
 		if err := socket.SetDeadline(queryDeadline); err != nil {
-			_ = writer.write(errorEvent{Code: "node_deadline_failed", Kind: "error", SchemaVersion: schemaVersion})
-			os.Exit(69)
+			return fail("node_deadline_failed", 69)
 		}
 		transport = &queryLimitedConn{Conn: socket, remaining: maxQueryIngressBytes, deadline: queryDeadline}
 	}
-	connection, err := ouroboros.New(
+	created, err := ouroboros.New(
 		ouroboros.WithConnection(transport),
 		ouroboros.WithNetworkMagic(config.NetworkMagic),
 		ouroboros.WithNodeToNode(false),
 		ouroboros.WithErrorChan(errorChannel),
-		ouroboros.WithLogger(slog.New(slog.NewJSONHandler(os.Stderr, nil))),
+		ouroboros.WithLogger(slog.New(slog.NewJSONHandler(diagnostics, nil))),
 		ouroboros.WithChainSyncConfig(chainSyncConfig),
 	)
 	if err != nil {
-		_ = writer.write(errorEvent{Code: "connection_setup_failed", Kind: "error", SchemaVersion: schemaVersion})
-		os.Exit(70)
+		return fail("connection_setup_failed", 70)
 	}
-	defer connection.Close()
+	connection = created
 	currentTip, err := connection.ChainSync().Client.GetCurrentTip()
 	if err != nil {
-		_ = writer.write(errorEvent{Code: "tip_query_failed", Kind: "error", SchemaVersion: schemaVersion})
-		os.Exit(69)
+		return fail("tip_query_failed", 69)
 	}
 	point, err := pointFromStartup(config.Intersection)
 	if err != nil {
-		_ = writer.write(errorEvent{Code: "invalid_intersection", Kind: "error", SchemaVersion: schemaVersion})
-		os.Exit(64)
+		return fail("invalid_intersection", 64)
 	}
 	if err := connection.ChainSync().Client.Sync([]pcommon.Point{point}); err != nil {
-		_ = writer.write(errorEvent{Code: "intersection_failed", Kind: "error", SchemaVersion: schemaVersion})
-		os.Exit(69)
+		return fail("intersection_failed", 69)
 	}
 	digest := sha256.Sum256(startupCanonical)
+	// Armed before the ready line is written: an owner may signal as soon as
+	// it reads ready, and that signal must already be an orderly stop.
+	if onReady != nil {
+		onReady()
+	}
 	if err := writer.write(readyEvent{
 		AuthorityNodeID:       config.AuthorityNodeID,
 		CurrentTip:            tip(*currentTip),
@@ -103,17 +203,21 @@ func main() {
 		SocketPath:            config.SocketPath,
 		StartupDigest:         hex.EncodeToString(digest[:]),
 	}); err != nil {
-		os.Exit(74)
+		if stopped() {
+			return 0
+		}
+		return 74
 	}
-	close(readyGate)
+	releaseReadyGate.Do(func() { close(readyGate) })
 
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	select {
-	case <-signals:
-		return
+	case <-stop:
+		return 0
 	case err := <-errorChannel:
-		_ = writeChainSyncFailure(writer, os.Stderr, err)
-		os.Exit(70)
+		if stopped() {
+			return 0
+		}
+		_ = writeChainSyncFailure(writer, diagnostics, err)
+		return 70
 	}
 }

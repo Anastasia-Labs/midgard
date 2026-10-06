@@ -72,7 +72,7 @@ export const fixture = async () => {
       return hashOf(bytes);
     },
   };
-  const build = vi.fn();
+  const build = vi.fn<(headerHash: string) => void>();
   const prepare = async (
     headerHash: string,
     fundingInput: UTxO,

@@ -81,9 +81,9 @@ creates a randomly named database per test instead. See the identity with
 ## Suites that need a built dist
 
 Vitest resolves the workspace packages to `src/` through the `midgard-source`
-export condition (`midgardSourceSsr` in `demo/midgard-test-support/vitest.js`).
-Plain `node` does not: it follows the `import` condition to `dist/`. So
-anything a suite runs outside vitest needs dist built first.
+export condition, and a single run bundles that source ([the workspace
+bundle](references/running-suites.md#the-workspace-bundle)). Plain `node`
+follows the `import` condition to `dist/`, so code run outside vitest needs it.
 
 `contrib prepare` expands declared pretest builds and their runtime dependency
 closure in order. Node suites need their bundled workers; tooling also needs

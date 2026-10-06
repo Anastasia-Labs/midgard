@@ -1,5 +1,4 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
+import { midgardBlake2b } from "./codec/blake2b.js";
 import { asBigInt, encodeCbor } from "./codec/cbor.js";
 import {
   MidgardTxCodecError,
@@ -190,7 +189,7 @@ export const exactCode = <T extends string>(
 
 export const hashDomain = (domain: Uint8Array, bytes: Uint8Array): Hash32 =>
   ensureHash32(
-    blake2b(Buffer.concat([Buffer.from(domain), Buffer.from(bytes)]), {
+    midgardBlake2b(Buffer.concat([Buffer.from(domain), Buffer.from(bytes)]), {
       dkLen: 32,
     }),
     "domain_hash",
@@ -201,7 +200,7 @@ export const hashMidgardValidationEventKey = (
   canonicalEventKeyCbor: Uint8Array,
 ): Hash32 =>
   ensureHash32(
-    blake2b(Buffer.from(canonicalEventKeyCbor), { dkLen: 32 }),
+    midgardBlake2b(Buffer.from(canonicalEventKeyCbor), { dkLen: 32 }),
     "validation_event_key_hash",
   );
 

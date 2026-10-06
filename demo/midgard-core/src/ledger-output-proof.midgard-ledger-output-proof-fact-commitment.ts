@@ -1,5 +1,3 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
 import { digestMidgardBlake2b224Trace } from "./blake2b-224-trace.js";
 import { commitMidgardBoundedItem } from "./bounded-item.js";
 import {
@@ -13,6 +11,7 @@ import {
   summarizeMidgardCekSmallConstrData,
 } from "./cek-semantic.js";
 import { decodeMidgardAddressBytes } from "./codec/address.js";
+import { midgardBlake2b } from "./codec/blake2b.js";
 import { encodeCbor } from "./codec/cbor.js";
 import { decodeMidgardLedgerOutputCommitment } from "./ledger-output-commitment.js";
 import {
@@ -278,7 +277,7 @@ export const midgardLedgerOutputProofFactDigest = (
   payload: readonly Uint8Array[],
 ): Buffer =>
   Buffer.from(
-    blake2b(
+    midgardBlake2b(
       Buffer.concat([
         Buffer.from([0x9f]),
         ...payload.map((item) => Buffer.from(item)),

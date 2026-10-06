@@ -1,12 +1,16 @@
 import { availableParallelism } from "node:os";
+import { fileURLToPath } from "node:url";
 
+import { durationShards } from "@al-ft/midgard-test-support/duration-shards";
 import {
   blueprintStampGlobalSetup,
   interactiveEmulatorBlueprint,
   interactiveEmulatorPlugin,
   interactiveEmulatorSetup,
-  midgardSourceSsr,
+  isolatedForksPool,
+  midgardSourceEnvironments,
   rawSqlLoaderPlugin,
+  workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
 
@@ -40,16 +44,22 @@ export default defineConfig({
   plugins: [rawSqlLoaderPlugin()],
   test: {
     // Refuses the run when onchain/aiken/plutus.json is stale.
-    workspace: [
-      {
-        extends: true,
-        test: {
-          name: "testing-profile",
-          include: ["./tests/**/*.test.ts"],
-          exclude: ["./tests/fault-proofs/watcher-installed-journey.test.ts"],
-          globalSetup: [blueprintStampGlobalSetup],
+    projects: [
+      // Workspace packages load from a per-run source bundle; files that need
+      // them module-by-module run in `testing-profile:source`.
+      ...workspaceBundleProjects(
+        {
+          extends: true,
+          test: {
+            name: "testing-profile",
+            include: ["./tests/**/*.test.ts"],
+            exclude: ["./tests/fault-proofs/watcher-installed-journey.test.ts"],
+            globalSetup: [blueprintStampGlobalSetup],
+          },
         },
-      },
+        { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
+      ),
+      // Not bundled: its plugin rewrites a midgard-core module.
       {
         extends: true,
         plugins: [interactiveEmulatorPlugin()],
@@ -61,25 +71,34 @@ export default defineConfig({
         },
       },
     ],
+    // Packs Node CI's `--shard=i/3` by the CI seconds each file took and starts
+    // the longest files first: a handful of indexer, runtime and journey files
+    // carry most of the suite's seconds, and Vitest's default hash sharding
+    // left one shard at about twice another's wall time. The table refreshes
+    // itself from CI; see `@al-ft/midgard-test-support/duration-shards`.
+    ...durationShards({
+      tablePath: fileURLToPath(
+        new URL("./tests/support/ci-file-durations.json", import.meta.url),
+      ),
+      reporters: ["default"],
+    }),
     environment: "node",
+    // Vitest 4 narrowed `restoreMocks` to `vi.spyOn` spies; `mockReset` keeps
+    // the Vitest 3 reset of every `vi.fn` (implementation, once-queue, calls)
+    // before each test, so a module-scope mock cannot carry state forward.
     restoreMocks: true,
-    // Several files perform CPU-heavy replay and emulator evaluation. An
-    // unbounded thread pool can starve Vitest's worker RPC long enough for
+    mockReset: true,
+    // Several files perform CPU-heavy replay and emulator evaluation. Under
+    // Vitest 3 an unbounded thread pool starved the worker RPC long enough for
     // successful tests to be reported as `Timeout calling onTaskUpdate`.
     // Isolated forks keep evaluator state file-local (running the suite
     // without isolation fails ~75 tests on shared module state); the fork
-    // ceiling bounds contention and memory on shared CI runners.
-    pool: "forks",
-    poolOptions: {
-      forks: {
-        isolate: true,
-        minForks: 1,
-        maxForks,
-      },
-    },
+    // ceiling bounds contention and memory on shared CI runners. The worker
+    // settings every package shares are stated in `isolatedForksPool`.
+    ...isolatedForksPool({ maxForks }),
     // The heaviest restart/rewind tests can exceed Vitest's 5s default on
     // shared runners. Headroom for slow runners, not a license for slow tests.
     testTimeout: 60_000,
   },
-  ssr: midgardSourceSsr(),
+  environments: midgardSourceEnvironments(),
 });

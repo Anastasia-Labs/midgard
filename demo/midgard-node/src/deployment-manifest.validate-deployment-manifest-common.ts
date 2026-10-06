@@ -169,6 +169,28 @@ const validateDeploymentManifestCommon = (
   }
 };
 
+// manifestIds whose node-side common validation already succeeded in this
+// process, with the core's finalized verification after it. Skipping it for
+// one is sound for the reason the core gives for its own finalized cache:
+// verifyDeploymentManifestIdentity runs uncached on every parse, re-hashing
+// the manifest's full normalized content and requiring manifestId to equal
+// that hash, so a changed manifest either fails identity verification or
+// arrives under a new manifestId and misses this cache. The common checks
+// are a pure function of that content and module constants. The checks
+// above them (exact root keys, consensus profile) stay uncached; they are
+// cheap. The repeated cost this avoids is the per-contract script hashing,
+// which a running node paid on every correction-observer load and save.
+const NODE_VERIFIED_MANIFEST_ID_CACHE_LIMIT = 64;
+const nodeVerifiedManifestIds = new Set<string>();
+
+const rememberNodeVerifiedManifestId = (manifestId: string): void => {
+  if (nodeVerifiedManifestIds.size >= NODE_VERIFIED_MANIFEST_ID_CACHE_LIMIT) {
+    const oldest = nodeVerifiedManifestIds.values().next().value;
+    if (oldest !== undefined) nodeVerifiedManifestIds.delete(oldest);
+  }
+  nodeVerifiedManifestIds.add(manifestId);
+};
+
 export const parseDeploymentManifestValue = (
   value: unknown,
 ): DeploymentManifest => {
@@ -213,6 +235,11 @@ export const parseDeploymentManifestValue = (
       "Deployment manifest consensusProfileDigest must exactly match canonical V1",
     );
   }
+  const manifestId = candidate.manifestId as string;
+  if (nodeVerifiedManifestIds.has(manifestId))
+    return verifyFinalizedDeploymentManifest(candidate);
   validateDeploymentManifestCommon(candidate);
-  return verifyFinalizedDeploymentManifest(candidate);
+  const manifest = verifyFinalizedDeploymentManifest(candidate);
+  rememberNodeVerifiedManifestId(manifestId);
+  return manifest;
 };

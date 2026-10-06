@@ -87,11 +87,6 @@ const main = async (): Promise<void> => {
       if (exitForLostStoreInstanceLock === undefined) process.exit(1);
       exitForLostStoreInstanceLock();
     },
-    onInstanceLockTakeover: (reason) => {
-      write(
-        `${JSON.stringify({ event: "committee_store_instance_lock_taken_over", reason })}\n`,
-      );
-    },
   };
 
   // Dependencies that are not up yet are waited for, not exited on.

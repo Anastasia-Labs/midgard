@@ -587,8 +587,8 @@ export const clearNodeTables = Effect.gen(function* () {
   const rows = yield* sql<{ name: string }>`SELECT current_database() AS name`;
   expect(rows[0]?.name).toBe(testDatabaseName());
   // Reset the isolated model database as one FK-consistent operation. A prior
-  // source-owner test must not leave authority belonging to another fixture.
-  yield* sql`TRUNCATE event_history_l2_ledger_receipts, mpf_engine_state, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_replay_receipts, event_history_authority`;
+  // test must not leave authority or wallet-output reservations behind.
+  yield* sql`TRUNCATE event_history_l2_ledger_receipts, mpf_engine_state, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_replay_receipts, event_history_authority, event_history_submission_inputs, event_history_submissions`;
 }).pipe(
   Effect.zipRight(
     Effect.all(

@@ -56,6 +56,9 @@ Postgres checks used distinct `MIDGARD_TEST_DATABASE_PREFIX` values.
 | `node /tmp/settlement-worker-smoke.mjs`                                                                                                                                                                                                                                                                      | 1 built-worker entry/error-report/shutdown assertion passed; intentionally empty configuration; exit 0. This is not live startup acceptance. |
 | `git diff --check`                                                                                                                                                                                                                                                                                           | Exit 0.                                                                                                                                      |
 
+The commands are recorded as they ran, under Vitest 3. Vitest 5 has no
+`--minWorkers` option, so current invocations omit it.
+
 Scoped ESLint and Prettier checks also exited 0. Their exact scope is the file
 list below; from `demo`, the commands were `pnpm exec eslint --max-warnings=0`
 with the `.ts` paths, and `pnpm exec prettier --check` with `.ts`/`.md` paths

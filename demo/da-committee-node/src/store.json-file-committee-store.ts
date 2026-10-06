@@ -41,9 +41,9 @@ import {
   type StoreData,
 } from "./store.committee-store.js";
 import {
-  JsonStoreLease,
-  type JsonStoreLeaseOptions,
-} from "./store.json-file-lease.js";
+  JsonStoreInstanceLock,
+  type JsonStoreInstanceLockOptions,
+} from "./store.json-file-instance-lock.js";
 import {
   assertDecisionRetry,
   emptyStoreData,
@@ -53,7 +53,7 @@ import {
   committeeStoreFilePath,
   isNodeError,
   jsonReplacer,
-  jsonReviver,
+  parseStoredJson,
 } from "./store.parse-stored-record-map.js";
 import {
   assertDecisionSignature,
@@ -103,7 +103,7 @@ import {
 export class JsonFileCommitteeStore implements CommitteeStore {
   promiseStoreResourceUsage = jsonPromiseResources(() => this.filePath);
   private readonly filePath: string;
-  private readonly lease: JsonStoreLease;
+  private readonly instanceLock: JsonStoreInstanceLock;
   private readonly retirement = new CommitteeRetirementController();
   private writeQueue: Promise<void> = Promise.resolve();
   private readonly inFlightDecisions = new InFlightDecisionAttempts();
@@ -113,14 +113,14 @@ export class JsonFileCommitteeStore implements CommitteeStore {
 
   readL1RecoverySnapshot = jsonL1RecoverySnapshot(
     () => this.writeQueue,
-    () => this.lease.assertHeld(),
+    () => this.instanceLock.assertHeld(),
     () => this.read(),
   );
   applyL1RecoveryCertificate = jsonApplyL1Recovery(
     this.retirement,
     () => this.read(),
     (data) => this.write(data),
-    () => this.lease.assertHeld(),
+    () => this.instanceLock.assertHeld(),
     () => this.closing || this.closed,
     (run) => {
       const operation = this.writeQueue.then(run);
@@ -131,27 +131,27 @@ export class JsonFileCommitteeStore implements CommitteeStore {
 
   private constructor(args: {
     readonly filePath: string;
-    readonly lease: JsonStoreLease;
+    readonly instanceLock: JsonStoreInstanceLock;
   }) {
     this.filePath = args.filePath;
-    this.lease = args.lease;
+    this.instanceLock = args.instanceLock;
   }
 
   static async open(
     path: string,
-    options: JsonStoreLeaseOptions = {},
+    options: JsonStoreInstanceLockOptions = {},
   ): Promise<JsonFileCommitteeStore> {
     const filePath = path.endsWith(".json")
       ? path
       : await committeeStoreFilePath(path);
     await mkdir(dirname(filePath), { recursive: true });
-    const lease = await JsonStoreLease.acquire(`${filePath}.lock`, options);
-    const store = new JsonFileCommitteeStore({ filePath, lease });
+    const instanceLock = await JsonStoreInstanceLock.acquire(filePath, options);
+    const store = new JsonFileCommitteeStore({ filePath, instanceLock });
     try {
       store.retirement.load((await store.read()).retirementFloor);
       return store;
     } catch (error) {
-      await lease.release().catch(() => undefined);
+      await instanceLock.release().catch(() => undefined);
       throw error;
     }
   }
@@ -269,7 +269,7 @@ export class JsonFileCommitteeStore implements CommitteeStore {
       this.closing = true;
       this.closePromise = (async () => {
         await this.writeQueue.catch(() => undefined);
-        await this.lease.release();
+        await this.instanceLock.release();
         this.closed = true;
       })();
     }
@@ -892,7 +892,7 @@ export class JsonFileCommitteeStore implements CommitteeStore {
   private async read(): Promise<StoreData> {
     try {
       const raw = await readFile(this.filePath, "utf8");
-      return normalizeStoreData(JSON.parse(raw, jsonReviver) as unknown);
+      return normalizeStoreData(parseStoredJson(raw));
     } catch (error) {
       if (isNodeError(error) && error.code === "ENOENT") {
         const data = emptyStoreData();
@@ -903,8 +903,8 @@ export class JsonFileCommitteeStore implements CommitteeStore {
     }
   }
   private async write(data: StoreData): Promise<void> {
-    await this.lease.assertHeld();
-    const tmpPath = `${this.filePath}.${this.lease.owner.replace(":", "-")}.tmp`;
+    await this.instanceLock.assertHeld();
+    const tmpPath = `${this.filePath}.${this.instanceLock.owner.replace(":", "-")}.tmp`;
     const file = await open(tmpPath, "w", 0o600);
     try {
       await file.writeFile(`${JSON.stringify(data, jsonReplacer, 2)}\n`);

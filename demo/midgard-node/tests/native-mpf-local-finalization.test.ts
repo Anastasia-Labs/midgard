@@ -273,102 +273,108 @@ beforeEach(async () => {
   );
 });
 
-describe.sequential("native local-finalization authority boundary", () => {
-  it("refuses persisted signed intent until canonical observation, then permits the same replay without acknowledgement", async () => {
-    const state = await fixture();
-    const { recover, owner } = nativeBoundary();
-    const before = await snapshot();
-    await expect(
-      run(recoverNativeMpfForLocalFinalization(owner, state.block)),
-    ).rejects.toThrow(/Signed intent alone cannot authorize/);
-    expect(recover).not.toHaveBeenCalled();
-    expect(await snapshot()).toEqual(before);
+describe(
+  "native local-finalization authority boundary",
+  { concurrent: false },
+  () => {
+    it("refuses persisted signed intent until canonical observation, then permits the same replay without acknowledgement", async () => {
+      const state = await fixture();
+      const { recover, owner } = nativeBoundary();
+      const before = await snapshot();
+      await expect(
+        run(recoverNativeMpfForLocalFinalization(owner, state.block)),
+      ).rejects.toThrow(/Signed intent alone cannot authorize/);
+      expect(recover).not.toHaveBeenCalled();
+      expect(await snapshot()).toEqual(before);
 
-    await run(Pending.markObservedWaitingStability(state.headerHash, 1n));
-    const observed = await snapshot();
-    expect(observed.journal.submitted_tx_hash).toBeNull();
-    await run(recoverNativeMpfForLocalFinalization(owner, state.block));
-    expect(recover).toHaveBeenCalledOnce();
-    expect(recover).toHaveBeenCalledWith({
-      ...state.replay,
-      ownerBinarySha256: state.replay.ownerBinarySha256.toString("hex"),
-      baseRoot: state.replay.baseRoot.toString("hex"),
-      candidateRoot: state.replay.candidateRoot.toString("hex"),
-      eventLogDigest: state.replay.eventLogDigest.toString("hex"),
+      await run(Pending.markObservedWaitingStability(state.headerHash, 1n));
+      const observed = await snapshot();
+      expect(observed.journal.submitted_tx_hash).toBeNull();
+      await run(recoverNativeMpfForLocalFinalization(owner, state.block));
+      expect(recover).toHaveBeenCalledOnce();
+      expect(recover).toHaveBeenCalledWith({
+        ...state.replay,
+        ownerBinarySha256: state.replay.ownerBinarySha256.toString("hex"),
+        baseRoot: state.replay.baseRoot.toString("hex"),
+        candidateRoot: state.replay.candidateRoot.toString("hex"),
+        eventLogDigest: state.replay.eventLogDigest.toString("hex"),
+      });
+      expect(await snapshot()).toEqual(observed);
     });
-    expect(await snapshot()).toEqual(observed);
-  });
 
-  it("refuses a different header even when its UTxO root matches", async () => {
-    const state = await fixture();
-    await run(Pending.markSubmitted(state.headerHash, state.txHash));
-    const otherBlock = await serializeHeader({
-      ...state.header,
-      endTime: state.header.endTime + 1n,
+    it("refuses a different header even when its UTxO root matches", async () => {
+      const state = await fixture();
+      await run(Pending.markSubmitted(state.headerHash, state.txHash));
+      const otherBlock = await serializeHeader({
+        ...state.header,
+        endTime: state.header.endTime + 1n,
+      });
+      const { recover, owner } = nativeBoundary();
+      const before = await snapshot();
+      await expect(
+        run(recoverNativeMpfForLocalFinalization(owner, otherBlock)),
+      ).rejects.toThrow(/requires its journal/);
+      expect(recover).not.toHaveBeenCalled();
+      expect(await snapshot()).toEqual(before);
     });
-    const { recover, owner } = nativeBoundary();
-    const before = await snapshot();
-    await expect(
-      run(recoverNativeMpfForLocalFinalization(owner, otherBlock)),
-    ).rejects.toThrow(/requires its journal/);
-    expect(recover).not.toHaveBeenCalled();
-    expect(await snapshot()).toEqual(before);
-  });
 
-  it("refuses internally matching replay and metadata roots that differ from the confirmed header", async () => {
-    const state = await fixture();
-    await run(Pending.markSubmitted(state.headerHash, state.txHash));
-    await run(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`UPDATE pending_block_finalizations
+    it("refuses internally matching replay and metadata roots that differ from the confirmed header", async () => {
+      const state = await fixture();
+      await run(Pending.markSubmitted(state.headerHash, state.txHash));
+      await run(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE pending_block_finalizations
         SET expected_utxos_root = ${bytes(86).toString("hex")}, mpf_replay_candidate_root = ${bytes(86)}
         WHERE header_hash = ${state.headerHash}`;
-      }),
-    );
-    const { recover, owner } = nativeBoundary();
-    const before = await snapshot();
-    await expect(
-      run(recoverNativeMpfForLocalFinalization(owner, state.block)),
-    ).rejects.toThrow(/replay does not match the confirmed header/);
-    expect(recover).not.toHaveBeenCalled();
-    expect(await snapshot()).toEqual(before);
-  });
+        }),
+      );
+      const { recover, owner } = nativeBoundary();
+      const before = await snapshot();
+      await expect(
+        run(recoverNativeMpfForLocalFinalization(owner, state.block)),
+      ).rejects.toThrow(/replay does not match the confirmed header/);
+      expect(recover).not.toHaveBeenCalled();
+      expect(await snapshot()).toEqual(before);
+    });
 
-  it("refuses an orphaned retained incarnation after the identical canonical member was accepted", async () => {
-    const state = await fixture();
-    await run(Pending.markSubmitted(state.headerHash, state.txHash));
-    const { recover, owner } = nativeBoundary();
-    await run(recoverNativeMpfForLocalFinalization(owner, state.block));
-    expect(recover).toHaveBeenCalledOnce();
-    recover.mockClear();
-    await run(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`UPDATE event_history_incarnations SET origin_canonical = false
+    it("refuses an orphaned retained incarnation after the identical canonical member was accepted", async () => {
+      const state = await fixture();
+      await run(Pending.markSubmitted(state.headerHash, state.txHash));
+      const { recover, owner } = nativeBoundary();
+      await run(recoverNativeMpfForLocalFinalization(owner, state.block));
+      expect(recover).toHaveBeenCalledOnce();
+      recover.mockClear();
+      await run(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE event_history_incarnations SET origin_canonical = false
         WHERE binding_digest = ${binding} AND incarnation_id = ${incarnation}`;
-      }),
-    );
-    const before = await snapshot();
-    await expect(
-      run(recoverNativeMpfForLocalFinalization(owner, state.block)),
-    ).rejects.toThrow(/no longer identifies its canonical history row/);
-    expect(recover).not.toHaveBeenCalled();
-    expect(await snapshot()).toEqual(before);
-  });
+        }),
+      );
+      const before = await snapshot();
+      await expect(
+        run(recoverNativeMpfForLocalFinalization(owner, state.block)),
+      ).rejects.toThrow(/no longer identifies its canonical history row/);
+      expect(recover).not.toHaveBeenCalled();
+      expect(await snapshot()).toEqual(before);
+    });
 
-  it("propagates a synthetic native durable-root refusal without changing SQL", async () => {
-    const state = await fixture();
-    await run(Pending.markSubmitted(state.headerHash, state.txHash));
-    const { recover, owner } = nativeBoundary();
-    recover.mockRejectedValueOnce(
-      new Error("synthetic durable root is neither replay base nor candidate"),
-    );
-    const before = await snapshot();
-    await expect(
-      run(recoverNativeMpfForLocalFinalization(owner, state.block)),
-    ).rejects.toThrow(/synthetic durable root/);
-    expect(recover).toHaveBeenCalledOnce();
-    expect(await snapshot()).toEqual(before);
-  });
-});
+    it("propagates a synthetic native durable-root refusal without changing SQL", async () => {
+      const state = await fixture();
+      await run(Pending.markSubmitted(state.headerHash, state.txHash));
+      const { recover, owner } = nativeBoundary();
+      recover.mockRejectedValueOnce(
+        new Error(
+          "synthetic durable root is neither replay base nor candidate",
+        ),
+      );
+      const before = await snapshot();
+      await expect(
+        run(recoverNativeMpfForLocalFinalization(owner, state.block)),
+      ).rejects.toThrow(/synthetic durable root/);
+      expect(recover).toHaveBeenCalledOnce();
+      expect(await snapshot()).toEqual(before);
+    });
+  },
+);

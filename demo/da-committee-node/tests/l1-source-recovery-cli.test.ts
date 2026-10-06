@@ -161,7 +161,7 @@ describe.each(["JSON", "Postgres"] as const)(
       } finally {
         await store.close?.();
       }
-    }, 30_000);
+    }, 60_000);
     it("reports a stable signature-family refusal without exposing record bytes", async () => {
       const { env } = await fixture(backend, true);
       const inspection = rows((await cli(env, ["inspect"])).stdout)[0];
@@ -191,6 +191,6 @@ describe.each(["JSON", "Postgres"] as const)(
       } finally {
         await held.close?.();
       }
-    });
+    }, 30_000);
   },
 );

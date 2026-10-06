@@ -1,8 +1,12 @@
+import { fileURLToPath } from "node:url";
+
+import { durationShards } from "@al-ft/midgard-test-support/duration-shards";
 import {
   blueprintStampGlobalSetup,
   isolatedForksPool,
-  midgardSourceSsr,
+  midgardSourceEnvironments,
   rawSqlLoaderPlugin,
+  workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
 import { configDefaults, defineConfig } from "vitest/config";
 
@@ -23,6 +27,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/admission-writer.test.ts
  *   tests/canonical-journal-recovery-replacement-siblings.test.ts
  *   tests/da-publication-reconciler-e2e.test.ts        (opt-in)
+ *   tests/event-history-submission-backstop-emulator.test.ts
  *   tests/event-history-submission-emulator.test.ts
  *   tests/event-history-submission-concurrency-emulator.test.ts
  *   tests/event-history-submission-journal.test.ts
@@ -91,24 +96,51 @@ export default defineConfig({
     // Creates and migrates one database per worker shard before any file runs,
     // after refusing a stale onchain/aiken/plutus.json.
     globalSetup: [blueprintStampGlobalSetup, "./tests/global-setup.ts"],
-    reporters: [["default", { summary: false }]],
-    // Vitest 3's filter resolution does not reliably match the eight-way
-    // extension brace used here previously, so keep the overwhelmingly common
-    // TypeScript lane explicit. Otherwise a focused `*.test.ts` invocation can
-    // report "No test files found" and never exercise a release gate.
-    include: [
-      "./tests/**/*.test.ts",
-      "./tests/**/*.test.{js,mjs,cjs,mts,cts,jsx,tsx}",
-    ],
-    exclude: [
-      ...configDefaults.exclude,
-      "./tests/phase4-pipelined-process-summary-verifier.test.mjs",
-    ],
+    // Packs Node CI's `--shard=i/3` by the CI seconds each file took and starts
+    // the longest files first: three attestation-timeout and signed-intent
+    // emulator files run four to five minutes each while most files take
+    // seconds, so a giant that starts last sets a fork's wall time by itself.
+    // The table is keyed by package-relative path, so a file weighs the same in
+    // `midgard-node` and `midgard-node:source`. Each CI shard is its own job
+    // with its own Postgres service, so the per-worker database scheme above
+    // holds inside every shard unchanged. The table refreshes itself from CI;
+    // see `@al-ft/midgard-test-support/duration-shards`.
+    ...durationShards({
+      tablePath: fileURLToPath(
+        new URL("./tests/support/ci-file-durations.json", import.meta.url),
+      ),
+      reporters: [["default", { summary: false }]],
+    }),
+    // Workspace packages load from a per-run source bundle; files that need
+    // them module-by-module run in the `midgard-node:source` project. The
+    // projects inherit everything else here.
+    projects: workspaceBundleProjects(
+      {
+        extends: true,
+        test: {
+          name: "midgard-node",
+          // Vitest 3's filter resolution does not reliably match the
+          // eight-way extension brace used here previously, so keep the
+          // overwhelmingly common TypeScript lane explicit. Otherwise a
+          // focused `*.test.ts` invocation can report "No test files found"
+          // and never exercise a release gate.
+          include: [
+            "./tests/**/*.test.ts",
+            "./tests/**/*.test.{js,mjs,cjs,mts,cts,jsx,tsx}",
+          ],
+          exclude: [
+            ...configDefaults.exclude,
+            "./tests/phase4-pipelined-process-summary-verifier.test.mjs",
+          ],
+        },
+      },
+      { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
+    ),
     testTimeout: 420_000,
     ...(bail === undefined ? {} : { bail }),
     environment: "node",
   },
-  ssr: midgardSourceSsr(),
+  environments: midgardSourceEnvironments(),
   esbuild: {
     target: "es2020",
   },

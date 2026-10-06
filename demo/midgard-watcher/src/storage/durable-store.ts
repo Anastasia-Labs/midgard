@@ -25,6 +25,7 @@ export {
 export {
   journalWatcherProtocolUtxoTransition,
   makeEmptyWatcherDurableStore,
+  makeImmutableWatcherDurableStore,
   makeWatcherDurableStore,
   parseWatcherDurableStore,
 } from "./durable-store.journal-watcher-protocol-utxo-transition.js";
@@ -32,9 +33,12 @@ export {
   compareAndSwapWatcherDurableAtomicSnapshot,
   decodeWatcherDurableStore,
   encodeWatcherDurableStore,
+  inheritWatcherDurableInPlaceComparison,
   migrateWatcherDurableStore,
   readValidatedWatcherDurableStoreCaches,
   readWatcherDurableAtomicSnapshot,
+  readWatcherDurableAtomicSnapshotMatches,
+  registerWatcherDurableInPlaceComparison,
   type WatcherDurableAtomicBackend,
   type WatcherDurableAtomicCommit,
   type WatcherDurableAtomicSnapshot,

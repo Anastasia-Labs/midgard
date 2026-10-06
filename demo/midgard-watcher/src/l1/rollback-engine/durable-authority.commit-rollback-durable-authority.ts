@@ -1,8 +1,8 @@
 import { readWatcherLocalUserEventValidation } from "../../indexers/user-event-indexer.js";
 import {
   compareAndSwapWatcherDurableAtomicSnapshot,
+  makeImmutableWatcherDurableStore,
   makeWatcherDurablePayload,
-  makeWatcherDurableStore,
   type WatcherDurableStore,
   watcherSameCanonicalJson,
 } from "../../storage/durable-store.js";
@@ -231,7 +231,7 @@ export const storeWithAuthenticatedObservations = (
   const chainPointIds = new Set(
     chainPoints.map(({ chainPointId }) => chainPointId),
   );
-  return makeWatcherDurableStore({
+  return makeImmutableWatcherDurableStore({
     deploymentMarker: source.deploymentMarker,
     revision: (BigInt(source.revision) + 1n).toString(),
     records: {
@@ -424,7 +424,7 @@ export const nextAuthenticatedEvidenceWithinRecoveryHorizon = (input: {
         .map(({ chainPointId }) => chainPointId)
         .filter((chainPointId) => !referenced.has(chainPointId)),
     );
-    store = makeWatcherDurableStore({
+    store = makeImmutableWatcherDurableStore({
       deploymentMarker: appended.deploymentMarker,
       revision: appended.revision,
       records: {

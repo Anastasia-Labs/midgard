@@ -241,8 +241,9 @@ const beginWithdraw = async (harness: Harness) => {
   return pool.datum.Withdrawing.unlock_at;
 };
 
-describe.sequential(
+describe(
   "DA bond pool bootstrap through the node attestation path",
+  { concurrent: false },
   () => {
     it(
       "real init leaves the pool Bonded with one bond of backing, and the first block attests to Attested{commitment_hash}",

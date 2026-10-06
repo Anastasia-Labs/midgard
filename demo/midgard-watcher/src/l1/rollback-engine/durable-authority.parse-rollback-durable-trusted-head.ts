@@ -7,6 +7,7 @@ import {
 
 import {
   readWatcherDurableAtomicSnapshot,
+  readWatcherDurableAtomicSnapshotMatches,
   watcherCanonicalJson,
   type WatcherDurableAtomicBackend,
   watcherDurableStoreBytesSha256,
@@ -292,20 +293,37 @@ export const revalidateWatcherRollbackDurableAuthority = async (input: {
     runtime.policy,
     runtime.authenticationKey,
   );
-  const stored = await readWatcherDurableAtomicSnapshot(runtime.backend);
-  if (stored === null) {
+  const matches = await readWatcherDurableAtomicSnapshotMatches(
+    runtime.backend,
+    runtime.encoded,
+  );
+  if (matches === null) {
     throw new Error("watcher rollback durable authority missing");
   }
-  if (
-    stored.sha256 !== runtime.snapshotSha256 ||
-    Buffer.compare(stored.bytes, runtime.encoded) !== 0
-  ) {
+  // Exactly the runtime's bytes, whose digest is its snapshot digest.
+  if (!matches || !runtimeEncodedDigestMatches(runtime)) {
     throw new Error("watcher rollback durable authority bytes changed");
   }
   assertRollbackDurableTrustedHeadMatches(
     trustedHead,
     runtime.snapshot,
-    stored.sha256,
+    runtime.snapshotSha256,
   );
   return input.authority;
+};
+
+// A runtime is immutable and private to this package (it also holds the
+// authentication key), so its bytes-to-digest binding is checked once.
+const runtimesWithVerifiedDigest =
+  new WeakSet<WatcherRollbackDurableAuthorityRuntime>();
+const runtimeEncodedDigestMatches = (
+  runtime: WatcherRollbackDurableAuthorityRuntime,
+): boolean => {
+  if (runtimesWithVerifiedDigest.has(runtime)) return true;
+  if (
+    watcherDurableStoreBytesSha256(runtime.encoded) !== runtime.snapshotSha256
+  )
+    return false;
+  runtimesWithVerifiedDigest.add(runtime);
+  return true;
 };

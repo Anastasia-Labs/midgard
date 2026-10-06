@@ -24,69 +24,19 @@ import {
   RejectCodes,
 } from "@al-ft/midgard-validation";
 import { CML, Data } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 import { expect } from "vitest";
 
 import { encodeData } from "../../../src/index.js";
 import { cekBuiltinFailureProgram } from "./cek-builtin-failure-program.js";
 import { cekSelectionProgram } from "./cek-selection-program.js";
 import { transitionTraceOutRef } from "./header-fixtures.js";
+import { honestTraceFor, spendingKeyFor } from "./native-trace-memo.js";
 import { makeNativeTx } from "./native-tx.js";
 import { outRefCbor } from "./validation-dispute-fixtures.build-forced-validation-dispute-commitments.js";
 import { nativeTraceAssets } from "./validation-dispute-fixtures.native-trace-assets.js";
 import { signedAddressWitnessesCbor } from "./validation-dispute-fixtures.signature-witnesses.js";
 
-/**
- * Mirror control for VM-DEFECT-2 (GOAL_SPEC §3 invariant 9 -- soundness is
- * symmetric). Same block layout, same disputed instruction, same rejection
- * code and same *genuinely non-empty* claimed ledger delta as the
- * challenger-wins fixture; the only difference is that the transaction is
- * actually valid and the operator's committed `Accepted` verdict is honest.
- *
- * The dishonest challenger commits the strongest forgery available: a
- * rejecting terminal whose immutable context, program counter, execution
- * budget and work root are all exactly what `rejected_successor_is_exact`
- * demands (`hash_work_witness(Terminal, pre.program_counter + 1,
- * encode_terminal_rejection_witness(code, pre.prior_ledger_root))`). The one
- * thing it cannot supply is a genuine rejection at the `inputSets`
- * instruction, so the challenger must lose. Removing the delta-clearing clause
- * must not have made honest blocks challengeable.
- */
-/**
- * One honest, valid, signed native transaction (one spend, one output) and
- * its accepted deterministic trace, shared by the honest-operator mirror
- * fixture below and the forged-operator-successor fixtures that dispute one
- * of its steps. `txOrderSeed` keeps the forced-event keys of the fixtures
- * distinct.
- */
-export const buildNativeTransactionTrace = async ({
-  now,
-  addressWitnessCount = 1,
-  requiredSignerHashes = [],
-  txOrderSeed,
-  assetCount = 0,
-  mintAsset = false,
-  plutusSelection = false,
-  cekPlutusMint = false,
-  cekProgramLambdaCount = 1,
-  cekDataGraph = false,
-  redeemerDataCbor,
-  nativeItemWidth = 0,
-  cekDirectBuiltin = false,
-  cekBlsFinal = false,
-  cekMaximumDirect = false,
-  cekSemanticTag,
-  cekBuiltinFailureTag,
-  observerCount = 0,
-  preconditionsRejection,
-  rejectAfterPreconditions = false,
-  resolveMissingInput = false,
-  scriptSourcesRejection,
-  descriptorMaximum = false,
-  cekObserverCount = 0,
-  outputDatumCbor,
-  outputLovelace,
-}: {
+type NativeTransactionTraceParams = {
   readonly now: number;
   readonly addressWitnessCount?: number;
   /** Missing required signers drive the signature rejection fixture. */
@@ -132,10 +82,65 @@ export const buildNativeTransactionTrace = async ({
     | "untaggedObservers"
     | "observerOrder";
   readonly cekObserverCount?: number;
-}) => {
+};
+
+/**
+ * Mirror control for VM-DEFECT-2 (GOAL_SPEC §3 invariant 9 -- soundness is
+ * symmetric). Same block layout, same disputed instruction, same rejection
+ * code and same *genuinely non-empty* claimed ledger delta as the
+ * challenger-wins fixture; the only difference is that the transaction is
+ * actually valid and the operator's committed `Accepted` verdict is honest.
+ *
+ * The dishonest challenger commits the strongest forgery available: a
+ * rejecting terminal whose immutable context, program counter, execution
+ * budget and work root are all exactly what `rejected_successor_is_exact`
+ * demands (`hash_work_witness(Terminal, pre.program_counter + 1,
+ * encode_terminal_rejection_witness(code, pre.prior_ledger_root))`). The one
+ * thing it cannot supply is a genuine rejection at the `inputSets`
+ * instruction, so the challenger must lose. Removing the delta-clearing clause
+ * must not have made honest blocks challengeable.
+ */
+/**
+ * One honest, valid, signed native transaction (one spend, one output) and
+ * its accepted deterministic trace, shared by the honest-operator mirror
+ * fixture below and the forged-operator-successor fixtures that dispute one
+ * of its steps. `txOrderSeed` keeps the forced-event keys of the fixtures
+ * distinct.
+ */
+export const buildNativeTransactionTrace = async (
+  params: NativeTransactionTraceParams,
+) => {
+  const {
+    now,
+    addressWitnessCount = 1,
+    requiredSignerHashes = [],
+    txOrderSeed,
+    assetCount = 0,
+    mintAsset = false,
+    plutusSelection = false,
+    cekPlutusMint = false,
+    cekProgramLambdaCount = 1,
+    cekDataGraph = false,
+    redeemerDataCbor,
+    nativeItemWidth = 0,
+    cekDirectBuiltin = false,
+    cekBlsFinal = false,
+    cekMaximumDirect = false,
+    cekSemanticTag,
+    cekBuiltinFailureTag,
+    observerCount = 0,
+    preconditionsRejection,
+    rejectAfterPreconditions = false,
+    resolveMissingInput = false,
+    scriptSourcesRejection,
+    descriptorMaximum = false,
+    cekObserverCount = 0,
+    outputDatumCbor,
+    outputLovelace,
+  } = params;
   const txOrderId = transitionTraceOutRef(txOrderSeed);
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
-  const spendingKey = CML.PrivateKey.generate_ed25519();
+  const spendingKey = spendingKeyFor(params);
   const spendingAddress = Buffer.from(
     CML.EnterpriseAddress.new(
       0,
@@ -464,9 +469,7 @@ export const buildNativeTransactionTrace = async ({
                   ? null
                   : RejectCodes.InvalidFieldType,
   };
-  const honestTrace = await Effect.runPromise(
-    buildDeterministicValidationMachineTrace(challengerReplayInput),
-  );
+  const honestTrace = await honestTraceFor(challengerReplayInput);
   return {
     txOrderId,
     eventKey,

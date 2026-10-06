@@ -1,5 +1,4 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
+import { midgardBlake2b } from "./codec/blake2b.js";
 import {
   encodeCbor,
   readCborArrayHeader,
@@ -53,7 +52,7 @@ export const hashMidgardNativeScriptScanFrame = (
     throw new Error("Invalid V1 native-script scan frame");
   }
   return Buffer.from(
-    blake2b(
+    midgardBlake2b(
       Buffer.concat([
         FRAME_DOMAIN,
         encodeCbor([

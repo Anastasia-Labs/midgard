@@ -26,6 +26,7 @@ import { fileURLToPath } from "node:url";
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
 import { Effect, Layer, Redacted } from "effect";
+import type { TestProject } from "vitest/node";
 
 import { MigrationRunner } from "../src/database/index.js";
 import { MigrationError } from "../src/database/migrations/runner.js";
@@ -35,6 +36,15 @@ import {
   nativeOwnerBinaryPath,
   nativeOwnerBinaryPresent,
 } from "./helpers/native-owner-binary.js";
+import {
+  createRunJournalDirectory,
+  removeRunJournalDirectory,
+} from "./helpers/run-journal-directory.js";
+import {
+  createRunSharedFixtureDirectory,
+  invalidateRunSharedFixtures,
+  removeRunSharedFixtureDirectory,
+} from "./helpers/run-shared-fixture-directory.js";
 import { applyMidgardNodeTestEnv, testDatabaseNames } from "./test-env.js";
 
 const maintenanceClient = (database: string) =>
@@ -184,7 +194,7 @@ export const provisionMidgardNodeTestDatabaseShards =
     }
   };
 
-export const setup = async (): Promise<void> => {
+const provisionOnce = async (): Promise<void> => {
   buildNativeOwnerBinary();
   // The package's existing opt-out for database-backed tests. Provisioning
   // needs a live Postgres, and most files in this suite do not, so a run that
@@ -194,4 +204,62 @@ export const setup = async (): Promise<void> => {
     return;
   }
   await provisionMidgardNodeTestDatabaseShards();
+};
+
+/**
+ * Vitest runs a root-config global setup once for the root and once more for
+ * every workspace project that extends it (vitest.config.ts splits the suite
+ * into a workspace-bundle and a source project), each through its own module
+ * runner. The provisioning is per run, so later calls in the same Vitest
+ * process join the first one, failures included.
+ */
+const ONCE = Symbol.for("midgard-node/tests/global-setup");
+const SHARED_FIXTURE_DIRECTORY = Symbol.for(
+  "midgard-node/tests/global-setup/shared-fixtures",
+);
+const JOURNAL_DIRECTORY = Symbol.for(
+  "midgard-node/tests/global-setup/journals",
+);
+const RERUN_INVALIDATION = Symbol.for(
+  "midgard-node/tests/global-setup/rerun-invalidation",
+);
+
+type Registry = {
+  [ONCE]?: Promise<void>;
+  [SHARED_FIXTURE_DIRECTORY]?: Promise<string>;
+  [JOURNAL_DIRECTORY]?: Promise<string>;
+  [RERUN_INVALIDATION]?: true;
+};
+
+export const setup = async (project: TestProject): Promise<void> => {
+  const registry = globalThis as Registry;
+  // Created before any worker starts: Vitest copies this process's
+  // environment into each worker when it starts running files.
+  registry[SHARED_FIXTURE_DIRECTORY] ??= createRunSharedFixtureDirectory();
+  registry[JOURNAL_DIRECTORY] ??= createRunJournalDirectory();
+  const [sharedFixtures] = await Promise.all([
+    registry[SHARED_FIXTURE_DIRECTORY],
+    registry[JOURNAL_DIRECTORY],
+  ]);
+  // Watch mode keeps the run directories for the whole session; a rerun
+  // after a source change must not read fixtures the earlier sources
+  // deployed. Every project shares one Vitest instance, so one handler
+  // covers them all.
+  if (registry[RERUN_INVALIDATION] === undefined) {
+    registry[RERUN_INVALIDATION] = true;
+    project.onTestsRerun(() => invalidateRunSharedFixtures(sharedFixtures));
+  }
+  registry[ONCE] ??= provisionOnce();
+  return registry[ONCE];
+};
+
+/** Removes the run's shared deployed fixtures and publication journals; the
+ * later calls for the other workspace projects find nothing left to remove. */
+export const teardown = async (): Promise<void> => {
+  const registry = globalThis as Registry;
+  const directory = registry[SHARED_FIXTURE_DIRECTORY];
+  const journals = registry[JOURNAL_DIRECTORY];
+  if (directory !== undefined)
+    await removeRunSharedFixtureDirectory(await directory);
+  if (journals !== undefined) await removeRunJournalDirectory(await journals);
 };

@@ -3,11 +3,9 @@
   "version": "0.1.0",
   "description": "Manual Midgard fault-proof tooling",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "midgard-source": "./src/index.ts",
-      "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
     "./test-support/raw-l1-terminal-fixture": {
@@ -98,8 +96,9 @@
     "test": "vitest run",
     "test:traced-refusals": "node scripts/run-traced-refusals.mjs",
     "check:builder-exports": "node scripts/check-builder-exports.mjs",
+    "fit:regenerate": "node scripts/regenerate-fit-ledger.mjs",
     "test:cardano-capability-p2-retained-da": "node tests/fixtures/verify-cardano-capability-p2-retained-da-v1.mjs",
-    "build:contrib-raw": "tsup src/index.ts --format esm --dts --clean && tsup src/bin.ts --format esm"
+    "build:contrib-raw": "tsup src/index.ts --format esm --clean && tsup src/bin.ts --format esm"
   },
   "keywords": [
     "cardano",
@@ -115,21 +114,21 @@
     "@al-ft/midgard-sdk": "workspace:*",
     "@al-ft/midgard-validation": "workspace:*",
     "@harmoniclabs/cbor": "2.0.2",
-    "@lucid-evolution/lucid": "0.6.5",
+    "@lucid-evolution/lucid": "0.6.7",
     "effect": "^3.14.22",
     "json-bigint": "npm:@cardanosolutions/json-bigint@1.1.0",
     "typescript": "^5.7.3"
   },
   "devDependencies": {
     "@al-ft/midgard-test-support": "workspace:*",
-    "@lucid-evolution/scalus-uplc": "0.1.3",
-    "@lucid-evolution/uplc": "0.2.23",
+    "@lucid-evolution/scalus-uplc": "0.2.0",
+    "@lucid-evolution/uplc": "0.2.24",
     "@types/json-bigint": "1.0.4",
     "@types/node": "^22.17.0",
     "midgard-node": "workspace:*",
     "midgard-watcher": "workspace:*",
     "rimraf": "^6.0.1",
     "tsup": "^8.4.0",
-    "vitest": "^3.0.7"
+    "vitest": "^5.0.3"
   }
 }

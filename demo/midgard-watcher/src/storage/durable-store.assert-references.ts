@@ -6,6 +6,7 @@ import {
   fail,
   sha256Utf8,
   WATCHER_DURABLE_CACHE_SCHEMA_VERSION,
+  watcherSha256CanonicalJson,
 } from "./durable-store.canonical-json.js";
 import {
   type CacheNamespace,
@@ -282,7 +283,8 @@ export const rebuildWatcherDurableCaches = (
         namespace,
         key: keyOf(record as never),
         index: index.toString(),
-        recordSha256: sha256Utf8(canonicalJson(record as CanonicalJson)),
+        // Same digest; a frozen, validated record reuses its cached digest.
+        recordSha256: watcherSha256CanonicalJson(record),
       })),
     )
     .sort((left, right) => {

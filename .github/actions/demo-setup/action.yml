@@ -17,6 +17,20 @@ inputs:
       plutus.json.deployment.json from the run's `testnet-blueprint` artifact.
       Implies "aiken", since blueprint freshness checks may ask the compiler.
     default: "false"
+  interactive-blueprint:
+    description: >-
+      "true" restores the interactive-emulator blueprint and its build record
+      from the run's `test-blueprint-interactive-emulator` artifact and sets
+      MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS=1, so the suites' setup fails on a
+      stale copy instead of rebuilding it. Implies "aiken".
+    default: "false"
+  traced-blueprints:
+    description: >-
+      "true" restores both verbose-traced blueprints the traced-refusal step
+      reads, with their build records, from the run's
+      `test-blueprint-traced-*` artifacts, under the same
+      MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS=1. Implies "aiken".
+    default: "false"
   install-filter:
     description: Optional `pnpm install --filter` selector (default installs every package).
     default: ""
@@ -37,6 +51,16 @@ runs:
         node-version-file: demo/.nvmrc
         cache: pnpm
         cache-dependency-path: demo/pnpm-lock.yaml
+    # Node keeps the V8 code it compiles for each loaded module here, so the
+    # job's later processes (one per test file, plus pnpm, tsc and the
+    # builds) skip recompiling the same dependencies and workspace bundles.
+    # Each entry is checked against a hash of its module's source and
+    # discarded on a mismatch, so an edited module is always recompiled. It
+    # lives only for the job; within one run it is already warm after the
+    # first fork.
+    - name: Share one compile cache across the job's Node processes
+      shell: bash
+      run: echo "NODE_COMPILE_CACHE=$RUNNER_TEMP/node-compile-cache" >> "$GITHUB_ENV"
     - name: Install dependencies
       shell: bash
       env:
@@ -49,7 +73,7 @@ runs:
           pnpm --dir demo install --frozen-lockfile
         fi
     - name: Download the pinned Aiken fork
-      if: inputs.aiken == 'true' || inputs.blueprint == 'true'
+      if: inputs.aiken == 'true' || inputs.blueprint == 'true' || inputs.interactive-blueprint == 'true' || inputs.traced-blueprints == 'true'
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
         name: aiken-fork
@@ -60,7 +84,7 @@ runs:
     # step and for the scripts that spawn a bare `aiken`; there is no second
     # compiler on PATH to fall through to, which the second check confirms.
     - name: Assert the pinned compiler identity and put it on PATH
-      if: inputs.aiken == 'true' || inputs.blueprint == 'true'
+      if: inputs.aiken == 'true' || inputs.blueprint == 'true' || inputs.interactive-blueprint == 'true' || inputs.traced-blueprints == 'true'
       shell: bash
       run: |
         set -euo pipefail
@@ -70,7 +94,7 @@ runs:
         echo "$RUNNER_TEMP/aiken-fork/bin" >> "$GITHUB_PATH"
         echo "MIDGARD_AIKEN_BIN=$fork" >> "$GITHUB_ENV"
     - name: Assert no stock compiler is reachable
-      if: inputs.aiken == 'true' || inputs.blueprint == 'true'
+      if: inputs.aiken == 'true' || inputs.blueprint == 'true' || inputs.interactive-blueprint == 'true' || inputs.traced-blueprints == 'true'
       shell: bash
       run: |
         set -euo pipefail
@@ -82,6 +106,30 @@ runs:
       with:
         name: testnet-blueprint
         path: onchain/aiken
+    - name: Download the interactive-emulator blueprint and its build record
+      if: inputs.interactive-blueprint == 'true'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: test-blueprint-interactive-emulator
+        path: onchain/aiken/build/interactive-emulator
+    - name: Download the traced preprod-testing blueprint and its build record
+      if: inputs.traced-blueprints == 'true'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: test-blueprint-traced-preprod-testing
+        path: onchain/aiken/build/traced-refusals/preprod-testing
+    - name: Download the traced preprod-emulator-testing blueprint and its build record
+      if: inputs.traced-blueprints == 'true'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: test-blueprint-traced-preprod-emulator-testing
+        path: onchain/aiken/build/traced-refusals/preprod-emulator-testing
+    # The suites never rebuild what an earlier job built: a restored copy that
+    # does not match the checkout fails them.
+    - name: Forbid rebuilding the restored test blueprints
+      if: inputs.interactive-blueprint == 'true' || inputs.traced-blueprints == 'true'
+      shell: bash
+      run: echo "MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS=1" >> "$GITHUB_ENV"
     - name: Build prerequisite workspace packages
       if: inputs.prebuild != ''
       shell: bash

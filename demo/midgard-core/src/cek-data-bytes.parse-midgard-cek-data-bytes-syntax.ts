@@ -1,6 +1,6 @@
 import { midgardCekDataBytesCborLength } from "./cek-semantic.js";
 import {
-  encodeMidgardCekSourceBlobControl,
+  encodeValidatedMidgardCekSourceBlobControl,
   isWellFormedMidgardCekSourceBlobControl,
   type MidgardCekSourceBlobControl,
   type MidgardCekSourceBlobSpan,
@@ -185,8 +185,15 @@ export const parseMidgardCekDataBytesSyntax = ({
   }
 };
 
-export const isWellFormedMidgardCekDataBytesControl = (
+/**
+ * `blobValidated` is true only inside this package's own call chains, when the
+ * source-blob child was just validated by its own machine (an entry check of
+ * this control, an initial blob, or the blob's exit check). Every exported
+ * entry point validates with it false.
+ */
+const wellFormedBytes = (
   control: MidgardCekDataBytesControl,
+  blobValidated: boolean,
 ): boolean => {
   try {
     if (
@@ -215,7 +222,8 @@ export const isWellFormedMidgardCekDataBytesControl = (
     if (
       canonicalCborLength(control.bytesLength) !== control.sourceLength ||
       control.blob === null ||
-      !isWellFormedMidgardCekSourceBlobControl(control.blob) ||
+      (!blobValidated &&
+        !isWellFormedMidgardCekSourceBlobControl(control.blob)) ||
       control.blob.sourceStart !== 0 ||
       control.blob.sourceLength !== control.bytesLength
     ) {
@@ -229,6 +237,19 @@ export const isWellFormedMidgardCekDataBytesControl = (
     return false;
   }
 };
+
+export const isWellFormedMidgardCekDataBytesControl = (
+  control: MidgardCekDataBytesControl,
+): boolean => wellFormedBytes(control, false);
+
+/**
+ * Package-internal (not re-exported by the `cek-data-bytes` facade): the bytes
+ * checks of `isWellFormedMidgardCekDataBytesControl` for a control whose blob
+ * child the caller has just validated in the same synchronous call chain.
+ */
+export const isWellFormedMidgardCekDataBytesControlWithValidatedBlob = (
+  control: MidgardCekDataBytesControl,
+): boolean => wellFormedBytes(control, true);
 
 export const initialMidgardCekDataBytesControl = ({
   sourceStart,
@@ -279,7 +300,7 @@ const optionalBlobDataCbor = (
     ? Buffer.from("d87a80", "hex")
     : Buffer.concat([
         Buffer.from("d8799f", "hex"),
-        encodeMidgardCekSourceBlobControl(blob),
+        encodeValidatedMidgardCekSourceBlobControl(blob),
         Buffer.from([0xff]),
       ]);
 
@@ -289,7 +310,18 @@ export const encodeMidgardCekDataBytesControl = (
   if (!isWellFormedMidgardCekDataBytesControl(control)) {
     throw new Error("Invalid V1 CEK Data bytes control");
   }
-  return encodeCborArrayRaw([
+  return encodeValidatedMidgardCekDataBytesControl(control);
+};
+
+/**
+ * Package-internal (not re-exported by the `cek-data-bytes` facade): for a
+ * control the caller has already validated in the same synchronous call chain,
+ * either directly or as the nested child of a validated parent control.
+ */
+export const encodeValidatedMidgardCekDataBytesControl = (
+  control: MidgardCekDataBytesControl,
+): Buffer =>
+  encodeCborArrayRaw([
     encodeCbor(BigInt(MIDGARD_CEK_DATA_BYTES_VERSION)),
     encodeCbor(BigInt(control.stage)),
     encodeCbor(BigInt(control.sourceStart)),
@@ -297,7 +329,6 @@ export const encodeMidgardCekDataBytesControl = (
     encodeCbor(BigInt(control.bytesLength)),
     optionalBlobDataCbor(control.blob),
   ]);
-};
 
 export const rawContentPosition = ({
   control,

@@ -1,11 +1,10 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
 import {
   emptyMidgardCekDataListSummary,
   emptyMidgardCekDataPairSummary,
   type MidgardCekDataSequenceSummary,
   type MidgardCekDataSummary,
 } from "./cek-semantic.js";
+import { midgardBlake2b } from "./codec/blake2b.js";
 import { encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
@@ -66,9 +65,12 @@ export const MidgardCekDataFrameTags = Object.freeze({
 
 const hash32 = (domain: Bytes, preimage: Bytes): Hash32 =>
   ensureHash32(
-    blake2b(Buffer.concat([Buffer.from(domain), Buffer.from(preimage)]), {
-      dkLen: 32,
-    }),
+    midgardBlake2b(
+      Buffer.concat([Buffer.from(domain), Buffer.from(preimage)]),
+      {
+        dkLen: 32,
+      },
+    ),
     "cek_data_frame_hash",
   );
 

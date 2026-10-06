@@ -38,7 +38,11 @@ export {
   decisionEffectId,
   parseDecisionOutboxRecord,
 } from "./store.parse-decision-outbox-record.js";
-export { jsonReplacer, jsonReviver } from "./store.parse-stored-record-map.js";
+export {
+  jsonReplacer,
+  jsonReviver,
+  parseStoredJson,
+} from "./store.parse-stored-record-map.js";
 export {
   mergeL1SourceState,
   mergeQuarantinedL1SourceState,

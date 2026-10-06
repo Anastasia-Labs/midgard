@@ -1,6 +1,4 @@
-import { spawn } from "node:child_process";
 import {
-  mkdtempSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -13,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 import * as watcher from "midgard-watcher";
 import { build } from "tsup";
-import { afterEach, beforeAll, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 
 import { HistoryConfigurationRefusal } from "../src/devnet-stack/history-configuration-refusal.js";
 import { historyProofDeadline } from "../src/devnet-stack/history-proof-deadline.js";
@@ -25,6 +23,7 @@ import {
 } from "../src/devnet-stack/history-signed-admission.js";
 import { makeLayout, type RunEnv } from "../src/devnet-stack/layout.js";
 import { releasePaths } from "../src/devnet-stack/watcher-release.js";
+import { makeHistoryBindingFixturePool } from "./helpers/history-binding-fixture-pool.js";
 
 const loader = vi.hoisted(() => {
   const state: {
@@ -88,7 +87,7 @@ beforeAll(async () => {
   await build({
     config: join(root, "tsup.config.ts"),
     entry: ["tests/helpers/history-binding-fixture.ts"],
-    outDir: "dist/history-binding-fixture",
+    outDir: ".probe-dist/history-binding-fixture",
     clean: true,
     target: "node22",
     noExternal: [
@@ -97,68 +96,19 @@ beforeAll(async () => {
     ],
   });
 }, 30000);
-const command = (directory: string) =>
-  new Promise<void>((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      [
-        join(root, "dist/history-binding-fixture/history-binding-fixture.js"),
-        directory,
-      ],
-      { cwd: root, detached: true, stdio: ["ignore", "pipe", "pipe"] },
-    );
-    const pid = child.pid;
-    const signal = (kind: NodeJS.Signals) => {
-      if (pid === undefined) return;
-      try {
-        process.kill(-pid, kind);
-      } catch {
-        /* Already joined. */
-      }
-    };
-    let output = "";
-    let errors = "";
-    let failure: Error | undefined;
-    let killing: ReturnType<typeof setTimeout> | undefined;
-    const stop = (reason: string) => {
-      failure ??= Error(reason);
-      signal("SIGTERM");
-      killing ??= setTimeout(() => signal("SIGKILL"), 1000);
-    };
-    const timer = setTimeout(
-      () => stop("owned fixture exceeded bounded deadline"),
-      20000,
-    );
-    child.stdout.on("data", (bytes: Buffer) => {
-      output += bytes.toString("utf8");
-      if (output.length + errors.length > 1_048_576)
-        stop("owned fixture output exceeded bound");
-    });
-    child.stderr.on("data", (bytes: Buffer) => {
-      errors += bytes.toString("utf8");
-      if (output.length + errors.length > 1_048_576)
-        stop("owned fixture output exceeded bound");
-    });
-    child.once("error", (error) => {
-      failure = error;
-    });
-    child.once("close", (code) => {
-      clearTimeout(timer);
-      clearTimeout(killing);
-      signal("SIGKILL");
-      if (failure !== undefined) reject(failure);
-      else if (
-        code !== 0 ||
-        !output.includes("PASS synthetic signed history public evidence")
-      )
-        reject(Error(`owned signed fixture failed: ${errors}`));
-      else resolve();
-    });
-  });
+const pool = makeHistoryBindingFixturePool({
+  entry: join(
+    root,
+    ".probe-dist/history-binding-fixture/history-binding-fixture.js",
+  ),
+  cwd: root,
+  prefix: "/var/tmp/codex-rel-history-binding-",
+  batch: 8,
+});
+afterAll(() => pool.close());
 const setup = async () => {
-  const directory = mkdtempSync("/var/tmp/codex-rel-history-binding-");
+  const directory = await pool.next();
   closes.push(async () => rmSync(directory, { recursive: true, force: true }));
-  await command(directory);
   const layout = makeLayout(directory);
   const run: RunEnv = {
     runId: "synthetic-history-binding",

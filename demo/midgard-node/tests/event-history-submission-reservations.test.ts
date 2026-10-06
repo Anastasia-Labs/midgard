@@ -1,87 +1,26 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
-import type * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { CML } from "@lucid-evolution/lucid";
-import { Effect, Option } from "effect";
+import { PgClient } from "@effect/sql-pg";
+import { Clock, Effect, Option, Redacted } from "effect";
 import { describe, expect, it } from "vitest";
 
 import * as Journal from "../src/database/eventHistorySubmissions.js";
 import { DatabaseError } from "../src/database/utils/common.js";
-import type { Database } from "../src/services/database.js";
+import {
+  attempt,
+  hash,
+  holdings,
+  input,
+  leftBehind,
+  run,
+  untilAdvisoryLock,
+} from "./event-history-submission-reservations.fixture.js";
+import { testDatabaseName } from "./test-env.js";
 import { provideDatabaseLayers } from "./utils.js";
-
-const hash = (seed: string) => createHash("sha256").update(seed).digest("hex");
-
-const input = (): Omit<Journal.Row, "revision"> => {
-  const nonce = hash(randomUUID());
-  return {
-    submission_id: `reservation-${randomUUID()}`,
-    kind: "Deposit",
-    policy_id: "aa".repeat(28),
-    wallet_address: "reservation-test-wallet",
-    intent_hash: "bb".repeat(32),
-    nonce_out_ref: `${nonce}#0`,
-    request: {
-      payloadCbor: "d87980",
-      reclaimAuthCbor: "d87980",
-      assets: { lovelace: "25000000" },
-      structuralLovelace: "2500000",
-      structuralRefundKey: "cc".repeat(28),
-      nonce: {
-        txHash: nonce,
-        outputIndex: 0,
-        address: "reservation-test-wallet",
-        assets: { lovelace: "30000000" },
-      },
-    },
-    checkpoint: { requestHash: "dd".repeat(32) },
-  };
-};
-
-/** A completed body spending `txHashes`#0, with a TTL slot when given. */
-const attempt = (
-  txHashes: readonly string[],
-  ttl?: number,
-  phase: SDK.EventHistorySubmissionAttempt["phase"] = "Admission",
-): SDK.EventHistorySubmissionAttempt => {
-  const transactionCbor = `84a${ttl === undefined ? 3 : 4}008${txHashes.length}${txHashes
-    .map((txHash) => `825820${txHash}00`)
-    .join("")}01800200${
-    ttl === undefined ? "" : `031a${ttl.toString(16).padStart(8, "0")}`
-  }a0f5f6`;
-  return {
-    phase,
-    outputIndex: 0,
-    transactionCbor,
-    txHash: CML.hash_transaction(
-      CML.Transaction.from_cbor_hex(transactionCbor).body(),
-    ).to_hex(),
-  };
-};
 
 const pending = (row: Journal.Row, txHashes: readonly string[], ttl?: number) =>
   ({ ...row.checkpoint, pending: attempt(txHashes, ttl) }) as const;
-
-const holdings = (submissionId: string) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<{ out_ref: string }>`SELECT out_ref
-      FROM event_history_submission_inputs WHERE submission_id = ${submissionId}`;
-    return rows.map((row) => row.out_ref).sort();
-  });
-
-/** A reservation row as the code before release left it behind. */
-const leftBehind = (outRef: string, submissionId: string) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`INSERT INTO event_history_submission_inputs (out_ref, submission_id)
-      VALUES (${outRef}, ${submissionId})`;
-  });
-
-const run = <E>(
-  effect: Effect.Effect<void, E, SqlClient.SqlClient | Database>,
-) => Effect.runPromise(provideDatabaseLayers(effect));
 
 describe("history submission input reservations", () => {
   it("holds a pending attempt's inputs and releases them once it settles, keeping the nonce", async () => {
@@ -298,7 +237,7 @@ describe("history submission input reservations", () => {
     }
   });
 
-  it("hides only inputs their holder can no longer spend from nonce and funding selection", async () => {
+  it("hides only inputs their holder can no longer spend from nonce selection", async () => {
     const [live, expired, left] = [1, 2, 3].map(() => hash(randomUUID()));
     await run(
       Effect.gen(function* () {
@@ -372,6 +311,157 @@ describe("history submission input reservations", () => {
           expect(yield* holdings(taker.submission_id)).toEqual([outRef]);
           expect(yield* holdings(holder.submission_id)).not.toContain(outRef);
         }
+      }),
+    );
+  });
+
+  it("holds another submission's checkpoint while a nonce is chosen, then refuses it that nonce", async () => {
+    const [chosen, funder] = [input(), input()];
+    const funderRow = await Effect.runPromise(
+      provideDatabaseLayers(Journal.reserve(funder)),
+    );
+    // The funder builds with the chosen nonce, read as unreserved, and saves
+    // after the chooser read it and before the chooser reserves it.
+    let saving: Promise<unknown> | undefined;
+    await run(
+      Effect.asVoid(
+        Journal.choosingNonce(
+          chosen.wallet_address,
+          Effect.gen(function* () {
+            saving = Effect.runPromise(
+              provideDatabaseLayers(
+                Effect.either(
+                  Journal.saveCheckpoint(
+                    funderRow,
+                    pending(funderRow, [chosen.request.nonce.txHash]),
+                  ),
+                ),
+              ),
+            );
+            yield* Effect.promise(() => untilAdvisoryLock(false));
+            return yield* Journal.reserve(chosen);
+          }),
+        ),
+      ),
+    );
+    const saved = await saving!;
+    expect(saved).toMatchObject({
+      _tag: "Left",
+      left: { _tag: "HistoryInputReservedError", outRef: chosen.nonce_out_ref },
+    });
+    await run(
+      Effect.gen(function* () {
+        for (const { submission_id, nonce_out_ref } of [chosen, funder])
+          expect(yield* holdings(submission_id)).toEqual([nonce_out_ref]);
+      }),
+    );
+  });
+
+  it("frees the wallet from a chooser that outlasts its bound on the wall clock, whatever the caller's clock, and fails having reserved nothing", async () => {
+    const [chosen, saver] = [input(), input()];
+    const saverRow = await Effect.runPromise(
+      provideDatabaseLayers(Journal.reserve(saver)),
+    );
+    const [order, started] = [[] as string[], Date.now()];
+    // The caller's clock never advances, as a test clock nobody adjusts.
+    const frozen: Clock.Clock = {
+      [Clock.ClockTypeId]: Clock.ClockTypeId,
+      unsafeCurrentTimeMillis: () => started,
+      currentTimeMillis: Effect.succeed(started),
+      unsafeCurrentTimeNanos: () => BigInt(started) * 1_000_000n,
+      currentTimeNanos: Effect.succeed(BigInt(started) * 1_000_000n),
+      sleep: () => Effect.never,
+    };
+    const choosing = Effect.runPromise(
+      provideDatabaseLayers(
+        Effect.either(
+          Journal.choosingNonce(
+            chosen.wallet_address,
+            // A hung provider call: it outlasts the bound on the wall clock.
+            Effect.zipRight(
+              Effect.promise(
+                () => new Promise((resolve) => setTimeout(resolve, 30_000)),
+              ),
+              Effect.zipRight(
+                Effect.sync(() => order.push("chose")),
+                Journal.reserve(chosen),
+              ),
+            ),
+            500,
+          ),
+        ).pipe(Effect.withClock(frozen)),
+      ),
+    );
+    await untilAdvisoryLock(true);
+    await run(
+      Effect.asVoid(
+        Journal.saveCheckpoint(
+          saverRow,
+          pending(saverRow, [hash(randomUUID())]),
+        ),
+      ),
+    );
+    // The save waited only for the bound, never for the chooser's call.
+    expect(Date.now() - started).toBeLessThan(30_000);
+    expect(await choosing).toMatchObject({
+      _tag: "Left",
+      left: { _tag: "DatabaseError" },
+    });
+    expect(order).toEqual([]);
+    expect(
+      Option.isNone(
+        await Effect.runPromise(
+          provideDatabaseLayers(Journal.retrieve(chosen.submission_id)),
+        ),
+      ),
+    ).toBe(true);
+  }, 60_000);
+
+  it("sets a nonce choice's idle-in-transaction timeout to the bound plus a margin, for that transaction only", async () => {
+    const { wallet_address } = input();
+    const idleTimeout = Effect.flatMap(
+      SqlClient.SqlClient,
+      (sql) => sql<{ pid: number; timeout: string }>`SELECT pg_backend_pid()
+        AS pid, current_setting('idle_in_transaction_session_timeout') AS timeout`,
+    );
+    // One connection, so every read is on the session that made the choice.
+    const [before, during, after] = await Effect.runPromise(
+      Effect.provide(
+        Effect.all([
+          idleTimeout,
+          Journal.choosingNonce(wallet_address, idleTimeout),
+          idleTimeout,
+        ]),
+        PgClient.layer({
+          host: process.env.POSTGRES_HOST ?? "127.0.0.1",
+          port: Number(process.env.POSTGRES_PORT ?? "5433"),
+          username: process.env.POSTGRES_USER ?? "postgres",
+          password: Redacted.make(process.env.POSTGRES_PASSWORD ?? "postgres"),
+          database: testDatabaseName(),
+          maxConnections: 1,
+        }),
+      ),
+    );
+    expect(new Set([before, during, after].map(([row]) => row!.pid)).size).toBe(
+      1,
+    );
+    expect(during[0]!.timeout).toBe("90s");
+    expect(before[0]!.timeout).not.toBe("90s");
+    expect(after[0]!.timeout).toBe(before[0]!.timeout);
+  });
+
+  it("names every nonce of the wallet's submissions, and none of their pending inputs", async () => {
+    const fund = hash(randomUUID());
+    await run(
+      Effect.gen(function* () {
+        const rows = [
+          yield* Journal.reserve(input()),
+          yield* Journal.reserve(input()),
+        ];
+        yield* Journal.saveCheckpoint(rows[0]!, pending(rows[0]!, [fund]));
+        const nonces = yield* Journal.reservedNonces(rows[0]!.wallet_address);
+        for (const row of rows) expect(nonces).toContain(row.nonce_out_ref);
+        expect(nonces).not.toContain(`${fund}#0`);
       }),
     );
   });

@@ -1,9 +1,8 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
 import {
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   midgardBoundedItemChunkCount,
 } from "./bounded-item.js";
+import { midgardBlake2b } from "./codec/blake2b.js";
 import {
   readCborArrayHeader,
   readCborBytesHeader,
@@ -177,9 +176,12 @@ export const hashMidgardNativeScriptDecodingControl = (
   controlCbor: Uint8Array,
 ): Buffer =>
   Buffer.from(
-    blake2b(Buffer.concat([CONTROL_DOMAIN_BYTES, Buffer.from(controlCbor)]), {
-      dkLen: 32,
-    }),
+    midgardBlake2b(
+      Buffer.concat([CONTROL_DOMAIN_BYTES, Buffer.from(controlCbor)]),
+      {
+        dkLen: 32,
+      },
+    ),
   );
 
 /// Twin of `engine.ScanWindowV1`: `bytes[0]` sits at absolute item offset

@@ -1,11 +1,10 @@
 import {
-  advanceMidgardCekDataBytes,
-  nextMidgardCekDataBytesSpan,
+  advanceValidatedMidgardCekDataBytes,
+  nextValidatedMidgardCekDataBytesSpan,
 } from "./cek-data-bytes.content-plan.js";
 import {
   initialMidgardCekDataBytesControl,
   initialMidgardCekDataBytesMeasureControl,
-  isWellFormedMidgardCekDataBytesControl,
   MidgardCekDataBytesStages,
   type MidgardCekDataBytesTrace,
   type MidgardCekDataBytesTraceStep,
@@ -29,8 +28,10 @@ export const buildMidgardCekDataBytesTrace = ({
         });
   const steps: MidgardCekDataBytesTraceStep[] = [];
   let control = initial;
+  // Every control here is the validated initial control or a successor that
+  // passed the machine's exit check.
   while (control.stage !== MidgardCekDataBytesStages.Terminal) {
-    const span = nextMidgardCekDataBytesSpan(control, sourceEnd);
+    const span = nextValidatedMidgardCekDataBytesSpan(control, sourceEnd);
     const sourceBytes =
       span === null
         ? null
@@ -38,12 +39,12 @@ export const buildMidgardCekDataBytesTrace = ({
             span.absoluteStart - sourceStart,
             span.absoluteStart - sourceStart + span.length,
           );
-    const next = advanceMidgardCekDataBytes({
+    const next = advanceValidatedMidgardCekDataBytes({
       control,
       sourceBytes,
       sourceEnd,
     });
-    if (next === null || !isWellFormedMidgardCekDataBytesControl(next)) {
+    if (next === null) {
       throw new Error("V1 CEK Data bytes trace failed closed");
     }
     steps.push({ control, sourceBytes, next });

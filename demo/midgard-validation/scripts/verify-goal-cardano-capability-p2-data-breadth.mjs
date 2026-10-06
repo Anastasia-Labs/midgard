@@ -21,7 +21,7 @@ const child = spawn(
     "run",
     REQUIRED_SUITE,
     "--pool=forks",
-    "--poolOptions.forks.singleFork=true",
+    "--maxWorkers=1",
     "--testTimeout=360000",
     "--hookTimeout=60000",
     "--reporter=json",

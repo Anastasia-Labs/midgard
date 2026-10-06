@@ -69,9 +69,21 @@ test("devnet generation supplies a private fresh run directory and verifies prod
     script,
     '#!/bin/sh\nset -eu\n: "${MIDGARD_PHASE4_RUN_DIR:?MIDGARD_PHASE4_RUN_DIR is required}"\ntest ! -e "$MIDGARD_PHASE4_RUN_DIR"\nmkdir "$MIDGARD_PHASE4_RUN_DIR"\nprintf config > "$MIDGARD_PHASE4_RUN_DIR/config.json"\n',
   );
-  const receipt = await generateDevnet(root, "directory-check", {
-    env: { ...process.env, MIDGARD_PHASE4_RUN_DIR: root },
-  });
+  // The run id fixes the allocation's ports, which another process on this
+  // machine may hold; the generator refuses those, so try another run id.
+  let runId;
+  let receipt;
+  for (let attempt = 0; receipt === undefined; attempt++) {
+    runId = `directory-check-${attempt.toString()}`;
+    try {
+      receipt = await generateDevnet(root, runId, {
+        env: { ...process.env, MIDGARD_PHASE4_RUN_DIR: root },
+      });
+    } catch (error) {
+      if (attempt >= 20 || !/is unavailable: EADDRINUSE/u.test(error.message))
+        throw error;
+    }
+  }
   assert.equal(receipt.status, "passed", receipt.reason);
   const directory = receipt.allocation.env.MIDGARD_PHASE4_RUN_DIR;
   assert.notEqual(
@@ -80,7 +92,7 @@ test("devnet generation supplies a private fresh run directory and verifies prod
     "ambient run directories must not select an existing deployment",
   );
   assert.equal(verifyReceipt(root, receipt.path).status, "passed");
-  const again = await generateDevnet(root, "directory-check");
+  const again = await generateDevnet(root, runId);
   assert.equal(again.status, "passed", again.reason);
   assert.notEqual(again.allocation.env.MIDGARD_PHASE4_RUN_DIR, directory);
   writeFileSync(resolve(directory, "config.json"), "tampered");
@@ -108,6 +120,19 @@ test("reproduction refuses a native output deleted after its successful build", 
     writeFileSync(resolve(root, path), contents);
   };
   put("demo/package.json", JSON.stringify({ packageManager: "pnpm@9.15.4" }));
+  // The fake corepack below runs the fixture compiler for every recipe, so
+  // the recipe must say so: the trace binds each command the recipe names.
+  put(
+    "demo/example/package.json",
+    JSON.stringify({
+      name: "example",
+      type: "module",
+      scripts: {
+        build: "guarded",
+        "build:contrib-raw": "node ../scripts/fixture-compiler.mjs",
+      },
+    }),
+  );
   for (const name of ["midgard-node", "midgard-watcher"]) {
     put(
       `demo/${name}/package.json`,
@@ -115,7 +140,7 @@ test("reproduction refuses a native output deleted after its successful build", 
         name,
         scripts: {
           build: "guarded",
-          "build:contrib-raw": "fixture compiler",
+          "build:contrib-raw": "node ../scripts/fixture-compiler.mjs",
           "native:mpf-owner:build:contrib-raw": "fixture compiler",
           "native:build:contrib-raw": "fixture compiler",
         },
@@ -143,8 +168,9 @@ test("reproduction refuses a native output deleted after its successful build", 
     "check-native.mjs",
     "import {rmSync} from 'node:fs';if(process.env.CONTRIB_FIXTURE_DROP_NATIVE==='1')rmSync('demo/midgard-watcher/dist/native',{recursive:true});\n",
   );
+  // A shared build input, so the traced compiler reads only bound files.
   put(
-    "fixture-compiler.mjs",
+    "demo/scripts/fixture-compiler.mjs",
     "import {mkdirSync,writeFileSync} from 'node:fs';const recipe=process.argv[2];const output=recipe==='build:contrib-raw'?'dist/index.js':recipe==='native:build:contrib-raw'?'dist/native/midgard-chain-sync':'native/mpf-event-flat-wasm/target/release/architecture-g-owner';mkdirSync(output.slice(0,output.lastIndexOf('/')),{recursive:true});writeFileSync(output,'fixture output');\n",
   );
   put(
@@ -153,7 +179,7 @@ test("reproduction refuses a native output deleted after its successful build", 
   );
   writeFileSync(
     resolve(tools, "corepack"),
-    '#!/bin/sh\nset -eu\nif [ "$2" = run ] && [ "$3" = build ]; then exec node ../guarded-build.mjs; fi\nif [ "$2" = run ]; then exec node ../../fixture-compiler.mjs "$3"; fi\n',
+    '#!/bin/sh\nset -eu\nshift\nwhile [ "${1#--config.}" != "$1" ]; do shift; done\nif [ "$1" = run ] && [ "$2" = build ]; then exec node ../guarded-build.mjs; fi\nif [ "$1" = run ]; then exec node ../scripts/fixture-compiler.mjs "$2"; fi\n',
     { mode: 0o755 },
   );
   for (const name of ["go", "cargo", "rustc"]) {

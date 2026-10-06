@@ -5,24 +5,20 @@
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "exports": {
     "./tests/*": {
       "midgard-source": "./tests/*.ts"
     },
     ".": {
       "midgard-source": "./src/index.ts",
-      "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
     "./public-da-client": {
       "midgard-source": "./src/public-da-client.ts",
-      "types": "./dist/public-da-client.d.ts",
       "import": "./dist/public-da-client.js"
     },
     "./native-chain-sync": {
       "midgard-source": "./src/l1/native-chain-sync.ts",
-      "types": "./dist/l1/native-chain-sync.d.ts",
       "import": "./dist/l1/native-chain-sync.js"
     }
   },
@@ -47,7 +43,7 @@
     "start": "env MALLOC_MMAP_THRESHOLD_=131072 node dist/cli.js start",
     "test": "env MALLOC_MMAP_THRESHOLD_=131072 vitest run",
     "typecheck": "tsc --noEmit",
-    "build:contrib-raw": "tsup src/index.ts src/cli.ts src/public-da-client.ts src/l1/native-chain-sync.ts --format esm --dts"
+    "build:contrib-raw": "tsup src/index.ts src/cli.ts src/public-da-client.ts src/l1/native-chain-sync.ts --format esm"
   },
   "dependencies": {
     "@al-ft/midgard-core": "workspace:*",
@@ -59,8 +55,8 @@
     "@libp2p/peer-id": "6.0.11",
     "@libp2p/ping": "3.1.7",
     "@libp2p/tcp": "11.0.22",
-    "@lucid-evolution/lucid": "0.6.5",
-    "@lucid-evolution/scalus-uplc": "0.1.3",
+    "@lucid-evolution/lucid": "0.6.7",
+    "@lucid-evolution/scalus-uplc": "0.2.0",
     "@multiformats/multiaddr": "13.0.3",
     "@noble/hashes": "^2.0.1",
     "effect": "^3.14.22",
@@ -75,7 +71,7 @@
     "rimraf": "^6.0.1",
     "tsup": "^8.4.0",
     "typescript": "^5.7.3",
-    "vitest": "^3.0.7"
+    "vitest": "^5.0.3"
   },
   "engines": {
     "node": ">=22.16.0 <23"

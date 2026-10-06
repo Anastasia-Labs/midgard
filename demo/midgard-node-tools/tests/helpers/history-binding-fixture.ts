@@ -17,13 +17,8 @@ const write = (path: string, value: unknown) => {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(value));
 };
-const run = async () => {
-  const root = process.argv[2];
-  if (root === undefined) throw Error("synthetic fixture root absent");
+const generate = async (root: string, portOffset: number) => {
   const layout = makeLayout(root);
-  const portOffset = Number(process.argv[3] ?? 0);
-  if (!Number.isSafeInteger(portOffset) || portOffset < 0)
-    throw Error("synthetic fixture offset invalid");
   const run: RunEnv = {
     runId: "synthetic-history-binding",
     composeProject: "synthetic-history",
@@ -114,6 +109,26 @@ const run = async () => {
   watcher.parseWatcherProcessConfig(config);
   write(layout.watcherRuntimeConfig, config.watcherConfig);
   write(layout.watcherProcessConfig, config);
+};
+// `<root> [portOffset]` writes one run directory. `--roots <root>...` writes
+// several independent run directories (offset 0) in one process, so a test
+// file pays the module load once per batch rather than once per directory.
+const run = async () => {
+  if (process.argv[2] === "--roots") {
+    const roots = process.argv.slice(3);
+    if (roots.length === 0) throw Error("synthetic fixture root absent");
+    for (const root of roots) {
+      await generate(root, 0);
+      console.log(`PASS synthetic signed history public evidence ${root}`);
+    }
+    return;
+  }
+  const root = process.argv[2];
+  if (root === undefined) throw Error("synthetic fixture root absent");
+  const portOffset = Number(process.argv[3] ?? 0);
+  if (!Number.isSafeInteger(portOffset) || portOffset < 0)
+    throw Error("synthetic fixture offset invalid");
+  await generate(root, portOffset);
   console.log("PASS synthetic signed history public evidence");
 };
 void run().catch((error) => {

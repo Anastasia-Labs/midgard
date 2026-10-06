@@ -1,11 +1,14 @@
 import {
+  layerMethod,
+  type MethodLayer,
+} from "@al-ft/midgard-test-support/method-layer";
+import {
   CML,
   coreToTxOutput,
   Emulator,
   type UTxO,
   utxoToCore,
 } from "@lucid-evolution/lucid";
-import { vi } from "vitest";
 
 import {
   computeFraudProofRawL1PointId,
@@ -36,6 +39,26 @@ const raw = (
   datumCbor: output.datum()?.as_datum()?.to_canonical_cbor_hex() ?? null,
   referenceScriptCbor: output.script_ref()?.to_canonical_cbor_hex() ?? null,
 });
+/**
+ * Layers a pass-through observer over `Emulator.prototype.submitTx`. It sees
+ * each transaction the real emulator accepted, after any layer installed
+ * before it (such as {@link recordCrossBlockRawEmulator}'s). Restore it before
+ * the layers beneath it.
+ */
+export const observeEmulatorSubmissions = (
+  observe: (txHash: string, cbor: string) => void,
+): MethodLayer =>
+  layerMethod(
+    Emulator.prototype,
+    "submitTx",
+    (next) =>
+      async function (this: Emulator, cbor: string) {
+        const txHash = await next.call(this, cbor);
+        observe(txHash, cbor);
+        return txHash;
+      },
+  );
+
 export const recordCrossBlockRawEmulator = () => {
   const rows: Omit<
     FraudProofRawL1Transaction,
@@ -53,64 +76,74 @@ export const recordCrossBlockRawEmulator = () => {
       unixTimeMs: number;
     }>
   >();
-  const original = Emulator.prototype.submitTx;
   const recorded: { emulator?: Emulator } = {};
+  // Layers, not vi.spyOn: a caller may stack its own observer on submitTx
+  // (see @al-ft/midgard-test-support/method-layer), and both must see every
+  // real submission.
   // Match the raw authority's canonical view when prerequisite discovery reads
   // a checkpoint through Lucid while its spending transaction is in the mempool.
-  const outRefReads = vi
-    .spyOn(Emulator.prototype, "getUtxosByOutRef")
-    .mockImplementation(async function (this: Emulator, outRefs) {
-      return outRefs.flatMap(({ txHash, outputIndex }) => {
-        const entry = this.ledger[txHash + outputIndex];
-        return entry === undefined ? [] : [entry.utxo];
-      });
-    });
-  const spy = vi
-    .spyOn(Emulator.prototype, "submitTx")
-    .mockImplementation(async function (this: Emulator, cbor: string) {
-      const tx = CML.Transaction.from_cbor_hex(cbor);
-      const body = tx.body();
-      const resolve = (inputs: CML.TransactionInputList | undefined) => {
-        const result: FraudProofRawL1Utxo[] = [];
-        for (let i = 0; i < (inputs?.len() ?? 0); i++) {
-          const input = inputs!.get(i);
-          const hash = input.transaction_id().to_hex();
-          const index = Number(input.index());
-          const key = hash + index;
-          const found = this.ledger[key] ?? this.mempool[key];
-          if (found === undefined)
-            throw new Error(
-              `recorded input ${hash}#${index} missing from emulator ledger`,
+  const outRefReads = layerMethod(
+    Emulator.prototype,
+    "getUtxosByOutRef",
+    () =>
+      async function (this: Emulator, outRefs) {
+        return outRefs.flatMap(({ txHash, outputIndex }) => {
+          const entry = this.ledger[txHash + outputIndex];
+          return entry === undefined ? [] : [entry.utxo];
+        });
+      },
+  );
+  const submissions = layerMethod(
+    Emulator.prototype,
+    "submitTx",
+    (next) =>
+      async function (this: Emulator, cbor: string) {
+        const tx = CML.Transaction.from_cbor_hex(cbor);
+        const body = tx.body();
+        const resolve = (inputs: CML.TransactionInputList | undefined) => {
+          const result: FraudProofRawL1Utxo[] = [];
+          for (let i = 0; i < (inputs?.len() ?? 0); i++) {
+            const input = inputs!.get(i);
+            const hash = input.transaction_id().to_hex();
+            const index = Number(input.index());
+            const key = hash + index;
+            const found = this.ledger[key] ?? this.mempool[key];
+            if (found === undefined)
+              throw new Error(
+                `recorded input ${hash}#${index} missing from emulator ledger`,
+              );
+            result.push(
+              raw(`${hash}#${index}`, utxoToCore(found.utxo).output()),
             );
-          result.push(raw(`${hash}#${index}`, utxoToCore(found.utxo).output()));
-        }
-        return result;
-      };
-      const resolvedInputs = resolve(body.inputs());
-      const resolvedReferenceInputs = resolve(body.reference_inputs());
-      const acceptedSlot = this.slot;
-      const acceptedTime = this.now();
-      const hash = await original.call(this, cbor);
-      recorded.emulator = this;
-      signedCbors.set(hash, cbor);
-      acceptedTransactions.set(hash, {
-        txHash: hash,
-        transactionCbor: cbor,
-        slot: acceptedSlot,
-        unixTimeMs: acceptedTime,
-      });
-      rows.push({
-        txHash: hash,
-        bodyCbor: body.to_cbor_hex(),
-        witnessSetCbor: tx.witness_set().to_cbor_hex(),
-        redeemersCbor:
-          tx.witness_set().redeemers()?.to_canonical_cbor_hex() ?? null,
-        isValid: true,
-        resolvedInputs,
-        resolvedReferenceInputs,
-      });
-      return hash;
-    });
+          }
+          return result;
+        };
+        const resolvedInputs = resolve(body.inputs());
+        const resolvedReferenceInputs = resolve(body.reference_inputs());
+        const acceptedSlot = this.slot;
+        const acceptedTime = this.now();
+        const hash = await next.call(this, cbor);
+        recorded.emulator = this;
+        signedCbors.set(hash, cbor);
+        acceptedTransactions.set(hash, {
+          txHash: hash,
+          transactionCbor: cbor,
+          slot: acceptedSlot,
+          unixTimeMs: acceptedTime,
+        });
+        rows.push({
+          txHash: hash,
+          bodyCbor: body.to_cbor_hex(),
+          witnessSetCbor: tx.witness_set().to_cbor_hex(),
+          redeemersCbor:
+            tx.witness_set().redeemers()?.to_canonical_cbor_hex() ?? null,
+          isValid: true,
+          resolvedInputs,
+          resolvedReferenceInputs,
+        });
+        return hash;
+      },
+  );
   const authority: FraudProofRawL1SnapshotAuthority = {
     authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
     capture: async (request) => {
@@ -234,8 +267,8 @@ export const recordCrossBlockRawEmulator = () => {
   return {
     authority,
     restore: () => {
-      spy.mockRestore();
-      outRefReads.mockRestore();
+      submissions.restore();
+      outRefReads.restore();
     },
     rows,
     signedCbors,

@@ -63,14 +63,17 @@ it("preserves actual dynamic recorder native receipts in the production tools bu
   await build({
     config: join(root, "tsup.config.ts"),
     entry: ["tests/helpers/history-native-compiled-probe.ts"],
-    outDir: "dist/native-receipt-probe",
+    outDir: ".probe-dist/native-receipt-probe",
     clean: true,
     // Source-only public test fixture; real watcher runtime imports use the
     // exact production external rule. The probe imports no midgard-node.
     noExternal: ["midgard-watcher/tests/l1/native-chain-sync.config"],
   });
   const output = await command([
-    join(root, "dist/native-receipt-probe/history-native-compiled-probe.js"),
+    join(
+      root,
+      ".probe-dist/native-receipt-probe/history-native-compiled-probe.js",
+    ),
   ]);
   expect(output).toContain(
     "PASS compiled actual callback receipt + shared native module identity",

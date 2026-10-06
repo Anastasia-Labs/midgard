@@ -40,6 +40,22 @@
     "./temp-files": {
       "midgard-source": "./src/temp-files.ts",
       "types": "./src/temp-files.ts"
+    },
+    "./evaluator-reuse": {
+      "midgard-source": "./src/evaluator-reuse.ts",
+      "types": "./src/evaluator-reuse.ts"
+    },
+    "./method-layer": {
+      "midgard-source": "./src/method-layer.ts",
+      "types": "./src/method-layer.ts"
+    },
+    "./duration-shards": {
+      "types": "./duration-shards.d.ts",
+      "default": "./duration-shards.js"
+    },
+    "./duration-shards-contract": {
+      "midgard-source": "./src/duration-shards-contract.ts",
+      "types": "./src/duration-shards-contract.ts"
     }
   },
   "files": [
@@ -47,18 +63,27 @@
     "src",
     "vitest.js",
     "vitest.d.ts",
+    "workspace-bundle.js",
+    "workspace-bundle-analysis.js",
+    "workspace-bundle-files.js",
+    "workspace-bundle-guard.js",
     "blueprint-stamp-setup.js",
     "interactive-emulator.js",
     "database-identity.js",
-    "database-identity.d.ts"
+    "database-identity.d.ts",
+    "duration-shards.js",
+    "duration-shards.d.ts",
+    "duration-plan.js"
   ],
   "scripts": {
     "capture:l1-recordings": "node scripts/capture-l1-recordings.mjs",
+    "test": "node --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^22.17.0",
+    "esbuild": "0.25.0",
     "typescript": "^5.7.3",
-    "vitest": "^3.0.7"
+    "vitest": "^5.0.3"
   }
 }

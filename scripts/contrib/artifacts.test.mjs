@@ -14,6 +14,7 @@ import { resolve } from "node:path";
 import test, { after } from "node:test";
 
 import { runArtifact, withScratchCheckout } from "./artifacts.mjs";
+import { BUILD_TRACE, buildEnvironment } from "./build-inputs.mjs";
 import { atomicJson, inputIdentity, outputIdentity } from "./files.mjs";
 import { fixture } from "./fixture.test-support.mjs";
 import { verifyReceipt } from "./receipts.mjs";
@@ -278,7 +279,9 @@ test("artifact checks reject self-mutating compiled consumers and receipts bind 
       schema: "midgard-contrib-build/v1",
       root,
       package: "example",
+      reads: BUILD_TRACE,
       inputs: inputIdentity(root, "example"),
+      environment: buildEnvironment(root, "example"),
       outputs: outputIdentity(root, "demo/example/dist"),
       dependencies: [],
     });
@@ -326,7 +329,9 @@ test("artifact receipts invalidate changed or newly added explicit channel input
     schema: "midgard-contrib-build/v1",
     root,
     package: "example",
+    reads: BUILD_TRACE,
     inputs: inputIdentity(root, "example"),
+    environment: buildEnvironment(root, "example"),
     outputs: outputIdentity(root, "demo/example/dist"),
     dependencies: [],
   });

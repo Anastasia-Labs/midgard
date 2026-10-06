@@ -366,8 +366,9 @@
     "@libp2p/crypto": "5.1.20",
     "@libp2p/interface": "3.2.4",
     "@libp2p/peer-id": "6.0.11",
-    "@lucid-evolution/lucid": "0.6.5",
+    "@lucid-evolution/lucid": "0.6.7",
     "@noble/hashes": "^2.0.1",
+    "libsodium-wrappers-sumo": "0.7.15",
     "yaml": "2.9.0"
   },
   "devDependencies": {
@@ -378,6 +379,6 @@
     "rimraf": "^6.0.1",
     "tsup": "^8.4.0",
     "typescript": "^5.7.3",
-    "vitest": "^3.0.7"
+    "vitest": "^5.0.3"
   }
 }

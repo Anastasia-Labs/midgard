@@ -1,5 +1,3 @@
-import "./expired-signed-intent-release-evidence-emulator.signed-intent-release-after-its-base-left-the-queue.js";
-
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect, Ref } from "effect";
@@ -8,14 +6,14 @@ import { expect } from "vitest";
 import { SIGNED_HEADER_RECOVERY_DOMAIN } from "../src/database/eventHistoryRecoveryPlans.js";
 import { advanceEmulatorPastLatestBlockEndTime } from "./deposit-flow-emulator-shared.js";
 import {
+  availableBlockAssetName,
+  C,
+} from "./expired-signed-intent-release-evidence-emulator.expect-landed-and-finalized-once.js";
+import {
   appendCheckpoint,
   mergeCheckpoint,
   type ObserverContext,
 } from "./expired-signed-intent-release-evidence-emulator.merge-checkpoint.js";
-import {
-  availableBlockAssetName,
-  C,
-} from "./expired-signed-intent-release-evidence-emulator.signed-intent-release-evidence.js";
 import {
   read,
   readJournal,

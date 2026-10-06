@@ -1,6 +1,9 @@
+import { fileURLToPath } from "node:url";
+
 import {
   blueprintStampGlobalSetup,
-  midgardSourceSsr,
+  midgardSourceEnvironments,
+  workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
 
@@ -11,15 +14,20 @@ export default defineConfig({
     // Refuses the run when onchain/aiken/plutus.json is stale.
     globalSetup: [blueprintStampGlobalSetup],
     reporters: "verbose",
-    workspace: [
-      {
-        extends: true,
-        test: {
-          name: "validation",
-          include: ["./tests/**/*.test.{ts,tsx}"],
-          exclude: [WORKER_THREAD_TESTS],
+    projects: [
+      // Workspace packages load from a per-run source bundle; files that need
+      // them module-by-module run in `validation:source`.
+      ...workspaceBundleProjects(
+        {
+          extends: true,
+          test: {
+            name: "validation",
+            include: ["./tests/**/*.test.{ts,tsx}"],
+            exclude: [WORKER_THREAD_TESTS],
+          },
         },
-      },
+        { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
+      ),
       {
         // Depth cases that must also hold on a worker thread's stack, where
         // the node's validation worker runs the same code.
@@ -32,5 +40,5 @@ export default defineConfig({
       },
     ],
   },
-  ssr: midgardSourceSsr(),
+  environments: midgardSourceEnvironments(),
 });

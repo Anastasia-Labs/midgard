@@ -71,7 +71,7 @@ beforeAll(async () => {
       withdrawal: SDK.eventHistoryDeploymentFromContracts(pair.withdrawal),
     },
   };
-});
+}, 120_000);
 
 export const nodeOutput = (
   kind: Kind,

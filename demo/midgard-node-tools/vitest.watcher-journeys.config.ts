@@ -1,6 +1,6 @@
 import {
   isolatedForksPool,
-  midgardSourceSsr,
+  midgardSourceEnvironments,
   rawSqlLoaderPlugin,
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
@@ -13,5 +13,5 @@ export default defineConfig({
     testTimeout: 3_600_000,
     environment: "node",
   },
-  ssr: midgardSourceSsr(),
+  environments: midgardSourceEnvironments(),
 });

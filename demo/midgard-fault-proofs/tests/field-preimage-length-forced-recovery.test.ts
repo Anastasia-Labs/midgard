@@ -44,14 +44,14 @@ it.each(["dispatch", "authenticate"] as const)(
       artifact: JSON.parse(JSON.stringify(artifact)),
     });
     const transaction = captured();
+    const target =
+      selected === "dispatch"
+        ? "submitFieldPreimageLengthForcedDispatch"
+        : "submitFieldPreimageLengthForcedAuthentication";
+    type Input = Parameters<(typeof submitters)[typeof target]>[0];
     const submit = vi
-      .spyOn(
-        submitters,
-        selected === "dispatch"
-          ? "submitFieldPreimageLengthForcedDispatch"
-          : "submitFieldPreimageLengthForcedAuthentication",
-      )
-      .mockImplementation(async (input) => {
+      .spyOn(submitters, target)
+      .mockImplementation(async (input: Input) => {
         await input.preSubmitBoundary?.(transaction);
         throw new Error("capture did not interrupt before submission");
       });

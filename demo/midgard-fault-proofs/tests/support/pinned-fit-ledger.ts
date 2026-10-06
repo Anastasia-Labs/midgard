@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
 
 import { expect } from "vitest";
 
@@ -29,7 +30,8 @@ export const readBlueprintIdentity = async (
 
 /**
  * A fit ledger that a test holds to the current build. Under
- * `MIDGARD_WRITE_FIT_LEDGER=1` the fresh ledger replaces the checked-in one.
+ * `MIDGARD_WRITE_FIT_LEDGER=1` (set by the `fit:regenerate` script) the fresh
+ * ledger replaces the checked-in one.
  * Otherwise the checked-in ledger must carry the fresh run's category,
  * blueprint and compiler identity and a digest that matches its body, and
  * list the same rows. Execution budgets vary between runs of one blueprint,
@@ -43,7 +45,7 @@ export const writeOrVerifyPinnedFitLedger = async (
     await writeVanRossemFitLedger(ledgerPath, ledger);
     return;
   }
-  const stale = `${ledgerPath} does not match this build; regenerate it with MIDGARD_WRITE_FIT_LEDGER=1`;
+  const stale = `${ledgerPath} does not match this build; regenerate it with \`pnpm --dir demo/midgard-fault-proofs fit:regenerate ${basename(ledgerPath)}\``;
   const pinned = JSON.parse(
     await readFile(ledgerPath, "utf8"),
   ) as VanRossemFitLedger;

@@ -53,7 +53,7 @@ export const scriptedTransport = (
   } = {},
 ) => {
   const sent: Buffer[] = [];
-  const abort = vi.fn();
+  const abort = vi.fn<() => void>();
   const dials: { peer: unknown; protocol: string; signal: AbortSignal }[] = [];
   const transport = new WatcherPublicDaLibp2pTransport({
     libp2pFactory: async () => ({

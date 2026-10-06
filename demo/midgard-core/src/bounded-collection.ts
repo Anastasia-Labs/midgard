@@ -1,9 +1,8 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-
 import {
   buildMidgardBoundedItem,
   type MidgardBoundedItem,
 } from "./bounded-item.js";
+import { midgardBlake2b } from "./codec/blake2b.js";
 import { encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
@@ -45,7 +44,7 @@ export type MidgardBoundedCollectionItemProof = {
 
 const hash32 = (value: Uint8Array): Hash32 =>
   ensureHash32(
-    blake2b(value, { dkLen: 32 }),
+    midgardBlake2b(value, { dkLen: 32 }),
     "bounded_collection_v1.commitment",
   );
 
