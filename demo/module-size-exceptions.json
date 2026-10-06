@@ -1781,7 +1781,7 @@
   },
   {
     "file": "midgard-watcher/tests/support/user-event-origin-fixture.create-synthetic-user-event-origin-fixture.ts",
-    "max": 1054,
+    "max": 988,
     "reason": "createSyntheticUserEventOriginFixture is the dominant indivisible declaration (1006 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
