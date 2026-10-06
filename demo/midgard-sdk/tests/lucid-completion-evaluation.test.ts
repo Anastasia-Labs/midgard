@@ -11,12 +11,15 @@ type Completion = {
   cbor: string;
   hash: string;
   collateral: string;
+  fee: string;
 };
 type EvaluationReport = {
   first: Completion;
   second: Completion;
   changed: Completion;
   changedCollateral: Completion;
+  finalFeeCollateralError: string | undefined;
+  lowCollateral: Completion;
   customRequests: string[];
   configuredCustomRequests: string[];
   submittedHash: string;
@@ -91,6 +94,18 @@ describe.each(["esm", "cjs"])(
       expect(report.changedCollateral.requests.at(-1)).not.toBe(
         report.first.requests.at(-1),
       );
+    });
+
+    it("refuses collateral below the final fee's percentage", () => {
+      // 150% of the returned fee, rounded up, is the ledger's requirement.
+      expect(report.finalFeeCollateralError).toMatch(
+        /Final transaction requires \d+ Lovelace collateral, but only \d+ was selected/,
+      );
+      expect(report.lowCollateral.collateral).toBe("1000000");
+      expect(
+        BigInt(report.lowCollateral.collateral) >=
+          (BigInt(report.lowCollateral.fee) * 150n + 99n) / 100n,
+      ).toBe(true);
     });
 
     it("preserves repeated custom evaluator calls and their deliberate failure", () => {

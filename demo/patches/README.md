@@ -75,10 +75,17 @@ each collateral-free draft once. That draft only sizes collateral, and a replay
 that evaluates it is never the one returned: its draft holds a redeemer whose
 units the previous replay did not produce, so the next replay re-completes with
 the evaluated units, runs the full fee/change/collateral convergence loop, and
-must reproduce the previous replay's transaction, budgets included. Custom and
-provider evaluators keep the full draft loop. Both formats are covered by
+must reproduce the previous replay's transaction, budgets included. Every
+draft lacks the collateral input and return, so collateral sized from its fee
+can fall short of the final fee's percentage. The returned transaction gets the
+static path's final collateral check. Earlier replays do not: a bootstrap
+replay's maximum-budget fee would refuse collateral that the returned
+transaction covers. Custom and provider evaluators keep the full draft loop
+and no final check. Both formats are covered by
 `midgard-sdk/tests/lucid-completion-evaluation.test.ts`, which pins two
-evaluations and the unchanged signed transaction.
+evaluations and the unchanged signed transaction, refuses collateral sized from
+the draft fee alone, and accepts a `setCollateral` below the bootstrap fee's
+percentage that covers the final fee.
 
 The production SDK lifecycle tests in
 `midgard-node/tests/availability-challenge-sdk-lifecycle.test.ts` verify signed

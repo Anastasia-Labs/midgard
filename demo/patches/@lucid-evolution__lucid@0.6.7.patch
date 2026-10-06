@@ -340,7 +340,26 @@ diff --git a/dist/index.cjs b/dist/index.cjs
      toTransaction: () => config.txComplete,
      toScriptContext: (purpose, options2) => makeScriptContext(
        config.txComplete,
-@@ -3983,6 +4246,11 @@
+@@ -3955,6 +4218,18 @@
+     splitBootstrapBudget(maxTxExSteps, redeemerCount, index)
+   )
+ );
++// Collateral is sized before the final fee is known. The ledger requires the
++// final fee times the collateral percentage, rounded up.
++var finalFeeCollateralError = (transaction, protocolParameters) => {
++  const { fee, collateral } = (0, import_core_utils14.withCMLScope)((own) => {
++    const body = own(transaction.body());
++    return { fee: body.fee(), collateral: body.total_collateral() ?? 0n };
++  });
++  const requiredCollateral = (fee * BigInt(protocolParameters.collateralPercentage) + 99n) / 100n;
++  return collateral < requiredCollateral ? completeTxError(
++    `Final transaction requires ${requiredCollateral} Lovelace collateral, but only ${collateral} was selected. Rebuild with setCollateral covering the final fee.`
++  ) : void 0;
++};
+ var completeCurrentConfig = (options = {}, internalOptions = {}) => import_effect22.Effect.gen(function* () {
+   const { config } = yield* TxConfig;
+   const wallet = yield* (0, import_effect22.pipe)(
+@@ -3983,6 +4258,11 @@
    const hasPlutusScriptExecutions = Array.from(
      config.scripts.values()
    ).some((value) => value.type !== "Native");
@@ -352,7 +371,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    let evaluatedScriptBody = yield* selectionAndEvaluation(
      walletInputs,
      changeAddress,
-@@ -3993,7 +4261,8 @@
+@@ -3993,7 +4273,8 @@
      false,
      internalOptions.bootstrapExUnits === true,
      internalOptions.knownRedeemerExUnits,
@@ -362,7 +381,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    );
    if (hasPlutusScriptExecutions) {
      const estimatedFee = yield* estimateFee(config, true);
-@@ -4005,10 +4274,14 @@
+@@ -4005,10 +4286,14 @@
          )
        )
      );
@@ -378,7 +397,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
      );
      yield* applyCollateral(totalCollateral, collateralInput, changeAddress);
      evaluatedScriptBody = (yield* selectionAndEvaluation(
-@@ -4043,9 +4316,7 @@
+@@ -4043,9 +4328,7 @@
      catch: (error) => completeTxError(error)
    });
    const shouldCanonicalize = canonical || internalOptions.forceCanonical;
@@ -389,27 +408,22 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    const normalizedTransaction = yield* import_effect22.Effect.try({
      try: () => normalizeGovernanceRedeemerIndices(
        transactionBeforeScriptDataHash,
-@@ -4060,6 +4331,19 @@
+@@ -4060,6 +4343,14 @@
      config
    );
    if (transaction !== normalizedTransaction) normalizedTransaction.free();
-+  if (provisionalEvaluation) {
-+    const { fee, collateral } = (0, import_core_utils14.withCMLScope)((own) => {
-+      const body = own(transaction.body());
-+      return { fee: body.fee(), collateral: body.total_collateral() ?? 0n };
-+    });
-+    const requiredCollateral = (fee * BigInt(config.lucidConfig.protocolParameters.collateralPercentage) + 99n) / 100n;
-+    if (collateral < requiredCollateral) {
-+      transaction.free();
-+      return yield* completeTxError(
-+        `Final transaction requires ${requiredCollateral} Lovelace collateral, but only ${collateral} was selected. Rebuild with setCollateral covering the final fee.`
-+      );
-+    }
++  const collateralError = provisionalEvaluation ? finalFeeCollateralError(
++    transaction,
++    config.lucidConfig.protocolParameters
++  ) : void 0;
++  if (collateralError) {
++    transaction.free();
++    return yield* collateralError;
 +  }
    const derivedInputs = deriveInputsFromTransaction(transaction);
    const derivedWalletInputs = derivedInputs.filter(
      (utxo) => utxo.address === walletAddress
-@@ -4085,12 +4369,12 @@
+@@ -4085,12 +4376,12 @@
      })
    );
  }).pipe(import_effect22.Effect.catchAllDefect((cause) => new RunTimeError({ cause })));
@@ -424,7 +438,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
      }),
      import_effect22.Effect.provide(import_effect22.Layer.succeed(TxConfig, { config: replayConfig })),
      // The completed transaction is copied out of the builder; nothing keeps
-@@ -4098,7 +4382,7 @@
+@@ -4098,7 +4389,7 @@
      import_effect22.Effect.ensuring(import_effect22.Effect.sync(() => replayConfig.txBuilder.free()))
    );
  };
@@ -433,7 +447,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    const wallet = yield* (0, import_effect22.pipe)(
      import_effect22.Effect.fromNullable(sourceConfig.lucidConfig.wallet),
      import_effect22.Effect.orElseFail(() => completeTxError(ERROR_MESSAGE.MISSING_WALLET))
-@@ -4132,7 +4416,8 @@
+@@ -4132,7 +4423,8 @@
              bootstrapExUnits: missingRedeemers,
              walletInputs: fixedWalletInputs,
              knownRedeemerExUnits,
@@ -443,7 +457,25 @@ diff --git a/dist/index.cjs b/dist/index.cjs
            }
          );
        }),
-@@ -4213,7 +4498,7 @@
+@@ -4187,7 +4479,16 @@
+       continue;
+     }
+     const fingerprint = transactionFixedPointFingerprint(tx);
+-    if (fingerprint === previousFingerprint) return result;
++    if (fingerprint === previousFingerprint) {
++      // Every replay sizes collateral from its own collateral-free draft; only
++      // the returned transaction's final fee decides whether it suffices.
++      const collateralError = provisionalDraftEvaluation ? finalFeeCollateralError(
++        tx,
++        sourceConfig.lucidConfig.protocolParameters
++      ) : void 0;
++      if (collateralError) return yield* collateralError;
++      return result;
++    }
+     previousFingerprint = fingerprint;
+   }
+   return yield* completeTxError(
+@@ -4213,7 +4514,7 @@
  });
  var canonicalInputFingerprint = (tx) => (0, import_core_utils14.withCMLScope)((own) => {
    const canonical = own(
@@ -452,7 +484,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    );
    const inputs = own(own(canonical.body()).inputs());
    return Array.from(
-@@ -4266,14 +4551,30 @@
+@@ -4266,14 +4567,30 @@
  });
  var complete = (options = {}) => import_effect22.Effect.gen(function* () {
    const { config } = yield* TxConfig;
@@ -487,7 +519,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    const { config } = yield* TxConfig;
    const refScriptInputs = config.readInputs.filter(
      (input) => input.scriptRef
-@@ -4334,7 +4635,8 @@
+@@ -4334,7 +4651,8 @@
      localUPLCEval,
      evaluator,
      bootstrapExUnits,
@@ -497,7 +529,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    );
  }).pipe(import_effect22.Effect.catchAllDefect((cause) => new RunTimeError({ cause })));
  var completePartialPrograms = () => import_effect22.Effect.gen(function* () {
-@@ -4907,9 +5209,7 @@
+@@ -4907,9 +5225,7 @@
    return yield* buildEvaluationDraft(config, changeAddress);
  });
  var prepareRedeemerContextCandidate = (candidate, config) => import_effect22.Effect.gen(function* () {
@@ -508,7 +540,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    const normalized = yield* import_effect22.Effect.try({
      try: () => normalizeGovernanceRedeemerIndices(
        canonical,
-@@ -4990,7 +5290,7 @@
+@@ -4990,7 +5306,7 @@
      if (zeroed !== tx) zeroed.free();
    }
  };
@@ -517,7 +549,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    let previousFingerprint;
    let forceExplicitFee = config.minFee !== void 0;
    for (let attempt = 0; attempt < MAX_EVALUATION_ATTEMPTS; attempt++) {
-@@ -5012,8 +5312,11 @@
+@@ -5012,8 +5328,11 @@
        applyBootstrapRedeemerExUnits(
          redeemers,
          config.txBuilder,
@@ -531,7 +563,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
        );
        (0, import_core_utils14.freeCML)(redeemers, candidate);
        return true;
-@@ -5041,6 +5344,9 @@
+@@ -5041,6 +5360,9 @@
        localUPLCEval,
        evaluator
      ).pipe(import_effect22.Effect.ensuring(import_effect22.Effect.sync(() => candidate.free())));
@@ -541,7 +573,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    }
    return yield* completeTxError(
      `Phase-two evaluation did not converge after ${MAX_EVALUATION_ATTEMPTS} attempts. Check for scripts that depend on transaction fees, change outputs, or execution-unit-driven transaction shape.`
-@@ -5063,33 +5369,81 @@
+@@ -5063,33 +5385,81 @@
    name: "provider",
    evaluate: ({ tx, additionalUTxOs }) => provider.evaluateTx(tx, additionalUTxOs)
  });
@@ -992,7 +1024,26 @@ diff --git a/dist/index.js b/dist/index.js
      toTransaction: () => config.txComplete,
      toScriptContext: (purpose, options2) => makeScriptContext(
        config.txComplete,
-@@ -3881,6 +4144,11 @@
+@@ -3853,6 +4116,18 @@
+     splitBootstrapBudget(maxTxExSteps, redeemerCount, index)
+   )
+ );
++// Collateral is sized before the final fee is known. The ledger requires the
++// final fee times the collateral percentage, rounded up.
++var finalFeeCollateralError = (transaction, protocolParameters) => {
++  const { fee, collateral } = withCMLScope12((own) => {
++    const body = own(transaction.body());
++    return { fee: body.fee(), collateral: body.total_collateral() ?? 0n };
++  });
++  const requiredCollateral = (fee * BigInt(protocolParameters.collateralPercentage) + 99n) / 100n;
++  return collateral < requiredCollateral ? completeTxError(
++    `Final transaction requires ${requiredCollateral} Lovelace collateral, but only ${collateral} was selected. Rebuild with setCollateral covering the final fee.`
++  ) : void 0;
++};
+ var completeCurrentConfig = (options = {}, internalOptions = {}) => Effect21.gen(function* () {
+   const { config } = yield* TxConfig;
+   const wallet = yield* pipe10(
+@@ -3881,6 +4156,11 @@
    const hasPlutusScriptExecutions = Array.from(
      config.scripts.values()
    ).some((value) => value.type !== "Native");
@@ -1004,7 +1055,7 @@ diff --git a/dist/index.js b/dist/index.js
    let evaluatedScriptBody = yield* selectionAndEvaluation(
      walletInputs,
      changeAddress,
-@@ -3891,7 +4159,8 @@
+@@ -3891,7 +4171,8 @@
      false,
      internalOptions.bootstrapExUnits === true,
      internalOptions.knownRedeemerExUnits,
@@ -1014,7 +1065,7 @@ diff --git a/dist/index.js b/dist/index.js
    );
    if (hasPlutusScriptExecutions) {
      const estimatedFee = yield* estimateFee(config, true);
-@@ -3903,10 +4172,14 @@
+@@ -3903,10 +4184,14 @@
          )
        )
      );
@@ -1030,7 +1081,7 @@ diff --git a/dist/index.js b/dist/index.js
      );
      yield* applyCollateral(totalCollateral, collateralInput, changeAddress);
      evaluatedScriptBody = (yield* selectionAndEvaluation(
-@@ -3941,9 +4214,7 @@
+@@ -3941,9 +4226,7 @@
      catch: (error) => completeTxError(error)
    });
    const shouldCanonicalize = canonical || internalOptions.forceCanonical;
@@ -1041,27 +1092,22 @@ diff --git a/dist/index.js b/dist/index.js
    const normalizedTransaction = yield* Effect21.try({
      try: () => normalizeGovernanceRedeemerIndices(
        transactionBeforeScriptDataHash,
-@@ -3958,6 +4229,19 @@
+@@ -3958,6 +4241,14 @@
      config
    );
    if (transaction !== normalizedTransaction) normalizedTransaction.free();
-+  if (provisionalEvaluation) {
-+    const { fee, collateral } = withCMLScope12((own) => {
-+      const body = own(transaction.body());
-+      return { fee: body.fee(), collateral: body.total_collateral() ?? 0n };
-+    });
-+    const requiredCollateral = (fee * BigInt(config.lucidConfig.protocolParameters.collateralPercentage) + 99n) / 100n;
-+    if (collateral < requiredCollateral) {
-+      transaction.free();
-+      return yield* completeTxError(
-+        `Final transaction requires ${requiredCollateral} Lovelace collateral, but only ${collateral} was selected. Rebuild with setCollateral covering the final fee.`
-+      );
-+    }
++  const collateralError = provisionalEvaluation ? finalFeeCollateralError(
++    transaction,
++    config.lucidConfig.protocolParameters
++  ) : void 0;
++  if (collateralError) {
++    transaction.free();
++    return yield* collateralError;
 +  }
    const derivedInputs = deriveInputsFromTransaction(transaction);
    const derivedWalletInputs = derivedInputs.filter(
      (utxo) => utxo.address === walletAddress
-@@ -3983,12 +4267,12 @@
+@@ -3983,12 +4274,12 @@
      })
    );
  }).pipe(Effect21.catchAllDefect((cause) => new RunTimeError({ cause })));
@@ -1076,7 +1122,7 @@ diff --git a/dist/index.js b/dist/index.js
      }),
      Effect21.provide(Layer.succeed(TxConfig, { config: replayConfig })),
      // The completed transaction is copied out of the builder; nothing keeps
-@@ -3996,7 +4280,7 @@
+@@ -3996,7 +4287,7 @@
      Effect21.ensuring(Effect21.sync(() => replayConfig.txBuilder.free()))
    );
  };
@@ -1085,7 +1131,7 @@ diff --git a/dist/index.js b/dist/index.js
    const wallet = yield* pipe10(
      Effect21.fromNullable(sourceConfig.lucidConfig.wallet),
      Effect21.orElseFail(() => completeTxError(ERROR_MESSAGE.MISSING_WALLET))
-@@ -4030,7 +4314,8 @@
+@@ -4030,7 +4321,8 @@
              bootstrapExUnits: missingRedeemers,
              walletInputs: fixedWalletInputs,
              knownRedeemerExUnits,
@@ -1095,7 +1141,25 @@ diff --git a/dist/index.js b/dist/index.js
            }
          );
        }),
-@@ -4111,7 +4396,7 @@
+@@ -4085,7 +4377,16 @@
+       continue;
+     }
+     const fingerprint = transactionFixedPointFingerprint(tx);
+-    if (fingerprint === previousFingerprint) return result;
++    if (fingerprint === previousFingerprint) {
++      // Every replay sizes collateral from its own collateral-free draft; only
++      // the returned transaction's final fee decides whether it suffices.
++      const collateralError = provisionalDraftEvaluation ? finalFeeCollateralError(
++        tx,
++        sourceConfig.lucidConfig.protocolParameters
++      ) : void 0;
++      if (collateralError) return yield* collateralError;
++      return result;
++    }
+     previousFingerprint = fingerprint;
+   }
+   return yield* completeTxError(
+@@ -4111,7 +4412,7 @@
  });
  var canonicalInputFingerprint = (tx) => withCMLScope12((own) => {
    const canonical = own(
@@ -1104,7 +1168,7 @@ diff --git a/dist/index.js b/dist/index.js
    );
    const inputs = own(own(canonical.body()).inputs());
    return Array.from(
-@@ -4164,14 +4449,30 @@
+@@ -4164,14 +4465,30 @@
  });
  var complete = (options = {}) => Effect21.gen(function* () {
    const { config } = yield* TxConfig;
@@ -1139,7 +1203,7 @@ diff --git a/dist/index.js b/dist/index.js
    const { config } = yield* TxConfig;
    const refScriptInputs = config.readInputs.filter(
      (input) => input.scriptRef
-@@ -4232,7 +4533,8 @@
+@@ -4232,7 +4549,8 @@
      localUPLCEval,
      evaluator,
      bootstrapExUnits,
@@ -1149,7 +1213,7 @@ diff --git a/dist/index.js b/dist/index.js
    );
  }).pipe(Effect21.catchAllDefect((cause) => new RunTimeError({ cause })));
  var completePartialPrograms = () => Effect21.gen(function* () {
-@@ -4805,9 +5107,7 @@
+@@ -4805,9 +5123,7 @@
    return yield* buildEvaluationDraft(config, changeAddress);
  });
  var prepareRedeemerContextCandidate = (candidate, config) => Effect21.gen(function* () {
@@ -1160,7 +1224,7 @@ diff --git a/dist/index.js b/dist/index.js
    const normalized = yield* Effect21.try({
      try: () => normalizeGovernanceRedeemerIndices(
        canonical,
-@@ -4888,7 +5188,7 @@
+@@ -4888,7 +5204,7 @@
      if (zeroed !== tx) zeroed.free();
    }
  };
@@ -1169,7 +1233,7 @@ diff --git a/dist/index.js b/dist/index.js
    let previousFingerprint;
    let forceExplicitFee = config.minFee !== void 0;
    for (let attempt = 0; attempt < MAX_EVALUATION_ATTEMPTS; attempt++) {
-@@ -4910,8 +5210,11 @@
+@@ -4910,8 +5226,11 @@
        applyBootstrapRedeemerExUnits(
          redeemers,
          config.txBuilder,
@@ -1183,7 +1247,7 @@ diff --git a/dist/index.js b/dist/index.js
        );
        freeCML(redeemers, candidate);
        return true;
-@@ -4939,6 +5242,9 @@
+@@ -4939,6 +5258,9 @@
        localUPLCEval,
        evaluator
      ).pipe(Effect21.ensuring(Effect21.sync(() => candidate.free())));
@@ -1193,7 +1257,7 @@ diff --git a/dist/index.js b/dist/index.js
    }
    return yield* completeTxError(
      `Phase-two evaluation did not converge after ${MAX_EVALUATION_ATTEMPTS} attempts. Check for scripts that depend on transaction fees, change outputs, or execution-unit-driven transaction shape.`
-@@ -4961,33 +5267,81 @@
+@@ -4961,33 +5283,81 @@
    name: "provider",
    evaluate: ({ tx, additionalUTxOs }) => provider.evaluateTx(tx, additionalUTxOs)
  });

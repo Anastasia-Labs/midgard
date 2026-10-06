@@ -118,6 +118,7 @@ try {
       cbor: signed.toCBOR(),
       hash: signed.toHash(),
       collateral: tx.toTransaction().body().total_collateral()?.toString(),
+      fee: tx.toTransaction().body().fee().toString(),
     };
   };
   const first = await complete();
@@ -125,6 +126,16 @@ try {
   const changed = await complete(11_000_000n);
   const changedCollateral = await complete(10_000_000n, {
     setCollateral: 8_000_000n,
+  });
+  // Collateral is sized from the collateral-free draft, whose fee is below the
+  // final one: without a floor it falls short of the final fee's percentage.
+  let finalFeeCollateralError;
+  await complete(10_000_000n, { setCollateral: 0n }).catch((error) => {
+    finalFeeCollateralError = String(error);
+  });
+  // Below the bootstrap replay's maximum-budget fee, above the final fee.
+  const lowCollateral = await complete(10_000_000n, {
+    setCollateral: 1_000_000n,
   });
   const customFailure =
     "custom evaluator rejects the repeated convergence request";
@@ -164,6 +175,8 @@ try {
     second,
     changed,
     changedCollateral,
+    finalFeeCollateralError,
+    lowCollateral,
     customRequests,
     configuredCustomRequests,
     submittedHash,
