@@ -636,7 +636,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/dispute-scenario.ts",
-    "max": 1706,
+    "max": 1647,
     "reason": "runForcedValidationDisputeScenario is the dominant indivisible declaration (1478 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Direct committed-step fixture: adds the source-only signer-refusal checkpoint with consistent trace indices, adjacent-proof handoff, and canonical-decode ItemObserve and source/proof/settlement reference publication. These stages share the lifecycle locals; extraction requires a separate function-body refactor. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count."
   },
   {
@@ -981,7 +981,7 @@
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
-    "max": 1129,
+    "max": 1127,
     "reason": "makeConfig is the dominant indivisible declaration (1077 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
