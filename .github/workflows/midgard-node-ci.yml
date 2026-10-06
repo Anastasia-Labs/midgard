@@ -522,6 +522,9 @@ jobs:
         env:
           MIDGARD_REQUIRE_REAL_BUILDS: "1"
         run: node --test scripts/contrib/build-freshness.test.mjs
+      # The workspace source bundle every package's tests import through.
+      - name: Test the shared test-support tooling
+        run: pnpm --dir demo/midgard-test-support test
 
   midgard-sdk:
     name: midgard-sdk
