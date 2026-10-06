@@ -60,6 +60,19 @@ const sharedFixturePath = (name: string): string | undefined => {
     : join(directory, `${name}.v8`);
 };
 
+/** A fresh directory inside the run directory for files a test needs only
+ * while the run lasts, so the global teardown removes them with the run;
+ * the OS temporary directory outside the package's global setup. */
+export const makeRunScratchDirectory = (prefix: string): Promise<string> => {
+  const directory = process.env[RUN_SHARED_FIXTURE_DIRECTORY_ENV];
+  return mkdtemp(
+    join(
+      directory === undefined || directory === "" ? tmpdir() : directory,
+      prefix,
+    ),
+  );
+};
+
 /** The fixture another file of this run published as `name`, if any. */
 const readRunSharedFixture = async (name: string): Promise<unknown> => {
   const path = sharedFixturePath(name);

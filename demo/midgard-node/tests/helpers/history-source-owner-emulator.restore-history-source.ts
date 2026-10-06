@@ -1,5 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import * as SDK from "@al-ft/midgard-sdk";
@@ -50,7 +49,10 @@ import {
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 import { DEFAULT_PUBLICATION_SCHEDULE } from "./reference-publication-chain.js";
 import { makeJournalDirectory } from "./run-journal-directory.js";
-import { loadOrCreateRunSharedFixture } from "./run-shared-fixture-directory.js";
+import {
+  loadOrCreateRunSharedFixture,
+  makeRunScratchDirectory,
+} from "./run-shared-fixture-directory.js";
 
 const preprodEmulatorLucid = (emulator: Emulator) =>
   createMainnetEmulatorLucid(emulator, "Preprod");
@@ -376,8 +378,10 @@ export const restoreHistorySource = async (
     ),
     prefix.observation,
   );
+  // Each lifecycle gets its own copy of the deployment's journal (31 MB),
+  // removed with the run rather than left behind in the temporary directory.
   const publicationJournalPath = join(
-    await mkdtemp(join(tmpdir(), "midgard-history-owner-")),
+    await makeRunScratchDirectory("midgard-history-owner-"),
     "transactions.ndjson",
   );
   await writeFile(publicationJournalPath, prefix.publicationJournal, {
