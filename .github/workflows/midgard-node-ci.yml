@@ -575,7 +575,7 @@ jobs:
           path: ${{ runner.temp }}/file-durations.json
           if-no-files-found: warn
 
-  # Keeps the duration tables the fault-proof and watcher shards pack by
+  # Keeps the duration tables the fault-proof, watcher and node shards pack by
   # current. It merges the per-file seconds every shard above recorded into a
   # refreshed table per package (artifact `ci-file-durations`; commit it to
   # rebalance), prints the projected seconds of each shard under it, and warns
@@ -585,7 +585,7 @@ jobs:
   test-durations:
     name: Refresh the CI shard duration tables
     if: ${{ !cancelled() }}
-    needs: [midgard-fault-proofs, midgard-watcher]
+    needs: [midgard-fault-proofs, midgard-watcher, midgard-node]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -596,6 +596,7 @@ jobs:
             demo/midgard-test-support
             demo/midgard-fault-proofs/tests
             demo/midgard-watcher/tests
+            demo/midgard-node/tests
           sparse-checkout-cone-mode: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -609,8 +610,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/ci-file-durations"
-          for package in midgard-fault-proofs midgard-watcher; do
-            records=("$RUNNER_TEMP"/file-durations/file-durations-"$package"-*/file-durations.json)
+          # `-[0-9]*`: one package's name may prefix another's (midgard-node,
+          # midgard-node-tools), so match only the shard-numbered artifacts.
+          for package in midgard-fault-proofs midgard-watcher midgard-node; do
+            records=("$RUNNER_TEMP"/file-durations/file-durations-"$package"-[0-9]*/file-durations.json)
             if [ ! -e "${records[0]}" ]; then
               echo "::warning::no per-file test seconds were recorded for $package"
               continue
@@ -714,11 +717,22 @@ jobs:
       - name: Verify DA committee transport and admission
         run: pnpm --dir demo/da-committee-node run guard:no-http-da-transport && pnpm --dir demo/da-committee-node run typecheck && pnpm --dir demo/da-committee-node test
 
+  # Sharded like fault-proofs and watcher once ~450 files made one job take
+  # 53.5 minutes (Node CI run 37448078028: 38 minutes of Vitest on four forks).
+  # Every shard is its own job with its own Postgres service and runs the
+  # isolated migration itself, so the per-worker database shards the suite
+  # pins (tests/test-env.ts) never span two shards. The typecheck repeats on
+  # every shard: about a minute of idempotent work, where running it on one
+  # shard only would add that minute to that shard's wall time.
   midgard-node:
-    name: midgard-node
+    name: midgard-node (${{ matrix.shard }}/3)
     needs: [aiken-fork, blueprint]
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     services:
       postgres:
         image: postgres:16-alpine
@@ -751,9 +765,21 @@ jobs:
         env:
           MIDGARD_DEPLOYMENT_PROFILE: preprod-testing
         run: pnpm --dir demo/midgard-node run db:migrate
+      # The test run records each file's seconds (durationShards in
+      # midgard-test-support); `test-durations` merges the shards' records into
+      # the refreshed shard table.
       - name: Test Midgard node
         if: ${{ !cancelled() }}
-        run: pnpm --dir demo/midgard-node test
+        env:
+          MIDGARD_FILE_DURATIONS_OUT: ${{ runner.temp }}/file-durations.json
+        run: pnpm --dir demo/midgard-node run test --shard=${{ matrix.shard }}/3
+      - name: Upload this shard's per-file test seconds
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: file-durations-midgard-node-${{ matrix.shard }}
+          path: ${{ runner.temp }}/file-durations.json
+          if-no-files-found: warn
 
   # Its eslint pass is the workspace-wide one in the `lint` job.
   midgard-node-tools:

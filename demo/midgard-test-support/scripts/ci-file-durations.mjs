@@ -143,7 +143,8 @@ const fetchRun = (run) => {
       "--repo",
       values.repo,
       "--pattern",
-      `file-durations-${packageName}-*`,
+      // Shard-numbered only: midgard-node prefixes midgard-node-tools.
+      `file-durations-${packageName}-[0-9]*`,
       "--dir",
       dir,
     );
