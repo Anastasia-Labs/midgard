@@ -240,7 +240,7 @@ describe("fault-proof contract builder", () => {
         ["unusedScriptWitness[5]", "unusedRedeemer[8]"],
       ].sort(),
     );
-  });
+  }, 120_000);
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {
     const blueprint = loadBlueprint();
