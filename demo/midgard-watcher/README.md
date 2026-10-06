@@ -456,6 +456,8 @@ measurement does not establish a public-network deadline guarantee. See the
   The interactive `validationTraceDispute` family is installed but outside
   that harness.
 - `pnpm run typecheck`, `pnpm run lint`, and `pnpm test` check this package.
+  `pnpm test` also drives the compiled helper, so run `pnpm run native:build`
+  first.
   The journey harness runs the built `dist`; rebuild before a live run or the
   child process executes stale code while the test process reads source.
 

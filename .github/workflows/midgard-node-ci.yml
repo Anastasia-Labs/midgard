@@ -536,8 +536,9 @@ jobs:
         run: pnpm --dir demo/midgard-fault-proofs run test:traced-refusals
 
   # The watcher's TypeScript surface. Its eslint pass is the workspace-wide one
-  # in the `lint` job; the Go helper, compose stack and image are covered by
-  # midgard-watcher-ci.yml.
+  # in the `lint` job; the Go helper's own tests, compose stack and image are
+  # covered by midgard-watcher-ci.yml. The helper is compiled here because the
+  # watcher suite drives the built binary through its TypeScript owner.
   # Every test file runs in its own fork and re-imports the SDK and validation
   # graph, so on a two-fork hosted runner wall time grows with the file count.
   # Sharded like fault-proofs once ~210 files outgrew one 45-minute job.
@@ -552,10 +553,16 @@ jobs:
         shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26.0"
+          cache-dependency-path: demo/midgard-watcher/native-chain-sync/go.sum
       - uses: ./.github/actions/demo-setup
         with:
           blueprint: "true"
           prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation midgard-fault-proofs
+      - name: Build the native chain-sync helper the watcher suite drives
+        run: pnpm --dir demo/midgard-watcher run native:build:contrib-raw
       - name: Build, typecheck, format-check, and test Midgard watcher
         env:
           MIDGARD_FILE_DURATIONS_OUT: ${{ runner.temp }}/file-durations.json
