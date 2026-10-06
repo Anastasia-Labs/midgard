@@ -21,13 +21,16 @@
  *
  *   ci-file-durations.mjs --package <dir> --table <table.json> [--out <path>]
  *     [--run <id>] [--repo owner/name] [--overhead-seconds 5]
- *     [--project-shards <n>] [--warn-share 0.1] [<record.json | job log>...]
+ *     [--project-shards <n>] [--warn-share 0.1] [--test-file <regex>]
+ *     [<record.json | job log>...]
  *
  * The refreshed table is written to `--out` (default: `--table`, in place).
  * A measured file takes its measured seconds; a file of the committed table
  * the inputs did not measure (a shard that did not finish, say) keeps its
  * committed seconds; entries for files no longer under `--package` are
- * dropped. `defaultSeconds` (the weight of a file the table does not know) is
+ * dropped. A test file is a file under `<package>/tests` that `--test-file`
+ * matches (default: the extensions of Vitest's default include, so
+ * midgard-node's `.test.mjs` files count). `defaultSeconds` (the weight of a file the table does not know) is
  * the median of the result; `forksPerShard`, `reservedSeconds` and `$comment`
  * are carried over from `--table`.
  *
@@ -84,7 +87,10 @@ const { values, positionals } = parseArgs({
     "overhead-seconds": { type: "string", default: "5" },
     "project-shards": { type: "string" },
     "warn-share": { type: "string", default: "0.1" },
-    "test-file": { type: "string", default: String.raw`\.test\.tsx?$` },
+    "test-file": {
+      type: "string",
+      default: String.raw`\.(?:test|spec)\.[cm]?[jt]sx?$`,
+    },
   },
 });
 const tablePath = values.table ?? values.out;

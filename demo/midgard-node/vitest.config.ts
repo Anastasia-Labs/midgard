@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 
+import { durationShards } from "@al-ft/midgard-test-support/duration-shards";
 import {
   blueprintStampGlobalSetup,
   isolatedForksPool,
@@ -94,7 +95,21 @@ export default defineConfig({
     // Creates and migrates one database per worker shard before any file runs,
     // after refusing a stale onchain/aiken/plutus.json.
     globalSetup: [blueprintStampGlobalSetup, "./tests/global-setup.ts"],
-    reporters: [["default", { summary: false }]],
+    // Packs Node CI's `--shard=i/3` by the CI seconds each file took and starts
+    // the longest files first: three attestation-timeout and signed-intent
+    // emulator files run four to five minutes each while most files take
+    // seconds, so a giant that starts last sets a fork's wall time by itself.
+    // The table is keyed by package-relative path, so a file weighs the same in
+    // `midgard-node` and `midgard-node:source`. Each CI shard is its own job
+    // with its own Postgres service, so the per-worker database scheme above
+    // holds inside every shard unchanged. The table refreshes itself from CI;
+    // see `@al-ft/midgard-test-support/duration-shards`.
+    ...durationShards({
+      tablePath: fileURLToPath(
+        new URL("./tests/support/ci-file-durations.json", import.meta.url),
+      ),
+      reporters: [["default", { summary: false }]],
+    }),
     // Workspace packages load from a per-run source bundle; files that need
     // them module-by-module run in the `midgard-node:source` project. The
     // projects inherit everything else here.
