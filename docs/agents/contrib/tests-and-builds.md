@@ -38,6 +38,13 @@ file contents; timestamps cannot establish freshness. Doctor and preflight use
 the same dist verdict. Inputs conservatively include dependency tests and
 fixtures, so some unrelated edits can require an extra rebuild.
 
+The closure also binds the installed packages
+(`demo/node_modules/.pnpm/lock.yaml`), the variables a recipe names (shell
+expansions in `build:contrib-raw`, `process.env.NAME` in its tsup config and
+node scripts), and the dist bytes of every workspace package a build source
+imports. A recipe that reads the environment some other way, or a source or
+tsconfig input outside the closure, is never fresh.
+
 The Go helper disables ambient Git stamping with `-buildvcs=false`: linked
 worktrees and source archives must not discover an unrelated ancestor repository.
 Its native receipt records source, compiler and binary identities instead.

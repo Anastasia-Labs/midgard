@@ -13,6 +13,8 @@ import test from "node:test";
 import { checkBuild } from "./build.mjs";
 import {
   atomicJson,
+  buildEnvironment,
+  compiledDependencies,
   filesUnder,
   inputIdentity,
   outputIdentity,
@@ -20,14 +22,41 @@ import {
 import { enrollBuilds } from "./enroll-builds.mjs";
 import { fixture } from "./fixture.test-support.mjs";
 
-const stamp = (root) =>
+const stamp = (root, env = process.env) =>
   atomicJson(resolve(root, "demo/example/dist/.contrib-build-v1.json"), {
     schema: "midgard-contrib-build/v1",
     root,
     package: "example",
     inputs: inputIdentity(root, "example"),
+    environment: buildEnvironment(root, "example", env),
     outputs: outputIdentity(root, "demo/example/dist"),
+    dependencies: compiledDependencies(root, "example"),
   });
+const editPackage = (root, name, edit) => {
+  const path = resolve(root, `demo/${name}/package.json`);
+  const pkg = JSON.parse(readFileSync(path));
+  edit(pkg);
+  writeFileSync(path, JSON.stringify(pkg));
+};
+const workspaceDependency = (root, name = "dependency") => {
+  mkdirSync(resolve(root, `demo/${name}/src`), { recursive: true });
+  mkdirSync(resolve(root, `demo/${name}/dist`), { recursive: true });
+  writeFileSync(
+    resolve(root, `demo/${name}/package.json`),
+    JSON.stringify({
+      name,
+      scripts: { build: "compiler", "build:contrib-raw": "compiler" },
+    }),
+  );
+  writeFileSync(
+    resolve(root, `demo/${name}/src/index.ts`),
+    "export const y = 1;",
+  );
+  writeFileSync(
+    resolve(root, `demo/${name}/dist/index.js`),
+    "export const y = 1;",
+  );
+};
 
 test("repository receipts ignore generated site and spec outputs while binding new source inputs", (t) => {
   const root = fixture(t);
@@ -125,6 +154,7 @@ test("lockfile, exports, native sources and dependency facets invalidate", (t) =
   writeFileSync(path, JSON.stringify(pkg));
   for (const changed of [
     "demo/pnpm-lock.yaml",
+    "demo/node_modules/.pnpm/lock.yaml",
     "demo/dependency/src/facet.ts",
     "demo/example/package.json",
     "demo/example/native/Cargo.lock",
@@ -207,4 +237,127 @@ test("build enrollment is idempotent and refuses unknown wrappers", (t) => {
   assert.throws(() => enrollBuilds(root), /unguarded/u);
   assert.equal(enrollBuilds(root, { write: true }).length, 1);
   assert.deepEqual(enrollBuilds(root), []);
+});
+
+test("a variable the build recipe names is bound; one it cannot name is never fresh", (t) => {
+  const root = fixture(t);
+  editPackage(root, "example", (pkg) => {
+    pkg.scripts["build:contrib-raw"] =
+      'NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=64" tsup src/index.ts';
+  });
+  writeFileSync(
+    resolve(root, "demo/example/tsup.config.ts"),
+    "export default { define: { FLAG: JSON.stringify(process.env.EXAMPLE_FLAG) } };",
+  );
+  const env = { ...process.env, NODE_OPTIONS: "", EXAMPLE_FLAG: "one" };
+  assert.deepEqual(
+    Object.keys(buildEnvironment(root, "example", env).variables),
+    ["EXAMPLE_FLAG", "NODE_OPTIONS"],
+  );
+  stamp(root, env);
+  assert.equal(checkBuild(root, "example", { env }).status, "fresh");
+  assert.equal(
+    checkBuild(root, "example", { env: { ...env, UNNAMED: "x" } }).status,
+    "fresh",
+  );
+  for (const changed of [
+    { EXAMPLE_FLAG: "two" },
+    { EXAMPLE_FLAG: undefined },
+    { NODE_OPTIONS: "--import ./hook.mjs" },
+  ])
+    assert.match(
+      checkBuild(root, "example", { env: { ...env, ...changed } }).reason,
+      /build environment changed/u,
+      JSON.stringify(changed),
+    );
+  for (const config of [
+    "export default { env: { ...process.env } };",
+    "import { env } from 'node:process'; export default { define: env };",
+  ]) {
+    writeFileSync(resolve(root, "demo/example/tsup.config.ts"), config);
+    stamp(root, env);
+    assert.match(
+      checkBuild(root, "example", { env }).reason,
+      /never provably fresh/u,
+      config,
+    );
+  }
+  writeFileSync(
+    resolve(root, "demo/example/tsup.config.ts"),
+    "export default {};",
+  );
+  editPackage(root, "example", (pkg) => {
+    pkg.scripts["build:contrib-raw"] = "tsup src/index.ts --env.STAMP=$(date)";
+  });
+  stamp(root, env);
+  assert.match(
+    checkBuild(root, "example", { env }).reason,
+    /never provably fresh/u,
+  );
+});
+
+test("a workspace dist the sources can inline is bound even without a runtime dependency", (t) => {
+  const root = fixture(t);
+  workspaceDependency(root);
+  editPackage(root, "example", (pkg) => {
+    pkg.devDependencies = { dependency: "workspace:*" };
+  });
+  stamp(root);
+  assert.equal(checkBuild(root, "example").status, "fresh");
+  writeFileSync(
+    resolve(root, "demo/dependency/dist/index.js"),
+    "export const y = 2;",
+  );
+  // Not imported, so a devDependency's dist cannot reach the bundle.
+  assert.equal(checkBuild(root, "example").status, "fresh");
+  writeFileSync(
+    resolve(root, "demo/example/src/index.ts"),
+    'export { y } from "dependency/inner";\n',
+  );
+  stamp(root);
+  assert.deepEqual(
+    compiledDependencies(root, "example").map(({ name }) => name),
+    ["dependency"],
+  );
+  assert.equal(checkBuild(root, "example").status, "fresh");
+  writeFileSync(
+    resolve(root, "demo/dependency/dist/index.js"),
+    "export const y = 3;",
+  );
+  assert.match(
+    checkBuild(root, "example").reason,
+    /compiled dependency contents changed/u,
+  );
+});
+
+test("build inputs outside the closure keep a dist from ever being fresh", (t) => {
+  const root = fixture(t);
+  workspaceDependency(root, "undeclared");
+  writeFileSync(
+    resolve(root, "demo/example/src/index.ts"),
+    'import { y } from "undeclared";\nexport const x = y;\n',
+  );
+  stamp(root);
+  assert.match(
+    checkBuild(root, "example").reason,
+    /sources name workspace package undeclared, which example does not declare/u,
+  );
+  writeFileSync(
+    resolve(root, "demo/example/src/index.ts"),
+    "export const x = 1;\n",
+  );
+  writeFileSync(
+    resolve(root, "demo/example/tsconfig.json"),
+    JSON.stringify({ include: ["src", "../undeclared/src"] }),
+  );
+  stamp(root);
+  assert.match(
+    checkBuild(root, "example").reason,
+    /includes \.\.\/undeclared\/src outside the input closure/u,
+  );
+  editPackage(root, "example", (pkg) => {
+    pkg.devDependencies = { undeclared: "workspace:*" };
+  });
+  stamp(root);
+  assert.equal(checkBuild(root, "example").status, "fresh");
 });

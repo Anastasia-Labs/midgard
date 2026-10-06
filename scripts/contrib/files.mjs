@@ -16,6 +16,26 @@ import { NATIVE_RECIPES } from "./native-recipes.mjs";
 
 export const sha256 = (value) =>
   createHash("sha256").update(value).digest("hex");
+
+// One freshness verdict hashes the shared closure once per dependency it
+// visits. A scope memoizes package lists, file digests and identities for
+// one synchronous verdict only: nothing can build or edit while it is open,
+// so no entry outlives the state it describes.
+let identityScope;
+export const withIdentityScope = (action) => {
+  if (identityScope) return action();
+  identityScope = new Map();
+  try {
+    return action();
+  } finally {
+    identityScope = undefined;
+  }
+};
+const scoped = (key, compute) => {
+  if (!identityScope) return compute();
+  if (!identityScope.has(key)) identityScope.set(key, compute());
+  return identityScope.get(key);
+};
 export const json = (path) => JSON.parse(readFileSync(path, "utf8"));
 export const atomicJson = (path, value) => {
   mkdirSync(dirname(path), { recursive: true });
@@ -124,15 +144,17 @@ export const filesUnder = (root, { outputs = false } = {}) => {
 };
 
 export const hashFiles = (root, paths) => {
-  const entries = [...new Set(paths)].sort().map((path) => {
-    const absolute = inside(root, path);
-    if (!lstatSync(absolute).isFile())
-      throw new Error(`input is not a regular file: ${path}`);
-    return [
-      relative(root, absolute).split(sep).join("/"),
-      sha256(readFileSync(absolute)),
-    ];
-  });
+  const entries = [...new Set(paths)].sort().map((path) =>
+    scoped(`file\0${root}\0${path}`, () => {
+      const absolute = inside(root, path);
+      if (!lstatSync(absolute).isFile())
+        throw new Error(`input is not a regular file: ${path}`);
+      return [
+        relative(root, absolute).split(sep).join("/"),
+        sha256(readFileSync(absolute)),
+      ];
+    }),
+  );
   return {
     sha256: sha256(JSON.stringify(entries)),
     files: Object.fromEntries(entries),
@@ -140,16 +162,18 @@ export const hashFiles = (root, paths) => {
 };
 
 export const workspacePackages = (root) =>
-  readdirSync(resolve(root, "demo"), { withFileTypes: true })
-    .filter(
-      (entry) =>
-        entry.isDirectory() &&
-        existsSync(resolve(root, "demo", entry.name, "package.json")),
-    )
-    .map((entry) => ({
-      directory: `demo/${entry.name}`,
-      ...json(resolve(root, "demo", entry.name, "package.json")),
-    }));
+  scoped(`packages\0${root}`, () =>
+    readdirSync(resolve(root, "demo"), { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          existsSync(resolve(root, "demo", entry.name, "package.json")),
+      )
+      .map((entry) => ({
+        directory: `demo/${entry.name}`,
+        ...json(resolve(root, "demo", entry.name, "package.json")),
+      })),
+  );
 
 export const packageByName = (root, name) => {
   const pkg = workspacePackages(root).find(
@@ -204,18 +228,171 @@ export const runtimeBuildClosure = (root, name) => {
   return ordered;
 };
 
-export const compiledDependencies = (root, name) =>
-  runtimeBuildClosure(root, name)
-    .filter((pkg) => pkg.name !== packageByName(root, name).name)
-    .map((pkg) => ({
-      name: pkg.name,
-      outputs: outputIdentity(root, `${pkg.directory}/dist`),
-    }));
+const MODULE_SPECIFIER =
+  /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["'`]([^"'`\s]+)["'`]/gu;
+const SCRIPT_SOURCE = /\.[cm]?[jt]sx?$/u;
+const BUILD_CONFIGS = [
+  "tsup.config.ts",
+  "tsup.config.mts",
+  "tsup.config.cts",
+  "tsup.config.js",
+  "tsup.config.mjs",
+  "tsup.config.cjs",
+  "tsup.config.json",
+];
+const packageText = (root, pkg, path) => {
+  const absolute = resolve(root, pkg.directory, path);
+  return existsSync(absolute) ? readFileSync(absolute, "utf8") : "";
+};
+const buildConfigText = (root, pkg) =>
+  BUILD_CONFIGS.map((path) => packageText(root, pkg, path)).join("\n");
+
+// tsup externalizes `dependencies` only, so a runtime dependency's dist stays
+// a separate module whose bytes the stamp already binds. Any other workspace
+// package a build source names (a devDependency, or one reached through the
+// `midgard-source` condition) can be inlined from its dist, which no source
+// digest covers. Those dists join the compiled dependencies.
+export const inlinedWorkspacePackages = (root, name) =>
+  scoped(`inlined\0${root}\0${name}`, () => {
+    const packages = workspacePackages(root);
+    const self = packageByName(root, name);
+    const throughSource = buildConfigText(root, self).includes(
+      "midgard-source",
+    );
+    const named = new Set();
+    const scanned = new Set();
+    const scan = (pkg) => {
+      if (scanned.has(pkg.name)) return;
+      scanned.add(pkg.name);
+      for (const file of filesUnder(resolve(root, pkg.directory, "src"))) {
+        if (!SCRIPT_SOURCE.test(file)) continue;
+        for (const [, specifier] of readFileSync(file, "utf8").matchAll(
+          MODULE_SPECIFIER,
+        )) {
+          const target = packages.find(
+            (entry) =>
+              specifier === entry.name ||
+              specifier.startsWith(`${entry.name}/`),
+          );
+          if (!target || target.name === self.name) continue;
+          named.add(target.name);
+          if (throughSource) scan(target);
+        }
+      }
+    };
+    scan(self);
+    const runtime = new Set(
+      runtimeBuildClosure(root, name).map((pkg) => pkg.name),
+    );
+    return [...named].filter((entry) => !runtime.has(entry)).sort();
+  });
+
+export const compiledDependencies = (root, name) => {
+  const self = packageByName(root, name);
+  const inlined = inlinedWorkspacePackages(root, name)
+    .map((entry) => packageByName(root, entry))
+    .filter((pkg) => pkg.scripts?.build);
+  return [
+    ...runtimeBuildClosure(root, name).filter((pkg) => pkg.name !== self.name),
+    ...inlined,
+  ].map((pkg) => ({
+    name: pkg.name,
+    outputs: outputIdentity(root, `${pkg.directory}/dist`),
+  }));
+};
+
+// A build can read inputs only the package's own facts reveal. Report every
+// one the input closure cannot bind, so freshness fails closed on it.
+export const unboundBuildInputs = (root, name) => {
+  const self = packageByName(root, name);
+  const closure = packageClosure(root, name);
+  const declared = new Set(closure.map((pkg) => pkg.name));
+  const reasons = inlinedWorkspacePackages(root, name)
+    .filter((entry) => !declared.has(entry))
+    .map(
+      (entry) =>
+        `build sources name workspace package ${entry}, which ${self.name} does not declare`,
+    );
+  const tsconfig = resolve(root, self.directory, "tsconfig.json");
+  if (existsSync(tsconfig)) {
+    let include = [];
+    try {
+      include = json(tsconfig).include ?? [];
+    } catch {
+      reasons.push(`${self.directory}/tsconfig.json is not plain JSON`);
+    }
+    const owned = closure.map((pkg) => resolve(root, pkg.directory));
+    for (const entry of include) {
+      const target = resolve(root, self.directory, entry);
+      if (
+        !owned.some(
+          (directory) =>
+            target === directory || target.startsWith(`${directory}${sep}`),
+        )
+      )
+        reasons.push(
+          `${self.directory}/tsconfig.json includes ${entry} outside the input closure`,
+        );
+    }
+  }
+  return reasons;
+};
+
+// A recipe sees its whole environment, but it can only act on the variables
+// it names: shell expansions in the recipe, and process.env reads in its tsup
+// config and the node scripts it runs. Their values (hashed, since dist is
+// copied around) are bound; a recipe that reads the environment some other
+// way cannot be bound and is never fresh.
+export const buildEnvironment = (root, name, env = process.env) => {
+  const pkg = packageByName(root, name);
+  const recipe = pkg.scripts?.["build:contrib-raw"] ?? "";
+  const programs = [
+    buildConfigText(root, pkg),
+    ...[...recipe.matchAll(/\bnode\s+([^\s&|;]+\.[cm]?js)\b/gu)].map(
+      ([, path]) => packageText(root, pkg, path),
+    ),
+  ];
+  const names = new Set(
+    [...recipe.matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)/gu)].map(
+      ([, variable]) => variable,
+    ),
+  );
+  for (const text of [recipe, ...programs]) {
+    for (const [, variable] of text.matchAll(
+      /process\.env\.([A-Za-z_$][\w$]*)/gu,
+    ))
+      names.add(variable);
+    for (const [, variable] of text.matchAll(
+      /process\.env\[\s*["']([^"']+)["']\s*\]/gu,
+    ))
+      names.add(variable);
+  }
+  const unnamed =
+    /`|\$\(/u.test(recipe) ||
+    [recipe, ...programs].some(
+      (text) =>
+        /process\.env(?!\.[A-Za-z_$]|\[\s*["'][^"']+["']\s*\])/u.test(text) ||
+        /from\s+["'](?:node:)?process["']|\}\s*=\s*process\b/u.test(text),
+    );
+  return {
+    unnamed,
+    variables: Object.fromEntries(
+      [...names]
+        .sort()
+        .map((variable) => [
+          variable,
+          env[variable] === undefined ? null : sha256(env[variable]),
+        ]),
+    ),
+  };
+};
 
 // Conservative closure includes native sources, SQL, generators and fixtures,
 // not merely src/. Test edits can cause an unnecessary rebuild, never a false
 // fresh result. Missing optional inputs are represented in the digest.
-export const inputIdentity = (root, name) => {
+export const inputIdentity = (root, name) =>
+  scoped(`input\0${root}\0${name}`, () => uncachedInputIdentity(root, name));
+const uncachedInputIdentity = (root, name) => {
   if (name === "@repository") {
     // Builds create ignored LaTeX/site outputs outside dist/. They are not
     // repository source changes. Include tracked inputs and new unignored
@@ -278,6 +455,9 @@ export const inputIdentity = (root, name) => {
   const shared = [
     "demo/package.json",
     "demo/pnpm-lock.yaml",
+    // What is installed, not only what the lockfile asks for: a build run
+    // before `pnpm install` caught up compiled against the old packages.
+    "demo/node_modules/.pnpm/lock.yaml",
     "demo/pnpm-workspace.yaml",
     "demo/tsconfig.json",
     "scripts/contrib.mjs",
@@ -315,6 +495,10 @@ export const inputIdentity = (root, name) => {
 };
 
 export const outputIdentity = (root, directory) =>
+  scoped(`output\0${root}\0${directory}`, () =>
+    uncachedOutputIdentity(root, directory),
+  );
+const uncachedOutputIdentity = (root, directory) =>
   hashFiles(
     root,
     filesUnder(resolve(root, directory), { outputs: true }).filter(
