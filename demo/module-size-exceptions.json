@@ -1045,14 +1045,9 @@
     "reason": "Retained test registration “durable admission microbatch writer” (437 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
-    "file": "midgard-node/tests/attestation-timeout-reinclusion-emulator.test.ts",
-    "max": 504,
-    "reason": "Retained test registration “resumes a rewind to a retained non-empty base interrupted after the native root moved and before reinclusion committed” (70 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
     "file": "midgard-node/tests/attestation-timeout-reinclusion-hardening-emulator.test.ts",
-    "max": 998,
-    "reason": "Retained test registration “returns a removed block” (209 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 526,
+    "reason": "Five independent emulator scenarios of the unlanded-descendant and rollback hardening, the largest “abandons a removed block's unlanded descendant…” (152 lines); the held, retained and rolled-back repairs already moved to attestation-timeout-reinclusion-held-repair-emulator.test.ts for the per-file time budget. Splitting the remaining five again would add another file's module load and fixture restore for 26 lines."
   },
   {
     "file": "midgard-node/tests/availability-challenge-command.test.ts",
