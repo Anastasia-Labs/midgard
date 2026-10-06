@@ -40,6 +40,7 @@ import {
 } from "./mainnet-protocol-parameters.js";
 import {
   createPublishedWorkflowDeploymentAccounts,
+  type PublishedWorkflowChain,
   publishWorkflowDeploymentOnChain,
 } from "./published-workflow-deployment.js";
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
@@ -407,18 +408,21 @@ export const restoreHistorySource = async (
     mode: 0o600,
   });
   const restored = structuredClone(prefix.deployment);
+  // Typed as the published deployment's chain, whose waits may be
+  // asynchronous on other chains; callers await them.
+  const chain: PublishedWorkflowChain = {
+    now: () => emulator.now(),
+    delaySlots: (slots) => emulator.awaitSlot(slots),
+    awaitLedgerTime: (time) => {
+      const slots = Math.ceil((time - emulator.now()) / 1000);
+      if (slots > 0) emulator.awaitSlot(slots);
+    },
+  };
   const deployment = {
     ...restored,
     publicationJournalPath,
     contracts,
-    chain: {
-      now: () => emulator.now(),
-      delaySlots: (slots: number) => emulator.awaitSlot(slots),
-      awaitLedgerTime: (time: number) => {
-        const slots = Math.ceil((time - emulator.now()) / 1000);
-        if (slots > 0) emulator.awaitSlot(slots);
-      },
-    },
+    chain,
     operatorLucid: lucid,
     publisherLucid,
     emulator,
