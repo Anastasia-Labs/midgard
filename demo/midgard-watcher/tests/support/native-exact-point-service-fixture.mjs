@@ -9,6 +9,8 @@ import { createInterface } from "node:readline";
 
 // maxServiceSessions in native-chain-sync/service.go.
 const SESSION_LIMIT = 256;
+// Longer than the owner's frame bound (one session's whole stdout bound).
+const OVERSIZED_BYTES = 9 * 1024 * 1024;
 
 export const serve = ({ mode, logPath }) => {
   const log = (kind, value = {}) =>
@@ -56,6 +58,14 @@ export const serve = ({ mode, logPath }) => {
     if (mode === "unknown_session") return frame(`out 999 {}\n`);
     if (mode === "malformed") return frame("malformed\n");
     if (mode === "crash_on_second_open" && opened === 2) process.exit(23);
+    if (mode === "oversized_end")
+      return frame(`end ${id} ${"9".repeat(OVERSIZED_BYTES)}\n`);
+    // One session's own frame is faulty; the helper keeps it live until the
+    // owner closes it, then ends it as usual.
+    if (mode === "oversized_out_on_second_open" && opened === 2)
+      return frame(`out ${id} "${"a".repeat(OVERSIZED_BYTES)}"\n`);
+    if (mode === "invalid_err_on_second_open" && opened === 2)
+      frame(`err ${id} !!!!\n`);
     const target = startup.operation.target;
     const tip = {
       blockHash: "44".repeat(32),

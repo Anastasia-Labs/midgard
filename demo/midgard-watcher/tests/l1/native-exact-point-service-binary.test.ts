@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  closeWatcherNativeExactPointServices,
-  openWatcherNativeExactPointQuery,
-  watcherNativeExactPointServicePids,
-} from "../../src/l1/native-chain-sync.js";
+  unsafeCloseWatcherNativeExactPointServicesForTest,
+  unsafeWatcherNativeExactPointServicePidsForTest,
+} from "../../src/l1/native-chain-sync.exact-point-service.js";
+import { openWatcherNativeExactPointQuery } from "../../src/l1/native-chain-sync.js";
 import {
   exactPointWatcherConfig,
   GENESIS_BYTES,
@@ -25,7 +25,7 @@ const target = { blockHash: "bb".repeat(32), blockNo: "10", slot: "101" };
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
-  await closeWatcherNativeExactPointServices();
+  await unsafeCloseWatcherNativeExactPointServicesForTest();
   for (const close of cleanup.splice(0).reverse()) await close();
 });
 
@@ -103,13 +103,13 @@ describe("compiled native exact-point helper", () => {
       name: "NativeChainSyncStartupFailure",
       code: "invalid_startup",
     });
-    const [pid] = watcherNativeExactPointServicePids();
+    const [pid] = unsafeWatcherNativeExactPointServicePidsForTest();
     expect(pid).toBeDefined();
     await expect(open()).rejects.toMatchObject({ code: "invalid_startup" });
-    expect(watcherNativeExactPointServicePids()).toEqual([pid]);
-    await closeWatcherNativeExactPointServices();
+    expect(unsafeWatcherNativeExactPointServicePidsForTest()).toEqual([pid]);
+    await unsafeCloseWatcherNativeExactPointServicesForTest();
     expect(alive(pid!)).toBe(false);
-    expect(watcherNativeExactPointServicePids()).toEqual([]);
+    expect(unsafeWatcherNativeExactPointServicePidsForTest()).toEqual([]);
   });
 
   it("releases the node connection of a cancelled session and keeps serving", async () => {
@@ -127,7 +127,7 @@ describe("compiled native exact-point helper", () => {
     });
     const refusal = expect(pending).rejects.toThrow(/cancelled or expired/);
     await expect.poll(() => node.connections.length).toBe(1);
-    const [pid] = watcherNativeExactPointServicePids();
+    const [pid] = unsafeWatcherNativeExactPointServicePidsForTest();
     controller.abort();
     await refusal;
     // The helper ends the session and drops its node connection.
@@ -141,7 +141,7 @@ describe("compiled native exact-point helper", () => {
         timeoutMs: 10_000,
       }),
     ).rejects.toMatchObject({ code: "invalid_startup" });
-    expect(watcherNativeExactPointServicePids()).toEqual([pid]);
+    expect(unsafeWatcherNativeExactPointServicePidsForTest()).toEqual([pid]);
   });
 
   it("fails a query closed against a helper built before service mode", async () => {
@@ -161,7 +161,7 @@ describe("compiled native exact-point helper", () => {
         timeoutMs: 10_000,
       }),
     ).rejects.toThrow("native chain-sync process exited unexpectedly");
-    const pids = watcherNativeExactPointServicePids();
+    const pids = unsafeWatcherNativeExactPointServicePidsForTest();
     expect(pids).toEqual([]);
   });
 });

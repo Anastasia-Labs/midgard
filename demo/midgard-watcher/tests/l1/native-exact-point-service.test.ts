@@ -4,10 +4,12 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  closeWatcherNativeExactPointServices,
+  unsafeCloseWatcherNativeExactPointServicesForTest,
+  unsafeWatcherNativeExactPointServicePidsForTest,
+} from "../../src/l1/native-chain-sync.exact-point-service.js";
+import {
   openWatcherNativeExactPointQuery,
   readWatcherNativeExactPointQuery,
-  watcherNativeExactPointServicePids,
 } from "../../src/l1/native-chain-sync.js";
 import {
   exactPointWatcherConfig,
@@ -24,7 +26,7 @@ type LogEntry = Readonly<{ kind: string; pid: number; id?: string }>;
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
-  await closeWatcherNativeExactPointServices();
+  await unsafeCloseWatcherNativeExactPointServicesForTest();
   for (const close of cleanup.splice(0).reverse()) await close();
 });
 
@@ -97,7 +99,7 @@ describe("persistent native exact-point helper", () => {
     const helpers = await starts();
     expect(helpers).toHaveLength(1);
     const pid = helpers[0]!.pid;
-    expect(watcherNativeExactPointServicePids()).toEqual([pid]);
+    expect(unsafeWatcherNativeExactPointServicePidsForTest()).toEqual([pid]);
     expect((await log()).filter((entry) => entry.kind === "open")).toHaveLength(
       2,
     );
@@ -106,9 +108,9 @@ describe("persistent native exact-point helper", () => {
     expect(() => readWatcherNativeExactPointQuery(first.receipt)).toThrow(
       /absent or stale/,
     );
-    await closeWatcherNativeExactPointServices();
+    await unsafeCloseWatcherNativeExactPointServicesForTest();
     expect(alive(pid)).toBe(false);
-    expect(watcherNativeExactPointServicePids()).toEqual([]);
+    expect(unsafeWatcherNativeExactPointServicePidsForTest()).toEqual([]);
     expect((await log()).map((entry) => entry.kind)).toContain("eof");
   });
 
@@ -119,7 +121,7 @@ describe("persistent native exact-point helper", () => {
     await query.close();
     expect(alive(pid)).toBe(true);
     await exited(pid);
-    expect(watcherNativeExactPointServicePids()).toEqual([]);
+    expect(unsafeWatcherNativeExactPointServicePidsForTest()).toEqual([]);
   });
 
   it("closes an expired session and keeps the helper serving", async () => {
@@ -184,8 +186,46 @@ describe("persistent native exact-point helper", () => {
     const helpers = await starts();
     expect(helpers).toHaveLength(2);
     expect(helpers[1]!.pid).not.toBe(crashed);
-    expect(watcherNativeExactPointServicePids()).toEqual([helpers[1]!.pid]);
+    expect(unsafeWatcherNativeExactPointServicePidsForTest()).toEqual([
+      helpers[1]!.pid,
+    ]);
   });
+
+  it.each([
+    [
+      "oversized_out_on_second_open",
+      "native exact-point query stdout exceeded its bound",
+    ],
+    [
+      "invalid_err_on_second_open",
+      "native chain-sync process exited unexpectedly",
+    ],
+  ])(
+    "fails only the session whose own frame is faulty (%s)",
+    async (mode, refusal) => {
+      const { open, log, starts } = await helper(mode);
+      const live = await open(target);
+      await expect(open(other)).rejects.toThrow(refusal);
+      // The helper released the failed session and still serves the earlier
+      // query and the next one from the same frame stream.
+      await expect
+        .poll(async () => await log())
+        .toContainEqual(expect.objectContaining({ kind: "close", id: "2" }));
+      expect(
+        readWatcherNativeExactPointQuery(live.receipt).event.blockHash,
+      ).toBe(target.blockHash);
+      const next = await open(target);
+      expect(
+        readWatcherNativeExactPointQuery(next.receipt).event.blockHash,
+      ).toBe(target.blockHash);
+      const helpers = await starts();
+      expect(helpers).toHaveLength(1);
+      expect(unsafeWatcherNativeExactPointServicePidsForTest()).toEqual([
+        helpers[0]!.pid,
+      ]);
+    },
+    30_000,
+  );
 
   it("fails an in-flight query when the helper is killed externally", async () => {
     const { open, log, starts } = await helper();
@@ -222,7 +262,7 @@ describe("persistent native exact-point helper", () => {
     await refusal;
     await exited(pid);
     expect((await log()).map((entry) => entry.kind)).not.toContain("eof");
-    expect(watcherNativeExactPointServicePids()).toEqual([]);
+    expect(unsafeWatcherNativeExactPointServicePidsForTest()).toEqual([]);
   }, 30_000);
 
   it("kills a helper that frames output for a session it already ended", async () => {
@@ -242,10 +282,10 @@ describe("persistent native exact-point helper", () => {
     await refusal;
     await exited(pid);
     expect((await log()).map((entry) => entry.kind)).not.toContain("eof");
-    expect(watcherNativeExactPointServicePids()).toEqual([]);
+    expect(unsafeWatcherNativeExactPointServicePidsForTest()).toEqual([]);
   }, 30_000);
 
-  it.each(["unknown_session", "malformed"])(
+  it.each(["unknown_session", "malformed", "oversized_end"])(
     "kills a helper whose output is %s",
     async (mode) => {
       const { open, starts } = await helper(mode);
@@ -253,7 +293,7 @@ describe("persistent native exact-point helper", () => {
         "native chain-sync process exited unexpectedly",
       );
       await exited((await starts())[0]!.pid);
-      expect(watcherNativeExactPointServicePids()).toEqual([]);
+      expect(unsafeWatcherNativeExactPointServicePidsForTest()).toEqual([]);
     },
   );
 });

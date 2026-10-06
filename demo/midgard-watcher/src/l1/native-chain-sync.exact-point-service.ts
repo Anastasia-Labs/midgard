@@ -1,10 +1,11 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { EventEmitter } from "node:events";
-import { PassThrough, Writable } from "node:stream";
 
 import {
+  ExactPointSession,
+  type ExactPointSessionHost,
+} from "./native-chain-sync.exact-point-session.js";
+import {
   MAX_QUERY_STDOUT_BYTES,
-  MAX_STDERR_BYTES,
   MAX_STDERR_DIAGNOSTIC_BYTES,
 } from "./native-chain-sync.exact-record.js";
 
@@ -16,9 +17,11 @@ import {
  * line on stdin, the same stdout lines and stderr bytes, and an exit when the
  * session ends. A helper crash, hang or protocol violation kills the helper
  * and ends every in-flight session exactly as its own process exiting would;
- * nothing is retried. The next query starts a fresh helper. The helper admits
- * at most MAX_HELPER_SESSIONS live sessions; opens beyond that wait, in
- * order, for a session to end instead of being refused.
+ * nothing is retried. The next query starts a fresh helper. A fault confined
+ * to one live session's own frame, behind an intact header, ends only that
+ * session (see #oversize and #frame). The helper admits at most
+ * MAX_HELPER_SESSIONS live sessions; opens beyond that wait, in order, for a
+ * session to end instead of being refused.
  *
  * Wire protocol (one line per frame):
  *   owner -> helper: "open <id> <startup line>", "close <id>"
@@ -27,7 +30,6 @@ import {
  */
 export const WATCHER_NATIVE_EXACT_POINT_SERVICE_FLAG = "--exact-point-service";
 
-const MAX_STARTUP_LINE_BYTES = 64 * 1024;
 // One framed stdout line carries at most one session's whole stdout bound.
 const MAX_SERVICE_FRAME_BYTES = MAX_QUERY_STDOUT_BYTES + 64;
 const MAX_SERVICE_STDERR_TAIL_BYTES = MAX_STDERR_DIAGNOSTIC_BYTES;
@@ -57,123 +59,7 @@ const productionServiceSpawn: WatcherNativeServiceSpawn = (binaryPath, args) =>
     env: Object.freeze({ PATH: process.env.PATH ?? "/usr/bin:/bin" }),
   });
 
-class ExactPointSession extends EventEmitter {
-  readonly stdin: Writable;
-  readonly stdout = new PassThrough();
-  readonly stderr = new PassThrough();
-  killed = false;
-  exitCode: number | null = null;
-  signalCode: NodeJS.Signals | null = null;
-  #service: ExactPointService | undefined;
-  #id: number | undefined;
-  #finished = false;
-  #startup: Buffer[] = [];
-  #startupBytes = 0;
-  #stdoutBytes = 0;
-  #stderrBytes = 0;
-
-  constructor(
-    readonly binaryPath: string,
-    readonly spawnService: WatcherNativeServiceSpawn,
-  ) {
-    super();
-    this.stdin = new Writable({
-      write: (chunk: Buffer, _encoding, callback) => {
-        this.#startupBytes += chunk.byteLength;
-        if (this.#startupBytes <= MAX_STARTUP_LINE_BYTES)
-          this.#startup.push(chunk);
-        callback();
-      },
-      final: (callback) => {
-        this.#open();
-        callback();
-      },
-    });
-  }
-
-  get pid(): number | undefined {
-    return this.#service?.pid;
-  }
-
-  #open(): void {
-    if (this.#finished || this.killed) return;
-    const line = Buffer.concat(this.#startup);
-    this.#startup = [];
-    // The supervisor writes exactly one bounded line; anything else cannot be
-    // framed and fails like a helper that refused its startup.
-    if (
-      this.#startupBytes > MAX_STARTUP_LINE_BYTES ||
-      line.length < 2 ||
-      line.indexOf(0x0a) !== line.length - 1
-    ) {
-      this.finish(64, null);
-      return;
-    }
-    this.#service = serviceFor(this.binaryPath, this.spawnService);
-    this.#service.open(this, line.subarray(0, line.length - 1));
-  }
-
-  /** The helper session id, once the open frame has been written. */
-  opened(id: number): void {
-    this.#id = id;
-  }
-
-  /** Forwards one stdout line; output beyond the session bound is dropped. */
-  deliverStdout(line: Buffer): void {
-    if (this.#finished || this.#stdoutBytes > MAX_QUERY_STDOUT_BYTES) return;
-    // The line crossing the bound is still delivered, so the supervisor's
-    // own stdout bound refuses it exactly as for a process.
-    this.#stdoutBytes += line.byteLength + 1;
-    this.stdout.write(line);
-    this.stdout.write(NEWLINE);
-  }
-
-  deliverStderr(chunk: Buffer): void {
-    if (this.#finished || this.#stderrBytes > MAX_STDERR_BYTES) return;
-    this.#stderrBytes += chunk.byteLength;
-    this.stderr.write(chunk);
-  }
-
-  get finished(): boolean {
-    return this.#finished;
-  }
-
-  finish(code: number | null, signal: NodeJS.Signals | null): void {
-    if (this.#finished) return;
-    this.#finished = true;
-    this.exitCode = code;
-    this.signalCode = signal;
-    this.#service?.released(this, this.#id);
-    this.stdout.end();
-    this.stderr.end();
-    // A process exit is observed asynchronously, never inside kill().
-    setImmediate(() => {
-      this.emit("exit", code, signal);
-      setImmediate(() => this.emit("close", code, signal));
-    });
-  }
-
-  kill(signal: NodeJS.Signals | number = "SIGTERM"): boolean {
-    if (this.#finished) return false;
-    this.killed = true;
-    const service = this.#service;
-    const id = this.#id;
-    // An unopened or still waiting session ends as an unstarted process.
-    if (service === undefined || id === undefined) {
-      this.finish(null, typeof signal === "number" ? "SIGKILL" : signal);
-      return true;
-    }
-    service.close(id);
-    if (signal === "SIGKILL" || signal === 9) {
-      // A killed process ends now; the helper must confirm the release.
-      this.finish(null, "SIGKILL");
-      service.awaitRelease(id);
-    }
-    return true;
-  }
-}
-
-class ExactPointService {
+class ExactPointService implements ExactPointSessionHost {
   readonly #child: ChildProcessWithoutNullStreams;
   readonly #sessions = new Map<number, ExactPointSession>();
   // Locally ended sessions whose helper end frame is still outstanding.
@@ -185,6 +71,8 @@ class ExactPointService {
   #inputEnded = false;
   #pending: Buffer[] = [];
   #pendingBytes = 0;
+  // The rest of an oversized frame is being skipped up to its newline.
+  #skipping = false;
   #stderrTail = Buffer.alloc(0);
   #idleTimer: NodeJS.Timeout | undefined;
   readonly exited: Promise<void>;
@@ -317,6 +205,12 @@ class ExactPointService {
     let start = 0;
     while (!this.#dead) {
       const newline = chunk.indexOf(0x0a, start);
+      if (this.#skipping) {
+        if (newline === -1) return;
+        this.#skipping = false;
+        start = newline + 1;
+        continue;
+      }
       if (newline === -1) break;
       const piece = chunk.subarray(start, newline);
       const line =
@@ -327,50 +221,112 @@ class ExactPointService {
       this.#pendingBytes = 0;
       start = newline + 1;
       if (line.length > MAX_SERVICE_FRAME_BYTES) {
-        this.fail("native exact-point service frame exceeded its bound");
-        return;
+        this.#oversize(line);
+        continue;
       }
       this.#frame(line);
     }
     if (this.#dead || start >= chunk.length) return;
     this.#pendingBytes += chunk.length - start;
-    if (this.#pendingBytes > MAX_SERVICE_FRAME_BYTES) {
-      this.fail("native exact-point service frame exceeded its bound");
-      return;
-    }
     this.#pending.push(chunk.subarray(start));
+    if (this.#pendingBytes > MAX_SERVICE_FRAME_BYTES) {
+      const head = Buffer.concat(this.#pending);
+      this.#pending = [];
+      this.#pendingBytes = 0;
+      this.#oversize(head);
+      this.#skipping = !this.#dead;
+    }
   }
 
-  #frame(line: Buffer): void {
+  /**
+   * Splits a frame into its verb, its admitted session and its payload, or
+   * kills the helper. A malformed header, an id the owner never allocated and
+   * an id the owner already saw end all mean the helper's view of its
+   * sessions has diverged from the owner's, so no session can be blamed.
+   */
+  #header(line: Buffer):
+    | Readonly<{
+        verb: string;
+        id: number;
+        session: ExactPointSession | undefined;
+        payload: Buffer;
+      }>
+    | undefined {
     const verbEnd = line.indexOf(0x20);
     const idEnd = verbEnd === -1 ? -1 : line.indexOf(0x20, verbEnd + 1);
     if (verbEnd === -1 || idEnd === -1) {
       this.fail("native exact-point service emitted an invalid frame");
-      return;
+      return undefined;
     }
     const verb = line.toString("latin1", 0, verbEnd);
     const rawId = line.toString("latin1", verbEnd + 1, idEnd);
-    const payload = line.subarray(idEnd + 1);
     const id = SESSION_ID.test(rawId) ? Number(rawId) : 0;
     if (id < 1 || id > this.#lastId) {
       this.fail("native exact-point service emitted an unknown session");
-      return;
+      return undefined;
     }
     const session = this.#sessions.get(id);
     if (session === undefined && !this.#releasing.has(id)) {
       this.fail("native exact-point service emitted an ended session");
-      return;
+      return undefined;
     }
+    return { verb, id, session, payload: line.subarray(idEnd + 1) };
+  }
+
+  /**
+   * Frames are newline-terminated and no payload can hold a newline (stdout
+   * lines are single JSON lines, diagnostics are base64), so the frame after
+   * an oversized one starts at its next newline and the stream stays in sync.
+   * An oversized stdout or diagnostics frame is therefore that session's
+   * fault alone. An oversized end frame is not: the end frame is the helper's
+   * slot release, and one outside its grammar leaves the helper's session
+   * count unknown, so it kills the helper.
+   */
+  #oversize(head: Buffer): void {
+    const frame = this.#header(head);
+    if (frame === undefined) return;
+    const { verb, session, payload } = frame;
+    if (verb === "out") {
+      session?.deliverStdoutOverflow(payload);
+    } else if (verb === "err") {
+      this.#failSession(
+        session,
+        "native exact-point service emitted invalid diagnostics",
+      );
+    } else {
+      this.fail("native exact-point service frame exceeded its bound");
+    }
+  }
+
+  /**
+   * Ends one live session as a killed process, with the reason as its last
+   * diagnostics; the helper must still release it within the kill bound.
+   */
+  #failSession(session: ExactPointSession | undefined, reason: string): void {
+    if (session === undefined) return;
+    session.deliverStderr(Buffer.from(`${reason}\n`));
+    session.kill("SIGKILL");
+  }
+
+  #frame(line: Buffer): void {
+    const frame = this.#header(line);
+    if (frame === undefined) return;
+    const { verb, id, session, payload } = frame;
     if (verb === "out") {
       session?.deliverStdout(payload);
     } else if (verb === "err") {
       const encoded = payload.toString("latin1");
       if (!BASE64.test(encoded) || encoded.length % 4 !== 0) {
-        this.fail("native exact-point service emitted invalid diagnostics");
+        this.#failSession(
+          session,
+          "native exact-point service emitted invalid diagnostics",
+        );
         return;
       }
       session?.deliverStderr(Buffer.from(encoded, "base64"));
     } else if (verb === "end") {
+      // The end frame releases the helper's slot; one outside its grammar
+      // leaves the helper's session count unknown, so it is not isolated.
       const status = payload.toString("latin1");
       if (!/^(?:0|[1-9][0-9]{0,2})$/u.test(status) || Number(status) > 255) {
         this.fail("native exact-point service emitted an invalid status");
@@ -382,6 +338,7 @@ class ExactPointService {
       this.#releasing.delete(id);
       this.#admit();
     } else {
+      // An unknown verb is a helper speaking another protocol.
       this.fail("native exact-point service emitted an invalid frame");
     }
   }
@@ -481,20 +438,24 @@ export const exactPointServiceSession = (
   binaryPath: string,
   spawnService: WatcherNativeServiceSpawn = productionServiceSpawn,
 ): ChildProcessWithoutNullStreams =>
-  new ExactPointSession(
-    binaryPath,
-    spawnService,
+  new ExactPointSession(() =>
+    serviceFor(binaryPath, spawnService),
   ) as unknown as ChildProcessWithoutNullStreams;
 
+// Test hooks: this module is outside the package exports map, so only the
+// package's own tests reach these by relative path.
+
 /** Stops every persistent helper and waits until each process has exited. */
-export const closeWatcherNativeExactPointServices = async (): Promise<void> => {
-  const running = [...services.values()];
-  services.clear();
-  await Promise.all(running.map((service) => service.shutdown()));
-};
+export const unsafeCloseWatcherNativeExactPointServicesForTest =
+  async (): Promise<void> => {
+    const running = [...services.values()];
+    services.clear();
+    await Promise.all(running.map((service) => service.shutdown()));
+  };
 
 /** Process ids of the live persistent helpers, for lifecycle checks. */
-export const watcherNativeExactPointServicePids = (): readonly number[] =>
-  [...services.values()].flatMap((service) =>
-    service.pid === undefined || service.dead ? [] : [service.pid],
-  );
+export const unsafeWatcherNativeExactPointServicePidsForTest =
+  (): readonly number[] =>
+    [...services.values()].flatMap((service) =>
+      service.pid === undefined || service.dead ? [] : [service.pid],
+    );
