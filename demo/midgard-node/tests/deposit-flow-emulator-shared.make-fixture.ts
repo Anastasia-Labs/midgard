@@ -37,6 +37,7 @@ import {
 } from "./helpers/emulator-snapshot.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { loadOrCreateRunSharedFixture } from "./helpers/run-shared-fixture-directory.js";
+import { resetApplicationTables } from "./utils.js";
 
 export const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
@@ -358,6 +359,11 @@ let deployedFixture: DeployedFixture | undefined;
  * deploys once and restores from that.
  */
 export const makeFixture = async (): Promise<EmulatorFixture> => {
+  // Every fixture of the run restores the same deployment, so node rows an
+  // earlier test on this worker's database keyed to it would otherwise be
+  // found by this one. Each fixture starts from freshly migrated application
+  // tables, seed rows included, as `restoreHistorySource` does.
+  await runNodeDatabaseEffect(resetApplicationTables);
   if (deployedFixture !== undefined) return restoreFixture(deployedFixture);
   const { shared, created } = await loadOrCreateRunSharedFixture(
     SHARED_FIXTURE_NAME,
