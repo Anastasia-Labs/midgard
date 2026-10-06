@@ -1,12 +1,16 @@
 import {
-  encodeMidgardCekDataBytesControl,
   isWellFormedMidgardCekDataBytesControl,
   type MidgardCekDataBytesControl,
 } from "./cek-data-bytes.js";
+import {
+  encodeValidatedMidgardCekDataBytesControl,
+  isWellFormedMidgardCekDataBytesControlWithValidatedBlob,
+} from "./cek-data-bytes.parse-midgard-cek-data-bytes-syntax.js";
 import { type MidgardCekDataFrame } from "./cek-data-frame.js";
 import {
-  encodeMidgardCekDataIntegerControl,
+  encodeValidatedMidgardCekDataIntegerControl,
   isWellFormedMidgardCekDataIntegerControl,
+  isWellFormedMidgardCekDataIntegerControlWithValidatedBlob,
   type MidgardCekDataIntegerControl,
   MidgardCekDataIntegerStages,
 } from "./cek-data-integer.js";
@@ -160,10 +164,13 @@ const nestedIntegerFits = (
   control: MidgardCekDataTraverseControl,
   integer: MidgardCekDataIntegerControl,
   startsAtCursor: boolean,
+  blobsValidated: boolean,
 ): boolean => {
   const absoluteCursor = control.sourceStart + control.offset;
   return (
-    isWellFormedMidgardCekDataIntegerControl(integer) &&
+    (blobsValidated
+      ? isWellFormedMidgardCekDataIntegerControlWithValidatedBlob(integer)
+      : isWellFormedMidgardCekDataIntegerControl(integer)) &&
     (startsAtCursor
       ? integer.sourceStart === absoluteCursor
       : integer.sourceStart + integer.sourceLength === absoluteCursor) &&
@@ -173,8 +180,16 @@ const nestedIntegerFits = (
   );
 };
 
-export const isWellFormedMidgardCekDataTraverseControl = (
+/**
+ * `blobsValidated` is true only inside this package's own call chains, when
+ * the source blob of the integer or bytes child is null, an initial blob, part
+ * of a control validated earlier in the same chain, or a successor that passed
+ * the blob machine's exit check. The child's own fields are always checked.
+ * Every exported entry point validates with it false.
+ */
+const wellFormedTraverse = (
   control: MidgardCekDataTraverseControl,
+  blobsValidated: boolean,
 ): boolean => {
   try {
     if (
@@ -210,14 +225,18 @@ export const isWellFormedMidgardCekDataTraverseControl = (
           control.integer !== null &&
           control.bytes === null &&
           control.result === null &&
-          nestedIntegerFits(control, control.integer, true)
+          nestedIntegerFits(control, control.integer, true, blobsValidated)
         );
       case MidgardCekDataTraverseStages.Bytes:
         return (
           control.integer === null &&
           control.bytes !== null &&
           control.result === null &&
-          isWellFormedMidgardCekDataBytesControl(control.bytes) &&
+          (blobsValidated
+            ? isWellFormedMidgardCekDataBytesControlWithValidatedBlob(
+                control.bytes,
+              )
+            : isWellFormedMidgardCekDataBytesControl(control.bytes)) &&
           control.bytes.sourceStart === control.sourceStart + control.offset &&
           control.offset + control.bytes.sourceLength <= control.sourceLength
         );
@@ -226,7 +245,7 @@ export const isWellFormedMidgardCekDataTraverseControl = (
           control.integer !== null &&
           control.bytes === null &&
           control.result === null &&
-          nestedIntegerFits(control, control.integer, true) &&
+          nestedIntegerFits(control, control.integer, true, blobsValidated) &&
           control.offset + control.integer.sourceLength < control.sourceLength
         );
       case MidgardCekDataTraverseStages.LargeFields:
@@ -235,7 +254,7 @@ export const isWellFormedMidgardCekDataTraverseControl = (
           control.integer.stage === MidgardCekDataIntegerStages.Terminal &&
           control.bytes === null &&
           control.result === null &&
-          nestedIntegerFits(control, control.integer, false) &&
+          nestedIntegerFits(control, control.integer, false, blobsValidated) &&
           control.offset < control.sourceLength
         );
       case MidgardCekDataTraverseStages.Close:
@@ -262,6 +281,20 @@ export const isWellFormedMidgardCekDataTraverseControl = (
   }
 };
 
+export const isWellFormedMidgardCekDataTraverseControl = (
+  control: MidgardCekDataTraverseControl,
+): boolean => wellFormedTraverse(control, false);
+
+/**
+ * Package-internal (not re-exported by the `cek-data-traverse` facade): the
+ * checks of `isWellFormedMidgardCekDataTraverseControl`, including every
+ * field of the integer or bytes child, for a control whose child source blob
+ * the caller has already validated in the same synchronous call chain.
+ */
+export const isWellFormedMidgardCekDataTraverseControlWithValidatedBlobs = (
+  control: MidgardCekDataTraverseControl,
+): boolean => wellFormedTraverse(control, true);
+
 export const initialMidgardCekDataTraverseControl = ({
   sourceStart,
   sourceLength,
@@ -286,14 +319,15 @@ export const initialMidgardCekDataTraverseControl = ({
   return control;
 };
 
+/** The child of a traversal control the caller has already validated. */
 export const optionalControlCbor = (
   control: MidgardCekDataIntegerControl | MidgardCekDataBytesControl | null,
 ): Buffer => {
   if (control === null) return Buffer.from("d87a80", "hex");
   const nested =
     "memory" in control
-      ? encodeMidgardCekDataIntegerControl(control)
-      : encodeMidgardCekDataBytesControl(control);
+      ? encodeValidatedMidgardCekDataIntegerControl(control)
+      : encodeValidatedMidgardCekDataBytesControl(control);
   return Buffer.concat([
     Buffer.from("d8799f", "hex"),
     nested,

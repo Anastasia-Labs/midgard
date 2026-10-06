@@ -15,7 +15,7 @@ import {
   initialMidgardCekDataIntegerMeasureControl,
 } from "./cek-data-integer.js";
 import {
-  isWellFormedMidgardCekDataTraverseControl,
+  isWellFormedMidgardCekDataTraverseControlWithValidatedBlobs,
   type MidgardCekDataTraverseControl,
   type MidgardCekDataTraverseStage,
   MidgardCekDataTraverseStages,
@@ -26,7 +26,7 @@ import { hasNonCanonicalDataHead } from "./cek-data-traverse.noncanonical-sequen
 import { parseDataNodeHead } from "./cek-data-traverse.parse-data-node-head.js";
 import {
   type DataParserFrame,
-  nextMidgardCekDataTraverseSpan,
+  nextValidatedMidgardCekDataTraverseSpan,
   type ParsedDataNode,
   parseSmallConstructorHead,
   readCanonicalCborArgument,
@@ -147,6 +147,7 @@ export const parseMidgardCekDataNodes = (
 export const parseMidgardCekDataNodesPrefix = (source: Buffer) =>
   parseDataNodes(source, true);
 
+/** `control` must already be validated in the same call chain. */
 export const exactSourceBytes = ({
   control,
   sourceBytes,
@@ -154,7 +155,7 @@ export const exactSourceBytes = ({
   readonly control: MidgardCekDataTraverseControl;
   readonly sourceBytes?: Uint8Array | null;
 }): Buffer | null => {
-  const span = nextMidgardCekDataTraverseSpan(control);
+  const span = nextValidatedMidgardCekDataTraverseSpan(control);
   if (
     span === null ||
     sourceBytes === null ||
@@ -166,10 +167,18 @@ export const exactSourceBytes = ({
   return Buffer.from(sourceBytes);
 };
 
+/**
+ * The exit check of every traversal step. Each successor's integer or bytes
+ * child is null, an initial control, carried over from the validated control,
+ * or its own machine's checked successor, so the child's source blob is
+ * already validated; every other field, the child's included, is checked.
+ */
 export const advanced = (
   control: MidgardCekDataTraverseControl,
 ): MidgardCekDataTraverseControl | null =>
-  isWellFormedMidgardCekDataTraverseControl(control) ? control : null;
+  isWellFormedMidgardCekDataTraverseControlWithValidatedBlobs(control)
+    ? control
+    : null;
 
 /**
  * After a child attaches, a map continues to its next header-counted child or

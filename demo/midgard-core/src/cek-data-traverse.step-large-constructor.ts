@@ -1,16 +1,16 @@
 import {
-  advanceMidgardCekDataBytes,
-  finalizeMidgardCekDataBytes,
-  MidgardCekDataBytesStages,
-} from "./cek-data-bytes.js";
+  advanceValidatedMidgardCekDataBytes,
+  finalizeValidatedMidgardCekDataBytes,
+} from "./cek-data-bytes.content-plan.js";
+import { MidgardCekDataBytesStages } from "./cek-data-bytes.js";
 import {
   finalizeMidgardCekDataFrame,
   hashMidgardCekDataFrame,
   initialMidgardCekDataLargeConstrFrame,
 } from "./cek-data-frame.js";
 import {
-  advanceMidgardCekDataInteger,
-  finalizeMidgardCekDataInteger,
+  advanceValidatedMidgardCekDataInteger,
+  finalizeValidatedMidgardCekDataInteger,
   initialMidgardCekDataIntegerControl,
   initialMidgardCekDataIntegerMeasureControl,
   MidgardCekDataIntegerStages,
@@ -31,7 +31,10 @@ import {
   stepHeadScalar,
   stepHeadSequence,
 } from "./cek-data-traverse.parse-midgard-cek-data-nodes.js";
-import { finalizeMidgardCekSourceBlob } from "./cek-source-blob.js";
+import { finalizeValidatedMidgardCekSourceBlob } from "./cek-source-blob.js";
+
+// Every step receives the control `advanceMidgardCekDataTraverse` has just
+// validated, so its integer, bytes and blob children are validated too.
 
 /**
  * A large constructor head (tag 102 over a two-element array): the
@@ -125,7 +128,7 @@ export const stepInteger = ({
     if (action === null || action.kind !== "attachScalar") {
       return null;
     }
-    const summary = finalizeMidgardCekDataInteger(integer);
+    const summary = finalizeValidatedMidgardCekDataInteger(integer);
     return summary === null
       ? null
       : attachSummary({
@@ -136,7 +139,7 @@ export const stepInteger = ({
         });
   }
   if (action !== null) return null;
-  const nextInteger = advanceMidgardCekDataInteger({
+  const nextInteger = advanceValidatedMidgardCekDataInteger({
     control: integer,
     sourceBytes,
     sourceEnd: control.sourceStart + control.sourceLength,
@@ -163,7 +166,7 @@ export const stepBytes = ({
     if (action === null || action.kind !== "attachScalar") {
       return null;
     }
-    const summary = finalizeMidgardCekDataBytes(byteControl);
+    const summary = finalizeValidatedMidgardCekDataBytes(byteControl);
     return summary === null
       ? null
       : attachSummary({
@@ -174,7 +177,7 @@ export const stepBytes = ({
         });
   }
   if (action !== null) return null;
-  const nextBytes = advanceMidgardCekDataBytes({
+  const nextBytes = advanceValidatedMidgardCekDataBytes({
     control: byteControl,
     sourceBytes,
     sourceEnd: control.sourceStart + control.sourceLength,
@@ -217,7 +220,7 @@ export const stepLargeConstructor = ({
   ) {
     return null;
   }
-  const nextInteger = advanceMidgardCekDataInteger({
+  const nextInteger = advanceValidatedMidgardCekDataInteger({
     control: integer,
     sourceBytes,
     sourceEnd: control.sourceStart + control.sourceLength,
@@ -239,7 +242,9 @@ export const stepLargeFields = ({
   if (action !== null) return null;
   const bytes = exactSourceBytes({ control, sourceBytes });
   const integer = control.integer!;
-  const constructorCborRoot = finalizeMidgardCekSourceBlob(integer.blob!);
+  const constructorCborRoot = finalizeValidatedMidgardCekSourceBlob(
+    integer.blob!,
+  );
   const stage = bytes === null ? null : sequenceHeaderStage(bytes[0]);
   if (stage === null || constructorCborRoot === null) {
     return null;

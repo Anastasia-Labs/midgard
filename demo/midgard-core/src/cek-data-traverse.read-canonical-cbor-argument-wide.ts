@@ -1,6 +1,6 @@
-import { nextMidgardCekDataBytesSpan } from "./cek-data-bytes.js";
+import { nextValidatedMidgardCekDataBytesSpan } from "./cek-data-bytes.content-plan.js";
 import { type MidgardCekDataFrame } from "./cek-data-frame.js";
-import { nextMidgardCekDataIntegerSpan } from "./cek-data-integer.js";
+import { nextValidatedMidgardCekDataIntegerSpan } from "./cek-data-integer.js";
 import {
   type CborArgument,
   CONTROL_DOMAIN,
@@ -68,10 +68,18 @@ export const hashMidgardCekDataTraverseControl = (
 
 export const nextMidgardCekDataTraverseSpan = (
   control: MidgardCekDataTraverseControl,
+): MidgardCekSourceBlobSpan | null =>
+  isWellFormedMidgardCekDataTraverseControl(control)
+    ? nextValidatedMidgardCekDataTraverseSpan(control)
+    : null;
+
+/**
+ * Package-internal (not re-exported by the `cek-data-traverse` facade): for a
+ * control the caller has already validated in the same synchronous call chain.
+ */
+export const nextValidatedMidgardCekDataTraverseSpan = (
+  control: MidgardCekDataTraverseControl,
 ): MidgardCekSourceBlobSpan | null => {
-  if (!isWellFormedMidgardCekDataTraverseControl(control)) {
-    return null;
-  }
   switch (control.stage) {
     case MidgardCekDataTraverseStages.Head:
     case MidgardCekDataTraverseStages.Close:
@@ -84,12 +92,12 @@ export const nextMidgardCekDataTraverseSpan = (
       };
     case MidgardCekDataTraverseStages.Integer:
     case MidgardCekDataTraverseStages.LargeConstructor:
-      return nextMidgardCekDataIntegerSpan(
+      return nextValidatedMidgardCekDataIntegerSpan(
         control.integer!,
         control.sourceStart + control.sourceLength,
       );
     case MidgardCekDataTraverseStages.Bytes:
-      return nextMidgardCekDataBytesSpan(
+      return nextValidatedMidgardCekDataBytesSpan(
         control.bytes!,
         control.sourceStart + control.sourceLength,
       );
