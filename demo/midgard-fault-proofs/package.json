@@ -96,6 +96,7 @@
     "test": "vitest run",
     "test:traced-refusals": "node scripts/run-traced-refusals.mjs",
     "check:builder-exports": "node scripts/check-builder-exports.mjs",
+    "fit:regenerate": "node scripts/regenerate-fit-ledger.mjs",
     "test:cardano-capability-p2-retained-da": "node tests/fixtures/verify-cardano-capability-p2-retained-da-v1.mjs",
     "build:contrib-raw": "tsup src/index.ts --format esm --clean && tsup src/bin.ts --format esm"
   },

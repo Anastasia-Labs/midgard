@@ -564,10 +564,10 @@ jobs:
       - name: Build, typecheck, and test Midgard validation
         run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test
 
-  # The fault-proof package's build and typecheck, once per run. The test
-  # shards below resolve every workspace package from source through the
-  # `midgard-source` condition and read no dist, so they neither prebuild nor
-  # repeat this work.
+  # The fault-proof package's build, typecheck and plain-node script tests,
+  # once per run. The test shards below resolve every workspace package from
+  # source through the `midgard-source` condition and read no dist, so they
+  # neither prebuild nor repeat this work.
   midgard-fault-proofs-build:
     name: midgard-fault-proofs build and typecheck
     needs: [aiken-fork, blueprint]
@@ -584,6 +584,9 @@ jobs:
       - name: Typecheck fault-proof tooling
         if: ${{ !cancelled() }}
         run: pnpm --dir demo/midgard-fault-proofs run typecheck
+      - name: Test the fit-ledger regeneration script
+        if: ${{ !cancelled() }}
+        run: node --test demo/midgard-fault-proofs/scripts/regenerate-fit-ledger.test.mjs
 
   # Six shards keep each job under 20 minutes. The suite is ~7,500 fork-seconds
   # on two forks (the five-run median per file in the package's

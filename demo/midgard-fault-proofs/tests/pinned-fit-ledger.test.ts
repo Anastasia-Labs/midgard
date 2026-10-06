@@ -75,7 +75,9 @@ describe("writeOrVerifyPinnedFitLedger", () => {
     vi.stubEnv("MIDGARD_WRITE_FIT_LEDGER", undefined);
     await expect(
       writeOrVerifyPinnedFitLedger(path, ledgerOf(rows, "cd".repeat(32))),
-    ).rejects.toThrow("regenerate it with MIDGARD_WRITE_FIT_LEDGER=1");
+    ).rejects.toThrow(
+      "regenerate it with `pnpm --dir demo/midgard-fault-proofs fit:regenerate pinned-fit-ledger.json`",
+    );
   });
 
   it("refuses a saved ledger recorded under another category", async () => {
@@ -85,7 +87,9 @@ describe("writeOrVerifyPinnedFitLedger", () => {
         path,
         ledgerOf(rows, undefined, { category: "withdrawalMistag" }),
       ),
-    ).rejects.toThrow("regenerate it with MIDGARD_WRITE_FIT_LEDGER=1");
+    ).rejects.toThrow(
+      "regenerate it with `pnpm --dir demo/midgard-fault-proofs fit:regenerate pinned-fit-ledger.json`",
+    );
   });
 
   it("refuses a saved ledger recorded under another compiler", async () => {
@@ -95,7 +99,9 @@ describe("writeOrVerifyPinnedFitLedger", () => {
         path,
         ledgerOf(rows, undefined, { compilerVersion: "aiken v1.1.24+0000000" }),
       ),
-    ).rejects.toThrow("regenerate it with MIDGARD_WRITE_FIT_LEDGER=1");
+    ).rejects.toThrow(
+      "regenerate it with `pnpm --dir demo/midgard-fault-proofs fit:regenerate pinned-fit-ledger.json`",
+    );
   });
 
   it("refuses a saved ledger whose row roster differs from the fresh run", async () => {
@@ -105,7 +111,9 @@ describe("writeOrVerifyPinnedFitLedger", () => {
         path,
         ledgerOf([...rows, { ...rows[1]!, name: "accepted/2" }]),
       ),
-    ).rejects.toThrow("regenerate it with MIDGARD_WRITE_FIT_LEDGER=1");
+    ).rejects.toThrow(
+      "regenerate it with `pnpm --dir demo/midgard-fault-proofs fit:regenerate pinned-fit-ledger.json`",
+    );
   });
 
   it("refuses a saved ledger whose digest does not match its body", async () => {
@@ -116,7 +124,9 @@ describe("writeOrVerifyPinnedFitLedger", () => {
     );
     await expect(
       writeOrVerifyPinnedFitLedger(path, ledgerOf(rows)),
-    ).rejects.toThrow("regenerate it with MIDGARD_WRITE_FIT_LEDGER=1");
+    ).rejects.toThrow(
+      "regenerate it with `pnpm --dir demo/midgard-fault-proofs fit:regenerate pinned-fit-ledger.json`",
+    );
   });
 
   it("replaces the saved ledger only under MIDGARD_WRITE_FIT_LEDGER=1", async () => {

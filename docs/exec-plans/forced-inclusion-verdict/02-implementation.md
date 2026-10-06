@@ -228,8 +228,9 @@ recorded. This is not release acceptance. No deployment, durable-state reset or
 merge has run. Task 3 and manual Preprod acceptance have not started.
 
 Command corrections: forward test flags with `pnpm run test --no-file-parallelism`.
-For fit writes, use `MIDGARD_FIT_FRAGMENT_DIR` and
-`MIDGARD_FIT_MEASUREMENT_RUN`; similarly named variables are ignored. Pin
+For fit writes, use `pnpm --dir demo/midgard-fault-proofs fit:regenerate`,
+which sets `MIDGARD_FIT_FRAGMENT_DIR` and a fresh `MIDGARD_FIT_MEASUREMENT_RUN`
+itself. Pin
 `MIDGARD_AIKEN_BIN` for the root-fixture generator as well as contract builds.
 
 ### Scope clarification (2026-09-11)

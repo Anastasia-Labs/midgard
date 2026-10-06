@@ -182,7 +182,7 @@ later checks pass.
   a channel you have not seen before.
 - [references/ledgers.md](references/ledgers.md): read this when an execution
   or fit ledger is affected or red, before running any `--update` or
-  `MIDGARD_WRITE_FIT_LEDGER=1`.
+  `fit:regenerate`.
 - [config/deployments/README.md](../../../config/deployments/README.md): the
   authority for deployment profiles.
 - [docs/fault-proofs/size-plans/README.md](../../../docs/fault-proofs/size-plans/README.md):

@@ -394,9 +394,9 @@ transition suite writes `transition-trace-workflow-fit-ledger.json`, but its
 current five completed-case labels are accepted/deposit cases, not forced closure.
 Use the measured-fit recorder in the network-id lifecycle and the actual owning
 producer for every other affected ledger, as directed by the
-[fit guide](../../fault-proofs/size-plans/README.md). F4 with the write flag and
-fresh-fragment environment below runs these producers; retain fresh results only
-for their existing acceptance owner.
+[fit guide](../../fault-proofs/size-plans/README.md). The fit regeneration
+command below runs these producers; retain fresh results only for their
+existing acceptance owner.
 Any family lacking a required new-source maximum row must add one in its named
 producer. Current snapshots are not final-tree evidence.
 
@@ -411,18 +411,18 @@ blueprint before emulator runs and set `MIDGARD_REAL_BLUEPRINT_PATH` to its abso
 `onchain/aiken/plutus.json` path. A passing test report must record the count for
 each selected file/module, not only an aggregate exit status.
 
-Before F4, create a fresh measurement namespace from the repository root:
+After F4, regenerate the fit ledgers from the repository root with:
 
 ```bash
-export MIDGARD_FIT_FRAGMENT_DIR="$(mktemp -d /tmp/midgard-forced-fit.XXXXXX)"
-export MIDGARD_FIT_MEASUREMENT_RUN=forced-submission-final
+pnpm --dir demo/midgard-fault-proofs fit:regenerate --all
 ```
 
-`createMeasuredFitRecorder` requires both variables when writing. Record the
-resolved directory and preserve the required fresh fragments in Task 3's evidence
-handoff before cleaning temporary output. A new attempt uses a new directory;
-never combine old and new measurements. These fragments record actual evaluated
-transactions; their presence alone does not establish complete family coverage.
+It runs every ledger's owning test files once, with a fragment directory and
+run token it makes for that run and removes afterwards, so old and new
+measurements never combine; never set `MIDGARD_FIT_FRAGMENT_DIR` or
+`MIDGARD_FIT_MEASUREMENT_RUN` by hand. Measured-fit fragments record actual
+evaluated transactions; their presence alone does not establish complete
+family coverage.
 
 | ID  | Exact command                                                                                                                                                                                                                                                                                                                                                                                                  | Required cases and expected collection                                                                                                                                                                                                                                                                                        |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -436,7 +436,7 @@ transactions; their presence alone does not establish complete family coverage.
 | F1  | `pnpm --dir demo/midgard-fault-proofs exec vitest run tests/forced-submission-lifecycle.test.ts tests/network-id-wrongful-rejection-lifecycle.test.ts tests/min-fee-wrongful-rejection-lifecycle.test.ts tests/input-set-uniqueness-wrongful-rejection-lifecycle.test.ts --no-file-parallelism`                                                                                                                | **New** lifecycle file: at least 10 actual deployed-in-emulator scenarios covering both correction directions, false challenges to both honest outcomes, source/key/header/context substitution, wrong same-coarse-code reason/subject, and immutable malicious delta; existing files >0 and measured maximum coverage passes |
 | F2  | `pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-validation-dispute tests/validation-trace-dispute-installed-lifecycle.test.ts tests/transition-trace-installed-lifecycle.test.ts tests/submit-init-emulator-transition-trace-subvariants.test.ts --no-file-parallelism`                                                                                                       | Every matching existing file collects >0; retain the complete matching file list in the result. Extend affected machine-stage scenarios with forced source; both directions and endpoint/source faults must run                                                                                                               |
 | F3  | `pnpm --dir demo/midgard-fault-proofs exec vitest run tests/field-opening.test.ts tests/submit-init-emulator-canonical-decodability-adversarial.test.ts tests/submit-init-emulator-committed-field-shape-adversarial.test.ts tests/submit-init-emulator-da-hash-preimage.test.ts tests/native-script-decoding-installed-lifecycle.test.ts --no-file-parallelism`                                               | Each file >0; include raw malformed forced compact/source/field evidence and authenticated source-kind selection for shared openings                                                                                                                                                                                          |
-| F4  | `MIDGARD_WRITE_FIT_LEDGER=1 pnpm --dir demo/midgard-fault-proofs test --no-file-parallelism`                                                                                                                                                                                                                                                                                                                   | Full suite, every catalogue group above retained, all required lifecycle maximum/adjacent coverage checks pass; no hidden skips or fixture-only fit substitution                                                                                                                                                              |
+| F4  | `pnpm --dir demo/midgard-fault-proofs test --no-file-parallelism`                                                                                                                                                                                                                                                                                                                                              | Full suite, every catalogue group above retained, all required lifecycle maximum/adjacent coverage checks pass; no hidden skips or fixture-only fit substitution                                                                                                                                                              |
 
 T4's new real-contract cases must enable the rebuilt order and settlement
 validators explicitly in their harness. F1 uses registered proof init/steps/token,

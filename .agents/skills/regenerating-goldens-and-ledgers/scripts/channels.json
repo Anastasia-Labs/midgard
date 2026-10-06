@@ -1034,7 +1034,7 @@
         "docs/fault-proofs/size-plans/transition-trace-forced-window-fit-ledger.json"
       ],
       "sync": {
-        "run": "MIDGARD_WRITE_FIT_LEDGER=1 pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-transition-trace-subvariants.test.ts"
+        "run": "pnpm --dir demo/midgard-fault-proofs fit:regenerate transition-trace-forced-window-fit-ledger.json"
       },
       "check": {
         "run": "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-transition-trace-subvariants.test.ts"
@@ -1063,7 +1063,7 @@
         "docs/fault-proofs/size-plans/transition-trace-workflow-fit-ledger.json"
       ],
       "sync": {
-        "run": "MIDGARD_WRITE_FIT_LEDGER=1 pnpm --dir demo/midgard-fault-proofs exec vitest run tests/transition-trace-installed-lifecycle.test.ts"
+        "run": "pnpm --dir demo/midgard-fault-proofs fit:regenerate transition-trace-workflow-fit-ledger.json"
       },
       "check": {
         "run": "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/transition-trace-installed-lifecycle.test.ts"
@@ -1079,16 +1079,19 @@
       "kind": "fit-ledger",
       "summary": "The other fit ledgers under docs/fault-proofs/size-plans: recorded evidence and writer outputs, each stamped with the blueprintSha256 it was measured against. No test compares them to the current build.",
       "generators": [
+        "demo/midgard-fault-proofs/scripts/regenerate-fit-ledger.mjs",
         "demo/midgard-fault-proofs/tests/support/measured-fit-ledger.ts",
+        "demo/midgard-fault-proofs/tests/support/split-fit-ledger.ts",
         "demo/midgard-fault-proofs/scripts/write-invalid-signature-fit-ledger.mjs"
       ],
+      "packageScripts": ["demo/midgard-fault-proofs:fit:regenerate"],
       "writerEnv": ["MIDGARD_WRITE_FIT_LEDGER"],
       "inputs": [
         "demo/midgard-fault-proofs/src/proof-fit/van-rossem-fit-ledger.ts"
       ],
       "outputs": ["docs/fault-proofs/size-plans/*-fit-ledger.json"],
       "sync": {
-        "manual": "Per family: run the owning lifecycle suite with MIDGARD_WRITE_FIT_LEDGER=1, MIDGARD_FIT_FRAGMENT_DIR and a fresh MIDGARD_FIT_MEASUREMENT_RUN against a freshly built blueprint. Find the owner with rg --fixed-strings '<ledger filename>' demo/midgard-fault-proofs/tests; docs/fault-proofs/size-plans/README.md governs."
+        "manual": "Per ledger, against a freshly built blueprint: pnpm --dir demo/midgard-fault-proofs fit:regenerate <ledger filename> (or --all). It finds and runs the owning test files with a fresh fragment directory and run token, and leaves the ledger untouched unless every owning file passed; --list shows the owners, and it refuses, with the reason, a ledger no test writes. docs/fault-proofs/size-plans/README.md governs."
       },
       "check": {
         "none": "Historical snapshots: the *-fit-ledger.test.ts readers were removed on 2026-09-09 and verifyMeasuredFitLedger has no caller, so nothing compares these ledgers with the current blueprint."

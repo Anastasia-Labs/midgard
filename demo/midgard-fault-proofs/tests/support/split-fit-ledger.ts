@@ -76,13 +76,16 @@ const blueprintSha256 = (): Promise<string> => fileSha256(realBlueprintPath);
 const ledgerName = (ledger: SplitFitLedger): string =>
   basename(ledger.path, extname(ledger.path));
 
-/** The same fresh-run contract as `measured-fit-ledger.ts`. */
+/**
+ * The same fresh-run contract as `measured-fit-ledger.ts`; the
+ * `fit:regenerate` script sets both variables for one run.
+ */
 const partDirectory = (ledger: SplitFitLedger): string => {
   const directory = process.env.MIDGARD_FIT_FRAGMENT_DIR;
   const run = process.env.MIDGARD_FIT_MEASUREMENT_RUN;
   if (!directory || !run || !/^[a-zA-Z0-9_-]+$/u.test(run))
     throw new Error(
-      `Regenerating ${basename(ledger.path)} requires MIDGARD_FIT_FRAGMENT_DIR and a fresh MIDGARD_FIT_MEASUREMENT_RUN token: its rows come from ${ledger.parts.length.toString()} test files, merged only when all of them pass in that run`,
+      `Regenerate ${basename(ledger.path)} with \`pnpm --dir demo/midgard-fault-proofs fit:regenerate ${basename(ledger.path)}\`: its rows come from ${ledger.parts.length.toString()} test files, merged only when all of them pass in one run, and that command runs them with a fresh fragment directory and run token`,
     );
   return join(directory, run, ledgerName(ledger));
 };
@@ -104,7 +107,7 @@ const writePart = async (
     await link(temporaryPath, path);
   } catch (cause) {
     throw new Error(
-      `fit ledger part ${path} already exists; use a fresh MIDGARD_FIT_MEASUREMENT_RUN token`,
+      `fit ledger part ${path} already exists: this run token was used before; regenerate with \`pnpm --dir demo/midgard-fault-proofs fit:regenerate\`, which makes a fresh one`,
       { cause },
     );
   } finally {

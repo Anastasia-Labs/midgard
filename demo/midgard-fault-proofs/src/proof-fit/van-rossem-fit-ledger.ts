@@ -158,7 +158,7 @@ export class FitLedgerWriteRefusedError extends Error {
 
   constructor(path: string) {
     super(
-      `refused to write fit ledger ${path}: fit ledgers are written only under MIDGARD_WRITE_FIT_LEDGER=1; rerun the owning test or script with that flag to regenerate it (docs/fault-proofs/size-plans/README.md)`,
+      `refused to write fit ledger ${path}: fit ledgers are written only under MIDGARD_WRITE_FIT_LEDGER=1; regenerate a checked-in ledger with \`pnpm --dir demo/midgard-fault-proofs fit:regenerate <ledger>\` (docs/fault-proofs/size-plans/README.md)`,
     );
     this.name = "FitLedgerWriteRefusedError";
     this.path = path;
