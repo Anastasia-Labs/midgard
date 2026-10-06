@@ -73,15 +73,48 @@ const packageRoot = resolve(
 );
 
 /**
- * Record that a pin was checked against its trace, so the runner can fail a
- * declared pin that never ran.
+ * The file that called the function that calls this: the first frame above
+ * that function's own file. A pin check calls it to learn which file wrote
+ * the `refusedBy` literal it checks. Undefined when no such frame exists.
  */
-export const recordCheckedPin = (refusedBy: string): void => {
+export const callerFile = (): string | undefined => {
+  const prepare = Error.prepareStackTrace;
+  let files: string[];
+  try {
+    // Structured call sites, not the formatted stack text, whose frame
+    // layout varies (named, anonymous, `file://` URL or plain path).
+    Error.prepareStackTrace = (_error, callSites) => callSites;
+    const holder: { stack?: NodeJS.CallSite[] } = {};
+    Error.captureStackTrace(holder, callerFile);
+    files = (holder.stack ?? []).flatMap((callSite) => {
+      const name = callSite.getFileName();
+      if (name === undefined || name === null) return [];
+      return [name.startsWith("file://") ? fileURLToPath(name) : name];
+    });
+  } finally {
+    Error.prepareStackTrace = prepare;
+  }
+  return files.find((file) => file !== files[0]);
+};
+
+/**
+ * Record that a pin was checked against its trace, with the test file that
+ * ran it and the file that declares it, so the runner can fail a declared pin
+ * that never ran.
+ */
+export const recordCheckedPin = (
+  refusedBy: string,
+  site: string | undefined,
+): void => {
   const log = process.env.MIDGARD_TRACED_REFUSALS_LOG;
   const testPath = expect.getState().testPath;
   if (log === undefined || testPath === undefined) return;
   appendFileSync(
     log,
-    `${JSON.stringify({ file: relative(packageRoot, testPath), refusedBy })}\n`,
+    `${JSON.stringify({
+      file: relative(packageRoot, testPath),
+      site: site === undefined ? null : relative(packageRoot, site),
+      refusedBy,
+    })}\n`,
   );
 };

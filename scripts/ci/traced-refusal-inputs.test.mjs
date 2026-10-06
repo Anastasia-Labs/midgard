@@ -102,8 +102,9 @@ test("an unreadable merge commit or diff runs the check", () => {
   }
 });
 
-// Every file that declares a pin, and the check's own scripts, must be an
-// input, or editing a pin could skip the check that reads it.
+// Every file that declares a pin, test file or support module, and the
+// check's own scripts, must be an input, or editing a pin could skip the
+// check that reads it.
 test("every refusedBy pin and the check's scripts are inputs", () => {
   const tests = join(root, "demo/midgard-fault-proofs/tests");
   const pinned = readdirSync(tests, { recursive: true })
@@ -114,9 +115,14 @@ test("every refusedBy pin and the check's scripts are inputs", () => {
     )
     .map((file) => `demo/midgard-fault-proofs/tests/${file}`);
   assert.ok(pinned.length > 0, "found no refusedBy pin");
+  assert.ok(
+    pinned.some((path) => !path.endsWith(".test.ts")),
+    "found no refusedBy pin in a support module",
+  );
   for (const path of [
     ...pinned,
     "demo/midgard-fault-proofs/scripts/run-traced-refusals.mjs",
+    "demo/midgard-fault-proofs/scripts/traced-refusal-plan.mjs",
     "demo/midgard-fault-proofs/scripts/traced-blueprint.mjs",
     "demo/midgard-fault-proofs/package.json",
   ]) {

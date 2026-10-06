@@ -73,7 +73,9 @@ is stated next to it.
    builder refused (it requires "failed script execution"). On the plain
    blueprint it cannot tell which check refused, so pin the check with
    `expectOnchainRefusal(build, { refusedBy: "<module>", check: /<trace>/u })`
-   (`refusedBy` a string literal). The fault-proofs script
+   (`refusedBy` a string literal in the file that calls
+   `expectOnchainRefusal`; a support module's pin runs in every `it` case
+   that reaches it). The fault-proofs script
    `test:traced-refusals`, which CI runs whenever a change touches one of its
    inputs (`scripts/ci/traced-refusal-inputs.mjs`), swaps each named module
    for its verbose-traced build and fails any pin not checked against that

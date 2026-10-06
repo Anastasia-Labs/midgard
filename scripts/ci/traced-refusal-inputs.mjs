@@ -13,17 +13,18 @@
 //     script, the workflow that pins the fork and the setup action that
 //     installs it and restores the prebuilt blueprints;
 //   - the check itself: the fault-proofs package, which holds the runner,
-//     the traced-blueprint builder, every `refusedBy` pin and the
-//     `expectOnchainRefusal` helper that checks them, and this file;
+//     its plan of which cases run each pin, the traced-blueprint builder,
+//     every `refusedBy` pin (in test files and support modules alike) and
+//     the `expectOnchainRefusal` helper that checks them, and this file;
 //   - what builds each pinned negative's transaction: the workspace packages
-//     the pinned test files import (the plain run only shows that *some*
-//     validator refused, so an off-chain change can move a refusal to
+//     the test files that run a pin import (the plain run only shows that
+//     *some* validator refused, so an off-chain change can move a refusal to
 //     another check, and only this check notices), and the dependency pins,
 //     patches and vendored evaluator they run on.
-// Measured: the 25 pinned test files reach midgard-core, midgard-sdk,
-// midgard-validation, lucid-midgard, midgard-node and midgard-test-support,
-// and no other workspace package. A pinned test that starts importing
-// another workspace package must add it here.
+// Measured: the 26 test files that run a pin reach midgard-core,
+// midgard-sdk, midgard-validation, lucid-midgard, midgard-node and
+// midgard-test-support, and no other workspace package. A pinned test that
+// starts importing another workspace package must add it here.
 //
 // On a pull request the checkout is the merge commit, so its first parent is
 // the base branch and `HEAD^1..HEAD` is exactly what merging would change. It
