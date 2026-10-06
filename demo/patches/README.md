@@ -100,7 +100,10 @@ is much faster than CML's for long byte strings, and only on hex of whole bytes;
 a parse it fails is repeated by `CML.PlutusData.from_cbor_hex` for its error.
 Keys compare by alternative, fields, entries, integer and bytes, ignoring
 encoding choices, as CML's equality does. A value or encoding outside that subset, or any failure, takes the
-unpatched path, so errors are unchanged. Both module formats are patched.
+unpatched path, so its errors are those of the original code. One input class
+now succeeds where the original failed: `Data.to` of data nested about 1,500 to
+2,500 deep, which overflowed the original's recursion, encodes to the same bytes
+the original produces with a larger stack. Both module formats are patched.
 `midgard-sdk/tests/lucid-plutus-data-conversion.test.ts` checks both against
 the unpatched algorithm, restated over CML, on random and boundary values:
 duplicate and differently encoded keys, key order, nested, empty and
