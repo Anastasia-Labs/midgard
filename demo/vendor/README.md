@@ -16,6 +16,13 @@ metadata, JavaScript, declarations and MIT license are unchanged. The Node and
 bundler WASM targets are rebuilt separately, with the UPLC Apache license and a
 modified-source notice included. This is a local dependency, not an npm release.
 
+Lucid 0.6.7 calls `eval_phase_two_raw` with a tenth argument, the protocol
+major version. This package's binding keeps the 0.2.23 nine-parameter
+signature, so JavaScript drops that argument and evaluation behaves as it did
+before Lucid passed it. The Lucid patch's evaluation-reuse key still includes
+the version, which reaches evaluation only once an upstream UPLC release that
+accepts it replaces this tarball.
+
 The insertion-only [Rust patch](uplc-source/constant-cost.patch) avoids computing
 argument sizes when both components of an existing builtin cost model are
 constant. The configured costs, runtime validation, budget charging and original

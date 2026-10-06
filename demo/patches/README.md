@@ -38,7 +38,10 @@ The Lucid patch also reuses the last successful default Aiken evaluation within
 one public transaction completion, including its internal fee, collateral, and
 delayed-redeemer replays. Reuse requires exact transaction bytes, ordered input
 and output CBOR bytes, cost models, CPU and memory budgets, slot parameters,
-and the protocol major version passed to the evaluator.
+and the protocol major version Lucid passes to the evaluator. The vendored
+UPLC binding (see `../vendor/README.md`) takes nine parameters and ignores that
+tenth argument, so the version is part of the reuse key but does not reach
+evaluation until an upstream UPLC release replaces the vendor tarball.
 The retained request and result bytes are detached; each hit decodes fresh
 redeemer values. A changed request clears the entry, failures are not retained,
 and separate completions do not share results. Explicit custom evaluators and
