@@ -700,6 +700,46 @@ test("build code that reaches past the scan or the network is never fresh", (t) 
   }
 });
 
+test("comments and string text never refuse build code; code beside them still does", (t) => {
+  const root = fixture(t);
+  editPackage(root, "example", (pkg) => {
+    pkg.scripts["build:contrib-raw"] =
+      "node scripts/gen.mjs && tsup src/index.ts";
+  });
+  generator(
+    root,
+    "scripts/gen.mjs",
+    [
+      'import { readFileSync } from "node:fs";',
+      "// we require the version, then fetch it; eval(this) is never called",
+      "/* globalThis, WebSocket, process and module.constructor live here */",
+      'const note = "fetch the version // not a comment";',
+      "const pattern = /\\/\\/[/*]/u;",
+      "const text = `fetch ${note} /* still text */ ${pattern}`;",
+      "void readFileSync, text;",
+      "",
+    ].join("\n"),
+  );
+  stamp(root);
+  assert.equal(checkBuild(root, "example").status, "fresh");
+  for (const [code, reason] of [
+    ['const u = "http://x"; require(u);', /loads code or reads globals/u],
+    ["const r = /[/*]/u; eval(r);", /loads code or reads globals/u],
+    ['const t = `text ${eval("1")}`;', /loads code or reads globals/u],
+    ['const k = ({})["constructor"];', /loads code or reads globals/u],
+    ["// a note\nfetch(url);", /uses fetch, a network API/u],
+    ["const t = `text ${fetch(url)}`;", /uses fetch, a network API/u],
+    [
+      "const p = /x/u; process[p];",
+      /uses process in a way that names no variable/u,
+    ],
+  ]) {
+    generator(root, "scripts/gen.mjs", `${code}\n`);
+    stamp(root);
+    assert.match(checkBuild(root, "example").reason, reason, code);
+  }
+});
+
 test("a package with pre or post scripts for the recipe is never fresh", (t) => {
   const root = fixture(t);
   stamp(root);

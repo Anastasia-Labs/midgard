@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -10,11 +11,12 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { TRACER } from "./build-inputs.mjs";
+import { TRACER, environmentRefusals } from "./build-inputs.mjs";
+import nodeOptions from "./node-options.cjs";
 
 // Each case runs a real Node process under the tracer, as a guarded build
 // does, and reads back what it recorded.
@@ -334,5 +336,49 @@ test("a node option that loads other code is untraced", (t) => {
   );
   assert.ok(
     !traced(directory, "main.mjs").some(([kind]) => kind === "untraced"),
+  );
+});
+
+test("NODE_OPTIONS splits as Node splits it, so a quoted path with a space is one argument", (t) => {
+  assert.deepEqual(
+    nodeOptions.nodeOptionArguments(
+      '--require "/a b/c.cjs"  -r x --title="say \\"hi\\" --require y"',
+    ),
+    ["--require", "/a b/c.cjs", "-r", "x", '--title=say "hi" --require y'],
+  );
+  assert.deepEqual(
+    environmentRefusals({
+      NODE_OPTIONS: '--title="a --require b" --max-old-space-size=4096',
+    }),
+    [],
+  );
+  assert.deepEqual(
+    environmentRefusals({ NODE_OPTIONS: '--require "/x/a b.cjs"' }),
+    ["NODE_OPTIONS passes --require, which loads code the guard does not scan"],
+  );
+  // The tracer itself, from a checkout whose path has a space.
+  const directory = scratch(t);
+  const spaced = resolve(directory, "sp ace");
+  mkdirSync(spaced);
+  for (const file of ["build-trace.cjs", "node-options.cjs"])
+    copyFileSync(resolve(dirname(TRACER), file), resolve(spaced, file));
+  writeFileSync(resolve(spaced, "other.cjs"), "");
+  writeFileSync(resolve(directory, "main.mjs"), "");
+  const tracer = `--require ${JSON.stringify(resolve(spaced, "build-trace.cjs"))}`;
+  const records = traced(directory, "main.mjs", { NODE_OPTIONS: tracer });
+  assert.ok(has(records, "process", resolve(directory, "main.mjs")));
+  assert.ok(
+    !records.some(([kind]) => kind === "untraced"),
+    JSON.stringify(records),
+  );
+  const other = resolve(spaced, "other.cjs");
+  assert.ok(
+    has(
+      traced(directory, "main.mjs", {
+        NODE_OPTIONS: `${tracer} --require ${JSON.stringify(other)}`,
+      }),
+      "untraced",
+      `node option --require ${other}`,
+    ),
   );
 });

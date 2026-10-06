@@ -60,7 +60,8 @@ fresh only when all of these hold (`scripts/contrib/build-inputs.mjs`):
   `mainModule`, `createRequire`, or `require`/`import` without a literal
   specifier), name no network global (`fetch`, `WebSocket`, `EventSource`,
   `XMLHttpRequest`), and read `process.env` only by literal name; each name
-  is bound. `child_process`, `worker_threads`, `vm`, `net`, `http` and every
+  is bound. These scans skip comments, and the network scan also skips string
+  text. `child_process`, `worker_threads`, `vm`, `net`, `http` and every
   other builtin are refused.
 - A tsup public directory (`--publicDir`, or `publicDir` in the config as a
   string literal or `true`) is inside the closure.
@@ -70,7 +71,8 @@ fresh only when all of these hold (`scripts/contrib/build-inputs.mjs`):
   installed packages, and no relative import in the package's or an inlined
   package's `src` leaves the closure.
 - `ESBUILD_BINARY_PATH` is unset, and `NODE_OPTIONS` loads no code
-  (`--require`, `-r`, `--import`, loaders and the like).
+  (`--require`, `-r`, `--import`, loaders and the like). `NODE_OPTIONS` is
+  split as Node splits it, so a quoted path with a space is one argument.
 - After the build, the trace (`scripts/contrib/build-trace.cjs`, preloaded into
   every Node process and worker of the recipe except the corepack executable
   the build `PATH` resolves) accounts for everything the build did. Every

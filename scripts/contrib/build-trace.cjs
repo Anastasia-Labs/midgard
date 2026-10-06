@@ -22,6 +22,7 @@ const fs = require("node:fs");
 const Module = require("node:module");
 const { basename, dirname, resolve } = require("node:path");
 const { fileURLToPath } = require("node:url");
+const { nodeOptionArguments } = require("./node-options.cjs");
 
 const { appendFileSync, lstatSync, readdirSync, realpathSync } = fs;
 const trace = process.env.MIDGARD_CONTRIB_BUILD_TRACE;
@@ -68,7 +69,7 @@ if (trace && !launcher) {
   // Node options that load code other than this tracer run outside it.
   const options = [
     ...process.execArgv,
-    ...(process.env.NODE_OPTIONS ?? "").split(/\s+/u).filter(Boolean),
+    ...nodeOptionArguments(process.env.NODE_OPTIONS),
   ];
   for (let index = 0; index < options.length; index++) {
     const loads =
@@ -79,7 +80,7 @@ if (trace && !launcher) {
     const value = options[index].includes("=")
       ? options[index].slice(options[index].indexOf("=") + 1)
       : options[++index];
-    if (real((value ?? "").replace(/^"(.*)"$/u, "$1")) !== __filename)
+    if (real(value ?? "") !== __filename)
       emit("untraced", `node option ${loads[0].replace(/=$/u, "")} ${value}`);
   }
 

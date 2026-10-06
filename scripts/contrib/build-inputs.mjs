@@ -1,6 +1,9 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import nodeOptions from "./node-options.cjs";
 
 import {
   BUILD_CONFIGS,
@@ -76,6 +79,8 @@ export const installedPath = (root, absolute) => {
     within(path, realOrSelf(linked))
   );
 };
+
+const { nodeOptionArguments } = nodeOptions;
 
 // --- recipe ----------------------------------------------------------------
 
@@ -252,6 +257,124 @@ const OPAQUE =
   /\b(?:eval\s*\(|Function\s*\(|globalThis\b|global\b|constructor\b|_load\b|getBuiltinModule\b|\w*[bB]inding\s*\(|dlopen\b|mainModule\b|createRequire\b|require\b(?!\s*\(\s*["'][^"'`$]*["']\s*\))|import\s*\(\s*(?!["'][^"'`$]*["']\s*\)))/u;
 // Network globals: a response binds nothing a stamp can check.
 const NETWORK = /\b(?:fetch|WebSocket|EventSource|XMLHttpRequest)\b/u;
+// The text with its comments blanked (newlines kept), so the scans see code
+// only; with `strings`, string and template literal contents too, though
+// template substitutions stay code. OPAQUE keeps strings: a computed
+// `x["constructor"]` is code. A `/` after an operand divides; anywhere else
+// it opens a regular expression, copied as written. Only what this reads
+// as a comment or a string body is ever blanked.
+const NOT_OPERAND =
+  /^(?:return|typeof|instanceof|in|of|new|delete|void|throw|case|do|else|yield|await)$/u;
+const codeOnly = (text, { strings = false } = {}) => {
+  const blank = (part) => part.replace(/[^\n]/gu, " ");
+  let out = "";
+  let index = 0;
+  let operand = false;
+  // Open braces inside each template substitution the scan is in.
+  const substitutions = [];
+  const literalEnd = (start, quote) => {
+    let at = start;
+    while (at < text.length) {
+      const character = text[at];
+      if (character === "\\") at += 2;
+      else if (
+        character === quote ||
+        (quote === "`" ? text.startsWith("${", at) : character === "\n")
+      )
+        break;
+      else at++;
+    }
+    return Math.min(at, text.length);
+  };
+  const body = (end) => {
+    const part = text.slice(index, end);
+    out += strings ? blank(part) : part;
+    index = end;
+  };
+  const template = () => {
+    body(literalEnd(index, "`"));
+    if (text.startsWith("${", index)) {
+      out += "${";
+      index += 2;
+      substitutions.push(0);
+      operand = false;
+    } else if (index < text.length) {
+      out += "`";
+      index++;
+      operand = true;
+    }
+  };
+  while (index < text.length) {
+    const character = text[index];
+    if (text.startsWith("//", index) || text.startsWith("/*", index)) {
+      const line = text[index + 1] === "/";
+      const close = text.indexOf(line ? "\n" : "*/", index + 2);
+      const end = close === -1 ? text.length : line ? close : close + 2;
+      out += blank(text.slice(index, end));
+      index = end;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      out += character;
+      index++;
+      body(literalEnd(index, character));
+      if (text[index] === character) {
+        out += character;
+        index++;
+      }
+      operand = true;
+      continue;
+    }
+    if (character === "`") {
+      out += character;
+      index++;
+      template();
+      continue;
+    }
+    if (substitutions.length && (character === "{" || character === "}")) {
+      const depth = substitutions.length - 1;
+      if (character === "}" && substitutions[depth] === 0) {
+        substitutions.pop();
+        out += character;
+        index++;
+        template();
+        continue;
+      }
+      substitutions[depth] += character === "{" ? 1 : -1;
+    }
+    if (character === "/" && !operand) {
+      let at = index + 1;
+      let inClass = false;
+      while (at < text.length && text[at] !== "\n") {
+        if (text[at] === "\\") at++;
+        else if (text[at] === "[") inClass = true;
+        else if (text[at] === "]") inClass = false;
+        else if (text[at] === "/" && !inClass) break;
+        at++;
+      }
+      if (text[at] === "/") {
+        at++;
+        while (/[a-z]/iu.test(text[at] ?? "")) at++;
+        out += text.slice(index, at);
+        index = at;
+        operand = true;
+        continue;
+      }
+    }
+    if (/[\w$]/u.test(character)) {
+      const word = /^[\w$]+/u.exec(text.slice(index, index + 256))[0];
+      out += word;
+      index += word.length;
+      operand = !NOT_OPERAND.test(word);
+      continue;
+    }
+    if (!/\s/u.test(character))
+      operand = character === ")" || character === "]";
+    out += character;
+    index++;
+  }
+  return out;
+};
 const RESOLVE_EXTENSIONS = [
   "",
   ".ts",
@@ -310,17 +433,18 @@ const scanModules = (root, name, entries, packages) => {
     }
     if (!SCRIPT_SOURCE.test(file)) return;
     const text = readFileSync(file, "utf8");
-    if (OPAQUE.test(text))
+    const code = codeOnly(text);
+    if (OPAQUE.test(code))
       reasons.push(
         `build code ${label(file)} loads code or reads globals the guard cannot follow`,
       );
-    const network = NETWORK.exec(text);
+    const network = NETWORK.exec(codeOnly(text, { strings: true }));
     if (network)
       reasons.push(
         `build code ${label(file)} uses ${network[0]}, a network API whose responses no stamp binds`,
       );
-    for (const match of text.matchAll(PROCESS)) {
-      const named = NAMED_PROCESS.exec(text.slice(match.index));
+    for (const match of code.matchAll(PROCESS)) {
+      const named = NAMED_PROCESS.exec(code.slice(match.index));
       if (!named) {
         reasons.push(
           `build code ${label(file)} uses process in a way that names no variable`,
@@ -593,7 +717,11 @@ export const buildEnvironment = (root, name, env = process.env) => ({
 // flags, network use and workers are classified. A stamp from an earlier
 // trace came from a build this one might have refused.
 export const BUILD_TRACE = "midgard-contrib-build-trace/v3";
-export const TRACER = new URL("./build-trace.cjs", import.meta.url).pathname;
+// A file path, not a URL pathname: a checkout path with a space must not
+// arrive percent-encoded.
+export const TRACER = fileURLToPath(
+  new URL("./build-trace.cjs", import.meta.url),
+);
 
 // Variables that change what a guarded build runs without the recipe naming
 // them: a substitute esbuild binary, or Node options that load code. Either
@@ -604,7 +732,7 @@ export const environmentRefusals = (env = process.env) => {
     reasons.push(
       "ESBUILD_BINARY_PATH is set, so esbuild would run a binary the install record does not bind",
     );
-  for (const flag of (env.NODE_OPTIONS ?? "").split(/\s+/u).filter(Boolean))
+  for (const flag of nodeOptionArguments(env.NODE_OPTIONS))
     if (flag === "-r" || REFUSED_NODE_FLAG.test(flag))
       reasons.push(
         `NODE_OPTIONS passes ${flag.split("=")[0]}, which loads code the guard does not scan`,
