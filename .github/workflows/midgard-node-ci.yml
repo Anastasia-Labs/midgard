@@ -594,12 +594,14 @@ jobs:
   # and Vitest overhead, and shard 1 also runs the ~300 s traced-refusal step,
   # which that table reserves. At the median each shard projects ~675 s (~17.3
   # min jobs, measured with a build and typecheck on every shard); three
-  # shards projected ~28.5 min, five ~19.5. Change the count here, in the test-durations job below and in
-  # tests/duration-shards.test.ts together, and rekey the table's reserve. On
+  # shards projected ~28.5 min, five ~19.5. The matrix is the one count this
+  # workflow reads (the jobs and test-durations take it from the matrix);
+  # change it together with tests/duration-shards.test.ts, which
+  # scripts/ci/shard-counts.test.mjs pins to it, and rekey the table's reserve. On
   # a pull request that skips the traced-refusal step, shard 1 finishes that
   # much earlier.
   midgard-fault-proofs:
-    name: midgard-fault-proofs (${{ matrix.shard }}/6)
+    name: midgard-fault-proofs (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: [aiken-fork, blueprint, test-blueprints]
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -635,12 +637,12 @@ jobs:
       - name: Test fault-proof tooling
         env:
           MIDGARD_FILE_DURATIONS_OUT: ${{ runner.temp }}/file-durations.json
-        run: pnpm --dir demo/midgard-fault-proofs run test --shard=${{ matrix.shard }}/6
+        run: pnpm --dir demo/midgard-fault-proofs run test --shard=${{ matrix.shard }}/${{ strategy.job-total }}
       - name: Upload this shard's per-file test seconds
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: file-durations-midgard-fault-proofs-${{ matrix.shard }}
+          name: file-durations-midgard-fault-proofs-${{ matrix.shard }}-of-${{ strategy.job-total }}
           path: ${{ runner.temp }}/file-durations.json
           if-no-files-found: warn
       # A plain build carries no traces, so the run above sees only that some
@@ -678,7 +680,7 @@ jobs:
   # graph, so on a two-fork hosted runner wall time grows with the file count.
   # Sharded like fault-proofs once ~210 files outgrew one 45-minute job.
   midgard-watcher:
-    name: midgard-watcher (${{ matrix.shard }}/3)
+    name: midgard-watcher (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: [aiken-fork, blueprint, test-blueprints]
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -711,12 +713,12 @@ jobs:
       - name: Test Midgard watcher
         env:
           MIDGARD_FILE_DURATIONS_OUT: ${{ runner.temp }}/file-durations.json
-        run: pnpm --dir demo/midgard-watcher run test --shard=${{ matrix.shard }}/3
+        run: pnpm --dir demo/midgard-watcher run test --shard=${{ matrix.shard }}/${{ strategy.job-total }}
       - name: Upload this shard's per-file test seconds
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: file-durations-midgard-watcher-${{ matrix.shard }}
+          name: file-durations-midgard-watcher-${{ matrix.shard }}-of-${{ strategy.job-total }}
           path: ${{ runner.temp }}/file-durations.json
           if-no-files-found: warn
 
@@ -755,17 +757,18 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/ci-file-durations"
-          # `-[0-9]*`: one package's name may prefix another's (midgard-node,
-          # midgard-node-tools), so match only the shard-numbered artifacts.
-          # Each package is paired with the shard count its job runs.
-          for entry in midgard-fault-proofs:6 midgard-watcher:3 midgard-node:3; do
-            package="${entry%%:*}"
-            shards="${entry##*:}"
-            records=("$RUNNER_TEMP"/file-durations/file-durations-"$package"-[0-9]*/file-durations.json)
+          # `-[0-9]*-of-`: one package's name may prefix another's
+          # (midgard-node, midgard-node-tools), so match only the
+          # shard-numbered artifacts. Each is named `<shard>-of-<count>` by the
+          # job that recorded it, so the count comes from that job's matrix.
+          for package in midgard-fault-proofs midgard-watcher midgard-node; do
+            records=("$RUNNER_TEMP"/file-durations/file-durations-"$package"-[0-9]*-of-[0-9]*/file-durations.json)
             if [ ! -e "${records[0]}" ]; then
               echo "::warning::no per-file test seconds were recorded for $package"
               continue
             fi
+            artifact="$(basename "$(dirname "${records[0]}")")"
+            shards="${artifact##*-of-}"
             mkdir -p "$RUNNER_TEMP/ci-file-durations/demo/$package/tests/support"
             node demo/midgard-test-support/scripts/ci-file-durations.mjs \
               --package "demo/$package" \
@@ -887,7 +890,7 @@ jobs:
   # isolated migration itself, so the per-worker database shards the suite
   # pins (tests/test-env.ts) never span two shards.
   midgard-node:
-    name: midgard-node (${{ matrix.shard }}/3)
+    name: midgard-node (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: [aiken-fork, blueprint]
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -931,12 +934,12 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           MIDGARD_FILE_DURATIONS_OUT: ${{ runner.temp }}/file-durations.json
-        run: pnpm --dir demo/midgard-node run test --shard=${{ matrix.shard }}/3
+        run: pnpm --dir demo/midgard-node run test --shard=${{ matrix.shard }}/${{ strategy.job-total }}
       - name: Upload this shard's per-file test seconds
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: file-durations-midgard-node-${{ matrix.shard }}
+          name: file-durations-midgard-node-${{ matrix.shard }}-of-${{ strategy.job-total }}
           path: ${{ runner.temp }}/file-durations.json
           if-no-files-found: warn
 
