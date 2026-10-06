@@ -188,229 +188,237 @@ const submitBuilt = async (
   );
 };
 
-describe.sequential("state-queue node floor through a DA challenge", () => {
-  it(
-    "a node committed at exactly the floor is attested, opened against and closed with its lovelace unchanged",
-    async () => {
-      await resetActiveRuntimePaths();
-      await initializeNodeRuntime();
-      const fixture = await makeFixture();
-      await initializeProtocol(fixture);
-      const lucidService = await makeLucidRuntimeService(fixture);
-      const globals = await makeGlobalsService();
-      const { operatorLucid, depositorLucid } = fixture;
+describe(
+  "state-queue node floor through a DA challenge",
+  { concurrent: false },
+  () => {
+    it(
+      "a node committed at exactly the floor is attested, opened against and closed with its lovelace unchanged",
+      async () => {
+        await resetActiveRuntimePaths();
+        await initializeNodeRuntime();
+        const fixture = await makeFixture();
+        await initializeProtocol(fixture);
+        const lucidService = await makeLucidRuntimeService(fixture);
+        const globals = await makeGlobalsService();
+        const { operatorLucid, depositorLucid } = fixture;
 
-      // Commit the first block through the real commit worker.
-      await advanceEmulatorPastLatestBlockEndTime(fixture);
-      vi.useFakeTimers({ toFake: ["Date"] });
-      syncClock(fixture);
-      await submitDepositAndRefreshBarriers({
-        fixture,
-        lucidService,
-        globals,
-        lovelace: 12_000_000n,
-      });
-      const block = await runCommitWorkerUntilSubmitted({
-        fixture,
-        lucidService,
-        latestBlock: await fetchLatestCommittedBlock(
-          operatorLucid,
-          fixture.contracts,
-        ),
-      });
-      await retainSubmittedHeaderPayload({
-        fixture,
-        headerHash: block.submittedHeaderHash,
-        submittedTxHash: block.submittedTxHash,
-      });
-      const headerHash = block.submittedHeaderHash;
+        // Commit the first block through the real commit worker.
+        await advanceEmulatorPastLatestBlockEndTime(fixture);
+        vi.useFakeTimers({ toFake: ["Date"] });
+        syncClock(fixture);
+        await submitDepositAndRefreshBarriers({
+          fixture,
+          lucidService,
+          globals,
+          lovelace: 12_000_000n,
+        });
+        const block = await runCommitWorkerUntilSubmitted({
+          fixture,
+          lucidService,
+          latestBlock: await fetchLatestCommittedBlock(
+            operatorLucid,
+            fixture.contracts,
+          ),
+        });
+        await retainSubmittedHeaderPayload({
+          fixture,
+          headerHash: block.submittedHeaderHash,
+          submittedTxHash: block.submittedTxHash,
+        });
+        const headerHash = block.submittedHeaderHash;
 
-      operatorLucid.selectWallet.fromSeed(fixture.operatorAccount.seedPhrase);
-      await Effect.runPromise(
-        ensureAvailabilityChallengeRewardAccountsRegisteredProgram(
-          operatorLucid,
-          fixture.contracts,
-        ),
-      );
-      const d = await challengeDeployment(fixture);
-      const P = d.parameters;
-
-      const committed = await queueNode(operatorLucid, d, headerHash);
-      expect(committed.status).toBe("Unattested");
-      expectNodeAtFloor(committed.utxo, d);
-
-      // Apply through the node's own attestation round.
-      syncClock(fixture);
-      const attested = await runNodeCommandProgram(
-        attestStateQueueOnceProgram({ headerHash }),
-        { fixture, lucidService, globals },
-      );
-      expect(attested.map((result) => result.headerHash)).toEqual([headerHash]);
-      const afterApply = await queueNode(operatorLucid, d, headerHash);
-      const row = await runNodeDatabaseEffect(
-        DaPayloadsDB.retrieveByHeaderHash(Buffer.from(headerHash, "hex")),
-      );
-      if (Option.isNone(row)) throw new Error("No retained DA payload");
-      const payload = row.value[DaPayloadsDB.Columns.PAYLOAD_CBOR];
-      const commitment = SDK.buildDaAvailabilityCommitment({
-        deploymentIdentity: d.hubOraclePolicyId,
-        headerHash,
-        payload,
-        responseGeometry: P.response_geometry,
-      });
-      expect(afterApply.status).toEqual({
-        Attested: {
-          commitment_hash: SDK.daAvailabilityCommitmentHash(commitment),
-        },
-      });
-      expectNodeAtFloor(afterApply.utxo, d);
-
-      // Open from an exact isolated coin at the challenger's key address.
-      const openFunding =
-        P.challenger_bond_lovelace +
-        P.challenge_record_lovelace +
-        P.max_open_fee_lovelace;
-      const challenger = await readKeyHash(depositorLucid);
-      const network = depositorLucid.config().network;
-      if (network === undefined) throw new Error("Missing emulator network");
-      const challengerAddress = credentialToAddress(network, {
-        type: "Key",
-        hash: challenger,
-      });
-      depositorLucid.selectWallet.fromSeed(fixture.depositorAccount.seedPhrase);
-      const fundingTx = await depositorLucid
-        .newTx()
-        .pay.ToAddress(challengerAddress, { lovelace: openFunding })
-        .complete();
-      const fundingHash = await (
-        await fundingTx.sign.withWallet().complete()
-      ).submit();
-      await depositorLucid.awaitTx(fundingHash);
-      const [challengerFunding] = (
-        await depositorLucid.utxosByOutRef(
-          [0, 1].map((outputIndex) => ({ txHash: fundingHash, outputIndex })),
-        )
-      ).filter(
-        (u) =>
-          u.assets.lovelace === openFunding &&
-          Object.keys(u.assets).length === 1,
-      );
-      if (challengerFunding === undefined)
-        throw new Error("Missing exact challenger funding coin");
-      await submitBuilt(
-        fixture,
-        depositorLucid,
+        operatorLucid.selectWallet.fromSeed(fixture.operatorAccount.seedPhrase);
         await Effect.runPromise(
-          SDK.buildOpenDaAvailabilityChallengeTxProgram(depositorLucid, d, {
-            ...(await resources(
-              fixture,
-              depositorLucid,
-              P.max_open_fee_lovelace,
-              [challengerFunding],
-            )),
-            commitment,
-            queue: afterApply.utxo,
-            challengerFunding,
-            challenger,
-            daChallengeWindowMs: CHALLENGE_WINDOW_MS,
-          }),
-        ),
-      );
-      const opened = await queueNode(operatorLucid, d, headerHash);
-      const record = opened.snapshot.recordDatum;
-      if (record === undefined) throw new Error("Missing challenge record");
-      expect(opened.status).toEqual({
-        Challenged: {
-          commitment_hash: SDK.daAvailabilityCommitmentHash(commitment),
-          challenge_asset_name: record.challenge_asset_name,
-        },
-      });
-      expectNodeAtFloor(opened.utxo, d);
+          ensureAvailabilityChallengeRewardAccountsRegisteredProgram(
+            operatorLucid,
+            fixture.contracts,
+          ),
+        );
+        const d = await challengeDeployment(fixture);
+        const P = d.parameters;
 
-      // The operator answers: every chunk, then settlement, then Close.
-      const plans = SDK.planDaAvailabilityPublications({
-        commitment: record.commitment,
-        payload,
-        challengeAssetName: record.challenge_asset_name,
-      });
-      expect(plans).toHaveLength(opened.snapshot.tranches.length);
-      let snapshot = opened.snapshot;
-      for (const [trancheIndex, plan] of plans.entries()) {
-        let thread = snapshot.tranches[trancheIndex]!.utxo;
-        let carrier: UTxO | undefined;
-        for (const publication of plan.publications) {
-          const outputs = await submitBuilt(
+        const committed = await queueNode(operatorLucid, d, headerHash);
+        expect(committed.status).toBe("Unattested");
+        expectNodeAtFloor(committed.utxo, d);
+
+        // Apply through the node's own attestation round.
+        syncClock(fixture);
+        const attested = await runNodeCommandProgram(
+          attestStateQueueOnceProgram({ headerHash }),
+          { fixture, lucidService, globals },
+        );
+        expect(attested.map((result) => result.headerHash)).toEqual([
+          headerHash,
+        ]);
+        const afterApply = await queueNode(operatorLucid, d, headerHash);
+        const row = await runNodeDatabaseEffect(
+          DaPayloadsDB.retrieveByHeaderHash(Buffer.from(headerHash, "hex")),
+        );
+        if (Option.isNone(row)) throw new Error("No retained DA payload");
+        const payload = row.value[DaPayloadsDB.Columns.PAYLOAD_CBOR];
+        const commitment = SDK.buildDaAvailabilityCommitment({
+          deploymentIdentity: d.hubOraclePolicyId,
+          headerHash,
+          payload,
+          responseGeometry: P.response_geometry,
+        });
+        expect(afterApply.status).toEqual({
+          Attested: {
+            commitment_hash: SDK.daAvailabilityCommitmentHash(commitment),
+          },
+        });
+        expectNodeAtFloor(afterApply.utxo, d);
+
+        // Open from an exact isolated coin at the challenger's key address.
+        const openFunding =
+          P.challenger_bond_lovelace +
+          P.challenge_record_lovelace +
+          P.max_open_fee_lovelace;
+        const challenger = await readKeyHash(depositorLucid);
+        const network = depositorLucid.config().network;
+        if (network === undefined) throw new Error("Missing emulator network");
+        const challengerAddress = credentialToAddress(network, {
+          type: "Key",
+          hash: challenger,
+        });
+        depositorLucid.selectWallet.fromSeed(
+          fixture.depositorAccount.seedPhrase,
+        );
+        const fundingTx = await depositorLucid
+          .newTx()
+          .pay.ToAddress(challengerAddress, { lovelace: openFunding })
+          .complete();
+        const fundingHash = await (
+          await fundingTx.sign.withWallet().complete()
+        ).submit();
+        await depositorLucid.awaitTx(fundingHash);
+        const [challengerFunding] = (
+          await depositorLucid.utxosByOutRef(
+            [0, 1].map((outputIndex) => ({ txHash: fundingHash, outputIndex })),
+          )
+        ).filter(
+          (u) =>
+            u.assets.lovelace === openFunding &&
+            Object.keys(u.assets).length === 1,
+        );
+        if (challengerFunding === undefined)
+          throw new Error("Missing exact challenger funding coin");
+        await submitBuilt(
+          fixture,
+          depositorLucid,
+          await Effect.runPromise(
+            SDK.buildOpenDaAvailabilityChallengeTxProgram(depositorLucid, d, {
+              ...(await resources(
+                fixture,
+                depositorLucid,
+                P.max_open_fee_lovelace,
+                [challengerFunding],
+              )),
+              commitment,
+              queue: afterApply.utxo,
+              challengerFunding,
+              challenger,
+              daChallengeWindowMs: CHALLENGE_WINDOW_MS,
+            }),
+          ),
+        );
+        const opened = await queueNode(operatorLucid, d, headerHash);
+        const record = opened.snapshot.recordDatum;
+        if (record === undefined) throw new Error("Missing challenge record");
+        expect(opened.status).toEqual({
+          Challenged: {
+            commitment_hash: SDK.daAvailabilityCommitmentHash(commitment),
+            challenge_asset_name: record.challenge_asset_name,
+          },
+        });
+        expectNodeAtFloor(opened.utxo, d);
+
+        // The operator answers: every chunk, then settlement, then Close.
+        const plans = SDK.planDaAvailabilityPublications({
+          commitment: record.commitment,
+          payload,
+          challengeAssetName: record.challenge_asset_name,
+        });
+        expect(plans).toHaveLength(opened.snapshot.tranches.length);
+        let snapshot = opened.snapshot;
+        for (const [trancheIndex, plan] of plans.entries()) {
+          let thread = snapshot.tranches[trancheIndex]!.utxo;
+          let carrier: UTxO | undefined;
+          for (const publication of plan.publications) {
+            const outputs = await submitBuilt(
+              fixture,
+              operatorLucid,
+              await Effect.runPromise(
+                SDK.buildPublishDaAvailabilityChunkTxProgram(operatorLucid, d, {
+                  ...(await resources(
+                    fixture,
+                    operatorLucid,
+                    P.max_publication_fee_lovelace,
+                    [],
+                    record.response_deadline,
+                  )),
+                  thread,
+                  previousCarrier: carrier,
+                  publication,
+                }),
+              ),
+            );
+            thread = outputs[0]!;
+            carrier = outputs[1]!;
+          }
+          snapshot = await SDK.fetchDaAvailabilityChallengeSnapshot(
+            operatorLucid,
+            d,
+            headerHash,
+          );
+          await submitBuilt(
             fixture,
             operatorLucid,
             await Effect.runPromise(
-              SDK.buildPublishDaAvailabilityChunkTxProgram(operatorLucid, d, {
+              SDK.buildSettleDaAvailabilityTrancheTxProgram(operatorLucid, d, {
                 ...(await resources(
                   fixture,
                   operatorLucid,
-                  P.max_publication_fee_lovelace,
-                  [],
-                  record.response_deadline,
+                  P.max_settlement_fee_lovelace,
                 )),
+                record: snapshot.record!,
+                terminal: snapshot.terminal!,
                 thread,
-                previousCarrier: carrier,
-                publication,
+                carrier,
               }),
             ),
           );
-          thread = outputs[0]!;
-          carrier = outputs[1]!;
+          snapshot = await SDK.fetchDaAvailabilityChallengeSnapshot(
+            operatorLucid,
+            d,
+            headerHash,
+          );
         }
-        snapshot = await SDK.fetchDaAvailabilityChallengeSnapshot(
-          operatorLucid,
-          d,
-          headerHash,
-        );
+        const beforeClose = await queueNode(operatorLucid, d, headerHash);
+        expectNodeAtFloor(beforeClose.utxo, d);
         await submitBuilt(
           fixture,
           operatorLucid,
           await Effect.runPromise(
-            SDK.buildSettleDaAvailabilityTrancheTxProgram(operatorLucid, d, {
+            SDK.buildCloseDaAvailabilityChallengeTxProgram(operatorLucid, d, {
               ...(await resources(
                 fixture,
                 operatorLucid,
-                P.max_settlement_fee_lovelace,
+                P.max_close_fee_lovelace,
               )),
               record: snapshot.record!,
               terminal: snapshot.terminal!,
-              thread,
-              carrier,
+              queue: beforeClose.utxo,
             }),
           ),
         );
-        snapshot = await SDK.fetchDaAvailabilityChallengeSnapshot(
-          operatorLucid,
-          d,
-          headerHash,
-        );
-      }
-      const beforeClose = await queueNode(operatorLucid, d, headerHash);
-      expectNodeAtFloor(beforeClose.utxo, d);
-      await submitBuilt(
-        fixture,
-        operatorLucid,
-        await Effect.runPromise(
-          SDK.buildCloseDaAvailabilityChallengeTxProgram(operatorLucid, d, {
-            ...(await resources(
-              fixture,
-              operatorLucid,
-              P.max_close_fee_lovelace,
-            )),
-            record: snapshot.record!,
-            terminal: snapshot.terminal!,
-            queue: beforeClose.utxo,
-          }),
-        ),
-      );
-      const closed = await queueNode(operatorLucid, d, headerHash);
-      expect(closed.snapshot.record).toBeUndefined();
-      expect(closed.status).toMatchObject({ Published: {} });
-      expectNodeAtFloor(closed.utxo, d);
-    },
-    TIMEOUT_MS,
-  );
-});
+        const closed = await queueNode(operatorLucid, d, headerHash);
+        expect(closed.snapshot.record).toBeUndefined();
+        expect(closed.status).toMatchObject({ Published: {} });
+        expectNodeAtFloor(closed.utxo, d);
+      },
+      TIMEOUT_MS,
+    );
+  },
+);

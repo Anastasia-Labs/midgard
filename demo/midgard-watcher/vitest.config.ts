@@ -8,7 +8,7 @@ import {
   interactiveEmulatorPlugin,
   interactiveEmulatorSetup,
   isolatedForksPool,
-  midgardSourceSsr,
+  midgardSourceEnvironments,
   rawSqlLoaderPlugin,
   workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
@@ -44,7 +44,7 @@ export default defineConfig({
   plugins: [rawSqlLoaderPlugin()],
   test: {
     // Refuses the run when onchain/aiken/plutus.json is stale.
-    workspace: [
+    projects: [
       // Workspace packages load from a per-run source bundle; files that need
       // them module-by-module run in `testing-profile:source`.
       ...workspaceBundleProjects(
@@ -84,8 +84,8 @@ export default defineConfig({
     }),
     environment: "node",
     restoreMocks: true,
-    // Several files perform CPU-heavy replay and emulator evaluation. An
-    // unbounded thread pool can starve Vitest's worker RPC long enough for
+    // Several files perform CPU-heavy replay and emulator evaluation. Under
+    // Vitest 3 an unbounded thread pool starved the worker RPC long enough for
     // successful tests to be reported as `Timeout calling onTaskUpdate`.
     // Isolated forks keep evaluator state file-local (running the suite
     // without isolation fails ~75 tests on shared module state); the fork
@@ -96,5 +96,5 @@ export default defineConfig({
     // shared runners. Headroom for slow runners, not a license for slow tests.
     testTimeout: 60_000,
   },
-  ssr: midgardSourceSsr(),
+  environments: midgardSourceEnvironments(),
 });

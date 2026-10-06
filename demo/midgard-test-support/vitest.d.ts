@@ -7,8 +7,9 @@
  * the whole reason the module beside it is plain JavaScript.
  */
 
-export declare const midgardSourceSsr: () => {
-  resolve: { conditions: string[] };
+export declare const midgardSourceEnvironments: () => {
+  ssr: { resolve: { conditions: string[] } };
+  __vitest__: { resolve: { conditions: string[] } };
 };
 
 export declare const isolatedForksPool: (options: {
@@ -16,15 +17,9 @@ export declare const isolatedForksPool: (options: {
   readonly heapMb?: number;
 }) => {
   readonly pool: "forks";
-  readonly poolOptions: {
-    readonly forks: {
-      readonly isolate: true;
-      readonly singleFork: false;
-      readonly minForks: number;
-      readonly maxForks: number;
-      readonly execArgv: string[];
-    };
-  };
+  readonly isolate: true;
+  readonly maxWorkers: number;
+  readonly execArgv: string[];
 };
 
 export declare const rawSqlLoaderPlugin: () => {

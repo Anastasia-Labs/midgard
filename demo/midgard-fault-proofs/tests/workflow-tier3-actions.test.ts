@@ -296,7 +296,7 @@ describe("Q38 tier-3 workflow action chains", () => {
       }),
     ).resolves.toEqual({ kind: "confirmed", txHash: publicationTxHash });
     expect(observeExact).toHaveBeenCalledWith(
-      expect.objectContaining({
+      expect.objectContaining<Record<string, unknown>>({
         expectedOutRef: `${publicationTxHash}#0`,
         expectedDatumCbor: publication.action.input.publicationDatumCbor,
       }),
@@ -547,7 +547,7 @@ describe("Q38 tier-3 workflow action chains", () => {
       }),
     ).resolves.toEqual({ kind: "confirmed", txHash: publicationTxHash });
     expect(observeExact).toHaveBeenCalledWith(
-      expect.objectContaining({
+      expect.objectContaining<Record<string, unknown>>({
         expectedOutRef: `${publicationTxHash}#0`,
         expectedDatumCbor: publication.action.input.publicationDatumCbor,
       }),

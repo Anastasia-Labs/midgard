@@ -31,9 +31,10 @@
  * of a far bigger heap, inside a synchronous burst where finalizers cannot run
  * to free anything: on the installed-lifecycle transition trace (Node
  * 22.22.2, two pinned cores) that was 720 major GCs in one 84.7 s block of the
- * event loop, long enough for vitest's 60 s RPC timeout to fire on the test
+ * event loop, long enough for Vitest 3's 60 s RPC timeout to fire on the test
  * updates sent during it, so the file's results were lost to `Timeout calling
- * "onTaskUpdate"`. So the preload restores the external-memory trigger it
+ * "onTaskUpdate"` (Vitest 4 dropped that timeout; the storm's cost remains).
+ * So the preload restores the external-memory trigger it
  * removed, keyed to what CML actually touches: it runs a full GC whenever
  * resident memory outside the JS heap has climbed 64 MB (V8's own
  * external-memory step) past where the last such GC left it.

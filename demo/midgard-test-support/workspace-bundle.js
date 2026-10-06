@@ -173,22 +173,31 @@ export const buildWorkspaceBundle = async (
           name: "midgard-workspace-bundle",
           setup(esbuild) {
             // A bundled module sees the same `import.meta` it sees when
-            // vite-node runs it from source ({ url, filename, dirname } of the
-            // SOURCE file), so source-relative fixture paths and every
-            // location check behave exactly as in a source-mode run.
+            // Vitest's module runner runs it from source ({ url, filename,
+            // dirname } of the SOURCE file, and `main: false`), so
+            // source-relative fixture paths and every location check behave
+            // exactly as in a source-mode run. The runner's `resolve` is
+            // Node's own `import.meta.resolve` with the source file as its
+            // parent (Vitest starts every worker with
+            // `--experimental-import-meta-resolve`, which takes that parent),
+            // and the bundled one is the same call.
             esbuild.onLoad({ filter: /\.(?:m?[jt]s|tsx)$/u }, (args) => {
               if (owner(args.path) === undefined) return undefined;
               const text = readFileSync(args.path, "utf8");
               if (!text.includes("import.meta")) return undefined;
-              // vite-node's `import.meta` has no `resolve` or `hot` either, so
-              // only `env` lacks a faithful bundled form.
+              // The runner's `import.meta` has no `hot`; only `env` lacks a
+              // faithful bundled form, and the analysis keeps modules reading
+              // it out of the bundle.
               if (/\bimport\.meta\.env\b/u.test(text))
                 metaEscapes.push(label(args.path));
-              const meta = JSON.stringify({
-                url: pathToFileURL(args.path).href,
+              const url = pathToFileURL(args.path).href;
+              const fields = JSON.stringify({
+                url,
                 filename: args.path,
                 dirname: dirname(args.path),
+                main: false,
               });
+              const meta = `{ ...${fields}, resolve: (specifier, parent) => import.meta.resolve(specifier, parent ?? ${JSON.stringify(url)}) }`;
               return {
                 // Same line as the source's first, so line numbers hold; a
                 // shebang is only legal as the very first bytes, so it goes.

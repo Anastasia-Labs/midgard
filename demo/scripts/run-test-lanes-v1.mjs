@@ -14,10 +14,10 @@
  * serialized behind all of C.
  *
  * Memory discipline is BY CONSTRUCTION, not by containment. Each worker's heap
- * is bounded where it belongs — `poolOptions.forks.execArgv` in each suite's
- * own vitest config — and this runner then admits only as many concurrent lanes
- * as the machine's free RAM can hold at that per-worker bound. There is no
- * cgroup ceiling around a lane.
+ * is bounded where it belongs — `execArgv` (via `isolatedForksPool`) in each
+ * suite's own vitest config — and this runner then admits only as many
+ * concurrent lanes as the machine's free RAM can hold at that per-worker
+ * bound. There is no cgroup ceiling around a lane.
  *
  * This deliberately replaced a `systemd-run --user --scope` wrapper at
  * `MemoryMax=12G`. That wrapper required a per-user systemd manager, which is a
@@ -159,9 +159,9 @@ const run = (command, args, label) =>
     });
   });
 
-// Per-worker heap is set in each suite's own vitest config
-// (`poolOptions.forks.execArgv`), not exported here: a blanket NODE_OPTIONS
-// would also apply to pnpm, vitest's own main process and every unrelated tool
+// Per-worker heap is set in each suite's own vitest config (`execArgv`, via
+// `isolatedForksPool`), not exported here: a blanket NODE_OPTIONS would also
+// apply to pnpm, vitest's own main process and every unrelated tool
 // in the lane, and would be silently overridden by any suite that sets its own.
 const laneCommand = (filter) => ({
   command: "pnpm",

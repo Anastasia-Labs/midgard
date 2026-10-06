@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   isolatedForksPool,
-  midgardSourceSsr,
+  midgardSourceEnvironments,
   rawSqlLoaderPlugin,
   workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
@@ -34,7 +34,7 @@ export default defineConfig({
     reporters: [["default", { summary: false }]],
     // Workspace packages load from a per-run source bundle; files that need
     // them module-by-module run in `midgard-node-tools:source`.
-    workspace: workspaceBundleProjects(
+    projects: workspaceBundleProjects(
       {
         extends: true,
         test: {
@@ -55,7 +55,7 @@ export default defineConfig({
     ...(bail === undefined ? {} : { bail }),
     environment: "node",
   },
-  ssr: midgardSourceSsr(),
+  environments: midgardSourceEnvironments(),
   esbuild: {
     target: "es2020",
   },

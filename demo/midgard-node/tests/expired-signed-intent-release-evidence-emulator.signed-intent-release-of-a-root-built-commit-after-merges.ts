@@ -49,8 +49,9 @@ import {
   synchronizeWithin,
 } from "./helpers/signed-intent-replacement.js";
 
-describe.sequential(
+describe(
   "signed-intent release of a root-built commit after merges",
+  { concurrent: false },
   () => {
     it("replaces a root-built commit once the observer records the transition after the root was left empty, naming a foreign block, though merges hid the slot from the confirmed state; never before its TTL while the history journals no spend of its base output (owner ruling 2026-09-26)", async () => {
       const view = makeRewritableQueueTransport();
@@ -207,7 +208,7 @@ describe.sequential(
   },
 );
 
-describe.sequential("replaced-block revival evidence", () => {
+describe("replaced-block revival evidence", { concurrent: false }, () => {
   it("revives a replaced block while no journal is active only once an admitted merge saw it on the queue, never on a pending merge's hint or while a plan is retained, and hands it to local finalization", async () => {
     const scenario = await openCorrectionRewindScenario({
       blocks: 2,

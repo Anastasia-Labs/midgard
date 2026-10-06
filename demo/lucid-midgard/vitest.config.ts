@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import {
-  midgardSourceSsr,
+  midgardSourceEnvironments,
   workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
@@ -11,7 +11,7 @@ export default defineConfig({
     reporters: "verbose",
     // Workspace packages load from a per-run source bundle; files that need
     // them module-by-module run in `lucid-midgard:source`.
-    workspace: workspaceBundleProjects(
+    projects: workspaceBundleProjects(
       {
         extends: true,
         test: {
@@ -22,5 +22,5 @@ export default defineConfig({
       { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
     ),
   },
-  ssr: midgardSourceSsr(),
+  environments: midgardSourceEnvironments(),
 });

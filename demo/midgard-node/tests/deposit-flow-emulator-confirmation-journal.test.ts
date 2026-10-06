@@ -29,7 +29,7 @@ import {
   submitDepositAndRefreshBarriers,
 } from "./deposit-flow-emulator-shared.js";
 
-describe.sequential("deposit flow emulator", () => {
+describe("deposit flow emulator", { concurrent: false }, () => {
   it("preserves a newer submitted journal when a delayed confirmation worker captured no pending journal", async () => {
     await runConfirmationJournalInsertionRace("during_worker");
   }, 240_000);

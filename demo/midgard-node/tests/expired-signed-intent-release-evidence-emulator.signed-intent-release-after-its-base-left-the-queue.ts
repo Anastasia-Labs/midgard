@@ -34,8 +34,9 @@ import {
   UNLANDED,
 } from "./helpers/signed-intent-replacement.js";
 
-describe.sequential(
+describe(
   "signed-intent release after its base left the queue",
+  { concurrent: false },
   () => {
     it("replaces a signed commit whose base was merged with a foreign successor only at its TTL while the history journals no spend of its base output (owner ruling 2026-09-26)", async () => {
       const view = makeRewritableQueueTransport();

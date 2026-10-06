@@ -98,7 +98,7 @@ const runFilteredVitest = ({
       "run",
       ...testFiles,
       "--pool=forks",
-      "--poolOptions.forks.singleFork=true",
+      "--maxWorkers=1",
       ...extraArguments,
       "--reporter=json",
       `--outputFile=${reportPath}`,

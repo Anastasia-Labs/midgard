@@ -17,7 +17,6 @@ export default defineConfig({
   test: {
     pool: "forks",
     maxWorkers: 1,
-    minWorkers: 1,
     reporters: [["default", { summary: false }]],
     include: ["./tests/**/*.bench.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
     testTimeout: 900_000,

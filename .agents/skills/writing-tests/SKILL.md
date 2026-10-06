@@ -130,7 +130,7 @@ a timeout or skipping it.
   conjunct is false, so it cannot tell the intended rejection from an
   unrelated one. Pin one disposition per test, asserted directly. [review]
 - **vitest `-t "<name>"` matching nothing.** Exits 0 with every test reported
-  skipped (vitest 3.0.7, checked 2026-09-25). Read `Tests N passed` in the
+  skipped (vitest 3.0.7 and 5.0.3, checked 2026-10-06). Read `Tests N passed` in the
   summary and check N. [review]
 - **`<command> | tail` or `| grep`.** The pipeline's status is the last
   command's, so a red suite reads green. Use `set -o pipefail`, or redirect to

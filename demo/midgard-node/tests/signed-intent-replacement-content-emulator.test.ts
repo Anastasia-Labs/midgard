@@ -169,112 +169,116 @@ const sameMembers = (a: Pending.Record, b: Pending.Record) => {
   expect(a.depositEventIds.map(hex)).toEqual(b.depositEventIds.map(hex));
 };
 
-describe.sequential("signed-intent replacement of every member kind", () => {
-  it("reopens a lost commit's transfer, withdrawal, forced transaction and deposit, and its replacement commits each exactly once", async () => {
-    const h = await openHistoryProductionOwnerLifecycle();
-    try {
-      await resetSharedRows();
-      await advanceEmulatorPastLatestBlockEndTime(h.fixture);
-      const E = await loseContentCommit(h);
-      moveToExactSlot(h, E.ttl);
-      await synchronizeWithin(h, 240_000);
-      await expectReplaced(E.journal, { handle: h });
-      // Every member is pending again, none committed.
-      expect(await readMemberHeaders(E.journal)).toEqual({
-        withdrawal: null,
-        forced: null,
-        deposit: null,
-      });
-      expect(await readMempool()).toContain(E.transferId);
-      expect(await readImmutableCounts([E.transferId])).toEqual({
-        [E.transferId]: 0,
-      });
+describe(
+  "signed-intent replacement of every member kind",
+  { concurrent: false },
+  () => {
+    it("reopens a lost commit's transfer, withdrawal, forced transaction and deposit, and its replacement commits each exactly once", async () => {
+      const h = await openHistoryProductionOwnerLifecycle();
+      try {
+        await resetSharedRows();
+        await advanceEmulatorPastLatestBlockEndTime(h.fixture);
+        const E = await loseContentCommit(h);
+        moveToExactSlot(h, E.ttl);
+        await synchronizeWithin(h, 240_000);
+        await expectReplaced(E.journal, { handle: h });
+        // Every member is pending again, none committed.
+        expect(await readMemberHeaders(E.journal)).toEqual({
+          withdrawal: null,
+          forced: null,
+          deposit: null,
+        });
+        expect(await readMempool()).toContain(E.transferId);
+        expect(await readImmutableCounts([E.transferId])).toEqual({
+          [E.transferId]: 0,
+        });
 
-      const nextHeader = await commitAndLocallyFinalizeNextBlock(h);
-      const next = await readJournal(nextHeader);
-      expect(next[C.BASE_UTXOS_ROOT]).toBe(E.journal[C.BASE_UTXOS_ROOT]);
-      sameMembers(next, E.journal);
-      expect(await readMemberHeaders(E.journal)).toEqual({
-        withdrawal: nextHeader,
-        forced: nextHeader,
-        deposit: nextHeader,
-      });
-      expect(await readImmutableCounts([E.transferId])).toEqual({
-        [E.transferId]: 1,
-      });
-      expect(await readMempool()).not.toContain(E.transferId);
-      expect(await nativeRoot(h)).toBe(next[C.EXPECTED_UTXOS_ROOT]);
-    } finally {
-      await closeLifecycle(h);
-    }
-  }, 1_200_000);
+        const nextHeader = await commitAndLocallyFinalizeNextBlock(h);
+        const next = await readJournal(nextHeader);
+        expect(next[C.BASE_UTXOS_ROOT]).toBe(E.journal[C.BASE_UTXOS_ROOT]);
+        sameMembers(next, E.journal);
+        expect(await readMemberHeaders(E.journal)).toEqual({
+          withdrawal: nextHeader,
+          forced: nextHeader,
+          deposit: nextHeader,
+        });
+        expect(await readImmutableCounts([E.transferId])).toEqual({
+          [E.transferId]: 1,
+        });
+        expect(await readMempool()).not.toContain(E.transferId);
+        expect(await nativeRoot(h)).toBe(next[C.EXPECTED_UTXOS_ROOT]);
+      } finally {
+        await closeLifecycle(h);
+      }
+    }, 1_200_000);
 
-  it("revives a replaced commit of every member kind that wins its base slot, abandons its replacement, and commits each member exactly once", async () => {
-    const h = await openHistoryProductionOwnerLifecycle();
-    try {
-      await resetSharedRows();
-      await advanceEmulatorPastLatestBlockEndTime(h.fixture);
-      const E = await loseContentCommit(h);
-      moveToExactSlot(h, E.ttl);
-      await synchronizeWithin(h, 240_000);
-      await expectReplaced(E.journal, { handle: h });
-      // NEW_E: the same members on the same base, handed to L1 and lost.
-      // This deliberately skips a production step. The node's pre-lease
-      // alignment (alignCommitSchedulerBeforeMutationWorker in
-      // src/fibers/block-commitment.ts) would Rewind the scheduler here, since
-      // E's TTL sits late in the shift, so a production NEW_E references the
-      // refreshed scheduler UTxO. That is harmless: E's validTo is at or
-      // before its shift end (schedulerStateCoversCommitTarget), and a
-      // refresh's validFrom is at or after it
-      // (resolveSchedulerRefreshValidityWindow in
-      // src/workers/utils/scheduler-refresh.ts; onchain scheduler.ak
-      // validate_end_of_shift_and_get_operators), so a fork that includes E
-      // orders the refresh after E. The emulator cannot place an unobserved E
-      // before that refresh, so the test skips the alignment to keep E's
-      // reference inputs unspent and E landable below. Keeping them unspent is
-      // a harness precondition, not a production property.
-      const lost = await submitUnlandedBlock(
-        h,
-        h.fixture.emulator.now() - 1000,
-        { alignScheduler: false },
-      );
-      const N = await readJournal(lost.submittedHeaderHash);
-      expect(N[C.BASE_TAIL_OUT_REF]).toBe(E.journal[C.BASE_TAIL_OUT_REF]);
-      sameMembers(N, E.journal);
-      const nTtl = signedTtl(N[C.SIGNED_TX_CBOR]!);
+    it("revives a replaced commit of every member kind that wins its base slot, abandons its replacement, and commits each member exactly once", async () => {
+      const h = await openHistoryProductionOwnerLifecycle();
+      try {
+        await resetSharedRows();
+        await advanceEmulatorPastLatestBlockEndTime(h.fixture);
+        const E = await loseContentCommit(h);
+        moveToExactSlot(h, E.ttl);
+        await synchronizeWithin(h, 240_000);
+        await expectReplaced(E.journal, { handle: h });
+        // NEW_E: the same members on the same base, handed to L1 and lost.
+        // This deliberately skips a production step. The node's pre-lease
+        // alignment (alignCommitSchedulerBeforeMutationWorker in
+        // src/fibers/block-commitment.ts) would Rewind the scheduler here, since
+        // E's TTL sits late in the shift, so a production NEW_E references the
+        // refreshed scheduler UTxO. That is harmless: E's validTo is at or
+        // before its shift end (schedulerStateCoversCommitTarget), and a
+        // refresh's validFrom is at or after it
+        // (resolveSchedulerRefreshValidityWindow in
+        // src/workers/utils/scheduler-refresh.ts; onchain scheduler.ak
+        // validate_end_of_shift_and_get_operators), so a fork that includes E
+        // orders the refresh after E. The emulator cannot place an unobserved E
+        // before that refresh, so the test skips the alignment to keep E's
+        // reference inputs unspent and E landable below. Keeping them unspent is
+        // a harness precondition, not a production property.
+        const lost = await submitUnlandedBlock(
+          h,
+          h.fixture.emulator.now() - 1000,
+          { alignScheduler: false },
+        );
+        const N = await readJournal(lost.submittedHeaderHash);
+        expect(N[C.BASE_TAIL_OUT_REF]).toBe(E.journal[C.BASE_TAIL_OUT_REF]);
+        sameMembers(N, E.journal);
+        const nTtl = signedTtl(N[C.SIGNED_TX_CBOR]!);
 
-      // The chain now followed included E before its TTL.
-      await landSignedCommitAsFork(h, E.journal[C.SIGNED_TX_CBOR]!);
-      if (h.fixture.emulator.slot < nTtl) moveToExactSlot(h, nTtl);
-      await synchronizeWithin(h, 240_000);
-      expect((await readJournal(E.header))[C.STATUS]).toBe(
-        Pending.Status.ObservedWaitingStability,
-      );
-      const abandoned = await readJournal(N[C.HEADER_HASH].toString("hex"));
-      expect(abandoned[C.STATUS]).toBe(Pending.Status.Abandoned);
-      expect(abandoned[C.CORRECTION_TRANSITION_DIGEST]).toBe(
-        signedIntentReplacementDigest(N),
-      );
-      // Every member is taken back by E.
-      expect(await readMemberHeaders(E.journal)).toEqual({
-        withdrawal: E.header,
-        forced: E.header,
-        deposit: E.header,
-      });
+        // The chain now followed included E before its TTL.
+        await landSignedCommitAsFork(h, E.journal[C.SIGNED_TX_CBOR]!);
+        if (h.fixture.emulator.slot < nTtl) moveToExactSlot(h, nTtl);
+        await synchronizeWithin(h, 240_000);
+        expect((await readJournal(E.header))[C.STATUS]).toBe(
+          Pending.Status.ObservedWaitingStability,
+        );
+        const abandoned = await readJournal(N[C.HEADER_HASH].toString("hex"));
+        expect(abandoned[C.STATUS]).toBe(Pending.Status.Abandoned);
+        expect(abandoned[C.CORRECTION_TRANSITION_DIGEST]).toBe(
+          signedIntentReplacementDigest(N),
+        );
+        // Every member is taken back by E.
+        expect(await readMemberHeaders(E.journal)).toEqual({
+          withdrawal: E.header,
+          forced: E.header,
+          deposit: E.header,
+        });
 
-      await finalizeLocally(h, E.header);
-      expect(await nativeRoot(h)).toBe(E.journal[C.EXPECTED_UTXOS_ROOT]);
-      expect(await readMemberHeaders(E.journal)).toEqual({
-        withdrawal: E.header,
-        forced: E.header,
-        deposit: E.header,
-      });
-      expect(await readImmutableCounts([E.transferId])).toEqual({
-        [E.transferId]: 1,
-      });
-      expect(await readMempool()).not.toContain(E.transferId);
-    } finally {
-      await closeLifecycle(h);
-    }
-  }, 1_200_000);
-});
+        await finalizeLocally(h, E.header);
+        expect(await nativeRoot(h)).toBe(E.journal[C.EXPECTED_UTXOS_ROOT]);
+        expect(await readMemberHeaders(E.journal)).toEqual({
+          withdrawal: E.header,
+          forced: E.header,
+          deposit: E.header,
+        });
+        expect(await readImmutableCounts([E.transferId])).toEqual({
+          [E.transferId]: 1,
+        });
+        expect(await readMempool()).not.toContain(E.transferId);
+      } finally {
+        await closeLifecycle(h);
+      }
+    }, 1_200_000);
+  },
+);

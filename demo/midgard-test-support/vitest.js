@@ -28,20 +28,23 @@ import { analyzeSuite } from "./workspace-bundle-analysis.js";
  * guarantee is unchanged by `workspaceBundleProjects` below: the bundle it
  * loads is built from these same source files, never from a dist.
  *
- * Vitest resolves test modules through Vite's SSR pipeline and sets
- * `ssr.resolve.conditions` itself, so the root `resolve.conditions` is not
- * consulted; the trailing entries restate Vitest's server defaults, which
- * assigning this key would otherwise drop.
+ * Vitest loads modules through two Vite environments, and each needs the
+ * condition: test files run in `ssr`, while global setup files run in the
+ * main process through `__vitest__` (since Vitest 4; Vitest 3 loaded them
+ * through `ssr` too). Vitest sets each environment's `resolve.conditions`
+ * itself, so the root `resolve.conditions` is not consulted; the trailing
+ * entries restate Vitest's server defaults.
  *
  * Every package needs this and every package needs it spelled the same way, so
  * it is defined once here rather than copied into nine configs. It is a
- * function so that each config gets its own object to hand to Vite.
+ * function so that each config gets its own objects to hand to Vite.
  */
-export const midgardSourceSsr = () => ({
-  resolve: {
+export const midgardSourceEnvironments = () => {
+  const resolve = () => ({
     conditions: ["midgard-source", "node", "development|production"],
-  },
-});
+  });
+  return { ssr: { resolve: resolve() }, __vitest__: { resolve: resolve() } };
+};
 
 /**
  * The worker flag that preloads `cml-memory-reserve.js`, which grows
@@ -93,21 +96,24 @@ const cmlMemoryReserveExecArgv = `--import=${
  * preload's note has the numbers). Peak worker RSS still rises with the
  * file's CML churn, by up to about 1 GB on the heaviest files. If a run dies
  * on memory, lower `maxForks` as above.
+ *
+ * A fork may block its event loop for minutes inside one synchronous UPLC or
+ * CML evaluation. Since Vitest 4 the worker RPC carries no call timeout
+ * (vitest-dev/vitest#8297), so such a block only delays the fork's task
+ * updates; Vitest 3 failed any call still pending after 60 s with
+ * `Timeout calling "onTaskUpdate"` and dropped the file's results. Vitest
+ * offers no bound to set in its place: liveness comes from each package's
+ * `testTimeout`, which fails a test that overran even when it ran
+ * synchronously, and from the CI job timeout above that.
  */
 export const isolatedForksPool = ({ maxForks, heapMb = 4096 }) => ({
   pool: "forks",
-  poolOptions: {
-    forks: {
-      isolate: true,
-      singleFork: false,
-      minForks: 1,
-      maxForks,
-      execArgv: [
-        `--max-old-space-size=${String(heapMb)}`,
-        cmlMemoryReserveExecArgv,
-      ],
-    },
-  },
+  isolate: true,
+  maxWorkers: maxForks,
+  execArgv: [
+    `--max-old-space-size=${String(heapMb)}`,
+    cmlMemoryReserveExecArgv,
+  ],
 });
 
 /**
@@ -258,14 +264,15 @@ const workspaceBundleGuard = fileURLToPath(
  *   would resolve the target's workspace imports to `midgard-source`
  *   TypeScript and fail on it (an enum, or a `.js` specifier naming a `.ts`
  *   file). Modules that do this are not bundled, and the files that reach
- *   them run in the source project, where vite-node loads the target.
+ *   them run in the source project, where Vitest's module runner loads the
+ *   target.
  * - Circular imports: bundled modules evaluate in esbuild's order, as native
  *   ESM does, but esbuild lowers top-level `const`, `let` and `class` to
  *   `var` when bundling. A module that reads a cycle partner's binding before
  *   that partner has run therefore sees `undefined`, not the TDZ
- *   ReferenceError native ESM raises, so a cycle that only worked under
- *   vite-node's partial exports can fail later and less clearly, or not at
- *   all if the value goes unused.
+ *   ReferenceError native ESM raises, so a cycle that only worked under the
+ *   module runner's partial exports can fail later and less clearly, or not
+ *   at all if the value goes unused.
  * - Bundling renames colliding identifiers; `keepNames` keeps `.name`.
  * - Only Vite plugins of this project that transform workspace source would
  *   be skipped by the bundle, so never wrap a project that has one (the

@@ -169,9 +169,10 @@ it.each(["init", "dispatch", "authenticate", "finalize"] as const)(
           : selected === "authenticate"
             ? "submitFieldPreimageLengthAcceptedAuthentication"
             : "submitFieldPreimageLengthTerminal";
+    type Input = Parameters<(typeof submitters)[typeof target]>[0];
     const submit = vi
       .spyOn(submitters, target)
-      .mockImplementation(async (input) => {
+      .mockImplementation(async (input: Input) => {
         await input.preSubmitBoundary?.(transaction);
         throw new Error("capture did not interrupt before submission");
       });

@@ -7,7 +7,7 @@ import {
   interactiveEmulatorPlugin,
   interactiveEmulatorSetup,
   isolatedForksPool,
-  midgardSourceSsr,
+  midgardSourceEnvironments,
   rawSqlLoaderPlugin,
   workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
@@ -49,7 +49,7 @@ export default defineConfig({
   plugins: [rawSqlLoaderPlugin()],
   test: {
     // Refuses the run when onchain/aiken/plutus.json is stale.
-    workspace: [
+    projects: [
       // Workspace packages load from a per-run source bundle; files that need
       // them module-by-module run in `testing-profile:source`.
       ...workspaceBundleProjects(
@@ -105,5 +105,5 @@ export default defineConfig({
     // down to one file at a time.
     ...isolatedForksPool({ maxForks }),
   },
-  ssr: midgardSourceSsr(),
+  environments: midgardSourceEnvironments(),
 });

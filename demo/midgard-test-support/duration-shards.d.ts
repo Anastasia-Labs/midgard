@@ -3,7 +3,11 @@
  * config-time modules of this package are plain JavaScript.
  */
 
-import type { Reporter, TestSequencerConstructor } from "vitest/node";
+import type {
+  ModuleDiagnostic,
+  Reporter,
+  TestSequencerConstructor,
+} from "vitest/node";
 
 export interface ShardDurationTable {
   readonly files: ReadonlyMap<string, number>;
@@ -33,22 +37,27 @@ export declare const durationShardSequencer: (options: {
   readonly tablePath: string;
 }) => TestSequencerConstructor;
 
-/** Seconds a Vitest file task kept its fork busy. */
-export declare const fileTaskSeconds: (file: {
-  readonly prepareDuration?: number;
-  readonly environmentLoad?: number;
-  readonly setupDuration?: number;
-  readonly collectDuration?: number;
-  readonly result?: { readonly duration?: number };
-}) => number;
+/** Seconds a Vitest test module kept its fork busy. */
+export declare const fileTaskSeconds: (
+  diagnostic: Pick<
+    ModuleDiagnostic,
+    | "prepareDuration"
+    | "environmentSetupDuration"
+    | "setupDuration"
+    | "collectDuration"
+    | "duration"
+  >,
+) => number;
 
 /** Writes each test file's seconds to a JSON record at the end of a run. */
 export declare class FileDurationsReporter
-  implements Pick<Reporter, "onInit" | "onFinished">
+  implements Pick<Reporter, "onInit" | "onTestRunEnd">
 {
   constructor(outputPath: string);
-  onInit(ctx: Parameters<NonNullable<Reporter["onInit"]>>[0]): void;
-  onFinished(files?: Parameters<NonNullable<Reporter["onFinished"]>>[0]): void;
+  onInit(vitest: Parameters<NonNullable<Reporter["onInit"]>>[0]): void;
+  onTestRunEnd(
+    testModules?: Parameters<NonNullable<Reporter["onTestRunEnd"]>>[0],
+  ): void;
 }
 
 /**

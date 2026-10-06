@@ -151,7 +151,7 @@ export const expectLandedAndFinalizedOnce = async (
   expect(await readPlans()).toEqual([]);
 };
 
-describe.sequential("signed-intent release evidence", () => {
+describe("signed-intent release evidence", { concurrent: false }, () => {
   it("confirms a signed commit whose header the confirmed state holds after a merge, and locally finalizes it once", async () => {
     const view = makeRewritableQueueTransport();
     const h = await openHistoryProductionOwnerLifecycle({

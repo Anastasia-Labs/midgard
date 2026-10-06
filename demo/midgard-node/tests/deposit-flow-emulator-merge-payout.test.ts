@@ -90,7 +90,7 @@ import {
   withdrawalStatusProgram,
 } from "./deposit-flow-emulator-shared.js";
 
-describe.sequential("deposit flow emulator", () => {
+describe("deposit flow emulator", { concurrent: false }, () => {
   it("merges a committed deposit-only block into confirmed state and spawns settlement with real contracts", async () => {
     await resetActiveRuntimePaths();
     await initializeNodeRuntime();

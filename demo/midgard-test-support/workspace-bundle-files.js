@@ -128,9 +128,9 @@ const NAMESPACE_PATTERNS = [
 ];
 /**
  * Specifiers whose module namespace object the file passes to `spyOn`. Under
- * vite-node a namespace is a plain object that every importer reads through,
- * so such a spy reaches callers in other modules; a bundled module's
- * namespace is a frozen native one that bundled callers bypass.
+ * Vitest's module runner a namespace is a plain object that every importer
+ * reads through, so such a spy reaches callers in other modules; a bundled
+ * module's namespace is a frozen native one that bundled callers bypass.
  */
 const spiedNamespaces = (text) => {
   const spied = [];

@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import {
-  midgardSourceSsr,
+  midgardSourceEnvironments,
   workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
@@ -11,7 +11,7 @@ const WORKER_THREAD_TESTS = "./tests/**/*.worker-thread.test.ts";
 export default defineConfig({
   test: {
     reporters: "verbose",
-    workspace: [
+    projects: [
       // Workspace code loads from a per-run source bundle; files that need it
       // module-by-module run in `core:source`.
       ...workspaceBundleProjects(
@@ -37,5 +37,5 @@ export default defineConfig({
       },
     ],
   },
-  ssr: midgardSourceSsr(),
+  environments: midgardSourceEnvironments(),
 });

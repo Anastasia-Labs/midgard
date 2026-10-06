@@ -8,12 +8,12 @@ import type { VerifiedWatcherDeploymentIdentity } from "../../src/runtime/deploy
 import { deferredAvailabilityRead } from "../support/availability-operation-intent.js";
 
 const io = vi.hoisted(() => ({
-  pin: vi.fn(),
-  address: vi.fn(),
-  history: vi.fn(),
-  transaction: vi.fn(),
-  snapshot: vi.fn(),
-  rawSource: vi.fn(),
+  pin: vi.fn<(...args: any[]) => any>(),
+  address: vi.fn<(...args: any[]) => any>(),
+  history: vi.fn<(...args: any[]) => any>(),
+  transaction: vi.fn<(...args: any[]) => any>(),
+  snapshot: vi.fn<(...args: any[]) => any>(),
+  rawSource: vi.fn<(...args: any[]) => any>(),
 }));
 vi.mock("@al-ft/midgard-fault-proofs", async (original) => ({
   ...(await original<typeof import("@al-ft/midgard-fault-proofs")>()),
@@ -71,7 +71,9 @@ export const nextTurn = () =>
   new Promise<void>((resolve) => setImmediate(resolve));
 export const deferred = deferredAvailabilityRead;
 export const createSource = (
-  readBoundary = vi.fn().mockResolvedValue({ tip: 99 }),
+  readBoundary = vi
+    .fn<(...args: any[]) => any>()
+    .mockResolvedValue({ tip: 99 }),
 ) => ({ readBoundary }) as unknown as LocalKupmiosFraudProofRawSource;
 export const intake = (
   source: LocalKupmiosFraudProofRawSource,

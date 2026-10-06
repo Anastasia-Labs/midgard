@@ -47,7 +47,7 @@ import {
   utxosProgram,
 } from "./deposit-flow-emulator-shared.js";
 
-describe.sequential("deposit flow emulator", () => {
+describe("deposit flow emulator", { concurrent: false }, () => {
   it("builds an unsigned deposit tx from explicit external wallet context that the user wallet can sign and submit", async () => {
     const fixture = await makeFixture();
     await initializeProtocol(fixture);

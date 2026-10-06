@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import type { Mock } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { releaseWatcherAvailabilityWorkflows } from "../../src/availability/runtime.release-watcher-availability-workflows.js";
@@ -48,7 +49,7 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 
-const pass = (findRelease: ReturnType<typeof vi.fn>) =>
+const pass = (findRelease: Mock<(...args: any[]) => any>) =>
   releaseWatcherAvailabilityWorkflows(journal, "actor", findRelease, () => {});
 const liveHeaders = () =>
   journal.workflows("actor").map((row) => row.headerHash);

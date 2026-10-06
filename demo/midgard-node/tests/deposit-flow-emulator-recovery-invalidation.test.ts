@@ -53,7 +53,7 @@ import {
 } from "./deposit-flow-emulator-shared.js";
 import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
 
-describe.sequential("deposit flow emulator", () => {
+describe("deposit flow emulator", { concurrent: false }, () => {
   it("keeps T7 restart invalidation memory-only with the submitted base journal intact", async () => {
     const previousSpeculativeCommitBuild = process.env.SPECULATIVE_COMMIT_BUILD;
     process.env.SPECULATIVE_COMMIT_BUILD = "true";

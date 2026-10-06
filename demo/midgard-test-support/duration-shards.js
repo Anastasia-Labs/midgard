@@ -98,16 +98,16 @@ export const durationShardSequencer = ({ tablePath }) => {
  * environment, importing the setup files and the file's own module graph
  * (collection), and running its tests and hooks.
  *
- * @param {{ prepareDuration?: number, environmentLoad?: number,
- *   setupDuration?: number, collectDuration?: number,
- *   result?: { duration?: number } }} file a Vitest file task
+ * @param {{ prepareDuration: number, environmentSetupDuration: number,
+ *   setupDuration: number, collectDuration: number, duration: number }}
+ *   diagnostic a Vitest test module's `diagnostic()`
  */
-export const fileTaskSeconds = (file) =>
-  ((file.prepareDuration ?? 0) +
-    (file.environmentLoad ?? 0) +
-    (file.setupDuration ?? 0) +
-    (file.collectDuration ?? 0) +
-    (file.result?.duration ?? 0)) /
+export const fileTaskSeconds = (diagnostic) =>
+  (diagnostic.prepareDuration +
+    diagnostic.environmentSetupDuration +
+    diagnostic.setupDuration +
+    diagnostic.collectDuration +
+    diagnostic.duration) /
   1000;
 
 /**
@@ -124,16 +124,19 @@ export class FileDurationsReporter {
     this.outputPath = outputPath;
   }
 
-  onInit(ctx) {
-    this.ctx = ctx;
+  onInit(vitest) {
+    this.vitest = vitest;
   }
 
-  onFinished(files = []) {
-    const { root, shard } = this.ctx.config;
+  onTestRunEnd(testModules = []) {
+    const { root, shard } = this.vitest.config;
     const seconds = {};
-    for (const file of files) {
-      const key = relative(root, file.filepath).split(sep).join("/");
-      seconds[key] = Math.max(seconds[key] ?? 0, fileTaskSeconds(file));
+    for (const testModule of testModules) {
+      const key = relative(root, testModule.moduleId).split(sep).join("/");
+      seconds[key] = Math.max(
+        seconds[key] ?? 0,
+        fileTaskSeconds(testModule.diagnostic()),
+      );
     }
     mkdirSync(dirname(this.outputPath), { recursive: true });
     writeFileSync(

@@ -4,7 +4,7 @@ import { durationShards } from "@al-ft/midgard-test-support/duration-shards";
 import {
   blueprintStampGlobalSetup,
   isolatedForksPool,
-  midgardSourceSsr,
+  midgardSourceEnvironments,
   rawSqlLoaderPlugin,
   workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
@@ -113,7 +113,7 @@ export default defineConfig({
     // Workspace packages load from a per-run source bundle; files that need
     // them module-by-module run in the `midgard-node:source` project. The
     // projects inherit everything else here.
-    workspace: workspaceBundleProjects(
+    projects: workspaceBundleProjects(
       {
         extends: true,
         test: {
@@ -139,7 +139,7 @@ export default defineConfig({
     ...(bail === undefined ? {} : { bail }),
     environment: "node",
   },
-  ssr: midgardSourceSsr(),
+  environments: midgardSourceEnvironments(),
   esbuild: {
     target: "es2020",
   },

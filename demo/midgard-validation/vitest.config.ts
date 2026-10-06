@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   blueprintStampGlobalSetup,
-  midgardSourceSsr,
+  midgardSourceEnvironments,
   workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
@@ -14,7 +14,7 @@ export default defineConfig({
     // Refuses the run when onchain/aiken/plutus.json is stale.
     globalSetup: [blueprintStampGlobalSetup],
     reporters: "verbose",
-    workspace: [
+    projects: [
       // Workspace packages load from a per-run source bundle; files that need
       // them module-by-module run in `validation:source`.
       ...workspaceBundleProjects(
@@ -40,5 +40,5 @@ export default defineConfig({
       },
     ],
   },
-  ssr: midgardSourceSsr(),
+  environments: midgardSourceEnvironments(),
 });

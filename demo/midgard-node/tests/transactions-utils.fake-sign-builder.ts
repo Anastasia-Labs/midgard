@@ -5,7 +5,7 @@ export const fakeWrapperLucid = () => ({
   wallet: () => ({
     address: async () => "addr_test1wrapper",
   }),
-  awaitTx: vi.fn(),
+  awaitTx: vi.fn<() => Promise<boolean>>(),
 });
 
 export const fakeSignBuilder = (signed: unknown) =>

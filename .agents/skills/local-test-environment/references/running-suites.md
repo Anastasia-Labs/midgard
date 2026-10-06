@@ -8,7 +8,10 @@ run that takes longer than one tool call allows.
 
 Measured 2026-09-28 with vitest 3.0.7 by counting `vitest list` output in
 `demo/midgard-core` (4 tests in the file, 682 in the package) and
-`vitest list --filesOnly` in `demo/midgard-node` (1 file against 270).
+`vitest list --filesOnly` in `demo/midgard-node` (1 file against 270); the
+kebab-case trap below still held on vitest 5.0.3 (2026-10-06). Since Vitest 5,
+`vitest list` parses test files statically and misses generated tests; pass
+`--no-staticParse` to collect them by running each file.
 
 **A multi-word boolean flag written in kebab case swallows the next
 argument.** vitest registers its options with camelCase names and hands those
