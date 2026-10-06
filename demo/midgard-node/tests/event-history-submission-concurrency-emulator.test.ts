@@ -135,13 +135,25 @@ const gateWalletReads = (
   };
 };
 
+/** Some session of the test database waits on an advisory lock. */
+const waitingOnLock = async () =>
+  (
+    await query<{ waiting: number }>(
+      (sql) => sql`SELECT count(*)::int AS waiting FROM pg_locks
+        WHERE locktype = 'advisory' AND NOT granted AND database =
+          (SELECT oid FROM pg_database WHERE datname = current_database())`,
+    )
+  )[0]!.waiting > 0;
+
 it("keeps a nonce another submission has chosen out of its funding until the chooser reserves it", async () => {
   const { h, contracts } = await setupHistoryContracts();
   const [chosen, other] = await sharedPredecessorNonces(h);
   const [chooser, funder] = ["chooser", "funder"].map(
     (role) => `${role}-${randomUUID()}`,
   );
+  const wallet = await h.lucid.wallet().address();
   const submit = (
+    lucid: LucidEvolution,
     nonce: UTxO,
     submissionId: string,
     prepare: () => Effect.Effect<{
@@ -152,7 +164,7 @@ it("keeps a nonce another submission has chosen out of its funding until the cho
     Effect.runPromise(
       provideDatabaseLayers(
         submitDurableEventHistoryProgram({
-          lucid: h.lucid,
+          lucid,
           contracts,
           kind: "Deposit",
           submissionId,
@@ -173,31 +185,38 @@ it("keeps a nonce another submission has chosen out of its funding until the cho
           AND (NOT ${pending} OR checkpoint -> 'pending' IS NOT NULL)`,
       )
     ).length > 0;
-  const waitingOnLock = async () =>
-    (
-      await query<{ waiting: number }>(
-        (sql) => sql`SELECT count(*)::int AS waiting FROM pg_stat_activity
-          WHERE datname = current_database() AND wait_event_type = 'Lock'`,
-      )
-    )[0]!.waiting > 0;
+  let choosing = false;
   let chooserSettled = false;
-  let funding: ReturnType<typeof submit> | undefined;
-  // The funder funds with every wallet output it may take. It starts after
-  // the chooser picked its nonce, before the chooser reserves it, and runs
-  // until it records an attempt or waits on a lock in Postgres. It broadcasts
-  // its admission only once the chooser reserved its nonce or stopped.
-  const chooserRun = submit(chosen, chooser, () =>
+  // The funder reserved its own nonce before the chooser starts, so the save
+  // of its checkpoint, not its own nonce choice, meets the chooser's lock. It
+  // reads its funding, which sweeps every unreserved wallet output and so the
+  // chosen nonce, only once the chooser picked that nonce and before the
+  // chooser reserves it. The chooser reserves once the funder recorded an
+  // attempt or waits on a lock. The funder broadcasts its admission only once
+  // the chooser reserved its nonce or stopped.
+  const funding = submit(
+    gateWalletReads(h.lucid, wallet, {
+      before: async (read) => {
+        if (read === 2)
+          await until(async () => choosing, "the chooser picked its nonce");
+      },
+    }),
+    other,
+    funder,
+    () => Effect.succeed({ request: depositRequest(h, other) }),
+    () =>
+      until(
+        async () => chooserSettled || (await recorded(chooser, false)),
+        "the chooser reserved its nonce",
+      ),
+  );
+  await until(
+    async () => await recorded(funder, false),
+    "the funder reserved its nonce",
+  );
+  const chooserRun = submit(h.lucid, chosen, chooser, () =>
     Effect.promise(async () => {
-      funding = submit(
-        other,
-        funder,
-        () => Effect.succeed({ request: depositRequest(h, other) }),
-        () =>
-          until(
-            async () => chooserSettled || (await recorded(chooser, false)),
-            "the chooser reserved its nonce",
-          ),
-      );
+      choosing = true;
       await until(
         async () => (await recorded(funder, true)) || (await waitingOnLock()),
         "the funder recorded an attempt or waited on a lock",
@@ -215,7 +234,6 @@ it("keeps a nonce another submission has chosen out of its funding until the cho
   ]);
   if (fundedResult.status === "rejected") throw fundedResult.reason;
   if (chosenResult.status === "rejected") throw chosenResult.reason;
-  if (fundedResult.value === undefined) throw new Error("Funder never ran");
   const results = {
     [chooser]: chosenResult.value,
     [funder]: fundedResult.value,
@@ -229,9 +247,7 @@ it("keeps a nonce another submission has chosen out of its funding until the cho
     expect(
       (await h.lucid.transactionStatus(result.admission.txHash)).status,
     ).toBe("confirmed");
-    const saved = await Effect.runPromise(
-      provideDatabaseLayers(Journal.retrieve(submissionId)),
-    );
+    const saved = await journal(submissionId);
     if (Option.isNone(saved)) throw new Error("Missing submission journal");
     expect(saved.value.checkpoint.admission?.txHash).toBe(
       result.admission.txHash,
@@ -381,4 +397,58 @@ it("rebuilds an attempt funded from a wallet view that predates its holder's set
       result.admission.txHash,
     );
   }
+}, 300_000);
+
+it("continues a concurrent run of the same submission ID with the nonce that run reserved", async () => {
+  const { h, contracts } = await setupHistoryContracts();
+  const [nonce] = await sharedPredecessorNonces(h);
+  const submissionId = `same-id-${randomUUID()}`;
+  const run = (
+    prepare: () => Effect.Effect<{
+      request: SDK.EventHistorySubmissionRequest;
+    }>,
+  ) =>
+    Effect.runPromise(
+      provideDatabaseLayers(
+        submitDurableEventHistoryProgram({
+          lucid: h.lucid,
+          contracts,
+          kind: "Deposit",
+          submissionId,
+          intentHash: "ef".repeat(32),
+          nonceInput: nonce,
+          scriptReference: h.scripts[0]!,
+          prepare,
+        }).pipe(Effect.withClock(emulatorClock(h))),
+      ),
+    );
+  // The first run reserves its pinned nonce only once the second, which
+  // found no journal for the ID, waits for the wallet lock.
+  let picked = false;
+  const first = run(() =>
+    Effect.promise(async () => {
+      picked = true;
+      await until(waitingOnLock, "the second run waited on the wallet lock");
+      return { request: depositRequest(h, nonce!) };
+    }),
+  );
+  await until(async () => picked, "the first run picked its nonce");
+  const second = run(() =>
+    Effect.die(new Error("A second run of one submission ID chose a nonce")),
+  );
+  const [landed, rerun] = await Promise.allSettled([first, second]);
+  if (landed.status === "rejected") throw landed.reason;
+  // The second run took the first's reservation instead of choosing again,
+  // then either landed the same admission or stopped on the first's progress.
+  if (rerun.status === "rejected")
+    expect(String(rerun.reason)).toMatch(
+      /Concurrent history submission changed; reload and reconcile/u,
+    );
+  else expect(rerun.value.admission.txHash).toBe(landed.value.admission.txHash);
+  const saved = await journal(submissionId);
+  if (Option.isNone(saved)) throw new Error("Missing submission journal");
+  expect(saved.value.nonce_out_ref).toBe(outRefLabel(nonce!));
+  expect(saved.value.checkpoint.admission?.txHash).toBe(
+    landed.value.admission.txHash,
+  );
 }, 300_000);

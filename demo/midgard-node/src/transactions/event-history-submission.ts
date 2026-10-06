@@ -230,6 +230,18 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
       row = yield* Journal.choosingNonce(
         walletAddress,
         Effect.gen(function* () {
+          // A concurrent run of this submission ID may have reserved it
+          // while this one waited for the lock: continue with that winner.
+          const winner = yield* Journal.retrieve(submissionId);
+          if (Option.isSome(winner)) {
+            if (!Journal.matchesIdentity(winner.value, identity))
+              return yield* Effect.fail(
+                wrap(
+                  "Submission ID belongs to a different intent, wallet or deployment",
+                ),
+              );
+            return winner.value;
+          }
           const nonce = yield* unreservedNonce({
             lucid,
             walletAddress,

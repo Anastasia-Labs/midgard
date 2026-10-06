@@ -177,8 +177,12 @@ const lockWalletReservations = (walletAddress: string) =>
  * on a hung provider call, is interrupted and rolled back: that frees the
  * wallet for every other submission, and this one fails having reserved
  * nothing, so a rerun chooses again. The bound runs on the wall clock, not on
- * the caller's clock, such as an emulator clock whose sleeps jump ahead. */
+ * the caller's clock, such as an emulator clock whose sleeps jump ahead. A
+ * chooser that vanishes without closing its connection cannot run that
+ * bound, so Postgres itself ends a transaction left idle past
+ * `CHOOSER_IDLE_MARGIN_MS` beyond it, rather than at TCP keepalive. */
 const wallClock = Clock.make();
+const CHOOSER_IDLE_MARGIN_MS = 30_000;
 export const choosingNonce = <A, E, R>(
   walletAddress: string,
   choose: Effect.Effect<A, E, R>,
@@ -188,7 +192,12 @@ export const choosingNonce = <A, E, R>(
     const sql = yield* SqlClient.SqlClient;
     return yield* sql.withTransaction(
       Effect.zipRight(
-        lockWalletReservations(walletAddress),
+        Effect.zipRight(
+          sql`SELECT set_config('idle_in_transaction_session_timeout', ${(
+            Math.ceil(holdTimeoutMs) + CHOOSER_IDLE_MARGIN_MS
+          ).toString()}, true)`,
+          lockWalletReservations(walletAddress),
+        ),
         Effect.raceFirst(
           choose,
           Effect.zipRight(

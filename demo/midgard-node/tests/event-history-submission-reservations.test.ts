@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { Effect, Option } from "effect";
+import { SqlClient } from "@effect/sql";
+import { Clock, Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import * as Journal from "../src/database/eventHistorySubmissions.js";
@@ -354,19 +355,31 @@ describe("history submission input reservations", () => {
     );
   });
 
-  it("frees the wallet from a chooser that outlasts its bound, which fails having reserved nothing", async () => {
+  it("frees the wallet from a chooser that outlasts its bound on the wall clock, whatever the caller's clock, and fails having reserved nothing", async () => {
     const [chosen, saver] = [input(), input()];
     const saverRow = await Effect.runPromise(
       provideDatabaseLayers(Journal.reserve(saver)),
     );
     const [order, started] = [[] as string[], Date.now()];
+    // The caller's clock never advances, as a test clock nobody adjusts.
+    const frozen: Clock.Clock = {
+      [Clock.ClockTypeId]: Clock.ClockTypeId,
+      unsafeCurrentTimeMillis: () => started,
+      currentTimeMillis: Effect.succeed(started),
+      unsafeCurrentTimeNanos: () => BigInt(started) * 1_000_000n,
+      currentTimeNanos: Effect.succeed(BigInt(started) * 1_000_000n),
+      sleep: () => Effect.never,
+    };
     const choosing = Effect.runPromise(
       provideDatabaseLayers(
         Effect.either(
           Journal.choosingNonce(
             chosen.wallet_address,
+            // A hung provider call: it outlasts the bound on the wall clock.
             Effect.zipRight(
-              Effect.sleep("30 seconds"),
+              Effect.promise(
+                () => new Promise((resolve) => setTimeout(resolve, 30_000)),
+              ),
               Effect.zipRight(
                 Effect.sync(() => order.push("chose")),
                 Journal.reserve(chosen),
@@ -374,16 +387,19 @@ describe("history submission input reservations", () => {
             ),
             500,
           ),
-        ),
+        ).pipe(Effect.withClock(frozen)),
       ),
     );
     await untilAdvisoryLock(true);
     await run(
       Effect.asVoid(
-        Journal.saveCheckpoint(saverRow, pending(saverRow, [hash("fund")])),
+        Journal.saveCheckpoint(
+          saverRow,
+          pending(saverRow, [hash(randomUUID())]),
+        ),
       ),
     );
-    // The save waited only for the bound, never for the chooser's sleep.
+    // The save waited only for the bound, never for the chooser's call.
     expect(Date.now() - started).toBeLessThan(30_000);
     expect(await choosing).toMatchObject({
       _tag: "Left",
@@ -397,6 +413,28 @@ describe("history submission input reservations", () => {
         ),
       ),
     ).toBe(true);
+  }, 60_000);
+
+  it("ends a nonce choice whose chooser vanished once it idles past the bound plus a margin", async () => {
+    const { wallet_address } = input();
+    const idleTimeout = Effect.flatMap(
+      SqlClient.SqlClient,
+      (sql) => sql<{ timeout: string }>`SELECT current_setting(
+        'idle_in_transaction_session_timeout') AS timeout`,
+    );
+    const [during, after] = await Effect.runPromise(
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          const during = yield* Journal.choosingNonce(
+            wallet_address,
+            idleTimeout,
+          );
+          return [during, yield* idleTimeout] as const;
+        }),
+      ),
+    );
+    expect(during[0]!.timeout).toBe("90s");
+    expect(after[0]!.timeout).not.toBe("90s");
   });
 
   it("names every nonce of the wallet's submissions, and none of their pending inputs", async () => {
