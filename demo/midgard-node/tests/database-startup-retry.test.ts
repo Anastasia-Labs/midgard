@@ -7,7 +7,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { assertCompatibleWithStartupRetry } from "../src/database/init.js";
 import { MigrationError } from "../src/database/migrations/runner.js";
-import { retryDatabaseConnectionAtStartup } from "../src/services/database.js";
+import { isConnectionClassError } from "../src/provider-retry.js";
+import {
+  type DatabaseStartupRetryOptions,
+  retryDatabaseConnectionAtStartup,
+} from "../src/services/database.js";
+import { databaseUpstreamSocket } from "../src/services/database-upstream-socket.js";
 
 // The same variables global-setup and the node read: CI serves Postgres on
 // 5432 through POSTGRES_PORT, a local checkout on 5433.
@@ -61,54 +66,68 @@ const listen = async (server: Server) => {
 };
 
 /**
- * A TCP proxy to the test Postgres that answers the first `refusals`
- * connections the way a restarting Postgres does (57P03), then forwards.
+ * How the proxy answers a connection: forward it to the test Postgres,
+ * refuse it the way a restarting Postgres does (57P03), accept it and never
+ * answer (a stalled host), or accept it and close it before answering (a
+ * docker userland proxy in front of a dead Postgres).
  */
-const startRestartingPostgres = async (refusals: number) => {
+type ProxyAnswer = "forward" | "starting_up" | "stall" | "close";
+
+/** A TCP proxy to the test Postgres answering connection `n` (from 1). */
+const startProxy = async (answer: (n: number) => ProxyAnswer) => {
   let accepted = 0;
+  const clients = new Set<Socket>();
   const server = createServer((client) => {
     accepted += 1;
     client.on("error", () => undefined);
-    if (accepted <= refusals) {
-      client.once("data", () => client.end(startingUpResponse()));
-      return;
+    switch (answer(accepted)) {
+      case "starting_up":
+        client.once("data", () => client.end(startingUpResponse()));
+        return;
+      case "stall":
+        silentSockets.push(client);
+        return;
+      case "close":
+        // Read (and drop) what the client sends, or the socket never sees
+        // its end and never closes.
+        client.resume();
+        client.end();
+        return;
+      case "forward": {
+        clients.add(client);
+        const upstream = new Socket();
+        upstream.connect(PG_PORT, PG_HOST, () => {
+          client.pipe(upstream).pipe(client);
+        });
+        upstream.on("error", () => client.destroy());
+        client.on("close", () => {
+          clients.delete(client);
+          upstream.destroy();
+        });
+      }
     }
-    const upstream = new Socket();
-    upstream.connect(PG_PORT, PG_HOST, () => {
-      client.pipe(upstream).pipe(client);
-    });
-    upstream.on("error", () => client.destroy());
-    client.on("close", () => upstream.destroy());
   });
   servers.push(server);
   const port = await listen(server);
-  return { port, accepted: () => accepted };
+  return {
+    port,
+    accepted: () => accepted,
+    /** Closes every forwarded connection, as a backend that went away. */
+    dropForwarded: () => clients.forEach((client) => client.end()),
+  };
 };
 
-/**
- * A TCP proxy to the test Postgres that accepts the first `stalls`
- * connections and never answers them (a stalled host), then forwards.
- */
-const startStalledPostgres = async (stalls: number) => {
-  let accepted = 0;
-  const server = createServer((client) => {
-    accepted += 1;
-    client.on("error", () => undefined);
-    if (accepted <= stalls) {
-      silentSockets.push(client);
-      return;
-    }
-    const upstream = new Socket();
-    upstream.connect(PG_PORT, PG_HOST, () => {
-      client.pipe(upstream).pipe(client);
-    });
-    upstream.on("error", () => client.destroy());
-    client.on("close", () => upstream.destroy());
-  });
-  servers.push(server);
-  const port = await listen(server);
-  return { port, accepted: () => accepted };
-};
+/** Refuses the first `refusals` connections (57P03), then forwards. */
+const startRestartingPostgres = (refusals: number) =>
+  startProxy((n) => (n <= refusals ? "starting_up" : "forward"));
+
+/** Stalls the first `stalls` connections, then forwards. */
+const startStalledPostgres = (stalls: number) =>
+  startProxy((n) => (n <= stalls ? "stall" : "forward"));
+
+/** Closes the first `closes` connections before answering, then forwards. */
+const startDroppingPostgres = (closes: number) =>
+  startProxy((n) => (n <= closes ? "close" : "forward"));
 
 /** A port nothing listens on: every connect is refused. */
 const closedPort = async () => {
@@ -132,27 +151,46 @@ const capture = <A, E>(effect: Effect.Effect<A, E>) => {
 
 const unready = (logs: readonly string[]) =>
   logs.filter((line) => line.includes("reason=database_unreachable")).length;
+const drops = (logs: readonly string[]) =>
+  logs.filter((line) => line.includes("Database upstream drops connections"))
+    .length;
+const answersAgain = (logs: readonly string[]) =>
+  logs.filter((line) => line.includes("Database upstream answers again"))
+    .length;
 
+/** A pool built the way the node builds one, through its upstream socket. */
 const pool = (
   port: number,
-  database = "postgres",
-  connectTimeout: Duration.DurationInput = Duration.seconds(5),
+  {
+    database = "postgres",
+    connectTimeout = Duration.seconds(5),
+    retry = FAST,
+  }: {
+    readonly database?: string;
+    readonly connectTimeout?: Duration.DurationInput;
+    readonly retry?: DatabaseStartupRetryOptions;
+  } = {},
 ) =>
-  retryDatabaseConnectionAtStartup(
-    Layer.mapError(
-      PgClient.layer({
-        host: "127.0.0.1",
-        port,
-        username: PG_USER,
-        password: Redacted.make(PG_PASSWORD),
-        database,
-        maxConnections: 1,
-        connectTimeout,
-      }),
-      (cause) => new PoolInitError({ cause }),
+  Layer.unwrapEffect(
+    Effect.map(databaseUpstreamSocket("batch", "127.0.0.1", port), (socket) =>
+      retryDatabaseConnectionAtStartup(
+        Layer.mapError(
+          PgClient.layer({
+            host: "127.0.0.1",
+            port,
+            username: PG_USER,
+            password: Redacted.make(PG_PASSWORD),
+            database,
+            maxConnections: 1,
+            connectTimeout,
+            socket,
+          }),
+          (cause) => new PoolInitError({ cause }),
+        ),
+        "batch",
+        retry,
+      ),
     ),
-    "batch",
-    FAST,
   );
 
 const selectOne = Effect.gen(function* () {
@@ -180,7 +218,9 @@ describe("the database pool at startup", () => {
       selectOne.pipe(
         // The Effect pool-open timer (1.6 s) fires before postgres.js's own
         // connect_timeout (rounded to 2 s), the order a stalled host gives.
-        Effect.provide(pool(proxy.port, "postgres", Duration.millis(1_600))),
+        Effect.provide(
+          pool(proxy.port, { connectTimeout: Duration.millis(1_600) }),
+        ),
         Effect.scoped,
       ),
     );
@@ -203,7 +243,9 @@ describe("the database pool at startup", () => {
     const proxy = await startRestartingPostgres(0);
     const { result, logs } = await capture(
       selectOne.pipe(
-        Effect.provide(pool(proxy.port, "lv_pv1_absent_database")),
+        Effect.provide(
+          pool(proxy.port, { database: "lv_pv1_absent_database" }),
+        ),
         Effect.scoped,
       ),
     );
@@ -217,21 +259,9 @@ describe("the database pool at startup", () => {
     const { result, logs } = await capture(
       selectOne.pipe(
         Effect.provide(
-          retryDatabaseConnectionAtStartup(
-            Layer.mapError(
-              PgClient.layer({
-                host: "127.0.0.1",
-                port: await closedPort(),
-                username: PG_USER,
-                password: Redacted.make(PG_PASSWORD),
-                database: "postgres",
-                maxConnections: 1,
-              }),
-              (cause) => new PoolInitError({ cause }),
-            ),
-            "batch",
-            { ...FAST, budget: Duration.millis(60) },
-          ),
+          pool(await closedPort(), {
+            retry: { ...FAST, budget: Duration.millis(60) },
+          }),
         ),
         Effect.scoped,
       ),
@@ -239,6 +269,99 @@ describe("the database pool at startup", () => {
     expect(result._tag).toBe("Left");
     expect(unready(logs)).toBeGreaterThan(1);
   });
+
+  it("waits out a Postgres that closes connections before answering, then opens once", async () => {
+    const proxy = await startDroppingPostgres(3);
+    const { result, logs } = await capture(
+      selectOne.pipe(Effect.provide(pool(proxy.port)), Effect.scoped),
+    );
+
+    expect(result).toMatchObject({ _tag: "Right", right: 1 });
+    expect(unready(logs)).toBe(3);
+    // Three dropped startups, then the one the pool keeps.
+    expect(proxy.accepted()).toBe(4);
+    // Once when the drops start and once when they stop, not per attempt.
+    expect(drops(logs)).toBe(1);
+    expect(answersAgain(logs)).toBe(1);
+  });
+
+  it("gives up on a Postgres that closes every connection once the budget is spent, at the retry pace", async () => {
+    const proxy = await startProxy(() => "close");
+    const started = performance.now();
+    const { result, logs } = await capture(
+      selectOne.pipe(
+        Effect.provide(
+          pool(proxy.port, {
+            retry: {
+              baseDelay: Duration.millis(50),
+              maxDelay: Duration.millis(200),
+              budget: Duration.seconds(1),
+            },
+          }),
+        ),
+        Effect.scoped,
+      ),
+    );
+    const elapsedMs = performance.now() - started;
+
+    expect(result._tag).toBe("Left");
+    expect(elapsedMs).toBeLessThan(3_000);
+    // One connection per startup attempt, each logged as unready: a 1 s
+    // budget at 50-200 ms spacing is under a dozen, not hundreds a second.
+    expect(proxy.accepted()).toBe(unready(logs));
+    expect(proxy.accepted()).toBeLessThan(12);
+    expect(drops(logs)).toBe(1);
+  }, 10_000);
+});
+
+describe("a running database pool", () => {
+  it("fails queries at a backed-off pace while its upstream closes connections, then recovers", async () => {
+    let closing = false;
+    const proxy = await startProxy(() => (closing ? "close" : "forward"));
+    const attempt = selectOne.pipe(
+      // A query a hot reconnect loop holds never settles; this bounds it.
+      Effect.timeout(Duration.seconds(10)),
+      Effect.either,
+    );
+
+    const { result, logs } = await capture(
+      Effect.gen(function* () {
+        expect(yield* attempt).toMatchObject({ _tag: "Right", right: 1 });
+
+        closing = true;
+        proxy.dropForwarded();
+        yield* Effect.sleep(Duration.millis(100));
+        const acceptedBefore = proxy.accepted();
+        const started = performance.now();
+        const failures: unknown[] = [];
+        for (let query = 0; query < 5; query += 1) {
+          const outcome = yield* attempt;
+          expect(outcome._tag).toBe("Left");
+          if (outcome._tag === "Left") failures.push(outcome.left);
+        }
+        const elapsedMs = performance.now() - started;
+        const dropped = proxy.accepted() - acceptedBefore;
+
+        closing = false;
+        const recovered = yield* attempt;
+        return { failures, elapsedMs, dropped, recovered };
+      }).pipe(Effect.provide(pool(proxy.port)), Effect.scoped),
+    );
+
+    expect(result._tag).toBe("Right");
+    if (result._tag !== "Right") return;
+    const { failures, elapsedMs, dropped, recovered } = result.right;
+    // Every query fails as an unreachable database (readiness reports
+    // db_unhealthy); none is held until the timeout.
+    expect(failures.every(isConnectionClassError)).toBe(true);
+    // One connection per query, spaced by postgres.js's backoff: its
+    // shortest delays between five attempts add up to 0.6 s.
+    expect(dropped).toBeLessThanOrEqual(5);
+    expect(elapsedMs).toBeGreaterThan(500);
+    expect(recovered).toMatchObject({ _tag: "Right", right: 1 });
+    expect(drops(logs)).toBe(1);
+    expect(answersAgain(logs)).toBe(1);
+  }, 30_000);
 });
 
 describe("the startup schema compatibility check", () => {

@@ -14,6 +14,7 @@ import {
 
 import { isConnectionClassError } from "../provider-retry.js";
 import { ConfigError, NodeConfig, NodeConfigDep } from "./config.js";
+import { databaseUpstreamSocket } from "./database-upstream-socket.js";
 
 /**
  * Database service wiring for the Midgard node.
@@ -101,6 +102,13 @@ const createPgLayerEffect = (
     const pgClientLayer = PgClient.layer({
       host: nodeConfig.POSTGRES_HOST,
       port: nodeConfig.POSTGRES_PORT,
+      // Built once per pool, outside the startup retry, so an upstream that
+      // drops every connection is logged once, not on every attempt.
+      socket: yield* databaseUpstreamSocket(
+        role,
+        nodeConfig.POSTGRES_HOST,
+        nodeConfig.POSTGRES_PORT,
+      ),
       username: nodeConfig.POSTGRES_USER,
       password: Redacted.make(nodeConfig.POSTGRES_PASSWORD),
       database: nodeConfig.POSTGRES_DB,
