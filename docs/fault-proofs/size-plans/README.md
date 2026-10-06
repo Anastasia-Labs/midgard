@@ -40,15 +40,19 @@ path, and naming it is the opt-in, so they need no flag:
 `<name>-deep-deposit<ext>`. Some producers regenerate only historical tables.
 Never replace a blueprint digest without remeasuring the transactions.
 
-`value-not-preserved-fit-ledger.json` is measured by three files that each run
-a disjoint part of one case table: `value-conservation-lifecycle.test.ts` and
-its `-forced-assets` and `-non-forced-assets` siblings. Regenerating it also
-needs `MIDGARD_FIT_FRAGMENT_DIR` and a fresh `MIDGARD_FIT_MEASUREMENT_RUN`
+Two ledgers are measured by several files that each run a disjoint part of one
+case table: `value-not-preserved-fit-ledger.json` by
+`value-conservation-lifecycle.test.ts` and its `-forced-assets` and
+`-non-forced-assets` siblings, and `mint-authorization-workflow-fit-ledger.json`
+by `mint-authorization-installed-lifecycle.test.ts` and its `-native-wide`,
+`-native-deep`, `-reference` and `-field-maxima` siblings. Regenerating either
+also needs `MIDGARD_FIT_FRAGMENT_DIR` and a fresh `MIDGARD_FIT_MEASUREMENT_RUN`
 token. Each part stores its rows there once all its cases pass, and the last
 part of the run to pass merges them into the ledger
-(`tests/support/split-fit-ledger.ts`), numbered as one file running every case
-in order numbers them. A run that misses a part, or a part with a failed or
-filtered-out case, leaves the ledger untouched.
+(`tests/support/split-fit-ledger.ts`) in case order: value conservation's rows
+are numbered as one file running every case in order numbers them, and mint
+authorization's keep their `<scenario>/<stage>/...` names. A run that misses a
+part, or a part with a failed or filtered-out case, leaves the ledger untouched.
 
 ## Fresh acceptance artifacts
 
