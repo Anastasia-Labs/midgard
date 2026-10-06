@@ -2,7 +2,7 @@ import { createServer, type Server, Socket } from "node:net";
 
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
-import { Data, Duration, Effect, Layer, Logger, Redacted } from "effect";
+import { Data, Duration, Effect, Fiber, Layer, Logger, Redacted } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { assertCompatibleWithStartupRetry } from "../src/database/init.js";
@@ -112,6 +112,8 @@ const startProxy = async (answer: (n: number) => ProxyAnswer) => {
   return {
     port,
     accepted: () => accepted,
+    /** How many forwarded connections are still open. */
+    forwarding: () => clients.size,
     /** Closes every forwarded connection, as a backend that went away. */
     dropForwarded: () => clients.forEach((client) => client.end()),
   };
@@ -361,6 +363,49 @@ describe("a running database pool", () => {
     expect(recovered).toMatchObject({ _tag: "Right", right: 1 });
     expect(drops(logs)).toBe(1);
     expect(answersAgain(logs)).toBe(1);
+  }, 30_000);
+
+  it("cancels an interrupted query through Postgres without a drop warning or an unhandled rejection", async () => {
+    // Postgres answers a CancelRequest by closing the connection without a
+    // byte: the close is the cancel's success, not a dropped upstream. The
+    // cancel promise postgres.js creates is never observed (Query.cancel
+    // drops it), so a socket error on that connection is an unhandled
+    // rejection, which terminates the node.
+    const proxy = await startProxy(() => "forward");
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on("unhandledRejection", onRejection);
+    try {
+      const { result, logs } = await capture(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const sleeping = yield* Effect.fork(sql`select pg_sleep(30)`);
+          // Long enough for the query to reach the server and run there.
+          yield* Effect.sleep(Duration.millis(300));
+          yield* Fiber.interrupt(sleeping);
+          // The pool's one connection runs this only once Postgres has
+          // cancelled the sleep, well before its 30 s.
+          const after = yield* selectOne.pipe(
+            Effect.timeout(Duration.seconds(10)),
+          );
+          // The cancel connection is closed by Postgres; wait until the
+          // proxy saw it go, then give its socket events a turn to land.
+          while (proxy.forwarding() > 1) {
+            yield* Effect.sleep(Duration.millis(10));
+          }
+          yield* Effect.sleep(Duration.millis(200));
+          return after;
+        }).pipe(Effect.provide(pool(proxy.port)), Effect.scoped),
+      );
+
+      expect(result).toMatchObject({ _tag: "Right", right: 1 });
+      // The pool's connection and the cancel request's own connection.
+      expect(proxy.accepted()).toBe(2);
+      expect(rejections).toEqual([]);
+      expect(drops(logs)).toBe(0);
+    } finally {
+      process.off("unhandledRejection", onRejection);
+    }
   }, 30_000);
 });
 
