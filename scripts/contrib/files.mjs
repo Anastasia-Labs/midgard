@@ -31,7 +31,7 @@ export const withIdentityScope = (action) => {
     identityScope = undefined;
   }
 };
-const scoped = (key, compute) => {
+export const scoped = (key, compute) => {
   if (!identityScope) return compute();
   if (!identityScope.has(key)) identityScope.set(key, compute());
   return identityScope.get(key);
@@ -228,10 +228,10 @@ export const runtimeBuildClosure = (root, name) => {
   return ordered;
 };
 
-const MODULE_SPECIFIER =
+export const MODULE_SPECIFIER =
   /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["'`]([^"'`\s]+)["'`]/gu;
-const SCRIPT_SOURCE = /\.[cm]?[jt]sx?$/u;
-const BUILD_CONFIGS = [
+export const SCRIPT_SOURCE = /\.[cm]?[jt]sx?$/u;
+export const BUILD_CONFIGS = [
   "tsup.config.ts",
   "tsup.config.mts",
   "tsup.config.cts",
@@ -301,91 +301,39 @@ export const compiledDependencies = (root, name) => {
   }));
 };
 
-// A build can read inputs only the package's own facts reveal. Report every
-// one the input closure cannot bind, so freshness fails closed on it.
-export const unboundBuildInputs = (root, name) => {
-  const self = packageByName(root, name);
-  const closure = packageClosure(root, name);
-  const declared = new Set(closure.map((pkg) => pkg.name));
-  const reasons = inlinedWorkspacePackages(root, name)
-    .filter((entry) => !declared.has(entry))
-    .map(
-      (entry) =>
-        `build sources name workspace package ${entry}, which ${self.name} does not declare`,
-    );
-  const tsconfig = resolve(root, self.directory, "tsconfig.json");
-  if (existsSync(tsconfig)) {
-    let include = [];
-    try {
-      include = json(tsconfig).include ?? [];
-    } catch {
-      reasons.push(`${self.directory}/tsconfig.json is not plain JSON`);
-    }
-    const owned = closure.map((pkg) => resolve(root, pkg.directory));
-    for (const entry of include) {
-      const target = resolve(root, self.directory, entry);
-      if (
-        !owned.some(
-          (directory) =>
-            target === directory || target.startsWith(`${directory}${sep}`),
-        )
-      )
-        reasons.push(
-          `${self.directory}/tsconfig.json includes ${entry} outside the input closure`,
-        );
-    }
-  }
-  return reasons;
-};
-
-// A recipe sees its whole environment, but it can only act on the variables
-// it names: shell expansions in the recipe, and process.env reads in its tsup
-// config and the node scripts it runs. Their values (hashed, since dist is
-// copied around) are bound; a recipe that reads the environment some other
-// way cannot be bound and is never fresh.
-export const buildEnvironment = (root, name, env = process.env) => {
-  const pkg = packageByName(root, name);
-  const recipe = pkg.scripts?.["build:contrib-raw"] ?? "";
-  const programs = [
-    buildConfigText(root, pkg),
-    ...[...recipe.matchAll(/\bnode\s+([^\s&|;]+\.[cm]?js)\b/gu)].map(
-      ([, path]) => packageText(root, pkg, path),
-    ),
-  ];
-  const names = new Set(
-    [...recipe.matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)/gu)].map(
-      ([, variable]) => variable,
-    ),
-  );
-  for (const text of [recipe, ...programs]) {
-    for (const [, variable] of text.matchAll(
-      /process\.env\.([A-Za-z_$][\w$]*)/gu,
-    ))
-      names.add(variable);
-    for (const [, variable] of text.matchAll(
-      /process\.env\[\s*["']([^"']+)["']\s*\]/gu,
-    ))
-      names.add(variable);
-  }
-  const unnamed =
-    /`|\$\(/u.test(recipe) ||
-    [recipe, ...programs].some(
-      (text) =>
-        /process\.env(?!\.[A-Za-z_$]|\[\s*["'][^"']+["']\s*\])/u.test(text) ||
-        /from\s+["'](?:node:)?process["']|\}\s*=\s*process\b/u.test(text),
-    );
-  return {
-    unnamed,
-    variables: Object.fromEntries(
-      [...names]
-        .sort()
-        .map((variable) => [
-          variable,
-          env[variable] === undefined ? null : sha256(env[variable]),
-        ]),
-    ),
-  };
-};
+// Repository inputs every package build binds, besides its package closure.
+export const SHARED_INPUT_DIRECTORIES = [
+  "demo/patches",
+  "demo/vendor",
+  "demo/scripts",
+  "config/deployments",
+  "onchain/aiken/lib",
+  "onchain/aiken/validators",
+  "onchain/aiken/env",
+  "onchain/aiken/scripts",
+  "scripts/contrib",
+  "scripts/preflight",
+  "scripts/lib",
+  "scripts/bin",
+  ".github/workflows",
+];
+export const SHARED_INPUT_FILES = [
+  "demo/package.json",
+  "demo/pnpm-lock.yaml",
+  // What is installed, not only what the lockfile asks for: a build run
+  // before `pnpm install` caught up compiled against the old packages.
+  "demo/node_modules/.pnpm/lock.yaml",
+  "demo/pnpm-workspace.yaml",
+  "demo/tsconfig.json",
+  "scripts/contrib.mjs",
+  "scripts/pnpm.mjs",
+  "scripts/bin/pnpm",
+  ".agents/skills/regenerating-goldens-and-ledgers/scripts/channels.json",
+  "onchain/aiken/aiken.toml",
+  "onchain/aiken/aiken.lock",
+  "onchain/aiken/plutus.json",
+  "onchain/aiken/plutus.json.deployment.json",
+];
 
 // Conservative closure includes native sources, SQL, generators and fixtures,
 // not merely src/. Test edits can cause an unnecessary rebuild, never a false
@@ -435,40 +383,10 @@ const uncachedInputIdentity = (root, name) => {
   }
   const directories = packageClosure(root, name).map((pkg) => pkg.directory);
   const paths = directories.flatMap((path) => filesUnder(resolve(root, path)));
-  for (const directory of [
-    "demo/patches",
-    "demo/vendor",
-    "demo/scripts",
-    "config/deployments",
-    "onchain/aiken/lib",
-    "onchain/aiken/validators",
-    "onchain/aiken/env",
-    "onchain/aiken/scripts",
-    "scripts/contrib",
-    "scripts/preflight",
-    "scripts/lib",
-    "scripts/bin",
-    ".github/workflows",
-  ]) {
+  for (const directory of SHARED_INPUT_DIRECTORIES) {
     paths.push(...filesUnder(resolve(root, directory)));
   }
-  const shared = [
-    "demo/package.json",
-    "demo/pnpm-lock.yaml",
-    // What is installed, not only what the lockfile asks for: a build run
-    // before `pnpm install` caught up compiled against the old packages.
-    "demo/node_modules/.pnpm/lock.yaml",
-    "demo/pnpm-workspace.yaml",
-    "demo/tsconfig.json",
-    "scripts/contrib.mjs",
-    "scripts/pnpm.mjs",
-    "scripts/bin/pnpm",
-    ".agents/skills/regenerating-goldens-and-ledgers/scripts/channels.json",
-    "onchain/aiken/aiken.toml",
-    "onchain/aiken/aiken.lock",
-    "onchain/aiken/plutus.json",
-    "onchain/aiken/plutus.json.deployment.json",
-  ];
+  const shared = SHARED_INPUT_FILES;
   const missing = shared.filter((path) => !existsSync(resolve(root, path)));
   paths.push(
     ...shared

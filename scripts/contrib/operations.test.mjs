@@ -127,7 +127,7 @@ test("reproduction refuses a native output deleted after its successful build", 
         name,
         scripts: {
           build: "guarded",
-          "build:contrib-raw": "fixture compiler",
+          "build:contrib-raw": "node ../scripts/fixture-compiler.mjs",
           "native:mpf-owner:build:contrib-raw": "fixture compiler",
           "native:build:contrib-raw": "fixture compiler",
         },
@@ -155,8 +155,9 @@ test("reproduction refuses a native output deleted after its successful build", 
     "check-native.mjs",
     "import {rmSync} from 'node:fs';if(process.env.CONTRIB_FIXTURE_DROP_NATIVE==='1')rmSync('demo/midgard-watcher/dist/native',{recursive:true});\n",
   );
+  // A shared build input, so the traced compiler reads only bound files.
   put(
-    "fixture-compiler.mjs",
+    "demo/scripts/fixture-compiler.mjs",
     "import {mkdirSync,writeFileSync} from 'node:fs';const recipe=process.argv[2];const output=recipe==='build:contrib-raw'?'dist/index.js':recipe==='native:build:contrib-raw'?'dist/native/midgard-chain-sync':'native/mpf-event-flat-wasm/target/release/architecture-g-owner';mkdirSync(output.slice(0,output.lastIndexOf('/')),{recursive:true});writeFileSync(output,'fixture output');\n",
   );
   put(
@@ -165,7 +166,7 @@ test("reproduction refuses a native output deleted after its successful build", 
   );
   writeFileSync(
     resolve(tools, "corepack"),
-    '#!/bin/sh\nset -eu\nif [ "$2" = run ] && [ "$3" = build ]; then exec node ../guarded-build.mjs; fi\nif [ "$2" = run ]; then exec node ../../fixture-compiler.mjs "$3"; fi\n',
+    '#!/bin/sh\nset -eu\nif [ "$2" = run ] && [ "$3" = build ]; then exec node ../guarded-build.mjs; fi\nif [ "$2" = run ]; then exec node ../scripts/fixture-compiler.mjs "$3"; fi\n',
     { mode: 0o755 },
   );
   for (const name of ["go", "cargo", "rustc"]) {

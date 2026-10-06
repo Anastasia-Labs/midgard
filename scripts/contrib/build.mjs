@@ -1,17 +1,28 @@
-import { existsSync, mkdirSync, realpathSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import {
-  atomicJson,
+  BUILD_TRACE,
+  TRACER,
   buildEnvironment,
+  buildRefusals,
+  unboundReads,
+} from "./build-inputs.mjs";
+import {
+  atomicJson,
   compiledDependencies,
   inputIdentity,
   json,
   outputIdentity,
   packageByName,
   runtimeBuildClosure,
-  unboundBuildInputs,
   withIdentityScope,
 } from "./files.mjs";
 import { runProcess } from "./process.mjs";
@@ -42,18 +53,18 @@ export const checkBuild = (root, name, { env = process.env } = {}) =>
         stamp.root !== realpathSync(root)
       )
         throw new Error("build belongs to another package/checkout");
-      const unbound = unboundBuildInputs(root, pkg.name);
-      if (unbound.length) throw new Error(unbound.join("; "));
+      if (stamp.reads !== BUILD_TRACE)
+        throw new Error("stamp predates traced builds");
+      const refusals = buildRefusals(root, pkg.name);
+      if (refusals.length)
+        throw new Error(
+          `${refusals.join("; ")}, so it is never provably fresh`,
+        );
       if (stamp.inputs.sha256 !== inputIdentity(root, pkg.name).sha256)
         throw new Error("build input closure changed");
       const environment = buildEnvironment(root, pkg.name, env);
-      if (environment.unnamed)
-        throw new Error(
-          "build recipe reads environment it does not name, so it is never provably fresh",
-        );
       if (
-        // A stamp from before environments were bound named none.
-        JSON.stringify(stamp.environment?.variables ?? {}) !==
+        JSON.stringify(stamp.environment?.variables) !==
         JSON.stringify(environment.variables)
       )
         throw new Error("build environment changed");
@@ -121,6 +132,23 @@ const freshReceipt = (root, pkg, stamp) => {
   return { ...receipt, exitCode: 0 };
 };
 
+// The trace is complete once the recipe exits; nothing builds while the
+// workspace resource is held, so one identity scope covers the check.
+const readsOutsideClosure = (root, pkg, trace, dependencies) =>
+  existsSync(trace)
+    ? withIdentityScope(() =>
+        unboundReads(
+          root,
+          pkg.name,
+          readFileSync(trace, "utf8")
+            .split("\n")
+            .filter(Boolean)
+            .map((line) => JSON.parse(line)),
+          { dependencies },
+        ),
+      )
+    : ["the build left no read trace"];
+
 export const buildPackage = async (
   root,
   name,
@@ -159,12 +187,19 @@ export const buildPackage = async (
           rmSync(resolve(root, pkg.directory, "dist/.contrib-build-v1.json"), {
             force: true,
           });
+          // Every Node process of the recipe records what it reads.
+          const trace = resolve(directory, "reads.jsonl");
           const step = await runProcess({
             ...pinnedPnpm(resolve(root, pkg.directory), [
               "run",
               "build:contrib-raw",
             ]),
-            env: buildEnv,
+            env: {
+              ...buildEnv,
+              MIDGARD_CONTRIB_BUILD_TRACE: trace,
+              NODE_OPTIONS:
+                `${buildEnv.NODE_OPTIONS ?? ""} --require ${JSON.stringify(TRACER)}`.trim(),
+            },
             signal,
             logPath: resolve(directory, "build.log"),
             echo: process.env.MIDGARD_CONTRIB_VERBOSE === "1",
@@ -181,6 +216,10 @@ export const buildPackage = async (
           });
           const outputs = outputIdentity(root, `${pkg.directory}/dist`);
           receipt.artifacts = [{ name: pkg.name, outputs }, ...dependencies];
+          const unstamped =
+            receipt.exitCode === 0
+              ? readsOutsideClosure(root, pkg, trace, dependencies)
+              : [];
           if (receipt.exitCode === 0) {
             if (
               !Object.keys(outputs.files).length ||
@@ -191,6 +230,11 @@ export const buildPackage = async (
               receipt.exitCode = 1;
               receipt.reason =
                 "build produced no outputs or compiled dependencies changed during execution";
+            } else if (unstamped.length) {
+              // The dist is usable, but it read a file its stamp would not
+              // bind, so it stays unstamped and the next check rebuilds it.
+              receipt.unstamped = unstamped;
+              receipt.reason = `dist left unstamped: ${unstamped.slice(0, 5).join("; ")}`;
             } else
               atomicJson(
                 resolve(root, pkg.directory, "dist/.contrib-build-v1.json"),
@@ -198,6 +242,7 @@ export const buildPackage = async (
                   schema: "midgard-contrib-build/v1",
                   root: realpathSync(root),
                   package: pkg.name,
+                  reads: BUILD_TRACE,
                   inputs: before,
                   environment,
                   outputs,

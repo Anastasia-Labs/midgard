@@ -12,8 +12,12 @@ import test from "node:test";
 
 import { checkBuild } from "./build.mjs";
 import {
-  atomicJson,
+  BUILD_TRACE,
   buildEnvironment,
+  unboundReads,
+} from "./build-inputs.mjs";
+import {
+  atomicJson,
   compiledDependencies,
   filesUnder,
   inputIdentity,
@@ -27,6 +31,7 @@ const stamp = (root, env = process.env) =>
     schema: "midgard-contrib-build/v1",
     root,
     package: "example",
+    reads: BUILD_TRACE,
     inputs: inputIdentity(root, "example"),
     environment: buildEnvironment(root, "example", env),
     outputs: outputIdentity(root, "demo/example/dist"),
@@ -360,4 +365,254 @@ test("build inputs outside the closure keep a dist from ever being fresh", (t) =
   });
   stamp(root);
   assert.equal(checkBuild(root, "example").status, "fresh");
+});
+
+test("a stamp from a build whose reads were not traced is never fresh", (t) => {
+  const root = fixture(t);
+  stamp(root);
+  assert.equal(checkBuild(root, "example").status, "fresh");
+  const path = resolve(root, "demo/example/dist/.contrib-build-v1.json");
+  const { reads, ...untraced } = JSON.parse(readFileSync(path, "utf8"));
+  assert.equal(reads, BUILD_TRACE);
+  writeFileSync(path, JSON.stringify(untraced));
+  assert.match(
+    checkBuild(root, "example").reason,
+    /stamp predates traced builds/u,
+  );
+});
+
+// Each case changes a file or variable the build reads after the stamp is
+// written; none of them may leave the dist fresh.
+const outsidePackage = (root) => {
+  mkdirSync(resolve(root, "demo/undeclared/src"), { recursive: true });
+  writeFileSync(
+    resolve(root, "demo/undeclared/package.json"),
+    JSON.stringify({ name: "undeclared" }),
+  );
+  writeFileSync(
+    resolve(root, "demo/undeclared/src/index.ts"),
+    "export const y = 1;\n",
+  );
+};
+const generator = (root, path, text) => {
+  mkdirSync(resolve(root, "demo/example/scripts"), { recursive: true });
+  writeFileSync(resolve(root, "demo/example", path), text);
+};
+const PROFILE_A = { ...process.env, PROFILE: "a" };
+const PROFILE_B = { ...process.env, PROFILE: "b" };
+
+test("a tsconfig path alias out of the closure is never fresh", (t) => {
+  const root = fixture(t);
+  outsidePackage(root);
+  writeFileSync(
+    resolve(root, "demo/example/tsconfig.json"),
+    JSON.stringify({
+      compilerOptions: {
+        baseUrl: ".",
+        paths: { "@ext/*": ["../undeclared/src/*"] },
+      },
+      include: ["src"],
+    }),
+  );
+  writeFileSync(
+    resolve(root, "demo/example/src/index.ts"),
+    'export { y } from "@ext/index";\n',
+  );
+  stamp(root);
+  assert.match(
+    checkBuild(root, "example").reason,
+    /maps a path to \.\.\/undeclared\/src\/\* outside the input closure/u,
+  );
+});
+
+test("a relative source import out of the closure is never fresh", (t) => {
+  const root = fixture(t);
+  outsidePackage(root);
+  writeFileSync(
+    resolve(root, "demo/example/src/index.ts"),
+    'export { y } from "../../undeclared/src/index";\n',
+  );
+  stamp(root);
+  assert.match(
+    checkBuild(root, "example").reason,
+    /imports \.\.\/\.\.\/undeclared\/src\/index outside the input closure/u,
+  );
+});
+
+test("a recipe that runs another package script is never fresh", (t) => {
+  const root = fixture(t);
+  generator(root, "scripts/gen.mjs", "console.log(process.env.PROFILE);\n");
+  editPackage(root, "example", (pkg) => {
+    pkg.scripts.gen = "node scripts/gen.mjs";
+    pkg.scripts["build:contrib-raw"] = "pnpm run gen && tsup src/index.ts";
+  });
+  stamp(root, PROFILE_A);
+  assert.match(
+    checkBuild(root, "example", { env: PROFILE_A }).reason,
+    /runs pnpm, which the guard does not scan/u,
+  );
+});
+
+test("a module the tsup config imports is scanned for the variables it reads", (t) => {
+  const root = fixture(t);
+  writeFileSync(
+    resolve(root, "demo/example/build-env.mjs"),
+    "export const define = { PROFILE: JSON.stringify(process.env.PROFILE) };\n",
+  );
+  writeFileSync(
+    resolve(root, "demo/example/tsup.config.ts"),
+    'import { define } from "./build-env.mjs";\nexport default { define };\n',
+  );
+  stamp(root, PROFILE_A);
+  assert.equal(checkBuild(root, "example", { env: PROFILE_A }).status, "fresh");
+  assert.match(
+    checkBuild(root, "example", { env: PROFILE_B }).reason,
+    /build environment changed/u,
+  );
+  // A helper the closure does not bind cannot be scanned at all.
+  mkdirSync(resolve(root, "config/build"), { recursive: true });
+  writeFileSync(
+    resolve(root, "config/build/env.mjs"),
+    "export const define = {};\n",
+  );
+  writeFileSync(
+    resolve(root, "demo/example/tsup.config.ts"),
+    'import { define } from "../../config/build/env.mjs";\nexport default { define };\n',
+  );
+  stamp(root, PROFILE_A);
+  assert.match(
+    checkBuild(root, "example", { env: PROFILE_A }).reason,
+    /build code config\/build\/env\.mjs is outside the input closure/u,
+  );
+});
+
+test("node flags before a recipe script do not hide it from the scan", (t) => {
+  const root = fixture(t);
+  generator(root, "scripts/gen.mjs", "console.log(process.env.PROFILE);\n");
+  editPackage(root, "example", (pkg) => {
+    pkg.scripts["build:contrib-raw"] =
+      "node --enable-source-maps scripts/gen.mjs && tsup src/index.ts";
+  });
+  stamp(root, PROFILE_A);
+  assert.equal(checkBuild(root, "example", { env: PROFILE_A }).status, "fresh");
+  assert.match(
+    checkBuild(root, "example", { env: PROFILE_B }).reason,
+    /build environment changed/u,
+  );
+  for (const [recipe, reason] of [
+    ["node --require ./hook.cjs scripts/gen.mjs", /passes node --require/u],
+    ["node -r ./hook.cjs scripts/gen.mjs", /passes node -r/u],
+    ["node --env-file=.env scripts/gen.mjs", /passes node --env-file/u],
+  ]) {
+    editPackage(root, "example", (pkg) => {
+      pkg.scripts["build:contrib-raw"] = recipe;
+    });
+    stamp(root, PROFILE_A);
+    assert.match(
+      checkBuild(root, "example", { env: PROFILE_A }).reason,
+      reason,
+      recipe,
+    );
+  }
+});
+
+test("a tsconfig extending a file out of the closure is never fresh", (t) => {
+  const root = fixture(t);
+  mkdirSync(resolve(root, "config/ts"), { recursive: true });
+  writeFileSync(
+    resolve(root, "config/ts/base.json"),
+    JSON.stringify({ compilerOptions: { target: "es2020" } }),
+  );
+  writeFileSync(
+    resolve(root, "demo/example/tsconfig.json"),
+    JSON.stringify({ extends: "../../config/ts/base.json", include: ["src"] }),
+  );
+  stamp(root);
+  assert.match(
+    checkBuild(root, "example").reason,
+    /tsconfig config\/ts\/base\.json is outside the input closure/u,
+  );
+  for (const [config, reason] of [
+    [{ files: ["../../config/ts/entry.ts"] }, /lists \.\.\/\.\.\/config/u],
+    [
+      { references: [{ path: "../../config/ts" }] },
+      /references \.\.\/\.\.\/config/u,
+    ],
+  ]) {
+    writeFileSync(
+      resolve(root, "demo/example/tsconfig.json"),
+      JSON.stringify(config),
+    );
+    stamp(root);
+    assert.match(checkBuild(root, "example").reason, reason);
+  }
+});
+
+test("a recipe running a TypeScript script or an unknown tool is never fresh", (t) => {
+  const root = fixture(t);
+  generator(root, "scripts/gen.ts", "console.log(process.env.PROFILE);\n");
+  for (const [recipe, reason] of [
+    [
+      "node scripts/gen.ts && tsup src/index.ts",
+      /runs node on scripts\/gen\.ts/u,
+    ],
+    [
+      "tsx scripts/gen.ts && tsup src/index.ts",
+      /runs tsx, which the guard does not scan/u,
+    ],
+    ["tsup src/index.ts --onSuccess 'node x.mjs'", /passes tsup --onSuccess/u],
+    ["tsup src/index.ts; true", /uses shell syntax ";"/u],
+    ["tsup src/index.ts > log", /uses shell syntax ">"/u],
+  ]) {
+    editPackage(root, "example", (pkg) => {
+      pkg.scripts["build:contrib-raw"] = recipe;
+    });
+    stamp(root, PROFILE_A);
+    assert.match(
+      checkBuild(root, "example", { env: PROFILE_A }).reason,
+      reason,
+      recipe,
+    );
+  }
+});
+
+test("only reads the stamp binds may produce a stamped dist", (t) => {
+  const root = fixture(t);
+  outsidePackage(root);
+  const at = (path) => resolve(root, path);
+  const store = at("demo/node_modules/.pnpm/tool@1/node_modules/tool");
+  mkdirSync(store, { recursive: true });
+  writeFileSync(resolve(store, "index.js"), "");
+  const reasons = (records) =>
+    unboundReads(root, "example", records, { dependencies: [] });
+  assert.deepEqual(
+    reasons([
+      ["read", at("demo/example/src/index.ts")],
+      ["read", at("demo/example/package.json")],
+      ["read", at("demo/example/dist/index.js")],
+      ["read", resolve(store, "index.js")],
+      ["write", at("demo/example/tsup.config.bundled_1.mjs")],
+      ["read", at("demo/example/tsup.config.bundled_1.mjs")],
+      ["virtual", "tsup:shims"],
+    ]),
+    [],
+  );
+  assert.match(
+    reasons([["read", at("demo/undeclared/src/index.ts")]]).join(),
+    /read demo\/undeclared\/src\/index\.ts, which its input closure does not bind/u,
+  );
+  mkdirSync(at("demo/example/coverage"));
+  writeFileSync(at("demo/example/coverage/data.json"), "{}");
+  assert.match(
+    reasons([["read", at("demo/example/coverage/data.json")]]).join(),
+    /coverage\/data\.json, which its input closure does not bind/u,
+  );
+  assert.match(
+    reasons([["read", at("demo/example/gone.ts")]]).join(),
+    /which no longer exists/u,
+  );
+  assert.match(
+    reasons([["untraced", "esbuild context"]]).join(),
+    /esbuild context, which is not traced/u,
+  );
 });

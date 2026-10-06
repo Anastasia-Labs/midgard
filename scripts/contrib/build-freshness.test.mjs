@@ -212,8 +212,16 @@ test(
     await t.test("a variable the recipe names rebinds the dist", async () => {
       const path = resolve(root, "demo/midgard-core/package.json");
       const pkg = JSON.parse(readFileSync(path, "utf8"));
-      pkg.scripts["build:contrib-raw"] +=
-        ' && test -n "${MIDGARD_FRESHNESS_PROBE:-unset}"';
+      const recipe = pkg.scripts["build:contrib-raw"];
+      // Any other command the recipe could run is outside the allow-list.
+      pkg.scripts["build:contrib-raw"] = `${recipe} && test -n x`;
+      writeFileSync(path, JSON.stringify(pkg, null, 2));
+      assert.match(
+        checkBuild(root, core).reason,
+        /runs test, which the guard does not scan/u,
+      );
+      pkg.scripts["build:contrib-raw"] =
+        `MIDGARD_FRESHNESS_COPY="\${MIDGARD_FRESHNESS_PROBE:-unset}" ${recipe}`;
       writeFileSync(path, JSON.stringify(pkg, null, 2));
       rebuilt(await build(core, { env: { MIDGARD_FRESHNESS_PROBE: "one" } }));
       skipped(await build(core, { env: { MIDGARD_FRESHNESS_PROBE: "one" } }));
@@ -230,5 +238,46 @@ test(
         "fresh",
       );
     });
+
+    // The static checks cannot see a file a config reads through node:fs;
+    // the read trace does, so the dist builds but is never stamped.
+    await t.test(
+      "a build that reads an unbound file stays unstamped",
+      async () => {
+        const config = resolve(root, "demo/midgard-core/tsup.config.ts");
+        const original = readFileSync(config, "utf8");
+        mkdirSync(resolve(root, "outside"));
+        writeFileSync(resolve(root, "outside/banner.txt"), "/* outside */");
+        writeFileSync(
+          config,
+          original.replace(
+            "export default defineConfig({",
+            'import { readFileSync } from "node:fs";\n\nexport default defineConfig({\n  banner: { js: readFileSync(new URL("../../outside/banner.txt", import.meta.url), "utf8") },',
+          ),
+        );
+        assert.notEqual(checkBuild(root, core).reason, undefined);
+        assert.doesNotMatch(
+          checkBuild(root, core).reason,
+          /never provably fresh/u,
+        );
+        const receipt = await build(core);
+        assert.equal(receipt.status, "passed", receipt.reason);
+        assert.match(
+          receipt.reason,
+          /dist left unstamped: build read outside\/banner\.txt, which its input closure does not bind/u,
+        );
+        assert.match(
+          readFileSync(resolve(root, coreDist, "index.js"), "utf8"),
+          /outside/u,
+        );
+        assert.ok(
+          !existsSync(resolve(root, coreDist, ".contrib-build-v1.json")),
+        );
+        assert.equal(checkBuild(root, core).status, "missing");
+        writeFileSync(config, original);
+        rebuilt(await build(core));
+        skipped(await build(core));
+      },
+    );
   },
 );

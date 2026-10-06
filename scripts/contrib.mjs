@@ -246,6 +246,10 @@ export const main = async (argv) => {
         console.error(
           `contrib build ${result.package}: fresh: skipped (dist matches its digest stamp; --force rebuilds)`,
         );
+      else if (result.unstamped)
+        console.error(
+          `contrib build ${result.package}: built, but its ${result.reason}`,
+        );
     } else if (command === "native" && !action)
       result = await buildNative(root, required("package"), execution);
     else if (command === "prepare" && !action)

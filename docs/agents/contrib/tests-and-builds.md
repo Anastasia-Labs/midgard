@@ -39,12 +39,34 @@ the same dist verdict. Inputs conservatively include dependency tests and
 fixtures, so some unrelated edits can require an extra rebuild.
 
 The closure also binds the installed packages
-(`demo/node_modules/.pnpm/lock.yaml`), the variables a recipe names (shell
-expansions in `build:contrib-raw`, `process.env.NAME` in its tsup config and
-node scripts), and the dist bytes of every workspace package a build source
-imports. A recipe that reads the environment some other way, or a source or
-tsconfig input outside the closure, is never fresh. Building a fresh dist is a
-verified no-op: it prints `fresh: skipped` and writes a receipt with
+(`demo/node_modules/.pnpm/lock.yaml`), the variables a recipe names, and the
+dist bytes of every workspace package a build source imports. A dist can be
+fresh only when all of these hold (`scripts/contrib/build-inputs.mjs`):
+
+- `build:contrib-raw` is an `&&` sequence of `tsup` (without `--onSuccess`,
+  `--config`, `--tsconfig` or watch flags) and `node [flags] script.mjs|.cjs|.js`
+  (without flags that load or evaluate other code or read an env file), each
+  optionally preceded by `NAME=value`. Words may be quoted and may expand
+  `$NAME`, `${NAME}` or `${NAME:-literal}`; each such name is bound. Any other
+  program (`pnpm`, `npx`, `tsx`, `sh`, a `.ts` script) or shell syntax is
+  refused, with the reason.
+- The tsup config (which sets no `onSuccess` or `tsconfig`) and node scripts,
+  and every local module they import, are closure files that import only Node
+  builtins (and `tsup`), load no code dynamically, and read `process.env` only
+  by literal name; each name is bound.
+- The nearest `tsconfig.json`, its `extends` chain, and its `include`, `files`,
+  `references`, `baseUrl`, `paths` and `typeRoots` targets are closure files or
+  installed packages, and no relative import in the package's or an inlined
+  package's `src` leaves the closure.
+- After the build, every file its Node processes read (through `node:fs` or the
+  module loader) and every input esbuild's metafile lists is a closure input, an
+  installed package, a dist of the package or a compiled dependency, or a file
+  the build wrote. Otherwise the build succeeds but the dist stays unstamped,
+  so the next check reports it missing and rebuilds.
+
+Not bound: existence probes that read no file, package-manager configuration
+(`.npmrc`), and variables tsup or esbuild read internally (`PATH` included).
+Building a fresh dist is a verified no-op: it prints `fresh: skipped` and writes a receipt with
 `"status": "fresh"` that points at the receipt of the build that made the dist.
 `--force`, or `MIDGARD_CONTRIB_FORCE_BUILD=1` for builds reached through
 `pnpm run build`, rebuilds the requested package anyway.
