@@ -15,7 +15,10 @@ import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
-import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
+import {
+  observeEmulatorSubmissions,
+  recordCrossBlockRawEmulator,
+} from "./support/cross-block-raw-emulator.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 
 // This proves the emulator fixture's clock/bytes, not native chain authentication.
@@ -126,5 +129,45 @@ describe("cross-block raw emulator clock", () => {
     } finally {
       recorder.restore();
     }
+  });
+
+  it("stacks an observer over the recorder so both see each real submission, and restores the real methods", async () => {
+    const realSubmit = Emulator.prototype.submitTx;
+    const realOutRefReads = Emulator.prototype.getUtxosByOutRef;
+    const account = generateEmulatorAccount({ lovelace: 40_000_000n });
+    const emulator = new Emulator([account], EMULATOR_PROTOCOL_PARAMETERS);
+    const lucid = await Lucid(emulator, "Custom");
+    lucid.selectWallet.fromSeed(account.seedPhrase);
+    const recorder = recordCrossBlockRawEmulator();
+    const observed: string[] = [];
+    const observer = observeEmulatorSubmissions((txHash) =>
+      observed.push(txHash),
+    );
+    try {
+      expect(() => recorder.restore()).toThrow(/later layer/);
+      const signed = await (
+        await lucid
+          .newTx()
+          .pay.ToAddress(account.address, { lovelace: 2_000_000n })
+          .complete()
+      ).sign
+        .withWallet()
+        .complete();
+      const txHash = await signed.submit();
+      expect(observed).toEqual([txHash]);
+      expect([...recorder.signedCbors]).toEqual([[txHash, signed.toCBOR()]]);
+      expect(recorder.rows.map((row) => row.txHash)).toEqual([txHash]);
+      expect(await emulator.getTransactionStatus(txHash)).toMatchObject({
+        status: "pending",
+      });
+    } finally {
+      observer.restore();
+      recorder.restore();
+    }
+    expect(Emulator.prototype.submitTx).toBe(realSubmit);
+    expect(Emulator.prototype.getUtxosByOutRef).toBe(realOutRefReads);
+    expect(
+      Object.getOwnPropertyDescriptor(Emulator.prototype, "submitTx"),
+    ).toMatchObject({ enumerable: false, writable: true, configurable: true });
   });
 });

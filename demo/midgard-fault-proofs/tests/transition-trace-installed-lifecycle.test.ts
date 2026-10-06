@@ -10,7 +10,6 @@ import {
   CML,
   credentialToAddress,
   Data,
-  Emulator,
   getAddressDetails,
   scriptFromNative,
   scriptHashToCredential,
@@ -86,7 +85,10 @@ import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
-import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
+import {
+  observeEmulatorSubmissions,
+  recordCrossBlockRawEmulator,
+} from "./support/cross-block-raw-emulator.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import {
@@ -256,41 +258,37 @@ describe("transition trace installed retained-history workflow", () => {
       let clock: ReturnType<typeof vi.spyOn> | undefined;
       let directory: string | undefined;
       let submissionIndex = 0;
-      const originalSubmit = Emulator.prototype.submitTx;
-      const measure = vi
-        .spyOn(Emulator.prototype, "submitTx")
-        .mockImplementation(async function (this: Emulator, transaction) {
-          const result = await originalSubmit.call(this, transaction);
-          const m = measureCompleteSignedTransaction(transaction);
-          historyRecords.push({
-            label: "installed-transaction",
-            scenario: name,
-            txHash: result,
-            transactionCbor: transaction,
-            measurement: m,
-            fee: CML.Transaction.from_cbor_hex(transaction).body().fee(),
-          });
-          const outputs = CML.Transaction.from_cbor_hex(transaction)
-            .body()
-            .outputs();
-          const isPublication =
+      // Stacked over the recorder's layer: both see each real submission.
+      const measure = observeEmulatorSubmissions((result, transaction) => {
+        const m = measureCompleteSignedTransaction(transaction);
+        historyRecords.push({
+          label: "installed-transaction",
+          scenario: name,
+          txHash: result,
+          transactionCbor: transaction,
+          measurement: m,
+          fee: CML.Transaction.from_cbor_hex(transaction).body().fee(),
+        });
+        const outputs = CML.Transaction.from_cbor_hex(transaction)
+          .body()
+          .outputs();
+        const isPublication =
+          Array.from({ length: outputs.len() }, (_, i) => outputs.get(i)).some(
+            (output) => output.script_ref() !== undefined,
+          ) ||
+          (m.redeemerCount === 0 &&
             Array.from({ length: outputs.len() }, (_, i) =>
               outputs.get(i),
-            ).some((output) => output.script_ref() !== undefined) ||
-            (m.redeemerCount === 0 &&
-              Array.from({ length: outputs.len() }, (_, i) =>
-                outputs.get(i),
-              ).some((output) => output.datum() !== undefined));
-          measurements.push({
-            name: `${name}/${submissionIndex++}`,
-            kind: isPublication ? "publication" : "lifecycle",
-            maximumShape: name,
-            signedBytes: m.completeSignedBytes,
-            memoryUnits: m.executionMemory,
-            cpuUnits: m.executionSteps,
-          });
-          return result;
+            ).some((output) => output.datum() !== undefined));
+        measurements.push({
+          name: `${name}/${submissionIndex++}`,
+          kind: isPublication ? "publication" : "lifecycle",
+          maximumShape: name,
+          signedBytes: m.completeSignedBytes,
+          memoryUnits: m.executionMemory,
+          cpuUnits: m.executionSteps,
         });
+      });
       try {
         hooks.authority = recorder.authority;
         const h = await makeFaultProofEmulatorHarness({
@@ -971,6 +969,7 @@ describe("transition trace installed retained-history workflow", () => {
             expect(lease.fail).not.toHaveBeenCalled();
           }
         }
+        expect(recorder.rows).toHaveLength(submissionIndex);
         completedCases.add(name);
         if (!honest)
           expect(
@@ -984,7 +983,7 @@ describe("transition trace installed retained-history workflow", () => {
           ).toHaveLength(1);
       } finally {
         clock?.mockRestore();
-        measure.mockRestore();
+        measure.restore();
         recorder.restore();
         vi.unstubAllGlobals();
         if (directory !== undefined)

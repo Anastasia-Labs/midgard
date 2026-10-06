@@ -45,6 +45,10 @@
       "midgard-source": "./src/evaluator-reuse.ts",
       "types": "./src/evaluator-reuse.ts"
     },
+    "./method-layer": {
+      "midgard-source": "./src/method-layer.ts",
+      "types": "./src/method-layer.ts"
+    },
     "./duration-shards": {
       "types": "./duration-shards.d.ts",
       "default": "./duration-shards.js"
