@@ -72,7 +72,8 @@ const ADMISSION_SETTLE_POLL_MS = 50;
 /** Queue signed L2 transactions in the node's durable admission queue, as
  * `/submit` does, then drain the queue until each is terminal: transactions
  * queued together are accepted in one batch, under one inverse receipt.
- * Returns each admission status, in order. */
+ * Returns each admission status, in order; throws when a row is still not
+ * terminal after `ADMISSION_SETTLE_MS`. */
 export const admitTransfersTogether = async (
   h: ContentHandle,
   builts: readonly BuiltTransferTx[],
@@ -109,10 +110,18 @@ export const admitTransfersTogether = async (
     await h.command(
       txQueueProcessorDrainOnce().pipe(Effect.provide(validationPoolLayer)),
     );
-    const settled = (await readStatuses()).every(
-      ({ status }) => status === "accepted" || status === "rejected",
+    const unsettled = (await readStatuses()).filter(
+      ({ status }) => status !== "accepted" && status !== "rejected",
     );
-    if (settled || performance.now() >= deadline) break;
+    if (unsettled.length === 0) break;
+    if (performance.now() >= deadline) {
+      const rows = unsettled.map(
+        ({ tx_id, status }) => `${tx_id.toString("hex")} ${status}`,
+      );
+      throw new Error(
+        `Admission left ${rows.join(", ")} non-terminal after ${String(ADMISSION_SETTLE_MS / 1000)} s of draining`,
+      );
+    }
     await sleep(ADMISSION_SETTLE_POLL_MS);
   }
   await alignMempoolToEmulatorClock(h);
@@ -122,8 +131,9 @@ export const admitTransfersTogether = async (
   );
 };
 
-/** Admit a signed L2 transaction through the node's durable admission queue
- * and drain it once, as `/submit` does; returns its admission status. */
+/** Admit a signed L2 transaction through the node's durable admission queue,
+ * as `/submit` does, and drain until it is terminal; returns its admission
+ * status. */
 export const admitTransfer = async (h: ContentHandle, built: BuiltTransferTx) =>
   (await admitTransfersTogether(h, [built]))[0];
 
