@@ -51,21 +51,42 @@ fresh only when all of these hold (`scripts/contrib/build-inputs.mjs`):
   program (`pnpm`, `npx`, `tsx`, `sh`, a `.ts` script) or shell syntax is
   refused, with the reason.
 - The tsup config (which sets no `onSuccess` or `tsconfig`) and node scripts,
-  and every local module they import, are closure files that import only Node
-  builtins (and `tsup`), load no code dynamically, and read `process.env` only
-  by literal name; each name is bound.
-- The nearest `tsconfig.json`, its `extends` chain, and its `include`, `files`,
+  and every local module they import, are closure files that import only
+  `fs`, `fs/promises`, `path`, `url`, `crypto`, `util` and `os` (and `tsup`),
+  load no code dynamically, and read `process.env` only by literal name; each
+  name is bound. `child_process`, `worker_threads`, `vm`, `net`, `http` and
+  every other builtin are refused.
+- A tsup public directory (`--publicDir`, or `publicDir` in the config as a
+  string literal or `true`) is inside the closure.
+- The nearest `tsconfig.json` of the package and of every workspace package its
+  sources inline, its `extends` chain, and its `include`, `files`,
   `references`, `baseUrl`, `paths` and `typeRoots` targets are closure files or
   installed packages, and no relative import in the package's or an inlined
   package's `src` leaves the closure.
-- After the build, every file its Node processes read (through `node:fs` or the
-  module loader) and every input esbuild's metafile lists is a closure input, an
-  installed package, a dist of the package or a compiled dependency, or a file
-  the build wrote. Otherwise the build succeeds but the dist stays unstamped,
-  so the next check reports it missing and rebuilds.
+- `ESBUILD_BINARY_PATH` is unset, and `NODE_OPTIONS` loads no code
+  (`--require`, `-r`, `--import`, loaders and the like).
+- After the build, the trace (`scripts/contrib/build-trace.cjs`, preloaded into
+  every Node process of the recipe except the corepack executable the build
+  `PATH` resolves) accounts for everything the build did. Every file read
+  through `node:fs`, every copy, rename, link or symlink source (recursively for `cp`),
+  every module loaded (ES modules included, through `module.registerHooks`)
+  and every input esbuild's metafile lists is a closure input, an installed
+  package, a dist of the package or a compiled dependency, or a file the
+  build wrote before it read it. The only child process allowed is esbuild's
+  installed service binary; any other spawn, an esbuild context, or a Node
+  without module hooks is untraced. Every `tsup` the recipe runs must appear
+  as a process that reports an esbuild bundle, and every recipe script as a
+  process. Otherwise the build succeeds but the dist stays unstamped: the
+  stamp file holds the reasons instead, so the next check reports it missing
+  and rebuilds.
+- A `node_modules` above the checkout (TypeScript includes every ancestor's
+  `@types`) leaves every dist unstamped; the reason, and the doctor and
+  preflight fix, name the directory to remove.
 
-Not bound: existence probes that read no file, package-manager configuration
-(`.npmrc`), and variables tsup or esbuild read internally (`PATH` included).
+Not bound: existence probes and directory listings that read no file contents,
+package-manager configuration (`.npmrc`) read by the exempt launcher, the
+files the esbuild binary reads for its own use (it reports what it bundled),
+and variables tsup or esbuild read internally (`PATH` included).
 Building a fresh dist is a verified no-op: it prints `fresh: skipped` and writes a receipt with
 `"status": "fresh"` that points at the receipt of the build that made the dist.
 `--force`, or `MIDGARD_CONTRIB_FORCE_BUILD=1` for builds reached through

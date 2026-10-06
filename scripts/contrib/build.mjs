@@ -1,11 +1,13 @@
 import {
+  accessSync,
+  constants,
   existsSync,
   mkdirSync,
   readFileSync,
   realpathSync,
   rmSync,
 } from "node:fs";
-import { resolve } from "node:path";
+import { delimiter, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -13,7 +15,9 @@ import {
   TRACER,
   buildEnvironment,
   buildRefusals,
+  environmentRefusals,
   unboundReads,
+  unstampedFix,
 } from "./build-inputs.mjs";
 import {
   atomicJson,
@@ -26,7 +30,7 @@ import {
   withIdentityScope,
 } from "./files.mjs";
 import { runProcess } from "./process.mjs";
-import { pinnedPnpm } from "./pnpm.mjs";
+import { pinnedPnpm, pinnedPnpmEnvironment } from "./pnpm.mjs";
 import { writeReceipt } from "./receipts.mjs";
 import { resourceDirectory, withResource } from "./resources.mjs";
 
@@ -53,9 +57,20 @@ export const checkBuild = (root, name, { env = process.env } = {}) =>
         stamp.root !== realpathSync(root)
       )
         throw new Error("build belongs to another package/checkout");
+      // A build whose reads were not all bound leaves this record instead
+      // of a stamp: the dist is usable but never fresh until rebuilt.
+      if (Array.isArray(stamp.unstamped))
+        return {
+          status: "missing",
+          reason: `${pkg.name}: dist left unstamped: ${stamp.unstamped.join("; ")}`,
+          ...(stamp.fix ? { fix: stamp.fix } : {}),
+        };
       if (stamp.reads !== BUILD_TRACE)
         throw new Error("stamp predates traced builds");
-      const refusals = buildRefusals(root, pkg.name);
+      const refusals = [
+        ...environmentRefusals(env),
+        ...buildRefusals(root, pkg.name),
+      ];
       if (refusals.length)
         throw new Error(
           `${refusals.join("; ")}, so it is never provably fresh`,
@@ -149,6 +164,25 @@ const readsOutsideClosure = (root, pkg, trace, dependencies) =>
       )
     : ["the build left no read trace"];
 
+// The package manager that launches the recipe (corepack running the pinned
+// pnpm in its own process) reads its installation and configuration. Only
+// the corepack executable the build PATH resolves is exempt from the trace.
+const launcherPath = (env) => {
+  for (const directory of (pinnedPnpmEnvironment(env).PATH ?? "").split(
+    delimiter,
+  )) {
+    if (!directory) continue;
+    const candidate = resolve(directory, "corepack");
+    try {
+      accessSync(candidate, constants.X_OK);
+      return realpathSync(candidate);
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
+};
+
 export const buildPackage = async (
   root,
   name,
@@ -189,6 +223,7 @@ export const buildPackage = async (
           });
           // Every Node process of the recipe records what it reads.
           const trace = resolve(directory, "reads.jsonl");
+          const launcher = launcherPath(buildEnv);
           const step = await runProcess({
             ...pinnedPnpm(resolve(root, pkg.directory), [
               "run",
@@ -197,6 +232,7 @@ export const buildPackage = async (
             env: {
               ...buildEnv,
               MIDGARD_CONTRIB_BUILD_TRACE: trace,
+              ...(launcher ? { MIDGARD_CONTRIB_BUILD_LAUNCHER: launcher } : {}),
               NODE_OPTIONS:
                 `${buildEnv.NODE_OPTIONS ?? ""} --require ${JSON.stringify(TRACER)}`.trim(),
             },
@@ -218,7 +254,10 @@ export const buildPackage = async (
           receipt.artifacts = [{ name: pkg.name, outputs }, ...dependencies];
           const unstamped =
             receipt.exitCode === 0
-              ? readsOutsideClosure(root, pkg, trace, dependencies)
+              ? [
+                  ...environmentRefusals(buildEnv),
+                  ...readsOutsideClosure(root, pkg, trace, dependencies),
+                ]
               : [];
           if (receipt.exitCode === 0) {
             if (
@@ -235,6 +274,19 @@ export const buildPackage = async (
               // bind, so it stays unstamped and the next check rebuilds it.
               receipt.unstamped = unstamped;
               receipt.reason = `dist left unstamped: ${unstamped.slice(0, 5).join("; ")}`;
+              const fix = unstampedFix(unstamped);
+              if (fix) receipt.fix = fix;
+              atomicJson(
+                resolve(root, pkg.directory, "dist/.contrib-build-v1.json"),
+                {
+                  schema: "midgard-contrib-build/v1",
+                  root: realpathSync(root),
+                  package: pkg.name,
+                  unstamped,
+                  ...(fix ? { fix } : {}),
+                  receipt: receipt.path,
+                },
+              );
             } else
               atomicJson(
                 resolve(root, pkg.directory, "dist/.contrib-build-v1.json"),

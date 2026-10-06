@@ -120,6 +120,19 @@ test("reproduction refuses a native output deleted after its successful build", 
     writeFileSync(resolve(root, path), contents);
   };
   put("demo/package.json", JSON.stringify({ packageManager: "pnpm@9.15.4" }));
+  // The fake corepack below runs the fixture compiler for every recipe, so
+  // the recipe must say so: the trace binds each command the recipe names.
+  put(
+    "demo/example/package.json",
+    JSON.stringify({
+      name: "example",
+      type: "module",
+      scripts: {
+        build: "guarded",
+        "build:contrib-raw": "node ../scripts/fixture-compiler.mjs",
+      },
+    }),
+  );
   for (const name of ["midgard-node", "midgard-watcher"]) {
     put(
       `demo/${name}/package.json`,

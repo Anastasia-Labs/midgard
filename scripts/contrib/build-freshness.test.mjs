@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { buildPackage, checkBuild } from "./build.mjs";
+import { buildRefusals } from "./build-inputs.mjs";
 import { outputIdentity } from "./files.mjs";
 
 // Real tsup builds of midgard-core (and midgard-validation over it) in a
@@ -270,11 +271,132 @@ test(
           readFileSync(resolve(root, coreDist, "index.js"), "utf8"),
           /outside/u,
         );
-        assert.ok(
-          !existsSync(resolve(root, coreDist, ".contrib-build-v1.json")),
+        // The stamp path holds the reasons instead of a stamp.
+        const record = JSON.parse(
+          readFileSync(resolve(root, coreDist, ".contrib-build-v1.json")),
         );
-        assert.equal(checkBuild(root, core).status, "missing");
+        assert.equal(record.reads, undefined);
+        assert.equal(record.outputs, undefined);
+        assert.match(record.unstamped.join(), /outside\/banner\.txt/u);
+        const verdict = checkBuild(root, core);
+        assert.equal(verdict.status, "missing");
+        assert.match(
+          verdict.reason,
+          /dist left unstamped: build read outside/u,
+        );
         writeFileSync(config, original);
+        rebuilt(await build(core));
+        skipped(await build(core));
+      },
+    );
+
+    // Each attack below reaches a file outside the closure by a route the
+    // static scan does not see (esbuild --inject, an fs copy) or refuses
+    // (a public directory, a child process); the trace must still leave the
+    // dist unstamped and name the file.
+    const packagePath = resolve(root, "demo/midgard-core/package.json");
+    const originalPackage = readFileSync(packagePath, "utf8");
+    const withRecipe = (edit) => {
+      const pkg = JSON.parse(originalPackage);
+      pkg.scripts["build:contrib-raw"] = edit(pkg.scripts["build:contrib-raw"]);
+      writeFileSync(packagePath, JSON.stringify(pkg, null, 2));
+    };
+    const configPath = resolve(root, "demo/midgard-core/tsup.config.ts");
+    const originalConfig = readFileSync(configPath, "utf8");
+    const withConfig = (imports, statement) =>
+      writeFileSync(
+        configPath,
+        `${imports}\n${originalConfig.replace(
+          "export default defineConfig({",
+          `${statement}\n\nexport default defineConfig({`,
+        )}`,
+      );
+    const unstamped = async (reason) => {
+      const receipt = await build(core);
+      assert.equal(receipt.status, "passed", receipt.reason);
+      assert.match(receipt.reason, reason);
+      const verdict = checkBuild(root, core);
+      assert.equal(verdict.status, "missing");
+      assert.match(verdict.reason, reason);
+    };
+
+    await t.test(
+      "a public directory outside the closure is refused and its copy traced",
+      async () => {
+        mkdirSync(resolve(root, "outside-public"));
+        writeFileSync(resolve(root, "outside-public/asset.txt"), "asset");
+        withRecipe((recipe) =>
+          recipe.replace(
+            " --clean &&",
+            " --clean --publicDir ../../outside-public &&",
+          ),
+        );
+        // A fresh stamp from the restored build above: the refusal is
+        // reported before any digest comparison.
+        assert.match(
+          checkBuild(root, core).reason,
+          /copies public directory \.\.\/\.\.\/outside-public, which is outside the input closure/u,
+        );
+        await unstamped(
+          /build read outside-public\/asset\.txt, which its input closure does not bind/u,
+        );
+        writeFileSync(packagePath, originalPackage);
+      },
+    );
+
+    await t.test(
+      "a file esbuild injects from outside the closure stays unstamped",
+      async () => {
+        writeFileSync(
+          resolve(root, "outside.js"),
+          "export const injected = 1;\n",
+        );
+        withRecipe((recipe) =>
+          recipe.replace(
+            " --clean &&",
+            " --clean --inject ../../outside.js &&",
+          ),
+        );
+        assert.deepEqual(buildRefusals(root, core), []);
+        await unstamped(
+          /build read outside\.js, which its input closure does not bind/u,
+        );
+        writeFileSync(packagePath, originalPackage);
+      },
+    );
+
+    await t.test(
+      "a file a config copies from outside the closure stays unstamped",
+      async () => {
+        mkdirSync(resolve(root, "outside-copy"));
+        writeFileSync(resolve(root, "outside-copy/asset.txt"), "asset");
+        withConfig(
+          'import { cpSync } from "node:fs";',
+          'cpSync(new URL("../../outside-copy", import.meta.url), new URL("../../outside-copied", import.meta.url), { recursive: true });',
+        );
+        assert.deepEqual(buildRefusals(root, core), []);
+        await unstamped(
+          /build read outside-copy\/asset\.txt, which its input closure does not bind/u,
+        );
+        writeFileSync(configPath, originalConfig);
+      },
+    );
+
+    await t.test(
+      "a config that runs a child process is refused and traced",
+      async () => {
+        withConfig(
+          'import { execFileSync } from "node:child_process";',
+          'execFileSync("cat", [new URL("../../outside.js", import.meta.url).pathname]);',
+        );
+        assert.match(
+          buildRefusals(root, core).join(),
+          /tsup\.config\.ts imports node:child_process, which build code may not import/u,
+        );
+        await unstamped(
+          /build ran child process execFileSync cat \S*outside\.js, which the trace cannot follow/u,
+        );
+        writeFileSync(configPath, originalConfig);
         rebuilt(await build(core));
         skipped(await build(core));
       },

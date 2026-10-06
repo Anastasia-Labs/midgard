@@ -14,7 +14,9 @@ import { checkBuild } from "./build.mjs";
 import {
   BUILD_TRACE,
   buildEnvironment,
+  environmentRefusals,
   unboundReads,
+  unstampedFix,
 } from "./build-inputs.mjs";
 import {
   atomicJson,
@@ -268,13 +270,32 @@ test("a variable the build recipe names is bound; one it cannot name is never fr
   for (const changed of [
     { EXAMPLE_FLAG: "two" },
     { EXAMPLE_FLAG: undefined },
-    { NODE_OPTIONS: "--import ./hook.mjs" },
+    { NODE_OPTIONS: "--max-old-space-size=32" },
   ])
     assert.match(
       checkBuild(root, "example", { env: { ...env, ...changed } }).reason,
       /build environment changed/u,
       JSON.stringify(changed),
     );
+  // Variables that load code or substitute esbuild are refused outright,
+  // whether or not the recipe names them.
+  for (const [changed, refusal] of [
+    [{ NODE_OPTIONS: "--import ./hook.mjs" }, /NODE_OPTIONS passes --import/u],
+    [{ NODE_OPTIONS: "-r ./hook.cjs" }, /NODE_OPTIONS passes -r/u],
+    [
+      { NODE_OPTIONS: "--max-old-space-size=64 --require=./hook.cjs" },
+      /NODE_OPTIONS passes --require/u,
+    ],
+    [{ ESBUILD_BINARY_PATH: "/tmp/esbuild" }, /ESBUILD_BINARY_PATH is set/u],
+  ]) {
+    assert.deepEqual(environmentRefusals({ ...env, ...changed }).length, 1);
+    const verdict = checkBuild(root, "example", {
+      env: { ...env, ...changed },
+    });
+    assert.equal(verdict.status, "stale", JSON.stringify(changed));
+    assert.match(verdict.reason, refusal);
+    assert.match(verdict.reason, /never provably fresh/u);
+  }
   for (const config of [
     "export default { env: { ...process.env } };",
     "import { env } from 'node:process'; export default { define: env };",
@@ -379,6 +400,21 @@ test("a stamp from a build whose reads were not traced is never fresh", (t) => {
     checkBuild(root, "example").reason,
     /stamp predates traced builds/u,
   );
+  // A build that read something unbound leaves its reasons and the fix
+  // where the stamp would be; doctor and preflight show both.
+  atomicJson(path, {
+    schema: "midgard-contrib-build/v1",
+    root,
+    package: "example",
+    unstamped: ["TypeScript loaded /x/node_modules/@types/y; remove /x/z"],
+    fix: "rm -rf /x/z",
+  });
+  assert.deepEqual(checkBuild(root, "example"), {
+    status: "missing",
+    reason:
+      "example: dist left unstamped: TypeScript loaded /x/node_modules/@types/y; remove /x/z",
+    fix: "rm -rf /x/z",
+  });
 });
 
 // Each case changes a file or variable the build reads after the stamp is
@@ -576,6 +612,141 @@ test("a recipe running a TypeScript script or an unknown tool is never fresh", (
   }
 });
 
+test("build code may import only builtins that run nothing the trace misses", (t) => {
+  const root = fixture(t);
+  generator(
+    root,
+    "scripts/gen.mjs",
+    'import { readFileSync } from "node:fs";\n',
+  );
+  editPackage(root, "example", (pkg) => {
+    pkg.scripts["build:contrib-raw"] =
+      "node scripts/gen.mjs && tsup src/index.ts";
+  });
+  stamp(root);
+  assert.equal(checkBuild(root, "example").status, "fresh");
+  for (const specifier of [
+    "node:child_process",
+    "child_process",
+    "node:worker_threads",
+    "node:vm",
+    "node:net",
+    "node:http",
+    "node:module",
+  ]) {
+    generator(root, "scripts/gen.mjs", `import x from "${specifier}";\n`);
+    stamp(root);
+    assert.match(
+      checkBuild(root, "example").reason,
+      new RegExp(
+        `scripts/gen\\.mjs imports ${specifier}, which build code may not import`,
+        "u",
+      ),
+      specifier,
+    );
+  }
+  generator(root, "scripts/gen.mjs", "\n");
+  writeFileSync(
+    resolve(root, "demo/example/tsup.config.ts"),
+    'import { execSync } from "node:child_process";\nexport default {};\n',
+  );
+  stamp(root);
+  assert.match(
+    checkBuild(root, "example").reason,
+    /tsup\.config\.ts imports node:child_process, which build code may not import/u,
+  );
+});
+
+test("a public directory tsup copies must be a closure input", (t) => {
+  const root = fixture(t);
+  outsidePackage(root);
+  mkdirSync(resolve(root, "demo/example/public"));
+  writeFileSync(resolve(root, "demo/example/public/asset.txt"), "a");
+  for (const [recipe, reason] of [
+    [
+      "tsup src/index.ts --publicDir ../undeclared",
+      /build recipe copies public directory \.\.\/undeclared, which is outside the input closure/u,
+    ],
+    [
+      "tsup src/index.ts --publicDir=../../outside-public",
+      /copies public directory \.\.\/\.\.\/outside-public, which is outside/u,
+    ],
+    [
+      'tsup src/index.ts --publicDir "$DIR"',
+      /passes tsup --publicDir it cannot name/u,
+    ],
+  ]) {
+    editPackage(root, "example", (pkg) => {
+      pkg.scripts["build:contrib-raw"] = recipe;
+    });
+    stamp(root);
+    assert.match(checkBuild(root, "example").reason, reason, recipe);
+  }
+  for (const recipe of [
+    "tsup src/index.ts --publicDir public",
+    "tsup src/index.ts --publicDir",
+  ]) {
+    editPackage(root, "example", (pkg) => {
+      pkg.scripts["build:contrib-raw"] = recipe;
+    });
+    stamp(root);
+    assert.equal(checkBuild(root, "example").status, "fresh", recipe);
+  }
+  editPackage(root, "example", (pkg) => {
+    pkg.scripts["build:contrib-raw"] = "tsup src/index.ts";
+  });
+  for (const [config, verdict] of [
+    [
+      'export default { publicDir: "../undeclared" };',
+      /tsup\.config\.ts copies public directory \.\.\/undeclared/u,
+    ],
+    [
+      "export default { publicDir: dir };",
+      /sets publicDir in a way the guard cannot name/u,
+    ],
+    ['export default { publicDir: "public" };', "fresh"],
+    ["export default { publicDir: true };", "fresh"],
+  ]) {
+    writeFileSync(resolve(root, "demo/example/tsup.config.ts"), config);
+    stamp(root);
+    const checked = checkBuild(root, "example");
+    if (verdict === "fresh") assert.equal(checked.status, "fresh", config);
+    else assert.match(checked.reason, verdict, config);
+  }
+});
+
+test("the tsconfig of an inlined workspace package is checked too", (t) => {
+  const root = fixture(t);
+  workspaceDependency(root);
+  outsidePackage(root);
+  editPackage(root, "example", (pkg) => {
+    pkg.devDependencies = { dependency: "workspace:*" };
+  });
+  writeFileSync(
+    resolve(root, "demo/example/src/index.ts"),
+    'export { y } from "dependency";\n',
+  );
+  writeFileSync(
+    resolve(root, "demo/example/tsconfig.json"),
+    JSON.stringify({ include: ["src"] }),
+  );
+  writeFileSync(
+    resolve(root, "demo/dependency/tsconfig.json"),
+    JSON.stringify({ include: ["src", "../undeclared/src"] }),
+  );
+  stamp(root);
+  assert.match(
+    checkBuild(root, "example").reason,
+    /includes \.\.\/undeclared\/src outside the input closure/u,
+  );
+  writeFileSync(
+    resolve(root, "demo/dependency/tsconfig.json"),
+    JSON.stringify({ include: ["src"] }),
+  );
+  stamp(root);
+  assert.equal(checkBuild(root, "example").status, "fresh");
+});
+
 test("only reads the stamp binds may produce a stamped dist", (t) => {
   const root = fixture(t);
   outsidePackage(root);
@@ -583,36 +754,141 @@ test("only reads the stamp binds may produce a stamped dist", (t) => {
   const store = at("demo/node_modules/.pnpm/tool@1/node_modules/tool");
   mkdirSync(store, { recursive: true });
   writeFileSync(resolve(store, "index.js"), "");
-  const reasons = (records) =>
-    unboundReads(root, "example", records, { dependencies: [] });
+  const cli = at("demo/node_modules/tsup/dist/cli-default.js");
+  mkdirSync(resolve(cli, ".."), { recursive: true });
+  writeFileSync(cli, "");
+  // The recipe runs tsup once: a traced tsup process that reports a bundle.
+  const tsup = [
+    ["process", cli, 7],
+    ["esbuild", "1", 7],
+    ["bundle", at("demo/example/src/index.ts"), 7],
+  ];
+  const reasons = (records, prefix = tsup) =>
+    unboundReads(root, "example", [...prefix, ...records], {
+      dependencies: [],
+    });
   assert.deepEqual(
     reasons([
-      ["read", at("demo/example/src/index.ts")],
-      ["read", at("demo/example/package.json")],
-      ["read", at("demo/example/dist/index.js")],
-      ["read", resolve(store, "index.js")],
-      ["write", at("demo/example/tsup.config.bundled_1.mjs")],
-      ["read", at("demo/example/tsup.config.bundled_1.mjs")],
-      ["virtual", "tsup:shims"],
+      ["read", at("demo/example/src/index.ts"), 7],
+      ["read", at("demo/example/package.json"), 7],
+      ["read", at("demo/example/dist/index.js"), 7],
+      ["read", resolve(store, "index.js"), 7],
+      ["write", at("demo/example/tsup.config.bundled_1.mjs"), 7],
+      ["read", at("demo/example/tsup.config.bundled_1.mjs"), 7],
+      ["virtual", "tsup:shims", 7],
+      ["service", resolve(store, "index.js"), 7],
     ]),
     [],
   );
   assert.match(
-    reasons([["read", at("demo/undeclared/src/index.ts")]]).join(),
+    reasons([["read", at("demo/undeclared/src/index.ts"), 7]]).join(),
     /read demo\/undeclared\/src\/index\.ts, which its input closure does not bind/u,
+  );
+  // A self-written file excuses only reads that come after the write.
+  writeFileSync(at("demo/undeclared/generated.js"), "");
+  assert.match(
+    reasons([
+      ["read", at("demo/undeclared/generated.js"), 7],
+      ["write", at("demo/undeclared/generated.js"), 7],
+    ]).join(),
+    /read demo\/undeclared\/generated\.js, which its input closure does not bind/u,
+  );
+  assert.deepEqual(
+    reasons([
+      ["write", at("demo/undeclared/generated.js"), 7],
+      ["read", at("demo/undeclared/generated.js"), 7],
+    ]),
+    [],
   );
   mkdirSync(at("demo/example/coverage"));
   writeFileSync(at("demo/example/coverage/data.json"), "{}");
   assert.match(
-    reasons([["read", at("demo/example/coverage/data.json")]]).join(),
+    reasons([["read", at("demo/example/coverage/data.json"), 7]]).join(),
     /coverage\/data\.json, which its input closure does not bind/u,
   );
   assert.match(
-    reasons([["read", at("demo/example/gone.ts")]]).join(),
+    reasons([["read", at("demo/example/gone.ts"), 7]]).join(),
     /which no longer exists/u,
   );
   assert.match(
-    reasons([["untraced", "esbuild context"]]).join(),
-    /esbuild context, which is not traced/u,
+    reasons([["untraced", "esbuild context", 7]]).join(),
+    /build ran esbuild context, which the trace cannot follow/u,
+  );
+  assert.match(
+    reasons([["untraced", "child process spawn cat /etc/hostname", 7]]).join(),
+    /build ran child process spawn cat \/etc\/hostname, which the trace cannot follow/u,
+  );
+  assert.match(
+    reasons([["service", at("demo/undeclared/src/index.ts"), 7]]).join(),
+    /esbuild binary .* which is not installed/u,
+  );
+  assert.match(
+    reasons([["mystery", "x", 7]]).join(),
+    /unknown record mystery/u,
+  );
+  // Coverage: every tsup command of the recipe is a traced process, and
+  // each one reports what esbuild bundled beyond its own config.
+  assert.match(
+    reasons([], []).join(),
+    /build recipe runs tsup 1 time\(s\), but the trace saw 0/u,
+  );
+  assert.match(
+    reasons(
+      [],
+      [
+        ["process", cli, 7],
+        ["esbuild", "1", 7],
+        ["bundle", at("demo/example/tsup.config.ts"), 7],
+      ],
+    ).join(),
+    /tsup process 7 reported no esbuild metafile/u,
+  );
+  editPackage(root, "example", (pkg) => {
+    pkg.scripts["build:contrib-raw"] =
+      "tsup src/index.ts && node scripts/digest.mjs";
+  });
+  generator(root, "scripts/digest.mjs", "");
+  assert.match(
+    reasons([]).join(),
+    /build recipe runs demo\/example\/scripts\/digest\.mjs, but the trace saw no such process/u,
+  );
+  assert.deepEqual(
+    reasons([["process", at("demo/example/scripts/digest.mjs"), 8]]),
+    [],
+  );
+});
+
+test("a node_modules above the checkout names exactly what to remove", (t) => {
+  const parent = fixture(t);
+  const root = resolve(parent, "checkout");
+  mkdirSync(root);
+  for (const entry of ["demo", ".git"])
+    renameSync(resolve(parent, entry), resolve(root, entry));
+  const types = resolve(parent, "node_modules/@types/stray/index.d.ts");
+  mkdirSync(resolve(types, ".."), { recursive: true });
+  writeFileSync(types, "");
+  const cli = resolve(root, "demo/node_modules/tsup/dist/cli-default.js");
+  mkdirSync(resolve(cli, ".."), { recursive: true });
+  writeFileSync(cli, "");
+  const reasons = unboundReads(
+    root,
+    "example",
+    [
+      ["process", cli, 7],
+      ["bundle", resolve(root, "demo/example/src/index.ts"), 7],
+      ["read", types, 7],
+    ],
+    { dependencies: [] },
+  );
+  assert.deepEqual(reasons, [
+    `TypeScript loaded ${resolve(parent, "node_modules/@types/stray")}, a type package above the checkout that every build includes and no stamp binds; remove ${resolve(parent, "node_modules/@types")}`,
+  ]);
+  assert.equal(
+    unstampedFix(reasons),
+    `rm -rf ${resolve(parent, "node_modules/@types")}`,
+  );
+  assert.equal(
+    unstampedFix(["build read x, which no longer exists"]),
+    undefined,
   );
 });

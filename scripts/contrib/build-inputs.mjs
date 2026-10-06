@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { builtinModules, createRequire } from "node:module";
-import { dirname, relative, resolve, sep } from "node:path";
+import { createRequire } from "node:module";
+import { basename, dirname, relative, resolve, sep } from "node:path";
 
 import {
   BUILD_CONFIGS,
@@ -104,6 +104,7 @@ export const parseRecipe = (recipe) => {
     names,
     commands: [],
     scripts: [],
+    publicDirs: [],
     reasons: [`build recipe ${reason}`],
   });
   let command = [];
@@ -169,6 +170,7 @@ export const parseRecipe = (recipe) => {
 
   const reasons = [];
   const scripts = [];
+  const publicDirs = [];
   const parsed = [];
   for (const words of commands) {
     let index = 0;
@@ -194,9 +196,21 @@ export const parseRecipe = (recipe) => {
     if (!program || !program.literal)
       reasons.push("build recipe runs a command it does not name literally");
     else if (program.text === "tsup") {
-      for (const arg of args)
+      args.forEach((arg, at) => {
         if (REFUSED_TSUP_FLAG.test(arg.text))
           reasons.push(`build recipe passes tsup ${arg.text.split("=")[0]}`);
+        // tsup copies the public directory into dist; it must be an input.
+        if (/^--publicDir(?:=|$)/u.test(arg.text)) {
+          const inline = arg.text.split("=").slice(1).join("=");
+          const next = args[at + 1];
+          const target =
+            inline ||
+            (next && !next.text.startsWith("-") ? next.text : "public");
+          if (!arg.literal || (!inline && next && !next.literal))
+            reasons.push("build recipe passes tsup --publicDir it cannot name");
+          else publicDirs.push(target);
+        }
+      });
     } else if (program.text === "node") {
       let at = 0;
       while (at < args.length && args[at].text.startsWith("-")) {
@@ -221,7 +235,7 @@ export const parseRecipe = (recipe) => {
       );
     parsed.push({ assignments, program: program?.text, args });
   }
-  return { names, commands: parsed, scripts, reasons };
+  return { names, commands: parsed, scripts, publicDirs, reasons };
 };
 
 // --- modules the recipe runs -------------------------------------------------
@@ -256,10 +270,20 @@ const resolveLocal = (from, specifier) => {
     (candidate) => existsSync(candidate) && statSync(candidate).isFile(),
   );
 };
+// Builtins build code may import: none of them runs a process, a thread, a
+// VM, a network request or a module loader the trace could not follow.
+const BUILD_BUILTINS = new Set([
+  "fs",
+  "fs/promises",
+  "path",
+  "path/posix",
+  "url",
+  "crypto",
+  "util",
+  "os",
+]);
 const builtin = (specifier) =>
-  specifier.startsWith("node:") ||
-  builtinModules.includes(specifier) ||
-  builtinModules.includes(specifier.split("/")[0]);
+  BUILD_BUILTINS.has(specifier.replace(/^node:/u, ""));
 
 // Follow every module a config or script loads from the checkout. Each must
 // be a closure input, may import only Node builtins (and tsup, for the
@@ -303,7 +327,7 @@ const scanModules = (root, name, entries, packages) => {
         else visit(target);
       } else if (!builtin(specifier) && !packages.includes(specifier))
         reasons.push(
-          `build code ${label(file)} imports ${specifier}, which the guard does not scan`,
+          `build code ${label(file)} imports ${specifier}, which build code may not import`,
         );
     }
   };
@@ -315,7 +339,8 @@ const scanModules = (root, name, entries, packages) => {
 
 // esbuild and the declaration build read the package tsconfig and its whole
 // `extends` chain outside Node, so the chain and every path it points at
-// must be closure inputs or installed packages.
+// must be closure inputs or installed packages. esbuild also applies the
+// tsconfig of each workspace package whose sources it inlines.
 const tsconfigRefusals = (root, name) => {
   const self = packageByName(root, name);
   const base = realRoot(root);
@@ -393,15 +418,22 @@ const tsconfigRefusals = (root, name) => {
     }
   };
   // tsup, like tsc, takes the nearest tsconfig.json above the package.
-  let directory = resolve(root, self.directory);
-  for (;;) {
-    const candidate = resolve(directory, "tsconfig.json");
-    if (existsSync(candidate)) {
-      visit(realOrSelf(candidate));
-      break;
+  for (const pkg of [
+    self,
+    ...inlinedWorkspacePackages(root, name).map((entry) =>
+      packageByName(root, entry),
+    ),
+  ]) {
+    let directory = resolve(root, pkg.directory);
+    for (;;) {
+      const candidate = resolve(directory, "tsconfig.json");
+      if (existsSync(candidate)) {
+        visit(realOrSelf(candidate));
+        break;
+      }
+      if (directory === dirname(directory)) break;
+      directory = dirname(directory);
     }
-    if (directory === dirname(directory)) break;
-    directory = dirname(directory);
   }
   return reasons;
 };
@@ -455,14 +487,35 @@ const recipeFacts = (root, name) =>
         reasons.push(
           `build recipe runs ${posix(relative(realRoot(root), script))}, which does not exist`,
         );
+    // tsup copies a public directory into dist outside esbuild; it must be
+    // an input of the closure.
+    const publicDir = (target, owner) => {
+      if (!closurePath(root, name, resolve(root, pkg.directory, target)))
+        reasons.push(
+          `${owner} copies public directory ${target}, which is outside the input closure`,
+        );
+    };
+    for (const target of recipe.publicDirs) publicDir(target, "build recipe");
     for (const config of configs) {
       const text = readFileSync(config, "utf8");
+      const label = posix(relative(realRoot(root), config));
       // Options that run commands or redirect esbuild's tsconfig.
       for (const option of ["onSuccess", "tsconfig"])
         if (text.includes(option))
           reasons.push(
-            `${posix(relative(realRoot(root), config))} sets ${option}, which the guard does not follow`,
+            `${label} sets ${option}, which the guard does not follow`,
           );
+      for (const match of text.matchAll(/\bpublicDir\b/gu)) {
+        const value =
+          /^publicDir\s*:\s*(?:(["'])([^"'`$\\]*)\1|(true))\s*[,}\n]/u.exec(
+            text.slice(match.index),
+          );
+        if (!value)
+          reasons.push(
+            `${label} sets publicDir in a way the guard cannot name`,
+          );
+        else publicDir(value[3] ? "public" : value[2], label);
+      }
     }
     const configScan = scanModules(root, name, configs, ["tsup"]);
     const scriptScan = scanModules(
@@ -472,6 +525,7 @@ const recipeFacts = (root, name) =>
       [],
     );
     return {
+      recipe,
       names: new Set([
         ...recipe.names,
         ...configScan.names,
@@ -516,35 +570,103 @@ export const buildEnvironment = (root, name, env = process.env) => ({
 
 // --- read trace -------------------------------------------------------------
 
-export const BUILD_TRACE = "midgard-contrib-build-trace/v1";
+// v2: copies, symlinks, child processes and coverage are traced; a v1
+// stamp came from a build the v2 trace might have refused.
+export const BUILD_TRACE = "midgard-contrib-build-trace/v2";
 export const TRACER = new URL("./build-trace.cjs", import.meta.url).pathname;
 
-// Reads the build made that its stamp would not bind. Allowed: closure
-// inputs, the installed store, this package's and its compiled
-// dependencies' emitted files, and files the build itself wrote.
+// Variables that change what a guarded build runs without the recipe naming
+// them: a substitute esbuild binary, or Node options that load code. Either
+// one means no dist is provably fresh and none is stamped.
+export const environmentRefusals = (env = process.env) => {
+  const reasons = [];
+  if (env.ESBUILD_BINARY_PATH !== undefined)
+    reasons.push(
+      "ESBUILD_BINARY_PATH is set, so esbuild would run a binary the install record does not bind",
+    );
+  for (const flag of (env.NODE_OPTIONS ?? "").split(/\s+/u).filter(Boolean))
+    if (flag === "-r" || REFUSED_NODE_FLAG.test(flag))
+      reasons.push(
+        `NODE_OPTIONS passes ${flag.split("=")[0]}, which loads code the guard does not scan`,
+      );
+  return reasons;
+};
+
+const TSUP_CLI = /[\\/]tsup[\\/]dist[\\/]cli-[\w-]+\.js$/u;
+const TSUP_CONFIG = /^tsup\.config\./u;
+
+// A node_modules directory above the checkout (TypeScript walks every
+// ancestor for @types) is no input any stamp binds; name what to remove.
+const aboveCheckout = (base, real) => {
+  const match =
+    /^(.*?)[\\/]node_modules[\\/](@types[\\/][^\\/]+|[^\\/]+)/u.exec(real);
+  if (!match || !base.startsWith(`${match[1]}${sep}`)) return undefined;
+  const modules = `${match[1]}${sep}node_modules`;
+  return match[2].startsWith("@types")
+    ? `TypeScript loaded ${modules}${sep}${match[2]}, a type package above the checkout that every build includes and no stamp binds; remove ${modules}${sep}@types`
+    : `build read ${real} from a node_modules directory above the checkout, which no stamp binds; remove ${modules}`;
+};
+// The command that clears every reason above, when there is one.
+export const unstampedFix = (reasons) => {
+  const removals = [
+    ...new Set(
+      reasons.flatMap((reason) => /; remove (\S+)$/u.exec(reason)?.[1] ?? []),
+    ),
+  ];
+  return removals.length ? `rm -rf ${removals.join(" ")}` : undefined;
+};
+
+// What the build did that its stamp would not bind. Allowed reads: closure
+// inputs, the installed store, this package's and its compiled dependencies'
+// emitted files, and files the build wrote before reading them. Every
+// command of the recipe must also appear as a traced process, and every
+// tsup process must report what esbuild bundled, so a step the tracer
+// missed cannot pass as one that read nothing.
 export const unboundReads = (root, name, records, { dependencies }) => {
   const self = packageByName(root, name);
   const base = realRoot(root);
-  const written = new Set(
-    records.filter(([kind]) => kind === "write").map(([, path]) => path),
-  );
+  const { recipe } = recipeFacts(root, name);
   const emitted = [
     self.directory,
     ...dependencies.map((entry) => packageByName(root, entry.name).directory),
   ].map((directory) => resolve(base, directory, "dist"));
   const reasons = [];
-  for (const [kind, path] of records) {
-    if (kind === "write" || kind === "virtual") continue;
-    if (kind !== "read") {
-      reasons.push(`build used ${path}, which is not traced`);
+  const written = new Set();
+  const processes = new Map();
+  const bundled = new Map();
+  for (const [kind, value, pid] of records) {
+    if (kind === "write") {
+      written.add(value);
       continue;
     }
-    if (written.has(path) || written.has(realOrSelf(path))) continue;
-    if (!existsSync(path)) {
-      reasons.push(`build read ${path}, which no longer exists`);
+    if (kind === "process") {
+      processes.set(value, [...(processes.get(value) ?? []), pid]);
       continue;
     }
-    const real = realOrSelf(path);
+    if (kind === "virtual" || kind === "esbuild") continue;
+    if (kind === "service") {
+      if (!installedPath(root, value))
+        reasons.push(
+          `build ran esbuild binary ${value}, which is not installed`,
+        );
+      continue;
+    }
+    if (kind === "untraced") {
+      reasons.push(`build ran ${value}, which the trace cannot follow`);
+      continue;
+    }
+    if (kind !== "read" && kind !== "bundle") {
+      reasons.push(`build trace has an unknown record ${kind}`);
+      continue;
+    }
+    if (kind === "bundle" && !TSUP_CONFIG.test(basename(value)))
+      bundled.set(pid, (bundled.get(pid) ?? 0) + 1);
+    if (written.has(value) || written.has(realOrSelf(value))) continue;
+    if (!existsSync(value)) {
+      reasons.push(`build read ${value}, which no longer exists`);
+      continue;
+    }
+    const real = realOrSelf(value);
     if (
       closurePath(root, name, real) ||
       installedPath(root, real) ||
@@ -552,8 +674,33 @@ export const unboundReads = (root, name, records, { dependencies }) => {
     )
       continue;
     reasons.push(
-      `build read ${within(real, base) ? posix(relative(base, real)) : real}, which its input closure does not bind`,
+      aboveCheckout(base, real) ??
+        `build read ${within(real, base) ? posix(relative(base, real)) : real}, which its input closure does not bind`,
     );
   }
-  return reasons;
+  const tsup = new Set(
+    [...processes]
+      .filter(([path]) => TSUP_CLI.test(path))
+      .flatMap(([, pids]) => pids),
+  );
+  const expected = recipe.commands.filter(
+    (command) => command.program === "tsup",
+  ).length;
+  if (tsup.size < expected)
+    reasons.push(
+      `build recipe runs tsup ${expected} time(s), but the trace saw ${tsup.size}`,
+    );
+  for (const pid of tsup)
+    if (!bundled.get(pid))
+      reasons.push(
+        `tsup process ${pid} reported no esbuild metafile, so what it bundled is not traced`,
+      );
+  for (const script of recipe.scripts) {
+    const path = realOrSelf(resolve(root, self.directory, script));
+    if (!processes.has(path))
+      reasons.push(
+        `build recipe runs ${posix(relative(base, path))}, but the trace saw no such process`,
+      );
+  }
+  return [...new Set(reasons)];
 };
