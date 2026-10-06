@@ -1,11 +1,62 @@
 import { type ChildProcess, fork, spawn } from "node:child_process";
-import fileSystem, { mkdtemp, rm } from "node:fs/promises";
+import fileSystem, { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
+import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { build } from "tsup";
 import { expect, vi } from "vitest";
+
+import { JsonFileCommitteeStore } from "../../src/store.js";
+import type { JsonStoreInstanceLockOptions } from "../../src/store.json-file-instance-lock.js";
+
+/** Every store these helpers open, for the test file to close. */
+export const openStores = new Set<JsonFileCommitteeStore>();
+
+export const open = async (
+  dir: string,
+  options: JsonStoreInstanceLockOptions = {},
+): Promise<JsonFileCommitteeStore> => {
+  const store = await JsonFileCommitteeStore.open(dir, options);
+  openStores.add(store);
+  return store;
+};
+
+export const closeStore = async (
+  store: JsonFileCommitteeStore,
+): Promise<void> => {
+  await store.close();
+  openStores.delete(store);
+};
+
+export const lockPath = (dir: string) => join(dir, "committee.json.lock");
+export const sidecarPath = (dir: string) => `${lockPath(dir)}.mutex.sqlite`;
+export const leaveLock = (dir: string, content: string) =>
+  writeFile(lockPath(dir), content);
+export const heldLockError = /already exclusively leased/u;
+export const takenOver = /taken over by another process/u;
+export const health = (peerId: string) => ({
+  peerId,
+  consecutiveFailures: 0,
+  updatedAt: new Date().toISOString(),
+});
+export const peers = async (store: JsonFileCommitteeStore) =>
+  (await store.listPeerHealth()).map((peer) => peer.peerId);
+export const lockOf = (store: JsonFileCommitteeStore) =>
+  Reflect.get(store, "instanceLock") as { assertHeld(): Promise<void> };
+
+/**
+ * A successor's stamp. It shares this process's pid, as a restarted
+ * container's pid 1 shares its predecessor's, so only the whole stamp tells
+ * the two holders apart.
+ */
+export const successorStamp = `${JSON.stringify({
+  owner: `${process.pid.toString()}:successor`,
+  pid: process.pid,
+  hostname: hostname(),
+  acquiredAt: new Date().toISOString(),
+})}\n`;
 
 /** Every process these helpers start, for the test file to stop. */
 export const children = new Set<ChildProcess>();
@@ -48,6 +99,31 @@ export const patchFs = (patches: Record<string, FsPatch>): (() => void) => {
       Reflect.set(fileSystem, name, original);
     syncBuiltinESMExports();
   };
+};
+
+/**
+ * Holds the first call of `node:fs/promises` `name` whose argument `argIndex`
+ * is `path`, before it runs, until `resume`.
+ */
+export const pauseOnce = (name: string, path: string, argIndex = 0) => {
+  let resume!: () => void;
+  const gate = new Promise<void>((resolve) => (resume = resolve));
+  let reached!: () => void;
+  const paused = new Promise<void>((resolve) => (reached = resolve));
+  let armed = true;
+  const restore = patchFs({
+    [name]:
+      (original) =>
+      async (...args) => {
+        if (armed && String(args[argIndex]) === path) {
+          armed = false;
+          reached();
+          await gate;
+        }
+        return original(...args);
+      },
+  });
+  return { paused, resume, restore };
 };
 
 /** A process that holds only a store's process mutex, as a live holder does. */

@@ -5,7 +5,7 @@ import {
   readlinkSync,
   writeFileSync,
 } from "node:fs";
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
 
@@ -13,23 +13,30 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { retryStartup, startupReason } from "../src/startup.js";
 import { JsonFileCommitteeStore } from "../src/store.js";
-import {
-  JSON_STORE_INSTANCE_LOCK_CHECK_MS,
-  type JsonStoreInstanceLockOptions,
-} from "../src/store.json-file-instance-lock.js";
+import { JSON_STORE_INSTANCE_LOCK_CHECK_MS } from "../src/store.json-file-instance-lock.js";
 import { tempDir } from "./helpers.js";
 import {
+  closeStore,
   committeeChild,
   type FsPatch,
+  health,
+  heldLockError,
+  leaveLock,
   liveProcess,
+  lockOf,
+  lockPath,
   mutexHolder,
+  open,
+  openStores,
   patchFs,
+  peers,
   removeCommitteeBundle,
+  sidecarPath,
   stop,
   stopChildren,
+  successorStamp,
+  takenOver,
 } from "./helpers/json-store-lock.js";
-
-const openStores = new Set<JsonFileCommitteeStore>();
 
 afterEach(async () => {
   vi.useRealTimers();
@@ -38,48 +45,6 @@ afterEach(async () => {
   await stopChildren();
 });
 afterAll(removeCommitteeBundle);
-
-const open = async (
-  dir: string,
-  options: JsonStoreInstanceLockOptions = {},
-): Promise<JsonFileCommitteeStore> => {
-  const store = await JsonFileCommitteeStore.open(dir, options);
-  openStores.add(store);
-  return store;
-};
-
-const closeStore = async (store: JsonFileCommitteeStore): Promise<void> => {
-  await store.close();
-  openStores.delete(store);
-};
-
-const lockPath = (dir: string) => join(dir, "committee.json.lock");
-const sidecarPath = (dir: string) => `${lockPath(dir)}.mutex.sqlite`;
-const leaveLock = (dir: string, content: string) =>
-  writeFile(lockPath(dir), content);
-const heldLockError = /already exclusively leased/u;
-const takenOver = /taken over by another process/u;
-const health = (peerId: string) => ({
-  peerId,
-  consecutiveFailures: 0,
-  updatedAt: new Date().toISOString(),
-});
-const peers = async (store: JsonFileCommitteeStore) =>
-  (await store.listPeerHealth()).map((peer) => peer.peerId);
-const lockOf = (store: JsonFileCommitteeStore) =>
-  Reflect.get(store, "instanceLock") as { assertHeld(): Promise<void> };
-
-/**
- * A successor's stamp. It shares this process's pid, as a restarted
- * container's pid 1 shares its predecessor's, so only the whole stamp tells
- * the two holders apart.
- */
-const successorStamp = `${JSON.stringify({
-  owner: `${process.pid.toString()}:successor`,
-  pid: process.pid,
-  hostname: hostname(),
-  acquiredAt: new Date().toISOString(),
-})}\n`;
 
 /** The renewed lease an earlier binary left in the lock file. */
 const legacyLease = (overrides: Record<string, unknown>): string =>
@@ -390,17 +355,18 @@ it("fences a paused live writer, then admits exactly one real successor after pr
   expect(await peers(reopened)).toEqual(["new-peer", "old-peer"]);
 }, 30_000);
 
-it("releases the process mutex after failing to write its stamp", async () => {
+it("releases the process mutex, and leaves nothing behind, after failing to write its stamp", async () => {
   const dir = await tempDir();
-  let injected = false;
+  let injected: string | undefined;
   const restore = patchFs({
     writeFile:
       (original) =>
       async (...args) => {
-        if (injected || String(args[0]) !== lockPath(dir))
+        const path = String(args[0]);
+        if (injected !== undefined || !path.startsWith(`${lockPath(dir)}.`))
           return original(...args);
-        injected = true;
-        await original(args[0], '{"owner":');
+        injected = path;
+        await original(path, '{"owner":');
         throw new Error("synthetic stamp write failure");
       },
   });
@@ -408,11 +374,17 @@ it("releases the process mutex after failing to write its stamp", async () => {
     await expect(JsonFileCommitteeStore.open(dir)).rejects.toThrow(
       "synthetic stamp write failure",
     );
-    expect(injected).toBe(true);
   } finally {
     restore();
   }
-  // The torn stamp left behind blocks nothing: the mutex was released.
+  // The stamp is published by one rename, so a torn write never reaches the
+  // lock file, and its temporary file is removed.
+  expect(injected).toMatch(/\.tmp$/u);
+  const left = (await readdir(dir)).filter(
+    (name) =>
+      name.startsWith("committee.json.lock") && !name.includes(".mutex.sqlite"),
+  );
+  expect(left).toEqual([]);
   const store = await open(dir);
   await store.savePeerHealth(health("after"));
   expect(await peers(store)).toEqual(["after"]);

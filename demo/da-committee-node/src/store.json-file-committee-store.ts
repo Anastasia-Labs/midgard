@@ -151,7 +151,7 @@ export class JsonFileCommitteeStore implements CommitteeStore {
       store.retirement.load((await store.read()).retirementFloor);
       return store;
     } catch (error) {
-      await instanceLock.release();
+      await instanceLock.release().catch(() => undefined);
       throw error;
     }
   }

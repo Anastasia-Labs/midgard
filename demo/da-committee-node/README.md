@@ -86,15 +86,18 @@ once: holding the mutex proves no other writer is alive, so whatever an
 earlier holder left in the lock file, `<store-file>.lock`, is overwritten
 without being judged. A crash never needs an operator to remove a lock.
 
-The lock file is a stamp naming the current holder, written once when the
-mutex is taken. The holder never writes it again; it reads it before every
-store write and every 10 s while idle. Within the storage boundary it never
-changes under its holder. Outside the boundary, the mutex can fail (the
-sidecar removed or replaced, a network filesystem, a store shared across
-kernels, or the holder's own process opening and closing the sidecar by other
-means), and a successor can then get in while the old holder still runs. The
-successor's stamp replaces the old one, and the old holder fails closed at its
-next check or write: it refuses every write from then on, logs
-`committee_store_instance_lock_lost`, and exits for its supervisor to restart
-it. A write the old holder had already checked before the successor got in
-can still land.
+The lock file is a stamp naming the current holder, published once by a
+rename when the mutex is taken, so a read-only or torn leftover never blocks
+it. The holder never writes it again; it reads it before every store write
+and every 10 s while idle. A read that fails for any reason other than a
+missing file refuses writes until a read succeeds, and the idle check logs
+each distinct error once as `committee_store_instance_lock_check_failed`.
+Within the storage boundary the stamp never changes under its holder.
+Outside the boundary, the mutex can fail (the sidecar removed or replaced, a
+network filesystem, a store shared across kernels, or the holder's own process
+opening and closing the sidecar by other means), and a successor can then get
+in while the old holder still runs. The successor's stamp replaces the old
+one, and the old holder fails closed at its next check or write: it refuses
+every write from then on, logs `committee_store_instance_lock_lost`, and exits
+for its supervisor to restart it. A write the old holder had already checked
+before the successor got in can still land.

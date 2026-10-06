@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 
 import {
@@ -18,6 +18,11 @@ export type JsonStoreInstanceLockOptions = {
    * Every later write is refused, and the process must stop.
    */
   readonly onLost?: (error: Error) => void;
+  /**
+   * Where a failed idle check is reported, as one JSON line per distinct
+   * error until a check succeeds again. Defaults to stderr.
+   */
+  readonly log?: (line: string) => void;
 };
 
 /** The store's process mutex is held by another live process. */
@@ -38,7 +43,9 @@ export class JsonStoreLeaseHeldError extends Error {
 export class JsonStoreInstanceLock {
   private timer: ReturnType<typeof setInterval> | undefined;
   private lost: Error | undefined;
-  private released = false;
+  private released: Promise<void> | undefined;
+  private readonly checks = new Set<Promise<void>>();
+  private reportedCheckFailure: string | undefined;
 
   private constructor(
     readonly lockPath: string,
@@ -46,6 +53,7 @@ export class JsonStoreInstanceLock {
     private readonly stamp: string,
     private readonly mutex: JsonStoreProcessMutex,
     private readonly onLost: ((error: Error) => void) | undefined,
+    private readonly log: (line: string) => void,
   ) {}
 
   /** Takes `<storePath>.lock`, under the mutex `<storePath>.lock.mutex.sqlite`. */
@@ -72,17 +80,33 @@ export class JsonStoreInstanceLock {
         hostname: hostname(),
         acquiredAt: new Date().toISOString(),
       })}\n`;
-      await writeFile(lockPath, stamp, { mode: 0o600 });
+      // Published by one rename, which replaces whatever is there even when
+      // that file is read-only, and never leaves a torn stamp behind.
+      const tmpPath = `${lockPath}.${owner.replace(":", "-")}.tmp`;
+      try {
+        await writeFile(tmpPath, stamp, { mode: 0o600 });
+        await rename(tmpPath, lockPath);
+      } catch (error) {
+        await rm(tmpPath, { force: true }).catch(() => undefined);
+        throw error;
+      }
       const lock = new JsonStoreInstanceLock(
         lockPath,
         owner,
         stamp,
         mutex,
         options.onLost,
+        options.log ?? ((line) => process.stderr.write(line)),
       );
       lock.timer = setInterval(() => {
-        // A failed read is retried on the next interval; a write reports it.
-        lock.assertHeld().catch(() => undefined);
+        // A failed read is retried on the next interval; writes are refused
+        // until one succeeds.
+        lock.assertHeld().then(
+          () => {
+            lock.reportedCheckFailure = undefined;
+          },
+          (error: unknown) => lock.reportCheckFailure(error),
+        );
       }, options.checkMs ?? JSON_STORE_INSTANCE_LOCK_CHECK_MS);
       lock.timer.unref?.();
       return lock;
@@ -94,29 +118,64 @@ export class JsonStoreInstanceLock {
 
   /** Throws unless the lock file still holds exactly this holder's stamp. */
   async assertHeld(): Promise<void> {
-    if (this.lost !== undefined) throw this.lost;
-    if (this.released)
-      throw new Error(
-        `committee node file store instance lock was released: ${this.lockPath}`,
-      );
+    const check = this.check();
+    const settled = check.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.checks.add(settled);
+    try {
+      await check;
+    } finally {
+      this.checks.delete(settled);
+    }
+  }
+
+  /**
+   * Stops checking and drops the mutex once every check already under way
+   * has finished; the stamp stays for the next holder.
+   */
+  release(): Promise<void> {
+    if (this.timer !== undefined) clearInterval(this.timer);
+    this.timer = undefined;
+    this.released ??= (async () => {
+      await Promise.all(this.checks);
+      this.mutex.close();
+    })();
+    return this.released;
+  }
+
+  private async check(): Promise<void> {
+    this.assertNotEnded();
     const current = await readFile(this.lockPath, "utf8").catch(
       (error: unknown) => {
         if (isNodeError(error) && error.code === "ENOENT") return undefined;
         throw error;
       },
     );
+    // A successor may stamp the file as soon as this holder lets go, so a
+    // check that read it after release proves nothing about a takeover.
+    this.assertNotEnded();
     if (current !== this.stamp) throw this.markLost();
   }
 
-  /** Stops checking and drops the mutex; the stamp stays for the next holder. */
-  release(): Promise<void> {
-    if (this.timer !== undefined) clearInterval(this.timer);
-    this.timer = undefined;
-    if (!this.released) {
-      this.released = true;
-      this.mutex.close();
-    }
-    return Promise.resolve();
+  private assertNotEnded(): void {
+    if (this.lost !== undefined) throw this.lost;
+    if (this.released !== undefined)
+      throw new Error(
+        `committee node file store instance lock was released: ${this.lockPath}`,
+      );
+  }
+
+  /** Logs a failed idle check once per distinct error; a loss has onLost. */
+  private reportCheckFailure(error: unknown): void {
+    if (this.lost !== undefined || this.released !== undefined) return;
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === this.reportedCheckFailure) return;
+    this.reportedCheckFailure = message;
+    this.log(
+      `${JSON.stringify({ event: "committee_store_instance_lock_check_failed", lockPath: this.lockPath, error: message })}\n`,
+    );
   }
 
   /** Records the loss, reporting it once, and returns the error writes get. */
