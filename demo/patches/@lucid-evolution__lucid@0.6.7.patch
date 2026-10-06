@@ -57,11 +57,175 @@ diff --git a/dist/index.cjs b/dist/index.cjs
          );
          redeemerExUnits.push(
            `${redeemer.tag}:${index}:${redeemer.exUnits.mem()}:${redeemer.exUnits.steps()}`
-@@ -3780,7 +3778,74 @@
+@@ -3780,7 +3778,244 @@
      txInfoTreasuryDonation: body.donation() ?? null
    };
  };
 -var canonicalTransaction = (tx) => CML.Transaction.from_cbor_bytes(tx.to_canonical_cbor_bytes());
++// Whether two encoded Plutus data items carry the same ordered value, as CML
++// JSON shows it: definite or indefinite lengths, integer widths, byte-string
++// chunks, bignum tags on any integer and constructor tag forms are ignored; map
++// entries keep their order. Returns undefined when an encoding read before the
++// first difference falls outside this subset, or when trailing bytes follow;
++// callers then compare CML JSON instead. Allocates nothing for these encodings
++// except big integers.
++var samePlutusDataValue = (left, right) => {
++  const outside = () => {
++    throw new Error("Plutus data encoding outside the value-comparison subset");
++  };
++  const cursor = (bytes) => ({ bytes, offset: 0, major: 0, info: 0, value: 0, chunk: 0, indefinite: false });
++  // Reads one initial byte and its argument into `major`, `info` and `value`;
++  // an indefinite length leaves `value` at -1.
++  const head = (c) => {
++    if (c.offset >= c.bytes.length) outside();
++    const initial = c.bytes[c.offset++];
++    c.major = initial >> 5;
++    c.info = initial & 31;
++    c.value = c.info === 31 ? -1 : argument(c, c.info);
++  };
++  const argument = (c, info) => {
++    if (info < 24) return info;
++    const size = info === 24 ? 1 : info === 25 ? 2 : info === 26 ? 4 : info === 27 ? 8 : outside();
++    if (c.offset + size > c.bytes.length) outside();
++    if (size < 8) {
++      let value = 0;
++      for (let i = 0; i < size; i++) value = value * 256 + c.bytes[c.offset++];
++      return value;
++    }
++    let value = 0n;
++    for (let i = 0; i < 8; i++) value = value << 8n | BigInt(c.bytes[c.offset++]);
++    return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value;
++  };
++  const length = (c) => {
++    if (typeof c.value !== "number" || c.offset + c.value > c.bytes.length) outside();
++    return c.value;
++  };
++  // Constructor alternative of a tag already read into `value`, or -1 when the
++  // tag is not a constructor; the field list must follow.
++  const alternative = (c) => {
++    const tag = c.value;
++    let alt = -1;
++    if (tag >= 121 && tag <= 127) alt = tag - 121;
++    else if (tag >= 1280 && tag <= 1400) alt = tag - 1280 + 7;
++    else if (tag === 102) {
++      if (c.offset >= c.bytes.length || c.bytes[c.offset++] !== 0x82) outside();
++      head(c);
++      if (c.major !== 0 || c.value === -1) outside();
++      alt = c.value;
++    } else return -1;
++    if (c.offset >= c.bytes.length || c.bytes[c.offset] >> 5 !== 4) outside();
++    return alt;
++  };
++  // Integer of a head already read: major 0 or 1, or bignum tag 2 or 3.
++  // Returns the value as a number when safe, otherwise as a bigint.
++  const integer = (c) => {
++    if (c.major !== 6 && c.value === -1) outside();
++    if (c.major === 0) return c.value;
++    if (c.major === 1) return typeof c.value === "number" ? -1 - c.value : -1n - c.value;
++    const negative = c.value === 3;
++    head(c);
++    if (c.major !== 2 || c.value === -1) outside();
++    const size = length(c);
++    let magnitude = 0n;
++    for (let i = 0; i < size; i++) magnitude = magnitude << 8n | BigInt(c.bytes[c.offset++]);
++    const value = negative ? -1n - magnitude : magnitude;
++    return value >= BigInt(Number.MIN_SAFE_INTEGER) && value <= BigInt(Number.MAX_SAFE_INTEGER)
++      ? Number(value) : value;
++  };
++  // Byte strings: `open` starts reading the string whose head was just read;
++  // `next` returns its next content byte, or -1 after its last one.
++  const open = (c) => {
++    c.indefinite = c.value === -1;
++    c.chunk = c.indefinite ? 0 : length(c);
++  };
++  const next = (c) => {
++    while (c.chunk === 0) {
++      if (!c.indefinite) return -1;
++      if (c.offset >= c.bytes.length) outside();
++      const initial = c.bytes[c.offset++];
++      if (initial === 0xff) {
++        c.indefinite = false;
++        return -1;
++      }
++      if (initial >> 5 !== 2 || (initial & 31) === 31) outside();
++      c.value = argument(c, initial & 31);
++      c.chunk = length(c);
++    }
++    c.chunk--;
++    return c.bytes[c.offset++];
++  };
++  // Compares the next item of each encoding.
++  const item = (a, b) => {
++    head(a);
++    head(b);
++    if (a.major === 6 && a.value !== 2 && a.value !== 3) {
++      const alt = alternative(a);
++      if (alt === -1) outside();
++      if (b.major !== 6) return false;
++      if (b.value === 2 || b.value === 3) return false;
++      const other = alternative(b);
++      if (other === -1) outside();
++      return alt === other && item(a, b);
++    }
++    if (b.major === 6 && b.value !== 2 && b.value !== 3) {
++      if (alternative(b) === -1) outside();
++      return false;
++    }
++    const aInteger = a.major === 0 || a.major === 1 || a.major === 6;
++    const bInteger = b.major === 0 || b.major === 1 || b.major === 6;
++    if (aInteger || bInteger) {
++      if (!aInteger || !bInteger) {
++        // Different kinds: still confirm the integer side is in the subset.
++        if (aInteger) integer(a); else if (a.major !== 2 && a.major !== 4 && a.major !== 5) outside();
++        if (bInteger) integer(b); else if (b.major !== 2 && b.major !== 4 && b.major !== 5) outside();
++        return false;
++      }
++      const x = integer(a), y = integer(b);
++      return typeof x === typeof y ? x === y : BigInt(x) === BigInt(y);
++    }
++    if (a.major !== b.major) {
++      if (a.major !== 2 && a.major !== 4 && a.major !== 5) outside();
++      if (b.major !== 2 && b.major !== 4 && b.major !== 5) outside();
++      return false;
++    }
++    if (a.major === 2) {
++      open(a);
++      open(b);
++      for (;;) {
++        const x = next(a), y = next(b);
++        if (x !== y) return false;
++        if (x === -1) return true;
++      }
++    }
++    if (a.major === 4 || a.major === 5) {
++      const width = a.major === 5 ? 2 : 1;
++      let aLeft = a.value, bLeft = b.value;
++      if ((aLeft !== -1 && typeof aLeft !== "number") || (bLeft !== -1 && typeof bLeft !== "number")) outside();
++      aLeft = aLeft === -1 ? -1 : aLeft * width;
++      bLeft = bLeft === -1 ? -1 : bLeft * width;
++      for (;;) {
++        const aEnd = aLeft === -1 ? a.offset < a.bytes.length && a.bytes[a.offset] === 0xff : aLeft === 0;
++        const bEnd = bLeft === -1 ? b.offset < b.bytes.length && b.bytes[b.offset] === 0xff : bLeft === 0;
++        if (aEnd || bEnd) {
++          if (aEnd && aLeft === -1) a.offset++;
++          if (bEnd && bLeft === -1) b.offset++;
++          return aEnd && bEnd;
++        }
++        if (!item(a, b)) return false;
++        if (aLeft !== -1) aLeft--;
++        if (bLeft !== -1) bLeft--;
++      }
++    }
++    outside();
++  };
++  try {
++    const a = cursor(left), b = cursor(right);
++    if (!item(a, b)) return false;
++    return a.offset === left.length && b.offset === right.length ? true : undefined;
++  } catch {
++    return undefined;
++  }
++};
 +// Canonicalize ledger containers without changing ordered Plutus maps or datum hashes.
 +var canonicalTransaction = (tx) => (0, import_core_utils11.withCMLScope)((own) => {
 +  const canonical = own(CML.Transaction.from_cbor_bytes(tx.to_canonical_cbor_bytes()));
@@ -101,11 +265,17 @@ diff --git a/dist/index.cjs b/dist/index.cjs
 +  const canonicalRedeemers = own(witnesses.redeemers());
 +  if (originalRedeemers && canonicalRedeemers) {
 +    // Compact redeemer encoding is safe only when the ordered Plutus value is
-+    // unchanged. CML JSON retains map entry order and exact integer literals;
-+    // compare the strings directly, without a lossy JavaScript JSON parse.
-+    const preserveValue = (original, canonical) =>
-+      own(original.data()).to_json() === own(canonical.data()).to_json()
-+        ? canonical : original;
++    // unchanged. The encodings decide it when both stay in the subset that
++    // samePlutusDataValue reads; otherwise CML JSON decides: it retains map
++    // entry order and exact integer literals; compare the strings directly,
++    // without a lossy JavaScript JSON parse.
++    const preserveValue = (original, canonical) => {
++      const originalData = own(original.data());
++      const canonicalData = own(canonical.data());
++      const same = samePlutusDataValue(originalData.to_cbor_bytes(), canonicalData.to_cbor_bytes());
++      const sameValue = same !== undefined ? same : originalData.to_json() === canonicalData.to_json();
++      return sameValue ? canonical : original;
++    };
 +    const originalMap = own(originalRedeemers.as_map_redeemer_key_to_redeemer_val());
 +    const canonicalMap = own(canonicalRedeemers.as_map_redeemer_key_to_redeemer_val());
 +    if (originalMap && canonicalMap) {
@@ -133,7 +303,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
  var canonicalInfo = (tx, resolvedInputs) => import_effect21.Effect.runSync(buildCanonicalRedeemerInfo(tx, resolvedInputs));
  var makeScriptContexts = (tx, options = {}) => {
    const txInfoId = CML.hash_transaction(tx.body()).to_hex();
-@@ -3903,7 +3968,7 @@
+@@ -3903,7 +4138,7 @@
        config.programs.push(program);
        return txSignBuilder;
      },
@@ -142,7 +312,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
      toTransaction: () => config.txComplete,
      toScriptContext: (purpose, options2) => makeScriptContext(
        config.txComplete,
-@@ -3983,6 +4048,7 @@
+@@ -3983,6 +4218,7 @@
    const hasPlutusScriptExecutions = Array.from(
      config.scripts.values()
    ).some((value) => value.type !== "Native");
@@ -150,7 +320,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    let evaluatedScriptBody = yield* selectionAndEvaluation(
      walletInputs,
      changeAddress,
-@@ -3993,7 +4059,8 @@
+@@ -3993,7 +4229,8 @@
      false,
      internalOptions.bootstrapExUnits === true,
      internalOptions.knownRedeemerExUnits,
@@ -160,7 +330,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    );
    if (hasPlutusScriptExecutions) {
      const estimatedFee = yield* estimateFee(config, true);
-@@ -4005,10 +4072,14 @@
+@@ -4005,10 +4242,14 @@
          )
        )
      );
@@ -176,7 +346,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
      );
      yield* applyCollateral(totalCollateral, collateralInput, changeAddress);
      evaluatedScriptBody = (yield* selectionAndEvaluation(
-@@ -4043,9 +4114,7 @@
+@@ -4043,9 +4284,7 @@
      catch: (error) => completeTxError(error)
    });
    const shouldCanonicalize = canonical || internalOptions.forceCanonical;
@@ -187,7 +357,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    const normalizedTransaction = yield* import_effect22.Effect.try({
      try: () => normalizeGovernanceRedeemerIndices(
        transactionBeforeScriptDataHash,
-@@ -4060,6 +4129,19 @@
+@@ -4060,6 +4299,19 @@
      config
    );
    if (transaction !== normalizedTransaction) normalizedTransaction.free();
@@ -207,7 +377,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    const derivedInputs = deriveInputsFromTransaction(transaction);
    const derivedWalletInputs = derivedInputs.filter(
      (utxo) => utxo.address === walletAddress
-@@ -4085,12 +4167,12 @@
+@@ -4085,12 +4337,12 @@
      })
    );
  }).pipe(import_effect22.Effect.catchAllDefect((cause) => new RunTimeError({ cause })));
@@ -222,7 +392,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
      }),
      import_effect22.Effect.provide(import_effect22.Layer.succeed(TxConfig, { config: replayConfig })),
      // The completed transaction is copied out of the builder; nothing keeps
-@@ -4213,7 +4295,7 @@
+@@ -4213,7 +4465,7 @@
  });
  var canonicalInputFingerprint = (tx) => (0, import_core_utils14.withCMLScope)((own) => {
    const canonical = own(
@@ -231,7 +401,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    );
    const inputs = own(own(canonical.body()).inputs());
    return Array.from(
-@@ -4266,14 +4348,25 @@
+@@ -4266,14 +4518,25 @@
  });
  var complete = (options = {}) => import_effect22.Effect.gen(function* () {
    const { config } = yield* TxConfig;
@@ -261,7 +431,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    const { config } = yield* TxConfig;
    const refScriptInputs = config.readInputs.filter(
      (input) => input.scriptRef
-@@ -4334,7 +4427,8 @@
+@@ -4334,7 +4597,8 @@
      localUPLCEval,
      evaluator,
      bootstrapExUnits,
@@ -271,7 +441,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    );
  }).pipe(import_effect22.Effect.catchAllDefect((cause) => new RunTimeError({ cause })));
  var completePartialPrograms = () => import_effect22.Effect.gen(function* () {
-@@ -4907,9 +5001,7 @@
+@@ -4907,9 +5171,7 @@
    return yield* buildEvaluationDraft(config, changeAddress);
  });
  var prepareRedeemerContextCandidate = (candidate, config) => import_effect22.Effect.gen(function* () {
@@ -282,7 +452,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    const normalized = yield* import_effect22.Effect.try({
      try: () => normalizeGovernanceRedeemerIndices(
        canonical,
-@@ -4990,7 +5082,7 @@
+@@ -4990,7 +5252,7 @@
      if (zeroed !== tx) zeroed.free();
    }
  };
@@ -291,7 +461,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    let previousFingerprint;
    let forceExplicitFee = config.minFee !== void 0;
    for (let attempt = 0; attempt < MAX_EVALUATION_ATTEMPTS; attempt++) {
-@@ -5012,8 +5104,11 @@
+@@ -5012,8 +5274,11 @@
        applyBootstrapRedeemerExUnits(
          redeemers,
          config.txBuilder,
@@ -305,7 +475,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
        );
        (0, import_core_utils14.freeCML)(redeemers, candidate);
        return true;
-@@ -5041,6 +5136,9 @@
+@@ -5041,6 +5306,9 @@
        localUPLCEval,
        evaluator
      ).pipe(import_effect22.Effect.ensuring(import_effect22.Effect.sync(() => candidate.free())));
@@ -315,7 +485,7 @@ diff --git a/dist/index.cjs b/dist/index.cjs
    }
    return yield* completeTxError(
      `Phase-two evaluation did not converge after ${MAX_EVALUATION_ATTEMPTS} attempts. Check for scripts that depend on transaction fees, change outputs, or execution-unit-driven transaction shape.`
-@@ -5063,33 +5161,81 @@
+@@ -5063,33 +5331,81 @@
    name: "provider",
    evaluate: ({ tx, additionalUTxOs }) => provider.evaluateTx(tx, additionalUTxOs)
  });
@@ -483,11 +653,175 @@ diff --git a/dist/index.js b/dist/index.js
          );
          redeemerExUnits.push(
            `${redeemer.tag}:${index}:${redeemer.exUnits.mem()}:${redeemer.exUnits.steps()}`
-@@ -3665,7 +3663,74 @@
+@@ -3665,7 +3663,244 @@
      txInfoTreasuryDonation: body.donation() ?? null
    };
  };
 -var canonicalTransaction = (tx) => CML.Transaction.from_cbor_bytes(tx.to_canonical_cbor_bytes());
++// Whether two encoded Plutus data items carry the same ordered value, as CML
++// JSON shows it: definite or indefinite lengths, integer widths, byte-string
++// chunks, bignum tags on any integer and constructor tag forms are ignored; map
++// entries keep their order. Returns undefined when an encoding read before the
++// first difference falls outside this subset, or when trailing bytes follow;
++// callers then compare CML JSON instead. Allocates nothing for these encodings
++// except big integers.
++var samePlutusDataValue = (left, right) => {
++  const outside = () => {
++    throw new Error("Plutus data encoding outside the value-comparison subset");
++  };
++  const cursor = (bytes) => ({ bytes, offset: 0, major: 0, info: 0, value: 0, chunk: 0, indefinite: false });
++  // Reads one initial byte and its argument into `major`, `info` and `value`;
++  // an indefinite length leaves `value` at -1.
++  const head = (c) => {
++    if (c.offset >= c.bytes.length) outside();
++    const initial = c.bytes[c.offset++];
++    c.major = initial >> 5;
++    c.info = initial & 31;
++    c.value = c.info === 31 ? -1 : argument(c, c.info);
++  };
++  const argument = (c, info) => {
++    if (info < 24) return info;
++    const size = info === 24 ? 1 : info === 25 ? 2 : info === 26 ? 4 : info === 27 ? 8 : outside();
++    if (c.offset + size > c.bytes.length) outside();
++    if (size < 8) {
++      let value = 0;
++      for (let i = 0; i < size; i++) value = value * 256 + c.bytes[c.offset++];
++      return value;
++    }
++    let value = 0n;
++    for (let i = 0; i < 8; i++) value = value << 8n | BigInt(c.bytes[c.offset++]);
++    return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value;
++  };
++  const length = (c) => {
++    if (typeof c.value !== "number" || c.offset + c.value > c.bytes.length) outside();
++    return c.value;
++  };
++  // Constructor alternative of a tag already read into `value`, or -1 when the
++  // tag is not a constructor; the field list must follow.
++  const alternative = (c) => {
++    const tag = c.value;
++    let alt = -1;
++    if (tag >= 121 && tag <= 127) alt = tag - 121;
++    else if (tag >= 1280 && tag <= 1400) alt = tag - 1280 + 7;
++    else if (tag === 102) {
++      if (c.offset >= c.bytes.length || c.bytes[c.offset++] !== 0x82) outside();
++      head(c);
++      if (c.major !== 0 || c.value === -1) outside();
++      alt = c.value;
++    } else return -1;
++    if (c.offset >= c.bytes.length || c.bytes[c.offset] >> 5 !== 4) outside();
++    return alt;
++  };
++  // Integer of a head already read: major 0 or 1, or bignum tag 2 or 3.
++  // Returns the value as a number when safe, otherwise as a bigint.
++  const integer = (c) => {
++    if (c.major !== 6 && c.value === -1) outside();
++    if (c.major === 0) return c.value;
++    if (c.major === 1) return typeof c.value === "number" ? -1 - c.value : -1n - c.value;
++    const negative = c.value === 3;
++    head(c);
++    if (c.major !== 2 || c.value === -1) outside();
++    const size = length(c);
++    let magnitude = 0n;
++    for (let i = 0; i < size; i++) magnitude = magnitude << 8n | BigInt(c.bytes[c.offset++]);
++    const value = negative ? -1n - magnitude : magnitude;
++    return value >= BigInt(Number.MIN_SAFE_INTEGER) && value <= BigInt(Number.MAX_SAFE_INTEGER)
++      ? Number(value) : value;
++  };
++  // Byte strings: `open` starts reading the string whose head was just read;
++  // `next` returns its next content byte, or -1 after its last one.
++  const open = (c) => {
++    c.indefinite = c.value === -1;
++    c.chunk = c.indefinite ? 0 : length(c);
++  };
++  const next = (c) => {
++    while (c.chunk === 0) {
++      if (!c.indefinite) return -1;
++      if (c.offset >= c.bytes.length) outside();
++      const initial = c.bytes[c.offset++];
++      if (initial === 0xff) {
++        c.indefinite = false;
++        return -1;
++      }
++      if (initial >> 5 !== 2 || (initial & 31) === 31) outside();
++      c.value = argument(c, initial & 31);
++      c.chunk = length(c);
++    }
++    c.chunk--;
++    return c.bytes[c.offset++];
++  };
++  // Compares the next item of each encoding.
++  const item = (a, b) => {
++    head(a);
++    head(b);
++    if (a.major === 6 && a.value !== 2 && a.value !== 3) {
++      const alt = alternative(a);
++      if (alt === -1) outside();
++      if (b.major !== 6) return false;
++      if (b.value === 2 || b.value === 3) return false;
++      const other = alternative(b);
++      if (other === -1) outside();
++      return alt === other && item(a, b);
++    }
++    if (b.major === 6 && b.value !== 2 && b.value !== 3) {
++      if (alternative(b) === -1) outside();
++      return false;
++    }
++    const aInteger = a.major === 0 || a.major === 1 || a.major === 6;
++    const bInteger = b.major === 0 || b.major === 1 || b.major === 6;
++    if (aInteger || bInteger) {
++      if (!aInteger || !bInteger) {
++        // Different kinds: still confirm the integer side is in the subset.
++        if (aInteger) integer(a); else if (a.major !== 2 && a.major !== 4 && a.major !== 5) outside();
++        if (bInteger) integer(b); else if (b.major !== 2 && b.major !== 4 && b.major !== 5) outside();
++        return false;
++      }
++      const x = integer(a), y = integer(b);
++      return typeof x === typeof y ? x === y : BigInt(x) === BigInt(y);
++    }
++    if (a.major !== b.major) {
++      if (a.major !== 2 && a.major !== 4 && a.major !== 5) outside();
++      if (b.major !== 2 && b.major !== 4 && b.major !== 5) outside();
++      return false;
++    }
++    if (a.major === 2) {
++      open(a);
++      open(b);
++      for (;;) {
++        const x = next(a), y = next(b);
++        if (x !== y) return false;
++        if (x === -1) return true;
++      }
++    }
++    if (a.major === 4 || a.major === 5) {
++      const width = a.major === 5 ? 2 : 1;
++      let aLeft = a.value, bLeft = b.value;
++      if ((aLeft !== -1 && typeof aLeft !== "number") || (bLeft !== -1 && typeof bLeft !== "number")) outside();
++      aLeft = aLeft === -1 ? -1 : aLeft * width;
++      bLeft = bLeft === -1 ? -1 : bLeft * width;
++      for (;;) {
++        const aEnd = aLeft === -1 ? a.offset < a.bytes.length && a.bytes[a.offset] === 0xff : aLeft === 0;
++        const bEnd = bLeft === -1 ? b.offset < b.bytes.length && b.bytes[b.offset] === 0xff : bLeft === 0;
++        if (aEnd || bEnd) {
++          if (aEnd && aLeft === -1) a.offset++;
++          if (bEnd && bLeft === -1) b.offset++;
++          return aEnd && bEnd;
++        }
++        if (!item(a, b)) return false;
++        if (aLeft !== -1) aLeft--;
++        if (bLeft !== -1) bLeft--;
++      }
++    }
++    outside();
++  };
++  try {
++    const a = cursor(left), b = cursor(right);
++    if (!item(a, b)) return false;
++    return a.offset === left.length && b.offset === right.length ? true : undefined;
++  } catch {
++    return undefined;
++  }
++};
 +// Canonicalize ledger containers without changing ordered Plutus maps or datum hashes.
 +var canonicalTransaction = (tx) => withCMLScope9((own) => {
 +  const canonical = own(CML.Transaction.from_cbor_bytes(tx.to_canonical_cbor_bytes()));
@@ -527,11 +861,17 @@ diff --git a/dist/index.js b/dist/index.js
 +  const canonicalRedeemers = own(witnesses.redeemers());
 +  if (originalRedeemers && canonicalRedeemers) {
 +    // Compact redeemer encoding is safe only when the ordered Plutus value is
-+    // unchanged. CML JSON retains map entry order and exact integer literals;
-+    // compare the strings directly, without a lossy JavaScript JSON parse.
-+    const preserveValue = (original, canonical) =>
-+      own(original.data()).to_json() === own(canonical.data()).to_json()
-+        ? canonical : original;
++    // unchanged. The encodings decide it when both stay in the subset that
++    // samePlutusDataValue reads; otherwise CML JSON decides: it retains map
++    // entry order and exact integer literals; compare the strings directly,
++    // without a lossy JavaScript JSON parse.
++    const preserveValue = (original, canonical) => {
++      const originalData = own(original.data());
++      const canonicalData = own(canonical.data());
++      const same = samePlutusDataValue(originalData.to_cbor_bytes(), canonicalData.to_cbor_bytes());
++      const sameValue = same !== undefined ? same : originalData.to_json() === canonicalData.to_json();
++      return sameValue ? canonical : original;
++    };
 +    const originalMap = own(originalRedeemers.as_map_redeemer_key_to_redeemer_val());
 +    const canonicalMap = own(canonicalRedeemers.as_map_redeemer_key_to_redeemer_val());
 +    if (originalMap && canonicalMap) {
@@ -559,7 +899,7 @@ diff --git a/dist/index.js b/dist/index.js
  var canonicalInfo = (tx, resolvedInputs) => Effect20.runSync(buildCanonicalRedeemerInfo(tx, resolvedInputs));
  var makeScriptContexts = (tx, options = {}) => {
    const txInfoId = CML.hash_transaction(tx.body()).to_hex();
-@@ -3788,7 +3853,7 @@
+@@ -3788,7 +4023,7 @@
        config.programs.push(program);
        return txSignBuilder;
      },
@@ -568,7 +908,7 @@ diff --git a/dist/index.js b/dist/index.js
      toTransaction: () => config.txComplete,
      toScriptContext: (purpose, options2) => makeScriptContext(
        config.txComplete,
-@@ -3881,6 +3946,7 @@
+@@ -3881,6 +4116,7 @@
    const hasPlutusScriptExecutions = Array.from(
      config.scripts.values()
    ).some((value) => value.type !== "Native");
@@ -576,7 +916,7 @@ diff --git a/dist/index.js b/dist/index.js
    let evaluatedScriptBody = yield* selectionAndEvaluation(
      walletInputs,
      changeAddress,
-@@ -3891,7 +3957,8 @@
+@@ -3891,7 +4127,8 @@
      false,
      internalOptions.bootstrapExUnits === true,
      internalOptions.knownRedeemerExUnits,
@@ -586,7 +926,7 @@ diff --git a/dist/index.js b/dist/index.js
    );
    if (hasPlutusScriptExecutions) {
      const estimatedFee = yield* estimateFee(config, true);
-@@ -3903,10 +3970,14 @@
+@@ -3903,10 +4140,14 @@
          )
        )
      );
@@ -602,7 +942,7 @@ diff --git a/dist/index.js b/dist/index.js
      );
      yield* applyCollateral(totalCollateral, collateralInput, changeAddress);
      evaluatedScriptBody = (yield* selectionAndEvaluation(
-@@ -3941,9 +4012,7 @@
+@@ -3941,9 +4182,7 @@
      catch: (error) => completeTxError(error)
    });
    const shouldCanonicalize = canonical || internalOptions.forceCanonical;
@@ -613,7 +953,7 @@ diff --git a/dist/index.js b/dist/index.js
    const normalizedTransaction = yield* Effect21.try({
      try: () => normalizeGovernanceRedeemerIndices(
        transactionBeforeScriptDataHash,
-@@ -3958,6 +4027,19 @@
+@@ -3958,6 +4197,19 @@
      config
    );
    if (transaction !== normalizedTransaction) normalizedTransaction.free();
@@ -633,7 +973,7 @@ diff --git a/dist/index.js b/dist/index.js
    const derivedInputs = deriveInputsFromTransaction(transaction);
    const derivedWalletInputs = derivedInputs.filter(
      (utxo) => utxo.address === walletAddress
-@@ -3983,12 +4065,12 @@
+@@ -3983,12 +4235,12 @@
      })
    );
  }).pipe(Effect21.catchAllDefect((cause) => new RunTimeError({ cause })));
@@ -648,7 +988,7 @@ diff --git a/dist/index.js b/dist/index.js
      }),
      Effect21.provide(Layer.succeed(TxConfig, { config: replayConfig })),
      // The completed transaction is copied out of the builder; nothing keeps
-@@ -4111,7 +4193,7 @@
+@@ -4111,7 +4363,7 @@
  });
  var canonicalInputFingerprint = (tx) => withCMLScope12((own) => {
    const canonical = own(
@@ -657,7 +997,7 @@ diff --git a/dist/index.js b/dist/index.js
    );
    const inputs = own(own(canonical.body()).inputs());
    return Array.from(
-@@ -4164,14 +4246,25 @@
+@@ -4164,14 +4416,25 @@
  });
  var complete = (options = {}) => Effect21.gen(function* () {
    const { config } = yield* TxConfig;
@@ -687,7 +1027,7 @@ diff --git a/dist/index.js b/dist/index.js
    const { config } = yield* TxConfig;
    const refScriptInputs = config.readInputs.filter(
      (input) => input.scriptRef
-@@ -4232,7 +4325,8 @@
+@@ -4232,7 +4495,8 @@
      localUPLCEval,
      evaluator,
      bootstrapExUnits,
@@ -697,7 +1037,7 @@ diff --git a/dist/index.js b/dist/index.js
    );
  }).pipe(Effect21.catchAllDefect((cause) => new RunTimeError({ cause })));
  var completePartialPrograms = () => Effect21.gen(function* () {
-@@ -4805,9 +4899,7 @@
+@@ -4805,9 +5069,7 @@
    return yield* buildEvaluationDraft(config, changeAddress);
  });
  var prepareRedeemerContextCandidate = (candidate, config) => Effect21.gen(function* () {
@@ -708,7 +1048,7 @@ diff --git a/dist/index.js b/dist/index.js
    const normalized = yield* Effect21.try({
      try: () => normalizeGovernanceRedeemerIndices(
        canonical,
-@@ -4888,7 +4980,7 @@
+@@ -4888,7 +5150,7 @@
      if (zeroed !== tx) zeroed.free();
    }
  };
@@ -717,7 +1057,7 @@ diff --git a/dist/index.js b/dist/index.js
    let previousFingerprint;
    let forceExplicitFee = config.minFee !== void 0;
    for (let attempt = 0; attempt < MAX_EVALUATION_ATTEMPTS; attempt++) {
-@@ -4910,8 +5002,11 @@
+@@ -4910,8 +5172,11 @@
        applyBootstrapRedeemerExUnits(
          redeemers,
          config.txBuilder,
@@ -731,7 +1071,7 @@ diff --git a/dist/index.js b/dist/index.js
        );
        freeCML(redeemers, candidate);
        return true;
-@@ -4939,6 +5034,9 @@
+@@ -4939,6 +5204,9 @@
        localUPLCEval,
        evaluator
      ).pipe(Effect21.ensuring(Effect21.sync(() => candidate.free())));
@@ -741,7 +1081,7 @@ diff --git a/dist/index.js b/dist/index.js
    }
    return yield* completeTxError(
      `Phase-two evaluation did not converge after ${MAX_EVALUATION_ATTEMPTS} attempts. Check for scripts that depend on transaction fees, change outputs, or execution-unit-driven transaction shape.`
-@@ -4961,33 +5059,81 @@
+@@ -4961,33 +5229,81 @@
    name: "provider",
    evaluate: ({ tx, additionalUTxOs }) => provider.evaluateTx(tx, additionalUTxOs)
  });

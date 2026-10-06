@@ -16,14 +16,18 @@ authorities for this repository change.
 
 Canonical completion preserves inline datums, witness datums, and redeemer data
 while sorting ledger containers. Redeemers keep compact canonical encodings when
-their ordered Plutus value is unchanged; otherwise their original data is retained.
-This preserves existing proof-size measurements. Recursively canonicalizing Plutus maps changes
-their ordered on-chain values and datum hashes: for example, it reverses the
-lexical token order `alpha`, `beta`. Output construction and minimum ADA use the
-preserved datum encoding. Delayed callbacks, evaluation, final completion, and
-canonical serialization use the same preservation helper; convergence checks
-also distinguish changes in ordered redeemer data. Both published formats are
-covered by `midgard-sdk/tests/lucid-inline-datum-preservation.test.ts`.
+their ordered Plutus value is unchanged; otherwise their original data is
+retained. The value check walks both CBOR encodings in step, ignoring encoding
+choices (lengths, integer widths, byte chunks, bignum and constructor tag forms)
+but not map order. Only when an encoding falls outside that subset does it
+compare CML JSON. This preserves existing proof-size measurements. Recursively
+canonicalizing Plutus maps changes their ordered on-chain values and datum
+hashes: for example, it reverses the lexical token order `alpha`, `beta`. Output
+construction and minimum ADA use the preserved datum encoding. Delayed
+callbacks, evaluation, final completion, and canonical serialization use the
+same preservation helper; convergence checks also distinguish changes in ordered
+redeemer data. Both published formats are covered by
+`midgard-sdk/tests/lucid-inline-datum-preservation.test.ts`.
 
 The Lucid patch also selects collateral from an explicit wallet
 `getCollateral()` method when supplied. Wallets without that method retain the
