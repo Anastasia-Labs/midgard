@@ -48,7 +48,8 @@
       "@lucid-evolution/wallet@0.2.3": "patches/@lucid-evolution__wallet@0.2.3.patch",
       "@lucid-evolution/provider@0.2.6": "patches/@lucid-evolution__provider@0.2.6.patch",
       "postgres@3.4.9": "patches/postgres@3.4.9.patch",
-      "@lucid-evolution/utils@0.1.75": "patches/@lucid-evolution__utils@0.1.75.patch"
+      "@lucid-evolution/utils@0.1.75": "patches/@lucid-evolution__utils@0.1.75.patch",
+      "@lucid-evolution/plutus@0.1.36": "patches/@lucid-evolution__plutus@0.1.36.patch"
     },
     "overrides": {
       "@anastasia-labs/cardano-multiplatform-lib-nodejs@6.2.0-1": "6.2.0-2",

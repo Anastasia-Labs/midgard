@@ -1,0 +1,738 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -248,6 +248,325 @@
+   castFrom,
+   castTo
+ };
++// Data.to and Data.from used to build or walk a CML value one node at a time.
++// Every node costs several WebAssembly calls, each of which copies the node's
++// whole subtree, and a CML map finds or replaces a key by scanning its entries,
++// so a conversion cost grew with the data's size times its depth, and with the
++// square of a map's size. These functions convert in one pass over the CBOR:
++// Data.to writes the hex of the bytes a value built node by node serializes to
++// and lets CML decode it once, and Data.from reads the bytes of the value CML
++// decoded. Both keep the node-by-node semantics of maps. CML keys are equal
++// exactly when their alternatives, fields, entries, integers and bytes are
++// equal, whatever their encodings, and a key's fingerprint spells out exactly
++// those, so keys are equal exactly when their fingerprints are. A map built by set keeps the
++// last value of equal keys at the position of the last of them, and a map read
++// by get gives every key the value of the first entry with an equal key. Any
++// value outside the shapes below, and any byte this reader does not expect,
++// leaves the conversion to the node-by-node path, which also keeps its errors.
++var PLUTUS_DATA_UNSUPPORTED = Symbol("unsupported Plutus data");
++var unsupportedPlutusData = () => {
++  throw PLUTUS_DATA_UNSUPPORTED;
++};
++var CBOR_UINT64_LIMIT = 18446744073709551616n;
++var CBOR_HEX_BYTES = /* @__PURE__ */ Array.from(
++  { length: 256 },
++  (_, byte) => byte.toString(16).padStart(2, "0")
++);
++var cborHeadHex = (major, argument) => {
++  const type = major << 5;
++  if (typeof argument === "bigint") {
++    if (argument >= 4294967296n)
++      return CBOR_HEX_BYTES[type | 27] + argument.toString(16).padStart(16, "0");
++    argument = Number(argument);
++  }
++  if (argument < 24) return CBOR_HEX_BYTES[type | argument];
++  if (argument < 256) return CBOR_HEX_BYTES[type | 24] + CBOR_HEX_BYTES[argument];
++  if (argument < 65536)
++    return CBOR_HEX_BYTES[type | 25] + argument.toString(16).padStart(4, "0");
++  if (argument < 4294967296)
++    return CBOR_HEX_BYTES[type | 26] + argument.toString(16).padStart(8, "0");
++  return cborHeadHex(major, BigInt(argument));
++};
++// A byte string is written as its hex, which must hold whole bytes; any other
++// string makes the node-by-node path refuse it.
++var PLUTUS_DATA_HEX_DIGITS = /^[0-9A-Fa-f]*$/;
++var plutusDataHex = (data) => {
++  if (data.length % 2 !== 0 || !PLUTUS_DATA_HEX_DIGITS.test(data))
++    unsupportedPlutusData();
++  return data;
++};
++var cborBytesHex = (hex) => {
++  if (hex.length <= 128) return cborHeadHex(2, hex.length / 2) + hex;
++  let encoded = "5f";
++  for (let start = 0; start < hex.length; start += 128) {
++    const chunk = hex.slice(start, start + 128);
++    encoded += cborHeadHex(2, chunk.length / 2) + chunk;
++  }
++  return encoded + "ff";
++};
++var magnitudeHex = (value) => {
++  const hex = value.toString(16);
++  return hex.length % 2 ? "0" + hex : hex;
++};
++var cborIntegerHex = (value) => {
++  if (value >= 0n)
++    return value < CBOR_UINT64_LIMIT ? cborHeadHex(0, value) : "c2" + cborBytesHex(magnitudeHex(value));
++  const magnitude = -1n - value;
++  return magnitude < CBOR_UINT64_LIMIT ? cborHeadHex(1, magnitude) : "c3" + cborBytesHex(magnitudeHex(magnitude));
++};
++var constrAlternative = (index) => {
++  if (typeof index === "number" && Number.isSafeInteger(index) && index >= 0)
++    return index;
++  if (typeof index === "bigint" && index >= 0n && index < CBOR_UINT64_LIMIT)
++    return index;
++  return unsupportedPlutusData();
++};
++var constrTagHex = (alternative) => {
++  if (alternative < 7) return cborHeadHex(6, 121 + Number(alternative));
++  if (alternative < 128) return cborHeadHex(6, 1280 + Number(alternative) - 7);
++  return cborHeadHex(6, 102) + "82" + cborHeadHex(0, alternative);
++};
++var plutusDataListHex = (items) => {
++  if (!(items instanceof Array)) unsupportedPlutusData();
++  let encoded = cborHeadHex(4, items.length);
++  for (let index = 0; index < items.length; index++)
++    encoded += plutusDataCborHex(items[index]);
++  return encoded;
++};
++// The entries of a map built by set from these entries, keyed by fingerprint.
++// The node-by-node path serializes every key and value, including those set
++// replaces, so a replaced value is still checked to be supported.
++var plutusMapEntries = (map) => {
++  const entries = /* @__PURE__ */ new Map();
++  for (const [key, value] of map.entries()) {
++    const fingerprint = plutusDataFingerprint(key);
++    const replaced = entries.get(fingerprint);
++    if (replaced !== void 0) {
++      plutusDataFingerprint(replaced[1]);
++      entries.delete(fingerprint);
++    }
++    entries.set(fingerprint, [key, value]);
++  }
++  return entries;
++};
++var plutusDataFingerprint = (data) => {
++  if (typeof data === "bigint") return "i" + data.toString();
++  if (typeof data === "string") return "b" + plutusDataHex(data).toLowerCase();
++  if (data instanceof Constr)
++    return "c" + constrAlternative(data.index).toString() + "(" + plutusDataListFingerprint(data.fields) + ")";
++  if (data instanceof Array) return "l(" + plutusDataListFingerprint(data) + ")";
++  if (data instanceof Map) {
++    const parts = [];
++    for (const [fingerprint, [, value]] of plutusMapEntries(data))
++      parts.push(fingerprint + ":" + plutusDataFingerprint(value));
++    return "m(" + parts.join(",") + ")";
++  }
++  return unsupportedPlutusData();
++};
++var plutusDataListFingerprint = (items) => {
++  if (!(items instanceof Array)) unsupportedPlutusData();
++  const parts = [];
++  for (let index = 0; index < items.length; index++)
++    parts.push(plutusDataFingerprint(items[index]));
++  return parts.join(",");
++};
++var plutusDataCborHex = (data) => {
++  if (typeof data === "bigint") return cborIntegerHex(data);
++  if (typeof data === "string") return cborBytesHex(plutusDataHex(data));
++  if (data instanceof Constr)
++    return constrTagHex(constrAlternative(data.index)) + plutusDataListHex(data.fields);
++  if (data instanceof Array) return plutusDataListHex(data);
++  if (data instanceof Map) {
++    const entries = plutusMapEntries(data);
++    let encoded = cborHeadHex(5, entries.size);
++    for (const [, [key, value]] of entries)
++      encoded += plutusDataCborHex(key) + plutusDataCborHex(value);
++    return encoded;
++  }
++  return unsupportedPlutusData();
++};
++// Node's hex codec is much faster than CML's and the JavaScript one for long
++// byte strings; hex that it might read differently never reaches it.
++var plutusDataBytesHex = (bytes) => typeof Buffer === "function" ? Buffer.from(bytes.buffer, bytes.byteOffset, bytes.length).toString("hex") : (0, import_core_utils.toHex)(bytes);
++var plutusDataRawBytes = (raw) => typeof Buffer === "function" && typeof raw === "string" && raw.length % 2 === 0 && PLUTUS_DATA_HEX_DIGITS.test(raw) ? Buffer.from(raw, "hex") : void 0;
++var plutusDataCbor = (data) => {
++  let encoded;
++  try {
++    encoded = plutusDataCborHex(data);
++  } catch (error) {
++    if (error === PLUTUS_DATA_UNSUPPORTED || error instanceof RangeError) return void 0;
++    throw error;
++  }
++  return typeof Buffer === "function" ? Buffer.from(encoded, "hex") : (0, import_core_utils.fromHex)(encoded);
++};
++var readCborHead = (bytes, cursor) => {
++  if (cursor.offset >= bytes.length) unsupportedPlutusData();
++  const initial = bytes[cursor.offset++];
++  const info = initial & 31;
++  const width = info < 24 ? 0 : info === 24 ? 1 : info === 25 ? 2 : info === 26 ? 4 : info === 27 ? 8 : info === 31 ? 0 : -1;
++  if (width < 0 || cursor.offset + width > bytes.length) unsupportedPlutusData();
++  let argument = info < 24 ? info : 0;
++  if (width === 8) {
++    argument = 0n;
++    for (let index = 0; index < 8; index++)
++      argument = argument << 8n | BigInt(bytes[cursor.offset + index]);
++  } else
++    for (let index = 0; index < width; index++)
++      argument = argument * 256 + bytes[cursor.offset + index];
++  cursor.offset += width;
++  return { major: initial >> 5, indefinite: info === 31, argument };
++};
++var atCborBreak = (bytes, cursor) => {
++  if (cursor.offset >= bytes.length) unsupportedPlutusData();
++  if (bytes[cursor.offset] !== 255) return false;
++  cursor.offset++;
++  return true;
++};
++var readCborLength = (head) => {
++  const length = Number(head.argument);
++  if (!Number.isSafeInteger(length)) unsupportedPlutusData();
++  return length;
++};
++var readCborBytes = (bytes, cursor, head) => {
++  if (head.major !== 2) unsupportedPlutusData();
++  if (!head.indefinite) {
++    const length = readCborLength(head);
++    if (cursor.offset + length > bytes.length) unsupportedPlutusData();
++    cursor.offset += length;
++    return bytes.subarray(cursor.offset - length, cursor.offset);
++  }
++  const chunks = [];
++  while (!atCborBreak(bytes, cursor)) {
++    const chunk = readCborHead(bytes, cursor);
++    if (chunk.indefinite) unsupportedPlutusData();
++    chunks.push(readCborBytes(bytes, cursor, chunk));
++  }
++  const joined = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.length, 0));
++  let offset = 0;
++  for (const chunk of chunks) {
++    joined.set(chunk, offset);
++    offset += chunk.length;
++  }
++  return joined;
++};
++var readCborItems = (bytes, cursor, head, readItem) => {
++  const items = [];
++  if (head.indefinite) {
++    while (!atCborBreak(bytes, cursor)) items.push(readItem(bytes, cursor));
++  } else {
++    const length = readCborLength(head);
++    for (let index = 0; index < length; index++) items.push(readItem(bytes, cursor));
++  }
++  return items;
++};
++var readCborUnsigned = (bytes, cursor) => {
++  const head = readCborHead(bytes, cursor);
++  if (head.major !== 0) unsupportedPlutusData();
++  return BigInt(head.argument);
++};
++var readPlutusDataItem = (bytes, cursor, readItem, build) => {
++  const head = readCborHead(bytes, cursor);
++  switch (head.major) {
++    case 0:
++      return build.integer(BigInt(head.argument));
++    case 1:
++      return build.integer(-1n - BigInt(head.argument));
++    case 2:
++      return build.bytes(readCborBytes(bytes, cursor, head));
++    case 4:
++      return build.list(readCborItems(bytes, cursor, head, readItem));
++    case 5:
++      return build.map(bytes, cursor, head);
++    case 6: {
++      if (head.indefinite || typeof head.argument === "bigint") unsupportedPlutusData();
++      const tag = head.argument;
++      if (tag === 2 || tag === 3) {
++        const magnitude = readCborBytes(bytes, cursor, readCborHead(bytes, cursor));
++        const value = magnitude.length === 0 ? 0n : BigInt("0x" + plutusDataBytesHex(magnitude));
++        return build.integer(tag === 2 ? value : -1n - value);
++      }
++      let alternative;
++      let pair = void 0;
++      if (tag >= 121 && tag <= 127) alternative = BigInt(tag - 121);
++      else if (tag >= 1280 && tag <= 1400) alternative = BigInt(tag - 1280 + 7);
++      else if (tag === 102) {
++        pair = readCborHead(bytes, cursor);
++        if (pair.major !== 4 || !pair.indefinite && pair.argument !== 2) unsupportedPlutusData();
++        alternative = readCborUnsigned(bytes, cursor);
++      } else unsupportedPlutusData();
++      const fieldsHead = readCborHead(bytes, cursor);
++      if (fieldsHead.major !== 4) unsupportedPlutusData();
++      const fields = readCborItems(bytes, cursor, fieldsHead, readItem);
++      if (pair !== void 0 && pair.indefinite && !atCborBreak(bytes, cursor)) unsupportedPlutusData();
++      return build.constr(alternative, fields);
++    }
++    default:
++      return unsupportedPlutusData();
++  }
++};
++// Fingerprints spell out the alternatives, fields, entries, integers and bytes.
++var readFingerprint = (bytes, cursor) => readPlutusDataItem(bytes, cursor, readFingerprint, {
++  integer: (value) => "i" + value.toString(),
++  bytes: (value) => "b" + plutusDataBytesHex(value),
++  list: (items) => "l(" + items.join(",") + ")",
++  constr: (alternative, fields) => "c" + alternative.toString() + "(" + fields.join(",") + ")",
++  map: (bytes2, cursor2, head) => "m(" + readCborItems(
++    bytes2,
++    cursor2,
++    head,
++    (bytes3, cursor3) => readFingerprint(bytes3, cursor3) + ":" + readFingerprint(bytes3, cursor3)
++  ).join(",") + ")"
++});
++var readPlutusData = (bytes, cursor) => readPlutusDataItem(bytes, cursor, readPlutusData, {
++  integer: (value) => value,
++  bytes: (value) => plutusDataBytesHex(value),
++  list: (items) => items,
++  constr: (alternative, fields) => new Constr(parseInt(alternative.toString()), fields),
++  map: (bytes2, cursor2, head) => {
++    const entries = readCborItems(bytes2, cursor2, head, (bytes3, cursor3) => {
++      const keyStart = cursor3.offset;
++      const fingerprint = readFingerprint(bytes3, cursor3);
++      const valueStart = cursor3.offset;
++      skipPlutusData(bytes3, cursor3);
++      return { keyStart, fingerprint, valueStart };
++    });
++    const end = cursor2.offset;
++    const firstValues = /* @__PURE__ */ new Map();
++    for (const entry of entries)
++      if (!firstValues.has(entry.fingerprint))
++        firstValues.set(entry.fingerprint, entry.valueStart);
++    const map = /* @__PURE__ */ new Map();
++    for (const entry of entries) {
++      const key = readPlutusData(bytes2, { offset: entry.keyStart });
++      const value = readPlutusData(bytes2, { offset: firstValues.get(entry.fingerprint) });
++      map.set(key, value);
++    }
++    cursor2.offset = end;
++    return map;
++  }
++});
++var skipPlutusData = (bytes, cursor) => readPlutusDataItem(bytes, cursor, skipPlutusData, {
++  integer: () => void 0,
++  bytes: () => void 0,
++  list: () => void 0,
++  constr: () => void 0,
++  map: (bytes2, cursor2, head) => {
++    readCborItems(bytes2, cursor2, head, (bytes3, cursor3) => {
++      skipPlutusData(bytes3, cursor3);
++      skipPlutusData(bytes3, cursor3);
++    });
++  }
++});
++var plutusDataFromCbor = (bytes) => {
++  const cursor = { offset: 0 };
++  try {
++    const data = readPlutusData(bytes, cursor);
++    return cursor.offset === bytes.length ? { data } : void 0;
++  } catch (error) {
++    if (error === PLUTUS_DATA_UNSUPPORTED || error instanceof RangeError) return void 0;
++    throw error;
++  }
++};
+ function to(data, type, options = {}) {
+   const { canonical = false } = options;
+   function serialize(data2) {
+@@ -285,6 +604,16 @@
+     }
+   }
+   const d = type ? castTo(data, type) : data;
++  const encoded = plutusDataCbor(d);
++  if (encoded !== void 0) {
++    try {
++      return (0, import_core_utils.withCMLScope)((own) => {
++        const serialized = own(CML.PlutusData.from_cbor_bytes(encoded));
++        return canonical ? serialized.to_canonical_cbor_hex() : own(serialized.to_cardano_node_format()).to_cbor_hex();
++      });
++    } catch {
++    }
++  }
+   return (0, import_core_utils.withCMLScope)((own) => {
+     const serialized = own(serialize(d));
+     return canonical ? serialized.to_canonical_cbor_hex() : own(serialized.to_cardano_node_format()).to_cbor_hex();
+@@ -325,9 +654,19 @@
+       throw new Error("Unsupported type");
+     });
+   }
+-  const data = (0, import_core_utils.withCMLScope)(
+-    (own) => deserialize(own(CML.PlutusData.from_cbor_hex(raw)))
+-  );
++  const data = (0, import_core_utils.withCMLScope)((own) => {
++    const rawBytes = plutusDataRawBytes(raw);
++    let plutusData;
++    if (rawBytes !== void 0) {
++      try {
++        plutusData = own(CML.PlutusData.from_cbor_bytes(rawBytes));
++      } catch {
++      }
++    }
++    if (plutusData === void 0) plutusData = own(CML.PlutusData.from_cbor_hex(raw));
++    const decoded = plutusDataFromCbor(plutusData.to_cbor_bytes());
++    return decoded === void 0 ? deserialize(plutusData) : decoded.data;
++  });
+   return type ? castFrom(data, type) : data;
+ }
+ function fromJson(json) {
+diff --git a/dist/index.js b/dist/index.js
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -241,6 +241,325 @@
+   castFrom,
+   castTo
+ };
++// Data.to and Data.from used to build or walk a CML value one node at a time.
++// Every node costs several WebAssembly calls, each of which copies the node's
++// whole subtree, and a CML map finds or replaces a key by scanning its entries,
++// so a conversion cost grew with the data's size times its depth, and with the
++// square of a map's size. These functions convert in one pass over the CBOR:
++// Data.to writes the hex of the bytes a value built node by node serializes to
++// and lets CML decode it once, and Data.from reads the bytes of the value CML
++// decoded. Both keep the node-by-node semantics of maps. CML keys are equal
++// exactly when their alternatives, fields, entries, integers and bytes are
++// equal, whatever their encodings, and a key's fingerprint spells out exactly
++// those, so keys are equal exactly when their fingerprints are. A map built by set keeps the
++// last value of equal keys at the position of the last of them, and a map read
++// by get gives every key the value of the first entry with an equal key. Any
++// value outside the shapes below, and any byte this reader does not expect,
++// leaves the conversion to the node-by-node path, which also keeps its errors.
++var PLUTUS_DATA_UNSUPPORTED = Symbol("unsupported Plutus data");
++var unsupportedPlutusData = () => {
++  throw PLUTUS_DATA_UNSUPPORTED;
++};
++var CBOR_UINT64_LIMIT = 18446744073709551616n;
++var CBOR_HEX_BYTES = /* @__PURE__ */ Array.from(
++  { length: 256 },
++  (_, byte) => byte.toString(16).padStart(2, "0")
++);
++var cborHeadHex = (major, argument) => {
++  const type = major << 5;
++  if (typeof argument === "bigint") {
++    if (argument >= 4294967296n)
++      return CBOR_HEX_BYTES[type | 27] + argument.toString(16).padStart(16, "0");
++    argument = Number(argument);
++  }
++  if (argument < 24) return CBOR_HEX_BYTES[type | argument];
++  if (argument < 256) return CBOR_HEX_BYTES[type | 24] + CBOR_HEX_BYTES[argument];
++  if (argument < 65536)
++    return CBOR_HEX_BYTES[type | 25] + argument.toString(16).padStart(4, "0");
++  if (argument < 4294967296)
++    return CBOR_HEX_BYTES[type | 26] + argument.toString(16).padStart(8, "0");
++  return cborHeadHex(major, BigInt(argument));
++};
++// A byte string is written as its hex, which must hold whole bytes; any other
++// string makes the node-by-node path refuse it.
++var PLUTUS_DATA_HEX_DIGITS = /^[0-9A-Fa-f]*$/;
++var plutusDataHex = (data) => {
++  if (data.length % 2 !== 0 || !PLUTUS_DATA_HEX_DIGITS.test(data))
++    unsupportedPlutusData();
++  return data;
++};
++var cborBytesHex = (hex) => {
++  if (hex.length <= 128) return cborHeadHex(2, hex.length / 2) + hex;
++  let encoded = "5f";
++  for (let start = 0; start < hex.length; start += 128) {
++    const chunk = hex.slice(start, start + 128);
++    encoded += cborHeadHex(2, chunk.length / 2) + chunk;
++  }
++  return encoded + "ff";
++};
++var magnitudeHex = (value) => {
++  const hex = value.toString(16);
++  return hex.length % 2 ? "0" + hex : hex;
++};
++var cborIntegerHex = (value) => {
++  if (value >= 0n)
++    return value < CBOR_UINT64_LIMIT ? cborHeadHex(0, value) : "c2" + cborBytesHex(magnitudeHex(value));
++  const magnitude = -1n - value;
++  return magnitude < CBOR_UINT64_LIMIT ? cborHeadHex(1, magnitude) : "c3" + cborBytesHex(magnitudeHex(magnitude));
++};
++var constrAlternative = (index) => {
++  if (typeof index === "number" && Number.isSafeInteger(index) && index >= 0)
++    return index;
++  if (typeof index === "bigint" && index >= 0n && index < CBOR_UINT64_LIMIT)
++    return index;
++  return unsupportedPlutusData();
++};
++var constrTagHex = (alternative) => {
++  if (alternative < 7) return cborHeadHex(6, 121 + Number(alternative));
++  if (alternative < 128) return cborHeadHex(6, 1280 + Number(alternative) - 7);
++  return cborHeadHex(6, 102) + "82" + cborHeadHex(0, alternative);
++};
++var plutusDataListHex = (items) => {
++  if (!(items instanceof Array)) unsupportedPlutusData();
++  let encoded = cborHeadHex(4, items.length);
++  for (let index = 0; index < items.length; index++)
++    encoded += plutusDataCborHex(items[index]);
++  return encoded;
++};
++// The entries of a map built by set from these entries, keyed by fingerprint.
++// The node-by-node path serializes every key and value, including those set
++// replaces, so a replaced value is still checked to be supported.
++var plutusMapEntries = (map) => {
++  const entries = /* @__PURE__ */ new Map();
++  for (const [key, value] of map.entries()) {
++    const fingerprint = plutusDataFingerprint(key);
++    const replaced = entries.get(fingerprint);
++    if (replaced !== void 0) {
++      plutusDataFingerprint(replaced[1]);
++      entries.delete(fingerprint);
++    }
++    entries.set(fingerprint, [key, value]);
++  }
++  return entries;
++};
++var plutusDataFingerprint = (data) => {
++  if (typeof data === "bigint") return "i" + data.toString();
++  if (typeof data === "string") return "b" + plutusDataHex(data).toLowerCase();
++  if (data instanceof Constr)
++    return "c" + constrAlternative(data.index).toString() + "(" + plutusDataListFingerprint(data.fields) + ")";
++  if (data instanceof Array) return "l(" + plutusDataListFingerprint(data) + ")";
++  if (data instanceof Map) {
++    const parts = [];
++    for (const [fingerprint, [, value]] of plutusMapEntries(data))
++      parts.push(fingerprint + ":" + plutusDataFingerprint(value));
++    return "m(" + parts.join(",") + ")";
++  }
++  return unsupportedPlutusData();
++};
++var plutusDataListFingerprint = (items) => {
++  if (!(items instanceof Array)) unsupportedPlutusData();
++  const parts = [];
++  for (let index = 0; index < items.length; index++)
++    parts.push(plutusDataFingerprint(items[index]));
++  return parts.join(",");
++};
++var plutusDataCborHex = (data) => {
++  if (typeof data === "bigint") return cborIntegerHex(data);
++  if (typeof data === "string") return cborBytesHex(plutusDataHex(data));
++  if (data instanceof Constr)
++    return constrTagHex(constrAlternative(data.index)) + plutusDataListHex(data.fields);
++  if (data instanceof Array) return plutusDataListHex(data);
++  if (data instanceof Map) {
++    const entries = plutusMapEntries(data);
++    let encoded = cborHeadHex(5, entries.size);
++    for (const [, [key, value]] of entries)
++      encoded += plutusDataCborHex(key) + plutusDataCborHex(value);
++    return encoded;
++  }
++  return unsupportedPlutusData();
++};
++// Node's hex codec is much faster than CML's and the JavaScript one for long
++// byte strings; hex that it might read differently never reaches it.
++var plutusDataBytesHex = (bytes) => typeof Buffer === "function" ? Buffer.from(bytes.buffer, bytes.byteOffset, bytes.length).toString("hex") : toHex(bytes);
++var plutusDataRawBytes = (raw) => typeof Buffer === "function" && typeof raw === "string" && raw.length % 2 === 0 && PLUTUS_DATA_HEX_DIGITS.test(raw) ? Buffer.from(raw, "hex") : void 0;
++var plutusDataCbor = (data) => {
++  let encoded;
++  try {
++    encoded = plutusDataCborHex(data);
++  } catch (error) {
++    if (error === PLUTUS_DATA_UNSUPPORTED || error instanceof RangeError) return void 0;
++    throw error;
++  }
++  return typeof Buffer === "function" ? Buffer.from(encoded, "hex") : fromHex(encoded);
++};
++var readCborHead = (bytes, cursor) => {
++  if (cursor.offset >= bytes.length) unsupportedPlutusData();
++  const initial = bytes[cursor.offset++];
++  const info = initial & 31;
++  const width = info < 24 ? 0 : info === 24 ? 1 : info === 25 ? 2 : info === 26 ? 4 : info === 27 ? 8 : info === 31 ? 0 : -1;
++  if (width < 0 || cursor.offset + width > bytes.length) unsupportedPlutusData();
++  let argument = info < 24 ? info : 0;
++  if (width === 8) {
++    argument = 0n;
++    for (let index = 0; index < 8; index++)
++      argument = argument << 8n | BigInt(bytes[cursor.offset + index]);
++  } else
++    for (let index = 0; index < width; index++)
++      argument = argument * 256 + bytes[cursor.offset + index];
++  cursor.offset += width;
++  return { major: initial >> 5, indefinite: info === 31, argument };
++};
++var atCborBreak = (bytes, cursor) => {
++  if (cursor.offset >= bytes.length) unsupportedPlutusData();
++  if (bytes[cursor.offset] !== 255) return false;
++  cursor.offset++;
++  return true;
++};
++var readCborLength = (head) => {
++  const length = Number(head.argument);
++  if (!Number.isSafeInteger(length)) unsupportedPlutusData();
++  return length;
++};
++var readCborBytes = (bytes, cursor, head) => {
++  if (head.major !== 2) unsupportedPlutusData();
++  if (!head.indefinite) {
++    const length = readCborLength(head);
++    if (cursor.offset + length > bytes.length) unsupportedPlutusData();
++    cursor.offset += length;
++    return bytes.subarray(cursor.offset - length, cursor.offset);
++  }
++  const chunks = [];
++  while (!atCborBreak(bytes, cursor)) {
++    const chunk = readCborHead(bytes, cursor);
++    if (chunk.indefinite) unsupportedPlutusData();
++    chunks.push(readCborBytes(bytes, cursor, chunk));
++  }
++  const joined = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.length, 0));
++  let offset = 0;
++  for (const chunk of chunks) {
++    joined.set(chunk, offset);
++    offset += chunk.length;
++  }
++  return joined;
++};
++var readCborItems = (bytes, cursor, head, readItem) => {
++  const items = [];
++  if (head.indefinite) {
++    while (!atCborBreak(bytes, cursor)) items.push(readItem(bytes, cursor));
++  } else {
++    const length = readCborLength(head);
++    for (let index = 0; index < length; index++) items.push(readItem(bytes, cursor));
++  }
++  return items;
++};
++var readCborUnsigned = (bytes, cursor) => {
++  const head = readCborHead(bytes, cursor);
++  if (head.major !== 0) unsupportedPlutusData();
++  return BigInt(head.argument);
++};
++var readPlutusDataItem = (bytes, cursor, readItem, build) => {
++  const head = readCborHead(bytes, cursor);
++  switch (head.major) {
++    case 0:
++      return build.integer(BigInt(head.argument));
++    case 1:
++      return build.integer(-1n - BigInt(head.argument));
++    case 2:
++      return build.bytes(readCborBytes(bytes, cursor, head));
++    case 4:
++      return build.list(readCborItems(bytes, cursor, head, readItem));
++    case 5:
++      return build.map(bytes, cursor, head);
++    case 6: {
++      if (head.indefinite || typeof head.argument === "bigint") unsupportedPlutusData();
++      const tag = head.argument;
++      if (tag === 2 || tag === 3) {
++        const magnitude = readCborBytes(bytes, cursor, readCborHead(bytes, cursor));
++        const value = magnitude.length === 0 ? 0n : BigInt("0x" + plutusDataBytesHex(magnitude));
++        return build.integer(tag === 2 ? value : -1n - value);
++      }
++      let alternative;
++      let pair = void 0;
++      if (tag >= 121 && tag <= 127) alternative = BigInt(tag - 121);
++      else if (tag >= 1280 && tag <= 1400) alternative = BigInt(tag - 1280 + 7);
++      else if (tag === 102) {
++        pair = readCborHead(bytes, cursor);
++        if (pair.major !== 4 || !pair.indefinite && pair.argument !== 2) unsupportedPlutusData();
++        alternative = readCborUnsigned(bytes, cursor);
++      } else unsupportedPlutusData();
++      const fieldsHead = readCborHead(bytes, cursor);
++      if (fieldsHead.major !== 4) unsupportedPlutusData();
++      const fields = readCborItems(bytes, cursor, fieldsHead, readItem);
++      if (pair !== void 0 && pair.indefinite && !atCborBreak(bytes, cursor)) unsupportedPlutusData();
++      return build.constr(alternative, fields);
++    }
++    default:
++      return unsupportedPlutusData();
++  }
++};
++// Fingerprints spell out the alternatives, fields, entries, integers and bytes.
++var readFingerprint = (bytes, cursor) => readPlutusDataItem(bytes, cursor, readFingerprint, {
++  integer: (value) => "i" + value.toString(),
++  bytes: (value) => "b" + plutusDataBytesHex(value),
++  list: (items) => "l(" + items.join(",") + ")",
++  constr: (alternative, fields) => "c" + alternative.toString() + "(" + fields.join(",") + ")",
++  map: (bytes2, cursor2, head) => "m(" + readCborItems(
++    bytes2,
++    cursor2,
++    head,
++    (bytes3, cursor3) => readFingerprint(bytes3, cursor3) + ":" + readFingerprint(bytes3, cursor3)
++  ).join(",") + ")"
++});
++var readPlutusData = (bytes, cursor) => readPlutusDataItem(bytes, cursor, readPlutusData, {
++  integer: (value) => value,
++  bytes: (value) => plutusDataBytesHex(value),
++  list: (items) => items,
++  constr: (alternative, fields) => new Constr(parseInt(alternative.toString()), fields),
++  map: (bytes2, cursor2, head) => {
++    const entries = readCborItems(bytes2, cursor2, head, (bytes3, cursor3) => {
++      const keyStart = cursor3.offset;
++      const fingerprint = readFingerprint(bytes3, cursor3);
++      const valueStart = cursor3.offset;
++      skipPlutusData(bytes3, cursor3);
++      return { keyStart, fingerprint, valueStart };
++    });
++    const end = cursor2.offset;
++    const firstValues = /* @__PURE__ */ new Map();
++    for (const entry of entries)
++      if (!firstValues.has(entry.fingerprint))
++        firstValues.set(entry.fingerprint, entry.valueStart);
++    const map = /* @__PURE__ */ new Map();
++    for (const entry of entries) {
++      const key = readPlutusData(bytes2, { offset: entry.keyStart });
++      const value = readPlutusData(bytes2, { offset: firstValues.get(entry.fingerprint) });
++      map.set(key, value);
++    }
++    cursor2.offset = end;
++    return map;
++  }
++});
++var skipPlutusData = (bytes, cursor) => readPlutusDataItem(bytes, cursor, skipPlutusData, {
++  integer: () => void 0,
++  bytes: () => void 0,
++  list: () => void 0,
++  constr: () => void 0,
++  map: (bytes2, cursor2, head) => {
++    readCborItems(bytes2, cursor2, head, (bytes3, cursor3) => {
++      skipPlutusData(bytes3, cursor3);
++      skipPlutusData(bytes3, cursor3);
++    });
++  }
++});
++var plutusDataFromCbor = (bytes) => {
++  const cursor = { offset: 0 };
++  try {
++    const data = readPlutusData(bytes, cursor);
++    return cursor.offset === bytes.length ? { data } : void 0;
++  } catch (error) {
++    if (error === PLUTUS_DATA_UNSUPPORTED || error instanceof RangeError) return void 0;
++    throw error;
++  }
++};
+ function to(data, type, options = {}) {
+   const { canonical = false } = options;
+   function serialize(data2) {
+@@ -278,6 +597,16 @@
+     }
+   }
+   const d = type ? castTo(data, type) : data;
++  const encoded = plutusDataCbor(d);
++  if (encoded !== void 0) {
++    try {
++      return withCMLScope((own) => {
++        const serialized = own(CML.PlutusData.from_cbor_bytes(encoded));
++        return canonical ? serialized.to_canonical_cbor_hex() : own(serialized.to_cardano_node_format()).to_cbor_hex();
++      });
++    } catch {
++    }
++  }
+   return withCMLScope((own) => {
+     const serialized = own(serialize(d));
+     return canonical ? serialized.to_canonical_cbor_hex() : own(serialized.to_cardano_node_format()).to_cbor_hex();
+@@ -318,9 +647,19 @@
+       throw new Error("Unsupported type");
+     });
+   }
+-  const data = withCMLScope(
+-    (own) => deserialize(own(CML.PlutusData.from_cbor_hex(raw)))
+-  );
++  const data = withCMLScope((own) => {
++    const rawBytes = plutusDataRawBytes(raw);
++    let plutusData;
++    if (rawBytes !== void 0) {
++      try {
++        plutusData = own(CML.PlutusData.from_cbor_bytes(rawBytes));
++      } catch {
++      }
++    }
++    if (plutusData === void 0) plutusData = own(CML.PlutusData.from_cbor_hex(raw));
++    const decoded = plutusDataFromCbor(plutusData.to_cbor_bytes());
++    return decoded === void 0 ? deserialize(plutusData) : decoded.data;
++  });
+   return type ? castFrom(data, type) : data;
+ }
+ function fromJson(json) {

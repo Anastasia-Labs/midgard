@@ -85,6 +85,28 @@ The production SDK lifecycle tests in
 transactions with nonzero measured execution, fee refusal, and mainnet transaction
 limits. These tests use the canonical delayed-redeemer callbacks throughout.
 
+`@lucid-evolution__plutus@0.1.36.patch` stops `Data.to` and `Data.from` from
+scanning a map once per entry. The unpatched conversion builds and reads CML
+objects node by node, and a CML `PlutusMap` reaches a value only through
+`get(key)`, while `set(key, value)` first removes an equal key; both scan the
+entries, so converting a 1,287-entry map took about 13 ms each way.
+`Data.to` now writes the CBOR in JavaScript, with each map's entries as
+`PlutusMap.set` leaves them (a repeated key keeps its last value, at its last
+position), and CML decodes it once to produce the canonical or node-format
+output as before. `Data.from` still parses through CML, then reads CML's
+encoding in JavaScript; a repeated map key takes the value of its first
+occurrence, as `PlutusMap.get` does. Both directions use Node's hex codec, which
+is much faster than CML's for long byte strings, and only on hex of whole bytes;
+a parse it fails is repeated by `CML.PlutusData.from_cbor_hex` for its error.
+Keys compare by alternative, fields, entries, integer and bytes, ignoring
+encoding choices, as CML's equality does. A value or encoding outside that subset, or any failure, takes the
+unpatched path, so errors are unchanged. Both module formats are patched.
+`midgard-sdk/tests/lucid-plutus-data-conversion.test.ts` checks both against
+the unpatched algorithm, restated over CML, on random and boundary values:
+duplicate and differently encoded keys, key order, nested, empty and
+over-64-entry maps, both constructor tag forms, bignums, chunked bytes and
+invalid input.
+
 The existing `blake2b@2.1.4.patch` remains independently managed.
 
 `@lucid-evolution__provider@0.2.6.patch` fixes emulator verification of native

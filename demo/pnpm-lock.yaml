@@ -20,6 +20,9 @@ patchedDependencies:
   '@lucid-evolution/lucid@0.6.7':
     hash: udaxqrbqwgljpvgibf7uhadiwe
     path: patches/@lucid-evolution__lucid@0.6.7.patch
+  '@lucid-evolution/plutus@0.1.36':
+    hash: d77kqcspoaoobkm2l7ovveubp4
+    path: patches/@lucid-evolution__plutus@0.1.36.patch
   '@lucid-evolution/provider@0.2.6':
     hash: rrp4g4poadlgztz4ylyoeyzzdi
     path: patches/@lucid-evolution__provider@0.2.6.patch
@@ -4966,7 +4969,7 @@ snapshots:
       '@emurgo/cardano-message-signing-nodejs': 1.1.0
       '@lucid-evolution/core-types': 0.3.0(patch_hash=mcchjj6exr3is4hwy7rmezpwfy)
       '@lucid-evolution/core-utils': 0.1.17
-      '@lucid-evolution/plutus': 0.1.36
+      '@lucid-evolution/plutus': 0.1.36(patch_hash=d77kqcspoaoobkm2l7ovveubp4)
       '@lucid-evolution/provider': 0.2.6(patch_hash=rrp4g4poadlgztz4ylyoeyzzdi)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(encoding@0.1.13)
       '@lucid-evolution/sign_data': 0.1.32
       '@lucid-evolution/tx-graph': 0.0.7(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(encoding@0.1.13)
@@ -4986,7 +4989,7 @@ snapshots:
       - rxjs
       - utf-8-validate
 
-  '@lucid-evolution/plutus@0.1.36':
+  '@lucid-evolution/plutus@0.1.36(patch_hash=d77kqcspoaoobkm2l7ovveubp4)':
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-2
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-2
@@ -5062,7 +5065,7 @@ snapshots:
       '@lucid-evolution/core-types': 0.3.0(patch_hash=mcchjj6exr3is4hwy7rmezpwfy)
       '@lucid-evolution/core-utils': 0.1.17
       '@lucid-evolution/crc8': 0.1.8
-      '@lucid-evolution/plutus': 0.1.36
+      '@lucid-evolution/plutus': 0.1.36(patch_hash=d77kqcspoaoobkm2l7ovveubp4)
       '@lucid-evolution/uplc': file:vendor/uplc-0.2.23-midgard.1.tgz
       bip39: 3.1.0
       cbor-x: 1.6.4
