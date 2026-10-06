@@ -81,6 +81,7 @@ const scenarios = {
         "midgard-validation",
         "midgard-fault-proofs",
         "midgard-watcher",
+        "test-durations",
         "native-mpf",
         "lint",
         "da-committee-node",
