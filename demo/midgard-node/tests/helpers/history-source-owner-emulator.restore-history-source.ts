@@ -101,6 +101,25 @@ const recreateLucid = async (
   return lucid;
 };
 
+/** Freezes `value` and every object reachable through its data properties.
+ * Byte arrays cannot be frozen and are left as they are. */
+const deepFreeze = <T>(value: T, seen = new WeakSet<object>()): T => {
+  if (
+    (typeof value !== "object" && typeof value !== "function") ||
+    value === null ||
+    ArrayBuffer.isView(value) ||
+    seen.has(value)
+  )
+    return value;
+  seen.add(value);
+  for (const key of Reflect.ownKeys(value)) {
+    const property = Object.getOwnPropertyDescriptor(value, key);
+    if (property !== undefined && "value" in property)
+      deepFreeze(property.value, seen);
+  }
+  return Object.freeze(value);
+};
+
 type DeployedHistorySource = Awaited<ReturnType<typeof deployHistorySource>>;
 
 /**
@@ -267,9 +286,11 @@ const deployHistorySource = async (
       publisher: await pinnedWalletUtxos(publisherLucid, emulator),
       depositor: await pinnedWalletUtxos(depositorLucid, emulator),
     },
-    // Validators carry applied scripts only and are never mutated; every
-    // other deployment record is copied per lifecycle.
-    contracts,
+    // Validators carry applied scripts only and every lifecycle of the file
+    // shares them, so they are frozen: a mutation throws instead of leaking
+    // into the next lifecycle. Every other deployment record is copied per
+    // lifecycle.
+    contracts: deepFreeze(contracts),
     deployment: structuredClone({ ...deploymentData, contracts: undefined }),
     publicationJournal: await readFile(published.publicationJournalPath),
     batches: structuredClone(batches),
