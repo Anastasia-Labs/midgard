@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import {
   CML,
   Emulator,
@@ -27,6 +26,7 @@ import {
   resetActiveRuntimePaths,
   runNodeDatabaseEffect,
 } from "../deposit-flow-emulator-shared.js";
+import { resetApplicationTables } from "../utils.js";
 import { TEST_CARDANO_PROTOCOL_PARAMETERS } from "./cardano-protocol-parameters.js";
 import {
   type AcceptedHistoryObservation,
@@ -284,27 +284,14 @@ const deployHistorySource = async (
 
 /** Every lifecycle of one file restores the same deployment, so rows an
  * earlier lifecycle keyed by its binding (census frontier, journal, receipts)
- * would otherwise be found by the next one. A freshly published deployment
- * has no rows anywhere; emptying every node table except the migration ledger
- * gives each restored lifecycle that same empty starting state. */
+ * would otherwise be found by the next one. When each lifecycle published its
+ * own deployment, those rows were keyed to an older binding and never read.
+ * Returning every application table to its freshly migrated contents gives a
+ * restored lifecycle that same starting state. The migrations' seed rows (the
+ * `commit_build_calibration` singleton) are restored with it: a bare TRUNCATE
+ * would leave them missing for every later file on this worker's database. */
 const clearRestoredDeploymentRows = () =>
-  runNodeDatabaseEffect(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const tables = yield* sql<{ readonly name: string }>`
-        SELECT tablename AS name FROM pg_tables
-        WHERE schemaname = current_schema()
-          AND tablename NOT IN ('schema_migrations', 'schema_migration_events')
-        ORDER BY tablename
-      `;
-      if (tables.length > 0)
-        yield* sql.unsafe(
-          `TRUNCATE ${tables
-            .map(({ name }) => `"${name.replaceAll('"', '""')}"`)
-            .join(", ")} CASCADE`,
-        );
-    }),
-  );
+  runNodeDatabaseEffect(resetApplicationTables);
 
 /** Every lifecycle opened by one test file restores the same captured prefix
  * (one deployment per protection duration per file). */
