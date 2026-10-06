@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { durationShards } from "@al-ft/midgard-test-support/duration-shards";
 import {
   blueprintStampGlobalSetup,
+  cmlMemoryReserveExecArgv,
   interactiveEmulatorBlueprint,
   interactiveEmulatorPlugin,
   interactiveEmulatorSetup,
@@ -103,7 +104,14 @@ export default defineConfig({
     // rather than as `--no-file-parallelism`, so such a runner pins
     // `MIDGARD_FAULT_PROOF_FORKS=1` (or 2) instead of forcing every machine
     // down to one file at a time.
-    ...isolatedForksPool({ maxForks }),
+    //
+    // The CML memory reservation is this suite's other choice. Its heavy
+    // files grow CML's wasm memory to 0.2-1 GB a page-run at a time, and on
+    // Node 22 every grow past 64 MB costs a major GC. Node 22.22.2, two forks
+    // pinned to two cores: the heaviest value-conservation case 819 s -> 383 s
+    // (4,624 -> 25 major GCs), the deep-deposit trace 707 s -> 526 s,
+    // many-assets 219 s -> 129 s, at 0.2-0.5 GB more peak RSS per worker.
+    ...isolatedForksPool({ maxForks, execArgv: [cmlMemoryReserveExecArgv] }),
   },
   ssr: midgardSourceSsr(),
 });

@@ -11,9 +11,12 @@ export declare const midgardSourceSsr: () => {
   resolve: { conditions: string[] };
 };
 
+export declare const cmlMemoryReserveExecArgv: string;
+
 export declare const isolatedForksPool: (options: {
   readonly maxForks: number;
   readonly heapMb?: number;
+  readonly execArgv?: readonly string[];
 }) => {
   readonly pool: "forks";
   readonly poolOptions: {

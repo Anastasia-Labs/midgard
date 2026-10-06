@@ -44,6 +44,20 @@ export const midgardSourceSsr = () => ({
 });
 
 /**
+ * The worker flag that preloads `cml-memory-reserve.js`, which grows
+ * cardano-multiplatform-lib's wasm memory once at start-up instead of a
+ * page-run at a time. On Node 22 every one of those grows starts a major GC;
+ * the preload's note has the mechanism.
+ *
+ * Opt-in per suite through `isolatedForksPool({ execArgv })`: it pays only
+ * where CML's memory climbs far past 64 MB, and it raises worker RSS, so each
+ * suite that uses it states its own measurements.
+ */
+export const cmlMemoryReserveExecArgv = `--import=${
+  new URL("./cml-memory-reserve.js", import.meta.url).href
+}`;
+
+/**
  * One fresh process per test FILE.
  *
  * The wasm evaluators (`@lucid-evolution/uplc`, cardano-multiplatform-lib)
@@ -64,8 +78,15 @@ export const midgardSourceSsr = () => ({
  * The heap bound is set here rather than through a blanket `NODE_OPTIONS` from
  * the lane runner, which would also hit pnpm, Vitest's own main process, and
  * every unrelated tool in the lane.
+ *
+ * `execArgv` appends further worker flags, such as `cmlMemoryReserveExecArgv`;
+ * like `maxForks`, each is the caller's to justify with its own measurements.
  */
-export const isolatedForksPool = ({ maxForks, heapMb = 4096 }) => ({
+export const isolatedForksPool = ({
+  maxForks,
+  heapMb = 4096,
+  execArgv = [],
+}) => ({
   pool: "forks",
   poolOptions: {
     forks: {
@@ -73,7 +94,7 @@ export const isolatedForksPool = ({ maxForks, heapMb = 4096 }) => ({
       singleFork: false,
       minForks: 1,
       maxForks,
-      execArgv: [`--max-old-space-size=${String(heapMb)}`],
+      execArgv: [`--max-old-space-size=${String(heapMb)}`, ...execArgv],
     },
   },
 });
