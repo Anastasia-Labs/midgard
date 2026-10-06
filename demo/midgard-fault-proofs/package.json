@@ -3,11 +3,9 @@
   "version": "0.1.0",
   "description": "Manual Midgard fault-proof tooling",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "midgard-source": "./src/index.ts",
-      "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
     "./test-support/raw-l1-terminal-fixture": {
@@ -99,7 +97,7 @@
     "test:traced-refusals": "node scripts/run-traced-refusals.mjs",
     "check:builder-exports": "node scripts/check-builder-exports.mjs",
     "test:cardano-capability-p2-retained-da": "node tests/fixtures/verify-cardano-capability-p2-retained-da-v1.mjs",
-    "build:contrib-raw": "tsup src/index.ts --format esm --dts --clean && tsup src/bin.ts --format esm"
+    "build:contrib-raw": "tsup src/index.ts --format esm --clean && tsup src/bin.ts --format esm"
   },
   "keywords": [
     "cardano",
