@@ -36,6 +36,7 @@ export {
   migrateWatcherDurableStore,
   readValidatedWatcherDurableStoreCaches,
   readWatcherDurableAtomicSnapshot,
+  readWatcherDurableAtomicSnapshotMatches,
   type WatcherDurableAtomicBackend,
   type WatcherDurableAtomicCommit,
   type WatcherDurableAtomicSnapshot,
