@@ -29,7 +29,8 @@ import { restoreHistorySource } from "./history-source-owner-emulator.restore-hi
 
 /** Actual published deployment adapted to the existing node pipeline; it is
  * initialized exactly once and uses its own configured DA cosigner. The
- * deployment prefix is built once per file and restored into a fresh
+ * deployment prefix is built once per run for each protection duration
+ * (`restoreHistorySource`), read once per file, and restored into a fresh
  * emulator, fresh lucid instances and fresh records for every lifecycle. */
 export const openHistorySourceOwnerLifecycle = async (
   eventHistoryProtectionDurationMs?: bigint,
