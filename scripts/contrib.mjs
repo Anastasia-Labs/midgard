@@ -34,7 +34,7 @@ import {
 
 export const HELP = `Midgard deterministic contributor tools (run from any cwd)
   node scripts/contrib.mjs prepare --package NAME [--plan | --execute] [--source-only]
-  node scripts/contrib.mjs build --package NAME
+  node scripts/contrib.mjs build --package NAME [--force]
   node scripts/contrib.mjs native --package NAME
   node scripts/contrib.mjs test --package NAME --file PATH [--file PATH] [--name REGEX] [--seed N] [--source-only]
   node scripts/contrib.mjs gate NAME [--plan] [--seed N]
@@ -120,7 +120,13 @@ const valueOptions = new Set([
   "proof-kind",
   "run-id",
 ]);
-const flagOptions = new Set(["plan", "execute", "source-only", "help"]);
+const flagOptions = new Set([
+  "plan",
+  "execute",
+  "source-only",
+  "force",
+  "help",
+]);
 export const parse = (argv) => {
   const options = { files: [], words: [] };
   for (let index = 0; index < argv.length; index += 1) {
@@ -208,6 +214,8 @@ export const main = async (argv) => {
       !["prepare", "test", "gate"].includes(command)
     )
       throw new Error(`--source-only is not supported for ${command}`);
+    if (options.force && command !== "build")
+      throw new Error(`--force is not supported for ${command}`);
     if (
       [
         "build",
@@ -229,9 +237,16 @@ export const main = async (argv) => {
       const pnpm = checkPnpm({ root, run: pinnedPnpmVersion });
       if (pnpm.status !== "ok") throw new Error(`${pnpm.detail}; ${pnpm.fix}`);
     }
-    if (command === "build" && !action)
-      result = await buildPackage(root, required("package"), execution);
-    else if (command === "native" && !action)
+    if (command === "build" && !action) {
+      result = await buildPackage(root, required("package"), {
+        ...execution,
+        force: options.force ?? false,
+      });
+      if (result.status === "fresh")
+        console.error(
+          `contrib build ${result.package}: fresh: skipped (dist matches its digest stamp; --force rebuilds)`,
+        );
+    } else if (command === "native" && !action)
       result = await buildNative(root, required("package"), execution);
     else if (command === "prepare" && !action)
       result = options.execute

@@ -1,0 +1,234 @@
+import assert from "node:assert/strict";
+import {
+  appendFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import test from "node:test";
+
+import { buildPackage, checkBuild } from "./build.mjs";
+import { outputIdentity } from "./files.mjs";
+
+// Real tsup builds of midgard-core (and midgard-validation over it) in a
+// scratch checkout, not mocks: the skip is only worth having if a real dist
+// that the verdict calls fresh is the dist a rebuild would emit.
+const checkout = fileURLToPath(new URL("../..", import.meta.url));
+const installed = existsSync(
+  resolve(checkout, "demo/midgard-core/node_modules/tsup"),
+);
+const required = process.env.MIDGARD_REQUIRE_REAL_BUILDS === "1";
+
+// Workspace links are relative, so verbatim copies resolve inside the scratch
+// tree; the shared store is linked entry by entry so its installed lock record
+// stays a real scratch file that the input closure can read.
+const mirrorInstall = (scratch) => {
+  const store = resolve(checkout, "demo/node_modules");
+  const copy = resolve(scratch, "demo/node_modules");
+  mkdirSync(resolve(copy, ".pnpm"), { recursive: true });
+  for (const entry of readdirSync(store))
+    if (![".pnpm", ".modules.yaml"].includes(entry))
+      symlinkSync(resolve(store, entry), resolve(copy, entry));
+  for (const entry of readdirSync(resolve(store, ".pnpm")))
+    if (entry === "lock.yaml")
+      cpSync(resolve(store, ".pnpm", entry), resolve(copy, ".pnpm", entry));
+    else
+      symlinkSync(
+        resolve(store, ".pnpm", entry),
+        resolve(copy, ".pnpm", entry),
+      );
+};
+
+const scratchCheckout = (t) => {
+  const scratch = mkdtempSync(resolve(tmpdir(), "midgard-build-fresh-"));
+  t.after(() => rmSync(scratch, { recursive: true, force: true }));
+  for (const path of [
+    "demo/package.json",
+    "demo/pnpm-lock.yaml",
+    "demo/pnpm-workspace.yaml",
+  ])
+    cpSync(resolve(checkout, path), resolve(scratch, path));
+  for (const name of ["midgard-core", "midgard-validation"])
+    cpSync(resolve(checkout, "demo", name), resolve(scratch, "demo", name), {
+      recursive: true,
+      verbatimSymlinks: true,
+      filter: (source) =>
+        !source.startsWith(resolve(checkout, "demo", name, "dist")),
+    });
+  mirrorInstall(scratch);
+  return scratch;
+};
+
+test(
+  "a guarded build is a verified no-op exactly while its dist is provably fresh",
+  {
+    skip:
+      !installed && !required
+        ? "midgard-core dependencies are not installed (pnpm --dir demo install); set MIDGARD_REQUIRE_REAL_BUILDS=1 to make this a failure"
+        : false,
+  },
+  async (t) => {
+    assert.ok(
+      installed,
+      "MIDGARD_REQUIRE_REAL_BUILDS=1 needs an installed demo workspace",
+    );
+    const root = scratchCheckout(t);
+    const core = "@al-ft/midgard-core";
+    const coreDist = "demo/midgard-core/dist";
+    const build = (name, { env = {}, force = false } = {}) =>
+      buildPackage(root, name, { env: { ...process.env, ...env }, force });
+    const rebuilt = (receipt) => {
+      assert.equal(receipt.status, "passed", receipt.reason ?? receipt.path);
+      assert.equal(receipt.steps.length, 1);
+      assert.equal(receipt.fresh, undefined);
+    };
+    const skipped = (receipt) => {
+      assert.equal(receipt.status, "fresh");
+      assert.equal(receipt.fresh, "skipped");
+      assert.equal(receipt.steps.length, 0);
+      assert.equal(receipt.exitCode, 0);
+    };
+
+    rebuilt(await build(core));
+    const emitted = outputIdentity(root, coreDist).sha256;
+
+    await t.test("a fresh dist skips without touching it", async () => {
+      const stamp = readFileSync(
+        resolve(root, coreDist, ".contrib-build-v1.json"),
+      );
+      skipped(await build(core));
+      assert.deepEqual(
+        readFileSync(resolve(root, coreDist, ".contrib-build-v1.json")),
+        stamp,
+      );
+      assert.equal(outputIdentity(root, coreDist).sha256, emitted);
+    });
+
+    await t.test(
+      "environment the recipe never names leaves the emitted bytes unchanged",
+      async () => {
+        const ambient = {
+          MIDGARD_DEPLOYMENT_PROFILE: "preprod-testing",
+          NODE_ENV: "production",
+        };
+        skipped(await build(core, { env: ambient }));
+        rebuilt(await build(core, { env: ambient, force: true }));
+        assert.equal(outputIdentity(root, coreDist).sha256, emitted);
+        skipped(await build(core));
+      },
+    );
+
+    // `--force` is exercised above; `pnpm run build` reaches the guard with
+    // only the environment to carry the request.
+    await t.test(
+      "MIDGARD_CONTRIB_FORCE_BUILD rebuilds a fresh dist",
+      async () => {
+        rebuilt(
+          await build(core, { env: { MIDGARD_CONTRIB_FORCE_BUILD: "1" } }),
+        );
+        assert.equal(outputIdentity(root, coreDist).sha256, emitted);
+      },
+    );
+
+    await t.test("a source edit rebuilds", async () => {
+      const source = resolve(root, "demo/midgard-core/src/hex.ts");
+      appendFileSync(source, "\nexport const freshnessProbe = 1;\n");
+      assert.match(checkBuild(root, core).reason, /input closure changed/u);
+      rebuilt(await build(core));
+      assert.match(
+        readFileSync(resolve(root, coreDist, "hex.js"), "utf8"),
+        /freshnessProbe/u,
+      );
+      skipped(await build(core));
+    });
+
+    await t.test(
+      "a lockfile or installed-package change makes the dist stale",
+      () => {
+        for (const path of [
+          "demo/pnpm-lock.yaml",
+          "demo/node_modules/.pnpm/lock.yaml",
+        ]) {
+          const original = readFileSync(resolve(root, path));
+          appendFileSync(resolve(root, path), "\n# probe\n");
+          assert.match(
+            checkBuild(root, core).reason,
+            /input closure changed/u,
+            path,
+          );
+          writeFileSync(resolve(root, path), original);
+          assert.equal(checkBuild(root, core).status, "fresh", path);
+        }
+      },
+    );
+
+    await t.test("a tampered or missing dist output rebuilds", async () => {
+      const before = outputIdentity(root, coreDist).sha256;
+      const index = resolve(root, coreDist, "index.js");
+      const original = readFileSync(index);
+      appendFileSync(index, "\n// tampered\n");
+      assert.match(checkBuild(root, core).reason, /contents changed/u);
+      writeFileSync(index, original);
+      assert.equal(checkBuild(root, core).status, "fresh");
+      rmSync(resolve(root, coreDist, "hex.cjs"));
+      assert.match(checkBuild(root, core).reason, /contents changed/u);
+      appendFileSync(index, "\n// tampered\n");
+      rebuilt(await build(core));
+      assert.ok(existsSync(resolve(root, coreDist, "hex.cjs")));
+      assert.equal(outputIdentity(root, coreDist).sha256, before);
+    });
+
+    await t.test("a dependency dist change rebuilds its consumer", async () => {
+      const validation = "@al-ft/midgard-validation";
+      rebuilt(await build(validation));
+      skipped(await build(validation));
+      appendFileSync(resolve(root, coreDist, "index.js"), "\n// substituted\n");
+      assert.match(
+        checkBuild(root, validation).reason,
+        /compiled dependency contents changed/u,
+      );
+      // Rebuilding the dependency restores its bytes, so the consumer it was
+      // compiled against is fresh again and is not rebuilt.
+      skipped(await build(validation));
+      assert.equal(checkBuild(root, core).status, "fresh");
+      // A real change of the dependency's emitted bytes rebuilds both.
+      appendFileSync(
+        resolve(root, "demo/midgard-core/src/hex.ts"),
+        "\nexport const secondProbe = 2;\n",
+      );
+      rebuilt(await build(validation));
+      assert.equal(checkBuild(root, core).status, "fresh");
+    });
+
+    await t.test("a variable the recipe names rebinds the dist", async () => {
+      const path = resolve(root, "demo/midgard-core/package.json");
+      const pkg = JSON.parse(readFileSync(path, "utf8"));
+      pkg.scripts["build:contrib-raw"] +=
+        ' && test -n "${MIDGARD_FRESHNESS_PROBE:-unset}"';
+      writeFileSync(path, JSON.stringify(pkg, null, 2));
+      rebuilt(await build(core, { env: { MIDGARD_FRESHNESS_PROBE: "one" } }));
+      skipped(await build(core, { env: { MIDGARD_FRESHNESS_PROBE: "one" } }));
+      assert.match(
+        checkBuild(root, core, {
+          env: { ...process.env, MIDGARD_FRESHNESS_PROBE: "two" },
+        }).reason,
+        /build environment changed/u,
+      );
+      assert.equal(
+        checkBuild(root, core, {
+          env: { ...process.env, MIDGARD_FRESHNESS_PROBE: "one" },
+        }).status,
+        "fresh",
+      );
+    });
+  },
+);

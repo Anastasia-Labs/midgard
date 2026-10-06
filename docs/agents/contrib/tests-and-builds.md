@@ -43,7 +43,11 @@ The closure also binds the installed packages
 expansions in `build:contrib-raw`, `process.env.NAME` in its tsup config and
 node scripts), and the dist bytes of every workspace package a build source
 imports. A recipe that reads the environment some other way, or a source or
-tsconfig input outside the closure, is never fresh.
+tsconfig input outside the closure, is never fresh. Building a fresh dist is a
+verified no-op: it prints `fresh: skipped` and writes a receipt with
+`"status": "fresh"` that points at the receipt of the build that made the dist.
+`--force`, or `MIDGARD_CONTRIB_FORCE_BUILD=1` for builds reached through
+`pnpm run build`, rebuilds the requested package anyway.
 
 The Go helper disables ambient Git stamping with `-buildvcs=false`: linked
 worktrees and source archives must not discover an unrelated ancestor repository.

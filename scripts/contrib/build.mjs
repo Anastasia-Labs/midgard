@@ -94,14 +94,42 @@ export const checkBuild = (root, name, { env = process.env } = {}) =>
     }
   });
 
+// A fresh dist is a verified no-op: same checkout, input closure, named build
+// environment, compiled dependency bytes and emitted bytes as its stamp. The
+// receipt says so and points at the receipt of the build that made it.
+const freshReceipt = (root, pkg, stamp) => {
+  const receipt = {
+    schema: "midgard-contrib-receipt/v1",
+    kind: "build",
+    package: pkg.name,
+    root: realpathSync(root),
+    status: "fresh",
+    fresh: "skipped",
+    reason:
+      "dist matches its digest stamp; --force or MIDGARD_CONTRIB_FORCE_BUILD=1 rebuilds it",
+    inputs: stamp.inputs,
+    builtBy: stamp.receipt,
+    steps: [],
+    artifacts: [
+      { name: pkg.name, outputs: stamp.outputs },
+      ...(stamp.dependencies ?? []),
+    ],
+    createdAt: new Date().toISOString(),
+    path: resolve(runDirectory(), "receipt.json"),
+  };
+  atomicJson(receipt.path, receipt);
+  return { ...receipt, exitCode: 0 };
+};
+
 export const buildPackage = async (
   root,
   name,
-  { signal, env = process.env } = {},
+  { signal, env = process.env, force = false } = {},
 ) => {
   const pkg = packageByName(root, name);
   if (!pkg.scripts?.["build:contrib-raw"])
     throw new Error(`${pkg.name} has no guarded build recipe`);
+  const forced = force || env.MIDGARD_CONTRIB_FORCE_BUILD === "1";
   return withResource(
     `workspace:${realpathSync(root)}`,
     async (ownedEnv) => {
@@ -115,6 +143,11 @@ export const buildPackage = async (
           });
           if (built.exitCode !== 0) return built;
         }
+      }
+      if (!forced) {
+        const verdict = checkBuild(root, pkg.name, { env });
+        if (verdict.status === "fresh")
+          return freshReceipt(root, pkg, verdict.stamp);
       }
       return withResource(
         "memory-heavy-build",

@@ -452,6 +452,12 @@ jobs:
           prebuild: lucid-midgard
       - name: Build and test Midgard core DA transport
         run: pnpm --dir demo/midgard-core run build && pnpm --dir demo/midgard-core test
+      # Repository tool tests skip this file where the demo packages are not
+      # installed; here the flag turns that skip into a failure.
+      - name: Check build freshness against real core and validation builds
+        env:
+          MIDGARD_REQUIRE_REAL_BUILDS: "1"
+        run: node --test scripts/contrib/build-freshness.test.mjs
 
   midgard-sdk:
     name: midgard-sdk
