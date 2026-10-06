@@ -10,7 +10,6 @@ import {
   type LucidEvolution,
   SLOT_CONFIG_NETWORK,
   unixTimeToEnclosingSlot,
-  type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect, vi } from "vitest";
@@ -29,15 +28,16 @@ import {
 import { resetApplicationTables } from "../utils.js";
 import { TEST_CARDANO_PROTOCOL_PARAMETERS } from "./cardano-protocol-parameters.js";
 import {
+  emulatorState,
+  pinnedWalletUtxos,
+  recreateLucid,
+} from "./emulator-snapshot.js";
+import {
   type AcceptedHistoryObservation,
   captureConfirmedHistoryObservations,
   historyOutputObservation,
 } from "./history-projection-observations.js";
 import { type RecordedHistoryBatch } from "./history-source-owner-emulator.recorded-history-batch.js";
-import {
-  readSharedHistorySourcePrefix,
-  shareHistorySourcePrefix,
-} from "./history-source-prefix-directory.js";
 import {
   createMainnetEmulatorLucid,
   MAINNET_PROTOCOL_PARAMETERS,
@@ -49,62 +49,13 @@ import {
 } from "./published-workflow-deployment.js";
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 import { DEFAULT_PUBLICATION_SCHEDULE } from "./reference-publication-chain.js";
+import {
+  readRunSharedFixture,
+  shareRunSharedFixture,
+} from "./run-shared-fixture-directory.js";
 
-/** Plain data of an emulator ledger: every own non-function field. The
- * observer's wrapped `submitTx`/`awaitTx` are the only own functions. */
-type EmulatorState = Record<string, unknown>;
-
-const emulatorState = (emulator: Emulator): EmulatorState =>
-  structuredClone(
-    Object.fromEntries(
-      Object.entries(emulator).filter(
-        ([, value]) => typeof value !== "function",
-      ),
-    ),
-  );
-
-/** The UTxO view a wallet has pinned with `overrideUTxOs`, or `undefined`
- * when it reads the provider. The wallet object keeps the pin private, so the
- * provider read is answered with a sentinel for this one call. */
-const pinnedWalletUtxos = async (
-  lucid: LucidEvolution,
-  emulator: Emulator,
-): Promise<UTxO[] | undefined> => {
-  const sentinel: UTxO[] = [];
-  const own = Object.getOwnPropertyDescriptor(emulator, "getUtxos");
-  emulator.getUtxos = () => Promise.resolve(sentinel);
-  try {
-    const utxos = await lucid.wallet().getUtxos();
-    return utxos === sentinel ? undefined : structuredClone(utxos);
-  } finally {
-    if (own === undefined)
-      delete (emulator as Partial<Pick<Emulator, "getUtxos">>).getUtxos;
-    else Object.defineProperty(emulator, "getUtxos", own);
-  }
-};
-
-/** A lucid instance created exactly as the deployment created its own: the
- * emulator lucid's slot config is read from the emulator at creation. */
-const recreateLucid = async (
-  emulator: Emulator,
-  at: { readonly time: number; readonly slot: number },
-  seedPhrase: string,
-  pinned: readonly UTxO[] | undefined,
-) => {
-  const { time, slot } = emulator;
-  emulator.time = at.time;
-  emulator.slot = at.slot;
-  let lucid: LucidEvolution;
-  try {
-    lucid = await createMainnetEmulatorLucid(emulator, "Preprod");
-  } finally {
-    emulator.time = time;
-    emulator.slot = slot;
-  }
-  lucid.selectWallet.fromSeed(seedPhrase);
-  if (pinned !== undefined) lucid.overrideUTxOs(structuredClone([...pinned]));
-  return lucid;
-};
+const preprodEmulatorLucid = (emulator: Emulator) =>
+  createMainnetEmulatorLucid(emulator, "Preprod");
 
 /** Freezes `value` and every object reachable through its data properties.
  * Byte arrays cannot be frozen and are left as they are. */
@@ -320,7 +271,7 @@ const clearRestoredDeploymentRows = () =>
   runNodeDatabaseEffect(resetApplicationTables);
 
 /** One deployment per protection duration per run: the first file to need
- * it deploys and shares it (`history-source-prefix-directory.ts`), and every
+ * it deploys and shares it (`run-shared-fixture-directory.ts`), and every
  * later file restores that same plain-data prefix. The deployment path reads
  * no per-file setting and no module a test file mocks. Without the package's
  * global setup each file deploys its own, as before. */
@@ -328,7 +279,7 @@ const loadOrDeployHistorySource = async (
   eventHistoryProtectionDurationMs: bigint | undefined,
 ): Promise<DeployedHistorySource> => {
   const key = String(eventHistoryProtectionDurationMs);
-  const shared = (await readSharedHistorySourcePrefix(key)) as
+  const shared = (await readRunSharedFixture(`history-source-${key}`)) as
     | DeployedHistorySource
     | undefined;
   if (shared !== undefined) {
@@ -336,7 +287,7 @@ const loadOrDeployHistorySource = async (
     return shared;
   }
   const prefix = await deployHistorySource(eventHistoryProtectionDurationMs);
-  await shareHistorySourcePrefix(key, prefix);
+  await shareRunSharedFixture(`history-source-${key}`, prefix);
   return prefix;
 };
 
@@ -398,18 +349,21 @@ export const restoreHistorySource = async (
     prefix.creation,
     accounts.operator.seedPhrase,
     prefix.wallets.operator,
+    preprodEmulatorLucid,
   );
   const publisherLucid = await recreateLucid(
     emulator,
     prefix.creation,
     accounts.publisher.seedPhrase,
     prefix.wallets.publisher,
+    preprodEmulatorLucid,
   );
   const depositorLucid = await recreateLucid(
     emulator,
     prefix.depositorCreation,
     depositorAccount.seedPhrase,
     prefix.wallets.depositor,
+    preprodEmulatorLucid,
   );
   const batches = structuredClone(prefix.batches);
   const publications = structuredClone(prefix.publications);

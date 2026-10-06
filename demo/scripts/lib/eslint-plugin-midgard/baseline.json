@@ -1198,10 +1198,15 @@
       "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
       "sites": ["wallet.overrideUTxOs(await wallet.utxosAt(address));"]
     },
-    "midgard-node/tests/helpers/history-source-owner-emulator.restore-history-source.ts": {
-      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing. The restore site re-applies, on a recreated instance, exactly the pin the deployment prefix left on the instance it replaces.",
+    "midgard-node/tests/helpers/emulator-snapshot.ts": {
+      "reason": "Test harness code restoring a captured emulator fixture: the restore site re-applies, on a recreated instance the harness owns, exactly the pin the deployment left on the instance it replaces.",
       "sites": [
-        "if (pinned !== undefined) lucid.overrideUTxOs(structuredClone([...pinned]));",
+        "if (pinned !== undefined) lucid.overrideUTxOs(structuredClone([...pinned]));"
+      ]
+    },
+    "midgard-node/tests/helpers/history-source-owner-emulator.restore-history-source.ts": {
+      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
+      "sites": [
         "lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));"
       ]
     },
