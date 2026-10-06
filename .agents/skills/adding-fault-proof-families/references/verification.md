@@ -107,20 +107,20 @@ As of 2026-09-25 the catalogue file ran 10 tests in about 17 seconds.
 
 ## 7. What CI runs
 
-| CI step                                                                          | Covers                                         |
-| -------------------------------------------------------------------------------- | ---------------------------------------------- |
-| Aiken CI / Compile and run the Aiken test suite with the pinned fork             | every Aiken test                               |
-| Aiken CI / Run normalized Aiken auto-formatter check                             | `aiken fmt`                                    |
-| Midgard Node CI / Build testnet Aiken blueprint                                  | `plutus.json` for later steps                  |
-| Midgard Node CI / Build and test Midgard core DA transport                       | core identity tables                           |
-| Midgard Node CI / Build, typecheck, and test Midgard SDK                         | catalogue, token names, contract chain         |
-| Midgard Node CI / Typecheck fault-proof tooling                                  | registry category coverage                     |
-| Midgard Node CI / Test fault-proof tooling                                       | registry, classification, adapters, lifecycles |
-| Midgard Node CI / Verify DA committee transport and admission                    | DA fixture helper                              |
-| Midgard Node CI / Build, typecheck, lint, format-check, and test Midgard watcher | watcher deployment identity                    |
-| Midgard Node CI / Typecheck Midgard node                                         | node category tables                           |
-| Midgard Node CI / Test Midgard node                                              | role mirror, DA fixture drift                  |
-| Midgard Node CI / Typecheck, lint, build, and test Midgard node tools            | journey owner entry (not the count test)       |
+| CI step                                                               | Covers                                         |
+| --------------------------------------------------------------------- | ---------------------------------------------- |
+| Aiken CI / Compile and run the Aiken test suite with the pinned fork  | every Aiken test                               |
+| Aiken CI / Run normalized Aiken auto-formatter check                  | `aiken fmt`                                    |
+| Midgard Node CI / Build testnet Aiken blueprint                       | `plutus.json` for later steps                  |
+| Midgard Node CI / Build and test Midgard core DA transport            | core identity tables                           |
+| Midgard Node CI / Build, typecheck, and test Midgard SDK              | catalogue, token names, contract chain         |
+| Midgard Node CI / Typecheck fault-proof tooling                       | registry category coverage                     |
+| Midgard Node CI / Test fault-proof tooling                            | registry, classification, adapters, lifecycles |
+| Midgard Node CI / Verify DA committee transport and admission         | DA fixture helper                              |
+| Midgard Node CI / Test Midgard watcher                                | watcher deployment identity                    |
+| Midgard Node CI / Typecheck Midgard node                              | node category tables                           |
+| Midgard Node CI / Test Midgard node                                   | role mirror, DA fixture drift                  |
+| Midgard Node CI / Typecheck, lint, build, and test Midgard node tools | journey owner entry (not the count test)       |
 
 Report which of these you ran locally, with their pass counts, and which you
 left to CI.

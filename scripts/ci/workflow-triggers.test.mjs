@@ -82,6 +82,7 @@ const scenarios = {
         "midgard-validation",
         "midgard-fault-proofs-build",
         "midgard-fault-proofs",
+        "midgard-watcher-typecheck",
         "midgard-watcher",
         "test-durations",
         "native-mpf",

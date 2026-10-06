@@ -648,8 +648,27 @@ jobs:
         if: ${{ !cancelled() && steps.traced.outputs.run == 'true' }}
         run: pnpm --dir demo/midgard-fault-proofs run test:traced-refusals
 
-  # The watcher's TypeScript surface. Its eslint pass is the workspace-wide one
-  # in the `lint` job; the Go helper's own tests, compose stack and image are
+  # The watcher's typecheck and format check, once per run rather than on
+  # every shard below. The typecheck resolves workspace packages from source
+  # and needs no dist. Its eslint pass is the workspace-wide one in the
+  # `lint` job.
+  midgard-watcher-typecheck:
+    name: midgard-watcher typecheck and format-check
+    needs: [aiken-fork, blueprint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/demo-setup
+        with:
+          blueprint: "true"
+      - name: Typecheck Midgard watcher
+        run: pnpm --dir demo/midgard-watcher run typecheck
+      - name: Format-check Midgard watcher
+        if: ${{ !cancelled() }}
+        run: pnpm --dir demo/midgard-watcher run format-check
+
+  # The watcher suite. The Go helper's own tests, compose stack and image are
   # covered by midgard-watcher-ci.yml. The helper is compiled here because the
   # watcher suite drives the built binary through its TypeScript owner.
   # Every test file runs in its own fork and re-imports the SDK and validation
@@ -674,13 +693,22 @@ jobs:
         with:
           blueprint: "true"
           interactive-blueprint: "true"
-          prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation midgard-fault-proofs
       - name: Build the native chain-sync helper the watcher suite drives
         run: pnpm --dir demo/midgard-watcher run native:build:contrib-raw
-      - name: Build, typecheck, format-check, and test Midgard watcher
+      # Vitest loads every workspace package from source, but
+      # tests/runtime/authority-initialization-command.test.ts runs the built
+      # CLI (dist/cli.js) in a plain Node child, which imports the built core,
+      # SDK, validation and fault-proof packages. The guarded build builds
+      # that closure first.
+      - name: Build the watcher CLI the suite runs
+        run: pnpm --dir demo/midgard-watcher run build
+      # The test run records each file's seconds (durationShards in
+      # midgard-test-support); `test-durations` merges the shards' records into
+      # the refreshed shard table.
+      - name: Test Midgard watcher
         env:
           MIDGARD_FILE_DURATIONS_OUT: ${{ runner.temp }}/file-durations.json
-        run: pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run format-check && pnpm --dir demo/midgard-watcher run test --shard=${{ matrix.shard }}/3
+        run: pnpm --dir demo/midgard-watcher run test --shard=${{ matrix.shard }}/3
       - name: Upload this shard's per-file test seconds
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -1001,6 +1029,7 @@ jobs:
       - midgard-validation
       - midgard-fault-proofs-build
       - midgard-fault-proofs
+      - midgard-watcher-typecheck
       - midgard-watcher
       - test-durations
       - native-mpf

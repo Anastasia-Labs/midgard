@@ -233,7 +233,7 @@ you checked it by reading.
       [ci: Aiken CI/Compile and run the Aiken test suite with the pinned fork]
 - [ ] No generated Aiken edited by hand. [review]
 - [ ] Watcher deployment identity lists the category.
-      [ci: Midgard Node CI/Build, typecheck, format-check, and test Midgard watcher]
+      [ci: Midgard Node CI/Test Midgard watcher]
       (inferred: its `exactRecord` parse rejects the core-built catalogue
       fixture; not observed failing)
 - [ ] Devnet journey owner assigned and owner counts updated.
