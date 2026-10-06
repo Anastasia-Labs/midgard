@@ -41,6 +41,10 @@
       "midgard-source": "./src/temp-files.ts",
       "types": "./src/temp-files.ts"
     },
+    "./evaluator-reuse": {
+      "midgard-source": "./src/evaluator-reuse.ts",
+      "types": "./src/evaluator-reuse.ts"
+    },
     "./duration-shards": {
       "types": "./duration-shards.d.ts",
       "default": "./duration-shards.js"

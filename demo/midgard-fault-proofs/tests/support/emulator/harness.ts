@@ -16,6 +16,7 @@ import {
   requireWithdrawalRedeemerIndex,
   ScriptHashSchema,
 } from "@al-ft/midgard-sdk";
+import { withExactRequestReuse } from "@al-ft/midgard-test-support/evaluator-reuse";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,
@@ -381,8 +382,18 @@ export const makeFaultProofEmulatorHarness = async ({
   if (emulatorTimeMs !== undefined) {
     emulator.time = emulatorTimeMs;
   }
-  const funderLucid = await Lucid(emulator, "Custom", lucidOptions);
-  const proverLucid = await Lucid(emulator, "Custom", lucidOptions);
+  // A custom evaluator (Scalus, an isolated-process UPLC evaluator) gets the
+  // exact-request reuse Midgard's Lucid patch gives only the default one; see
+  // `withExactRequestReuse`. Both parties share one bounded cache.
+  const options =
+    lucidOptions?.evaluator === undefined
+      ? lucidOptions
+      : {
+          ...lucidOptions,
+          evaluator: withExactRequestReuse(lucidOptions.evaluator),
+        };
+  const funderLucid = await Lucid(emulator, "Custom", options);
+  const proverLucid = await Lucid(emulator, "Custom", options);
   funderLucid.selectWallet.fromSeed(funder.seedPhrase);
   const proverSigner = resolveProverSigner({
     network,

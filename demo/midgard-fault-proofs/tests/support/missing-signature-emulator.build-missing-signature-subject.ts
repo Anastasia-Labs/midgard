@@ -12,6 +12,7 @@ import {
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
+import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
 import type {
   MissingSignatureFinding,
@@ -27,7 +28,6 @@ import {
   buildDecodingBlockFixture,
   type DecodingBlockFixture,
 } from "./native-script-decoding-emulator.js";
-import { createExactRequestReusingScalusEvaluator } from "./scalus-exact-request-evaluator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
@@ -151,11 +151,7 @@ export const makeMissingSignatureEmulatorHarness = async ({
     // Lucid's preflight evaluator only; Emulator still independently runs
     // every submitted script through phase two.
     ...(useScalusEvaluator
-      ? {
-          lucidOptions: {
-            evaluator: createExactRequestReusingScalusEvaluator(),
-          },
-        }
+      ? { lucidOptions: { evaluator: createScalusEvaluator() } }
       : {}),
   });
   const missingSignature = harness.contracts.missingSignature;
