@@ -122,10 +122,13 @@ test("ES module imports are recorded through the module hooks", (t) => {
     'import { x } from "./dep.mjs";\nif (x !== 1) process.exit(1);\n',
   );
   const records = traced(directory, "main.mjs");
-  assert.ok(
-    has(records, "read", resolve(directory, "dep.mjs")),
-    JSON.stringify(records),
-  );
+  // Their own kind: only the hooks report a load, so a tracer without them
+  // reports none, and the guard refuses a process that loaded nothing.
+  for (const module of ["main.mjs", "dep.mjs"])
+    assert.ok(
+      has(records, "load", resolve(directory, module)),
+      JSON.stringify(records),
+    );
   assert.ok(!records.some(([kind]) => kind === "untraced"));
   assert.ok(has(records, "process", resolve(directory, "main.mjs")));
 });
@@ -194,3 +197,142 @@ esbuild
     assert.ok(has(records, "service", /[\\/]bin[\\/]esbuild$/u));
   },
 );
+
+test("an open reads unless it truncates, and only a successful truncating create excuses a later read", (t) => {
+  const directory = scratch(t);
+  for (const file of [
+    "rplus.txt",
+    "aplus.txt",
+    "rdwr.txt",
+    "blob.txt",
+    "append.txt",
+    "exists.txt",
+  ])
+    writeFileSync(resolve(directory, file), file);
+  writeFileSync(
+    resolve(directory, "open.mjs"),
+    `import fs from "node:fs";
+const { O_CREAT, O_RDWR, O_TRUNC, O_WRONLY } = fs.constants;
+fs.closeSync(fs.openSync("rplus.txt", "r+"));
+fs.closeSync(fs.openSync("aplus.txt", "a+"));
+fs.closeSync(fs.openSync("rdwr.txt", O_RDWR));
+await fs.openAsBlob("blob.txt");
+fs.appendFileSync("append.txt", "more");
+fs.writeFileSync("append.txt", "more", { flag: "a" });
+for (const attempt of [
+  () => fs.openSync("exists.txt", "wx"),
+  () => fs.writeFileSync("exists.txt", "x", { flag: "wx" }),
+  () => fs.copyFileSync("absent.txt", "failed-copy.txt"),
+])
+  try {
+    attempt();
+    process.exit(3);
+  } catch {}
+await fs.promises.writeFile("absent/out.txt", "x").catch(() => undefined);
+await new Promise((done) => fs.writeFile("absent/callback.txt", "x", done));
+fs.closeSync(fs.openSync("created.txt", "w"));
+fs.closeSync(fs.openSync("numeric.txt", O_WRONLY | O_CREAT | O_TRUNC));
+fs.writeFileSync("encoded.txt", "x", "binary");
+await new Promise((done) =>
+  fs.open("callback.txt", "w", (error, fd) => {
+    fs.closeSync(fd);
+    done();
+  }),
+);
+fs.copyFileSync("rplus.txt", "copied.txt");
+`,
+  );
+  const records = traced(directory, "open.mjs");
+  const at = (file) => resolve(directory, file);
+  for (const file of ["rplus.txt", "aplus.txt", "rdwr.txt", "blob.txt"])
+    assert.ok(has(records, "read", at(file)), file);
+  for (const file of [
+    "created.txt",
+    "numeric.txt",
+    "encoded.txt",
+    "callback.txt",
+    "copied.txt",
+  ])
+    assert.ok(has(records, "write", at(file)), file);
+  // An append keeps what was there; a create that failed wrote nothing.
+  for (const file of [
+    "append.txt",
+    "exists.txt",
+    "failed-copy.txt",
+    "absent/out.txt",
+    "absent/callback.txt",
+  ])
+    assert.ok(!has(records, "write", at(file)), file);
+  assert.ok(!has(records, "read", at("encoded.txt")));
+  assert.ok(!records.some(([kind]) => kind === "untraced"));
+});
+
+test("network use is recorded as untraced", (t) => {
+  const directory = scratch(t);
+  writeFileSync(
+    resolve(directory, "network.mjs"),
+    `import net from "node:net";
+await fetch("http://127.0.0.1:1/").catch(() => undefined);
+await new Promise((done) =>
+  net.connect(1, "127.0.0.1").on("error", done).on("connect", done),
+);
+const socket = new WebSocket("ws://127.0.0.1:1/");
+await new Promise((done) => socket.addEventListener("error", done));
+`,
+  );
+  const records = traced(directory, "network.mjs");
+  for (const use of [
+    "network fetch",
+    "network WebSocket",
+    "network connection",
+  ])
+    assert.ok(has(records, "untraced", use), JSON.stringify(records));
+});
+
+test("a worker that overrides its options or environment is untraced", (t) => {
+  const directory = scratch(t);
+  writeFileSync(resolve(directory, "secret.txt"), "secret");
+  writeFileSync(
+    resolve(directory, "workers.mjs"),
+    `import { Worker } from "node:worker_threads";
+const run = (label, options) =>
+  new Promise((done) =>
+    new Worker(
+      \`/*\${label}*/require("node:fs").readFileSync(\${JSON.stringify(process.cwd() + "/secret.txt")});\`,
+      { eval: true, ...options },
+    ).on("exit", done),
+  );
+await run("inherits", {});
+await run("execArgv", { execArgv: [] });
+await run("env", { env: {} });
+await run("trace", { env: { ...process.env, MIDGARD_CONTRIB_BUILD_TRACE: "/dev/null" } });
+delete process.env.MIDGARD_CONTRIB_BUILD_TRACE;
+await run("deleted", {});
+`,
+  );
+  const records = traced(directory, "workers.mjs");
+  // A worker that inherits everything is traced like its parent.
+  assert.ok(has(records, "read", resolve(directory, "secret.txt")));
+  assert.ok(!has(records, "untraced", /^worker \/\*inherits/u));
+  for (const label of ["execArgv", "env", "trace", "deleted"])
+    assert.ok(
+      has(records, "untraced", new RegExp(`^worker /\\*${label}\\*/`, "u")),
+      `${label}: ${JSON.stringify(records)}`,
+    );
+});
+
+test("a node option that loads other code is untraced", (t) => {
+  const directory = scratch(t);
+  writeFileSync(resolve(directory, "other.cjs"), "");
+  writeFileSync(resolve(directory, "main.mjs"), "");
+  const records = traced(directory, "main.mjs", {
+    NODE_OPTIONS: `--require ${JSON.stringify(TRACER)} --require ./other.cjs`,
+  });
+  assert.ok(
+    has(records, "untraced", "node option --require ./other.cjs"),
+    JSON.stringify(records),
+  );
+  assert.ok(
+    !traced(directory, "main.mjs").some(([kind]) => kind === "untraced"),
+  );
+});

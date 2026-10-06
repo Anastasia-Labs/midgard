@@ -243,8 +243,15 @@ export const parseRecipe = (recipe) => {
 const PROCESS = /\bprocess\b/gu;
 const NAMED_PROCESS =
   /^process(?:\.env\.([A-Za-z_$][\w$]*)|\.env\[\s*["']([^"']+)["']\s*\]|\.(?:argv|stdout|stderr|exit|exitCode|cwd|nextTick|hrtime|on|once|emitWarning|platform|arch|version|versions|execPath|pid)\b)/u;
+// Code the scan cannot follow: evaluation, the global object, the Function
+// constructor however reached, and any require or import that is not a
+// direct call with a literal specifier. module.constructor._load,
+// process.getBuiltinModule, bindings, native addons and the main module
+// all reach builtins or code past the allow-list.
 const OPAQUE =
-  /\b(?:eval\s*\(|Function\s*\(|globalThis\b|createRequire\b|(?:import|require)\s*\(\s*(?!["'][^"'`$]*["']\s*\)))/u;
+  /\b(?:eval\s*\(|Function\s*\(|globalThis\b|global\b|constructor\b|_load\b|getBuiltinModule\b|\w*[bB]inding\s*\(|dlopen\b|mainModule\b|createRequire\b|require\b(?!\s*\(\s*["'][^"'`$]*["']\s*\))|import\s*\(\s*(?!["'][^"'`$]*["']\s*\)))/u;
+// Network globals: a response binds nothing a stamp can check.
+const NETWORK = /\b(?:fetch|WebSocket|EventSource|XMLHttpRequest)\b/u;
 const RESOLVE_EXTENSIONS = [
   "",
   ".ts",
@@ -306,6 +313,11 @@ const scanModules = (root, name, entries, packages) => {
     if (OPAQUE.test(text))
       reasons.push(
         `build code ${label(file)} loads code or reads globals the guard cannot follow`,
+      );
+    const network = NETWORK.exec(text);
+    if (network)
+      reasons.push(
+        `build code ${label(file)} uses ${network[0]}, a network API whose responses no stamp binds`,
       );
     for (const match of text.matchAll(PROCESS)) {
       const named = NAMED_PROCESS.exec(text.slice(match.index));
@@ -479,6 +491,13 @@ const recipeFacts = (root, name) =>
       resolve(root, pkg.directory, path),
     ).filter((path) => existsSync(path));
     const reasons = [...recipe.reasons];
+    // pnpm runs these around the recipe from the exempt launcher; the build
+    // also disables them, but a package that defines one is refused.
+    for (const hook of ["prebuild:contrib-raw", "postbuild:contrib-raw"])
+      if (pkg.scripts?.[hook] !== undefined)
+        reasons.push(
+          `package.json defines ${hook}, a lifecycle script the trace does not follow`,
+        );
     const scripts = recipe.scripts.map((path) =>
       resolve(root, pkg.directory, path),
     );
@@ -570,9 +589,10 @@ export const buildEnvironment = (root, name, env = process.env) => ({
 
 // --- read trace -------------------------------------------------------------
 
-// v2: copies, symlinks, child processes and coverage are traced; a v1
-// stamp came from a build the v2 trace might have refused.
-export const BUILD_TRACE = "midgard-contrib-build-trace/v2";
+// v3: module loads have their own kind and must cover every process; open
+// flags, network use and workers are classified. A stamp from an earlier
+// trace came from a build this one might have refused.
+export const BUILD_TRACE = "midgard-contrib-build-trace/v3";
 export const TRACER = new URL("./build-trace.cjs", import.meta.url).pathname;
 
 // Variables that change what a guarded build runs without the recipe naming
@@ -603,17 +623,24 @@ const aboveCheckout = (base, real) => {
   if (!match || !base.startsWith(`${match[1]}${sep}`)) return undefined;
   const modules = `${match[1]}${sep}node_modules`;
   return match[2].startsWith("@types")
-    ? `TypeScript loaded ${modules}${sep}${match[2]}, a type package above the checkout that every build includes and no stamp binds; remove ${modules}${sep}@types`
-    : `build read ${real} from a node_modules directory above the checkout, which no stamp binds; remove ${modules}`;
+    ? `TypeScript loaded ${modules}${sep}${match[2]}, a type package above the checkout that every build includes and no stamp binds; types above checkout: ${modules}${sep}@types`
+    : `build read ${real} from a node_modules directory above the checkout, which no stamp binds`;
 };
 // The command that clears every reason above, when there is one.
+// Advice only: the directory is outside the repository and may serve other
+// projects, so the guard names it and never offers to delete it. Callers add
+// the rebuild step.
 export const unstampedFix = (reasons) => {
-  const removals = [
+  const types = [
     ...new Set(
-      reasons.flatMap((reason) => /; remove (\S+)$/u.exec(reason)?.[1] ?? []),
+      reasons.flatMap(
+        (reason) => /; types above checkout: (\S+)$/u.exec(reason)?.[1] ?? [],
+      ),
     ),
   ];
-  return removals.length ? `rm -rf ${removals.join(" ")}` : undefined;
+  return types.length
+    ? `TypeScript includes every node_modules/@types above the checkout; if nothing else needs ${types.join(" and ")}, move it aside`
+    : undefined;
 };
 
 // What the build did that its stamp would not bind. Allowed reads: closure
@@ -634,6 +661,7 @@ export const unboundReads = (root, name, records, { dependencies }) => {
   const written = new Set();
   const processes = new Map();
   const bundled = new Map();
+  const loaded = new Set();
   for (const [kind, value, pid] of records) {
     if (kind === "write") {
       written.add(value);
@@ -655,10 +683,11 @@ export const unboundReads = (root, name, records, { dependencies }) => {
       reasons.push(`build ran ${value}, which the trace cannot follow`);
       continue;
     }
-    if (kind !== "read" && kind !== "bundle") {
+    if (kind !== "read" && kind !== "bundle" && kind !== "load") {
       reasons.push(`build trace has an unknown record ${kind}`);
       continue;
     }
+    if (kind === "load") loaded.add(pid);
     if (kind === "bundle" && !TSUP_CONFIG.test(basename(value)))
       bundled.set(pid, (bundled.get(pid) ?? 0) + 1);
     if (written.has(value) || written.has(realOrSelf(value))) continue;
@@ -694,6 +723,13 @@ export const unboundReads = (root, name, records, { dependencies }) => {
     if (!bundled.get(pid))
       reasons.push(
         `tsup process ${pid} reported no esbuild metafile, so what it bundled is not traced`,
+      );
+  // Every traced process loads at least its entry through the module hooks;
+  // one that loaded nothing was not seen by them.
+  for (const pid of new Set([...processes.values()].flat()))
+    if (!loaded.has(pid))
+      reasons.push(
+        `process ${pid} reported no module loads, so the module hooks did not trace it`,
       );
   for (const script of recipe.scripts) {
     const path = realOrSelf(resolve(root, self.directory, script));

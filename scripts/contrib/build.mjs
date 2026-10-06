@@ -225,7 +225,13 @@ export const buildPackage = async (
           const trace = resolve(directory, "reads.jsonl");
           const launcher = launcherPath(buildEnv);
           const step = await runProcess({
+            // Package-manager configuration must not run anything around
+            // the recipe from the exempt launcher: no pre/post scripts, and
+            // the default shell rather than one an .npmrc names.
             ...pinnedPnpm(resolve(root, pkg.directory), [
+              "--config.enable-pre-post-scripts=false",
+              "--config.script-shell=/bin/sh",
+              "--config.shell-emulator=false",
               "run",
               "build:contrib-raw",
             ]),
@@ -255,6 +261,9 @@ export const buildPackage = async (
           const unstamped =
             receipt.exitCode === 0
               ? [
+                  // A package the static scan refuses is never stamped,
+                  // whatever its trace shows.
+                  ...buildRefusals(root, pkg.name),
                   ...environmentRefusals(buildEnv),
                   ...readsOutsideClosure(root, pkg, trace, dependencies),
                 ]

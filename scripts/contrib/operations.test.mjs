@@ -179,7 +179,7 @@ test("reproduction refuses a native output deleted after its successful build", 
   );
   writeFileSync(
     resolve(tools, "corepack"),
-    '#!/bin/sh\nset -eu\nif [ "$2" = run ] && [ "$3" = build ]; then exec node ../guarded-build.mjs; fi\nif [ "$2" = run ]; then exec node ../scripts/fixture-compiler.mjs "$3"; fi\n',
+    '#!/bin/sh\nset -eu\nshift\nwhile [ "${1#--config.}" != "$1" ]; do shift; done\nif [ "$1" = run ] && [ "$2" = build ]; then exec node ../guarded-build.mjs; fi\nif [ "$1" = run ]; then exec node ../scripts/fixture-compiler.mjs "$2"; fi\n',
     { mode: 0o755 },
   );
   for (const name of ["go", "cargo", "rustc"]) {

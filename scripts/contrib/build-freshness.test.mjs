@@ -383,6 +383,39 @@ test(
     );
 
     await t.test(
+      "a post-build lifecycle script is refused and never run",
+      async () => {
+        writeFileSync(resolve(root, "outside.js"), "export const o = 1;\n");
+        const pkg = JSON.parse(originalPackage);
+        pkg.scripts["postbuild:contrib-raw"] =
+          "cp ../../outside.js dist/outside.js";
+        writeFileSync(packagePath, JSON.stringify(pkg, null, 2));
+        assert.match(
+          buildRefusals(root, core).join(),
+          /package\.json defines postbuild:contrib-raw, a lifecycle script the trace does not follow/u,
+        );
+        await unstamped(/defines postbuild:contrib-raw/u);
+        // The guarded build also tells pnpm not to run it.
+        assert.ok(
+          !existsSync(resolve(root, "demo/midgard-core/dist/outside.js")),
+        );
+        writeFileSync(packagePath, originalPackage);
+      },
+    );
+
+    await t.test("a config that fetches is refused and traced", async () => {
+      withConfig("", 'fetch("http://127.0.0.1:1/").catch(() => undefined);');
+      assert.match(
+        buildRefusals(root, core).join(),
+        /tsup\.config\.ts uses fetch, a network API whose responses no stamp binds/u,
+      );
+      await unstamped(
+        /build ran network fetch, which the trace cannot follow/u,
+      );
+      writeFileSync(configPath, originalConfig);
+    });
+
+    await t.test(
       "a config that runs a child process is refused and traced",
       async () => {
         withConfig(

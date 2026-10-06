@@ -202,7 +202,7 @@ export const probePackageDist = ({ root, directory, name }) => {
     const checked = checkBuild(root, name);
     return checked.status === "fresh"
       ? result(probeName, "available", `${directory}/dist matches its complete input and output digests`)
-      : result(probeName, "missing", checked.reason, checked.fix ?? build);
+      : result(probeName, "missing", checked.reason, checked.fix ? `${checked.fix}, then ${build}` : build);
   } catch (error) {
     return result(probeName, "unknown", `could not check: ${error.message}`, build);
   }

@@ -11,6 +11,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import { checkBuild } from "./build.mjs";
+import { probePackageDist } from "../preflight/probes.mjs";
 import {
   BUILD_TRACE,
   buildEnvironment,
@@ -406,15 +407,22 @@ test("a stamp from a build whose reads were not traced is never fresh", (t) => {
     schema: "midgard-contrib-build/v1",
     root,
     package: "example",
-    unstamped: ["TypeScript loaded /x/node_modules/@types/y; remove /x/z"],
-    fix: "rm -rf /x/z",
+    unstamped: [
+      "TypeScript loaded /x/node_modules/@types/y; types above checkout: /x/node_modules/@types",
+    ],
+    fix: "move /x/node_modules/@types aside",
   });
   assert.deepEqual(checkBuild(root, "example"), {
     status: "missing",
     reason:
-      "example: dist left unstamped: TypeScript loaded /x/node_modules/@types/y; remove /x/z",
-    fix: "rm -rf /x/z",
+      "example: dist left unstamped: TypeScript loaded /x/node_modules/@types/y; types above checkout: /x/node_modules/@types",
+    fix: "move /x/node_modules/@types aside",
   });
+  // The advice never replaces the rebuild.
+  assert.equal(
+    probePackageDist({ root, directory: "demo/example", name: "example" }).fix,
+    "move /x/node_modules/@types aside, then pnpm --dir demo --filter example run build",
+  );
 });
 
 // Each case changes a file or variable the build reads after the stamp is
@@ -657,6 +665,62 @@ test("build code may import only builtins that run nothing the trace misses", (t
   );
 });
 
+test("build code that reaches past the scan or the network is never fresh", (t) => {
+  const root = fixture(t);
+  editPackage(root, "example", (pkg) => {
+    pkg.scripts["build:contrib-raw"] =
+      "node scripts/gen.mjs && tsup src/index.ts";
+  });
+  for (const code of [
+    'const { Worker } = module.constructor._load("worker_threads");',
+    'process.getBuiltinModule("node:child_process");',
+    'process.binding("fs");',
+    "require.call(null, 'node:vm');",
+    "global.process;",
+  ]) {
+    generator(root, "scripts/gen.mjs", `${code}\n`);
+    stamp(root);
+    assert.match(
+      checkBuild(root, "example").reason,
+      /scripts\/gen\.mjs loads code or reads globals the guard cannot follow/u,
+      code,
+    );
+  }
+  for (const name of ["fetch", "WebSocket", "EventSource", "XMLHttpRequest"]) {
+    generator(root, "scripts/gen.mjs", `void ${name};\n`);
+    stamp(root);
+    assert.match(
+      checkBuild(root, "example").reason,
+      new RegExp(
+        `scripts/gen\\.mjs uses ${name}, a network API whose responses no stamp binds`,
+        "u",
+      ),
+      name,
+    );
+  }
+});
+
+test("a package with pre or post scripts for the recipe is never fresh", (t) => {
+  const root = fixture(t);
+  stamp(root);
+  assert.equal(checkBuild(root, "example").status, "fresh");
+  for (const hook of ["prebuild:contrib-raw", "postbuild:contrib-raw"]) {
+    editPackage(root, "example", (pkg) => {
+      pkg.scripts[hook] = "true";
+    });
+    assert.match(
+      checkBuild(root, "example").reason,
+      new RegExp(
+        `package\\.json defines ${hook}, a lifecycle script the trace does not follow`,
+        "u",
+      ),
+    );
+    editPackage(root, "example", (pkg) => {
+      delete pkg.scripts[hook];
+    });
+  }
+});
+
 test("a public directory tsup copies must be a closure input", (t) => {
   const root = fixture(t);
   outsidePackage(root);
@@ -760,6 +824,7 @@ test("only reads the stamp binds may produce a stamped dist", (t) => {
   // The recipe runs tsup once: a traced tsup process that reports a bundle.
   const tsup = [
     ["process", cli, 7],
+    ["load", cli, 7],
     ["esbuild", "1", 7],
     ["bundle", at("demo/example/src/index.ts"), 7],
   ];
@@ -837,11 +902,30 @@ test("only reads the stamp binds may produce a stamped dist", (t) => {
       [],
       [
         ["process", cli, 7],
+        ["load", cli, 7],
         ["esbuild", "1", 7],
         ["bundle", at("demo/example/tsup.config.ts"), 7],
       ],
     ).join(),
     /tsup process 7 reported no esbuild metafile/u,
+  );
+  // A process the module hooks never saw load anything was not traced by
+  // them (hooks missing or bypassed).
+  assert.match(
+    reasons(
+      [],
+      [
+        ["process", cli, 7],
+        ["esbuild", "1", 7],
+        ["bundle", at("demo/example/src/index.ts"), 7],
+      ],
+    ).join(),
+    /process 7 reported no module loads, so the module hooks did not trace it/u,
+  );
+  // Loads are reads: one outside the closure is refused like any other.
+  assert.match(
+    reasons([["load", at("demo/undeclared/src/index.ts"), 7]]).join(),
+    /read demo\/undeclared\/src\/index\.ts, which its input closure does not bind/u,
   );
   editPackage(root, "example", (pkg) => {
     pkg.scripts["build:contrib-raw"] =
@@ -853,12 +937,15 @@ test("only reads the stamp binds may produce a stamped dist", (t) => {
     /build recipe runs demo\/example\/scripts\/digest\.mjs, but the trace saw no such process/u,
   );
   assert.deepEqual(
-    reasons([["process", at("demo/example/scripts/digest.mjs"), 8]]),
+    reasons([
+      ["process", at("demo/example/scripts/digest.mjs"), 8],
+      ["load", at("demo/example/scripts/digest.mjs"), 8],
+    ]),
     [],
   );
 });
 
-test("a node_modules above the checkout names exactly what to remove", (t) => {
+test("a node_modules above the checkout is named, never deleted", (t) => {
   const parent = fixture(t);
   const root = resolve(parent, "checkout");
   mkdirSync(root);
@@ -875,18 +962,41 @@ test("a node_modules above the checkout names exactly what to remove", (t) => {
     "example",
     [
       ["process", cli, 7],
+      ["load", cli, 7],
       ["bundle", resolve(root, "demo/example/src/index.ts"), 7],
       ["read", types, 7],
     ],
     { dependencies: [] },
   );
   assert.deepEqual(reasons, [
-    `TypeScript loaded ${resolve(parent, "node_modules/@types/stray")}, a type package above the checkout that every build includes and no stamp binds; remove ${resolve(parent, "node_modules/@types")}`,
+    `TypeScript loaded ${resolve(parent, "node_modules/@types/stray")}, a type package above the checkout that every build includes and no stamp binds; types above checkout: ${resolve(parent, "node_modules/@types")}`,
   ]);
+  // Advice limited to @types, never a command that deletes outside the
+  // repository; the probe appends the rebuild step.
+  const fix = unstampedFix(reasons);
   assert.equal(
-    unstampedFix(reasons),
-    `rm -rf ${resolve(parent, "node_modules/@types")}`,
+    fix,
+    `TypeScript includes every node_modules/@types above the checkout; if nothing else needs ${resolve(parent, "node_modules/@types")}, move it aside`,
   );
+  assert.doesNotMatch(fix, /\brm\b/u);
+  const other = resolve(parent, "node_modules/stray/index.js");
+  mkdirSync(resolve(other, ".."), { recursive: true });
+  writeFileSync(other, "");
+  const untyped = unboundReads(
+    root,
+    "example",
+    [
+      ["process", cli, 7],
+      ["load", cli, 7],
+      ["bundle", resolve(root, "demo/example/src/index.ts"), 7],
+      ["read", other, 7],
+    ],
+    { dependencies: [] },
+  );
+  assert.deepEqual(untyped, [
+    `build read ${other} from a node_modules directory above the checkout, which no stamp binds`,
+  ]);
+  assert.equal(unstampedFix(untyped), undefined);
   assert.equal(
     unstampedFix(["build read x, which no longer exists"]),
     undefined,
