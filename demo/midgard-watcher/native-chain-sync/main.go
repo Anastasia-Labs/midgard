@@ -70,6 +70,30 @@ func main() {
 	}
 }
 
+// connectionCloseBound bounds how long a session end waits for its node
+// connection to stop. cancel has already closed the socket, so Close only
+// waits for the connection's own goroutines; the bound stays below the owner's
+// 5 s release and drain bounds, so a wedged Close cannot fail other sessions.
+const connectionCloseBound = 2 * time.Second
+
+// closeWithin runs release and waits at most bound for it to return, reporting
+// whether it did. A release still running after the bound is abandoned.
+func closeWithin(release func() error, bound time.Duration) bool {
+	closed := make(chan struct{})
+	go func() {
+		_ = release()
+		close(closed)
+	}()
+	timer := time.NewTimer(bound)
+	defer timer.Stop()
+	select {
+	case <-closed:
+		return true
+	case <-timer.C:
+		return false
+	}
+}
+
 // runChainSync owns one node connection for one admitted startup and returns
 // the helper exit status for its outcome; 0 means the owner closed stop. A
 // stopped session seals its writer before its connection is interrupted, so
@@ -90,13 +114,15 @@ func runChainSync(config startupConfig, startupCanonical []byte, writer *canonic
 	var connection *ouroboros.Connection
 	defer func() {
 		// Seal before releasing callbacks parked on the ready gate, then
-		// interrupt every connection-owned read through the socket. Shutdown
-		// never waits on the connection, so a session end cannot wedge.
+		// interrupt every connection-owned read through the socket. The
+		// session ends once its connection has stopped, so a service slot is
+		// not reused while the connection still runs; a Close that outlives
+		// its bound is reported and abandoned, so a session end cannot wedge.
 		writer.seal()
 		cancel()
 		releaseReadyGate.Do(func() { close(readyGate) })
-		if connection != nil {
-			go connection.Close()
+		if connection != nil && !closeWithin(connection.Close, connectionCloseBound) {
+			_, _ = fmt.Fprintln(diagnostics, "native chain-sync connection close exceeded its bound")
 		}
 	}()
 	go func() {
