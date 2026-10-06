@@ -119,6 +119,9 @@ const IMPORT_PATTERN =
 const MOCK_PATTERN =
   /vi\s*\.\s*(?:mock|doMock|unmock|doUnmock)\s*(?:<[^>]*>)?\s*\(\s*["']([^"']+)["']/gu;
 const MODULE_RESET_PATTERN = /vi\s*\.\s*(?:resetModules|isolateModules)\s*\(/u;
+// A dynamic `import()` whose specifier is not a string literal (a URL or path
+// computed at run time). esbuild leaves it in the bundle as a native import.
+const COMPUTED_IMPORT_PATTERN = /(?:^|[^\w.$])import\s*\((?!\s*["'])/u;
 const NAMESPACE_PATTERNS = [
   /import\s+\*\s+as\s+([\w$]+)\s+from\s*["']([^"']+)["']/gu,
   /(?:const|let|var)\s+([\w$]+)\s*=\s*await\s+import\s*\(\s*["']([^"']+)["']\s*\)/gu,
@@ -153,6 +156,7 @@ export const scan = (file) => {
       mocks: [...text.matchAll(MOCK_PATTERN)].map((match) => match[1]),
       resetsModules: MODULE_RESET_PATTERN.test(text),
       readsImportMetaEnv: /\bimport\.meta\.env\b/u.test(text),
+      importsComputedSpecifier: COMPUTED_IMPORT_PATTERN.test(text),
       spiedNamespaces: spiedNamespaces(text),
     };
     scanCache.set(file, scanned);

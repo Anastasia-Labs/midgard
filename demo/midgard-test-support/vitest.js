@@ -220,6 +220,13 @@ const workspaceBundleGuard = fileURLToPath(
  *   that cannot be bundled because it reaches back into the source region)
  *   would see two instances of it. Those files are routed to the source
  *   project too, and the bundle plugin fails any load it misses.
+ * - A dynamic `import()` of a specifier computed at run time (a path or URL)
+ *   is left native in the bundle, so Node, not Vite, would load its target.
+ *   Vitest passes this config's resolve conditions to every fork, so Node
+ *   would resolve the target's workspace imports to `midgard-source`
+ *   TypeScript and fail on it (an enum, or a `.js` specifier naming a `.ts`
+ *   file). Modules that do this are not bundled, and the files that reach
+ *   them run in the source project, where vite-node loads the target.
  * - Circular imports: bundled modules evaluate in esbuild's order, as native
  *   ESM does, but esbuild lowers top-level `const`, `let` and `class` to
  *   `var` when bundling. A module that reads a cycle partner's binding before

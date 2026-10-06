@@ -38,8 +38,8 @@ import {
  *   each import of a bundleable file (bare or relative), which becomes a
  *   candidate entry point;
  * - the bundle side: everything a candidate entry reaches. An entry that
- *   reaches back into the source region, or a file that mocks modules, is not
- *   bundled.
+ *   reaches back into the source region, a file that mocks modules, or a file
+ *   that imports a specifier computed at run time is not bundled.
  * A test file is routed to source when anything on its source side mocks or
  * spies on bundleable code, mocks a package or builtin, resets the registry,
  * reaches an entry that is not bundled, or loads from source a module that an
@@ -117,6 +117,11 @@ export const analyzeSuite = ({
         bundleDirect.set(current, `${label(current)} mocks modules`);
       if (scanned.readsImportMetaEnv)
         bundleDirect.set(current, `${label(current)} reads import.meta.env`);
+      if (scanned.importsComputedSpecifier)
+        bundleDirect.set(
+          current,
+          `${label(current)} imports a specifier computed at run time`,
+        );
       for (const specifier of scanned.imports) {
         let target;
         if (specifier.startsWith("."))
