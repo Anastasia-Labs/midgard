@@ -1,10 +1,4 @@
-import {
-  closeSync,
-  openSync,
-  readFileSync,
-  readlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { closeSync, openSync, readFileSync, readlinkSync } from "node:fs";
 import { readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
@@ -67,36 +61,20 @@ describe("the JSON store's instance lock", () => {
     const onLost = vi.fn();
     const store = await open(dir, { onLost });
     await store.savePeerHealth(health("before"));
-    // The successor's stamp lands while the holder maintains its lock: on
-    // the first lock-file open the holder makes from here on, if any.
-    let tookOver = false;
-    const restore = patchFs({
-      open:
-        (original) =>
-        async (...args) => {
-          const handle = await original(...args);
-          if (!tookOver && String(args[0]).startsWith(lockPath(dir))) {
-            tookOver = true;
-            writeFileSync(lockPath(dir), successorStamp);
-          }
-          return handle;
-        },
-    });
-    try {
-      await vi.advanceTimersByTimeAsync(JSON_STORE_INSTANCE_LOCK_CHECK_MS);
-      // A write queues behind any maintenance the check period started.
-      await store.savePeerHealth(health("during"));
-      if (!tookOver) await leaveLock(dir, successorStamp);
-      for (const peerId of ["after-1", "after-2", "after-3"]) {
-        await expect(store.savePeerHealth(health(peerId))).rejects.toThrow(
-          takenOver,
-        );
-      }
-    } finally {
-      restore();
+    // An idle check and a write both find the holder's own stamp; the
+    // successor's stamp lands only after them.
+    await vi.advanceTimersByTimeAsync(JSON_STORE_INSTANCE_LOCK_CHECK_MS);
+    await store.savePeerHealth(health("during"));
+    expect(onLost).not.toHaveBeenCalled();
+    await leaveLock(dir, successorStamp);
+    for (const peerId of ["after-1", "after-2", "after-3"]) {
+      await expect(store.savePeerHealth(health(peerId))).rejects.toThrow(
+        takenOver,
+      );
     }
     expect(onLost).toHaveBeenCalledOnce();
     expect(onLost.mock.calls[0]![0]).toBeInstanceOf(Error);
+    expect(await peers(store)).toEqual(["before", "during"]);
     await closeStore(store);
     expect(await readFile(lockPath(dir), "utf8")).toBe(successorStamp);
   });
