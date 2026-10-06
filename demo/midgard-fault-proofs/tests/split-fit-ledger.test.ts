@@ -73,6 +73,25 @@ describe("split fit ledger merge", () => {
     );
   });
 
+  it("keeps each stem as the row name when the ledger asks for it", () => {
+    const merged = mergeSplitFitLedgerParts({ ...ledger, rowNames: "stem" }, [
+      part("big", [{ ordinal: 1, rows: [row("b/0", 2), row("b/1", 3)] }]),
+      part("rest", [
+        { ordinal: 0, rows: [row("a/0", 1)] },
+        { ordinal: 2, rows: [row("c/0", 4)] },
+      ]),
+    ]);
+    expect(merged.entries.map((entry) => entry.name)).toEqual([
+      "a/0",
+      "b/0",
+      "b/1",
+      "c/0",
+    ]);
+    expect(() =>
+      mergeSplitFitLedgerParts({ ...ledger, rowNames: "stem" }, [big, rest]),
+    ).toThrow("names must be unique");
+  });
+
   it("refuses to merge a partial run", () => {
     expect(() => mergeSplitFitLedgerParts(ledger, [big])).toThrow(
       "needs every part",

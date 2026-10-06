@@ -14,9 +14,8 @@ import { realBlueprintPath } from "./emulator/blueprints.js";
 /**
  * One checked-in fit ledger measured by a suite whose cases are split across
  * several test files ("parts"). Every case has an ordinal in the suite's
- * complete case table, and a row's name ends with its position among all rows
- * in ordinal order, so the ledger reads exactly as one file running every case
- * in order wrote it.
+ * complete case table, and rows merge in ordinal order, so the ledger reads
+ * exactly as one file running every case in order wrote it.
  */
 export type SplitFitLedger = {
   readonly path: string;
@@ -30,9 +29,16 @@ export type SplitFitLedger = {
    * combine old rows with new ones under a reused run token.
    */
   readonly source: string;
+  /**
+   * How a row's name is made from its stem. `"numbered"` (the default) names
+   * it `${stem}:${position}`, its position among all rows in ordinal order;
+   * `"stem"` keeps the stem as the name, for a suite whose stems are already
+   * unique. The ledger refuses duplicate names either way.
+   */
+  readonly rowNames?: "numbered" | "stem";
 };
 
-/** A row before numbering; its name becomes `${stem}:${position}`. */
+/** A row before naming; see {@link SplitFitLedger.rowNames}. */
 export type SplitFitRow = Omit<VanRossemFitMeasurement, "name"> & {
   readonly stem: string;
 };
@@ -160,7 +166,10 @@ export const mergeSplitFitLedgerParts = (
     for (const { stem, memoryUnits, cpuUnits, ...row } of rows)
       measurements.push({
         ...row,
-        name: `${stem}:${measurements.length.toString()}`,
+        name:
+          ledger.rowNames === "stem"
+            ? stem
+            : `${stem}:${measurements.length.toString()}`,
         memoryUnits: BigInt(memoryUnits),
         cpuUnits: BigInt(cpuUnits),
       });
