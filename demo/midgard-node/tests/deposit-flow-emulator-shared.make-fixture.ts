@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { setImmediate as yieldToIo } from "node:timers/promises";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -169,21 +168,6 @@ export const publishDepositFlowReferenceScripts = async ({
   };
 };
 
-/** Lets I/O run between submissions without advancing the protocol clock. */
-const yieldBeforeEachSubmission = (emulator: Emulator): void => {
-  const submitTx = Emulator.prototype.submitTx.bind(emulator);
-  emulator.submitTx = async (tx) => {
-    // Publishing hundreds of scripts through immediately resolved provider
-    // calls can starve worker IPC for over Vitest's 60s reporting deadline.
-    // Service I/O between transactions without advancing the protocol clock.
-    // Vitest 4 removed that deadline (vitest-dev/vitest#8297, first shipped in
-    // v4.0.0); delete this wrapper once the workspace is on Vitest 4 or later.
-    // Stable @effect/vitest supports only Vitest 3; later Vitest needs Effect 4.
-    await yieldToIo();
-    return submitTx(tx);
-  };
-};
-
 const makeCustomLucid = (emulator: Emulator) => makeLucid(emulator, "Custom");
 
 /** A deployed fixture as plain data: the emulator ledger the moment the
@@ -221,7 +205,6 @@ const deployFixture = async (): Promise<{
     [operatorAccount, depositorAccount, referenceScriptsAccount],
     EMULATOR_PROTOCOL_PARAMETERS,
   );
-  yieldBeforeEachSubmission(emulator);
   const creation = { time: emulator.time, slot: emulator.slot };
   const emulatorCreationTimeMs = emulator.now();
   const operatorLucid = await makeCustomLucid(emulator);
@@ -303,7 +286,6 @@ const restoreFixture = async (
 ): Promise<EmulatorFixture> => {
   const emulator = new Emulator([], EMULATOR_PROTOCOL_PARAMETERS);
   Object.assign(emulator, structuredClone(deployed.emulator));
-  yieldBeforeEachSubmission(emulator);
   const { operatorAccount, depositorAccount, referenceScriptsAccount } =
     structuredClone(deployed.accounts);
   const recreate = (seedPhrase: string, pinned: UTxO[] | undefined) =>
