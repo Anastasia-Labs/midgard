@@ -1,9 +1,26 @@
-import { chmod, readFile, unlink } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import {
+  closeSync,
+  constants,
+  openSync,
+  readdirSync,
+  readFileSync,
+  writeSync,
+} from "node:fs";
+import {
+  chmod,
+  link,
+  readFile,
+  rename,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 
 import { afterAll, afterEach, expect, it, vi } from "vitest";
 
 import { JSON_STORE_INSTANCE_LOCK_CHECK_MS } from "../src/store.json-file-instance-lock.js";
+import { isNodeError } from "../src/store.parse-stored-record-map.js";
 import { tempDir } from "./helpers.js";
 import {
   committeeChild,
@@ -75,6 +92,67 @@ it("treats a removed stamp as taken over", async () => {
     );
   }
   expect(onLost).toHaveBeenCalledOnce();
+});
+
+it("starts no idle check while one is still reading, however long the read hangs", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  const dir = await tempDir();
+  const onLost = vi.fn();
+  const store = await open(dir, { onLost });
+  const stamp = await readFile(lockPath(dir), "utf8");
+  // A FIFO in the stamp's place makes every read of it block in the kernel,
+  // holding a libuv threadpool thread, until a writer opens it.
+  const fifo = `${lockPath(dir)}.fifo`;
+  execFileSync("mkfifo", [fifo]);
+  await link(fifo, `${lockPath(dir)}.swap`);
+  await rename(`${lockPath(dir)}.swap`, lockPath(dir));
+  // Threads blocked opening a FIFO with no writer, as the kernel reports them.
+  const blockedReads = () =>
+    readdirSync("/proc/self/task").filter((task) => {
+      try {
+        return (
+          readFileSync(`/proc/self/task/${task}/wchan`, "utf8") ===
+          "wait_for_partner"
+        );
+      } catch {
+        return false;
+      }
+    }).length;
+  const releaseReaders = () => {
+    try {
+      const writer = openSync(fifo, constants.O_WRONLY | constants.O_NONBLOCK);
+      writeSync(writer, stamp);
+      closeSync(writer);
+    } catch (error) {
+      if (!(isNodeError(error) && error.code === "ENXIO")) throw error;
+    }
+  };
+  try {
+    await vi.advanceTimersByTimeAsync(JSON_STORE_INSTANCE_LOCK_CHECK_MS);
+    await vi.waitFor(() => expect(blockedReads()).toBe(1));
+    await vi.advanceTimersByTimeAsync(JSON_STORE_INSTANCE_LOCK_CHECK_MS * 8);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(blockedReads()).toBe(1);
+    // The rest of the threadpool still serves this process.
+    await writeFile(join(dir, "probe"), "probe");
+    expect(await readFile(join(dir, "probe"), "utf8")).toBe("probe");
+    // The stamp comes back, then the one hung read gets it too.
+    await writeFile(`${lockPath(dir)}.swap`, stamp);
+    await rename(`${lockPath(dir)}.swap`, lockPath(dir));
+    releaseReaders();
+    await vi.waitFor(() => expect(blockedReads()).toBe(0));
+    await vi.advanceTimersByTimeAsync(JSON_STORE_INSTANCE_LOCK_CHECK_MS);
+    await store.savePeerHealth(health("after"));
+    expect(await peers(store)).toEqual(["after"]);
+    expect(onLost).not.toHaveBeenCalled();
+  } finally {
+    // Unblocks any read still waiting, so a failure here cannot hang the run.
+    for (let attempt = 0; attempt < 50 && blockedReads() > 0; attempt += 1) {
+      releaseReaders();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    await unlink(fifo);
+  }
 });
 
 it("reports a lock file it cannot read once, refusing writes without reporting a loss", async () => {

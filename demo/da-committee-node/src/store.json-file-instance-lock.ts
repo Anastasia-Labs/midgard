@@ -46,6 +46,7 @@ export class JsonStoreInstanceLock {
   private released: Promise<void> | undefined;
   private readonly checks = new Set<Promise<void>>();
   private reportedCheckFailure: string | undefined;
+  private idleCheckRunning = false;
 
   private constructor(
     readonly lockPath: string,
@@ -99,14 +100,22 @@ export class JsonStoreInstanceLock {
         options.log ?? ((line) => process.stderr.write(line)),
       );
       lock.timer = setInterval(() => {
-        // A failed read is retried on the next interval; writes are refused
-        // until one succeeds.
-        lock.assertHeld().then(
-          () => {
-            lock.reportedCheckFailure = undefined;
-          },
-          (error: unknown) => lock.reportCheckFailure(error),
-        );
+        // A read still under way, as on a hung filesystem, skips this tick,
+        // so reads never pile up. A failed read is retried on the next
+        // interval; writes are refused until one succeeds.
+        if (lock.idleCheckRunning) return;
+        lock.idleCheckRunning = true;
+        lock
+          .assertHeld()
+          .then(
+            () => {
+              lock.reportedCheckFailure = undefined;
+            },
+            (error: unknown) => lock.reportCheckFailure(error),
+          )
+          .finally(() => {
+            lock.idleCheckRunning = false;
+          });
       }, options.checkMs ?? JSON_STORE_INSTANCE_LOCK_CHECK_MS);
       lock.timer.unref?.();
       return lock;
