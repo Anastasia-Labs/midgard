@@ -116,7 +116,7 @@ func TestExactPointServiceRefusesInvalidAndNonExactStartups(t *testing.T) {
 	config, _, _ := exactFixture(t)
 	stream := validStartup(t)
 	h := startService(t, func(s *exactPointService) {
-		s.run = func(startupConfig, []byte, *canonicalWriter, io.Writer, <-chan struct{}) int {
+		s.run = func(startupConfig, []byte, *canonicalWriter, io.Writer, <-chan struct{}, func()) int {
 			t.Error("refused startup reached the node")
 			return 0
 		}
@@ -155,7 +155,7 @@ func TestExactPointServiceRejectsProtocolViolations(t *testing.T) {
 		{"open 1 " + strings.Repeat("x", maxServiceRequestBytes)},
 	} {
 		h := startService(t, func(s *exactPointService) {
-			s.run = func(_ startupConfig, _ []byte, _ *canonicalWriter, _ io.Writer, stop <-chan struct{}) int {
+			s.run = func(_ startupConfig, _ []byte, _ *canonicalWriter, _ io.Writer, stop <-chan struct{}, _ func()) int {
 				<-stop
 				return 0
 			}
@@ -188,7 +188,7 @@ func TestExactPointServiceFramesConcurrentSessionsAndSealsClosedOutput(t *testin
 	lateResult := make(chan error, 1)
 	var firstStopped sync.Once
 	h := startService(t, func(s *exactPointService) {
-		s.run = func(config startupConfig, _ []byte, writer *canonicalWriter, diagnostics io.Writer, stop <-chan struct{}) int {
+		s.run = func(config startupConfig, _ []byte, writer *canonicalWriter, diagnostics io.Writer, stop <-chan struct{}, _ func()) int {
 			_, _ = diagnostics.Write([]byte("diagnostic\nfor " + config.Operation.Target.BlockNo + "\n"))
 			if err := writer.write(errorEvent{Code: "session_" + config.Operation.Target.BlockNo, Kind: "error", SchemaVersion: schemaVersion}); err != nil {
 				t.Error(err)
@@ -254,7 +254,7 @@ func TestExactPointServiceBoundsConcurrentSessions(t *testing.T) {
 	config, _, _ := exactFixture(t)
 	valid := startupLine(t, config)
 	h := startService(t, func(s *exactPointService) {
-		s.run = func(_ startupConfig, _ []byte, _ *canonicalWriter, _ io.Writer, stop <-chan struct{}) int {
+		s.run = func(_ startupConfig, _ []byte, _ *canonicalWriter, _ io.Writer, stop <-chan struct{}, _ func()) int {
 			<-stop
 			return 0
 		}

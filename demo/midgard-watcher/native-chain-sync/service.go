@@ -120,7 +120,7 @@ type exactPointService struct {
 	lastID   uint64
 	running  sync.WaitGroup
 	// run is replaceable in tests; production sessions run runChainSync.
-	run func(config startupConfig, canonical []byte, writer *canonicalWriter, diagnostics io.Writer, stop <-chan struct{}) int
+	run func(config startupConfig, canonical []byte, writer *canonicalWriter, diagnostics io.Writer, stop <-chan struct{}, onReady func()) int
 }
 
 func newExactPointService(writer io.Writer) *exactPointService {
@@ -180,7 +180,7 @@ func (s *exactPointService) open(id uint64, startup []byte) {
 	s.mutex.Unlock()
 	go func() {
 		defer s.running.Done()
-		status := s.run(config, canonical, writer, sessionDiagnostics{frames: frames}, session.stop)
+		status := s.run(config, canonical, writer, sessionDiagnostics{frames: frames}, session.stop, nil)
 		s.mutex.Lock()
 		delete(s.sessions, id)
 		s.mutex.Unlock()

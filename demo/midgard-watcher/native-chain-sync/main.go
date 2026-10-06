@@ -26,10 +26,10 @@ func writeChainSyncFailure(writer *canonicalWriter, diagnostics io.Writer, cause
 }
 
 func main() {
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	writer := &canonicalWriter{encoder: json.NewEncoder(os.Stdout)}
 	if len(os.Args) == 2 && os.Args[1] == exactPointServiceFlag {
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 		service := newExactPointService(os.Stdout)
 		go func() {
 			<-signals
@@ -53,12 +53,19 @@ func main() {
 		}
 		return
 	}
+	// A stream helper keeps the default signal disposition until it is ready,
+	// so an owner signal before ready still ends it by that signal; after
+	// ready, a signal is an orderly stop with exit status 0.
 	stop := make(chan struct{})
-	go func() {
-		<-signals
-		close(stop)
-	}()
-	if status := runChainSync(config, startupCanonical, writer, os.Stderr, stop); status != 0 {
+	armStop := func() {
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			<-signals
+			close(stop)
+		}()
+	}
+	if status := runChainSync(config, startupCanonical, writer, os.Stderr, stop, armStop); status != 0 {
 		os.Exit(status)
 	}
 }
@@ -67,7 +74,7 @@ func main() {
 // the helper exit status for its outcome; 0 means the owner closed stop. A
 // stopped session seals its writer before its connection is interrupted, so
 // no chain-sync line follows the owner's close.
-func runChainSync(config startupConfig, startupCanonical []byte, writer *canonicalWriter, diagnostics io.Writer, stop <-chan struct{}) int {
+func runChainSync(config startupConfig, startupCanonical []byte, writer *canonicalWriter, diagnostics io.Writer, stop <-chan struct{}, onReady func()) int {
 	exact := config.Operation.Kind == "exact_point"
 	errorChannel := make(chan error, 4)
 	readyGate := make(chan struct{})
@@ -171,6 +178,9 @@ func runChainSync(config startupConfig, startupCanonical []byte, writer *canonic
 		return 74
 	}
 	releaseReadyGate.Do(func() { close(readyGate) })
+	if onReady != nil {
+		onReady()
+	}
 
 	select {
 	case <-stop:
