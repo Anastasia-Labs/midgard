@@ -78,7 +78,6 @@ export * from "./prepare-reference-input-no-idx.js";
 export * from "./prepare-transition-trace.js";
 export * from "./prepare-withdrawn-input.js";
 export * from "./prepare-zero-input.js";
-export * from "./proof-fit/limit-escape-scan.js";
 export * from "./proof-fit/van-rossem-fit-ledger.js";
 export * from "./protected-output-signer-missing/index.js";
 export * from "./publish-proof-chunks.js";

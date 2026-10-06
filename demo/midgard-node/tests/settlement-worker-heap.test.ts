@@ -138,9 +138,6 @@ describe("settlement reference-script resolution under the worker heap limit", (
       silent: true,
       noExternal: [/^@al-ft\//],
       loader: { ".sql": "text" },
-      // Inlined CommonJS dependencies (the TypeScript compiler, reached
-      // through @al-ft/midgard-fault-proofs) read __filename and __dirname.
-      shims: true,
       banner: {
         js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);',
       },
