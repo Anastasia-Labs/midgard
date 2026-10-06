@@ -221,8 +221,12 @@ const workspaceBundleGuard = fileURLToPath(
  *   would see two instances of it. Those files are routed to the source
  *   project too, and the bundle plugin fails any load it misses.
  * - Circular imports: bundled modules evaluate in esbuild's order, as native
- *   ESM does; a cycle that only worked under vite-node's partial exports
- *   fails loudly (a TDZ ReferenceError), never silently.
+ *   ESM does, but esbuild lowers top-level `const`, `let` and `class` to
+ *   `var` when bundling. A module that reads a cycle partner's binding before
+ *   that partner has run therefore sees `undefined`, not the TDZ
+ *   ReferenceError native ESM raises, so a cycle that only worked under
+ *   vite-node's partial exports can fail later and less clearly, or not at
+ *   all if the value goes unused.
  * - Bundling renames colliding identifiers; `keepNames` keeps `.name`.
  * - Only Vite plugins of this project that transform workspace source would
  *   be skipped by the bundle, so never wrap a project that has one (the
