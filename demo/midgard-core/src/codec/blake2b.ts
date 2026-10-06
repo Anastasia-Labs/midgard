@@ -18,8 +18,6 @@ const SODIUM_CHUNK_BYTES = 64 * 1024;
 
 let sodiumReady = false;
 
-const backendCounts = { sodium: 0, noble: 0 };
-
 /**
  * Resolves `true` once {@link midgardBlake2b} hashes with libsodium, or
  * `false` if libsodium failed to initialise (every digest then stays on noble).
@@ -60,10 +58,8 @@ export const midgardBlake2b = (
     outputLength < SODIUM_MIN_OUTPUT_BYTES ||
     outputLength > SODIUM_MAX_OUTPUT_BYTES
   ) {
-    backendCounts.noble++;
     return nobleBlake2b(message, { dkLen: outputLength });
   }
-  backendCounts.sodium++;
   if (message.length <= SODIUM_CHUNK_BYTES) {
     return sodium.crypto_generichash(outputLength, message, null);
   }
@@ -76,9 +72,3 @@ export const midgardBlake2b = (
   }
   return sodium.crypto_generichash_final(state, outputLength);
 };
-
-/** How many digests each backend has computed in this process. */
-export const midgardBlake2bBackendCounts = (): {
-  readonly sodium: number;
-  readonly noble: number;
-} => ({ ...backendCounts });

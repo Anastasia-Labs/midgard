@@ -1,11 +1,7 @@
 import { midgardBlake2b } from "./blake2b.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 
-export {
-  midgardBlake2b,
-  midgardBlake2bBackendCounts,
-  midgardBlake2bReady,
-} from "./blake2b.js";
+export { midgardBlake2b, midgardBlake2bReady } from "./blake2b.js";
 
 /**
  * Canonical 32-byte hash used by the Midgard tx codec.

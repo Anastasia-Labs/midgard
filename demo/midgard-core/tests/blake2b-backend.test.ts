@@ -1,11 +1,11 @@
 import { blake2b as nobleBlake2b } from "@noble/hashes/blake2.js";
-import { beforeAll, describe, expect, it } from "vitest";
+import sodium from "libsodium-wrappers-sumo";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   computeHash28,
   computeHash32,
   midgardBlake2b,
-  midgardBlake2bBackendCounts,
   midgardBlake2bReady,
 } from "../src/index.js";
 
@@ -70,6 +70,17 @@ const midgard = (message: Uint8Array, dkLen: number): string =>
 describe("Midgard Blake2b backend", () => {
   beforeAll(async () => {
     expect(await midgardBlake2bReady).toBe(true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Pass-through spies on the libsodium entry points the hasher calls: they
+  // record which backend served a digest and leave every digest to libsodium.
+  const spyOnSodium = () => ({
+    oneShot: vi.spyOn(sodium, "crypto_generichash"),
+    streamed: vi.spyOn(sodium, "crypto_generichash_init"),
   });
 
   it("matches the RFC 7693 Appendix A Blake2b-512 vector", () => {
@@ -140,23 +151,23 @@ describe("Midgard Blake2b backend", () => {
 
   it("serves computeHash32 and computeHash28 from libsodium", () => {
     const message = Buffer.from("midgard");
-    const before = midgardBlake2bBackendCounts();
+    const { oneShot } = spyOnSodium();
     expect(computeHash32(message).toString("hex")).toBe(noble(message, 32));
     expect(computeHash28(message).toString("hex")).toBe(noble(message, 28));
-    const after = midgardBlake2bBackendCounts();
-    expect(after.sodium - before.sodium).toBe(2);
-    expect(after.noble - before.noble).toBe(0);
+    expect(oneShot.mock.calls.map(([outputLength]) => outputLength)).toEqual([
+      32, 28,
+    ]);
   });
 
   it("leaves output lengths libsodium does not support to noble", () => {
     const message = Buffer.from("short output");
-    const before = midgardBlake2bBackendCounts();
+    const { oneShot, streamed } = spyOnSodium();
     for (const dkLen of [1, 8, 15]) {
       expect(midgard(message, dkLen)).toBe(noble(message, dkLen));
     }
     expect(() => midgardBlake2b(message, { dkLen: 65 })).toThrow();
     expect(() => midgardBlake2b(message, { dkLen: 0 })).toThrow();
-    const after = midgardBlake2bBackendCounts();
-    expect(after.sodium - before.sodium).toBe(0);
+    expect(oneShot).not.toHaveBeenCalled();
+    expect(streamed).not.toHaveBeenCalled();
   });
 });
