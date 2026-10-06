@@ -100,3 +100,15 @@ transaction waits forever. The patch keeps every reserve waiter in the queue,
 removes a rejected waiter from it, and clears per-query state when a connection
 closes. The ESM and CommonJS builds are patched; the unused `cf` build is not.
 Drop the patch once a released `postgres` version contains the fix.
+
+The same patch makes `query.cancel()` observe the promise of its cancel
+request. The request runs on a connection of its own, and the unpatched
+`cancel()` drops that promise, so a cancel whose connection is refused or reset
+is an unhandled rejection, which ends the node: `@effect/sql-pg` cancels every
+running query it interrupts. The patched `cancel()` sends the request once,
+handles a rejection itself, and returns the promise, as the open pull request
+porsager/postgres#1237 does without the handler. A failed cancel leaves the
+query running to its end; its own result and failure path are unchanged.
+`midgard-node/tests/database-startup-retry.test.ts` resets a real cancel
+connection and checks the pool serves the next query. Drop this part once a
+released `postgres` version observes the cancel promise.

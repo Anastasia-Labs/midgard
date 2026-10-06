@@ -35,9 +35,9 @@ const isCancelRequest = (chunk: unknown): boolean =>
  * this factory whenever an in-flight query is cancelled (Effect interrupts
  * a running query by cancelling it), and Postgres answers it by closing the
  * connection without a byte: that close is the cancel's success, not a
- * dropped upstream. postgres.js never observes the promise of that cancel,
- * so turning its close into an error would be an unhandled rejection, which
- * terminates the node.
+ * dropped upstream. Turning it into an error would log a false drop and
+ * reject the cancel (which the patched postgres.js observes; unpatched, it
+ * was an unhandled rejection that terminated the node).
  */
 export const databaseUpstreamSocket = (
   role: DatabasePoolRole,

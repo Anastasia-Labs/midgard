@@ -33,7 +33,7 @@ patchedDependencies:
     hash: amsgm2cgjjoucvcdg3i4tuosl4
     path: patches/blake2b@2.1.4.patch
   postgres@3.4.9:
-    hash: 4lh2kyg2qjbjmt3uavn46jspjm
+    hash: qmksmaj6uqhpu6mepouu5f27me
     path: patches/postgres@3.4.9.patch
 
 importers:
@@ -662,7 +662,7 @@ importers:
         version: link:../midgard-node
       postgres:
         specifier: 3.4.9
-        version: 3.4.9(patch_hash=4lh2kyg2qjbjmt3uavn46jspjm)
+        version: 3.4.9(patch_hash=qmksmaj6uqhpu6mepouu5f27me)
       undici:
         specifier: ^7.25.0
         version: 7.25.0
@@ -4442,7 +4442,7 @@ snapshots:
       '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2)
       '@opentelemetry/semantic-conventions': 1.30.0
       effect: 3.21.2
-      postgres: 3.4.9(patch_hash=4lh2kyg2qjbjmt3uavn46jspjm)
+      postgres: 3.4.9(patch_hash=qmksmaj6uqhpu6mepouu5f27me)
 
   '@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2)':
     dependencies:
@@ -6980,7 +6980,7 @@ snapshots:
     dependencies:
       xtend: 4.0.2
 
-  postgres@3.4.9(patch_hash=4lh2kyg2qjbjmt3uavn46jspjm): {}
+  postgres@3.4.9(patch_hash=qmksmaj6uqhpu6mepouu5f27me): {}
 
   prelude-ls@1.2.1: {}
 
