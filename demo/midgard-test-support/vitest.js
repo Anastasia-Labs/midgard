@@ -75,7 +75,6 @@ const cmlMemoryReserveExecArgv = `--import=${
  * the lane runner, which would also hit pnpm, Vitest's own main process, and
  * every unrelated tool in the lane.
  *
- *
  * Every worker also reserves CML's wasm memory up front. On Node 22 (V8 12.4)
  * each grow of a wasm memory past 64 MB starts a major GC, and CML grows its
  * memory a page-run at a time, so any file whose CML memory climbs far past
