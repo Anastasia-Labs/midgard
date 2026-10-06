@@ -159,6 +159,11 @@ func runChainSync(config startupConfig, startupCanonical []byte, writer *canonic
 		return fail("intersection_failed", 69)
 	}
 	digest := sha256.Sum256(startupCanonical)
+	// Armed before the ready line is written: an owner may signal as soon as
+	// it reads ready, and that signal must already be an orderly stop.
+	if onReady != nil {
+		onReady()
+	}
 	if err := writer.write(readyEvent{
 		AuthorityNodeID:       config.AuthorityNodeID,
 		CurrentTip:            tip(*currentTip),
@@ -178,9 +183,6 @@ func runChainSync(config startupConfig, startupCanonical []byte, writer *canonic
 		return 74
 	}
 	releaseReadyGate.Do(func() { close(readyGate) })
-	if onReady != nil {
-		onReady()
-	}
 
 	select {
 	case <-stop:
