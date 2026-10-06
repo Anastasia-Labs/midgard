@@ -44,10 +44,12 @@ export {
  * and Node CI's `test-durations` job merges a run's records into a refreshed
  * table (artifact `ci-file-durations`), warning when files the committed table
  * does not know, or knows wrongly, carry more than a tenth of the run's
- * seconds. Refresh the committed table from any run with one command:
+ * seconds. Refresh the committed table from several runs (each file takes
+ * the median of their seconds, which evens out fast and slow runners) with
+ * one command:
  *
  *   node demo/midgard-test-support/scripts/ci-file-durations.mjs \
- *     --package demo/<package> --table <its table> --run <run id>
+ *     --package demo/<package> --table <its table> --run <id> --run <id> ...
  */
 
 const specFile = (root, spec) =>

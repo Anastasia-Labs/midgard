@@ -6,12 +6,12 @@
  * run measured.
  *
  * One command, from the repository root, refreshes a package's committed
- * table from a finished Node CI run:
+ * table from finished Node CI runs (several: see the median below):
  *
  *   node demo/midgard-test-support/scripts/ci-file-durations.mjs \
  *     --package demo/midgard-fault-proofs \
  *     --table demo/midgard-fault-proofs/tests/support/ci-file-durations.json \
- *     --run <run id>
+ *     --run <run id> --run <earlier run id> ...
  *
  * `--run` downloads the run's `file-durations-<package>-<shard>` artifacts
  * (written by the `FileDurationsReporter` that `durationShards` adds when
@@ -20,7 +20,7 @@
  * `<package> (i/n)` instead. Records or logs can also be passed as files:
  *
  *   ci-file-durations.mjs --package <dir> --table <table.json> [--out <path>]
- *     [--run <id>] [--repo owner/name] [--overhead-seconds 5]
+ *     [--run <id>]... [--repo owner/name] [--overhead-seconds 5]
  *     [--project-shards <n>] [--warn-share 0.1] [--test-file <regex>]
  *     [<record.json | job log>...]
  *
@@ -30,7 +30,18 @@
  * committed seconds; entries for files no longer under `--package` are
  * dropped. A test file is a file under `<package>/tests` that `--test-file`
  * matches (default: the extensions of Vitest's default include, so
- * midgard-node's `.test.mjs` files count). `defaultSeconds` (the weight of a file the table does not know) is
+ * midgard-node's `.test.mjs` files count).
+ *
+ * `--run` may be repeated, and should be for a committed table: a file's
+ * seconds are then the median of what each run measured. Every file of a
+ * shard shares its job's hosted runner, and runners differ in speed, so one
+ * run's records weigh a whole shard's files fast or slow together: Node CI
+ * runs 37454959053..37496803570 measured the fault-proof shards at 0.80x to
+ * 1.57x their files' five-run median, small and large files alike, and a table
+ * refreshed from one run carries those runners' speeds into every later plan.
+ * Within one run (its per-shard records, or the positional inputs, which count
+ * as one run) a file keeps its largest value.
+ * `defaultSeconds` (the weight of a file the table does not know) is
  * the median of the result; `forksPerShard`, `reservedSeconds` and `$comment`
  * are carried over from `--table`.
  *
@@ -54,8 +65,7 @@
  * is added per file for the fork start, import and collection a log does not
  * show. Only lines before a log's first `Test Files` summary count, so a later
  * step that reruns some files does not stretch their spans. Records already
- * include import and collection, so no overhead is added to them. A file
- * named in several inputs keeps its largest value.
+ * include import and collection, so no overhead is added to them.
  */
 
 import { execFileSync } from "node:child_process";
@@ -82,7 +92,7 @@ const { values, positionals } = parseArgs({
     package: { type: "string" },
     table: { type: "string" },
     out: { type: "string" },
-    run: { type: "string" },
+    run: { type: "string", multiple: true },
     repo: { type: "string", default: "Anastasia-Labs/midgard" },
     "overhead-seconds": { type: "string", default: "5" },
     "project-shards": { type: "string" },
@@ -98,10 +108,10 @@ const outPath = values.out ?? values.table;
 if (
   !values.package ||
   !tablePath ||
-  (positionals.length === 0 && values.run === undefined)
+  (positionals.length === 0 && (values.run ?? []).length === 0)
 ) {
   process.stderr.write(
-    "usage: ci-file-durations.mjs --package <dir> --table <table.json> [--out <path>] (--run <id> | <record.json | log>...)\n",
+    "usage: ci-file-durations.mjs --package <dir> --table <table.json> [--out <path>] (--run <id>... | <record.json | log>...)\n",
   );
   process.exit(2);
 }
@@ -237,25 +247,48 @@ const readRecord = (raw, path) => {
   return new Map(Object.entries(raw.files));
 };
 
-const inputs = [
-  ...positionals,
-  ...(values.run === undefined ? [] : fetchRun(values.run)),
-];
-/** @type {Map<string, number>} */
-const measured = new Map();
-for (const path of inputs) {
-  const text = readFileSync(path, "utf8");
-  let record;
-  try {
-    record = JSON.parse(text);
-  } catch {
-    record = undefined;
+/** Seconds per file of one run's inputs: a file keeps its largest value. */
+const readRun = (paths) => {
+  /** @type {Map<string, number>} */
+  const seconds = new Map();
+  for (const path of paths) {
+    const text = readFileSync(path, "utf8");
+    let record;
+    try {
+      record = JSON.parse(text);
+    } catch {
+      record = undefined;
+    }
+    const values =
+      record === undefined ? readLog(text) : readRecord(record, path);
+    for (const [name, value] of values)
+      seconds.set(name, Math.max(seconds.get(name) ?? 0, value));
   }
-  const seconds =
-    record === undefined ? readLog(text) : readRecord(record, path);
-  for (const [name, value] of seconds)
-    measured.set(name, Math.max(measured.get(name) ?? 0, value));
-}
+  return seconds;
+};
+
+const median = (values) => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+};
+
+const runs = [
+  ...(positionals.length === 0 ? [] : [positionals]),
+  ...(values.run ?? []).map((run) => fetchRun(run)),
+];
+const inputs = runs.flat();
+/** @type {Map<string, number[]>} */
+const perRun = new Map();
+for (const run of runs)
+  for (const [name, value] of readRun(run))
+    perRun.set(name, [...(perRun.get(name) ?? []), value]);
+/** @type {Map<string, number>} */
+const measured = new Map(
+  [...perRun].map(([name, values]) => [name, median(values)]),
+);
 if (measured.size === 0) throw new Error("no test files found in the inputs");
 
 // --- refreshed table ----------------------------------------------------------
@@ -290,19 +323,19 @@ const files = Object.fromEntries(
     ]),
 );
 const sorted = Object.values(files).sort((a, b) => a - b);
-const median = sorted[Math.floor(sorted.length / 2)];
+const middle = sorted[Math.floor(sorted.length / 2)];
 const table = {
   $comment: committedRaw.$comment,
   forksPerShard: committedRaw.forksPerShard ?? 2,
   reservedSeconds: committedRaw.reservedSeconds ?? {},
-  defaultSeconds: median,
+  defaultSeconds: middle,
   files,
 };
 writeFileSync(outPath, JSON.stringify(table, null, 2) + "\n");
 const total = (seconds) => Math.round(seconds.reduce((a, b) => a + b, 0));
 process.stdout.write(
-  `${outPath}: ${sorted.length} files, ${total(sorted)} s total, default ${median} s ` +
-    `(${measured.size} measured in ${inputs.length} inputs)\n`,
+  `${outPath}: ${sorted.length} files, ${total(sorted)} s total, default ${middle} s ` +
+    `(${measured.size} measured in ${inputs.length} inputs from ${runs.length} runs)\n`,
 );
 
 // --- drift of the committed table -------------------------------------------
@@ -341,7 +374,7 @@ if (share > warnShare) {
     `${(share * 100).toFixed(1)}% of this run's seconds are in files the committed table ` +
       `does not know or weighs wrongly, so its shards are unbalanced. Refresh it: ` +
       `node demo/midgard-test-support/scripts/ci-file-durations.mjs --package ${values.package} ` +
-      `--table ${tablePath} --run <this run id>. Largest: ${largest}`,
+      `--table ${tablePath} --run <this run id> --run <earlier run id>... Largest: ${largest}`,
   );
 }
 
