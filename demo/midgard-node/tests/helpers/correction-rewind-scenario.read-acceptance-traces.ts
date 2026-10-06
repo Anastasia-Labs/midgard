@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from "node:timers/promises";
+
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { expect } from "vitest";
@@ -62,10 +64,15 @@ export const buildDepositorTransfer = async (
   });
 };
 
+/** How long admission waits for its rows to become terminal, on the
+ * monotonic clock: callers may fake `Date`. */
+const ADMISSION_SETTLE_MS = 60_000;
+const ADMISSION_SETTLE_POLL_MS = 50;
+
 /** Queue signed L2 transactions in the node's durable admission queue, as
- * `/submit` does, then drain the queue once: transactions queued together are
- * accepted in one batch, under one inverse receipt. Returns each admission
- * status, in order. */
+ * `/submit` does, then drain the queue until each is terminal: transactions
+ * queued together are accepted in one batch, under one inverse receipt.
+ * Returns each admission status, in order. */
 export const admitTransfersTogether = async (
   h: ContentHandle,
   builts: readonly BuiltTransferTx[],
@@ -85,18 +92,31 @@ export const admitTransfersTogether = async (
       }),
     );
   }
-  await h.command(
-    txQueueProcessorDrainOnce().pipe(Effect.provide(validationPoolLayer)),
-  );
+  const readStatuses = () =>
+    read(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ tx_id: Buffer; status: string }>`
+          SELECT tx_id, status FROM tx_admissions
+          WHERE tx_id IN ${sql.in(builts.map(({ txId }) => txId))}`;
+      }),
+    );
+  // A drain whose slot a woken background drain already holds returns at
+  // once (the processor coalesces wakeups), leaving the rows to that drain.
+  // Drain again until every row is terminal, as the node's processor would.
+  const deadline = performance.now() + ADMISSION_SETTLE_MS;
+  for (;;) {
+    await h.command(
+      txQueueProcessorDrainOnce().pipe(Effect.provide(validationPoolLayer)),
+    );
+    const settled = (await readStatuses()).every(
+      ({ status }) => status === "accepted" || status === "rejected",
+    );
+    if (settled || performance.now() >= deadline) break;
+    await sleep(ADMISSION_SETTLE_POLL_MS);
+  }
   await alignMempoolToEmulatorClock(h);
-  const rows = await read(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ tx_id: Buffer; status: string }>`
-        SELECT tx_id, status FROM tx_admissions
-        WHERE tx_id IN ${sql.in(builts.map(({ txId }) => txId))}`;
-    }),
-  );
+  const rows = await readStatuses();
   return builts.map(
     ({ txId }) => rows.find((row) => row.tx_id.equals(txId))?.status,
   );
