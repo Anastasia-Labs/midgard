@@ -51,6 +51,16 @@ runs:
         node-version-file: demo/.nvmrc
         cache: pnpm
         cache-dependency-path: demo/pnpm-lock.yaml
+    # Node keeps the V8 code it compiles for each loaded module here, so the
+    # job's later processes (one per test file, plus pnpm, tsc and the
+    # builds) skip recompiling the same dependencies and workspace bundles.
+    # Each entry is checked against a hash of its module's source and
+    # discarded on a mismatch, so an edited module is always recompiled. It
+    # lives only for the job; within one run it is already warm after the
+    # first fork.
+    - name: Share one compile cache across the job's Node processes
+      shell: bash
+      run: echo "NODE_COMPILE_CACHE=$RUNNER_TEMP/node-compile-cache" >> "$GITHUB_ENV"
     - name: Install dependencies
       shell: bash
       env:
