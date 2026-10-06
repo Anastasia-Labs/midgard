@@ -10,5 +10,6 @@ import "../src/deployment-manifest.js";
 import "../src/transactions/initialization.js";
 import "./helpers/availability-challenge.js";
 import "./deployment-manifest.canonical-identity.js";
+import "./deployment-manifest.node-verified-cache.js";
 import "./deployment-manifest.v1-deployment-manifest.js";
 import "./deployment-manifest.validation-dispute-maturity-by-profile.js";
