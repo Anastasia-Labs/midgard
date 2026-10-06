@@ -20,11 +20,30 @@
  * once. The allocator keeps the freed block as its top chunk and serves later
  * allocations from it, so the file runs without further grows. Nothing reads
  * or writes the block, so its pages stay untouched address space until CML
- * actually uses them; resident memory grows only by what CML would have used
- * anyway, plus whatever the now-rarer GCs leave uncollected for longer.
+ * actually uses them.
  *
- * Only memory layout changes: the same allocator serves the same requests,
- * and no evaluation, encoding or ledger rule sees any difference.
+ * Collecting: the grows were also the only thing that made V8 collect CML's
+ * garbage. CML frees a value's wasm memory only from a FinalizationRegistry
+ * callback, after a GC has found its JS wrapper dead, and a reserved worker
+ * barely ever GCs. Its dead wrappers then pin their wasm memory, the
+ * allocator keeps taking fresh pages from the top chunk, and a busy file
+ * walks through the whole block. Past it, every grow is a full GC again, now
+ * of a far bigger heap, inside a synchronous burst where finalizers cannot run
+ * to free anything: on the installed-lifecycle transition trace (Node
+ * 22.22.2, two pinned cores) that was 720 major GCs in one 84.7 s block of the
+ * event loop, long enough for vitest's 60 s RPC timeout to fire on the test
+ * updates sent during it, so the file's results were lost to `Timeout calling
+ * "onTaskUpdate"`. So the preload restores the external-memory trigger it
+ * removed, keyed to what CML actually touches: it runs a full GC whenever
+ * resident memory outside the JS heap has climbed 64 MB (V8's own
+ * external-memory step) past where the last such GC left it.
+ * Wasm pages are never given back, so this fires on new high-water marks
+ * only, not on reuse. The check runs between tasks, which is also when the
+ * finalizers it unblocks get to run.
+ *
+ * Only memory layout and GC timing change: the same allocator serves the
+ * same requests, a GC only ever reclaims what is already unreachable, and no
+ * evaluation, encoding or ledger rule sees any difference.
  *
  * The block is the largest one the allocator accepts: a wasm32 allocation
  * must fit in an `isize`, so just under 2 GiB. The heaviest fault-proof file
@@ -35,7 +54,44 @@
  * result.
  */
 
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
+
 const RESERVE_BYTES = 2 ** 31 - 65_536;
+
+/** See "Collecting" in the module note. */
+const COLLECT_STEP_BYTES = 64 * 2 ** 20;
+const COLLECT_POLL_MS = 100;
+
+/**
+ * A full-GC function that stays private to this module: the flag is on only
+ * while a fresh context is created, so `globalThis.gc` stays undefined for
+ * tests that probe for it.
+ */
+const privateGc = () => {
+  setFlagsFromString("--expose-gc");
+  try {
+    return runInNewContext("gc");
+  } finally {
+    setFlagsFromString("--no-expose-gc");
+  }
+};
+
+/** Resident memory outside the JS heap: chiefly touched wasm pages. */
+const residentOutsideHeap = () => {
+  const { rss, heapTotal } = process.memoryUsage();
+  return rss - heapTotal;
+};
+
+const collectOnResidentGrowth = () => {
+  const collect = privateGc();
+  let mark = residentOutsideHeap();
+  setInterval(() => {
+    if (residentOutsideHeap() < mark + COLLECT_STEP_BYTES) return;
+    collect();
+    mark = residentOutsideHeap();
+  }, COLLECT_POLL_MS).unref();
+};
 
 /**
  * True for the wasm-bindgen instance behind
@@ -55,7 +111,9 @@ const reserve = (exports) => {
     exports.__wbindgen_free(pointer, RESERVE_BYTES, 1);
   } catch {
     // See the module note: a failed reservation leaves CML growing on demand.
+    return;
   }
+  collectOnResidentGrowth();
 };
 
 const OriginalInstance = WebAssembly.Instance;

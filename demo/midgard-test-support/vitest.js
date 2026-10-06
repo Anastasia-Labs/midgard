@@ -85,10 +85,14 @@ const cmlMemoryReserveExecArgv = `--import=${
  * two cores: fault-proof heavy files 30-55% faster (the heaviest
  * value-conservation case 819 s -> 383 s, 4,624 -> 25 major GCs), a 30-file
  * fault-proof sample 1242 s -> 773 s, node emulator files 5% and watcher
- * files 1% faster. Fewer GCs also mean garbage CML wrappers are finalized
- * later, so peak worker RSS rises with the file's CML churn: 0.2-0.5 GB on
- * the fault-proof heavy files, about 1 GB on the node emulator files. If a run
- * dies on memory, lower `maxForks` as above.
+ * files 1% faster. The preload also runs a full GC each time resident memory
+ * outside the JS heap climbs 64 MB, standing in for the GC trigger the grows
+ * used to give: without it CML's garbage, freed only by finalizers after a
+ * GC, walked the transition-trace lifecycle file through the whole
+ * reservation and into an 85 s GC storm that cost the run its results (the
+ * preload's note has the numbers). Peak worker RSS still rises with the
+ * file's CML churn, by up to about 1 GB on the heaviest files. If a run dies
+ * on memory, lower `maxForks` as above.
  */
 export const isolatedForksPool = ({ maxForks, heapMb = 4096 }) => ({
   pool: "forks",
