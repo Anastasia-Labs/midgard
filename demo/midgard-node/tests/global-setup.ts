@@ -36,6 +36,10 @@ import {
   nativeOwnerBinaryPresent,
 } from "./helpers/native-owner-binary.js";
 import {
+  createRunJournalDirectory,
+  removeRunJournalDirectory,
+} from "./helpers/run-journal-directory.js";
+import {
   createRunSharedFixtureDirectory,
   removeRunSharedFixtureDirectory,
 } from "./helpers/run-shared-fixture-directory.js";
@@ -211,10 +215,14 @@ const ONCE = Symbol.for("midgard-node/tests/global-setup");
 const SHARED_FIXTURE_DIRECTORY = Symbol.for(
   "midgard-node/tests/global-setup/shared-fixtures",
 );
+const JOURNAL_DIRECTORY = Symbol.for(
+  "midgard-node/tests/global-setup/journals",
+);
 
 type Registry = {
   [ONCE]?: Promise<void>;
   [SHARED_FIXTURE_DIRECTORY]?: Promise<string>;
+  [JOURNAL_DIRECTORY]?: Promise<string>;
 };
 
 export const setup = async (): Promise<void> => {
@@ -222,15 +230,22 @@ export const setup = async (): Promise<void> => {
   // Created before any worker starts: Vitest copies this process's
   // environment into each worker when it starts running files.
   registry[SHARED_FIXTURE_DIRECTORY] ??= createRunSharedFixtureDirectory();
-  await registry[SHARED_FIXTURE_DIRECTORY];
+  registry[JOURNAL_DIRECTORY] ??= createRunJournalDirectory();
+  await Promise.all([
+    registry[SHARED_FIXTURE_DIRECTORY],
+    registry[JOURNAL_DIRECTORY],
+  ]);
   registry[ONCE] ??= provisionOnce();
   return registry[ONCE];
 };
 
-/** Removes the run's shared deployed fixtures; the later calls for the
- * other workspace projects find nothing left to remove. */
+/** Removes the run's shared deployed fixtures and publication journals; the
+ * later calls for the other workspace projects find nothing left to remove. */
 export const teardown = async (): Promise<void> => {
-  const directory = (globalThis as Registry)[SHARED_FIXTURE_DIRECTORY];
+  const registry = globalThis as Registry;
+  const directory = registry[SHARED_FIXTURE_DIRECTORY];
+  const journals = registry[JOURNAL_DIRECTORY];
   if (directory !== undefined)
     await removeRunSharedFixtureDirectory(await directory);
+  if (journals !== undefined) await removeRunJournalDirectory(await journals);
 };

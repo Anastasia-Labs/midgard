@@ -49,6 +49,7 @@ import {
 } from "./published-workflow-deployment.js";
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 import { DEFAULT_PUBLICATION_SCHEDULE } from "./reference-publication-chain.js";
+import { makeJournalDirectory } from "./run-journal-directory.js";
 import { loadOrCreateRunSharedFixture } from "./run-shared-fixture-directory.js";
 
 const preprodEmulatorLucid = (emulator: Emulator) =>
@@ -142,7 +143,7 @@ const deployHistorySource = async (
       },
     },
     publicationJournalPath: join(
-      await mkdtemp(join(tmpdir(), "midgard-history-owner-")),
+      await makeJournalDirectory("midgard-history-owner-"),
       "transactions.ndjson",
     ),
     publicationSchedule: DEFAULT_PUBLICATION_SCHEDULE,

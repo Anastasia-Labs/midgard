@@ -24,8 +24,6 @@ import "./helpers/reference-publication-chain.js";
 import "./l1-event-history-raw-deposit-emulator.admit-raw.js";
 
 import { mkdirSync, writeFileSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { inspect } from "node:util";
 
@@ -71,6 +69,7 @@ import {
   publishWorkflowDeploymentOnChain,
 } from "./helpers/published-workflow-deployment.js";
 import { DEFAULT_PUBLICATION_SCHEDULE } from "./helpers/reference-publication-chain.js";
+import { makeJournalDirectory } from "./helpers/run-journal-directory.js";
 import {
   admitRaw,
   field,
@@ -122,7 +121,7 @@ it("preserves actual inline and external Deposit raw map pair order and duplicat
     },
     protocolParameters: snapshot,
     publicationJournalPath: join(
-      await mkdtemp(join(tmpdir(), "midgard-raw-deposit-")),
+      await makeJournalDirectory("midgard-raw-deposit-"),
       "transactions.ndjson",
     ),
     publicationSchedule: DEFAULT_PUBLICATION_SCHEDULE,

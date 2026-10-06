@@ -1,5 +1,3 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
@@ -19,6 +17,7 @@ import {
   type PublishedWorkflowDeploymentAccounts,
 } from "./published-workflow-deployment.submit-published-initialization.js";
 import { DEFAULT_PUBLICATION_SCHEDULE } from "./reference-publication-chain.js";
+import { makeJournalDirectory } from "./run-journal-directory.js";
 
 // A parameter keeps this fixture typecheckable for either compiled profile.
 const isPreprodNetwork = (network: Network): boolean => network === "Preprod";
@@ -68,7 +67,7 @@ export const publishWorkflowDeployment = async (
     protocolParameters: TEST_CARDANO_PROTOCOL_PARAMETERS,
     publicationMaxTargetsPerBatch: options.publicationMaxTargetsPerBatch,
     publicationJournalPath: join(
-      await mkdtemp(join(tmpdir(), "midgard-publication-")),
+      await makeJournalDirectory("midgard-publication-"),
       "transactions.ndjson",
     ),
     publicationSynchronize: async () => emulator.slot,
