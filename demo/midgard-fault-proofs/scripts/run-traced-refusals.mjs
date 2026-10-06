@@ -25,12 +25,11 @@
  * files need onchain/aiken/plutus.json fresh (`pnpm --dir demo
  * deployment:build <profile>`), and the interactive-emulator files use the
  * blueprint that project stamps for itself. Each traced build uses its plain
- * blueprint's profile and is cached under onchain/aiken/build/traced-refusals
- * until the sources or compiler change.
+ * blueprint's profile and is cached by scripts/traced-blueprint.mjs under
+ * onchain/aiken/build/traced-refusals until the sources or compiler change.
  */
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import {
-  existsSync,
   globSync,
   mkdirSync,
   readdirSync,
@@ -41,12 +40,7 @@ import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  assertPinnedAiken,
-  defaultAikenBinary,
-} from "../../../onchain/aiken/scripts/pinned-compiler.mjs";
-import {
   blueprintHash,
-  blueprintSourceHash,
   buildRecordPath,
   checkBlueprintStamp,
 } from "../../scripts/lib/blueprint-stamp.mjs";
@@ -54,11 +48,13 @@ import prepareInteractiveBlueprint, {
   interactiveEmulatorBlueprint,
 } from "../../midgard-test-support/interactive-emulator.js";
 import { interactiveTests } from "../vitest.interactive-tests.mjs";
+import {
+  tracedBlueprint as buildTracedBlueprint,
+  tracedBuildDirectory as buildDirectory,
+} from "./traced-blueprint.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const aikenRoot = resolve(packageRoot, "../../onchain/aiken");
-const plainBlueprint = resolve(aikenRoot, "plutus.json");
-const buildDirectory = resolve(aikenRoot, "build/traced-refusals");
+const plainBlueprint = resolve(packageRoot, "../../onchain/aiken/plutus.json");
 const checkedPinsLog = resolve(buildDirectory, "checked-pins.jsonl");
 
 const fail = (message) => {
@@ -106,46 +102,6 @@ const plainRecord = (blueprintPath) => {
   return JSON.parse(readFileSync(buildRecordPath(blueprintPath), "utf8"));
 };
 
-/** Build the traced blueprint from the plain one's sources and profile. */
-const buildTraced = (profile) => {
-  const directory = resolve(buildDirectory, profile);
-  const tracedBlueprint = resolve(directory, "plutus.json");
-  const tracedRecord = resolve(directory, "traced-build.json");
-  const compilerPath = defaultAikenBinary();
-  const record = {
-    profile,
-    compiler: assertPinnedAiken(compilerPath),
-    sourceHash: blueprintSourceHash(),
-  };
-  if (
-    existsSync(tracedBlueprint) &&
-    existsSync(tracedRecord) &&
-    readFileSync(tracedRecord, "utf8") === JSON.stringify(record)
-  ) {
-    return tracedBlueprint;
-  }
-  mkdirSync(directory, { recursive: true });
-  const result = spawnSync(
-    compilerPath,
-    [
-      "build",
-      "--env",
-      profile.replaceAll("-", "_"),
-      "--trace-level",
-      "verbose",
-      "--trace-filter",
-      "all",
-      "--out",
-      tracedBlueprint,
-    ],
-    { cwd: aikenRoot, stdio: "inherit" },
-  );
-  if (result.error) throw result.error;
-  if (result.status !== 0) fail(`traced build exited ${result.status}`);
-  writeFileSync(tracedRecord, JSON.stringify(record));
-  return tracedBlueprint;
-};
-
 /**
  * A project's plain blueprint with every handler of one module traced,
  * written next to its traced build. Its build record is the plain one's,
@@ -154,7 +110,12 @@ const buildTraced = (profile) => {
  */
 const writeOverlay = (plainBlueprint, module) => {
   const record = plainRecord(plainBlueprint);
-  const tracedBlueprint = buildTraced(record.profile.name);
+  let tracedBlueprint;
+  try {
+    tracedBlueprint = buildTracedBlueprint(record.profile.name);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
   const overlayBlueprint = resolve(
     dirname(tracedBlueprint),
     `overlay.${module.replaceAll("/", ".")}.json`,

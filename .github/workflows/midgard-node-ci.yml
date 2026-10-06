@@ -175,6 +175,53 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+  # The blueprints only test runs read, built here once rather than in every
+  # shard that reads them: the interactive-emulator one that the fault-proof
+  # and watcher suites' interactive project stamps for itself, and the two
+  # verbose-traced ones the traced-refusal step swaps modules out of. Each is
+  # built by the same code the suites would otherwise run, with its build
+  # record beside it. The consumers set MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS,
+  # so a copy whose record no longer matches the checkout, the profile or the
+  # pinned compiler fails the run rather than being rebuilt in place.
+  test-blueprints:
+    name: Test blueprint (${{ matrix.blueprint }})
+    needs: [aiken-fork]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - blueprint: interactive-emulator
+            build: node demo/midgard-test-support/interactive-emulator.js
+            directory: onchain/aiken/build/interactive-emulator
+            record: plutus.json.deployment.json
+          - blueprint: traced-preprod-testing
+            build: node demo/midgard-fault-proofs/scripts/traced-blueprint.mjs preprod-testing
+            directory: onchain/aiken/build/traced-refusals/preprod-testing
+            record: traced-build.json
+          - blueprint: traced-preprod-emulator-testing
+            build: node demo/midgard-fault-proofs/scripts/traced-blueprint.mjs preprod-emulator-testing
+            directory: onchain/aiken/build/traced-refusals/preprod-emulator-testing
+            record: traced-build.json
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/demo-setup
+        with:
+          aiken: "true"
+          install-filter: midgard-demo
+      - name: Build the ${{ matrix.blueprint }} blueprint
+        run: ${{ matrix.build }}
+      - name: Share the blueprint and its build record with later jobs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: test-blueprint-${{ matrix.blueprint }}
+          path: |
+            ${{ matrix.directory }}/plutus.json
+            ${{ matrix.directory }}/${{ matrix.record }}
+          if-no-files-found: error
+          retention-days: 3
+
   # The launch surface. Every compose stack an operator can be told to run
   # must render from `.env.example` alone, and the node image must build from
   # a fresh checkout plus the blueprint the `blueprint` job produced; none of
@@ -510,7 +557,7 @@ jobs:
   # tests/duration-shards.test.ts together, and rekey the table's reserve.
   midgard-fault-proofs:
     name: midgard-fault-proofs (${{ matrix.shard }}/6)
-    needs: [aiken-fork, blueprint]
+    needs: [aiken-fork, blueprint, test-blueprints]
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
@@ -525,6 +572,9 @@ jobs:
       - uses: ./.github/actions/demo-setup
         with:
           blueprint: "true"
+          interactive-blueprint: "true"
+          # Only shard 1 runs the traced-refusal step.
+          traced-blueprints: ${{ matrix.shard == 1 }}
           prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation
       # The test run records each file's seconds (durationShards in
       # midgard-test-support); `test-durations` merges the shards' records into
@@ -558,7 +608,7 @@ jobs:
   # Sharded like fault-proofs once ~210 files outgrew one 45-minute job.
   midgard-watcher:
     name: midgard-watcher (${{ matrix.shard }}/3)
-    needs: [aiken-fork, blueprint]
+    needs: [aiken-fork, blueprint, test-blueprints]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -574,6 +624,7 @@ jobs:
       - uses: ./.github/actions/demo-setup
         with:
           blueprint: "true"
+          interactive-blueprint: "true"
           prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation midgard-fault-proofs
       - name: Build the native chain-sync helper the watcher suite drives
         run: pnpm --dir demo/midgard-watcher run native:build:contrib-raw
@@ -880,6 +931,7 @@ jobs:
     needs:
       - aiken-fork
       - blueprint
+      - test-blueprints
       - compose-render
       - node-image
       - golden-channels

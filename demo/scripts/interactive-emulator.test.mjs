@@ -27,6 +27,7 @@ const makeFixture = async (t) => {
     "config/deployments",
     "demo/package.json",
     "demo/midgard-test-support/interactive-emulator.js",
+    "demo/midgard-fault-proofs/scripts/traced-blueprint.mjs",
     "demo/scripts/deployment-profiles.mjs",
     "demo/scripts/lib/blueprint-stamp.mjs",
     "onchain/aiken/scripts/pinned-compiler.mjs",
@@ -73,6 +74,58 @@ const makeFixture = async (t) => {
     );
   return { fixture, profiles, stamp, setup, blueprint, record };
 };
+
+/**
+ * Set `name` in process.env for the rest of the test (undefined deletes it).
+ */
+const withEnv = (t, name, value) => {
+  const previous = process.env[name];
+  t.after(() => {
+    if (previous === undefined) delete process.env[name];
+    else process.env[name] = previous;
+  });
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+};
+
+/**
+ * A stand-in compiler that reports the pinned version and, asked to build,
+ * logs the call and writes `built:<env>` to its --out path. Lets cache
+ * admission be tested both ways without compiling contracts.
+ */
+const fakeCompiler = async (t, fixture, compiler) => {
+  const binary = join(fixture, "fake-aiken");
+  const calls = join(fixture, "fake-aiken.calls");
+  await writeFile(
+    binary,
+    [
+      "#!/bin/sh",
+      `if [ "$1" = "--version" ]; then echo '${compiler.pinnedAikenVersion(fixture)}'; exit 0; fi`,
+      `echo "$*" >> '${calls}'`,
+      'env=""; out=""',
+      'while [ $# -gt 0 ]; do case "$1" in --env) env="$2"; shift;; --out) out="$2"; shift;; esac; shift; done',
+      'mkdir -p "$(dirname "$out")" && printf "built:%s" "$env" > "$out"',
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  withEnv(t, "MIDGARD_AIKEN_BIN", binary);
+  const builds = async () => {
+    try {
+      return (await readFile(calls, "utf8")).trim().split("\n");
+    } catch (error) {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    }
+  };
+  return { builds };
+};
+
+const loadCompiler = (fixture) =>
+  import(
+    pathToFileURL(join(fixture, "onchain/aiken/scripts/pinned-compiler.mjs"))
+      .href
+  );
 
 for (const generated of [
   "demo/midgard-core/src/generated-deployment-profiles.ts",
@@ -148,3 +201,135 @@ test(
     assert.equal(await readFile(join(lock, "pid"), "utf8"), `${process.pid}\n`);
   },
 );
+
+test("interactive setup rebuilds a stale blueprint by default", async (t) => {
+  const { fixture, setup, blueprint, record } = await makeFixture(t);
+  withEnv(t, "MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS", undefined);
+  const { builds } = await fakeCompiler(
+    t,
+    fixture,
+    await loadCompiler(fixture),
+  );
+  await writeFile(blueprint, "cache-admission-test");
+  await record();
+  await writeFile(blueprint, "edited after its record");
+  await setup.default();
+  assert.equal(
+    await readFile(blueprint, "utf8"),
+    "built:preprod_emulator_testing",
+  );
+  assert.equal((await builds()).length, 1);
+});
+
+for (const [name, corrupt] of [
+  ["missing", async ({ blueprint }) => rm(blueprint)],
+  [
+    "modified after its record",
+    async ({ blueprint }) => writeFile(blueprint, "edited after its record"),
+  ],
+  [
+    "built for another profile",
+    async ({ stamp, blueprint }) => {
+      const path = stamp.buildRecordPath(blueprint);
+      const recorded = JSON.parse(await readFile(path, "utf8"));
+      await writeFile(
+        path,
+        JSON.stringify({ ...recorded, profileDigest: "0".repeat(64) }),
+      );
+    },
+  ],
+  [
+    "built from other sources",
+    async ({ fixture }) =>
+      writeFile(join(fixture, "onchain/aiken/aiken.toml"), "changed\n"),
+  ],
+]) {
+  test(`required prebuilt interactive blueprint: ${name} fails instead of rebuilding`, async (t) => {
+    const context = await makeFixture(t);
+    const { fixture, setup, blueprint, record } = context;
+    const { builds } = await fakeCompiler(
+      t,
+      fixture,
+      await loadCompiler(fixture),
+    );
+    await writeFile(blueprint, "cache-admission-test");
+    await record();
+    withEnv(t, "MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS", "1");
+    await setup.default();
+    await corrupt(context);
+    await assert.rejects(
+      setup.default(),
+      /MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS=1 forbids rebuilding the interactive emulator blueprint/u,
+    );
+    assert.deepEqual(await builds(), []);
+  });
+}
+
+test("traced blueprint is built, then reused only while its record matches", async (t) => {
+  const { fixture } = await makeFixture(t);
+  withEnv(t, "MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS", undefined);
+  const { builds } = await fakeCompiler(
+    t,
+    fixture,
+    await loadCompiler(fixture),
+  );
+  const traced = await import(
+    pathToFileURL(
+      join(fixture, "demo/midgard-fault-proofs/scripts/traced-blueprint.mjs"),
+    ).href
+  );
+  const path = traced.tracedBlueprint("preprod-testing");
+  assert.equal(await readFile(path, "utf8"), "built:preprod_testing");
+  assert.equal(traced.tracedBlueprint("preprod-testing"), path);
+  assert.equal((await builds()).length, 1);
+  // A blueprint swapped under its record is rebuilt, not trusted.
+  await writeFile(path, "swapped");
+  traced.tracedBlueprint("preprod-testing");
+  assert.equal(await readFile(path, "utf8"), "built:preprod_testing");
+  assert.equal((await builds()).length, 2);
+});
+
+for (const [name, corrupt] of [
+  ["missing", async (path) => rm(path)],
+  ["modified after its record", async (path) => writeFile(path, "swapped")],
+  [
+    "recorded for another profile",
+    async (path) => {
+      const record = join(dirname(path), "traced-build.json");
+      const recorded = JSON.parse(await readFile(record, "utf8"));
+      await writeFile(
+        record,
+        JSON.stringify({ ...recorded, profile: "preprod-emulator-testing" }),
+      );
+    },
+  ],
+  [
+    "built from other sources",
+    async (path) =>
+      writeFile(join(dirname(path), "../../../aiken.toml"), "changed\n"),
+  ],
+]) {
+  test(`required prebuilt traced blueprint: ${name} fails instead of rebuilding`, async (t) => {
+    const { fixture } = await makeFixture(t);
+    const { builds } = await fakeCompiler(
+      t,
+      fixture,
+      await loadCompiler(fixture),
+    );
+    const traced = await import(
+      pathToFileURL(
+        join(fixture, "demo/midgard-fault-proofs/scripts/traced-blueprint.mjs"),
+      ).href
+    );
+    withEnv(t, "MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS", undefined);
+    const path = traced.tracedBlueprint("preprod-testing");
+    withEnv(t, "MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS", "1");
+    assert.equal(traced.tracedBlueprint("preprod-testing"), path);
+    await corrupt(path);
+    assert.throws(
+      () => traced.tracedBlueprint("preprod-testing"),
+      /MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS=1 forbids rebuilding the traced preprod-testing blueprint/u,
+    );
+    assert.equal((await builds()).length, 1);
+  });
+}

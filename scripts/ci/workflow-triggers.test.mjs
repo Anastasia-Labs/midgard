@@ -72,6 +72,7 @@ const scenarios = {
       ...[
         "aiken-fork",
         "blueprint",
+        "test-blueprints",
         "compose-render",
         "node-image",
         "golden-channels",
