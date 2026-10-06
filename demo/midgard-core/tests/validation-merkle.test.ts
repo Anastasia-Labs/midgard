@@ -74,7 +74,7 @@ describe("validation Merkle frontier", () => {
         expect(verifyMidgardValidationMerkleMembership(actual)).toBe(true);
       }
     }
-  });
+  }, 15_000);
 
   it("isolates cached paths from mutations to returned buffers", () => {
     const leaves = Array.from({ length: 8 }, (_, index) => hash(index + 1));

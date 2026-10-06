@@ -202,5 +202,5 @@ describe("validation resolver production-builder parameter application", () => {
         ).not.toBe(applied(validator, titles.slice(0, count)));
       }
     }
-  });
+  }, 120_000);
 });

@@ -158,7 +158,8 @@ describe("iterative CBOR decoder vs the recursive cborg-backed decoder", () => {
     expect(Object.getPrototypeOf(decoded[0])).toBe(Uint8Array.prototype);
   });
 
-  // Decode, canonicality and skip comparisons took 5.538s under CI contention.
+  // Decode, canonicality and skip comparisons took 5.538s under CI contention
+  // (5.058s on the first Vitest 5 run, which fails any overrun of the bound).
   // Keep all 20,000 inputs while allowing a bounded CPU budget for this case.
   it(`agrees on ${SEEDED_CASES} seeded inputs`, () => {
     let accepted = 0;
@@ -175,7 +176,7 @@ describe("iterative CBOR decoder vs the recursive cborg-backed decoder", () => {
     // Both polarities must be well represented for the comparison to mean much.
     expect(accepted).toBeGreaterThan(SEEDED_CASES / 5);
     expect(accepted).toBeLessThan((SEEDED_CASES * 4) / 5);
-  }, 10_000);
+  }, 20_000);
 });
 
 const circularArray = (): unknown[] => {

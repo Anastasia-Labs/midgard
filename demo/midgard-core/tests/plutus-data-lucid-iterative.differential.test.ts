@@ -238,7 +238,7 @@ describe("lucidDataFromCborIterative vs Lucid Data.from", () => {
     }
     expect(accepted).toBeGreaterThan(SEEDED_CASES / 4);
     expect(accepted).toBeLessThan(SEEDED_CASES);
-  });
+  }, 15_000);
 
   it("agrees on deep chains up to 1,500", () => {
     const shapes: DeepDataShape[] = [
@@ -450,7 +450,7 @@ describe("lucidDataToCborIterative vs Lucid Data.to", () => {
       if (expectSameTo(value, `seed ${i}`)) accepted += 1;
     }
     expect(accepted).toBeGreaterThan(SEEDED_CASES / 2);
-  });
+  }, 15_000);
 
   it("round-trips every accepted decode like Lucid", () => {
     let accepted = 0;
@@ -465,5 +465,5 @@ describe("lucidDataToCborIterative vs Lucid Data.to", () => {
       }
     }
     expect(accepted).toBeGreaterThan(1_000);
-  });
+  }, 15_000);
 });

@@ -316,7 +316,7 @@ describe.each(implementations)(
       } finally {
         await fixture.close();
       }
-    });
+    }, 15_000);
 
     it("rejects an already-revoked attempt before opening a socket", async () => {
       const fixture = await httpFixture((_, response) =>

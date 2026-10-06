@@ -400,7 +400,7 @@ describe("authenticated CEK Data traversal V1", () => {
       ).toStrictEqual(step.next);
     }
     expect(finalizeMidgardCekDataTraverse(trace.terminal)).not.toBeNull();
-  });
+  }, 15_000);
 
   it("constructs deeply nested evidence without a JavaScript call-stack limit", () => {
     const depth = 3_000;

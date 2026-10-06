@@ -40,5 +40,6 @@ describe.each(["esm", "cjs"])("Lucid ordered Plutus data (%s)", (format) => {
       expect(report.metadataPreserved).toBe(true);
       expect(report.hookRestored).toBe(true);
     },
+    30_000,
   );
 });

@@ -228,7 +228,7 @@ for (const backend of ["json", "postgres"] as const)
         expect(usage.storeEncodedBytes).toBeLessThan(8 * 1024 * 1024);
       }
       expect((await f.store.getRetirementFloor())?.generation).toBe(7);
-    }, 180000);
+    }, 360_000);
     it("pins actual in-flight callbacks, rejects a stale writer and preserves singleton on failed claims", async () => {
       const f = await setup(backend);
       await f.compact();
