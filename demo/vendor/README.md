@@ -52,7 +52,8 @@ used its generated imports in Node; it is not a deployed browser test. Installed
 workspace acceptance remains a separate requirement from this comparison.
 
 Remove this override only after an upstream release provides equivalent
-behavior and passes the unchanged installed acceptance gates.
+behavior and passes the unchanged installed acceptance gates; that release is
+tracked in [#770](https://github.com/Anastasia-Labs/midgard/issues/770).
 Upstream 0.2.24 is built on the `uplc` 1.1.23 crate, which predates the
 constant-cost change (aiken-lang/aiken#1437, released in aiken v1.1.24).
 Replaying 2,162 captured `eval_phase_two_raw` requests from

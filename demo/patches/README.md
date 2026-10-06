@@ -1,5 +1,9 @@
 # Dependency patches
 
+The Lucid and Plutus patches are local until they are released upstream;
+that work, and dropping them, is tracked in
+[#771](https://github.com/Anastasia-Labs/midgard/issues/771).
+
 `@lucid-evolution__lucid@0.6.7.patch` fixes delayed-redeemer bootstrap for
 transactions whose inputs fund an explicit fee. The unpatched builder assigns
 the entire maximum transaction execution budget before the delayed redeemers
@@ -52,7 +56,8 @@ and output CBOR bytes, cost models, CPU and memory budgets, slot parameters,
 and the protocol major version Lucid passes to the evaluator. The vendored
 UPLC binding (see `../vendor/README.md`) takes nine parameters and ignores that
 tenth argument, so the version is part of the reuse key but does not reach
-evaluation until an upstream UPLC release replaces the vendor tarball.
+evaluation until an upstream UPLC release replaces the vendor tarball
+([#770](https://github.com/Anastasia-Labs/midgard/issues/770)).
 The retained request and result bytes are detached; each hit decodes fresh
 redeemer values. A changed request clears the entry, failures are not retained,
 and separate completions do not share results. Explicit custom evaluators and
