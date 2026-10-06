@@ -50,14 +50,16 @@ describe("history exact-body transport", () => {
   it("does not treat absent, pending or failed provider status as permission to rebuild", async () => {
     const h = await setup();
     const transport = historySubmissionTransport(h.lucid, h.wallet.address);
-    for (const status of ["not_found", "pending", "failed"] as const) {
-      vi.spyOn(h.lucid, "transactionStatus").mockResolvedValueOnce({
-        status,
+    // One spy: on Vitest 4+, spying an already spied method returns that spy.
+    const status = vi.spyOn(h.lucid, "transactionStatus");
+    for (const reported of ["not_found", "pending", "failed"] as const) {
+      status.mockResolvedValueOnce({
+        status: reported,
         txHash: h.attempt.txHash,
       });
       expect(await transport.observe(h.attempt)).toEqual({ kind: "Pending" });
     }
-    vi.spyOn(h.lucid, "transactionStatus").mockResolvedValueOnce({
+    status.mockResolvedValueOnce({
       status: "confirmed",
       txHash: h.attempt.txHash,
       confirmation: { txHash: "ab".repeat(32) },
