@@ -32,6 +32,10 @@ import { MigrationError } from "../src/database/migrations/runner.js";
 import { NodeConfig } from "../src/services/config.js";
 import { Database } from "../src/services/database.js";
 import {
+  createHistorySourcePrefixDirectory,
+  removeHistorySourcePrefixDirectory,
+} from "./helpers/history-source-prefix-directory.js";
+import {
   nativeOwnerBinaryPath,
   nativeOwnerBinaryPresent,
 } from "./helpers/native-owner-binary.js";
@@ -204,9 +208,29 @@ const provisionOnce = async (): Promise<void> => {
  * process join the first one, failures included.
  */
 const ONCE = Symbol.for("midgard-node/tests/global-setup");
+const PREFIX_DIRECTORY = Symbol.for(
+  "midgard-node/tests/global-setup/history-source-prefix",
+);
 
-export const setup = (): Promise<void> => {
-  const registry = globalThis as { [ONCE]?: Promise<void> };
+type Registry = {
+  [ONCE]?: Promise<void>;
+  [PREFIX_DIRECTORY]?: Promise<string>;
+};
+
+export const setup = async (): Promise<void> => {
+  const registry = globalThis as Registry;
+  // Created before any worker starts: Vitest copies this process's
+  // environment into each worker when it starts running files.
+  registry[PREFIX_DIRECTORY] ??= createHistorySourcePrefixDirectory();
+  await registry[PREFIX_DIRECTORY];
   registry[ONCE] ??= provisionOnce();
   return registry[ONCE];
+};
+
+/** Removes the run's shared deployment prefixes; the later calls for the
+ * other workspace projects find nothing left to remove. */
+export const teardown = async (): Promise<void> => {
+  const directory = (globalThis as Registry)[PREFIX_DIRECTORY];
+  if (directory !== undefined)
+    await removeHistorySourcePrefixDirectory(await directory);
 };

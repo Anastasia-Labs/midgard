@@ -35,6 +35,10 @@ import {
 } from "./history-projection-observations.js";
 import { type RecordedHistoryBatch } from "./history-source-owner-emulator.recorded-history-batch.js";
 import {
+  readSharedHistorySourcePrefix,
+  shareHistorySourcePrefix,
+} from "./history-source-prefix-directory.js";
+import {
   createMainnetEmulatorLucid,
   MAINNET_PROTOCOL_PARAMETERS,
 } from "./mainnet-protocol-parameters.js";
@@ -315,8 +319,29 @@ const deployHistorySource = async (
 const clearRestoredDeploymentRows = () =>
   runNodeDatabaseEffect(resetApplicationTables);
 
-/** Every lifecycle opened by one test file restores the same captured prefix
- * (one deployment per protection duration per file). */
+/** One deployment per protection duration per run: the first file to need
+ * it deploys and shares it (`history-source-prefix-directory.ts`), and every
+ * later file restores that same plain-data prefix. The deployment path reads
+ * no per-file setting and no module a test file mocks. Without the package's
+ * global setup each file deploys its own, as before. */
+const loadOrDeployHistorySource = async (
+  eventHistoryProtectionDurationMs: bigint | undefined,
+): Promise<DeployedHistorySource> => {
+  const key = String(eventHistoryProtectionDurationMs);
+  const shared = (await readSharedHistorySourcePrefix(key)) as
+    | DeployedHistorySource
+    | undefined;
+  if (shared !== undefined) {
+    deepFreeze(shared.contracts);
+    return shared;
+  }
+  const prefix = await deployHistorySource(eventHistoryProtectionDurationMs);
+  await shareHistorySourcePrefix(key, prefix);
+  return prefix;
+};
+
+/** Every lifecycle opened by one test file restores the same captured prefix,
+ * read or deployed once per file. */
 const deployments = new Map<string, Promise<DeployedHistorySource>>();
 
 const recordHistoryBatch =
@@ -357,7 +382,7 @@ export const restoreHistorySource = async (
   const key = String(eventHistoryProtectionDurationMs);
   let deploying = deployments.get(key);
   if (deploying === undefined) {
-    deploying = deployHistorySource(eventHistoryProtectionDurationMs);
+    deploying = loadOrDeployHistorySource(eventHistoryProtectionDurationMs);
     deployments.set(key, deploying);
     deploying.catch(() => deployments.delete(key));
   }
