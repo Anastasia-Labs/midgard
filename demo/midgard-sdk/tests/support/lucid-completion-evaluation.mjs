@@ -30,7 +30,7 @@ const encode = (value) =>
 Object.defineProperty(uplc, "eval_phase_two_raw", {
   ...descriptor,
   value(...args) {
-    assert.equal(args.length, 9);
+    assert.equal(args.length, 10);
     requests.push(digest(encode(args)));
     return Reflect.apply(original, this, args);
   },
