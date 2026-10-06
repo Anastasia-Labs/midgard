@@ -1,7 +1,7 @@
 import type * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { CML } from "@lucid-evolution/lucid";
-import { Data, Effect, Option } from "effect";
+import { Clock, Data, Duration, Effect, Option } from "effect";
 
 import { Database } from "../services/database.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
@@ -153,6 +153,60 @@ const reserveInputs = (
     }
   });
 
+/** Every reservation of a wallet's outputs holds this transaction-scoped lock:
+ * each checkpoint's inputs, and a fresh nonce from reading the reservations it
+ * chooses among through reserving it. Postgres releases the lock when its
+ * transaction ends or its connection dies, so a crashed holder never wedges
+ * the wallet. */
+const WALLET_RESERVATIONS_LOCK_NAMESPACE = 0x48_53_54_52;
+const lockWalletReservations = (walletAddress: string) =>
+  Effect.flatMap(
+    SqlClient.SqlClient,
+    (sql) =>
+      sql`SELECT pg_advisory_xact_lock(${WALLET_RESERVATIONS_LOCK_NAMESPACE}, hashtext(${walletAddress}))`,
+  );
+
+/** Runs `choose` with the wallet's reservations locked, so no checkpoint of
+ * another submission can reserve the nonce `choose` reads as unreserved
+ * before `choose` reserves it. Such a save waits for the lock and then meets
+ * the nonce's reservation. A `choose` that outlasts `holdTimeoutMs`, such as
+ * on a hung provider call, is interrupted and rolled back: that frees the
+ * wallet for every other submission, and this one fails having reserved
+ * nothing, so a rerun chooses again. The bound runs on the wall clock, not on
+ * the caller's clock, such as an emulator clock whose sleeps jump ahead. */
+const wallClock = Clock.make();
+export const choosingNonce = <A, E, R>(
+  walletAddress: string,
+  choose: Effect.Effect<A, E, R>,
+  holdTimeoutMs = 60_000,
+): Effect.Effect<A, E | DatabaseError, R | Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql.withTransaction(
+      Effect.zipRight(
+        lockWalletReservations(walletAddress),
+        Effect.raceFirst(
+          choose,
+          Effect.zipRight(
+            Effect.withClock(
+              Effect.sleep(Duration.millis(holdTimeoutMs)),
+              wallClock,
+            ),
+            Effect.fail(
+              new DatabaseError({
+                table: tableName,
+                message: `Choosing a history nonce took over ${holdTimeoutMs.toString()} ms; nothing was reserved`,
+                cause: walletAddress,
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+  }).pipe(
+    sqlErrorToDatabaseError(tableName, "Failed to choose a history nonce"),
+  );
+
 /** ON CONFLICT never overwrites intent. Concurrent creators reload the winner;
  * a competing submission ID cannot reserve an already assigned nonce. A wallet
  * output that another submission reserved only as an input it can no longer
@@ -165,6 +219,7 @@ export const reserve = (
     const sql = yield* SqlClient.SqlClient;
     return yield* sql.withTransaction(
       Effect.gen(function* () {
+        yield* lockWalletReservations(input.wallet_address);
         yield* sql`
       INSERT INTO event_history_submissions
         (submission_id, kind, policy_id, wallet_address, intent_hash, nonce_out_ref, request, checkpoint)
@@ -239,6 +294,7 @@ export const saveCheckpoint = (
     });
     return yield* sql.withTransaction(
       Effect.gen(function* () {
+        yield* lockWalletReservations(row.wallet_address);
         const rows = yield* sql<Row>`UPDATE event_history_submissions
       SET checkpoint = CAST(${JSON.stringify(checkpoint)} AS TEXT)::JSONB,
           revision = revision + 1, updated_at = now()
@@ -271,9 +327,9 @@ export const saveCheckpoint = (
 
 /** The wallet's outputs other submissions may still spend, as nonces or
  * inputs of their pending attempts. An input its holder can no longer spend at
- * `l1TipSlot` is left out, so a new nonce or funding set can take it over;
- * otherwise a holder that died with every wallet output in its attempt would
- * starve every later submission of that wallet. */
+ * `l1TipSlot` is left out, so a new nonce can take it over; otherwise a holder
+ * that died with every wallet output in its attempt would starve every later
+ * submission of that wallet. */
 export const reservedInputs = (
   walletAddress: string,
   l1TipSlot?: number,
@@ -295,5 +351,22 @@ export const reservedInputs = (
     sqlErrorToDatabaseError(
       tableName,
       "Failed to read reserved history inputs",
+    ),
+  );
+
+/** Every nonce the wallet's submissions hold. A nonce stays reserved after its
+ * submission settles, so no other submission may spend it. */
+export const reservedNonces = (
+  walletAddress: string,
+): Effect.Effect<ReadonlySet<string>, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<Pick<Row, "nonce_out_ref">>`SELECT nonce_out_ref
+      FROM event_history_submissions WHERE wallet_address = ${walletAddress}`;
+    return new Set(rows.map((row) => row.nonce_out_ref));
+  }).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to read reserved history nonces",
     ),
   );

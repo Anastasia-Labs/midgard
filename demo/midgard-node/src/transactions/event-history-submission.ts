@@ -1,4 +1,4 @@
-import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
+import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type Assets,
@@ -24,6 +24,10 @@ import {
   indexedL1Slot,
   settleExpiredHistoryAttempt,
 } from "./event-history-submission.indexed-l1-slot.js";
+import {
+  plainUnreservedOutputs,
+  unreservedNonce,
+} from "./event-history-submission.unreserved-outputs.js";
 import {
   awaitSubmittedTransactionConfirmation,
   submitSignedTxWithRecovery,
@@ -275,16 +279,10 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
       catch: wrap,
     });
     const history = kind === "Deposit" ? pair.deposit : pair.withdrawal;
-    const plainUnreserved = (reserved: ReadonlySet<string>) => (utxo: UTxO) =>
-      !reserved.has(outRefLabel(utxo)) &&
-      utxo.datum == null &&
-      utxo.datumHash == null &&
-      utxo.scriptRef == null &&
-      !Object.keys(utxo.assets).some(
-        (unit) =>
-          unit.startsWith(pair.deposit.list.policyId) ||
-          unit.startsWith(pair.withdrawal.list.policyId),
-      );
+    const historyPolicyIds = [
+      pair.deposit.list.policyId,
+      pair.withdrawal.list.policyId,
+    ];
     const walletAddress = yield* Effect.tryPromise({
       try: () => lucid.wallet().address(),
       catch: wrap,
@@ -309,44 +307,44 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
     } else {
       // Outputs a dead submission's expired attempt holds are free to take.
       const tipSlot = yield* indexedL1Slot(lucid);
-      const reserved = yield* Journal.reservedInputs(walletAddress, tipSlot);
-      const candidates = yield* Effect.tryPromise({
-        try: () => lucid.utxosAt(walletAddress),
-        catch: wrap,
-      });
-      const nonce = candidates
-        .filter(
-          (utxo) =>
-            plainUnreserved(reserved)(utxo) &&
-            (nonceInput === undefined ||
-              outRefLabel(nonceInput) === outRefLabel(utxo)),
-        )
-        .sort(compareOutRefs)[0];
-      if (nonce === undefined)
-        return yield* Effect.fail(
-          wrap("No unreserved plain wallet nonce is available"),
-        );
-      const prepared = yield* prepare(nonce);
-      const stored = yield* Effect.try({
-        try: () => ({
-          ...identity,
-          nonce_out_ref: outRefLabel(prepared.request.nonce),
-          request: encodeHistorySubmissionRequest(prepared.request),
-          checkpoint: {
-            requestHash: SDK.eventHistorySubmissionRequestHash(
-              history.list.policyId,
-              prepared.request,
-              history.recipe,
-            ),
-          },
+      row = yield* Journal.choosingNonce(
+        walletAddress,
+        Effect.gen(function* () {
+          const nonce = yield* unreservedNonce({
+            lucid,
+            walletAddress,
+            historyPolicyIds,
+            tipSlot,
+            nonceInput,
+            wrap,
+          });
+          if (nonce === undefined)
+            return yield* Effect.fail(
+              wrap("No unreserved plain wallet nonce is available"),
+            );
+          const prepared = yield* prepare(nonce);
+          const stored = yield* Effect.try({
+            try: () => ({
+              ...identity,
+              nonce_out_ref: outRefLabel(prepared.request.nonce),
+              request: encodeHistorySubmissionRequest(prepared.request),
+              checkpoint: {
+                requestHash: SDK.eventHistorySubmissionRequestHash(
+                  history.list.policyId,
+                  prepared.request,
+                  history.recipe,
+                ),
+              },
+            }),
+            catch: wrap,
+          });
+          if (stored.nonce_out_ref !== outRefLabel(nonce))
+            return yield* Effect.fail(
+              wrap("Prepared request changed its reserved nonce"),
+            );
+          return yield* Journal.reserve(stored, tipSlot);
         }),
-        catch: wrap,
-      });
-      if (stored.nonce_out_ref !== outRefLabel(nonce))
-        return yield* Effect.fail(
-          wrap("Prepared request changed its reserved nonce"),
-        );
-      row = yield* Journal.reserve(stored, tipSlot);
+      );
     }
     const request = yield* Effect.try({
       try: () => decodeHistorySubmissionRequest(row.request),
@@ -458,17 +456,15 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
               assertHistorySubmissionAttempt(attempt);
               return transport.observe(attempt);
             },
-            funding: async () => {
-              const reserved = await run(
-                Journal.reservedInputs(
-                  walletAddress,
-                  await run(indexedL1Slot(lucid)),
-                ),
-              );
-              return (await lucid.utxosAt(walletAddress))
-                .filter(plainUnreserved(reserved))
-                .sort(compareOutRefs);
-            },
+            // Another submission's pending inputs stay on offer: an attempt
+            // spending one meets its reservation at `save` and waits for it
+            // to settle, rather than failing for lack of free funding.
+            funding: async () =>
+              plainUnreservedOutputs(
+                await lucid.utxosAt(walletAddress),
+                await run(Journal.reservedNonces(walletAddress)),
+                historyPolicyIds,
+              ),
             now,
             waitUntil: (target) => {
               const waitMs = Math.max(0, target - now());

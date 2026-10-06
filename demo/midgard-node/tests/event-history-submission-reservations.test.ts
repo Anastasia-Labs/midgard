@@ -83,6 +83,22 @@ const run = <E>(
   effect: Effect.Effect<void, E, SqlClient.SqlClient | Database>,
 ) => Effect.runPromise(provideDatabaseLayers(effect));
 
+/** Polls until a session of the test database holds (`granted`) or waits on
+ * an advisory lock. */
+const untilAdvisoryLock = async (granted: boolean) => {
+  const deadline = Date.now() + 30_000;
+  const found = Effect.flatMap(
+    SqlClient.SqlClient,
+    (sql) => sql<{ found: boolean }>`SELECT count(*) > 0 AS found FROM pg_locks
+      WHERE locktype = 'advisory' AND granted = ${granted} AND database =
+        (SELECT oid FROM pg_database WHERE datname = current_database())`,
+  );
+  while (!(await Effect.runPromise(provideDatabaseLayers(found)))[0]?.found) {
+    if (Date.now() > deadline) throw new Error("No advisory lock session");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+};
+
 describe("history submission input reservations", () => {
   it("holds a pending attempt's inputs and releases them once it settles, keeping the nonce", async () => {
     const [head, fund] = [hash(randomUUID()), hash(randomUUID())];
@@ -298,7 +314,7 @@ describe("history submission input reservations", () => {
     }
   });
 
-  it("hides only inputs their holder can no longer spend from nonce and funding selection", async () => {
+  it("hides only inputs their holder can no longer spend from nonce selection", async () => {
     const [live, expired, left] = [1, 2, 3].map(() => hash(randomUUID()));
     await run(
       Effect.gen(function* () {
@@ -372,6 +388,109 @@ describe("history submission input reservations", () => {
           expect(yield* holdings(taker.submission_id)).toEqual([outRef]);
           expect(yield* holdings(holder.submission_id)).not.toContain(outRef);
         }
+      }),
+    );
+  });
+
+  it("holds another submission's checkpoint while a nonce is chosen, then refuses it that nonce", async () => {
+    const [chosen, funder] = [input(), input()];
+    const funderRow = await Effect.runPromise(
+      provideDatabaseLayers(Journal.reserve(funder)),
+    );
+    // The funder builds with the chosen nonce, read as unreserved, and saves
+    // after the chooser read it and before the chooser reserves it.
+    let saving: Promise<unknown> | undefined;
+    await run(
+      Effect.asVoid(
+        Journal.choosingNonce(
+          chosen.wallet_address,
+          Effect.gen(function* () {
+            saving = Effect.runPromise(
+              provideDatabaseLayers(
+                Effect.either(
+                  Journal.saveCheckpoint(
+                    funderRow,
+                    pending(funderRow, [chosen.request.nonce.txHash]),
+                  ),
+                ),
+              ),
+            );
+            yield* Effect.promise(() => untilAdvisoryLock(false));
+            return yield* Journal.reserve(chosen);
+          }),
+        ),
+      ),
+    );
+    const saved = await saving!;
+    expect(saved).toMatchObject({
+      _tag: "Left",
+      left: { _tag: "HistoryInputReservedError", outRef: chosen.nonce_out_ref },
+    });
+    await run(
+      Effect.gen(function* () {
+        for (const { submission_id, nonce_out_ref } of [chosen, funder])
+          expect(yield* holdings(submission_id)).toEqual([nonce_out_ref]);
+      }),
+    );
+  });
+
+  it("frees the wallet from a chooser that outlasts its bound, which fails having reserved nothing", async () => {
+    const [chosen, saver] = [input(), input()];
+    const saverRow = await Effect.runPromise(
+      provideDatabaseLayers(Journal.reserve(saver)),
+    );
+    const [order, started] = [[] as string[], Date.now()];
+    const choosing = Effect.runPromise(
+      provideDatabaseLayers(
+        Effect.either(
+          Journal.choosingNonce(
+            chosen.wallet_address,
+            Effect.zipRight(
+              Effect.sleep("30 seconds"),
+              Effect.zipRight(
+                Effect.sync(() => order.push("chose")),
+                Journal.reserve(chosen),
+              ),
+            ),
+            500,
+          ),
+        ),
+      ),
+    );
+    await untilAdvisoryLock(true);
+    await run(
+      Effect.asVoid(
+        Journal.saveCheckpoint(saverRow, pending(saverRow, [hash("fund")])),
+      ),
+    );
+    // The save waited only for the bound, never for the chooser's sleep.
+    expect(Date.now() - started).toBeLessThan(30_000);
+    expect(await choosing).toMatchObject({
+      _tag: "Left",
+      left: { _tag: "DatabaseError" },
+    });
+    expect(order).toEqual([]);
+    expect(
+      Option.isNone(
+        await Effect.runPromise(
+          provideDatabaseLayers(Journal.retrieve(chosen.submission_id)),
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("names every nonce of the wallet's submissions, and none of their pending inputs", async () => {
+    const fund = hash(randomUUID());
+    await run(
+      Effect.gen(function* () {
+        const rows = [
+          yield* Journal.reserve(input()),
+          yield* Journal.reserve(input()),
+        ];
+        yield* Journal.saveCheckpoint(rows[0]!, pending(rows[0]!, [fund]));
+        const nonces = yield* Journal.reservedNonces(rows[0]!.wallet_address);
+        for (const row of rows) expect(nonces).toContain(row.nonce_out_ref);
+        expect(nonces).not.toContain(`${fund}#0`);
       }),
     );
   });
