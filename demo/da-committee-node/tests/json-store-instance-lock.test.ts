@@ -80,7 +80,7 @@ it("notices a successor's stamp at its next idle check, before any write", async
   expect(await readFile(lockPath(dir), "utf8")).toBe(successorStamp);
 });
 
-it("treats a removed stamp as taken over", async () => {
+it("fails closed, naming the removal rather than a takeover, once its stamp is removed", async () => {
   const dir = await tempDir();
   const onLost = vi.fn();
   const store = await open(dir, { onLost });
@@ -88,10 +88,11 @@ it("treats a removed stamp as taken over", async () => {
   await unlink(lockPath(dir));
   for (const peerId of ["after-1", "after-2"]) {
     await expect(store.savePeerHealth(health(peerId))).rejects.toThrow(
-      takenOver,
+      /instance lock stamp was removed/u,
     );
   }
   expect(onLost).toHaveBeenCalledOnce();
+  expect(String(onLost.mock.calls[0]![0])).not.toMatch(takenOver);
 });
 
 it("starts no idle check while one is still reading, however long the read hangs", async () => {

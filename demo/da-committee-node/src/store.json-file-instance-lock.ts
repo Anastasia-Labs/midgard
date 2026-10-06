@@ -165,7 +165,20 @@ export class JsonStoreInstanceLock {
     // A successor may stamp the file as soon as this holder lets go, so a
     // check that read it after release proves nothing about a takeover.
     this.assertNotEnded();
-    if (current !== this.stamp) throw this.markLost();
+    if (current === undefined)
+      throw this.markLost(
+        `committee node file store instance lock stamp was removed: ${this.lockPath} no longer exists. ` +
+          "The holder never removes it, so something outside this process did. " +
+          'Every write is refused; see "JSON store ownership" in the da-committee-node README.',
+      );
+    if (current !== this.stamp)
+      throw this.markLost(
+        `committee node file store instance lock was taken over by another process: ${this.lockPath} no longer holds this process's stamp. ` +
+          `The store's process mutex (${this.lockPath}.mutex.sqlite) admits one holder at a time, so its locking failed: ` +
+          "the sidecar was removed or replaced, the store is on a network filesystem or shared across kernels or virtual machines, " +
+          "or this process opened and closed the sidecar by other means. " +
+          'Every write is refused; see "JSON store ownership" in the da-committee-node README.',
+      );
   }
 
   private assertNotEnded(): void {
@@ -188,15 +201,9 @@ export class JsonStoreInstanceLock {
   }
 
   /** Records the loss, reporting it once, and returns the error writes get. */
-  private markLost(): Error {
+  private markLost(message: string): Error {
     if (this.lost !== undefined) return this.lost;
-    this.lost = new Error(
-      `committee node file store instance lock was taken over by another process: ${this.lockPath} no longer holds this process's stamp. ` +
-        `The store's process mutex (${this.lockPath}.mutex.sqlite) admits one holder at a time, so its locking failed: ` +
-        "the sidecar was removed or replaced, the store is on a network filesystem or shared across kernels or virtual machines, " +
-        "or this process opened and closed the sidecar by other means. " +
-        'Every write is refused; see "JSON store ownership" in the da-committee-node README.',
-    );
+    this.lost = new Error(message);
     if (this.timer !== undefined) clearInterval(this.timer);
     this.timer = undefined;
     this.onLost?.(this.lost);

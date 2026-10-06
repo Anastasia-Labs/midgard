@@ -92,6 +92,8 @@ it. The holder never writes it again; it reads it before every store write
 and every 10 s while idle. A read that fails for any reason other than a
 missing file refuses writes until a read succeeds, and the idle check logs
 each distinct error once as `committee_store_instance_lock_check_failed`.
+A missing stamp is not retried: the holder fails closed, as after a takeover
+below, with an error saying the stamp was removed.
 Within the storage boundary the stamp never changes under its holder.
 Outside the boundary, the mutex can fail (the sidecar removed or replaced, a
 network filesystem, a store shared across kernels, or the holder's own process
