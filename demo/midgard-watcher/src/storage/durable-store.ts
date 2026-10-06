@@ -25,6 +25,7 @@ export {
 export {
   journalWatcherProtocolUtxoTransition,
   makeEmptyWatcherDurableStore,
+  makeImmutableWatcherDurableStore,
   makeWatcherDurableStore,
   parseWatcherDurableStore,
 } from "./durable-store.journal-watcher-protocol-utxo-transition.js";
