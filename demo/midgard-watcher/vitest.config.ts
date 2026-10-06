@@ -83,7 +83,11 @@ export default defineConfig({
       reporters: ["default"],
     }),
     environment: "node",
+    // Vitest 4 narrowed `restoreMocks` to `vi.spyOn` spies; `mockReset` keeps
+    // the Vitest 3 reset of every `vi.fn` (implementation, once-queue, calls)
+    // before each test, so a module-scope mock cannot carry state forward.
     restoreMocks: true,
+    mockReset: true,
     // Several files perform CPU-heavy replay and emulator evaluation. Under
     // Vitest 3 an unbounded thread pool starved the worker RPC long enough for
     // successful tests to be reported as `Timeout calling onTaskUpdate`.

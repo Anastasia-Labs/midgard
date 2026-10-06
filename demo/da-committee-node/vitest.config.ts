@@ -9,7 +9,11 @@ import { configDefaults, defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
+    // Vitest 4 narrowed `restoreMocks` to `vi.spyOn` spies; `mockReset` keeps
+    // the Vitest 3 reset of every `vi.fn` (implementation, once-queue, calls)
+    // before each test, so a module-scope mock cannot carry state forward.
     restoreMocks: true,
+    mockReset: true,
     // Workspace packages load from a per-run source bundle; files that need
     // them module-by-module run in `da-committee-node:source`. Each project
     // gets its own `tempRoot` from the global setup.

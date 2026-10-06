@@ -95,8 +95,8 @@ export default defineConfig({
       reporters: ["verbose"],
     }),
     // The one-process-per-file requirement, and why `isolate` must stay
-    // `true`, are stated once in `isolatedForksPool`; 7c7162cb reverting
-    // `singleFork` here is the same story.
+    // `true`, are stated once in `isolatedForksPool`; 7c7162cb, which moved
+    // this suite off one shared fork for every file, is the same story.
     //
     // This suite's own choice is only the scheduling cap. 5b9982a8 serialized
     // it outright for a 2-core CI runner; that is now expressed as a cap
