@@ -698,8 +698,12 @@ jobs:
         with:
           blueprint: "true"
           interactive-blueprint: "true"
+      # The guarded build stamps the binary with its source and compiler
+      # identity; verbose so a compiler error reaches this log.
       - name: Build the native chain-sync helper the watcher suite drives
-        run: pnpm --dir demo/midgard-watcher run native:build:contrib-raw
+        env:
+          MIDGARD_CONTRIB_VERBOSE: "1"
+        run: pnpm --dir demo/midgard-watcher run native:build
       # Vitest loads every workspace package from source, but
       # tests/runtime/authority-initialization-command.test.ts runs the built
       # CLI (dist/cli.js) in a plain Node child, which imports the built core,
