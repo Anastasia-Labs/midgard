@@ -13,6 +13,12 @@
  * published with an atomic rename, so a reader sees one complete fixture or
  * none.
  *
+ * In watch mode the directory lasts the whole session, so the global setup
+ * deletes the published fixtures before every rerun
+ * (`invalidateRunSharedFixtures`): a rerun after a source change deploys
+ * afresh instead of reading what the earlier sources deployed. Scratch
+ * directories (`makeRunScratchDirectory`) stay until the session ends.
+ *
  * Values must be plain data: `v8.serialize` keeps exactly what
  * `structuredClone` keeps, and throws on anything else.
  */
@@ -20,6 +26,7 @@ import { randomUUID } from "node:crypto";
 import {
   link,
   mkdtemp,
+  readdir,
   readFile,
   rename,
   rm,
@@ -49,6 +56,25 @@ export const removeRunSharedFixtureDirectory = async (
   await rm(directory, { recursive: true, force: true });
   if (process.env[RUN_SHARED_FIXTURE_DIRECTORY_ENV] === directory)
     delete process.env[RUN_SHARED_FIXTURE_DIRECTORY_ENV];
+};
+
+/** Deletes every fixture published in `directory`, so the next file to need
+ * one deploys it again. Claims in progress are left alone. */
+export const invalidateRunSharedFixtures = async (
+  directory: string,
+): Promise<void> => {
+  let entries: string[];
+  try {
+    entries = await readdir(directory);
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw cause;
+  }
+  await Promise.all(
+    entries
+      .filter((entry) => entry.endsWith(".v8"))
+      .map((entry) => rm(join(directory, entry), { force: true })),
+  );
 };
 
 /** The file holding the fixture named `name`, or `undefined` outside the
@@ -109,15 +135,29 @@ const shareRunSharedFixture = async (
 
 const CLAIM_POLL_MS = 200;
 
+/** How long a file waits for another file's claim. Far longer than any
+ * deployment takes, and shorter than the default test timeout, so a wait
+ * that can never end (a holder pid the OS has reused for a live process
+ * keeps the dead claim looking held) fails with the reason instead of
+ * hanging until the test times out. */
+const CLAIM_WAIT_DEADLINE_MS = 300_000;
+
+/** The pid in `lockPath`, or `undefined` while it cannot be read. */
+const claimHolderPid = async (
+  lockPath: string,
+): Promise<number | undefined> => {
+  try {
+    return Number(await readFile(lockPath, "utf8"));
+  } catch {
+    return undefined;
+  }
+};
+
 /** Whether the process that wrote `lockPath` may still share its fixture:
  * an unreadable or vanished lock counts as alive, so the caller looks again. */
 const claimHolderAlive = async (lockPath: string): Promise<boolean> => {
-  let pid: number;
-  try {
-    pid = Number(await readFile(lockPath, "utf8"));
-  } catch {
-    return true;
-  }
+  const pid = await claimHolderPid(lockPath);
+  if (pid === undefined) return true;
   try {
     process.kill(pid, 0);
     return true;
@@ -148,7 +188,8 @@ const claim = async (lockPath: string): Promise<boolean> => {
  * `create` and shares the `shared` part of the result, while every other
  * file waits for that fixture instead of creating its own. A waiter takes
  * over the claim when its holder released it without sharing (its `create`
- * failed, or sharing did) or its process ended. `created` is present only in
+ * failed, or sharing did) or its process ended, and gives up with an error
+ * once it has waited `CLAIM_WAIT_DEADLINE_MS`. `created` is present only in
  * the file that ran `create`. Without the package's global setup every call
  * runs `create`.
  */
@@ -159,6 +200,7 @@ export const loadOrCreateRunSharedFixture = async <Shared, Created>(
   const path = sharedFixturePath(name);
   if (path === undefined) return create();
   const lockPath = `${path}.lock`;
+  const deadline = Date.now() + CLAIM_WAIT_DEADLINE_MS;
   for (;;) {
     const shared = (await readRunSharedFixture(name)) as Shared | undefined;
     if (shared !== undefined) return { shared };
@@ -179,6 +221,12 @@ export const loadOrCreateRunSharedFixture = async <Shared, Created>(
       // create the fixture, which the atomic publication keeps harmless.
       await rm(lockPath, { force: true });
       continue;
+    }
+    if (Date.now() >= deadline) {
+      const holder = await claimHolderPid(lockPath);
+      throw new Error(
+        `Shared fixture ${name} was neither published nor released within ${String(CLAIM_WAIT_DEADLINE_MS / 1000)} s of waiting: ${lockPath} still names pid ${String(holder)}, which is alive or is a reused pid. Remove the lock file if no file of this run is deploying ${name}.`,
+      );
     }
     await sleep(CLAIM_POLL_MS);
   }
