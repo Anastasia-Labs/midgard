@@ -1,6 +1,7 @@
 import { availableParallelism } from "node:os";
 import { fileURLToPath } from "node:url";
 
+import { durationShards } from "@al-ft/midgard-test-support/duration-shards";
 import {
   blueprintStampGlobalSetup,
   interactiveEmulatorBlueprint,
@@ -69,6 +70,17 @@ export default defineConfig({
         },
       },
     ],
+    // Packs Node CI's `--shard=i/3` by the CI seconds each file took and starts
+    // the longest files first: a handful of indexer, runtime and journey files
+    // carry most of the suite's seconds, and Vitest's default hash sharding
+    // left one shard at about twice another's wall time. The table refreshes
+    // itself from CI; see `@al-ft/midgard-test-support/duration-shards`.
+    ...durationShards({
+      tablePath: fileURLToPath(
+        new URL("./tests/support/ci-file-durations.json", import.meta.url),
+      ),
+      reporters: ["default"],
+    }),
     environment: "node",
     restoreMocks: true,
     // Several files perform CPU-heavy replay and emulator evaluation. An
