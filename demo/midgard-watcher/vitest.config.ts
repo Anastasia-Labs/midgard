@@ -7,6 +7,7 @@ import {
   interactiveEmulatorBlueprint,
   interactiveEmulatorPlugin,
   interactiveEmulatorSetup,
+  isolatedForksPool,
   midgardSourceSsr,
   rawSqlLoaderPlugin,
   workspaceBundleProjects,
@@ -88,15 +89,9 @@ export default defineConfig({
     // successful tests to be reported as `Timeout calling onTaskUpdate`.
     // Isolated forks keep evaluator state file-local (running the suite
     // without isolation fails ~75 tests on shared module state); the fork
-    // ceiling bounds contention and memory on shared CI runners.
-    pool: "forks",
-    poolOptions: {
-      forks: {
-        isolate: true,
-        minForks: 1,
-        maxForks,
-      },
-    },
+    // ceiling bounds contention and memory on shared CI runners. The worker
+    // settings every package shares are stated in `isolatedForksPool`.
+    ...isolatedForksPool({ maxForks }),
     // The heaviest restart/rewind tests can exceed Vitest's 5s default on
     // shared runners. Headroom for slow runners, not a license for slow tests.
     testTimeout: 60_000,

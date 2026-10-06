@@ -46,14 +46,10 @@ export const midgardSourceSsr = () => ({
 /**
  * The worker flag that preloads `cml-memory-reserve.js`, which grows
  * cardano-multiplatform-lib's wasm memory once at start-up instead of a
- * page-run at a time. On Node 22 every one of those grows starts a major GC;
- * the preload's note has the mechanism.
- *
- * Opt-in per suite through `isolatedForksPool({ execArgv })`: it pays only
- * where CML's memory climbs far past 64 MB, and it raises worker RSS, so each
- * suite that uses it states its own measurements.
+ * page-run at a time. `isolatedForksPool` passes it to every worker; the
+ * preload's note has the mechanism.
  */
-export const cmlMemoryReserveExecArgv = `--import=${
+const cmlMemoryReserveExecArgv = `--import=${
   new URL("./cml-memory-reserve.js", import.meta.url).href
 }`;
 
@@ -79,14 +75,23 @@ export const cmlMemoryReserveExecArgv = `--import=${
  * the lane runner, which would also hit pnpm, Vitest's own main process, and
  * every unrelated tool in the lane.
  *
- * `execArgv` appends further worker flags, such as `cmlMemoryReserveExecArgv`;
- * like `maxForks`, each is the caller's to justify with its own measurements.
+ *
+ * Every worker also reserves CML's wasm memory up front. On Node 22 (V8 12.4)
+ * each grow of a wasm memory past 64 MB starts a major GC, and CML grows its
+ * memory a page-run at a time, so any file whose CML memory climbs far past
+ * 64 MB pays one full mark-compact per grow. The reservation is a property of
+ * the worker, not of any file: a file added later that grows CML gets it
+ * without asking, and a file that never grows CML past 64 MB loses nothing
+ * but untouched address space. Measured on Node 22.22.2, two forks pinned to
+ * two cores: fault-proof heavy files 30-55% faster (the heaviest
+ * value-conservation case 819 s -> 383 s, 4,624 -> 25 major GCs), a 30-file
+ * fault-proof sample 1242 s -> 773 s, node emulator files 5% and watcher
+ * files 1% faster. Fewer GCs also mean garbage CML wrappers are finalized
+ * later, so peak worker RSS rises with the file's CML churn: 0.2-0.5 GB on
+ * the fault-proof heavy files, about 1 GB on the node emulator files. If a run
+ * dies on memory, lower `maxForks` as above.
  */
-export const isolatedForksPool = ({
-  maxForks,
-  heapMb = 4096,
-  execArgv = [],
-}) => ({
+export const isolatedForksPool = ({ maxForks, heapMb = 4096 }) => ({
   pool: "forks",
   poolOptions: {
     forks: {
@@ -94,7 +99,10 @@ export const isolatedForksPool = ({
       singleFork: false,
       minForks: 1,
       maxForks,
-      execArgv: [`--max-old-space-size=${String(heapMb)}`, ...execArgv],
+      execArgv: [
+        `--max-old-space-size=${String(heapMb)}`,
+        cmlMemoryReserveExecArgv,
+      ],
     },
   },
 });
