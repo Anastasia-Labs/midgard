@@ -27,6 +27,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/admission-writer.test.ts
  *   tests/canonical-journal-recovery-replacement-siblings.test.ts
  *   tests/da-publication-reconciler-e2e.test.ts        (opt-in)
+ *   tests/event-history-submission-backstop-emulator.test.ts
  *   tests/event-history-submission-emulator.test.ts
  *   tests/event-history-submission-concurrency-emulator.test.ts
  *   tests/event-history-submission-journal.test.ts

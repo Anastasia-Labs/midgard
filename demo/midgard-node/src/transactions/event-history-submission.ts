@@ -1,3 +1,4 @@
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -396,9 +397,18 @@ export const submitDurableEventHistoryProgram = <E, F = never>({
             save,
             // A new attempt was never broadcast, so a spent input means it
             // can never land: spent since this run read the chain, such as a
-            // list predecessor shared with another wallet's submission.
+            // list predecessor shared with another wallet's submission. A
+            // failed read abandons it too: it holds every swept output, so
+            // leaving it pending would stall the wallet until its TTL.
             submit: async (tx, attempt) =>
-              (await inputsUnspent(lucid, attempt))
+              (await inputsUnspent(lucid, attempt).catch(async (cause) => {
+                await run(
+                  Effect.logWarning(
+                    `History submission ${submissionId} could not read the inputs of its unsent attempt ${attempt.txHash}, so abandons it and rebuilds: ${formatUnknownError(cause)}`,
+                  ),
+                );
+                return false;
+              }))
                 ? submit(tx, attempt)
                 : { kind: "InputConflict" },
             reconcile: async (attempt) => {
