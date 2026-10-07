@@ -1,9 +1,8 @@
 /**
  * Test L1 tips for `l1SlotNow`: registers a tip source on a Lucid client (a
- * stub or a live-like one) whose ledger tip a test sets directly, with a
+ * stub or a live-like one) whose covered tip slot a test sets directly, with a
  * monotonic clock the test owns. A wall clock the test fakes never reaches it.
  */
-import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -18,14 +17,6 @@ export type TestL1Tip = {
   reads(): number;
 };
 
-export const tipSnapshot = (slot: number): SubmitSlotSnapshot => ({
-  source: "test",
-  currentSlot: slot,
-  ledgerTipSlot: slot,
-  observedAtMs: 0,
-  slotLengthMs: 1_000,
-});
-
 export const registerTestL1Tip = (
   api: LucidEvolution,
   tipSlot: number,
@@ -38,7 +29,7 @@ export const registerTestL1Tip = (
     () =>
       Effect.sync(() => {
         reads += 1;
-        return tipSnapshot(slot);
+        return slot;
       }),
     { slotLengthMs: 1_000, monotonicNowMs: () => nowMs },
   );

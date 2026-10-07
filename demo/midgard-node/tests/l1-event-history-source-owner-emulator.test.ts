@@ -28,10 +28,10 @@ import {
   Effect,
   ensureSeparateCollateralUtxo,
   expectedAuthenticatedEventRoot,
+  ingestEmulatorEventsUnowned,
   initializePayoutProgram,
   paymentCredentialOf,
   payoutStatusProgram,
-  reconcileVisibleWithdrawalUTxOs,
   resolveEventSettlementProofProgram,
   runNodeCommandProgram,
   SDK,
@@ -170,8 +170,8 @@ it("runs the default history owner through actual bootstrap, continuation, retir
     );
     vi.setSystemTime(fixture.emulator.now());
     expect(
-      (await command(reconcileVisibleWithdrawalUTxOs())).reconciledCount,
-    ).toBe(1);
+      await command(ingestEmulatorEventsUnowned(fixture, { globals })),
+    ).toMatchObject({ inserted: 1 });
     const withdrawalBlock = await commitConfirmRecoverAndMerge(context);
     const resolution = await command(
       resolveEventSettlementProofProgram({

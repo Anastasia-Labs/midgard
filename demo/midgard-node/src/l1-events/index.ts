@@ -31,15 +31,17 @@ export {
 } from "./entries.js";
 export { eventProjection } from "./projection.js";
 export {
+  dueByCutoff,
+  dueByCutoffNow,
+  type DueDeposit,
   type EventList,
   eventListAt,
   eventsAt,
   type Placement,
   type ProjectedEvent,
   type ProjectionRead,
+  spendableAt,
   type SpendableDeposit,
-  spendableDepositsAt,
-  spendableDepositsNow,
 } from "./reads.js";
 export {
   EVENT_TABLES,

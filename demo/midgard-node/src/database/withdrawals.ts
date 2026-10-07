@@ -36,7 +36,6 @@ export {
   clearProjectedHeaderAssignmentByEventIds,
   markAwaitingAsProjected,
   markProjectedByEventIds,
-  retrieveAwaitingEntriesDueBy,
   retrieveByCardanoTxHash,
   retrieveByEventIds,
   retrieveByProjectedHeaderHash,

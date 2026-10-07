@@ -2,8 +2,8 @@
  * User-event ingestion from the event projection (N1): the deposit and
  * withdrawal row content the node's L2 side reads, derived from a
  * projected event's immutable bytes and its location. Pure: no database,
- * no clock. Phase A compares it with the rows today's ingestion writes;
- * phase B makes it the only source.
+ * no clock. The follower-change driver writes the node's event rows from
+ * it (E-N1-2 ruling 1).
  */
 import {
   decodeMidgardTxOutput,
@@ -89,7 +89,9 @@ const depositEntry = (
     idCbor: event.idCbor,
     infoCbor,
     inclusionTimeMs: inclusionMs(event),
-    l1TxHash: event.location.txHash.toString("hex"),
+    // Ruling 2: a deposit's L1 tx hash is its admission tx, never the moving
+    // location of its list node.
+    l1TxHash: event.admission.outRef.txHash.toString("hex"),
     ledgerTxId: computeHash32(Buffer.from(event.idCbor, "hex")).toString("hex"),
     ledgerOutput: output.toString("hex"),
     ledgerAddress: encodeMidgardAddressText(

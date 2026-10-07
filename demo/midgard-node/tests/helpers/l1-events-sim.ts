@@ -3,7 +3,11 @@
  * traffic (admissions inline and external, continuations, retirements,
  * resubmitted keys, the same key under the other kind) and its check, which
  * compares the projection at every step with an independent in-memory model
- * of the canonical chain (P2 event and key sets, P4 spendability).
+ * of the canonical chain (P2 event and key sets, P4 spendability). Once the
+ * store pruned, the model is cut to what the projection's retention keeps
+ * (`EVENT_TABLES`): a retired event and its retirement until its retirement
+ * slot is pruned, a refusal until its slot is. The key set is never pruned,
+ * so a retired key stays refused after its rows are gone.
  */
 import {
   type BlockSummary,
@@ -26,13 +30,14 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
+  dueByCutoff,
   EVENT_KINDS,
   type EventKind,
   eventProjection,
   eventsAt,
   type SlotTime,
   slotToPosixMs,
-  spendableDepositsAt,
+  spendableAt,
 } from "../../src/l1-events/index.js";
 import {
   admissionTx,
@@ -67,6 +72,12 @@ export type EventSimStats = {
   sameKeyOtherKind: number;
   /** Deposits checked unspendable at the tip because they are not yet due. */
   notYetDue: number;
+  /** Retired events whose rows a prune removed. */
+  prunedRetirements: number;
+  /** A resubmitted key refused after a prune had removed its retired event's rows. */
+  refusedAfterPrune: number;
+  /** A fresh key admitted after a prune. */
+  admittedAfterPrune: number;
   checks: number;
 };
 
@@ -79,6 +90,9 @@ export const zeroEventSimStats = (): EventSimStats => ({
   retiredKeyRefusals: 0,
   sameKeyOtherKind: 0,
   notYetDue: 0,
+  prunedRetirements: 0,
+  refusedAfterPrune: 0,
+  admittedAfterPrune: 0,
   checks: 0,
 });
 
@@ -93,11 +107,13 @@ type ModelEvent = {
   inclusionTime: bigint;
   holder: string;
   retiredBy: string | null;
+  retiredSlot: number | null;
 };
 
 type Model = {
   events: Map<string, ModelEvent>;
-  refusals: Set<string>;
+  /** Each refusal, with the slot of the block that refused it. */
+  refusals: Map<string, number>;
 };
 
 const orderFacts = (datum: Buffer | null): SDK.EventHistoryFacts | null => {
@@ -112,13 +128,16 @@ const orderFacts = (datum: Buffer | null): SDK.EventHistoryFacts | null => {
   }
 };
 
-const applyTx = (model: Model, tx: TxSummary, blockHash: string): void => {
+const applyTx = (model: Model, tx: TxSummary, block: BlockSummary): void => {
+  const blockHash = block.point.hash.toString("hex");
   for (const kind of EVENT_KINDS) {
     const list = listOf(kind);
     for (const [name, quantity] of tx.mint.get(list.policyId) ?? []) {
       const event = model.events.get(`${kind}:${name}`);
-      if (quantity === -1n && event !== undefined && event.retiredBy === null)
+      if (quantity === -1n && event !== undefined && event.retiredBy === null) {
         event.retiredBy = tx.hash.toString("hex");
+        event.retiredSlot = block.point.slot;
+      }
     }
     tx.outputs.forEach((output, index) => {
       if (output.address.toString("hex") !== list.listAddress) return;
@@ -134,7 +153,7 @@ const applyTx = (model: Model, tx: TxSummary, blockHash: string): void => {
         const facts = orderFacts(output.datum);
         if (facts === null) continue;
         if (known !== undefined) {
-          model.refusals.add(`${id}:${holder}`);
+          model.refusals.set(`${id}:${holder}`, block.point.slot);
           continue;
         }
         model.events.set(id, {
@@ -145,6 +164,7 @@ const applyTx = (model: Model, tx: TxSummary, blockHash: string): void => {
           inclusionTime: facts.inclusion_time,
           holder,
           retiredBy: null,
+          retiredSlot: null,
         });
       }
     });
@@ -153,12 +173,25 @@ const applyTx = (model: Model, tx: TxSummary, blockHash: string): void => {
 
 /** The model of a chain: every block from the origin, in order. */
 const modelOf = (blocks: readonly BlockSummary[]): Model => {
-  const model: Model = { events: new Map(), refusals: new Set() };
+  const model: Model = { events: new Map(), refusals: new Map() };
   for (const block of blocks)
-    for (const tx of block.txs)
-      if (tx.isValid) applyTx(model, tx, block.point.hash.toString("hex"));
+    for (const tx of block.txs) if (tx.isValid) applyTx(model, tx, block);
   return model;
 };
+
+/**
+ * What the projection keeps of `model` once pruned through slot `s`
+ * (`EVENT_TABLES`): live events, retired ones retired after `s`, refusals
+ * made after `s`. At the origin slot nothing is pruned.
+ */
+const retainedModel = (model: Model, s: number): Model => ({
+  events: new Map(
+    [...model.events].filter(
+      ([, event]) => event.retiredSlot === null || event.retiredSlot > s,
+    ),
+  ),
+  refusals: new Map([...model.refusals].filter(([, slot]) => slot > s)),
+});
 
 /**
  * The Orders of live events on the chain being built (a refused
@@ -292,6 +325,9 @@ export const eventSimProjection = (
   // The check runs after each event; the chain it is handed is the final
   // one, so it keeps the canonical blocks itself, from the events.
   const canonical: BlockSummary[] = [];
+  /** Where the store was pruned through at the previous check. */
+  let prunedBefore = SIM_ORIGIN.point.slot;
+  const prunedSeen = new Set<string>();
   const check: FollowerProjection["check"] = async ({ store, step }) => {
     stats.checks += 1;
     const { event } = step;
@@ -305,7 +341,10 @@ export const eventSimProjection = (
       )
         canonical.pop();
     }
-    const model = modelOf(canonical);
+    const full = modelOf(canonical);
+    const prunedThrough =
+      (await store.cursor())?.prunedThroughSlot ?? SIM_ORIGIN.point.slot;
+    const model = retainedModel(full, prunedThrough);
     const tip = canonical[canonical.length - 1]?.point ?? SIM_ORIGIN.point;
     for (const kind of EVENT_KINDS) {
       const read = await eventsAt(store, listOf(kind), tip);
@@ -343,25 +382,40 @@ export const eventSimProjection = (
     const refusals = await projectedRefusals(store);
     const difference = firstDifference(
       [...refusals].sort(),
-      [...model.refusals].sort(),
+      [...model.refusals.keys()].sort(),
     );
     if (difference !== null) return `retired-key refusals: ${difference}`;
-    // P4 at the tip: due by slotNow (here the tip slot) and admitted.
+    // Builder eligibility at the tip: due by slotNow (here the tip slot).
     const cutoffMs = BigInt(slotToPosixMs(SIM_SLOT_TIME, tip.slot));
-    const spendable = await spendableDepositsAt(store, listOf("deposit"), tip, {
+    const due = await dueByCutoff(store, listOf("deposit"), tip, {
       slot: tip.slot,
       slotTime: SIM_SLOT_TIME,
     });
-    if (spendable.kind !== "ok") return `spendable: ${spendable.kind}`;
+    if (due.kind !== "ok") return `due: ${due.kind}`;
     const deposits = [...model.events.values()].filter(
       (e) => e.kind === "deposit",
     );
-    const spendableDifference = firstDifference(
-      spendable.value.map((d) => d.key).sort(),
+    const dueDifference = firstDifference(
+      due.value.map((d) => d.key).sort(),
       deposits
         .filter((e) => e.inclusionTime <= cutoffMs)
         .map((e) => e.key)
         .sort(),
+    );
+    if (dueDifference !== null) return `due deposits: ${dueDifference}`;
+    // P4: spendable iff included by an own block and canonical at the tip;
+    // being due never makes a deposit spendable. Include every other one.
+    const included = due.value.filter((_, i) => i % 2 === 0);
+    const spendable = await spendableAt(
+      store,
+      listOf("deposit"),
+      tip,
+      new Set([...included.map((d) => d.idCbor), "00"]),
+    );
+    if (spendable.kind !== "ok") return `spendable: ${spendable.kind}`;
+    const spendableDifference = firstDifference(
+      spendable.value.map((d) => d.key).sort(),
+      included.map((d) => d.key).sort(),
     );
     if (spendableDifference !== null)
       return `spendable deposits: ${spendableDifference}`;
@@ -369,12 +423,13 @@ export const eventSimProjection = (
       (e) => e.inclusionTime > cutoffMs,
     ).length;
     // Case counters (the model agreed, so these describe the projection).
-    for (const event of model.events.values()) {
+    for (const event of full.events.values()) {
       const id = `${event.kind}:${event.key}`;
       const before = admittedIn.get(id);
       if (before === undefined) {
         stats.admissions += 1;
-        if (model.events.has(`${other(event.kind)}:${event.key}`))
+        if (prunedBefore > SIM_ORIGIN.point.slot) stats.admittedAfterPrune += 1;
+        if (full.events.has(`${other(event.kind)}:${event.key}`))
           stats.sameKeyOtherKind += 1;
       } else if (before !== event.admissionTx) stats.readmissions += 1;
       admittedIn.set(id, event.admissionTx);
@@ -382,12 +437,32 @@ export const eventSimProjection = (
         refusalsSeen.add(`retired:${id}`);
         stats.retirements += 1;
       }
+      if (
+        event.retiredSlot !== null &&
+        event.retiredSlot <= prunedThrough &&
+        !prunedSeen.has(`${id}:${event.admissionTx}`)
+      ) {
+        prunedSeen.add(`${id}:${event.admissionTx}`);
+        stats.prunedRetirements += 1;
+      }
     }
-    for (const refusal of model.refusals)
+    for (const [refusal, slot] of full.refusals)
       if (!refusalsSeen.has(refusal)) {
         refusalsSeen.add(refusal);
         stats.retiredKeyRefusals += 1;
+        // Its block was applied after the previous check: if that store had
+        // already pruned the retired event's rows, the key set alone refused it.
+        const [kind, key] = refusal.split(":");
+        const retiredSlot = full.events.get(`${kind}:${key}`)?.retiredSlot;
+        if (
+          retiredSlot !== null &&
+          retiredSlot !== undefined &&
+          retiredSlot <= prunedBefore &&
+          slot > prunedBefore
+        )
+          stats.refusedAfterPrune += 1;
       }
+    prunedBefore = prunedThrough;
     return null;
   };
 

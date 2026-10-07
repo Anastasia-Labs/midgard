@@ -6,13 +6,14 @@ import { Effect, Option, Ref } from "effect";
 import { vi } from "vitest";
 
 import * as Authority from "../../src/database/eventHistoryAuthority.js";
-import { materializeCanonicalHistory } from "../../src/database/eventHistoryMaterialization.js";
+import { repairUnpublishedHistoryLedger } from "../../src/database/eventHistoryLedgerRepair.js";
 import { BatchSql } from "../../src/services/database.js";
 import {
   type EventHistoryOwner,
   makeEventHistoryOwner,
 } from "../../src/services/event-history-owner.js";
-import type { Globals } from "../../src/services/globals.js";
+import { Globals } from "../../src/services/globals.js";
+import { ingestAtFollowerView } from "../../src/services/l1-follower.recovery.js";
 import type { MempoolLedgerCacheService } from "../../src/services/mempool-ledger-cache.js";
 import { testDatabaseName } from "../test-env.js";
 import {
@@ -107,7 +108,13 @@ export const makePoolIsolationHistoryOwner = (input: {
         rollbackHorizon: 2160,
         retainedPointLimit: 16,
         maximumReceiptBytes: 16 * 1024 * 1024,
-        reconcile: (change) => materializeCanonicalHistory(change, "Preprod"),
+        reconcile: (change) =>
+          ingestAtFollowerView({
+            change,
+            repair: repairUnpublishedHistoryLedger(change),
+            network: "Preprod",
+            slotToUnixTime: recorded.fixture.operatorLucid.slotToUnixTime,
+          }).pipe(Effect.provideService(Globals, input.globals)),
       });
       lifecycle.owner = owner;
       yield* owner.awaitReady;

@@ -2,6 +2,7 @@ import { SqlClient } from "@effect/sql";
 import { Clock, Effect } from "effect";
 
 import { finalityHeldPayload, type RetentionL1View } from "./daPayloads.js";
+import { orphanedAdmission } from "./l1-admission-identity.js";
 
 /**
  * What a housekeeping prune reads to keep challenge-relevant rows: the
@@ -161,9 +162,9 @@ export const recoveryRelevantJournal = (
 
 /**
  * The SQL condition true when the journal whose header is `headerColumn` has
- * a deposit or withdrawal member bound to an event-history incarnation L1 no
- * longer holds as canonical (an orphan). Such a journal is incomplete: signed
- * header recovery still classifies its header
+ * a deposit or withdrawal member whose follower admission identity L1 no
+ * longer holds in its key set (an orphan). Such a journal is incomplete:
+ * signed header recovery still classifies its header
  * (`signedHeaderRecoveryCandidates`), and ledger repair refuses to undo an
  * orphan's admission while a retained header names it as a member, so
  * deleting the journal would turn that refusal into a repair.
@@ -173,18 +174,12 @@ export const orphanMemberJournal = (
   headerColumn: string,
 ) => sql`(EXISTS (
     SELECT 1 FROM pending_block_finalization_deposits AS member
-    JOIN event_history_incarnations AS incarnation
-      ON incarnation.binding_digest = member.history_binding_digest
-        AND incarnation.incarnation_id = member.history_incarnation_id
     WHERE member.header_hash = ${sql(headerColumn)}
-      AND NOT incarnation.origin_canonical)
+      AND ${orphanedAdmission(sql, "member", "deposit")})
   OR EXISTS (
     SELECT 1 FROM pending_block_finalization_withdrawals AS member
-    JOIN event_history_incarnations AS incarnation
-      ON incarnation.binding_digest = member.history_binding_digest
-        AND incarnation.incarnation_id = member.history_incarnation_id
     WHERE member.header_hash = ${sql(headerColumn)}
-      AND NOT incarnation.origin_canonical))`;
+      AND ${orphanedAdmission(sql, "member", "withdrawal")}))`;
 
 /**
  * Runs `batch(limit)` until a batch deletes fewer than `limit` rows,

@@ -1,15 +1,15 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Effect, Option, Ref } from "effect";
+import { Effect, Ref } from "effect";
 
-import * as Authority from "../database/eventHistoryAuthority.js";
 import type { Checkpoint } from "../database/eventHistoryJournal.js";
-import { pendingHistoryLedgerDisposition } from "../database/eventHistoryLedgerRepair.js";
-import { materializeCanonicalHistory } from "../database/eventHistoryMaterialization.js";
+import {
+  pendingHistoryLedgerDisposition,
+  repairUnpublishedHistoryLedger,
+} from "../database/eventHistoryLedgerRepair.js";
 import * as ForeignAdoptions from "../database/foreignNativeAdoptions.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { reconcileDepositProjection } from "../fibers/project-deposits-to-mempool-ledger.js";
 import { makeEventHistorySourceBinding } from "../l1-event-history-source.js";
 import type { HistoryTransportOptions } from "../l1-event-history-transport.js";
 import { NodeConfig } from "./config.js";
@@ -30,6 +30,7 @@ import {
   deferralKey,
 } from "./history-expired-intent-release.table.js";
 import { prepareSignedHeaderRecovery } from "./history-signed-header-recovery.js";
+import { ingestAtFollowerView } from "./l1-follower.recovery.js";
 import {
   clearLivenessIncident,
   HISTORY_SIGNED_INTENT_RELEASE_SOURCE,
@@ -322,26 +323,15 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
             });
             if (revival !== undefined) return revival;
           }
-          yield* materializeCanonicalHistory(change, config.NETWORK);
-          const { reconciled } = yield* reconcileDepositProjection(
-            new Date(lucid.api.slotToUnixTime(change.after.head.slot)),
-          );
-          // Newly projected deposits stay hidden from the validation cache
-          // until a header is assigned. Restoring an already spendable row
-          // changes cache state, which only a recovery's reload may publish;
-          // inside a Ready append this closes the gate instead.
-          const owned = yield* Authority.currentOwnedTransaction;
-          if (
-            reconciled.spendableUpserts.length > 0 &&
-            Option.isSome(owned) &&
-            owned.value.state === "ready"
-          )
-            return {
-              status: "pending" as const,
-              reason:
-                "Deposit projection restored spendable ledger rows; the validation cache must reload",
-            };
-          return undefined;
+          // The follower-change driver writes the event rows (E-N1-2
+          // ruling 1); the owner's reconcile repairs orphans and, in a
+          // recovery, ingests at the follower's view.
+          return yield* ingestAtFollowerView({
+            change,
+            repair: repairUnpublishedHistoryLedger(change),
+            network: config.NETWORK,
+            slotToUnixTime: lucid.api.slotToUnixTime,
+          });
         }),
     });
   });

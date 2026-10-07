@@ -308,13 +308,14 @@ export const withDepositMembership = async (
   await run(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      const binding = Buffer.from(base.history.coverage.bindingDigest, "hex");
-      const incarnation = Buffer.alloc(32, 71);
-      yield* sql`INSERT INTO event_history_incarnations(binding_digest,incarnation_id,kind,event_id,event_key,
-      origin_canonical,incarnation_record,incarnation_digest) VALUES (${binding},${incarnation},'deposit',${id},${Buffer.alloc(32, 72)},true,'Explicit modeled deposit source',${Buffer.alloc(32, 73)})`;
+      // Explicit modeled follower admission of the deposit source.
+      const key = Buffer.alloc(32, 72);
+      const origin = Buffer.concat([Buffer.from(input.txId), Buffer.alloc(2)]);
+      yield* sql`INSERT INTO l1_event_keys(kind,key,origin_outref,first_canonical_slot)
+      VALUES ('deposit',${key},${origin},0)`;
       yield* sql`INSERT INTO deposits_utxos(event_id,event_info,inclusion_time,deposit_l1_tx_hash,ledger_tx_id,
-      ledger_output,ledger_address,status,history_binding_digest,history_incarnation_id)
-      VALUES (${id},${Buffer.from("80", "hex")},NOW(),${Buffer.from(input.txId)},${entry.tx_id},${entry.output},${entry.address},'awaiting',${binding},${incarnation})`;
+      ledger_output,ledger_address,status,l1_event_key,l1_origin_outref)
+      VALUES (${id},${Buffer.from("80", "hex")},NOW(),${Buffer.from(input.txId)},${entry.tx_id},${entry.output},${entry.address},'awaiting',${key},${origin})`;
     }),
   );
   const block = base.importedBlocks[0]!;

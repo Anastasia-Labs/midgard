@@ -13,7 +13,6 @@ import { Effect } from "effect";
 
 import { DepositSubmissionAttemptsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { persistDepositUTxOs } from "../fibers/fetch-and-insert-deposit-utxos.js";
 import {
   Database,
   Lucid as LucidService,
@@ -91,10 +90,8 @@ export const reconcileDepositSubmissionAttemptProgram = (
               }),
           });
     if (matchesIntent) {
-      const { reconciledCount } = yield* persistDepositUTxOs(
-        deposits,
-        nodeConfig.NETWORK,
-      );
+      // The deposit row is the follower-change driver's to write (E-N1-2
+      // ruling 1); this check only settles the submission attempt.
       yield* DepositSubmissionAttemptsDB.markReconciled(txHashBuffer);
       return {
         txHash,
@@ -103,7 +100,7 @@ export const reconcileDepositSubmissionAttemptProgram = (
         expectedDepositOutRef:
           attempt[DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF],
         depositRowsFound: 1,
-        reconciledCount,
+        reconciledCount: 0,
         nextSafeAction:
           "Deposit matches the submission intent in current authenticated L1 history; continue without resubmitting.",
       } as const;

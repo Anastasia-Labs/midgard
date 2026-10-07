@@ -4,8 +4,10 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 
 import * as Ledger from "../database/utils/ledger.js";
-import { depositUTxOToEntry } from "../fibers/fetch-and-insert-deposit-utxos.js";
-import { withdrawalUTxOToEntry } from "../fibers/fetch-and-insert-withdrawal-utxos.js";
+import {
+  depositDataToEntry,
+  withdrawalDataToEntry,
+} from "../l1-event-history-entries.js";
 import { Lucid, MidgardContracts, NodeConfig } from "../services/index.js";
 import {
   depositPayloadOf,
@@ -116,7 +118,9 @@ export const collectL1StateView: Effect.Effect<
     ...SDK.eventHistoryDeploymentFromContracts(eventHistory.deposit),
   });
   const deposits = yield* Effect.forEach(depositUtxos, (utxo) =>
-    Effect.either(depositUTxOToEntry(utxo, nodeConfig.NETWORK)).pipe(
+    Effect.either(
+      depositDataToEntry({ ...utxo, location: utxo.utxo }, nodeConfig.NETWORK),
+    ).pipe(
       Effect.map(
         (result): L1EventOrder<DepositPayload> => ({
           outRef: outRefOf(utxo.utxo),
@@ -134,7 +138,13 @@ export const collectL1StateView: Effect.Effect<
     ...SDK.eventHistoryDeploymentFromContracts(eventHistory.withdrawal),
   });
   const withdrawals = yield* Effect.forEach(withdrawalUtxos, (utxo) =>
-    Effect.either(withdrawalUTxOToEntry(utxo)).pipe(
+    Effect.either(
+      withdrawalDataToEntry({
+        ...utxo,
+        location: utxo.utxo,
+        payloadCbor: utxo.history.payloadCbor,
+      }),
+    ).pipe(
       Effect.map(
         (result): L1EventOrder<WithdrawalPayload> => ({
           outRef: outRefOf(utxo.utxo),

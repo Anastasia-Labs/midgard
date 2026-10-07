@@ -26,7 +26,6 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as Journal from "../src/database/eventHistoryJournal.js";
 import * as Receipts from "../src/database/eventHistoryLedgerReceipts.js";
-import { materializeCanonicalHistory } from "../src/database/eventHistoryMaterialization.js";
 import * as Ledger from "../src/database/mempoolLedger.js";
 import * as Admissions from "../src/database/txAdmissions.js";
 import { formatDatabaseError } from "../src/database/utils/common.js";
@@ -47,6 +46,7 @@ import {
   withHistoryWrite,
 } from "../src/services/event-history-producer.js";
 import { breakDownTx, type ProcessedTx } from "../src/utils.js";
+import * as Follower from "./helpers/follower-view.js";
 import { retainEverything } from "./helpers/history-journal-retention.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import {
@@ -375,7 +375,7 @@ beforeEach(async () => {
         name: string;
       }>`SELECT current_database() AS name`;
       expect(database?.name).toBe(testDatabaseName());
-      yield* sql`TRUNCATE event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts, tx_admission_payloads, tx_admissions`;
+      yield* sql`TRUNCATE event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts, tx_admission_payloads, tx_admissions, follower_event_ingestion, l1_event_keys, l1_follower_cursor, l1_blocks CASCADE`;
     }),
   );
 });
@@ -390,7 +390,7 @@ const ownedFixture = async () => {
         binding,
         prepared,
         ({ after, changes }) =>
-          materializeCanonicalHistory(
+          Follower.followerMaterialize(
             { kind: "forward", before: checkpoint, after, changes },
             "Preprod",
           ),
@@ -538,11 +538,10 @@ describe("owned accepted-ledger inverse receipts", () => {
         (row) => row.outref === bytea(tx.produced[0]!.outref),
       ),
     });
+    const admitted = f.checkpoint.incarnations[0]!;
     expect(before.deposits[0]).toMatchObject({
-      history_binding_digest: bytea(Buffer.from(binding.digest, "hex")),
-      history_incarnation_id: bytea(
-        Buffer.from(f.checkpoint.incarnations[0]!.id, "hex"),
-      ),
+      l1_event_key: bytea(Buffer.from(admitted.event.key, "hex")),
+      l1_origin_outref: bytea(Follower.incarnationOutRef(admitted)),
     });
     expect(before.payloads[0]).toMatchObject({
       tx_canonical_cbor: bytea(tx.txCbor),

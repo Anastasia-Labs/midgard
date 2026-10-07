@@ -13,16 +13,14 @@ import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "../../database/utils/common.js";
-import { fetchAndInsertDepositUTxOsForCommitBarrier } from "../../fibers/fetch-and-insert-deposit-utxos.js";
 import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "../../fibers/fetch-and-insert-tx-order-utxos.js";
-import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "../../fibers/fetch-and-insert-withdrawal-utxos.js";
 import { type UtxoPayloadEntry } from "../../mpf/index.js";
 import {
   fetchOperatorWalletView,
   type OperatorWalletView,
 } from "../../operator-wallet-view.js";
 import { HistoryProducer } from "../../services/event-history-producer.js";
-import { historyEligibilityHorizon } from "../../services/history-commit-window.js";
+import { commitEventHorizon } from "../../services/history-commit-window.js";
 import {
   ContractDeploymentIdentity,
   Database,
@@ -72,11 +70,17 @@ export const commitUserEventSourceIdSetsAreExact = ({
   sameSourceIdSet(pendingWithdrawalIds, includedWithdrawalIds);
 
 type CommitUserEventSourceRefreshers<E, R> = {
-  readonly deposit: (upperBound: Date) => Effect.Effect<Date, E, R>;
-  readonly withdrawal: (upperBound: Date) => Effect.Effect<Date, E, R>;
   readonly txOrder: (upperBound: Date) => Effect.Effect<Date, E, R>;
 };
 
+/**
+ * Rechecks the final end time against the event horizon, min(journal
+ * coverage, follower ingestion) (E-N1-2 item 3), then refreshes tx orders
+ * through it. Deposits and withdrawals are the follower-change driver's:
+ * nothing here fetches them. Every runtime commit runs under a history
+ * producer; the unowned model fixture (no producer) needs an ingestion but
+ * plans its end time past it, as its source polling did before.
+ */
 export const refreshCommitUserEventSourcesThroughBlockEnd = <
   E = SDK.LucidError | DatabaseError,
   R =
@@ -88,35 +92,33 @@ export const refreshCommitUserEventSourcesThroughBlockEnd = <
 >(
   blockEndTimeMs: number,
   refreshers: CommitUserEventSourceRefreshers<E, R> = {
-    deposit: fetchAndInsertDepositUTxOsForCommitBarrier,
-    withdrawal: fetchAndInsertWithdrawalUTxOsForCommitBarrier,
     txOrder: fetchAndInsertTxOrderUTxOsForCommitBarrier,
   } as unknown as CommitUserEventSourceRefreshers<E, R>,
 ) =>
   Effect.gen(function* () {
     const finalBlockEndTime = new Date(blockEndTimeMs);
     const history = yield* Effect.serviceOption(HistoryProducer);
-    if (Option.isSome(history)) {
-      if (blockEndTimeMs > historyEligibilityHorizon(history.value.coverage))
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: "event_history_cursor",
-            message:
-              "Final commitment end time exceeds authenticated history coverage",
-            cause: `end=${blockEndTimeMs},includedThrough=${historyEligibilityHorizon(history.value.coverage)}`,
-          }),
-        );
-      // The final header window may differ from the initial plan. Recheck the
-      // same immutable owner coverage; polling cannot extend its authority.
-      // preparePendingSubmission rechecks the generation and that this coverage
-      // is still a journaled prefix (the exact cursor, the anchor, or a
-      // canonical earlier block under a newer cursor revision) under the
-      // authority row lock after this provider work, before journal writes.
-      yield* refreshers.txOrder(finalBlockEndTime);
-      return;
-    }
-    yield* refreshers.deposit(finalBlockEndTime);
-    yield* refreshers.withdrawal(finalBlockEndTime);
+    const horizon = yield* commitEventHorizon(
+      Option.isSome(history) ? history.value.coverage : undefined,
+    );
+    if (
+      horizon === null ||
+      (Option.isSome(history) && blockEndTimeMs > horizon)
+    )
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: "follower_event_ingestion",
+          message:
+            "Final commitment end time exceeds the ingested event horizon",
+          cause: `end=${blockEndTimeMs},horizon=${String(horizon)}`,
+        }),
+      );
+    // The final header window may differ from the initial plan. Recheck the
+    // same immutable owner coverage; polling cannot extend its authority.
+    // preparePendingSubmission rechecks the generation and that this coverage
+    // is still a journaled prefix (the exact cursor, the anchor, or a
+    // canonical earlier block under a newer cursor revision) under the
+    // authority row lock after this provider work, before journal writes.
     yield* refreshers.txOrder(finalBlockEndTime);
   });
 

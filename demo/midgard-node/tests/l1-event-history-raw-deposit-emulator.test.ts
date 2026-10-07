@@ -13,7 +13,6 @@ import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
 import "../src/database/index.js";
-import "../src/fibers/fetch-and-insert-deposit-utxos.js";
 import "../src/l1-event-history-projection.js";
 import "../src/l1-event-history-source.js";
 import "./helpers/cardano-protocol-parameters.js";
@@ -45,8 +44,6 @@ import {
 import { Effect } from "effect";
 import { expect, it, vi } from "vitest";
 
-import { DepositsDB } from "../src/database/index.js";
-import { depositUTxOToEntry } from "../src/fibers/fetch-and-insert-deposit-utxos.js";
 import { projectEventHistoryBlock } from "../src/l1-event-history-projection.js";
 import {
   decodeBoundEventHistoryLedgerSnapshot,
@@ -73,6 +70,7 @@ import { makeJournalDirectory } from "./helpers/run-journal-directory.js";
 import {
   admitRaw,
   field,
+  followerDepositEntry,
   hash,
   network,
   plain,
@@ -449,12 +447,12 @@ it("preserves actual inline and external Deposit raw map pair order and duplicat
           field(captured.openingCbor, [1]),
         ),
       ).toBe(true);
-      const entry = await Effect.runPromise(depositUTxOToEntry(order, network));
+      const entry = followerDepositEntry(order, history.list.policyId);
       const converted = decodeMidgardTxOutput(
-        entry[DepositsDB.Columns.LEDGER_OUTPUT],
+        Buffer.from(entry.ledgerOutput, "hex"),
       );
       expect(converted.datum?.cbor.toString("hex")).toBe(specimen.datum);
-      expect(entry[DepositsDB.Columns.INFO]).toEqual(order.infoCbor);
+      expect(entry.infoCbor).toBe(order.infoCbor.toString("hex"));
       expect(converted.value).toEqual({
         lovelace: 5_000_000n,
         assets: new Map(),
@@ -486,12 +484,13 @@ it("preserves actual inline and external Deposit raw map pair order and duplicat
         expect(refreshed.history.anchor.node.protected_until).toBeGreaterThan(
           previous.order.history.anchor.node.protected_until,
         );
-        const reprojected = await Effect.runPromise(
-          depositUTxOToEntry(refreshed, network),
+        const reprojected = followerDepositEntry(
+          refreshed,
+          history.list.policyId,
         );
         expect(
           decodeMidgardTxOutput(
-            reprojected[DepositsDB.Columns.LEDGER_OUTPUT],
+            Buffer.from(reprojected.ledgerOutput, "hex"),
           ).datum?.cbor.toString("hex"),
         ).toBe(previous.datum);
         continuation = {

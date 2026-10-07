@@ -7,6 +7,11 @@ import {
   requireRecoveryTransaction,
   requireSourceTransaction,
 } from "./eventHistoryAuthority.js";
+import {
+  type AdmissionKind,
+  orphanedAdmission,
+  sameAdmission,
+} from "./l1-admission-identity.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 /** Private production recovery capability. Supplied only after fresh signed
@@ -21,20 +26,42 @@ const table = "event_history_l2_ledger_receipts";
 const refuse = (message: string) =>
   Effect.fail(new DatabaseError({ table, message, cause: undefined }));
 
-/** An unreversed acceptance receipt consumed deposit incarnation
- * `incarnationId` and some transaction of its batch is no longer in the
+/** An event row whose follower admission L1 no longer holds in its key set. */
+export type OrphanAdmission = {
+  readonly kind: AdmissionKind;
+  readonly event_id: Buffer;
+  readonly l1_event_key: Buffer;
+  readonly l1_origin_outref: Buffer;
+};
+
+/** Every orphaned deposit and withdrawal row, row-locked. */
+const lockOrphanedAdmissions = (sql: SqlClient.SqlClient) =>
+  Effect.gen(function* () {
+    const deposits = yield* sql<OrphanAdmission>`
+      SELECT 'deposit' AS kind, d.event_id, d.l1_event_key, d.l1_origin_outref
+      FROM deposits_utxos d WHERE ${orphanedAdmission(sql, "d", "deposit")}
+      ORDER BY d.l1_event_key FOR UPDATE OF d`;
+    const withdrawals = yield* sql<OrphanAdmission>`
+      SELECT 'withdrawal' AS kind, w.event_id, w.l1_event_key, w.l1_origin_outref
+      FROM withdrawal_utxos w WHERE ${orphanedAdmission(sql, "w", "withdrawal")}
+      ORDER BY w.l1_event_key FOR UPDATE OF w`;
+    return [...deposits, ...withdrawals];
+  });
+
+/** An unreversed acceptance receipt consumed the deposit with follower
+ * admission `orphan` and some transaction of its batch is no longer in the
  * mempool: the dependency already left the unpublished overlay, so the orphan
  * cannot be repaired from retained receipts. */
 export const orphanHasPublishedDependency = (
   binding: Buffer,
-  incarnationId: Buffer,
+  orphan: OrphanAdmission,
 ) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql`SELECT 1 FROM event_history_l2_ledger_receipts r
         WHERE r.binding_digest = ${binding} AND r.reversed_at_revision IS NULL
           AND EXISTS (SELECT 1 FROM jsonb_populate_recordset(NULL::deposits_utxos, r.deposits_before) d
-            WHERE d.history_binding_digest = ${binding} AND d.history_incarnation_id = ${incarnationId})
+            WHERE d.l1_event_key = ${orphan.l1_event_key} AND d.l1_origin_outref = ${orphan.l1_origin_outref})
           AND EXISTS (SELECT 1 FROM unnest(r.tx_ids) AS ids(tx_id)
             WHERE NOT EXISTS (SELECT 1 FROM mempool m WHERE m.tx_id = ids.tx_id)) LIMIT 1`;
     return rows.length !== 0;
@@ -89,17 +116,17 @@ export const pendingHistoryLedgerDisposition = (change: HistoryOwnerChange) =>
           "A durable native/SQL recovery operation requires current-branch disposition",
       };
     const assigned = yield* sql`WITH orphans AS (
-      SELECT i.incarnation_id, i.kind FROM event_history_incarnations i
-      WHERE i.binding_digest = ${binding} AND NOT i.origin_canonical
-        AND (EXISTS (SELECT 1 FROM deposits_utxos d WHERE d.history_binding_digest = i.binding_digest AND d.history_incarnation_id = i.incarnation_id)
-          OR EXISTS (SELECT 1 FROM withdrawal_utxos w WHERE w.history_binding_digest = i.binding_digest AND w.history_incarnation_id = i.incarnation_id))
+      SELECT d.l1_event_key, d.l1_origin_outref, d.projected_header_hash, d.status::text AS status
+        FROM deposits_utxos d WHERE ${orphanedAdmission(sql, "d", "deposit")}
+      UNION ALL
+      SELECT w.l1_event_key, w.l1_origin_outref, w.projected_header_hash, w.status::text AS status
+        FROM withdrawal_utxos w WHERE ${orphanedAdmission(sql, "w", "withdrawal")}
     ) SELECT 1 FROM orphans o WHERE
       EXISTS (SELECT 1 FROM pending_block_finalizations WHERE status NOT IN ('finalized', 'abandoned'))
       OR EXISTS (SELECT 1 FROM processed_mempool)
-      OR EXISTS (SELECT 1 FROM deposits_utxos d WHERE d.history_binding_digest = ${binding} AND d.history_incarnation_id = o.incarnation_id AND (d.projected_header_hash IS NOT NULL OR d.status = 'finalized'))
-      OR EXISTS (SELECT 1 FROM withdrawal_utxos w WHERE w.history_binding_digest = ${binding} AND w.history_incarnation_id = o.incarnation_id AND (w.projected_header_hash IS NOT NULL OR w.status = 'finalized'))
-      OR EXISTS (SELECT 1 FROM pending_block_finalization_deposits d WHERE d.history_binding_digest = ${binding} AND d.history_incarnation_id = o.incarnation_id)
-      OR EXISTS (SELECT 1 FROM pending_block_finalization_withdrawals w WHERE w.history_binding_digest = ${binding} AND w.history_incarnation_id = o.incarnation_id)
+      OR o.projected_header_hash IS NOT NULL OR o.status = 'finalized'
+      OR EXISTS (SELECT 1 FROM pending_block_finalization_deposits m WHERE ${sameAdmission(sql, "m", "o")})
+      OR EXISTS (SELECT 1 FROM pending_block_finalization_withdrawals m WHERE ${sameAdmission(sql, "m", "o")})
       LIMIT 1`;
     return assigned.length === 0
       ? undefined
@@ -189,8 +216,8 @@ export const requeueUnpublishedHistoryLedger = (input: {
           ON old.event_id = spent.source_event_id
         LEFT JOIN deposits_utxos current ON current.event_id = old.event_id
         WHERE r.sequence = ${receipt.sequence} AND (current.status IS DISTINCT FROM 'consumed'
-          OR current.history_binding_digest IS DISTINCT FROM old.history_binding_digest
-          OR current.history_incarnation_id IS DISTINCT FROM old.history_incarnation_id
+          OR current.l1_event_key IS DISTINCT FROM old.l1_event_key
+          OR current.l1_origin_outref IS DISTINCT FROM old.l1_origin_outref
           OR current.projected_header_hash IS DISTINCT FROM old.projected_header_hash) LIMIT 1`;
       if (changedDeposit.length)
         return yield* refuse(
@@ -244,18 +271,7 @@ export const repairUnpublishedHistoryLedger = (change: HistoryOwnerChange) =>
       AND snapshot_digest = ${Buffer.from(change.after.capture.snapshotDigest, "hex")} FOR UPDATE`;
     if (current.length !== 1)
       return yield* refuse("History ledger repair checkpoint changed");
-    const orphans = yield* sql<{
-      kind: string;
-      event_id: Buffer;
-      incarnation_id: Buffer;
-    }>`
-      SELECT i.kind, i.event_id, i.incarnation_id FROM event_history_incarnations i
-      WHERE i.binding_digest = ${binding} AND NOT i.origin_canonical
-        AND (EXISTS (SELECT 1 FROM deposits_utxos d WHERE d.history_binding_digest = i.binding_digest
-          AND d.history_incarnation_id = i.incarnation_id)
-          OR EXISTS (SELECT 1 FROM withdrawal_utxos w WHERE w.history_binding_digest = i.binding_digest
-          AND w.history_incarnation_id = i.incarnation_id))
-      ORDER BY i.incarnation_id FOR UPDATE`;
+    const orphans = yield* lockOrphanedAdmissions(sql);
     if (orphans.length === 0) return;
     // Orphans exist only after a rewind; their repair is recovery work, never
     // part of a Ready append.
@@ -291,22 +307,23 @@ export const repairUnpublishedHistoryLedger = (change: HistoryOwnerChange) =>
     for (const orphan of orphans) {
       const eventTable =
         orphan.kind === "deposit" ? "deposits_utxos" : "withdrawal_utxos";
+      const identity = sql`l1_event_key = ${orphan.l1_event_key} AND l1_origin_outref = ${orphan.l1_origin_outref}`;
       const assigned = yield* sql`SELECT 1 FROM ${sql(eventTable)}
-        WHERE history_binding_digest = ${binding} AND history_incarnation_id = ${orphan.incarnation_id}
+        WHERE ${identity}
           AND (projected_header_hash IS NOT NULL OR status = 'finalized')
           AND (${retiredHeader}::bytea IS NULL OR projected_header_hash IS DISTINCT FROM ${retiredHeader}) LIMIT 1`;
       const memberships =
         yield* sql`SELECT 1 FROM pending_block_finalization_deposits
-        WHERE history_binding_digest = ${binding} AND history_incarnation_id = ${orphan.incarnation_id}
+        WHERE ${identity}
           AND (${retiredHeader}::bytea IS NULL OR header_hash <> ${retiredHeader})
         UNION ALL SELECT 1 FROM pending_block_finalization_withdrawals
-        WHERE history_binding_digest = ${binding} AND history_incarnation_id = ${orphan.incarnation_id}
+        WHERE ${identity}
           AND (${retiredHeader}::bytea IS NULL OR header_hash <> ${retiredHeader})`;
       if (assigned.length !== 0 || memberships.length !== 0)
         return yield* refuse(
           "Orphan admission has retained header membership requiring authenticated published correction",
         );
-      if (yield* orphanHasPublishedDependency(binding, orphan.incarnation_id))
+      if (yield* orphanHasPublishedDependency(binding, orphan))
         return yield* refuse(
           "Orphan dependency already left the unpublished ledger overlay",
         );
@@ -320,15 +337,13 @@ export const repairUnpublishedHistoryLedger = (change: HistoryOwnerChange) =>
       // Clear assignments only AFTER inverse receipts checked/restored their exact
       // preimages. Header membership rows and signed intent are never deleted.
       yield* sql`UPDATE deposits_utxos d SET projected_header_hash = NULL
-        WHERE d.history_binding_digest = ${binding} AND d.projected_header_hash = ${retiredHeader}
-          AND EXISTS (SELECT 1 FROM event_history_incarnations i
-            WHERE i.binding_digest = d.history_binding_digest AND i.incarnation_id = d.history_incarnation_id
-              AND NOT i.origin_canonical)`;
+        WHERE d.projected_header_hash = ${retiredHeader}
+          AND ${orphanedAdmission(sql, "d", "deposit")}`;
     }
     for (const orphan of orphans) {
       if (orphan.kind === "deposit") {
         const unsafe = yield* sql`SELECT 1 FROM deposits_utxos d
-          WHERE history_binding_digest = ${binding} AND history_incarnation_id = ${orphan.incarnation_id}
+          WHERE d.l1_event_key = ${orphan.l1_event_key} AND d.l1_origin_outref = ${orphan.l1_origin_outref}
             AND (status NOT IN ('awaiting', 'projected') OR projected_header_hash IS NOT NULL
               OR EXISTS (SELECT 1 FROM mempool_ledger l WHERE l.source_event_id = d.event_id AND l.output <> d.ledger_output))`;
         if (unsafe.length)
@@ -336,9 +351,9 @@ export const repairUnpublishedHistoryLedger = (change: HistoryOwnerChange) =>
             "Orphan deposit remains dependent on published or unproven ledger state",
           );
         yield* sql`DELETE FROM mempool_ledger WHERE source_event_id = ${orphan.event_id}`;
-        yield* sql`DELETE FROM deposits_utxos WHERE history_binding_digest = ${binding} AND history_incarnation_id = ${orphan.incarnation_id}`;
+        yield* sql`DELETE FROM deposits_utxos WHERE l1_event_key = ${orphan.l1_event_key} AND l1_origin_outref = ${orphan.l1_origin_outref}`;
       } else {
-        yield* sql`DELETE FROM withdrawal_utxos WHERE history_binding_digest = ${binding} AND history_incarnation_id = ${orphan.incarnation_id}`;
+        yield* sql`DELETE FROM withdrawal_utxos WHERE l1_event_key = ${orphan.l1_event_key} AND l1_origin_outref = ${orphan.l1_origin_outref}`;
       }
     }
     // Re-run classification against the repaired ledger; preserve submitted raw

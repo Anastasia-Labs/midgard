@@ -22,22 +22,19 @@ import { retrieveByHeaderHash } from "./pendingBlockFinalizations.retrieve-recor
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 import * as WithdrawalsDB from "./withdrawals.js";
 
-/** Check retained admission identity before applying journal effects. Retirement
- * preserves origin_canonical, so a spent list node remains a valid member.
- * Public event IDs alone never authorize mutation of a replacement row. */
+type IdentifiedMember = Pick<
+  MemberRecord,
+  MemberColumns.MEMBER_ID | "l1_event_key" | "l1_origin_outref"
+>;
+
+/** Check retained admission identity before applying journal effects: the
+ * member's follower admission identity is its event row's, and the follower's
+ * key set still holds it. Retirement keeps the key, so a spent list node
+ * remains a valid member. Public event IDs alone never authorize mutation of a
+ * replacement row. */
 export const assertCanonicalEventMembers = (record: {
-  readonly depositMembers: readonly Pick<
-    MemberRecord,
-    | MemberColumns.MEMBER_ID
-    | "history_binding_digest"
-    | "history_incarnation_id"
-  >[];
-  readonly withdrawalMembers: readonly Pick<
-    MemberRecord,
-    | MemberColumns.MEMBER_ID
-    | "history_binding_digest"
-    | "history_incarnation_id"
-  >[];
+  readonly depositMembers: readonly IdentifiedMember[];
+  readonly withdrawalMembers: readonly IdentifiedMember[];
 }): Effect.Effect<void, DatabaseError, Database> =>
   withHistoryWrite(
     Effect.gen(function* () {
@@ -48,13 +45,12 @@ export const assertCanonicalEventMembers = (record: {
         ["withdrawal", WithdrawalsDB.tableName, record.withdrawalMembers],
       ] as const) {
         for (const member of members) {
-          const binding = member.history_binding_digest;
-          const incarnation = member.history_incarnation_id;
+          const key = member.l1_event_key;
+          const origin = member.l1_origin_outref;
           // Only the explicit, unowned fixture transaction may contain old model
           // members. withHistoryWrite has already excluded any acquired owner.
-          if (Option.isNone(owned) && binding == null && incarnation == null)
-            continue;
-          if (binding?.length !== 32 || incarnation?.length !== 32)
+          if (Option.isNone(owned) && key == null && origin == null) continue;
+          if (key?.length !== 32 || origin?.length !== 34)
             return yield* Effect.fail(
               new DatabaseError({
                 table: tableName,
@@ -65,16 +61,11 @@ export const assertCanonicalEventMembers = (record: {
             );
           const rows = yield* sql`
           SELECT e.event_id FROM ${sql(eventTable)} e
-          JOIN event_history_incarnations i
-            ON i.binding_digest = e.history_binding_digest
-            AND i.incarnation_id = e.history_incarnation_id
-          JOIN event_history_cursor c ON c.binding_digest = i.binding_digest
+          JOIN l1_event_keys k ON k.kind = ${kind}
+            AND k.key = e.l1_event_key AND k.origin_outref = e.l1_origin_outref
           WHERE e.event_id = ${member[MemberColumns.MEMBER_ID]}
-            AND i.event_id = e.event_id AND i.kind = ${kind}
-            AND i.binding_digest = ${binding} AND i.incarnation_id = ${incarnation}
-            AND i.origin_canonical = true
-            AND c.manifest_id = ${Option.isSome(owned) ? Buffer.from(owned.value.token.deploymentIdentity, "hex") : sql`c.manifest_id`}
-          FOR UPDATE OF e`;
+            AND e.l1_event_key = ${key} AND e.l1_origin_outref = ${origin}
+          FOR UPDATE OF e FOR SHARE OF k`;
           if (rows.length !== 1)
             return yield* Effect.fail(
               new DatabaseError({

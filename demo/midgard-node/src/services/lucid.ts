@@ -8,7 +8,7 @@ import {
 } from "../custom-slot-mapping.js";
 import {
   fetchLocalOgmiosSubmitSlotSnapshot,
-  observeL1Tip,
+  readL1FollowerTipSlot,
   registerL1TipSource,
 } from "../l1-heads.js";
 import { providerRouteSummary } from "../provider-diagnostics.js";
@@ -160,19 +160,15 @@ const makeLucid: Effect.Effect<
     ),
   );
   yield* switchToReferenceScriptWallet;
-  // Both clients read one L1 view: their `l1SlotNow` comes from this ledger
-  // tip, and every submit-slot read below is observed into it.
+  // Both clients read one L1 view: their `l1SlotNow` comes from the L1
+  // follower's covered tip (N1). The Ogmios submit-slot read below only
+  // bounds a new tx's validity interval; it never moves `l1SlotNow`.
   registerL1TipSource(
     [lucid, referenceScriptsApi],
-    readLedgerTip,
+    readL1FollowerTipSlot,
     slotConfig === undefined ? {} : { slotLengthMs: slotConfig.slotLength },
   );
-  const readSubmitSlotSnapshotOnce = () =>
-    readLedgerTip().pipe(
-      Effect.tap((snapshot) =>
-        Effect.sync(() => observeL1Tip(lucid, snapshot)),
-      ),
-    );
+  const readSubmitSlotSnapshotOnce = readLedgerTip;
   const referenceScriptsWalletAddress = yield* Effect.tryPromise({
     try: () => referenceScriptsApi.wallet().address(),
     catch: (e) =>

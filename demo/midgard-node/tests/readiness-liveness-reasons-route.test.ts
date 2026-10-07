@@ -41,6 +41,7 @@ import {
   COMMIT_DA_FRAME_FITS_NOTICE,
   commitDaFrameNoticeForOutcome,
 } from "../src/workers/utils/commit-block-planner.commit-da-frame-notice.js";
+import { seedCaughtUpL1Follower } from "./readiness-l1-follower.fixture.js";
 import { seedVerifiedForeignBase } from "./readiness-verified-foreign-base.fixture.js";
 import { provideDatabaseLayers } from "./utils.js";
 
@@ -112,6 +113,7 @@ const onNode = <A, E>(
           yield* clear;
           const globals = yield* Globals;
           yield* seedVerifiedForeignBase(globals);
+          yield* seedCaughtUpL1Follower(globals);
           yield* Ref.set(globals.NATIVE_MPF_OWNER, responsiveOwner);
           const readyz = Effect.gen(function* () {
             yield* Ref.update(globals.L1_PROVIDER_HEALTH, (current) =>

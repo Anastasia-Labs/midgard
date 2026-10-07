@@ -19,8 +19,30 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
+import { userEventEntry } from "../src/l1-events/index.js";
+import { projectOrderAsFollower } from "./helpers/emulator-l1-follower.js";
+
 // Deployment manifests admit only the compiled profile's network.
 export const network = SELECTED_DEPLOYMENT_PROFILE.network;
+
+/** A deposit Order's node entry through the follower's projection. */
+export const followerDepositEntry = (
+  order: SDK.DepositUTxO,
+  policyId: string,
+) => {
+  const retained = order.history.retainedDataUtxo;
+  const decoded = userEventEntry(
+    projectOrderAsFollower(
+      order.utxo,
+      "deposit",
+      policyId,
+      retained === undefined ? [] : [retained],
+    ),
+    network,
+  );
+  if (decoded.kind !== "deposit") throw new Error("expected a deposit");
+  return decoded.entry;
+};
 
 export const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");

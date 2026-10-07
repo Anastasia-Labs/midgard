@@ -11,13 +11,13 @@ import { expect, it } from "vitest";
 
 import * as DepositsDB from "../src/database/deposits.js";
 import * as WithdrawalsDB from "../src/database/withdrawals.js";
-import { depositUTxOToEntry } from "../src/fibers/fetch-and-insert-deposit-utxos.js";
-import { withdrawalUTxOToEntry } from "../src/fibers/fetch-and-insert-withdrawal-utxos.js";
 import { historyIncarnationEntry } from "../src/l1-event-history-entries.js";
 import {
   type HistoryIncarnation,
   historyIncarnationId,
 } from "../src/l1-event-history-provenance.js";
+import { userEventEntry } from "../src/l1-events/index.js";
+import { projectOrderAsFollower } from "./helpers/emulator-l1-follower.js";
 
 const rawDatum = "a3020001010202";
 const owner = "aa".repeat(28);
@@ -118,45 +118,47 @@ const fixture = (kind: "Deposit" | "Withdrawal") => {
   };
 };
 
-it("projects the original deposit datum and funds despite a stale typed event view", async () => {
+/** The fixture's Order as the follower's derivation opens and projects it. */
+const projectedOrder = (
+  kind: "Deposit" | "Withdrawal",
+  f: ReturnType<typeof fixture>,
+) =>
+  projectOrderAsFollower(
+    f.utxos[1]!,
+    kind === "Deposit" ? "deposit" : "withdrawal",
+    deployment.policyId,
+  );
+
+it("projects the original deposit datum and funds from the Order's own bytes", () => {
   const f = fixture("Deposit");
-  const [event] = await Effect.runPromise(
-    SDK.utxosToDepositUTxOs(f.utxos, [], deployment),
+  const decoded = userEventEntry(projectedOrder("Deposit", f), "Preprod");
+  if (decoded.kind !== "deposit") throw new Error("expected a deposit");
+  const output = decodeMidgardTxOutput(
+    Buffer.from(decoded.entry.ledgerOutput, "hex"),
   );
-  event!.event.info.l2_datum = null;
-  event!.event.info.l2_network_id = 1n;
-  event!.event.id.outputIndex = 9n;
-  const row = await Effect.runPromise(depositUTxOToEntry(event!, "Preprod"));
-  const output = decodeMidgardTxOutput(row[DepositsDB.Columns.LEDGER_OUTPUT]);
   expect(output.datum?.cbor.toString("hex")).toBe(rawDatum);
-  expect(row[DepositsDB.Columns.ID].toString("hex")).toBe(
-    Data.to(id, SDK.OutputReference),
-  );
-  expect(row[DepositsDB.Columns.INFO].toString("hex")).toBe(
+  expect(decoded.entry.idCbor).toBe(Data.to(id, SDK.OutputReference));
+  expect(decoded.entry.infoCbor).toBe(
     plutusConstrFieldCbor(f.payloadCbor, [0, 1]),
   );
 });
 
-it("stores exact withdrawal body and refund datum while leaving validity unclassified", async () => {
+it("stores the exact withdrawal body and refund datum", () => {
   const f = fixture("Withdrawal");
-  const [event] = await Effect.runPromise(
-    SDK.utxosToWithdrawalUTxOs(f.utxos, [], deployment),
-  );
-  const row = await Effect.runPromise(withdrawalUTxOToEntry(event!));
-  expect(row[WithdrawalsDB.Columns.RAW_EVENT_INFO].toString("hex")).toBe(
+  const decoded = userEventEntry(projectedOrder("Withdrawal", f), "Preprod");
+  if (decoded.kind !== "withdrawal") throw new Error("expected a withdrawal");
+  expect(decoded.entry.rawEventInfo).toBe(
     plutusConstrFieldCbor(f.payloadCbor, [0, 1]),
   );
-  expect(row[WithdrawalsDB.Columns.L1_DATUM].toString("hex")).toBe(
+  expect(decoded.entry.l1Datum).toBe(
     plutusConstrFieldCbor(f.payloadCbor, [0, 1, 0, 4]),
   );
-  expect(row[WithdrawalsDB.Columns.REFUND_DATUM].toString("hex")).toBe(
+  expect(decoded.entry.refundDatum).toBe(
     plutusConstrFieldCbor(f.payloadCbor, [2]),
   );
-  expect(row[WithdrawalsDB.Columns.L2_VALUE].toString("hex")).toBe(
+  expect(decoded.entry.l2Value).toBe(
     plutusConstrFieldCbor(f.payloadCbor, [0, 1, 0, 2]),
   );
-  expect(row[WithdrawalsDB.Columns.VALIDITY]).toBeNull();
-  expect(row[WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]).toBeNull();
 });
 
 it.each(["Deposit", "Withdrawal"] as const)(

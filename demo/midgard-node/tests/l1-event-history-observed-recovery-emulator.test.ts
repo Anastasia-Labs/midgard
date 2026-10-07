@@ -29,6 +29,7 @@ import {
   serializeStateQueueUTxO,
   stateQueueFetchConfig,
 } from "./deposit-flow-emulator-shared.js";
+import { syncEmulatorFollower } from "./helpers/emulator-l1-follower.js";
 import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
 import {
   type AcceptedHistoryObservation,
@@ -96,7 +97,7 @@ it("recovers a genuinely observed deposit-only signed commitment before local fi
         yield* sql`SELECT * FROM pending_block_finalization_deposits WHERE header_hash=${headerHash} ORDER BY ordinal`,
       deposits: yield* sql<{
         projected_header_hash: Buffer | null;
-        history_incarnation_id: Buffer;
+        l1_event_key: Buffer | null;
         status: string;
       }>`SELECT * FROM deposits_utxos WHERE event_id=${eventId}`,
       ledger: yield* sql`SELECT * FROM mempool_ledger ORDER BY outref`,
@@ -125,10 +126,9 @@ it("recovers a genuinely observed deposit-only signed commitment before local fi
     h = await openHistoryProductionOwnerLifecycle({
       transportFactory: (recorded) => {
         // Preserve actual historical state-queue UTxOs as well as history-list
-        // outputs. These bodies have already been accepted and checked against
-        // their emulator outputs by the observation helper; replay only their
-        // consumed inputs and produced outputs, never an operator SQL archive.
-        // Keep the original recording intact and enrich only this private view.
+        // outputs. The observation helper accepted these bodies against their
+        // emulator outputs; replay only their consumed inputs and produced
+        // outputs, never an operator SQL archive, enriching only this view.
         const ledger = new Map<
           string,
           AcceptedHistoryObservation["transaction"]["outputs"][number]
@@ -221,8 +221,7 @@ it("recovers a genuinely observed deposit-only signed commitment before local fi
           yield* Deferred.succeed(prepared, undefined);
         }),
     });
-    // The lifecycle reset keeps recovery plans, and `state` reads them all:
-    // drop any an earlier file left on this shard.
+    // The lifecycle reset keeps recovery plans; drop an earlier file's.
     await read(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
@@ -446,9 +445,8 @@ it("recovers a genuinely observed deposit-only signed commitment before local fi
     const journal = observed.journal[0]!;
     expect(journal.status).toBe("observed_waiting_stability");
     expect(journal.observed_confirmed_at_ms).not.toBeNull();
-    // The ordinary successful commit helper releases its real lease. This does
-    // not exercise a process crash retaining an active token, and no lease row
-    // is manufactured to create that separate recovery case.
+    // The ordinary successful commit helper releases its real lease: no process
+    // crash retains an active token, and no lease row is manufactured.
     const observedLease = observed.leases.filter(
       ({ token }) => token === journal.state_queue_lease_token,
     );
@@ -531,6 +529,8 @@ it("recovers a genuinely observed deposit-only signed commitment before local fi
     h.observer.restore();
     restoreEmulator(fixture.emulator, beforeDeposit);
     vi.setSystemTime(fixture.emulator.now());
+    // The L1 follower rewinds with the chain (the owner's orphan authority).
+    await read(syncEmulatorFollower(fixture, globals));
     source.rollbackTo(ancestor.id);
     const waitForJournal = (point: { id: string; slot: number }) =>
       read(

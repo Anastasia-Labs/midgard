@@ -22,10 +22,11 @@ Each deposit row carries:
 - `deposit_l1_tx_hash`
 - `status`
 - `projected_header_hash`
+- the L1 follower admission identity, `l1_event_key` and `l1_origin_outref`
 
 Allowed states:
 
-- `(awaiting, NULL)`: discovered from the provider-visible L1 set, not yet projected
+- `(awaiting, NULL)`: ingested from the L1 follower's event projection, not yet projected
 - `(projected, NULL)`: projected into `mempool_ledger` exactly once, not yet
   assigned to the first committed header that carried it
 - `(projected, H)`: projected exactly once and assigned to header `H`
@@ -36,23 +37,26 @@ abandonment can clear an assignment, and authenticated state-queue correction
 can reopen affected events. Assignment is conflict-checked, not permanently
 immutable across these explicit recovery paths.
 
-## Provider-visible discovery
+## Follower-driven ingestion
 
-The fetcher reconciles the full currently visible deposit UTxO set, rather than
-advancing a stable-L1 SQL scan cursor. This avoids permanently missing an event
-whose indexer visibility lagged an earlier scan. The commit-time ingestion
-barrier adds an inclusion-time upper bound. `persistVisibleUserEventUTxOs`
-converts and inserts the visible events through the idempotent deposit adapter.
-The fetcher does not write `mempool_ledger`.
+The L1 follower's change driver ingests the follower's event projection at one
+follower view: it inserts new events into `deposits_utxos` (and
+`withdrawal_utxos`), each with the follower admission identity, under the
+history owner's producer permit. A row is canonical while the follower's
+never-reuse key set `l1_event_keys` holds its identity; a follower rewind past
+the admission deletes the key, which orphans the row, and the driver holds the
+node unready (`l1_events_orphan_recovery`) until the history owner's recovery
+repairs it and re-ingests. Ingestion never writes a row whose identity differs
+from the live row with the same `event_id`.
 
-This is provider-visible discovery, not an independent finalized-chain proof.
-Provider consistency and confirmation/recovery remain separate node boundaries.
+The commit end time is bounded by min(journal coverage, follower ingestion):
+events ingested through view time t allow an end time up to
+t + event wait - 1, while that view is still on the follower's chain.
 
 ## Exact-Once Projection
 
-Projection is a separate SQL-driven step.
-
-The projector:
+Projection runs in the same ingestion transaction, with its cutoff at
+min(follower view time, journal coverage). It:
 
 - selects due `awaiting` rows in canonical `(inclusion_time, event_id)` order
 - inserts their ledger entries into `mempool_ledger`
@@ -75,7 +79,7 @@ than once.
 
 The commit worker selects unassigned events due by the effective block end
 through `retrievePendingHeaderEntriesUpTo`. Selection is constrained by the
-commit-time ingestion barrier; it is not an unconditional selection of every
+commit event horizon; it is not an unconditional selection of every
 unassigned projected row.
 
 The selected ordered set supplies deposit-root construction, the final deposit
@@ -158,11 +162,13 @@ Expose and alert on:
 
 ## Implementation and checks
 
-- Discovery: `src/fibers/fetch-and-insert-deposit-utxos.ts` and
-  `src/fibers/user-event-ingestion.ts`.
-- Projection: `reconcileDepositProjection` in
-  `src/fibers/project-deposits-to-mempool-ledger.ts`, run by the history owner
-  (`src/services/event-history-runtime.ts`) and signed-header recovery.
+- Ingestion and projection: `reconcileFollowerEvents` in
+  `src/database/follower-events.ts`, run by the follower-change driver
+  (`src/l1-events/driver.ts`, sink in `src/services/l1-follower.ts`) and by the
+  history owner's recovery (`src/services/l1-follower.recovery.ts`).
+- Admission identity: `src/database/l1-admission-identity.ts`.
+- Commit horizon: `commitEventHorizon` in
+  `src/services/history-commit-window.ts`.
 - Lifecycle and selection: `src/database/deposits.ts`,
   `src/database/utils/projected-events.ts`, and `src/database/mempoolLedger.ts`.
 - Assignment and recovery: `src/fibers/block-confirmation.ts`,

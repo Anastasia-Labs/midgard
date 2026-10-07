@@ -16,10 +16,10 @@ import {
   Effect,
   ensureSeparateCollateralUtxo,
   expectedAuthenticatedEventRoot,
+  ingestEmulatorEventsUnowned,
   initializePayoutProgram,
   paymentCredentialOf,
   payoutStatusProgram,
-  reconcileVisibleWithdrawalUTxOs,
   reserveUtxosProgram,
   resolveEventSettlementProofProgram,
   runNodeCommandProgram,
@@ -149,7 +149,8 @@ it("projects a real node deposit settlement and withdrawal payout to conclusion"
     );
     vi.setSystemTime(fixture.emulator.now());
     expect(
-      (await command(reconcileVisibleWithdrawalUTxOs())).reconciledCount,
+      (await command(ingestEmulatorEventsUnowned(fixture, { globals })))
+        .inserted,
     ).toBe(1);
     const withdrawalBlock = await commitConfirmRecoverAndMerge(context);
     const resolution = await command(

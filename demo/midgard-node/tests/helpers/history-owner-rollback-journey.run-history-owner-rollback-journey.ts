@@ -52,6 +52,7 @@ import {
   serializeStateQueueUTxO,
   stateQueueFetchConfig,
 } from "../deposit-flow-emulator-shared.js";
+import { syncEmulatorFollower } from "./emulator-l1-follower.js";
 import {
   read,
   restoreEmulator,
@@ -152,7 +153,6 @@ export const runHistoryOwnerRollbackJourney = async ({
   let funding:
     | {
         eventId: Buffer;
-        incarnationId: Buffer;
         originalDeposit: Record<string, unknown>;
       }
     | undefined;
@@ -384,9 +384,7 @@ export const runHistoryOwnerRollbackJourney = async ({
       point: { id: string; slot: number },
       expectedEntries?: number,
     ) => {
-      const coverage = await Effect.runPromise(
-        production.owner.awaitReadyAt(point).pipe(Effect.timeout("30 seconds")),
-      );
+      const coverage = await h!.readyAt(point);
       const checkpoint = await read(Journal.load(h!.binding));
       expect(checkpoint).not.toBeNull();
       const actual = await Effect.runPromise(
@@ -720,15 +718,14 @@ export const runHistoryOwnerRollbackJourney = async ({
       const stableDeposit = await read(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
-          return yield* sql<{
-            history_incarnation_id: Buffer;
-          }>`SELECT * FROM deposits_utxos WHERE event_id = ${oldEventId!}`;
+          return yield* sql<
+            Record<string, unknown>
+          >`SELECT * FROM deposits_utxos WHERE event_id = ${oldEventId!}`;
         }),
       );
       expect(stableDeposit).toHaveLength(1);
       funding = {
         eventId: oldEventId,
-        incarnationId: stableDeposit[0]!.history_incarnation_id,
         originalDeposit: stableDeposit[0],
       };
       diagnostic.referenceFunding = {
@@ -782,12 +779,15 @@ export const runHistoryOwnerRollbackJourney = async ({
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         return yield* sql<{
-          history_incarnation_id: Buffer;
-        }>`SELECT history_incarnation_id FROM deposits_utxos WHERE event_id = ${oldEventId!}`;
+          l1_event_key: Buffer;
+          l1_origin_outref: Buffer;
+        }>`SELECT l1_event_key, l1_origin_outref FROM deposits_utxos WHERE event_id = ${oldEventId!}`;
       }),
     );
     expect(originalRows).toHaveLength(1);
-    const oldIncarnation = originalRows[0]!.history_incarnation_id;
+    const oldKey = originalRows[0]!.l1_event_key;
+    const oldOrigin = originalRows[0]!.l1_origin_outref;
+    expect(oldOrigin.subarray(0, 32).toString("hex")).toBe(firstHash);
     await assertReady(source.points.at(-1)!.point, baselineLedger.length);
     diagnostic.stage = "original-deposit-commit-confirm-native-finalize";
     const originalCommit = await commitDeposit(production, h.receipts);
@@ -984,7 +984,7 @@ export const runHistoryOwnerRollbackJourney = async ({
     expect(
       (await Effect.runPromise(writeBehind.depths)).totalDepth,
     ).toBeGreaterThan(0);
-    diagnostic.accepted = { ...accepted, transfer, oldIncarnation, ancestor };
+    diagnostic.accepted = { ...accepted, transfer, oldOrigin, ancestor };
     await assertReady(
       source.points.at(-1)!.point,
       funding === undefined ? 2 : 3,
@@ -1088,6 +1088,7 @@ export const runHistoryOwnerRollbackJourney = async ({
     h.observer.restore();
     restoreEmulator(fixture.emulator, beforeDeposit);
     vi.setSystemTime(fixture.emulator.now());
+    await read(syncEmulatorFollower(fixture, globals));
     source.rollbackTo(ancestor.id);
     const waitForJournal = async (point: { id: string; slot: number }) =>
       read(
@@ -1222,6 +1223,7 @@ export const runHistoryOwnerRollbackJourney = async ({
         },
       });
       ({ production, globals } = h);
+      await read(syncEmulatorFollower(fixture, globals));
       expect(globals).not.toBe(priorGlobals);
       expect(production.owner).not.toBe(prior.production.owner);
       expect(production.cache).not.toBe(prior.production.cache);
@@ -1540,11 +1542,7 @@ export const runHistoryOwnerRollbackJourney = async ({
     restoreEmulator(fixture.emulator, snapshotEmulator(fork));
     vi.setSystemTime(fixture.emulator.now());
     const forkPoint = appendForkBatch(forkBatch);
-    await Effect.runPromise(
-      production.owner
-        .awaitReadyAt(forkPoint)
-        .pipe(Effect.timeout("30 seconds")),
-    );
+    await h.readyAt(forkPoint);
     const slots = Math.ceil(
       (replacement.metadata.inclusionTime + 1000 - fork.now()) / 1000,
     );
@@ -1583,8 +1581,12 @@ export const runHistoryOwnerRollbackJourney = async ({
             origin_canonical: boolean;
           }>`SELECT incarnation_id, origin_canonical FROM event_history_incarnations WHERE binding_digest = ${Buffer.from(h!.binding.digest, "hex")} AND event_id = ${oldEventId!} ORDER BY origin_canonical`,
           deposits: yield* sql<{
-            history_incarnation_id: Buffer;
-          }>`SELECT history_incarnation_id FROM deposits_utxos WHERE event_id = ${oldEventId!}`,
+            l1_event_key: Buffer;
+            l1_origin_outref: Buffer;
+          }>`SELECT l1_event_key, l1_origin_outref FROM deposits_utxos WHERE event_id = ${oldEventId!}`,
+          keys: yield* sql<{
+            origin_outref: Buffer;
+          }>`SELECT origin_outref FROM l1_event_keys WHERE kind = 'deposit' AND key = ${oldKey}`,
           admissions: yield* sql<{
             status: string;
           }>`SELECT status FROM tx_admissions WHERE tx_id = ${transfer.txId}`,
@@ -1601,16 +1603,15 @@ export const runHistoryOwnerRollbackJourney = async ({
       }),
     );
     expect(identities.incarnations).toHaveLength(2);
-    expect(identities.incarnations[0]).toEqual({
-      incarnation_id: oldIncarnation,
-      origin_canonical: false,
-    });
+    expect(identities.incarnations[0]!.origin_canonical).toBe(false);
     expect(identities.incarnations[1]!.origin_canonical).toBe(true);
-    expect(
-      identities.incarnations[1]!.incarnation_id.equals(oldIncarnation),
-    ).toBe(false);
+    expect(identities.keys).toHaveLength(1);
+    const freshOrigin = identities.keys[0]!.origin_outref;
+    expect(freshOrigin.subarray(0, 32).toString("hex")).toBe(
+      forkReceipt.transaction.txHash,
+    );
     expect(identities.deposits).toEqual([
-      { history_incarnation_id: identities.incarnations[1]!.incarnation_id },
+      { l1_event_key: oldKey, l1_origin_outref: freshOrigin },
     ]);
     expect(identities.admissions).toEqual([{ status: "queued" }]);
     expect(identities.payloads).toEqual([
@@ -1690,15 +1691,15 @@ export const runHistoryOwnerRollbackJourney = async ({
           origins: yield* sql<{
             sequence: string;
             event_id: Buffer;
-            history_binding_digest: Buffer;
-            history_incarnation_id: Buffer;
+            l1_event_key: Buffer;
+            l1_origin_outref: Buffer;
             origin_canonical: boolean;
-          }>`SELECT r.sequence::text, d.event_id, d.history_binding_digest,
-              d.history_incarnation_id, i.origin_canonical
+          }>`SELECT r.sequence::text, d.event_id, d.l1_event_key,
+              d.l1_origin_outref, EXISTS (SELECT 1 FROM l1_event_keys k
+                WHERE k.kind = 'deposit' AND k.key = d.l1_event_key
+                  AND k.origin_outref = d.l1_origin_outref) AS origin_canonical
             FROM event_history_l2_ledger_receipts r,
               LATERAL jsonb_populate_recordset(NULL::deposits_utxos, r.deposits_before) d
-              JOIN event_history_incarnations i ON i.binding_digest = d.history_binding_digest
-                AND i.incarnation_id = d.history_incarnation_id
             WHERE ${transfer.txId} = ANY(r.tx_ids) AND r.reversed_at_revision IS NULL`,
           originalPayloads: yield* sql<{
             sequence: string;
@@ -1712,9 +1713,9 @@ export const runHistoryOwnerRollbackJourney = async ({
             WHERE ${transfer.txId} = ANY(r.tx_ids) AND r.reversed_at_revision IS NULL`,
           deposits: yield* sql<{
             status: string;
-            history_incarnation_id: Buffer;
+            l1_origin_outref: Buffer;
           }>`SELECT status,
-            history_incarnation_id FROM deposits_utxos WHERE event_id = ${oldEventId!}`,
+            l1_origin_outref FROM deposits_utxos WHERE event_id = ${oldEventId!}`,
         };
       }),
     );
@@ -1755,13 +1756,12 @@ export const runHistoryOwnerRollbackJourney = async ({
     expect(freshReceipt.snapshot_digest.toString("hex")).toBe(
       beforeResume.coverage.snapshotDigest,
     );
-    const freshIncarnation = identities.incarnations[1]!.incarnation_id;
     const expectedOrigins = [
       {
         sequence: freshReceipt.sequence,
         event_id: oldEventId,
-        history_binding_digest: Buffer.from(h.binding.digest, "hex"),
-        history_incarnation_id: freshIncarnation,
+        l1_event_key: oldKey,
+        l1_origin_outref: freshOrigin,
         origin_canonical: true,
       },
     ];
@@ -1769,8 +1769,8 @@ export const runHistoryOwnerRollbackJourney = async ({
       expectedOrigins.push({
         sequence: freshReceipt.sequence,
         event_id: funding.eventId,
-        history_binding_digest: Buffer.from(h.binding.digest, "hex"),
-        history_incarnation_id: funding.incarnationId,
+        l1_event_key: funding.originalDeposit.l1_event_key as Buffer,
+        l1_origin_outref: funding.originalDeposit.l1_origin_outref as Buffer,
         origin_canonical: true,
       });
     expect(
@@ -1796,12 +1796,13 @@ export const runHistoryOwnerRollbackJourney = async ({
     expect(resumed.deposits).toEqual([
       {
         status: funding === undefined ? "consumed" : "projected",
-        history_incarnation_id: freshIncarnation,
+        l1_origin_outref: freshOrigin,
       },
     ]);
     if (funding !== undefined) {
       // The original deposit's insertion spends its list predecessor. When
-      // that is the funding node, the funding row follows it to the new output.
+      // that is the funding node, it moves to a new output while the funding
+      // row keeps its immutable admission (ruling 2).
       const fundingNow = (
         await Effect.runPromise(
           SDK.fetchDepositUTxOsProgram(
@@ -1840,12 +1841,7 @@ export const runHistoryOwnerRollbackJourney = async ({
       expect(referenceResumed.before).toHaveLength(1);
       expect(referenceResumed.before[0]!.source_event_id).toEqual(oldEventId);
       expect(referenceResumed.retained).toEqual(referenceResumed.before);
-      expect(referenceResumed.funding).toEqual([
-        {
-          ...funding.originalDeposit,
-          deposit_l1_tx_hash: Buffer.from(fundingNow[0]!.utxo.txHash, "hex"),
-        },
-      ]);
+      expect(referenceResumed.funding).toEqual([funding.originalDeposit]);
       expect(referenceResumed.spentFunding).toEqual([]);
       diagnostic.referenceResumed = referenceResumed;
     }

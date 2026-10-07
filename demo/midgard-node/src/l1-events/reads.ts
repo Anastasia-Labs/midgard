@@ -186,8 +186,8 @@ export const eventsAt = (
     return rows.map((row) => eventFromRow(row, live));
   });
 
-/** One deposit that is spendable at the cutoff (P4). */
-export type SpendableDeposit = Readonly<{
+/** One deposit the block builder must include by its end time. */
+export type DueDeposit = Readonly<{
   key: string;
   idCbor: string;
   inclusionTime: bigint;
@@ -195,20 +195,21 @@ export type SpendableDeposit = Readonly<{
 }>;
 
 /**
- * The deposits admitted at the point whose inclusion time is due by
- * `cutoffSlot` (P4, today's "due by cutoff" rule). The caller passes the
- * heads module's `slotNow` live; the comparator passes the old view's head
- * slot. A wall clock never reaches here. Retired deposits are included,
- * marked, while their rows are retained.
+ * The block builder's eligibility read: the deposits admitted at the point
+ * whose inclusion time is due by `cutoffSlot` (`inclusion_time <= endTime`).
+ * Being due says which events a block must include; it is not spendability
+ * (`spendableAt`). The caller passes the heads module's `slotNow`; a wall
+ * clock never reaches here. Retired deposits are included, marked, while
+ * their rows are retained.
  */
-export const spendableDepositsAt = (
+export const dueByCutoff = (
   store: FactStore,
   list: EventListConfig,
   at: Point,
   cutoff: Readonly<{ slot: number; slotTime: SlotTime }>,
-): Promise<ProjectionRead<SpendableDeposit[]>> => {
+): Promise<ProjectionRead<DueDeposit[]>> => {
   if (list.kind !== "deposit")
-    throw new Error("spendable deposits read the deposit list");
+    throw new Error("due deposits read the deposit list");
   const cutoffMs = slotToPosixMs(cutoff.slotTime, cutoff.slot);
   return atPoint(store, at, async (tx) =>
     (
@@ -231,21 +232,53 @@ export const spendableDepositsAt = (
 };
 
 /**
- * P4 with the heads module's `slotNow` as the cutoff. Before the clock has
- * observed a tip there is no "now", so no deposit is decided spendable.
+ * `dueByCutoff` with the heads module's `slotNow` as the cutoff. Before the
+ * clock has observed a tip there is no "now", so nothing is due.
  */
-export const spendableDepositsNow = async (
+export const dueByCutoffNow = async (
   store: FactStore,
   list: EventListConfig,
   at: Point,
   clock: Pick<SlotClock, "slotNow">,
   slotTime: SlotTime,
 ): Promise<
-  ProjectionRead<SpendableDeposit[]> | Readonly<{ kind: "no_slot_now" }>
+  ProjectionRead<DueDeposit[]> | Readonly<{ kind: "no_slot_now" }>
 > => {
   const slot = clock.slotNow();
   if (slot === null) return { kind: "no_slot_now" };
-  return spendableDepositsAt(store, list, at, { slot, slotTime });
+  return dueByCutoff(store, list, at, { slot, slotTime });
+};
+
+/** One deposit spendable on L2 at the point (P4). */
+export type SpendableDeposit = Readonly<{ key: string; idCbor: string }>;
+
+/**
+ * P4: a deposit is spendable iff it is included(h) for an own block h that
+ * landed or is the one live own block (P3; N3 adds foreign blocks), and its
+ * admission is canonical at the point. `included` holds the ids (event id
+ * CBOR, hex) those blocks include. Time never makes a deposit spendable: a
+ * clock ahead of the tip changes nothing here, and a rollback past the
+ * admission removes it.
+ */
+export const spendableAt = (
+  store: FactStore,
+  list: EventListConfig,
+  at: Point,
+  included: ReadonlySet<string>,
+): Promise<ProjectionRead<SpendableDeposit[]>> => {
+  if (list.kind !== "deposit")
+    throw new Error("spendable deposits read the deposit list");
+  return atPoint(store, at, async (tx) =>
+    (
+      await tx.query(
+        `SELECT event_key, event_id FROM ${EVENTS_TABLE}
+          WHERE kind = ? AND admitted_slot <= ? ORDER BY event_id`,
+        [list.kind, at.slot],
+      )
+    )
+      .map((row) => ({ key: hex(row.event_key), idCbor: hex(row.event_id) }))
+      .filter((deposit) => included.has(deposit.idCbor)),
+  );
 };
 
 /** The list's linked walk at the point (P1 for the event lists). */

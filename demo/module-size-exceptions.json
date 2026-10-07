@@ -1011,8 +1011,8 @@
   },
   {
     "file": "midgard-node/src/workers/commit-block-header.build-on-verified-base-program.ts",
-    "max": 917,
-    "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (814 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 908,
+    "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-deposit-only-commit.ts",
@@ -1071,7 +1071,7 @@
   },
   {
     "file": "midgard-node/tests/benchmarks/validation-stage-b.bench.ts",
-    "max": 1503,
+    "max": 1502,
     "reason": "Retained test registration “Phase 2 sustained real-Postgres Stage B operator benchmark” (522 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1091,7 +1091,7 @@
   },
   {
     "file": "midgard-node/tests/commit-worker-failure-lease-classification.test.ts",
-    "max": 513,
+    "max": 510,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -1126,8 +1126,8 @@
   },
   {
     "file": "midgard-node/tests/database.test/history.ts",
-    "max": 1059,
-    "reason": "registerHistoryTests is the dominant indivisible declaration (1018 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 1015,
+    "reason": "registerHistoryTests is the dominant indivisible declaration (975 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-node/tests/database.test/ledger.ts",
@@ -1151,7 +1151,7 @@
   },
   {
     "file": "midgard-node/tests/deposit-flow-emulator-shared.ts",
-    "max": 1844,
+    "max": 1840,
     "reason": "Shared emulator harness: beforeAll/afterAll/afterEach own environment restoration, a writable manifest directory and per-test protocol lifecycle. Its mutually dependent helpers reference those bindings and hooks. Independent helpers were extracted; splitting the retained cohort needs an explicit harness ownership API."
   },
   {
@@ -1161,7 +1161,7 @@
   },
   {
     "file": "midgard-node/tests/event-history-ledger-receipts.test.ts",
-    "max": 718,
+    "max": 717,
     "reason": "Retained test registration “owned accepted-ledger inverse receipts” (223 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1171,7 +1171,7 @@
   },
   {
     "file": "midgard-node/tests/event-history-ready-append.test.ts",
-    "max": 1254,
+    "max": 906,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -1191,7 +1191,7 @@
   },
   {
     "file": "midgard-node/tests/event-history-retired-membership.test.ts",
-    "max": 894,
+    "max": 888,
     "reason": "admit is the dominant indivisible declaration (148 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1206,8 +1206,8 @@
   },
   {
     "file": "midgard-node/tests/helpers/history-owner-rollback-journey.run-history-owner-rollback-journey.ts",
-    "max": 2077,
-    "reason": "runHistoryOwnerRollbackJourney is the dominant indivisible declaration (2008 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 2073,
+    "reason": "runHistoryOwnerRollbackJourney is the dominant indivisible declaration (2004 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-node/tests/helpers/history-production-owner-lifecycle.open-history-production-owner-lifecycle.ts",
@@ -1261,7 +1261,7 @@
   },
   {
     "file": "midgard-node/tests/l1-event-history-raw-deposit-emulator.test.ts",
-    "max": 561,
+    "max": 560,
     "reason": "Retained test registration “preserves actual inline and external Deposit raw map pair order and duplicates through continuation, capture and node conversion” (482 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {

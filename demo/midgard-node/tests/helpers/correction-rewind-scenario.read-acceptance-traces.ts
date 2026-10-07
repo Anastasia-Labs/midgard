@@ -192,20 +192,23 @@ export const readAcceptanceTraces = (input: {
         )
           incompleteReceipts.push(receipt.sequence);
       const publishedDependencies: string[] = [];
+      const bindings = yield* sql<{
+        binding_digest: Buffer;
+      }>`SELECT binding_digest FROM event_history_cursor`;
+      expect(bindings).toHaveLength(1);
       for (const eventId of input.depositEventIds) {
-        const incarnations = yield* sql<{
-          history_binding_digest: Buffer;
-          history_incarnation_id: Buffer;
-        }>`SELECT history_binding_digest, history_incarnation_id
+        const admissions = yield* sql<{
+          l1_event_key: Buffer;
+          l1_origin_outref: Buffer;
+        }>`SELECT l1_event_key, l1_origin_outref
           FROM deposits_utxos WHERE event_id = ${eventId}`;
-        expect(incarnations).toHaveLength(1);
-        const { history_binding_digest, history_incarnation_id } =
-          incarnations[0]!;
+        expect(admissions).toHaveLength(1);
         if (
-          yield* orphanHasPublishedDependency(
-            history_binding_digest,
-            history_incarnation_id,
-          )
+          yield* orphanHasPublishedDependency(bindings[0]!.binding_digest, {
+            kind: "deposit",
+            event_id: eventId,
+            ...admissions[0]!,
+          })
         )
           publishedDependencies.push(hex(eventId));
       }

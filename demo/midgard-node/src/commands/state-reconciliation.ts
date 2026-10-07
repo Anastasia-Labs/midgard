@@ -33,8 +33,6 @@ import "level";
 import "../database/index.js";
 import "../database/utils/ledger.js";
 import "../database/utils/tx.js";
-import "../fibers/fetch-and-insert-deposit-utxos.js";
-import "../fibers/fetch-and-insert-withdrawal-utxos.js";
 import "../mpf/commit-rejection.js";
 import "../mpf/index.js";
 import "../mpf/store-primitives.js";

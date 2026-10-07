@@ -85,6 +85,11 @@ describe("splitSqlStatements", () => {
         name: "drop_foreign_tip_reconciliations",
         transactional: true,
       },
+      {
+        version: 8,
+        name: "follower_admission_identity",
+        transactional: true,
+      },
     ]);
   });
 

@@ -87,6 +87,12 @@ const migrationSeedRowsSql: readonly string[] = MIGRATIONS.flatMap(
       .match(MIGRATION_INSERT_STATEMENT) ?? [],
 );
 
+const FOLLOWER_BOOKKEEPING_TABLES = [
+  "l1_follower_migrations",
+  "l1_follower_tables",
+  "l1_follower_writer",
+] as const;
+
 const truncateApplicationTablesSql = `TRUNCATE TABLE ${APPLICATION_TABLE_NAMES.map(
   (table) => `"${table}"`,
 ).join(", ")} RESTART IDENTITY CASCADE`;
@@ -110,8 +116,18 @@ export const resetApplicationTables = Effect.gen(function* () {
   const tables = yield* sql<{
     name: string;
   }>`SELECT tablename AS name FROM pg_tables WHERE schemaname = 'public'`;
+  // The L1 follower's tables (installed with the node schema) reset by its
+  // own catalog: every catalogued table is emptied, while its migration
+  // ledger, catalog and writer row are bookkeeping the follower keeps.
+  const followerTables = (yield* sql<{
+    name: string;
+  }>`SELECT table_name AS name FROM l1_follower_tables ORDER BY table_name`).map(
+    ({ name }) => name,
+  );
   const registered = new Set<string>([
     ...APPLICATION_TABLE_NAMES,
+    ...followerTables,
+    ...FOLLOWER_BOOKKEEPING_TABLES,
     "schema_migrations",
     "schema_migration_events",
   ]);
@@ -124,6 +140,10 @@ export const resetApplicationTables = Effect.gen(function* () {
   yield* sql.withTransaction(
     Effect.gen(function* () {
       yield* sql.unsafe(truncateApplicationTablesSql);
+      if (followerTables.length > 0)
+        yield* sql.unsafe(
+          `TRUNCATE TABLE ${followerTables.map((table) => `"${table}"`).join(", ")} RESTART IDENTITY CASCADE`,
+        );
       for (const seedRowsSql of migrationSeedRowsSql) {
         yield* sql.unsafe(seedRowsSql);
       }

@@ -24,11 +24,9 @@ import {
   WithdrawalsDB,
 } from "../../src/database/index.js";
 import { resolveIncludedDepositEntriesForWindow } from "../../src/mpf/index.js";
-import { Globals } from "../../src/services/globals.js";
 import { Lucid } from "../../src/services/lucid.js";
 import { MidgardContracts } from "../../src/services/midgard-contracts.js";
 import { reconcileDepositSubmissionAttemptProgram } from "../../src/transactions/submit-deposit.js";
-import { projectDepositsToMempoolLedger } from ".././helpers/deposit-projection.js";
 import { loadRealMidgardContractsForTest } from ".././helpers/real-midgard-contracts.js";
 import {
   databaseFixtureBytes,
@@ -42,15 +40,15 @@ import {
 
 export const registerHistoryTests = () => {
   describe("authenticated history pointer persistence", () => {
-    /** A deposit row that no authenticated history output has claimed. */
+    /** A deposit row no follower admission identity has claimed. */
     const unassociated = <T extends object>(entry: T) => ({
       ...entry,
-      history_binding_digest: null,
-      history_incarnation_id: null,
+      l1_event_key: null,
+      l1_origin_outref: null,
     });
 
     it.effect(
-      "reconciles current authenticated history by intent and refuses stale cache authority",
+      "settles a submission attempt by authenticated history intent without writing the deposit row",
       () =>
         isolatedDb(
           Effect.gen(function* () {
@@ -190,10 +188,14 @@ export const registerHistoryTests = () => {
                 }),
               ),
             );
+            // The intent check settles the attempt only: the deposit row is
+            // the L1 follower-change driver's to write (N1).
+            const noDepositRow = Effect.map(
+              DepositsDB.retrieveByEventId(idCbor),
+              Option.isNone,
+            );
             expect((yield* reconcile).status).toBe("reconciled_after_timeout");
-            const header = databaseFixtureBytes("history-intent-projected", 28);
-            yield* DepositsDB.markAwaitingAsProjected([idCbor]);
-            yield* DepositsDB.markProjectedByEventIds([idCbor], header);
+            expect(yield* noDepositRow).toBe(true);
             const continued = {
               ...order,
               txHash: "15".repeat(32),
@@ -201,18 +203,7 @@ export const registerHistoryTests = () => {
             };
             visible = [root, continued];
             expect((yield* reconcile).status).toBe("reconciled_after_timeout");
-            const persisted = Option.getOrThrow(
-              yield* DepositsDB.retrieveByEventId(idCbor),
-            );
-            expect(
-              persisted[DepositsDB.Columns.DEPOSIT_L1_TX_HASH].toString("hex"),
-            ).toBe(continued.txHash);
-            expect(persisted[DepositsDB.Columns.STATUS]).toBe(
-              DepositsDB.Status.Projected,
-            );
-            expect(persisted[DepositsDB.Columns.PROJECTED_HEADER_HASH]).toEqual(
-              header,
-            );
+            expect(yield* noDepositRow).toBe(true);
             visible = [
               {
                 ...root,
@@ -228,9 +219,6 @@ export const registerHistoryTests = () => {
               },
             ];
             expect((yield* reconcile).status).toBe("ambiguous");
-            expect(
-              Option.isSome(yield* DepositsDB.retrieveByEventId(idCbor)),
-            ).toBe(true);
             if (node.payload === "RootContent" || !("Order" in node.payload))
               throw new Error("Expected Order fixture");
             visible = [
@@ -254,9 +242,7 @@ export const registerHistoryTests = () => {
               },
             ];
             expect((yield* reconcile).status).toBe("ambiguous");
-            expect(
-              Option.getOrThrow(yield* DepositsDB.retrieveByEventId(idCbor)),
-            ).toEqual(persisted);
+            expect(yield* noDepositRow).toBe(true);
             unavailable = true;
             const failure = yield* Effect.either(reconcile);
             expect(failure._tag).toBe("Left");
@@ -267,7 +253,7 @@ export const registerHistoryTests = () => {
     );
 
     it.effect(
-      "resolves the original submission hash after the history output moves",
+      "resolves the submission hash, the deposit's immutable admission tx, after its Order moves",
       () =>
         isolatedDb(
           Effect.gen(function* () {
@@ -301,36 +287,39 @@ export const registerHistoryTests = () => {
               attempt[DepositSubmissionAttemptsDB.Columns.FUNDING_OUT_REFS],
             );
             yield* DepositsDB.insertEntries([deposit]);
-            const moved = {
-              ...deposit,
-              [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: databaseTxHash(
-                "status-pointer-continuation",
-              ),
-            };
-            yield* DepositsDB.insertEntries([moved]);
+            // A list insertion moves the Order to another output; the row
+            // keeps its admission tx (ruling 2) and refuses another one.
+            const movedHash = databaseTxHash("status-pointer-continuation");
+            const moved = yield* Effect.either(
+              DepositsDB.insertEntries([
+                {
+                  ...deposit,
+                  [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: movedHash,
+                },
+              ]),
+            );
+            expect(moved._tag).toBe("Left");
             expect(
               yield* resolveDepositStatusProgram({
                 cardanoTxHash: admissionHash,
               }),
-            ).toEqual(unassociated(moved));
+            ).toEqual(unassociated(deposit));
             expect(
               yield* resolveDepositStatusProgram({
                 cardanoTxHash: admissionHash,
                 eventId: deposit[DepositsDB.Columns.ID],
               }),
-            ).toEqual(unassociated(moved));
+            ).toEqual(unassociated(deposit));
             expect(
-              yield* resolveDepositStatusProgram({
-                cardanoTxHash: moved[DepositsDB.Columns.DEPOSIT_L1_TX_HASH],
-              }),
-            ).toEqual(unassociated(moved));
+              yield* DepositsDB.retrieveByCardanoTxHash(movedHash),
+            ).toEqual([]);
           }),
         ),
     );
 
     for (const status of Object.values(DepositsDB.Status)) {
       it.effect(
-        `refreshes deposit location while preserving ${status} projection`,
+        `keeps a deposit's admission tx and its ${status} projection on re-ingestion`,
         () =>
           isolatedDb(
             Effect.gen(function* () {
@@ -349,28 +338,33 @@ export const registerHistoryTests = () => {
               const replacementHash = databaseTxHash(
                 "history-pointer-deposit-replacement",
               );
-              yield* DepositsDB.insertEntries([
-                {
-                  ...entry,
-                  [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: replacementHash,
-                },
-              ]);
+              // The same event again keeps its projection; another admission
+              // tx for it is refused (ruling 2).
+              yield* DepositsDB.insertEntries([entry]);
+              const replaced = yield* Effect.either(
+                DepositsDB.insertEntries([
+                  {
+                    ...entry,
+                    [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: replacementHash,
+                  },
+                ]),
+              );
+              expect(replaced._tag).toBe("Left");
               expect(yield* DepositsDB.retrieveAllEntries()).toEqual([
                 unassociated({
                   ...entry,
                   [DepositsDB.Columns.STATUS]: status,
                   [DepositsDB.Columns.PROJECTED_HEADER_HASH]: header,
-                  [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: replacementHash,
                 }),
               ]);
               expect(
                 yield* DepositsDB.retrieveByCardanoTxHash(
                   entry[DepositsDB.Columns.DEPOSIT_L1_TX_HASH],
                 ),
-              ).toEqual([]);
+              ).toHaveLength(1);
               expect(
                 yield* DepositsDB.retrieveByCardanoTxHash(replacementHash),
-              ).toHaveLength(1);
+              ).toEqual([]);
             }),
           ),
       );
@@ -863,44 +857,6 @@ export const registerHistoryTests = () => {
             );
           }),
         ),
-    );
-
-    it.effect("projects only deposits whose inclusion time has arrived", (_) =>
-      isolatedDb(
-        Effect.gen(function* () {
-          const pastDeposit = makeDepositEntry({
-            [DepositsDB.Columns.INCLUSION_TIME]: new Date(
-              "2020-01-01T00:00:00.000Z",
-            ),
-          });
-          const futureDeposit = makeDepositEntry({
-            [DepositsDB.Columns.INCLUSION_TIME]: new Date(
-              "2099-01-01T00:00:00.000Z",
-            ),
-          });
-          yield* DepositsDB.insertEntries([pastDeposit, futureDeposit]);
-
-          yield* projectDepositsToMempoolLedger.pipe(
-            Effect.provide(Globals.Default),
-          );
-
-          const projectedRows = yield* DepositsDB.retrieveProjectedEntries();
-          expect(projectedRows).toHaveLength(1);
-          expect(
-            projectedRows[0]?.[DepositsDB.Columns.ID].equals(
-              pastDeposit[DepositsDB.Columns.ID],
-            ),
-          ).toEqual(true);
-
-          const awaitingRows = yield* DepositsDB.retrieveAwaitingEntries();
-          expect(awaitingRows).toHaveLength(1);
-          expect(
-            awaitingRows[0]?.[DepositsDB.Columns.ID].equals(
-              futureDeposit[DepositsDB.Columns.ID],
-            ),
-          ).toEqual(true);
-        }),
-      ),
     );
 
     it.effect(

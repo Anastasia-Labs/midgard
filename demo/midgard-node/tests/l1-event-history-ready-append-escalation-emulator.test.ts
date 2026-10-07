@@ -12,41 +12,41 @@ import {
 } from "./deposit-flow-emulator-shared.js";
 import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
 
-// Every production deposit reconciliation, including one whose transaction
-// later rolls back: the authority state it ran under, and how many already
+// Every follower event ingestion, including one whose transaction later
+// rolls back: the authority state it ran under, and how many already
 // spendable rows it restored to mempool_ledger.
 const restorations = vi.hoisted(
   () => [] as { state: string | null; restored: number }[],
 );
-vi.mock(
-  "../src/fibers/project-deposits-to-mempool-ledger.js",
-  async (importOriginal) => {
-    const { Effect, Option } = await import("effect");
-    const { currentOwnedTransaction } = await import(
-      "../src/database/eventHistoryAuthority.js"
-    );
-    const actual =
-      await importOriginal<
-        typeof import("../src/fibers/project-deposits-to-mempool-ledger.js")
-      >();
-    return {
-      ...actual,
-      reconcileDepositProjection: (upTo: Date) =>
-        actual.reconcileDepositProjection(upTo).pipe(
-          Effect.tap(({ reconciled }) =>
-            currentOwnedTransaction.pipe(
-              Effect.map((owned) => {
-                restorations.push({
-                  state: Option.isSome(owned) ? owned.value.state : null,
-                  restored: reconciled.spendableUpserts.length,
-                });
-              }),
-            ),
+vi.mock("../src/database/follower-events.js", async (importOriginal) => {
+  const { Effect, Option } = await import("effect");
+  const { currentOwnedTransaction } = await import(
+    "../src/database/eventHistoryAuthority.js"
+  );
+  const actual =
+    await importOriginal<typeof import("../src/database/follower-events.js")>();
+  return {
+    ...actual,
+    reconcileFollowerEvents: (
+      ...args: Parameters<typeof actual.reconcileFollowerEvents>
+    ) =>
+      actual.reconcileFollowerEvents(...args).pipe(
+        Effect.tap((outcome) =>
+          currentOwnedTransaction.pipe(
+            Effect.map((owned) => {
+              restorations.push({
+                state: Option.isSome(owned) ? owned.value.state : null,
+                restored:
+                  outcome.kind === "applied"
+                    ? outcome.ingestion.spendableUpserts.length
+                    : 0,
+              });
+            }),
           ),
         ),
-    };
-  },
-);
+      ),
+  };
+});
 
 const read = <A, E>(program: Effect.Effect<A, E, SqlClient.SqlClient>) =>
   Effect.runPromise(program.pipe(Effect.provide(Database.layer)));
@@ -55,7 +55,7 @@ const read = <A, E>(program: Effect.Effect<A, E, SqlClient.SqlClient>) =>
 // admitted, projected deposit. The one synthetic input is SQL: that deposit is
 // assigned to a header and its mempool_ledger row is missing, so the next
 // reconciliation restores an already spendable row.
-it("escalates a Ready append that restores spendable deposit rows to one recovery that reloads the cache", async () => {
+it("escalates a Ready ingestion that restores spendable deposit rows to one recovery that reloads the cache", async () => {
   const h = await openHistoryProductionOwnerLifecycle();
   try {
     const { fixture } = h;
@@ -115,8 +115,8 @@ it("escalates a Ready append that restores spendable deposit rows to one recover
     // requires the validation cache to equal the durable spendable ledger.
     fixture.emulator.awaitBlock(1);
     await h.synchronize();
-    // The Ready append restored the row, escalated and rolled back: the
-    // recovery that then journaled the block found the row still missing.
+    // The driver's Ready ingestion restored the row, escalated and rolled
+    // back: the recovery it asked for found the row still missing.
     expect(restorations.filter(({ restored }) => restored > 0)).toEqual([
       { state: "ready", restored: 1 },
       { state: "recovering", restored: 1 },

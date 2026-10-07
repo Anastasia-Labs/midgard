@@ -121,18 +121,21 @@ export const insertEntries = (
       incomingById.set(key, incoming);
     }
     const normalizedEntries = [...incomingById.values()];
-    // Ingestion may observe a continuation at a new output. Refresh only that
-    // location: projection, settlement classification and event content survive.
-    // Reject the entire batch if any immutable payload differs.
+    // The whole payload is immutable, the L1 tx hash included (ruling 2: it
+    // is the admission tx, not the Order's current output). A known event is
+    // kept as it is; reject the entire batch if any of its payload differs.
     yield* sql.withTransaction(
       Effect.gen(function* () {
         const rows = yield* sql<{ [Columns.ID]: Buffer }>`
           INSERT INTO ${sql(tableName)} ${sql.insert(normalizedEntries)}
           ON CONFLICT (${sql(Columns.ID)}) DO UPDATE SET
-            ${sql(Columns.DEPOSIT_L1_TX_HASH)} = EXCLUDED.${sql(Columns.DEPOSIT_L1_TX_HASH)}
-          WHERE ${sql(tableName)}.${sql(Columns.INFO)} = EXCLUDED.${sql(
-            Columns.INFO,
+            ${sql(Columns.DEPOSIT_L1_TX_HASH)} = ${sql(tableName)}.${sql(Columns.DEPOSIT_L1_TX_HASH)}
+          WHERE ${sql(tableName)}.${sql(Columns.DEPOSIT_L1_TX_HASH)} = EXCLUDED.${sql(
+            Columns.DEPOSIT_L1_TX_HASH,
           )}
+            AND ${sql(tableName)}.${sql(Columns.INFO)} = EXCLUDED.${sql(
+              Columns.INFO,
+            )}
             AND ${sql(tableName)}.${sql(Columns.INCLUSION_TIME)} = EXCLUDED.${sql(
               Columns.INCLUSION_TIME,
             )}
@@ -251,23 +254,6 @@ export const retrieveAwaitingEntries = (): Effect.Effect<
   }).pipe(
     Effect.withLogSpan(`retrieveAwaitingEntries ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to retrieve awaiting deposits"),
-  );
-
-export const retrieveAwaitingEntriesDueBy = (
-  endTime: Date,
-): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    return yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
-      WHERE ${sql(Columns.STATUS)} = ${Status.Awaiting}
-        AND ${sql(Columns.INCLUSION_TIME)} <= ${endTime}
-      ORDER BY ${sql(Columns.INCLUSION_TIME)} ASC, ${sql(Columns.ID)} ASC`;
-  }).pipe(
-    Effect.withLogSpan(`retrieveAwaitingEntriesDueBy ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to retrieve awaiting deposits due by the requested time",
-    ),
   );
 
 export const retrieveProjectedPendingHeaderEntries = (): Effect.Effect<

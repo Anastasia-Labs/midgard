@@ -273,13 +273,7 @@ describe("pending queue attestation expiry", () => {
       [queue.api],
       () =>
         available
-          ? Effect.succeed({
-              source: "test" as const,
-              currentSlot: 0,
-              ledgerTipSlot: 0,
-              observedAtMs: 0,
-              slotLengthMs: 1_000,
-            })
+          ? Effect.succeed(0)
           : Effect.fail(new Error("Ogmios unreachable")),
       { slotLengthMs: 1_000, monotonicNowMs: () => (available ? 1_000 : 0) },
     );

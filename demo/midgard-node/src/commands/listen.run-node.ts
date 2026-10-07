@@ -40,6 +40,7 @@ import {
   validationPoolLayer,
   WriteBehind,
 } from "../services/index.js";
+import { startL1Follower } from "../services/l1-follower.js";
 import {
   initializeArchitectureGOwner,
   requirePinnedNativeOwnerBinary,
@@ -174,6 +175,9 @@ export const runNode = (
         }
       }),
     );
+    // The L1 follower (N1) starts first: the history owner's recovery
+    // ingests events at its view, and its driver writes the event rows.
+    yield* startL1Follower;
     yield* startup.setStage("history_initialization");
     const historyOwner = yield* makeProductionEventHistoryOwner({
       expectedGenesisLosslessSha256:
