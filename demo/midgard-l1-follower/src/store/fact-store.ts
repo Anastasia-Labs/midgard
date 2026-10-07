@@ -48,6 +48,7 @@ import {
   initializeIn,
   insertSeedOutputsIn,
   loadLiveOutRefs,
+  type SeedCursorMoved,
   type SeedOutput,
   type SeedResult,
 } from "./seed.js";
@@ -105,10 +106,11 @@ export type FactStore = Readonly<{
   ): Promise<InitializeResult | StoreError>;
   applyBlock(block: BlockSummary): Promise<ApplyResult>;
   rewind(target: Point): Promise<RewindResult>;
+  /** Seed rows read from the ledger at `at`, which must still be the cursor. */
   insertSeedOutputs(
-    seedSlot: number,
+    at: Point,
     outputs: readonly SeedOutput[],
-  ): Promise<SeedResult | StoreError | null>;
+  ): Promise<SeedResult | SeedCursorMoved | StoreError | null>;
   setTrackedSet(trackedSet: TrackedSet): void;
   trackedSet(): TrackedSet;
   /** Whether an outref is a live tracked row (the in-memory set). */
@@ -297,17 +299,17 @@ export const createFactStore = (
           }
         return result;
       }),
-    insertSeedOutputs: (seedSlot, outputs) =>
+    insertSeedOutputs: (at, outputs) =>
       lane.run(async () => {
         if (broken !== null)
           return { kind: "error", error: new Error(broken.detail) } as const;
         if (!started) return notStarted;
         try {
           const result = await backend.transaction("write", (tx) =>
-            insertSeedOutputsIn(tx, dialect, seedSlot, outputs),
+            insertSeedOutputsIn(tx, dialect, at, outputs),
           );
-          for (const outRef of result?.inserted ?? [])
-            live.add(outRefKey(outRef));
+          if (result?.kind === "seeded")
+            for (const outRef of result.inserted) live.add(outRefKey(outRef));
           return result;
         } catch (error) {
           return { kind: "error", error: asError(error) } as const;

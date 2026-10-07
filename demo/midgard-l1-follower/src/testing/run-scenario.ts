@@ -26,6 +26,13 @@ import {
 import { diffDumps, dumpStore } from "./replay.js";
 import { Rng } from "./rng.js";
 import { SimChain, type SimOrigin, simUniverse } from "./sim-chain.js";
+import {
+  createSeedRun,
+  type ForkWalletSeed,
+  type SeedStats,
+  trackedWithWallets,
+  zeroSeedStats,
+} from "./wallet-seed-run.js";
 
 /** The store options for projections over the simulator's universe. */
 export const simStoreOptions = (
@@ -48,12 +55,17 @@ export const SIM_ORIGIN: SimOrigin = {
 export const buildForkSteps = (
   scenario: ForkScenario,
   projections: readonly FollowerProjection[] = [],
+  walletSeed?: ForkWalletSeed,
 ): { chain: SimChain; steps: readonly ForkStep[] } => {
   const universe = simUniverse();
   const chain = new SimChain(
     universe,
     SIM_ORIGIN,
-    simStoreOptions(projections, 1, "sqlite").trackedSet,
+    trackedWithWallets(
+      simStoreOptions(projections, 1, "sqlite").trackedSet,
+      walletSeed,
+    ),
+    walletSeed?.preOrigin ?? [],
   );
   const builder = new EpisodeBuilder(
     chain,
@@ -85,9 +97,10 @@ export type ForkRunOptions = Readonly<{
   source?: (steps: readonly ForkStep[]) => Promise<EventSource>;
   /** Called with the store under test before the first event (fault seams). */
   prepare?: (store: FactStore) => void;
+  walletSeed?: ForkWalletSeed;
 }>;
 
-export type ForkRunStats = {
+export type ForkRunStats = SeedStats & {
   events: number;
   rollbacks: number;
   checkpoints: number;
@@ -193,29 +206,51 @@ export const runForkScenario = async (
   options: ForkRunOptions,
 ): Promise<ForkRunOutcome> => {
   const projections = options.projections ?? [];
-  const { chain, steps } = buildForkSteps(scenario, projections);
-  const optionsFor = (dialect: DialectName): FactStoreOptions =>
-    simStoreOptions(projections, options.k, dialect);
+  const walletSeed = options.walletSeed;
+  const { chain, steps } = buildForkSteps(scenario, projections, walletSeed);
+  const optionsFor = (dialect: DialectName): FactStoreOptions => {
+    const base = simStoreOptions(projections, options.k, dialect);
+    return {
+      ...base,
+      trackedSet: trackedWithWallets(base.trackedSet, walletSeed),
+    };
+  };
   const stats: ForkRunStats = {
     events: 0,
     rollbacks: 0,
     checkpoints: 0,
     comparisons: 0,
     rowsChecked: 0,
+    ...zeroSeedStats(),
   };
   const store = await options.open(optionsFor);
   options.prepare?.(store);
-  const fresh = async (): Promise<FactStore> => {
+  const canonical: BlockSummary[] = [];
+  const seedRun = createSeedRun({
+    store,
+    walletSeed,
+    canonical,
+    origin: SIM_ORIGIN,
+    stats,
+  });
+  /** A fresh forward-only replay of `canonical`, tracking and seeding where the store did. */
+  const rebuild = async (): Promise<FactStore> => {
     const reference = openSqliteFactStore({
       ...optionsFor("sqlite"),
       path: ":memory:",
     });
     await reference.start();
     await reference.initialize(SIM_ORIGIN);
+    await seedRun.replay(reference, SIM_ORIGIN.height);
+    for (const block of canonical) {
+      const applied = await reference.applyBlock(block);
+      if (applied.kind !== "applied")
+        throw new ForkFailure(`reference replay: ${applied.kind}`);
+      await seedRun.replay(reference, block.height);
+    }
     return reference;
   };
-  let reference = await fresh();
-  const canonical: BlockSummary[] = [];
+  let reference = await rebuild();
   let index = 0;
   try {
     const started = await store.start();
@@ -224,6 +259,7 @@ export const runForkScenario = async (
     const init = await store.initialize(SIM_ORIGIN);
     if (init.kind !== "initialized")
       throw new ForkFailure(`initialize: ${init.kind}`);
+    seedRun.start();
     const source = await (
       options.source ?? ((s) => Promise.resolve(listSource(s)))
     )(steps);
@@ -259,8 +295,13 @@ export const runForkScenario = async (
         )
           canonical.pop();
         await reference.close();
-        reference = await fresh();
-        for (const block of canonical) await reference.applyBlock(block);
+        reference = await rebuild();
+      }
+      const seeded = await seedRun.afterEvent(index);
+      if (typeof seeded === "string") throw new ForkFailure(seeded);
+      if (seeded.rebuild) {
+        await reference.close();
+        reference = await rebuild();
       }
       const expectedDump = await dumpStore(reference);
       const diff = diffDumps(await dumpStore(store), expectedDump);
@@ -278,7 +319,10 @@ export const runForkScenario = async (
           `tracked-outref cache ${store.liveOutRefCount()} vs fresh ${reference.liveOutRefCount()}`,
         );
       if (step.checkpoint !== undefined) {
-        const failure = await checkpointFailure(store, step.checkpoint);
+        const failure = await checkpointFailure(store, {
+          ...step.checkpoint,
+          liveTracked: seedRun.liveTracked(step.checkpoint.liveTracked),
+        });
         if (failure !== null) throw new ForkFailure(failure);
         stats.checkpoints += 1;
       }
@@ -310,6 +354,7 @@ export const runForkScenario = async (
       return { ok: false, step: index, reason: error.message, stats };
     throw error;
   } finally {
+    seedRun.close();
     await store.close();
     await reference.close();
   }

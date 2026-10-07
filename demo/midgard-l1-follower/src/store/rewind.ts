@@ -1,6 +1,5 @@
 import {
   asBuffer,
-  asNullableNumber,
   asNumber,
   RollbackWith,
   type SqlTx,
@@ -19,7 +18,10 @@ export type Rewound = Readonly<{
   cursor: Cursor;
   /** Outrefs the rewind made live again (cache patch, §6 item 5). */
   unspent: readonly OutRef[];
-  /** Outrefs whose rows the rewind deleted. */
+  /**
+   * Outrefs whose rows the rewind deleted: created above the target, or
+   * seed rows whose seed point lies above it (§5.3 step 4).
+   */
   deleted: readonly OutRef[];
 }>;
 
@@ -32,7 +34,16 @@ export type RewindFault =
   /** Cuts D-t tables one slot too low, deleting the target's own rows (only replay sees it). */
   | "temporal_cut_below_target"
   /** Un-spends in the store but not in the tracked-outref cache. */
-  | "skip_unspend_cache_patch";
+  | "skip_unspend_cache_patch"
+  /**
+   * Keeps seed rows whose seed point lies above the target, re-stamped at
+   * the target so the post-rewind INV6 probe cannot see them: the rule that
+   * a rewind never touches a seed row. A fork that orphans a post-origin
+   * output leaves it live (a phantom).
+   */
+  | "keep_seed_rows_above_target"
+  /** Also deletes seed rows seeded at the target itself. */
+  | "delete_seed_rows_at_target";
 
 const intervention = (
   reason: Intervention["reason"],
@@ -107,7 +118,7 @@ export const rewindIn = async (
     ))
       await tx.query(statement.sql, statement.params);
   const unspentRows = await tx.query(
-    "UPDATE l1_outputs SET spent_slot = NULL, spent_tx = NULL WHERE spent_slot > ? RETURNING tx_hash, output_index, created_slot",
+    "UPDATE l1_outputs SET spent_slot = NULL, spent_tx = NULL WHERE spent_slot > ? RETURNING tx_hash, output_index",
     [targetSlot],
   );
   const deleted = outRefsFrom(
@@ -115,6 +126,29 @@ export const rewindIn = async (
       "DELETE FROM l1_outputs WHERE created_slot > ? RETURNING tx_hash, output_index",
       [targetSlot],
     ),
+  );
+  // A seed row is a fact observed at its seed point: a rewind below that
+  // point rewinds it, and the wallet seeder reads the wallet again at a
+  // later cursor (§5.3 step 4). Seed rows at or below the target observed a
+  // state that is still canonical and stay.
+  if (fault === "keep_seed_rows_above_target")
+    await tx.query("UPDATE l1_outputs SET seed_slot = ? WHERE seed_slot > ?", [
+      targetSlot,
+      targetSlot,
+    ]);
+  else
+    deleted.push(
+      ...outRefsFrom(
+        await tx.query(
+          fault === "delete_seed_rows_at_target"
+            ? "DELETE FROM l1_outputs WHERE seed_slot >= ? RETURNING tx_hash, output_index"
+            : "DELETE FROM l1_outputs WHERE seed_slot > ? RETURNING tx_hash, output_index",
+          [targetSlot],
+        ),
+      ),
+    );
+  const gone = new Set(
+    deleted.map((outRef) => `${outRef.txHash.toString("hex")}#${outRef.index}`),
   );
   await tx.query("DELETE FROM l1_event_keys WHERE first_canonical_slot > ?", [
     targetSlot,
@@ -153,10 +187,12 @@ export const rewindIn = async (
     fault === "skip_unspend_cache_patch"
       ? []
       : outRefsFrom(
-          unspentRows.filter((row) => {
-            const created = asNullableNumber(row.created_slot);
-            return created === null || created <= targetSlot;
-          }),
+          unspentRows.filter(
+            (row) =>
+              !gone.has(
+                `${asBuffer(row.tx_hash).toString("hex")}#${asNumber(row.output_index)}`,
+              ),
+          ),
         );
   return {
     kind: "rewound",

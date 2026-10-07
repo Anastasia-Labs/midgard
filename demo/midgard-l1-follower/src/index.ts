@@ -8,6 +8,7 @@ export {
   outRefKey,
 } from "./codec.js";
 export { BlockDecodeError, decodeBlock } from "./decode/block.js";
+export { decodeLedgerUtxos, type LedgerUtxo } from "./decode/utxo.js";
 export {
   applyChainSyncEvent,
   type BlockUndecodable,
@@ -17,6 +18,19 @@ export {
   storePoint,
   transportPoint,
 } from "./follow/chain-sync.js";
+export {
+  createWalletSeeder,
+  seedWallets,
+  WALLET_SEED_PENDING,
+  type WalletLedger,
+  type WalletSeeded,
+  type WalletSeeder,
+  type WalletSeedPending,
+  type WalletSeedPendingReason,
+  type WalletSeedResult,
+  type WalletSeedStatus,
+  withTrackedAddresses,
+} from "./follow/wallet-seed.js";
 export {
   GENERATION_CHANNEL,
   listenForGenerations,
@@ -103,6 +117,6 @@ export {
   type UtxoRead,
 } from "./store/reads.js";
 export type { RewindNoop, Rewound } from "./store/rewind.js";
-export type { SeedOutput, SeedResult } from "./store/seed.js";
+export type { SeedCursorMoved, SeedOutput, SeedResult } from "./store/seed.js";
 export { currentViewIn, viewValidIn, viewValidQuery } from "./store/view.js";
 export type * from "./types.js";

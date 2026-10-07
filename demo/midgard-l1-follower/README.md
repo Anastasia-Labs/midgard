@@ -15,8 +15,9 @@ This package owns:
 - a raw CBOR block decoder that keeps the exact byte slices of each body,
   witness set, datum and redeemer (no dependency on the N2C transport);
 - `rewind(target)`: one transaction that truncates every registered temporal
-  (D-t) table, un-spends and deletes facts above the target, bumps the
-  generation, logs the rollback and notifies `l1_generation`;
+  (D-t) table, un-spends and deletes facts above the target (seed rows by
+  their seed point), bumps the generation, logs the rollback and notifies
+  `l1_generation`;
 - the temporal registry, which generates the rewind and prune SQL;
 - invariants INV1–INV6, checked at start and (scoped) inside every rewind;
 - views `(generation, point)` and their validity check;
@@ -92,22 +93,22 @@ type FactStoreOptions = {
 
 Writers are serialised on one lane. `start()` must succeed before any write.
 
-| Member                                               | Result                                                                                                                                                |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `start()`                                            | `{ kind: "ready", cursor, liveOutRefs, migrated } \| Intervention`                                                                                    |
-| `initialize({ point, height })`                      | `initialized \| already_initialized \| origin_mismatch` (with `cursor`), or `StoreError`                                                              |
-| `applyBlock(block)`                                  | `BlockApplied { cursor, qualified, created, spent } \| ApplyRejection { reason: "not_initialized" \| "not_on_cursor" } \| Intervention \| StoreError` |
-| `rewind(target: Point)`                              | `Rewound { generation, from, to, depth, cursor, unspent, deleted } \| RewindNoop \| Intervention \| StoreError`                                       |
-| `insertSeedOutputs(seedSlot, outputs: SeedOutput[])` | `SeedResult { inserted, skipped } \| StoreError \| null` (null: not initialized)                                                                      |
-| `prune(budget = 5000)`                               | `PruneResult { deleted, done, prunedThroughSlot } \| StoreError`                                                                                      |
-| `checkInvariants()`                                  | `InvariantReport { ok, violations }` (full INV1–INV6)                                                                                                 |
-| `cursor()`                                           | `Cursor \| null`                                                                                                                                      |
-| `currentView()` / `viewValid(view)`                  | `View \| null` / `boolean`                                                                                                                            |
-| `onGeneration(listener)`                             | unsubscribe function; called after each committed rewind                                                                                              |
-| `setTrackedSet(set)` / `trackedSet()`                | replaces / returns the static tracked set                                                                                                             |
-| `isTrackedLive(outRef)` / `liveOutRefCount()`        | the in-memory live tracked-outref set                                                                                                                 |
-| `transaction(mode, run)`                             | a raw `SqlTx` on the store's backend (`"read"` snapshot or `"write"`)                                                                                 |
-| `close()`                                            | releases the backend after queued writes                                                                                                              |
+| Member                                                | Result                                                                                                                                                                     |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start()`                                             | `{ kind: "ready", cursor, liveOutRefs, migrated } \| Intervention`                                                                                                         |
+| `initialize({ point, height })`                       | `initialized \| already_initialized \| origin_mismatch` (with `cursor`), or `StoreError`                                                                                   |
+| `applyBlock(block)`                                   | `BlockApplied { cursor, qualified, created, spent } \| ApplyRejection { reason: "not_initialized" \| "not_on_cursor" } \| Intervention \| StoreError`                      |
+| `rewind(target: Point)`                               | `Rewound { generation, from, to, depth, cursor, unspent, deleted } \| RewindNoop \| Intervention \| StoreError`                                                            |
+| `insertSeedOutputs(at: Point, outputs: SeedOutput[])` | `SeedResult { cursor, inserted, skipped } \| SeedCursorMoved \| StoreError \| null` (null: not initialized; `cursor_moved`: `at` is no longer the cursor, nothing written) |
+| `prune(budget = 5000)`                                | `PruneResult { deleted, done, prunedThroughSlot } \| StoreError`                                                                                                           |
+| `checkInvariants()`                                   | `InvariantReport { ok, violations }` (full INV1–INV6)                                                                                                                      |
+| `cursor()`                                            | `Cursor \| null`                                                                                                                                                           |
+| `currentView()` / `viewValid(view)`                   | `View \| null` / `boolean`                                                                                                                                                 |
+| `onGeneration(listener)`                              | unsubscribe function; called after each committed rewind                                                                                                                   |
+| `setTrackedSet(set)` / `trackedSet()`                 | replaces / returns the static tracked set                                                                                                                                  |
+| `isTrackedLive(outRef)` / `liveOutRefCount()`         | the in-memory live tracked-outref set                                                                                                                                      |
+| `transaction(mode, run)`                              | a raw `SqlTx` on the store's backend (`"read"` snapshot or `"write"`)                                                                                                      |
+| `close()`                                             | releases the backend after queued writes                                                                                                                                   |
 
 Reads (each a consistent snapshot):
 
@@ -163,6 +164,9 @@ the rewind removes keys first seen above its target.
 
 ### Decoding and codecs
 
+`decodeLedgerUtxos(answer)` decodes an LSQ UTxO answer (`utxo_by_address`,
+`utxo_by_txin`) into `{ outRef, output }` pairs.
+
 `decodeBlock(raw: Uint8Array): BlockSummary` (throws `BlockDecodeError`) takes
 one bare Shelley-family block (Alonzo and later: five elements), as the N2C
 transport delivers it after the era tag, and returns every transaction, valid
@@ -183,6 +187,54 @@ lintDeterminismSource(path: string, source: string, options?): DeterminismProble
 unknown class, an empty rule, a D-t table that is not registered, and a
 registered table not declared D-t or D-x. The lints load the TypeScript
 compiler, so they are kept out of the runtime entry point.
+
+### Wallet seed (§5.3 step 4)
+
+```ts
+seedWallets(store, ledger: WalletLedger, addresses: Buffer[], attempts = 3): Promise<WalletSeedResult>
+createWalletSeeder({ store, ledger, wallets }): WalletSeeder
+// WalletLedger = Pick<L1NodeTransport, "withLedgerState">
+```
+
+Own wallets can hold UTxOs the follower never stored: created before the
+origin, or paid to a wallet after the origin while it was not tracked (also
+by a stored tx whose output to it got no row). `seedWallets` acquires LSQ at
+the store's cursor P, reads `utxo_by_address` for the wallets and writes
+every outref the store holds no row for as a seed row (`created_slot NULL`,
+`seed_slot = P`). The write is
+refused unless the cursor is still P (a block or rewind in between could
+hold a spend the seed would miss); the read is then repeated at the new
+cursor. LSQ acquires only volatile points, so the seed succeeds once the
+cursor is within k of the node's tip. It never throws: a `pending` result
+names the transient reason (`not_initialized`, `cursor_not_acquirable`,
+`cursor_moved`, `ledger_unavailable`, `ledger_answer_invalid`,
+`store_error`).
+
+A seed row is a fact observed at P. A rewind to a target T deletes, in the
+same transaction, every seed row with `seed_slot > T` (and un-spends the
+rest like any row); rows seeded at or below T observed a state that is still
+canonical and stay. INV6: no seed row lies above the cursor, and no stored
+creator contradicts a seed row (created after the seed point, or not
+creating that index).
+
+`createWalletSeeder` owes the seed of each wallet and settles it with
+`step()`. The role reports `/readyz` unready with `wallet_seed_pending`
+(`WALLET_SEED_PENDING`) while `ready()` is false and calls `step()` after
+follower steps. `addWallets(addresses)` adds the wallets to the store's
+tracked set and owes their seed, and only theirs. After a committed rewind
+below a wallet's seed point (which deleted its seed rows from that point)
+the wallet is owed again and is read at a later cursor: the fresh answer
+holds a pre-origin UTxO the rollback made live again and drops an output
+whose creating tx the fork orphaned. Bootstrap and added wallets take the
+same path, with no wait. `wallet_seed_pending` is transient: the role keeps
+running and raises no intervention. Every wallet starts owed, so a restart
+re-seeds; that writes nothing the store already holds.
+
+The role wiring composes it with the origin start: start the store,
+initialize at the origin and follow chain-sync; create the seeder once the
+store is initialized and call `step()` after each settled follower step
+until it is ready (the first steps return `cursor_not_acquirable` while
+the follower replays from an origin more than k blocks deep).
 
 ### Following chain-sync
 
@@ -213,7 +265,7 @@ transaction whose collateral is spent, re-landed failed, replaced by a valid
 one, or absent).
 
 ```ts
-runForkScenario(scenario, { open, k, projections?, comparators?, source? }): Promise<ForkRunOutcome>
+runForkScenario(scenario, { open, k, projections?, comparators?, source?, walletSeed? }): Promise<ForkRunOutcome>
 forkScenarioArbitrary(k): fc.Arbitrary<ForkScenario> // fast-check
 forkCorpus(k): NamedScenario[] // every shape and variant at depths 1, k/2, k
 ```
@@ -225,6 +277,15 @@ episode's checkpoints match the simulator's own ledger model, every plugged
 projection's `check`, and every shadow comparator. `source` replaces the
 in-memory event list with a real one (the transport test serves it through a
 fake sidecar and the real frame client).
+
+`walletSeed` (`{ wallets, preOrigin, startAfter, added? }`) runs the wallet
+seeder against the simulated node's LSQ from event `startAfter` on, with the
+wallets tracked and `preOrigin` UTxOs in the ledger at the origin; `added`
+wallets join through `addWallets` after event `atEvent`. After every event
+the store's seed rows must be exactly the rows seeded and not rewound (new
+rows only at the cursor), the fresh replay tracks and seeds where the store
+did, and once the seeder is ready the store's live rows at every wallet must
+be exactly the ledger's UTxOs there (no phantom, none missing).
 
 A role ticket adds cases by passing a `FollowerProjection`: its tracked set,
 D-t tables, migrations, derivations and retention pins, optional `traffic`

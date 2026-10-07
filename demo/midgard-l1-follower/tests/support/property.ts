@@ -156,7 +156,7 @@ export const runProperty = async (
     expectKind(await store.start(), "ready", "start");
     expectKind(await store.initialize(origin), "initialized", "initialize");
     expectKind(
-      (await store.insertSeedOutputs(origin.point.slot, seeds)) ?? {
+      (await store.insertSeedOutputs(origin.point, seeds)) ?? {
         kind: "null",
       },
       "seeded",

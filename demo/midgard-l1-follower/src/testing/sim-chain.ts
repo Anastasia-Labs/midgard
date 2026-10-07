@@ -93,7 +93,11 @@ export class SimChain {
     readonly universe: SimUniverse,
     readonly origin: SimOrigin,
     private readonly tracked: TrackedSet = universe.tracked,
-  ) {}
+    /** UTxOs the ledger holds at the origin (outside every branch). */
+    preOrigin: readonly SimUtxo[] = [],
+  ) {
+    for (const utxo of preOrigin) this.utxos.set(outRefKey(utxo.outRef), utxo);
+  }
 
   get tip(): SimOrigin {
     const last = this.entries[this.entries.length - 1];
