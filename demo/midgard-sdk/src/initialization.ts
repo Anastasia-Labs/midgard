@@ -3,7 +3,6 @@ import {
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
 import {
-  calculateMinLovelaceFromUTxO,
   credentialToAddress,
   Data,
   LucidEvolution,
@@ -27,6 +26,7 @@ import {
   UnspecifiedNetworkError,
 } from "./common.js";
 import {
+  calculateCorrectionLockMinLovelace,
   CORRECTION_LOCK_ASSET_NAME,
   CorrectionLockDatum,
 } from "./correction-lock.js";
@@ -208,38 +208,12 @@ export const incompleteInitializationTxProgram = (
     );
 
     const hubOracleAssets = { [hubOracleUnit]: 1n };
-    const coinsPerUtxoByte =
-      lucid.config().protocolParameters?.coinsPerUtxoByte;
-    if (coinsPerUtxoByte === undefined || coinsPerUtxoByte <= 0n) {
-      throw new Error(
-        "Protocol initialization requires live UTxO cost parameters",
-      );
-    }
-    // Correct preserves the lock's value. Reserve rent for the largest Locked
-    // datum now, so an Idle lock can enter a correction without a forbidden top-up.
-    // FraudProof and AvailabilityChallenge carry equal-width 32-byte identities;
-    // AttestationTimeout is smaller. All target header hashes are 28 bytes.
     const correctionLockAssets = { [correctionLockUnit]: 1n };
-    const correctionLockLovelace = calculateMinLovelaceFromUTxO(
-      coinsPerUtxoByte,
-      {
-        address: midgardValidators.correctionLock.spendingScriptAddress,
-        assets: { [correctionLockUnit]: 1n },
-        txHash: "00".repeat(32),
-        outputIndex: 0,
-        datum: Data.to(
-          {
-            Locked: {
-              target_header_hash: "00".repeat(28),
-              correction_identity: {
-                FraudProof: { fraud_proof_asset_name: "00".repeat(32) },
-              },
-            },
-          },
-          CorrectionLockDatum,
-        ),
-      },
-    );
+    const correctionLockLovelace = calculateCorrectionLockMinLovelace(lucid, {
+      correctionLockAddress:
+        midgardValidators.correctionLock.spendingScriptAddress,
+      hubOraclePolicyId: midgardValidators.hubOracle.policyId,
+    });
     const hubPolicyMintAssets = {
       ...hubOracleAssets,
       ...correctionLockAssets,

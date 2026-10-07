@@ -1,6 +1,7 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   type Address,
+  calculateMinLovelaceFromUTxO,
   Data,
   fromText,
   type LucidEvolution,
@@ -78,6 +79,38 @@ export type CorrectionLockUTxO = AuthenticUTxO<CorrectionLockDatum>;
 
 export const correctionLockUnit = (hubOraclePolicyId: PolicyId): string =>
   toUnit(hubOraclePolicyId, CORRECTION_LOCK_ASSET_NAME);
+
+/** Reserve rent at creation: Correct conserves the lock's value exactly.
+ * FraudProof and AvailabilityChallenge have equally large 32-byte identities;
+ * AttestationTimeout is smaller. Every target header hash is 28 bytes. */
+export const calculateCorrectionLockMinLovelace = (
+  lucid: LucidEvolution,
+  config: CorrectionLockConfig,
+): bigint => {
+  const coinsPerUtxoByte = lucid.config().protocolParameters?.coinsPerUtxoByte;
+  if (coinsPerUtxoByte === undefined || coinsPerUtxoByte <= 0n) {
+    throw new Error(
+      "Correction-lock creation requires live UTxO cost parameters",
+    );
+  }
+  return calculateMinLovelaceFromUTxO(coinsPerUtxoByte, {
+    address: config.correctionLockAddress,
+    assets: { [correctionLockUnit(config.hubOraclePolicyId)]: 1n },
+    txHash: "00".repeat(32),
+    outputIndex: 0,
+    datum: Data.to(
+      {
+        Locked: {
+          target_header_hash: "00".repeat(28),
+          correction_identity: {
+            FraudProof: { fraud_proof_asset_name: "00".repeat(32) },
+          },
+        },
+      },
+      CorrectionLockDatum,
+    ),
+  });
+};
 
 export const utxosToCorrectionLockUTxOs = (
   utxos: UTxO[],

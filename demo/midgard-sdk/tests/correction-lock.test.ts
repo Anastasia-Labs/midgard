@@ -1,9 +1,17 @@
-import { Data, type UTxO } from "@lucid-evolution/lucid";
+import {
+  calculateMinLovelaceFromUTxO,
+  Data,
+  Emulator,
+  Lucid,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  calculateCorrectionLockMinLovelace,
   CORRECTION_LOCK_ASSET_NAME,
+  type CorrectionIdentity,
   CorrectionLockDatum,
   CorrectionLockRedeemer,
   correctionLockUnit,
@@ -28,6 +36,45 @@ const lockUtxo = (
 });
 
 describe("correction-lock SDK wire boundary", () => {
+  it.each([4310n, 8620n])(
+    "reserves the largest supported Locked datum at UTxO cost %s",
+    async (coinsPerUtxoByte) => {
+      const defaults = await new Emulator([]).getProtocolParameters();
+      const lucid = await Lucid(
+        new Emulator([], { ...defaults, coinsPerUtxoByte }),
+        "Custom",
+      );
+      const reserved = calculateCorrectionLockMinLovelace(lucid, {
+        correctionLockAddress: ADDRESS,
+        hubOraclePolicyId: POLICY_ID,
+      });
+      const identities: CorrectionIdentity[] = [
+        { FraudProof: { fraud_proof_asset_name: "33".repeat(32) } },
+        "AttestationTimeout",
+        { AvailabilityChallenge: { challenge_asset_name: "44".repeat(32) } },
+      ];
+      const minimums = identities.map((correction_identity) =>
+        calculateMinLovelaceFromUTxO(
+          coinsPerUtxoByte,
+          lockUtxo(
+            Data.to(
+              {
+                Locked: {
+                  target_header_hash: "55".repeat(28),
+                  correction_identity,
+                },
+              },
+              CorrectionLockDatum,
+            ),
+          ),
+        ),
+      );
+      expect(minimums[0]).toBe(minimums[2]);
+      expect(minimums[1]).toBeLessThan(minimums[0]!);
+      expect(reserved).toBe(minimums[0]);
+    },
+  );
+
   it("round-trips Idle, every correction identity, and both redeemers", () => {
     const identities = [
       {
