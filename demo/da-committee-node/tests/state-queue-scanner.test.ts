@@ -181,8 +181,8 @@ describe("state queue scanner", () => {
       finalityDepth: 0,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     });
-    // A different commitment on a different node is still a legitimate
-    // StateQueueStatusV1 status. Contradictory rereads are covered below.
+    // A different commitment on another node is legitimate. Contradictory
+    // rereads are covered in state-queue-status-disagreement.test.ts.
     expect(records.map((record) => record.status)).toEqual([
       "attested",
       "conflicted",
