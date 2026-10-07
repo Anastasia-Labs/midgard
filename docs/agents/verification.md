@@ -1,31 +1,31 @@
 # Verification
 
-Required checks by change type and their local environment. Commands run from
-the repository root unless a row says otherwise. [review]
+Commands run from the repository root unless stated otherwise. [review]
 
 ## Required checks
 
-Run `node scripts/preflight.mjs` before pushing. It selects the checks your
-change needs from the registry in `scripts/preflight/registry.mjs`, runs them,
-and exits nonzero when one fails or could not run; the pre-push hook runs its
-fast slice. The generated
-[required-checks.md](required-checks.md) lists every check, what selects it,
-and the capability it needs; `node scripts/doctor.mjs` names a missing
-capability's fix. Add the narrow tests that prove the behavior you touched, and
-report each command with its result. A smoke test does not replace a required
-check. Blind spot: selection is by path, so a check whose trigger is too narrow
-is silently skipped; CI is the final gate. [hook: pre-push]
+Run `node scripts/preflight.mjs` before pushing. Ordinary PRs assign the
+covered package build/typecheck/full-suite matrix to Node CI, reporting pending
+hosted obligations separately from local results. Read generated
+[required-checks.md](required-checks.md) before choosing an execution mode;
+it lists selectors, ownership, capabilities and `--full-local` usage. Unknown
+workflow routing retains local execution; the normal fast pre-push slice stays
+mandatory. [script: scripts/preflight/run.mjs]
 
-Deployment parameter checks below still need a manual invocation. Transaction
-preparation lanes are selected by preflight and listed here for direct use. [review]
+Focused local regressions and causal red/green checks remain mandatory. Prepare
+fresh compiled/native dependencies and blueprints in this checkout; read
+[focused tests and builds](contrib/tests-and-builds.md) before running them.
+Report every result and capability refusal. A smoke test does not replace a
+required check; path selection can miss behavior, so CI remains final. [review]
+
+Deployment checks remain manual; preparation lanes are selected by preflight. [review]
 
 | Change                                                                   | Checks                                                                                                                                                                              |
 | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Validator parameters, deployment profiles                                | `pnpm --dir demo deployment:check preprod-testing`; `node --test demo/scripts/deployment-profiles.test.mjs`; the emulator scenarios in both polarities (`docs/agents/contracts.md`) |
 | L1 transaction builders, wallet or input selection, validity, submission | `pnpm --dir demo run test:tx-prep:sdk`; `pnpm --dir demo run test:tx-prep:node`; `pnpm --dir demo run test:tx-prep:emulator`                                                        |
 
-`docs/exec-plans/GOAL_SPEC.md` §13 lists the full verification for Goal
-completion, which is wider than this table.
+`docs/exec-plans/GOAL_SPEC.md` §13 governs the wider Goal completion checks.
 
 ## Merge checklist
 
@@ -33,18 +33,18 @@ completion, which is wider than this table.
    that target. A feature branch's own upstream is not its acceptance base.
    Review the actual proposed merge tree; a historical ancestor does not
    describe work still unmerged. [script: scripts/preflight/run.mjs]
-2. Run the selected local checks and the narrow regressions proving changed
-   behavior once on frozen inputs. Preflight-only modules select tooling tests;
-   shared probes, derivation and execution helpers retain full scope. Required
-   hosted jobs follow the actual workflow path filters; check their census,
-   exact head and conclusions, not just a green summary. [review]
-3. Reuse completed CI only through `--strict --ci-run <Repo-Tools-run-id>` for
-   the two admitted file-only validators: required-checks generation and build
-   guard enrollment. It verifies merge tree/parents, source/discovered inputs,
-   current remote target, Node profile, commands and completed steps; dirty,
-   stale, absent or different evidence is refused. Record run and coverage as
-   reused. Runtime failures, database/native suites, transaction preparation and
-   live acceptance retain their gates. [script: scripts/preflight/ci-evidence.mjs]
+2. Run locally scheduled checks and focused regressions once on frozen inputs.
+   Node CI owns the ordinary PR runtime matrix, including core/test-support
+   typechecks. The SDK preparation recipe is exactly its full Lucid/SDK suites
+   and shares that owner; changed recipes retain local execution. Required jobs
+   follow actual workflow paths: verify census, exact head and conclusions.
+   Node CI gate requires every dependency to succeed. Conditional traced-refusal
+   selectors and distinct acceptance profiles remain intact. [review]
+3. `--strict --ci-run <Repo-Tools-run-id>` admits only required-checks generation
+   and build-guard enrollment reuse, verifying merge tree/parents, inputs,
+   current remote target, Node profile, commands and completed steps. Dirty,
+   stale, absent or different evidence is refused. Record coverage as reused;
+   scheduling supplies no pass. Failures retain gates. [script: scripts/preflight/ci-evidence.mjs]
 4. Complete genuinely distinct gates: deployment parameters and both emulator
    polarities when changed; all three transaction-preparation lanes for L1
    builder changes; applicable installed/runtime, retained-data and live

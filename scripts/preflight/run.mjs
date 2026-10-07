@@ -23,6 +23,7 @@ import { runProcess } from "../contrib/process.mjs";
 import { writeReceipt } from "../contrib/receipts.mjs";
 import { withResource } from "../contrib/resources.mjs";
 import { formatCommand, selectChecks } from "./registry.mjs";
+import { ciOwnsRuntime, RUNTIME_CHECKS } from "./runtime-owner.mjs";
 import {
   SDK_SUITES,
   sdkContext as currentSdkContext,
@@ -198,10 +199,21 @@ export const planPreflight = (registry, changed, options = {}) => {
     }
   };
   const planned = [];
+  const hosted = [];
+  const hostedRuntime = ciOwnsRuntime(registry, changed, options.runtimeOwner);
   for (const { check, matched } of selection.selected) {
     const steps = check.plan({ matched, full: selection.full, advise });
     if (steps !== null) {
-      planned.push({ check, matched, steps });
+      if (
+        hostedRuntime &&
+        RUNTIME_CHECKS.includes(check.id) &&
+        (check.id !== "tx-preparation:sdk" || registry.runtimeWorkflow.sdkLane)
+      ) {
+        const { workflow, gate } = registry.runtimeWorkflow;
+        hosted.push({ id: check.id, workflow, gate });
+      } else {
+        planned.push({ check, matched, steps });
+      }
     }
   }
   // "You changed an input and did not regenerate the output": a golden channel
@@ -243,7 +255,7 @@ export const planPreflight = (registry, changed, options = {}) => {
       });
     }
   }
-  return { ...selection, planned, advisories };
+  return { ...selection, planned, hosted, advisories };
 };
 
 // Runs one step, teeing its output to `log` and keeping it for the verdict.

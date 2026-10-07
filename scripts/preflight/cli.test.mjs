@@ -5,7 +5,12 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { docsCommand, JSON_SCHEMA, main } from "../preflight.mjs";
+import {
+  docsCommand,
+  JSON_SCHEMA,
+  main,
+  parseArguments,
+} from "../preflight.mjs";
 import { REQUIRED_CHECKS_DOC, renderRequiredChecks } from "./docs.mjs";
 import { buildRegistry } from "./registry.mjs";
 
@@ -28,6 +33,13 @@ const allAvailable = {
   get: async (name) => ({ name, status: "available", detail: name }),
   invalidate: () => {},
 };
+
+test("explicit full-local mode keeps path selection; --full also widens scope", () => {
+  assert.equal(parseArguments(["--full-local"]).fullLocal, true);
+  assert.equal(parseArguments(["--full-local"]).full, false);
+  assert.equal(parseArguments(["--full"]).full, true);
+  assert.equal(parseArguments([]).fullLocal, false);
+});
 
 test("the committed required-checks.md is the one the registry renders", () => {
   const committed = readFileSync(resolve(root, REQUIRED_CHECKS_DOC), "utf8");

@@ -108,6 +108,25 @@ const scenarios = {
       "agent-skills-ci:skills",
     ],
   },
+  "lifecycle-test-only pull request": {
+    event: "pull_request",
+    branch: workingBranch,
+    files: [
+      "demo/midgard-fault-proofs/tests/resolved-output-non-canonical-lifecycle.test.ts",
+    ],
+    runs: [
+      "midgard-node-ci:*",
+      "midgard-watcher-ci:watcher",
+      "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
+    ],
+  },
+  "runtime scheduling-only pull request": {
+    event: "pull_request",
+    branch: workingBranch,
+    files: ["scripts/preflight/runtime-owner.mjs"],
+    runs: ["repo-tools-ci:repo-tools", "agent-skills-ci:skills"],
+  },
   "watcher pull request": {
     event: "pull_request",
     branch: "main",
