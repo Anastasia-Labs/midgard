@@ -24,8 +24,12 @@ This package owns:
 - the heads module: the one definition of depth, the levels local, landed,
   safe, final and merged, and `slotNow`.
 
-The live chain-sync client, the decode pool and the role wiring live
-elsewhere. This package never opens a network connection.
+It also owns the bridge from the node transport's chain-sync events to the
+store (`applyChainSyncEvent`, `intersectionPoints`), the fork simulator
+(`./testing`) and the shadow-diff harness with its devnet soak runner
+(`./shadow`). The live chain-sync client itself (`@al-ft/l1-node-transport`),
+the decode pool and the role wiring live elsewhere. The library entry points
+never open a network connection; only the soak CLI does.
 
 ## Usage
 
@@ -215,14 +219,131 @@ unknown class, an empty rule, a D-t table that is not registered, and a
 registered table not declared D-t or D-x. The lints load the TypeScript
 compiler, so they are kept out of the runtime entry point.
 
+### Following chain-sync
+
+```ts
+applyChainSyncEvent(store, event: ChainSyncEvent): Promise<FollowStep>
+stepSettled(step: FollowStep): boolean // applied, rewound or noop
+intersectionPoints(store): Promise<BlockPoint[]>
+storePoint(point: BlockPoint): Point; transportPoint(point: Point): BlockPoint
+```
+
+`applyChainSyncEvent` decodes a roll-forward and applies it, or rewinds to a
+roll-backward's point. A rollback to the genesis is R1 `rollback_beyond_k`
+without touching the store; an undecodable block is `block_undecodable`.
+`intersectionPoints` offers the 64 newest stored blocks, then blocks 128,
+256, 512, ... below the cursor, then the store's origin (at most 256 points,
+the transport's limit).
+
+## Fork simulator (`@al-ft/midgard-l1-follower/testing`)
+
+Seeded fork scenarios, emitted as the transport's `ChainSyncEvent`s and fed
+to the sequential writer. Each episode builds an old branch, rolls back
+1..k blocks and builds a new one, in one of five shapes: `reland` (the
+subject transaction lands again on the new branch), `never_reland` (it never
+does, sometimes because a conflicting spend took its input), `changed_valid_to`
+(it lands again with a different upper validity bound), `new_fork_only`
+(a transaction only the new branch has) and `phase2_failed` (a failed
+transaction whose collateral is spent, re-landed failed, replaced by a valid
+one, or absent).
+
+```ts
+runForkScenario(scenario, { open, k, projections?, comparators?, source? }): Promise<ForkRunOutcome>
+forkScenarioArbitrary(k): fc.Arbitrary<ForkScenario> // fast-check
+forkCorpus(k): NamedScenario[] // every shape and variant at depths 1, k/2, k
+```
+
+After every event `runForkScenario` checks that the store equals a store
+rebuilt from scratch from the canonical chain (every fact and temporal
+table), that INV1–INV6 hold, that the tracked outputs and spenders at each
+episode's checkpoints match the simulator's own ledger model, every plugged
+projection's `check`, and every shadow comparator. `source` replaces the
+in-memory event list with a real one (the transport test serves it through a
+fake sidecar and the real frame client).
+
+A role ticket adds cases by passing a `FollowerProjection`: its tracked set,
+D-t tables, migrations, derivations and retention pins, optional `traffic`
+(transactions the simulator mixes into blocks, so the role's own outputs
+appear on both branches) and an optional `check` run after every event. Role
+packages run their cases from a `test:fork-sim` script; CI runs every
+package's `test:fork-sim` (see below).
+
+## Shadow diff and devnet soak (`@al-ft/midgard-l1-follower/shadow`)
+
+A `ShadowComparator` reads one thing two ways at the store's cursor: the
+role's new projection (`projected`) and the current code's view
+(`current`), optionally fed every event first (`observe`). `compareAll`
+normalises both sides to JSON and reports `equal`, `differs` (with the
+paths), `skipped` (a side is `unavailable`) or `error` (a side threw); it
+never throws. Comparators that read old code are development tooling: they
+live in their own files and are deleted with the old code at each role's
+cutover.
+
+A role plugs in through a module whose default export is a
+`ShadowPlugin`: `{ role, projections?, comparators(env) }`, where `env`
+carries the transport, the store, the soak directory and the plugin's
+options from `soak.json`.
+
+The soak runner follows a devnet into a SQLite store and journals one record
+per event to `<dir>/journal.jsonl` (fsynced): the event, the cursor and
+every comparator's result. It resumes from the store's cursor after a
+restart (comparing once at the cursor when the journal lags the store),
+retries store and transport errors with backoff, and stops only at an
+intervention (R1, R2, R5, an undecodable block), a refusal, `--max-events`
+or a signal.
+
+```sh
+node dist/shadow/soak-cli.js run --dir <dir> [--max-events <n>]
+node dist/shadow/soak-cli.js report --dir <dir>
+```
+
+`<dir>/soak.json`:
+
+```json
+{
+  "socketPath": "node.socket",
+  "networkMagic": 42,
+  "binaryPath": "../l1-node-transport/dist/native/midgard-l1-node-transport",
+  "securityParameter": 2160,
+  "trackedSet": {
+    "addresses": ["<hex>"],
+    "paymentCredentials": [],
+    "policies": []
+  },
+  "ledgerAddresses": ["<hex>"],
+  "plugins": [{ "module": "./committee-shadow.mjs", "options": {} }]
+}
+```
+
+Relative paths resolve against `<dir>`. A fresh soak starts at the node's
+tip. `report` prints the block count, each comparator's outcomes, the roles
+with no comparator yet, the first non-empty diff and the last stop; `run`
+writes the same as `summary.json` when it stops. Exit codes: 0 stopped at the
+limit or on a signal, 3 intervention, 4 refused, 1 crashed.
+
+Until the role comparators exist, the soak runs the built-in ledger
+comparator (role `follower`, when `ledgerAddresses` is non-empty): the
+store's live outputs at those addresses against the node's own UTxO set at
+the same block, minus what already existed at the store's origin. It is not
+old-code tooling and stays.
+
 ## Tests and benchmarks
 
 ```sh
-pnpm test        # needs the test Postgres on 127.0.0.1:5433
+pnpm test          # needs the test Postgres on 127.0.0.1:5433
+pnpm test:fork-sim # fork simulator, shadow diff and soak runner (also Postgres)
 pnpm bench       # B3 (rewind at N = 10^6) and B8 (retention soak)
 ```
 
 Set `MIDGARD_TEST_DATABASE_PREFIX` per worktree. `L1_FOLLOWER_PROPERTY_OPS`
-sets the property-test length (default 10^4). Bench reports are written to
+sets the property-test length (default 10^4); `L1_FORK_SIM_RUNS` and
+`L1_FORK_SIM_POSTGRES_RUNS` set the fast-check run counts (default 200 on
+SQLite, 20 on Postgres). Bench reports are written to
 `bench/output/` (or `L1_FOLLOWER_BENCH_OUTPUT`); `L1_FOLLOWER_B3_N`,
 `L1_FOLLOWER_B8_K` and `L1_FOLLOWER_B8_FULL_K=1` scale them.
+
+CI runs `test:fork-sim` in the `l1-fork-simulator` job. On a pull request it
+runs only when the change touches one of its inputs, which
+`scripts/ci/fork-simulator-inputs.mjs` derives from the workspace: every
+package that defines `test:fork-sim`, their workspace dependencies, the
+follower, the transport and the install pins.

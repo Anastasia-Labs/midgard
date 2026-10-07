@@ -20,7 +20,7 @@ import {
   mergedStatus,
   openSqliteFactStore,
 } from "../src/index.js";
-import { Rng } from "./support/chain.js";
+import { Rng } from "../src/testing/rng.js";
 import {
   fill,
   options,

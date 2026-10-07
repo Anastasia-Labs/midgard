@@ -9,6 +9,15 @@ export {
 } from "./codec.js";
 export { BlockDecodeError, decodeBlock } from "./decode/block.js";
 export {
+  applyChainSyncEvent,
+  type BlockUndecodable,
+  type FollowStep,
+  intersectionPoints,
+  stepSettled,
+  storePoint,
+  transportPoint,
+} from "./follow/chain-sync.js";
+export {
   type ChainLevel,
   createHeads,
   createSlotClock,

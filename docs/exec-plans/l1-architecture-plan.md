@@ -37,7 +37,7 @@ Identifier scheme:
 | S0–S6 | Pipeline stages | §4.1 |
 | INV1–INV6 | Fact-store invariants | §5.2 |
 | P0–P10, PW, WP, CP | Projections | §5.5 |
-| R1–R9 | Readiness reasons for intervention cases | §7.5 |
+| R1–R10 | Readiness reasons for intervention cases | §7.5 |
 | L, F, C, W, N, I, M, U + number | Tickets | §15 |
 | B1–B8 | Benchmarks | §16.2 |
 | Q1 | Owner question, ruled 2026-10-07 | §18.1 |
@@ -994,6 +994,7 @@ on an unparseable config or a port conflict.
 | R7 | `operator_removed` | The operator is no longer in the active set (D-N7) | Expected end state; re-register or retire. |
 | R8 | `wallet_below_floor` | Own wallet funds fall below the fee floor for pending intents | Fund the wallet. An automatic refill loop is open decision-register item DR-B3 (`public-testnet-decisions-2026-10-01/source-context.md:139`), not decided here. |
 | R9 | `manifest_mismatch` | The config does not match the finalised manifest identity | Fix the config. |
+| R10 | `origin_mismatch` | The configured `l1Origin` differs from the origin the follower store was initialised at | Restore the previous `l1Origin`, or run `follower reset --to-origin` to replay from the new one. The reset never deletes class B rows. |
 
 Everything else is transient and recovers automatically with backoff, while
 `/readyz` reports a reason:
@@ -1829,7 +1830,7 @@ The harness is therefore part of the tickets. It has four parts:
 | B5 | Committee | Tick at Q = 1,000 queue nodes; one store mutation and one readiness probe at 10^3 and 10^5 records | Tick p99 ≤ 50 ms; mutation ratio and readiness ratio ≤ 1.2 | C1, C2 |
 | B6 | Watcher persist | One observation at 10^5 stored | p99 ≤ 20 ms | W2 |
 | B7 | Restart to ready | Cursor at tip, N = 10^6, including the MPF load of the current root | ≤ 30 s | U2 (deferred) |
-| B8 | Retention soak | Constant event, deposit and withdrawal flow for 10 × (k + the retention window) blocks, with a short devnet retention window | Every class A, B and C table's row count plateaus: slope ≤ 1% over the last third | F2 (follower tables, synthetic chain); L5 (deferred) |
+| B8 | Retention soak | Constant event, deposit and withdrawal flow for 10 × (k + the retention window) blocks, with a short devnet retention window | Every class A, B and C table's row count plateaus: slope ≤ 1% over the last third. `l1_event_keys` is exempt: it is class A and never pruned (§11), so it grows with events ever created. | F2 (follower tables, synthetic chain; the default run scales k to 500 for speed, and a full k = 2,160 run passes on both adapters); L5 (deferred) |
 
 If a target is missed, the ticket reports the numbers to the owner rather
 than relaxing the target.
