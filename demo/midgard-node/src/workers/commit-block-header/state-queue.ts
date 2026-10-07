@@ -158,8 +158,7 @@ const unexpiredUnattestedSuffixEndTimes = (
  * append's inclusive upper bound, so it must fall strictly before the DA
  * attestation deadline of every unattested node still in the queue, not only
  * the head's: an append landing after a pending tail's deadline takes the
- * tail that timeout correction is about to remove. A pending tail the caller
- * builds on is not yet on chain and is fenced the same way. Only the head's
+ * tail that timeout correction is about to remove. Only the head's
  * fence is enforced on chain; the rest is this node's own build policy. An
  * on-chain node already past its deadline leaves no end to cap: the fence
  * fails with the build's expired-suffix refusal instead.
@@ -167,7 +166,6 @@ const unexpiredUnattestedSuffixEndTimes = (
 export const resolveCommitAppendFenceEndTimeCapLocal = (
   lucid: Parameters<typeof SDK.fetchSortedStateQueueUTxOsProgram>[0],
   fetchConfig: SDK.StateQueueFetchConfig,
-  pendingTailEndTimeMs?: number,
 ): Effect.Effect<
   number | undefined,
   SDK.StateQueueError | SDK.LucidError | SDK.LinkedListError
@@ -177,10 +175,8 @@ export const resolveCommitAppendFenceEndTimeCapLocal = (
       SDK.StateQueueUTxO[],
       SDK.LucidError | SDK.LinkedListError
     >(SDK.fetchSortedStateQueueUTxOsProgram(lucid, fetchConfig));
-    const unattestedEndTimesMs = [
-      ...(pendingTailEndTimeMs === undefined ? [] : [pendingTailEndTimeMs]),
-      ...(yield* unexpiredUnattestedSuffixEndTimes(ordered)),
-    ];
+    const unattestedEndTimesMs =
+      yield* unexpiredUnattestedSuffixEndTimes(ordered);
     return unattestedEndTimesMs.length === 0
       ? undefined
       : Math.min(...unattestedEndTimesMs) +

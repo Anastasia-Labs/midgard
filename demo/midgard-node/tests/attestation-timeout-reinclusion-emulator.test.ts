@@ -3,16 +3,12 @@ import "@effect/sql";
 import "effect";
 import "vitest";
 import "../src/database/pendingBlockFinalizations.js";
-import "../src/fibers/speculative-commit-builder.js";
 import "./helpers/correction-rewind-scenario.js";
-import "./helpers/speculative-ready-candidate.js";
 import "./attestation-timeout-reinclusion-emulator.expect-rewound-and-recommitted.js";
 
-import { Effect, Ref } from "effect";
 import { expect, it } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
-import { shutdownSpeculativeCommitSession } from "../src/fibers/speculative-commit-builder.js";
 import {
   C,
   captureRemoved,
@@ -22,7 +18,6 @@ import {
   MARKER_REFUSAL,
   nativeRoot,
   restartAfter,
-  type Scenario,
 } from "./attestation-timeout-reinclusion-emulator.expect-rewound-and-recommitted.js";
 import {
   closeLifecycle,
@@ -37,10 +32,6 @@ import {
   readSqlLedgerRoot,
   restoreObserverRow,
 } from "./helpers/correction-rewind-scenario.js";
-import {
-  expectInvalidatedByT1,
-  installReadyCandidate,
-} from "./helpers/speculative-ready-candidate.js";
 
 it("rewinds the native ledger and commits a removed block's reincluded deposit on the correct base in the same process", async () => {
   const scenario = await openCorrectionRewindScenario({ blocks: 1 });
@@ -66,69 +57,6 @@ it("rewinds the native ledger and commits a removed block's reincluded deposit o
     await h.synchronize();
   } finally {
     await closeLifecycle(h);
-  }
-}, 600_000);
-
-it("with speculation on, a correction rewind invalidates a Ready candidate (T1) and releases its fork before the owner rewinds, then ends where the flag-off rewind ends", async () => {
-  const previous = process.env.SPECULATIVE_COMMIT_BUILD;
-  process.env.SPECULATIVE_COMMIT_BUILD = "true";
-  let scenario: Scenario | undefined;
-  try {
-    scenario = await openCorrectionRewindScenario({ blocks: 1 });
-    const { h } = scenario;
-    expect(h.production.nodeConfig.SPECULATIVE_COMMIT_BUILD).toBe(true);
-    const removed = await captureRemoved(scenario.headers);
-    const owner = await Effect.runPromise(Ref.get(h.globals.NATIVE_MPF_OWNER));
-    if (owner === undefined) throw new Error("Native owner is not open");
-    // The candidate is built on the removed block: its fork's base is the
-    // removed block's root, which is the owner's durable root until the
-    // rewind moves it.
-    const removedRoot = removed[0]!.expected;
-    expect((await owner.diagnostics()).durableRoot).toBe(removedRoot);
-    const installed = await installReadyCandidate({
-      globals: h.globals,
-      owner,
-      baseHeaderHash: removed[0]!.headerHash,
-      nowMs: h.fixture.emulator.now(),
-      maxAttempts: h.production.nodeConfig.SPECULATIVE_REBUILD_MAX_ATTEMPTS,
-      observe: async () => (await owner.diagnostics()).durableRoot,
-    });
-    expect(installed.root).toBe(removedRoot);
-
-    const removal = await scenario.removeTail(scenario.headers[0]!);
-    await scenario.awaitRemovalFinality();
-    expect((await scenario.tick(h.globals)).admittedTransactionHashes).toEqual([
-      removal.accepted.transaction.txHash,
-    ]);
-    // Not before the rewind is owed and prepared.
-    expect(installed.worker.instructions).toEqual([]);
-    await scenario.nextSourceBlock();
-
-    // T1 reached the worker, the session is gone, and the candidate's fork
-    // was released while the owner still held the removed block's root.
-    expectInvalidatedByT1({ ...installed, globals: h.globals });
-    expect(installed.released.observed).toBe(removedRoot);
-
-    // Parity with the flag-off rewind above.
-    const rewoundNativeRoot = await nativeRoot(h);
-    const rewoundSqlRoot = (await readSqlLedgerRoot()).root_hex;
-    const next = await commitNextBlock(h);
-    await expectRewoundAndRecommitted({
-      scenario,
-      removed,
-      rewoundNativeRoot,
-      rewoundSqlRoot,
-      next,
-    });
-    await h.synchronize();
-  } finally {
-    try {
-      await Effect.runPromise(shutdownSpeculativeCommitSession());
-      if (scenario !== undefined) await closeLifecycle(scenario.h);
-    } finally {
-      if (previous === undefined) delete process.env.SPECULATIVE_COMMIT_BUILD;
-      else process.env.SPECULATIVE_COMMIT_BUILD = previous;
-    }
   }
 }, 600_000);
 

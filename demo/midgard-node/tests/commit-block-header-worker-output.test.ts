@@ -297,23 +297,6 @@ describe("commit block worker output handling", () => {
       },
       preserve: false,
     },
-    // Speculative candidates only ever exist in memory; only the `type` field
-    // takes part in the decision, so the payloads stay minimal.
-    SpeculativeCandidateReadyOutput: {
-      output: {
-        type: "SpeculativeCandidateReadyOutput",
-        candidate: {} as never,
-      },
-      preserve: false,
-    },
-    SpeculativeCandidateInvalidatedOutput: {
-      output: {
-        type: "SpeculativeCandidateInvalidatedOutput",
-        candidateId: "candidate-1",
-        reason: "T1" as never,
-      },
-      preserve: false,
-    },
     SubmittedAwaitingConfirmationOutput: {
       output: {
         type: "SubmittedAwaitingConfirmationOutput",

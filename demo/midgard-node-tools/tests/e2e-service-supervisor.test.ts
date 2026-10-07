@@ -252,7 +252,7 @@ describe("e2e host process supervisor", () => {
   it("externally SIGKILLs a service when a checkpoint marker spans output chunks", async () => {
     const dir = await makeTempDir();
     const marker =
-      "pipeline_trace phase=e2e_crash_checkpoint checkpoint=speculative_mid_build";
+      "pipeline_trace phase=e2e_crash_checkpoint checkpoint=journal_prepared_before_submit";
     const script = await writeScript(
       dir,
       "checkpoint-service.mjs",

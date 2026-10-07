@@ -5,6 +5,7 @@ import operatorMembershipSql from "./sql/0003_operator_membership.sql";
 import retainedScriptMaterialSql from "./sql/0004_retained_script_material.sql";
 import foreignEventCensusSql from "./sql/0005_foreign_event_census.sql";
 import foreignNativeAdoptionSql from "./sql/0006_foreign_native_adoption.sql";
+import dropForeignTipReconciliationsSql from "./sql/0007_drop_foreign_tip_reconciliations.sql";
 
 export type Migration = {
   readonly version: number;
@@ -57,6 +58,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: foreignNativeAdoptionSql,
     transactional: true,
   },
+  {
+    version: 7,
+    name: "drop_foreign_tip_reconciliations",
+    checksumSha256: sha256Hex(dropForeignTipReconciliationsSql),
+    sql: dropForeignTipReconciliationsSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -102,7 +110,6 @@ export const APPLICATION_TABLE_NAMES = [
   "commit_build_calibration",
   "deposits_utxos",
   "forced_transaction_utxos",
-  "foreign_tip_reconciliations",
   "foreign_native_adoptions",
   "foreign_verified_segments",
   "foreign_confirmed_frontier",
@@ -166,8 +173,6 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_forced_transaction_utxos_status_inclusion_time_tx_order_id",
   "idx_forced_transaction_utxos_projected_header_hash",
   "idx_forced_transaction_utxos_tx_id",
-  "idx_foreign_tip_reconciliations_status_updated",
-  "idx_foreign_tip_reconciliations_window",
   "idx_withdrawal_utxos_status_inclusion_time_event_id",
   "idx_withdrawal_utxos_projected_header_hash",
   "idx_withdrawal_utxos_withdrawal_l1_tx_hash",

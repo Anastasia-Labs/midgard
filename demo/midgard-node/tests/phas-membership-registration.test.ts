@@ -98,7 +98,7 @@ describe("PHAS membership reward registration", () => {
         certificate: { ...capture.evidence.certificate, unknown: true },
       },
       {
-        schemaVersion: "midgard-phase4-t1-probe-v1",
+        schemaVersion: "midgard-phase4-unrelated-proof-v1",
         txHash: capture.evidence.txHash,
         cborSha256: capture.evidence.cborSha256,
         cborSizeBytes: capture.evidence.cborSizeBytes,

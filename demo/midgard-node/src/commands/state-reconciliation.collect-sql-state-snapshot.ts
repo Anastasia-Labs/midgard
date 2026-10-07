@@ -1,6 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 
 import {
@@ -24,12 +22,10 @@ import {
 } from "./state-reconciliation.check-ledger-cache.js";
 import {
   entriesMap,
-  type ForeignRow,
   headerEndTimeMs,
   type JournalRow,
 } from "./state-reconciliation.collect-l1-state-view.js";
 import {
-  type ForeignSummary,
   type JournalSummary,
   type L1StateView,
   type LedgerPointResult,
@@ -244,33 +240,6 @@ export const collectSqlStateSnapshot = ({
         );
         const blockRows = yield* sql<{ readonly header_hash: Buffer }>`
           SELECT DISTINCT header_hash FROM blocks`;
-        const foreignRows = yield* sql<ForeignRow>`SELECT
-            foreign_header_hash, status, foreign_header_cbor,
-            deposits_root, withdrawals_root, forced_transactions_root
-          FROM foreign_tip_reconciliations`;
-        const foreign = foreignRows.map((row): ForeignSummary => {
-          let header: SDK.Header | null = null;
-          try {
-            header = LucidData.from(
-              toHex(row.foreign_header_cbor),
-              SDK.Header,
-            ) as SDK.Header;
-          } catch {
-            header = null;
-          }
-          return {
-            headerHash: toHex(row.foreign_header_hash),
-            status: row.status,
-            prevHeaderHash: header?.prevHeaderHash ?? null,
-            roots: {
-              deposits: row.deposits_root,
-              withdrawals: row.withdrawals_root,
-              forcedTransactions: row.forced_transactions_root,
-            },
-            transactionsRoot: header?.transactionsRoot ?? null,
-            utxosRoot: header?.utxosRoot ?? null,
-          };
-        });
         const observerRows = yield* sql<{ readonly state_record: unknown }>`
           SELECT state_record FROM state_queue_terminal_observer_states
           WHERE state_queue_policy_id = ${Buffer.from(stateQueuePolicyId, "hex")}`;
@@ -305,7 +274,6 @@ export const collectSqlStateSnapshot = ({
           mempoolLedger,
           pendingTxs,
           blockHeaderHashes: blockRows.map((row) => toHex(row.header_hash)),
-          foreign,
           observer,
         } satisfies SqlStateSnapshot;
       }),

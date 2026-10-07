@@ -20,19 +20,14 @@ import { type ResolvedCommitBaseLedgerEntries } from "./commit-block-header.sele
 import {
   deserializeStateQueueUTxO,
   type SerializedStateQueueUTxO,
-  WorkerInput,
 } from "./utils/commit-block-header.js";
 
 export const resolveCommitBaseLedgerEntries = ({
   availableConfirmedBlock,
-  speculativeBase,
   nativeMpfRoot,
   requireEntries,
 }: {
   readonly availableConfirmedBlock: "" | SerializedStateQueueUTxO;
-  readonly speculativeBase?: NonNullable<
-    WorkerInput["data"]["speculativeBuild"]
-  >["base"];
   readonly nativeMpfRoot: string;
   readonly requireEntries: boolean;
 }): Effect.Effect<
@@ -41,65 +36,6 @@ export const resolveCommitBaseLedgerEntries = ({
   Database | NodeConfig
 > =>
   Effect.gen(function* () {
-    if (speculativeBase !== undefined) {
-      const currentLedgerRootHex = nativeMpfRoot;
-      const journal = yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
-        Buffer.from(speculativeBase.headerHash, "hex"),
-      );
-      if (Option.isNone(journal)) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: PendingBlockFinalizationsDB.tableName,
-            message: "Refusing to speculate without the submitted base journal",
-            cause: `base_header_hash=${speculativeBase.headerHash}`,
-          }),
-        );
-      }
-      if (
-        journal.value[
-          PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
-        ] !== speculativeBase.utxosRoot
-      ) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: PendingBlockFinalizationsDB.tableName,
-            message:
-              "Speculative base root does not match its submitted journal",
-            cause: `base_header_hash=${speculativeBase.headerHash},input_root=${speculativeBase.utxosRoot},journal_root=${journal.value[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]}`,
-          }),
-        );
-      }
-      if (
-        !requireEntries &&
-        currentLedgerRootHex === speculativeBase.utxosRoot &&
-        journal.value.utxoPayloadAggregate !== undefined
-      ) {
-        return {
-          source: `speculative-parent:${speculativeBase.headerHash}`,
-          root: speculativeBase.utxosRoot,
-          utxoPayloadAggregate: journal.value.utxoPayloadAggregate,
-        } satisfies ResolvedCommitBaseLedgerEntries;
-      }
-      const snapshot = yield* materializeConfirmedLedgerSnapshot(journal.value);
-      if (snapshot.root !== speculativeBase.utxosRoot) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: PendingBlockFinalizationsDB.tableName,
-            message:
-              "Submitted journal post-state cannot reproduce the speculative base root",
-            cause: `base_header_hash=${speculativeBase.headerHash},expected_root=${speculativeBase.utxosRoot},journal_root=${snapshot.root}`,
-          }),
-        );
-      }
-      return {
-        source: `speculative-journal:${speculativeBase.headerHash}`,
-        entries: snapshot.entries,
-        root: snapshot.root,
-        utxoPayloadAggregate:
-          journal.value.utxoPayloadAggregate ??
-          ledgerPayloadAggregateFromEntries(snapshot.entries),
-      } satisfies ResolvedCommitBaseLedgerEntries;
-    }
     if (availableConfirmedBlock !== "") {
       const latestBlock = yield* deserializeStateQueueUTxO(
         availableConfirmedBlock,

@@ -62,7 +62,6 @@ import {
   isDrainComplete,
   rateBetweenCounters,
   summarizeCounterWindow,
-  summarizeHistogramDelta,
   summarizeL1Observation,
   summarizeLatency,
   summarizeOpenLoopCheckpointProgress,
@@ -77,7 +76,6 @@ import {
   createRuntimeSampler,
   createStageStats,
   extractHistogram,
-  extractMetricSum,
   extractMetricValue,
   findAvailableCursor,
   makeChainCursors,
@@ -366,36 +364,6 @@ const observabilityProfile = String(
   .toLowerCase();
 
 const measuredSec = Number.parseFloat(envValue("STRESS_MEASURED_SEC", "30"));
-
-const phase4BlockTxTarget = Number.parseInt(
-  envValue("STRESS_PHASE4_BLOCK_TX_TARGET", "0"),
-  10,
-);
-
-const configuredCommitMaxL2TxCount = Number.parseInt(
-  envValue("COMMIT_MAX_L2_TX_COUNT", "0"),
-  10,
-);
-
-const phase4EnvironmentFingerprintPath = envValue(
-  "STRESS_PHASE4_ENVIRONMENT_FINGERPRINT_PATH",
-  null,
-);
-
-const phase4EnvironmentFingerprint =
-  phase4EnvironmentFingerprintPath === null
-    ? null
-    : (() => {
-        const bytes = fs.readFileSync(phase4EnvironmentFingerprintPath);
-        const artifact = JSON.parse(bytes.toString("utf8"));
-        return {
-          path: path.resolve(phase4EnvironmentFingerprintPath),
-          sha256: createHash("sha256").update(bytes).digest("hex"),
-          artifactSchemaVersion: artifact.schemaVersion,
-          documentSha256: artifact.documentSha256,
-          document: artifact.document,
-        };
-      })();
 
 const warmupTxs = Number.parseInt(envValue("STRESS_WARMUP_TXS", "0"), 10);
 
@@ -736,27 +704,6 @@ if (!Number.isFinite(measuredSec) || measuredSec <= 0) {
   throw new Error("STRESS_MEASURED_SEC must be a positive number");
 }
 
-if (!Number.isInteger(phase4BlockTxTarget) || phase4BlockTxTarget < 0) {
-  throw new Error(
-    "STRESS_PHASE4_BLOCK_TX_TARGET must be a non-negative integer",
-  );
-}
-
-if (
-  phase4BlockTxTarget > 0 &&
-  configuredCommitMaxL2TxCount !== phase4BlockTxTarget
-) {
-  throw new Error(
-    `Phase 4 block target ${phase4BlockTxTarget.toString()} does not match COMMIT_MAX_L2_TX_COUNT=${configuredCommitMaxL2TxCount.toString()}`,
-  );
-}
-
-if (phase4BlockTxTarget > 0 && phase4EnvironmentFingerprint === null) {
-  throw new Error(
-    "STRESS_PHASE4_ENVIRONMENT_FINGERPRINT_PATH is required for a Phase 4 gate",
-  );
-}
-
 if (!Number.isFinite(warmupTxs) || warmupTxs < 0) {
   throw new Error("STRESS_WARMUP_TXS must be a non-negative integer");
 }
@@ -963,12 +910,6 @@ const metricSpecs = {
   processedUnsubmittedTxsSizeBytes: ["processed_unsubmitted_txs_size_bytes"],
   unconfirmedSubmittedBlockPending: ["unconfirmed_submitted_block_pending"],
   unconfirmedSubmittedBlockAgeMs: ["unconfirmed_submitted_block_age_ms"],
-  speculationHit: ["speculation_hit_total", "speculation_hit"],
-  speculationInvalidations: [
-    "speculation_invalidations_total",
-    "speculation_invalidations",
-  ],
-  speculationOverlapEfficiency: ["speculation_overlap_efficiency"],
   daPublicationBacklog: ["da_publish_reconciler_backlog"],
 };
 
@@ -989,10 +930,7 @@ const readCounters = async () => {
   const text = await fetchMetricsText();
   const counters = { metricNames: {}, missingMetrics: [], histograms: {} };
   for (const [key, names] of Object.entries(metricSpecs)) {
-    const extracted =
-      key === "speculationInvalidations"
-        ? extractMetricSum(text, names)
-        : extractMetricValue(text, names);
+    const extracted = extractMetricValue(text, names);
     counters[key] = extracted.value;
     counters.metricNames[key] = extracted.name;
     if (extracted.name === null) {
@@ -1020,25 +958,9 @@ const readCounters = async () => {
     "commit_worker_duration",
   );
   counters.histograms.mergeDuration = extractHistogram(text, "merge_duration");
-  counters.histograms.commitCadenceMs = extractHistogram(
-    text,
-    "commit_cadence_ms",
-  );
-  counters.histograms.speculativeBuildDurationMs = extractHistogram(
-    text,
-    "speculative_build_duration_ms",
-  );
-  counters.histograms.submitAfterConfirmMs = extractHistogram(
-    text,
-    "submit_after_confirm_ms",
-  );
   counters.histograms.confirmationDetectionLagMs = extractHistogram(
     text,
     "confirmation_detection_lag_ms",
-  );
-  counters.histograms.l1ConfirmationWaitMs = extractHistogram(
-    text,
-    "l1_confirmation_wait_ms",
   );
   counters.l1TipSlot = null;
   if (scenarioClass === "B") {
@@ -2440,40 +2362,6 @@ const buildStageReport = (stage) => {
     statusLatencyMs: summarizeLatency(stage.statusLatencyMs),
     abortedCorpusExhausted: stage.abortedCorpusExhausted === true,
     phase1StageAWindowGate: buildPhase1StageAWindowGate(stage),
-    phase4Metrics: {
-      speculationHitDelta: counterDelta(
-        stage.counterStart,
-        endCounters,
-        "speculationHit",
-      ),
-      speculationInvalidationDelta: counterDelta(
-        stage.counterStart,
-        endCounters,
-        "speculationInvalidations",
-      ),
-      histograms: {
-        commitCadenceMs: summarizeHistogramDelta(
-          stage.counterStart.histograms?.commitCadenceMs,
-          endCounters.histograms?.commitCadenceMs,
-        ),
-        speculativeBuildDurationMs: summarizeHistogramDelta(
-          stage.counterStart.histograms?.speculativeBuildDurationMs,
-          endCounters.histograms?.speculativeBuildDurationMs,
-        ),
-        submitAfterConfirmMs: summarizeHistogramDelta(
-          stage.counterStart.histograms?.submitAfterConfirmMs,
-          endCounters.histograms?.submitAfterConfirmMs,
-        ),
-        confirmationDetectionLagMs: summarizeHistogramDelta(
-          stage.counterStart.histograms?.confirmationDetectionLagMs,
-          endCounters.histograms?.confirmationDetectionLagMs,
-        ),
-        l1ConfirmationWaitMs: summarizeHistogramDelta(
-          stage.counterStart.histograms?.l1ConfirmationWaitMs,
-          endCounters.histograms?.l1ConfirmationWaitMs,
-        ),
-      },
-    },
   };
 };
 
@@ -2700,55 +2588,6 @@ const evaluateStagePass = ({ stage, stageReport, monitorSamples }) => {
     );
   }
   const l1Observation = summarizeL1Observation(measuredSamples);
-  const overlapEfficiency = summarizeLatency(
-    measuredSamples
-      .filter(
-        (sample) =>
-          sample.counters?.metricNames?.speculationOverlapEfficiency !== null,
-      )
-      .map((sample) => Number(sample.counters?.speculationOverlapEfficiency))
-      .filter(Number.isFinite),
-  );
-  const speculationDenominator =
-    stageReport.phase4Metrics.speculationHitDelta +
-    stageReport.phase4Metrics.speculationInvalidationDelta;
-  stageReport.phase4Metrics = {
-    ...stageReport.phase4Metrics,
-    overlapEfficiency,
-    hitRate:
-      speculationDenominator > 0
-        ? stageReport.phase4Metrics.speculationHitDelta / speculationDenominator
-        : null,
-    observedBlockTxCount: (() => {
-      const values = measuredSamples
-        .filter(
-          (sample) => sample.counters?.metricNames?.commitBlockNumTx !== null,
-        )
-        .map((sample) => Number(sample.counters?.commitBlockNumTx))
-        .filter((value) => Number.isFinite(value) && value > 0);
-      return {
-        sampleCount: values.length,
-        min: values.length === 0 ? null : Math.min(...values),
-        max: values.length === 0 ? null : Math.max(...values),
-        last: values.at(-1) ?? null,
-      };
-    })(),
-    queueSlopesPerSec: {
-      stateQueueBlocks: gaugeSlopePerSec(measuredSamples, "blocksInQueue"),
-      daPublicationBacklog: gaugeSlopePerSec(
-        measuredSamples,
-        "daPublicationBacklog",
-      ),
-    },
-    queueMetricPresence: {
-      stateQueueBlocks: measuredSamples.some(
-        (sample) => sample.counters?.metricNames?.blocksInQueue !== null,
-      ),
-      daPublicationBacklog: measuredSamples.some(
-        (sample) => sample.counters?.metricNames?.daPublicationBacklog !== null,
-      ),
-    },
-  };
   if (scenarioClass === "B") {
     if (
       l1Observation.startTipSlot === null ||
@@ -2911,15 +2750,6 @@ const main = async () => {
       targetAcceptedTps,
       requireFreshChains,
       measuredSec,
-      phase4: {
-        blockTxTarget: phase4BlockTxTarget,
-        configuredCommitMaxL2TxCount,
-        speculativeCommitBuild:
-          String(envValue("SPECULATIVE_COMMIT_BUILD", "false"))
-            .trim()
-            .toLowerCase() === "true",
-        environmentFingerprint: phase4EnvironmentFingerprint,
-      },
       warmupTxs,
       warmupSec,
       cooldownSec,

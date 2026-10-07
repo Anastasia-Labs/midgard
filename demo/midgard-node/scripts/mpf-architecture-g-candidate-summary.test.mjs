@@ -57,9 +57,6 @@ const candidateRoots = (seed) => ({
   utxos: hash(seed),
   rawTransactions: hash(seed + 1),
   transactions: hash(seed + 2),
-  deposits: hash(seed + 3),
-  forcedTransactions: hash(seed + 4),
-  withdrawals: hash(seed + 5),
   transitionTrace: hash(seed + 6),
   eventToStep: hash(seed + 7),
 });
@@ -72,8 +69,6 @@ const candidateResult = ({
   rootSeed,
 }) => {
   const roots = candidateRoots(rootSeed);
-  const baseHeaderHash = hash(30).slice(0, 56);
-  const minimumWatermarkMs = 1_699_999_999_000;
   return {
     schemaVersion: "midgard-architecture-g-commit-candidate-probe-v1",
     probePath: "/probes/mpf-commit-candidate-probe.js",
@@ -93,7 +88,8 @@ const candidateResult = ({
     binarySha256: hash(16),
     cpuAffinity: "2-9",
     durationMs,
-    confirmedLedgerFullScans: 0,
+    confirmedLedgerFullScans: 1,
+    userEventRows: { deposits: 0, forcedTransactions: 0, withdrawals: 0 },
     journalRowsBefore: 0,
     journalRowsAfter: 0,
     candidateConfig: {
@@ -107,27 +103,12 @@ const candidateResult = ({
       maxLedgerOpCount: transactions * 3,
       maxTransitionStepCount: transactions,
     },
+    providerReads: 4,
     providerBoundaryAttempts: 0,
     submissionAttempts: 0,
     candidate: {
-      candidateId: "123e4567-e89b-42d3-a456-426614174000",
-      baseHeaderHash,
       endTimeMs: 1_700_000_000_000,
-      builtAtMs: 1_700_000_000_100,
-      buildDurationMs: Math.max(1, durationMs - 1),
-      invalidationKey: `${baseHeaderHash}:1700000000000:${minimumWatermarkMs.toString()}`,
-      watermarks: {
-        depositMs: minimumWatermarkMs,
-        withdrawalMs: minimumWatermarkMs + 100,
-        txOrderMs: minimumWatermarkMs + 200,
-        refreshedAtMs: 1_700_000_000_050,
-      },
-      expectedUserEventCounts: {
-        deposits: 0,
-        forcedTransactions: 0,
-        withdrawals: 0,
-      },
-      expectedL2TransactionCount: transactions,
+      l2TransactionCount: transactions,
       roots,
     },
     ownerBefore: ownerDiagnostics(fixtureRoot),
@@ -298,6 +279,13 @@ test("accepts only the complete passing formal 50k candidate summary", () => {
     (value) => void value.summary.groups[0].results.pop(),
     (value) => void (value.summary.groups[0].fixtureAfter.marker = hash(91)),
     (value) => void (value.summary.groups[0].roots.utxos = hash(92)),
+    ...Object.keys(candidateRoots(0)).map(
+      (rootName) => (value) =>
+        void (value.summary.groups[0].results[1].candidate.roots[rootName] =
+          hash(95)),
+    ),
+    (value) =>
+      void (value.summary.groups[0].results[1].userEventRows.deposits = 1),
     (value) =>
       void (value.summary.groups[0].results[0].corpusSliceSha256 = hash(93)),
     (value) =>

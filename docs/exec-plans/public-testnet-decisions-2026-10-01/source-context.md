@@ -1,5 +1,7 @@
 # Owner decisions needed — devnet unattended-lifecycle program, 2026-10-01
 
+> Note (deleted 2026-10-03, #752): speculative commit mode, the foreign-tip reconciliation table `foreign_tip_reconciliations`, the T2 foreign-event reconciliation workers, the foreign DA reconciliation fiber and the commit-time foreign-tip gate no longer exist. The file paths this record cites for them are kept as plain text for history.
+
 *Revised later the same day: both review waves finished and added five more
 (Part D), and I took eleven decisions myself rather than ask — those are listed
 at the end so you can overrule any of them.*
@@ -40,14 +42,14 @@ foreign payloads reachable. Neither option may bypass the `needsPayload` check:
 committing on a foreign base whose non-empty event roots were never verified is
 the double-inclusion hazard.
 
-### A2. Is `foreign_tip_reconciliation_awaiting` a *hard* readiness reason?
+### A2. Is `foreign_tip_reconciliation_awaiting` a *hard* readiness reason? (deleted 2026-10-03, #752)
 An unresolved row withholds no block — the 503 is pure liveness loss — but
 `tests/readiness.test.ts:68-77` **pins** the current behaviour, so demoting it
 to a readiness *detail* (the pattern `pendingFinalizationAgeDetail` already
 uses) is a ruling, not a bug fix. **Recommendation: demote to a detail.**
 LV-ND1 needs this.
 
-### A3. What prunes `foreign_tip_reconciliations`, at what horizon?
+### A3. What prunes `foreign_tip_reconciliations`, at what horizon? (deleted 2026-10-03, #752)
 Confirmed by grep: **nothing does.** No `DELETE` anywhere; the full-table scan
 plus per-entry decode runs on every commit tick and grows without bound, unlike
 `da_payloads` which has `pruneBeyondRetention` and a sweeper.
@@ -343,7 +345,7 @@ throughput for the public testnet; (b) require operators to publish payloads
 before their header lands, so a peer can verify rather than wait; (c) something
 else. This gates the shape of W5-1.
 
-Related and smaller: I verified myself that `SPECULATIVE_COMMIT_BUILD` defaults
+Related and smaller (deleted 2026-10-03, #752): I verified myself that `SPECULATIVE_COMMIT_BUILD` defaults
 **false** (`config.make-config.ts:202-204`), and nothing in the devnet-stack or
 lc1 sets it, so the whole foreign-tip surface is **inert on lc1 today**. I have
 therefore moved it behind E0 in the ordering. Say so if you want it first

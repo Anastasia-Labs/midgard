@@ -259,6 +259,7 @@ const candidateSeedInputDocument = () => ({
   fundingMapPath: "/evidence/canonical-corpus-funding.json",
   fundingMapSha256: hash(91),
   expectedTransactionCount: 50_000,
+  fixtureInitialUtxoCount: 1_000_000,
   firstTimestampIso: "2026-07-28T00:00:00.000Z",
 });
 
@@ -276,6 +277,9 @@ test("candidate seed input has one exact bounded V1 producer language", () => {
     (value) => void (value.corpusSlicePath = `/${"a".repeat(4096)}`),
     (value) => void (value.corpusSliceSha256 = "bad"),
     (value) => void (value.expectedTransactionCount = 0),
+    (value) => void (value.fixtureInitialUtxoCount = 0),
+    (value) => void (value.fixtureInitialUtxoCount = 1.5),
+    (value) => void delete value.fixtureInitialUtxoCount,
     (value) => void (value.firstTimestampIso = "2026-07-28T00:00:00Z"),
   ]) {
     const invalid = structuredClone(valid);
@@ -1264,7 +1268,7 @@ test("numeric arguments reject partial, unsafe, zero, and negative values", () =
 });
 
 const candidateInputDocument = (forcedValidationSlotConfigArtifact) => {
-  const submittedTxHash = hash(124);
+  const snapshotIdentity = hash(124);
   const blockEndTimeMs = 1_700_000_000_000;
   return {
     schemaVersion: "midgard-architecture-g-commit-candidate-input-v1",
@@ -1281,6 +1285,7 @@ const candidateInputDocument = (forcedValidationSlotConfigArtifact) => {
     fixtureCreationPath: "/evidence/fixture-create-1000000.json",
     fixtureCreationSha256: hash(128),
     fixtureInitialUtxoCount: 1_000_000,
+    baseUtxosRoot: hash(129),
     baseUtxoPayloadAggregate: {
       entryCount: 1_000_000,
       encodedTupleBytes: 80_000_000,
@@ -1298,26 +1303,8 @@ const candidateInputDocument = (forcedValidationSlotConfigArtifact) => {
         ledgerStoreLeaseOwner: "commit:123e4567-e89b-42d3-a456-426614174000",
         mempoolTxsCountSoFar: 0,
         sizeOfProcessedTxsSoFar: 0,
-        baseSnapshotId: `architecture-g-candidate:${submittedTxHash}`,
+        baseSnapshotId: `architecture-g-candidate:${snapshotIdentity}`,
         stateQueueHasUnmergedTail: true,
-        speculativeBuild: {
-          base: {
-            headerHash: submittedTxHash.slice(0, 56),
-            utxosRoot: hash(129),
-            blockEndTimeMs,
-            submittedTxHash,
-          },
-          watermarks: {
-            depositMs: blockEndTimeMs + 180_000,
-            withdrawalMs: blockEndTimeMs + 180_000,
-            txOrderMs: blockEndTimeMs + 180_000,
-            refreshedAtMs: blockEndTimeMs + 180_000,
-          },
-          excludedMempoolTxIds: [],
-          excludedDepositEventIds: [],
-          excludedForcedTransactionEventIds: [],
-          excludedWithdrawalEventIds: [],
-        },
       },
     },
   };
@@ -1357,20 +1344,17 @@ test("candidate input validator accepts only the complete producer language", ()
       (value) => void delete value.workerInput.data.ledgerStoreLeaseOwner,
       (value) =>
         void (value.workerInput.data.ledgerStoreLeaseOwner = "commit:shared"),
-      (value) => void (value.workerInput.data.speculativeBuild.unknown = true),
       (value) =>
-        void (value.workerInput.data.speculativeBuild.base.unknown = true),
+        void (value.workerInput.data.speculativeBuild = { unknown: true }),
+      (value) => void (value.baseUtxosRoot = "bad"),
+      (value) => void delete value.baseUtxosRoot,
       (value) =>
-        void (value.workerInput.data.speculativeBuild.watermarks.unknown = true),
+        void (value.workerInput.data.baseSnapshotId = `architecture-g-candidate:${hash(171).toUpperCase()}`),
       (value) =>
-        void (value.workerInput.data.speculativeBuild.base.headerHash =
-          hash(1)),
+        void (value.workerInput.data.baseSnapshotId =
+          "architecture-g-candidate:"),
       (value) =>
-        void (value.workerInput.data.speculativeBuild.base.utxosRoot = "bad"),
-      (value) =>
-        void value.workerInput.data.speculativeBuild.excludedMempoolTxIds.push(
-          hash(2),
-        ),
+        void (value.workerInput.data.stateQueueHasUnmergedTail = false),
       (value) => void (value.levelPath = "relative/fixture"),
       (value) => void (value.corpusSha256 = hash(3)),
       (value) => void (value.baseUtxoPayloadAggregate.entryCount = 999_999),
@@ -1380,9 +1364,6 @@ test("candidate input validator accepts only the complete producer language", ()
         void (value.forcedValidationSlotConfigArtifact.document.slotConfig.slotLength = 2_000),
       (value) =>
         void (value.forcedValidationSlotConfigArtifact.sha256 = hash(4)),
-      (value) =>
-        void (value.workerInput.data.speculativeBuild.watermarks.depositMs =
-          value.workerInput.data.currentBlockStartTimeMs),
     ]) {
       const invalid = structuredClone(valid);
       mutate(invalid);
@@ -1555,7 +1536,7 @@ test("Custom slot-config capture bounds Ogmios response time and bytes", async (
   );
 });
 
-test("candidate result validator binds count, affinity, no-scan, no-submit, journal, and roots", () => {
+test("candidate result validator binds count, affinity, one base scan, no-submit, journal, no user events, and roots", () => {
   const valid = candidateProbeResult();
   assert.deepEqual(
     validateCommitCandidateProbeResult({
@@ -1572,12 +1553,15 @@ test("candidate result validator binds count, affinity, no-scan, no-submit, jour
     valid.candidate.roots,
   );
   for (const mutate of [
-    (value) => void (value.confirmedLedgerFullScans = 1),
+    (value) => void (value.confirmedLedgerFullScans = 0),
+    (value) => void (value.confirmedLedgerFullScans = 2),
+    (value) => void (value.providerReads = -1),
+    (value) => void delete value.providerReads,
     (value) => void (value.providerBoundaryAttempts = 1),
     (value) => void (value.submissionAttempts = 1),
     (value) => void (value.journalRowsBefore = 1),
     (value) => void (value.journalRowsAfter = 1),
-    (value) => void (value.candidate.expectedL2TransactionCount = 49_999),
+    (value) => void (value.candidate.l2TransactionCount = 49_999),
     (value) => void (value.cpuAffinity = "0"),
     (value) => void (value.inputPath = "/inputs/different.json"),
     (value) => void (value.inputSha256 = "bad"),
@@ -1589,13 +1573,13 @@ test("candidate result validator binds count, affinity, no-scan, no-submit, jour
     (value) => void (value.baseUtxoPayloadAggregate.entryCount = 99),
     (value) => void (value.candidateConfig.scratchBuild = "overlay"),
     (value) => void (value.candidateConfig.maxLedgerOpCount = 149_999),
-    (value) => void (value.candidate.candidateId = "not-a-uuid"),
-    (value) => void (value.candidate.baseHeaderHash = "bad"),
-    (value) => void (value.candidate.invalidationKey = "stale"),
-    (value) => void (value.candidate.watermarks.depositMs = -1),
-    (value) => void (value.candidate.expectedUserEventCounts.deposits = -1),
+    (value) => void (value.candidate.endTimeMs = 0),
+    (value) => void delete value.candidate.roots.eventToStep,
     (value) => void (value.ownerAfter.durableRoot = hash(122)),
     (value) => void (value.candidate.roots.utxos = "bad"),
+    (value) => void (value.userEventRows.deposits = 1),
+    (value) => void (value.userEventRows.forcedTransactions = 1),
+    (value) => void (value.userEventRows.withdrawals = 1),
   ]) {
     const invalid = structuredClone(valid);
     mutate(invalid);
@@ -1623,9 +1607,13 @@ test("candidate result validator rejects incomplete or extended V1 documents", (
     (value) => void (value.baseUtxoPayloadAggregate.unknown = true),
     (value) => void (value.candidateConfig.unknown = true),
     (value) => void (value.candidate.unknown = true),
-    (value) => void (value.candidate.watermarks.unknown = true),
-    (value) => void (value.candidate.expectedUserEventCounts.unknown = true),
+    (value) =>
+      void (value.candidate.candidateId =
+        "123e4567-e89b-42d3-a456-426614174000"),
     (value) => void (value.candidate.roots.unknown = hash(123)),
+    (value) => void (value.candidate.roots.deposits = hash(124)),
+    (value) => void delete value.userEventRows,
+    (value) => void (value.userEventRows.unknown = 0),
     (value) => void (value.ownerBefore.unknown = true),
     (value) => void (value.ownerAfter.ownerEpoch.unknown = true),
   ]) {

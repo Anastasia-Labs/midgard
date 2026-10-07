@@ -66,8 +66,6 @@ export const WATCHDOG_HALT_SOURCES: readonly HaltSource[] = [
 export const FIBER_HALT_SOURCES = {
   settlement: SETTLEMENT_HALT_SOURCES,
   blockCommitment: COMMIT_HALT_SOURCES,
-  speculativeCommitBuilder: COMMIT_HALT_SOURCES,
-  speculativeCommitSubmitter: COMMIT_HALT_SOURCES,
   merge: MERGE_HALT_SOURCES,
   operatorWatchdog: WATCHDOG_HALT_SOURCES,
 } as const satisfies Record<string, readonly HaltSource[]>;

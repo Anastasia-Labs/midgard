@@ -35,8 +35,6 @@ export const applyCommitWorkerReadiness = (
     case "RegisteredDueWorkOutput":
     case "AwaitingForeignDaOutput":
     case "SubmittedAwaitingLocalFinalizationOutput":
-    case "SpeculativeCandidateReadyOutput":
-    case "SpeculativeCandidateInvalidatedOutput":
       return Effect.void;
   }
 };

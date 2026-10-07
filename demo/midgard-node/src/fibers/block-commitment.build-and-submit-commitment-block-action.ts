@@ -1,7 +1,6 @@
-import { Duration, Effect, Metric, Option, Queue, Ref, Runtime } from "effect";
+import { Duration, Effect, Metric, Option, Ref, Runtime } from "effect";
 
 import {
-  ForeignTipReconciliationsDB,
   MpfEngineStateDB,
   PendingBlockFinalizationsDB,
 } from "../database/index.js";
@@ -43,7 +42,6 @@ import {
   commitBlockTxSizeGauge,
   commitWorkerDurationTimer,
   type CommitWorkerMessage,
-  foreignTipReconciliationAwaitingGauge,
   publishFullMempoolLedgerReload,
   recoverNativeMpfFromActiveJournalAfterWorkerFailure,
   resolveAuthoritativeLocalFinalizationPreflight,
@@ -56,7 +54,6 @@ import { classifyCommitWorkerOutputForMutationLease } from "./commit-worker-fail
 import { nativeMpfWorkerInput } from "./native-mpf-worker-input.js";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
 import { registerSlotAwareDueWork } from "./slot-aware-due-work.js";
-import { reduceSpeculativeCommitState } from "./speculative-commit-state.js";
 
 /** Run a commitment worker and publish its node state and metrics. */
 export const buildAndSubmitCommitmentBlockAction = (
@@ -363,23 +360,6 @@ export const buildAndSubmitCommitmentBlockAction = (
         yield* Effect.logWarning(
           `🔹 Block submitted but local finalization is pending recovery: ${workerOutput.error}`,
         );
-        if (nodeConfig.SPECULATIVE_COMMIT_BUILD) {
-          yield* Ref.update(globals.SPECULATIVE_COMMIT_STATE, (state) =>
-            reduceSpeculativeCommitState(
-              state,
-              {
-                _tag: "SubmittedBase",
-                baseHeaderHash: workerOutput.submittedHeaderHash,
-                atMs: Date.now(),
-              },
-              nodeConfig.SPECULATIVE_REBUILD_MAX_ATTEMPTS,
-            ),
-          );
-          yield* Queue.offer(
-            globals.SPECULATIVE_BUILD_WAKE_QUEUE,
-            workerOutput.submittedHeaderHash,
-          );
-        }
         break;
       }
       case "SubmittedAwaitingConfirmationOutput": {
@@ -402,23 +382,6 @@ export const buildAndSubmitCommitmentBlockAction = (
         yield* Effect.logInfo(
           "🔹 Block submitted; local finalization is intentionally deferred until L1 confirmation.",
         );
-        if (nodeConfig.SPECULATIVE_COMMIT_BUILD) {
-          yield* Ref.update(globals.SPECULATIVE_COMMIT_STATE, (state) =>
-            reduceSpeculativeCommitState(
-              state,
-              {
-                _tag: "SubmittedBase",
-                baseHeaderHash: workerOutput.submittedHeaderHash,
-                atMs: Date.now(),
-              },
-              nodeConfig.SPECULATIVE_REBUILD_MAX_ATTEMPTS,
-            ),
-          );
-          yield* Queue.offer(
-            globals.SPECULATIVE_BUILD_WAKE_QUEUE,
-            workerOutput.submittedHeaderHash,
-          );
-        }
         break;
       }
       case "SuccessfulLocalFinalizationRecoveryOutput": {
@@ -461,16 +424,7 @@ export const buildAndSubmitCommitmentBlockAction = (
       case "FailureOutput": {
         break;
       }
-      case "SpeculativeCandidateReadyOutput":
-      case "SpeculativeCandidateInvalidatedOutput": {
-        break;
-      }
     }
-    const awaitingForeignTipReconciliations =
-      yield* ForeignTipReconciliationsDB.countAwaiting;
-    yield* foreignTipReconciliationAwaitingGauge(
-      Effect.succeed(awaitingForeignTipReconciliations),
-    );
     yield* emitQueueStateMetrics;
     return workerOutput;
   }).pipe(

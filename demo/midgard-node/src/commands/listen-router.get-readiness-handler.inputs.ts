@@ -4,7 +4,6 @@ import { Effect } from "effect";
 import * as HistoryAuthority from "../database/eventHistoryAuthority.js";
 import {
   DaPayloadPublicationsDB,
-  ForeignTipReconciliationsDB,
   MempoolDB,
   MutationJobsDB,
   StateQueueMutationLeasesDB,
@@ -34,8 +33,6 @@ export const readReadinessDatabaseState = (
         15,
         deploymentIdentityDigest,
       ),
-      awaitingForeignTipReconciliations:
-        yield* ForeignTipReconciliationsDB.countAwaiting,
       mempoolTxCount: yield* MempoolDB.retrieveTxCount,
       leaseInspection: yield* StateQueueMutationLeasesDB.inspect({
         recentLimit: 3,

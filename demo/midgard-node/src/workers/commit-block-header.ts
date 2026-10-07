@@ -14,11 +14,10 @@ import "../database/index.js";
 import "../database/utils/common.js";
 import "../database/utils/ledger.js";
 import "../database/utils/tx.js";
-import "../e2e/pipelined-commit-crash-checkpoint.js";
+import "../e2e/commit-crash-checkpoint.js";
 import "../fibers/fetch-and-insert-deposit-utxos.js";
 import "../fibers/fetch-and-insert-tx-order-utxos.js";
 import "../fibers/fetch-and-insert-withdrawal-utxos.js";
-import "../fibers/speculative-commit-state.js";
 import "../lucid-time.js";
 import "../mpf/index.js";
 import "../services/event-history-producer.js";
@@ -32,13 +31,11 @@ import "./commit-block-header/event-roots.js";
 import "./commit-block-header/state-queue.js";
 import "./commit-block-header/submission.js";
 import "./commit-block-header/transition-commitments.js";
-import "./t2-foreign-event-reconciliation.js";
 import "./utils/commit-block-header.js";
 import "./utils/commit-block-planner.js";
 import "./utils/commit-end-time.js";
 import "./utils/scheduler-refresh.js";
 import "./commit-block-header.pending-user-event-counts-up-to.js";
-import "./commit-block-header.revalidate-and-persist-speculative-candidate-sources.js";
 import "./commit-block-header.select-authenticated-foreign-base-candidate.js";
 import "./commit-block-header.resolve-commit-base-ledger-entries.js";
 import "./commit-block-header.commit-explicit-block-header-program.js";
@@ -58,10 +55,8 @@ export {
   provideCommitBlockWorkerServices,
   shouldHydrateCommitBaseEntries,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
-export { revalidateAndPersistSpeculativeCandidateSources } from "./commit-block-header.revalidate-and-persist-speculative-candidate-sources.js";
 export {
   captureCommitWorkerFailure,
-  runCommitBlockHeaderCandidateBuildProgram,
   runCommitBlockHeaderWorkerProgram,
 } from "./commit-block-header.run-commit-block-header-worker-program.js";
 export { selectAuthenticatedForeignBaseCandidate } from "./commit-block-header.select-authenticated-foreign-base-candidate.js";

@@ -1,6 +1,5 @@
 import { Duration, Effect, Schedule } from "effect";
 
-import { foreignDaReconciliationFiber } from "../fibers/foreign-da-reconciliation.js";
 import {
   admissionBacklogGaugeFiber,
   attestationTimeoutCorrectionFiber,
@@ -16,10 +15,7 @@ import {
   nativeMpfOwnerSupervisorFiber,
   operatorWatchdogFiber,
   retentionSweeperFiber,
-  speculativeCommitBuilderFiber,
-  speculativeCommitSubmitterFiber,
   txQueueProcessorFiber,
-  userEventBarrierRefresherFiber,
 } from "../fibers/index.js";
 import { operatorMembershipFiber } from "../fibers/operator-membership.js";
 import { settlementFiber } from "../fibers/settlement.js";
@@ -91,9 +87,6 @@ export const nodeFibers = ({
   daPublicationReconciler: daPublicationReconcilerFiber(
     mkSchedule(nodeConfig.MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS),
   ),
-  foreignDaReconciliation: foreignDaReconciliationFiber(
-    mkSchedule(nodeConfig.MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS),
-  ),
   blockCommitment: heldSchedule(
     "blockCommitment",
     nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
@@ -112,17 +105,6 @@ export const nodeFibers = ({
   l1ProviderReadinessRefresher: l1ProviderReadinessRefresherFiber(
     mkSchedule(L1_PROVIDER_EXACT_REFRESH_INTERVAL_MS),
   ),
-  userEventBarrierRefresher: nodeConfig.SPECULATIVE_COMMIT_BUILD
-    ? userEventBarrierRefresherFiber(
-        mkSchedule(nodeConfig.USER_EVENT_BARRIER_REFRESH_MS),
-      )
-    : Effect.void,
-  speculativeCommitBuilder: nodeConfig.SPECULATIVE_COMMIT_BUILD
-    ? heldRestart("speculativeCommitBuilder", speculativeCommitBuilderFiber)
-    : Effect.void,
-  speculativeCommitSubmitter: nodeConfig.SPECULATIVE_COMMIT_BUILD
-    ? heldRestart("speculativeCommitSubmitter", speculativeCommitSubmitterFiber)
-    : Effect.void,
   fetchAndInsertTxOrderUTxOs: fetchAndInsertTxOrderUTxOsFiber(
     mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
   ),

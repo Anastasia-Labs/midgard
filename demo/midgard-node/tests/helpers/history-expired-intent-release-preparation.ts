@@ -111,7 +111,7 @@ export const inputs = (node: Node) => ({
   binding: { ...binding, manifestId: hex("manifest") },
   checkpoint,
   preparation: { token: node.token, assertCurrent: Effect.void },
-  config: { SPECULATIVE_COMMIT_BUILD: false } as never,
+  config: {} as never,
   rewindAuthority: authority,
   transport: {} as never,
   contracts: {

@@ -14,7 +14,7 @@ import {
   validatePhase4PhasRegistrationTransactionBody,
   validatePhase4ProcessIsolationValues,
   validatePhase4ResetAttestation,
-} from "../src/commands/e2e-pipelined-commit-process-acceptance.js";
+} from "../src/commands/e2e-journal-kill-recovery-acceptance.js";
 import { PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE } from "../src/commands/phase4-genesis-ledger.js";
 
 const values = (): Record<string, string> => ({
@@ -120,7 +120,7 @@ const isolation: Phase4ProcessIsolationIdentity = {
 
 const attestation = () => ({
   schemaVersion: "midgard-phase4-local-devnet-reset-attestation-v1",
-  scenarioLabel: "crash-speculative_mid_build-flag-on",
+  scenarioLabel: "journal-kill-contention",
   composeProject: isolation.composeProject,
   networkMagic: isolation.networkMagic,
   postgresDatabase: isolation.postgresDatabase,

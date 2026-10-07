@@ -15,11 +15,13 @@ import {
 import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
 import {
   ContractDeploymentIdentity,
+  type Lucid,
+  MidgardContracts,
   NodeConfig,
 } from "../src/services/index.js";
 import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.js";
 import { captureCommitWorkerFailure } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
-import type { SpeculativeCandidateReadyOutput } from "../src/workers/utils/commit-block-header.js";
+import type { WorkerOutput } from "../src/workers/utils/commit-block-header.js";
 import {
   COMMIT_DA_FRAME_IDLE_NOTICE,
   type CommitDaFrameNotice,
@@ -41,8 +43,8 @@ import {
   workerInput,
 } from "./helpers/commit-da-frame-worker-fixture.js";
 
-// The worker reads its candidates, its speculative base journal and the
-// native owner through these seams; the block build itself is faked below.
+// The worker reads its candidates, its confirmed_ledger base and the native
+// owner through these seams; the block build itself is faked below.
 const seams = vi.hoisted(() => ({
   candidates: [] as unknown[],
   baseAggregate: { entryCount: 0, encodedTupleBytes: 0 },
@@ -55,6 +57,10 @@ vi.mock("../src/database/index.js", async () => {
   >("../src/database/index.js");
   return {
     ...actual,
+    ConfirmedLedgerDB: {
+      ...actual.ConfirmedLedgerDB,
+      retrieve: Effect.succeed([]),
+    },
     DepositsDB: {
       ...actual.DepositsDB,
       retrievePendingHeaderEntriesUpTo: vi.fn(() => Effect.succeed([])),
@@ -66,8 +72,9 @@ vi.mock("../src/database/index.js", async () => {
     MempoolDB: {
       ...actual.MempoolDB,
       retrievePage: vi.fn(() =>
-        Effect.succeed({ entries: [], nextCursor: null }),
+        Effect.succeed({ entries: seams.candidates, nextCursor: null }),
       ),
+      clearTxs: vi.fn(() => Effect.void),
     },
     MpfEngineStateDB: {
       ...actual.MpfEngineStateDB,
@@ -85,21 +92,10 @@ vi.mock("../src/database/index.js", async () => {
           ),
       ),
     },
-    PendingBlockFinalizationsDB: {
-      ...actual.PendingBlockFinalizationsDB,
-      retrieveByHeaderHash: vi.fn(() =>
-        Effect.succeed(
-          Option.some({
-            [actual.PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]:
-              "33".repeat(32),
-            utxoPayloadAggregate: seams.baseAggregate,
-          }),
-        ),
-      ),
-    },
     ProcessedMempoolDB: {
       ...actual.ProcessedMempoolDB,
-      retrieve: Effect.suspend(() => Effect.succeed(seams.candidates)),
+      retrieve: Effect.succeed([]),
+      insertTxs: vi.fn(() => Effect.void),
     },
     TxAdmissionsDB: {
       ...actual.TxAdmissionsDB,
@@ -118,26 +114,6 @@ vi.mock("../src/database/index.js", async () => {
     },
   };
 });
-vi.mock(
-  "../src/transactions/state-queue/confirmed-ledger-snapshot.js",
-  async () => {
-    const actual = await vi.importActual<
-      typeof import("../src/transactions/state-queue/confirmed-ledger-snapshot.js")
-    >("../src/transactions/state-queue/confirmed-ledger-snapshot.js");
-    return {
-      ...actual,
-      materializeConfirmedLedgerSnapshot: vi.fn(() =>
-        Effect.succeed({
-          entries: [],
-          baseRoot: "33".repeat(32),
-          root: "33".repeat(32),
-          deltaChain: [],
-          delta: { spent: [], produced: [] },
-        }),
-      ),
-    };
-  },
-);
 vi.mock("../src/fibers/fetch-and-insert-deposit-utxos.js", () => ({
   fetchAndInsertDepositUTxOsForCommitBarrier: vi.fn((end: Date) =>
     Effect.succeed(end),
@@ -153,8 +129,8 @@ vi.mock("../src/fibers/fetch-and-insert-tx-order-utxos.js", () => ({
     Effect.succeed(end),
   ),
 }));
-vi.mock("../src/e2e/pipelined-commit-crash-checkpoint.js", () => ({
-  reachPipelinedCommitCrashCheckpoint: vi.fn(() => Effect.void),
+vi.mock("../src/e2e/commit-crash-checkpoint.js", () => ({
+  reachCommitCrashCheckpoint: vi.fn(() => Effect.void),
 }));
 vi.mock("../src/workers/commit-block-header/event-roots.js", () => ({
   resolveDepositsRoot: vi.fn(() => Effect.succeed(Option.none())),
@@ -167,6 +143,12 @@ vi.mock("../src/mpf/index.js", async () => {
   );
   return {
     ...actual,
+    // The confirmed_ledger base carries the durable root and the aggregate
+    // the case selects.
+    computeLedgerMpfRootFromLedgerEntries: vi.fn(() =>
+      Effect.succeed("33".repeat(32)),
+    ),
+    ledgerPayloadAggregateFromEntries: vi.fn(() => seams.baseAggregate),
     configureCommitMpfRuntime: vi.fn(() => Effect.void),
     processMpfs: vi.fn(),
   };
@@ -201,7 +183,7 @@ const candidateTx = (seed: number): EntryWithTimeStamp => ({
 /**
  * One commit worker run over `txCount` transactions of `shape`, from a base
  * ledger of `baseAggregate`. Each build returns the DA content its selection
- * would carry; the run ends at the speculative candidate the parent sees.
+ * would carry; with no confirmed block the run ends at the deferred candidate.
  */
 const runWorker = async (
   txCount: number,
@@ -255,7 +237,6 @@ const runWorker = async (
         ledgerDelta: { spent: [], produced: [] },
         rejectedMempoolTxsCount: 0,
         rejectedMempoolTxHashes: [],
-        rejectionEntries: [],
         includedDepositEntriesCount: 0,
         includedDepositEventIds: [],
         includedForcedTransactionEntriesCount: 0,
@@ -264,41 +245,42 @@ const runWorker = async (
         includedWithdrawalEventIds: [],
         nativeMpfReplay: undefined,
         nativeMpfHandle: config.nativeMpf?.handle,
+        processedMempoolTxs: [...txs],
         mempoolTxHashes: txs.map((entry) => entry[TxTable.Columns.TX_ID]),
         sizeOfProcessedTxs: txs.length * CANONICAL_TX.length,
       };
     })) as unknown as typeof processMpfs);
-  const candidates: SpeculativeCandidateReadyOutput["candidate"][] = [];
   const notices: unknown[] = [];
-  const output = await Effect.runPromise(
+  // The ingestion barriers are faked, so the provider is never read.
+  const output = (await Effect.runPromise(
     captureCommitWorkerFailure(
       runCommitBlockHeaderWorkerProgram(
         workerInput,
-        (candidate) => {
-          candidates.push(candidate);
-          return Effect.succeed({
-            type: "InvalidateSpeculativeCandidate",
-            reason: "T1",
-          });
-        },
         (message) => Effect.sync(() => notices.push(message)),
+        () => Effect.succeed({} as Lucid),
       ),
     ).pipe(
       Effect.provideService(NodeConfig, nodeConfig),
+      Effect.provideService(MidgardContracts, {} as never),
       Effect.provideService(ContractDeploymentIdentity, deploymentIdentity),
       Effect.provideService(UnownedHistoryFixture, true),
       Effect.provideService(SqlClient.SqlClient, fakeSql),
       Effect.provide(Logger.remove(Logger.defaultLogger)),
-    ) as unknown as Effect.Effect<unknown, unknown, never>,
-  );
+    ) as unknown as Effect.Effect<WorkerOutput, unknown, never>,
+  )) as WorkerOutput;
   const daFrameNotices = notices.filter(
     (notice): notice is CommitDaFrameNotice =>
       (notice as { type?: string }).type === "CommitDaFrameNotice",
   );
+  // The deferred block's L2 transaction count; none when no block was built.
+  const deferredTxCounts =
+    output.type === "SkippedSubmissionOutput" && output.candidate !== undefined
+      ? [output.mempoolTxsCount]
+      : [];
   return {
     output,
     builds,
-    candidates,
+    deferredTxCounts,
     owner: seams.owner,
     daFrameNotices,
     sourceWindows,
@@ -312,9 +294,7 @@ const DEEP_LEDGER_TRANSFER: BlockShape = { witnessValueBytes: 8_000 };
 describe("commit worker DA frame step-down", () => {
   it("rebuilds an overflowing block once from a fresh fork and hands on the smaller one", async () => {
     const run = await runWorker(100, DEEP_LEDGER_TRANSFER);
-    expect(run.output).toMatchObject({
-      type: "SpeculativeCandidateInvalidatedOutput",
-    });
+    expect(run.output).toMatchObject({ type: "SkippedSubmissionOutput" });
     expect(run.builds).toHaveLength(2);
     expect(run.sourceWindows[0]).toBeUndefined();
     expect(run.sourceWindows[1]).toBe(BLOCK_TIME + 100);
@@ -332,8 +312,7 @@ describe("commit worker DA frame step-down", () => {
       "fork:2",
       "build:2",
     ]);
-    expect(run.candidates).toHaveLength(1);
-    expect(run.candidates[0]?.expectedL2TransactionCount).toBe(second!.length);
+    expect(run.deferredTxCounts).toEqual([second!.length]);
     expect(run.daFrameNotices[0]?.pressure).toMatchObject({
       passes: 2,
       requiredWorkInnerBytesUpperBound: null,
@@ -356,7 +335,7 @@ describe("commit worker DA frame step-down", () => {
     expect(run.owner.filter((event) => event.startsWith("fork"))).toEqual([
       "fork:1",
     ]);
-    expect(run.candidates[0]?.expectedL2TransactionCount).toBe(3);
+    expect(run.deferredTxCounts).toEqual([3]);
   });
 
   it("keeps a legal ordinary candidate for final exact authority when its base ledger upper bound overflows", async () => {
@@ -369,7 +348,7 @@ describe("commit worker DA frame step-down", () => {
       },
     );
     expect(run.builds.map((build) => build.length)).toEqual([3, 1]);
-    expect(run.candidates[0]?.expectedL2TransactionCount).toBe(1);
+    expect(run.deferredTxCounts).toEqual([1]);
   });
 
   it("plans the selection against the base ledger before the first build", async () => {
@@ -393,7 +372,7 @@ describe("commit worker DA frame step-down", () => {
     const [only] = run.builds;
     expect(only!.length).toBeGreaterThan(0);
     expect(only!.length).toBeLessThan(100);
-    expect(run.candidates[0]?.expectedL2TransactionCount).toBe(only!.length);
+    expect(run.deferredTxCounts).toEqual([only!.length]);
     expect(run.daFrameNotices.map((notice) => notice.status)).toEqual(["fits"]);
   });
 });
@@ -457,12 +436,12 @@ describe("commit worker DA frame notices", () => {
   });
 });
 
-// Production caller must hold a changed rebuild before publishing a candidate.
+// A changed rebuild must fail the worker before any block is deferred.
 it("fails the production worker and discards its forks when rebuilt validation material changes", async () => {
   const run = await runWorker(100, DEEP_LEDGER_TRANSFER, LC1_BASE_LEDGER, true);
   expect(run.output).toMatchObject({ type: "FailureOutput" });
   expect(run.builds).toHaveLength(2);
-  expect(run.candidates).toEqual([]);
+  expect(run.deferredTxCounts).toEqual([]);
   expect(run.daFrameNotices.map((notice) => notice.status)).toEqual([
     "incomplete",
   ]);

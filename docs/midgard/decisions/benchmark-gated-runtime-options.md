@@ -3,15 +3,18 @@
 Status: Superseded on 2026-09-26 by
 [Architecture G is the only MPF engine](architecture-g-sole-mpf-engine.md).
 The engine choice below no longer exists; the speculative-build and DA
-paragraphs carry forward into that record. Kept for history only.
+paragraphs carry forward into that record. Speculative commit building, and
+with it `SPECULATIVE_COMMIT_BUILD`, was deleted on 2026-10-03 (#752). Kept for
+history only.
 
 Recorded: 2026-09-07 from the delivered throughput design and current configuration.
 
 ## Decision
 
-Keep `MPF_ENGINE=legacy` and `SPECULATIVE_COMMIT_BUILD=false` as defaults.
-Architecture G and speculative commit building are explicit opt-ins; their
-implementation or a short benchmark does not authorize a default change.
+Keep `MPF_ENGINE=legacy` as the default. Architecture G is an explicit opt-in;
+its implementation or a short benchmark does not authorize a default change.
+This record also kept speculative commit building as an opt-in behind
+`SPECULATIVE_COMMIT_BUILD=false`; that option was deleted on 2026-10-03 (#752).
 
 Architecture G requires final-build differential and crash/recovery coverage,
 50k and retained-growth root/candidate gates, release-image verification, a
@@ -20,11 +23,12 @@ clean live lifecycle, and the complete soak on matching identities. The
 and [soak procedure](../../benchmark-scenarios/phase-3-architecture-g-soak.md)
 provide the retained acceptance commands.
 
-Speculative building does not authorize submitting children of unconfirmed L1
-commits. The [one-hour gate](../../benchmark-scenarios/phase-4-pipelined-one-hour.md)
-measures the current pipeline. Unconfirmed chaining needs a separate design for
-rollback, journals, provider acceptance, and on-chain state linkage. Multi-block
-merge likewise requires an explicit validator and recovery assessment.
+Speculative building, while it existed, did not authorize submitting children
+of unconfirmed L1 commits. The one-hour gate (`docs/benchmark-scenarios/phase-4-pipelined-one-hour.md`,
+deleted on 2026-10-03 with speculative building, #752) measured the pipeline.
+Unconfirmed chaining needs a separate design for rollback, journals, provider
+acceptance, and on-chain state linkage. Multi-block merge likewise requires an
+explicit validator and recovery assessment. <!-- doc-links:historical -->
 
 DA capacity is a consensus and memory-admission boundary, not an environment
 escape hatch. The retired 50k distribution fixture could not be regenerated

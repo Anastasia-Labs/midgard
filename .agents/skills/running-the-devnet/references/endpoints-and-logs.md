@@ -36,7 +36,7 @@ Sources:
 - Demo-stack host ports in the table are the main checkout's. A linked
   worktree running the stack through `demo/midgard-node/scripts/operator-compose.sh`
   publishes every one of them elsewhere; `--print-env` lists its ports.
-- Acceptance ports: `demo/midgard-node-tools/src/commands/e2e-pipelined-commit-process-acceptance.ts`.
+- Acceptance ports: `demo/midgard-node-tools/src/commands/e2e-journal-kill-recovery-acceptance.run-journal-kill-recovery-acceptance.ts`.
 
 ### What each healthcheck really proves
 

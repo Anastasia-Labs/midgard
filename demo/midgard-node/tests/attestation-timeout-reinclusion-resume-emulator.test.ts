@@ -6,9 +6,7 @@ import "@effect/sql";
 import "effect";
 import "vitest";
 import "../src/database/pendingBlockFinalizations.js";
-import "../src/fibers/speculative-commit-builder.js";
 import "./helpers/correction-rewind-scenario.js";
-import "./helpers/speculative-ready-candidate.js";
 import "./attestation-timeout-reinclusion-emulator.expect-rewound-and-recommitted.js";
 
 import { SqlClient } from "@effect/sql";

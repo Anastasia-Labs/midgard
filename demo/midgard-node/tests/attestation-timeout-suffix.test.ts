@@ -162,47 +162,24 @@ describe("pending queue attestation expiry", () => {
         ),
       ),
     ).toBe(2_000 + timeoutMs - 1);
-    // A later pending tail does not lift the earlier on-chain deadline.
-    expect(
-      await Effect.runPromise(
-        resolveCommitAppendFenceEndTimeCapLocal(
-          unattestedTail.api,
-          fetchConfig,
-          3_000,
-        ),
-      ),
-    ).toBe(2_000 + timeoutMs - 1);
     const attested = await fixture(true);
     expect(
       await Effect.runPromise(
         resolveCommitAppendFenceEndTimeCapLocal(attested.api, fetchConfig),
       ),
     ).toBeUndefined();
-    // A pending tail built on behind an attested head is unattested too.
-    expect(
-      await Effect.runPromise(
-        resolveCommitAppendFenceEndTimeCapLocal(
-          attested.api,
-          fetchConfig,
-          3_000,
-        ),
-      ),
-    ).toBe(3_000 + timeoutMs - 1);
     // An unattested head fences first, on chain as well, whatever follows it:
     // the earliest deadline wins, not the youngest node's or the last one's.
     for (const tailApplied of [false, true]) {
       const unattestedHead = await fixture(tailApplied, false);
-      for (const pendingTailEndTimeMs of [undefined, 3_000]) {
-        expect(
-          await Effect.runPromise(
-            resolveCommitAppendFenceEndTimeCapLocal(
-              unattestedHead.api,
-              fetchConfig,
-              pendingTailEndTimeMs,
-            ),
+      expect(
+        await Effect.runPromise(
+          resolveCommitAppendFenceEndTimeCapLocal(
+            unattestedHead.api,
+            fetchConfig,
           ),
-        ).toBe(1_000 + timeoutMs - 1);
-      }
+        ),
+      ).toBe(1_000 + timeoutMs - 1);
     }
   });
   it("refuses to fence an expired unattested suffix with the build's own expired-suffix error", async () => {
@@ -220,14 +197,10 @@ describe("pending queue attestation expiry", () => {
       { queue: await fixture(true, false), deadlineMs: 1_000 + timeoutMs },
     ];
     for (const { queue, deadlineMs } of cases) {
-      for (const pendingTailEndTimeMs of [undefined, 3_000]) {
+      {
         const fence = () =>
           Effect.runPromise(
-            resolveCommitAppendFenceEndTimeCapLocal(
-              queue.api,
-              fetchConfig,
-              pendingTailEndTimeMs,
-            ),
+            resolveCommitAppendFenceEndTimeCapLocal(queue.api, fetchConfig),
           );
         // One millisecond before the deadline the node still caps the end.
         now.mockReturnValue(deadlineMs - 1);

@@ -38,7 +38,6 @@ const readinessInput = (
   queueDepth: 10,
   localFinalizationPending: false,
   dbHealthy: true,
-  awaitingForeignTipReconciliations: 0,
   ...overrides,
   workerHeartbeats: {
     ...readyHeartbeats,
@@ -82,17 +81,6 @@ describe("evaluateReadiness", () => {
 
     expect(readiness.ready).toBe(false);
     expect(readiness.reasons.some((r) => r.includes("queue_depth"))).toBe(true);
-  });
-
-  it("fails readiness while foreign-tip evidence is unresolved", () => {
-    const readiness = evaluateReadiness(
-      readinessInput({ awaitingForeignTipReconciliations: 2 }),
-    );
-
-    expect(readiness).toEqual({
-      ready: false,
-      reasons: ["foreign_tip_reconciliation_awaiting:2"],
-    });
   });
 
   it("fails readiness when local finalization is pending", () => {

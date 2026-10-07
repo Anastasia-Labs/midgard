@@ -48,14 +48,12 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/l1-event-history-signed-intent-emulator.test.ts
  *   tests/l1-event-history-signed-intent-restart-emulator.test.ts
  *   tests/l1-event-history-signed-intent-continuation-emulator.test.ts
- *   tests/foreign-da-reconciliation.test.ts
  *   tests/database.test.ts
  *   tests/da-bond-pool-bootstrap-emulator.test.ts
  *   tests/deposit-flow-emulator-commit-selection.test.ts
  *   tests/deposit-flow-emulator-confirmation-journal.test.ts
  *   tests/deposit-flow-emulator-input-resolution.test.ts
  *   tests/deposit-flow-emulator-merge-payout.test.ts
- *   tests/deposit-flow-emulator-recovery-invalidation.test.ts
  *   tests/deposit-flow-emulator-submission.test.ts
  *   tests/merge-landed-finalization.test.ts
  *   tests/merge-landed-finalization-emulator.test.ts
@@ -128,10 +126,7 @@ export default defineConfig({
             "./tests/**/*.test.ts",
             "./tests/**/*.test.{js,mjs,cjs,mts,cts,jsx,tsx}",
           ],
-          exclude: [
-            ...configDefaults.exclude,
-            "./tests/phase4-pipelined-process-summary-verifier.test.mjs",
-          ],
+          exclude: [...configDefaults.exclude],
         },
       },
       { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },

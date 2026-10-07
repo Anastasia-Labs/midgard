@@ -4,6 +4,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { Context, Effect, Option } from "effect";
 
 import {
+  decodeStoredPayload,
   fetchForeignRetainedDa,
   foreignRetainedDaInsert,
 } from "../da/foreign-retained-da.js";
@@ -57,7 +58,6 @@ import {
   type ForeignEventMemberships,
 } from "./commit-block-header.foreign-event-material.js";
 import { decodeHeader } from "./commit-block-header/da-payload.verify-payload-commitments.js";
-import { decodeStoredPayload } from "./t2-foreign-event-reconciliation.resolve-t2-foreign-event-evidence.js";
 
 export type ForeignImportedBlock = Readonly<{
   kind: "foreign" | "local";

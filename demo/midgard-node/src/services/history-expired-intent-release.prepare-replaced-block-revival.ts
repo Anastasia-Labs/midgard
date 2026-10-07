@@ -1,13 +1,12 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Option, Queue, Ref } from "effect";
+import { Effect, Option, Ref } from "effect";
 
 import * as Authority from "../database/eventHistoryAuthority.js";
 import type { Checkpoint } from "../database/eventHistoryJournal.js";
 import { retainedPreparedRecoveryPlan } from "../database/eventHistoryRecoveryPlans.js";
 import * as Pending from "../database/pendingBlockFinalizations.js";
 import type { DatabaseError } from "../database/utils/common.js";
-import { invalidateSpeculativeCommitCandidate } from "../fibers/speculative-commit-builder.js";
 import {
   type EventHistorySourceBinding,
   readBoundRecoveryLedgerSnapshot,
@@ -377,8 +376,6 @@ export const prepareReplacedBlockRevival = (input: ReplacedBlockRevivalInput) =>
       return;
     }
     const serialized = yield* serializeStateQueueUTxO(winner.node.node);
-    if (config.SPECULATIVE_COMMIT_BUILD)
-      yield* invalidateSpeculativeCommitCandidate(globals, config, "T1");
     const identity = displacementIdentity(winner.record, assessed.displaced);
     const recheck = assess.pipe(
       Effect.flatMap((current) =>
@@ -406,8 +403,6 @@ export const prepareReplacedBlockRevival = (input: ReplacedBlockRevivalInput) =>
       yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
       yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
       yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, serialized);
-      yield* Queue.takeAll(globals.COMMIT_SUBMIT_WAKE_QUEUE);
-      yield* Queue.takeAll(globals.SPECULATIVE_BUILD_WAKE_QUEUE);
     });
     const retained = yield* owned(
       retainedPreparedRecoveryPlan(input.binding.digest),

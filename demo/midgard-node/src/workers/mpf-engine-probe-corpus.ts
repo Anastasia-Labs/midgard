@@ -10,6 +10,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 
 import {
   encodeTransactionRootValue,
+  ledgerOutputToInsertBatchOp,
   type MpfInsertBatchOp,
   type TransitionTraceSourceEvent,
 } from "../mpf/index.js";
@@ -28,6 +29,59 @@ export const canonicalOutrefCborFromLabel = (label: string): Buffer => {
     outputIndex: Number(match[2]!),
   });
 };
+
+/**
+ * The canonical Level fixture's ledger entries: every funding root, sorted by
+ * outref label, then deterministic filler outrefs (each holding the first
+ * funding output) up to `initialUtxoCount`. The candidate seed stages the same
+ * entries into confirmed_ledger, so both sides share this one definition.
+ */
+export const buildCanonicalFixtureEntries = (
+  fundingEntries: ReadonlyMap<string, Uint8Array>,
+  initialUtxoCount: number,
+): readonly { readonly key: Buffer; readonly value: Buffer }[] => {
+  if (fundingEntries.size > initialUtxoCount) {
+    throw new Error(
+      `Canonical funding roots ${fundingEntries.size.toString()} exceed fixture size ${initialUtxoCount.toString()}`,
+    );
+  }
+  const entries = [...fundingEntries]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([outref, output]) => ({
+      key: canonicalOutrefCborFromLabel(outref),
+      value: Buffer.from(output),
+    }));
+  const keys = new Set(entries.map((entry) => entry.key.toString("hex")));
+  const sampleOutput = entries[0]?.value;
+  if (sampleOutput === undefined) {
+    throw new Error("Canonical funding map must contain at least one root");
+  }
+  for (let index = 0; entries.length < initialUtxoCount; index += 1) {
+    const txHash = createHash("sha256")
+      .update("MIDGARD-ARCH-G-FIXTURE-FILLER-V1")
+      .update(Buffer.from(index.toString(16).padStart(16, "0"), "hex"))
+      .digest("hex");
+    const key = canonicalOutrefCborFromLabel(`${txHash}#0`);
+    if (keys.has(key.toString("hex"))) continue;
+    keys.add(key.toString("hex"));
+    entries.push({ key, value: Buffer.from(sampleOutput) });
+  }
+  return entries;
+};
+
+/**
+ * The Level fixture's MPF entries for raw ledger entries: each value is the
+ * production ledger descriptor (`ledgerOutputToInsertBatchOp`), so the
+ * fixture marker equals the root production hydrates from the same rows in
+ * confirmed_ledger.
+ */
+export const ledgerFixtureMpfEntries = (
+  entries: readonly { readonly key: Buffer; readonly value: Buffer }[],
+): readonly { readonly key: Buffer; readonly value: Buffer }[] =>
+  entries.map(({ key, value }) => {
+    const op = ledgerOutputToInsertBatchOp({ outRef: key, outputCbor: value });
+    return { key: op.key, value: op.value };
+  });
 
 export type CanonicalProbeRow = {
   readonly txHash: string;
@@ -106,13 +160,14 @@ export const decodeCanonicalProbeRow = (
       } as SDK.EventKey,
       ledgerOps: [
         { type: "delete", key: selectedInput },
-        ...outputs.map((output, outputIndex) => ({
-          type: "insert" as const,
-          key: canonicalOutrefCborFromLabel(
-            expectedOutputOutrefs[outputIndex]!,
-          ),
-          value: output,
-        })),
+        ...outputs.map((output, outputIndex) =>
+          ledgerOutputToInsertBatchOp({
+            outRef: canonicalOutrefCborFromLabel(
+              expectedOutputOutrefs[outputIndex]!,
+            ),
+            outputCbor: output,
+          }),
+        ),
       ],
     },
   };

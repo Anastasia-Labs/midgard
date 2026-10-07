@@ -58,11 +58,6 @@ type PendingUserEventCounts = {
 
 export const pendingUserEventCountsUpTo = (
   effectiveEndTime: Date,
-  excluded?: {
-    readonly depositEventIds: ReadonlySet<string>;
-    readonly forcedTransactionEventIds: ReadonlySet<string>;
-    readonly withdrawalEventIds: ReadonlySet<string>;
-  },
 ): Effect.Effect<PendingUserEventCounts, DatabaseError, Database> =>
   Effect.gen(function* () {
     const [depositEntries, forcedTransactionEntries, withdrawalEntries] =
@@ -77,41 +72,11 @@ export const pendingUserEventCountsUpTo = (
         { concurrency: "unbounded" },
       );
     return {
-      deposits: depositEntries.filter(
-        (entry) =>
-          !excluded?.depositEventIds.has(
-            entry[DepositsDB.Columns.ID].toString("hex"),
-          ),
-      ).length,
-      forcedTransactions: forcedTransactionEntries.filter(
-        (entry) =>
-          !excluded?.forcedTransactionEventIds.has(
-            entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex"),
-          ),
-      ).length,
-      withdrawals: withdrawalEntries.filter(
-        (entry) =>
-          !excluded?.withdrawalEventIds.has(
-            entry[WithdrawalsDB.Columns.ID].toString("hex"),
-          ),
-      ).length,
+      deposits: depositEntries.length,
+      forcedTransactions: forcedTransactionEntries.length,
+      withdrawals: withdrawalEntries.length,
     };
   });
-
-export const pendingUserEventCountUpTo = (
-  effectiveEndTime: Date,
-  excluded?: {
-    readonly depositEventIds: ReadonlySet<string>;
-    readonly forcedTransactionEventIds: ReadonlySet<string>;
-    readonly withdrawalEventIds: ReadonlySet<string>;
-  },
-): Effect.Effect<number, DatabaseError, Database> =>
-  pendingUserEventCountsUpTo(effectiveEndTime, excluded).pipe(
-    Effect.map(
-      ({ deposits, forcedTransactions, withdrawals }) =>
-        deposits + forcedTransactions + withdrawals,
-    ),
-  );
 
 export const shouldHydrateCommitBaseEntries = ({
   payloadRootCheck,

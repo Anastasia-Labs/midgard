@@ -80,6 +80,11 @@ describe("splitSqlStatements", () => {
       { version: 4, name: "retained_script_material", transactional: true },
       { version: 5, name: "foreign_event_census", transactional: true },
       { version: 6, name: "foreign_native_adoption", transactional: true },
+      {
+        version: 7,
+        name: "drop_foreign_tip_reconciliations",
+        transactional: true,
+      },
     ]);
   });
 
@@ -301,31 +306,6 @@ describe("applied fresh-install schema", () => {
       constraint: "pending_block_finalizations_deployment_manifest_id_check",
       fragments: ["'^[0-9a-f]{64}$'"],
     },
-    {
-      table: "foreign_tip_reconciliations",
-      constraint: "foreign_tip_reconciliations_format_version_check",
-      fragments: ["format_version = 1"],
-    },
-    {
-      table: "foreign_tip_reconciliations",
-      constraint: "foreign_tip_reconciliations_evidence_kind_check",
-      fragments: ["pending_v1", "verified_empty_v1", "verified_da_v1"],
-    },
-    {
-      table: "foreign_tip_reconciliations",
-      constraint: "foreign_tip_reconciliations_resolved_evidence_check",
-      fragments: ["status <> 'resolved'", "evidence_kind <> 'pending_v1'"],
-    },
-    {
-      table: "foreign_tip_reconciliations",
-      constraint: "foreign_tip_reconciliations_verified_da_nonempty_check",
-      fragments: ["evidence_kind <> 'verified_da_v1'"],
-    },
-    {
-      table: "foreign_tip_reconciliations",
-      constraint: "foreign_tip_reconciliations_deployment_manifest_id_check",
-      fragments: ["'^[0-9a-f]{64}$'"],
-    },
   ];
 
   it("enforces the replay, deployment and durability contracts in the database", async () => {
@@ -351,6 +331,15 @@ describe("applied fresh-install schema", () => {
           expect(unlogged.map((row) => row.relname)).toEqual([
             ...UNLOGGED_TABLES,
           ]);
+
+          // Version 7 drops the speculative foreign-tip table (#752).
+          const dropped = yield* sql<{
+            readonly relname: string;
+          }>`SELECT relname
+               FROM pg_class
+               WHERE relnamespace = 'public'::regnamespace
+                 AND relname = 'foreign_tip_reconciliations'`;
+          expect(dropped).toEqual([]);
 
           const constraints = yield* sql<{
             readonly relname: string;
