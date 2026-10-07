@@ -2,19 +2,28 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { chainPoint } from "@al-ft/l1-node-transport";
+import {
+  type ChainPoint,
+  chainPoint,
+  type RollForward,
+  samePoint,
+} from "@al-ft/l1-node-transport";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   applyChainSyncEvent,
   type FactStore,
+  openSqliteBackend,
   openSqliteFactStore,
+  transportPoint,
 } from "../../src/index.js";
 import {
   ledgerComparator,
   readJournal,
   runSoak,
   type ShadowComparator,
+  type SoakStream,
+  startWhenFree,
   summarise,
 } from "../../src/shadow/index.js";
 import {
@@ -22,6 +31,7 @@ import {
   forkCorpus,
   type ForkStep,
   SIM_ORIGIN,
+  SimChain,
   simStoreOptions,
   simUniverse,
 } from "../../src/testing/index.js";
@@ -44,11 +54,14 @@ const scenario = forkCorpus(SIM_K).find(
 const { steps, chain } = buildForkSteps(scenario);
 const universe = simUniverse();
 
-const openStore = async (initialize: boolean): Promise<FactStore> => {
-  const store = openSqliteFactStore({
+const storeAt = (): FactStore =>
+  openSqliteFactStore({
     ...simStoreOptions([], SIM_K, "sqlite"),
     path: join(dir, "follower.sqlite"),
   });
+
+const openStore = async (initialize: boolean): Promise<FactStore> => {
+  const store = storeAt();
   opened.push(store);
   expect(await store.start()).toMatchObject({ kind: "ready" });
   if (initialize)
@@ -56,6 +69,55 @@ const openStore = async (initialize: boolean): Promise<FactStore> => {
       kind: "initialized",
     });
   return store;
+};
+
+/** What a newer writer's start does to the soak's store. */
+const fence = async (): Promise<void> => {
+  const other = openSqliteBackend(join(dir, "follower.sqlite"));
+  try {
+    await other.transaction("write", (tx) =>
+      tx.query("UPDATE l1_follower_writer SET writer_epoch = writer_epoch + 1"),
+    );
+  } finally {
+    await other.close();
+  }
+};
+
+/**
+ * A node on one linear chain that, like a real one, serves from the best
+ * intersection offered on every (re)opening, and records acknowledgements.
+ */
+const linearNode = (events: readonly RollForward[]) => {
+  const acked: bigint[] = [];
+  const origin = transportPoint(SIM_ORIGIN.point);
+  return {
+    acked,
+    openChainSync: ({
+      points,
+    }: Readonly<{ points: readonly ChainPoint[] }>): SoakStream => {
+      const offered = (point: ChainPoint): boolean =>
+        points.some((p) => samePoint(p, point));
+      let at = -1;
+      events.forEach((event, index) => {
+        if (offered(event.point)) at = index;
+      });
+      if (at === -1 && !offered(origin))
+        throw new Error("no intersection offered");
+      let closed = false;
+      return {
+        next: () => {
+          const event = closed ? undefined : events[at + 1];
+          if (event !== undefined) at += 1;
+          return Promise.resolve(event);
+        },
+        ack: (seq) => void acked.push(seq),
+        close: () => {
+          closed = true;
+          return Promise.resolve();
+        },
+      };
+    },
+  };
 };
 
 const comparatorsFor = (
@@ -190,6 +252,69 @@ describe("devnet soak runner", () => {
       type: "stop",
       reason: "intervention",
     });
+  });
+
+  it("stops as store_locked on a fenced store, acknowledging, applying and journaling nothing for that event; started again, it resumes from the cursor", async () => {
+    const chain = new SimChain(universe, SIM_ORIGIN);
+    const events = Array.from({ length: 8 }, () => chain.forward([]).event);
+    const node = linearNode(events);
+    const store = await openStore(true);
+    const run = (maxEvents?: number) =>
+      runSoak({
+        dir,
+        store,
+        openChainSync: node.openChainSync,
+        comparators: [],
+        backoffMs: { initial: 1, max: 4 },
+        ...(maxEvents === undefined ? {} : { maxEvents }),
+      });
+    expect(await run(3)).toMatchObject({ reason: "limit", events: 3 });
+    await fence();
+    const before = await store.cursor();
+    const locked = await run(5);
+    expect(locked).toMatchObject({ reason: "store_locked", events: 0 });
+    expect(locked.detail).toContain(`roll_forward #${events[3]!.seq}`);
+    expect(node.acked).toEqual(events.slice(0, 3).map((e) => e.seq));
+    const after = await store.cursor();
+    expect(after?.height).toBe(before?.height);
+    expect(after?.point.hash.equals(before!.point.hash)).toBe(true);
+    const { records } = await readJournal(dir);
+    expect(records.filter((r) => r.type === "block")).toHaveLength(4);
+    expect(records[records.length - 1]).toMatchObject({
+      type: "stop",
+      reason: "store_locked",
+    });
+    // The caller starts the store again and runs the soak again.
+    expect(await startWhenFree(store)).toMatchObject({ kind: "ready" });
+    expect(await run(5)).toMatchObject({ reason: "limit", events: 5 });
+    expect(node.acked).toEqual(events.map((e) => e.seq));
+    expect((await store.cursor())?.height).toBe(SIM_ORIGIN.height + 8);
+  });
+
+  it("startWhenFree waits out a lease another store holds, and gives up on abort", async () => {
+    const holder = await openStore(true);
+    const waiter = storeAt();
+    opened.push(waiter);
+    const lines: string[] = [];
+    const waiting = startWhenFree(waiter, {
+      backoffMs: { initial: 2, max: 8 },
+      log: (line) => lines.push(line),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    await holder.close();
+    opened.splice(opened.indexOf(holder), 1);
+    expect(await waiting).toMatchObject({ kind: "ready" });
+    expect(lines.some((line) => line.includes("store locked"))).toBe(true);
+    const third = storeAt();
+    opened.push(third);
+    const abort = new AbortController();
+    const gaveUp = startWhenFree(third, {
+      signal: abort.signal,
+      backoffMs: { initial: 2, max: 8 },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    abort.abort();
+    expect(await gaveUp).toBeUndefined();
   });
 
   it("retries a transient store error instead of stopping", async () => {

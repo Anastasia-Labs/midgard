@@ -122,7 +122,8 @@ const soak = async ({ adapter, k, spendOrder }: Run) => {
           `apply failed: ${JSON.stringify(applied).slice(0, 300)}`,
         );
       const pruned = await store.prune(PRUNE_BUDGET);
-      if ("kind" in pruned) throw pruned.error;
+      if ("kind" in pruned)
+        throw new Error(`prune failed: ${JSON.stringify(pruned)}`);
       if (!pruned.done) pruneNotDone += 1;
       if (block % every === 0)
         samples.push({ block, rows: await counts(store) });

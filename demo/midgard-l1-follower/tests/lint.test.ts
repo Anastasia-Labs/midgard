@@ -3,9 +3,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+  applyMigrations,
   createTemporalRegistry,
+  FOLLOWER_BOOKKEEPING_DDL,
   followerMigrations,
-  MIGRATION_LEDGER_DDL,
+  openSqliteBackend,
 } from "../src/index.js";
 import {
   declaredTables,
@@ -18,15 +20,17 @@ import { matching } from "./support/matchers.js";
 const registry = createTemporalRegistry(FIXTURE_TABLES);
 
 describe("schema lint (class and retention)", () => {
-  it("passes the follower schema on both dialects, the migration ledger and the fixture D-t tables", () => {
+  it("passes the follower schema on both dialects, the bookkeeping and the fixture D-t tables", () => {
     for (const dialect of ["postgres", "sqlite"] as const)
       expect(
         lintSchema(
           [
             followerMigrations(dialect),
             {
-              namespace: "ledger",
-              migrations: [{ id: "ledger", sql: MIGRATION_LEDGER_DDL }],
+              namespace: "bookkeeping",
+              migrations: [
+                { id: "bookkeeping", sql: FOLLOWER_BOOKKEEPING_DDL },
+              ],
             },
             fixtureMigrations(dialect),
           ],
@@ -105,6 +109,107 @@ CREATE TABLE IF NOT EXISTS role_unregistered (from_slot bigint, to_slot bigint);
         ["fixture_spend_log", matching(/not declared D-t/u)],
       ],
     );
+  });
+});
+
+describe("schema lint (class B foreign keys)", () => {
+  const roleSet = (sql: string) => ({
+    namespace: "role",
+    migrations: [{ id: "0001", sql }],
+  });
+
+  it("flags a class B table that references a non-B table, inline or by ALTER TABLE", () => {
+    const problems = lintSchema([
+      followerMigrations("postgres"),
+      roleSet(`
+-- class: C; retention: while referenced
+CREATE TABLE role_projection (id integer PRIMARY KEY, bytes bytea);
+
+-- class: B; retention: terminal and k deep
+CREATE TABLE role_signed_spend (
+  id integer PRIMARY KEY,
+  tx_hash bytea NOT NULL,
+  output_index integer NOT NULL,
+  FOREIGN KEY (tx_hash, output_index) REFERENCES l1_outputs ON DELETE CASCADE
+);
+
+-- class: B; retention: terminal and k deep
+CREATE TABLE role_signed_note (
+  id integer PRIMARY KEY,
+  projection integer,
+  legacy integer REFERENCES role_legacy_table(id)
+);
+ALTER TABLE role_signed_note ADD FOREIGN KEY (projection) REFERENCES role_projection (id);
+
+-- class: B; retention: terminal and k deep
+CREATE TABLE role_signed_child (
+  id integer PRIMARY KEY,
+  parent integer NOT NULL REFERENCES "role_signed_spend"(id)
+);
+`),
+    ]);
+    expect(problems.map((problem) => [problem.table, problem.message])).toEqual(
+      [
+        ["role_signed_spend", matching(/references l1_outputs \(class A\)/u)],
+        [
+          "role_signed_note",
+          matching(
+            /references role_legacy_table \(declared by no migration\)/u,
+          ),
+        ],
+        [
+          "role_signed_note",
+          matching(/references role_projection \(class C\)/u),
+        ],
+      ],
+    );
+  });
+});
+
+describe("migration runner (catalog)", () => {
+  it("records each table's class, and refuses a table without its header", async () => {
+    const backend = openSqliteBackend(":memory:");
+    try {
+      await applyMigrations(backend, [
+        followerMigrations("sqlite"),
+        {
+          namespace: "role",
+          migrations: [
+            {
+              id: "0001",
+              sql: "-- class: B; retention: forever\nCREATE TABLE role_signed (id integer PRIMARY KEY);",
+            },
+          ],
+        },
+      ]);
+      const catalog = await backend.transaction("read", (tx) =>
+        tx.query(
+          "SELECT table_name, table_class FROM l1_follower_tables ORDER BY table_name",
+        ),
+      );
+      expect(
+        Object.fromEntries(
+          catalog.map((row) => [row.table_name, row.table_class]),
+        ),
+      ).toMatchObject({ l1_outputs: "A", l1_scripts: "C", role_signed: "B" });
+      await expect(
+        applyMigrations(backend, [
+          {
+            namespace: "role",
+            migrations: [
+              {
+                id: "0002",
+                sql: "CREATE TABLE role_unclassified (id integer);",
+              },
+            ],
+          },
+        ]),
+      ).rejects.toThrow(
+        /role\/0002 table role_unclassified: missing `-- class:/u,
+      );
+    } finally {
+      await backend.close();
+    }
   });
 });
 

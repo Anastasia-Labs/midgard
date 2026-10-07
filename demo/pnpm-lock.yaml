@@ -350,6 +350,9 @@ importers:
       '@al-ft/l1-node-transport':
         specifier: workspace:*
         version: link:../l1-node-transport
+      '@al-ft/midgard-core':
+        specifier: workspace:*
+        version: link:../midgard-core
       '@noble/hashes':
         specifier: ^2.0.1
         version: 2.2.0

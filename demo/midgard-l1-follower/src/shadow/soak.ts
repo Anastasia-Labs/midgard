@@ -8,10 +8,11 @@ import {
   applyChainSyncEvent,
   type FollowStep,
   intersectionPoints,
+  stepLocked,
   stepSettled,
 } from "../follow/chain-sync.js";
-import type { FactStore } from "../store/fact-store.js";
-import type { Point } from "../types.js";
+import type { FactStore, StartResult } from "../store/fact-store.js";
+import type { Point, StoreLocked } from "../types.js";
 import { SHADOW_ROLES, type ShadowComparator } from "./comparator.js";
 import { compareAll } from "./compare.js";
 import { type BlockRecord, Journal, readJournal } from "./journal.js";
@@ -40,8 +41,14 @@ export type SoakOptions = Readonly<{
   log?: (line: string) => void;
 }>;
 
+/**
+ * Why the soak stopped. `store_locked` is transient (another writer holds or
+ * took over the store's lease): the caller starts the store again
+ * (`startWhenFree`) and runs the soak again; nothing was acknowledged or
+ * applied for the event that found the store locked.
+ */
 export type SoakStop = Readonly<{
-  reason: "intervention" | "limit" | "signal" | "refused";
+  reason: "intervention" | "limit" | "signal" | "refused" | "store_locked";
   detail: string;
   events: number;
 }>;
@@ -85,7 +92,9 @@ export const rolesWithout = (
  * a restart (re-comparing at the cursor when the journal lags it) and stops
  * at the first intervention (R1, R2, R5, an undecodable block) with a
  * journal line saying why. Transient store errors and stream failures are
- * retried with backoff.
+ * retried with backoff. A store found locked (its writer lease lost, or
+ * fenced by a newer writer) stops the soak as `store_locked` before the
+ * event is journaled or acknowledged; the caller starts the store again.
  */
 export const runSoak = async (options: SoakOptions): Promise<SoakStop> => {
   const { store, comparators, signal } = options;
@@ -179,6 +188,11 @@ export const runSoak = async (options: SoakOptions): Promise<SoakStop> => {
             step = await applyChainSyncEvent(store, event);
           }
           if (aborted()) break;
+          if (stepLocked(step))
+            return await stop(
+              "store_locked",
+              `${event.kind} #${event.seq}: ${describeStep(step)}`,
+            );
           if (!stepSettled(step))
             return await stop(
               step.result.kind === "intervention" ||
@@ -214,5 +228,34 @@ export const runSoak = async (options: SoakOptions): Promise<SoakStop> => {
     return await stop("signal", "stop requested");
   } finally {
     await journal.close();
+  }
+};
+
+/**
+ * Starts the store, waiting out `store_locked` (another process holds the
+ * writer lease) with backoff instead of exiting. Returns the first other
+ * result (`ready`, or an intervention), or `undefined` once `signal` aborts.
+ */
+export const startWhenFree = async (
+  store: FactStore,
+  options: Readonly<{
+    signal?: AbortSignal;
+    backoffMs?: Readonly<{ initial: number; max: number }>;
+    log?: (line: string) => void;
+  }> = {},
+): Promise<Exclude<StartResult, StoreLocked> | undefined> => {
+  const backoff = options.backoffMs ?? { initial: 500, max: 30_000 };
+  for (
+    let delay = backoff.initial;
+    ;
+    delay = Math.min(delay * 2, backoff.max)
+  ) {
+    if (options.signal?.aborted === true) return undefined;
+    const started = await store.start();
+    if (started.kind !== "store_locked") return started;
+    options.log?.(
+      `store locked, starting again in ${delay} ms: ${started.detail}`,
+    );
+    await sleep(delay, options.signal);
   }
 };

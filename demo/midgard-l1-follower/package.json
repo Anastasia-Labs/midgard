@@ -6,6 +6,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "midgard-l1-follower": "./dist/cli.js"
+  },
   "files": [
     "dist"
   ],
@@ -39,7 +42,7 @@
   "scripts": {
     "clean": "rimraf dist",
     "build": "node ../../scripts/contrib.mjs build --package @al-ft/midgard-l1-follower",
-    "build:contrib-raw": "tsup src/index.ts src/heads.ts src/lint/index.ts src/testing/index.ts src/shadow/index.ts src/shadow/soak-cli.ts --format esm --dts --clean",
+    "build:contrib-raw": "tsup src/index.ts src/heads.ts src/lint/index.ts src/cli.ts src/testing/index.ts src/shadow/index.ts src/shadow/soak-cli.ts --format esm --dts --clean",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --exclude 'tests/fork-sim/**'",
@@ -50,6 +53,7 @@
   "license": "ISC",
   "dependencies": {
     "@al-ft/l1-node-transport": "workspace:*",
+    "@al-ft/midgard-core": "workspace:*",
     "@noble/hashes": "^2.0.1",
     "fast-check": "^4.5.3",
     "pg": "^8.21.0",
