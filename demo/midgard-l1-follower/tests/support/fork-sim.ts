@@ -1,5 +1,7 @@
-import { openSqliteFactStore } from "../../src/index.js";
-import type { FollowerProjection } from "../../src/shadow/index.js";
+import {
+  type FollowerProjection,
+  openSqliteFactStore,
+} from "../../src/index.js";
 import type { ForkRunOptions } from "../../src/testing/index.js";
 import {
   FIXTURE_DERIVATION,

@@ -1,9 +1,9 @@
 import type {
   DepthParameters,
   FactStore,
+  FollowerProjection,
   TrackedSet,
 } from "@al-ft/midgard-l1-follower";
-import type { FollowerProjection } from "@al-ft/midgard-l1-follower/shadow";
 
 import {
   type AwaitingHeader,

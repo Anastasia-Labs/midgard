@@ -16,14 +16,14 @@ import {
   type OriginConfig,
   protocolInitStatus,
   startFromOrigin,
+  startWhenFree,
   stepLocked,
   stepSettled,
   storePoint,
 } from "@al-ft/midgard-l1-follower";
-import { startWhenFree } from "@al-ft/midgard-l1-follower/shadow";
 
 /**
- * The committee follower's shadow status (phase A), the file the soak reads.
+ * The committee follower's shadow status (phase A), written to `statusPath`.
  * Interventions are recorded here and nowhere else: in phase A they never
  * touch `/readyz`, and the current L1 code stays authoritative.
  */

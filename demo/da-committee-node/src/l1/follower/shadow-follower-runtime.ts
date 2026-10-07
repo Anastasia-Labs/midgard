@@ -2,8 +2,8 @@ import { L1NodeTransport } from "@al-ft/l1-node-transport";
 import {
   openPostgresFactStore,
   type OriginConfig,
+  projectionStoreOptions,
 } from "@al-ft/midgard-l1-follower";
-import { projectionStoreOptions } from "@al-ft/midgard-l1-follower/shadow";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 
 import type { LoadedCommitteeConfig } from "../../config.js";

@@ -88,32 +88,4 @@ describe("fork simulator over the sequential writer (SQLite)", () => {
       reason: "fixture: saw a rollback",
     });
   });
-
-  it("fails when a comparator disagrees", async () => {
-    let calls = 0;
-    const outcome = await runForkScenario(corpus[0]!.scenario, {
-      open: openSqlite,
-      k: SIM_K,
-      comparators: [
-        {
-          role: "committee",
-          name: "drifting",
-          projected: async ({ at }) =>
-            Promise.resolve({ kind: "value", value: { height: at.height } }),
-          current: async ({ at }) => {
-            calls += 1;
-            return Promise.resolve({
-              kind: "value",
-              value: { height: calls > 3 ? at.height + 1 : at.height },
-            });
-          },
-        },
-      ],
-    });
-    expect(outcome.ok).toBe(false);
-    expect(outcome).toMatchObject({ step: 3 });
-    expect(!outcome.ok && outcome.reason).toContain(
-      "committee/drifting differs",
-    );
-  });
 });

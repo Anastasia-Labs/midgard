@@ -1,11 +1,11 @@
 import {
   type BlockSummary,
   decodeBlock,
+  type FollowerProjection,
   isSafe,
   type OutRef,
   outRefKey,
 } from "@al-ft/midgard-l1-follower";
-import type { FollowerProjection } from "@al-ft/midgard-l1-follower/shadow";
 import {
   type ForkScenario,
   type ForkStep,
