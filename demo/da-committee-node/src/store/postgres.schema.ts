@@ -1,5 +1,7 @@
 import { MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { Pool } from "pg";
+
+import { dropCrossHeaderConflictEvidenceRows } from "./drop-cross-header-conflict-evidence.js";
 export const initializeCommitteeSchema = async (pool: Pool): Promise<void> => {
   await pool.query(`
       CREATE TABLE IF NOT EXISTS committee_deployment (
@@ -118,4 +120,5 @@ export const initializeCommitteeSchema = async (pool: Pool): Promise<void> => {
         PRIMARY KEY (deployment_fingerprint, signer_index, nonce)
       );
     `);
+  await dropCrossHeaderConflictEvidenceRows(pool);
 };

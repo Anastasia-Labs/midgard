@@ -13,6 +13,7 @@ import "../src/store.js";
 import "./helpers.js";
 import "./conflict-evidence.conflict-fixture.js";
 
+import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import {
   computeDaSha256Hash,
   decodeDaConflictEvidenceCbor,
@@ -24,8 +25,15 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { StoreBackedDaAttestationProtocol } from "../src/da/libp2p/attestations.js";
-import { classifyDaLocalSigningCommitment } from "../src/peer/signatures.js";
-import { loadDaSigner, validateDaCommittee } from "../src/signer.js";
+import {
+  buildDaSignatureConflictEvidence,
+  classifyDaLocalSigningCommitment,
+} from "../src/peer/signatures.js";
+import {
+  loadDaSigner,
+  signDaAttestation,
+  validateDaCommittee,
+} from "../src/signer.js";
 import { JsonFileCommitteeStore } from "../src/store.js";
 import {
   availabilityCommitment,
@@ -35,6 +43,7 @@ import {
   DEPLOYMENT_FINGERPRINT,
   LOWER_HEADER_HASH,
   REPORTER_PEER_ID,
+  SIBLING_HEADER_HASH,
   signatureRecord,
   signedMessage,
   UNKNOWN_PEER_ID,
@@ -298,6 +307,96 @@ describe("DA conflict evidence V1 lifecycle", () => {
       }
     } finally {
       await reopened.close();
+    }
+  });
+
+  // Owner ruling 2026-10-07: equivocation is one signer, one header hash and
+  // two availability commitments. Signatures over sibling headers (same
+  // parent, different header hashes) are truthful and never conflict.
+  it("builds equivocation evidence for one header only, never for sibling headers", async () => {
+    const signer = await loadDaSigner(`hex:${"00".repeat(31)}01`);
+    const record = (headerHash: string, deploymentIdentity: string) =>
+      signatureRecord({
+        signer,
+        commitment: availabilityCommitment(headerHash, deploymentIdentity),
+        payloadHash: "66".repeat(32),
+        committeeSignersHash: "77".repeat(32),
+      });
+    const build = (
+      first: ReturnType<typeof record>,
+      second: ReturnType<typeof record>,
+    ) =>
+      buildDaSignatureConflictEvidence({
+        first,
+        second,
+        daVkey: signer.publicKeyHex,
+        reporterPeerId: REPORTER_PEER_ID,
+        receivedAt: "2026-07-27T00:00:00.000Z",
+      });
+    const onA = record(LOWER_HEADER_HASH, "99".repeat(28));
+
+    expect(build(onA, record(SIBLING_HEADER_HASH, "99".repeat(28)))).toBe(
+      undefined,
+    );
+    expect(build(onA, onA)).toBe(undefined);
+    const sameHeader = build(onA, record(LOWER_HEADER_HASH, "55".repeat(28)));
+    expect(sameHeader?.record).toMatchObject({
+      evidenceKind: "equivocation",
+      headerHash: LOWER_HEADER_HASH,
+      conflictingHeaderHash: LOWER_HEADER_HASH,
+    });
+  });
+
+  it("refuses gossiped sibling-header evidence before storing it, and stores same-header evidence", async () => {
+    const fixture = await conflictFixture();
+    const signer = await loadDaSigner(`hex:${"00".repeat(31)}01`);
+    const sibling = availabilityCommitment(
+      SIBLING_HEADER_HASH,
+      "99".repeat(28),
+    );
+    // The shared codec refuses to encode a cross-header pair, so the
+    // adversary's bytes are built by rewriting the upper half of a valid
+    // same-header tuple: [signer, vkey, lowerHeader, lowerCommitment,
+    // lowerWitness, upperHeader, upperCommitment, upperWitness].
+    const conflict = decodeDaConflictEvidenceCbor(fixture.encoded);
+    const tuple = decodeSingleCbor(conflict.compactEvidence!) as unknown[];
+    const siblingCompact = encodeCbor([
+      ...tuple.slice(0, 5),
+      Buffer.from(SIBLING_HEADER_HASH, "hex"),
+      Buffer.from(sibling.cbor, "hex"),
+      Buffer.from(
+        signDaAttestation({
+          signer,
+          signerIndex: 0,
+          availabilityCommitment: sibling.commitment,
+        }),
+        "hex",
+      ),
+    ]);
+    const store = await JsonFileCommitteeStore.open(await tempDir());
+    try {
+      const gossip = conflictGossip(fixture.registry, store);
+      await expect(
+        gossip.handleInboundMessage(
+          signedMessage(
+            encodeDaConflictEvidenceCbor({
+              ...conflict,
+              evidenceHash: computeDaSha256Hash(siblingCompact),
+              compactEvidence: siblingCompact,
+            }),
+          ),
+        ),
+      ).rejects.toThrow(/evidence must name one header hash/u);
+      await expect(store.listDaConflictEvidence()).resolves.toEqual([]);
+
+      await expect(
+        gossip.handleInboundMessage(signedMessage(fixture.encoded)),
+      ).resolves.toBe(true);
+      await expect(store.listDaConflictEvidence()).resolves.toEqual([
+        fixture.record,
+      ]);
+    } finally {
+      await store.close();
     }
   });
 });
