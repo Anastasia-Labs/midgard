@@ -50,6 +50,7 @@ import {
   initializeIn,
   insertSeedOutputsIn,
   loadLiveOutRefs,
+  type SeedCursorMoved,
   type SeedOutput,
   type SeedResult,
 } from "./seed.js";
@@ -125,10 +126,11 @@ export type FactStore = Readonly<{
   ): Promise<InitializeResult | StoreError | StoreLocked>;
   applyBlock(block: BlockSummary): Promise<ApplyResult>;
   rewind(target: Point): Promise<RewindResult>;
+  /** Seed rows read from the ledger at `at`, which must still be the cursor. */
   insertSeedOutputs(
-    seedSlot: number,
+    at: Point,
     outputs: readonly SeedOutput[],
-  ): Promise<SeedResult | StoreError | StoreLocked | null>;
+  ): Promise<SeedResult | SeedCursorMoved | StoreError | StoreLocked | null>;
   setTrackedSet(trackedSet: TrackedSet): void;
   trackedSet(): TrackedSet;
   /** Whether an outref is a live tracked row (the in-memory set). */
@@ -360,7 +362,7 @@ export const createFactStore = (
           }
         return result;
       }),
-    insertSeedOutputs: (seedSlot, outputs) =>
+    insertSeedOutputs: (at, outputs) =>
       lane.run(async () => {
         if (broken !== null)
           return { kind: "error", error: new Error(broken.detail) } as const;
@@ -368,11 +370,11 @@ export const createFactStore = (
         if (refusal !== null) return refusal;
         try {
           const result = await fencedWrite((tx) =>
-            insertSeedOutputsIn(tx, dialect, seedSlot, outputs),
+            insertSeedOutputsIn(tx, dialect, at, outputs),
           );
-          if (result !== null && result.kind === "store_locked") return result;
-          for (const outRef of result?.inserted ?? [])
-            live.add(outRefKey(outRef));
+          if (result?.kind === "store_locked") return result;
+          if (result?.kind === "seeded")
+            for (const outRef of result.inserted) live.add(outRefKey(outRef));
           return result;
         } catch (error) {
           return { kind: "error", error: asError(error) } as const;

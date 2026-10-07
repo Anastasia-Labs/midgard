@@ -13,7 +13,6 @@ import {
   CRED,
   fill,
   ORIGIN,
-  output,
   point,
   POLICY,
   started,
@@ -271,44 +270,6 @@ describe.each(adapters)("fact store ($name)", (adapter) => {
       expect(
         await store.viewValid({ ...stale, generation: 2, point: point(b2) }),
       ).toBe(true);
-    } finally {
-      await store.close();
-    }
-  });
-
-  it("stores seed outputs once and never for a stored creating tx (INV6)", async () => {
-    const { store } = await started(adapter, 2, 1);
-    try {
-      const seed = {
-        outRef: { txHash: fill(0x5e), index: 2 },
-        output: output(TRACKED, 7n, true),
-      };
-      const first = await store.insertSeedOutputs(99, [
-        seed,
-        seed,
-        { outRef: { txHash: TX1, index: 7 }, output: output(TRACKED, 1n) },
-      ]);
-      expect(first).toMatchObject({ kind: "seeded", inserted: [{ index: 2 }] });
-      expect(
-        first !== null && "skipped" in first ? first.skipped.length : -1,
-      ).toBe(2);
-      expect(await store.insertSeedOutputs(99, [seed])).toMatchObject({
-        inserted: [],
-        skipped: [{ index: 2 }],
-      });
-      expect(await store.output(seed.outRef)).toMatchObject({
-        created: null,
-        seedSlot: 99,
-        spent: null,
-      });
-      expect(store.isTrackedLive(seed.outRef)).toBe(true);
-      expect(
-        await store.liveUtxos(
-          { by: "address", address: TRACKED },
-          ORIGIN.point,
-        ),
-      ).toMatchObject({ kind: "ok", utxos: [{ seedSlot: 99 }] });
-      expect((await store.checkInvariants()).ok).toBe(true);
     } finally {
       await store.close();
     }

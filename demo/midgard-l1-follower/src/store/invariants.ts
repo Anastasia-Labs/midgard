@@ -43,7 +43,7 @@ const inv3 = (dialect: Dialect): string =>
    SELECT 1 FROM json_each(CASE WHEN t.is_valid = 1 THEN t.inputs ELSE t.collaterals END) j
     WHERE j.value = lower(hex(o.tx_hash)) || printf('%04x', o.output_index))`;
 
-/** Nothing above the cursor (INV5, first half), each probe index-backed. */
+/** Nothing above the cursor (INV5, first half; INV6 for seed points), each probe index-backed. */
 const aboveCursorChecks = (registry: TemporalRegistry): Check[] => [
   {
     invariant: "INV5",
@@ -64,6 +64,11 @@ const aboveCursorChecks = (registry: TemporalRegistry): Check[] => [
     invariant: "INV5",
     check: "output spent above cursor",
     sql: `SELECT tx_hash, output_index FROM l1_outputs WHERE spent_slot > ${CURSOR_SLOT}`,
+  },
+  {
+    invariant: "INV6",
+    check: "seed row above cursor",
+    sql: `SELECT tx_hash, output_index FROM l1_outputs WHERE seed_slot > ${CURSOR_SLOT}`,
   },
   {
     invariant: "INV5",
@@ -127,8 +132,11 @@ const fullChecks = (dialect: Dialect, registry: TemporalRegistry): Check[] => [
   { invariant: "INV5", check: "chain linkage", sql: linkage("") },
   {
     invariant: "INV6",
-    check: "seed row whose creator was seen",
-    sql: "SELECT o.tx_hash, o.output_index FROM l1_outputs o JOIN l1_txs t ON t.tx_hash = o.tx_hash WHERE o.created_slot IS NULL",
+    check: "seed row its stored creator contradicts",
+    sql: `SELECT o.tx_hash, o.output_index FROM l1_outputs o JOIN l1_txs t ON t.tx_hash = o.tx_hash
+ WHERE o.seed_slot IS NOT NULL AND (t.block_slot > o.seed_slot
+   OR (t.is_valid AND o.output_index >= t.output_count)
+   OR (NOT t.is_valid AND NOT (t.has_collateral_return AND o.output_index = t.output_count)))`,
   },
   ...registry.tables.flatMap((table): Check[] =>
     table.shape === "versioned"
