@@ -71,6 +71,7 @@ export const buildForkSteps = (
     chain,
     new Rng(scenario.seed),
     projections.flatMap((p) => (p.traffic === undefined ? [] : [p.traffic])),
+    projections.flatMap((p) => (p.protects === undefined ? [] : [p.protects])),
   );
   scenario.episodes.forEach((episode, index) =>
     builder.episode(episode, index),
