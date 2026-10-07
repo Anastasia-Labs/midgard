@@ -8,11 +8,13 @@ export const RESET_USAGE = `  midgard-l1-follower reset --to-origin
 `;
 
 export const RESET_HELP = `reset deletes the follower's facts and every follower-owned derived row
-(classes A, C, D-t and D-x, with the seeds) in one transaction, and keeps
-class B. Stop the follower first: reset refuses while a follower holds the
-store's writer lease. The next start initializes at the configured l1Origin
-and replays from it. A password may come from PGPASSWORD instead of the
-connection string.
+(classes A, D-t and D-x, with the seeds) in one transaction. It keeps class
+B (own signed material) and class C (content-addressed rows such as scripts,
+kept while referenced; the next prune removes unreferenced scripts). Stop the
+follower first: reset refuses while a follower holds the store's writer
+lease. The next start initializes at the configured l1Origin and replays
+from it. A password may come from PGPASSWORD instead of the connection
+string.
 `;
 
 /** Exit code when a running follower holds the store's writer lease. */

@@ -167,11 +167,15 @@ initializes at the configured `l1Origin` and replays from it. It needs only
 the connection; it reads which tables to clear from the catalog. In one
 transaction it:
 
-- deletes every row of every catalog table of class A, C, D-t or D-x: the
-  facts, the seeds, the cursor, the rollback log, `l1_scripts`, and every role
-  table migrated through the follower;
-- never deletes a class B row, the migration ledger, the catalog or the
-  writer row;
+- deletes every row of every catalog table of class A, D-t or D-x: the
+  facts, the seeds, the cursor, the rollback log, and every such role table
+  migrated through the follower;
+- never deletes a class B row (own signed material), a class C row, the
+  migration ledger, the catalog or the writer row. Class C rows (`l1_scripts`,
+  foreign payloads) are immutable and content-addressed, so they are correct
+  for any chain and are kept while referenced (§7): the next `prune()`
+  removes the `l1_scripts` rows no retained output references, and a role's
+  own retention removes its class C rows;
 - raises the next generation above every generation the store used, and
   notifies `l1_generation`, so no view taken before the reset validates by
   generation after it;

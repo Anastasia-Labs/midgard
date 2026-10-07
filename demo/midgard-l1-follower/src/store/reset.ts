@@ -10,8 +10,13 @@ import type { StoreLocked } from "../types.js";
 import { readCursor } from "./rows.js";
 import { readWriterStateIn, storeLocked } from "./writer-state.js";
 
-/** The classes reset deletes: everything but class B (§5.1). */
-export const RESET_CLASSES = ["A", "C", "D-t", "D-x"] as const;
+/**
+ * The classes reset deletes (§5.1). Class B (own signed material) is never
+ * deleted. Class C (immutable, content-addressed: `l1_scripts`, foreign
+ * payloads) is kept: a row is correct for any chain, is kept while
+ * referenced, and prune removes it once no retained row references it.
+ */
+export const RESET_CLASSES = ["A", "D-t", "D-x"] as const;
 
 export type ResetResult =
   | Readonly<{
@@ -99,10 +104,11 @@ const resetIn = async (
 
 /**
  * `follower reset --to-origin` (§7.5 R1, R2, R5): in one transaction, deletes
- * every row of every catalog table of class A, C, D-t or D-x (facts, seeds,
- * the cursor, the rollback log, `l1_scripts`, and every role table the
- * follower migrated), and never a class B row or the bookkeeping. The next
- * start initializes at the configured origin and replays from it.
+ * every row of every catalog table of class A, D-t or D-x (facts, seeds, the
+ * cursor, the rollback log, and every such role table the follower
+ * migrated), and never a class B or class C row or the bookkeeping. The
+ * next prune removes the `l1_scripts` rows the reset left unreferenced. The
+ * next start initializes at the configured origin and replays from it.
  *
  * Takes the writer lease first and refuses with `store_locked` while a
  * follower holds it. Raises the next generation above every generation the

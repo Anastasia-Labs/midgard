@@ -14,6 +14,16 @@ export {
   type FindOriginResult,
 } from "./find-origin.js";
 export {
+  applyChainSyncEvent,
+  type BlockUndecodable,
+  type FollowStep,
+  intersectionPoints,
+  stepLocked,
+  stepSettled,
+  storePoint,
+  transportPoint,
+} from "./follow/chain-sync.js";
+export {
   intersectionFailure,
   originAnchor,
   type OriginConfig,
@@ -24,15 +34,6 @@ export {
   protocolInitStatus,
   startFromOrigin,
 } from "./origin.js";
-export {
-  applyChainSyncEvent,
-  type BlockUndecodable,
-  type FollowStep,
-  intersectionPoints,
-  stepSettled,
-  storePoint,
-  transportPoint,
-} from "./follow/chain-sync.js";
 export {
   GENERATION_CHANNEL,
   listenForGenerations,

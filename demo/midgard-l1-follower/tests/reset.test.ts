@@ -11,6 +11,7 @@ import {
   type FactStore,
   listenForGenerations,
   resetToOrigin,
+  type ScriptRef,
 } from "../src/index.js";
 import { asNumber } from "../src/sql/backend.js";
 import { testDatabases } from "./support/postgres.js";
@@ -24,6 +25,13 @@ afterAll(async () => {
   await databases.dropAll();
   rmSync(scratch, { recursive: true, force: true });
 });
+
+/** A reference script on a tracked output: class C content. */
+const SCRIPT: ScriptRef = {
+  hash: fill(0x5c, 28),
+  type: "native",
+  bytes: Buffer.from([0x82, 0x01, 0x80]),
+};
 
 /** Another origin: what the operator configured after the reset. */
 const OTHER_ORIGIN = { point: { slot: 90, hash: fill(0x90) }, height: 45 };
@@ -109,8 +117,6 @@ describe.each(resetAdapters(databases, scratch))(
           "l1_blocks",
           "l1_follower_cursor",
           "l1_outputs",
-          "l1_scripts",
-          "role_content",
         ]) as unknown,
       });
       const after = location.store();
@@ -132,7 +138,6 @@ describe.each(resetAdapters(databases, scratch))(
           "fixture_block_marks",
           "fixture_spend_log",
           "fixture_address_live_count",
-          "role_content",
         ])
           expect([table, await count(after, table)]).toEqual([table, 0]);
         expect((await after.checkInvariants()).ok).toBe(true);
@@ -161,10 +166,111 @@ describe.each(resetAdapters(databases, scratch))(
             Buffer.from(row.body as Uint8Array).toString("hex"),
           ]),
         ).toEqual([[1, fill(0xb0, 8).toString("hex")]]);
-        expect(await count(store, "role_content")).toBe(0);
+        expect(await count(store, "role_content")).toBe(1);
         expect(await count(store, "l1_follower_migrations")).toBeGreaterThan(0);
       } finally {
         await store.close();
+      }
+    });
+
+    it("keeps class C rows: a referenced script and a role's content survive, and prune then removes the unreferenced script", async () => {
+      const location = await adapter.create();
+      const [b1, ...rest] = chain();
+      if (b1 === undefined) throw new Error("unreachable");
+      const [first, ...others] = b1.txs;
+      if (first === undefined) throw new Error("unreachable");
+      const [tracked, ...outputs] = first.outputs;
+      if (tracked === undefined) throw new Error("unreachable");
+      const withScript: BlockSummary = {
+        ...b1,
+        txs: [
+          {
+            ...first,
+            outputs: [{ ...tracked, scriptRef: SCRIPT }, ...outputs],
+          },
+          ...others,
+        ],
+      };
+      const store = location.store();
+      try {
+        expect(await store.start()).toMatchObject({ kind: "ready" });
+        expect(await store.initialize(ORIGIN)).toMatchObject({
+          kind: "initialized",
+        });
+        for (const block of [withScript, ...rest])
+          expect(await store.applyBlock(block)).toMatchObject({
+            kind: "applied",
+          });
+        await store.transaction("write", async (tx) => {
+          await tx.query(
+            "INSERT INTO role_content (content_hash, bytes) VALUES (?, ?)",
+            [fill(0xcc), fill(0xcd, 8)],
+          );
+        });
+        expect(await count(store, "l1_scripts")).toBe(1);
+      } finally {
+        await store.close();
+      }
+      const result = await reset(location);
+      expect(result).toMatchObject({ kind: "reset" });
+      if (result.kind !== "reset") throw new Error("unreachable");
+      expect(result.tables).toContain("l1_outputs");
+      expect(result.tables).not.toContain("l1_scripts");
+      expect(result.tables).not.toContain("role_content");
+      const after = location.store();
+      try {
+        expect(await after.start()).toMatchObject({
+          kind: "ready",
+          cursor: null,
+        });
+        const rows = async (sql: string): Promise<string[][]> =>
+          (await after.transaction("read", (tx) => tx.query(sql))).map((row) =>
+            Object.values(row).map((value) =>
+              typeof value === "string"
+                ? value
+                : Buffer.from(value as Uint8Array).toString("hex"),
+            ),
+          );
+        expect(
+          await rows("SELECT content_hash, bytes FROM role_content"),
+        ).toEqual([
+          [fill(0xcc).toString("hex"), fill(0xcd, 8).toString("hex")],
+        ]);
+        expect(
+          await rows("SELECT script_hash, script_type, bytes FROM l1_scripts"),
+        ).toEqual([
+          [
+            SCRIPT.hash.toString("hex"),
+            SCRIPT.type,
+            SCRIPT.bytes.toString("hex"),
+          ],
+        ]);
+        expect(await count(after, "l1_outputs")).toBe(0);
+        expect(await after.initialize(OTHER_ORIGIN)).toMatchObject({
+          kind: "initialized",
+        });
+        expect((await after.checkInvariants()).ok).toBe(true);
+        // Prune's retention steps start once the chain is k blocks above the
+        // origin; then the script nothing references any more goes.
+        let parentHash = OTHER_ORIGIN.point.hash;
+        for (let i = 1; i <= 3; i += 1) {
+          const block: BlockSummary = {
+            point: { slot: OTHER_ORIGIN.point.slot + i, hash: fill(0xa0 + i) },
+            height: OTHER_ORIGIN.height + i,
+            parentHash,
+            txs: [],
+          };
+          expect(await after.applyBlock(block)).toMatchObject({
+            kind: "applied",
+          });
+          parentHash = block.point.hash;
+        }
+        expect(await count(after, "l1_scripts")).toBe(1);
+        expect(await after.prune()).toMatchObject({ done: true });
+        expect(await count(after, "l1_scripts")).toBe(0);
+        expect(await count(after, "role_content")).toBe(1);
+      } finally {
+        await after.close();
       }
     });
 

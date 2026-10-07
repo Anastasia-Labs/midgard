@@ -21,8 +21,7 @@ import { options } from "./small-chain.js";
 
 /**
  * A role's own tables beside the follower's: a class B table (signed
- * material, which reset keeps) and a class C table (content, which reset
- * deletes). The fixture D-t tables come with the fixture derivation.
+ * material) and a class C table (content); reset keeps both. The fixture D-t tables come with the fixture derivation.
  */
 const roleSql = (dialect: DialectName): string => {
   const bytes = dialect === "postgres" ? "bytea" : "BLOB";
