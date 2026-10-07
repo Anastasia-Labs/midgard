@@ -86,6 +86,7 @@ it.each([
         context,
         payload,
         reclaimAuth,
+        h.emulator.now() + 60_000,
       );
       const txHash = await h.submit("prepublish-deposit", publication.tx);
       externalData = (

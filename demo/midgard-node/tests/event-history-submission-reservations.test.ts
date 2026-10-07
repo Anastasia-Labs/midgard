@@ -19,7 +19,7 @@ import {
 import { testDatabaseName } from "./test-env.js";
 import { provideDatabaseLayers } from "./utils.js";
 
-const pending = (row: Journal.Row, txHashes: readonly string[], ttl?: number) =>
+const pending = (row: Journal.Row, txHashes: readonly string[], ttl = 5_000) =>
   ({ ...row.checkpoint, pending: attempt(txHashes, ttl) }) as const;
 
 describe("history submission input reservations", () => {
@@ -173,10 +173,15 @@ describe("history submission input reservations", () => {
         // land at any time, so it is never taken over.
         const forever = hash(randomUUID());
         const other = yield* Journal.reserve(input());
-        yield* Journal.saveCheckpoint(other, {
+        const legacyCheckpoint = {
           ...other.checkpoint,
           pending: attempt([forever], undefined, "Publication"),
-        });
+        };
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE event_history_submissions
+          SET checkpoint = CAST(${JSON.stringify(legacyCheckpoint)} AS TEXT)::JSONB
+          WHERE submission_id = ${other.submission_id}`;
+        yield* leftBehind(`${forever}#0`, other.submission_id);
         const refused = yield* Effect.either(
           Journal.saveCheckpoint(
             published,

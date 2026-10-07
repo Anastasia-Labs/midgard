@@ -297,7 +297,12 @@ export const saveCheckpoint = (
       );
     const sql = yield* SqlClient.SqlClient;
     const { inputs } = yield* Effect.try({
-      try: () => pendingSpend(checkpoint),
+      try: () => {
+        const spend = pendingSpend(checkpoint);
+        if (checkpoint.pending !== undefined && spend.ttl === undefined)
+          throw new Error("Pending history transaction requires a TTL");
+        return spend;
+      },
       catch: (cause) =>
         new DatabaseError({
           table: tableName,

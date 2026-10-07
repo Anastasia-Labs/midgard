@@ -281,6 +281,7 @@ export const prepareFamilyHistory = async (
           context,
           payload,
           reclaimAuth,
+          Math.max(validTo, h.emulator.now() + 60_000),
         );
         const txHash = await submit(
           "prepublish-family-history",
