@@ -1116,7 +1116,7 @@
   },
   {
     "file": "midgard-node/tests/database.test/admissions.register-admissions-tests.ts",
-    "max": 3457,
+    "max": 3459,
     "reason": "registerAdmissionsTests is the dominant indivisible declaration (3341 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated DA correctness branches; exact final source line count."
   },
   {

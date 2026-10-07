@@ -76,9 +76,15 @@ importers:
       '@aiken-lang/merkle-patricia-forestry':
         specifier: file:../vendor/mpf-1.3.1-midgard.1.tgz
         version: file:vendor/mpf-1.3.1-midgard.1.tgz
+      '@al-ft/l1-node-transport':
+        specifier: workspace:*
+        version: link:../l1-node-transport
       '@al-ft/midgard-core':
         specifier: workspace:*
         version: link:../midgard-core
+      '@al-ft/midgard-l1-follower':
+        specifier: workspace:*
+        version: link:../midgard-l1-follower
       '@al-ft/midgard-sdk':
         specifier: workspace:*
         version: link:../midgard-sdk
@@ -143,9 +149,6 @@ importers:
         specifier: 8.22.0
         version: 8.22.0
     devDependencies:
-      '@al-ft/l1-node-transport':
-        specifier: workspace:*
-        version: link:../l1-node-transport
       '@al-ft/midgard-test-support':
         specifier: workspace:*
         version: link:../midgard-test-support
@@ -158,6 +161,9 @@ importers:
       '@types/ws':
         specifier: 8.18.1
         version: 8.18.1
+      fast-check:
+        specifier: ^4.5.3
+        version: 4.7.0
       midgard-watcher:
         specifier: workspace:*
         version: link:../midgard-watcher

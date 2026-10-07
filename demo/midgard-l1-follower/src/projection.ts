@@ -1,17 +1,18 @@
-import type { TemporalTableSpec } from "../registry.js";
-import type { MigrationSet } from "../schema/migrate.js";
-import type { DialectName } from "../sql/backend.js";
-import type { DerivationHook, RetentionPins } from "../store/context.js";
-import type { FactStore, FactStoreOptions } from "../store/fact-store.js";
-import type { ForkStep, ScenarioTraffic } from "../testing/episodes.js";
-import type { SimChain } from "../testing/sim-chain.js";
-import type { TrackedSet } from "../types.js";
+import type { TemporalTableSpec } from "./registry.js";
+import type { MigrationSet } from "./schema/migrate.js";
+import type { DialectName } from "./sql/backend.js";
+import type { DerivationHook, RetentionPins } from "./store/context.js";
+import type { FactStore, FactStoreOptions } from "./store/fact-store.js";
+import type { SimOutput } from "./testing/block-cbor.js";
+import type { ForkStep, ScenarioTraffic } from "./testing/episodes.js";
+import type { SimChain } from "./testing/sim-chain.js";
+import type { TrackedSet } from "./types.js";
 
 /**
- * A role's projection as the fork simulator and the soak plug it in. Its
- * tracked set, D-t tables, migrations and derivations join the store; in the
- * simulator its D-t tables join the after-every-event comparison with a
- * fresh replay, its `traffic` joins the filler and `check` adds the
+ * A role's projection over the follower's facts. Its tracked set, D-t
+ * tables, migrations and derivations join the store (`projectionStoreOptions`);
+ * in the fork simulator its D-t tables join the after-every-event comparison
+ * with a fresh replay, its `traffic` joins the filler and `check` adds the
  * projection's own §5.5 cases. Role tickets (C1, W1, N1, ...) add one.
  */
 export type FollowerProjection = Readonly<{
@@ -22,6 +23,12 @@ export type FollowerProjection = Readonly<{
   derivations?: readonly DerivationHook[];
   retentionPins?: RetentionPins;
   traffic?: ScenarioTraffic;
+  /**
+   * Outputs only this projection's `traffic` may spend: the filler never
+   * picks them as inputs or collateral (a contract's own UTxOs, which no
+   * third party can spend on chain). Referencing them stays allowed.
+   */
+  protects?: (output: SimOutput) => boolean;
   /** Returns a failure text, or null when the projection holds at this step. */
   check?: (
     context: Readonly<{ store: FactStore; step: ForkStep; chain: SimChain }>,

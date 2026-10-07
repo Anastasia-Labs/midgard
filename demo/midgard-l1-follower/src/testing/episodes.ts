@@ -100,6 +100,9 @@ type Block = {
   pending: SimUtxo[];
 };
 
+/** Outputs the filler never spends (see `FollowerProjection.protects`). */
+type Protected = (output: SimOutput) => boolean;
+
 const outputFor = (chain: SimChain, rng: Rng): SimOutput => {
   const u = chain.universe;
   const roll = rng.int(4);
@@ -123,10 +126,13 @@ const pickInput = (
   rng: Rng,
   block: Block,
   reserved: ReadonlySet<string>,
+  isProtected: Protected,
 ): OutRef => {
   const candidates = [...chain.live(), ...block.pending].filter((utxo) => {
     const key = outRefKey(utxo.outRef);
-    return !reserved.has(key) && !block.used.has(key);
+    return (
+      !reserved.has(key) && !block.used.has(key) && !isProtected(utxo.output)
+    );
   });
   if (candidates.length === 0 || rng.chance(0.3)) return chain.outsideInput();
   const tracked = candidates.filter((utxo) => chain.isTracked(utxo.output));
@@ -160,10 +166,13 @@ const fillerTx = (
   rng: Rng,
   block: Block,
   reserved: ReadonlySet<string>,
+  isProtected: Protected,
 ): SimTx => {
   const u = chain.universe;
-  const inputs = [pickInput(chain, rng, block, reserved)];
-  if (rng.chance(0.3)) inputs.push(pickInput(chain, rng, block, reserved));
+  const pick = (): OutRef =>
+    pickInput(chain, rng, block, reserved, isProtected);
+  const inputs = [pick()];
+  if (rng.chance(0.3)) inputs.push(pick());
   const unique = [...new Map(inputs.map((i) => [outRefKey(i), i])).values()];
   const outputs = Array.from({ length: rng.range(1, 2) }, () =>
     outputFor(chain, rng),
@@ -197,7 +206,7 @@ const fillerTx = (
     ...(failed
       ? {
           isValid: false,
-          collaterals: [pickInput(chain, rng, block, reserved)],
+          collaterals: [pick()],
           ...(rng.chance(0.7)
             ? { collateralReturn: outputFor(chain, rng) }
             : {}),
@@ -212,18 +221,26 @@ export class EpisodeBuilder {
   readonly steps: ForkStep[] = [];
   private readonly reserved = new Set<string>();
 
+  private readonly isProtected: Protected;
+
   constructor(
     readonly chain: SimChain,
     private readonly rng: Rng,
     private readonly traffic: readonly ScenarioTraffic[] = [],
-  ) {}
+    protects: readonly Protected[] = [],
+  ) {
+    this.isProtected = (output) => protects.some((test) => test(output));
+  }
 
   /** One block: `subject` first (if any), then filler and projection traffic. */
   block(subject: readonly SimTx[] = []): void {
     const block: Block = { txs: [], used: new Set(), pending: [] };
     for (const tx of subject) push(block, tx);
     for (let i = this.rng.int(3); i > 0; i -= 1)
-      push(block, fillerTx(this.chain, this.rng, block, this.reserved));
+      push(
+        block,
+        fillerTx(this.chain, this.rng, block, this.reserved, this.isProtected),
+      );
     const claim = (outRef: OutRef): boolean => {
       const key = outRefKey(outRef);
       if (this.reserved.has(key) || block.used.has(key)) return false;

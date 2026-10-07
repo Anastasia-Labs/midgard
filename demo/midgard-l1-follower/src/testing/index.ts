@@ -4,11 +4,6 @@
  * comparison. Never imported by production code.
  */
 export {
-  type FollowerProjection,
-  mergeTrackedSets,
-  projectionStoreOptions,
-} from "../shadow/projection.js";
-export {
   forkCorpus,
   forkEpisodeArbitrary,
   forkScenarioArbitrary,
@@ -19,8 +14,10 @@ export {
   type EncodedBlock,
   encodeTxBody,
   encodeUtxoAnswer,
+  encodeWitnessSet,
   type SimBlock,
   type SimOutput,
+  type SimRedeemer,
   type SimTx,
   simTxHash,
 } from "./block-cbor.js";
