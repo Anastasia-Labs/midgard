@@ -37,7 +37,7 @@ Identifier scheme:
 | S0–S6 | Pipeline stages | §4.1 |
 | INV1–INV6 | Fact-store invariants | §5.2 |
 | P0–P10, PW, WP, CP | Projections | §5.5 |
-| R1–R9 | Readiness reasons for intervention cases | §7.5 |
+| R1–R10 | Readiness reasons for intervention cases | §7.5 |
 | L, F, C, W, N, I, M, U + number | Tickets | §15 |
 | B1–B8 | Benchmarks | §16.2 |
 | Q1 | Owner question, ruled 2026-10-07 | §18.1 |
@@ -994,6 +994,7 @@ on an unparseable config or a port conflict.
 | R7 | `operator_removed` | The operator is no longer in the active set (D-N7) | Expected end state; re-register or retire. |
 | R8 | `wallet_below_floor` | Own wallet funds fall below the fee floor for pending intents | Fund the wallet. An automatic refill loop is open decision-register item DR-B3 (`public-testnet-decisions-2026-10-01/source-context.md:139`), not decided here. |
 | R9 | `manifest_mismatch` | The config does not match the finalised manifest identity | Fix the config. |
+| R10 | `origin_mismatch` | The configured `l1Origin` differs from the origin the follower store was initialised at | Restore the previous `l1Origin`, or run `follower reset --to-origin` to replay from the new one. The reset never deletes class B rows. |
 
 Everything else is transient and recovers automatically with backoff, while
 `/readyz` reports a reason:
