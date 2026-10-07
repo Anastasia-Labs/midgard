@@ -516,6 +516,9 @@ jobs:
           prebuild: lucid-midgard
       - name: Build and test Midgard core DA transport
         run: pnpm --dir demo/midgard-core run build && pnpm --dir demo/midgard-core test
+      - name: Typecheck core and shared test support
+        if: ${{ !cancelled() }}
+        run: pnpm --dir demo/midgard-core run typecheck && pnpm --dir demo/midgard-test-support run typecheck
       # Repository tool tests skip this file where the demo packages are not
       # installed; here the flag turns that skip into a failure.
       - name: Check build freshness against real core and validation builds

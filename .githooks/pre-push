@@ -8,8 +8,9 @@
 # branch (what the push sends), and runs only the checks marked "runs in the
 # pre-push hook" in docs/agents/required-checks.md: formatting, the generated
 # check list, repository tooling self-tests, workflow and agent-doc lint, and a
-# merge-conflict prediction. The heavier checks (builds, suites, ledgers) stay
-# with `node scripts/preflight.mjs`, and CI runs everything before merge.
+# merge-conflict prediction. Ordinary preflight assigns the covered package
+# matrix to Node CI; --full-local retains local matrix execution. Focused
+# regressions and distinct acceptance checks remain required before merge.
 #
 # Preflight exit codes: 0 passed; 1 a check failed (the push is BLOCKED);
 # 2 preflight could not compute the change set; 3 a check could not run for a

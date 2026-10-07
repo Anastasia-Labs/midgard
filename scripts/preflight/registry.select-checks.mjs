@@ -17,6 +17,7 @@ import {
   independentChecks,
   toolingChecks,
 } from "./registry.tooling-checks.mjs";
+import { readRuntimeWorkflow } from "./runtime-owner.mjs";
 
 // The registry, in run order: cheap and independent first, then builds, then
 // the checks that consume what the builds produced.
@@ -57,7 +58,12 @@ export const buildRegistry = (root) => {
     }
     ids.add(check.id);
   }
-  return { checks, packages, index };
+  return {
+    checks,
+    packages,
+    index,
+    runtimeWorkflow: readRuntimeWorkflow(root),
+  };
 };
 
 // Which checks a change selects. `changed` is repository-relative paths.

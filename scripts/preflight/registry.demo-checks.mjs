@@ -61,6 +61,7 @@ export const VERIFICATION_ONLY = [
   "scripts/preflight/docs.mjs",
   "scripts/preflight/ci-evidence.mjs",
   "scripts/preflight/sdk-suite-evidence.mjs",
+  "scripts/preflight/runtime-owner.mjs",
   "scripts/preflight/*.test.mjs",
 ];
 

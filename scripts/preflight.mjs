@@ -36,7 +36,7 @@ import {
 
 export const JSON_SCHEMA = "midgard-preflight/v1";
 
-const USAGE = `usage: node scripts/preflight.mjs [--strict | --pre-push] [--base <target-ref>] [--ci-run <id>] [--full] [--list] [--json]
+const USAGE = `usage: node scripts/preflight.mjs [--strict | --pre-push] [--base <target-ref>] [--ci-run <id>] [--full-local | --full] [--list] [--json]
        node scripts/preflight.mjs --write-docs | --check-docs`;
 
 export const parseArguments = (argv) => {
@@ -46,6 +46,7 @@ export const parseArguments = (argv) => {
     base: undefined,
     ciRun: undefined,
     full: false,
+    fullLocal: false,
     list: false,
     json: false,
     docs: undefined,
@@ -62,6 +63,9 @@ export const parseArguments = (argv) => {
         break;
       case "--full":
         options.full = true;
+        break;
+      case "--full-local":
+        options.fullLocal = true;
         break;
       case "--list":
         options.list = true;
@@ -198,6 +202,8 @@ export const main = async (
       ...changes.fullReasons,
     ],
     prePush: options.prePush,
+    runtimeOwner:
+      options.fullLocal || options.full || killSwitch ? "local" : "ci",
   });
 
   say(
@@ -213,6 +219,11 @@ export const main = async (
   }
 
   let results = [];
+  for (const obligation of plan.hosted) {
+    say(
+      `CI owns ${obligation.id}: ${obligation.workflow} / ${obligation.gate} — pending exact-head hosted result\n`,
+    );
+  }
   let exitCode = EXIT.passed;
   if (options.list) {
     for (const { check, matched, steps } of plan.planned) {
@@ -297,6 +308,7 @@ export const main = async (
           // A dry run executes nothing, so checks[] stays empty and the plan
           // is reported separately.
           checks: results,
+          hosted: plan.hosted,
           planned: plan.planned.map(({ check, matched, steps }) => ({
             id: check.id,
             command: steps.map(formatStep).join(" && ") || check.display,
