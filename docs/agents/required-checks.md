@@ -375,6 +375,7 @@ Golden channel native-compact (@al-ft/lucid-midgard).
   - `demo/midgard-watcher/src/**`
   - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 - Mode: warns only (no workflow runs this channel, so a red check does not block)
 
@@ -389,6 +390,7 @@ Generated document consensus-profile-v1 matches its producer.
   - `docs/consensus-profile-v1.md`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`
 
 ### `golden:native-tx-field-access-v1`
@@ -409,6 +411,7 @@ Golden channel native-tx-field-access-v1 (@al-ft/midgard-core).
   - `onchain/aiken/scripts/pinned-compiler.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 
 ### `golden:native-tx-field-items-v1`
@@ -432,6 +435,7 @@ Golden channel native-tx-field-items-v1 (@al-ft/midgard-core).
   - `onchain/aiken/scripts/pinned-compiler.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 
 ### `golden:native-tx-vector-v1`
@@ -450,6 +454,7 @@ Golden channel native-tx-vector-v1 (@al-ft/midgard-core).
   - `onchain/aiken/scripts/pinned-compiler.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 
 ### `golden:mpf-node-encoding-v1`
@@ -466,6 +471,7 @@ Golden channel mpf-node-encoding-v1 (@al-ft/midgard-core).
   - `onchain/aiken/scripts/pinned-compiler.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 
 ### `golden:ordered-collection-boundary-aiken`
@@ -501,6 +507,7 @@ Golden channel ordered-collection-boundary-aiken (@al-ft/midgard-validation).
   - `demo/midgard-watcher/src/**`
   - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:validation-auxiliary-witness-v1`
@@ -524,6 +531,7 @@ Golden channel validation-auxiliary-witness-v1 (@al-ft/midgard-validation).
   - `demo/midgard-watcher/src/**`
   - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:nested-boundary-aiken`
@@ -549,6 +557,7 @@ Golden channel nested-boundary-aiken (@al-ft/midgard-validation).
   - `demo/midgard-watcher/src/**`
   - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:cek-core-step-v1`
@@ -599,6 +608,7 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `demo/midgard-watcher/src/**`
   - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:cek-builtin-cardano-v1`
@@ -624,6 +634,7 @@ Golden channel cek-builtin-cardano-v1 (@al-ft/midgard-validation).
   - `demo/midgard-watcher/src/**`
   - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:transition-trace-abi`
@@ -647,6 +658,7 @@ Golden channel transition-trace-abi (midgard-node).
   - `demo/midgard-watcher/src/**`
   - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:transaction-root-v1`
@@ -672,6 +684,7 @@ Golden channel transaction-root-v1 (midgard-node).
   - `demo/midgard-watcher/src/**`
   - `demo/da-committee-node/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 - Mode: warns only (no workflow runs this channel, so a red check does not block)
 
@@ -692,6 +705,7 @@ Golden channel native-tx-carriage-wire-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-core/src/**`
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:canonical-decodability-v1`
@@ -710,6 +724,7 @@ Golden channel canonical-decodability-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-core/src/**`
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:committed-field-shape-v1`
@@ -728,6 +743,7 @@ Golden channel committed-field-shape-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-core/src/**`
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:da-commitment-v1`
@@ -744,6 +760,7 @@ Golden channel da-commitment-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-core/src/**`
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:da-bond-pool-v1`
@@ -770,6 +787,7 @@ Golden channel da-bond-pool-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-core/src/**`
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `golden:da-attestation-capacity-v1`
@@ -785,6 +803,7 @@ Golden channel da-attestation-capacity-v1 (@al-ft/midgard-sdk).
   - `demo/midgard-core/src/**`
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
 ### `aiken-focused`

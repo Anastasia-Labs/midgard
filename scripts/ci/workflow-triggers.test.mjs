@@ -77,6 +77,7 @@ const scenarios = {
         "node-image",
         "golden-channels",
         "lucid-midgard",
+        "l1-node-transport",
         "midgard-core",
         "midgard-sdk",
         "midgard-validation",
@@ -88,6 +89,7 @@ const scenarios = {
         "native-mpf",
         "lint",
         "da-committee-node",
+        "midgard-l1-follower",
         "midgard-node-typecheck",
         "midgard-node",
         "midgard-node-tools",
@@ -102,6 +104,29 @@ const scenarios = {
     event: "pull_request",
     branch: "main",
     files: ["demo/midgard-node/src/index.ts"],
+    runs: [
+      "midgard-node-ci:*",
+      "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
+    ],
+  },
+  // The watcher image ships the transport sidecar; watcher CI vets, tests and
+  // builds it.
+  "node transport pull request": {
+    event: "pull_request",
+    branch: "main",
+    files: ["demo/l1-node-transport/native/session.go"],
+    runs: [
+      "midgard-node-ci:*",
+      "midgard-watcher-ci:watcher",
+      "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
+    ],
+  },
+  "L1 follower pull request": {
+    event: "pull_request",
+    branch: "main",
+    files: ["demo/midgard-l1-follower/src/index.ts"],
     runs: [
       "midgard-node-ci:*",
       "repo-tools-ci:repo-tools",
