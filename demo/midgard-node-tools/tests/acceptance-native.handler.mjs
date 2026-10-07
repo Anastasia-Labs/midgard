@@ -52,8 +52,10 @@ export default (options) => {
             tip: tip("aa", 10, 101),
           });
         if (command === "error") {
-          stream.fail("chain_sync_failed", "the node failed the stream");
+          // Journal the end before the failure reaches the client, so a
+          // client that has seen the failure always finds the end recorded.
           end(stream);
+          stream.fail("chain_sync_failed", "the node failed the stream");
         }
       }
     }
