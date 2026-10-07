@@ -11,6 +11,7 @@ import {
   encodeMidgardTxOutput,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
+  type MidgardNativeScript,
 } from "@al-ft/midgard-core";
 import {
   encodeMidgardTxInputCanonical,
@@ -42,20 +43,18 @@ import {
 
 export const buildMissingNativeScriptUtxoEmulatorFixture = async ({
   decoyWitnessCount = 0,
+  nativeScript = { type: "sig", keyHash: Buffer.alloc(28, 0x44) },
+  includeRequiredScript = false,
 }: {
   readonly decoyWitnessCount?: number;
+  readonly nativeScript?: MidgardNativeScript;
+  readonly includeRequiredScript?: boolean;
 } = {}) => {
-  const missingNativeScriptBytes = encodeMidgardNativeScript({
-    type: "sig",
-    keyHash: Buffer.alloc(28, 0x44),
-  });
+  const missingNativeScriptBytes = encodeMidgardNativeScript(nativeScript);
   const missingVersioned = {
     language: "NativeCardano" as const,
     scriptBytes: missingNativeScriptBytes,
-    nativeScript: {
-      type: "sig" as const,
-      keyHash: Buffer.alloc(28, 0x44),
-    },
+    nativeScript,
   };
   const expectedMissingScriptHash =
     hashMidgardVersionedScript(missingVersioned);
@@ -103,7 +102,12 @@ export const buildMissingNativeScriptUtxoEmulatorFixture = async ({
   const tx = makeNativeTx({
     spendInputCbors: spendInputs.map(encodeMidgardTxInputCanonical),
     fee: 7n,
-    scriptTxWitsPreimageCbor: encodeCbor(decoys),
+    scriptTxWitsPreimageCbor: encodeCbor([
+      ...decoys,
+      ...(includeRequiredScript
+        ? [encodeMidgardVersionedScript(missingVersioned)]
+        : []),
+    ]),
   });
   const badTxId = computeMidgardNativeTxId(tx).toString("hex");
   const nativeTxCompactCbor = encodeMidgardNativeTxCompact(tx.compact).toString(

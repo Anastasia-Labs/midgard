@@ -10,32 +10,21 @@ import {
   submitMissingNativeScriptUtxoCancel,
   submitMissingNativeScriptUtxoInit,
   submitMissingNativeScriptUtxoStep01,
-  submitMissingNativeScriptUtxoStep02,
-  submitMissingNativeScriptUtxoStep03,
-  submitMissingNativeScriptUtxoStep04,
   submitMissingNativeScriptUtxoStep05,
   submitMissingNativeScriptUtxoStep05StartGrammar,
   submitMissingNativeScriptUtxoStep06,
   submitMissingNativeScriptUtxoStep07,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
-import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
-  buildMissingNativeScriptUtxoEmulatorFixture,
-  makeMissingNativeScriptUtxoEmulatorHarness,
-  publishFinalFamilyReferenceScripts,
-} from "./support/final-catalogue-emulator.js";
-import {
-  countedTransactionsRoot,
-  EMULATOR_HEADER_CLOCK_HEADROOM_MS,
-  emulatorSuccessorHeaderStart,
-  setupFraudulentBlock,
-  submitSuccessorBlockTx,
-} from "./support/submit-init-emulator-fixtures.js";
+  advanceMissingNativeScriptUtxoToFinal,
+  setupMissingNativeScriptUtxoLifecycle,
+  submitMissingNativeScriptUtxoFinalRaw,
+} from "./support/missing-native-script-utxo-honest-state.js";
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
-  makeHeader,
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
@@ -50,81 +39,18 @@ describe("missing-native-script-utxo standalone emulator lifecycle", () => {
   ] as const)(
     "authenticates predecessor material through the $terminalPath path, cancels and resumes, removes the header, and retains permanent evidence",
     async ({ terminalPath, decoyWitnessCount }) => {
-      const harness = await makeMissingNativeScriptUtxoEmulatorHarness();
-      const refs = await publishFinalFamilyReferenceScripts({
-        lucid: harness.proverLucid,
-        family: harness.family,
-        label: "missing-native-script-utxo",
-      });
-      const fixture = await buildMissingNativeScriptUtxoEmulatorFixture({
+      const scenario = await setupMissingNativeScriptUtxoLifecycle({
         decoyWitnessCount,
       });
-      const predecessor = await setupFraudulentBlock({
-        funderLucid: harness.funderLucid,
-        emulator: harness.emulator,
-        contracts: harness.contracts,
-        catalogue: harness.catalogue,
-        fixture: {
-          transactionsRoot: fixture.transactionsRoot,
-          l2TransactionCount: fixture.l2TransactionCount,
-          utxosRoot: fixture.prevUtxosRoot,
-          // The four-transaction setup journey advances by about twenty seconds;
-          // keep its predecessor window live after setup so strict successor
-          // contiguity remains satisfiable.
-          headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS,
-        },
-      });
-      const targetStart = emulatorSuccessorHeaderStart({
-        predecessorEndTime: predecessor.header.endTime,
-        emulator: harness.emulator,
-      });
-      const targetHeader = {
-        ...makeHeader(
-          predecessor.header.operatorVkey,
-          targetStart,
-          await countedTransactionsRoot(
-            fixture.transactionsRoot,
-            fixture.l2TransactionCount,
-          ),
-          fixture.l2TransactionCount,
-        ),
-        prevHeaderHash: predecessor.headerHash,
-        prevUtxosRoot: fixture.prevUtxosRoot,
-        utxosRoot: fixture.utxosRoot,
-      };
-      expect(
-        targetHeader.endTime + 1n,
-        "successor commit validTo must be later than the emulator clock before submission",
-      ).toBeGreaterThan(BigInt(harness.emulator.now()));
-      const target = await submitSuccessorBlockTx({
-        lucid: harness.funderLucid,
-        emulator: harness.emulator,
-        contracts: harness.contracts,
-        anchorBlockUnit: predecessor.stateQueueBlockUnit,
-        header: targetHeader,
-        hubOracle: predecessor.hubOracle,
-        scheduler: predecessor.scheduler,
-        activeOperatorNode: predecessor.activeOperatorNode,
-        activeOperatorNodeUnit: predecessor.activeOperatorNodeUnit,
-      });
-      const prepared = {
-        ...fixture.prepared,
-        headerHash: target.successorHeaderHash,
-      };
-      const txInclusion = parseSubmitStep01TxInclusion(prepared.txInclusion);
-      const deploymentInfo = buildRemovalDeploymentInfo(
-        harness.contracts,
-        harness.catalogue,
-      );
-      const initParams = {
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        deploymentInfo,
-        network,
-        signer: harness.proverSigner,
-        fraudulentBlockOutRef: target.successorOutRef,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      } as const;
+      const {
+        harness,
+        refs,
+        fixture,
+        target,
+        prepared,
+        txInclusion,
+        initParams,
+      } = scenario;
 
       const cancelInit = await submitMissingNativeScriptUtxoInit(initParams);
       const cancelStep01 = await submitMissingNativeScriptUtxoStep01({
@@ -152,53 +78,7 @@ describe("missing-native-script-utxo standalone emulator lifecycle", () => {
       });
       expect(cancelled.cancelledStepIndex).toBe(1);
 
-      const init = await submitMissingNativeScriptUtxoInit(initParams);
-      const step01 = await submitMissingNativeScriptUtxoStep01({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts: harness.family,
-        categoryId: harness.category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: `${init.txHash}#${init.firstStepOutputIndex.toString()}`,
-        stateQueueBlockOutRef: target.successorOutRef,
-        txInclusion,
-        prevUtxosRoot: prepared.prevUtxosRoot,
-        referenceScriptUtxo: refs[0],
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      });
-      const step02 = await submitMissingNativeScriptUtxoStep02({
-        lucid: harness.proverLucid,
-        contracts: harness.family,
-        categoryId: harness.category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: step01.nextThreadOutRef,
-        nativeTxCompactCbor: prepared.nativeTxCompactCbor,
-        spendInputs: fixture.spendInputs,
-        badInputIndex: prepared.badInputIndex,
-        referenceScriptUtxo: refs[1],
-      });
-      const step03 = await submitMissingNativeScriptUtxoStep03({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts: harness.family,
-        categoryId: harness.category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: step02.nextThreadOutRef,
-        prepared,
-        referenceScriptUtxo: refs[2],
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      });
-      const step04 = await submitMissingNativeScriptUtxoStep04({
-        lucid: harness.proverLucid,
-        contracts: harness.family,
-        categoryId: harness.category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: step03.nextThreadOutRef,
-        missingNativeScriptBytes: prepared.missingNativeScriptBytes,
-        referenceScriptUtxo: refs[3],
-      });
+      const { step04 } = await advanceMissingNativeScriptUtxoToFinal(scenario);
       let fraudProofUnit: string;
       if (terminalPath === "direct") {
         const proof = await submitMissingNativeScriptUtxoStep05({
@@ -343,4 +223,67 @@ describe("missing-native-script-utxo standalone emulator lifecycle", () => {
     },
     300_000,
   );
+
+  it("refuses an authenticated present script at step-05 against the missing-script control", async () => {
+    // Both commitments spend the same native-script input. all [] is satisfied
+    // without signatures; only its presence in field 6 differs between them.
+    for (const includeRequiredScript of [false, true]) {
+      const scenario = await setupMissingNativeScriptUtxoLifecycle({
+        nativeScript: { type: "all", scripts: [] },
+        includeRequiredScript,
+      });
+      const { harness, fixture, target } = scenario;
+      expect(fixture.scriptWitnessItems).toHaveLength(
+        includeRequiredScript ? 1 : 0,
+      );
+      const { init, step04 } =
+        await advanceMissingNativeScriptUtxoToFinal(scenario);
+      const submit = () =>
+        submitMissingNativeScriptUtxoFinalRaw(
+          scenario,
+          step04.nextThreadOutRef,
+        );
+      if (!includeRequiredScript) {
+        const proof = await submit();
+        const proofUtxo = await expectSingleUtxoWithUnit(
+          harness.proverLucid,
+          harness.family.fraudProof.spendingScriptAddress,
+          proof.fraudProofUnit,
+        );
+        expect(Data.from(proofUtxo.datum!, FraudProofTokenDatum)).toEqual({
+          fraud_prover: harness.proverSigner.paymentKeyHash,
+        });
+        continue;
+      }
+      await expectOnchainRefusal(submit, {
+        refusedBy: "fraud_proofs/missing_native_script_utxo/step_05",
+        check: /required_script_is_present == False/u,
+      });
+      // Refusal must preserve the honest header and thread and mint no evidence.
+      expect(
+        outRefLabel(
+          await expectSingleUtxoWithUnit(
+            harness.proverLucid,
+            harness.family.steps[4].spendingScriptAddress,
+            init.computationThreadUnit,
+          ),
+        ),
+      ).toBe(step04.nextThreadOutRef);
+      expect(
+        outRefLabel(
+          await expectSingleUtxoWithUnit(
+            harness.proverLucid,
+            harness.contracts.stateQueue.spendingScriptAddress,
+            target.successorBlockUnit,
+          ),
+        ),
+      ).toBe(target.successorOutRef);
+      await expect(
+        harness.proverLucid.utxosAtWithUnit(
+          harness.family.fraudProof.spendingScriptAddress,
+          harness.family.fraudProof.policyId + init.computationThreadAssetName,
+        ),
+      ).resolves.toHaveLength(0);
+    }
+  }, 300_000);
 });

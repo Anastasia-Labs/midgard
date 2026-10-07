@@ -364,7 +364,6 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
       "fraud_proofs/missing_native_script_utxo/step_02.main",
       "fraud_proofs/missing_native_script_utxo/step_03.main",
       "fraud_proofs/missing_native_script_utxo/step_04.main",
-      "fraud_proofs/missing_native_script_utxo/step_05.main",
       "fraud_proofs/missing_native_script_utxo/step_06.main",
       "fraud_proofs/missing_native_script_utxo/step_07.main",
       "fraud_proofs/missing_redeemer/step_01.main",
