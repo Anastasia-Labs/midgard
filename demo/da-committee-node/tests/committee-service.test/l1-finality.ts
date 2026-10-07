@@ -1408,15 +1408,15 @@ export const registerL1FinalityTests = () => {
           fetchStateQueueSnapshot: lying,
         });
         await committee.initialize();
-        await expect(committee.tick()).resolves.toMatchObject({
-          signedHeaders: 1,
-        });
+        expect((await committee.tick()).signedHeaders).toBe(1);
         contradict = true;
         clock.nowMs += blockMs;
-        await committee.tick();
+        const { outRef } = (await lying()).nodes[0]!;
+        const message = `state-queue status disagreement at unchanged output ${outRef}: stored=Unattested, observed=Attested:${"44".repeat(32)}`;
+        await expect(committee.tick()).rejects.toThrow(message);
         await expect(store.getL1SourceState()).resolves.toMatchObject({
           status: "quarantined",
-          quarantineReason: `l1_source_decision_forked:${signed}`,
+          quarantineReason: `l1_source_integrity_failed: ${message}`,
         });
       });
 

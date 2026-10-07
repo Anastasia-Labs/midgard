@@ -15,7 +15,7 @@
  * predicate, reason/coordinate mutation, substitution at every seam, cancel
  * from every physical step, resume from a live checkpoint, mint plus removal.
  * Every positive transaction is measured against the Van Rossem envelope;
- * the final case pins the coverage gate and the fit ledger.
+ * the suite teardown pins the coverage gate and the fit ledger after all cases.
  */
 import "node:crypto";
 import "node:fs";
@@ -50,7 +50,7 @@ import {
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import {
   buildVanRossemFitLedger,
@@ -764,7 +764,7 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
     }
   }, 1_200_000);
 
-  it("closes the coverage gate and the Van Rossem fit ledger", async () => {
+  afterAll(async () => {
     assertCompleteLifecycleCoverage({
       coverage: coverage.snapshot(),
       expectedReasonArms: [RESOLVED_OUTPUT_REASON_ARM],
