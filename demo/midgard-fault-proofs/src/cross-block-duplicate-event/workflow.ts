@@ -188,8 +188,8 @@ export type ManifestBoundCrossBlockDuplicateEventWorkflowConfig = Readonly<{
   signer: ResolvedProverSigner;
   referenceScripts: CrossBlockDuplicateEventWorkflowReferenceScripts;
   source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-  historySource: HistoricalNativeScriptHistorySource;
-  checkpointStore: HistoricalNativeScriptCheckpointStore;
+  historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
+  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 export type ManifestBoundCrossBlockDuplicateEventWorkflow = Readonly<{
@@ -203,7 +203,8 @@ export type ManifestBoundCrossBlockDuplicateEventWorkflow = Readonly<{
 }>;
 type CrossBlockRuntime = Pick<
   ManifestBoundCrossBlockDuplicateEventWorkflowConfig,
-  "historySource" | "checkpointStore"
+  | "historicalNativeScriptHistorySource"
+  | "historicalNativeScriptCheckpointStore"
 >;
 type CrossBlockContext = FamilyAssemblyContext<
   "crossBlockDuplicateEvent",
@@ -222,7 +223,8 @@ const settlementAuthorityFor = (context: CrossBlockContext) => {
   const authority = createCrossBlockSettlementAuthority({
     binding: context.binding,
     source: context.source,
-    ...context.runtime,
+    historySource: context.runtime.historicalNativeScriptHistorySource,
+    checkpointStore: context.runtime.historicalNativeScriptCheckpointStore,
   });
   settlementAuthorities.set(context, authority);
   return authority;
@@ -289,8 +291,10 @@ export const createManifestBoundCrossBlockDuplicateEventWorkflow = async (
     CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION,
     config,
     {
-      historySource: config.historySource,
-      checkpointStore: config.checkpointStore,
+      historicalNativeScriptHistorySource:
+        config.historicalNativeScriptHistorySource,
+      historicalNativeScriptCheckpointStore:
+        config.historicalNativeScriptCheckpointStore,
     },
   )) as unknown as ManifestBoundCrossBlockDuplicateEventWorkflow;
 export const runOrResumeManifestBoundCrossBlockDuplicateEventWorkflow = async ({

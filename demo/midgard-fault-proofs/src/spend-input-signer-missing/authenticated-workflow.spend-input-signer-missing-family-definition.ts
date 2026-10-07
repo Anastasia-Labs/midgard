@@ -147,8 +147,8 @@ export type ManifestBoundSpendInputSignerMissingWorkflowConfig =
       source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-      historicalCheckpointStore: HistoricalNativeScriptCheckpointStore;
-      historicalSource: HistoricalNativeScriptHistorySource;
+      historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
+      historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
     }>;
 
 export type ManifestBoundSpendInputSignerMissingWorkflow = Readonly<{
@@ -164,8 +164,8 @@ export type ManifestBoundSpendInputSignerMissingWorkflow = Readonly<{
   l1: FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   decisionDigest: string;
-  historicalCheckpointStore: HistoricalNativeScriptCheckpointStore;
-  historicalSource: HistoricalNativeScriptHistorySource;
+  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
+  historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
 }>;
 
 export const SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<

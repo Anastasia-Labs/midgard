@@ -136,10 +136,9 @@ const requiredHistoricalNativeScriptAuthority = (
 };
 
 /**
- * The historical authority under the `historicalNativeScript*` spelling the
- * min-ADA, missing-native-script and transition-trace families read.
+ * The two historical authority fields shared by all historical families.
  */
-export const historicalNativeScriptPrefixedFields = (
+const historicalNativeScriptFields = (
   authority: FamilyHistoricalNativeScriptAuthority,
 ) =>
   ({
@@ -148,40 +147,20 @@ export const historicalNativeScriptPrefixedFields = (
   }) as const;
 
 /**
- * The historical authority under the `historical*` spelling the
- * certificate-shape signer and output families and the execution
- * native-script family read.
- */
-export const historicalPrefixedFields = (
-  authority: FamilyHistoricalNativeScriptAuthority,
-) =>
-  ({
-    historicalCheckpointStore: authority.checkpointStore,
-    historicalSource: authority.historySource,
-  }) as const;
-
-/**
- * How a cursor family reads the optional infrastructure it requires. The
- * replay context has one spelling in every config, so it is laid in
- * generically; the historical authority's two parts are spelled differently
- * across the families, so each record names the fields it reads.
+ * The infrastructure a cursor family requires, with the missing-native-script
+ * transaction family's additional L1 source roster explicitly named.
  */
 export type CursorFamilyRequirements = Readonly<{
   requires: readonly FamilyApplicationRequirement[];
   /**
-   * The config fields the family reads from the historical native-script
-   * authority. Present exactly when `requires` names the authority.
+   * Only missingNativeScriptTx reads the authority's L1 source roster.
    */
-  historicalNativeScriptAuthority?: (
-    authority: FamilyHistoricalNativeScriptAuthority,
-  ) => Readonly<Record<string, unknown>>;
+  includeMissingNativeScriptTxL1Roster?: true;
 }>;
 
 /**
  * The config fields a cursor family reads from the infrastructure its record
- * requires. Refuses at import a layout without its flag or a flag without its
- * layout, so a family cannot require the authority and never read it, or read
- * it without the shared loop having checked that the host supplied it.
+ * requires. Every historical family reads the same two authority fields.
  */
 export const requiredInfrastructureFields = (
   category: FamilyCategory,
@@ -192,23 +171,22 @@ export const requiredInfrastructureFields = (
   const requiresAuthority = family.requires.includes(
     "historicalNativeScriptAuthority",
   );
-  if (
-    requiresAuthority !==
-    (family.historicalNativeScriptAuthority !== undefined)
-  ) {
-    throw new Error(
-      `${category} must lay the historical native-script authority into its config exactly when it requires it`,
-    );
-  }
-  return (infrastructure) =>
-    Object.freeze({
+  return (infrastructure) => {
+    const authority = requiresAuthority
+      ? requiredHistoricalNativeScriptAuthority(category, infrastructure)
+      : undefined;
+    return Object.freeze({
       ...optionalReplayContext(family.requires, infrastructure),
-      ...(family.historicalNativeScriptAuthority === undefined
+      ...(authority === undefined
         ? {}
-        : family.historicalNativeScriptAuthority(
-            requiredHistoricalNativeScriptAuthority(category, infrastructure),
-          )),
+        : {
+            ...historicalNativeScriptFields(authority),
+            ...(family.includeMissingNativeScriptTxL1Roster
+              ? { historicalNativeScriptL1Roster: authority.l1SourceRoster }
+              : {}),
+          }),
     });
+  };
 };
 
 /**

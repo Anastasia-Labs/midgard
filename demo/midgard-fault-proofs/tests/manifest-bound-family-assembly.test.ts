@@ -32,7 +32,6 @@ import { createAuthenticatedFamilyAssemblyRuntimeFixture } from "./support/famil
 afterEach(() => vi.restoreAllMocks());
 
 const categories = Object.keys(FAMILY_DEFINITIONS) as AssembledFamilyCategory[];
-
 const OWNER = "11".repeat(28);
 const HEADER = "aa".repeat(28);
 const SCRIPT = { type: "PlutusV3", script: "49480100002221200101" } as const;
@@ -213,8 +212,9 @@ const fixture = (category: AssembledFamilyCategory) => {
         ? { config: { ...config, ...historical }, cell: {} }
         : category === "crossBlockDuplicateEvent"
           ? {
-              historySource: historical.historicalNativeScriptHistorySource,
-              checkpointStore: {},
+              historicalNativeScriptHistorySource:
+                historical.historicalNativeScriptHistorySource,
+              historicalNativeScriptCheckpointStore: {},
             }
           : undefined);
   const assemble = () =>

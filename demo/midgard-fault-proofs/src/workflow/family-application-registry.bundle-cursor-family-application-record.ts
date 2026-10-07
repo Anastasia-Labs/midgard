@@ -106,8 +106,6 @@ import {
 import { bindAuthenticatedCertificateFamilyConfig } from "./family-application-registry.decision-digest-cursor-family-application-record.js";
 import {
   type CursorFamilyRequirements,
-  historicalNativeScriptPrefixedFields,
-  historicalPrefixedFields,
   referenceScriptBundle,
   requiredReference,
 } from "./family-application-registry.resolve-roster-parts.js";
@@ -155,11 +153,11 @@ const bundleCursorFamilyApplicationRecord = <
   const { auxiliaryReferenceScriptsKey } = family;
   return cursorFamilyApplicationRecord<Category, Config, Workflow>(definition, {
     requires: family.requires,
-    ...(family.historicalNativeScriptAuthority === undefined
+    ...(family.includeMissingNativeScriptTxL1Roster === undefined
       ? {}
       : {
-          historicalNativeScriptAuthority:
-            family.historicalNativeScriptAuthority,
+          includeMissingNativeScriptTxL1Roster:
+            family.includeMissingNativeScriptTxL1Roster,
         }),
     bindsDecisionDigest: false,
     bindConfig: ({ common, parts }): Config => {
@@ -233,9 +231,8 @@ export const WITHDRAWAL_MISTAG_FAMILY_APPLICATION_RECORD =
 
 /**
  * The eight families that reconstruct pre-genesis native scripts through the
- * historical authority. Each record names the fields its config reads the
- * authority's history source and checkpoint store from; the requirement flag
- * and that layout are checked against each other at import.
+ * historical authority. The requirement supplies the shared history source
+ * and checkpoint store fields to every config.
  */
 export const MIN_ADA_FAMILY_APPLICATION_RECORD =
   bundleCursorFamilyApplicationRecord<
@@ -244,7 +241,6 @@ export const MIN_ADA_FAMILY_APPLICATION_RECORD =
     ManifestBoundMinAdaWorkflow
   >(MIN_ADA_FAMILY_DEFINITION, {
     requires: ["historicalNativeScriptAuthority"],
-    historicalNativeScriptAuthority: historicalNativeScriptPrefixedFields,
     auxiliaryReferenceScriptsKey: "yields",
     constructWorkflow: createManifestBoundMinAdaWorkflow,
     execute: runOrResumeManifestBoundMinAdaWorkflow,
@@ -257,10 +253,7 @@ export const MISSING_NATIVE_SCRIPT_TX_FAMILY_APPLICATION_RECORD =
     ManifestBoundMissingNativeScriptTxWorkflow
   >(MISSING_NATIVE_SCRIPT_TX_FAMILY_DEFINITION, {
     requires: ["historicalNativeScriptAuthority"],
-    historicalNativeScriptAuthority: (authority) => ({
-      ...historicalNativeScriptPrefixedFields(authority),
-      historicalNativeScriptL1Roster: authority.l1SourceRoster,
-    }),
+    includeMissingNativeScriptTxL1Roster: true,
     constructWorkflow: createManifestBoundMissingNativeScriptTxWorkflow,
     execute: runOrResumeManifestBoundMissingNativeScriptTxWorkflow,
   });
@@ -272,7 +265,6 @@ export const MISSING_NATIVE_SCRIPT_UTXO_FAMILY_APPLICATION_RECORD =
     ManifestBoundMissingNativeScriptUtxoWorkflow
   >(MISSING_NATIVE_SCRIPT_UTXO_FAMILY_DEFINITION, {
     requires: ["historicalNativeScriptAuthority"],
-    historicalNativeScriptAuthority: historicalNativeScriptPrefixedFields,
     constructWorkflow: createManifestBoundMissingNativeScriptUtxoWorkflow,
     execute: runOrResumeManifestBoundMissingNativeScriptUtxoWorkflow,
   });
@@ -284,10 +276,6 @@ export const CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_APPLICATION_RECORD =
     ManifestBoundCrossBlockDuplicateEventWorkflow
   >(CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION, {
     requires: ["historicalNativeScriptAuthority"],
-    historicalNativeScriptAuthority: (authority) => ({
-      historySource: authority.historySource,
-      checkpointStore: authority.checkpointStore,
-    }),
     constructWorkflow: createManifestBoundCrossBlockDuplicateEventWorkflow,
     execute: runOrResumeManifestBoundCrossBlockDuplicateEventWorkflow,
   });
@@ -299,7 +287,6 @@ export const EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD =
     ManifestBoundExecutionNativeScriptInvalidWorkflow
   >(EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION, {
     requires: ["historicalNativeScriptAuthority"],
-    historicalNativeScriptAuthority: historicalPrefixedFields,
     auxiliaryReferenceScriptsKey: "removal",
     constructWorkflow: createManifestBoundExecutionNativeScriptInvalidWorkflow,
     execute: runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow,
@@ -317,7 +304,6 @@ export const TRANSITION_TRACE_FAMILY_APPLICATION_RECORD =
     ManifestBoundTransitionTraceWorkflow
   >(TRANSITION_TRACE_FAMILY_DEFINITION, {
     requires: ["historicalNativeScriptAuthority"],
-    historicalNativeScriptAuthority: historicalNativeScriptPrefixedFields,
     bindsDecisionDigest: false,
     bindConfig: ({ common, roster, references }) =>
       Object.freeze({
@@ -343,7 +329,6 @@ export const RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD =
   >(RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION, {
     contracts: RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
     requires: ["historicalNativeScriptAuthority"],
-    historicalNativeScriptAuthority: historicalPrefixedFields,
     constructWorkflow: createManifestBoundResolvedOutputNonCanonicalWorkflow,
     execute: executeManifestBoundResolvedOutputNonCanonicalWorkflow,
   });
@@ -356,7 +341,6 @@ export const SPEND_INPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD =
   >(SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION, {
     contracts: SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS,
     requires: ["historicalNativeScriptAuthority"],
-    historicalNativeScriptAuthority: historicalPrefixedFields,
     constructWorkflow: createManifestBoundSpendInputSignerMissingWorkflow,
     execute: executeManifestBoundSpendInputSignerMissingWorkflow,
   });
