@@ -9,3 +9,4 @@ packages:
   - midgard-watcher
   - da-committee-node
   - midgard-test-support
+  - midgard-l1-follower

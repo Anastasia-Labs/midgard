@@ -1,0 +1,52 @@
+{
+  "name": "@al-ft/midgard-l1-follower",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared L1 chain follower: fact store, sequential writer, rewind, temporal registry and read API",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "midgard-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./lint": {
+      "midgard-source": "./src/lint/index.ts",
+      "types": "./dist/lint/index.d.ts",
+      "import": "./dist/lint/index.js"
+    }
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "node ../../scripts/contrib.mjs build --package @al-ft/midgard-l1-follower",
+    "build:contrib-raw": "tsup src/index.ts src/lint/index.ts --format esm --dts --clean",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "bench": "vitest run --config vitest.bench.config.ts"
+  },
+  "author": "Anastasia Labs",
+  "license": "ISC",
+  "dependencies": {
+    "@noble/hashes": "^2.0.1",
+    "pg": "^8.21.0",
+    "typescript": "^5.7.3"
+  },
+  "devDependencies": {
+    "@al-ft/midgard-test-support": "workspace:*",
+    "@lucid-evolution/lucid": "0.6.7",
+    "@types/node": "^22.17.0",
+    "@types/pg": "^8.20.0",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.4.0",
+    "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=22.16.0"
+  }
+}
