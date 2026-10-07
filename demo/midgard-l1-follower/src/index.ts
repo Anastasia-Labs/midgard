@@ -25,6 +25,15 @@ export {
   startFromOrigin,
 } from "./origin.js";
 export {
+  applyChainSyncEvent,
+  type BlockUndecodable,
+  type FollowStep,
+  intersectionPoints,
+  stepSettled,
+  storePoint,
+  transportPoint,
+} from "./follow/chain-sync.js";
+export {
   GENERATION_CHANNEL,
   listenForGenerations,
   openPostgresFactStore,

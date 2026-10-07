@@ -36,6 +36,7 @@ export const decodeArchitectureGCommitCandidateInput = (
       "fixtureCreationPath",
       "fixtureCreationSha256",
       "fixtureInitialUtxoCount",
+      "baseUtxosRoot",
       "baseUtxoPayloadAggregate",
       "forcedValidationSlotConfigArtifact",
       "workerInput",
@@ -174,30 +175,7 @@ export const decodeArchitectureGCommitCandidateInput = (
       "sizeOfProcessedTxsSoFar",
       "baseSnapshotId",
       "stateQueueHasUnmergedTail",
-      "speculativeBuild",
     ],
-  );
-  const speculativeBuild = exactKeysRecord(
-    data.speculativeBuild,
-    "Architecture G candidate speculative build",
-    [
-      "base",
-      "watermarks",
-      "excludedMempoolTxIds",
-      "excludedDepositEventIds",
-      "excludedForcedTransactionEventIds",
-      "excludedWithdrawalEventIds",
-    ],
-  );
-  const base = exactKeysRecord(
-    speculativeBuild.base,
-    "Architecture G candidate speculative base",
-    ["headerHash", "utxosRoot", "blockEndTimeMs", "submittedTxHash"],
-  );
-  const watermarks = exactKeysRecord(
-    speculativeBuild.watermarks,
-    "Architecture G candidate barrier watermarks",
-    ["depositMs", "withdrawalMs", "txOrderMs", "refreshedAtMs"],
   );
   const forcedValidationSlotConfig = exactKeysRecord(
     data.forcedValidationSlotConfig,
@@ -223,6 +201,7 @@ export const decodeArchitectureGCommitCandidateInput = (
     [input.corpusSliceSha256, "candidateInput.corpusSliceSha256"],
     [input.fundingMapSha256, "candidateInput.fundingMapSha256"],
     [input.fixtureCreationSha256, "candidateInput.fixtureCreationSha256"],
+    [input.baseUtxosRoot, "candidateInput.baseUtxosRoot"],
   ] as const) {
     sha256Digest(hashValue, label);
   }
@@ -245,6 +224,8 @@ export const decodeArchitectureGCommitCandidateInput = (
     ) ||
     data.mempoolTxsCountSoFar !== 0 ||
     data.sizeOfProcessedTxsSoFar !== 0 ||
+    typeof data.baseSnapshotId !== "string" ||
+    !/^architecture-g-candidate:[0-9a-f]{64}$/u.test(data.baseSnapshotId) ||
     data.stateQueueHasUnmergedTail !== true
   ) {
     throw new Error("Architecture G candidate input identity is invalid");
@@ -284,53 +265,6 @@ export const decodeArchitectureGCommitCandidateInput = (
     throw new Error(
       "Architecture G candidate block time is outside its forced-validation slot configuration",
     );
-  }
-  const submittedTxHash = sha256Digest(
-    base.submittedTxHash,
-    "candidateInput.speculativeBuild.base.submittedTxHash",
-  );
-  sha256Digest(
-    base.utxosRoot,
-    "candidateInput.speculativeBuild.base.utxosRoot",
-  );
-  if (
-    typeof base.headerHash !== "string" ||
-    !/^[0-9a-f]{56}$/u.test(base.headerHash) ||
-    base.headerHash !== submittedTxHash.slice(0, 56) ||
-    base.blockEndTimeMs !== currentBlockStartTimeMs ||
-    data.baseSnapshotId !== `architecture-g-candidate:${submittedTxHash}`
-  ) {
-    throw new Error("Architecture G candidate speculative base is invalid");
-  }
-  const watermarkValues = [
-    positiveSafeInteger(watermarks.depositMs, "watermarks.depositMs"),
-    positiveSafeInteger(watermarks.withdrawalMs, "watermarks.withdrawalMs"),
-    positiveSafeInteger(watermarks.txOrderMs, "watermarks.txOrderMs"),
-  ];
-  const refreshedAtMs = positiveSafeInteger(
-    watermarks.refreshedAtMs,
-    "watermarks.refreshedAtMs",
-  );
-  if (
-    Math.max(...watermarkValues) > refreshedAtMs ||
-    currentBlockStartTimeMs >= Math.min(...watermarkValues)
-  ) {
-    throw new Error("Architecture G candidate barrier watermarks are invalid");
-  }
-  for (const field of [
-    "excludedMempoolTxIds",
-    "excludedDepositEventIds",
-    "excludedForcedTransactionEventIds",
-    "excludedWithdrawalEventIds",
-  ] as const) {
-    if (
-      !Array.isArray(speculativeBuild[field]) ||
-      speculativeBuild[field].length !== 0
-    ) {
-      throw new Error(
-        `Architecture G candidate ${field} must be an exact empty array`,
-      );
-    }
   }
   return input as ArchitectureGCommitCandidateInput;
 };

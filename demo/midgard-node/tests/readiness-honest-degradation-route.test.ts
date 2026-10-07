@@ -3,11 +3,10 @@ import "./utils.js";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { SqlClient } from "@effect/sql";
-import { Effect, Option, Ref } from "effect";
+import { Effect, Ref } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { buildListenRouter } from "../src/commands/listen-router.js";
-import { ForeignTipReconciliationsDB } from "../src/database/index.js";
 import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
 import { NodeConfig } from "../src/services/config.js";
 import {
@@ -22,52 +21,12 @@ import {
 import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/protocol.js";
 import { ValidationPool } from "../src/services/validation-pool.js";
 import {
-  nonEmptyWindowHeader,
-  recordForeignTip,
-} from "./foreign-tip-gate.fixtures.js";
-import {
   header,
   journalFixture,
 } from "./local-mutation-job-abandonment.journal-fixture.js";
 import { seedVerifiedForeignBase } from "./readiness-verified-foreign-base.fixture.js";
 import { withFailingStatements } from "./sql-fault-injection.js";
 import { provideDatabaseLayers } from "./utils.js";
-
-// Stable valid headers are recorded through the public DB API, not raw inserts.
-const seedAwaitingForeignTips = Effect.forEach(["31", "32"], (byte) =>
-  Effect.gen(function* () {
-    const id = yield* recordForeignTip(
-      nonEmptyWindowHeader({
-        prevHeaderHash: byte.repeat(28),
-        startTime: 1n,
-        endTime: 2n,
-      }),
-    );
-    const retained =
-      yield* ForeignTipReconciliationsDB.retrieveAwaitingByForeignHeaderHash(
-        id,
-      );
-    expect(Option.isSome(retained)).toBe(true);
-    const row = Option.getOrThrow(retained);
-    const status = row[ForeignTipReconciliationsDB.Columns.STATUS];
-    expect(status).toBe(ForeignTipReconciliationsDB.Status.Awaiting);
-    return {
-      id,
-      status,
-      evidenceKind: row[ForeignTipReconciliationsDB.Columns.EVIDENCE_KIND],
-    };
-  }),
-);
-const inspectForeignTips = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const rows = yield* sql<{ readonly database: string }>`
-    SELECT current_database() AS database
-  `;
-  return {
-    database: rows[0]!.database,
-    awaiting: yield* ForeignTipReconciliationsDB.countAwaiting,
-  };
-});
 
 // Only the settings /readyz reads. Provider evidence is always published
 // before the request, so the handler never probes a real provider.
@@ -145,7 +104,7 @@ const readyz = ({
         // Cleared before and after: the handler reads journal ages from the
         // real tables, so a row left here would leak into the next file.
         const clear = sql`TRUNCATE TABLE pending_block_finalizations,
-          state_queue_mutation_leases, event_history_authority, foreign_tip_reconciliations
+          state_queue_mutation_leases, event_history_authority
           RESTART IDENTITY CASCADE`;
         yield* clear;
         return yield* Effect.gen(function* () {
@@ -247,87 +206,6 @@ const asJournalSetup = <E, R>(effect: Effect.Effect<void, E, R>) =>
   effect as unknown as Effect.Effect<void, unknown, never>;
 
 describe("GET /readyz under internal transients", () => {
-  it("isolates incoming Awaiting foreign-tip rows before and after a healthy request", async () => {
-    const trace = await Effect.runPromise(
-      provideDatabaseLayers(
-        Effect.gen(function* () {
-          yield* ForeignTipReconciliationsDB.clear;
-          const seeds = yield* seedAwaitingForeignTips;
-          const before = yield* inspectForeignTips;
-          let entry: typeof before | undefined;
-          const response = yield* Effect.promise(() =>
-            readyz({
-              journal: asJournalSetup(
-                Effect.gen(function* () {
-                  entry = yield* inspectForeignTips;
-                }),
-              ),
-            }),
-          );
-          return {
-            seeds,
-            before,
-            entry,
-            response,
-            after: yield* inspectForeignTips,
-          };
-        }).pipe(
-          Effect.ensuring(Effect.orDie(ForeignTipReconciliationsDB.clear)),
-        ),
-      ),
-    );
-    console.info("readiness honest SQL isolation trace", JSON.stringify(trace));
-    expect(new Set(trace.seeds.map((seed) => seed.id)).size).toBe(2);
-    expect(trace.before.awaiting).toBe(2);
-    expect(trace.response.status).toBe(200);
-    expect(trace.response.ready).toBe(true);
-    expect(trace.response.reasons).toEqual([]);
-    expect(trace.entry).toEqual({
-      database: trace.before.database,
-      awaiting: 0,
-    });
-    expect(trace.after).toEqual({
-      database: trace.before.database,
-      awaiting: 0,
-    });
-  });
-
-  it("refuses active Awaiting foreign-tip rows seeded inside the readiness fixture", async () => {
-    const trace = await Effect.runPromise(
-      provideDatabaseLayers(
-        Effect.gen(function* () {
-          yield* ForeignTipReconciliationsDB.clear;
-          let active:
-            | Effect.Effect.Success<typeof inspectForeignTips>
-            | undefined;
-          let seeds:
-            | Effect.Effect.Success<typeof seedAwaitingForeignTips>
-            | undefined;
-          const response = yield* Effect.promise(() =>
-            readyz({
-              journal: asJournalSetup(
-                Effect.gen(function* () {
-                  seeds = yield* seedAwaitingForeignTips;
-                  active = yield* inspectForeignTips;
-                }),
-              ),
-            }),
-          );
-          return { seeds, active, response };
-        }).pipe(
-          Effect.ensuring(Effect.orDie(ForeignTipReconciliationsDB.clear)),
-        ),
-      ),
-    );
-    console.info("readiness active foreign-tip trace", JSON.stringify(trace));
-    expect(trace.active?.awaiting).toBe(2);
-    expect(trace.response.status).toBe(503);
-    expect(trace.response.ready).toBe(false);
-    expect(trace.response.reasons).toEqual([
-      "foreign_tip_reconciliation_awaiting:2",
-    ]);
-  });
-
   it("holds readiness until the current authority's foreign base is verified", async () => {
     const response = await readyz({ foreignBaseVerified: false });
     expect(response.status).toBe(503);

@@ -15,11 +15,11 @@ import { Lucid, MidgardContracts, NodeConfig } from "../src/services/index.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
 import { recoverNativeMpfForLocalFinalization } from "../src/services/native-mpf-local-finalization.js";
 import type { WorkerInput as CommitWorkerInput } from "../src/workers/utils/commit-block-header.js";
-import type { makeLucidRuntimeService } from "./deposit-flow-emulator-shared.js";
 import type {
   commitWorkerProgram,
   OwnedCommitFixture,
-} from "./deposit-flow-emulator-shared.speculative-worker-input-from-active-journal.js";
+} from "./deposit-flow-emulator-shared.commit-worker-program.js";
+import type { makeLucidRuntimeService } from "./deposit-flow-emulator-shared.js";
 
 /** Follow the production parent: request foreign adoption while holding a
  * producer, then notify the source owner only after that producer exits. */

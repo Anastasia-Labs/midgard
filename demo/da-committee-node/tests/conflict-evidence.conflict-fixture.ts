@@ -28,6 +28,9 @@ export const LOWER_HEADER_HASH = "11".repeat(28);
 
 export const UPPER_HEADER_HASH = LOWER_HEADER_HASH;
 
+// A sibling of LOWER_HEADER_HASH: same parent, different header hash.
+export const SIBLING_HEADER_HASH = "22".repeat(28);
+
 export const conflictFixture = async () => {
   const signer = await loadDaSigner(`hex:${"00".repeat(31)}01`);
   const config = libp2pConfig(signer.publicKeyHex);

@@ -81,6 +81,7 @@ export const validateArchitectureGCommitCandidateInputV1 = (input) => {
       "fixtureCreationPath",
       "fixtureCreationSha256",
       "fixtureInitialUtxoCount",
+      "baseUtxosRoot",
       "baseUtxoPayloadAggregate",
       "forcedValidationSlotConfigArtifact",
       "workerInput",
@@ -125,31 +126,8 @@ export const validateArchitectureGCommitCandidateInputV1 = (input) => {
       "sizeOfProcessedTxsSoFar",
       "baseSnapshotId",
       "stateQueueHasUnmergedTail",
-      "speculativeBuild",
     ],
     "Architecture G candidate worker data",
-  );
-  const speculativeBuild = requireExactObjectKeys(
-    data.speculativeBuild,
-    [
-      "base",
-      "watermarks",
-      "excludedMempoolTxIds",
-      "excludedDepositEventIds",
-      "excludedForcedTransactionEventIds",
-      "excludedWithdrawalEventIds",
-    ],
-    "Architecture G candidate speculative build",
-  );
-  const base = requireExactObjectKeys(
-    speculativeBuild.base,
-    ["headerHash", "utxosRoot", "blockEndTimeMs", "submittedTxHash"],
-    "Architecture G candidate speculative base",
-  );
-  const watermarks = requireExactObjectKeys(
-    speculativeBuild.watermarks,
-    ["depositMs", "withdrawalMs", "txOrderMs", "refreshedAtMs"],
-    "Architecture G candidate barrier watermarks",
   );
   const forcedValidationSlotConfig = requireExactObjectKeys(
     data.forcedValidationSlotConfig,
@@ -161,12 +139,6 @@ export const validateArchitectureGCommitCandidateInputV1 = (input) => {
       (data.currentBlockStartTimeMs - forcedValidationSlotConfig.zeroTime) /
         forcedValidationSlotConfig.slotLength,
     ) + forcedValidationSlotConfig.zeroSlot;
-  const excludedFields = [
-    "excludedMempoolTxIds",
-    "excludedDepositEventIds",
-    "excludedForcedTransactionEventIds",
-    "excludedWithdrawalEventIds",
-  ];
   if (
     input.schemaVersion !==
       "midgard-architecture-g-commit-candidate-input-v1" ||
@@ -176,6 +148,7 @@ export const validateArchitectureGCommitCandidateInputV1 = (input) => {
       input.corpusSliceSha256,
       input.fundingMapSha256,
       input.fixtureCreationSha256,
+      input.baseUtxosRoot,
     ].every(isHash) ||
     ![
       input.levelPath,
@@ -207,29 +180,8 @@ export const validateArchitectureGCommitCandidateInputV1 = (input) => {
     data.mempoolTxsCountSoFar !== 0 ||
     data.sizeOfProcessedTxsSoFar !== 0 ||
     data.stateQueueHasUnmergedTail !== true ||
-    !isHash(base.submittedTxHash) ||
-    base.headerHash !== base.submittedTxHash.slice(0, 56) ||
-    !isHash(base.utxosRoot) ||
-    base.blockEndTimeMs !== data.currentBlockStartTimeMs ||
-    data.baseSnapshotId !==
-      `architecture-g-candidate:${base.submittedTxHash}` ||
-    !Object.values(watermarks).every(isPositiveSafeInteger) ||
-    Math.max(
-      watermarks.depositMs,
-      watermarks.withdrawalMs,
-      watermarks.txOrderMs,
-    ) > watermarks.refreshedAtMs ||
-    base.blockEndTimeMs >=
-      Math.min(
-        watermarks.depositMs,
-        watermarks.withdrawalMs,
-        watermarks.txOrderMs,
-      ) ||
-    excludedFields.some(
-      (field) =>
-        !Array.isArray(speculativeBuild[field]) ||
-        speculativeBuild[field].length !== 0,
-    )
+    typeof data.baseSnapshotId !== "string" ||
+    !/^architecture-g-candidate:[0-9a-f]{64}$/u.test(data.baseSnapshotId)
   ) {
     throw new Error("Architecture G commit-candidate input is invalid");
   }

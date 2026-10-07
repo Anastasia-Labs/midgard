@@ -11,18 +11,6 @@ import {
 import { Effect } from "effect";
 
 import type { SlotAwareDueWork } from "../../fibers/slot-aware-due-work.js";
-import type {
-  SpeculativeCandidateSummary,
-  SpeculativeInvalidationReason,
-  UserEventBarrierWatermarks,
-} from "../../fibers/speculative-commit-state.js";
-
-export type SpeculativeCommitBaseInput = {
-  readonly headerHash: string;
-  readonly utxosRoot: string;
-  readonly blockEndTimeMs: number;
-  readonly submittedTxHash: string;
-};
 
 export type WorkerInput = {
   readonly history?: import("../../services/event-history-producer.js").HistoryProducerPermit;
@@ -52,15 +40,6 @@ export type WorkerInput = {
     stateQueueLeaseToken?: string;
     baseSnapshotId?: string;
     stateQueueHasUnmergedTail?: boolean;
-    speculativeBuild?: {
-      readonly base: SpeculativeCommitBaseInput;
-      readonly watermarks: UserEventBarrierWatermarks;
-      /** Payload already committed by the submitted base block. */
-      readonly excludedMempoolTxIds: readonly string[];
-      readonly excludedDepositEventIds: readonly string[];
-      readonly excludedForcedTransactionEventIds: readonly string[];
-      readonly excludedWithdrawalEventIds: readonly string[];
-    };
   };
 };
 
@@ -83,10 +62,27 @@ export type SuccessfulSubmissionOutput = {
   nativeMpfPromotion?: NativeMpfPromotion;
 };
 
+export type CommitCandidateRoots = {
+  readonly utxos: string;
+  /** Raw transaction MPF root retained by the local finalization path. */
+  readonly rawTransactions: string;
+  readonly transactions: string;
+  readonly transitionTrace: string;
+  readonly eventToStep: string;
+};
+
 export type SkippedSubmissionOutput = {
   type: "SkippedSubmissionOutput";
   mempoolTxsCount: number;
   sizeOfProcessedTxs: number;
+  /** The block built and then deferred because no confirmed base was
+   * available: its end time and the roots already computed while building it
+   * (user-event roots are resolved only at submission). Absent when
+   * submission failed. */
+  candidate?: {
+    readonly endTimeMs: number;
+    readonly roots: CommitCandidateRoots;
+  };
 };
 
 export type NothingToCommitOutput = {
@@ -132,39 +128,7 @@ export type SubmittedAwaitingConfirmationOutput = {
   submittedHeaderHash: string;
   submittedUtxosRoot: string;
   nativeMpfPromotion?: NativeMpfPromotion;
-  speculativeExecution?: {
-    readonly candidateId: string;
-    readonly baseHydrationPassesBeforeReady: number;
-    readonly mpfProcessingPassesBeforeReady: number;
-    readonly baseHydrationPassesAfterReady: number;
-    readonly mpfProcessingPassesAfterReady: number;
-  };
 };
-
-export type SpeculativeCandidateReadyOutput = {
-  readonly type: "SpeculativeCandidateReadyOutput";
-  readonly candidate: SpeculativeCandidateSummary;
-};
-
-export type SpeculativeCandidateInvalidatedOutput = {
-  readonly type: "SpeculativeCandidateInvalidatedOutput";
-  readonly candidateId: string;
-  readonly reason: SpeculativeInvalidationReason;
-};
-
-export type SpeculativeCommitWorkerInstruction =
-  | {
-      readonly type: "SubmitSpeculativeCandidate";
-      readonly confirmedBlock: SerializedStateQueueUTxO;
-      readonly stateQueueLeaseToken: string;
-      readonly baseSnapshotId: string;
-      readonly stateQueueHasUnmergedTail: boolean;
-      readonly localFinalizationBlock?: SerializedStateQueueUTxO;
-    }
-  | {
-      readonly type: "InvalidateSpeculativeCandidate";
-      readonly reason: SpeculativeInvalidationReason;
-    };
 
 export type SuccessfulLocalFinalizationRecoveryOutput = {
   type: "SuccessfulLocalFinalizationRecoveryOutput";
@@ -183,8 +147,6 @@ export type WorkerOutput = (
   | AwaitingForeignDaOutput
   | SubmittedAwaitingLocalFinalizationOutput
   | SubmittedAwaitingConfirmationOutput
-  | SpeculativeCandidateReadyOutput
-  | SpeculativeCandidateInvalidatedOutput
   | SuccessfulLocalFinalizationRecoveryOutput
 ) & {
   readonly foreignBaseVerification?: import("../../services/foreign-base-verification.js").ForeignBaseVerificationOutcome;

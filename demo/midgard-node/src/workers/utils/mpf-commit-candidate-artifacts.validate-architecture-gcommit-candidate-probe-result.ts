@@ -53,9 +53,11 @@ export const validateArchitectureGCommitCandidateProbeResult = ({
       "cpuAffinity",
       "durationMs",
       "confirmedLedgerFullScans",
+      "userEventRows",
       "journalRowsBefore",
       "journalRowsAfter",
       "candidateConfig",
+      "providerReads",
       "providerBoundaryAttempts",
       "submissionAttempts",
       "candidate",
@@ -86,39 +88,20 @@ export const validateArchitectureGCommitCandidateProbeResult = ({
   const candidate = exactKeysRecord(
     result.candidate,
     "Commit-candidate summary",
-    [
-      "candidateId",
-      "baseHeaderHash",
-      "endTimeMs",
-      "builtAtMs",
-      "buildDurationMs",
-      "invalidationKey",
-      "watermarks",
-      "expectedUserEventCounts",
-      "expectedL2TransactionCount",
-      "roots",
-    ],
-  );
-  const watermarks = exactKeysRecord(
-    candidate.watermarks,
-    "Commit-candidate barrier watermarks",
-    ["depositMs", "withdrawalMs", "txOrderMs", "refreshedAtMs"],
-  );
-  const expectedUserEventCounts = exactKeysRecord(
-    candidate.expectedUserEventCounts,
-    "Commit-candidate expected user-event counts",
-    ["deposits", "forcedTransactions", "withdrawals"],
+    ["endTimeMs", "l2TransactionCount", "roots"],
   );
   const rootKeys = [
     "utxos",
     "rawTransactions",
     "transactions",
-    "deposits",
-    "forcedTransactions",
-    "withdrawals",
     "transitionTrace",
     "eventToStep",
   ] as const;
+  const userEventRows = exactKeysRecord(
+    result.userEventRows,
+    "Commit-candidate fixture user-event rows",
+    ["deposits", "forcedTransactions", "withdrawals"],
+  );
   const roots = exactKeysRecord(
     candidate.roots,
     "Commit-candidate roots",
@@ -163,7 +146,8 @@ export const validateArchitectureGCommitCandidateProbeResult = ({
     !sameJson(aggregate, input.baseUtxoPayloadAggregate) ||
     result.binarySha256 !== input.binarySha256 ||
     result.cpuAffinity !== cpuAffinity ||
-    result.confirmedLedgerFullScans !== 0 ||
+    // shouldHydrateCommitBaseEntries hydrates whenever candidateTxCount > 0.
+    result.confirmedLedgerFullScans !== 1 ||
     result.journalRowsBefore !== 0 ||
     result.journalRowsAfter !== 0 ||
     result.providerBoundaryAttempts !== 0 ||
@@ -198,39 +182,23 @@ export const validateArchitectureGCommitCandidateProbeResult = ({
   ) {
     throw new Error("Commit-candidate configuration evidence is invalid");
   }
-  const watermarkValues = Object.entries(watermarks).map(([field, value]) =>
-    nonNegativeSafeInteger(value, `candidate.watermarks.${field}`),
-  );
-  for (const [field, count] of Object.entries(expectedUserEventCounts)) {
-    nonNegativeSafeInteger(count, `candidate.expectedUserEventCounts.${field}`);
-  }
-  const endTimeMs = positiveSafeInteger(
-    candidate.endTimeMs,
-    "candidate.endTimeMs",
-  );
-  positiveSafeInteger(candidate.builtAtMs, "candidate.builtAtMs");
-  positiveFiniteNumber(candidate.buildDurationMs, "candidate.buildDurationMs");
-  const minimumWatermarkMs = Math.min(...watermarkValues);
-  if (
-    typeof candidate.candidateId !== "string" ||
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
-      candidate.candidateId,
-    ) ||
-    candidate.baseHeaderHash !==
-      input.workerInput.data.speculativeBuild.base.headerHash ||
-    !sameJson(watermarks, input.workerInput.data.speculativeBuild.watermarks) ||
-    candidate.expectedL2TransactionCount !== transactionCount ||
-    candidate.invalidationKey !==
-      `${candidate.baseHeaderHash as string}:${endTimeMs.toString()}:${minimumWatermarkMs.toString()}`
-  ) {
-    throw new Error("Commit-candidate identity or barrier evidence is invalid");
+  nonNegativeSafeInteger(result.providerReads, "candidateProbe.providerReads");
+  positiveSafeInteger(candidate.endTimeMs, "candidate.endTimeMs");
+  if (candidate.l2TransactionCount !== transactionCount) {
+    throw new Error("Commit-candidate transaction count is invalid");
   }
   for (const field of rootKeys) {
     sha256Digest(roots[field], `candidate.roots.${field}`);
   }
+  // The candidate omits the user-event roots, so the fixture must hold no
+  // user events: their roots are then the empty tree.
+  if (Object.values(userEventRows).some((count) => count !== 0)) {
+    throw new Error(
+      "Commit-candidate fixture must hold no deposits, forced transactions or withdrawals",
+    );
+  }
   if (
-    ownerBefore.durableRoot !==
-      input.workerInput.data.speculativeBuild.base.utxosRoot ||
+    ownerBefore.durableRoot !== input.baseUtxosRoot ||
     ownerBefore.durableRoot !== ownerAfter.durableRoot ||
     !sameJson(ownerBefore.ownerEpoch, ownerAfter.ownerEpoch) ||
     ownerBefore.childRestarts !== ownerAfter.childRestarts

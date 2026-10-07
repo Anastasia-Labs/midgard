@@ -13,10 +13,7 @@ The long-running fibers that `listen` starts are listed below. The listener
 also starts the history owner (event-history runtime), the write-behind service,
 HTTP server and configured retained-payload server; this table is not a count of
 every running fiber. `monitor-mempool` runs only when the node is started
-with `-m` / `--with-monitoring`. `speculative-commit-builder` and
-`user-event-barrier-refresher` run only with `SPECULATIVE_COMMIT_BUILD=true`;
-that setting is disabled by default. The speculative-commit module also starts its companion submitter loop
-under the same flag. The barrel also exports modules that are not running
+with `-m` / `--with-monitoring`. The barrel also exports modules that are not running
 fibers: `operator-watchdog-policy` supplies pure watchdog decisions and status
 helpers; `fetch-and-insert-deposit-utxos` and `fetch-and-insert-withdrawal-utxos`
 supply the commit-barrier refreshes; `project-deposits-to-mempool-ledger`
@@ -45,16 +42,13 @@ deposits and withdrawals up to its commit barrier.
 | `monitor-mempool`                 | Emits mempool metrics. Started only with `--with-monitoring`.                                                                                                                                                                                                                                                                                                                 | None                                                |
 | `mpf-payload-audit`               | When MPF_PAYLOAD_ROOT_CHECK is enabled, audits the confirmed-ledger MPF root on its block/time schedule; divergence records the sticky commit halt.                                                                                                                                                                                                                           | `mpf-audit`                                         |
 | `native-mpf-owner-supervisor`     | Stops the node once the native MPF owner reports a terminal failure, so the process supervisor restarts it from its durable marker.                                                                                                                                                                                                                                           | None                                                |
-| `speculative-commit-builder`      | With `SPECULATIVE_COMMIT_BUILD=true`, prebuilds the next block candidate while the current block confirms; its companion submitter uses the normal mutation lease after confirmation.                                                                                                                                                                                         | None                                                |
-| `user-event-barrier-refresher`    | With `SPECULATIVE_COMMIT_BUILD=true`, reconciles deposits, withdrawals, and transaction orders into monotone barrier watermarks used by speculative builds.                                                                                                                                                                                                                   | None                                                |
 | `operator-watchdog`               | Strikes the scheduled operator when its shift is missed and hands the shift on; force-retires an operator at the strike limit once the patience window has passed. On by default (`OPERATOR_WATCHDOG_ENABLED`), successor acts at the threshold, other active nodes after `OPERATOR_WATCHDOG_PATIENCE_MS`. See [Operator Lifecycle](/docs/operators/node/operator-lifecycle). | `strike-inactive-operator`, `force-retire-operator` |
 
 Each fiber runs on its own schedule, configured through the node's environment (for
 example `WAIT_BETWEEN_MERGE_TXS` for `merge`). By default,
 `tx-queue-processor` polls every 250 ms and `admission-backlog-gauge` every 500 ms,
-`monitor-mempool` every second, `user-event-barrier-refresher` every two seconds,
-and `da-publication-reconciler` every 30 seconds. The speculative builder and its
-submitter are queue-driven. `mpf-payload-audit` wakes at the shorter of the MPF
+`monitor-mempool` every second, and `da-publication-reconciler` every 30
+seconds. `mpf-payload-audit` wakes at the shorter of the MPF
 audit time interval and the block-commitment interval, then audits only when the
 configured block-or-time threshold is due.
 

@@ -47,7 +47,6 @@ COPY midgard-core ./midgard-core
 COPY midgard-validation ./midgard-validation
 COPY midgard-fault-proofs ./midgard-fault-proofs
 COPY midgard-sdk ./midgard-sdk
-COPY midgard-watcher ./midgard-watcher
 COPY midgard-node ./midgard-node
 # midgard-node's build compiles only itself, and its runtime imports each of
 # these packages' dist, so every one is built here, dependencies first.
@@ -57,8 +56,6 @@ RUN pnpm --filter @al-ft/midgard-core run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-sdk run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-validation run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-fault-proofs run build:contrib-raw
-# The node reads foreign DA payloads through midgard-watcher/public-da-client.
-RUN pnpm --filter midgard-watcher run build:contrib-raw
 RUN pnpm --filter midgard-node run build:contrib-raw
 # Same store as the install step: `deploy --prod` re-resolves the git-hosted
 # merkle-patricia-forestry dependency, and only a store that already holds the

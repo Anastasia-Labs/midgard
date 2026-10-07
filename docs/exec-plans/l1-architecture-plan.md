@@ -37,7 +37,7 @@ Identifier scheme:
 | S0–S6 | Pipeline stages | §4.1 |
 | INV1–INV6 | Fact-store invariants | §5.2 |
 | P0–P10, PW, WP, CP | Projections | §5.5 |
-| R1–R9 | Readiness reasons for intervention cases | §7.5 |
+| R1–R10 | Readiness reasons for intervention cases | §7.5 |
 | L, F, C, W, N, I, M, U + number | Tickets | §15 |
 | B1–B8 | Benchmarks | §16.2 |
 | Q1 | Owner question, ruled 2026-10-07 | §18.1 |
@@ -171,9 +171,13 @@ Rules for the deferral:
   and the fork cases come from the F8 simulator corpus.
 - **Benchmarks in scope:** B2 (N1 only), B3, B5, B6, and B8 for the follower
   tables (synthetic chain). B1, B4 and B7 are deferred with their tickets.
-- **C4 gate.** C1 must not sign a header that is a sibling of one it has
-  already signed until C4's finding is in. If either the on-chain or the
-  off-chain rules treat siblings as equivocation, stop and ask the owner.
+- **C4 gate (resolved 2026-10-07).** No on-chain rule can slash a sibling
+  signature. The off-chain conflict builder did treat cross-header pairs as
+  equivocation; the owner ruled they are not, and C4 changed the rule to one
+  signer, one header, two commitments
+  (`docs/midgard/decisions/da-sibling-signatures-not-slashable.md`). C1 may
+  sign siblings, and must retain the payload of every header it signed until
+  that header is final (k) or provably cannot land.
 
 **Estimate.** About 52 agent-days in total: about 50 for the core, plus about
 1.5 for C2 and about 0.5 for the C4 gate. That is about 4 weeks with 5 lanes,
@@ -402,7 +406,7 @@ Changes from today:
 
 | Area | Today | Target |
 |---|---|---|
-| Lifetime | One process per intersection candidate and per reward-account query. Exact-point queries share one persistent helper process, but each opens its own node connection (`demo/midgard-watcher/native-chain-sync/service.go`) (updated at 17fdffd9b). | One long-lived process per role, multiplexing ChainSync, LSQ, LocalTxSubmission and LocalTxMonitor on one N2C connection (gouroboros v0.204.6 provides all four: `protocol/localstatequery/client.go:143,532,820`, `localtxmonitor/client.go:154`) |
+| Lifetime | One process per intersection candidate and per reward-account query. Exact-point queries share one persistent helper process, but each opens its own node connection (`demo/midgard-watcher/native-chain-sync/service.go`) (updated at 17fdffd9b). | One long-lived process per role, multiplexing ChainSync, LSQ, LocalTxSubmission and LocalTxMonitor on one N2C connection. gouroboros provides all four; F1 pins v0.211.0 built with Go 1.26.5 (`demo/l1-node-transport/native/go.mod:3,6`). Interim: each concurrently open chain-sync stream beyond the first gets a bounded auxiliary N2C connection carrying chain-sync only (`demo/l1-node-transport/README.md`); the role cutovers delete them if no consumer still needs them. |
 | Intersection | One point (`demo/midgard-watcher/native-chain-sync/main.go:180-186`) | The full point list in one `FindIntersect` (the last 64 blocks plus exponentially spaced older ones down to the origin) |
 | Flow control | `PipelineLimit: 1`, `RecvQueueSize: 4`, OS pipe backpressure only (`demo/midgard-watcher/native-chain-sync/transport.go:116-117`) | Credit window: the follower grants N credits and acknowledges each persisted sequence number; the sidecar pipelines up to the credit (50 during catch-up, 1 at tip) |
 | Framing | JSON lines with the raw block in hex (`demo/midgard-watcher/native-chain-sync/transport.go:134-145`) | Length-prefixed frames: a small CBOR header plus raw block bytes. Raw bytes are never hex-encoded. |
@@ -940,8 +944,9 @@ import `Date`, the sidecar client or an HTTP client.
     `deriveExpectedDaAvailabilityCommitment` binds the deployment identity,
     header hash, payload and response geometry (`demo/da-committee-node/src/peer/signatures.ts:84-101`, called at
     `demo/da-committee-node/src/committee-service.sign-verified-payload.ts:27`).
-  - Ticket C4 confirms that no on-chain or off-chain rule treats this as
-    equivocation before K1's quarantine is deleted.
+  - Ticket C4 confirmed this (owner ruling 2026-10-07): equivocation is one
+    signer, one header hash, two commitments
+    (`docs/midgard/decisions/da-sibling-signatures-not-slashable.md`).
 
 ### 7.4 Correction rollback (rev-4 O1, brick K5)
 
@@ -989,6 +994,7 @@ on an unparseable config or a port conflict.
 | R7 | `operator_removed` | The operator is no longer in the active set (D-N7) | Expected end state; re-register or retire. |
 | R8 | `wallet_below_floor` | Own wallet funds fall below the fee floor for pending intents | Fund the wallet. An automatic refill loop is open decision-register item DR-B3 (`public-testnet-decisions-2026-10-01/source-context.md:139`), not decided here. |
 | R9 | `manifest_mismatch` | The config does not match the finalised manifest identity | Fix the config. |
+| R10 | `origin_mismatch` | The configured `l1Origin` differs from the origin the follower store was initialised at | Restore the previous `l1Origin`, or run `follower reset --to-origin` to replay from the new one. The reset never deletes class B rows. |
 
 Everything else is transient and recovers automatically with backoff, while
 `/readyz` reports a reason:
@@ -1798,8 +1804,8 @@ per-block L1 work against state size, rollback cost, or committee tick cost:
 - the validation and codec benches measure L2 tx validation;
 - the Architecture G soak measures MPF growth under L2 load, and needs 24 hours
   at 5,000 TPS (`docs/benchmark-scenarios/phase-3-architecture-g-soak.md:11-19`);
-- the Phase 4 gate is a one-hour pipelined-commit run
-  (`docs/benchmark-scenarios/phase-4-pipelined-one-hour.md:11-14`).
+- the Phase 4 one-hour pipelined-commit gate was deleted with speculative
+  building (#752), and no replacement gate was filed.
 
 The harness is therefore part of the tickets. It has four parts:
 
@@ -1824,7 +1830,7 @@ The harness is therefore part of the tickets. It has four parts:
 | B5 | Committee | Tick at Q = 1,000 queue nodes; one store mutation and one readiness probe at 10^3 and 10^5 records | Tick p99 ≤ 50 ms; mutation ratio and readiness ratio ≤ 1.2 | C1, C2 |
 | B6 | Watcher persist | One observation at 10^5 stored | p99 ≤ 20 ms | W2 |
 | B7 | Restart to ready | Cursor at tip, N = 10^6, including the MPF load of the current root | ≤ 30 s | U2 (deferred) |
-| B8 | Retention soak | Constant event, deposit and withdrawal flow for 10 × (k + the retention window) blocks, with a short devnet retention window | Every class A, B and C table's row count plateaus: slope ≤ 1% over the last third | F2 (follower tables, synthetic chain); L5 (deferred) |
+| B8 | Retention soak | Constant event, deposit and withdrawal flow for 10 × (k + the retention window) blocks, with a short devnet retention window | Every class A, B and C table's row count plateaus: slope ≤ 1% over the last third. `l1_event_keys` is exempt: it is class A and never pruned (§11), so it grows with events ever created. | F2 (follower tables, synthetic chain; the default run scales k to 500 for speed, and a full k = 2,160 run passes on both adapters); L5 (deferred) |
 
 If a target is missed, the ticket reports the numbers to the owner rather
 than relaxing the target.

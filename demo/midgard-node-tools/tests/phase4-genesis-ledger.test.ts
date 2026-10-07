@@ -160,7 +160,7 @@ describe("Phase 4 genesis ledger V1 report decoder", () => {
     [{ status: "complete" }, "noncanonical"],
     [
       {
-        schemaVersion: "midgard-phase4-t1-recovery-attestation-v1",
+        schemaVersion: "midgard-phase4-unrelated-attestation-v1",
       },
       "noncanonical",
     ],

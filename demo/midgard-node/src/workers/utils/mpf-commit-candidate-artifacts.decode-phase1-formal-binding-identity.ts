@@ -131,6 +131,7 @@ export const decodeArchitectureGCommitCandidateSeedInput = (
       "fundingMapPath",
       "fundingMapSha256",
       "expectedTransactionCount",
+      "fixtureInitialUtxoCount",
       "firstTimestampIso",
     ],
   );
@@ -148,6 +149,10 @@ export const decodeArchitectureGCommitCandidateSeedInput = (
   positiveSafeInteger(
     input.expectedTransactionCount,
     "seedInput.expectedTransactionCount",
+  );
+  positiveSafeInteger(
+    input.fixtureInitialUtxoCount,
+    "seedInput.fixtureInitialUtxoCount",
   );
   canonicalUtcTimestamp(input.firstTimestampIso, "seedInput.firstTimestampIso");
   return input as ArchitectureGCommitCandidateSeedInput;

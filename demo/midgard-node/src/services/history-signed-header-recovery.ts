@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Effect, Option, Queue, Ref } from "effect";
+import { Effect, Option, Ref } from "effect";
 
 import * as Authority from "../database/eventHistoryAuthority.js";
 import { loadCanonicalHistoryCoverage } from "../database/eventHistoryCanonicalCoverage.js";
@@ -20,7 +20,6 @@ import * as StateQueueLeases from "../database/stateQueueMutationLeases.js";
 import { DatabaseError } from "../database/utils/common.js";
 import type { MinimalEntry } from "../database/utils/ledger.js";
 import { reconcileDepositProjection } from "../fibers/project-deposits-to-mempool-ledger.js";
-import { invalidateSpeculativeCommitCandidate } from "../fibers/speculative-commit-builder.js";
 import {
   eventHistoryCanonicalJson,
   type EventHistorySourceBinding,
@@ -309,8 +308,6 @@ export const prepareSignedHeaderRecovery = (input: {
         );
     });
     const globals = yield* Globals;
-    if (input.config.SPECULATIVE_COMMIT_BUILD)
-      yield* invalidateSpeculativeCommitCandidate(globals, input.config, "T1");
     let owner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
     if (owner === undefined) {
       // Open only retained native bytes; never genesis-bootstrap or replay an
@@ -385,8 +382,6 @@ export const prepareSignedHeaderRecovery = (input: {
         );
         yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, restoredQueue);
         yield* Ref.set(globals.BLOCKS_IN_QUEUE, 0);
-        yield* Queue.takeAll(globals.COMMIT_SUBMIT_WAKE_QUEUE);
-        yield* Queue.takeAll(globals.SPECULATIVE_BUILD_WAKE_QUEUE);
       }),
       repair: Effect.gen(function* () {
         yield* recheck;

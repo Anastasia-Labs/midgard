@@ -1,6 +1,6 @@
 # Phase 4 isolated process devnet
 
-This stack is exclusively for the destructive pipelined-commit process gate.
+This stack is exclusively for the destructive journal-kill recovery process gate.
 Every run gets a unique Compose project, database, filesystem tree, Cardano
 chain, Kupo index, and deployment manifest. It refuses known public network
 magic values and does not read the repository `.env`.
@@ -102,7 +102,7 @@ Recovery scenarios follow the chain's actual behavior:
 | --------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | Watcher/operator restart    | Cardano continues producing blocks; preserve all workflow and transaction journals | Reconnect from the recorded point, replay the canonical suffix, reconcile submissions and process new blocks                                 |
 | Indexer or follower outage  | The canonical producer remains online                                              | Recover from retained history or synchronize from a canonical peer; verify exact checkpoint and hash agreement before accepting observations |
-| Short local rollback (T1)   | Restore a recent isolated fork and preserve the abandoned operator journal         | Prove the abandoned header disappeared, the replacement canonical branch advanced, and no double spend or duplicate workflow occurred        |
+| Short local rollback        | Restore a recent isolated fork and preserve the abandoned operator journal         | Prove the abandoned header disappeared, the replacement canonical branch advanced, and no double spend or duplicate workflow occurred        |
 | Frozen fork beyond forecast | No peer supplies missing history                                                   | Refuse isolated forging before restoring state; use peer synchronization or a fresh isolated chain                                           |
 
 The ledger forecast horizon with these parameters is `ceil(3k/f)=129600` slots
@@ -157,8 +157,8 @@ Postgres. Every reset must restore that exact identity. Never mix an archive,
 manifest, acceptance env, or snapshot identity from a different run.
 The identity binds the source and distribution trees of both the operator
 package (`midgard-node`, the node under test) and this tooling package
-(`midgard-node-tools`, whose binary runs the acceptance controller, the gated
-genesis-ledger seed, and the T1 probe/advance commands).
+(`midgard-node-tools`, whose binary runs the acceptance controller and the
+gated genesis-ledger seed).
 The snapshot set includes every archive, the optional deployment run-state
 when present, the exact `aiken build --env testnet` blueprint checksum, and a
 pinned `cardano-cli stake-address-info` proof of the PHAS registration and its
@@ -174,14 +174,13 @@ evidence.
 ```bash
 export MIDGARD_PHASE4_RUN_DIR=/tmp/midgard-phase4-process-example
 export MIDGARD_PHASE4_MATCHED_RESET_COMMAND="$PWD/devnet/phase4-process/scripts/reset.sh"
-export MIDGARD_PHASE4_T1_RECOVERY_COMMAND="$PWD/devnet/phase4-process/scripts/t1-recover.sh"
 export MIDGARD_PHASE4_PROCESS_ENV_FILE="$MIDGARD_PHASE4_RUN_DIR/secrets/acceptance.env"
 export MIDGARD_PHASE4_PROCESS_DEPLOYMENT_MANIFEST_PATH="$MIDGARD_PHASE4_RUN_DIR/deploymentInfo/contract-deployment-info.json"
 export MIDGARD_PHASE4_PROCESS_TARGET=local-devnet
-export MIDGARD_PHASE4_PROCESS_ACCEPTANCE=pipelined-commit-live-v1
+export MIDGARD_PHASE4_PROCESS_ACCEPTANCE=journal-kill-recovery-live-v1
 export MIDGARD_PHASE4_PROCESS_RUN_DIR="$MIDGARD_PHASE4_RUN_DIR/acceptance"
 export MIDGARD_DOTENV_MODE=disabled
-pnpm run accept:phase4:pipelined-process
+pnpm run accept:phase4:journal-kill-recovery
 ```
 
 The acceptance command supplies `MIDGARD_PHASE4_SCENARIO_LABEL`. Each reset
@@ -202,32 +201,6 @@ Reset performs every source, distribution, image, configuration, snapshot,
 PHAS proof, and transaction-body drift check before stopping services or
 writing any durable run tree, so rejected evidence leaves the active run
 untouched.
-
-The reviewed `t1-recover.sh` is the only accepted T1 command. The harness first
-submits L2 header N and builds a speculative successor while holding the
-confirmation fiber, then stops that attempt. The recovery script verifies the
-complete matched-snapshot/image/artifact identity, proves N is canonical, and
-restores only Cardano and Kupo. Postgres remains running and its complete
-pending-finalization journal tables are dumped before and after and compared
-byte-for-byte.
-
-After rollback, the script proves N is absent and the canonical L2 tip is N's
-original base B. It then uses the gated node command to submit an authenticated
-no-op header F through the production commit builder, including its real
-scheduler alignment and timing checks. F must link to B, start at B's end time,
-advance to at least N's end-time bound, preserve the UTxO root, and commit empty
-event/transaction roots and zero counts. L2 header hashes are 28 bytes (56 hex);
-Cardano transaction, block, snapshot, and journal SHA-256 hashes are 32 bytes
-(64 hex). The two domains are validated separately.
-
-The script emits one snapshot-bound JSON attestation only after Cardano and
-Kupo report the exact same checkpoint and F is provider-visible. On restart,
-the harness scopes evidence to the new process attempt, requires stale-N
-recovery before any match, and proves replacement N' bases on F, retains the
-abandoned N transaction IDs and canonical CBOR, leaves the later retained
-payload byte-identical, submits, and continues through the speculative
-candidate path. A candidate line from an older append-log attempt cannot
-satisfy the gate.
 
 Run static tests with:
 

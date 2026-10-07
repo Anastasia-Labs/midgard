@@ -909,6 +909,81 @@ jobs:
       - name: Verify DA committee transport and admission
         run: pnpm --dir demo/da-committee-node run guard:no-http-da-transport && pnpm --dir demo/da-committee-node run typecheck && pnpm --dir demo/da-committee-node test
 
+  # The L1 follower fact store: its Postgres and SQLite adapters and the
+  # property replays over both. It reads no blueprint and imports no other
+  # package's dist. The B3/B8 benchmarks (`bench`, vitest.bench.config.ts)
+  # are not part of `test` and do not run here.
+  midgard-l1-follower:
+    name: midgard-l1-follower
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: midgard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d midgard"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/demo-setup
+      - name: Build midgard-l1-follower
+        run: pnpm --dir demo/midgard-l1-follower run build
+      - name: Typecheck midgard-l1-follower
+        if: ${{ !cancelled() }}
+        run: pnpm --dir demo/midgard-l1-follower run typecheck
+      - name: Test midgard-l1-follower
+        if: ${{ !cancelled() }}
+        run: pnpm --dir demo/midgard-l1-follower test
+
+  # The L1 fork simulator and the shadow-diff harness (plan §14): seeded
+  # fork scenarios through the follower's sequential writer, on SQLite and
+  # Postgres and once through the node transport's frame client, plus the
+  # soak runner's journal and resume. Every package that defines
+  # `test:fork-sim` runs here; role packages (C1, W1, N1) add their cases by
+  # declaring the script. A pull request runs it only when it touches one of
+  # its inputs (scripts/ci/fork-simulator-inputs.mjs derives them from the
+  # workspace); any other event always runs it. A skipped run leaves the job
+  # successful.
+  l1-fork-simulator:
+    name: l1-fork-simulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: midgard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d midgard"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The pull request merge commit and its base parent, for the diff.
+          fetch-depth: 2
+      - name: Decide whether the fork simulator runs
+        id: forksim
+        run: node scripts/ci/fork-simulator-inputs.mjs
+      - uses: ./.github/actions/demo-setup
+        if: ${{ steps.forksim.outputs.run == 'true' }}
+      - name: Run the fork simulator and shadow-diff suites
+        if: ${{ steps.forksim.outputs.run == 'true' }}
+        run: pnpm --dir demo -r --if-present run test:fork-sim
+
   # The node's typecheck, once per run and alongside the test shards rather
   # than on one of them, where it would add about a minute to that shard's
   # wall time. It resolves workspace packages from source and needs no dist.
@@ -1083,6 +1158,8 @@ jobs:
       - native-mpf
       - lint
       - da-committee-node
+      - midgard-l1-follower
+      - l1-fork-simulator
       - midgard-node-typecheck
       - midgard-node
       - midgard-node-tools

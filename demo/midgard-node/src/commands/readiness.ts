@@ -26,7 +26,6 @@ export type ReadinessInput = {
   readonly unresolvedBlockSubmissionAgeMs: number;
   readonly maxUnresolvedBlockSubmissionAgeMs: number;
   readonly dbHealthy: boolean;
-  readonly awaitingForeignTipReconciliations: number;
   /** Only a registered key awaiting activation is unready here: removal
    * arrives as a liveness reason, and `unknown` is a readiness detail. */
   readonly operatorMembership?:
@@ -96,12 +95,6 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
 
   if (!input.dbHealthy) {
     reasons.push("db_unhealthy");
-  }
-
-  if (input.awaitingForeignTipReconciliations > 0) {
-    reasons.push(
-      `foreign_tip_reconciliation_awaiting:${input.awaitingForeignTipReconciliations.toString()}`,
-    );
   }
 
   const foreignBase = input.foreignBaseVerification;

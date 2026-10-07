@@ -118,7 +118,7 @@ const rewind = (node: Node) =>
       bindingDigest: BINDING,
       checkpoint,
       preparation: { token: node.token, assertCurrent: Effect.void },
-      config: { SPECULATIVE_COMMIT_BUILD: false } as never,
+      config: {} as never,
       authority,
     }),
   );

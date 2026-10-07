@@ -16,7 +16,6 @@ import {
 import { fetchAndInsertDepositUTxOsForCommitBarrier } from "../../fibers/fetch-and-insert-deposit-utxos.js";
 import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "../../fibers/fetch-and-insert-tx-order-utxos.js";
 import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "../../fibers/fetch-and-insert-withdrawal-utxos.js";
-import { sameSpeculativeSourceIdSet } from "../../fibers/speculative-commit-state.js";
 import { type UtxoPayloadEntry } from "../../mpf/index.js";
 import {
   fetchOperatorWalletView,
@@ -40,6 +39,19 @@ import {
   StaleOperatorWalletRetrySignal,
 } from "./submission.assert-pre-submit-da-payload-size.js";
 
+/** True when both lists hold the same ids, each exactly once. */
+const sameSourceIdSet = (
+  actualIds: readonly string[],
+  expectedIds: readonly string[],
+): boolean => {
+  if (actualIds.length !== expectedIds.length) return false;
+  const expected = new Set(expectedIds);
+  return (
+    expected.size === expectedIds.length &&
+    actualIds.every((id) => expected.has(id))
+  );
+};
+
 export const commitUserEventSourceIdSetsAreExact = ({
   pendingDepositIds,
   includedDepositIds,
@@ -55,12 +67,9 @@ export const commitUserEventSourceIdSetsAreExact = ({
   readonly pendingWithdrawalIds: readonly string[];
   readonly includedWithdrawalIds: readonly string[];
 }): boolean =>
-  sameSpeculativeSourceIdSet(pendingDepositIds, includedDepositIds) &&
-  sameSpeculativeSourceIdSet(
-    pendingForcedTransactionIds,
-    includedForcedTransactionIds,
-  ) &&
-  sameSpeculativeSourceIdSet(pendingWithdrawalIds, includedWithdrawalIds);
+  sameSourceIdSet(pendingDepositIds, includedDepositIds) &&
+  sameSourceIdSet(pendingForcedTransactionIds, includedForcedTransactionIds) &&
+  sameSourceIdSet(pendingWithdrawalIds, includedWithdrawalIds);
 
 type CommitUserEventSourceRefreshers<E, R> = {
   readonly deposit: (upperBound: Date) => Effect.Effect<Date, E, R>;

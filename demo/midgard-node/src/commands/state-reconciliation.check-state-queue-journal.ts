@@ -76,28 +76,7 @@ export const checkStateQueueJournal = (
       );
       continue;
     }
-    const foreignRow = ctx.foreign.get(header.headerHash);
-    if (foreignRow !== undefined) {
-      if (header.roots !== null) {
-        acc.failures.push(
-          ...rootsDiff(label, header.roots, {
-            ...foreignRow.roots,
-            ...(foreignRow.transactionsRoot === null
-              ? {}
-              : { transactions: foreignRow.transactionsRoot }),
-          }),
-        );
-      }
-      if (foreignRow.status === "awaiting") {
-        acc.inFlight.push(`${label}: foreign header awaiting reconciliation`);
-      } else {
-        acc.notes.push(`${label}: foreign header, reconciled`);
-      }
-      continue;
-    }
-    acc.failures.push(
-      `${label}: no journal and no foreign-tip reconciliation exists for this on-chain header`,
-    );
+    acc.failures.push(`${label}: no journal exists for this on-chain header`);
   }
 
   for (const hash of merged.abandonedOnChain) {

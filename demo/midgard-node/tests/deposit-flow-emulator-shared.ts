@@ -43,8 +43,6 @@ import "../src/fibers/fetch-and-insert-deposit-utxos.js";
 import "../src/fibers/fetch-and-insert-withdrawal-utxos.js";
 import "../src/fibers/merge.js";
 import "../src/fibers/slot-aware-due-work.js";
-import "../src/fibers/speculative-commit-builder.js";
-import "../src/fibers/user-event-barrier-refresher.js";
 import "../src/lucid-time.js";
 import "../src/mpf/index.js";
 import "../src/services/event-history-producer.js";
@@ -82,7 +80,7 @@ import "./helpers/tx-inspection.js";
 import "./test-env.js";
 import "./deposit-flow-emulator-shared.make-fixture.js";
 import "./deposit-flow-emulator-shared.submit-with-wallet.js";
-import "./deposit-flow-emulator-shared.speculative-worker-input-from-active-journal.js";
+import "./deposit-flow-emulator-shared.commit-worker-program.js";
 import "./deposit-flow-emulator-shared.run-block-confirmation.js";
 
 import { createHash, randomUUID } from "node:crypto";
@@ -145,7 +143,6 @@ import {
   DepositsDB,
   DepositSubmissionAttemptsDB,
   ForcedTransactionsDB,
-  ForeignTipReconciliationsDB,
   ImmutableDB,
   MempoolDB,
   MempoolLedgerDB,
@@ -164,16 +161,17 @@ import {
 import * as Ledger from "../src/database/utils/ledger.js";
 import { promoteOrRecoverNativeMpf } from "../src/fibers/block-commitment.js";
 import { buildBlockConfirmationAction } from "../src/fibers/block-confirmation.js";
-import { reconcileVisibleDepositUTxOs } from "../src/fibers/fetch-and-insert-deposit-utxos.js";
-import { reconcileVisibleWithdrawalUTxOs } from "../src/fibers/fetch-and-insert-withdrawal-utxos.js";
+import {
+  fetchAndInsertDepositUTxOsForCommitBarrier,
+  reconcileVisibleDepositUTxOs,
+} from "../src/fibers/fetch-and-insert-deposit-utxos.js";
+import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "../src/fibers/fetch-and-insert-tx-order-utxos.js";
+import {
+  fetchAndInsertWithdrawalUTxOsForCommitBarrier,
+  reconcileVisibleWithdrawalUTxOs,
+} from "../src/fibers/fetch-and-insert-withdrawal-utxos.js";
 import { mergeAction, type MergeActionResult } from "../src/fibers/merge.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
-import { decideSpeculativeInstructionForLiveTip } from "../src/fibers/speculative-commit-builder.js";
-import type {
-  SpeculativeCandidateSummary,
-  UserEventBarrierWatermarks,
-} from "../src/fibers/speculative-commit-state.js";
-import { runUserEventBarrierRefresherPass } from "../src/fibers/user-event-barrier-refresher.js";
 import { canonicalSlotConfigForLucid } from "../src/lucid-time.js";
 import {
   commitTxDeltaCacheHitCounter,
@@ -221,7 +219,6 @@ import { buildUnsignedDepositTxFromFundingContextProgram } from "../src/transact
 import { commitExplicitBlockHeaderProgram } from "../src/workers/commit-block-header.js";
 import {
   serializeStateQueueUTxO,
-  type SpeculativeCommitWorkerInstruction,
   type WorkerInput as CommitWorkerInput,
   type WorkerOutput as CommitWorkerOutput,
 } from "../src/workers/utils/commit-block-header.js";
@@ -231,6 +228,16 @@ import {
 } from "../src/workers/utils/commit-end-time.js";
 import { type WorkerOutput as ConfirmationWorkerOutput } from "../src/workers/utils/confirm-block-commitments.js";
 import { resolveCurrentOperatorSchedulerWindow } from "../src/workers/utils/scheduler-refresh.js";
+import {
+  advanceEmulatorToDueWork,
+  alignCommitSchedulerBeforeTestWorker,
+  commitWorkerProgram,
+  getStateQueueDatumEndTime,
+  makeGlobalsService,
+  makeLucidRuntimeService,
+  type OwnedCommitFixture,
+  type ProductionHistoryFixtureRuntime,
+} from "./deposit-flow-emulator-shared.commit-worker-program.js";
 import {
   EMULATOR_DEPLOYMENT_IDENTITY,
   type EmulatorFixture,
@@ -250,17 +257,6 @@ import {
   stateQueueFetchConfig,
   withEmulatorExtraneousScriptRetry,
 } from "./deposit-flow-emulator-shared.run-block-confirmation.js";
-import {
-  advanceEmulatorToDueWork,
-  alignCommitSchedulerBeforeTestWorker,
-  commitWorkerProgram,
-  getStateQueueDatumEndTime,
-  makeGlobalsService,
-  makeLucidRuntimeService,
-  type OwnedCommitFixture,
-  type ProductionHistoryFixtureRuntime,
-  speculativeWorkerInputFromActiveJournal,
-} from "./deposit-flow-emulator-shared.speculative-worker-input-from-active-journal.js";
 import {
   advanceEmulatorPastUnixTime,
   submitDepositWithDiagnostics,
@@ -604,7 +600,6 @@ export const clearNodeTables = Effect.gen(function* () {
         PendingBlockFinalizationsDB.clear,
         DaPayloadsDB.clear,
         DepositSubmissionAttemptsDB.clear,
-        ForeignTipReconciliationsDB.clear,
         TxRejectionsDB.clear,
         ForcedTransactionsDB.clear,
         CommonUtils.clearTable(TxAdmissionsDB.tableName),
@@ -1077,8 +1072,17 @@ export const runBarrierRefresherForTest = async (
   lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
 ) => {
   const nodeConfig = await makeNodeConfigForFixture(fixture);
+  // Ingest the three user-event sources up to now, in barrier order.
+  const barrierPass = Effect.gen(function* () {
+    const deposit = yield* fetchAndInsertDepositUTxOsForCommitBarrier(
+      new Date(),
+    );
+    const withdrawal =
+      yield* fetchAndInsertWithdrawalUTxOsForCommitBarrier(deposit);
+    yield* fetchAndInsertTxOrderUTxOsForCommitBarrier(withdrawal);
+  });
   return Effect.runPromise(
-    runUserEventBarrierRefresherPass.pipe(
+    barrierPass.pipe(
       Effect.provideService(LucidService, lucidService as any),
       Effect.provideService(MidgardContracts, fixture.contracts as any),
       Effect.provideService(
@@ -1091,109 +1095,6 @@ export const runBarrierRefresherForTest = async (
       Effect.provideService(NodeConfig, nodeConfig),
     ),
   );
-};
-
-export const runSpeculativeWorkerWithInstruction = async ({
-  fixture,
-  lucidService,
-  watermarks,
-  onReady,
-  nodeConfig,
-  production,
-}: {
-  readonly fixture: EmulatorFixture;
-  readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
-  readonly watermarks: UserEventBarrierWatermarks;
-  readonly nodeConfig?: NodeConfigDep;
-  readonly production?: OwnedCommitFixture;
-  readonly onReady: (
-    candidate: SpeculativeCandidateSummary,
-  ) => Effect.Effect<
-    SpeculativeCommitWorkerInstruction,
-    unknown,
-    Database | ContractDeploymentIdentity
-  >;
-}) => {
-  const workerInput = await speculativeWorkerInputFromActiveJournal(
-    watermarks,
-    canonicalSlotConfigForLucid(lucidService.api),
-  );
-  let candidate: SpeculativeCandidateSummary | undefined;
-  let acquiredLeaseToken: string | undefined;
-  let lucidAcquisitions = 0;
-  const config = nodeConfig ?? (await makeNodeConfigForFixture(fixture));
-  const runSpeculative = (nativeInput: CommitWorkerInput) =>
-    commitWorkerProgram(
-      fixture.contracts,
-      lucidService,
-      nativeInput,
-      (readyCandidate) => {
-        candidate = readyCandidate;
-        // Source-owned short-window selection authenticates the live append
-        // fence once. Unowned model candidates have no provider acquisition.
-        expect(lucidAcquisitions).toBe(production === undefined ? 0 : 1);
-        return onReady(readyCandidate).pipe(
-          Effect.provideService(
-            ContractDeploymentIdentity,
-            fixtureDeploymentIdentity(fixture),
-          ),
-          Effect.tap((instruction) =>
-            instruction.type === "SubmitSpeculativeCandidate"
-              ? Effect.sync(() => {
-                  acquiredLeaseToken = instruction.stateQueueLeaseToken;
-                })
-              : Effect.void,
-          ),
-        );
-      },
-      config,
-      () =>
-        Effect.sync(() => {
-          lucidAcquisitions += 1;
-          return lucidService as any;
-        }),
-    );
-  const output = await Effect.runPromise(
-    (production === undefined
-      ? runUnownedNativeCommit(
-          fixture.contracts,
-          lucidService,
-          config,
-          workerInput,
-          runSpeculative,
-        )
-      : runOwnedNativeCommit(
-          fixture.contracts,
-          lucidService,
-          production,
-          workerInput,
-          runSpeculative,
-          false,
-        )
-    ).pipe(
-      Effect.ensuring(
-        Effect.suspend(() =>
-          acquiredLeaseToken === undefined
-            ? Effect.void
-            : StateQueueMutationLeasesDB.release(acquiredLeaseToken).pipe(
-                Effect.catchAll(() => Effect.void),
-              ),
-        ),
-      ),
-      Effect.provideService(
-        ContractDeploymentIdentity,
-        fixtureDeploymentIdentity(fixture),
-      ),
-      Effect.provide(Database.layer),
-      Effect.provideService(UnownedHistoryFixture, true),
-    ),
-  );
-  if (candidate === undefined) {
-    throw new Error(
-      `Speculative worker completed without a ready candidate: ${JSON.stringify(output)}`,
-    );
-  }
-  return { candidate, output, lucidAcquisitions };
 };
 
 export const runConfirmationJournalInsertionRace = async (
@@ -1543,11 +1444,7 @@ export const submitDepositAndRefreshBarriers = async ({
   );
   await advanceEmulatorPastUnixTime(fixture, latestInclusionTimeMs);
   vi.setSystemTime(new Date(fixture.emulator.now()));
-  const watermarks = await runBarrierRefresherForTest(
-    globals,
-    fixture,
-    lucidService,
-  );
+  await runBarrierRefresherForTest(globals, fixture, lucidService);
   if (projectToLedger) {
     await runNodeCommandProgram(projectDepositsToMempoolLedger, {
       fixture,
@@ -1555,7 +1452,7 @@ export const submitDepositAndRefreshBarriers = async ({
       globals,
     });
   }
-  return { submittedTxHash, watermarks };
+  return { submittedTxHash };
 };
 
 export const commitConfirmRecoverAndMerge = async ({
@@ -1812,6 +1709,16 @@ afterEach(async () => {
   }
 });
 export {
+  advanceEmulatorToDueWork,
+  alignCommitSchedulerBeforeTestWorker,
+  commitWorkerProgram,
+  getStateQueueDatumEndTime,
+  makeGlobalsService,
+  makeLucidRuntimeService,
+  type ProductionHistoryFixtureRuntime,
+  submitWithdrawalWithDiagnostics,
+} from "./deposit-flow-emulator-shared.commit-worker-program.js";
+export {
   countDaPayloadRows,
   type DepositFlowReferenceScripts,
   describeProviderOutRefStates,
@@ -1835,29 +1742,14 @@ export {
   advanceEmulatorPastLatestBlockEndTime,
   expectDaCommitteeAcceptsPersistedPayload,
   expectedAuthenticatedEventRoot,
-  expectHeaderRootsToMatchCandidate,
   fetchLatestCommittedBlock,
   fetchSchedulerDatum,
   findUtxoWithUnit,
-  normalizeT1RecoveryGlobals,
   retainSubmittedHeaderPayload,
   runBlockConfirmation,
   stateQueueFetchConfig,
   withEmulatorExtraneousScriptRetry,
 } from "./deposit-flow-emulator-shared.run-block-confirmation.js";
-export {
-  advanceEmulatorToDueWork,
-  alignCommitSchedulerBeforeTestWorker,
-  assertSpeculativeDepositSnapshotIsMemoryOnly,
-  commitWorkerProgram,
-  getStateQueueDatumEndTime,
-  makeGlobalsService,
-  makeLucidRuntimeService,
-  type NormalizedT1RecoveryGlobals,
-  type ProductionHistoryFixtureRuntime,
-  speculativeWorkerInputFromActiveJournal,
-  submitWithdrawalWithDiagnostics,
-} from "./deposit-flow-emulator-shared.speculative-worker-input-from-active-journal.js";
 export {
   advanceEmulatorPastUnixTime,
   advanceHistoryAdmissionClock,
@@ -1895,14 +1787,12 @@ export {
   DaPayloadsDB,
   Data,
   Database,
-  decideSpeculativeInstructionForLiveTip,
   decodeNodeUtxo,
   DepositsDB,
   Effect,
   encodeMidgardCekProgramMaterialSidecar,
   fetchStateQueueSnapshotProgram,
   ForcedTransactionsDB,
-  ForeignTipReconciliationsDB,
   Globals,
   ImmutableDB,
   initializePayoutProgram,
@@ -1951,11 +1841,4 @@ export {
   WriteBehindLive,
 };
 
-export type {
-  NodeConfigDep,
-  NodeUtxo,
-  QueuedTx,
-  SpeculativeCandidateSummary,
-  SpeculativeCommitWorkerInstruction,
-  UserEventBarrierWatermarks,
-};
+export type { NodeConfigDep, NodeUtxo, QueuedTx };

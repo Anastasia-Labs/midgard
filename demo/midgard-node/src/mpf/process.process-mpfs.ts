@@ -149,10 +149,6 @@ export const processMpfs = (
     sizeOfProcessedTxs: number;
     rejectedMempoolTxsCount: number;
     rejectedMempoolTxHashes: readonly Buffer[];
-    rejectionEntries: readonly TxRejectionsDB.EntryNoTimestamp[];
-    /** Reverts the rejected transactions' ledger effects, for a caller that
-     * persists the rejection itself (`deferDatabaseWrites`). */
-    ledgerRevert: CommitStageLedgerRevert;
     includedDepositEntriesCount: number;
     includedDepositEntries: readonly DepositsDB.Entry[];
     includedDepositEventIds: readonly Buffer[];
@@ -321,14 +317,7 @@ export const processMpfs = (
       includedDepositEntries = yield* resolveIncludedDepositEntriesForWindow({
         currentBlockStartTime: config.currentBlockStartTime,
         effectiveEndTime,
-        persistProjection: config.deferDatabaseWrites !== true,
       });
-      includedDepositEntries = includedDepositEntries.filter(
-        (entry) =>
-          !config.excludedDepositEventIds?.has(
-            entry[DepositsDB.Columns.ID].toString("hex"),
-          ),
-      );
     }
     const includedDepositEntriesCount = includedDepositEntries.length;
     const includedDepositEventIds = includedDepositEntries.map((entry) =>
@@ -358,15 +347,7 @@ export const processMpfs = (
         yield* resolveIncludedForcedTransactionEntriesForWindow({
           currentBlockStartTime: config.currentBlockStartTime,
           effectiveEndTime,
-          persistProjection: config.deferDatabaseWrites !== true,
         });
-      includedForcedTransactionEntries =
-        includedForcedTransactionEntries.filter(
-          (entry) =>
-            !config.excludedForcedTransactionEventIds?.has(
-              entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex"),
-            ),
-        );
     }
     const includedForcedTransactionEntriesCount =
       includedForcedTransactionEntries.length;
@@ -393,12 +374,6 @@ export const processMpfs = (
           currentBlockStartTime: config.currentBlockStartTime,
           effectiveEndTime,
         });
-      includedWithdrawalEntries = includedWithdrawalEntries.filter(
-        (entry) =>
-          !config.excludedWithdrawalEventIds?.has(
-            entry[WithdrawalsDB.Columns.ID].toString("hex"),
-          ),
-      );
 
       const seenWithdrawalTarget = new Map<string, Buffer>();
       const mutableClassifiedWithdrawals: ClassifiedWithdrawal[] = [];
@@ -440,25 +415,23 @@ export const processMpfs = (
       }
       classifiedWithdrawals = mutableClassifiedWithdrawals;
 
-      if (config.deferDatabaseWrites !== true) {
-        yield* WithdrawalsDB.setSettlementInfoForEventIds(
-          classifiedWithdrawals.map((classified) => ({
-            eventId: classified.entry[WithdrawalsDB.Columns.ID],
-            expectedClassificationRevision:
-              classified.entry[WithdrawalsDB.Columns.CLASSIFICATION_REVISION],
-            settlementEventInfo: classified.settlementEventInfo,
-            validity: classified.validity,
-            validityDetail: classified.validityDetail,
-          })),
-        );
-        yield* WithdrawalsDB.markAwaitingAsProjected(
-          classifiedWithdrawals.map((classified) => ({
-            eventId: classified.entry[WithdrawalsDB.Columns.ID],
-            expectedClassificationRevision:
-              classified.entry[WithdrawalsDB.Columns.CLASSIFICATION_REVISION],
-          })),
-        );
-      }
+      yield* WithdrawalsDB.setSettlementInfoForEventIds(
+        classifiedWithdrawals.map((classified) => ({
+          eventId: classified.entry[WithdrawalsDB.Columns.ID],
+          expectedClassificationRevision:
+            classified.entry[WithdrawalsDB.Columns.CLASSIFICATION_REVISION],
+          settlementEventInfo: classified.settlementEventInfo,
+          validity: classified.validity,
+          validityDetail: classified.validityDetail,
+        })),
+      );
+      yield* WithdrawalsDB.markAwaitingAsProjected(
+        classifiedWithdrawals.map((classified) => ({
+          eventId: classified.entry[WithdrawalsDB.Columns.ID],
+          expectedClassificationRevision:
+            classified.entry[WithdrawalsDB.Columns.CLASSIFICATION_REVISION],
+        })),
+      );
 
       includedWithdrawalEntries = classifiedWithdrawals.map((classified) => ({
         ...classified.entry,
@@ -542,10 +515,7 @@ export const processMpfs = (
         }
       }
     }
-    if (
-      config.deferDatabaseWrites !== true &&
-      classifiedForcedTransactions.length > 0
-    ) {
+    if (classifiedForcedTransactions.length > 0) {
       yield* ForcedTransactionsDB.setProofClassifications(
         classifiedForcedTransactions.map(({ entry }) => ({
           txOrderId: entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
@@ -921,7 +891,7 @@ export const processMpfs = (
         ]),
       }),
     };
-    if (rejectedTxHashes.length > 0 && config.deferDatabaseWrites !== true) {
+    if (rejectedTxHashes.length > 0) {
       yield* Effect.logWarning(
         `Dropping ${rejectedTxHashes.length} transaction(s) from MempoolDB`,
       );
@@ -1582,8 +1552,6 @@ export const processMpfs = (
       sizeOfProcessedTxs,
       rejectedMempoolTxsCount: rejectedTxHashes.length,
       rejectedMempoolTxHashes: rejectedTxHashes,
-      rejectionEntries,
-      ledgerRevert,
       includedDepositEntriesCount,
       includedDepositEntries,
       includedDepositEventIds,

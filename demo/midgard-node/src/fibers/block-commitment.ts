@@ -18,7 +18,6 @@ import "./native-mpf-worker-input.js";
 import "./queue-metrics.js";
 import "./resolve-worker-entry.js";
 import "./slot-aware-due-work.js";
-import "./speculative-commit-state.js";
 import "./worker-lifecycle.js";
 import "./block-commitment.promote-or-recover-native-mpf.js";
 import "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
@@ -44,7 +43,6 @@ export {
   publishCommitMempoolLedgerMutation,
   shouldAttemptCommitPipeline,
   shouldDeferCommitWorkerForLocalFinalization,
-  shouldSkipScheduledLegacyCommitForSpeculation,
 } from "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
 export {
   releaseCommitMutationWorkerPhase,

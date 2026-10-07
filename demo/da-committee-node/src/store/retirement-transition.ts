@@ -145,11 +145,6 @@ export const assertRetirementWrite = (
       check(row.headerHash);
       if (row.deploymentFingerprint !== floor.binding.deploymentFingerprint)
         throw new Error("Retirement write has a foreign deployment");
-      if (family === "daConflictEvidence")
-        check(
-          (row as StoreData["daConflictEvidence"][string])
-            .conflictingHeaderHash,
-        );
     }
   const prior = new Map(
     before.chainCursor?.observations.map((o) => [o.headerHash, o]),
@@ -228,11 +223,6 @@ export const planRetirement = (
   ]);
   for (const q of data.chainCursor?.stateQueueReplayAnchor?.queue ?? [])
     if (q.headerHash !== null) pins.add(q.headerHash);
-  for (const c of Object.values(data.daConflictEvidence))
-    if (pins.has(c.headerHash) || pins.has(c.conflictingHeaderHash)) {
-      pins.add(c.headerHash);
-      pins.add(c.conflictingHeaderHash);
-    }
   const groups = new Map<number, StateQueueHeaderRecord[]>();
   for (const header of Object.values(data.stateQueueHeaders)) {
     const end = authenticatedHeaderEnd(header);
@@ -349,13 +339,6 @@ export const planRetirement = (
     end = time;
   }
   if (!retired.length) return undefined;
-  const retiredSet = new Set(retired);
-  for (const conflict of Object.values(data.daConflictEvidence))
-    if (
-      retiredSet.has(conflict.headerHash) !==
-      retiredSet.has(conflict.conflictingHeaderHash)
-    )
-      return undefined;
   if (data.retirementFloor?.point)
     points.push(
       requirePoint(

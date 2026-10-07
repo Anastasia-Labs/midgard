@@ -1,21 +1,11 @@
 import { Metric } from "effect";
 
 import type { SubmitSlotSnapshot } from "../local-ogmios-slot.js";
-import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 
 export type CommitPipelinePhase =
   | "idle"
   | "scheduler_alignment"
-  | "speculative_build"
   | "mutation_worker";
-
-export type CommitSubmitWake = {
-  readonly confirmedHeaderHash: string;
-  /** Canonical latest state-queue tip observed with confirmedHeaderHash. */
-  readonly confirmedTip: SerializedStateQueueUTxO;
-  readonly confirmationObservedAtMs: number;
-  readonly confirmationWaitMs: number;
-};
 
 export type AdmissionBacklogGaugeState = {
   readonly ADMISSION_BACKLOG_BASE: bigint;

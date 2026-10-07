@@ -277,15 +277,6 @@ export const headerEndTimeMs = (cbor: Buffer | null): number | null => {
   }
 };
 
-export type ForeignRow = {
-  readonly foreign_header_hash: Buffer;
-  readonly status: string;
-  readonly foreign_header_cbor: Buffer;
-  readonly deposits_root: string;
-  readonly withdrawals_root: string;
-  readonly forced_transactions_root: string;
-};
-
 export const entriesMap = (
   entries: readonly Ledger.Entry[],
 ): Map<string, string> =>

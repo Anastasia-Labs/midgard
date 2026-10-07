@@ -11,14 +11,13 @@ options still require their explicit configuration gates.
 - `src/commands/`: the e2e finalizer and state-correction acceptance, the
   managed-service commands, stress wallets, the corpus
   generator/verifier, the bounded L2 stress harness, the Phase 4 genesis-ledger
-  and T1 recovery gates, and the Phase 4 pipelined-commit process acceptance
-  controller.
+  gate, and the Phase 4 journal-kill recovery acceptance controller.
 - `src/e2e/`: the process supervisor, structured step runner, run summary,
-  owned-process-group records, DA gates, and the pipelined-commit process
+  owned-process-group records, DA gates, and the journal-kill process
   harness.
 - `devnet/phase4-process/`: the isolated local-devnet assets for the Phase 4
-  gate (see [`docs/PHASE4_PIPELINED_COMMIT_PROCESS_ACCEPTANCE.md`](docs/PHASE4_PIPELINED_COMMIT_PROCESS_ACCEPTANCE.md)).
-- `scripts/verify-phase4-pipelined-process-summary.mjs`: the offline verifier
+  gate (see [`docs/PHASE4_JOURNAL_KILL_RECOVERY_ACCEPTANCE.md`](docs/PHASE4_JOURNAL_KILL_RECOVERY_ACCEPTANCE.md)).
+- `scripts/verify-phase4-journal-kill-recovery-summary.mjs`: the offline verifier
   for the acceptance summary the controller writes.
 - `tests/`: the suites for all of the above.
 
@@ -57,16 +56,16 @@ This is the only live acceptance flow; the operating runbook is
 
 ## Commands
 
-| Command                                                         | Purpose                                                                                            |
-| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `e2e-stack`                                                     | One-command persistent Preprod setup, resume and wallet journeys                                   |
-| `e2e-start-service`, `e2e-clean-owned-process-group`            | Managed service start, fail-closed process cleanup                                                 |
-| `e2e-finalize-summary`                                          | Re-derives an `e2e-stack` run into the release-readiness dashboard (`summary.json` + `summary.md`) |
-| `e2e-stress-l2-throughput`                                      | Opt-in bounded L2 transfer stress with SQL-grounded stage metrics                                  |
-| `create-l2-wallet`, `stress-wallets:*`                          | Persisted stress wallets: create, prepare, fan-out, consolidate, drain                             |
-| `stress-corpus-generate`, `stress-corpus-verify`                | Signed NDJSON transaction corpus for repeatable benchmarks                                         |
-| `phase4-genesis-ledger`, `phase4-t1-probe`, `phase4-t1-advance` | Gated Phase 4 local-devnet genesis and T1 recovery commands                                        |
-| `e2e-pipelined-commit-process-acceptance`                       | The Phase 4 crash/restart and two-node process acceptance matrix                                   |
+| Command                                              | Purpose                                                                                            |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `e2e-stack`                                          | One-command persistent Preprod setup, resume and wallet journeys                                   |
+| `e2e-start-service`, `e2e-clean-owned-process-group` | Managed service start, fail-closed process cleanup                                                 |
+| `e2e-finalize-summary`                               | Re-derives an `e2e-stack` run into the release-readiness dashboard (`summary.json` + `summary.md`) |
+| `e2e-stress-l2-throughput`                           | Opt-in bounded L2 transfer stress with SQL-grounded stage metrics                                  |
+| `create-l2-wallet`, `stress-wallets:*`               | Persisted stress wallets: create, prepare, fan-out, consolidate, drain                             |
+| `stress-corpus-generate`, `stress-corpus-verify`     | Signed NDJSON transaction corpus for repeatable benchmarks                                         |
+| `phase4-genesis-ledger`                              | Gated Phase 4 local-devnet genesis command                                                         |
+| `e2e-journal-kill-recovery-acceptance`               | The Phase 4 two-node journal-before-submit SIGKILL recovery acceptance                             |
 
 `e2e-stack` records every command it runs through the structured step runner
 in its run directory's `attempts/`. `e2e-start-service` supervises

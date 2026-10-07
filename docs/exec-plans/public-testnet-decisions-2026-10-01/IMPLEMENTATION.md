@@ -1,5 +1,7 @@
 # Approved changes and verification ledger
 
+> Note (deleted 2026-10-03, #752): speculative commit mode, the foreign-tip reconciliation table `foreign_tip_reconciliations`, the T2 foreign-event reconciliation workers, the foreign DA reconciliation fiber and the commit-time foreign-tip gate no longer exist. The file paths this record cites for them are kept as plain text for history.
+
 Date: 1 October 2026. Base: `3027be19cb3bc740f83af0e155e34ab38c7cf894`. These are uncommitted working changes. No commit, pull request, push, deployment, state reset, registration, or bond transfer was performed. [REPORT.md](REPORT.md) contains the decisions and separates remaining proposals from implementation.
 
 ## What changed

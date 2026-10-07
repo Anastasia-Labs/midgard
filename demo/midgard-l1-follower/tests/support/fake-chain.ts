@@ -7,7 +7,7 @@ import { L1NodeTransport } from "@al-ft/l1-node-transport";
 import { writeFakeSidecar } from "@al-ft/l1-node-transport/testing/fake-sidecar";
 
 import { blake2b256 } from "../../src/index.js";
-import * as c from "./cbor-writer.js";
+import * as c from "../../src/testing/cbor-writer.js";
 
 /** One block as the fake chain handler (fixtures/chain-handler.mjs) serves it. */
 export type FakeBlock = Readonly<{

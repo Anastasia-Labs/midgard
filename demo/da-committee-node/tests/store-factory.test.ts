@@ -737,9 +737,9 @@ const daPayloadRecord = (): DaPayloadRecord => ({
   validationStatus: "fetched",
 });
 
-const availabilityCommitment = (headerHash: string) => {
+const availabilityCommitment = (headerHash: string, identity = "99") => {
   const commitment = SDK.buildDaAvailabilityCommitment({
-    deploymentIdentity: "99".repeat(28),
+    deploymentIdentity: identity.repeat(28),
     headerHash,
     payload: Buffer.from("public retained DA"),
     responseGeometry: SDK.availabilityResponseGeometry({
@@ -814,7 +814,7 @@ const daSignatureRecord = (): DaSignatureRecordV1 => ({
 
 const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecord => {
   const lower = availabilityCommitment("11".repeat(28));
-  const upper = availabilityCommitment("22".repeat(28));
+  const upper = availabilityCommitment("11".repeat(28), "55");
   const compactEvidence = encodeDaConflictingSignatureHeaderEvidenceCbor({
     signerIndex: 0,
     daVkey: Buffer.alloc(32, 0x44),
@@ -824,7 +824,7 @@ const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecord => {
       Buffer.from([0]),
       Buffer.alloc(64, 0xaa),
     ]),
-    upperHeaderHash: Buffer.alloc(28, 0x22),
+    upperHeaderHash: Buffer.alloc(28, 0x11),
     upperCommitmentCbor: Buffer.from(upper.cbor, "hex"),
     upperHeaderWitness: Buffer.concat([
       Buffer.from([0]),
@@ -836,7 +836,7 @@ const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecord => {
     deploymentFingerprint: "11".repeat(32),
     headerHash: "11".repeat(28),
     commitmentDigest: lower.digest,
-    conflictingHeaderHash: "22".repeat(28),
+    conflictingHeaderHash: "11".repeat(28),
     conflictingCommitmentDigest: upper.digest,
     signerIndex: 0,
     evidenceKind: "equivocation",

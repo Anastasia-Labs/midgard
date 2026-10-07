@@ -642,7 +642,7 @@ describe("DA transport full message vectors", () => {
         `581c${h("02", 28)}`,
         "4180",
         `584104${h("aa", 64)}`,
-        `581c${h("03", 28)}`,
+        `581c${h("02", 28)}`,
         "428100",
         `584104${h("bb", 64)}`,
       ].join(""),
@@ -1354,7 +1354,7 @@ const conflictingSignatureHeaderEvidence =
     lowerHeaderHash: headerHash,
     lowerCommitmentCbor: Buffer.from([0x80]),
     lowerHeaderWitness: Buffer.concat([Buffer.from([4]), b(0xaa, 64)]),
-    upperHeaderHash: b(0x03, 28),
+    upperHeaderHash: headerHash,
     upperCommitmentCbor: Buffer.from([0x81, 0x00]),
     upperHeaderWitness: Buffer.concat([Buffer.from([4]), b(0xbb, 64)]),
   });

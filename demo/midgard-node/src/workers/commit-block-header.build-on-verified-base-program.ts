@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
@@ -11,18 +9,14 @@ import {
   MpfEngineStateDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
-  StateQueueMutationLeasesDB,
 } from "../database/index.js";
-import { DatabaseError } from "../database/utils/common.js";
 import {
   Columns as TxColumns,
   type EntryWithTimeStamp,
 } from "../database/utils/tx.js";
-import { reachPipelinedCommitCrashCheckpoint } from "../e2e/pipelined-commit-crash-checkpoint.js";
 import { fetchAndInsertDepositUTxOsForCommitBarrier } from "../fibers/fetch-and-insert-deposit-utxos.js";
 import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "../fibers/fetch-and-insert-tx-order-utxos.js";
 import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "../fibers/fetch-and-insert-withdrawal-utxos.js";
-import { minimumBarrierWatermarkMs } from "../fibers/speculative-commit-state.js";
 import { unixTimeToSlotForConfig } from "../lucid-time.js";
 import {
   configureCommitMpfRuntime,
@@ -46,7 +40,6 @@ import {
 import { outRefLabel } from "../tx-context.js";
 import {
   alignCommitMpfsToBase,
-  type AwaitSpeculativeCommitInstruction,
   MEMPOOL_LEDGER_REVERTED_NOTICE,
   type NotifyCommitWorkerParent,
   shouldPreserveCommitMpfRoots,
@@ -58,18 +51,11 @@ import {
   CommitWorkerInvariantError,
   defaultCommitLucidFactory,
   pendingUserEventCountsUpTo,
-  pendingUserEventCountUpTo,
   shouldHydrateCommitBaseEntries,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
 import { recordSuccessfulBuildCalibration as recordBuildCalibration } from "./commit-block-header.record-successful-build-calibration.js";
 import { resolveCommitBaseLedgerEntries } from "./commit-block-header.resolve-commit-base-ledger-entries.js";
-import { revalidateAndPersistSpeculativeCandidateSources } from "./commit-block-header.revalidate-and-persist-speculative-candidate-sources.js";
 import * as DaPrefix from "./commit-block-header/commit-da-prefix-search.js";
-import {
-  resolveDepositsRoot,
-  resolveForcedTransactionsRoot,
-  resolveWithdrawalsRoot,
-} from "./commit-block-header/event-roots.js";
 import {
   getLatestBlockDatumEndTime,
   resolveCommitAppendFenceEndTimeCapLocal,
@@ -80,11 +66,9 @@ import {
   submitDepositOnlyCommit,
   submitTxBackedCommit,
 } from "./commit-block-header/submission.js";
-import { gateCommitOnRetainedForeignTips } from "./t2-foreign-event-reconciliation.js";
 import {
+  type CommitCandidateRoots,
   deserializeStateQueueUTxO,
-  type SpeculativeCandidateInvalidatedOutput,
-  type SpeculativeCandidateReadyOutput,
   WorkerInput,
   WorkerOutput,
 } from "./utils/commit-block-header.js";
@@ -120,14 +104,7 @@ import {
 export const buildOnVerifiedCommitBaseProgram = (
   workerInput: WorkerInput,
   transactionsMpf: MidgardMpf,
-  awaitSpeculativeInstruction?: AwaitSpeculativeCommitInstruction,
   notifyParent?: NotifyCommitWorkerParent,
-  activeMpfLeaseOwner?: string,
-  localFinalizationTransactionsMpf?: MidgardMpf,
-  postWaitMpfContext?: () => {
-    readonly transactionsMpf: MidgardMpf;
-    readonly localFinalizationTransactionsMpf?: MidgardMpf;
-  },
   nativeMpfClient?: NativeMpfWorkerPortClient,
   nativeMpfState?: {
     context?: NativeMpfBuildContext;
@@ -154,37 +131,6 @@ export const buildOnVerifiedCommitBaseProgram = (
     );
     yield* assertHistoryProducer(workerInput.history);
     const workerStartedAtMs = Date.now();
-    let baseHydrationPasses = 0;
-    let mpfProcessingPasses = 0;
-    let speculativeReadyPassCounts:
-      | {
-          readonly candidateId: string;
-          readonly baseHydrationPasses: number;
-          readonly mpfProcessingPasses: number;
-        }
-      | undefined;
-    const attachSpeculativeExecutionEvidence = (
-      output: WorkerOutput,
-    ): WorkerOutput =>
-      speculativeReadyPassCounts !== undefined &&
-      output.type === "SubmittedAwaitingConfirmationOutput"
-        ? {
-            ...output,
-            speculativeExecution: {
-              candidateId: speculativeReadyPassCounts.candidateId,
-              baseHydrationPassesBeforeReady:
-                speculativeReadyPassCounts.baseHydrationPasses,
-              mpfProcessingPassesBeforeReady:
-                speculativeReadyPassCounts.mpfProcessingPasses,
-              baseHydrationPassesAfterReady:
-                baseHydrationPasses -
-                speculativeReadyPassCounts.baseHydrationPasses,
-              mpfProcessingPassesAfterReady:
-                mpfProcessingPasses -
-                speculativeReadyPassCounts.mpfProcessingPasses,
-            },
-          }
-        : output;
     const nodeConfig = yield* NodeConfig;
     const deploymentIdentity = yield* ContractDeploymentIdentity;
     if (deploymentIdentity.deploymentMarker === undefined) {
@@ -209,9 +155,6 @@ export const buildOnVerifiedCommitBaseProgram = (
     yield* Effect.logInfo(
       `pipeline_trace phase=commit_worker_started at_ms=${workerStartedAtMs.toString()}`,
     );
-    const excludedMempoolTxIds = new Set(
-      workerInput.data.speculativeBuild?.excludedMempoolTxIds ?? [],
-    );
     const retrievedMempoolTxs: EntryWithTimeStamp[] = [];
     let mempoolCursor: MempoolDB.MempoolCursor | undefined;
     while (retrievedMempoolTxs.length < nodeConfig.MEMPOOL_RETRIEVE_PAGE_SIZE) {
@@ -220,12 +163,7 @@ export const buildOnVerifiedCommitBaseProgram = (
         limit: nodeConfig.MEMPOOL_RETRIEVE_PAGE_SIZE,
         upTo: new Date(workerStartedAtMs),
       });
-      retrievedMempoolTxs.push(
-        ...page.entries.filter(
-          (entry) =>
-            !excludedMempoolTxIds.has(entry[TxColumns.TX_ID].toString("hex")),
-        ),
-      );
+      retrievedMempoolTxs.push(...page.entries);
       if (page.nextCursor === null) break;
       mempoolCursor = page.nextCursor;
     }
@@ -235,92 +173,65 @@ export const buildOnVerifiedCommitBaseProgram = (
     const currentBlockStartTime = new Date(
       workerInput.data.currentBlockStartTimeMs,
     );
-    const retrievedProcessedPendingTxs = yield* ProcessedMempoolDB.retrieve;
-    const excludeSubmittedBasePayload = (
-      entry: (typeof retrievedMempoolTxs)[number],
-    ): boolean =>
-      !excludedMempoolTxIds.has(entry[TxColumns.TX_ID].toString("hex"));
     const mempoolTxs = retrievedMempoolTxs;
-    const processedPendingTxs = retrievedProcessedPendingTxs.filter(
-      excludeSubmittedBasePayload,
-    );
+    const processedPendingTxs = yield* ProcessedMempoolDB.retrieve;
     const rawCandidateSelection = selectCommitTxCandidates({
       mempoolTxs,
       processedMempoolTxs: processedPendingTxs,
     });
     const availableConfirmedBlock = workerInput.data.availableConfirmedBlock;
-    const speculativeBuild = workerInput.data.speculativeBuild;
     const availableLocalFinalizationBlock =
       workerInput.data.availableLocalFinalizationBlock;
     const hasAvailableConfirmedBlock = availableConfirmedBlock !== "";
     const hasAvailableLocalFinalizationBlock =
       availableLocalFinalizationBlock !== "";
     const canBuildOnConfirmedBlock =
-      (hasAvailableConfirmedBlock || speculativeBuild !== undefined) &&
-      !workerInput.data.localFinalizationPending;
+      hasAvailableConfirmedBlock && !workerInput.data.localFinalizationPending;
     let latestBlockForSchedulerPlanning: SDK.StateQueueUTxO | undefined;
     let latestEndTimeMsForSchedulerPlanning: number | undefined;
     if (canBuildOnConfirmedBlock) {
-      if (speculativeBuild === undefined) {
-        if (availableConfirmedBlock === "") {
-          return yield* Effect.fail(
-            new CommitWorkerInvariantError({
-              message:
-                "Confirmed commit build is missing its serialized state-queue base",
-            }),
-          );
-        }
-        latestBlockForSchedulerPlanning = yield* deserializeStateQueueUTxO(
-          availableConfirmedBlock,
-        );
-        latestEndTimeMsForSchedulerPlanning = Number(
-          (yield* getLatestBlockDatumEndTime(
-            latestBlockForSchedulerPlanning.datum,
-          )).getTime(),
-        );
-      } else {
-        latestEndTimeMsForSchedulerPlanning =
-          speculativeBuild.base.blockEndTimeMs;
-      }
+      latestBlockForSchedulerPlanning = yield* deserializeStateQueueUTxO(
+        availableConfirmedBlock,
+      );
+      latestEndTimeMsForSchedulerPlanning = Number(
+        (yield* getLatestBlockDatumEndTime(
+          latestBlockForSchedulerPlanning.datum,
+        )).getTime(),
+      );
       const stateQueueEvidence: CommitSchedulerStateQueueEvidence = {
-        tailCommitBaseOutRef:
-          speculativeBuild === undefined
-            ? outRefLabel(latestBlockForSchedulerPlanning!.utxo)
-            : `${speculativeBuild.base.submittedTxHash}#0`,
+        tailCommitBaseOutRef: outRefLabel(latestBlockForSchedulerPlanning.utxo),
         tailBlockEndTimeMs: latestEndTimeMsForSchedulerPlanning,
         stateQueueHasUnmergedTail:
           workerInput.data.stateQueueHasUnmergedTail ?? false,
       };
-      if (speculativeBuild === undefined) {
-        const contracts = yield* MidgardContracts;
-        const lucid = yield* acquireCommitLucidOnce;
-        yield* lucid.switchToOperatorsMainWallet;
-        const preIngestionPlan = yield* Effect.either(
-          resolveEarliestCommitSchedulerDueWorkPlan({
-            lucid: lucid.api,
-            contracts,
-            submitSlotSnapshot: lucid.submitSlotSnapshot,
-            stateQueueEvidence,
-            localFinalizationPending: workerInput.data.localFinalizationPending,
-            callerLabel: "commit-scheduler-worker-pre-ingestion",
-            discoveryStage: "worker_pre_ingestion",
-          }),
+      const contracts = yield* MidgardContracts;
+      const lucid = yield* acquireCommitLucidOnce;
+      yield* lucid.switchToOperatorsMainWallet;
+      const preIngestionPlan = yield* Effect.either(
+        resolveEarliestCommitSchedulerDueWorkPlan({
+          lucid: lucid.api,
+          contracts,
+          submitSlotSnapshot: lucid.submitSlotSnapshot,
+          stateQueueEvidence,
+          localFinalizationPending: workerInput.data.localFinalizationPending,
+          callerLabel: "commit-scheduler-worker-pre-ingestion",
+          discoveryStage: "worker_pre_ingestion",
+        }),
+      );
+      if (preIngestionPlan._tag === "Right") {
+        const output = workerPreIngestionDueWorkOutputFromPlan(
+          preIngestionPlan.right,
         );
-        if (preIngestionPlan._tag === "Right") {
-          const output = workerPreIngestionDueWorkOutputFromPlan(
-            preIngestionPlan.right,
+        if (output !== undefined) {
+          yield* Effect.logInfo(
+            `🔹 Registered slot-aware due work before commit ingestion barriers discovery_stage=worker_pre_ingestion (kind=${output.dueWork.kind},key=${output.dueWork.key},current_slot=${output.dueWork.observedSlot.toString()},due_slot=${output.dueWork.dueSlot.toString()},due_at_ms=${output.dueWork.dueAtMs.toString()},wait_ms=${output.dueWork.waitMs.toString()},slot_source=${output.dueWork.slotSource},dependency_key=${output.dueWork.dependencyKey}).`,
           );
-          if (output !== undefined) {
-            yield* Effect.logInfo(
-              `🔹 Registered slot-aware due work before commit ingestion barriers discovery_stage=worker_pre_ingestion (kind=${output.dueWork.kind},key=${output.dueWork.key},current_slot=${output.dueWork.observedSlot.toString()},due_slot=${output.dueWork.dueSlot.toString()},due_at_ms=${output.dueWork.dueAtMs.toString()},wait_ms=${output.dueWork.waitMs.toString()},slot_source=${output.dueWork.slotSource},dependency_key=${output.dueWork.dependencyKey}).`,
-            );
-            return output;
-          }
-        } else {
-          yield* Effect.logWarning(
-            `🔹 Worker pre-ingestion scheduler due-work preflight failed; continuing to full planner: ${String(preIngestionPlan.left)}`,
-          );
+          return output;
         }
+      } else {
+        yield* Effect.logWarning(
+          `🔹 Worker pre-ingestion scheduler due-work preflight failed; continuing to full planner: ${String(preIngestionPlan.left)}`,
+        );
       }
     }
     const historyEndTime =
@@ -330,37 +241,30 @@ export const buildOnVerifiedCommitBaseProgram = (
     const depositIngestionBarrierTime =
       workerInput.history !== undefined
         ? historyEndTime!
-        : speculativeBuild === undefined
-          ? yield* acquireCommitLucidOnce.pipe(
-              Effect.flatMap((lucid) =>
-                fetchAndInsertDepositUTxOsForCommitBarrier(new Date()).pipe(
-                  Effect.provideService(Lucid, lucid),
-                ),
+        : yield* acquireCommitLucidOnce.pipe(
+            Effect.flatMap((lucid) =>
+              fetchAndInsertDepositUTxOsForCommitBarrier(new Date()).pipe(
+                Effect.provideService(Lucid, lucid),
               ),
-            )
-          : new Date(speculativeBuild.watermarks.depositMs);
+            ),
+          );
     const withdrawalIngestionBarrierTime =
       workerInput.history !== undefined
         ? historyEndTime!
-        : speculativeBuild === undefined
-          ? yield* acquireCommitLucidOnce.pipe(
-              Effect.flatMap((lucid) =>
-                fetchAndInsertWithdrawalUTxOsForCommitBarrier(
-                  depositIngestionBarrierTime,
-                ).pipe(Effect.provideService(Lucid, lucid)),
-              ),
-            )
-          : new Date(speculativeBuild.watermarks.withdrawalMs);
-    const txOrderIngestionBarrierTime =
-      speculativeBuild === undefined
-        ? yield* acquireCommitLucidOnce.pipe(
+        : yield* acquireCommitLucidOnce.pipe(
             Effect.flatMap((lucid) =>
-              fetchAndInsertTxOrderUTxOsForCommitBarrier(
-                withdrawalIngestionBarrierTime,
+              fetchAndInsertWithdrawalUTxOsForCommitBarrier(
+                depositIngestionBarrierTime,
               ).pipe(Effect.provideService(Lucid, lucid)),
             ),
-          )
-        : new Date(speculativeBuild.watermarks.txOrderMs);
+          );
+    const txOrderIngestionBarrierTime = yield* acquireCommitLucidOnce.pipe(
+      Effect.flatMap((lucid) =>
+        fetchAndInsertTxOrderUTxOsForCommitBarrier(
+          withdrawalIngestionBarrierTime,
+        ).pipe(Effect.provideService(Lucid, lucid)),
+      ),
+    );
     const userEventOnlyEndTime = [
       depositIngestionBarrierTime,
       withdrawalIngestionBarrierTime,
@@ -374,7 +278,7 @@ export const buildOnVerifiedCommitBaseProgram = (
       | ReturnType<typeof resolveCommitEndTimeFit>
       | undefined;
     const schedulerPlanningNowMs = Date.now();
-    if (canBuildOnConfirmedBlock && speculativeBuild === undefined) {
+    if (canBuildOnConfirmedBlock) {
       const contracts = yield* MidgardContracts;
       const lucid = yield* acquireCommitLucidOnce;
       yield* lucid.switchToOperatorsMainWallet;
@@ -504,14 +408,10 @@ export const buildOnVerifiedCommitBaseProgram = (
             // exactly as every submit attempt requires.
             yield* PendingBlockFinalizationsDB.assertNoUnreconciledSignedSubmission;
             const appendFenceEndTimeMs =
-              yield* resolveCommitAppendFenceEndTimeCapLocal(
-                lucid.api,
-                {
-                  stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-                  stateQueuePolicyId: contracts.stateQueue.policyId,
-                },
-                speculativeBuild?.base.blockEndTimeMs,
-              );
+              yield* resolveCommitAppendFenceEndTimeCapLocal(lucid.api, {
+                stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+                stateQueuePolicyId: contracts.stateQueue.policyId,
+              });
             return resolveHistoryCommitEndTime({
               lucid: lucid.api,
               currentSlot: submitSlot.currentSlot,
@@ -577,18 +477,6 @@ export const buildOnVerifiedCommitBaseProgram = (
       }).pipe(Effect.provideService(Lucid, lucid));
     }
 
-    const foreignEventResolution = yield* gateCommitOnRetainedForeignTips({
-      speculative: speculativeBuild !== undefined,
-      eventsIngestedThrough: userEventOnlyEndTime,
-    });
-    if (foreignEventResolution.type === "AwaitingForeignDa") {
-      return {
-        type: "AwaitingForeignDaOutput",
-        foreignHeaderHash: foreignEventResolution.foreignHeaderHash,
-        reason: `${foreignEventResolution.reason}:${foreignEventResolution.detail}`,
-      } satisfies WorkerOutput;
-    }
-
     // Events after a source-owned block's fixed end are not work for it; an
     // event horizon far past that end must not drive empty commits.
     const pendingUserEventCounts = yield* pendingUserEventCountsUpTo(
@@ -629,10 +517,8 @@ export const buildOnVerifiedCommitBaseProgram = (
     }
 
     const baseHydrationStartedAtMs = Date.now();
-    baseHydrationPasses += 1;
     const commitBase = yield* resolveCommitBaseLedgerEntries({
       availableConfirmedBlock,
-      speculativeBase: speculativeBuild?.base,
       nativeMpfRoot: workerInput.nativeMpf.durableRoot,
       requireEntries: shouldHydrateCommitBaseEntries({
         payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
@@ -673,9 +559,6 @@ export const buildOnVerifiedCommitBaseProgram = (
         Date.now() - baseHydrationStartedAtMs,
       ).toString()},source=${commitBase.source},base_entry_count=${initialLedgerEntries.length.toString()}`,
     );
-    if (speculativeBuild !== undefined) {
-      yield* reachPipelinedCommitCrashCheckpoint("speculative_mid_build");
-    }
     let mpfProcessingStartedAtMs = Date.now();
     // Canonical V1 is the only consensus profile this node can carry: the
     // deployment manifest parser and the derived-contract path both reject
@@ -709,7 +592,6 @@ export const buildOnVerifiedCommitBaseProgram = (
       notify: notifyParent,
       process: (selection) => {
         mpfProcessingStartedAtMs = Date.now();
-        mpfProcessingPasses += 1;
         return processMpfs(transactionsMpf, selection.candidateTxs, {
           fixedBlockEndTime: fixedHistoryEndTime,
           currentBlockStartTime: canBuildOnConfirmedBlock
@@ -747,19 +629,6 @@ export const buildOnVerifiedCommitBaseProgram = (
           payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
           baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
           recordCorpusPath: nodeConfig.MPF_RECORD_CORPUS,
-          excludedDepositEventIds:
-            speculativeBuild === undefined
-              ? undefined
-              : new Set(speculativeBuild.excludedDepositEventIds),
-          excludedForcedTransactionEventIds:
-            speculativeBuild === undefined
-              ? undefined
-              : new Set(speculativeBuild.excludedForcedTransactionEventIds),
-          excludedWithdrawalEventIds:
-            speculativeBuild === undefined
-              ? undefined
-              : new Set(speculativeBuild.excludedWithdrawalEventIds),
-          deferDatabaseWrites: speculativeBuild !== undefined,
           onMempoolLedgerReverted: notifyParent?.(
             MEMPOOL_LEDGER_REVERTED_NOTICE,
           ),
@@ -818,8 +687,6 @@ export const buildOnVerifiedCommitBaseProgram = (
       ledgerDelta,
       utxoPayloadAggregate,
       rejectedMempoolTxsCount,
-      rejectedMempoolTxHashes,
-      rejectionEntries,
       includedDepositEntriesCount,
       includedDepositEntries,
       includedDepositEventIds,
@@ -851,12 +718,6 @@ export const buildOnVerifiedCommitBaseProgram = (
 
     const processedMempoolTxs = processed.processedMempoolTxs;
     const mempoolTxHashes = processed.mempoolTxHashes;
-    const rejectedMempoolTxIdSet = new Set(
-      rejectedMempoolTxHashes.map((txId) => txId.toString("hex")),
-    );
-    const rejectedMempoolTxs = candidateSelection.candidateTxs.filter((entry) =>
-      rejectedMempoolTxIdSet.has(entry[TxColumns.TX_ID].toString("hex")),
-    );
     const sizeOfProcessedTxs = processed.sizeOfProcessedTxs;
     const mempoolTxSourceTable =
       candidateSelection.sourceTable === "processed_mempool"
@@ -909,284 +770,29 @@ export const buildOnVerifiedCommitBaseProgram = (
 
     const mempoolTxsCount = processedMempoolTxs.length;
     const optEndTime = establishEndTimeFromTxRequests(processedMempoolTxs);
-    let submitAvailableConfirmedBlock = availableConfirmedBlock;
-    let submitWorkerInput = workerInput;
-    let beforePendingJournalInsert:
-      | ((
-          blockEndTimeMs: number,
-        ) => Effect.Effect<void, DatabaseError, Database>)
-      | undefined;
-    let afterPendingJournalPrepared: Effect.Effect<void> | undefined;
-    let speculativeLedgerReverted = false;
-
-    if (
-      submitAvailableConfirmedBlock === "" &&
-      speculativeBuild !== undefined
-    ) {
-      if (awaitSpeculativeInstruction === undefined) {
-        return yield* Effect.fail(
-          new CommitWorkerInvariantError({
-            message: "Speculative commit build requires an instruction channel",
-          }),
-        );
-      }
-      const candidateEndTime =
-        fixedHistoryEndTime ??
-        (Option.isSome(optEndTime)
-          ? optEndTime.value
-          : effectiveUserEventOnlyEndTime);
-      const candidateId = randomUUID();
-      const [optDepositsRoot, optForcedTransactionsRoot, optWithdrawalsRoot] =
-        yield* Effect.all(
-          [
-            resolveDepositsRoot(includedDepositEntries),
-            resolveForcedTransactionsRoot(
-              includedForcedTransactionEntries,
-              deploymentIdentity.consensusProfile,
-            ),
-            resolveWithdrawalsRoot(includedWithdrawalEntries),
-          ],
-          { concurrency: "unbounded" },
-        );
-      const depositsRoot = Option.getOrElse(
-        optDepositsRoot,
-        () => SDK.EMPTY_MERKLE_TREE_ROOT,
-      );
-      const forcedTransactionsRoot = Option.getOrElse(
-        optForcedTransactionsRoot,
-        () => SDK.EMPTY_MERKLE_TREE_ROOT,
-      );
-      const withdrawalsRoot = Option.getOrElse(
-        optWithdrawalsRoot,
-        () => SDK.EMPTY_MERKLE_TREE_ROOT,
-      );
-      const candidate = {
-        candidateId,
-        baseHeaderHash: speculativeBuild.base.headerHash,
-        endTimeMs: candidateEndTime.getTime(),
-        builtAtMs: Date.now(),
-        buildDurationMs: Math.max(0, Date.now() - workerStartedAtMs),
-        invalidationKey: `${speculativeBuild.base.headerHash}:${candidateEndTime.getTime().toString()}:${minimumBarrierWatermarkMs(speculativeBuild.watermarks).toString()}`,
-        watermarks: speculativeBuild.watermarks,
-        expectedUserEventCounts: {
-          deposits: includedDepositEventIds.length,
-          forcedTransactions: includedForcedTransactionEventIds.length,
-          withdrawals: includedWithdrawalEventIds.length,
-        },
-        expectedL2TransactionCount: processedMempoolTxs.length,
-        roots: {
-          utxos: utxoRoot,
-          rawTransactions: rawTxRoot,
-          transactions: txRoot,
-          deposits: depositsRoot,
-          forcedTransactions: forcedTransactionsRoot,
-          withdrawals: withdrawalsRoot,
-          transitionTrace: transitionTraceRoot,
-          eventToStep: eventToStepRoot,
-        },
-      } satisfies SpeculativeCandidateReadyOutput["candidate"];
-      yield* Effect.logInfo(
-        `pipeline_trace phase=candidate_ready candidate_id=${candidateId} base_header_hash=${candidate.baseHeaderHash} build_duration_ms=${candidate.buildDurationMs.toString()} invalidation_key=${candidate.invalidationKey}`,
-      );
-      yield* reachPipelinedCommitCrashCheckpoint("candidate_ready_unconfirmed");
-      speculativeReadyPassCounts = {
-        candidateId,
-        baseHydrationPasses,
-        mpfProcessingPasses,
-      };
-      const instruction = yield* awaitSpeculativeInstruction(candidate);
-      if (instruction.type === "InvalidateSpeculativeCandidate") {
-        return {
-          type: "SpeculativeCandidateInvalidatedOutput",
-          candidateId,
-          reason: instruction.reason,
-        } satisfies SpeculativeCandidateInvalidatedOutput;
-      }
-      // Candidate construction remains provider-free. The parent acquires the
-      // L1 control-plane permit before sending this submit instruction, so
-      // provider-backed scheduler revalidation starts only after CandidateReady.
-      const speculativeContracts = yield* MidgardContracts;
-      const speculativeLucid = yield* acquireCommitLucidOnce;
-      const resumedMpfContext = postWaitMpfContext?.();
-      const confirmedBlock = yield* deserializeStateQueueUTxO(
-        instruction.confirmedBlock,
-      );
-      const confirmedHeaderHash =
-        confirmedBlock.datum.key === "Empty"
-          ? undefined
-          : yield* SDK.getHeaderFromStateQueueDatum(confirmedBlock.datum).pipe(
-              Effect.flatMap(SDK.hashBlockHeader),
-            );
-      if (confirmedHeaderHash !== speculativeBuild.base.headerHash) {
-        return {
-          type: "SpeculativeCandidateInvalidatedOutput",
-          candidateId,
-          reason: "T2",
-        } satisfies SpeculativeCandidateInvalidatedOutput;
-      }
-      if (instruction.localFinalizationBlock !== undefined) {
-        if (activeMpfLeaseOwner === undefined) {
-          return yield* Effect.fail(
-            new CommitWorkerInvariantError({
-              message:
-                "Speculative local finalization requires an active MPF lease owner",
-            }),
-          );
-        }
-        const recoveryOutput =
-          yield* recoverLocalFinalizationAgainstConfirmedBlock({
-            latestBlock: yield* deserializeStateQueueUTxO(
-              instruction.localFinalizationBlock,
-            ),
-            transactionsMpf:
-              resumedMpfContext?.localFinalizationTransactionsMpf ??
-              localFinalizationTransactionsMpf ??
-              transactionsMpf,
-            processedMempoolTxs: [],
-            mempoolTxHashes: [],
-            workerInput,
-            sizeOfProcessedTxs: 0,
-            consensusProfile: deploymentIdentity.consensusProfile,
-            beforeTransactionsMpfReset: Effect.all(
-              [
-                StateQueueMutationLeasesDB.revalidate(
-                  instruction.stateQueueLeaseToken,
-                ),
-                MpfEngineStateDB.revalidateLedgerStoreLease(
-                  activeMpfLeaseOwner,
-                ),
-              ],
-              { discard: true },
-            ),
-          }).pipe(Effect.provideService(Lucid, speculativeLucid));
-        if (
-          recoveryOutput.type !== "SuccessfulLocalFinalizationRecoveryOutput"
-        ) {
-          return recoveryOutput;
-        }
-        if (notifyParent !== undefined) {
-          yield* notifyParent(recoveryOutput);
-        }
-      }
-      const excludedUserEventIds = {
-        depositEventIds: new Set(speculativeBuild.excludedDepositEventIds),
-        forcedTransactionEventIds: new Set(
-          speculativeBuild.excludedForcedTransactionEventIds,
-        ),
-        withdrawalEventIds: new Set(
-          speculativeBuild.excludedWithdrawalEventIds,
-        ),
-      };
-      const submitPendingUserEventCount = yield* pendingUserEventCountUpTo(
-        candidateEndTime,
-        excludedUserEventIds,
-      );
-      const expectedUserEventCount =
-        candidate.expectedUserEventCounts.deposits +
-        candidate.expectedUserEventCounts.forcedTransactions +
-        candidate.expectedUserEventCounts.withdrawals;
-      if (submitPendingUserEventCount !== expectedUserEventCount) {
-        return {
-          type: "SpeculativeCandidateInvalidatedOutput",
-          candidateId,
-          reason: "T3",
-        } satisfies SpeculativeCandidateInvalidatedOutput;
-      }
-      yield* speculativeLucid.switchToOperatorsMainWallet;
-      const submitSchedulerWindow =
-        yield* resolveCurrentOperatorSchedulerWindow(
-          speculativeLucid.api,
-          speculativeContracts,
-        );
-      if (submitSchedulerWindow !== undefined) {
-        const confirmedEndTimeMs = Number(
-          (yield* getLatestBlockDatumEndTime(confirmedBlock.datum)).getTime(),
-        );
-        const submitFit = resolveCommitEndTimeFit({
-          lucid: speculativeLucid.api,
-          latestEndTime: confirmedEndTimeMs,
-          candidateEndTime: candidateEndTime.getTime(),
-          nowMs: Date.now(),
-          minimumFutureBufferMs:
-            workerInput.history === undefined
-              ? COMMIT_MINIMUM_FUTURE_BUFFER_MS
-              : HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
-          maximumEndTimeMs: submitSchedulerWindow.endTimeMs,
-        });
-        if (submitFit.status === "exceeds_cap") {
-          return {
-            type: "SpeculativeCandidateInvalidatedOutput",
-            candidateId,
-            reason: "T4",
-          } satisfies SpeculativeCandidateInvalidatedOutput;
-        }
-      }
-      if (activeMpfLeaseOwner === undefined) {
-        return yield* Effect.fail(
-          new CommitWorkerInvariantError({
-            message:
-              "Speculative journal preparation requires an active MPF lease owner",
-          }),
-        );
-      }
-      // The speculative builder is read-only. Journal preparation invokes
-      // this effect only after confirmation and inside the journal SQL
-      // transaction, while both state-queue and MPF leases are held.
-      beforePendingJournalInsert = (blockEndTimeMs) =>
-        revalidateAndPersistSpeculativeCandidateSources({
-          includedDepositEntries,
-          includedForcedTransactionEntries,
-          includedWithdrawalEntries,
-          selectedMempoolTxs: processedMempoolTxs,
-          rejectedMempoolTxs,
-          mempoolTxSourceTable,
-          rejectionEntries,
-          ledgerRevert: processed.ledgerRevert,
-          expectedEventRoots: {
-            deposits: candidate.roots.deposits,
-            forcedTransactions: candidate.roots.forcedTransactions,
-            withdrawals: candidate.roots.withdrawals,
-          },
-          candidateEndTime: new Date(blockEndTimeMs),
-          excludedUserEventIds,
-          stateQueueLeaseToken: instruction.stateQueueLeaseToken,
-          activeMpfLeaseOwner,
-          consensusProfile: deploymentIdentity.consensusProfile,
-        }).pipe(
-          Effect.map((reverted) => {
-            speculativeLedgerReverted = reverted;
-          }),
-        );
-      // The revert commits with the journal, so the parent hears of it only
-      // once the journal transaction has committed.
-      afterPendingJournalPrepared = Effect.suspend(() =>
-        speculativeLedgerReverted && notifyParent !== undefined
-          ? notifyParent(MEMPOOL_LEDGER_REVERTED_NOTICE)
-          : Effect.void,
-      );
-      submitAvailableConfirmedBlock = instruction.confirmedBlock;
-      submitWorkerInput = {
-        ...workerInput,
-        data: {
-          ...workerInput.data,
-          availableConfirmedBlock: instruction.confirmedBlock,
-          localFinalizationPending: false,
-          stateQueueLeaseToken: instruction.stateQueueLeaseToken,
-          baseSnapshotId: instruction.baseSnapshotId,
-          stateQueueHasUnmergedTail: instruction.stateQueueHasUnmergedTail,
-          speculativeBuild: undefined,
-        },
-      };
-    }
-
     const submissionContracts = yield* MidgardContracts;
     const submissionLucid = yield* acquireCommitLucidOnce;
-    if (submitAvailableConfirmedBlock === "") {
+    if (availableConfirmedBlock === "") {
       // The tx confirmation worker has not yet confirmed a previously
       // submitted tx, so the root we have found can not be used yet.
       // However, it is stored on disk in our LevelDB mempool. Therefore,
       // the processed txs must be transferred to `ProcessedMempoolDB` from
       // `MempoolDB`.
+      const candidate = {
+        endTimeMs: (
+          fixedHistoryEndTime ??
+          (Option.isSome(optEndTime)
+            ? optEndTime.value
+            : effectiveUserEventOnlyEndTime)
+        ).getTime(),
+        roots: {
+          utxos: utxoRoot,
+          rawTransactions: rawTxRoot,
+          transactions: txRoot,
+          transitionTrace: transitionTraceRoot,
+          eventToStep: eventToStepRoot,
+        } satisfies CommitCandidateRoots,
+      };
       if (mempoolTxSourceTable === ProcessedMempoolDB.tableName) {
         yield* Effect.logInfo(
           "🔹 No confirmed block available and selected tx payload is already durable in ProcessedMempoolDB; preserving it for the next commit attempt.",
@@ -1195,14 +801,19 @@ export const buildOnVerifiedCommitBaseProgram = (
           type: "SkippedSubmissionOutput",
           mempoolTxsCount: 0,
           sizeOfProcessedTxs: 0,
+          candidate,
         } satisfies WorkerOutput;
       }
-      const output = yield* deferProcessedCommitPayloadUntilConfirmation({
+      const deferred = yield* deferProcessedCommitPayloadUntilConfirmation({
         processedMempoolTxs,
         mempoolTxHashes,
         mempoolTxsCount,
         sizeOfProcessedTxs,
       });
+      const output: WorkerOutput =
+        deferred.type === "SkippedSubmissionOutput"
+          ? { ...deferred, candidate }
+          : deferred;
       yield* recordSuccessfulBuildCalibration(output);
       return output;
     } else {
@@ -1210,7 +821,7 @@ export const buildOnVerifiedCommitBaseProgram = (
         "🔹 Previous submitted block is now confirmed, deserializing...",
       );
       const latestBlock = yield* deserializeStateQueueUTxO(
-        submitAvailableConfirmedBlock,
+        availableConfirmedBlock,
       );
 
       if (Option.isNone(optEndTime)) {
@@ -1232,7 +843,7 @@ export const buildOnVerifiedCommitBaseProgram = (
           includedForcedTransactionEventIds,
           includedWithdrawalEntries,
           includedWithdrawalEventIds,
-          workerInput: submitWorkerInput,
+          workerInput,
           blockEndTimeCapMs,
           utxoRoot,
           txRoot,
@@ -1250,14 +861,10 @@ export const buildOnVerifiedCommitBaseProgram = (
           selectedBaseUtxosRoot: commitBase.root,
           implicitGenesisEntries:
             commitBase.source === "genesis" ? initialLedgerEntries : [],
-          beforePendingJournalInsert,
-          afterPendingJournalPrepared,
           afterDaFrameAccepted: notifyParent?.(COMMIT_DA_FRAME_FITS_NOTICE),
           nativeMpfReplay,
         }).pipe(Effect.provideService(Lucid, submissionLucid));
-        return attachNativeMpfPromotion(
-          attachSpeculativeExecutionEvidence(output),
-        );
+        return attachNativeMpfPromotion(output);
       } else {
         // One or more transactions found in either `ProcessedMempoolDB` or
         // `MempoolDB`. Use the shared max-candidate timestamp rule as the upper
@@ -1293,23 +900,18 @@ export const buildOnVerifiedCommitBaseProgram = (
           selectedBaseUtxosRoot: commitBase.root,
           implicitGenesisEntries:
             commitBase.source === "genesis" ? initialLedgerEntries : [],
-          transactionsMpf:
-            postWaitMpfContext?.().transactionsMpf ?? transactionsMpf,
+          transactionsMpf,
           processedMempoolTxs,
           mempoolTxHashes,
           mempoolTxSourceTable,
-          workerInput: submitWorkerInput,
+          workerInput,
           sizeOfProcessedTxs,
           blockEndTimeCapMs,
-          beforePendingJournalInsert,
-          afterPendingJournalPrepared,
           afterDaFrameAccepted: notifyParent?.(COMMIT_DA_FRAME_FITS_NOTICE),
           nativeMpfReplay,
         }).pipe(Effect.provideService(Lucid, submissionLucid));
         yield* recordSuccessfulBuildCalibration(output);
-        return attachNativeMpfPromotion(
-          attachSpeculativeExecutionEvidence(output),
-        );
+        return attachNativeMpfPromotion(output);
       }
     }
   });

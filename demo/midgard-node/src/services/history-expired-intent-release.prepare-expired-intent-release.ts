@@ -1,6 +1,6 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Queue, Ref } from "effect";
+import { Effect, Ref } from "effect";
 
 import type { Checkpoint } from "../database/eventHistoryJournal.js";
 import {
@@ -8,7 +8,6 @@ import {
   retainedPreparedRecoveryPlan,
   SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN,
 } from "../database/eventHistoryRecoveryPlans.js";
-import { invalidateSpeculativeCommitCandidate } from "../fibers/speculative-commit-builder.js";
 import {
   eventHistoryCanonicalJson,
   type EventHistorySourceBinding,
@@ -308,8 +307,6 @@ export const prepareExpiredIntentRelease = (input: {
         snapshot: checkpoint.capture.snapshotDigest,
       }),
     );
-    if (config.SPECULATIVE_COMMIT_BUILD)
-      yield* invalidateSpeculativeCommitCandidate(globals, config, "T1");
     const owner = yield* openOwner;
     if (owner === undefined) return;
     yield* preparation.assertCurrent;
@@ -381,8 +378,6 @@ export const prepareExpiredIntentRelease = (input: {
           globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
           revivedBlock ?? "",
         );
-        yield* Queue.takeAll(globals.COMMIT_SUBMIT_WAKE_QUEUE);
-        yield* Queue.takeAll(globals.SPECULATIVE_BUILD_WAKE_QUEUE);
       }),
     });
     yield* reportOnce(reportKey, undefined);

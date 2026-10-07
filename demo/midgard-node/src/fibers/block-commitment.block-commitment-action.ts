@@ -18,10 +18,7 @@ import {
 } from "../services/index.js";
 import { WorkerError } from "../workers/utils/common.js";
 import { buildAndSubmitCommitmentBlockAction } from "./block-commitment.build-and-submit-commitment-block-action.js";
-import {
-  shouldSkipIdleCommitPipelineBeforeSchedulerAlignment,
-  shouldSkipScheduledLegacyCommitForSpeculation,
-} from "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
+import { shouldSkipIdleCommitPipelineBeforeSchedulerAlignment } from "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
 import {
   alignCommitSchedulerBeforeMutationWorkerIfIdle,
   registerPreLeaseCommitSchedulerDueWorkIfProven,
@@ -115,26 +112,6 @@ export const blockCommitmentAction: Effect.Effect<
   yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
   const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
   if (!RESET_IN_PROGRESS) {
-    if (nodeConfig.SPECULATIVE_COMMIT_BUILD) {
-      const speculativeState = yield* Ref.get(globals.SPECULATIVE_COMMIT_STATE);
-      const localFinalizationPending = yield* Ref.get(
-        globals.LOCAL_FINALIZATION_PENDING,
-      );
-      const localFinalizationBlock = yield* Ref.get(
-        globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-      );
-      const recoveryMustRun =
-        localFinalizationPending && localFinalizationBlock !== "";
-      if (
-        shouldSkipScheduledLegacyCommitForSpeculation({
-          enabled: true,
-          state: speculativeState,
-          recoveryMustRun,
-        })
-      ) {
-        return;
-      }
-    }
     if (yield* shouldSkipIdleCommitPipelineBeforeSchedulerAlignment) {
       // Readiness evidence must not wait for work to commit.
       yield* verifyForeignBaseOnIdleTick;

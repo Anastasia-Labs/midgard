@@ -108,7 +108,6 @@ vi.mock(
 import { blockCommitmentAction } from "../src/fibers/block-commitment.block-commitment-action.js";
 
 const nodeConfig = {
-  SPECULATIVE_COMMIT_BUILD: false,
   STATE_QUEUE_MUTATION_LEASE_TTL_MS: 120_000,
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: 30_000,
 } as unknown as NodeConfig["Type"];

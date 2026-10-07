@@ -56,7 +56,6 @@ import {
   HistoryPreparation,
   HistoryRecoverySuperseded,
 } from "../src/services/event-history-recovery.js";
-import { registerForeignTipRetentionTests } from "./helpers/foreign-tip-retention.js";
 import { retainEverything } from "./helpers/history-journal-retention.js";
 import { seedHistoryJournalFixture } from "./helpers/history-journal-start.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
@@ -2206,12 +2205,4 @@ describe("bounded journal retention", () => {
       /Canonical application ancestry disagrees/,
     );
   });
-});
-
-registerForeignTipRetentionTests({
-  start,
-  run,
-  binding: () => binding,
-  prepare,
-  admit,
 });

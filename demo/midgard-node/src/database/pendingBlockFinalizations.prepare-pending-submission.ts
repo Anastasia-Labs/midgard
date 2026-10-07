@@ -55,8 +55,8 @@ export const preparePendingSubmission = (
   options?: {
     /**
      * Runs after the active-journal guard and inside the same SQL transaction
-     * as the pending journal insert. Used by speculative submission to lock,
-     * revalidate, and project its exact source snapshot atomically.
+     * as the pending journal insert. Commit submission uses it to assert the
+     * user-event sources are complete in the same transaction.
      */
     readonly beforeJournalInsert?: Effect.Effect<void, DatabaseError, Database>;
   },

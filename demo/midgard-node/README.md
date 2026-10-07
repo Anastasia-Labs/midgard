@@ -389,9 +389,8 @@ before a periodic full state-queue scan, so the shorter detection interval does
 not turn every poll into an O(queue length) provider request. Operators can set
 the variable back to `10000` as an operational rollback.
 
-`SPECULATIVE_COMMIT_BUILD` is an explicit opt-in and stays disabled by
-default. The ledger MPF is always the Architecture G native owner, and the
-node refuses to start unless `MPF_NATIVE_OWNER_BINARY_PATH`,
+The ledger MPF is always the Architecture G native owner, and the node
+refuses to start unless `MPF_NATIVE_OWNER_BINARY_PATH`,
 `MPF_NATIVE_OWNER_BINARY_SHA256` (lowercase 64-hex) and
 `MPF_NATIVE_OWNER_SIDECAR_PATH` are all set; see
 [Architecture G is the only MPF engine](../../docs/midgard/decisions/architecture-g-sole-mpf-engine.md).
