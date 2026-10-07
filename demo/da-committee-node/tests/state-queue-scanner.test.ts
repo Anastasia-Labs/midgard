@@ -181,11 +181,8 @@ describe("state queue scanner", () => {
       finalityDepth: 0,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     });
-    // The third node carries an attestation marker, which is now a
-    // legitimate StateQueueStatusV1 state rather than a conflict
-    // (`unexpected_da_attestation_marker` was removed with the ByteArray
-    // marker). Replacement adversarial coverage for the new status sum is
-    // tracked in https://github.com/Anastasia-Labs/midgard/issues/645.
+    // A different commitment on a different node is still a legitimate
+    // StateQueueStatusV1 status. Contradictory rereads are covered below.
     expect(records.map((record) => record.status)).toEqual([
       "attested",
       "conflicted",
