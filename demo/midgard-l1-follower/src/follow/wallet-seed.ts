@@ -31,7 +31,12 @@ export type WalletSeedPendingReason =
   /** The answer did not decode, or held an output at another address. */
   | "ledger_answer_invalid"
   /** The store refused or failed the write. */
-  | "store_error";
+  | "store_error"
+  /**
+   * Another process holds the writer lease, or this one lost it. Transient:
+   * the role starts its store again, as for any `store_locked`.
+   */
+  | "store_locked";
 
 export type WalletSeeded = Readonly<{
   kind: "seeded";
@@ -153,6 +158,8 @@ export const seedWallets = async (
       return pending("not_initialized", "the store has no cursor");
     if (written.kind === "error")
       return pending("store_error", written.error.message);
+    if (written.kind === "store_locked")
+      return pending("store_locked", written.detail);
     if (written.kind === "cursor_moved") {
       last = pending(
         "cursor_moved",

@@ -4,11 +4,11 @@
  * submit slot is placed 79 slots ahead of it, as Ogmios derives it from wall
  * time between blocks (the devnet refusal had tip 32861, submit slot 32940).
  */
+import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import type { SubmitSlotSnapshot } from "../src/local-ledger-slot.js";
 import {
   COMMIT_VALIDITY_BACKDATE_MS,
   resolveCommitValidityInterval,

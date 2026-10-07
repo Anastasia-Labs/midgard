@@ -239,8 +239,14 @@ export const runForkScenario = async (
       ...optionsFor("sqlite"),
       path: ":memory:",
     });
-    await reference.start();
-    await reference.initialize(SIM_ORIGIN);
+    // Every result is checked: a refusal here (store_locked included) is a
+    // failed run, never a replay that silently stopped.
+    const started = await reference.start();
+    if (started.kind !== "ready")
+      throw new ForkFailure(`reference start: ${started.kind}`);
+    const init = await reference.initialize(SIM_ORIGIN);
+    if (init.kind !== "initialized")
+      throw new ForkFailure(`reference initialize: ${init.kind}`);
     await seedRun.replay(reference, SIM_ORIGIN.height);
     for (const block of canonical) {
       const applied = await reference.applyBlock(block);

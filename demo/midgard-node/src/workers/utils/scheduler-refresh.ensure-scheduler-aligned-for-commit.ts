@@ -1,9 +1,9 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { SubmitSlotSnapshot } from "../../local-ledger-slot.js";
 import {
   applySubmittedTxToOperatorWalletView,
   availableOperatorWalletUtxos,

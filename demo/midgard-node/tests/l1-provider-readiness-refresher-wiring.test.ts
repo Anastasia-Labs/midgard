@@ -28,19 +28,20 @@ vi.mock("../src/transactions/initialization.js", async (importOriginal) => ({
     }),
 }));
 
-vi.mock("../src/local-ogmios-slot.js", async (importOriginal) => {
-  const original =
-    await importOriginal<typeof import("../src/local-ogmios-slot.js")>();
+vi.mock("../src/l1-heads.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../src/l1-heads.js")>();
   return {
     ...original,
-    readLocalOgmiosSubmitSlot: (
-      options: Parameters<typeof original.readLocalOgmiosSubmitSlot>[0],
+    fetchLocalOgmiosSubmitSlotSnapshot: (
+      options: Parameters<
+        typeof original.fetchLocalOgmiosSubmitSlotSnapshot
+      >[0],
     ) =>
       Effect.suspend(() => {
         probes.calls.push({ probe: "local_ogmios_slot", args: options });
         if (probes.tipAgeMs === undefined) return Effect.succeed(ogmiosSlot);
         const nowMs = Date.now();
-        return original.readLocalOgmiosSubmitSlot({
+        return original.fetchLocalOgmiosSubmitSlotSnapshot({
           ...options,
           nowMs,
           fetchImpl: async (url) =>

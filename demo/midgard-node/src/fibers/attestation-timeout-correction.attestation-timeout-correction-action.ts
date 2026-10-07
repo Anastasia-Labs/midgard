@@ -15,6 +15,7 @@ import {
   attestationTimeoutJournalPathOverride,
   contractDeploymentInfoPathOverride,
 } from "../environment.js";
+import { l1NowUnixTimeMs } from "../l1-heads.js";
 import { timeoutCorrectionJournalNeedsRecovery } from "../services/attestation-timeout-observation.js";
 import { type AttestationTimeoutCorrectionHealth } from "../services/globals.js";
 import {
@@ -63,13 +64,16 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
       lucid.api,
       fetchConfig,
     );
+    // The timeout is an L1 deadline, judged at the L1 `slotNow`; an unknown
+    // slot fails the tick and the fiber retries.
+    const l1NowMs = yield* l1NowUnixTimeMs(lucid.api);
     // Recorded before anything below can fail, so readiness knows whether a
     // failing step is leaving a timed-out header uncorrected. A classification
     // failure is raised below, where the tick uses it.
     const observed = yield* observeAndRecordAttestationTimeoutQueue(
       globals.ATTESTATION_TIMEOUT_CORRECTION_HEALTH,
       queue,
-      Date.now(),
+      { l1NowMs, readAtMs: Date.now() },
     );
     if (deploymentIdentity.manifestId === undefined) {
       return yield* Effect.fail(

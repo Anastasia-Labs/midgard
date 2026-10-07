@@ -1,4 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, type Exit, Metric, Option } from "effect";
@@ -8,7 +9,6 @@ import {
   PendingBlockFinalizationsDB,
 } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
-import { type SubmitSlotSnapshot } from "../../local-ledger-slot.js";
 import { Database, Globals } from "../../services/index.js";
 import {
   fetchL1ConfirmedState,

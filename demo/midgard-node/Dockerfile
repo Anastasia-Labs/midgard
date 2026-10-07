@@ -28,6 +28,7 @@ COPY l1-node-transport/package.json ./l1-node-transport/package.json
 COPY midgard-core/package.json ./midgard-core/package.json
 COPY midgard-validation/package.json ./midgard-validation/package.json
 COPY midgard-fault-proofs/package.json ./midgard-fault-proofs/package.json
+COPY midgard-l1-follower/package.json ./midgard-l1-follower/package.json
 COPY midgard-sdk/package.json ./midgard-sdk/package.json
 COPY midgard-watcher/package.json ./midgard-watcher/package.json
 COPY da-committee-node/package.json ./da-committee-node/package.json
@@ -46,6 +47,7 @@ COPY l1-node-transport ./l1-node-transport
 COPY midgard-core ./midgard-core
 COPY midgard-validation ./midgard-validation
 COPY midgard-fault-proofs ./midgard-fault-proofs
+COPY midgard-l1-follower ./midgard-l1-follower
 COPY midgard-sdk ./midgard-sdk
 COPY midgard-node ./midgard-node
 # midgard-node's build compiles only itself, and its runtime imports each of
@@ -56,6 +58,7 @@ RUN pnpm --filter @al-ft/midgard-core run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-sdk run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-validation run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-fault-proofs run build:contrib-raw
+RUN pnpm --filter @al-ft/midgard-l1-follower run build:contrib-raw
 RUN pnpm --filter midgard-node run build:contrib-raw
 # Same store as the install step: `deploy --prod` re-resolves the git-hosted
 # merkle-patricia-forestry dependency, and only a store that already holds the

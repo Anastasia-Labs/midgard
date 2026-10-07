@@ -89,18 +89,31 @@ export const pending = (deploymentId: string) =>
     return rows[0];
   });
 
-/** Count actual canonical blocks in the authenticated follower, never slots. */
-export const confirmationDepth = (owner: SettlementOwner, blockHash: string) =>
+/**
+ * The authenticated follower's head height and the height of `blockHash` on
+ * its canonical chain (actual blocks, never slots), or null when the block is
+ * not canonical there. The depth between them is the heads module's.
+ */
+export const confirmationHeights = (
+  owner: SettlementOwner,
+  blockHash: string,
+) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* assertOwner(owner);
     const rows = yield* sql<{
-      depth: string;
-    }>`SELECT (c.head_height - b.block_height + 1)::text AS depth
+      head_height: string;
+      block_height: string;
+    }>`SELECT c.head_height::text AS head_height, b.block_height::text AS block_height
     FROM event_history_cursor c JOIN event_history_block_applications b USING (binding_digest)
     WHERE c.manifest_id = ${Buffer.from(owner.deploymentId, "hex")}
       AND b.block_hash = ${Buffer.from(blockHash, "hex")} AND b.canonical`;
-    return rows.length === 1 ? Number(rows[0]!.depth) : 0;
+    return rows.length === 1
+      ? {
+          tipHeight: Number(rows[0]!.head_height),
+          blockHeight: Number(rows[0]!.block_height),
+        }
+      : null;
   });
 
 export const nextJob = (

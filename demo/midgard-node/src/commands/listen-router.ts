@@ -20,7 +20,7 @@ import "effect";
 import "../database/index.js";
 import "../fibers/index.js";
 import "../genesis.js";
-import "../local-ogmios-slot.js";
+import "@al-ft/midgard-core/ogmios-slot";
 import "../services/index.js";
 import "../services/state-queue-topology.js";
 import "../transactions/initialization.js";

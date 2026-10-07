@@ -83,23 +83,25 @@ export const attestationTimeoutCorrectionReadinessBounds = (
 /** Classifies the state queue once for the tick and records the result for
  * readiness. A classification failure is returned rather than raised, so the
  * tick raises it where it uses the classification and recording never moves
- * that failure ahead of the tick's earlier work. */
+ * that failure ahead of the tick's earlier work. The deadline is judged
+ * against `l1NowMs`, the L1 `slotNow` (plan §3.6); `readAtMs` is the local
+ * clock reading that readiness measures queue freshness with. */
 export const observeAndRecordAttestationTimeoutQueue = (
   health: Ref.Ref<AttestationTimeoutCorrectionHealth>,
   queue: readonly SDK.StateQueueUTxO[],
-  nowMs: number,
+  times: { readonly l1NowMs: number; readonly readAtMs: number },
 ): Effect.Effect<
   Either.Either<AttestationTimeoutObservation, SDK.DataCoercionError>
 > =>
   observeAttestationTimeoutQueue(
     queue,
-    BigInt(nowMs),
+    BigInt(times.l1NowMs),
     ATTESTATION_TIMEOUT_ALERT_LEAD_MS,
   ).pipe(
     Effect.tap((observation) =>
       Ref.update(health, (current) => ({
         ...current,
-        lastQueueReadAtMs: nowMs,
+        lastQueueReadAtMs: times.readAtMs,
         oldestUnattestedHeader:
           "headerHash" in observation
             ? {

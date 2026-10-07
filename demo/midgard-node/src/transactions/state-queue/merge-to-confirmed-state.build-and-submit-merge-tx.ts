@@ -244,7 +244,7 @@ export const buildAndSubmitMergeTx = (
           headerHash: recomputedHeaderHash,
           reason: localLedgerGate.reason,
           readyAfterUnixTime: mergeMaturity.readyAfterUnixTime,
-          nowUnixTime: Date.now(),
+          nowUnixTime: oldestBlockReadiness.nowUnixTime,
         } satisfies MergeTxResult;
       }
 
@@ -514,7 +514,7 @@ export const buildAndSubmitMergeTx = (
           headerHash: recomputedHeaderHash,
           reason: `no_inline_submit_defer,kind=${submitOutcome.defer.kind},current_slot=${submitOutcome.defer.currentSlot.toString()},target_slot=${submitOutcome.defer.targetSlot.toString()},due_slot=${submitOutcome.defer.dueSlot.toString()},wait_ms=${submitOutcome.defer.waitMs.toString()},slot_source=${submitOutcome.defer.slotSource}`,
           readyAfterUnixTime: mergeMaturity.readyAfterUnixTime,
-          nowUnixTime: Date.now(),
+          nowUnixTime: oldestBlockReadiness.nowUnixTime,
         } satisfies MergeTxResult;
       }
       yield* Effect.logInfo("🔸 ☑️  Merge transaction completed.");

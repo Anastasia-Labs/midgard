@@ -11,8 +11,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { type L1SlotUnknownError } from "../../l1-heads.js";
 import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
-import { currentTimeMsForLucidOrEmulatorFallback } from "../register-active-operator/clock.js";
+import { resolveL1NowMs } from "../register-active-operator/clock.js";
 import { handleSignSubmit } from "../utils.js";
 import {
   OPERATOR_TX_VALIDITY_WINDOW_MS,
@@ -68,14 +69,16 @@ export const planTakeoverProgram = (
     readonly params?: SDK.InactivityTimingParameters;
     readonly nowMs?: bigint;
   } = {},
-): Effect.Effect<TakeoverPlanning, SDK.OperatorDirectorySnapshotError> =>
+): Effect.Effect<
+  TakeoverPlanning,
+  SDK.OperatorDirectorySnapshotError | L1SlotUnknownError
+> =>
   Effect.gen(function* () {
     const snapshot = yield* SDK.fetchOperatorDirectorySnapshotProgram(
       lucid,
       contracts,
     );
-    const nowMs =
-      options.nowMs ?? currentTimeMsForLucidOrEmulatorFallback(lucid);
+    const nowMs = options.nowMs ?? (yield* resolveL1NowMs(lucid));
     const plan = SDK.planInactivityTakeover({
       snapshot,
       nowMs,

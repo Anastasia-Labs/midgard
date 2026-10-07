@@ -6,6 +6,7 @@ import {
 } from "../sql/backend.js";
 import type { Cursor, OutputSummary, OutRef, Point } from "../types.js";
 import { insertOutputs, readCursor } from "./rows.js";
+import { readWriterStateIn } from "./writer-state.js";
 
 export type SeedOutput = Readonly<{ outRef: OutRef; output: OutputSummary }>;
 
@@ -97,8 +98,10 @@ const sameOutRef = (left: OutRef, right: OutRef): boolean =>
   left.index === right.index && left.txHash.equals(right.txHash);
 
 /**
- * Writes the origin block row and the cursor (generation 0). Idempotent for
- * the same origin; a different origin on an initialized store is refused.
+ * Writes the origin block row and the cursor. The generation starts at the
+ * writer row's `next_generation`: 0 on a new store, and above every
+ * generation used before a reset. Idempotent for the same origin; a
+ * different origin on an initialized store is refused.
  */
 export const initializeIn = async (
   tx: SqlTx,
@@ -114,18 +117,20 @@ export const initializeIn = async (
       existing.origin.hash.equals(origin.point.hash)
       ? { kind: "already_initialized", cursor: existing }
       : { kind: "origin_mismatch", cursor: existing };
+  const { nextGeneration } = await readWriterStateIn(tx, dialect, "share");
   await tx.query(
     "INSERT INTO l1_blocks (slot, hash, height, parent_hash, qualifying_tx_count) VALUES (?, ?, ?, NULL, 0)",
     [origin.point.slot, origin.point.hash, origin.height],
   );
   await tx.query(
     `INSERT INTO l1_follower_cursor (id, slot, hash, height, generation, origin_slot, origin_hash, pruned_through_slot)
-     VALUES (?, ?, ?, ?, 0, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       dialect.name === "postgres" ? true : 1,
       origin.point.slot,
       origin.point.hash,
       origin.height,
+      nextGeneration,
       origin.point.slot,
       origin.point.hash,
       origin.point.slot,

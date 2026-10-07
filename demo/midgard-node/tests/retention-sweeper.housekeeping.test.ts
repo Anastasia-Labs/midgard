@@ -158,7 +158,7 @@ const sweep = (setup: { readonly refuseProducer?: boolean } = {}) =>
             } as never);
           }
           const nodeConfig = yield* NodeConfig;
-          yield* retentionSweepAction(VIEW).pipe(
+          yield* retentionSweepAction(VIEW, new Date()).pipe(
             Effect.provideService(NodeConfig, {
               ...nodeConfig,
               RETENTION_DAYS: undefined,

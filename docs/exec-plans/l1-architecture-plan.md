@@ -247,7 +247,7 @@ Verdict key:
     fibers there are 19 whole-queue fetch sites, and 12 of them run on every
     busy commit tick (§3.4 NC6). Each becomes a read of the state-queue
     projection at the view point.
-  - The Ogmios tip and slot reads go (`demo/midgard-node/src/local-ledger-slot.ts`, through
+  - The Ogmios tip and slot reads go (the interim tip source in `demo/midgard-node/src/l1-heads.ts`, through
     `demo/midgard-core/src/ogmios-slot.ts:155-206`), and so does Ogmios submit. Evaluation is
     already local.
   - Reward-account queries move from one `execFile` per query
@@ -441,7 +441,8 @@ depends on. It contains:
   protocol parameters, slot config from era history, submit through
   LocalTxSubmission). Evaluation stays local (`localUPLCEval: true`);
 - slot↔time from LSQ era history and system start. This replaces
-  `demo/midgard-core/src/ogmios-slot.ts` and `demo/midgard-node/src/local-ledger-slot.ts` (97 lines).
+  `demo/midgard-core/src/ogmios-slot.ts` and the interim Ogmios tip source in
+  `demo/midgard-node/src/l1-heads.ts` (F7 moved it there from the deleted local ledger-slot module).
 
 ### 4.4 Per-role instantiation
 
@@ -994,7 +995,7 @@ on an unparseable config or a port conflict.
 | R7 | `operator_removed` | The operator is no longer in the active set (D-N7) | Expected end state; re-register or retire. |
 | R8 | `wallet_below_floor` | Own wallet funds fall below the fee floor for pending intents | Fund the wallet. An automatic refill loop is open decision-register item DR-B3 (`public-testnet-decisions-2026-10-01/source-context.md:139`), not decided here. |
 | R9 | `manifest_mismatch` | The config does not match the finalised manifest identity | Fix the config. |
-| R10 | `origin_mismatch` | The configured `l1Origin` differs from the origin the follower store was initialised at | Restore the previous `l1Origin`, or run `follower reset --to-origin` to replay from the new one. The reset never deletes class B rows. |
+| R10 | `origin_mismatch` | The configured `l1Origin` differs from the origin the follower store was initialised at | Restore the previous `l1Origin`, or run `follower reset --to-origin` to replay from the new one. The reset never deletes class B or class C rows: signed material stays, and foreign payloads stay while referenced. |
 
 Everything else is transient and recovers automatically with backoff, while
 `/readyz` reports a reason:
@@ -1126,8 +1127,8 @@ actions are idempotent:
 
 | State | Action |
 |---|---|
-| `landed`, depth < k | Follow. Derivations that depend on it proceed. If the intent is an own commit that was abandoned or replaced, **revive** its block: its content is class B and still there (2026-09-26). |
-| `landed`, depth ≥ k | Terminal. Prune after retention. |
+| `landed`, depth ≤ k | Follow. Derivations that depend on it proceed. If the intent is an own commit that was abandoned or replaced, **revive** its block: its content is class B and still there (2026-09-26). |
+| `landed`, depth > k | Terminal. Prune after retention. |
 | `live`, `HasTx` true (LocalTxMonitor) | Wait. |
 | `live`, not in the mempool, family predicate true | Resubmit the exact bytes, at most once per tip change. |
 | `live`, family predicate false | Abandon. Example: a merge whose queue head is gone. |
@@ -1203,7 +1204,7 @@ has depth 1. This one definition replaces the three variants listed in §3.5.
 | `local` | In an own intent or own block, not landed | Ours, not on L1 | Nothing durable |
 | `landed` | depth ≥ 1 | On the current chain | Building on it (commits wait one block), derivations |
 | `safe` | depth ≥ cd | Unlikely to roll back. **Liveness only.** | Waiting, API display, starting slow work. Never deletes, releases or retires. |
-| `final` | depth ≥ k | Durable | Pruning, releasing, retention deletes, intent retirement, completion markers, DA payload deletion, slashing-evidence release |
+| `final` | depth > k | Durable: at least k blocks on top, so no legal rollback (at most k blocks) removes it | Pruning, releasing, retention deletes, intent retirement, completion markers, DA payload deletion, slashing-evidence release |
 | `merged` | The L2 header's merge tx is at `landed` or deeper. Reported together with that tx's level. | Merged into confirmed state on L1 | The same as the merge tx's level |
 
 The 2026-10-01 ruling redefines D2 this way: the durable level is `final` (k),

@@ -11,6 +11,7 @@ import {
   type SqlBackend,
   type SqlTx,
   type TransactionMode,
+  type WriterLease,
 } from "../sql/backend.js";
 import type {
   BlockSummary,
@@ -21,6 +22,7 @@ import type {
   StoredBlock,
   StoredOutput,
   StoredTx,
+  StoreLocked,
   TrackedSet,
   View,
 } from "../types.js";
@@ -53,6 +55,12 @@ import {
   type SeedResult,
 } from "./seed.js";
 import { currentViewIn, viewValidIn } from "./view.js";
+import {
+  bumpWriterEpochIn,
+  HELD_ELSEWHERE,
+  readWriterStateIn,
+  storeLocked,
+} from "./writer-state.js";
 
 /** A write that failed and rolled back with nothing changed; retry with backoff. */
 export type StoreError = Readonly<{ kind: "error"; error: Error }>;
@@ -61,8 +69,14 @@ export type ApplyResult =
   | BlockApplied
   | ApplyRejection
   | Intervention
-  | StoreError;
-export type RewindResult = Rewound | RewindNoop | Intervention | StoreError;
+  | StoreError
+  | StoreLocked;
+export type RewindResult =
+  | Rewound
+  | RewindNoop
+  | Intervention
+  | StoreError
+  | StoreLocked;
 
 export type StartResult =
   | Readonly<{
@@ -71,7 +85,8 @@ export type StartResult =
       liveOutRefs: number;
       migrated: readonly string[];
     }>
-  | Intervention;
+  | Intervention
+  | StoreLocked;
 
 export type InitializeResult =
   | Readonly<{ kind: "initialized" | "already_initialized"; cursor: Cursor }>
@@ -99,24 +114,29 @@ export type GenerationListener = (
 export type FactStore = Readonly<{
   dialect: SqlBackend["dialect"];
   registry: TemporalRegistry;
-  /** Migrates, runs INV1–INV6 (R5 on failure), loads the tracked-outref set. */
+  /**
+   * Takes the writer lease (`store_locked` while another process holds it;
+   * retry with backoff), migrates, runs INV1–INV6 (R5 on failure), loads
+   * the tracked-outref set. Every write needs a started store; a write that
+   * finds the lease lost returns `store_locked`, and the caller starts again.
+   */
   start(): Promise<StartResult>;
   initialize(
     origin: Readonly<{ point: Point; height: number }>,
-  ): Promise<InitializeResult | StoreError>;
+  ): Promise<InitializeResult | StoreError | StoreLocked>;
   applyBlock(block: BlockSummary): Promise<ApplyResult>;
   rewind(target: Point): Promise<RewindResult>;
   /** Seed rows read from the ledger at `at`, which must still be the cursor. */
   insertSeedOutputs(
     at: Point,
     outputs: readonly SeedOutput[],
-  ): Promise<SeedResult | SeedCursorMoved | StoreError | null>;
+  ): Promise<SeedResult | SeedCursorMoved | StoreError | StoreLocked | null>;
   setTrackedSet(trackedSet: TrackedSet): void;
   trackedSet(): TrackedSet;
   /** Whether an outref is a live tracked row (the in-memory set). */
   isTrackedLive(outRef: OutRef): boolean;
   liveOutRefCount(): number;
-  prune(budget?: number): Promise<PruneResult | StoreError>;
+  prune(budget?: number): Promise<PruneResult | StoreError | StoreLocked>;
   checkInvariants(): Promise<InvariantReport>;
   cursor(): Promise<Cursor | null>;
   currentView(): Promise<View | null>;
@@ -131,6 +151,8 @@ export type FactStore = Readonly<{
   output(outRef: OutRef): Promise<StoredOutput | null>;
   spenderOf(outRef: OutRef): Promise<reads.Spender>;
   txByHash(hash: Buffer): Promise<StoredTx | null>;
+  /** The stored valid tx that spent `outRef`, tracked or not (§5.3 step 3). */
+  txSpending(outRef: OutRef): Promise<reads.TxSpending | null>;
   isCanonical(blockHash: Buffer): Promise<boolean>;
   pointStatus(point: Point): Promise<reads.PointStatus>;
   blockByHash(hash: Buffer): Promise<StoredBlock | null>;
@@ -196,10 +218,38 @@ export const createFactStore = (
   let tracked = options.trackedSet;
   let broken: Intervention | null = null;
   let started = false;
+  let lease: WriterLease | null = null;
+  let epoch = 0;
+  let fenced = false;
   const notStarted: StoreError = {
     kind: "error",
     error: new Error("the fact store has not been started"),
   };
+  const lostLease = (): StoreLocked =>
+    storeLocked(
+      "this process lost the store's writer lease (its session ended, or another holder took it over); start the store again",
+    );
+  /** Why a write may not run now, or null when it may. */
+  const writeRefusal = (): StoreError | StoreLocked | null => {
+    if (lease !== null && (fenced || lease.lost())) return lostLease();
+    return started ? null : notStarted;
+  };
+  /**
+   * A write transaction under the lease's fence: the epoch is read under a
+   * share lock, so a newer holder's bump waits for this write, or this write
+   * sees the newer epoch and rolls back.
+   */
+  const fencedWrite = <T>(
+    run: (tx: SqlTx) => Promise<T>,
+  ): Promise<T | StoreLocked> =>
+    backend.transaction("write", async (tx) => {
+      const state = await readWriterStateIn(tx, dialect, "share");
+      if (state.writerEpoch !== epoch) {
+        fenced = true;
+        throw new RollbackWith(lostLease());
+      }
+      return run(tx);
+    });
 
   const markBroken = (detail: string): Intervention => {
     broken = integrity(detail);
@@ -216,10 +266,21 @@ export const createFactStore = (
     registry,
     start: () =>
       lane.run(async (): Promise<StartResult> => {
+        if (lease !== null && (fenced || lease.lost())) {
+          started = false;
+          await lease.release();
+          lease = null;
+        }
+        if (lease === null) {
+          lease = await backend.acquireWriterLease();
+          if (lease === null) return storeLocked(HELD_ELSEWHERE);
+          fenced = false;
+        }
         const { applied } = await applyMigrations(backend, [
           followerMigrations(dialect.name),
           ...(options.migrations ?? []),
         ]);
+        epoch = await backend.transaction("write", bumpWriterEpochIn);
         const report = await checkInvariants();
         if (!report.ok)
           return markBroken(`at start: ${describeViolations(report)}`);
@@ -244,10 +305,10 @@ export const createFactStore = (
       }),
     initialize: (origin) =>
       lane.run(async () => {
+        const refusal = writeRefusal();
+        if (refusal !== null) return refusal;
         try {
-          return await backend.transaction("write", (tx) =>
-            initializeIn(tx, dialect, origin),
-          );
+          return await fencedWrite((tx) => initializeIn(tx, dialect, origin));
         } catch (error) {
           return { kind: "error", error: asError(error) } as const;
         }
@@ -255,9 +316,10 @@ export const createFactStore = (
     applyBlock: (block) =>
       lane.run(async (): Promise<ApplyResult> => {
         if (broken !== null) return broken;
-        if (!started) return notStarted;
+        const refusal = writeRefusal();
+        if (refusal !== null) return refusal;
         try {
-          const result = await backend.transaction("write", (tx) =>
+          const result = await fencedWrite((tx) =>
             applyBlockIn(tx, context, block, tracked, (key) => live.has(key)),
           );
           if (result.kind === "applied") {
@@ -274,10 +336,11 @@ export const createFactStore = (
     rewind: (target) =>
       lane.run(async (): Promise<RewindResult> => {
         if (broken !== null) return broken;
-        if (!started) return notStarted;
+        const refusal = writeRefusal();
+        if (refusal !== null) return refusal;
         let result: RewindResult;
         try {
-          result = await backend.transaction("write", (tx) =>
+          result = await fencedWrite((tx) =>
             rewindIn(tx, context, target, rewindFaults.get(store) ?? null),
           );
         } catch (error) {
@@ -303,11 +366,13 @@ export const createFactStore = (
       lane.run(async () => {
         if (broken !== null)
           return { kind: "error", error: new Error(broken.detail) } as const;
-        if (!started) return notStarted;
+        const refusal = writeRefusal();
+        if (refusal !== null) return refusal;
         try {
-          const result = await backend.transaction("write", (tx) =>
+          const result = await fencedWrite((tx) =>
             insertSeedOutputsIn(tx, dialect, at, outputs),
           );
+          if (result?.kind === "store_locked") return result;
           if (result?.kind === "seeded")
             for (const outRef of result.inserted) live.add(outRefKey(outRef));
           return result;
@@ -323,10 +388,10 @@ export const createFactStore = (
     liveOutRefCount: () => live.size,
     prune: (budget = DEFAULT_PRUNE_BUDGET) =>
       lane.run(async () => {
+        const refusal = writeRefusal();
+        if (refusal !== null) return refusal;
         try {
-          return await backend.transaction("write", (tx) =>
-            pruneIn(tx, context, budget),
-          );
+          return await fencedWrite((tx) => pruneIn(tx, context, budget));
         } catch (error) {
           return { kind: "error", error: asError(error) } as const;
         }
@@ -347,6 +412,8 @@ export const createFactStore = (
     output: (outRef) => read((tx) => reads.outputIn(tx, dialect, outRef)),
     spenderOf: (outRef) => read((tx) => reads.spenderOfIn(tx, outRef)),
     txByHash: (hash) => read((tx) => reads.txByHashIn(tx, dialect, hash)),
+    txSpending: (outRef) =>
+      read((tx) => reads.txSpendingIn(tx, dialect, outRef)),
     isCanonical: (hash) => read((tx) => reads.isCanonicalIn(tx, hash)),
     pointStatus: (point) =>
       read((tx) => reads.pointStatusIn(tx, dialect, point)),
@@ -354,7 +421,17 @@ export const createFactStore = (
     blockAtHeight: (height) => read((tx) => reads.blockAtHeightIn(tx, height)),
     blockAtOrBeforeSlot: (slot) =>
       read((tx) => reads.blockAtOrBeforeSlotIn(tx, slot)),
-    close: () => lane.run(() => backend.close()),
+    close: () =>
+      lane.run(async () => {
+        started = false;
+        const held = lease;
+        lease = null;
+        try {
+          await held?.release();
+        } finally {
+          await backend.close();
+        }
+      }),
   };
   return store;
 };

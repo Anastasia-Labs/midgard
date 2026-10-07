@@ -1,11 +1,18 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { chainPoint, ORIGIN } from "@al-ft/l1-node-transport";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import {
   applyChainSyncEvent,
   type FactStore,
   intersectionPoints,
+  openSqliteBackend,
   openSqliteFactStore,
+  stepLocked,
+  stepSettled,
   transportPoint,
 } from "../../src/index.js";
 import {
@@ -22,6 +29,10 @@ import { SIM_K } from "../support/fork-sim.js";
 const opened: FactStore[] = [];
 afterEach(async () => {
   await Promise.all(opened.splice(0).map((store) => store.close()));
+});
+const scratch = mkdtempSync(join(tmpdir(), "l1-chain-sync-"));
+afterAll(() => {
+  rmSync(scratch, { recursive: true, force: true });
 });
 
 const freshStore = async (
@@ -86,6 +97,51 @@ describe("applyChainSyncEvent", () => {
       kind: "rewound",
     });
     expect((await store.cursor())?.height).toBe(SIM_ORIGIN.height + 2);
+  });
+
+  it("reports store_locked from a fenced store, unsettled and without advancing, for both directions", async () => {
+    const path = join(scratch, "fenced.sqlite");
+    const store = openSqliteFactStore({
+      ...simStoreOptions([], SIM_K, "sqlite"),
+      path,
+    });
+    opened.push(store);
+    expect(await store.start()).toMatchObject({ kind: "ready" });
+    expect(await store.initialize(SIM_ORIGIN)).toMatchObject({
+      kind: "initialized",
+    });
+    const chain = new SimChain(simUniverse(), SIM_ORIGIN);
+    for (let i = 0; i < 3; i += 1)
+      expect(
+        (await applyChainSyncEvent(store, chain.forward([]).event)).result,
+      ).toMatchObject({ kind: "applied" });
+    const before = await store.cursor();
+    // What a newer writer's start does to this store.
+    const other = openSqliteBackend(path);
+    try {
+      await other.transaction("write", (tx) =>
+        tx.query(
+          "UPDATE l1_follower_writer SET writer_epoch = writer_epoch + 1",
+        ),
+      );
+    } finally {
+      await other.close();
+    }
+    for (const event of [chain.forward([]).event, chain.backward(1)]) {
+      const step = await applyChainSyncEvent(store, event);
+      expect(step.result).toMatchObject({ kind: "store_locked" });
+      expect(stepLocked(step)).toBe(true);
+      expect(stepSettled(step)).toBe(false);
+      const after = await store.cursor();
+      expect(after?.height).toBe(before?.height);
+      expect(after?.point.hash.equals(before!.point.hash)).toBe(true);
+      expect(after?.generation).toBe(before?.generation);
+    }
+    // The caller starts again, and the store follows from where it was.
+    expect(await store.start()).toMatchObject({
+      kind: "ready",
+      cursor: { height: before?.height },
+    });
   });
 });
 

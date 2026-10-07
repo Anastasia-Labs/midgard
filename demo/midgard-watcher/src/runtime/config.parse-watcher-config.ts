@@ -9,7 +9,9 @@ import {
   boundedInteger,
   enumValue,
   exactRecord,
+  exactString,
   fail,
+  HEX_32_PATTERN,
   plainRecord,
   WATCHER_CARDANO_SECURITY_PARAMETER_K,
   WATCHER_CONFIG_BOUNDS,
@@ -18,6 +20,22 @@ import {
   type WatcherWalletKeySource,
 } from "./config.watcher-config.js";
 import { parseWatcherCustomNetwork } from "./custom-network.js";
+
+const parseWatcherL1Origin = (value: unknown) => {
+  const origin = exactRecord(value, "$.l1.origin", ["slot", "blockHash"]);
+  return Object.freeze({
+    slot: boundedInteger(
+      origin.slot,
+      "$.l1.origin.slot",
+      WATCHER_CONFIG_BOUNDS.l1OriginSlot,
+    ),
+    blockHash: exactString(origin.blockHash, "$.l1.origin.blockHash", {
+      minLength: 64,
+      maxLength: 64,
+      pattern: HEX_32_PATTERN,
+    }),
+  });
+};
 
 export const parseWatcherConfig = (value: unknown): WatcherConfig => {
   if (
@@ -53,12 +71,18 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
     "Custom",
   ] as const);
 
+  const hasL1Origin = Object.prototype.hasOwnProperty.call(
+    plainRecord(root.l1, "$.l1"),
+    "origin",
+  );
   const l1 = exactRecord(root.l1, "$.l1", [
     "source",
     "requestTimeoutMs",
     "maxConcurrency",
     "finality",
+    ...(hasL1Origin ? ["origin"] : []),
   ]);
+  const origin = hasL1Origin ? parseWatcherL1Origin(l1.origin) : undefined;
   const finality = exactRecord(l1.finality, "$.l1.finality", [
     "depth",
     "rollback",
@@ -189,6 +213,7 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
     ...(customNetwork === undefined ? {} : { customNetwork }),
     l1: Object.freeze({
       source,
+      ...(origin === undefined ? {} : { origin }),
       requestTimeoutMs: l1RequestTimeoutMs,
       maxConcurrency: boundedInteger(
         l1.maxConcurrency,

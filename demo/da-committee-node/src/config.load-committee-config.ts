@@ -6,6 +6,7 @@ import {
   resolveL1ViewFatalMs,
 } from "@al-ft/midgard-core";
 import { parseDaLibp2pRuntimeManifest } from "@al-ft/midgard-core/da-transport";
+import { parseL1Origin } from "@al-ft/midgard-core/l1-origin";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import {
@@ -142,6 +143,14 @@ export const loadCommitteeConfig = async (
     env.L1_SUBMITTER_KEY_SOURCE,
     "L1_SUBMITTER_KEY_SOURCE",
   );
+  // The deployment's L1 origin point until the redeploy carries it in the
+  // manifest: `<slot>.<block hash>`, as `midgard-l1-follower find-origin`
+  // prints it. Absent when unset.
+  const l1OriginText = optionalNonEmpty(env.L1_ORIGIN);
+  const l1Origin =
+    l1OriginText === undefined
+      ? undefined
+      : parseL1Origin(l1OriginText, "L1_ORIGIN");
   const l1SubmitterId = optionalNonEmpty(env.DA_L1_SUBMITTER_ID);
   const l1SubmitterIds = optionalSplitList(env.DA_L1_SUBMITTER_IDS);
   if (
@@ -237,6 +246,7 @@ export const loadCommitteeConfig = async (
     l1Source,
     cardanoProviderUrls,
     ...(nativeLedger === undefined ? {} : { nativeLedger }),
+    ...(l1Origin === undefined ? {} : { l1Origin }),
     finalityDepth: configuredFinalityDepth,
     automaticRecoveryMaxDepth,
     daTransport: libp2pDaTransport,

@@ -1,3 +1,4 @@
+import { ogmiosSlotEvidenceUnavailableCause } from "@al-ft/midgard-core/ogmios-slot";
 import { Effect, Logger } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -7,10 +8,7 @@ import {
   resolveCustomSlotMapping,
   retryTransientSubmitSlotSnapshot,
 } from "../src/custom-slot-mapping.js";
-import {
-  fetchLocalOgmiosSubmitSlotSnapshot,
-  ogmiosSlotEvidenceUnavailableCause,
-} from "../src/local-ledger-slot.js";
+import { fetchLocalOgmiosSubmitSlotSnapshot } from "../src/l1-heads.js";
 
 const OGMIOS = "http://127.0.0.1:1337";
 // Whole seconds in the past, so wall-clock slots are exact.

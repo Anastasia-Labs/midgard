@@ -197,7 +197,7 @@ export const mergeActionWithL1ControlPlaneHeld = (
           headerHash: preLeaseCandidate.readiness.headerHash,
           reason: preLeaseLocalLedgerGate.reason,
           readyAfterUnixTime: preLeaseCandidate.readiness.readyAfterUnixTime,
-          nowUnixTime: Date.now(),
+          nowUnixTime: preLeaseCandidate.readiness.nowUnixTime,
         } satisfies MergeActionResult;
       }
     }
@@ -252,7 +252,7 @@ export const mergeActionWithL1ControlPlaneHeld = (
                 reason: leasedLocalLedgerGate.reason,
                 readyAfterUnixTime:
                   leasedCandidate.readiness.readyAfterUnixTime,
-                nowUnixTime: Date.now(),
+                nowUnixTime: leasedCandidate.readiness.nowUnixTime,
               } satisfies MergeActionResult;
             }
           }

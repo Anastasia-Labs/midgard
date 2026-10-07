@@ -1,10 +1,10 @@
+import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { Effect } from "effect";
 
 import {
+  fetchLocalOgmiosSubmitSlotSnapshot,
   localOgmiosSubmitSlotEvidence,
-  readLocalOgmiosSubmitSlot,
-  type SubmitSlotSnapshot,
-} from "../local-ogmios-slot.js";
+} from "../l1-heads.js";
 import {
   classifyProviderHttpResponse,
   getProviderCooldown,
@@ -257,7 +257,7 @@ const checkKupmios = async (
   let slotSnapshot: SubmitSlotSnapshot;
   try {
     slotSnapshot = await Effect.runPromise(
-      readLocalOgmiosSubmitSlot({
+      fetchLocalOgmiosSubmitSlotSnapshot({
         ogmiosUrl: config.L1_OGMIOS_KEY,
         fetchImpl,
         nowMs,

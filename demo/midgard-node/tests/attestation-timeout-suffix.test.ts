@@ -13,6 +13,7 @@ import {
   resolveCommitAppendFenceEndTimeCapLocal,
   resolveCommitAppendFenceReferencesLocal,
 } from "../src/workers/commit-block-header/state-queue.js";
+import { registerTestL1Tip, TEN_MINUTES_MS } from "./helpers/l1-tip.js";
 
 const policyId = "aa".repeat(28);
 const address =
@@ -147,13 +148,15 @@ describe("pending queue attestation expiry", () => {
       stateQueuePolicyId: policyId,
     };
     const timeoutMs = Number(SDK.DA_ATTESTATION_TIMEOUT_MS);
-    // Before every fixture node's deadline: an expired node refuses instead.
-    const now = vi.spyOn(Date, "now").mockReturnValue(0);
-    onTestFinished(() => now.mockRestore());
+    // L1 now at slot 0, before every fixture node's deadline: an expired node
+    // refuses instead. The stub client has no slot mapping, so slot s starts
+    // at s * 1000 ms.
+    const tipAtZero = (api: LucidEvolution) => registerTestL1Tip(api, 0);
     // The head (end 1000) is attested and the tail (end 2000) is not. The
     // on-chain fence reads the head only; the build must still land before
     // the tail's deadline, or timeout correction loses the tail to it.
     const unattestedTail = await fixture();
+    tipAtZero(unattestedTail.api);
     expect(
       await Effect.runPromise(
         resolveCommitAppendFenceEndTimeCapLocal(
@@ -163,6 +166,7 @@ describe("pending queue attestation expiry", () => {
       ),
     ).toBe(2_000 + timeoutMs - 1);
     const attested = await fixture(true);
+    tipAtZero(attested.api);
     expect(
       await Effect.runPromise(
         resolveCommitAppendFenceEndTimeCapLocal(attested.api, fetchConfig),
@@ -172,6 +176,7 @@ describe("pending queue attestation expiry", () => {
     // the earliest deadline wins, not the youngest node's or the last one's.
     for (const tailApplied of [false, true]) {
       const unattestedHead = await fixture(tailApplied, false);
+      tipAtZero(unattestedHead.api);
       expect(
         await Effect.runPromise(
           resolveCommitAppendFenceEndTimeCapLocal(
@@ -188,8 +193,6 @@ describe("pending queue attestation expiry", () => {
       stateQueuePolicyId: policyId,
     };
     const timeoutMs = Number(SDK.DA_ATTESTATION_TIMEOUT_MS);
-    const now = vi.spyOn(Date, "now");
-    onTestFinished(() => now.mockRestore());
     const cases = [
       // An unattested tail behind an attested head, its deadline 2000 + T.
       { queue: await fixture(), deadlineMs: 2_000 + timeoutMs },
@@ -197,41 +200,107 @@ describe("pending queue attestation expiry", () => {
       { queue: await fixture(true, false), deadlineMs: 1_000 + timeoutMs },
     ];
     for (const { queue, deadlineMs } of cases) {
-      {
-        const fence = () =>
-          Effect.runPromise(
-            resolveCommitAppendFenceEndTimeCapLocal(queue.api, fetchConfig),
-          );
-        // One millisecond before the deadline the node still caps the end.
-        now.mockReturnValue(deadlineMs - 1);
-        expect(await fence()).toBe(deadlineMs - 1);
-        // At the deadline no end remains below it: the fence refuses exactly
-        // as the build's fence references do, rather than leaving an end cap
-        // in the past for a later validity check to trip over.
-        now.mockReturnValue(deadlineMs);
-        await expect(fence()).rejects.toThrow(
-          "Commit paused until expired unattested suffix is corrected",
+      const fence = () =>
+        Effect.runPromise(
+          resolveCommitAppendFenceEndTimeCapLocal(queue.api, fetchConfig),
         );
-        await expect(
-          Effect.runPromise(
-            resolveCommitAppendFenceReferencesLocal(
-              queue.api,
-              fetchConfig,
-              queue.queue[2]!,
-            ),
+      // One slot before the deadline the node still caps the end.
+      const tip = registerTestL1Tip(queue.api, deadlineMs / 1_000 - 1);
+      expect(await fence()).toBe(deadlineMs - 1);
+      // At the deadline no end remains below it: the fence refuses exactly
+      // as the build's fence references do, rather than leaving an end cap
+      // in the past for a later validity check to trip over.
+      tip.setTipSlot(deadlineMs / 1_000);
+      await expect(fence()).rejects.toThrow(
+        "Commit paused until expired unattested suffix is corrected",
+      );
+      await expect(
+        Effect.runPromise(
+          resolveCommitAppendFenceReferencesLocal(
+            queue.api,
+            fetchConfig,
+            queue.queue[2]!,
           ),
-        ).rejects.toThrow(
-          "Commit paused until expired unattested suffix is corrected",
-        );
-      }
+        ),
+      ).rejects.toThrow(
+        "Commit paused until expired unattested suffix is corrected",
+      );
     }
   });
+  it("reads L1 now, so a wall clock 10 minutes fast pauses no commit", async () => {
+    const fetchConfig = {
+      stateQueueAddress: address,
+      stateQueuePolicyId: policyId,
+    };
+    const timeoutMs = Number(SDK.DA_ATTESTATION_TIMEOUT_MS);
+    // The tail's deadline is 2000 + T. L1 now is one slot before it; the wall
+    // clock is 10 minutes past it.
+    const queue = await fixture();
+    const tip = registerTestL1Tip(queue.api, (2_000 + timeoutMs) / 1_000 - 1);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    vi.setSystemTime(2_000 + timeoutMs + TEN_MINUTES_MS);
+    expect(
+      await Effect.runPromise(
+        resolveCommitAppendFenceEndTimeCapLocal(queue.api, fetchConfig),
+      ),
+    ).toBe(2_000 + timeoutMs - 1);
+    expect(
+      await Effect.runPromise(
+        resolveCommitAppendFenceReferencesLocal(
+          queue.api,
+          fetchConfig,
+          queue.queue[2]!,
+        ),
+      ),
+    ).toEqual({
+      confirmedStateRefInput: queue.queue[0]!.utxo,
+      headStateQueueNodeRefInput: queue.queue[1]!.utxo,
+    });
+    expect(tip.reads()).toBeGreaterThan(0);
+  });
+  it("pauses the commit while no L1 tip has been read, and resumes once one is", async () => {
+    const fetchConfig = {
+      stateQueueAddress: address,
+      stateQueuePolicyId: policyId,
+    };
+    const queue = await fixture();
+    const { registerL1TipSource } = await import("../src/l1-heads.js");
+    let available = false;
+    registerL1TipSource(
+      [queue.api],
+      () =>
+        available
+          ? Effect.succeed({
+              source: "test" as const,
+              currentSlot: 0,
+              ledgerTipSlot: 0,
+              observedAtMs: 0,
+              slotLengthMs: 1_000,
+            })
+          : Effect.fail(new Error("Ogmios unreachable")),
+      { slotLengthMs: 1_000, monotonicNowMs: () => (available ? 1_000 : 0) },
+    );
+    await expect(
+      Effect.runPromise(
+        resolveCommitAppendFenceEndTimeCapLocal(queue.api, fetchConfig),
+      ),
+    ).rejects.toThrow("Commit paused until the L1 slot is known");
+    available = true;
+    expect(
+      await Effect.runPromise(
+        resolveCommitAppendFenceEndTimeCapLocal(queue.api, fetchConfig),
+      ),
+    ).toBe(2_000 + Number(SDK.DA_ATTESTATION_TIMEOUT_MS) - 1);
+  });
   it("refuses a commit preflight extending an expired suffix and permits an applied tail", async () => {
-    const now = vi
-      .spyOn(Date, "now")
-      .mockReturnValue(Number(SDK.DA_ATTESTATION_TIMEOUT_MS + 2_000n));
-    try {
+    const expiredAtSlot =
+      Number(SDK.DA_ATTESTATION_TIMEOUT_MS + 2_000n) / 1_000;
+    {
       const expired = await fixture();
+      registerTestL1Tip(expired.api, expiredAtSlot);
       await expect(
         Effect.runPromise(
           resolveCommitAppendFenceReferencesLocal(
@@ -242,6 +311,7 @@ describe("pending queue attestation expiry", () => {
         ),
       ).rejects.toThrow("expired unattested suffix");
       const applied = await fixture(true);
+      registerTestL1Tip(applied.api, expiredAtSlot);
       expect(
         await Effect.runPromise(
           resolveCommitAppendFenceReferencesLocal(
@@ -254,8 +324,6 @@ describe("pending queue attestation expiry", () => {
         confirmedStateRefInput: applied.queue[0]!.utxo,
         headStateQueueNodeRefInput: applied.queue[1]!.utxo,
       });
-    } finally {
-      now.mockRestore();
     }
   });
 });
@@ -273,7 +341,10 @@ it("records the tick's one queue classification for readiness, and returns a cla
   const nowMs = Number(SDK.DA_ATTESTATION_TIMEOUT_MS) + 2_000;
   const { queue, tailHash } = await fixture();
   const timedOut = await Effect.runPromise(
-    observeAndRecordAttestationTimeoutQueue(health, queue, nowMs),
+    observeAndRecordAttestationTimeoutQueue(health, queue, {
+      l1NowMs: nowMs,
+      readAtMs: nowMs,
+    }),
   );
   expect(Either.getOrThrow(timedOut)).toMatchObject({
     status: "timed-out",
@@ -301,7 +372,10 @@ it("records the tick's one queue classification for readiness, and returns a cla
       : entry,
   );
   const failed = await Effect.runPromise(
-    observeAndRecordAttestationTimeoutQueue(health, undecodable, nowMs + 1),
+    observeAndRecordAttestationTimeoutQueue(health, undecodable, {
+      l1NowMs: nowMs + 1,
+      readAtMs: nowMs + 1,
+    }),
   );
   expect(Either.isLeft(failed)).toBe(true);
   expect(Effect.runSync(Ref.get(health))).toEqual(recorded);
@@ -310,13 +384,44 @@ it("records the tick's one queue classification for readiness, and returns a cla
     observeAndRecordAttestationTimeoutQueue(
       health,
       (await fixture(true)).queue,
-      nowMs + 2,
+      { l1NowMs: nowMs + 2, readAtMs: nowMs + 2 },
     ),
   );
   expect(Either.getOrThrow(attested)).toEqual({ status: "queue-attested" });
   expect(Effect.runSync(Ref.get(health))).toMatchObject({
     lastQueueReadAtMs: nowMs + 2,
     oldestUnattestedHeader: null,
+  });
+});
+
+it("judges the DA-attestation deadline at L1 now: a local clock 10 minutes fast times nothing out", async () => {
+  const health = Ref.unsafeMake<AttestationTimeoutCorrectionHealth>({
+    lastProgressAtMs: 0,
+    lastQueueReadAtMs: 0,
+    correctionProgress: null,
+    lastFailureAtMs: 0,
+    lastError: null,
+    consecutiveFailures: 0,
+    oldestUnattestedHeader: null,
+  });
+  const deadlineMs = Number(SDK.DA_ATTESTATION_TIMEOUT_MS) + 2_000;
+  // L1 now is well before the tail's deadline (more than the alert lead);
+  // the local clock reads 10 minutes past it.
+  const l1NowMs = deadlineMs - 1_000_000;
+  const readAtMs = deadlineMs + TEN_MINUTES_MS;
+  const { queue, tailHash } = await fixture();
+  const observed = await Effect.runPromise(
+    observeAndRecordAttestationTimeoutQueue(health, queue, {
+      l1NowMs,
+      readAtMs,
+    }),
+  );
+  expect(Either.getOrThrow(observed)).toMatchObject({
+    status: "waiting",
+    headerHash: tailHash,
+  });
+  expect(Effect.runSync(Ref.get(health))).toMatchObject({
+    lastQueueReadAtMs: readAtMs,
   });
 });
 

@@ -59,6 +59,7 @@ export * from "./da-transport.js";
 export * from "./deployment-manifest-identity.js";
 export * from "./error-format.js";
 export * from "./hex.js";
+export * from "./l1-origin.js";
 export * from "./ledger-output-commitment.js";
 export * from "./ledger-output-proof.js";
 export * from "./ledger-output-scan.js";

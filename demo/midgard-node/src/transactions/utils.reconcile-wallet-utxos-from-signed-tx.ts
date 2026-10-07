@@ -1,3 +1,4 @@
+import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import {
   CML,
   coreToTxOutput,
@@ -6,7 +7,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { type SubmitSlotSnapshot } from "../local-ledger-slot.js";
 import {
   type InlineWaitPolicy,
   type SubmitTimingPlan,

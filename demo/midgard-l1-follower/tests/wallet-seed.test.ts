@@ -257,6 +257,29 @@ describe.each(storeAdapters(databases, scratch))(
       }
     });
 
+    it("reports a lost writer lease as store_locked, writing nothing", async () => {
+      const { store } = await started(adapter, 4, 2);
+      try {
+        // What a newer lease holder's start does.
+        await store.transaction("write", (tx) =>
+          tx.query(
+            "UPDATE l1_follower_writer SET writer_epoch = writer_epoch + 1",
+          ),
+        );
+        const ledger = fakeLedger({
+          utxos: () => [preOrigin(0xd1, TRACKED)],
+          acquirable: () => true,
+        });
+        expect(await seedWallets(store, ledger, [TRACKED])).toMatchObject({
+          kind: "pending",
+          reason: "store_locked",
+        });
+        expect(await seedRows(store)).toEqual([]);
+      } finally {
+        await store.close();
+      }
+    });
+
     it("adding a wallet tracks it and re-seeds that wallet only, idempotently", async () => {
       const { store } = await started(adapter, 4, 2);
       const a1 = preOrigin(0xd1, TRACKED);

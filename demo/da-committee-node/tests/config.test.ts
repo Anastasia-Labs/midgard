@@ -16,3 +16,4 @@ import "./helpers/deployment-fixture.js";
 import "./config.deployment-manifest-id-from-file.js";
 import "./config.load-committee-config.js";
 import "./config.local-node-ledger-settings.js";
+import "./config.l1-origin.js";

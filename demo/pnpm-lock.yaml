@@ -350,6 +350,9 @@ importers:
       '@al-ft/l1-node-transport':
         specifier: workspace:*
         version: link:../l1-node-transport
+      '@al-ft/midgard-core':
+        specifier: workspace:*
+        version: link:../midgard-core
       '@noble/hashes':
         specifier: ^2.0.1
         version: 2.2.0
@@ -399,6 +402,9 @@ importers:
       '@al-ft/midgard-fault-proofs':
         specifier: workspace:*
         version: link:../midgard-fault-proofs
+      '@al-ft/midgard-l1-follower':
+        specifier: workspace:*
+        version: link:../midgard-l1-follower
       '@al-ft/midgard-sdk':
         specifier: workspace:*
         version: link:../midgard-sdk
