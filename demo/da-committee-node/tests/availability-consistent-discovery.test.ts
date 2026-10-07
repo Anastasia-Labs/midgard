@@ -1,3 +1,5 @@
+import { EventEmitter, once } from "node:events";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import { ChainFixture } from "@al-ft/midgard-test-support/chain-fixture";
 import { describe, expect, it, vi } from "vitest";
@@ -226,8 +228,12 @@ describe("availability discovery across authenticated native observations", () =
   it("joins an expired native journal read before returning its refusal", async () => {
     const f = fixture();
     const scope = SDK.createDaAvailabilityReadScope({ attemptTimeoutMs: 1000 });
-    const deferred = Promise.withResolvers<readonly ChainSyncEvent[]>();
-    f.replay.mockImplementation(async () => [...(await deferred.promise)]);
+    const completion = new EventEmitter();
+    const completed = once(completion, "complete");
+    f.replay.mockImplementation(async () => {
+      await completed;
+      return f.events;
+    });
     let settled = false;
     const outcome = f.run(scope).then(
       (value) => {
@@ -244,11 +250,11 @@ describe("availability discovery across authenticated native observations", () =
       scope.close();
       await new Promise<void>((resolve) => setImmediate(resolve));
       expect(settled).toBe(false);
-      deferred.resolve(f.events);
+      completion.emit("complete");
       expect(await outcome).toHaveProperty("error");
       expect(f.readInputs).not.toHaveBeenCalled();
     } finally {
-      deferred.resolve(f.events);
+      completion.emit("complete");
       await outcome;
       scope.close();
     }
