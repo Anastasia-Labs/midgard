@@ -20,7 +20,7 @@ import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "@lucid-evolution/scalus-uplc";
 import "effect";
-import "../local-ledger-slot.js";
+import "@al-ft/midgard-core/ogmios-slot";
 import "../lucid-time.js";
 import "../services/native-ledger.js";
 import "../transactions/utils.js";

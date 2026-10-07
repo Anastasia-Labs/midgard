@@ -1,3 +1,4 @@
+import { normalizeOgmiosHttpUrl } from "@al-ft/midgard-core/ogmios-slot";
 import {
   replayStateQueueAuthenticatedCheckpoints,
   type StateQueueAuthenticatedTransition,
@@ -6,7 +7,6 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { type FetchLike } from "../l1-tx-order-carriage.js";
-import { normalizeOgmiosHttpUrl } from "../local-ledger-slot.js";
 import { sameQueue } from "./state-queue-correction-observer.create-database-state-queue-correction-observer-store.js";
 import {
   HEX_28,

@@ -1246,5 +1246,205 @@
         "const validity: InactivityTakeoverValidity = { validFrom, validTo };"
       ]
     }
+  },
+  "midgard/depth-through-heads": {
+    "da-committee-node/src/l1/state-queue-scanner.ts": {
+      "reason": "Replay walk bound and observed-point depth in the committee's state-queue scanner; C1 deletes the scanner (the committee reads the follower) and C3 moves its durable actions to `final`.",
+      "sites": [
+        "if (checkpoints.length > walkLimit) {",
+        "(snapshot.observedChainPoint.depth ?? 0) >"
+      ]
+    },
+    "da-committee-node/src/l1/terminal-retention-observation.ts": {
+      "reason": "Committee retention release against its own finality depth; C3 moves committee durable actions to `final` (depth > k).",
+      "sites": [
+        "({ finalityDepth }) => BigInt(finalityDepth) < retirementDepth,",
+        "(record.observedChainPoint.depth ?? -1) <="
+      ]
+    },
+    "midgard-core/src/availability-operation-journal.ts": {
+      "reason": "Availability-challenge intent journal: cd/k shape check and the prune rule; I1 takes D-N8 (derived status for the SDK availability challenge).",
+      "sites": [
+        "confirmationDepth > recoveryDepth",
+        "const prune = depth > recoveryDepth && !live;"
+      ]
+    },
+    "midgard-fault-proofs/src/workflow/local-kupmios-http-ogmios-source.create-local-kupmios-http-ogmios-raw-source.ts": {
+      "reason": "Fault-proof Kupmios source counts its own depth against cd and k; W1 deletes the `fp` Kupmios sources (the watcher reads the follower).",
+      "sites": [
+        "blockDistance + 1n < BigInt(minimumObservationDepth) ||",
+        "blockDistance >",
+        "depth < minimumObservationDepth ||",
+        "depth > config.releaseFinality.policy.automaticRecoveryMaxDepth",
+        "if (depth >= minimum) {",
+        "if (candidateDepth >= minimum) {",
+        "if (tip.blockNo - Number(selected.blockNo) + 1 > maximum) break;"
+      ]
+    },
+    "midgard-fault-proofs/src/workflow/local-kupmios-http-ogmios-source.read-admitted-local-kupmios-utxos-by-out-ref-at-point.ts": {
+      "reason": "Fault-proof Kupmios source page bound against k; W1 deletes the `fp` Kupmios sources.",
+      "sites": [
+        "if (page.transactions.length > details.automaticRecoveryMaxDepth) {"
+      ]
+    },
+    "midgard-fault-proofs/src/workflow/signed-transaction-reconciliation.ts": {
+      "reason": "Watcher signed-tx reconciliation counts blocks after a boundary against the release depth; watcher intent families move to the intent journal in I4 (deferred).",
+      "sites": [
+        "BigInt(observed.canonicalPoint.blockNo) -",
+        "blocksAfterBoundary <="
+      ]
+    },
+    "midgard-fault-proofs/src/workflow/signed-transaction-retirement.ts": {
+      "reason": "Watcher signed-tx retirement depth against the release depth; watcher intent families move to the intent journal in I4 (deferred).",
+      "sites": [
+        "BigInt(canonicalPoint.blockNo) - BigInt(releaseFinalPoint.blockNo) <="
+      ]
+    },
+    "midgard-node-tools/devnet/phase4-process/scripts/check-recovery-window.mjs": {
+      "reason": "Devnet harness: a slot forecast window derived from k, not a depth decision; no role reads it.",
+      "sites": [
+        "forecastSlots <= 0 ||",
+        "if (currentSlot >= tip.slot + forecastSlots)"
+      ]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/history-archive-server.mjs": {
+      "reason": "Devnet journey archive server measures depth for journey evidence; not a role decision. U4 rewrites devnet tooling.",
+      "sites": ["BigInt(body.throughPoint.blockNo) -"]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/journey-timing.journey-timing-for-plan.ts": {
+      "reason": "Devnet journey timing plans how many blocks to wait; not a role decision.",
+      "sites": ["actionDepth > confirmationDepth ||"]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/readiness-evidence.verify-journey-result-evidence.ts": {
+      "reason": "Devnet journey evidence check of an inclusive depth; not a role decision.",
+      "sites": ["canonical.tip.blockNo - transaction(hash).blockNo + 1n >="]
+    },
+    "midgard-node-tools/src/devnet-stack/acceptance-payout-transaction.ts": {
+      "reason": "Devnet acceptance check of payout depth against cd; not a role decision.",
+      "sites": ["evidence.canonicalDepth >= config.confirmationDepth,"]
+    },
+    "midgard-node-tools/src/devnet-stack/watcher-history-recorder.ts": {
+      "reason": "Devnet watcher history recorder waits for an inclusive depth; not a role decision.",
+      "sites": [
+        "if (point === undefined || tip - BigInt(point.blockNo) + 1n < depth)"
+      ]
+    },
+    "midgard-node/src/fibers/retention-sweeper.da-retirement-view.ts": {
+      "reason": "Irreversible DA payload delete gates on depth > k + 1 (one block beyond `final`); kept as is, since moving it to `isFinal` would loosen an irreversible delete by one block.",
+      "sites": ["if (depth <= BigInt(args.automaticRecoveryMaxDepth) + 1n) {"]
+    },
+    "midgard-node/tests/helpers/correction-rewind-scenario.open-correction-rewind-scenario.ts": {
+      "reason": "Test driver: mines the emulator to a depth; not a decision.",
+      "sites": ["if (needed > 0) fixture.emulator.awaitBlock(needed);"]
+    },
+    "midgard-node/tests/helpers/history-owner-rollback-journey.run-history-owner-rollback-journey.ts": {
+      "reason": "Test driver loop: mines cd blocks; not a decision.",
+      "sites": ["for (let depth = 0; depth < finalityDepth; depth += 1) {"]
+    },
+    "midgard-node/tests/helpers/signed-intent-replacement.canonical-fork.ts": {
+      "reason": "Test driver loop: mines cd blocks; not a decision.",
+      "sites": ["block < identity.manifest.l1Finality.confirmationDepth;"]
+    },
+    "midgard-node/tests/l1-event-history-observed-recovery-emulator.test.ts": {
+      "reason": "Test driver loop: mines cd blocks; not a decision.",
+      "sites": ["for (let depth = 0; depth < finalityDepth; depth++) {"]
+    },
+    "midgard-watcher/src/availability/observation.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": ["BigInt(observation.nativePoint.finalityDepth) <"]
+    },
+    "midgard-watcher/src/availability/published-payload.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": ["BigInt(observation.nativePoint.finalityDepth) <"]
+    },
+    "midgard-watcher/src/fault-proofs/fault-proof-completion-marker.ts": {
+      "reason": "Policy shape check (cd against the watcher's post-finality recovery depth); D-W2 keeps the k-deep completion marker.",
+      "sites": [
+        "BigInt(confirmationDepth) > WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth;"
+      ]
+    },
+    "midgard-watcher/src/indexers/authenticated-state-queue-observation.derive-observation.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": ["BigInt(localObservation.block.chainPoint.depth) <"]
+    },
+    "midgard-watcher/src/indexers/authenticated-state-queue-observation.merged-headers.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": [
+        "if (raw.confirmationDepth < RELEASE_FINALITY_DEPTH) return null;",
+        "next.confirmationDepth < RELEASE_FINALITY_DEPTH ||"
+      ]
+    },
+    "midgard-watcher/src/indexers/authenticated-state-queue-observation.parse-persisted-header.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": ["BigInt(record.finalityDepth) < BigInt(RELEASE_FINALITY_DEPTH)"]
+    },
+    "midgard-watcher/src/indexers/authenticated-state-queue-observation.restore-persisted-observation-chain.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": ["raw.confirmationDepth < Number(checkpoint.finalityDepth)"]
+    },
+    "midgard-watcher/src/indexers/user-event-reference-authority.create-watcher-local-user-event-reference-authority.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": [
+        "BigInt(point.depth) < BigInt(resolved.minimumConfirmationDepth) ||"
+      ]
+    },
+    "midgard-watcher/src/l1/finality-engine.admit-watcher-local-backfill-finality.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": [
+        "BigInt(capture.depthAtObservedTip) < BigInt(policy.confirmationDepth)"
+      ]
+    },
+    "midgard-watcher/src/l1/finality-engine.evaluate-watcher-finality.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": [
+        "if (BigInt(agreement.minimumDepth) >= BigInt(policy.confirmationDepth)) {"
+      ]
+    },
+    "midgard-watcher/src/l1/finality-engine.parse-watcher-finality-policy.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": ["BigInt(policy.maximumPreFinalityRollbackDepth) >"]
+    },
+    "midgard-watcher/src/l1/finality-engine.parse-watcher-finality-state.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": [
+        "currentDepth < BigInt(policy.confirmationDepth) &&",
+        "currentDepth >= BigInt(policy.confirmationDepth) &&"
+      ]
+    },
+    "midgard-watcher/src/l1/resolved-block-observation.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": ["BigInt(point.depth) < BigInt(minimumConfirmationDepth)"]
+    },
+    "midgard-watcher/src/runtime/chain-coordinator.advance-canonical.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": [
+        "BigInt(depthAtTip(candidate, event)) >= confirmationDepth",
+        "BigInt(depthAtTip(run.at(-1)!, event)) > confirmationDepth;",
+        "if (BigInt(depth) < confirmationDepth) return;",
+        "if (BigInt(depthAtTip(target, event)) < confirmationDepth) return;"
+      ]
+    },
+    "midgard-watcher/src/runtime/chain-coordinator.create-coordinator.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": ["BigInt(depthAtTip(block, event)) <"]
+    },
+    "midgard-watcher/src/runtime/user-event-runtime.create-watcher-user-event-runtime.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": [
+        "BigInt(monitorTip.blockNo) - BigInt(point.blockNo) >= confirmationDepth"
+      ]
+    },
+    "midgard-watcher/src/verification/authenticated-replay-transcript.assert-raw-cbor-value.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": ["depth < BigInt(input.minimumConfirmationDepth) ||"]
+    },
+    "midgard-watcher/src/verification/replay-transcript-records.read-watcher-replay-transcript-records.ts": {
+      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "sites": ["BigInt(text(inclusion.finalityDepth, \"inclusion depth\")) >="]
+    },
+    "midgard-watcher/tests/indexers/state-queue-catchup-finality.test.ts": {
+      "reason": "Test driver loop sized from cd; not a decision.",
+      "sites": ["for (let index = 0; index < 42 - RELEASE_DEPTH; index++) {"]
+    }
   }
 }

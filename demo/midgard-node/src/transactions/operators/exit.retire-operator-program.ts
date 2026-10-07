@@ -3,7 +3,7 @@ import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
-import { currentTimeMsForLucidOrEmulatorFallback } from "../register-active-operator/clock.js";
+import { resolveL1NowMs } from "../register-active-operator/clock.js";
 import { handleSignSubmit } from "../utils.js";
 import {
   deriveWitnesses,
@@ -54,7 +54,7 @@ export const retireOperatorProgram = (
     const status = SDK.deriveOperatorStatus(
       snapshot,
       input.operatorKeyHash,
-      currentTimeMsForLucidOrEmulatorFallback(lucid),
+      yield* resolveL1NowMs(lucid),
       { maxInactivityStrikes: SDK.MAX_INACTIVITY_STRIKES },
     );
     if (status.state !== "active") {
@@ -182,7 +182,7 @@ export const recoverOperatorBondProgram = (
     const snapshot =
       input.snapshot ??
       (yield* SDK.fetchOperatorDirectorySnapshotProgram(lucid, contracts));
-    const nowMs = currentTimeMsForLucidOrEmulatorFallback(lucid);
+    const nowMs = yield* resolveL1NowMs(lucid);
     const status = SDK.deriveOperatorStatus(
       snapshot,
       input.operatorKeyHash,

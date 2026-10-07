@@ -1,3 +1,7 @@
+import {
+  SUBMIT_SLOT_LENGTH_MS,
+  type SubmitSlotSnapshot,
+} from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -9,9 +13,7 @@ import {
 import {
   localOgmiosSubmitSlotEvidence,
   makeLocalOgmiosSubmitSlotSnapshotProvider,
-  SUBMIT_SLOT_LENGTH_MS,
-  type SubmitSlotSnapshot,
-} from "../../local-ledger-slot.js";
+} from "../../l1-heads.js";
 import { Database } from "../../services/index.js";
 import { slotAwareDueWorkFromSubmitTiming } from "../submit-timing-due-work.js";
 import {

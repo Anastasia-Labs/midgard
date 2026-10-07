@@ -1,8 +1,8 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { LucidEvolution, TxSignBuilder } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
-import { type SubmitSlotSnapshot } from "../local-ledger-slot.js";
 import {
   planSubmitTiming,
   planSubmitTimingAfterInlineWait,

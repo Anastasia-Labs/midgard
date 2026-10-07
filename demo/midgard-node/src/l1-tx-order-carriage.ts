@@ -2,7 +2,7 @@ import "@al-ft/midgard-core/out-ref";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
-import "./local-ledger-slot.js";
+import "@al-ft/midgard-core/ogmios-slot";
 import "./l1-tx-order-carriage.l1-chain-point.js";
 import "./l1-tx-order-carriage.fetch-kupo-spend.js";
 import "./l1-tx-order-carriage.open-ogmios-session.js";

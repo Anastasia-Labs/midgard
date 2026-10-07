@@ -22,8 +22,10 @@ import { Effect, type Schedule } from "effect";
 
 import { errorMessage } from "../commands/cli-runtime.js";
 import { verifyConfiguredDeploymentManifestProgram } from "../commands/contract-deployment-info.js";
+import { l1SlotNow } from "../l1-heads.js";
 import {
   canonicalSlotConfigForLucid,
+  slotToUnixTimeForLucidOrEmulatorFallback,
   unixTimeToSlotForConfig,
 } from "../lucid-time.js";
 import {
@@ -169,7 +171,7 @@ const deferWatchdog = (input: {
     dueSlot,
     dueAtMs: input.untilMs,
     waitMs,
-    slotSource: "lucid_current_slot",
+    slotSource: "l1_slot_now",
     dependencyKey: input.dependencyKey,
     invalidationKey: input.reason,
   });
@@ -204,7 +206,17 @@ export const makeOperatorWatchdogTick = <R = never>(
     const contracts = yield* MidgardContracts;
     const globals = yield* Globals;
 
-    const currentSlot = lucid.api.currentSlot();
+    // The L1 `slotNow` (plan §3.6) both gates the deferral and dates every
+    // decision below; while it is unknown the tick does nothing and the next
+    // one retries.
+    const slotNow = yield* Effect.either(l1SlotNow(lucid.api));
+    if (slotNow._tag === "Left") {
+      yield* Effect.logWarning(
+        `🐕 Operator watchdog waiting for the L1 slot: ${slotNow.left.message}`,
+      );
+      return;
+    }
+    const currentSlot = slotNow.right;
     const due = checkSlotAwareDueWork({
       kind: DUE_WORK_KIND,
       key: DUE_WORK_KEY,
@@ -228,7 +240,10 @@ export const makeOperatorWatchdogTick = <R = never>(
       yield* Effect.logWarning(
         `🐕 Operator watchdog could not read the operator directory this tick: ${errorMessage(prepared.left)}`,
       );
-      const nowMs = Date.now();
+      const nowMs = slotToUnixTimeForLucidOrEmulatorFallback(
+        lucid.api,
+        currentSlot,
+      );
       return yield* deferWatchdog({
         lucid: lucid.api,
         currentSlot,

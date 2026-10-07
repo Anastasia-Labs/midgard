@@ -31,6 +31,7 @@ import {
   shouldPruneRetention,
 } from "../database/retention-policy.js";
 import { DatabaseError } from "../database/utils/common.js";
+import { l1NowUnixTimeMs, L1SlotUnknownError } from "../l1-heads.js";
 import {
   ContractDeploymentIdentity,
   Database,
@@ -252,7 +253,7 @@ export const fetchRetentionL1ViewWithRetirement = Effect.gen(function* () {
  */
 export const retentionSweepAction = (
   view: DaPayloadsDB.RetentionL1View | undefined,
-  sweptAt: Date = new Date(),
+  sweptAt: Date,
 ): Effect.Effect<
   void,
   DatabaseError,
@@ -351,7 +352,21 @@ export type RetentionSweeperOptions = {
     | ContractDeploymentIdentity
     | Database
   >;
+  /** Local clock for the L1 view's age; `Date.now` by default. */
   readonly nowMs?: () => number;
+  /**
+   * The L1 now (POSIX ms) every cutoff is computed from; by default the
+   * `slotNow` of the node's Lucid client (plan §3.6).
+   */
+  readonly l1NowMs?: Effect.Effect<
+    number,
+    L1SlotUnknownError,
+    | Lucid
+    | MidgardContracts
+    | NodeConfig
+    | ContractDeploymentIdentity
+    | Database
+  >;
 };
 
 /**
@@ -364,6 +379,10 @@ export type RetentionSweeperOptions = {
  * `L1_VIEW_FATAL_MS` (validated at config load) the sweeper stops sweeping and
  * raises `retention_l1_view_stale` in readiness; it keeps reading L1, and the
  * first good view clears the reason and sweeps again. Never fails.
+ *
+ * Every cutoff is computed from the L1 `slotNow` (plan §3.6), never the wall
+ * clock: a clock that runs fast must not make a still-challengeable payload
+ * look prunable. While the L1 slot is unknown the sweep is skipped.
  */
 export const retentionSweeperFiber = (
   schedule: Schedule.Schedule<number>,
@@ -384,6 +403,9 @@ export const retentionSweeperFiber = (
     const fetchL1View =
       options.fetchL1View ?? fetchRetentionL1ViewWithRetirement;
     const nowMs = options.nowMs ?? (() => Date.now());
+    const l1NowMs =
+      options.l1NowMs ??
+      Effect.flatMap(Lucid, (lucid) => l1NowUnixTimeMs(lucid.api));
     const l1ViewFatalMs = nodeConfig.L1_VIEW_FATAL_MS;
     const sweepMs = nodeConfig.WAIT_BETWEEN_RETENTION_SWEEPS;
     const lastL1ViewAtMs = yield* Ref.make(nowMs());
@@ -394,6 +416,9 @@ export const retentionSweeperFiber = (
     yield* Effect.logInfo("🧹 Retention sweeper fiber started.");
     const sweep = Effect.gen(function* () {
       const startedAtMs = nowMs();
+      // Read before the view: a sweep that cannot date itself on L1 prunes
+      // nothing.
+      const sweptAt = yield* Effect.either(l1NowMs);
       const timeoutMs = retentionL1ViewTimeoutMs({
         sweepMs,
         fatalMs: l1ViewFatalMs,
@@ -427,7 +452,13 @@ export const retentionSweeperFiber = (
           );
           return;
         }
-        yield* retentionSweepAction(undefined, new Date(startedAtMs)).pipe(
+        if (Either.isLeft(sweptAt)) {
+          yield* Effect.logWarning(
+            `retention_pass_skipped: ${sweptAt.left.message}`,
+          );
+          return;
+        }
+        yield* retentionSweepAction(undefined, new Date(sweptAt.right)).pipe(
           Effect.catchAllCause(Effect.logWarning),
         );
         return;
@@ -449,7 +480,13 @@ export const retentionSweeperFiber = (
       } else {
         yield* clearLivenessIncident(globals, "retention_da_recovery");
       }
-      yield* retentionSweepAction(view, new Date(startedAtMs)).pipe(
+      if (Either.isLeft(sweptAt)) {
+        yield* Effect.logWarning(
+          `retention_pass_skipped: ${sweptAt.left.message}`,
+        );
+        return;
+      }
+      yield* retentionSweepAction(view, new Date(sweptAt.right)).pipe(
         Effect.catchAllCause(Effect.logWarning),
       );
     }).pipe(Effect.withSpan("retention-sweeper-fiber"));

@@ -1,3 +1,4 @@
+import { heightAtDepth } from "@al-ft/midgard-l1-follower/heads";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
@@ -261,9 +262,12 @@ export const operatorMembershipTick = Effect.gen(function* () {
       const checkpoint = yield* Journal.loadCurrent(binding);
       if (checkpoint === null)
         throw new Error("Membership history checkpoint unavailable");
-      const targetHeight =
-        checkpoint.head.height -
-        identity.manifest!.l1Finality.confirmationDepth;
+      // The block one deeper than cd, as before the heads module (N6 owns
+      // the move to a level).
+      const targetHeight = heightAtDepth(
+        checkpoint.head.height,
+        identity.manifest!.l1Finality.confirmationDepth + 1,
+      );
 
       const previous = yield* sql<{
         active_block_hash: Buffer;

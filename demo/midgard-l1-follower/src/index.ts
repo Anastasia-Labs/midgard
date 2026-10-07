@@ -9,6 +9,30 @@ export {
 } from "./codec.js";
 export { BlockDecodeError, decodeBlock } from "./decode/block.js";
 export {
+  type ChainLevel,
+  createHeads,
+  createSlotClock,
+  depth,
+  type DepthParameters,
+  depthParameters,
+  type Head,
+  type HeadLevel,
+  type Heads,
+  type HeadsOptions,
+  HeadsParameterError,
+  heightAtDepth,
+  isFinal,
+  isSafe,
+  levelAtDepth,
+  levelOf,
+  type MergedStatus,
+  mergedStatus,
+  type MonotonicClock,
+  type SlotClock,
+  type SlotClockOptions,
+  type TipObservation,
+} from "./heads.js";
+export {
   GENERATION_CHANNEL,
   listenForGenerations,
   openPostgresFactStore,

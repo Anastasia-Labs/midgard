@@ -3,7 +3,7 @@ import "node:fs";
 import "node:os";
 import "node:path";
 import "vitest";
-import "../src/local-ledger-slot.js";
+import "@al-ft/midgard-core/ogmios-slot";
 import "../src/workers/utils/mpf-commit-candidate-artifacts.js";
 import "./mpf-commit-candidate-probe-artifacts.root-probe-result.js";
 
@@ -11,9 +11,9 @@ import { createHash } from "node:crypto";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { parseOgmiosShelleyGenesisSlotConfig } from "@al-ft/midgard-core/ogmios-slot";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { parseOgmiosShelleyGenesisSlotConfig } from "../src/local-ledger-slot.js";
 import {
   assertArchitectureGCandidateSlotRuntimeIdentity,
   decodeArchitectureGCommitCandidateInput,

@@ -9,6 +9,7 @@ import {
   type DeploymentManifestCardanoProtocolParameters,
   deriveDeploymentManifestCardanoProtocolParametersFromOgmios,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { normalizeOgmiosHttpUrl } from "@al-ft/midgard-core/ogmios-slot";
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core/retention-window";
 import { GENESIS_HEADER_HASH } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
@@ -20,7 +21,6 @@ import {
   normalizeDeploymentManifestJsonValue,
 } from "../deployment-manifest.js";
 import { deploymentEconomicsFromEnvironment } from "../environment.js";
-import { normalizeOgmiosHttpUrl } from "../local-ledger-slot.js";
 import {
   loadRealBlueprintSha256,
   Lucid,

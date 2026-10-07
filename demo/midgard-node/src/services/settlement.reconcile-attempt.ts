@@ -1,4 +1,5 @@
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
+import { depth as depthOf, isSafe } from "@al-ft/midgard-l1-follower/heads";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -183,14 +184,19 @@ export const reconcileAttempt = (
         return yield* Effect.fail(
           new Error("Settlement requires manifest-bound L1 finality"),
         );
-      const confirmedDepth =
+      const heights =
         status.confirmation.blockHash === undefined
-          ? 0
-          : yield* Journal.confirmationDepth(
+          ? null
+          : yield* Journal.confirmationHeights(
               owner,
               status.confirmation.blockHash,
             );
-      if (confirmedDepth < depth)
+      if (
+        heights === null ||
+        !isSafe(depthOf(heights.tipHeight, heights.blockHeight), {
+          confirmationDepth: depth,
+        })
+      )
         return "waiting for authenticated confirmation depth";
       if (attempt.required_outputs.length > 0) {
         const blockHash = status.confirmation.blockHash;

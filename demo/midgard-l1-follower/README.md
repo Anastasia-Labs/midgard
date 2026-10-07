@@ -20,7 +20,9 @@ This package owns:
 - the temporal registry, which generates the rewind and prune SQL;
 - invariants INV1–INV6, checked at start and (scoped) inside every rewind;
 - views `(generation, point)` and their validity check;
-- the read API, and budgeted retention pruning.
+- the read API, and budgeted retention pruning;
+- the heads module: the one definition of depth, the levels local, landed,
+  safe, final and merged, and `slotNow`.
 
 The live chain-sync client, the decode pool and the role wiring live
 elsewhere. This package never opens a network connection.
@@ -120,7 +122,8 @@ Reads (each a consistent snapshot):
 `UtxoFilter` is `{ by: "address", address }`, `{ by: "payment_credential",
 hash }`, `{ by: "unit", policyId, assetName? }` or `{ by: "outref", outRefs }`.
 `PointRefusal.kind` is `point_not_canonical`, `point_beyond_retention` (below
-`cursor.prunedThroughSlot`) or `not_initialized`.
+`cursor.prunedThroughSlot`) or `not_initialized`. `pointStatus` reports
+`depth` as the heads module counts it: 1 at the cursor.
 
 ### Views (§8.1)
 
@@ -165,6 +168,38 @@ transport delivers it after the era tag, and returns every transaction, valid
 or phase-2-failed. `encodeOutRef` / `decodeOutRef` use the
 34-byte form (tx hash, then a big-endian u16 index); `outRefKey` is the hex
 form used for maps.
+
+### Heads (§9)
+
+```ts
+depth(tipHeight, pointHeight): number          // tip − point + 1; the tip is depth 1
+heightAtDepth(tipHeight, atDepth): number
+levelAtDepth(atDepth, { confirmationDepth, securityParameter }): "landed" | "safe" | "final" | null
+levelOf(atDepth | null, parameters, own): "local" | "landed" | "safe" | "final" | null
+isSafe(atDepth, parameters) / isFinal(atDepth, parameters)
+mergedStatus(mergeTxLevel): { merged: true, level } | { merged: false, level: "local" | null }
+createSlotClock({ slotLengthMs, monotonicNowMs? }): { observeTipSlot, tipSlot, slotNow }
+createHeads({ confirmationDepth, securityParameter, slotLengthMs, monotonicNowMs? }): Heads
+```
+
+The levels: `local` (own, not on the chain), `landed` (depth ≥ 1), `safe`
+(depth ≥ cd; liveness only, never a reason to delete, release or retire),
+`final` (depth > k) and `merged` (an L2 header whose merge tx has landed,
+always reported with that tx's level). Final is strictly deeper than k: a
+rollback of k blocks is legal (`rewind` refuses only deeper ones) and
+removes depths 1..k.
+
+`slotNow()` is max(tip slot, last tip slot + elapsed / slotLength), with
+elapsed time from `performance.now()`. A wall clock that runs fast or jumps
+does not move it, and a tip behind the estimate (a rollback, a stale source)
+never moves it back. It is null until the first tip observation; a caller
+then takes no L1 decision and retries. It is the only "now" for an L1
+validity decision.
+
+No module outside `src/heads.ts` compares a value against
+`confirmationDepth` or `automaticRecoveryMaxDepth`; the ESLint rule
+`midgard/depth-through-heads` enforces it (see
+`docs/agents/lint-rules.md`).
 
 ### Lints (`@al-ft/midgard-l1-follower/lint`)
 
