@@ -16,6 +16,7 @@ import {
   drainCommitteeReadResources,
   inheritCommitteeReadOwner,
 } from "./committee-owned-read-transports.js";
+import { discoverConsistentAvailabilityChallenges } from "./consistent-discovery.js";
 import { createCommitteePromiseAdmissionSource } from "./create-promise-admission-source.js";
 import {
   availabilityResponderCollateral,
@@ -314,24 +315,29 @@ export const configuredCommitteePromiseRuntime = async (input: {
       const scope = scopes.open();
       try {
         await scopes.refresh(scope);
-        await ops.assertActuationCurrent(scope);
-        const before = await ops.readBoundary(scope);
-        let complete = true;
-        const found = await discoverAvailabilityResponderChallenges(
-          lucid,
-          deployment,
-          () => {
-            complete = false;
+        return await discoverConsistentAvailabilityChallenges({
+          scope,
+          assertActuationCurrent: ops.assertActuationCurrent,
+          readObservation: ops.readDiscoveryObservation,
+          readInputs: ops.readDiscoveryInputs,
+          replay: (sequence) => chainProvider.replayChainSyncEvents(sequence),
+          discover: async () => {
+            let complete = true;
+            const found = await discoverAvailabilityResponderChallenges(
+              lucid,
+              deployment,
+              () => {
+                complete = false;
+              },
+              { scope, readUtxos },
+            );
+            if (!complete)
+              throw new Error(
+                "Complete response discovery changed or was unavailable",
+              );
+            return found;
           },
-          { scope, readUtxos },
-        );
-        const after = await ops.readBoundary(scope);
-        scope.assertCurrent();
-        if (!complete || before.pointId !== after.pointId)
-          throw new Error(
-            "Complete response discovery changed or was unavailable",
-          );
-        return found;
+        });
       } finally {
         await storeReads.join();
         await drainCommitteeReadResources(scope);

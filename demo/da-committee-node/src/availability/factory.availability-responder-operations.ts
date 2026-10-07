@@ -28,6 +28,7 @@ import {
   type StateQueueReplayWebSocketFactory,
 } from "../l1/state-queue-replay-provider.js";
 import { committeeBoundReadContext } from "./committee-owned-read-transports.js";
+import type { AvailabilityDiscoveryObservation } from "./consistent-discovery.js";
 import { AvailabilityResponderAwaitingScanError } from "./responder.js";
 import {
   committeeScopedFetch,
@@ -200,12 +201,9 @@ export const availabilityResponderOperations = (input: {
   // Still thrown, so the SDK aborts the step and releases its lease; the
   // responder tick reports it as a wait, not a failure.
   const awaitingScan = () => new AvailabilityResponderAwaitingScanError();
-  const readBoundary = async (
+  const readDiscoveryObservation = async (
     scope?: SDK.DaAvailabilityReadScope,
-  ): Promise<
-    SDK.DaAvailabilityCanonicalBoundary &
-      Readonly<{ blockHash: string; blockNo: number }>
-  > => {
+  ): Promise<AvailabilityDiscoveryObservation> => {
     scope?.assertCurrent();
     const point = await readers.currentPoint(scope);
     const cursor = await readers.currentCursor(scope);
@@ -240,12 +238,24 @@ export const availabilityResponderOperations = (input: {
       );
     scope?.assertCurrent();
     return {
-      pointId: `${point.slot}:${point.blockHash}`,
-      slot: point.slot,
-      blockHash: point.blockHash,
-      blockNo,
+      cursor,
+      boundary: {
+        pointId: `${point.slot}:${point.blockHash}`,
+        slot: point.slot,
+        blockHash: point.blockHash,
+        blockNo,
+      },
     };
   };
+  const readBoundary = async (scope?: SDK.DaAvailabilityReadScope) =>
+    (await readDiscoveryObservation(scope)).boundary;
+  const readDiscoveryInputs = async (
+    refs: readonly Readonly<{ txHash: string; outputIndex: number }>[],
+    scope?: SDK.DaAvailabilityReadScope,
+  ) =>
+    readers.readInputs
+      ? readers.readInputs(refs, scope)
+      : input.lucid.utxosByOutRef([...refs]);
   const assertActuationCurrent = async (
     scope?: SDK.DaAvailabilityReadScope,
   ): Promise<void> => {
@@ -318,7 +328,14 @@ export const availabilityResponderOperations = (input: {
       ? "pending"
       : "ready";
   };
-  return { readBoundary, assertActuationCurrent, context, reconcile };
+  return {
+    readBoundary,
+    readDiscoveryObservation,
+    readDiscoveryInputs,
+    assertActuationCurrent,
+    context,
+    reconcile,
+  };
 };
 
 /**
