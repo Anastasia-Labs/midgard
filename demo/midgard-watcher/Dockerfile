@@ -28,6 +28,7 @@ COPY midgard-core/package.json ./midgard-core/package.json
 COPY midgard-validation/package.json ./midgard-validation/package.json
 COPY midgard-sdk/package.json ./midgard-sdk/package.json
 COPY midgard-fault-proofs/package.json ./midgard-fault-proofs/package.json
+COPY midgard-l1-follower/package.json ./midgard-l1-follower/package.json
 COPY midgard-watcher/package.json ./midgard-watcher/package.json
 COPY midgard-test-support/package.json ./midgard-test-support/package.json
 # Every other workspace manifest too: `pnpm deploy` resolves each
