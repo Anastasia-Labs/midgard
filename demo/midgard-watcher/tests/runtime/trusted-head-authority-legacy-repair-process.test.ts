@@ -38,7 +38,11 @@ beforeAll(async () => {
         setup(builder) {
           builder.onResolve({ filter: /^[^./]/u }, async (args) => {
             if (args.pluginData === "external-resolution") return undefined;
-            if (args.path.startsWith("@al-ft/midgard-")) return undefined;
+            if (
+              args.path.startsWith("@al-ft/midgard-") ||
+              args.path.startsWith("@al-ft/l1-node-transport")
+            )
+              return undefined;
             if (args.path.startsWith("node:"))
               return { path: args.path, external: true };
             const resolved = await builder.resolve(args.path, {
