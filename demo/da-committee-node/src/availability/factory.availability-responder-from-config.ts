@@ -13,6 +13,7 @@ import { lucidFromProviderUrl } from "../l1/lucid.js";
 import type { StateQueueProvider } from "../l1/state-queue-scanner.js";
 import { selectL1SubmitterWallet } from "../l1/submitter.js";
 import type { CommitteeStore } from "../store.js";
+import { discoverConsistentAvailabilityChallenges } from "./consistent-discovery.js";
 import { createCommitteePromiseAdmissionSource } from "./create-promise-admission-source.js";
 import {
   availabilityParametersFromConfig,
@@ -175,30 +176,36 @@ export const availabilityResponderFromConfig = async (
       throw error;
     }
   }
-  const { readBoundary, assertActuationCurrent, context, reconcile } =
-    availabilityResponderOperations({
+  const {
+    readBoundary,
+    readDiscoveryObservation,
+    readDiscoveryInputs,
+    assertActuationCurrent,
+    context,
+    reconcile,
+  } = availabilityResponderOperations({
+    lucid,
+    readers: availabilityResponderL1ReadersFromConfig({
+      config,
       lucid,
-      readers: availabilityResponderL1ReadersFromConfig({
-        config,
+      kupoUrl,
+      ogmiosUrl,
+      currentCursor: chainProvider.currentChainSyncCursor.bind(chainProvider),
+    }),
+    assertSourceHealthy,
+    context: {
+      deploymentIdentity: contractManifestId,
+      actor: actor.hash,
+      journal,
+      stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
+      minimumConfirmationDepth: config.finalityDepth,
+      transactionLimits: SDK.daAvailabilityOperationLimits(
         lucid,
-        kupoUrl,
-        ogmiosUrl,
-        currentCursor: chainProvider.currentChainSyncCursor.bind(chainProvider),
-      }),
-      assertSourceHealthy,
-      context: {
-        deploymentIdentity: contractManifestId,
-        actor: actor.hash,
-        journal,
-        stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
-        minimumConfirmationDepth: config.finalityDepth,
-        transactionLimits: SDK.daAvailabilityOperationLimits(
-          lucid,
-          deployment.parameters,
-        ),
-        submit: (signedCbor) => provider.submitTx(signedCbor),
-      },
-    });
+        deployment.parameters,
+      ),
+      submit: (signedCbor) => provider.submitTx(signedCbor),
+    },
+  });
   return {
     close: () => journal.close(),
     // Finite preparation/signing/persistence/submission bounds are not yet
@@ -220,29 +227,33 @@ export const availabilityResponderFromConfig = async (
       deploymentIdentity: deployment.hubOraclePolicyId,
       store,
       reconcile,
-      discover: async () => {
-        await assertActuationCurrent();
-        const before = await readBoundary();
-        const snapshots = await discoverAvailabilityResponderChallenges(
-          lucid,
-          deployment,
-          (skipped) => {
-            // A stranded record stays on L1 for good; report it once.
-            const key = `${skipped.outRef}:${skipped.reason}`;
-            if (reportedSkips.has(key)) return;
-            reportedSkips.add(key);
-            process.stderr.write(
-              `${JSON.stringify({ event: "availability_responder_skipped_record", ...skipped })}\n`,
-            );
+      discover: () =>
+        discoverConsistentAvailabilityChallenges({
+          assertActuationCurrent,
+          readObservation: readDiscoveryObservation,
+          readInputs: readDiscoveryInputs,
+          replay: (sequence) => {
+            if (!chainProvider.replayChainSyncEvents)
+              throw new Error(
+                "Availability discovery native journal is unavailable",
+              );
+            return chainProvider.replayChainSyncEvents(sequence);
           },
-        );
-        const after = await readBoundary();
-        if (before.pointId !== after.pointId)
-          throw new Error(
-            "Canonical source changed during availability challenge discovery",
-          );
-        return snapshots;
-      },
+          discover: () =>
+            discoverAvailabilityResponderChallenges(
+              lucid,
+              deployment,
+              (skipped) => {
+                // A stranded record stays on L1 for good; report it once.
+                const key = `${skipped.outRef}:${skipped.reason}`;
+                if (reportedSkips.has(key)) return;
+                reportedSkips.add(key);
+                process.stderr.write(
+                  `${JSON.stringify({ event: "availability_responder_skipped_record", ...skipped })}\n`,
+                );
+              },
+            ),
+        }),
       execute: async (action) => {
         const result = await SDK.runDaAvailabilityOperation(
           context,
