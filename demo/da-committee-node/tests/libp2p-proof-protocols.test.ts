@@ -32,8 +32,8 @@ import type { DaLibp2pStreamHandler } from "../src/da/libp2p/DaLibp2pNode.js";
 import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
 import { createDaProtocolAllowlist } from "../src/da/libp2p/DaProtocols.js";
 import { createDaLibp2pProofRequestHandlers } from "../src/da/libp2p/proof-protocols.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
-import { makePayloadFixture, tempDir } from "./helpers.js";
+import { makePayloadFixture } from "./helpers.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
 import {
   deploymentFingerprint,
   deploymentFingerprintBytes,
@@ -311,7 +311,7 @@ describe("DA libp2p proof protocol handlers", () => {
   });
 
   it("gates stream request handlers by registered requester roles", async () => {
-    const store = await JsonFileCommitteeStore.open(await tempDir());
+    const store = await openTestCommitteeStore();
     const registry = new DaPeerRegistry([
       {
         peerId: "peer-retrieval",

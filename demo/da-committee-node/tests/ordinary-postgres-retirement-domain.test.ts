@@ -1,14 +1,9 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import * as SDK from "@al-ft/midgard-sdk";
 import { Client } from "pg";
 import { describe, expect, it } from "vitest";
 
 import type { StateQueueHeaderRecord } from "../src/domain.js";
 import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
-import { JsonFileCommitteeStore } from "../src/store.json-file-committee-store.js";
 import { PostgresCommitteeStore } from "../src/store/postgres.postgres-committee-store.js";
 import { makePayloadFixture } from "./helpers.make-payload-fixture.js";
 import { postgresTestDatabases } from "./helpers/postgres-database.js";
@@ -99,23 +94,6 @@ describe("ordinary store has no adopted retirement floor", () => {
       }
     }, 120000);
   }
-  it("ordinary JSON public writes support both families at 513", async () => {
-    const path = await mkdtemp(join(tmpdir(), "ordinary-json-cap-"));
-    const store = await JsonFileCommitteeStore.open(join(path, "store.json"));
-    try {
-      expect(await store.getRetirementFloor()).toBeUndefined();
-      for (let index = 0; index < 513; index++) {
-        await store.savePeerHealth(health(index));
-        expect(await store.recordPeerNonce(nonce(index))).toBe(true);
-      }
-      expect(await store.listPeerHealth()).toHaveLength(513);
-      expect(await store.recordPeerNonce(nonce(512))).toBe(false);
-      expect(await store.getRetirementFloor()).toBeUndefined();
-    } finally {
-      await store.close();
-      await rm(path, { recursive: true });
-    }
-  }, 120000);
 });
 
 it("ordinary production header upsert also persists 513 exact linked headers", async () => {

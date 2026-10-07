@@ -29,7 +29,7 @@ describe("rejectRetiredWatcherEnvNames", () => {
   it("accepts an environment that uses only the current names", () => {
     expect(() =>
       rejectRetiredWatcherEnvNames({
-        DA_COMMITTEE_DB_PATH: "/tmp/db",
+        DA_COMMITTEE_DATABASE_URL: "postgres://committee",
         DA_COMMITTEE_API_PORT: "8787",
         WATCHER_UNRELATED_PREFIX_ELSEWHERE: "ignored",
       }),

@@ -19,7 +19,6 @@ describe("onChainCoordinatorFromConfig", () => {
   it("fails closed without an L1 submitter key source", async () => {
     const config = {
       ...minimalConfig({
-        dir: "/tmp",
         manifestPath: "/tmp/manifest.json",
         deploymentInfoPath: "/tmp/deployment.json",
         signerSeed: "00".repeat(32),
@@ -409,7 +408,6 @@ describe("onChainCoordinatorFromConfig", () => {
 
 const l1ReadyConfig = () => ({
   ...minimalConfig({
-    dir: "/tmp",
     manifestPath: "/tmp/manifest.json",
     deploymentInfoPath: "/tmp/deployment.json",
     signerSeed: "00".repeat(32),

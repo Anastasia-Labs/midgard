@@ -37,9 +37,12 @@ import {
   validateDaCommittee,
   validateDaSignerMembership,
 } from "../src/signer.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
-import { makePayloadFixture, tempDir } from "./helpers.js";
+import { makePayloadFixture } from "./helpers.js";
+import {
+  openTestCommitteeStore,
+  saveHealthyL1SourceState,
+} from "./helpers/committee-store.js";
 import {
   availabilityCommitmentAuthority,
   commitmentFor,
@@ -51,7 +54,7 @@ import {
 
 describe("PeerSignatureCoordinator", () => {
   it("does not rebroadcast or submit signatures while durable L1 state is quarantined", async () => {
-    const store = await JsonFileCommitteeStore.open(await tempDir());
+    const store = await openTestCommitteeStore();
     await store.saveL1SourceState({
       schemaVersion: 1,
       sourceMode: "local_node",
@@ -229,8 +232,12 @@ describe("PeerSignatureCoordinator", () => {
       signer: senderSigner,
       signerIndex: 1,
     });
-    const receiverStore = await JsonFileCommitteeStore.open(await tempDir());
-    const senderStore = await JsonFileCommitteeStore.open(await tempDir());
+    const receiverStore = await saveHealthyL1SourceState(
+      await openTestCommitteeStore(),
+    );
+    const senderStore = await saveHealthyL1SourceState(
+      await openTestCommitteeStore(),
+    );
     await receiverStore.saveDaPayload({
       deploymentFingerprint,
       headerHash,
@@ -325,8 +332,12 @@ describe("PeerSignatureCoordinator", () => {
       signer: senderSigner,
       signerIndex: 1,
     });
-    const receiverStore = await JsonFileCommitteeStore.open(await tempDir());
-    const senderStore = await JsonFileCommitteeStore.open(await tempDir());
+    const receiverStore = await saveHealthyL1SourceState(
+      await openTestCommitteeStore(),
+    );
+    const senderStore = await saveHealthyL1SourceState(
+      await openTestCommitteeStore(),
+    );
     const receiverProtocol = new StoreBackedDaAttestationProtocol({
       deploymentFingerprint,
       localPeerId: "receiver-peer",
@@ -419,7 +430,9 @@ describe("PeerSignatureCoordinator", () => {
     const committeeValidation = validateDaCommittee({
       daParams: { committeeHex, committeeSignersHash, threshold: 2 },
     });
-    const localStore = await JsonFileCommitteeStore.open(await tempDir());
+    const localStore = await saveHealthyL1SourceState(
+      await openTestCommitteeStore(),
+    );
     await localStore.saveDaPayload({
       deploymentFingerprint,
       headerHash,
@@ -497,8 +510,13 @@ describe("PeerSignatureCoordinator", () => {
     });
     const { header, headerHash, payloadCbor } = await makePayloadFixture();
     const payloadHash = computeDaSha256Hash(payloadCbor).toString("hex");
-    const receiverStore = await JsonFileCommitteeStore.open(await tempDir());
-    const localStore = await JsonFileCommitteeStore.open(await tempDir());
+    const receiverStore = await saveHealthyL1SourceState(
+      await openTestCommitteeStore(),
+      { authoritySha256: "92".repeat(32) },
+    );
+    const localStore = await saveHealthyL1SourceState(
+      await openTestCommitteeStore(),
+    );
     await saveVerifiedPayload(receiverStore, {
       deploymentFingerprint,
       headerHash,
@@ -636,7 +654,7 @@ describe("PeerSignatureCoordinator", () => {
         threshold: 1,
       },
       availabilityCommitmentAuthority,
-      store: await JsonFileCommitteeStore.open(await tempDir()),
+      store: await saveHealthyL1SourceState(await openTestCommitteeStore()),
     });
     const commitment = commitmentFor(headerHash);
     const signatureWitness = signDaAttestation({

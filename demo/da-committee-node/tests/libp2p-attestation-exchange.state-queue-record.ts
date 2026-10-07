@@ -10,8 +10,11 @@ import type {
   Header,
   StateQueueHeaderRecord,
 } from "../src/domain.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
-import { tempDir } from "./helpers.js";
+import { type PostgresCommitteeStore } from "../src/store/postgres.js";
+import {
+  openTestCommitteeStore,
+  saveHealthyL1SourceState,
+} from "./helpers/committee-store.js";
 
 // The request deadline the live committee runs with. Every pull must finish
 // far inside it; a response stream the server never closes ends only there.
@@ -25,7 +28,7 @@ export const MAX_STREAMS_PER_PEER = 8;
 
 export const runningNodes: DaLibp2pNode[] = [];
 
-const openedStores: JsonFileCommitteeStore[] = [];
+const openedStores: PostgresCommitteeStore[] = [];
 
 afterEach(async () => {
   await Promise.all(runningNodes.splice(0).map((node) => node.stop()));
@@ -44,13 +47,20 @@ export type RunningMember = {
   readonly gossipErrors: unknown[];
 };
 
+/**
+ * Opens `count` fresh stores. A store a test writes signatures to directly
+ * gets the durable source state a node saves at startup; a store a
+ * `CommitteeService` will initialize (`serviceOwned`) is left for it to save.
+ */
 export const openStores = async (
   count: number,
-): Promise<JsonFileCommitteeStore[]> => {
+  { serviceOwned = false }: { readonly serviceOwned?: boolean } = {},
+): Promise<PostgresCommitteeStore[]> => {
   const stores = await Promise.all(
-    Array.from({ length: count }, async () =>
-      JsonFileCommitteeStore.open(await tempDir()),
-    ),
+    Array.from({ length: count }, async () => {
+      const store = await openTestCommitteeStore();
+      return serviceOwned ? store : saveHealthyL1SourceState(store);
+    }),
   );
   openedStores.push(...stores);
   return stores;

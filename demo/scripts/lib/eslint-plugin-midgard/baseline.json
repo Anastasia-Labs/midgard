@@ -448,27 +448,6 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["left.headerHash.localeCompare(right.headerHash),"]
     },
-    "da-committee-node/src/store.json-file-committee-store.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        ".sort((left, right) => left.effectId.localeCompare(right.effectId));",
-        "left.headerHash.localeCompare(right.headerHash),",
-        "left.headerHash.localeCompare(right.headerHash),",
-        "left.headerHash.localeCompare(right.headerHash) ||",
-        "left.availabilityCommitmentDigest.localeCompare(",
-        "left.headerHash.localeCompare(right.headerHash) ||",
-        "left.evidenceHash.localeCompare(right.evidenceHash),",
-        "left.headerHash.localeCompare(right.headerHash) ||",
-        "left.outRef.localeCompare(right.outRef),",
-        "left.headerHash.localeCompare(right.headerHash) ||",
-        "left.txKind.localeCompare(right.txKind) ||",
-        "left.txHash.localeCompare(right.txHash),",
-        "left.headerHash.localeCompare(right.headerHash) ||",
-        "left.availabilityCommitmentDigest.localeCompare(",
-        "left.peerId.localeCompare(right.peerId),",
-        "left.peerId.localeCompare(right.peerId),"
-      ]
-    },
     "da-committee-node/tests/conflict-evidence.conflict-fixture.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [

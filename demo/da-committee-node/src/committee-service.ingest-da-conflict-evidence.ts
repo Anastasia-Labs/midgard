@@ -31,7 +31,10 @@ import {
   type DaSignerValidation,
   verifyDaSignatureWitness,
 } from "./signer.js";
-import { type CommitteeStore } from "./store.js";
+import {
+  type CommitteeStore,
+  type CommitteeStoreReadinessCounts,
+} from "./store.js";
 import type { RetentionDeadlineReport } from "./store/retention.js";
 
 export type CommitteeServiceDeps = {
@@ -215,15 +218,7 @@ export type CommitteeReadinessSnapshot = {
     readonly errors: readonly string[];
   };
   readonly retention?: CommitteeRetentionReadinessSnapshot;
-  readonly counts: {
-    readonly discoveredHeaders: number;
-    readonly missingPayloads: number;
-    readonly verifiedPayloads: number;
-    readonly verifiedPayloadsMissingL1Attestation: number;
-    readonly signatures: number;
-    readonly l1AttestationSubmissions: number;
-    readonly submittedOrConfirmedL1Attestations: number;
-  };
+  readonly counts: CommitteeStoreReadinessCounts;
   readonly reasons: readonly string[];
 };
 

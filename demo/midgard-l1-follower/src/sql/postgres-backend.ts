@@ -64,12 +64,16 @@ export type PostgresConnection =
     };
 
 /**
- * The writer lease key: one per database and schema, like the committee's
- * instance lock (`da-committee-node/src/store/postgres.instance-lock.ts`).
+ * The writer lease key, as a SQL expression: one per database and schema.
+ * The committee's instance lock takes it on its own session beside its own
+ * key (`da-committee-node/src/store/postgres.instance-lock.ts`), so that
+ * process's follower and its store are held and lost together.
  */
-const WRITER_LEASE_SQL = `SELECT pg_try_advisory_lock(('x' || left(md5(
+export const POSTGRES_WRITER_LEASE_KEY_SQL = `('x' || left(md5(
     'midgard-l1-follower:writer:' || coalesce(current_schema(), '')
-  ), 15))::bit(60)::bigint) AS acquired`;
+  ), 15))::bit(60)::bigint`;
+
+const WRITER_LEASE_SQL = `SELECT pg_try_advisory_lock(${POSTGRES_WRITER_LEASE_KEY_SQL}) AS acquired`;
 
 /**
  * Takes the writer lease on a dedicated connection outside the pool, so it

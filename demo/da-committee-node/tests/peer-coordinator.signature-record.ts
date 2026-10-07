@@ -15,7 +15,7 @@ import {
   type DaAvailabilityCommitmentAuthority,
   deriveExpectedDaAvailabilityCommitment,
 } from "../src/peer/signatures.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
+import { type PostgresCommitteeStore } from "../src/store/postgres.js";
 
 export const availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthority =
   {
@@ -132,7 +132,7 @@ export const signatureRecord = ({
 });
 
 export const saveVerifiedPayload = async (
-  store: JsonFileCommitteeStore,
+  store: PostgresCommitteeStore,
   {
     deploymentFingerprint,
     headerHash,

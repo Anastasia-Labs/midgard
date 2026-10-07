@@ -14,7 +14,7 @@ import {
 import { withFinalSnapshot } from ".././helpers/final-snapshot.js";
 import {
   missingPayload,
-  openJsonCommitteeStore,
+  openTestCommitteeStore,
   payloadCandidates,
 } from "./fixtures.js";
 
@@ -34,7 +34,6 @@ export const registerParentStateTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -55,7 +54,7 @@ export const registerParentStateTests = () => {
       signerIndex: 0,
     });
     let parentAvailable = false;
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const service = new CommitteeService({
       config: configWithDaHash,
       store,

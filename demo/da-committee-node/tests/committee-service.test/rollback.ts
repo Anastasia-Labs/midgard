@@ -13,7 +13,7 @@ import {
   LocalNodeStateQueueProvider,
 } from "../../src/l1/provider.js";
 import { loadDaSigner, validateDaSignerMembership } from "../../src/signer.js";
-import { JsonFileCommitteeStore } from "../../src/store.js";
+import { type CommitteeStore } from "../../src/store.js";
 import { bytesToHex } from "../../src/utils/hex.js";
 import {
   makeObservedNode,
@@ -26,19 +26,20 @@ import { withFinalSnapshot } from ".././helpers/final-snapshot.js";
 import {
   expectedCommitment,
   failPayloadSource,
-  openJsonCommitteeStore,
+  openTestCommitteeStore,
   retainedSignedPayload,
   runAnchorAheadOfObservations,
+  testStoreDatabase,
 } from "./fixtures.js";
 
 export const registerRollbackTests = () => {
   it("persists L1 disappearance quarantine across restart and prevents processing or rebroadcast", async () => {
     const dir = await tempDir();
+    const database = await testStoreDatabase();
     const { header, headerHash, payloadCbor } = await makePayloadFixture();
     const seed = "00".repeat(31) + "21";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -58,7 +59,7 @@ export const registerRollbackTests = () => {
       signer,
       signerIndex: 0,
     });
-    const firstStore = await openJsonCommitteeStore(dir);
+    const firstStore = await openTestCommitteeStore(database);
     const first = new CommitteeService({
       config: configWithDaHash,
       store: firstStore,
@@ -111,7 +112,7 @@ export const registerRollbackTests = () => {
     });
 
     await firstStore.close();
-    const restartedStore = await openJsonCommitteeStore(dir);
+    const restartedStore = await openTestCommitteeStore(database);
     const disappeared = new CommitteeService({
       config: configWithDaHash,
       store: restartedStore,
@@ -182,7 +183,7 @@ export const registerRollbackTests = () => {
     await restartedStore.close();
     const afterQuarantine = new CommitteeService({
       config: configWithDaHash,
-      store: await openJsonCommitteeStore(dir),
+      store: await openTestCommitteeStore(database),
       stateQueueProvider: withFinalSnapshot({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
@@ -210,11 +211,11 @@ export const registerRollbackTests = () => {
 
   it("consumes a restarted local-node rollback feed and quarantines a persisted decision", async () => {
     const dir = await tempDir();
+    const database = await testStoreDatabase();
     const { header, headerHash, payloadCbor } = await makePayloadFixture();
     const seed = "00".repeat(31) + "23";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -272,7 +273,7 @@ export const registerRollbackTests = () => {
         return { rollbackSinceCapture: false };
       },
     });
-    const firstStore = await openJsonCommitteeStore(dir);
+    const firstStore = await openTestCommitteeStore(database);
     const first = new CommitteeService({
       config: configured,
       store: firstStore,
@@ -341,7 +342,7 @@ export const registerRollbackTests = () => {
         throw new Error("quarantined rollback must not be acknowledged");
       },
     });
-    const restartedStore = await openJsonCommitteeStore(dir);
+    const restartedStore = await openTestCommitteeStore(database);
     const restarted = new CommitteeService({
       config: configured,
       store: restartedStore,
@@ -380,7 +381,6 @@ export const registerRollbackTests = () => {
       const seed = "00".repeat(31) + seedByte;
       const signer = await loadDaSigner(`hex:${seed}`);
       const config = minimalConfig({
-        dir,
         manifestPath: `${dir}/manifest.json`,
         deploymentInfoPath: `${dir}/deployment.json`,
         signerSeed: seed,
@@ -513,14 +513,12 @@ export const registerRollbackTests = () => {
           },
         },
       );
-      const store = await openJsonCommitteeStore(dir);
+      const store = await openTestCommitteeStore();
       const tickStore = new Proxy(store, {
         get: (target, property) => {
           if (property === "upsertStateQueueHeader") {
             return async (
-              ...args: Parameters<
-                JsonFileCommitteeStore["upsertStateQueueHeader"]
-              >
+              ...args: Parameters<CommitteeStore["upsertStateQueueHeader"]>
             ) => {
               await runInjected("afterRollbackCheck");
               return target.upsertStateQueueHeader(...args);
@@ -715,10 +713,10 @@ export const registerRollbackTests = () => {
 
   it("quarantines restart state when the exact L1 authority changes", async () => {
     const dir = await tempDir();
+    const database = await testStoreDatabase();
     const seed = "00".repeat(31) + "25";
     const signer = await loadDaSigner(`hex:${seed}`);
     const baseConfig = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -734,7 +732,7 @@ export const registerRollbackTests = () => {
         queryProviderUrls: ["fixture:/tmp/state-queue.json"],
       },
     };
-    const firstStore = await openJsonCommitteeStore(dir);
+    const firstStore = await openTestCommitteeStore(database);
     const first = new CommitteeService({
       config,
       store: firstStore,
@@ -750,7 +748,7 @@ export const registerRollbackTests = () => {
     });
 
     await firstStore.close();
-    const restartedStore = await openJsonCommitteeStore(dir);
+    const restartedStore = await openTestCommitteeStore(database);
     const restarted = new CommitteeService({
       config: {
         ...config,
@@ -779,11 +777,11 @@ export const registerRollbackTests = () => {
 
   it("quarantines a persisted decision when a stale query view loses finality", async () => {
     const dir = await tempDir();
+    const database = await testStoreDatabase();
     const { header, headerHash, payloadCbor } = await makePayloadFixture();
     const seed = "00".repeat(31) + "22";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -803,7 +801,7 @@ export const registerRollbackTests = () => {
       signer,
       signerIndex: 0,
     });
-    const firstStore = await openJsonCommitteeStore(dir);
+    const firstStore = await openTestCommitteeStore(database);
     const first = new CommitteeService({
       config: configured,
       store: firstStore,
@@ -823,7 +821,7 @@ export const registerRollbackTests = () => {
     await firstStore.close();
     const stale = new CommitteeService({
       config: configured,
-      store: await openJsonCommitteeStore(dir),
+      store: await openTestCommitteeStore(database),
       stateQueueProvider: withFinalSnapshot({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 0 }),

@@ -19,9 +19,10 @@ import {
   attestedDaStatus,
   expectedCommitment,
   failPayloadSource,
-  openJsonCommitteeStore,
+  openTestCommitteeStore,
   postgresDatabases,
   runAnchorAheadOfObservations,
+  testStoreDatabase,
 } from "./fixtures.js";
 
 export const registerSigningTests = () => {
@@ -31,7 +32,6 @@ export const registerSigningTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -51,7 +51,7 @@ export const registerSigningTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const payloadSource = payloadSourceFromBytes(payloadCbor);
     const service = new CommitteeService({
       config: configWithDaHash,
@@ -141,7 +141,6 @@ export const registerSigningTests = () => {
     const seed = "00".repeat(31) + "61";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -161,7 +160,8 @@ export const registerSigningTests = () => {
       signer,
       signerIndex: 0,
     });
-    const firstStore = await openJsonCommitteeStore(dir);
+    const database = await testStoreDatabase();
+    const firstStore = await openTestCommitteeStore(database);
     const completeDecisionEffect =
       firstStore.completeDecisionEffect.bind(firstStore);
     let failAcknowledgement = true;
@@ -237,7 +237,7 @@ export const registerSigningTests = () => {
     ]);
 
     await firstStore.close();
-    const restartedStore = await openJsonCommitteeStore(dir);
+    const restartedStore = await openTestCommitteeStore(database);
     const restarted = new CommitteeService({
       config: configured,
       store: restartedStore,
@@ -284,7 +284,6 @@ export const registerSigningTests = () => {
     const seed = "00".repeat(31) + "64";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -407,7 +406,6 @@ export const registerSigningTests = () => {
     const seed = "00".repeat(31) + "62";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -427,7 +425,7 @@ export const registerSigningTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     let publishCalls = 0;
     let enteredPublish!: () => void;
     let releasePublish!: () => void;
@@ -488,7 +486,6 @@ export const registerSigningTests = () => {
     const seed = "00".repeat(31) + "63";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -508,7 +505,7 @@ export const registerSigningTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const nodes = fixtures.map(({ header, headerHash }, index) =>
       makeObservedNode({
         header,
@@ -627,7 +624,6 @@ export const registerSigningTests = () => {
     const seed = "00".repeat(31) + "31";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -650,7 +646,7 @@ export const registerSigningTests = () => {
     const firstOutRef = `${"ab".repeat(32)}#0`;
     const attestedOutRef = `${"ac".repeat(32)}#1`;
     let sourceView: "unattested" | "attested" = "unattested";
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const service = new CommitteeService({
       config: configured,
       store,

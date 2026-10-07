@@ -1,7 +1,7 @@
 [
   {
     "file": "da-committee-node/src/committee-service.committee-service.ts",
-    "max": 1760,
+    "max": 1723,
     "reason": "CommitteeService is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. T161 (+9): payload verification first resolves the block's pre-state from the parent payload, before the verdict, so an unavailable parent withholds attestation without marking the payload rejected; a split of this module is a separate proven pure move."
   },
   {
@@ -10,33 +10,28 @@
     "reason": "DaLibp2pPayloadProtocolHandlers is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
   },
   {
-    "file": "da-committee-node/src/store.json-file-committee-store.ts",
-    "max": 923,
-    "reason": "JsonFileCommitteeStore is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
-  },
-  {
     "file": "da-committee-node/src/store/postgres.postgres-committee-store.ts",
-    "max": 1067,
-    "reason": "PostgresCommitteeStore is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+    "max": 1113,
+    "reason": "PostgresCommitteeStore is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. C2 (+46): Postgres is the only committee store; it reads readiness from maintained counters, records signed decisions on signature rows, and turns a lost instance lock into a passive reacquire loop instead of an exit."
   },
   {
     "file": "da-committee-node/tests/committee-service.test/l1-finality.ts",
-    "max": 1843,
+    "max": 1842,
     "reason": "registerL1FinalityTests is the dominant indivisible declaration (1826 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "da-committee-node/tests/committee-service.test/lifecycle.ts",
-    "max": 1130,
+    "max": 1124,
     "reason": "registerLifecycleTests is the dominant indivisible declaration (1093 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "da-committee-node/tests/committee-service.test/rollback.ts",
-    "max": 850,
+    "max": 848,
     "reason": "registerRollbackTests is the dominant indivisible declaration (819 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "da-committee-node/tests/committee-service.test/signing.ts",
-    "max": 724,
+    "max": 720,
     "reason": "registerSigningTests is the dominant indivisible declaration (699 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -46,7 +41,7 @@
   },
   {
     "file": "da-committee-node/tests/coordinator-factory.test.ts",
-    "max": 517,
+    "max": 515,
     "reason": "Retained test registration “onChainCoordinatorFromConfig” (392 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -56,7 +51,7 @@
   },
   {
     "file": "da-committee-node/tests/libp2p-attestation-exchange.da-attestation-exchange-over-real-libp2p.ts",
-    "max": 850,
+    "max": 849,
     "reason": "Retained test registration “DA attestation exchange over real libp2p” (239 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -71,8 +66,8 @@
   },
   {
     "file": "da-committee-node/tests/peer-coordinator.test.ts",
-    "max": 666,
-    "reason": "Retained test registration “PeerSignatureCoordinator” (616 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 684,
+    "reason": "Retained test registration “PeerSignatureCoordinator” (616 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. C2 (+18): the stores it signs into are Postgres, which require the durable L1 source state a node saves at startup."
   },
   {
     "file": "da-committee-node/tests/provider.test.ts",
@@ -86,7 +81,7 @@
   },
   {
     "file": "da-committee-node/tests/store-factory.test.ts",
-    "max": 848,
+    "max": 686,
     "reason": "Retained test registration “openCommitteeStore” (688 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {

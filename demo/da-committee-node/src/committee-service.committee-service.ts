@@ -320,37 +320,8 @@ export class CommitteeService {
   ): Promise<CommitteeReadinessSnapshot> {
     const deployment = await this.deps.store.getDeployment();
     const l1SourceState = await this.deps.store.getL1SourceState();
-    const headers = await this.deps.store.listStateQueueHeaders();
-    const payloads = await Promise.all(
-      headers.map((header) => this.deps.store.getDaPayload(header.headerHash)),
-    );
-    const signatures = await this.deps.store.listDaSignatures();
-    const l1Submissions = await this.deps.store.listL1Submissions();
-    const l1SubmittedOrConfirmedHeaders = new Set(
-      l1Submissions
-        .filter(
-          (record) =>
-            record.resultStatus === "submitted" ||
-            record.resultStatus === "confirmed",
-        )
-        .map((record) => record.headerHash),
-    );
-    const verifiedPayloads = payloads.filter(
-      (payload) => payload?.validationStatus === "verified",
-    );
-    const missingPayloads = headers.filter((header, index) => {
-      const payload = payloads[index];
-      return (
-        (header.status === "unattested" || header.status === "attesting") &&
-        payload?.validationStatus !== "verified"
-      );
-    }).length;
-    const verifiedPayloadsMissingL1Attestation = headers.filter(
-      (header, index) =>
-        payloads[index]?.validationStatus === "verified" &&
-        (header.status === "unattested" || header.status === "attesting") &&
-        !l1SubmittedOrConfirmedHeaders.has(header.headerHash),
-    ).length;
+    // Indexed counters and the open-header slice; never a full table scan.
+    const counts = await this.deps.store.readinessCounts();
     const producerPeerIds = this.deps.config.daTransport.peers
       .filter((peer) => peer.roles.includes("producer"))
       .map((peer) => peer.peerId);
@@ -562,15 +533,7 @@ export class CommitteeService {
       },
       scanner,
       ...(args.retention === undefined ? {} : { retention: args.retention }),
-      counts: {
-        discoveredHeaders: headers.length,
-        missingPayloads,
-        verifiedPayloads: verifiedPayloads.length,
-        verifiedPayloadsMissingL1Attestation,
-        signatures: signatures.length,
-        l1AttestationSubmissions: l1Submissions.length,
-        submittedOrConfirmedL1Attestations: l1SubmittedOrConfirmedHeaders.size,
-      },
+      counts,
       reasons,
     };
   }

@@ -1,13 +1,10 @@
-import { access, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
 import {
   computeDaSha256Hash,
   encodeDaConflictingSignatureHeaderEvidenceCbor,
 } from "@al-ft/midgard-core/da-transport";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type {
   DaPayloadRecord,
@@ -15,116 +12,27 @@ import type {
   DaSignatureRecordV1,
   DaStoredConflictEvidenceRecord,
 } from "../src/domain.js";
-import {
-  decisionEffectId,
-  JsonFileCommitteeStore,
-  jsonReplacer,
-} from "../src/store.js";
+import { decisionEffectId } from "../src/store.js";
 import { openCommitteeStore } from "../src/store/factory.js";
-import { tempDir } from "./helpers.js";
-
-const openStores = new Set<JsonFileCommitteeStore>();
-
-const openJsonCommitteeStore = async (
-  path: string,
-): Promise<JsonFileCommitteeStore> => {
-  const store = await JsonFileCommitteeStore.open(path);
-  openStores.add(store);
-  return store;
-};
-
-afterEach(async () => {
-  await Promise.all([...openStores].map(async (store) => store.close()));
-  openStores.clear();
-});
+import { PostgresCommitteeStore } from "../src/store/postgres.js";
+import {
+  closeTestCommitteeStore,
+  openTestCommitteeStore,
+  testStoreDatabase,
+} from "./helpers/committee-store.js";
 
 describe("openCommitteeStore", () => {
-  it("opens the JSON file store for DA_COMMITTEE_DB_PATH config", async () => {
+  it("opens the Postgres store for a database config", async () => {
+    const database = await testStoreDatabase();
     const store = await openCommitteeStore({
-      kind: "file",
-      path: await tempDir(),
+      kind: "database",
+      url: database.url,
     });
-    expect(store).toBeInstanceOf(JsonFileCommitteeStore);
-    await store.close?.();
-  });
-
-  it("renames a legacy watcher.json directory store to committee.json on open", async () => {
-    const dir = await tempDir();
-    const legacyPath = join(dir, "watcher.json");
-    const currentPath = join(dir, "committee.json");
-    await writeFile(
-      legacyPath,
-      JSON.stringify({ stateQueueHeaders: { abc: { headerHash: "abc" } } }),
-    );
-
-    const store = await openJsonCommitteeStore(dir);
-    expect((await store.listStateQueueHeaders()).length).toBe(1);
-    await store.close();
-
-    await access(currentPath);
-    await expect(access(legacyPath)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("prefers committee.json when both a legacy and a current store exist", async () => {
-    const dir = await tempDir();
-    await writeFile(
-      join(dir, "watcher.json"),
-      JSON.stringify({
-        stateQueueHeaders: { legacy: { headerHash: "legacy" } },
-      }),
-    );
-    await writeFile(join(dir, "committee.json"), JSON.stringify({}));
-
-    const store = await openJsonCommitteeStore(dir);
-    expect(await store.listStateQueueHeaders()).toEqual([]);
-    await store.close();
-    await access(join(dir, "watcher.json"));
-  });
-
-  it("holds one durable exclusive lease per JSON store", async () => {
-    const dir = await tempDir();
-    const first = await openJsonCommitteeStore(dir);
-    await expect(openJsonCommitteeStore(dir)).rejects.toThrow(
-      /already exclusively leased/u,
-    );
-    await first.close();
-    const restarted = await openJsonCommitteeStore(dir);
-    await restarted.close();
-  });
-
-  it("joins concurrent JSON-store close calls before releasing the lease", async () => {
-    const dir = await tempDir();
-    const store = await openJsonCommitteeStore(dir);
-    const internal = Reflect.get(store, "instanceLock") as {
-      release: () => Promise<void>;
-    };
-    const releaseLease = internal.release.bind(internal);
-    let releaseClose!: () => void;
-    let closeEntered!: () => void;
-    const released = new Promise<void>((resolve) => {
-      releaseClose = resolve;
-    });
-    const entered = new Promise<void>((resolve) => {
-      closeEntered = resolve;
-    });
-    internal.release = async () => {
-      closeEntered();
-      await released;
-      await releaseLease();
-    };
-    const first = store.close();
-    await entered;
-    let secondResolved = false;
-    const second = store.close().then(() => {
-      secondResolved = true;
-    });
-    await Promise.resolve();
-    expect(secondResolved).toBe(false);
-    releaseClose();
-    await Promise.all([first, second]);
-    expect(secondResolved).toBe(true);
-    const restarted = await openJsonCommitteeStore(dir);
-    await restarted.close();
+    try {
+      expect(store).toBeInstanceOf(PostgresCommitteeStore);
+    } finally {
+      await store.close?.();
+    }
   });
 
   it("rejects non-Postgres DA_COMMITTEE_DATABASE_URL values", async () => {
@@ -137,8 +45,7 @@ describe("openCommitteeStore", () => {
   });
 
   it("persists only the exact final DeploymentMarkerV1", async () => {
-    const dir = await tempDir();
-    const store = await JsonFileCommitteeStore.open(dir);
+    const store = await openTestCommitteeStore();
     const marker = makeDeploymentMarker("11".repeat(32));
     await store.initDeployment({
       marker,
@@ -155,26 +62,10 @@ describe("openCommitteeStore", () => {
         manifestRaw: "{}",
       }),
     ).rejects.toThrow(/stale_deployment_state_requires_fresh_redeploy/u);
-
-    const legacyDir = await tempDir();
-    await writeFile(
-      join(legacyDir, "committee.json"),
-      JSON.stringify({
-        deployment: {
-          fingerprint: "11".repeat(32),
-          manifestSha256: "22".repeat(32),
-          contractDeploymentInfoSha256: "33".repeat(32),
-          manifestRaw: "{}",
-        },
-      }),
-    );
-    await expect(JsonFileCommitteeStore.open(legacyDir)).rejects.toThrow(
-      /must contain exactly marker/u,
-    );
   });
 
-  it("accepts only exact explicit-V1 DA payload records on JSON writes", async () => {
-    const store = await openJsonCommitteeStore(await tempDir());
+  it("accepts only exact explicit-V1 DA payload records on writes", async () => {
+    const store = await openTestCommitteeStore();
     const payload = daPayloadRecord();
     await expect(store.saveDaPayload(payload)).resolves.toMatchObject({
       ...payload,
@@ -197,9 +88,9 @@ describe("openCommitteeStore", () => {
     }
   });
 
-  it("persists canonical L1 quarantine state across JSON-store restart", async () => {
-    const dir = await tempDir();
-    const store = await openJsonCommitteeStore(dir);
+  it("persists canonical L1 quarantine state across a store restart", async () => {
+    const database = await testStoreDatabase();
+    const store = await openTestCommitteeStore(database);
     await store.saveL1SourceState({
       schemaVersion: 1,
       sourceMode: "external_providers",
@@ -221,8 +112,8 @@ describe("openCommitteeStore", () => {
       quarantineReason: "provider fork",
       quarantinedAt: "2026-07-28T00:00:01.000Z",
     });
-    await store.close();
-    const restarted = await openJsonCommitteeStore(dir);
+    await closeTestCommitteeStore(store);
+    const restarted = await openTestCommitteeStore(database);
     await expect(restarted.getL1SourceState()).resolves.toMatchObject({
       sourceMode: "external_providers",
       status: "quarantined",
@@ -267,7 +158,7 @@ describe("openCommitteeStore", () => {
       }),
     ).rejects.toThrow(/observation is malformed/u);
     await expect(
-      store.saveL1SourceState({
+      restarted.saveL1SourceState({
         schemaVersion: 1,
         sourceMode: "local_node",
         network: "Preprod",
@@ -325,8 +216,18 @@ describe("openCommitteeStore", () => {
     }
   });
 
-  it("accepts only exact explicit-source DA signature records on JSON writes", async () => {
-    const store = await openJsonCommitteeStore(await tempDir());
+  it("accepts only exact explicit-source DA signature records on writes", async () => {
+    const store = await openTestCommitteeStore();
+    // A signature is a decision effect: it needs durable L1 source state.
+    await store.saveL1SourceState({
+      schemaVersion: 1,
+      sourceMode: "local_node",
+      network: "Preprod",
+      authoritySha256: "91".repeat(32),
+      status: "healthy",
+      observations: [],
+      observedAt: "2026-07-28T00:00:00.000Z",
+    });
     const signature = daSignatureRecord();
     await expect(store.saveDaSignature(signature)).resolves.toBeUndefined();
     await expect(
@@ -360,8 +261,8 @@ describe("openCommitteeStore", () => {
   });
 
   it("deduplicates and reloads only exact explicit-V1 conflict evidence records", async () => {
-    const directory = await tempDir();
-    const store = await JsonFileCommitteeStore.open(directory);
+    const database = await testStoreDatabase();
+    const store = await openTestCommitteeStore(database);
     const evidence = daConflictEvidenceRecord();
     await expect(store.saveDaConflictEvidence(evidence)).resolves.toBe(true);
     await expect(store.saveDaConflictEvidence(evidence)).resolves.toBe(false);
@@ -373,8 +274,8 @@ describe("openCommitteeStore", () => {
       }),
     ).resolves.toBe(false);
     await expect(store.listDaConflictEvidence()).resolves.toEqual([evidence]);
-    await store.close();
-    const reopenedEvidenceStore = await JsonFileCommitteeStore.open(directory);
+    await closeTestCommitteeStore(store);
+    const reopenedEvidenceStore = await openTestCommitteeStore(database);
     await expect(
       reopenedEvidenceStore.listDaConflictEvidence(),
     ).resolves.toEqual([evidence]);
@@ -396,12 +297,11 @@ describe("openCommitteeStore", () => {
         ),
       ).rejects.toThrow(/DA stored conflict evidence record V1/u);
     }
-    await reopenedEvidenceStore.close();
   });
 
   it("atomically persists and completes deterministic decision outbox effects", async () => {
-    const dir = await tempDir();
-    const store = await openJsonCommitteeStore(dir);
+    const database = await testStoreDatabase();
+    const store = await openTestCommitteeStore(database);
     const signature = daSignatureRecord();
     const stateQueueOutRef = signature.validation.stateQueueOutRef;
     const effectId = decisionEffectId({
@@ -452,8 +352,8 @@ describe("openCommitteeStore", () => {
       },
       signature,
     });
-    await store.close();
-    const restarted = await openJsonCommitteeStore(dir);
+    await closeTestCommitteeStore(store);
+    const restarted = await openTestCommitteeStore(database);
     await expect(restarted.getDecisionOutbox(effectId)).resolves.toEqual(
       effect,
     );
@@ -531,7 +431,7 @@ describe("openCommitteeStore", () => {
   });
 
   it("serializes concurrent decisions and makes L1 quarantine terminal", async () => {
-    const store = await openJsonCommitteeStore(await tempDir());
+    const store = await openTestCommitteeStore();
     const firstSignature = daSignatureRecord();
     const secondCommitment = availabilityCommitment("23".repeat(28));
     const secondSignature: DaSignatureRecordV1 = {
@@ -661,68 +561,6 @@ describe("openCommitteeStore", () => {
         signerIndex: firstSignature.signerIndex,
       }),
     ).resolves.toMatchObject({ broadcastStatus: "post_failed" });
-  });
-
-  it("rejects malformed DA records when opening an existing JSON store", async () => {
-    const malformedRootDir = await tempDir();
-    await writeFile(join(malformedRootDir, "committee.json"), "[]");
-    await expect(openJsonCommitteeStore(malformedRootDir)).rejects.toThrow(
-      /committee node store data must be an object/,
-    );
-
-    const payloadDir = await tempDir();
-    const payload = daPayloadRecord();
-    const { payloadSchemaVersion: _, ...missingVersion } = payload;
-    void _;
-    await writeFile(
-      join(payloadDir, "committee.json"),
-      JSON.stringify({
-        daPayloads: { [payload.headerHash]: missingVersion },
-      }),
-    );
-    await expect(openJsonCommitteeStore(payloadDir)).rejects.toThrow(
-      /missing required field payloadSchemaVersion/,
-    );
-
-    const signatureDir = await tempDir();
-    const signature = daSignatureRecord();
-    const { source: __, ...missingSource } = signature;
-    void __;
-    await writeFile(
-      join(signatureDir, "committee.json"),
-      JSON.stringify(
-        {
-          daSignatures: {
-            [`${signature.headerHash}:${signature.signerIndex.toString()}`]:
-              missingSource,
-          },
-        },
-        jsonReplacer,
-      ),
-    );
-    await expect(openJsonCommitteeStore(signatureDir)).rejects.toThrow(
-      /missing required field source/,
-    );
-
-    const bigintDir = await tempDir();
-    const signatureKey = `${signature.headerHash}:${signature.signerIndex.toString()}`;
-    const canonicalJson = JSON.stringify(
-      {
-        daSignatures: {
-          [signatureKey]: signature,
-        },
-      },
-      jsonReplacer,
-    );
-    const nonCanonicalBigintJson = canonicalJson.replace(
-      '"value":"0"',
-      '"value":"00"',
-    );
-    expect(nonCanonicalBigintJson).not.toBe(canonicalJson);
-    await writeFile(join(bigintDir, "committee.json"), nonCanonicalBigintJson);
-    await expect(openJsonCommitteeStore(bigintDir)).rejects.toThrow(
-      /invalid canonical committee node bigint encoding/,
-    );
   });
 });
 

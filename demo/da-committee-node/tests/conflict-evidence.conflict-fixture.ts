@@ -14,7 +14,7 @@ import { DaGossip, type DaPubsubMessage } from "../src/da/libp2p/DaGossip.js";
 import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
 import { createDaTopicAllowlist } from "../src/da/libp2p/DaTopics.js";
 import { loadDaSigner, signDaAttestation } from "../src/signer.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
+import { type PostgresCommitteeStore } from "../src/store/postgres.js";
 
 export const DEPLOYMENT_FINGERPRINT = "ab".repeat(32);
 
@@ -181,7 +181,7 @@ export const signatureRecord = ({
 
 export const conflictGossip = (
   registry: DaPeerRegistry,
-  store: JsonFileCommitteeStore,
+  store: PostgresCommitteeStore,
 ): DaGossip => {
   const handler = createDaConflictEvidenceGossipHandler({
     deploymentFingerprint: DEPLOYMENT_FINGERPRINT,

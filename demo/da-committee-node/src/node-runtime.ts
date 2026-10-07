@@ -275,8 +275,13 @@ export const openCommitteeNodeRuntime = async (
     await daLibp2pNode.start();
     // Phase A of the L1 follower: off unless its status file is named, and
     // nothing the committee does reads it.
-    const shadowFollower = startShadowFollower(config, process.env, (line) =>
-      process.stderr.write(`${line}\n`),
+    const shadowFollower = startShadowFollower(
+      config,
+      process.env,
+      // Held on the store's instance lock session: the follower writes only
+      // while this process holds the store.
+      async () => store.instanceLock.followerWriterLease(),
+      (line) => process.stderr.write(`${line}\n`),
     );
     if (shadowFollower !== undefined) closers.push(() => shadowFollower.stop());
     return {

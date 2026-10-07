@@ -14,6 +14,7 @@ import type {
   L1SubmissionRecord,
   StateQueueHeaderRecord,
 } from "./domain.js";
+import type { SignedHeader } from "./l1/follower/obligations.js";
 import type {
   L1RecoveryCertificate,
   L1RecoverySnapshot,
@@ -76,10 +77,10 @@ export type DecisionOutboxStatus =
  * twice. The caller defers the effect to a later tick.
  *
  * Only an attempt this instance began and has not yet completed conflicts.
- * A store instance holds its store's instance lock for its whole life (the
- * JSON store's exclusive lock file, the Postgres store's session advisory
- * lock), so a pending attempt it did not begin was begun by an earlier holder
- * of that lock, which is gone, and is retried at once.
+ * A store instance writes only while it holds the store's instance lock (a
+ * Postgres session advisory lock), so a pending attempt it did not begin was
+ * begun by an earlier holder of that lock, whose session has ended, and is
+ * retried at once.
  */
 export class DecisionEffectInFlightError extends Error {
   readonly effectId: string;
@@ -208,6 +209,28 @@ export type CommitteeDeploymentRecord = {
   readonly manifestRaw: string;
 };
 
+/**
+ * Readiness counts. Totals are trigger-maintained counters; the two
+ * "missing" counts cover only headers that are still unattested or
+ * attesting, read through a partial index.
+ */
+export type CommitteeStoreReadinessCounts = {
+  /** Stored state-queue header rows. */
+  readonly discoveredHeaders: number;
+  /** Open headers whose payload is absent or not verified. */
+  readonly missingPayloads: number;
+  /** Stored payload rows whose validation status is verified. */
+  readonly verifiedPayloads: number;
+  /** Open headers with a verified payload and no submitted L1 attestation. */
+  readonly verifiedPayloadsMissingL1Attestation: number;
+  /** Stored DA signature rows, local and peer. */
+  readonly signatures: number;
+  /** Stored L1 attestation submission rows. */
+  readonly l1AttestationSubmissions: number;
+  /** Distinct headers with a submitted or confirmed L1 attestation. */
+  readonly submittedOrConfirmedL1Attestations: number;
+};
+
 export interface CommitteeStore {
   retirementDiscoveryActive(): boolean;
   withRetirementDiscovery<T>(run: () => Promise<T>): Promise<T>;
@@ -295,6 +318,20 @@ export interface CommitteeStore {
   quarantineL1Decisions(state: L1SourceState): Promise<void>;
   upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void>;
   listStateQueueHeaders(): Promise<readonly StateQueueHeaderRecord[]>;
+  /**
+   * The readiness probe's counts. Totals come from counters the store keeps
+   * as it writes; the per-header counts read only headers not yet final.
+   * Neither lists the store, so the probe's cost does not grow with it.
+   */
+  readinessCounts(): Promise<CommitteeStoreReadinessCounts>;
+  /**
+   * Every header this member signed, with the end time it signed under: the
+   * `signed` input of the committee's obligations projection
+   * (`readCommitteeView`). It is read from the member's own signature rows
+   * (class B), which a follower reset or rewind never erases; only
+   * retirement prunes them, with their header.
+   */
+  listSignedDecisions(): Promise<readonly SignedHeader[]>;
   getStateQueueHeader(
     headerHash: string,
   ): Promise<StateQueueHeaderRecord | undefined>;

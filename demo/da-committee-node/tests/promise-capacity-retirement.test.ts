@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   type PromiseCapacityEvidence,
@@ -10,8 +10,11 @@ import {
   type PromiseCapacityLiability,
   retiredPromiseCutoffs,
 } from "../src/availability/promise-cutoff-source.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
-import { tempDir } from "./helpers.js";
+import {
+  openTestCommitteeStore,
+  saveHealthyL1SourceState,
+  testStoreDatabase,
+} from "./helpers/committee-store.js";
 
 const identity = {
   deploymentFingerprint: "ab".repeat(32),
@@ -23,15 +26,11 @@ const liability: PromiseCapacityLiability = {
   commitmentDigest: "34".repeat(32),
   cutoffTimeMs: 100000,
 };
-const stores = new Set<JsonFileCommitteeStore>();
-afterEach(async () => {
-  for (const store of stores) await store.close();
-  stores.clear();
-});
 const fixture = async () => {
-  const dir = await tempDir();
-  let store = await JsonFileCommitteeStore.open(dir);
-  stores.add(store);
+  const database = await testStoreDatabase();
+  let store = await saveHealthyL1SourceState(
+    await openTestCommitteeStore(database),
+  );
   let boundary: PromiseCapacityPoint = {
     slot: 100,
     blockNo: 100,
@@ -74,9 +73,7 @@ const fixture = async () => {
     },
     reopen: async () => {
       await store.close();
-      stores.delete(store);
-      store = await JsonFileCommitteeStore.open(dir);
-      stores.add(store);
+      store = await openTestCommitteeStore(database);
     },
     key: promiseCapacityEvidenceKey({
       ...identity,

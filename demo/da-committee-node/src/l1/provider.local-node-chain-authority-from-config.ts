@@ -33,7 +33,7 @@ export const localNodeChainAuthorityFromConfig = (
     );
   }
   const source = config.l1Source;
-  const cursorPath = localNodeChainCursorPath(source, config.localState);
+  const cursorPath = localNodeChainCursorPath(source);
   const registryKey = [
     config.network,
     source.authorityNodeId,

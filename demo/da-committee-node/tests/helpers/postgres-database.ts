@@ -71,10 +71,14 @@ export const terminateInstanceLockSessions = async (
 ): Promise<number> => {
   const result = await withAdmin(async (admin) =>
     admin.query<{ readonly terminated: boolean }>(
-      `SELECT pg_terminate_backend(l.pid) AS terminated
-       FROM pg_locks l
-       JOIN pg_database d ON d.oid = l.database
-       WHERE l.locktype = 'advisory' AND l.granted AND d.datname = $1`,
+      // One row per session: a session can hold several advisory keys.
+      `SELECT pg_terminate_backend(holder.pid) AS terminated
+       FROM (
+         SELECT DISTINCT l.pid
+         FROM pg_locks l
+         JOIN pg_database d ON d.oid = l.database
+         WHERE l.locktype = 'advisory' AND l.granted AND d.datname = $1
+       ) holder`,
       [database.name],
     ),
   );

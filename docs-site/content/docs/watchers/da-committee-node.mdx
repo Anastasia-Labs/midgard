@@ -146,11 +146,13 @@ Configure the dedicated reader's service environment with all of:
 | `DA_PUBLIC_RETAINED_DA_DATABASE_ROLE`      | Exact PostgreSQL reader role name.                                                                     |
 
 The database role must have `SELECT` and no DML privileges on
-`committee_da_payloads` and `committee_state_queue_headers`; startup verifies role and
-privilege constraints. File stores are unsupported. Do not pass
-`DA_COMMITTEE_DB_PATH` or `DA_COMMITTEE_DATABASE_URL` to this process: the configuration
-loader rejects either variable. Keep its environment separate from committee
-credentials.
+`committee_da_payloads` and `committee_state_queue_headers`, and no privilege on
+any other table in the database (the committee's private tables and the L1
+follower's tables live there too); startup verifies role and privilege
+constraints. Grant those two tables once the committee node has created them,
+never by default privileges on every table. Do not pass
+`DA_COMMITTEE_DATABASE_URL` to this process: the configuration loader rejects
+it. Keep its environment separate from committee credentials.
 
 With that environment supplied by the service manager, start from the repository root:
 

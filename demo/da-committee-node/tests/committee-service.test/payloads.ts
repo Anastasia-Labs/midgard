@@ -20,7 +20,7 @@ import {
   expectedCommitment,
   failPayloadSource,
   missingPayload,
-  openJsonCommitteeStore,
+  openTestCommitteeStore,
   payloadCandidates,
   payloadSourceFromCandidates,
 } from "./fixtures.js";
@@ -32,7 +32,6 @@ export const registerPayloadsTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -52,7 +51,7 @@ export const registerPayloadsTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
@@ -97,7 +96,6 @@ export const registerPayloadsTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -117,7 +115,7 @@ export const registerPayloadsTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     await store.saveDaPayload({
       deploymentFingerprint: configWithDaHash.deploymentFingerprint,
       headerHash,
@@ -179,7 +177,6 @@ export const registerPayloadsTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -199,7 +196,7 @@ export const registerPayloadsTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     await store.saveDaPayload({
       deploymentFingerprint: configWithDaHash.deploymentFingerprint,
       headerHash,
@@ -300,7 +297,6 @@ export const registerPayloadsTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -320,7 +316,7 @@ export const registerPayloadsTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
@@ -369,7 +365,6 @@ export const registerPayloadsTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -390,7 +385,7 @@ export const registerPayloadsTests = () => {
       signerIndex: 0,
     });
     let payloadAvailable = false;
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
@@ -450,7 +445,6 @@ const reverifyHarness = async (payloadBytes: Buffer, header: Header) => {
   const seed = "00".repeat(31) + "01";
   const signer = await loadDaSigner(`hex:${seed}`);
   const config = minimalConfig({
-    dir,
     manifestPath: `${dir}/manifest.json`,
     deploymentInfoPath: `${dir}/deployment.json`,
     signerSeed: seed,
@@ -465,7 +459,7 @@ const reverifyHarness = async (payloadBytes: Buffer, header: Header) => {
       ),
     },
   };
-  const store = await openJsonCommitteeStore(dir);
+  const store = await openTestCommitteeStore();
   // A verdict an earlier build cached for these bytes.
   await store.saveDaPayload({
     deploymentFingerprint: configWithDaHash.deploymentFingerprint,
