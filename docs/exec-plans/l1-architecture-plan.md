@@ -171,9 +171,13 @@ Rules for the deferral:
   and the fork cases come from the F8 simulator corpus.
 - **Benchmarks in scope:** B2 (N1 only), B3, B5, B6, and B8 for the follower
   tables (synthetic chain). B1, B4 and B7 are deferred with their tickets.
-- **C4 gate.** C1 must not sign a header that is a sibling of one it has
-  already signed until C4's finding is in. If either the on-chain or the
-  off-chain rules treat siblings as equivocation, stop and ask the owner.
+- **C4 gate (resolved 2026-10-07).** No on-chain rule can slash a sibling
+  signature. The off-chain conflict builder did treat cross-header pairs as
+  equivocation; the owner ruled they are not, and C4 changed the rule to one
+  signer, one header, two commitments
+  (`docs/midgard/decisions/da-sibling-signatures-not-slashable.md`). C1 may
+  sign siblings, and must retain the payload of every header it signed until
+  that header is final (k) or provably cannot land.
 
 **Estimate.** About 52 agent-days in total: about 50 for the core, plus about
 1.5 for C2 and about 0.5 for the C4 gate. That is about 4 weeks with 5 lanes,
@@ -402,7 +406,7 @@ Changes from today:
 
 | Area | Today | Target |
 |---|---|---|
-| Lifetime | One process per intersection candidate and per reward-account query. Exact-point queries share one persistent helper process, but each opens its own node connection (`demo/midgard-watcher/native-chain-sync/service.go`) (updated at 17fdffd9b). | One long-lived process per role, multiplexing ChainSync, LSQ, LocalTxSubmission and LocalTxMonitor on one N2C connection (gouroboros v0.204.6 provides all four: `protocol/localstatequery/client.go:143,532,820`, `localtxmonitor/client.go:154`) |
+| Lifetime | One process per intersection candidate and per reward-account query. Exact-point queries share one persistent helper process, but each opens its own node connection (`demo/midgard-watcher/native-chain-sync/service.go`) (updated at 17fdffd9b). | One long-lived process per role, multiplexing ChainSync, LSQ, LocalTxSubmission and LocalTxMonitor on one N2C connection. gouroboros provides all four; F1 pins v0.211.0 built with Go 1.26.5 (`demo/l1-node-transport/native/go.mod:3,6`). Interim: each concurrently open chain-sync stream beyond the first gets a bounded auxiliary N2C connection carrying chain-sync only (`demo/l1-node-transport/README.md`); the role cutovers delete them if no consumer still needs them. |
 | Intersection | One point (`demo/midgard-watcher/native-chain-sync/main.go:180-186`) | The full point list in one `FindIntersect` (the last 64 blocks plus exponentially spaced older ones down to the origin) |
 | Flow control | `PipelineLimit: 1`, `RecvQueueSize: 4`, OS pipe backpressure only (`demo/midgard-watcher/native-chain-sync/transport.go:116-117`) | Credit window: the follower grants N credits and acknowledges each persisted sequence number; the sidecar pipelines up to the credit (50 during catch-up, 1 at tip) |
 | Framing | JSON lines with the raw block in hex (`demo/midgard-watcher/native-chain-sync/transport.go:134-145`) | Length-prefixed frames: a small CBOR header plus raw block bytes. Raw bytes are never hex-encoded. |
@@ -940,8 +944,9 @@ import `Date`, the sidecar client or an HTTP client.
     `deriveExpectedDaAvailabilityCommitment` binds the deployment identity,
     header hash, payload and response geometry (`demo/da-committee-node/src/peer/signatures.ts:84-101`, called at
     `demo/da-committee-node/src/committee-service.sign-verified-payload.ts:27`).
-  - Ticket C4 confirms that no on-chain or off-chain rule treats this as
-    equivocation before K1's quarantine is deleted.
+  - Ticket C4 confirmed this (owner ruling 2026-10-07): equivocation is one
+    signer, one header hash, two commitments
+    (`docs/midgard/decisions/da-sibling-signatures-not-slashable.md`).
 
 ### 7.4 Correction rollback (rev-4 O1, brick K5)
 
