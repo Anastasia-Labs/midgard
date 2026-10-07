@@ -90,6 +90,7 @@ const scenarios = {
         "lint",
         "da-committee-node",
         "midgard-l1-follower",
+        "l1-fork-simulator",
         "midgard-node-typecheck",
         "midgard-node",
         "midgard-node-tools",
