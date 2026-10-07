@@ -72,8 +72,8 @@ import {
 import { jsonPromiseResources } from "./store/promise-resource-usage.js";
 import { resolveDaPayloadSave } from "./store/resolve-da-payload-save.js";
 export { resolveDaPayloadSave } from "./store/resolve-da-payload-save.js";
-import { normalizeStoreData } from "./store.normalize-store-data.js";
 import { parseL1SourceState } from "./store.parse-l1-source-state.js";
+import { dropCrossHeaderConflicts } from "./store/drop-cross-header-conflict-evidence.js";
 import {
   retentionBlockEndTimeMs,
   retentionQueueReference,
@@ -148,7 +148,7 @@ export class JsonFileCommitteeStore implements CommitteeStore {
     const instanceLock = await JsonStoreInstanceLock.acquire(filePath, options);
     const store = new JsonFileCommitteeStore({ filePath, instanceLock });
     try {
-      store.retirement.load((await store.read()).retirementFloor);
+      store.retirement.load((await store.read(true)).retirementFloor);
       return store;
     } catch (error) {
       await instanceLock.release().catch(() => undefined);
@@ -889,10 +889,10 @@ export class JsonFileCommitteeStore implements CommitteeStore {
     this.writeQueue = operation.catch(() => undefined);
     await operation;
   }
-  private async read(): Promise<StoreData> {
+  private async read(persistCleanup = false): Promise<StoreData> {
     try {
-      const raw = await readFile(this.filePath, "utf8");
-      return normalizeStoreData(parseStoredJson(raw));
+      const raw = parseStoredJson(await readFile(this.filePath, "utf8"));
+      return await dropCrossHeaderConflicts(raw, persistCleanup && this.write);
     } catch (error) {
       if (isNodeError(error) && error.code === "ENOENT") {
         const data = emptyStoreData();
@@ -902,7 +902,7 @@ export class JsonFileCommitteeStore implements CommitteeStore {
       throw error;
     }
   }
-  private async write(data: StoreData): Promise<void> {
+  private write = async (data: StoreData): Promise<void> => {
     await this.instanceLock.assertHeld();
     const tmpPath = `${this.filePath}.${this.instanceLock.owner.replace(":", "-")}.tmp`;
     const file = await open(tmpPath, "w", 0o600);
@@ -919,5 +919,5 @@ export class JsonFileCommitteeStore implements CommitteeStore {
     } finally {
       await directory.close();
     }
-  }
+  };
 }

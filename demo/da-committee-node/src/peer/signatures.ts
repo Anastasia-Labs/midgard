@@ -130,11 +130,16 @@ export const buildDaSignatureConflictEvidence = (args: {
       "DA signature conflict evidence requires one deployment and signer",
     );
   }
-  const firstIdentity = `${first.headerHash}${first.availabilityCommitmentDigest}`;
-  const secondIdentity = `${second.headerHash}${second.availabilityCommitmentDigest}`;
-  if (firstIdentity === secondIdentity) {
+  // Equivocation is one header with two commitments. Signatures over sibling
+  // headers are truthful and never conflict.
+  if (
+    first.headerHash !== second.headerHash ||
+    first.availabilityCommitmentDigest === second.availabilityCommitmentDigest
+  ) {
     return undefined;
   }
+  const firstIdentity = `${first.headerHash}${first.availabilityCommitmentDigest}`;
+  const secondIdentity = `${second.headerHash}${second.availabilityCommitmentDigest}`;
   const [lower, upper] =
     firstIdentity.localeCompare(secondIdentity) < 0
       ? [first, second]
