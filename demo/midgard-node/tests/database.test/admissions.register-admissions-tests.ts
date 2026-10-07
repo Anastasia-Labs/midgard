@@ -95,6 +95,7 @@ import {
   makeMidgardTxOutput,
   makeOutRefCbor,
 } from ".././midgard-output-helpers.js";
+import { registerTestL1Tip } from "../helpers/l1-tip.js";
 import { databaseTestDirectory } from "./admissions.database-test-directory.js";
 import {
   address1,
@@ -1510,6 +1511,7 @@ export const registerAdmissionsTests = () => {
             const lucid = {
               api: { currentSlot: () => 0 },
             } as unknown as Lucid;
+            registerTestL1Tip(lucid.api, 0); // the processor reads l1SlotNow
             const submit = (
               txCanonicalCbor: Buffer,
               wake: Effect.Effect<void, never, TxQueueWakeRequirements>,
