@@ -1,7 +1,7 @@
 import {
   SUBMIT_SLOT_LENGTH_MS,
   SUBMIT_SLOT_VALIDITY_BUFFER,
-} from "../local-ledger-slot.js";
+} from "@al-ft/midgard-core/ogmios-slot";
 
 /**
  * Shared transaction signing, submission, confirmation, and recovery helpers.

@@ -1,4 +1,5 @@
 import { encodeOutRef } from "../codec.js";
+import { depth } from "../heads.js";
 import {
   asBuffer,
   asNumber,
@@ -40,7 +41,8 @@ export type UtxoRead =
   | PointRefusal;
 
 /**
- * Where a point stands against the stored chain. `depth` is 0 at the cursor.
+ * Where a point stands against the stored chain. `depth` is the heads
+ * module's `depth()`: 1 at the cursor.
  * A point below `prunedThroughSlot` is `point_beyond_retention` even if its
  * block row survived as a checkpoint: facts there are no longer complete.
  */
@@ -68,7 +70,7 @@ export const pointStatusIn = async (
       detail: `${point.hash.toString("hex")} at slot ${point.slot} is not on the stored chain`,
     };
   const height = asNumber(row.height);
-  return { kind: "canonical", height, depth: cursor.height - height };
+  return { kind: "canonical", height, depth: depth(cursor.height, height) };
 };
 
 const liveClause = (at: number | null): string =>

@@ -3,8 +3,8 @@ import { createHash } from "node:crypto";
 import { RETENTION_MS_PER_DAY } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { SqlClient } from "@effect/sql";
-import { Effect } from "effect";
-import { beforeAll, describe, expect, it } from "vitest";
+import { Effect, Schedule } from "effect";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   retentionCheckExitCode,
@@ -16,9 +16,14 @@ import {
 } from "../src/database/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
 import { computeChallengeableCutoff } from "../src/database/retention-policy.js";
-import { retentionSweepAction } from "../src/fibers/retention-sweeper.js";
+import {
+  retentionSweepAction,
+  retentionSweeperFiber,
+} from "../src/fibers/retention-sweeper.js";
 import {
   ContractDeploymentIdentity,
+  Lucid,
+  MidgardContracts,
   NodeConfig,
 } from "../src/services/index.js";
 import {
@@ -391,6 +396,45 @@ describe.skipIf(!dbEnabled)(
         daPayloads: 0,
         txRejections: 0,
       });
+    });
+
+    it("dates the sweep at L1 now: a wall clock 10 minutes fast prunes no still-challengeable payload", async () => {
+      const tenMinutesMs = 10 * 60_000;
+      const remaining = await run(
+        Effect.gen(function* () {
+          // Challengeable for 5 more minutes at L1 now (NOW), past the
+          // horizon on the wall clock (NOW + 10 minutes).
+          const kept = yield* seedPayload(
+            "fast-clock-kept",
+            new Date(NOW.getTime() - REQUIRED_RETENTION_MS + 5 * 60_000),
+            NOW,
+          );
+          // Past the horizon at L1 now as well: the sweep did run.
+          yield* seedPayload(
+            "fast-clock-pruned",
+            new Date(NOW.getTime() - REQUIRED_RETENTION_MS - 60_000),
+            NOW,
+          );
+          vi.useFakeTimers({ toFake: ["Date"] });
+          vi.setSystemTime(NOW.getTime() + tenMinutesMs);
+          yield* withSweepServices(
+            retentionSweeperFiber(Schedule.recurs(0), {
+              fetchL1View: Effect.succeed({
+                confirmedHeadHash: deterministicFixtureBytes("head", 28),
+                liveQueueHeaderHashes: [],
+              }),
+              l1NowMs: Effect.succeed(NOW.getTime()),
+            }),
+            0,
+          ).pipe(
+            Effect.provideService(Lucid, {} as never),
+            Effect.provideService(MidgardContracts, {} as never),
+            Effect.ensuring(Effect.sync(() => vi.useRealTimers())),
+          );
+          return { hashes: yield* remainingHashes, kept: kept.toString("hex") };
+        }),
+      );
+      expect(remaining.hashes).toEqual([remaining.kept]);
     });
 
     it("prunes no DA payload in a sweep without an L1 view", async () => {

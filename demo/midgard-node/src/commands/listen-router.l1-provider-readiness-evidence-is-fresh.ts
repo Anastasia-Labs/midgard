@@ -1,6 +1,6 @@
+import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { Duration, Effect, Ref } from "effect";
 
-import { type SubmitSlotSnapshot } from "../local-ogmios-slot.js";
 import { type L1ProviderHealthEvidence } from "../services/index.js";
 import { Globals, nextL1ProviderHealthEvidence } from "../services/index.js";
 import { type L1ProviderPreflightReport } from "./l1-provider-preflight.js";

@@ -16,7 +16,7 @@ import {
   ProcessedMempoolDB,
 } from "../database/index.js";
 import * as Tx from "../database/utils/tx.js";
-import { fetchLocalOgmiosShelleyGenesisSlotConfig } from "../local-ledger-slot.js";
+import { fetchLocalOgmiosShelleyGenesisSlotConfig } from "../l1-heads.js";
 import { NodeConfig } from "../services/config.js";
 import { type Lucid } from "../services/index.js";
 import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/index.js";

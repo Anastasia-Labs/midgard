@@ -1,6 +1,8 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { toUnit } from "@lucid-evolution/lucid";
+import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+
+import { l1NowUnixTimeMs } from "../../l1-heads.js";
 
 // The sibling SDK is built in its own TypeScript program, so its exported
 // `Effect` values can carry a distinct branded generator identity during DTS
@@ -115,13 +117,26 @@ export type CommitAppendFenceReferences = {
  * node counts, including tails hidden behind an attested queue head. Both the
  * append-fence cap and the build's fence references go through this one check,
  * so a commit refuses an expired suffix with the same error wherever it first
- * meets it.
+ * meets it. "Now" is the L1 `slotNow` (plan §3.6), never the wall clock: a
+ * clock that runs fast must not pause commits early. While no L1 tip has been
+ * read the commit pauses the same way, and the next tick retries.
  */
 const unexpiredUnattestedSuffixEndTimes = (
+  lucid: LucidEvolution,
   ordered: readonly SDK.StateQueueUTxO[],
 ): Effect.Effect<readonly number[], SDK.StateQueueError> =>
   Effect.gen(function* () {
-    const nowMs = BigInt(Date.now());
+    const nowMs = BigInt(
+      yield* l1NowUnixTimeMs(lucid).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.StateQueueError({
+              message: "Commit paused until the L1 slot is known",
+              cause,
+            }),
+        ),
+      ),
+    );
     const unattestedEndTimesMs: number[] = [];
     for (const entry of ordered.slice(1)) {
       const node = yield* localizeSdkEffect<
@@ -175,8 +190,10 @@ export const resolveCommitAppendFenceEndTimeCapLocal = (
       SDK.StateQueueUTxO[],
       SDK.LucidError | SDK.LinkedListError
     >(SDK.fetchSortedStateQueueUTxOsProgram(lucid, fetchConfig));
-    const unattestedEndTimesMs =
-      yield* unexpiredUnattestedSuffixEndTimes(ordered);
+    const unattestedEndTimesMs = yield* unexpiredUnattestedSuffixEndTimes(
+      lucid,
+      ordered,
+    );
     return unattestedEndTimesMs.length === 0
       ? undefined
       : Math.min(...unattestedEndTimesMs) +
@@ -204,7 +221,7 @@ export const resolveCommitAppendFenceReferencesLocal = (
       SDK.StateQueueUTxO[],
       SDK.LucidError | SDK.LinkedListError
     >(SDK.fetchSortedStateQueueUTxOsProgram(lucid, fetchConfig));
-    yield* unexpiredUnattestedSuffixEndTimes(ordered);
+    yield* unexpiredUnattestedSuffixEndTimes(lucid, ordered);
     const canonicalTail = ordered.at(-1);
     if (canonicalTail === undefined) {
       return yield* Effect.fail(

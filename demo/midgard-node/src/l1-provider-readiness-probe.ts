@@ -1,6 +1,5 @@
+import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { Effect } from "effect";
-
-import { type SubmitSlotSnapshot } from "./local-ogmios-slot.js";
 
 /**
  * Upper bound on one L1 provider readiness probe: the exact HubOracle +

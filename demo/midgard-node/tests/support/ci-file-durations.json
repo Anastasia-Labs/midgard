@@ -264,7 +264,7 @@
     "tests/liveness-halt.test.ts": 0.9,
     "tests/liveness-reason-age.test.ts": 0.4,
     "tests/local-finalization-already-finalized-journal.test.ts": 4.6,
-    "tests/local-ledger-slot.test.ts": 0.3,
+    "tests/l1-heads.test.ts": 0.3,
     "tests/local-mutation-job-abandonment.test.ts": 8.6,
     "tests/lucid-time.test.ts": 1.8,
     "tests/mainnet-protocol-parameters.test.ts": 2.4,

@@ -9,7 +9,7 @@ import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { readOperatorWatchdogRecord } from "../../fibers/operator-watchdog-policy.js";
-import { currentTimeMsForLucidOrEmulatorFallback } from "../register-active-operator/clock.js";
+import { resolveL1NowMsOrRefuse } from "../register-active-operator/clock.js";
 
 export type OperatorStatusReport = {
   readonly operatorKeyHash: string;
@@ -184,6 +184,7 @@ export const operatorStatusProgram = (
     const snapshot =
       input.snapshot ??
       (yield* SDK.fetchOperatorDirectorySnapshotProgram(lucid, contracts));
-    const nowMs = input.nowMs ?? currentTimeMsForLucidOrEmulatorFallback(lucid);
+    const nowMs =
+      input.nowMs ?? (yield* resolveL1NowMsOrRefuse(lucid, "status"));
     return deriveOperatorStatusReport(snapshot, { ...input, nowMs });
   });

@@ -105,7 +105,7 @@ describe("operator lifecycle emulator", () => {
     const originalBuild = SDK.buildActivateOperatorTx;
     const rejectForcedEarlyActivation = async (expectedEmpty: boolean) => {
       const clock = vi
-        .spyOn(LifecycleClock, "resolveCurrentTimeMs")
+        .spyOn(LifecycleClock, "resolveL1NowMsOrRefuse")
         .mockImplementation((lucid) =>
           Effect.succeed(
             LifecycleClock.currentTimeMsForLucidOrEmulatorFallback(lucid) +

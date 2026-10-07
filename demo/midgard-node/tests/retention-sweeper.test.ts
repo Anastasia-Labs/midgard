@@ -14,6 +14,7 @@ import {
   retentionL1ViewTimeoutMs,
   retentionSweeperFiber,
 } from "../src/fibers/retention-sweeper.js";
+import { L1SlotUnknownError } from "../src/l1-heads.js";
 import {
   ContractDeploymentIdentity,
   Globals,
@@ -50,6 +51,8 @@ const runSweeper = (options: {
   readonly fatalMs?: number;
   /** Holds the L1 control-plane permit for the whole run. */
   readonly holdControlPlane?: boolean;
+  /** The L1 now each sweep dates itself with; START by default. */
+  readonly l1NowMs?: Effect.Effect<number, L1SlotUnknownError>;
 }) => {
   let reads = 0;
   let tick = 0;
@@ -73,6 +76,7 @@ const runSweeper = (options: {
         retentionSweeperFiber(Schedule.recurs(options.sweeps - 1), {
           fetchL1View: Effect.suspend(() => options.read(reads++, reasons)),
           nowMs,
+          l1NowMs: options.l1NowMs ?? Effect.succeed(START),
         }).pipe(
           Effect.timeoutFail({
             duration: "2 seconds",
@@ -206,6 +210,23 @@ describe("retention sweeper L1-view deadline", () => {
     },
     5_000,
   );
+});
+
+describe("retention sweeper L1 now", () => {
+  it("prunes nothing while the L1 slot is unknown, and keeps reading", async () => {
+    const { exit, reads, sweeps, reasons } = await runSweeper({
+      clock: [START],
+      read: () => Effect.succeed(VIEW),
+      sweeps: 3,
+      l1NowMs: Effect.fail(
+        new L1SlotUnknownError({ message: "L1 slot unknown: test" }),
+      ),
+    });
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(reads()).toBe(3);
+    expect(sweeps()).toBe(0);
+    expect(staleReason(reasons)).toEqual([]);
+  });
 });
 
 describe("retention sweeper tx-order watermark", () => {

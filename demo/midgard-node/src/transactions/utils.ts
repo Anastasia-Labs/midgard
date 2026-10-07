@@ -4,7 +4,7 @@ import "@lucid-evolution/lucid";
 import "effect";
 import "../database/blocks.js";
 import "../database/index.js";
-import "../local-ledger-slot.js";
+import "@al-ft/midgard-core/ogmios-slot";
 import "./submit-timing.js";
 import "./utils.parse-structured-outside-validity-interval-details.js";
 import "./utils.await-required-output-visibility.js";

@@ -1,6 +1,5 @@
+import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { Metric } from "effect";
-
-import type { SubmitSlotSnapshot } from "../local-ogmios-slot.js";
 
 export type CommitPipelinePhase =
   | "idle"

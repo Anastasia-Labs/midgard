@@ -79,7 +79,7 @@ export const eventHistoryCanonicalJson = (value: unknown): string =>
 
 /** Hash only the losslessly decoded Shelley query RESULT, not its RPC envelope
  * or genesis-file bytes. This deliberately does not reuse configurationSha256
- * from local-ledger-slot, whose existing slot artifacts use native JSON numbers. */
+ * from the core Ogmios slot module, whose existing slot artifacts use native JSON numbers. */
 export const eventHistoryGenesisLosslessSha256 = (result: unknown): string => {
   if (typeof result !== "object" || result === null || Array.isArray(result))
     throw new Error("History source genesis result must be an object");

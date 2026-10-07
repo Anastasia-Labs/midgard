@@ -6,6 +6,7 @@
  * interval. The slot numbers replay the devnet refusal: ledger tip 32861,
  * derived submit slot 32940, `validTo` slot 33161.
  */
+import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Emulator,
@@ -15,7 +16,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import type { SubmitSlotSnapshot } from "../src/local-ledger-slot.js";
 import {
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   COMMIT_VALIDITY_BACKDATE_MS,

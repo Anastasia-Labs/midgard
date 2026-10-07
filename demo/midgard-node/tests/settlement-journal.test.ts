@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { depth } from "@al-ft/midgard-l1-follower/heads";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -333,6 +334,41 @@ describe("settlement durable submission journal", () => {
       }),
     );
     expect((await run(Journal.pending(deploymentId)))?.event_id).toBe("02");
+  });
+  it("reads the confirmation heights for the heads module's depth, canonical blocks only", async () => {
+    const actor = owner();
+    const digest = (byte: string) => Buffer.from(byte.repeat(32), "hex");
+    await run(
+      Effect.gen(function* () {
+        yield* ready;
+        yield* Journal.renew(actor);
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`TRUNCATE event_history_block_applications, event_history_cursor CASCADE`;
+        yield* sql`INSERT INTO event_history_cursor (binding_digest, manifest_id, origin_receipt, origin_receipt_digest, anchor_hash, anchor_slot, anchor_height, anchor_snapshot_digest, head_hash, head_slot, head_height, head_application_revision, snapshot_digest, revision, addresses)
+        VALUES (${digest("f1")}, ${Buffer.from(deploymentId, "hex")}, 'origin', ${digest("f2")}, ${digest("f3")}, 0, 10, ${digest("f4")}, ${digest("f5")}, 200, 20, 2, ${digest("f6")}, 2, '[]'::jsonb)`;
+        const application = (
+          block: string,
+          revision: number,
+          height: number,
+          canonical: boolean,
+        ) =>
+          sql`INSERT INTO event_history_block_applications (binding_digest, block_hash, application_revision, parent_hash, block_slot, block_height, before_snapshot_digest, after_snapshot_digest, ledger_receipt, ledger_receipt_digest, undo_record, undo_digest, canonical)
+          VALUES (${digest("f1")}, ${digest(block)}, ${revision}, ${digest("f7")}, ${height * 10}, ${height}, ${digest("f8")}, ${digest("f9")}, 'receipt', ${digest("fa")}, 'undo', ${digest("fb")}, ${canonical})`;
+        yield* application("e1", 1, 18, true);
+        yield* application("e2", 2, 17, false);
+        const heights = yield* Journal.confirmationHeights(
+          actor,
+          "e1".repeat(32),
+        );
+        expect(heights).toEqual({ tipHeight: 20, blockHeight: 18 });
+        // The tip is depth 1, so a block two below it is at depth 3.
+        expect(depth(heights!.tipHeight, heights!.blockHeight)).toBe(3);
+        expect(
+          yield* Journal.confirmationHeights(actor, "e2".repeat(32)),
+        ).toBeNull();
+        yield* sql`TRUNCATE event_history_block_applications, event_history_cursor CASCADE`;
+      }),
+    );
   });
   it("fences a stale worker and refuses wallet rebinding", async () => {
     const first = owner(),

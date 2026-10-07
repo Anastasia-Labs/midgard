@@ -166,10 +166,11 @@ describe.each(adapters)("fact store ($name)", (adapter) => {
         height: 53,
         parentHash: point(b2).hash,
       });
+      // b1 is two blocks below the cursor b3: depth 3, the tip being depth 1.
       expect(await store.pointStatus(point(b1))).toEqual({
         kind: "canonical",
         height: 51,
-        depth: 2,
+        depth: 3,
       });
       expect(await store.cursor()).toMatchObject({
         point: { slot: 105 },

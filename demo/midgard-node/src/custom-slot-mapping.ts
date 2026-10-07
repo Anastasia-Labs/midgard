@@ -22,15 +22,17 @@ import {
   ogmiosSlotEvidenceUnavailableCause,
   ogmiosTipMaxAgeMsFromShelleyGenesis,
 } from "@al-ft/midgard-core/ogmios-slot";
+import {
+  type FetchLike,
+  type SubmitSlotSnapshot,
+} from "@al-ft/midgard-core/ogmios-slot";
 import type { SlotConfig } from "@lucid-evolution/lucid";
 import { Duration, Effect, Schedule } from "effect";
 
 import {
-  type FetchLike,
   fetchLocalOgmiosShelleyGenesisSlotConfig,
   fetchLocalOgmiosSubmitSlotSnapshot,
-  type SubmitSlotSnapshot,
-} from "./local-ledger-slot.js";
+} from "./l1-heads.js";
 import { runProviderStepWithRetry } from "./provider-retry.js";
 
 export const CUSTOM_SLOT_MAPPING_ENVIRONMENT_KEY =

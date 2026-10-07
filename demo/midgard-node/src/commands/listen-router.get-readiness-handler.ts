@@ -9,8 +9,8 @@ import {
   StateQueueMutationLeasesDB,
 } from "../database/index.js";
 import { attestationTimeoutCorrectionReadinessBounds } from "../fibers/index.js";
+import { localOgmiosSubmitSlotEvidence } from "../l1-heads.js";
 import { READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS } from "../l1-provider-readiness-probe.js";
-import { localOgmiosSubmitSlotEvidence } from "../local-ogmios-slot.js";
 import { foreignBaseVerificationForAuthority } from "../services/foreign-base-verification.js";
 import {
   DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,

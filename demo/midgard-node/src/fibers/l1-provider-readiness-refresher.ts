@@ -1,13 +1,11 @@
+import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { Cause, Effect, Either, Option, Ref, Schedule } from "effect";
 
+import { fetchLocalOgmiosSubmitSlotSnapshot } from "../l1-heads.js";
 import {
   READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS,
   runCombinedL1ReadinessProbe,
 } from "../l1-provider-readiness-probe.js";
-import {
-  readLocalOgmiosSubmitSlot,
-  type SubmitSlotSnapshot,
-} from "../local-ogmios-slot.js";
 import {
   DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
   Globals,
@@ -188,7 +186,7 @@ export const l1ProviderReadinessRefresherFiber = (
       globals,
       probe: runCombinedL1ReadinessProbe(
         fetchHubOracleWitness(lucid.api, contracts),
-        readLocalOgmiosSubmitSlot({
+        fetchLocalOgmiosSubmitSlotSnapshot({
           ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
           timeoutMs: probeTimeoutMs,
           maxHealthAgeMs: lucid.ogmiosTipMaxAgeMs,

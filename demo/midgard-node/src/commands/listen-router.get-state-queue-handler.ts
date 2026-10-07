@@ -15,6 +15,7 @@ import {
   TxAdmissionsDB,
 } from "../database/index.js";
 import { mergeAction } from "../fibers/index.js";
+import { l1NowUnixTimeMs } from "../l1-heads.js";
 import {
   Globals,
   Lucid,
@@ -223,7 +224,8 @@ export const getStateQueueHandler = Effect.gen(function* () {
             currentDaAvailability: stateQueueNode.da_attestation,
             provenFraud: stateQueueNode.proven_fraud,
             readyAfterUnixTime: maturity.readyAfterUnixTime,
-            nowUnixTime: Date.now(),
+            // Maturity at the L1 `slotNow`, as the merge fiber judges it.
+            nowUnixTime: yield* l1NowUnixTimeMs(lucid.api),
           });
         });
   let drawn = `

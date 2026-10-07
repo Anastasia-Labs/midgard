@@ -6,6 +6,11 @@ import { Effect, Ref } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Globals, NodeConfig } from "../src/services/index.js";
+import {
+  registerTestL1Tip,
+  TEN_MINUTES_MS,
+  type TestL1Tip,
+} from "./helpers/l1-tip.js";
 
 const fetchConfirmedStateAndItsLinkProgramMock = vi.hoisted(() => vi.fn());
 const getStateQueueNodeFromStateQueueDatumMock = vi.hoisted(() => vi.fn());
@@ -46,9 +51,8 @@ vi.mock("../src/utils.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../src/local-ledger-slot.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../src/local-ledger-slot.js")>();
+vi.mock("../src/l1-heads.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/l1-heads.js")>();
   return {
     ...actual,
     makeLocalOgmiosSubmitSlotSnapshotProvider:
@@ -175,10 +179,21 @@ const runBuilder = () =>
     ) as Effect.Effect<MergeTxResult, unknown, never>,
   );
 
+const readyAfterUnixTime =
+  520_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms;
+
 describe("merge builder maturity preflight", () => {
+  // Maturity is judged at the L1 `slotNow`; the local clock keeps driving
+  // only the submit-ledger timing.
+  let l1Tip: TestL1Tip;
+  const setNow = (unixTimeMs: number) => {
+    vi.setSystemTime(unixTimeMs);
+    l1Tip.setTipSlot(unixTimeMs / 1_000);
+  };
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(510_000);
+    l1Tip = registerTestL1Tip(fakeLucid, 510);
     fetchConfirmedStateAndItsLinkProgramMock.mockReset();
     getStateQueueNodeFromStateQueueDatumMock.mockReset();
     getHeaderFromStateQueueDatumMock.mockReset();
@@ -241,9 +256,7 @@ describe("merge builder maturity preflight", () => {
       daAttestation: SDK.NO_DA_ATTESTATION,
       endTime: 500_000n,
     });
-    vi.setSystemTime(
-      530_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms,
-    );
+    setNow(530_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms);
 
     const result = await runBuilder();
 
@@ -257,10 +270,25 @@ describe("merge builder maturity preflight", () => {
     expect(localSlotSnapshotProviderMock).not.toHaveBeenCalled();
   });
 
+  it("calls nothing mature on a local clock 10 minutes fast", async () => {
+    // L1 now is one slot before maturity; the local clock is 10 minutes past
+    // it.
+    setNow(readyAfterUnixTime - 1_000);
+    vi.setSystemTime(readyAfterUnixTime + TEN_MINUTES_MS);
+
+    const result = await runBuilder();
+
+    expect(result).toMatchObject({
+      status: "skipped_oldest_block_not_mature",
+      headerHash,
+      readyAfterUnixTime,
+      nowUnixTime: readyAfterUnixTime - 1_000,
+    });
+    expect(fetchFirstBlockTxsMock).not.toHaveBeenCalled();
+  });
+
   it("lets a semantically ready candidate proceed to the local submit-ledger gate", async () => {
-    vi.setSystemTime(
-      530_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms,
-    );
+    setNow(530_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms);
 
     const result = await runBuilder();
 
