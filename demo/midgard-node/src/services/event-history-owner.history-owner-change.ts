@@ -64,10 +64,8 @@ export type HistoryReconciliationPending = Readonly<{
   reason: string;
 }>;
 
-/** Pending signed-header recovery is keeping the journal anchor more than the
- * rollback horizon behind where the horizon alone would put it. Retention
- * never prunes coverage a pending recovery still needs, so the journal grows
- * until recovery resolves the header. */
+/** Settlement or foreign-adoption evidence is keeping the journal anchor more
+ * than the rollback horizon behind where the horizon alone would put it. */
 export type HistoryRetentionHold = Readonly<{
   holdSlot: number;
   anchorHeight: number;

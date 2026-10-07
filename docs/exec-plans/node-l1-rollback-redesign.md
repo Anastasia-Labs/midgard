@@ -18,7 +18,7 @@ The node acts on L1 tip data, as the protocol requires (§3), and pays for it
 with ~20k lines of bespoke rollback code: per-block undo records, per-tx ledger
 before/after receipts, orphan/incarnation bookkeeping, recovery plans, a
 six-state pending-finalization machine, signed-header recovery with a coverage
-proof and retention hold, and a state-queue correction rewind. Every feature
+proof, and a state-queue correction rewind. Every feature
 adds state a rollback must undo by hand.
 
 Live holes today:
@@ -52,12 +52,19 @@ Live holes today:
   `commands/listen.ts:238`: expired-intent release (implements the
   "whichever lands wins" ruling, TTL-gated, unlanded rows only) and the older
   signed-header coverage path (`services/history-signed-header-recovery.ts`,
-  runs on every pending reconciliation with no engine gate, plus a retention
-  hold set on every journal append, `services/event-history-owner.ts:600-625`).
+  runs on every pending reconciliation with no engine gate). Issue #759 removes
+  its uncapped journal retention hold while preserving recovery itself.
   They never act on the same row. The coverage path is the only thing today
   that handles a *landed* own block that is later rolled back together with
   its deposits' funding. It can be deleted only once the reconcile loop (§4.E)
-  covers landed→rolled-back.
+  handles orphaned deposit funding for landed or abandoned own blocks of any
+  shape. Delete `prepareSignedHeaderRecovery` and its tests in the same change
+  that lands that universal replacement handler; the two must never run side
+  by side.
+  The retained coverage path still requires the signed validity-start boundary:
+  once ordinary pruning passes it, automatic recovery can fail closed and leave
+  the node not-ready. Removing the hold does not close this recovery gap; ticket
+  14 must replace the coverage requirement for the full any-shape matrix.
 
 ## 2. What mature systems do
 
@@ -417,7 +424,7 @@ and are copied into the ticket body at publish time.
 
 | # | Ticket | Blocked by | Delivers / verified by |
 |---|---|---|---|
-| 14 | Reconcile loop core: follow landed chain (incl. revive-except-correction), can-still-land predicate, exact-bytes resubmit | 7, 13 | Simulator: dead intents never resubmitted; live ones resubmitted byte-equal; landed own block later rolled back is handled (the coverage-path case). |
+| 14 | Reconcile loop core: follow landed chain (incl. revive-except-correction), can-still-land predicate, exact-bytes resubmit | 7, 13 | Simulator: dead intents never resubmitted; live ones resubmitted byte-equal; orphaned deposit funding is handled for landed **or abandoned** own blocks of **any shape**, including deposit-only blocks, deposits with L2 transactions, deposits with withdrawals, and two candidate blocks. Delete `prepareSignedHeaderRecovery` and its tests in the same change that lands this universal replacement handler; the two never run side by side. |
 | 15 | Replacement on the same tail; commit fiber → proposer; one active commit with speculative build preserved; backoff, alarm, circuit breaker | 14 | Devnet: abandoned commit replaced within one block; speculative build still submits after parent lands. |
 | 16 | Merge, DA attestation, scheduler refresh, attestation-timeout correction as loop-driven intents | 15 | Own merge invalidating own in-flight commit is detected by the reference-input check; timeout correction file journal driven by the loop. |
 | 17 | Wallet view projection + single wallet owner; frozen override removed | 6, 13 | Dead intent's inputs reappear; no "Missing vkey witness" after a fork; `operator-wallet-view` tests adapted. |

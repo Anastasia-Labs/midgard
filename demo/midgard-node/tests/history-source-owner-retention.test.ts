@@ -30,31 +30,6 @@ import { makeRollbackHistoryTransport } from "./helpers/history-rollback-transpo
 import { openHistorySourceOwnerLifecycle } from "./helpers/history-source-owner-emulator.js";
 import { provideDatabaseLayers } from "./utils.js";
 
-// The recovery candidate predicate itself is exercised against real pending
-// headers in event-history-retired-membership.test.ts. Here the owner's own
-// wiring of its hold slot into retention is what is under test, so the slot
-// may be pinned; unset, the real single-sourced query answers.
-const recoveryHold = vi.hoisted(() => ({
-  slot: undefined as number | undefined,
-}));
-vi.mock(
-  "../src/services/history-signed-header-recovery.js",
-  async (importOriginal) => {
-    const { Effect } = await import("effect");
-    const actual =
-      await importOriginal<
-        typeof import("../src/services/history-signed-header-recovery.js")
-      >();
-    return {
-      ...actual,
-      signedHeaderRecoveryHoldSlot: (bindingDigest: string) =>
-        recoveryHold.slot === undefined
-          ? actual.signedHeaderRecoveryHoldSlot(bindingDigest)
-          : Effect.succeed(recoveryHold.slot),
-    };
-  },
-);
-
 const ledgerScans = (requests: readonly { method: string }[]) =>
   requests.filter(({ method }) => method === "queryLedgerState/utxo").length;
 const networkTipReads = (requests: readonly { method: string }[]) =>
@@ -120,7 +95,7 @@ const gate = Effect.gen(function* () {
 
 // Accepted emulator initialization and observed empty intervals feed production
 // source decoding, replay, journal and SQL authority. Branch ancestry, a lagging
-// network-tip answer and the recovery hold slot are controlled models.
+// network-tip answer are controlled models.
 it("restarts near its head, appends at an open gate without recovery, ignores a lagging tip, bounds follower lag, holds retention visibly and refuses a rollback past its anchor", async () => {
   const { h, interval } = await openLifecycle();
   h.batches.push(await interval());
@@ -461,12 +436,17 @@ it("restarts near its head, appends at an open gate without recovery, ignores a 
             expect((yield* authority).generation).toBe(completedGeneration);
             expect(yield* produces(owner)).toBe("Right");
 
-            // 4. The owner wires the recovery hold slot into retention, and a
+            // 4. The owner wires the settlement hold slot into retention, and a
             // hold keeping the anchor more than k behind is reported once per
             // transition and exposed as status.
             yield* owner.close;
             const pinned = (yield* load).anchor;
-            recoveryHold.slot = pinned.slot;
+            const settlementDeployment = h.binding.manifestId;
+            yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
+              VALUES (${settlementDeployment}, 'deposit', '01', 'absorb')`;
+            yield* sql`INSERT INTO settlement_attempts
+              (deployment_id, kind, event_id, phase, tx_hash, signed_cbor, required_outputs, fee_inputs, status, hold_slot)
+              VALUES (${settlementDeployment}, 'deposit', '01', 'absorb', ${"ac".repeat(32)}, 'test-retention-body', ARRAY[0], ARRAY['fee#0'], 'pending', ${pinned.slot})`;
             logs.length = 0;
             owner = yield* makeOwner(2);
             yield* owner.awaitReadyAt(next).pipe(Effect.timeout("15 seconds"));
@@ -497,15 +477,8 @@ it("restarts near its head, appends at an open gate without recovery, ignores a 
               holdSlot: pinned.slot,
               anchorHeight: pinned.height,
             });
-            // An interrupted settlement independently pins its confirmation
-            // evidence even after the signed-header recovery hold disappears.
-            const settlementDeployment = h.binding.manifestId;
-            yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
-              VALUES (${settlementDeployment}, 'deposit', '01', 'absorb')`;
-            yield* sql`INSERT INTO settlement_attempts
-              (deployment_id, kind, event_id, phase, tx_hash, signed_cbor, required_outputs, fee_inputs, status, hold_slot)
-              VALUES (${settlementDeployment}, 'deposit', '01', 'absorb', ${"ac".repeat(32)}, 'test-retention-body', ARRAY[0], ARRAY['fee#0'], 'pending', ${pinned.slot})`;
-            recoveryHold.slot = undefined;
+            // The interrupted settlement keeps its confirmation evidence
+            // until the pending attempt is confirmed.
             latest = yield* extend;
             yield* owner
               .awaitReadyAt(latest)
@@ -553,7 +526,6 @@ it("restarts near its head, appends at an open gate without recovery, ignores a 
       ),
     );
   } finally {
-    recoveryHold.slot = undefined;
     source.close();
     h.observer.restore();
     vi.useRealTimers();

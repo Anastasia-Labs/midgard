@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { CML } from "@lucid-evolution/lucid";
 import { Effect, Option, Queue, Ref } from "effect";
 
 import * as Authority from "../database/eventHistoryAuthority.js";
@@ -79,7 +78,7 @@ const ledgerIdentity = (rows: readonly MinimalEntry[]) =>
 
 /** The single source of the headers signed-header recovery still has to
  * classify: not abandoned, with a deposit member whose admission incarnation is
- * no longer origin-canonical. Journal retention holds its anchor behind these.
+ * no longer origin-canonical. These candidates do not hold journal retention.
  */
 export const signedHeaderRecoveryCandidates = (bindingDigest: string) =>
   Effect.gen(function* () {
@@ -93,56 +92,6 @@ export const signedHeaderRecoveryCandidates = (bindingDigest: string) =>
       WHERE i.binding_digest = ${Buffer.from(bindingDigest, "hex")} AND NOT i.origin_canonical
         AND p.status <> 'abandoned'`;
   });
-
-/** The earliest signed validity-start slot among recovery candidates, which
- * the retained journal range must still cover: canonical coverage has to start
- * at or before it (see evaluateSignedIntentCoverage). Once recovery proves a
- * candidate covered_absent it is abandoned and leaves this set, releasing the
- * hold. A candidate that is not yet signed, or whose signed body has no
- * validity start, has no slot coverage could ever be evaluated from, so it
- * does not bound retention; it is not ignored either: its orphaned member keeps
- * the history disposition pending, so the owner stays not-ready until the
- * header is resolved. A stored signed body that does not decode is corruption
- * of this node's own journal and fails closed, naming the header. */
-export const signedHeaderRecoveryHoldSlot = (bindingDigest: string) =>
-  signedHeaderRecoveryCandidates(bindingDigest).pipe(
-    Effect.mapError((cause) =>
-      failure("Recovery candidates could not be read", cause),
-    ),
-    Effect.flatMap((headers) => {
-      let earliest: number | undefined;
-      for (const { header_hash, signed_tx_cbor } of headers) {
-        if (signed_tx_cbor === null) continue;
-        let start: bigint | undefined;
-        try {
-          const tx = CML.Transaction.from_cbor_hex(
-            signed_tx_cbor.toString("hex"),
-          );
-          const body = tx.body();
-          start = body.validity_interval_start();
-          body.free();
-          tx.free();
-        } catch (cause) {
-          return Effect.fail(
-            failure(
-              `Recovery candidate ${header_hash.toString("hex")} has an unreadable signed body`,
-              cause,
-            ),
-          );
-        }
-        if (start === undefined) continue;
-        const slot = Number(start);
-        if (!Number.isSafeInteger(slot))
-          return Effect.fail(
-            failure(
-              `Recovery candidate ${header_hash.toString("hex")} has a signed validity start that is not a safe slot`,
-            ),
-          );
-        earliest = earliest === undefined ? slot : Math.min(earliest, slot);
-      }
-      return Effect.succeed(earliest);
-    }),
-  );
 
 /** The exact-point queue capture a recovery validates. A point the node can
  * no longer serve (out of its rollback window, or off the selected chain)

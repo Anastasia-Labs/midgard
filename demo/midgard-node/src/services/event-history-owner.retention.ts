@@ -6,7 +6,6 @@ import { foreignNativeAdoptionHoldSlot } from "../database/foreignNativeAdoption
 import { settlementRetentionHoldSlot } from "../database/settlement.js";
 import type { EventHistorySourceBinding } from "../l1-event-history-source.js";
 import { HistoryOwnerUnavailable } from "./event-history-owner.history-owner-change.js";
-import { signedHeaderRecoveryHoldSlot } from "./history-signed-header-recovery.js";
 
 export type Retained = Readonly<{
   result: Journal.Checkpoint;
@@ -27,7 +26,6 @@ export const makeRetainedHistoryAppender = <E, R>(input: {
     ) => Effect.Effect<Journal.Checkpoint, E2, R2>,
   ) =>
     Effect.all([
-      signedHeaderRecoveryHoldSlot(input.binding.digest),
       settlementRetentionHoldSlot(input.binding.manifestId),
       foreignNativeAdoptionHoldSlot(
         input.binding.digest,
