@@ -37,7 +37,6 @@ import {
   walletFromSeed,
 } from "./deposit-flow-emulator-shared.js";
 import { openHistoryProjectionLifecycle } from "./helpers/history-projection-lifecycle.js";
-
 /** Successful node classification and actual mature merge establish both
  * settlement frontiers. The observation transport labels remain synthetic. */
 it("preserves public raw external events through real settlement, refund, payout and reclaim", async () => {
@@ -61,6 +60,7 @@ it("preserves public raw external events through real settlement, refund, payout
       prepared.context,
       prepared.plan.payloadCbor,
       prepared.request.reclaimAuth,
+      fixture.emulator.now() + 60_000,
     );
     const signed = await publication.tx.sign.withWallet().complete();
     const hash = await signed.submit();

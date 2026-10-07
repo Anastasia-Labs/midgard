@@ -46,6 +46,73 @@ const input = (
 };
 
 describe("durable history submission journal", () => {
+  it.each(["Publication", "Admission"] as const)(
+    "refuses an unsigned TTL-less %s body before persistence and accepts its bounded counterpart",
+    async (phase) => {
+      const request = input();
+      const fundingHash = createHash("sha256")
+        .update(request.submission_id)
+        .digest("hex");
+      const transactionCbor = `84a30081825820${fundingHash}0001800200a0f5f6`;
+      const transaction = CML.Transaction.from_cbor_hex(transactionCbor);
+      expect(transaction.witness_set().vkeywitnesses()).toBeUndefined();
+      const pending: SDK.EventHistorySubmissionAttempt = {
+        phase,
+        outputIndex: 0,
+        transactionCbor,
+        txHash: CML.hash_transaction(transaction.body()).to_hex(),
+      };
+      await Effect.runPromise(
+        provideDatabaseLayers(
+          Effect.gen(function* () {
+            const row = yield* Journal.reserve(request);
+            const refused = yield* Effect.either(
+              Journal.saveCheckpoint(row, { ...row.checkpoint, pending }),
+            );
+            expect(refused._tag).toBe("Left");
+            if (refused._tag !== "Left")
+              throw new Error("TTL-less pending body was persisted");
+            expect(refused.left).toBeInstanceOf(DatabaseError);
+            expect(refused.left).toMatchObject({
+              message: "Invalid completed history transaction",
+              cause: new Error("Pending history transaction requires a TTL"),
+            });
+            expect(yield* Journal.retrieve(row.submission_id)).toEqual(
+              Option.some(row),
+            );
+            expect(
+              yield* Journal.reservedInputs(row.wallet_address),
+            ).not.toContain(`${fundingHash}#0`);
+
+            const body = transaction.body();
+            body.set_ttl(1_000n);
+            const bounded = {
+              ...pending,
+              transactionCbor: CML.Transaction.new(
+                body,
+                transaction.witness_set(),
+                true,
+              ).to_cbor_hex(),
+              txHash: CML.hash_transaction(body).to_hex(),
+            };
+            const saved = yield* Journal.saveCheckpoint(row, {
+              ...row.checkpoint,
+              pending: bounded,
+            });
+            expect(saved.revision).toBe(1);
+            expect(saved.checkpoint.pending).toEqual(bounded);
+            expect(yield* Journal.retrieve(row.submission_id)).toEqual(
+              Option.some(saved),
+            );
+            expect(yield* Journal.reservedInputs(row.wallet_address)).toContain(
+              `${fundingHash}#0`,
+            );
+          }),
+        ),
+      );
+    },
+  );
+
   it.each(["Deposit", "Withdrawal"] as const)(
     "persists %s intent and JSON quantities across independent database scopes",
     async (kind) => {
@@ -101,9 +168,9 @@ describe("durable history submission journal", () => {
         Effect.gen(function* () {
           const row = yield* Journal.reserve(request);
           const attempt = (hash: string): SDK.EventHistorySubmissionAttempt => {
-            const transactionCbor = `84a30081825820${createHash("sha256")
+            const transactionCbor = `84a40081825820${createHash("sha256")
               .update(request.submission_id + hash)
-              .digest("hex")}0001800200a0f5f6`;
+              .digest("hex")}0001800200031903e8a0f5f6`;
             return {
               phase: "Publication",
               txHash: CML.hash_transaction(
@@ -230,9 +297,9 @@ describe("durable history submission journal", () => {
     const pending = (
       ...txHashes: readonly string[]
     ): SDK.EventHistorySubmissionAttempt => {
-      const transactionCbor = `84a3008${txHashes.length}${txHashes
+      const transactionCbor = `84a4008${txHashes.length}${txHashes
         .map((txHash) => `825820${txHash}00`)
-        .join("")}01800200a0f5f6`;
+        .join("")}01800200031903e8a0f5f6`;
       return {
         phase: "Admission",
         outputIndex: 0,
@@ -302,7 +369,7 @@ describe("durable history submission journal", () => {
   it("atomically rejects a funding body that races another request's nonce reservation", async () => {
     const first = input();
     const second = input("Withdrawal");
-    const transactionCbor = `84a30081825820${second.request.nonce.txHash}0001800200a0f5f6`;
+    const transactionCbor = `84a40081825820${second.request.nonce.txHash}0001800200031903e8a0f5f6`;
     const pending: SDK.EventHistorySubmissionAttempt = {
       phase: "Publication",
       outputIndex: 0,
