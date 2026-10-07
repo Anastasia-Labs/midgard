@@ -177,6 +177,37 @@ export const scanStateQueue = async (
   const current = nodes
     .filter((node) => node.linkedListKey !== "Empty")
     .map((node) => validateObservedNode(node, config));
+  const previousByOutRef = new Map(
+    (config.previousHeaders ?? []).map((record) => [
+      record.stateQueueOutRef,
+      record,
+    ]),
+  );
+  for (const record of current) {
+    const previous = previousByOutRef.get(record.stateQueueOutRef);
+    // Terminal replay carries forward an older datum while naming the last
+    // spent output; it is not an observation of that output's raw status.
+    if (
+      previous === undefined ||
+      previous.status === "merged" ||
+      previous.status === "removed"
+    )
+      continue;
+    // A status transition spends the old output. A reread of that same
+    // output cannot change its datum, even when both statuses classify as
+    // already attested. Refuse the contradiction before accepting a view.
+    const stored = SDK.daAvailabilityStateQueueStatusIdentity(
+      previous.daAttestation,
+    );
+    const observed = SDK.daAvailabilityStateQueueStatusIdentity(
+      record.daAttestation,
+    );
+    if (stored !== observed) {
+      throw new L1SourceIntegrityError(
+        `state-queue status disagreement at unchanged output ${record.stateQueueOutRef}: stored=${stored}, observed=${observed}`,
+      );
+    }
+  }
   const finalQueue =
     snapshot === undefined
       ? []
