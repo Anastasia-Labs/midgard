@@ -70,7 +70,9 @@ describe("committee projections in the fork simulator (SQLite)", () => {
       }),
       { numRuns: RUNS, seed: 0xc1_5eed },
     );
-  });
+    // Sixty whole scenarios, each replayed fresh after every event: about
+    // 5 s locally and slower on a shared CI runner.
+  }, 120_000);
 
   it("an orphan node with a valid datum makes the queue unhealthy (P1)", async () => {
     let unhealthy = 0;
