@@ -71,7 +71,7 @@ every test skipped. See [writing-tests](../../writing-tests/SKILL.md#5-keep-it-a
   - `midgard-node`: `NODE_ENV=emulator`, flag `--disableConsoleIntercept`.
   - `midgard-node-tools`: the same as `midgard-node`, after its `node --test`
     preludes, run as
-    `pnpm --dir demo/midgard-node-tools run test:phase4:pipelined-process-summary-verifier`
+    `pnpm --dir demo/midgard-node-tools run test:phase4:journal-kill-recovery-summary-verifier`
     and `pnpm --dir demo/midgard-node-tools run test:phase4:devnet-assets`.
   - Every other package: nothing (its `test` script is a plain `vitest run`).
 - **A fix loop reruns only the suites that failed**, and within a suite only

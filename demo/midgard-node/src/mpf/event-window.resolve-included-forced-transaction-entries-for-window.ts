@@ -15,11 +15,9 @@ import { Database } from "../services/index.js";
 export const resolveIncludedDepositEntriesForWindow = ({
   currentBlockStartTime,
   effectiveEndTime,
-  persistProjection = true,
 }: {
   readonly currentBlockStartTime: Date;
   readonly effectiveEndTime: Date;
-  readonly persistProjection?: boolean;
 }): Effect.Effect<readonly DepositsDB.Entry[], DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -76,7 +74,7 @@ export const resolveIncludedDepositEntriesForWindow = ({
           (entry) =>
             entry[DepositsDB.Columns.STATUS] === DepositsDB.Status.Awaiting,
         );
-        if (persistProjection && awaitingEntries.length > 0) {
+        if (awaitingEntries.length > 0) {
           const mempoolEntries = yield* Effect.forEach(
             awaitingEntries,
             DepositsDB.toMempoolLedgerEntry,
@@ -100,7 +98,7 @@ export const resolveIncludedDepositEntriesForWindow = ({
       }),
     );
   }).pipe(
-    persistProjection ? withHistoryWrite : (effect) => effect,
+    withHistoryWrite,
     sqlErrorToDatabaseError(
       DepositsDB.tableName,
       "Failed to resolve deposits for the current block window",
@@ -181,11 +179,9 @@ export const resolveIncludedWithdrawalEntriesForWindow = ({
 export const resolveIncludedForcedTransactionEntriesForWindow = ({
   currentBlockStartTime,
   effectiveEndTime,
-  persistProjection = true,
 }: {
   readonly currentBlockStartTime: Date;
   readonly effectiveEndTime: Date;
-  readonly persistProjection?: boolean;
 }): Effect.Effect<
   readonly ForcedTransactionsDB.Entry[],
   DatabaseError,
@@ -255,7 +251,7 @@ export const resolveIncludedForcedTransactionEntriesForWindow = ({
             entry[ForcedTransactionsDB.Columns.STATUS] ===
             ForcedTransactionsDB.Status.Awaiting,
         );
-        if (persistProjection && awaitingEntries.length > 0) {
+        if (awaitingEntries.length > 0) {
           yield* ForcedTransactionsDB.markAwaitingAsProjected(
             awaitingEntries.map(
               (entry) => entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],

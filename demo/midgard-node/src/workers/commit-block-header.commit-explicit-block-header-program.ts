@@ -6,12 +6,7 @@ import { PendingBlockFinalizationsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import * as Ledger from "../database/utils/ledger.js";
 import { MidgardMpf } from "../mpf/index.js";
-import {
-  Database,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../services/index.js";
+import { Lucid, MidgardContracts, NodeConfig } from "../services/index.js";
 import {
   awaitExactTransactionConfirmation,
   type TxSignError,
@@ -30,8 +25,6 @@ import { makeEventCommitments } from "./commit-block-header/transition-commitmen
 import {
   type MempoolLedgerRevertedNotice,
   type RegisteredDueWorkOutput,
-  type SpeculativeCandidateReadyOutput,
-  type SpeculativeCommitWorkerInstruction,
   type SuccessfulLocalFinalizationRecoveryOutput,
   WorkerOutput,
 } from "./utils/commit-block-header.js";
@@ -86,8 +79,6 @@ export const shouldPreserveCommitMpfRoots = (output: WorkerOutput): boolean => {
     case "AwaitingForeignDaOutput":
     case "RegisteredDueWorkOutput":
     case "NothingToCommitOutput":
-    case "SpeculativeCandidateReadyOutput":
-    case "SpeculativeCandidateInvalidatedOutput":
       return false;
   }
 };
@@ -316,10 +307,6 @@ export const commitExplicitBlockHeaderProgram = (
       },
     };
   });
-
-export type AwaitSpeculativeCommitInstruction = (
-  candidate: SpeculativeCandidateReadyOutput["candidate"],
-) => Effect.Effect<SpeculativeCommitWorkerInstruction, unknown, Database>;
 
 /** Posts a message to the parent ahead of the worker's output. */
 export type NotifyCommitWorkerParent = (

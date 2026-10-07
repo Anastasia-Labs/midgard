@@ -239,7 +239,6 @@ const consistentSql = (): SqlStateSnapshot => ({
     },
   ],
   blockHeaderHashes: [TIP],
-  foreign: [],
   observer: {
     kind: "present",
     admitted: [

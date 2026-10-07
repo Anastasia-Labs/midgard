@@ -5,22 +5,19 @@ import "effect";
 import "vitest";
 import "../src/database/pendingBlockFinalizations.js";
 import "../src/fibers/block-confirmation.js";
-import "../src/fibers/speculative-commit-builder.js";
 import "../src/services/canonical-journal-recovery.js";
 import "../src/workers/utils/commit-block-header.js";
 import "./deposit-flow-emulator-shared.js";
 import "./helpers/correction-rewind-scenario.js";
 import "./helpers/history-production-owner-lifecycle.js";
 import "./helpers/signed-intent-replacement.js";
-import "./helpers/speculative-ready-candidate.js";
 import "./signed-intent-replacement-revival-emulator.signed-commit-node.js";
 
-import { Cause, Effect, Ref } from "effect";
+import { Cause, Effect } from "effect";
 import { expect, it } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { buildBlockConfirmationAction } from "../src/fibers/block-confirmation.js";
-import { shutdownSpeculativeCommitSession } from "../src/fibers/speculative-commit-builder.js";
 import {
   findSignedIntentReplacementIntegrityError,
   signedIntentReplacementDigest,
@@ -62,10 +59,6 @@ import {
   synchronizeWithin,
   updateJournal,
 } from "./helpers/signed-intent-replacement.js";
-import {
-  expectInvalidatedByT1,
-  installReadyCandidate,
-} from "./helpers/speculative-ready-candidate.js";
 import {
   availableBlockAssetName,
   C,
@@ -438,68 +431,5 @@ it("revives a replaced block that landed while the node was down, with no journa
     expect(await nativeRoot(restarted)).toBe(E.journal[C.EXPECTED_UTXOS_ROOT]);
   } finally {
     await closeLifecycle(h);
-  }
-}, 900_000);
-
-it("with speculation on, reviving a landed replaced block invalidates a Ready candidate (T1) and releases its fork before the revival, then locally finalizes the revived block as with speculation off", async () => {
-  const previous = process.env.SPECULATIVE_COMMIT_BUILD;
-  process.env.SPECULATIVE_COMMIT_BUILD = "true";
-  let h: Handle | undefined;
-  try {
-    h = await openHistoryProductionOwnerLifecycle();
-    expect(h.production.nodeConfig.SPECULATIVE_COMMIT_BUILD).toBe(true);
-    await resetSharedRows();
-    await advanceEmulatorPastLatestBlockEndTime(h.fixture);
-    const inclusion = await submitDeposit(h, 12_000_000n);
-    const E = await loseNextCommit(h, inclusion);
-    const depositId = E.journal.depositEventIds[0]!;
-    moveToExactSlot(h, E.ttl);
-    await h.synchronize();
-    await expectReplaced(E.journal, { handle: h });
-
-    // A Ready candidate on E's base, forked from the owner's durable root
-    // (E's base root): E's revival supersedes that base.
-    const owner = Effect.runSync(Ref.get(h.globals.NATIVE_MPF_OWNER));
-    if (owner === undefined) throw new Error("Native owner is not open");
-    const installed = await installReadyCandidate({
-      globals: h.globals,
-      owner,
-      baseHeaderHash: E.journal[C.BASE_TAIL_HEADER_HASH].toString("hex"),
-      nowMs: h.fixture.emulator.now(),
-      maxAttempts: h.production.nodeConfig.SPECULATIVE_REBUILD_MAX_ATTEMPTS,
-      observe: async () => ({
-        status: (await readJournal(E.header))[C.STATUS],
-        durableRoot: (await owner.diagnostics()).durableRoot,
-      }),
-    });
-    expect(installed.root).toBe(E.journal[C.BASE_UTXOS_ROOT]);
-    // A source point with E still unlanded revives nothing and keeps the
-    // candidate. (Kills "invalidate on every reconciliation pass".)
-    await nextPoint(h);
-    expect(installed.worker.instructions).toEqual([]);
-
-    // E lands: the revival invalidates the candidate first. When its fork
-    // was released E was still replaced and the owner still held E's base
-    // root. (Kills "drop the T1 invalidation" and "invalidate after the
-    // revival".)
-    await landSignedCommitAsFork(h, E.journal[C.SIGNED_TX_CBOR]!);
-    await seedCorrectionObserver(h);
-    await nextPoint(h);
-    expectInvalidatedByT1({ ...installed, globals: h.globals });
-    expect(installed.released.observed).toEqual({
-      status: Pending.Status.Abandoned,
-      durableRoot: E.journal[C.BASE_UTXOS_ROOT],
-    });
-    await expectRevivedWithoutActiveJournal(h, E, depositId);
-    await finalizeLocally(h, E.header);
-    expect(await nativeRoot(h)).toBe(E.journal[C.EXPECTED_UTXOS_ROOT]);
-  } finally {
-    try {
-      await Effect.runPromise(shutdownSpeculativeCommitSession());
-      if (h !== undefined) await closeLifecycle(h);
-    } finally {
-      if (previous === undefined) delete process.env.SPECULATIVE_COMMIT_BUILD;
-      else process.env.SPECULATIVE_COMMIT_BUILD = previous;
-    }
   }
 }, 900_000);

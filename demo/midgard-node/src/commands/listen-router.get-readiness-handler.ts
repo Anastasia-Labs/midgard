@@ -87,7 +87,6 @@ export const getReadinessHandler = Effect.gen(function* () {
     durableAdmissionOldestAgeMs,
     unfinishedMutationJobs,
     daPublicationConflicts,
-    awaitingForeignTipReconciliations,
     mempoolTxCount,
     leaseInspection,
     journalAges,
@@ -210,7 +209,6 @@ export const getReadinessHandler = Effect.gen(function* () {
     unresolvedBlockSubmissionAgeMs,
     maxUnresolvedBlockSubmissionAgeMs: nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS,
     dbHealthy: true,
-    awaitingForeignTipReconciliations,
     operatorMembership,
     foreignBaseVerification,
     validationPool: {
@@ -368,7 +366,6 @@ export const getReadinessHandler = Effect.gen(function* () {
     mempoolTxCount: mempoolTxCount.toString(),
     unfinishedLocalMutationJobs: unfinishedMutationJobs.toString(),
     daPublicationConflicts,
-    awaitingForeignTipReconciliations,
     foreignBaseVerification:
       foreignBaseVerification.status === "unobserved"
         ? foreignBaseVerification

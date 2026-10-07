@@ -47,7 +47,7 @@ describe("native MPF commit worker input", () => {
       Promise.resolve({ durableRoot } as NativeMpfOwnerDiagnostics),
     );
     const input = await Effect.runPromise(
-      nativeMpfWorkerInput(stub.owner, "speculative-commit-builder", ownerSha),
+      nativeMpfWorkerInput(stub.owner, "commit-block-header", ownerSha),
     );
     expect(stub.ports).toHaveLength(1);
     expect(input).toEqual({

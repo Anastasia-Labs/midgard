@@ -47,7 +47,6 @@ test("all shell assets parse", async () => {
     "native-owner-preflight.sh",
     "capture-snapshot.sh",
     "reset.sh",
-    "t1-recover.sh",
     "validate-custom-chain-config.sh",
   ]) {
     const result = await run("sh", ["-n", join(root, "scripts", name)]);

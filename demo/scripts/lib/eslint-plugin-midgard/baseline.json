@@ -313,7 +313,7 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["? left.txHash.localeCompare(right.txHash) ||"]
     },
-    "midgard-node/src/workers/mpf-engine-probe.ts": {
+    "midgard-node/src/workers/mpf-engine-probe-corpus.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
     },
@@ -671,7 +671,7 @@
         "entries.sort(([left], [right]) => left.localeCompare(right));"
       ]
     },
-    "midgard-node-tools/scripts/verify-phase4-pipelined-process-summary.validate-cleanup.mjs": {
+    "midgard-node-tools/scripts/verify-phase4-journal-kill-recovery-summary.validate-cleanup.mjs": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [
         "left.localeCompare(right),",
@@ -679,30 +679,19 @@
         "JSON.stringify(left).localeCompare(JSON.stringify(right)),"
       ]
     },
-    "midgard-node-tools/scripts/verify-phase4-pipelined-process-summary.validate-phas-registration-transaction-body.mjs": {
+    "midgard-node-tools/scripts/verify-phase4-journal-kill-recovery-summary.validate-phas-registration-transaction-body.mjs": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [
-        "[...value.spent].sort((left, right) => left.localeCompare(right)),",
-        "[...value].sort((left, right) => left.localeCompare(right)),",
-        ".sort((left, right) => left.localeCompare(right));",
-        "].sort((left, right) => left.localeCompare(right));"
+        "[...value.spent].sort((left, right) => left.localeCompare(right)),"
       ]
     },
-    "midgard-node-tools/src/commands/e2e-pipelined-commit-process-acceptance.validate-phase4-phas-registration-transaction-body.ts": {
+    "midgard-node-tools/src/commands/e2e-journal-kill-recovery-acceptance.validate-phase4-phas-registration-transaction-body.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [".sort((left, right) => left.localeCompare(right))"]
     },
-    "midgard-node-tools/src/commands/e2e-pipelined-commit-process-acceptance.load-phase4-process-isolation.ts": {
+    "midgard-node-tools/src/commands/e2e-journal-kill-recovery-acceptance.load-phase4-process-isolation.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [".sort((left, right) => left.localeCompare(right));"]
-    },
-    "midgard-node-tools/src/commands/e2e-pipelined-commit-process-acceptance.decode-phase4-reset-attestation.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        ".sort((left, right) => left.localeCompare(right));",
-        ".sort((left, right) => left.txId.localeCompare(right.txId)),",
-        ".sort((left, right) => left.localeCompare(right));"
-      ]
     },
     "midgard-node-tools/src/commands/stress-corpus-generate.generate-stress-corpus.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
@@ -714,14 +703,14 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["sampleKey(corpusSha256, left).localeCompare("]
     },
-    "midgard-node-tools/src/e2e/pipelined-commit-process-harness.pipelined-commit-database-state.ts": {
+    "midgard-node-tools/src/e2e/journal-kill-process-harness.database-state.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         ".sort((left, right) => left.txId.localeCompare(right.txId));",
         "JSON.stringify(left).localeCompare(JSON.stringify(right)),"
       ]
     },
-    "midgard-node-tools/src/e2e/pipelined-commit-process-harness.capture-pipelined-commit-database-state.ts": {
+    "midgard-node-tools/src/e2e/journal-kill-process-harness.capture-database-state.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["JSON.stringify(left).localeCompare(JSON.stringify(right)),"]
     },

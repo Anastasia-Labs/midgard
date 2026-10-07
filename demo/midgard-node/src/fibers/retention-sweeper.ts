@@ -46,7 +46,6 @@ import {
 } from "../services/liveness-halt.js";
 import { fetchCanonicalStateQueueNodesProgram } from "../services/state-queue-topology.js";
 import { fetchDaPayloadRetirementProofs } from "./retention-sweeper.da-retirement-view.js";
-import { pruneForeignTipsBeyondRetention } from "./retention-sweeper.foreign-tips.js";
 import {
   RETENTION_HISTORY_PRUNE_BUDGET_MS,
   withRetentionHistoryProducer,
@@ -246,14 +245,6 @@ export const fetchRetentionL1ViewWithRetirement = Effect.gen(function* () {
  *  - with an L1 view and a verified deployment, finalized journals past the
  *    window, under the history producer permit
  *    (`withRetentionHistoryProducer`), each kept while challenge-relevant.
- * Foreign-tip evidence is pruned on the challengeability horizon plus checked
- * complete history coverage, the retained rollback anchor and dependency pins
- * (see `ForeignTipReconciliationsDB.pruneBeyondRetention`); it also needs the
- * tx-order ingestion watermark (`Globals.TX_ORDERS_INGESTED_THROUGH_MS`, which
- * the tx-order reconciles advance), and is skipped until the first reconcile
- * sets it. Reading it takes no L1 call and no L1 control-plane hold. The DA
- * and foreign-tip prunes run independently: a failed DA prune still lets the
- * foreign-tip prune run before the sweep fails.
  * Deposit and withdrawal rows are retained: settlement proofs recompute the
  * whole header's root, and a completed job records confirmation, without the
  * block identity/depth needed to prove payout finality. Local consumed/finalized
@@ -270,9 +261,6 @@ export const retentionSweepAction = (
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
     const deploymentIdentity = yield* ContractDeploymentIdentity;
-    const txOrdersIngestedThroughMs = yield* Ref.get(
-      (yield* Globals).TX_ORDERS_INGESTED_THROUGH_MS,
-    );
     const prunedOrphanDeltas = yield* MempoolTxDeltasDB.deleteOrphans;
     const challengeableCutoff = computeChallengeableCutoff(sweptAt);
     const deploymentIdentityDigest =
@@ -289,16 +277,6 @@ export const retentionSweepAction = (
               deploymentIdentityDigest,
             }),
           );
-    const prunedForeignTips =
-      view === undefined || txOrdersIngestedThroughMs === undefined
-        ? 0
-        : yield* pruneForeignTipsBeyondRetention({
-            challengeableCutoff,
-            view,
-            deploymentManifestId: deploymentIdentity.manifestId,
-            consensusProfileId: deploymentIdentity.consensusProfile.profileId,
-            txOrdersIngestedThrough: new Date(txOrdersIngestedThroughMs),
-          });
     yield* publishDaPayloadRetentionDeadline(
       sweptAt,
       view,
@@ -324,7 +302,7 @@ export const retentionSweepAction = (
     );
     if (!shouldPruneRetention(retentionDays)) {
       yield* Effect.logInfo(
-        `🧹 Retention sweep done (challengeableCutoff=${challengeableCutoff.toISOString()}, housekeeping disabled: no verified manifest window and RETENTION_DAYS unset, or RETENTION_DAYS=0): da_payloads=${prunedDaPayloads}, foreign_tip_reconciliations=${prunedForeignTips}, mempool_tx_deltas=${prunedOrphanDeltas}`,
+        `🧹 Retention sweep done (challengeableCutoff=${challengeableCutoff.toISOString()}, housekeeping disabled: no verified manifest window and RETENTION_DAYS unset, or RETENTION_DAYS=0): da_payloads=${prunedDaPayloads}, mempool_tx_deltas=${prunedOrphanDeltas}`,
       );
       return;
     }
@@ -358,7 +336,7 @@ export const retentionSweepAction = (
           );
 
     yield* Effect.logInfo(
-      `🧹 Retention sweep done (retentionDays=${retentionDays.toString()}, cutoff=${cutoff.toISOString()}, challengeableCutoff=${challengeableCutoff.toISOString()}): da_payloads=${prunedDaPayloads}, foreign_tip_reconciliations=${prunedForeignTips}, tx_rejections=${prunedTxRejections}, address_history=${prunedAddressHistory}, state_queue_mutation_leases=${prunedLeases}, pending_block_finalizations=${prunedJournals ?? "skipped"}, mempool_tx_deltas=${prunedOrphanDeltas}`,
+      `🧹 Retention sweep done (retentionDays=${retentionDays.toString()}, cutoff=${cutoff.toISOString()}, challengeableCutoff=${challengeableCutoff.toISOString()}): da_payloads=${prunedDaPayloads}, tx_rejections=${prunedTxRejections}, address_history=${prunedAddressHistory}, state_queue_mutation_leases=${prunedLeases}, pending_block_finalizations=${prunedJournals ?? "skipped"}, mempool_tx_deltas=${prunedOrphanDeltas}`,
     );
   });
 

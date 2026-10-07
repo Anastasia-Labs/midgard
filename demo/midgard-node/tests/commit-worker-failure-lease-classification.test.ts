@@ -92,8 +92,8 @@ vi.mock("../src/fibers/fetch-and-insert-tx-order-utxos.js", () => ({
     Effect.succeed(end),
   ),
 }));
-vi.mock("../src/e2e/pipelined-commit-crash-checkpoint.js", () => ({
-  reachPipelinedCommitCrashCheckpoint: vi.fn(() => Effect.void),
+vi.mock("../src/e2e/commit-crash-checkpoint.js", () => ({
+  reachCommitCrashCheckpoint: vi.fn(() => Effect.void),
 }));
 vi.mock("../src/operator-wallet-view.js", () => ({
   fetchOperatorWalletView: vi.fn(),
@@ -384,7 +384,6 @@ const baseCommitArgs = {
   utxoPayloadAggregate: { entryCount: 0, encodedTupleBytes: 0 },
   selectedBaseUtxosRoot: "33".repeat(32),
   implicitGenesisEntries: [],
-  beforePendingJournalInsert: () => Effect.void,
   nativeMpfReplay: undefined,
 } as const;
 

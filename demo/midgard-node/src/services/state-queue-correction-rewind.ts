@@ -7,7 +7,6 @@ import "../database/eventHistoryRecoveryPlans.js";
 import "../database/pendingBlockFinalizations.js";
 import "../database/stateQueueMutationLeases.js";
 import "../database/utils/common.js";
-import "../fibers/speculative-commit-builder.js";
 import "../l1-event-history-source.js";
 import "./globals.js";
 import "./history-dependent-recovery.js";

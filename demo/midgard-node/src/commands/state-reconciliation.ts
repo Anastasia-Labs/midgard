@@ -68,7 +68,6 @@ export {
   type CheckId,
   type CheckStatus,
   type DepositPayload,
-  type ForeignSummary,
   type HeaderRoots,
   type JournalSummary,
   type L1EventOrder,

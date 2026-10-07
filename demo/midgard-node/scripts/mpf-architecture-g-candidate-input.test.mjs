@@ -225,6 +225,7 @@ test("candidate input binds fixture creation identity and payload aggregate", as
       "corpusSliceSha256",
       "expectedTransactionCount",
       "firstTimestampIso",
+      "fixtureInitialUtxoCount",
       "fundingMapPath",
       "fundingMapSha256",
       "phase1FormalBinding",
@@ -245,11 +246,18 @@ test("candidate input binds fixture creation identity and payload aggregate", as
     assert.equal(seed.fundingMapPath, files.funding);
     assert.equal(seed.fundingMapSha256, sha256File(files.funding));
     assert.equal(seed.expectedTransactionCount, 10);
+    assert.equal(seed.fixtureInitialUtxoCount, 100);
     assert.match(
       seed.firstTimestampIso,
       /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u,
     );
     assert.equal(candidate.fixtureInitialUtxoCount, 100);
+    assert.equal(candidate.baseUtxosRoot, root);
+    assert.equal("speculativeBuild" in candidate.workerInput.data, false);
+    assert.match(
+      candidate.workerInput.data.baseSnapshotId,
+      /^architecture-g-candidate:[0-9a-f]{64}$/u,
+    );
     assert.equal(candidate.phase1FormalBinding.sha256, bindingSha256);
     assert.equal(candidate.runtimeIdentity.version, process.version);
     assert.match(candidate.fixtureCreationSha256, /^[0-9a-f]{64}$/u);

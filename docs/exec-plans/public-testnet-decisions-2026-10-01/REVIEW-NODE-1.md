@@ -1,5 +1,7 @@
 # Independent node review, pass 1
 
+> Note (deleted 2026-10-03, #752): speculative commit mode, the foreign-tip reconciliation table `foreign_tip_reconciliations`, the T2 foreign-event reconciliation workers, the foreign DA reconciliation fiber and the commit-time foreign-tip gate no longer exist. The file paths this record cites for them are kept as plain text for history.
+
 Base: `3027be19cb3bc740f83af0e155e34ab38c7cf894`. Inputs: final working diff and current new files only; no author rationale or earlier findings supplied. Sources were read in the shared working tree on 2026-10-01, including updates visible during review. Line references below identify the reviewed snapshot.
 
 Scope: node foreign payload retriever/store and reconciliation fiber; foreign event evidence verification; shared watcher public DA exports, manifest client configuration, payload client and libp2p transport; operator membership/watchdog, Globals, migration 0003 and acquired ledger snapshots; startup HTTP listener/runtime/registration/readiness; foreign reconciliation retention and paging, retention sweeper, owner coverage; related changed tests. Composition reads included history producer permissions, bound ledger source, retained-tip reconciliation, normal commitment reconciliation, and source-owner producer admission. Applied the reviewing-consensus-changes skill, all twelve lenses, and state-queue, user-event and DA invariants.
@@ -22,7 +24,7 @@ Suggested closure: restrict indexer candidates to the actual authenticated hub a
 
 ### [F2] CONFIRMED minor — downloaded foreign payloads cannot be reconciled by their new fiber
 
-Where: `demo/midgard-node/src/fibers/foreign-da-reconciliation.ts:137`; `demo/midgard-node/src/workers/t2-foreign-event-reconciliation.reconcile-retained-foreign-tip-entry.ts:279`; `demo/midgard-node/src/services/event-history-producer.ts:133`.
+Where: `demo/midgard-node/src/fibers/foreign-da-reconciliation.ts:137`; `demo/midgard-node/src/workers/t2-foreign-event-reconciliation.reconcile-retained-foreign-tip-entry.ts:279`; `demo/midgard-node/src/services/event-history-producer.ts:133`. <!-- doc-links:historical -->
 
 Defect: the new fiber invokes a history-protected reconciler without acquiring the required history producer permit.
 

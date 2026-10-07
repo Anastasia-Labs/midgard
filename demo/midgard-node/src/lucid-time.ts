@@ -51,7 +51,7 @@ export const canonicalSlotConfigForLucid = (
 
 /**
  * Performs Lucid's enclosing-slot conversion from a serializable mapping.
- * This keeps speculative proof construction independent of L1 provider
+ * This keeps proof construction independent of L1 provider
  * acquisition while preserving the exact mapping selected at node startup.
  */
 export const unixTimeToSlotForConfig = (

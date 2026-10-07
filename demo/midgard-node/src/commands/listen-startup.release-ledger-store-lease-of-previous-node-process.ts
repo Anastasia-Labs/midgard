@@ -4,8 +4,8 @@ import { MpfEngineStateDB } from "../database/index.js";
 import { withHistoryWrite } from "../services/event-history-producer.js";
 
 /**
- * Retires the ledger MPF lease a previous node process's commit worker,
- * speculative builder or payload audit left when it was killed, instead of
+ * Retires the ledger MPF lease a previous node process's commit worker or
+ * payload audit left when it was killed, instead of
  * letting every commit report the store busy until the lease's TTL runs out.
  *
  * The same proof as releaseStateQueueLeasesOfPreviousNodeProcess applies: this

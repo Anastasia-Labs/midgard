@@ -134,7 +134,7 @@ export const releaseLedgerStoreLease = (
   );
 
 /** Owner prefixes of the ledger MPF leases only a node process takes: block
- * commitment and the speculative builder (`node-commit:`), and the node's own
+ * commitment (`node-commit:`), and the node's own
  * payload audit (`node-audit:`). The offline `reconcile` and `mpf-audit`
  * commands take theirs as `commit:` and `audit:`, so a live one may exist
  * beside the node and never carries these prefixes. */

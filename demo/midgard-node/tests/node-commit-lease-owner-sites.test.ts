@@ -3,9 +3,7 @@ import { Effect, Exit, Ref } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import * as MpfEngineStateDB from "../src/database/mpfEngineState.js";
-import { Columns } from "../src/database/pendingBlockFinalizations.js";
 import { buildAndSubmitCommitmentBlockAction } from "../src/fibers/block-commitment.build-and-submit-commitment-block-action.js";
-import { runSpeculativeCommitBuilderOnce } from "../src/fibers/speculative-commit-builder.run-speculative-commit-builder-once.js";
 import {
   ContractDeploymentIdentity,
   Globals,
@@ -18,16 +16,14 @@ import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 // Startup retires a killed node's ledger MPF lease only under the node-process
-// owner prefix, so both node commit sites must hand their worker an owner
-// carrying it. A site that went back to the offline `commit:` owner would leave
-// a killed node's lease to its TTL. Each site is driven up to the worker it
-// launches, and the worker input it builds is captured there.
+// owner prefix, so the node commit site must hand its worker an owner carrying
+// it. A site that went back to the offline `commit:` owner would leave a killed
+// node's lease to its TTL. The site is driven up to the worker it launches, and
+// the worker input it builds is captured there.
 
 const { captured } = vi.hoisted(() => ({
   captured: {
     commitWorkerOwner: undefined as string | undefined,
-    speculativeOwner: undefined as string | undefined,
-    activeJournal: undefined as unknown,
     acceptedWorkerOwner: undefined as string | undefined,
   },
 }));
@@ -86,37 +82,6 @@ vi.mock("../src/lucid-time.js", async (importOriginal) => ({
   }),
 }));
 vi.mock(
-  "../src/fibers/speculative-commit-builder.apply-speculative-submission-output.js",
-  async (importOriginal) => {
-    const { Effect } = await import("effect");
-    return {
-      ...(await importOriginal<
-        typeof import("../src/fibers/speculative-commit-builder.apply-speculative-submission-output.js")
-      >()),
-      spawnSpeculativeSession: (
-        _globals: unknown,
-        _config: unknown,
-        input: { readonly data: { readonly ledgerStoreLeaseOwner: string } },
-      ) => {
-        captured.speculativeOwner = input.data.ledgerStoreLeaseOwner;
-        return Effect.fail(new Error("stop at the speculative worker"));
-      },
-    };
-  },
-);
-vi.mock(
-  "../src/fibers/speculative-commit-builder.spawn-speculative-session-with-worker.js",
-  async (importOriginal) => {
-    const { Effect } = await import("effect");
-    return {
-      ...(await importOriginal<
-        typeof import("../src/fibers/speculative-commit-builder.spawn-speculative-session-with-worker.js")
-      >()),
-      invalidateSpeculativeCommitCandidate: () => Effect.void,
-    };
-  },
-);
-vi.mock(
   "../src/database/pendingBlockFinalizations.js",
   async (importOriginal) => {
     const { Effect, Option } = await import("effect");
@@ -124,17 +89,12 @@ vi.mock(
       ...(await importOriginal<
         typeof import("../src/database/pendingBlockFinalizations.js")
       >()),
-      retrieveActive: () =>
-        Effect.succeed(Option.fromNullable(captured.activeJournal)),
+      retrieveActive: () => Effect.succeed(Option.none()),
     };
   },
 );
 
-const BASE_HEADER_HASH = "ab".repeat(28);
 const config = {
-  SPECULATIVE_COMMIT_BUILD: true,
-  SPECULATIVE_REBUILD_MAX_ATTEMPTS: 1,
-  USER_EVENT_BARRIER_MAX_STALENESS_MS: 60_000,
   MPF_NATIVE_OWNER_BINARY_SHA256: "",
   VALIDATION_LEDGER_DELTA_LOG_MAX: 1,
 } as unknown as NodeConfig["Type"];
@@ -222,48 +182,6 @@ describe("node commit sites take the ledger MPF lease as a node process", () => 
     expect(Exit.isFailure(exit)).toBe(true);
     expectNodeProcessOwner(captured.commitWorkerOwner);
     await expectWorkerAcceptsOwner(captured.commitWorkerOwner!);
-  });
-
-  it("the speculative builder hands its worker a node-commit owner", async () => {
-    captured.activeJournal = {
-      [Columns.HEADER_HASH]: Buffer.from(BASE_HEADER_HASH, "hex"),
-      [Columns.SUBMITTED_TX_HASH]: Buffer.from("cd".repeat(32), "hex"),
-      [Columns.BLOCK_END_TIME]: new Date(1_000),
-      [Columns.EXPECTED_UTXOS_ROOT]: Buffer.alloc(32),
-      mempoolTxIds: [],
-      depositEventIds: [],
-      forcedTransactionEventIds: [],
-      withdrawalEventIds: [],
-    };
-    const nowMs = Date.now();
-    const exit = await driveToWorker(
-      runSpeculativeCommitBuilderOnce(BASE_HEADER_HASH) as Effect.Effect<
-        unknown,
-        unknown,
-        never
-      >,
-      (globals) =>
-        Effect.all(
-          [
-            Ref.set(globals.SPECULATIVE_COMMIT_STATE, {
-              _tag: "Building",
-              baseHeaderHash: BASE_HEADER_HASH,
-              rebuildAttempts: 0,
-              startedAtMs: nowMs,
-            }),
-            Ref.set(globals.USER_EVENT_BARRIER_WATERMARKS, {
-              depositMs: nowMs,
-              withdrawalMs: nowMs,
-              txOrderMs: nowMs,
-              refreshedAtMs: nowMs,
-            }),
-          ],
-          { discard: true },
-        ),
-    );
-    expect(Exit.isFailure(exit)).toBe(true);
-    expectNodeProcessOwner(captured.speculativeOwner);
-    await expectWorkerAcceptsOwner(captured.speculativeOwner!);
   });
 
   it("accepts offline commit owners and refuses audit or shared owners", async () => {

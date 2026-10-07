@@ -1,12 +1,7 @@
 import { TxHash } from "@lucid-evolution/lucid";
-import { Deferred, Effect, Queue, Ref } from "effect";
+import { Deferred, Effect, Ref } from "effect";
 
 import type { OperatorMembershipState } from "../fibers/operator-membership.js";
-import {
-  idleSpeculativeCommitState,
-  type SpeculativeCommitState,
-  type UserEventBarrierWatermarks,
-} from "../fibers/speculative-commit-state.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import type { CommitDaFramePressureSnapshot } from "../workers/utils/commit-block-planner.commit-da-frame-notice.js";
 import type { EventHistoryOwner } from "./event-history-owner.js";
@@ -20,7 +15,6 @@ import {
   type AdmissionBacklogGaugeState,
   type AttestationTimeoutCorrectionHealth,
   type CommitPipelinePhase,
-  type CommitSubmitWake,
   type L1ProviderHealthEvidence,
   type MempoolLedgerDeltaLog,
 } from "./globals.next-l1-provider-health-evidence.js";
@@ -89,29 +83,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       lastFailure: null,
       lastOgmiosSlot: null,
     });
-
-    const SPECULATIVE_COMMIT_STATE = yield* Ref.make<SpeculativeCommitState>(
-      idleSpeculativeCommitState(),
-    );
-    const SPECULATIVE_COMMIT_SESSION_ACTIVE = yield* Ref.make(false);
-    const SPECULATIVE_BUILD_WAKE_QUEUE = yield* Queue.unbounded<string>();
-    const COMMIT_SUBMIT_WAKE_QUEUE = yield* Queue.unbounded<CommitSubmitWake>();
-
-    const USER_EVENT_BARRIER_WATERMARKS =
-      yield* Ref.make<UserEventBarrierWatermarks>({
-        depositMs: 0,
-        withdrawalMs: 0,
-        txOrderMs: 0,
-        refreshedAtMs: 0,
-      });
-
-    // The instant through which every forced transaction is known ingested,
-    // advanced only by a successful tx-order reconcile on this thread (see
-    // `reconcileVisibleTxOrderUTxOs`); undefined until the first one.
-    // Foreign-tip retention reads it instead of reconciling itself.
-    const TX_ORDERS_INGESTED_THROUGH_MS = yield* Ref.make<number | undefined>(
-      undefined,
-    );
 
     // The state queue UTxO confirmed by the confirmation worker, unused for
     // block commitment.
@@ -199,8 +170,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const HEARTBEAT_BLOCK_CONFIRMATION = yield* Ref.make<number>(now);
     const HEARTBEAT_MERGE = yield* Ref.make<number>(now);
     const HEARTBEAT_TX_QUEUE_PROCESSOR = yield* Ref.make<number>(now);
-    const HEARTBEAT_SPECULATIVE_COMMIT_BUILDER = yield* Ref.make<number>(now);
-    const HEARTBEAT_SPECULATIVE_COMMIT_SUBMITTER = yield* Ref.make<number>(now);
 
     // Who holds and who waits for L1_CONTROL_PLANE, read by readiness to tell
     // a wedged permit from a busy one.
@@ -255,12 +224,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       SETTLEMENT_HEALTH,
       L1_PROVIDER_DIRECT_PROBE,
       L1_PROVIDER_HEALTH,
-      SPECULATIVE_COMMIT_STATE,
-      SPECULATIVE_COMMIT_SESSION_ACTIVE,
-      SPECULATIVE_BUILD_WAKE_QUEUE,
-      COMMIT_SUBMIT_WAKE_QUEUE,
-      USER_EVENT_BARRIER_WATERMARKS,
-      TX_ORDERS_INGESTED_THROUGH_MS,
       AVAILABLE_CONFIRMED_BLOCK,
       AVAILABLE_LOCAL_FINALIZATION_BLOCK,
       PROCESSED_UNSUBMITTED_TXS_COUNT,
@@ -280,8 +243,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       HEARTBEAT_BLOCK_CONFIRMATION,
       HEARTBEAT_MERGE,
       HEARTBEAT_TX_QUEUE_PROCESSOR,
-      HEARTBEAT_SPECULATIVE_COMMIT_BUILDER,
-      HEARTBEAT_SPECULATIVE_COMMIT_SUBMITTER,
       ATTESTATION_TIMEOUT_CORRECTION_HEALTH,
       L1_CONTROL_PLANE_ACTIVITY,
       LIVENESS_REASONS,

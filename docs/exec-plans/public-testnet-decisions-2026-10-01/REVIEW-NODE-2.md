@@ -1,5 +1,7 @@
 # Independent node review, pass 2
 
+> Note (deleted 2026-10-03, #752): speculative commit mode, the foreign-tip reconciliation table `foreign_tip_reconciliations`, the T2 foreign-event reconciliation workers, the foreign DA reconciliation fiber and the commit-time foreign-tip gate no longer exist. The file paths this record cites for them are kept as plain text for history.
+
 Base: `3027be19cb3bc740f83af0e155e34ab38c7cf894`. Reviewed on 2026-10-01 against the complete working diff and new files, plus `REVIEW-NODE-1.md` finding traces. No author rationale was used. Applied the reviewing-consensus-changes skill, its twelve lenses, and the state-queue, user-event and DA invariants. No implementation edits were made.
 
 Scope: node foreign payload retriever/store, foreign DA fiber and consume helper; watcher public DA export, manifest authority, negotiation, deadline validation, payload client and libp2p transport; operator membership/watchdog/policy, Globals and control-plane entry guards, membership migration, acquired ledger snapshots and bound source; startup HTTP listener, runtime registration and readiness; foreign-tip retention/actionable paging, T2 reconciliation, retention sweeper and history-owner coverage; related changed tests. Composition reads included SDK policy candidate filtering, retained canonical ancestry, history producer admission/coverage, recovery producer drainage, retained-entry reconciliation, pending event queries, normal commitment reconciliation, and Genesis.

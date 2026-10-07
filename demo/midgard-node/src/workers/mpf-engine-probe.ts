@@ -19,8 +19,10 @@ import {
 } from "../mpf/index.js";
 import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/index.js";
 import {
+  buildCanonicalFixtureEntries,
   canonicalOutrefCborFromLabel,
   decodeCanonicalProbeRow,
+  ledgerFixtureMpfEntries,
 } from "./mpf-engine-probe-corpus.js";
 import {
   decodeArchitectureGCorpusFunding,
@@ -301,38 +303,6 @@ const loadCanonicalFundingMap = async (
   return { path, sha256: actualSha256, entries };
 };
 
-const buildCanonicalFixtureEntries = (
-  funding: NonNullable<Awaited<ReturnType<typeof loadCanonicalFundingMap>>>,
-): readonly { readonly key: Buffer; readonly value: Buffer }[] => {
-  if (funding.entries.size > initialUtxoCount) {
-    throw new Error(
-      `Canonical funding roots ${funding.entries.size.toString()} exceed fixture size ${initialUtxoCount.toString()}`,
-    );
-  }
-  const entries = [...funding.entries]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([outref, output]) => ({
-      key: canonicalOutrefCborFromLabel(outref),
-      value: Buffer.from(output),
-    }));
-  const keys = new Set(entries.map((entry) => entry.key.toString("hex")));
-  const sampleOutput = entries[0]?.value;
-  if (sampleOutput === undefined) {
-    throw new Error("Canonical funding map must contain at least one root");
-  }
-  for (let index = 0; entries.length < initialUtxoCount; index += 1) {
-    const txHash = createHash("sha256")
-      .update("MIDGARD-ARCH-G-FIXTURE-FILLER-V1")
-      .update(Buffer.from(index.toString(16).padStart(16, "0"), "hex"))
-      .digest("hex");
-    const key = canonicalOutrefCborFromLabel(`${txHash}#0`);
-    if (keys.has(key.toString("hex"))) continue;
-    keys.add(key.toString("hex"));
-    entries.push({ key, value: Buffer.from(sampleOutput) });
-  }
-  return entries;
-};
-
 const createProbeLedgerFixture = (
   name: string,
   entries: readonly {
@@ -384,10 +354,17 @@ void Effect.runPromise(
       const fixtureEntries =
         canonicalFunding === undefined
           ? initial
-          : buildCanonicalFixtureEntries(canonicalFunding);
+          : buildCanonicalFixtureEntries(
+              canonicalFunding.entries,
+              initialUtxoCount,
+            );
+      // Canonical entries are real outputs, stored under their production
+      // ledger descriptors; the synthetic filler values are not outputs.
       const fixture = yield* createProbeLedgerFixture(
         "mpf-engine-probe-fixture",
-        fixtureEntries,
+        canonicalFunding === undefined
+          ? fixtureEntries
+          : ledgerFixtureMpfEntries(fixtureEntries),
       );
       const marker = yield* fixture.rootHex();
       const diagnostics = yield* fixture.diagnostics();

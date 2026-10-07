@@ -6,7 +6,10 @@ import { Effect, Option } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { TxAdmissionsDB, TxUtils as TxTable } from "../src/database/index.js";
-import { processMpfs } from "../src/mpf/index.js";
+import {
+  computeLedgerMpfRootFromLedgerEntries,
+  processMpfs,
+} from "../src/mpf/index.js";
 import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
 import {
   ContractDeploymentIdentity,
@@ -32,6 +35,11 @@ vi.mock("../src/database/index.js", async () => {
   };
   return {
     ...actual,
+    // The commit base is an empty confirmed ledger.
+    ConfirmedLedgerDB: {
+      ...actual.ConfirmedLedgerDB,
+      retrieve: Effect.succeed([]),
+    },
     DepositsDB: {
       ...actual.DepositsDB,
       retrievePendingHeaderEntriesUpTo: vi.fn(() => Effect.succeed([])),
@@ -132,8 +140,8 @@ vi.mock("../src/fibers/fetch-and-insert-tx-order-utxos.js", () => ({
     Effect.succeed(end),
   ),
 }));
-vi.mock("../src/e2e/pipelined-commit-crash-checkpoint.js", () => ({
-  reachPipelinedCommitCrashCheckpoint: vi.fn(() => Effect.void),
+vi.mock("../src/e2e/commit-crash-checkpoint.js", () => ({
+  reachCommitCrashCheckpoint: vi.fn(() => Effect.void),
 }));
 vi.mock("../src/operator-wallet-view.js", () => ({
   fetchOperatorWalletView: vi.fn(),
@@ -299,7 +307,6 @@ const baseCommitArgs = {
   utxoPayloadAggregate: { entryCount: 0, encodedTupleBytes: 0 },
   selectedBaseUtxosRoot: "33".repeat(32),
   implicitGenesisEntries: [],
-  beforePendingJournalInsert: () => Effect.void,
   nativeMpfReplay: undefined,
 } as const;
 
@@ -404,32 +411,11 @@ describe("canonical V1 commit profile", () => {
       deploymentMarker,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     });
-    const speculativeBuild = {
-      base: {
-        headerHash: "aa".repeat(28),
-        utxosRoot: "33".repeat(32),
-        blockEndTimeMs: Date.parse("2026-01-01T00:06:00.000Z"),
-        submittedTxHash: "bb".repeat(32),
-      },
-      watermarks: {
-        depositMs: Date.parse("2026-01-01T00:07:00.999Z"),
-        withdrawalMs: Date.parse("2026-01-01T00:07:00.999Z"),
-        txOrderMs: Date.parse("2026-01-01T00:07:00.999Z"),
-        refreshedAtMs: Date.parse("2026-01-01T00:07:00.999Z"),
-      },
-      excludedMempoolTxIds: [],
-      excludedDepositEventIds: [],
-      excludedForcedTransactionEventIds: [],
-      excludedWithdrawalEventIds: [],
-    } as const;
     const runWorker = (input: typeof workerInput) =>
       runEffect(
         Effect.either(
-          runCommitBlockHeaderWorkerProgram(input, () =>
-            Effect.succeed({
-              type: "InvalidateSpeculativeCandidate",
-              reason: "T1",
-            }),
+          runCommitBlockHeaderWorkerProgram(input, undefined, () =>
+            Effect.succeed(fakeLucid),
           ),
         ).pipe(
           Effect.provideService(NodeConfig, nodeConfig),
@@ -440,14 +426,15 @@ describe("canonical V1 commit profile", () => {
     vi.mocked(processMpfs).mockClear();
     const nativeMpf = {
       port: {} as MessagePort,
-      durableRoot: "33".repeat(32),
+      durableRoot: await Effect.runPromise(
+        computeLedgerMpfRootFromLedgerEntries([]),
+      ),
       ownerBinarySha256: "ab".repeat(32),
     };
     const missingConfigOutcome = await runWorker({
       nativeMpf,
       data: {
         ...workerInput.data,
-        speculativeBuild,
         forcedValidationSlotConfig: undefined,
       },
     } as never);
@@ -462,7 +449,7 @@ describe("canonical V1 commit profile", () => {
     vi.mocked(processMpfs).mockClear();
     const suppliedConfigOutcome = await runWorker({
       nativeMpf,
-      data: { ...workerInput.data, speculativeBuild },
+      data: workerInput.data,
     } as never);
     expect(suppliedConfigOutcome._tag).toBe("Left");
     expect(processMpfs).toHaveBeenCalledTimes(1);

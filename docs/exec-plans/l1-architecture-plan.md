@@ -1803,8 +1803,8 @@ per-block L1 work against state size, rollback cost, or committee tick cost:
 - the validation and codec benches measure L2 tx validation;
 - the Architecture G soak measures MPF growth under L2 load, and needs 24 hours
   at 5,000 TPS (`docs/benchmark-scenarios/phase-3-architecture-g-soak.md:11-19`);
-- the Phase 4 gate is a one-hour pipelined-commit run
-  (`docs/benchmark-scenarios/phase-4-pipelined-one-hour.md:11-14`).
+- the Phase 4 one-hour pipelined-commit gate was deleted with speculative
+  building (#752), and no replacement gate was filed.
 
 The harness is therefore part of the tickets. It has four parts:
 

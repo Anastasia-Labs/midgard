@@ -72,14 +72,7 @@ export const submitOwnedDeposit = async (
   );
   await owner.synchronize();
   const { coverage } = await owner.command(HistoryProducer);
-  const horizon = historyEligibilityHorizon(coverage);
-  const watermarks = {
-    depositMs: horizon,
-    withdrawalMs: horizon,
-    txOrderMs: horizon,
-    refreshedAtMs: Date.now(),
-  };
-  return { submittedTxHash, watermarks, coverage };
+  return { submittedTxHash, coverage };
 };
 
 /** A genuinely foreign header has no local finalization journal. Build its

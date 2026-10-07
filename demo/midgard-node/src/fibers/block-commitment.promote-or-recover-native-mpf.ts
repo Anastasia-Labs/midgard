@@ -109,14 +109,6 @@ export const resolveAuthoritativeLocalFinalizationPreflight = ({
   };
 };
 
-export const foreignTipReconciliationAwaitingGauge = Metric.gauge(
-  "foreign_tip_reconciliation_awaiting",
-  {
-    description:
-      "Number of durable foreign-tip evidence windows still blocking commit reconciliation",
-  },
-);
-
 export const BLOCK_COMMITMENT_DUE_WORK_KIND =
   "commit_scheduler_refresh" as const;
 

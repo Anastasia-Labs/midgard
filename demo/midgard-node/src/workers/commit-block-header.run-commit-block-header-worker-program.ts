@@ -15,7 +15,6 @@ import {
   NodeConfig,
 } from "../services/index.js";
 import {
-  type AwaitSpeculativeCommitInstruction,
   type NotifyCommitWorkerParent,
   shouldPreserveCommitMpfRoots,
 } from "./commit-block-header.commit-explicit-block-header-program.js";
@@ -26,18 +25,12 @@ import {
   defaultCommitLucidFactory,
   provideCommitBlockWorkerServices,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
-import {
-  type SpeculativeCandidateReadyOutput,
-  type SpeculativeCommitWorkerInstruction,
-  WorkerInput,
-  WorkerOutput,
-} from "./utils/commit-block-header.js";
+import { WorkerInput, WorkerOutput } from "./utils/commit-block-header.js";
 
 // Export the production commit worker core so emulator tests can exercise the
 // exact same effect graph without going through a worker-thread bootstrap.
 export const runCommitBlockHeaderWorkerProgram = (
   workerInput: WorkerInput,
-  awaitSpeculativeInstruction?: AwaitSpeculativeCommitInstruction,
   notifyParent?: NotifyCommitWorkerParent,
   commitLucidFactory: CommitLucidFactory = defaultCommitLucidFactory,
 ): Effect.Effect<
@@ -87,17 +80,11 @@ export const runCommitBlockHeaderWorkerProgram = (
             .close()
             .pipe(Effect.catchAll(() => Effect.void));
 
-          const runProgram = (
-            activeAwaitSpeculativeInstruction?: AwaitSpeculativeCommitInstruction,
-          ) =>
+          const runProgram = () =>
             databaseOperationsProgram(
               workerInput,
               transactionsMpf,
-              activeAwaitSpeculativeInstruction,
               notifyParent,
-              activeLeaseOwner,
-              transactionsMpf,
-              () => ({ transactionsMpf }),
               nativeMpfClient,
               nativeMpfState,
               commitLucidFactory,
@@ -119,46 +106,7 @@ export const runCommitBlockHeaderWorkerProgram = (
             );
           const program = Effect.gen(function* () {
             yield* transactionsMpf.beginBlockOverlay();
-            const awaitInstructionWithRetainedNativeHandle =
-              workerInput.data.speculativeBuild === undefined ||
-              awaitSpeculativeInstruction === undefined
-                ? undefined
-                : (candidate: SpeculativeCandidateReadyOutput["candidate"]) =>
-                    Effect.gen(function* () {
-                      yield* MpfEngineStateDB.releaseLedgerStoreLease(
-                        activeLeaseOwner,
-                      );
-                      const instruction =
-                        yield* awaitSpeculativeInstruction(candidate);
-                      if (instruction.type !== "SubmitSpeculativeCandidate") {
-                        return instruction;
-                      }
-                      yield* StateQueueMutationLeasesDB.revalidate(
-                        instruction.stateQueueLeaseToken,
-                      );
-                      let reacquired = false;
-                      for (let attempt = 0; attempt < 200; attempt += 1) {
-                        reacquired =
-                          yield* MpfEngineStateDB.acquireLedgerStoreLease({
-                            owner: activeLeaseOwner,
-                            ttlMs: 10 * 60 * 1000,
-                          });
-                        if (reacquired) break;
-                        yield* Effect.sleep("50 millis");
-                      }
-                      if (!reacquired) {
-                        return yield* Effect.fail(
-                          new CommitWorkerInvariantError({
-                            message:
-                              "Timed out reacquiring the logical MPF lease for Architecture G speculative submission",
-                          }),
-                        );
-                      }
-                      return instruction;
-                    });
-            const result = yield* Effect.either(
-              runProgram(awaitInstructionWithRetainedNativeHandle),
-            );
+            const result = yield* Effect.either(runProgram());
             yield* transactionsMpf.discardBlockOverlayIfActive();
             if (result._tag === "Left") {
               return yield* Effect.fail(result.left);
@@ -209,58 +157,6 @@ export const runCommitBlockHeaderWorkerProgram = (
       : Effect.provideService(HistoryProducer, workerInput.history),
   );
 
-/**
- * Runs the exact production speculative commit-candidate path and stops at the
- * candidate-ready boundary. This is the only benchmark-safe build-only entry:
- * it never advances to source revalidation, journal preparation, signing, or
- * L1 submission, and the ordinary worker cleanup discards the native
- * generation after the typed invalidation instruction.
- */
-export const runCommitBlockHeaderCandidateBuildProgram = (
-  workerInput: WorkerInput,
-  commitLucidFactory: CommitLucidFactory = defaultCommitLucidFactory,
-): Effect.Effect<
-  SpeculativeCandidateReadyOutput["candidate"],
-  unknown,
-  MidgardContracts | ContractDeploymentIdentity | Database | NodeConfig
-> =>
-  Effect.gen(function* () {
-    if (workerInput.data.speculativeBuild === undefined) {
-      return yield* Effect.fail(
-        new CommitWorkerInvariantError({
-          message:
-            "Commit-candidate build-only program requires speculativeBuild input",
-        }),
-      );
-    }
-    let captured: SpeculativeCandidateReadyOutput["candidate"] | undefined;
-    const output = yield* runCommitBlockHeaderWorkerProgram(
-      workerInput,
-      (candidate) =>
-        Effect.sync(() => {
-          captured = candidate;
-          return {
-            type: "InvalidateSpeculativeCandidate",
-            reason: "T1",
-          } satisfies SpeculativeCommitWorkerInstruction;
-        }),
-      undefined,
-      commitLucidFactory,
-    );
-    if (
-      captured === undefined ||
-      output.type !== "SpeculativeCandidateInvalidatedOutput" ||
-      output.candidateId !== captured.candidateId
-    ) {
-      return yield* Effect.fail(
-        new CommitWorkerInvariantError({
-          message: `Commit-candidate build-only program did not stop at the candidate-ready boundary (output=${output.type})`,
-        }),
-      );
-    }
-    return captured;
-  });
-
 /** The worker's outgoing failure boundary, shared with in-process acceptance. */
 export const captureCommitWorkerFailure = <E, R>(
   program: Effect.Effect<WorkerOutput, E, R>,
@@ -278,35 +174,11 @@ if (parentPort !== null) {
   const workerParentPort = parentPort;
   const inputData = workerData as WorkerInput;
 
-  const awaitSpeculativeInstruction: AwaitSpeculativeCommitInstruction = (
-    candidate,
-  ) =>
-    Effect.async((resume) => {
-      const onInstruction = (
-        instruction: SpeculativeCommitWorkerInstruction,
-      ) => {
-        workerParentPort.off("message", onInstruction);
-        resume(Effect.succeed(instruction));
-      };
-      workerParentPort.on("message", onInstruction);
-      workerParentPort.postMessage({
-        type: "SpeculativeCandidateReadyOutput",
-        candidate,
-      } satisfies SpeculativeCandidateReadyOutput);
-      return Effect.sync(() => workerParentPort.off("message", onInstruction));
-    });
-
   const notifyParent: NotifyCommitWorkerParent = (message) =>
     Effect.sync(() => workerParentPort.postMessage(message));
 
   const program = provideCommitBlockWorkerServices(
-    runCommitBlockHeaderWorkerProgram(
-      inputData,
-      inputData.data.speculativeBuild === undefined
-        ? undefined
-        : awaitSpeculativeInstruction,
-      notifyParent,
-    ),
+    runCommitBlockHeaderWorkerProgram(inputData, notifyParent),
   );
 
   void Effect.runPromise(captureCommitWorkerFailure(program)).then((output) => {

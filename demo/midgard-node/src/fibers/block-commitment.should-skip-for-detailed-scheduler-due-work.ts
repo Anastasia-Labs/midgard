@@ -48,7 +48,6 @@ import {
   clearSlotAwareDueWork,
   type SlotAwareDueWork,
 } from "./slot-aware-due-work.js";
-import { type SpeculativeCommitState } from "./speculative-commit-state.js";
 
 export const publishCommitMempoolLedgerMutation = (
   globals: Globals,
@@ -184,22 +183,6 @@ export const shouldAttemptCommitPipeline = ({
     mempoolTxCount > 0n ||
     processedUnsubmittedTxCount > 0 ||
     pendingUserEventCount > 0);
-
-export const shouldSkipScheduledLegacyCommitForSpeculation = ({
-  enabled,
-  state,
-  recoveryMustRun,
-}: {
-  readonly enabled: boolean;
-  readonly state: SpeculativeCommitState;
-  readonly recoveryMustRun: boolean;
-}): boolean =>
-  enabled &&
-  !recoveryMustRun &&
-  (state._tag === "Building" ||
-    state._tag === "ReadyToSubmit" ||
-    state._tag === "Submitting" ||
-    state._tag === "Invalidated");
 
 const COMMIT_PIPELINE_SKIP_LOG_KEY = "block_commitment_idle_skip";
 

@@ -38,9 +38,11 @@ export const validateCommitCandidateProbeResult = ({
       "cpuAffinity",
       "durationMs",
       "confirmedLedgerFullScans",
+      "userEventRows",
       "journalRowsBefore",
       "journalRowsAfter",
       "candidateConfig",
+      "providerReads",
       "providerBoundaryAttempts",
       "submissionAttempts",
       "candidate",
@@ -71,37 +73,18 @@ export const validateCommitCandidateProbeResult = ({
   );
   requireExactObjectKeys(
     result.candidate,
-    [
-      "candidateId",
-      "baseHeaderHash",
-      "endTimeMs",
-      "builtAtMs",
-      "buildDurationMs",
-      "invalidationKey",
-      "watermarks",
-      "expectedUserEventCounts",
-      "expectedL2TransactionCount",
-      "roots",
-    ],
+    ["endTimeMs", "l2TransactionCount", "roots"],
     "Commit-candidate summary",
   );
   requireExactObjectKeys(
-    result.candidate.watermarks,
-    ["depositMs", "withdrawalMs", "txOrderMs", "refreshedAtMs"],
-    "Commit-candidate barrier watermarks",
-  );
-  requireExactObjectKeys(
-    result.candidate.expectedUserEventCounts,
+    result.userEventRows,
     ["deposits", "forcedTransactions", "withdrawals"],
-    "Commit-candidate expected user-event counts",
+    "Commit-candidate fixture user-event rows",
   );
   const rootKeys = [
     "utxos",
     "rawTransactions",
     "transactions",
-    "deposits",
-    "forcedTransactions",
-    "withdrawals",
     "transitionTrace",
     "eventToStep",
   ];
@@ -125,7 +108,7 @@ export const validateCommitCandidateProbeResult = ({
   }
   if (
     result.expectedTransactionCount !== transactions ||
-    result.candidate?.expectedL2TransactionCount !== transactions
+    result.candidate?.l2TransactionCount !== transactions
   ) {
     throw new Error("Commit-candidate probe transaction count drifted");
   }
@@ -189,8 +172,21 @@ export const validateCommitCandidateProbeResult = ({
   ) {
     throw new Error("Commit-candidate configuration evidence is invalid");
   }
-  if (result.confirmedLedgerFullScans !== 0) {
-    throw new Error("Commit-candidate probe performed a confirmed-ledger scan");
+  // shouldHydrateCommitBaseEntries hydrates whenever candidateTxCount > 0.
+  if (result.confirmedLedgerFullScans !== 1) {
+    throw new Error(
+      "Commit-candidate probe must perform exactly one confirmed-ledger scan",
+    );
+  }
+  // The candidate omits the user-event roots, so the fixture must hold no
+  // user events: their roots are then the empty tree.
+  if (Object.values(result.userEventRows).some((count) => count !== 0)) {
+    throw new Error(
+      "Commit-candidate fixture must hold no deposits, forced transactions or withdrawals",
+    );
+  }
+  if (!isNonNegativeSafeInteger(result.providerReads)) {
+    throw new Error("Commit-candidate probe provider read count is invalid");
   }
   if (
     result.providerBoundaryAttempts !== 0 ||
@@ -200,25 +196,8 @@ export const validateCommitCandidateProbeResult = ({
       "Commit-candidate probe crossed the provider/submission boundary",
     );
   }
-  const candidate = result.candidate;
-  const watermarkValues = Object.values(candidate.watermarks);
-  const minimumWatermarkMs = Math.min(...watermarkValues);
-  if (
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
-      candidate.candidateId,
-    ) ||
-    typeof candidate.baseHeaderHash !== "string" ||
-    !/^[0-9a-f]{56}$/u.test(candidate.baseHeaderHash) ||
-    !isPositiveSafeInteger(candidate.endTimeMs) ||
-    !isPositiveSafeInteger(candidate.builtAtMs) ||
-    !watermarkValues.every(isNonNegativeSafeInteger) ||
-    !Object.values(candidate.expectedUserEventCounts).every(
-      isNonNegativeSafeInteger,
-    ) ||
-    candidate.invalidationKey !==
-      `${candidate.baseHeaderHash}:${candidate.endTimeMs.toString()}:${minimumWatermarkMs.toString()}`
-  ) {
-    throw new Error("Commit-candidate identity or barrier evidence is invalid");
+  if (!isPositiveSafeInteger(result.candidate.endTimeMs)) {
+    throw new Error("Commit-candidate block end time is invalid");
   }
   if (result.journalRowsBefore !== 0 || result.journalRowsAfter !== 0) {
     throw new Error(
@@ -227,12 +206,6 @@ export const validateCommitCandidateProbeResult = ({
   }
   if (!Number.isFinite(result.durationMs) || result.durationMs <= 0) {
     throw new Error("Commit-candidate probe duration is invalid");
-  }
-  if (
-    !Number.isFinite(result.candidate?.buildDurationMs) ||
-    result.candidate.buildDurationMs <= 0
-  ) {
-    throw new Error("Commit-candidate worker build duration is invalid");
   }
   if (
     result.ownerBefore.durableRoot !== result.ownerAfter.durableRoot ||

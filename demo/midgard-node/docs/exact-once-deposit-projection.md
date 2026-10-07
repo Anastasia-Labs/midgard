@@ -75,8 +75,8 @@ than once.
 
 The commit worker selects unassigned events due by the effective block end
 through `retrievePendingHeaderEntriesUpTo`. Selection is constrained by the
-commit-time ingestion barrier and speculative predecessor exclusions; it is not
-an unconditional selection of every unassigned projected row.
+commit-time ingestion barrier; it is not an unconditional selection of every
+unassigned projected row.
 
 The selected ordered set supplies deposit-root construction, the final deposit
 phase of the transition trace, and immutable pending-finalization membership.

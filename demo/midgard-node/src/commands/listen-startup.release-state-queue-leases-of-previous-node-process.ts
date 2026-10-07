@@ -7,11 +7,11 @@ import { NODE_PROCESS_MPF_AUDIT_LEASES } from "./mpf-audit-leases.js";
 
 /**
  * State-queue lease holders that only a node process takes, from fibers that
- * start after startup preparation: block commitment (and the speculative
- * submitter), merge, attestation-timeout removal and the node's own payload
- * audit. `mpf-payload-audit` is deliberately absent: the offline `mpf-audit`
- * command takes it without the history authority, so a live one may exist
- * beside this node.
+ * start after startup preparation: block commitment, merge,
+ * attestation-timeout removal and the node's own payload audit.
+ * `mpf-payload-audit` is deliberately absent: the offline `mpf-audit` command
+ * takes it without the history authority, so a live one may exist beside this
+ * node.
  */
 export const NODE_PROCESS_STATE_QUEUE_LEASE_HOLDERS: readonly string[] = [
   "block_commitment",

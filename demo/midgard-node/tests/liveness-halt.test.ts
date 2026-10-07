@@ -185,21 +185,15 @@ describe("liveness halts", () => {
       "blockCommitment",
       "merge",
       "settlement",
-      "speculativeCommitBuilder",
-      "speculativeCommitSubmitter",
     ]);
     expect(held(HaltSource.blockConfirmationSignedIntent)).toEqual([
       "blockCommitment",
-      "speculativeCommitBuilder",
-      "speculativeCommitSubmitter",
     ]);
     expect(held(HaltSource.operatorMembership)).toEqual([
       "blockCommitment",
       "merge",
       "operatorWatchdog",
       "settlement",
-      "speculativeCommitBuilder",
-      "speculativeCommitSubmitter",
     ]);
   });
 });

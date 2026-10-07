@@ -10,7 +10,7 @@
  * anything that could validate them. Those live here now, in the same
  * injectable shape.
  *
- * The per-command gates in `commands/e2e-pipelined-commit-process-acceptance.ts`
+ * The per-command gates in `commands/e2e-journal-kill-recovery-acceptance.ts`
  * are deliberately not moved: they are that one command's authorization
  * preconditions, they are already parsed through local `requiredEnv` and
  * `positiveIntegerEnv` helpers, and hoisting them here would put a destructive

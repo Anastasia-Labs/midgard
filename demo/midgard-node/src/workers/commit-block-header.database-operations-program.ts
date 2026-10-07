@@ -16,7 +16,7 @@ import {
   WorkerOutput,
 } from "./utils/commit-block-header.js";
 
-/** Verify before overdue reconciliation, idle returns, and every foreign root
+/** Verify the foreign commit base before idle returns and every foreign root
  * shortcut. Network acquisition stays outside source/Ready SQL transactions. */
 export const databaseOperationsProgram = (
   ...args: Parameters<typeof buildOnVerifiedCommitBaseProgram>
@@ -31,7 +31,7 @@ export const databaseOperationsProgram = (
       workerInput.data.availableConfirmedBlock === ""
     )
       return yield* buildOnVerifiedCommitBaseProgram(...args);
-    const acquireLucid = args[9] ?? defaultCommitLucidFactory;
+    const acquireLucid = args[5] ?? defaultCommitLucidFactory;
     const lucid = yield* acquireLucid();
     const contracts = yield* MidgardContracts;
     // History can publish a landed signed journal while the previous commit
@@ -65,10 +65,6 @@ export const databaseOperationsProgram = (
       args[2],
       args[3],
       args[4],
-      args[5],
-      args[6],
-      args[7],
-      args[8],
       () => Effect.succeed(lucid),
     ).pipe(Effect.provideService(VerifiedForeignBase, { base, assertCurrent }));
     return {

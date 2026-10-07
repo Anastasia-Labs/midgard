@@ -8,12 +8,10 @@ import { withHistoryWrite } from "../src/services/event-history-producer.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
-  alignCommitSchedulerBeforeTestWorker,
   attestQueuedStateQueueHeader,
   buildTransferTx,
   canonicalSlotConfigForLucid,
   CML,
-  COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   commitTxDeltaCacheHitCounter,
   commitTxDeltaFallbackDecodedCounter,
   commitWorkerProgram,
@@ -24,13 +22,10 @@ import {
   Data,
   Database,
   decodeNodeUtxo,
-  DepositsDB,
   Effect,
   EMPTY_PROGRAM_MATERIAL_SIDECAR,
   EMULATOR_DEPLOYMENT_IDENTITY,
-  expectHeaderRootsToMatchCandidate,
   fetchLatestCommittedBlock,
-  fetchStateQueueSnapshotProgram,
   ForcedTransactionsDB,
   getStateQueueDatumEndTime,
   initializeNodeRuntime,
@@ -50,11 +45,9 @@ import {
   Option,
   PendingBlockFinalizationsDB,
   processedTxFromValidatedTx,
-  Queue,
   type QueuedTx,
-  Ref,
+  randomUUID,
   resetActiveRuntimePaths,
-  resolveCurrentOperatorSchedulerWindow,
   retainAndAttestSubmittedHeader,
   runBlockConfirmation,
   runCommitWorkerUntilSubmitted,
@@ -62,18 +55,12 @@ import {
   runNodeDatabaseEffect,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
-  runSpeculativeWorkerWithInstruction,
   runUnownedNativeCommit,
   SDK,
-  type SpeculativeCandidateSummary,
-  type SpeculativeCommitWorkerInstruction,
-  speculativeWorkerInputFromActiveJournal,
   SqlClient,
-  StateQueueMutationLeasesDB,
   submitDepositAndRefreshBarriers,
   TxAdmissionsDB,
   TxUtils,
-  type UserEventBarrierWatermarks,
   walletFromSeed,
 } from "./deposit-flow-emulator-shared.js";
 
@@ -176,46 +163,50 @@ describe("deposit flow emulator", { concurrent: false }, () => {
         .wallet()
         .address();
 
-      // Exercise the root+aggregate fast path with no selected normal or
-      // forced work; the full confirmed-ledger scan must remain untouched.
-      const controlEndTimeMs = Math.max(
-        Date.now(),
-        baseCommit.blockEndTimeMs + 1,
+      // Every later run builds on the confirmed, locally finalized base.
+      await fixture.operatorLucid.awaitTx(baseCommit.submittedTxHash);
+      await runBlockConfirmation(globals, fixture.contracts, lucidService);
+      const baseRecovery = await runLocalFinalizationRecoveryWorker(
+        globals,
+        fixture.contracts,
+        lucidService,
       );
-      const controlWatermarks: UserEventBarrierWatermarks = {
-        depositMs: controlEndTimeMs,
-        withdrawalMs: controlEndTimeMs,
-        txOrderMs: controlEndTimeMs,
-        refreshedAtMs: controlEndTimeMs,
-      };
-      const controlWorkerInput = await speculativeWorkerInputFromActiveJournal(
-        controlWatermarks,
-        canonicalSlotConfigForLucid(lucidService.api),
+      expect(baseRecovery.type).toBe(
+        "SuccessfulLocalFinalizationRecoveryOutput",
       );
+
+      // With no selected normal or forced work the worker stops before it
+      // hydrates any commit base; the full confirmed-ledger scan stays
+      // untouched.
       const controlScanBefore = await Effect.runPromise(
         Metric.value(confirmedLedgerFullScanCounter),
       );
-      let controlCandidate: SpeculativeCandidateSummary | undefined;
       const controlOutput = await Effect.runPromise(
         runUnownedNativeCommit(
           fixture.contracts,
           lucidService,
           nodeConfig,
-          controlWorkerInput,
+          {
+            data: {
+              availableConfirmedBlock: "",
+              availableLocalFinalizationBlock: "",
+              currentBlockStartTimeMs: baseCommit.blockEndTimeMs,
+              forcedValidationSlotConfig: canonicalSlotConfigForLucid(
+                lucidService.api,
+              ),
+              ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
+              localFinalizationPending: false,
+              mempoolTxsCountSoFar: 0,
+              sizeOfProcessedTxsSoFar: 0,
+            },
+          },
           (nativeInput) =>
             commitWorkerProgram(
               fixture.contracts,
               lucidService,
               nativeInput,
-              (candidate) => {
-                controlCandidate = candidate;
-                return Effect.succeed({
-                  type: "InvalidateSpeculativeCandidate",
-                  reason: "T1",
-                } satisfies SpeculativeCommitWorkerInstruction);
-              },
+              undefined,
               nodeConfig,
-              () => Effect.succeed(lucidService as any),
             ),
         ).pipe(
           Effect.provideService(
@@ -228,18 +219,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
       const controlScanAfter = await Effect.runPromise(
         Metric.value(confirmedLedgerFullScanCounter),
       );
-      expect([
-        "NothingToCommitOutput",
-        "SpeculativeCandidateInvalidatedOutput",
-      ]).toContain(controlOutput.type);
-      if (controlCandidate !== undefined) {
-        expect(controlCandidate.expectedL2TransactionCount).toBe(0);
-        expect(controlCandidate.expectedUserEventCounts).toEqual({
-          deposits: 0,
-          forcedTransactions: 0,
-          withdrawals: 0,
-        });
-      }
+      expect(controlOutput.type).toBe("NothingToCommitOutput");
       expect(controlScanAfter.count).toBe(controlScanBefore.count);
 
       const eventTime = new Date(
@@ -378,77 +358,27 @@ describe("deposit flow emulator", { concurrent: false }, () => {
         ]),
       );
 
-      const eventWatermarkMs = eventTime.getTime() + 60_000;
-      const watermarks: UserEventBarrierWatermarks = {
-        depositMs: eventWatermarkMs,
-        withdrawalMs: eventWatermarkMs,
-        txOrderMs: eventWatermarkMs,
-        refreshedAtMs: eventWatermarkMs,
-      };
+      // Both events sit inside the worker's retrieval window and its
+      // tx-order ingestion barrier.
+      await advanceEmulatorPastUnixTime(fixture, eventTime.getTime() + 1_000);
+      vi.setSystemTime(new Date(fixture.emulator.now()));
       const scanBefore = await Effect.runPromise(
         Metric.value(confirmedLedgerFullScanCounter),
       );
-      const speculative = await runSpeculativeWorkerWithInstruction({
+      const stateful = await runCommitWorkerUntilSubmitted({
         fixture,
         lucidService,
-        watermarks,
+        latestBlock: await fetchLatestCommittedBlock(
+          fixture.operatorLucid,
+          fixture.contracts,
+        ),
         nodeConfig,
-        onReady: (candidate) =>
-          Effect.gen(function* () {
-            yield* Effect.promise(() =>
-              fixture.operatorLucid.awaitTx(baseCommit.submittedTxHash),
-            );
-            yield* Effect.promise(() =>
-              runBlockConfirmation(globals, fixture.contracts, lucidService),
-            );
-            const stateQueueLeaseToken =
-              yield* StateQueueMutationLeasesDB.acquire({
-                holder: `hydration-regression-${payloadRootCheck}`,
-              });
-            const snapshot = yield* fetchStateQueueSnapshotProgram(
-              lucidService.api,
-              fixture.contracts.stateQueue,
-              "commit_preflight",
-            );
-            const localFinalizationBlock = yield* Ref.get(
-              globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-            );
-            expect(candidate.expectedL2TransactionCount).toBe(1);
-            return {
-              type: "SubmitSpeculativeCandidate",
-              confirmedBlock: snapshot.tailCommitBase.utxo,
-              stateQueueLeaseToken,
-              baseSnapshotId: snapshot.snapshotId,
-              stateQueueHasUnmergedTail:
-                snapshot.root.outRef !== snapshot.tailCommitBase.outRef,
-              localFinalizationBlock:
-                localFinalizationBlock === ""
-                  ? undefined
-                  : localFinalizationBlock,
-            } satisfies SpeculativeCommitWorkerInstruction;
-          }),
       });
-      const speculativeLease = await runNodeDatabaseEffect(
-        StateQueueMutationLeasesDB.retrieveActive(),
-      );
-      if (
-        speculativeLease?.[StateQueueMutationLeasesDB.Columns.HOLDER] ===
-        `hydration-regression-${payloadRootCheck}`
-      ) {
-        await runNodeDatabaseEffect(
-          StateQueueMutationLeasesDB.release(
-            speculativeLease[StateQueueMutationLeasesDB.Columns.TOKEN],
-          ),
-        );
-      }
       const scanAfter = await Effect.runPromise(
         Metric.value(confirmedLedgerFullScanCounter),
       );
       expect(scanAfter.count - scanBefore.count).toBeGreaterThan(0n);
-      expect(speculative.output.type).toBe(
-        "SubmittedAwaitingConfirmationOutput",
-      );
-      expect(speculative.candidate.expectedL2TransactionCount).toBe(1);
+      expect(stateful.mempoolTxsCount).toBe(1);
 
       const active = await runNodeDatabaseEffect(
         PendingBlockFinalizationsDB.retrieveActive(),
@@ -488,7 +418,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
         materializeConfirmedLedgerSnapshot(active.value),
       );
       expect(postState.entries.length).toBeGreaterThan(0);
-      expect(postState.root).toBe(speculative.candidate.roots.utxos);
+      expect(postState.root).toBe(stateful.submittedUtxosRoot);
       expect(
         active.value[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT],
       ).toBe(postState.root);
@@ -727,248 +657,4 @@ describe("deposit flow emulator", { concurrent: false }, () => {
       }
     }
   }, 900_000);
-
-  it.each([true, false])(
-    "builds N+1 before N confirmation and requires scheduler headroom on the direct wake path (aligned: %s)",
-    async (alignScheduler) => {
-      const previousSpeculativeCommitBuild =
-        process.env.SPECULATIVE_COMMIT_BUILD;
-      process.env.SPECULATIVE_COMMIT_BUILD = "true";
-      try {
-        await resetActiveRuntimePaths();
-        await initializeNodeRuntime();
-
-        const fixture = await makeFixture();
-        await initializeProtocol(fixture);
-        const lucidService = await makeLucidRuntimeService(fixture);
-        const globals = await makeGlobalsService();
-        await advanceEmulatorPastLatestBlockEndTime(fixture);
-        vi.useFakeTimers({ toFake: ["Date"] });
-        vi.setSystemTime(new Date(fixture.emulator.now()));
-
-        await submitDepositAndRefreshBarriers({
-          fixture,
-          lucidService,
-          globals,
-          lovelace: 12_000_000n,
-        });
-        const blockNBase = await fetchLatestCommittedBlock(
-          fixture.operatorLucid,
-          fixture.contracts,
-        );
-        const blockN = await runCommitWorkerUntilSubmitted({
-          fixture,
-          lucidService,
-          latestBlock: blockNBase,
-        });
-
-        await retainAndAttestSubmittedHeader({
-          fixture,
-          lucidService,
-          globals,
-          headerHash: blockN.submittedHeaderHash,
-          submittedTxHash: blockN.submittedTxHash,
-        });
-        await advanceEmulatorPastUnixTime(fixture, blockN.blockEndTimeMs);
-        vi.setSystemTime(new Date(fixture.emulator.now()));
-        const { watermarks } = await submitDepositAndRefreshBarriers({
-          fixture,
-          lucidService,
-          globals,
-          lovelace: 13_000_000n,
-          projectToLedger: false,
-        });
-
-        // Place both cases at the current shift's end explicitly. Skipping a
-        // refresh alone does not imply insufficient headroom on a longer shift.
-        const schedulerWindow = await Effect.runPromise(
-          resolveCurrentOperatorSchedulerWindow(
-            lucidService.api,
-            fixture.contracts,
-          ),
-        );
-        expect(schedulerWindow).toBeDefined();
-        await advanceEmulatorPastUnixTime(fixture, schedulerWindow!.endTimeMs);
-        vi.setSystemTime(new Date(fixture.emulator.now()));
-        if (alignScheduler) {
-          await alignCommitSchedulerBeforeTestWorker({
-            fixture,
-            lucidService,
-            targetEndTimeMs:
-              Date.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS + 60_000,
-          });
-        }
-
-        const speculative = await runSpeculativeWorkerWithInstruction({
-          fixture,
-          lucidService,
-          watermarks,
-          onReady: () =>
-            Effect.gen(function* () {
-              yield* Effect.promise(() =>
-                fixture.operatorLucid.awaitTx(blockN.submittedTxHash),
-              );
-              yield* Effect.promise(() =>
-                runBlockConfirmation(globals, fixture.contracts, lucidService),
-              );
-              const leaseToken = yield* StateQueueMutationLeasesDB.acquire({
-                holder: "speculative-emulator-happy",
-              });
-              const snapshot = yield* fetchStateQueueSnapshotProgram(
-                lucidService.api,
-                fixture.contracts.stateQueue,
-                "commit_preflight",
-              );
-              const localFinalizationBlock = yield* Ref.get(
-                globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
-              );
-              return {
-                type: "SubmitSpeculativeCandidate",
-                confirmedBlock: snapshot.tailCommitBase.utxo,
-                stateQueueLeaseToken: leaseToken,
-                baseSnapshotId: snapshot.snapshotId,
-                stateQueueHasUnmergedTail:
-                  snapshot.root.outRef !== snapshot.tailCommitBase.outRef,
-                localFinalizationBlock:
-                  localFinalizationBlock === ""
-                    ? undefined
-                    : localFinalizationBlock,
-              } satisfies SpeculativeCommitWorkerInstruction;
-            }),
-        });
-
-        expect(speculative.candidate.baseHeaderHash).toBe(
-          blockN.submittedHeaderHash,
-        );
-        expect(speculative.candidate.expectedUserEventCounts.deposits).toBe(1);
-        expect(speculative.lucidAcquisitions).toBe(1);
-        if (!alignScheduler) {
-          expect(speculative.output).toEqual({
-            type: "SpeculativeCandidateInvalidatedOutput",
-            candidateId: speculative.candidate.candidateId,
-            reason: "T4",
-          });
-          return;
-        }
-        expect(speculative.output.type).toBe(
-          "SubmittedAwaitingConfirmationOutput",
-        );
-        if (speculative.output.type !== "SubmittedAwaitingConfirmationOutput") {
-          throw new Error(
-            `Expected speculative submission, got ${speculative.output.type}`,
-          );
-        }
-        expect(speculative.output.submittedUtxosRoot).toBe(
-          speculative.candidate.roots.utxos,
-        );
-        expect(speculative.output.speculativeExecution).toEqual({
-          candidateId: speculative.candidate.candidateId,
-          baseHydrationPassesBeforeReady: 1,
-          mpfProcessingPassesBeforeReady: 1,
-          baseHydrationPassesAfterReady: 0,
-          mpfProcessingPassesAfterReady: 0,
-        });
-
-        // Lucid 0.6's Emulator correctly hides a confirmed UTxO as soon as a
-        // pending transaction spends it. Assert the public transaction states
-        // instead of depending on the old spent-ledger visibility bug.
-        expect(
-          (
-            await fixture.operatorLucid.transactionStatus(
-              blockN.submittedTxHash,
-            )
-          ).status,
-        ).toBe("confirmed");
-        expect(
-          (
-            await fixture.operatorLucid.transactionStatus(
-              speculative.output.submittedTxHash,
-            )
-          ).status,
-        ).toBe("pending");
-
-        const activeJournal = await runNodeDatabaseEffect(
-          PendingBlockFinalizationsDB.retrieveActive(),
-        );
-        expect(Option.isSome(activeJournal)).toBe(true);
-        if (Option.isNone(activeJournal)) {
-          throw new Error("Expected submitted N+1 journal before confirmation");
-        }
-        expect(
-          activeJournal.value[
-            PendingBlockFinalizationsDB.Columns.HEADER_HASH
-          ].toString("hex"),
-        ).toBe(speculative.output.submittedHeaderHash);
-        expect(
-          activeJournal.value[
-            PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
-          ]?.toString("hex"),
-        ).toBe(speculative.output.submittedTxHash);
-        expect(
-          activeJournal.value[PendingBlockFinalizationsDB.Columns.STATUS],
-        ).toBe(
-          PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending,
-        );
-        const durableSubmittedHeader = Data.from(
-          activeJournal.value[
-            PendingBlockFinalizationsDB.Columns.HEADER_CBOR
-          ].toString("hex"),
-          SDK.Header as never,
-        ) as SDK.Header;
-        expectHeaderRootsToMatchCandidate(
-          durableSubmittedHeader,
-          speculative.candidate,
-        );
-        const independentlyMaterializedPostState = await runNodeDatabaseEffect(
-          materializeConfirmedLedgerSnapshot(activeJournal.value),
-        );
-        expect(independentlyMaterializedPostState.root).toBe(
-          speculative.candidate.roots.utxos,
-        );
-
-        await fixture.operatorLucid.awaitTx(speculative.output.submittedTxHash);
-        const latestBlock = await fetchLatestCommittedBlock(
-          fixture.operatorLucid,
-          fixture.contracts,
-        );
-        const latestHeader = await Effect.runPromise(
-          SDK.getHeaderFromStateQueueDatum(latestBlock.datum),
-        );
-        expectHeaderRootsToMatchCandidate(latestHeader, speculative.candidate);
-
-        const directWake = await Effect.runPromise(
-          Queue.poll(globals.COMMIT_SUBMIT_WAKE_QUEUE),
-        );
-        expect(Option.isSome(directWake)).toBe(true);
-        if (Option.isSome(directWake)) {
-          expect(directWake.value.confirmedHeaderHash).toBe(
-            blockN.submittedHeaderHash,
-          );
-        }
-        const submittedCandidateDeposits = await runNodeDatabaseEffect(
-          DepositsDB.retrievePendingHeaderEntriesUpTo(
-            new Date(speculative.candidate.endTimeMs),
-          ),
-        );
-        const submittedCandidateDeposit = submittedCandidateDeposits.find(
-          (entry) =>
-            entry[DepositsDB.Columns.INCLUSION_TIME].getTime() >
-            blockN.blockEndTimeMs,
-        );
-        expect(submittedCandidateDeposit?.[DepositsDB.Columns.STATUS]).toBe(
-          DepositsDB.Status.Projected,
-        );
-        expect(
-          submittedCandidateDeposit?.[DepositsDB.Columns.PROJECTED_HEADER_HASH],
-        ).toBeNull();
-      } finally {
-        if (previousSpeculativeCommitBuild === undefined) {
-          delete process.env.SPECULATIVE_COMMIT_BUILD;
-        } else {
-          process.env.SPECULATIVE_COMMIT_BUILD = previousSpeculativeCommitBuild;
-        }
-      }
-    },
-    240_000,
-  );
 });

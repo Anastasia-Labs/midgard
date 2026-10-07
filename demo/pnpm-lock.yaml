@@ -525,9 +525,6 @@ importers:
       libsodium-wrappers-sumo:
         specifier: 0.7.15
         version: 0.7.15
-      midgard-watcher:
-        specifier: workspace:*
-        version: link:../midgard-watcher
       rimraf:
         specifier: ^6.0.1
         version: 6.1.3

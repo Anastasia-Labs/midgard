@@ -30,9 +30,7 @@ const nodeValues = dotenv.parse(readFileSync(nodePath, "utf8"));
 const walletValues = dotenv.parse(readFileSync(walletPath, "utf8"));
 const runValues = dotenv.parse(readFileSync(runPath, "utf8"));
 for (const [source, entries] of [[nodePath, nodeValues], [walletPath, walletValues], [runPath, runValues]]) {
-  const forbidden = Object.keys(entries).filter((key) =>
-    key.startsWith("MIDGARD_PHASE4_PROCESS_") || key.startsWith("MIDGARD_PHASE4_T1_"),
-  );
+  const forbidden = Object.keys(entries).filter((key) => key.startsWith("MIDGARD_PHASE4_PROCESS_"));
   if (forbidden.length > 0) throw new Error(`Phase 4 acceptance authorization keys are forbidden in ${source}: ${forbidden.join(",")}`);
 }
 const requiredRun = (name) => {

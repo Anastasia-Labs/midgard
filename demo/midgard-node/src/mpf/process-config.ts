@@ -37,16 +37,6 @@ export type ProcessMpfsConfig = {
   readonly payloadRootCheck?: "every_block" | "periodic" | "off";
   readonly baseUtxoPayloadAggregate?: UtxoPayloadSizeAggregate;
   readonly recordCorpusPath?: string;
-  readonly excludedDepositEventIds?: ReadonlySet<string>;
-  readonly excludedForcedTransactionEventIds?: ReadonlySet<string>;
-  readonly excludedWithdrawalEventIds?: ReadonlySet<string>;
-  /**
-   * A speculative build must leave every durable queue/event row untouched
-   * until the submitter owns the state-queue lease. The caller is responsible
-   * for applying the returned projection/rejection side effects immediately
-   * before submission.
-   */
-  readonly deferDatabaseWrites?: boolean;
   /** Runs once a commit-stage rejection's mempool_ledger revert commits. */
   readonly onMempoolLedgerReverted?: Effect.Effect<void>;
   /** The native owner generation every commit builds its ledger root on. */

@@ -1,5 +1,5 @@
 import { SqlClient } from "@effect/sql";
-import { Effect, Option, Queue, Ref } from "effect";
+import { Effect, Option, Ref } from "effect";
 
 import * as Authority from "../database/eventHistoryAuthority.js";
 import type { Checkpoint } from "../database/eventHistoryJournal.js";
@@ -11,7 +11,6 @@ import {
 } from "../database/eventHistoryRecoveryPlans.js";
 import * as Pending from "../database/pendingBlockFinalizations.js";
 import * as StateQueueLeases from "../database/stateQueueMutationLeases.js";
-import { invalidateSpeculativeCommitCandidate } from "../fibers/speculative-commit-builder.js";
 import { eventHistoryCanonicalJson } from "../l1-event-history-source.js";
 import type { NodeConfigDep } from "./config.js";
 import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
@@ -159,8 +158,6 @@ export const prepareStateQueueCorrectionRewind = (input: {
     ];
     const journalDigest = chainIdentity(proved.chain);
     const globals = yield* Globals;
-    if (config.SPECULATIVE_COMMIT_BUILD)
-      yield* invalidateSpeculativeCommitCandidate(globals, config, "T1");
     let owner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
     if (owner === undefined) {
       // Open only retained native bytes; never genesis-bootstrap or replay a
@@ -333,8 +330,6 @@ export const prepareStateQueueCorrectionRewind = (input: {
         );
         yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
         yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
-        yield* Queue.takeAll(globals.COMMIT_SUBMIT_WAKE_QUEUE);
-        yield* Queue.takeAll(globals.SPECULATIVE_BUILD_WAKE_QUEUE);
       }),
     });
     blockedReasons.delete(input.bindingDigest);

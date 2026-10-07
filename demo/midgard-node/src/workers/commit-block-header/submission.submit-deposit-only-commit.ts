@@ -12,7 +12,7 @@ import {
 } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
 import type * as Ledger from "../../database/utils/ledger.js";
-import { reachPipelinedCommitCrashCheckpoint } from "../../e2e/pipelined-commit-crash-checkpoint.js";
+import { reachCommitCrashCheckpoint } from "../../e2e/commit-crash-checkpoint.js";
 import {
   emptyRootHexProgram,
   type LedgerDelta,
@@ -105,8 +105,6 @@ export const submitDepositOnlyCommit = ({
   utxoPayloadAggregate,
   selectedBaseUtxosRoot,
   implicitGenesisEntries,
-  beforePendingJournalInsert,
-  afterPendingJournalPrepared,
   afterDaFrameAccepted,
   nativeMpfReplay,
 }: CommitSubmissionHooks & {
@@ -378,7 +376,6 @@ export const submitDepositOnlyCommit = ({
                     transitionDelta: ledgerDelta,
                   });
                 const beforeJournalInsert =
-                  beforePendingJournalInsert?.(blockEndTimeMs) ??
                   assertCommitUserEventSourceCompleteness({
                     blockEndTimeMs,
                     includedDepositEntries,
@@ -424,9 +421,8 @@ export const submitDepositOnlyCommit = ({
                   },
                   { beforeJournalInsert },
                 ).pipe(
-                  Effect.tap(() => afterPendingJournalPrepared ?? Effect.void),
                   Effect.andThen(
-                    reachPipelinedCommitCrashCheckpoint(
+                    reachCommitCrashCheckpoint(
                       "journal_prepared_before_submit",
                     ),
                   ),

@@ -18,6 +18,4 @@ export * from "./operator-watchdog.js";
 export * from "./operator-watchdog-policy.js";
 export * from "./project-deposits-to-mempool-ledger.js";
 export * from "./retention-sweeper.js";
-export * from "./speculative-commit-builder.js";
 export * from "./tx-queue-processor.js";
-export * from "./user-event-barrier-refresher.js";

@@ -1,5 +1,7 @@
 # Public-testnet decisions and implementation report
 
+> Note (deleted 2026-10-03, #752): speculative commit mode, the foreign-tip reconciliation table `foreign_tip_reconciliations`, the T2 foreign-event reconciliation workers, the foreign DA reconciliation fiber and the commit-time foreign-tip gate no longer exist. The file paths this record cites for them are kept as plain text for history.
+
 Prepared 1 October 2026 against `3027be19cb3bc740f83af0e155e34ab38c7cf894` and the accompanying working changes. This report answers the requested decisions. The linked item documents contain the detailed source references, research, alternatives, and acceptance criteria.
 
 ## Owner decisions (1 October 2026)

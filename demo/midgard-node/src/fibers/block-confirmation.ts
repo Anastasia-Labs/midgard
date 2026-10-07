@@ -10,7 +10,6 @@ import "../workers/utils/commit-block-header.js";
 import "../workers/utils/common.js";
 import "./queue-metrics.js";
 import "./resolve-worker-entry.js";
-import "./speculative-commit-builder.js";
 import "./worker-lifecycle.js";
 import "./block-confirmation.record-confirmed-pending-block.js";
 import "./block-confirmation.run-confirmation-worker-in-thread.js";
