@@ -3,6 +3,7 @@ import {
   openPostgresFactStore,
   type OriginConfig,
   projectionStoreOptions,
+  type WriterLease,
 } from "@al-ft/midgard-l1-follower";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 
@@ -57,9 +58,9 @@ const hubOracleOneShot = (
 /**
  * Whether and how the shadow follower runs. It needs the configured origin
  * (`L1_ORIGIN`), the local node (the native ledger's socket and transport
- * binary), the Postgres local state (the follower's tables are Postgres
- * only) and the manifest's `hubOracleOneShot`. Anything missing leaves it
- * off with a reason; it never fails the committee's startup.
+ * binary) and the manifest's `hubOracleOneShot`. Its tables share the
+ * committee store's database. Anything missing leaves it off with a reason;
+ * it never fails the committee's startup.
  */
 export const shadowFollowerPlan = (
   config: LoadedCommitteeConfig,
@@ -74,8 +75,6 @@ export const shadowFollowerPlan = (
   if (config.l1Origin === undefined) return missing("L1_ORIGIN is not set");
   if (config.nativeLedger === undefined)
     return missing("no local node ledger is configured");
-  if (config.localState.kind !== "database")
-    return missing("the follower's tables need the Postgres local state");
   const oneShot = hubOracleOneShot(config.contractDeploymentInfo);
   if (oneShot === null)
     return missing("the deployment info has no hubOracleOneShot outref");
@@ -96,9 +95,13 @@ export const shadowFollowerPlan = (
   };
 };
 
+/** The writer lease the committee holds for its follower, or null. */
+type CommitteeWriterLease = () => Promise<WriterLease | null>;
+
 const openShadow = (
   config: LoadedCommitteeConfig,
   plan: Extract<ShadowFollowerPlan, { kind: "run" }>,
+  writerLease: CommitteeWriterLease,
   log: (line: string) => void,
 ) => {
   const projection = committeeProjection({
@@ -139,6 +142,7 @@ const openShadow = (
         onConnectionError: (error) =>
           log(`L1 follower shadow: database connection lost: ${error.message}`),
       },
+      writerLease,
     });
   } catch (error) {
     void transport.close();
@@ -160,11 +164,15 @@ const openShadow = (
  * Starts the committee's shadow follower in the background (phase A): its
  * own transport session and its own tables in the committee's Postgres
  * database, the committee projections current, and its interventions in
- * the status file. Nothing the committee does reads it yet.
+ * the status file. Nothing the committee does reads it yet. Its writer
+ * lease is `writerLease`, the one the committee store's instance lock holds,
+ * so it writes only while this process holds the store; while the lock is
+ * suspended or passive, its loop waits on `store_locked`.
  */
 export const startShadowFollower = (
   config: LoadedCommitteeConfig,
   env: Readonly<Record<string, string | undefined>>,
+  writerLease: CommitteeWriterLease,
   log: (line: string) => void,
 ): ShadowFollowerHandle | undefined => {
   const plan = shadowFollowerPlan(config, env);
@@ -175,7 +183,7 @@ export const startShadowFollower = (
   }
   let opened: ReturnType<typeof openShadow>;
   try {
-    opened = openShadow(config, plan, log);
+    opened = openShadow(config, plan, writerLease, log);
   } catch (error) {
     log(
       `L1 follower shadow is off: ${error instanceof Error ? error.message : String(error)}`,

@@ -72,7 +72,10 @@ deployment/runtime manifests, database privileges, or readiness checks.
 The committee store is PostgreSQL, named by `DA_COMMITTEE_DATABASE_URL`. The
 L1 follower's tables live in the same database. One member may run
 active/passive across hosts against one store: the store's instance lock, a
-Postgres session advisory lock, admits one writer.
+Postgres session advisory lock, admits one writer. The same session also
+holds the follower's writer lease, so the store and the follower are held,
+lost and retaken together, and `midgard-l1-follower reset` is refused while a
+committee process holds the store.
 
 A process that starts while another live process holds the lock is refused
 with `starting:store_instance_lock_held`; startup holds unready and retries.

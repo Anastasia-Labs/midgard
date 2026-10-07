@@ -1,5 +1,6 @@
 import pg from "pg";
 
+import type { WriterLease } from "./sql/backend.js";
 import {
   openPostgresBackend,
   type PostgresConnection,
@@ -12,11 +13,28 @@ import {
 
 export type { PostgresConnection } from "./sql/postgres-backend.js";
 
-/** The Postgres fact store, for the node and the committee (§18.1 Q1). */
+/**
+ * The Postgres fact store, for the node and the committee (§18.1 Q1). It
+ * takes the writer lease on a session of its own, unless `writerLease` hands
+ * it one the caller holds: the committee holds it on its instance lock's
+ * session, so its store and its follower are held and lost together. That
+ * source returns null while the caller does not hold it.
+ */
 export const openPostgresFactStore = (
-  options: FactStoreOptions & Readonly<{ connection: PostgresConnection }>,
-): FactStore =>
-  createFactStore(openPostgresBackend(options.connection), options);
+  options: FactStoreOptions &
+    Readonly<{
+      connection: PostgresConnection;
+      writerLease?: () => Promise<WriterLease | null>;
+    }>,
+): FactStore => {
+  const backend = openPostgresBackend(options.connection);
+  return createFactStore(
+    options.writerLease === undefined
+      ? backend
+      : { ...backend, acquireWriterLease: options.writerLease },
+    options,
+  );
+};
 
 /**
  * The channel a committed rewind notifies with its new generation (§7.1

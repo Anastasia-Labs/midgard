@@ -103,7 +103,7 @@ export class PostgresCommitteeStore implements CommitteeStore {
   private readonly retirement = new CommitteeRetirementController();
   private readonly retirementOperations: PostgresRetirementOperations;
   private readonly pool: Pool;
-  private readonly instanceLock: PostgresStoreInstanceLock;
+  readonly instanceLock: PostgresStoreInstanceLock;
   private readonly inFlightDecisions = new InFlightDecisionAttempts();
 
   readL1RecoverySnapshot(): Promise<L1RecoverySnapshot> {

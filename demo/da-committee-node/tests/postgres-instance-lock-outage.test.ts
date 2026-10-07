@@ -213,7 +213,7 @@ describe("Postgres store instance lock after a half-open connection drop", () =>
     expect(events).toEqual(["suspended", "restored"]);
     // Held again: a second process is still refused.
     await expect(PostgresCommitteeStore.open(database.url)).rejects.toThrow(
-      /held by another live committee node process/u,
+      /held by another live process/u,
     );
   }, 20_000);
 });

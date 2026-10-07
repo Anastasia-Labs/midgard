@@ -132,6 +132,7 @@ export {
 } from "./sql/backend.js";
 export {
   openPostgresBackend,
+  POSTGRES_WRITER_LEASE_KEY_SQL,
   postgresDialect,
 } from "./sql/postgres-backend.js";
 export {

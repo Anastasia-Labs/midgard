@@ -1,3 +1,7 @@
+import {
+  POSTGRES_WRITER_LEASE_KEY_SQL,
+  type WriterLease,
+} from "@al-ft/midgard-l1-follower";
 import { Client, type PoolClient } from "pg";
 
 /** Reconnect backoff while the lock's Postgres session is gone. */
@@ -62,13 +66,15 @@ const holderOfLockSql = `SELECT l.pid, a.backend_start::text AS backend_start
      AND ((l.classid::bigint << 32) | l.objid::bigint) = $1::bigint`;
 
 const heldElsewhereMessage =
-  "committee node Postgres store instance lock is held by another live committee node process; this process stays passive and takes over when that process's session ends";
+  "committee node Postgres store instance lock is held by another live process (another committee node, or an L1 follower command on this store's follower tables); this process stays passive and takes over when that process's session ends";
 
 /**
- * Opens a dedicated session and tries the lock on it. Throws
+ * Opens a dedicated session and tries both keys on it: the store's own and
+ * the L1 follower's writer lease key for the same schema. The session holds
+ * both or neither; ending it frees whichever it took. Throws
  * `InstanceLockHeldElsewhereError` only when Postgres answered that another
- * process's session holds it; any other error is a session that could not be
- * had. When the holder is `ownStale`, this process's own earlier session,
+ * process's session holds either key; any other error is a session that
+ * could not be had. When the holder is `ownStale`, this process's own earlier session,
  * that session is terminated and `InstanceLockHeldByOwnStaleSessionError`
  * thrown, so the caller tries again.
  */
@@ -86,6 +92,7 @@ const trySession = async (
     | {
         readonly key: string;
         readonly acquired: boolean;
+        readonly follower_acquired: boolean;
         readonly pid: number;
         readonly backend_start: string;
       }
@@ -96,6 +103,7 @@ const trySession = async (
     const result = await client.query<{
       readonly key: string;
       readonly acquired: boolean;
+      readonly follower_acquired: boolean;
       readonly pid: number;
       readonly backend_start: string;
     }>(
@@ -103,16 +111,20 @@ const trySession = async (
          SELECT ('x' || left(md5(
                   'midgard-da-committee-store:' ||
                   coalesce(current_schema(), '')
-                ), 15))::bit(60)::bigint AS key
+                ), 15))::bit(60)::bigint AS key,
+                ${POSTGRES_WRITER_LEASE_KEY_SQL} AS follower_key
        )
        SELECT key::text AS key,
               pg_try_advisory_lock(key) AS acquired,
+              pg_try_advisory_lock(follower_key) AS follower_acquired,
               pg_backend_pid() AS pid,
               (SELECT backend_start::text FROM pg_stat_activity
                WHERE pid = pg_backend_pid()) AS backend_start
        FROM lock_key`,
     );
     row = result.rows[0];
+    // This process's own ended session held both keys, so it can only be the
+    // holder when the store's own key was refused.
     if (row !== undefined && !row.acquired && ownStale !== undefined) {
       // Matched by pid and start time together, so a pid the server reused
       // for another process's session is never mistaken for this one's.
@@ -135,7 +147,8 @@ const trySession = async (
     await client.end().catch(() => undefined);
     throw error;
   }
-  if (row?.acquired !== true) {
+  if (row?.acquired !== true || !row.follower_acquired) {
+    // Ending the session frees the key it did take.
     await client.end().catch(() => undefined);
     throw heldByOwnStaleSession
       ? new InstanceLockHeldByOwnStaleSessionError(
@@ -173,6 +186,12 @@ const trySession = async (
  *
  * The key is derived from the schema the store's tables resolve to, so two
  * stores in different schemas of one database do not exclude each other.
+ *
+ * The same session also holds the L1 follower's writer lease key for that
+ * schema, and lends it to this process's follower (`followerWriterLease`):
+ * the store and the follower are held, lost and taken again together, and
+ * no other follower process, `reset` included, can write those tables while
+ * this process holds the session.
  */
 export class PostgresStoreInstanceLock {
   private session: LockSession;
@@ -239,7 +258,7 @@ export class PostgresStoreInstanceLock {
           if (!this.heldElsewhere) {
             this.heldElsewhere = true;
             this.refusal = new Error(
-              "committee node Postgres store is passive: another live committee node process holds its instance lock; decision effects are refused until that process's session ends and this one takes over",
+              "committee node Postgres store is passive: another live process (another committee node, or an L1 follower command on this store's follower tables) holds its instance lock; decision effects are refused until that process's session ends and this one takes over",
             );
             this.events.onInstanceLockHeldElsewhere?.(this.refusal);
           }
@@ -247,6 +266,24 @@ export class PostgresStoreInstanceLock {
         delayMs = Math.min(INSTANCE_LOCK_RECONNECT_MAX_MS, delayMs * 2);
       }
     }
+  }
+
+  /**
+   * The L1 follower's writer lease on this lock's current session, or null
+   * while the lock is suspended, passive or released. It is lost once that
+   * session ends or the lock is released, and a lease taken again comes from
+   * the next session. Releasing it does nothing: the session is the lock's.
+   */
+  followerWriterLease(): WriterLease | null {
+    if (this.releasing || this.refusal !== undefined) return null;
+    const session = this.session;
+    return {
+      lost: () =>
+        this.releasing ||
+        this.refusal !== undefined ||
+        this.session !== session,
+      release: async () => undefined,
+    };
   }
 
   assertHeld(): void {

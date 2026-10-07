@@ -55,9 +55,9 @@ CREATE INDEX ${COMMITTEE_QUEUE_TABLE}_live ON ${COMMITTEE_QUEUE_TABLE} (created_
 };
 
 /**
- * The committee's follower migrations. Production runs them on Postgres only
- * (the committee's JSON store gets no follower tables, plan C2); the SQLite
- * dialect exists for the fork simulator.
+ * The committee's follower migrations. Production runs them on Postgres, in
+ * the committee store's database; the SQLite dialect exists for the fork
+ * simulator.
  */
 export const committeeMigrations = (dialect: DialectName): MigrationSet => ({
   namespace: COMMITTEE_MIGRATION_NAMESPACE,

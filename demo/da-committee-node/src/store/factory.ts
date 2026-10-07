@@ -1,5 +1,4 @@
 import type { LocalStateConfig } from "../config.js";
-import type { CommitteeStore } from "../store.js";
 import {
   PostgresCommitteeStore,
   type PostgresCommitteeStoreOptions,
@@ -8,5 +7,5 @@ import {
 export const openCommitteeStore = async (
   localState: LocalStateConfig,
   options: PostgresCommitteeStoreOptions = {},
-): Promise<CommitteeStore> =>
+): Promise<PostgresCommitteeStore> =>
   PostgresCommitteeStore.open(localState.url, options);

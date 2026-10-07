@@ -179,9 +179,7 @@ describe("decision effect attempts across committee node processes", () => {
     const live = await at.open();
     await live.beginDecisionEffect({ effect: reconcile, sourceState });
 
-    await expect(at.open()).rejects.toThrow(
-      /held by another live committee node process/u,
-    );
+    await expect(at.open()).rejects.toThrow(/held by another live process/u);
 
     // An hour later the attempt is still running in the live process, and
     // it is still the only attempt.
@@ -250,9 +248,7 @@ describe("decision effect attempts across committee node processes", () => {
     ).resolves.toMatchObject({ status: "reconciled", attemptCount: 1 });
     expect(onInstanceLockHeldElsewhere).not.toHaveBeenCalled();
     // Held again: a second process is still refused.
-    await expect(at.open()).rejects.toThrow(
-      /held by another live committee node process/u,
-    );
+    await expect(at.open()).rejects.toThrow(/held by another live process/u);
   });
 
   it("keep a displaced member passive, refusing every effect, until the holder dies, then hand over within one reconnect with no effect lost or run twice", async () => {
