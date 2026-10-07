@@ -77,6 +77,13 @@ const expectEveryCase = (stats: EventSimStats): void => {
     expect({ field, count: stats[field] > 0 }).toEqual({ field, count: true });
 };
 
+/**
+ * The node's projection model is not yet retention-aware, so these runs leave
+ * out the simulator's prune episodes. N1 compares pruned runs against what
+ * retention keeps and then removes this.
+ */
+const NODE_PRUNE = { prune: false } as const;
+
 /** Long enough that ids orphaned by a rollback come back and retired keys are resubmitted. */
 const LONG: ForkScenario = {
   seed: 0x0e1,
@@ -100,7 +107,7 @@ describe.each([
   (_, open) => {
     it("holds over the follower's fork corpus and a long multi-episode run", async () => {
       const stats = zeroEventSimStats();
-      for (const { scenario } of forkCorpus(SIM_K))
+      for (const { scenario } of forkCorpus(SIM_K, NODE_PRUNE))
         await run(scenario, open, stats);
       await run(LONG, open, stats);
       expectEveryCase(stats);
@@ -109,8 +116,9 @@ describe.each([
     it(`holds for ${RUNS} random scenarios (fast-check)`, async () => {
       const stats = zeroEventSimStats();
       await fc.assert(
-        fc.asyncProperty(forkScenarioArbitrary(SIM_K), (scenario) =>
-          run(scenario, open, stats),
+        fc.asyncProperty(
+          forkScenarioArbitrary(SIM_K, undefined, NODE_PRUNE),
+          (scenario) => run(scenario, open, stats),
         ),
         { numRuns: RUNS, seed: 0x0e1_0001 },
       );
