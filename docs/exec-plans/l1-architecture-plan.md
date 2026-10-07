@@ -1829,7 +1829,7 @@ The harness is therefore part of the tickets. It has four parts:
 | B5 | Committee | Tick at Q = 1,000 queue nodes; one store mutation and one readiness probe at 10^3 and 10^5 records | Tick p99 ≤ 50 ms; mutation ratio and readiness ratio ≤ 1.2 | C1, C2 |
 | B6 | Watcher persist | One observation at 10^5 stored | p99 ≤ 20 ms | W2 |
 | B7 | Restart to ready | Cursor at tip, N = 10^6, including the MPF load of the current root | ≤ 30 s | U2 (deferred) |
-| B8 | Retention soak | Constant event, deposit and withdrawal flow for 10 × (k + the retention window) blocks, with a short devnet retention window | Every class A, B and C table's row count plateaus: slope ≤ 1% over the last third | F2 (follower tables, synthetic chain); L5 (deferred) |
+| B8 | Retention soak | Constant event, deposit and withdrawal flow for 10 × (k + the retention window) blocks, with a short devnet retention window | Every class A, B and C table's row count plateaus: slope ≤ 1% over the last third. `l1_event_keys` is exempt: it is class A and never pruned (§11), so it grows with events ever created. | F2 (follower tables, synthetic chain; the default run scales k to 500 for speed, and a full k = 2,160 run passes on both adapters); L5 (deferred) |
 
 If a target is missed, the ticket reports the numbers to the owner rather
 than relaxing the target.
