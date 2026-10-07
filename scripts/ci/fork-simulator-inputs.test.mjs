@@ -44,7 +44,7 @@ test("the follower is a runner, and its workspace dependencies are inputs", () =
   assert.ok(runners.includes("@al-ft/midgard-l1-follower"), runners.join());
   for (const path of [
     "demo/midgard-l1-follower/src/testing/episodes.ts",
-    "demo/midgard-l1-follower/tests/fork-sim/soak.test.ts",
+    "demo/midgard-l1-follower/tests/fork-sim/protects.test.ts",
     "demo/l1-node-transport/testing/fake-sidecar.mjs",
     "demo/midgard-test-support/vitest.js",
     "demo/pnpm-lock.yaml",
@@ -185,6 +185,6 @@ test("Node CI gates the fork simulator step on the decision", () => {
   );
   assert.match(
     workflow,
-    /- name: Run the fork simulator and shadow-diff suites\n\s+if: \$\{\{ steps\.forksim\.outputs\.run == 'true' \}\}\n\s+run: pnpm --dir demo -r --if-present run test:fork-sim/u,
+    /- name: Run the fork simulator suites\n\s+if: \$\{\{ steps\.forksim\.outputs\.run == 'true' \}\}\n\s+run: pnpm --dir demo -r --if-present run test:fork-sim/u,
   );
 });

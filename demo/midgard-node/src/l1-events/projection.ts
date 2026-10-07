@@ -3,7 +3,7 @@
  * N1): tracked set, D-t tables, migrations and the derivation. The fork
  * simulator adds its own traffic and checks to this (tests only).
  */
-import type { FollowerProjection } from "@al-ft/midgard-l1-follower/shadow";
+import type { FollowerProjection } from "@al-ft/midgard-l1-follower";
 
 import { type EventProjectionConfig, eventTrackedSet } from "./config.js";
 import { eventDerivation } from "./derive.js";

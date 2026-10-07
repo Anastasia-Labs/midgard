@@ -9,14 +9,12 @@ import {
   applyChainSyncEvent,
   type DialectName,
   type FactStore,
+  type FollowerProjection,
   openPostgresFactStore,
   openSqliteFactStore,
+  projectionStoreOptions,
   type TrackedSet,
 } from "@al-ft/midgard-l1-follower";
-import {
-  type FollowerProjection,
-  projectionStoreOptions,
-} from "@al-ft/midgard-l1-follower/shadow";
 import {
   SIM_ORIGIN,
   SimChain,

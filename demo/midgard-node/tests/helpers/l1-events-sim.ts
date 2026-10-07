@@ -9,10 +9,10 @@ import {
   type BlockSummary,
   decodeBlock,
   type FactStore,
+  type FollowerProjection,
   type OutRef,
   type TxSummary,
 } from "@al-ft/midgard-l1-follower";
-import type { FollowerProjection } from "@al-ft/midgard-l1-follower/shadow";
 import {
   outRefHex,
   type ScenarioTraffic,

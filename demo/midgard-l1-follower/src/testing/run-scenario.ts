@@ -7,12 +7,10 @@ import {
   type FollowStep,
   storePoint,
 } from "../follow/chain-sync.js";
-import type { ShadowComparator } from "../shadow/comparator.js";
-import { compareAll, firstDisagreement } from "../shadow/compare.js";
 import {
   type FollowerProjection,
   projectionStoreOptions,
-} from "../shadow/projection.js";
+} from "../projection.js";
 import type { DialectName } from "../sql/backend.js";
 import { openSqliteFactStore } from "../sqlite.js";
 import type { FactStore, FactStoreOptions } from "../store/fact-store.js";
@@ -92,8 +90,6 @@ export type ForkRunOptions = Readonly<{
   ) => Promise<FactStore>;
   k: number;
   projections?: readonly FollowerProjection[];
-  /** Comparators run after every event; any disagreement fails the run. */
-  comparators?: readonly ShadowComparator[];
   /** Feeds the events (default: straight from the step list). */
   source?: (steps: readonly ForkStep[]) => Promise<EventSource>;
   /** Called with the store under test before the first event (fault seams). */
@@ -105,7 +101,6 @@ export type ForkRunStats = SeedStats & {
   events: number;
   rollbacks: number;
   checkpoints: number;
-  comparisons: number;
   rowsChecked: number;
 };
 
@@ -199,8 +194,8 @@ const listSource = (steps: readonly ForkStep[]): EventSource => {
  * F6 being deferred). After every event: every fact and registered
  * temporal table equals a fresh forward-only SQLite replay of the model's
  * current chain, INV1–INV6 hold, the tracked-outref cache equals the
- * replay's, every comparator agrees and every projection check passes. At
- * each checkpoint the shape's facts and the model's live tracked set hold.
+ * replay's and every projection check passes. At each checkpoint the
+ * shape's facts and the model's live tracked set hold.
  */
 export const runForkScenario = async (
   scenario: ForkScenario,
@@ -220,7 +215,6 @@ export const runForkScenario = async (
     events: 0,
     rollbacks: 0,
     checkpoints: 0,
-    comparisons: 0,
     rowsChecked: 0,
     ...zeroSeedStats(),
   };
@@ -337,22 +331,6 @@ export const runForkScenario = async (
         const failure = await projection.check?.({ store, step, chain });
         if (failure !== undefined && failure !== null)
           throw new ForkFailure(`${projection.name}: ${failure}`);
-      }
-      if (options.comparators !== undefined && options.comparators.length > 0) {
-        const cursor = await store.cursor();
-        if (cursor === null) throw new ForkFailure("cursor vanished");
-        const results = await compareAll(options.comparators, {
-          store,
-          at: {
-            point: cursor.point,
-            height: cursor.height,
-            generation: cursor.generation,
-          },
-          event,
-        });
-        stats.comparisons += results.length;
-        const disagreement = firstDisagreement(results);
-        if (disagreement !== null) throw new ForkFailure(disagreement);
       }
     }
     return { ok: true, stats };

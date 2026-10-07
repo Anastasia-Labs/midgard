@@ -24,6 +24,7 @@ export {
   storePoint,
   transportPoint,
 } from "./follow/chain-sync.js";
+export { startWhenFree } from "./follow/start.js";
 export {
   createWalletSeeder,
   seedWallets,
@@ -78,6 +79,11 @@ export {
   openPostgresFactStore,
   type PostgresConnection,
 } from "./postgres.js";
+export {
+  type FollowerProjection,
+  mergeTrackedSets,
+  projectionStoreOptions,
+} from "./projection.js";
 export {
   createTemporalRegistry,
   RegistryError,

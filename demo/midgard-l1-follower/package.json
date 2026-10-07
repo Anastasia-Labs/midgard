@@ -33,11 +33,6 @@
       "types": "./dist/testing/index.d.ts",
       "import": "./dist/testing/index.js"
     },
-    "./shadow": {
-      "midgard-source": "./src/shadow/index.ts",
-      "types": "./dist/shadow/index.d.ts",
-      "import": "./dist/shadow/index.js"
-    },
     "./provider": {
       "midgard-source": "./src/provider/index.ts",
       "types": "./dist/provider/index.d.ts",
@@ -47,7 +42,7 @@
   "scripts": {
     "clean": "rimraf dist",
     "build": "node ../../scripts/contrib.mjs build --package @al-ft/midgard-l1-follower",
-    "build:contrib-raw": "tsup src/index.ts src/heads.ts src/lint/index.ts src/cli.ts src/testing/index.ts src/shadow/index.ts src/provider/index.ts src/shadow/soak-cli.ts --format esm --dts --clean",
+    "build:contrib-raw": "tsup src/index.ts src/heads.ts src/lint/index.ts src/cli.ts src/testing/index.ts src/provider/index.ts --format esm --dts --clean",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --exclude 'tests/fork-sim/**'",

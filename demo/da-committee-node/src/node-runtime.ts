@@ -21,6 +21,7 @@ import {
   StoreBackedDaAttestationProtocol,
 } from "./da/libp2p/index.js";
 import { daAttestationReaderFromConfig } from "./l1/da-attestation-reader.js";
+import { startShadowFollower } from "./l1/follower/shadow-follower-runtime.js";
 import { providerFromConfig } from "./l1/provider.js";
 import { PeerSignatureCoordinator } from "./peer/coordinator.js";
 import { PeerSignaturePoller } from "./peer/poller.js";
@@ -272,6 +273,12 @@ export const openCommitteeNodeRuntime = async (
     actuationReady = true;
     closers.push(() => daLibp2pNode.stop());
     await daLibp2pNode.start();
+    // Phase A of the L1 follower: off unless its status file is named, and
+    // nothing the committee does reads it.
+    const shadowFollower = startShadowFollower(config, process.env, (line) =>
+      process.stderr.write(`${line}\n`),
+    );
+    if (shadowFollower !== undefined) closers.push(() => shadowFollower.stop());
     return {
       store,
       service,
