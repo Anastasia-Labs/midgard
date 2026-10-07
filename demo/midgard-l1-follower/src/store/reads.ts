@@ -1,3 +1,4 @@
+import { encodeOutRef } from "../codec.js";
 import {
   asBuffer,
   asNumber,
@@ -182,6 +183,38 @@ export const spenderOfIn = async (
     txHash: asBuffer(row.spent_tx),
     slot: asNumber(row.spent_slot),
   };
+};
+
+/** The stored valid tx that consumed `outRef` as an input, tracked or not. */
+export type TxSpending = Readonly<{ txHash: Buffer; slot: number }>;
+
+/**
+ * Finds the stored valid tx whose inputs hold `outRef`. Unlike `spenderOfIn`
+ * it needs no `l1_outputs` row, so it sees spends of untracked outrefs (the
+ * hub-oracle nonce, §5.3 step 3). It scans `l1_txs`; callers run it rarely.
+ */
+export const txSpendingIn = async (
+  tx: SqlTx,
+  dialect: Dialect,
+  outRef: OutRef,
+): Promise<TxSpending | null> => {
+  const encoded = encodeOutRef(outRef);
+  const rows =
+    dialect.name === "postgres"
+      ? await tx.query(
+          "SELECT tx_hash, block_slot FROM l1_txs WHERE is_valid AND ? = ANY (inputs) ORDER BY block_slot LIMIT 1",
+          [encoded],
+        )
+      : await tx.query(
+          `SELECT tx_hash, block_slot FROM l1_txs t WHERE t.is_valid = 1
+             AND EXISTS (SELECT 1 FROM json_each(t.inputs) j WHERE j.value = ?)
+           ORDER BY block_slot LIMIT 1`,
+          [encoded.toString("hex")],
+        );
+  const row = rows[0];
+  return row === undefined
+    ? null
+    : { txHash: asBuffer(row.tx_hash), slot: asNumber(row.block_slot) };
 };
 
 export const txByHashIn = async (

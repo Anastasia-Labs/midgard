@@ -687,6 +687,17 @@ Copy the printed `HUB_ORACLE_ONE_SHOT_TX_HASH` and
 `HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX` into the deployment environment before
 publishing reference scripts or running `init`.
 
+`HUB_ORACLE_ONE_SHOT_TX_HASH` is also the tx that fixes the deployment's L1
+origin: the point immediately before the block holding it, where the L1
+follower starts. To pin it in operator config, run
+`midgard-l1-follower find-origin --tx <HUB_ORACLE_ONE_SHOT_TX_HASH>
+--network-magic <n>` (see the
+[follower README](../midgard-l1-follower/README.md#origin)) and set the
+printed `l1Origin` as `L1_ORIGIN=<slot>.<block hash>`. `L1_ORIGIN` is
+optional and strict (a decimal slot without leading zeros, a dot, then the
+64-character lowercase hex block hash); it is not part of the profile or
+manifest.
+
 ```sh
 node dist/index.js deploy-reference-script-node-runtime
 ```

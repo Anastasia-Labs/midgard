@@ -6,6 +6,7 @@ import {
   MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
 } from "@al-ft/midgard-core/cek-proof";
 import { type DeploymentManifestEconomicsProfile } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { type L1Origin } from "@al-ft/midgard-core/l1-origin";
 import { Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
 import { Config } from "effect";
 
@@ -204,6 +205,8 @@ export type NodeConfigDep = {
   L1_VIEW_FATAL_MS: number;
   HUB_ORACLE_ONE_SHOT_TX_HASH: string;
   HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
+  /** The operator-configured L1 origin point; null when `L1_ORIGIN` is unset. */
+  L1_ORIGIN: L1Origin | null;
   OPERATOR_REQUIRED_BOND_LOVELACE: bigint;
   OPERATOR_SLASHING_PENALTY_LOVELACE: bigint;
   DA_COMMITTEE_HEX: string;

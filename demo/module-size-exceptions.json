@@ -981,7 +981,7 @@
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
-    "max": 1127,
+    "max": 1122,
     "reason": "makeConfig is the dominant indivisible declaration (1077 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {

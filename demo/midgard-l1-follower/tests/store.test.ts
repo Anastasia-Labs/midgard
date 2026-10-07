@@ -372,7 +372,8 @@ describe.each(adapters)("fact store ($name)", (adapter) => {
       const results = [];
       for (let i = 0; i < 10; i += 1) {
         const result = await store.prune(1);
-        if ("kind" in result) throw result.error;
+        if ("kind" in result)
+          throw new Error(`prune failed: ${JSON.stringify(result)}`);
         results.push(result);
         if (result.done) break;
       }

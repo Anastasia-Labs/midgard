@@ -9,6 +9,22 @@ export {
 } from "./codec.js";
 export { BlockDecodeError, decodeBlock } from "./decode/block.js";
 export {
+  findOrigin,
+  type FindOriginOptions,
+  type FindOriginResult,
+} from "./find-origin.js";
+export {
+  intersectionFailure,
+  originAnchor,
+  type OriginConfig,
+  originMatches,
+  type OriginStart,
+  type OriginStartOptions,
+  type ProtocolInitStatus,
+  protocolInitStatus,
+  startFromOrigin,
+} from "./origin.js";
+export {
   GENERATION_CHANNEL,
   listenForGenerations,
   openPostgresFactStore,
@@ -28,9 +44,9 @@ export {
 } from "./schema/follower-migrations.js";
 export {
   applyMigrations,
+  FOLLOWER_BOOKKEEPING_DDL,
   FollowerMigrationError,
   type Migration,
-  MIGRATION_LEDGER_DDL,
   type MigrationSet,
 } from "./schema/migrate.js";
 export {
@@ -42,12 +58,17 @@ export {
   type SqlTx,
   type SqlValue,
   type TransactionMode,
+  type WriterLease,
 } from "./sql/backend.js";
 export {
   openPostgresBackend,
   postgresDialect,
 } from "./sql/postgres-backend.js";
-export { openSqliteBackend, sqliteDialect } from "./sql/sqlite-backend.js";
+export {
+  openSqliteBackend,
+  sqliteDialect,
+  writerLeasePath,
+} from "./sql/sqlite-backend.js";
 export { openSqliteFactStore } from "./sqlite.js";
 export type { ApplyRejection, BlockApplied } from "./store/apply.js";
 export type {
@@ -90,9 +111,15 @@ export {
   type PointStatus,
   pointStatusIn,
   type Spender,
+  type TxSpending,
   type UtxoFilter,
   type UtxoRead,
 } from "./store/reads.js";
+export {
+  RESET_CLASSES,
+  type ResetResult,
+  resetToOrigin,
+} from "./store/reset.js";
 export type { RewindNoop, Rewound } from "./store/rewind.js";
 export type { SeedOutput, SeedResult } from "./store/seed.js";
 export { currentViewIn, viewValidIn, viewValidQuery } from "./store/view.js";

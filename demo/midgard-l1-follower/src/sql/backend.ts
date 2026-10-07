@@ -46,12 +46,26 @@ export type TransactionMode =
   /** A consistent read-only snapshot. */
   | "read";
 
+/**
+ * The store's writer lease: one holder per store across processes and hosts.
+ * Postgres holds a session advisory lock on a dedicated connection; SQLite
+ * holds core's `SqliteProcessMutex` on a sidecar file. Either is released
+ * when its holder closes it or its process (or session) dies.
+ */
+export type WriterLease = {
+  /** True once the lease's session ended without `release()`. */
+  lost(): boolean;
+  release(): Promise<void>;
+};
+
 export type SqlBackend = {
   readonly dialect: Dialect;
   transaction<T>(
     mode: TransactionMode,
     run: (tx: SqlTx) => Promise<T>,
   ): Promise<T>;
+  /** Takes the writer lease, or returns null while another holder has it. */
+  acquireWriterLease(): Promise<WriterLease | null>;
   /** Releases connections this backend opened (never a caller's pool). */
   close(): Promise<void>;
 };

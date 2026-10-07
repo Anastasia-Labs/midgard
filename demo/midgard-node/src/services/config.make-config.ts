@@ -17,6 +17,7 @@ import {
   VERIFICATION_KEY_HEX_LENGTH,
 } from "../da/local-signers.js";
 import { validateRetentionDays } from "../database/retention-policy.js";
+import { hubOracleOriginConfig } from "./config.hub-oracle-origin.js";
 import {
   boundedValidationInteger,
   CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES,
@@ -555,12 +556,7 @@ const makeConfig = Effect.gen(function* () {
       }),
     ),
   );
-  const hubOracleOneShotTxHash = yield* Config.string(
-    "HUB_ORACLE_ONE_SHOT_TX_HASH",
-  ).pipe(Config.withDefault(""));
-  const hubOracleOneShotOutputIndex = yield* Config.integer(
-    "HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX",
-  ).pipe(Config.withDefault(-1));
+  const hubOracleOrigin = yield* hubOracleOriginConfig;
   const operatorRequiredBondLovelace = yield* Config.string(
     "OPERATOR_REQUIRED_BOND_LOVELACE",
   ).pipe(
@@ -1044,8 +1040,7 @@ const makeConfig = Effect.gen(function* () {
     RETENTION_DAYS: retentionDays,
     WAIT_BETWEEN_RETENTION_SWEEPS: waitBetweenRetentionSweeps,
     L1_VIEW_FATAL_MS: l1ViewFatalMs,
-    HUB_ORACLE_ONE_SHOT_TX_HASH: hubOracleOneShotTxHash,
-    HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: hubOracleOneShotOutputIndex,
+    ...hubOracleOrigin,
     OPERATOR_REQUIRED_BOND_LOVELACE: operatorRequiredBondLovelace,
     OPERATOR_SLASHING_PENALTY_LOVELACE: operatorSlashingPenaltyLovelace,
     DA_COMMITTEE_HEX: daCommitteeHex,

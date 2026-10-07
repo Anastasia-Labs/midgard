@@ -8,6 +8,7 @@ import {
   type SqlTx,
   type SqlValue,
   toNumberedPlaceholders,
+  type WriterLease,
 } from "./backend.js";
 
 export const postgresDialect: Dialect = {
@@ -49,6 +50,54 @@ export type PostgresConnection =
   | { pool: pg.Pool }
   /** A connection string; the backend owns and closes its pool. */
   | { connectionString: string; maxConnections?: number };
+
+/**
+ * The writer lease key: one per database and schema, like the committee's
+ * instance lock (`da-committee-node/src/store/postgres.instance-lock.ts`).
+ */
+const WRITER_LEASE_SQL = `SELECT pg_try_advisory_lock(('x' || left(md5(
+    'midgard-l1-follower:writer:' || coalesce(current_schema(), '')
+  ), 15))::bit(60)::bigint) AS acquired`;
+
+/**
+ * Takes the writer lease on a dedicated connection outside the pool, so it
+ * never costs the store a pooled connection and lives exactly as long as
+ * that session: a dropped connection or a dead process releases it.
+ */
+const acquirePostgresLease = async (
+  config: pg.ClientConfig,
+): Promise<WriterLease | null> => {
+  const client = new pg.Client({ ...config, keepAlive: true });
+  let lost = false;
+  // An unhandled 'error' on an idle client would crash the process.
+  client.on("error", () => {
+    lost = true;
+  });
+  client.on("end", () => {
+    lost = true;
+  });
+  try {
+    await client.connect();
+    const rows = await client.query<{ acquired: boolean }>(WRITER_LEASE_SQL);
+    if (rows.rows[0]?.acquired !== true) {
+      await client.end();
+      return null;
+    }
+  } catch (error) {
+    await client.end().catch(() => undefined);
+    throw error;
+  }
+  let released = false;
+  return {
+    lost: () => lost && !released,
+    release: async () => {
+      if (released) return;
+      released = true;
+      // Ending the session releases its advisory lock.
+      await client.end().catch(() => undefined);
+    },
+  };
+};
 
 /**
  * The Postgres backend. Write transactions are plain `BEGIN`: the follower
@@ -97,6 +146,12 @@ export const openPostgresBackend = (
         if (!released) client.release();
       }
     },
+    acquireWriterLease: () =>
+      acquirePostgresLease(
+        "pool" in connection
+          ? connection.pool.options
+          : { connectionString: connection.connectionString },
+      ),
     close: async () => {
       if (owned) await pool.end();
     },
