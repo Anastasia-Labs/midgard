@@ -9,7 +9,7 @@ const admin = {
   password: process.env.POSTGRES_PASSWORD ?? "postgres",
 };
 
-const withAdmin = async <T>(
+export const withAdmin = async <T>(
   run: (client: pg.Client) => Promise<T>,
 ): Promise<T> => {
   const client = new pg.Client({

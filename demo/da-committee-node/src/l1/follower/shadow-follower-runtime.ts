@@ -2,8 +2,8 @@ import { L1NodeTransport } from "@al-ft/l1-node-transport";
 import {
   openPostgresFactStore,
   type OriginConfig,
+  projectionStoreOptions,
 } from "@al-ft/midgard-l1-follower";
-import { projectionStoreOptions } from "@al-ft/midgard-l1-follower/shadow";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 
 import type { LoadedCommitteeConfig } from "../../config.js";
@@ -132,7 +132,13 @@ const openShadow = (
         },
         "postgres",
       ),
-      connection: { connectionString: plan.databaseUrl, maxConnections: 4 },
+      connection: {
+        connectionString: plan.databaseUrl,
+        maxConnections: 4,
+        // A dropped connection fails the next query into the loop's backoff.
+        onConnectionError: (error) =>
+          log(`L1 follower shadow: database connection lost: ${error.message}`),
+      },
     });
   } catch (error) {
     void transport.close();

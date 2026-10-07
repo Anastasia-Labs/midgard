@@ -167,8 +167,8 @@ Rules for the deferral:
     `onchain/aiken/lib/midgard/event-history/horizon.ak` and the commit
     validator that a lagged end time is accepted at the deployed W.
   - If it is not accepted, ship d = 0 on that deployment and ask the owner.
-- **No F9.** The shadow diff runs on a devnet without forks (10^4 blocks),
-  and the fork cases come from the F8 simulator corpus.
+- **No F9.** The devnet does not fork; the fork cases come from the F8
+  simulator corpus.
 - **Benchmarks in scope:** B2 (N1 only), B3, B5, B6, and B8 for the follower
   tables (synthetic chain). B1, B4 and B7 are deferred with their tickets.
 - **C4 gate (resolved 2026-10-07).** No on-chain rule can slash a sibling
@@ -1522,14 +1522,14 @@ except the M2 row (§1.4).
 
 | Group | Files | Lines | Removed by |
 |---|---|---|---|
-| `l1-event-history-*` (Ogmios ChainSync journal) | 17 | 3,624 | N1 |
-| `l1-ledger-snapshot.ts` | 1 | 289 | N1 |
+| `l1-event-history-*` (Ogmios ChainSync journal) | 17 | 3,624 | N1-close |
+| `l1-ledger-snapshot.ts` | 1 | 289 | N1-close |
 | `local-ledger-slot.ts`, `local-ogmios-slot.ts` | 2 | 114 | F7 |
-| `services/event-history-owner*` | 11 | 1,761 | N1 |
-| `services/event-history-runtime.ts`, `event-history-producer.ts`, `event-history-recovery.ts` | 3 | 1,017 | N1 |
-| `database/eventHistoryJournal*`, `eventHistoryJournalCodec.ts` | 8 | 1,967 | N1 |
-| `database/eventHistoryLedgerReceipts.ts`, `eventHistoryLedgerRepair.ts`, `eventHistoryMaterialization.ts`, `eventHistoryReplayReceipts.ts` | 4 | 1,398 | N1 |
-| `database/eventHistoryAuthority*` | 3 | 581 | N1 |
+| `services/event-history-owner*` | 11 | 1,761 | N1-close |
+| `services/event-history-runtime.ts`, `event-history-producer.ts`, `event-history-recovery.ts` | 3 | 1,017 | N1-close |
+| `database/eventHistoryJournal*`, `eventHistoryJournalCodec.ts` | 8 | 1,967 | N1-close |
+| `database/eventHistoryLedgerReceipts.ts`, `eventHistoryLedgerRepair.ts`, `eventHistoryMaterialization.ts`, `eventHistoryReplayReceipts.ts` | 4 | 1,398 | N1-close |
+| `database/eventHistoryAuthority*` | 3 | 581 | N1-close |
 | `database/eventHistoryForeignCensus.ts`, `workers/commit-block-header.foreign-event-census*` | 2 | 454 | N3 |
 | `database/foreignNativeAdoptions.ts` | 1 | 494 | N3 |
 | `database/foreignTipReconciliations*`, `workers/t2-foreign-event-reconciliation*` | 12 | 2,728 | L8 |
@@ -1595,20 +1595,23 @@ The program ships as one pull request (§1.4). Inside it, the work still runs
 expand-then-contract, so every intermediate commit builds and its reached
 tests pass.
 
-1. **Shadow, then cut over, per role.**
-   - The follower first runs in **shadow mode** beside the current pipeline.
-   - The per-block diff harness (F8) compares the new projections with what
-     the current code derives:
-     - the committee's queue view;
-     - the watcher's verification inputs;
-     - the node's lists, queue, operator set and `confirmed_ledger`.
-   - A role cuts over once its diff stays empty across the simulator corpus
-     and 10^4 devnet blocks.
-   - The cutover commit deletes that role's old code and its shadow
-     comparison together, so no parallel variant survives into the pull
-     request.
-   - Shadow results are reported in the pull request description. No
-     evidence files are committed.
+1. **Straight cutover, per role (owner ruling 2026-10-07).**
+   - There is no shadow phase and no per-role comparison with the current
+     code. Matching the old code is the wrong measure, because part of its
+     behaviour is what this program replaces.
+   - Each role ticket (C1, W1, N1) switches that role's decisions to the
+     follower and deletes its old code (§13) in the same change.
+   - The gates are:
+     - the ticket's acceptance tests, in both polarities;
+     - simulator fork scenarios (F8) in which each of the role's
+       projections equals a fresh replay of the facts after every
+       operation;
+     - the devnet journeys, with no Kupo or Ogmios configured;
+     - the liveness rules: each intervention fails `/readyz` with a named
+       reason, and the process never exits or restart-loops.
+   - A difference from the old behaviour that turns up during
+     implementation is reported when it suggests a missing requirement. It
+     is never preserved.
 2. **Order inside the pull request.**
    1. L8 (speculative mode) first, because it shrinks the node before N-work
       starts.
@@ -1671,14 +1674,14 @@ deferred are not part of the program pull request.
 | **F5** | A Lucid `Provider` over the read API and the sidecar (UTxOs, datums, protocol parameters, slot config from era history, submit), with local evaluation. | F1, F2 | Wallet coin selection, reference-script publication and one tx of each node family build and submit on devnet with no Kupo or Ogmios configured. |
 | **F6** | **Deferred (§1.4).** Decode pool, reorder buffer, ordered writer, batching and the tracked-outref cache (§6). | F2 | B1 and B2 targets met. Under random worker delays, writes stay in sequence order. After a rewind, the cache equals a fresh load. |
 | **F7** | Heads module (§9): levels, `depth()`, `slotNow`, and a lint against direct k or cd comparisons. Deletes `local-ledger-slot` (§13.1). Takes L7's rule: the three depth variants (§3.5) become one `depth()`, and every §3.6 site that no other ticket deletes reads `slotNow`. | F2 | Level transitions are correct under the fork simulator. The lint flags a fixture that compares against `confirmationDepth`. From L7: a fake clock 10 minutes fast changes no L1 decision. |
-| **F8** | Fork simulator and shadow-diff harness (rev-4 ticket 4): fast-check over the transport, covering re-land, never re-land, a changed `valid_to`, new-fork-only and phase-2-failed. A per-block diff of new projections against the current code's view, for each role. It drives the F2 sequential writer, because F6 is deferred (§1.4). Each role's diff against the current code is development tooling and is deleted with that code at cutover. | F1, F2 | Runs in CI, narrowed to changed files. Every later projection ticket adds cases to it. |
+| **F8** | Fork simulator (rev-4 ticket 4): fast-check over the transport, covering re-land, never re-land, a changed `valid_to`, new-fork-only and phase-2-failed. After every operation, each plugged-in projection must equal a fresh replay of the facts. It drives the F2 sequential writer, because F6 is deferred (§1.4). The shadow-diff harness and soak runner it first shipped were deleted after the owner dropped the shadow gate (2026-10-07, §14). | F1, F2 | Runs in CI, narrowed to changed files. Every later projection ticket adds cases to it. |
 | **F9** | **Deferred (§1.4).** Devnet L1 fork drill. The devnet runs one cardano-node (`demo/midgard-node-tools/devnet/phase4-process/compose.yaml:12-13`), so it cannot fork, and the drill catalogue has no fork drill (`demo/midgard-node-tools/src/devnet-stack/chaos.drill-catalogue.ts:95-149`). Add a second block producer, a partition toggle between the two, and drills `l1-fork-shallow` (depth ≤ cd), `l1-fork-deep` (cd < depth < k) and `l1-fork-correction` (the fork removes an admitted correction). Replace `stop-kupo` and `stop-ogmios` with `kill-sidecar`. | F1 | Each drill produces a fork of the requested depth, checked against both nodes' tips. Each role's `/readyz` returns to ready with no restart and no CLI. Projections equal a fresh replay after the rejoin. |
 
 ### Phase 2: committee
 
 | Ticket | Scope | Depends on | Acceptance |
 |---|---|---|---|
-| **C1** | Committee on the follower: a temporal landed-queue projection, plus headers awaiting attestation and obligations as projections. Delete the replay provider, the Ogmios sessions, the cursor stores and the Lucid providers (§13.3). Absorbs L1: delete the terminal merge rule, the quarantine early return, the rollback feed and the recovery CLI; signed decisions stay class B. Gated on C4 before it signs a sibling header (§1.4). | F1–F5, F7, F8 | Shadow diff empty for 10^4 devnet blocks plus the simulator corpus. Tick p99 ≤ 50 ms at Q = 1,000 (B5). No Kupo or Ogmios configured. From L1: rollbacks of depth 1, cd and cd + 1 across a signed decision: the committee keeps ticking with no CLI, and `/readyz` returns to ready within one tick after the node catches up. A rollback deeper than k: unready `rollback_beyond_k`, and the process stays up and is not restarted. The decision for a header that disappeared is kept, never re-signed with different content, and never deleted before k. |
+| **C1** | Committee on the follower: a temporal landed-queue projection, plus headers awaiting attestation and obligations as projections. Delete the replay provider, the Ogmios sessions, the cursor stores and the Lucid providers (§13.3). Absorbs L1: delete the terminal merge rule, the quarantine early return, the rollback feed and the recovery CLI; signed decisions stay class B. Gated on C4 before it signs a sibling header (§1.4). | F1–F5, F7, F8 | Simulator fork scenarios: every committee projection equals a fresh replay of the facts after every operation. Devnet journeys pass with no Kupo or Ogmios configured. Tick p99 ≤ 50 ms at Q = 1,000 (B5). No Kupo or Ogmios configured. From L1: rollbacks of depth 1, cd and cd + 1 across a signed decision: the committee keeps ticking with no CLI, and `/readyz` returns to ready within one tick after the node catches up. A rollback deeper than k: unready `rollback_beyond_k`, and the process stays up and is not restarted. The decision for a header that disappeared is kept, never re-signed with different content, and never deleted before k. |
 | **C2** | Committee store on Postgres only (Q1). Delete the JSON-file backend: the store, instance lock, process mutex and JSON promise capacity (§13.3), the `file` arm of `LocalStateConfig` and `openCommitteeStore` (`demo/da-committee-node/src/store/factory.ts:12-21`), and `DA_COMMITTEE_DB_PATH` with its call sites, tests, devnet env builder and docs (including the README's "JSON store ownership" section and the docs-site committee guide). The follower's committee tables live in the same database. The public retained-DA reader's read-only role is granted only the tables it reads today, never the follower's. | C1 | Mutation cost, tick store reads and readiness probe cost do not depend on store size (B5, CC4). Active/passive across hosts: the passive member is refused by the advisory instance lock (`demo/da-committee-node/src/store/postgres.instance-lock.ts`) while the active one holds it, and takes over within one reconnect after the active process dies, with no lost or duplicated decision effect. The public reader cannot `SELECT` any follower table. No `DA_COMMITTEE_DB_PATH` reference remains. |
 | **C3** | Committee durable actions (retention release, promise expiry) gate on `final`. | C1, F7 | A rollback deeper than cd and shallower than k after a release decision: nothing is released early. |
 | **C4** | **In scope as a gate on C1 (§1.4).** Check that signing sibling headers is truthful: confirm that no on-chain validator or off-chain slashing rule treats two content-bound commitments for siblings as equivocation. | — | A written finding with file:line references, plus an emulator test where a member signs siblings on two forks and neither is slashable. If either is slashable, stop: owner question. |
@@ -1687,7 +1690,7 @@ deferred are not part of the program pull request.
 
 | Ticket | Scope | Depends on | Acceptance |
 |---|---|---|---|
-| **W1** | Watcher on the follower. Delete multi-provider consistency, the Kupmios capture and the `fp` Kupmios sources (§13.2). | F1–F5, F7, F8 | Shadow diff empty. Fault detection and proof journeys pass on devnet with no Kupo or Ogmios. |
+| **W1** | Watcher on the follower. Delete multi-provider consistency, the Kupmios capture and the `fp` Kupmios sources (§13.2). | F1–F5, F7, F8 | Simulator fork scenarios: every watcher projection equals a fresh replay of the facts after every operation. Fault detection and proof journeys pass on devnet with no Kupo or Ogmios. Each intervention W1 introduces fails `/readyz` with a named reason; the process never exits or restart-loops. |
 | **W2** | Watcher store as per-row SQLite tables. Each row carries a MAC, and each revision a chained digest, O(delta). The journals become tables. Delete the whole-snapshot CAS. Absorbs L2: a completed objective with a verified marker past k is skipped on restart and pruned, and only non-completed rows count toward the cap. | W1 | Persist p99 ≤ 20 ms at 10^5 stored observations (B6). A tampered row or a reordered revision is detected at startup. The watcher README and compose state that the SQLite file must sit on a local disk, never a network filesystem. From L2: 100k retry cycles of one objective keep its table at most 2× its live rows, and a restart succeeds. A cap reached by live rows alone means unready `journal_capacity`, not a throw loop. |
 | **W3** | Watcher rollback = rewind + recompute. Delete `demo/midgard-watcher/src/l1/rollback-engine/*`. Incidents only beyond k. Absorbs L3: losing a block that was final at cd recomputes in-process and never sets `quarantined`. | W1, W2 | Simulator: the watcher's projections equal a fresh replay after every operation. From L3: a rollback that removes a cd-final block resumes in-process with no restart. A rollback beyond k: unready, and the process stays up. |
 
@@ -1695,7 +1698,8 @@ deferred are not part of the program pull request.
 
 | Ticket | Scope | Depends on | Acceptance |
 |---|---|---|---|
-| **N1** | Lists, events, key set and deposit spendability as projections over facts, using `slotNow` and never `new Date()`. Delete the event-history stack (§13.1). | F1–F5, F7, F8 | Shadow diff empty. An orphaned-origin id is readmitted, and a retired key is refused. Per-block apply is O(r) (B2, ratio ≤ 1.2). |
+| **N1** | Lists, events, key set and deposit spendability as projections over facts, using `slotNow` and never `new Date()`. Ingestion moves to the follower through a typed follower-change driver, and member identity moves to the §5.4 event key plus an immutable admission point, with the commit horizon at min(journal coverage, follower covered tip). Delete the user-event ingestion fibers and whatever becomes reader-free; the event-history control plane goes at N1-close (§13.1). | F1–F5, F7, F8 | Simulator fork scenarios: every node projection equals a fresh replay of the facts after every operation. Devnet journeys pass with no Kupo or Ogmios configured. Each intervention N1 introduces fails `/readyz` with a named reason; the process never exits or restart-loops. An orphaned-origin id is readmitted, and a retired key is refused. Per-block apply is O(r) (B2, ratio ≤ 1.2). |
+| **N1-close** | Inside this program's pull request, after the node tickets that read the journal have moved to follower identity. Delete the event-history control plane (owner, runtime, producer, recovery, authority, journal core, ledger receipts, `l1-event-history-*`, `l1-ledger-snapshot`; §13.1 rows marked N1-close). Re-source the U3 horizon from the follower. Remove the node's Kupo and Ogmios config keys. Run the node devnet journeys with no Kupo or Ogmios. The I5 gate stays with I5. | N1, I1, I3, I5, N3, N4, N6, U3 | Grep finds no reader of the deleted rows. Devnet journeys pass with no Kupo or Ogmios configured. Each N1 intervention fails `/readyz` with a named reason; the process never exits or restart-loops. |
 | **N2** | State-queue projection. Every fiber reads it. Delete the topology walks and the address-wide scans (NC6). | N1 | Zero L1 reads in fiber ticks (checked by grep and a test spy). Third-party outputs paid to the queue address never enter the projection. |
 | **N3** | In-order landed-block processing (#744/#695) on facts: adopt when the node holds the post-state, otherwise fetch, replay and compare. Own blocks are never replayed. Delete the census and foreign adoption; rewrite the foreign-base verify (NC9). Runs on today's MPF owner until M2 (§1.4). | N2 | A foreign block that lands is processed exactly once. A rollback that removes it reverts the projection. No per-commit verify remains. |
 | **N4** | Correction admission as a temporal projection (§7.4). Delete correction rewind, restore and recovery. Absorbs L4: delete `refuseRewoundStateQueueCorrectionRollback` and the `state_queue_correction_rewind` halt, and reinstate removed own journals from class B. Until M1–M3, the MPF follows the rewind through `restoreRetainedRoot` (§1.4). | N2 | From L4: a correction admitted at cd, then rolled back at depth cd + 1 (below k): commit, merge and settlement resume with no intervention, and the ledger root equals a fresh replay. A correction that lands again rewinds exactly once. A rollback beyond k: unready, no exit. The node process never restarts; until M1–M3, at most one MPF child restart per rewind. |
@@ -1749,7 +1753,7 @@ Deferred work is tracked in #811. It includes L5 (#812) and M5 (#813), which are
 |---|---|
 | 0 | Closed by `6794e37cd` (§1.3) |
 | 1 | F2 |
-| 2 | F6 + F8 (shadow mode against the current code, not Kupo) |
+| 2 | F6 + F8 (fork simulator; the shadow mode was dropped on 2026-10-07) |
 | 3 | F3 + F4 (Kupo bootstrap dropped) |
 | 4 | F8 |
 | 5 | Dropped: raw CBOR (§5.2) and §12 |
@@ -1797,9 +1801,9 @@ tests in both polarities.
 |---|---|---|---|
 | Fact-store property test | Any random sequence of apply and rollback gives every registered temporal table the same state as a fresh replay of the surviving chain. Runs on both adapters. A new temporal table is covered by registering it, not by writing a test. | F2 | CI, narrowed to `l1-follower` and registry changes |
 | Invariants INV1–INV6 (§5.2) | Store integrity after every simulator step. In production, a check at startup and after each rewind, where a failure is R5. | F2 | CI and runtime |
-| Fork simulator | Projections and intent outcomes across re-land, never re-land, a changed `valid_to`, a fork that exists only on the new branch, and a phase-2 failure. Each projection ticket adds its §5.5 cases. | F8 | CI, narrowed |
+| Fork simulator | Projections and intent outcomes across re-land, never re-land, a changed `valid_to`, a fork that exists only on the new branch, and a phase-2 failure. After every operation, each projection equals a fresh replay of the facts. Each projection ticket adds its §5.5 cases. This is the cutover gate that replaced the shadow diff (§14). | F8 | CI, narrowed |
 | Emulator, both polarities | The honest path succeeds, and the stale, adversarial or conflicting path is refused at the exact check. This covers the I3 cases, collateral (I4), view binding (I5) and correction recompute (L4, N4). | each ticket | CI, narrowed |
-| Shadow diff | During migration, each role runs the new projections beside the current code and diffs per block. Cutover needs zero diffs over 10^4 devnet blocks plus the simulator corpus (§14). Without F9 the devnet does not fork; the simulator supplies the fork cases. | F8, C1, W1, N1–N3 | devnet |
+| Devnet journeys | Each role's journeys pass with no Kupo or Ogmios configured, on real CBOR and a real era. | C1, W1, N1, I3 | devnet |
 | Devnet drills | Existing catalogue (`demo/midgard-node-tools/src/devnet-stack/chaos.drill-catalogue.ts:95-149`): `kill-node`, `kill-watcher`, `kill-public-retained-da`, `pause-postgres`, `restart-cardano-node`. F9 adds `kill-sidecar` and the three fork drills, and U4 deletes `stop-kupo` and `stop-ogmios` (both deferred, §1.4). Each drill asserts the role returns to ready with no restart and no CLI. | F9, U4 | devnet, on demand |
 | Readiness and no-restart-loop | For each of R1–R9, the process stays up, `/healthz` stays live, and `/readyz` reports the reason. A supervisor test restarts the process and gets the same unready state, not a crash loop. In this program, each ticket tests the reasons it introduces; the full sweep is U2 (deferred). | each ticket; U2 | CI |
 | Lints | Every table declares its class and retention (§11). Projection code reads no clock, randomness or network (§7.2). No direct comparison against `confirmationDepth` or k outside the heads module (F7). No `new Date()` in a projection or planner. | F2, F7 | CI, fast |

@@ -1,5 +1,5 @@
 import { blake2b256 } from "../codec.js";
-import type { OutRef } from "../types.js";
+import type { OutRef, RedeemerPurpose } from "../types.js";
 import * as c from "./cbor-writer.js";
 
 /** One output of a simulated transaction (map form, no script reference). */
@@ -10,6 +10,14 @@ export type SimOutput = Readonly<{
   assets?: ReadonlyMap<string, ReadonlyMap<string, bigint>>;
   /** An inline datum: the exact Plutus data CBOR. */
   datum?: Buffer;
+}>;
+
+/** One witness-set redeemer of a simulated transaction (no evaluation). */
+export type SimRedeemer = Readonly<{
+  purpose: RedeemerPurpose;
+  index: number;
+  /** The exact redeemer data CBOR. */
+  data: Buffer;
 }>;
 
 /**
@@ -26,10 +34,18 @@ export type SimTx = Readonly<{
   collateralReturn?: SimOutput;
   /** Signed quantities; negative burns. */
   mint?: ReadonlyMap<string, ReadonlyMap<string, bigint>>;
+  /** Reward withdrawals (body key 5), encoded in this order. */
+  withdrawals?: readonly Readonly<{ rewardAccount: Buffer; amount: bigint }>[];
   invalidBefore?: number;
   invalidAfter?: number;
   /** False: the transaction failed phase 2 (listed in the block's invalid set). */
   isValid?: boolean;
+  /**
+   * Witness-set redeemers, in the Conway map form. As on chain, a transaction
+   * with redeemers carries a `script_data_hash` (body key 11): here the
+   * blake2b-256 of the redeemer map, a stand-in nothing evaluates.
+   */
+  redeemers?: readonly SimRedeemer[];
   /** Distinguishes otherwise equal transactions (the fee field). */
   nonce: number;
 }>;
@@ -71,7 +87,7 @@ const multiAsset = (
       c.map(
         ...[...names].map(([name, quantity]): [Buffer, Buffer] => [
           c.bytes(Buffer.from(name, "hex")),
-          signed && quantity < 0n ? c.nint(-quantity) : c.uint(quantity),
+          signed && quantity < 0n ? c.nint(quantity) : c.uint(quantity),
         ]),
       ),
     ]),
@@ -92,6 +108,24 @@ const output = (out: SimOutput): Buffer => {
   return c.map(...fields);
 };
 
+const REDEEMER_TAGS: Readonly<Record<RedeemerPurpose, number>> = {
+  spend: 0,
+  mint: 1,
+  cert: 2,
+  reward: 3,
+  voting: 4,
+  proposing: 5,
+};
+
+/** `{[tag, index] => [data, [mem, steps]]}`, the Conway redeemer map. */
+const redeemerMap = (redeemers: readonly SimRedeemer[]): Buffer =>
+  c.map(
+    ...redeemers.map((redeemer): [Buffer, Buffer] => [
+      c.array(c.uint(REDEEMER_TAGS[redeemer.purpose]), c.uint(redeemer.index)),
+      c.array(redeemer.data, c.array(c.uint(0), c.uint(0))),
+    ]),
+  );
+
 /** The exact body bytes of a simulated transaction; its id is their blake2b-256. */
 export const encodeTxBody = (tx: SimTx): Buffer => {
   const fields: [Buffer, Buffer][] = [
@@ -101,10 +135,22 @@ export const encodeTxBody = (tx: SimTx): Buffer => {
   ];
   if (tx.invalidAfter !== undefined)
     fields.push([c.uint(3), c.uint(tx.invalidAfter)]);
+  if (tx.withdrawals !== undefined && tx.withdrawals.length > 0)
+    fields.push([
+      c.uint(5),
+      c.map(
+        ...tx.withdrawals.map((w): [Buffer, Buffer] => [
+          c.bytes(w.rewardAccount),
+          c.uint(w.amount),
+        ]),
+      ),
+    ]);
   if (tx.invalidBefore !== undefined)
     fields.push([c.uint(8), c.uint(tx.invalidBefore)]);
   if (tx.mint !== undefined && tx.mint.size > 0)
     fields.push([c.uint(9), multiAsset(tx.mint, true)]);
+  if (tx.redeemers !== undefined && tx.redeemers.length > 0)
+    fields.push([c.uint(11), c.bytes(blake2b256(redeemerMap(tx.redeemers)))]);
   if (tx.collaterals !== undefined && tx.collaterals.length > 0)
     fields.push([c.uint(13), outRefSet(tx.collaterals)]);
   if (tx.collateralReturn !== undefined)
@@ -116,7 +162,11 @@ export const encodeTxBody = (tx: SimTx): Buffer => {
 
 export const simTxHash = (tx: SimTx): Buffer => blake2b256(encodeTxBody(tx));
 
-const EMPTY_WITNESS_SET = c.map();
+/** The witness set: empty, or key 5 holding the redeemer map. */
+export const encodeWitnessSet = (tx: SimTx): Buffer =>
+  tx.redeemers === undefined || tx.redeemers.length === 0
+    ? c.map()
+    : c.map([c.uint(5), redeemerMap(tx.redeemers)]);
 
 /**
  * A raw Conway-shaped block `[header, bodies, witnesses, aux, invalid]`
@@ -140,7 +190,7 @@ export const encodeBlock = (block: SimBlock): EncodedBlock => {
   const raw = c.array(
     header,
     c.array(...bodies),
-    c.array(...bodies.map(() => EMPTY_WITNESS_SET)),
+    c.array(...block.txs.map(encodeWitnessSet)),
     c.map(),
     c.array(...invalid),
   );
