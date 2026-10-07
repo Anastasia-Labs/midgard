@@ -1,4 +1,4 @@
-import type { FactStore } from "../../src/index.js";
+import type { FactStore } from "../store/fact-store.js";
 
 /** Normalises a column value so a Postgres row and a SQLite row compare equal. */
 const normalise = (value: unknown): unknown => {

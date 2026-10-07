@@ -4,7 +4,7 @@ import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { blake2b256, BlockDecodeError, decodeBlock } from "../src/index.js";
-import * as c from "./support/cbor-writer.js";
+import * as c from "../src/testing/cbor-writer.js";
 
 const fixture = (name: string): Buffer =>
   Buffer.from(

@@ -7,13 +7,17 @@ import {
 import { rewindFaults } from "../../src/store/fact-store.js";
 import type { RewindFault } from "../../src/store/rewind.js";
 import {
+  diffDumps,
+  dumpStore,
+  FACT_QUERIES,
+} from "../../src/testing/replay.js";
+import { Rng } from "../../src/testing/rng.js";
+import {
   ChainGenerator,
   makeUniverse,
   randomOutput,
-  Rng,
   type Universe,
 } from "./chain.js";
-import { diffDumps, dumpStore, FACT_QUERIES } from "./dump.js";
 import {
   FIXTURE_DERIVATION,
   FIXTURE_TABLES,

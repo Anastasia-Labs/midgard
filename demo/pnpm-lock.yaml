@@ -347,9 +347,15 @@ importers:
 
   midgard-l1-follower:
     dependencies:
+      '@al-ft/l1-node-transport':
+        specifier: workspace:*
+        version: link:../l1-node-transport
       '@noble/hashes':
         specifier: ^2.0.1
         version: 2.2.0
+      fast-check:
+        specifier: ^4.5.3
+        version: 4.7.0
       pg:
         specifier: ^8.21.0
         version: 8.22.0
