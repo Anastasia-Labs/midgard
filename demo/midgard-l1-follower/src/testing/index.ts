@@ -4,11 +4,6 @@
  * comparison. Never imported by production code.
  */
 export {
-  type FollowerProjection,
-  mergeTrackedSets,
-  projectionStoreOptions,
-} from "../shadow/projection.js";
-export {
   forkCorpus,
   forkEpisodeArbitrary,
   forkScenarioArbitrary,

@@ -943,12 +943,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm --dir demo/midgard-l1-follower test
 
-  # The L1 fork simulator and the shadow-diff harness (plan §14): seeded
-  # fork scenarios through the follower's sequential writer, on SQLite and
-  # Postgres and once through the node transport's frame client, plus the
-  # soak runner's journal and resume. Every package that defines
-  # `test:fork-sim` runs here; role packages (C1, W1, N1) add their cases by
-  # declaring the script. A pull request runs it only when it touches one of
+  # The L1 fork simulator: seeded fork scenarios through the follower's
+  # sequential writer, on SQLite and Postgres and once through the node
+  # transport's frame client. After every operation the store and every
+  # plugged projection must equal a fresh replay of the canonical chain.
+  # Every package that defines `test:fork-sim` runs here; role packages
+  # (C1, W1, N1) add their cases by declaring the script. A pull request runs it only when it touches one of
   # its inputs (scripts/ci/fork-simulator-inputs.mjs derives them from the
   # workspace); any other event always runs it. A skipped run leaves the job
   # successful.
@@ -980,7 +980,7 @@ jobs:
         run: node scripts/ci/fork-simulator-inputs.mjs
       - uses: ./.github/actions/demo-setup
         if: ${{ steps.forksim.outputs.run == 'true' }}
-      - name: Run the fork simulator and shadow-diff suites
+      - name: Run the fork simulator suites
         if: ${{ steps.forksim.outputs.run == 'true' }}
         run: pnpm --dir demo -r --if-present run test:fork-sim
 
