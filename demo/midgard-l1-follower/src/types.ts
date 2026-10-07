@@ -165,6 +165,9 @@ export type StoredTx = Readonly<{
 export type InterventionReason =
   | "rollback_beyond_k"
   | "intersection_outside_history"
+  | "origin_after_protocol_init"
+  | "origin_not_on_chain"
+  | "origin_mismatch"
   | "store_integrity";
 
 export type Intervention = Readonly<{
@@ -172,3 +175,11 @@ export type Intervention = Readonly<{
   reason: InterventionReason;
   detail: string;
 }>;
+
+/**
+ * Transient: another process holds this store's writer lease, or this
+ * process lost it (its lease connection dropped, or a newer holder fenced
+ * it). Readiness reports `store_locked`; the caller backs off and calls
+ * `start()` again, which takes over once the holder's session ends.
+ */
+export type StoreLocked = Readonly<{ kind: "store_locked"; detail: string }>;

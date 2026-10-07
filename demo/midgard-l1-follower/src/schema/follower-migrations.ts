@@ -136,6 +136,7 @@ CREATE INDEX l1_outputs_payment_live ON l1_outputs (payment_cred) WHERE spent_sl
 CREATE INDEX l1_outputs_stake_live ON l1_outputs (stake_cred) WHERE spent_slot IS NULL;
 CREATE INDEX l1_outputs_spent_tx ON l1_outputs (spent_tx) WHERE spent_tx IS NOT NULL;
 CREATE INDEX l1_outputs_created_slot ON l1_outputs (created_slot);
+CREATE INDEX l1_outputs_seed_slot ON l1_outputs (seed_slot) WHERE seed_slot IS NOT NULL;
 CREATE INDEX l1_outputs_spent_slot ON l1_outputs (spent_slot) WHERE spent_slot IS NOT NULL;
 CREATE INDEX l1_outputs_script_ref ON l1_outputs (script_ref_hash) WHERE script_ref_hash IS NOT NULL;
 CREATE INDEX l1_output_assets_unit ON l1_output_assets (policy_id, asset_name);
@@ -261,6 +262,7 @@ CREATE INDEX l1_outputs_payment_live ON l1_outputs (payment_cred) WHERE spent_sl
 CREATE INDEX l1_outputs_stake_live ON l1_outputs (stake_cred) WHERE spent_slot IS NULL;
 CREATE INDEX l1_outputs_spent_tx ON l1_outputs (spent_tx) WHERE spent_tx IS NOT NULL;
 CREATE INDEX l1_outputs_created_slot ON l1_outputs (created_slot);
+CREATE INDEX l1_outputs_seed_slot ON l1_outputs (seed_slot) WHERE seed_slot IS NOT NULL;
 CREATE INDEX l1_outputs_spent_slot ON l1_outputs (spent_slot) WHERE spent_slot IS NOT NULL;
 CREATE INDEX l1_outputs_script_ref ON l1_outputs (script_ref_hash) WHERE script_ref_hash IS NOT NULL;
 CREATE INDEX l1_output_assets_unit ON l1_output_assets (policy_id, asset_name);

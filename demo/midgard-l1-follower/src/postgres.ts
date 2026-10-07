@@ -18,11 +18,15 @@ export const openPostgresFactStore = (
 ): FactStore =>
   createFactStore(openPostgresBackend(options.connection), options);
 
-/** The channel a committed rewind notifies with its new generation (§7.1 step 7). */
+/**
+ * The channel a committed rewind notifies with its new generation (§7.1
+ * step 7), and a reset with the next generation.
+ */
 export const GENERATION_CHANNEL = "l1_generation";
 
 /**
- * Listens for committed rewinds from another process sharing the database.
+ * Listens for committed rewinds and resets from another process sharing the
+ * database.
  * Returns a function that stops listening and releases the connection.
  */
 export const listenForGenerations = async (

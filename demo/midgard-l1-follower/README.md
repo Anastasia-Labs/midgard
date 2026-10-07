@@ -15,12 +15,15 @@ This package owns:
 - a raw CBOR block decoder that keeps the exact byte slices of each body,
   witness set, datum and redeemer (no dependency on the N2C transport);
 - `rewind(target)`: one transaction that truncates every registered temporal
-  (D-t) table, un-spends and deletes facts above the target, bumps the
-  generation, logs the rollback and notifies `l1_generation`;
+  (D-t) table, un-spends and deletes facts above the target (seed rows by
+  their seed point), bumps the generation, logs the rollback and notifies
+  `l1_generation`;
 - the temporal registry, which generates the rewind and prune SQL;
 - invariants INV1–INV6, checked at start and (scoped) inside every rewind;
 - views `(generation, point)` and their validity check;
 - the read API, and budgeted retention pruning;
+- the writer lease (one writing process per store) and
+  `midgard-l1-follower reset --to-origin`;
 - the heads module: the one definition of depth, the levels local, landed,
   safe, final and merged, and `slotNow`.
 
@@ -29,7 +32,9 @@ store (`applyChainSyncEvent`, `intersectionPoints`), the fork simulator
 (`./testing`) and the shadow-diff harness with its devnet soak runner
 (`./shadow`). The live chain-sync client itself (`@al-ft/l1-node-transport`),
 the decode pool and the role wiring live elsewhere. The library entry points
-never open a network connection; only the soak CLI does.
+never open a connection to a Cardano node: the origin gate and `find-origin`
+(below) read the chain through a caller-supplied `L1NodeTransport`. Only the
+`find-origin` and soak CLIs open one.
 
 ## Usage
 
@@ -45,7 +50,8 @@ const store = openPostgresFactStore({
   derivations: [roleDerivation], // writes them, in the block's transaction
 });
 
-const started = await store.start(); // migrate, INV1–INV6, load live outrefs
+const started = await store.start(); // lease, migrate, INV1–INV6, load live outrefs
+if (started.kind === "store_locked") retryWithBackoff(); // transient
 if (started.kind === "intervention") markUnready(started.reason);
 await store.initialize({ point: origin, height: originHeight });
 
@@ -59,7 +65,135 @@ condition. `intervention` (R1 `rollback_beyond_k`, R2
 `intersection_outside_history`, R5 `store_integrity`) means the role reports
 unready and keeps running; `error` means the transaction rolled back with
 nothing changed and the caller retries with backoff. R5 is sticky until a
-restart passes `start()` again.
+restart passes `start()` again. `store_locked` is transient: see the writer
+lease below.
+
+## Writer lease
+
+One process writes a store. `start()` takes the store's writer lease first
+and holds it until `close()`:
+
+- Postgres: a session advisory lock (one key per database and schema) on a
+  dedicated connection outside the pool;
+- SQLite: core's `SqliteProcessMutex` on the sidecar file
+  `<database>.writer-lease` (an in-memory database needs none).
+
+While another process holds it, `start()` returns `{ kind: "store_locked",
+detail }`, never throws and never exits. The caller retries with backoff, and
+readiness reports `store_locked` as a transient reason. This is the committee's
+active/passive pair (C2): the passive member's follower waits, and takes over
+within one retry once the active process dies, because its lock dies with its
+session or process.
+
+Each holder bumps a fencing epoch in `l1_follower_writer` at start, and every
+write reads it under a share lock. A holder that lost its lease (its lease
+connection dropped, or a newer holder bumped the epoch) gets `store_locked`
+from its next write and changes nothing; it must call `start()` again, which
+re-takes the lease or waits. Reads never need the lease.
+
+## Origin
+
+The origin O (`l1Origin`, `<slot>.<block hash>`) is the point immediately
+before the block holding the deployment's `prepareHubOracleNonce` tx. An
+operator may override it per role: `L1_ORIGIN` for the node and the
+committee, `$.l1.origin` in the watcher config. The override never enters a
+profile or manifest. `parseL1Origin`, `formatL1Origin` and
+`checkL1OriginBeforeHubOracleNonceBlock` live in
+`@al-ft/midgard-core/l1-origin`. `find-origin` applies that invariant to its
+own result; `deployment:check` will enforce it once the manifest carries
+`l1Origin` (with the redeploy).
+
+```ts
+startFromOrigin({ store, transport, origin, credit }): Promise<OriginStart>
+protocolInitStatus(store, { origin, hubOracleOneShot }, tip): Promise<ProtocolInitStatus>
+```
+
+`startFromOrigin` opens chain-sync at `[O]` on a fresh store, takes O's height
+from the first block after it (its block number minus one; that block must
+extend O) and initializes the store there. It returns `initialized` or
+`already_initialized` with `{ cursor, stream, first }` (the runner applies
+`first`, acks it and follows the stream), `resume` when the store already has
+a cursor at O, an intervention (R4, or `origin_mismatch` below) or a
+`StoreError`. It closes the stream on every other path.
+
+- R4 `origin_not_on_chain`: on a fresh start (no cursor, not resuming) the
+  node cannot intersect O, or the first block after O does not extend it. A
+  failed intersection with a stored cursor, or on a resume, stays R2
+  (`intersectionFailure` classifies it).
+- R3 `origin_after_protocol_init`: `protocolInitStatus` at the node tip finds
+  no stored valid tx spending `hubOracleOneShot` (the protocol-init tx). It is
+  `pending` before the cursor reaches the tip and `seen` once the spend is
+  stored. It is not sticky. It needs the role's tracked set to qualify the
+  init tx (the hub oracle policy), and relies on the init tx staying stored
+  while an output it created is live; it can be wrong only after the hub
+  oracle NFT is burned and the init tx pruned.
+- `origin_mismatch`: the store was initialized at another origin than the
+  configured one, for example after the operator corrected `l1Origin` to
+  clear R3. The store is never reset silently; it stays as it is until the
+  operator resets the follower store (`reset --to-origin`, below) or restores
+  the old origin. A cursor
+  that another writer initializes between the check and `initialize` gives
+  the same intervention. (`FactStore.initialize` itself still reports the
+  case as `{ kind: "origin_mismatch", cursor }`.)
+
+All three are unready reasons: the role fails `/readyz`, stays live on `/healthz`
+and keeps running.
+
+`FactStore.txSpending(outRef)` returns the earliest stored valid tx listing
+`outRef` as an input (`{ txHash, slot } | null`). It scans `l1_txs`; it is
+meant for rare checks such as R3.
+
+### `midgard-l1-follower find-origin`
+
+```sh
+midgard-l1-follower find-origin --tx <prepareHubOracleNonce tx id> \
+  --network-magic <n> [--socket <node socket>] [--sidecar <binary>] \
+  [--from <slot>.<block hash>]
+```
+
+Scans the node's chain from `--from` (default genesis) for the tx and prints
+`{ l1Origin, origin, prepareHubOracleNonceBlock, txIndex, depth }` as JSON.
+`--socket` defaults to `CARDANO_NODE_SOCKET_PATH`, `--sidecar` to
+`MIDGARD_L1_NODE_TRANSPORT_BINARY`. Exit codes: 0 found, 1 failed, 2 usage, 3
+not found (absent, `--from` not on the chain, or the tx in the chain's first
+block). The same scan is `findOrigin({ transport, txHash, from? })`.
+
+### `midgard-l1-follower reset --to-origin`
+
+```sh
+midgard-l1-follower reset --to-origin --postgres <connection string>
+midgard-l1-follower reset --to-origin --sqlite <database file>
+```
+
+The recovery for R1, R2, R5 and `origin_mismatch` (§7.5): the next start
+initializes at the configured `l1Origin` and replays from it. It needs only
+the connection; it reads which tables to clear from the catalog. In one
+transaction it:
+
+- deletes every row of every catalog table of class A, D-t or D-x: the
+  facts, the seeds, the cursor, the rollback log, and every such role table
+  migrated through the follower;
+- never deletes a class B row (own signed material), a class C row, the
+  migration ledger, the catalog or the writer row. Class C rows (`l1_scripts`,
+  foreign payloads) are immutable and content-addressed, so they are correct
+  for any chain and are kept while referenced (§7): the next `prune()`
+  removes the `l1_scripts` rows no retained output references, and a role's
+  own retention removes its class C rows;
+- raises the next generation above every generation the store used, and
+  notifies `l1_generation`, so no view taken before the reset validates by
+  generation after it;
+- bumps the fencing epoch.
+
+It refuses while a follower holds the writer lease (stop the follower
+first), and refuses, deleting nothing, when a table outside the catalog has a
+foreign key into a table it would clear. It is idempotent: a second reset
+deletes nothing and leaves the next generation as it was. D-x rows are
+deleted; the external stores they version (MPF roots, Level nodes) are not.
+Exit codes: 0 reset, 1 failed, 2 usage, 4 refused (writer lease held). The
+JSON on stdout is `{ reset, nextGeneration, tables }`. A Postgres password may
+come from `PGPASSWORD` rather than the connection string. The same operation
+is `resetToOrigin(backend)`, which returns
+`{ kind: "reset", tables, nextGeneration } | StoreLocked`.
 
 ## API
 
@@ -92,24 +226,25 @@ type FactStoreOptions = {
 
 ### `FactStore`
 
-Writers are serialised on one lane. `start()` must succeed before any write.
+Writers are serialised on one lane. `start()` must succeed before any write,
+and every write below can also return `StoreLocked` (the lease was lost).
 
-| Member                                               | Result                                                                                                                                                |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `start()`                                            | `{ kind: "ready", cursor, liveOutRefs, migrated } \| Intervention`                                                                                    |
-| `initialize({ point, height })`                      | `initialized \| already_initialized \| origin_mismatch` (with `cursor`), or `StoreError`                                                              |
-| `applyBlock(block)`                                  | `BlockApplied { cursor, qualified, created, spent } \| ApplyRejection { reason: "not_initialized" \| "not_on_cursor" } \| Intervention \| StoreError` |
-| `rewind(target: Point)`                              | `Rewound { generation, from, to, depth, cursor, unspent, deleted } \| RewindNoop \| Intervention \| StoreError`                                       |
-| `insertSeedOutputs(seedSlot, outputs: SeedOutput[])` | `SeedResult { inserted, skipped } \| StoreError \| null` (null: not initialized)                                                                      |
-| `prune(budget = 5000)`                               | `PruneResult { deleted, done, prunedThroughSlot } \| StoreError`                                                                                      |
-| `checkInvariants()`                                  | `InvariantReport { ok, violations }` (full INV1–INV6)                                                                                                 |
-| `cursor()`                                           | `Cursor \| null`                                                                                                                                      |
-| `currentView()` / `viewValid(view)`                  | `View \| null` / `boolean`                                                                                                                            |
-| `onGeneration(listener)`                             | unsubscribe function; called after each committed rewind                                                                                              |
-| `setTrackedSet(set)` / `trackedSet()`                | replaces / returns the static tracked set                                                                                                             |
-| `isTrackedLive(outRef)` / `liveOutRefCount()`        | the in-memory live tracked-outref set                                                                                                                 |
-| `transaction(mode, run)`                             | a raw `SqlTx` on the store's backend (`"read"` snapshot or `"write"`)                                                                                 |
-| `close()`                                            | releases the backend after queued writes                                                                                                              |
+| Member                                                | Result                                                                                                                                                                                    |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start()`                                             | `{ kind: "ready", cursor, liveOutRefs, migrated } \| Intervention \| StoreLocked`                                                                                                         |
+| `initialize({ point, height })`                       | `initialized \| already_initialized \| origin_mismatch` (with `cursor`), or `StoreError`                                                                                                  |
+| `applyBlock(block)`                                   | `BlockApplied { cursor, qualified, created, spent } \| ApplyRejection { reason: "not_initialized" \| "not_on_cursor" } \| Intervention \| StoreError`                                     |
+| `rewind(target: Point)`                               | `Rewound { generation, from, to, depth, cursor, unspent, deleted } \| RewindNoop \| Intervention \| StoreError`                                                                           |
+| `insertSeedOutputs(at: Point, outputs: SeedOutput[])` | `SeedResult { cursor, inserted, skipped } \| SeedCursorMoved \| StoreError \| StoreLocked \| null` (null: not initialized; `cursor_moved`: `at` is no longer the cursor, nothing written) |
+| `prune(budget = 5000)`                                | `PruneResult { deleted, done, prunedThroughSlot } \| StoreError`                                                                                                                          |
+| `checkInvariants()`                                   | `InvariantReport { ok, violations }` (full INV1–INV6)                                                                                                                                     |
+| `cursor()`                                            | `Cursor \| null`                                                                                                                                                                          |
+| `currentView()` / `viewValid(view)`                   | `View \| null` / `boolean`                                                                                                                                                                |
+| `onGeneration(listener)`                              | unsubscribe function; called after each committed rewind                                                                                                                                  |
+| `setTrackedSet(set)` / `trackedSet()`                 | replaces / returns the static tracked set                                                                                                                                                 |
+| `isTrackedLive(outRef)` / `liveOutRefCount()`         | the in-memory live tracked-outref set                                                                                                                                                     |
+| `transaction(mode, run)`                              | a raw `SqlTx` on the store's backend (`"read"` snapshot or `"write"`)                                                                                                                     |
+| `close()`                                             | releases the writer lease and the backend after queued writes                                                                                                                             |
 
 Reads (each a consistent snapshot):
 
@@ -136,8 +271,10 @@ rewind happened since it was read, or its point is still stored. To guard a
 write in the role's own transaction, run `viewValidQuery(dialect, view)` (it
 takes `FOR SHARE` on the cursor row, so no rewind commits between the check
 and the write) or `viewValidIn(tx, dialect, view)`. Another process learns
-of rewinds with `listenForGenerations(pool, (generation) => …)`, which
-returns an async `stop()`.
+of rewinds, and of resets, with `listenForGenerations(pool, (generation) =>
+…)`, which returns an async `stop()`. Generations never repeat: `initialize`
+starts at the writer row's next generation (0 on a new store), and a reset
+raises it above every generation used before.
 
 ### Temporal tables and derivations
 
@@ -165,6 +302,9 @@ Pruning deletes rows k deep per their `retention`. A role may also insert
 the rewind removes keys first seen above its target.
 
 ### Decoding and codecs
+
+`decodeLedgerUtxos(answer)` decodes an LSQ UTxO answer (`utxo_by_address`,
+`utxo_by_txin`) into `{ outRef, output }` pairs.
 
 `decodeBlock(raw: Uint8Array): BlockSummary` (throws `BlockDecodeError`) takes
 one bare Shelley-family block (Alonzo and later: five elements), as the N2C
@@ -215,9 +355,66 @@ lintDeterminismSource(path: string, source: string, options?): DeterminismProble
 ```
 
 `lintSchema` fails a `CREATE TABLE` without a class and retention header, an
-unknown class, an empty rule, a D-t table that is not registered, and a
-registered table not declared D-t or D-x. The lints load the TypeScript
+unknown class, an empty rule, a D-t table that is not registered, a
+registered table not declared D-t or D-x, and a class B table with a foreign
+key (inline or by `ALTER TABLE`) into a table that is not class B, or that no
+migration declares: a reset or a rewind must never be blocked by, or cascade
+into, class B rows.
+
+The migration runner records every table a migration declares, with its
+class, in the catalog `l1_follower_tables`, and refuses a migration whose
+table lacks its header. The bookkeeping tables (`l1_follower_migrations`,
+`l1_follower_tables`, `l1_follower_writer`, in `FOLLOWER_BOOKKEEPING_DDL`)
+are created before any migration and are not in the catalog. The lints load the TypeScript
 compiler, so they are kept out of the runtime entry point.
+
+### Wallet seed (§5.3 step 4)
+
+```ts
+seedWallets(store, ledger: WalletLedger, addresses: Buffer[], attempts = 3): Promise<WalletSeedResult>
+createWalletSeeder({ store, ledger, wallets }): WalletSeeder
+// WalletLedger = Pick<L1NodeTransport, "withLedgerState">
+```
+
+Own wallets can hold UTxOs the follower never stored: created before the
+origin, or paid to a wallet after the origin while it was not tracked (also
+by a stored tx whose output to it got no row). `seedWallets` acquires LSQ at
+the store's cursor P, reads `utxo_by_address` for the wallets and writes
+every outref the store holds no row for as a seed row (`created_slot NULL`,
+`seed_slot = P`). The write is
+refused unless the cursor is still P (a block or rewind in between could
+hold a spend the seed would miss); the read is then repeated at the new
+cursor. LSQ acquires only volatile points, so the seed succeeds once the
+cursor is within k of the node's tip. It never throws: a `pending` result
+names the transient reason (`not_initialized`, `cursor_not_acquirable`,
+`cursor_moved`, `ledger_unavailable`, `ledger_answer_invalid`,
+`store_error`, `store_locked`).
+
+A seed row is a fact observed at P. A rewind to a target T deletes, in the
+same transaction, every seed row with `seed_slot > T` (and un-spends the
+rest like any row); rows seeded at or below T observed a state that is still
+canonical and stay. INV6: no seed row lies above the cursor, and no stored
+creator contradicts a seed row (created after the seed point, or not
+creating that index).
+
+`createWalletSeeder` owes the seed of each wallet and settles it with
+`step()`. The role reports `/readyz` unready with `wallet_seed_pending`
+(`WALLET_SEED_PENDING`) while `ready()` is false and calls `step()` after
+follower steps. `addWallets(addresses)` adds the wallets to the store's
+tracked set and owes their seed, and only theirs. After a committed rewind
+below a wallet's seed point (which deleted its seed rows from that point)
+the wallet is owed again and is read at a later cursor: the fresh answer
+holds a pre-origin UTxO the rollback made live again and drops an output
+whose creating tx the fork orphaned. Bootstrap and added wallets take the
+same path, with no wait. `wallet_seed_pending` is transient: the role keeps
+running and raises no intervention. Every wallet starts owed, so a restart
+re-seeds; that writes nothing the store already holds.
+
+The role wiring composes it with the origin start: start the store,
+initialize at the origin and follow chain-sync; create the seeder once the
+store is initialized and call `step()` after each settled follower step
+until it is ready (the first steps return `cursor_not_acquirable` while
+the follower replays from an origin more than k blocks deep).
 
 ### Following chain-sync
 
@@ -248,7 +445,7 @@ transaction whose collateral is spent, re-landed failed, replaced by a valid
 one, or absent).
 
 ```ts
-runForkScenario(scenario, { open, k, projections?, comparators?, source? }): Promise<ForkRunOutcome>
+runForkScenario(scenario, { open, k, projections?, comparators?, source?, walletSeed? }): Promise<ForkRunOutcome>
 forkScenarioArbitrary(k): fc.Arbitrary<ForkScenario> // fast-check
 forkCorpus(k): NamedScenario[] // every shape and variant at depths 1, k/2, k
 ```
@@ -260,6 +457,15 @@ episode's checkpoints match the simulator's own ledger model, every plugged
 projection's `check`, and every shadow comparator. `source` replaces the
 in-memory event list with a real one (the transport test serves it through a
 fake sidecar and the real frame client).
+
+`walletSeed` (`{ wallets, preOrigin, startAfter, added? }`) runs the wallet
+seeder against the simulated node's LSQ from event `startAfter` on, with the
+wallets tracked and `preOrigin` UTxOs in the ledger at the origin; `added`
+wallets join through `addWallets` after event `atEvent`. After every event
+the store's seed rows must be exactly the rows seeded and not rewound (new
+rows only at the cursor), the fresh replay tracks and seeds where the store
+did, and once the seeder is ready the store's live rows at every wallet must
+be exactly the ledger's UTxOs there (no phantom, none missing).
 
 A role ticket adds cases by passing a `FollowerProjection`: its tracked set,
 D-t tables, migrations, derivations and retention pins, optional `traffic`

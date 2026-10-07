@@ -5,6 +5,7 @@ import {
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
 import { type DeploymentManifestAvailabilityChallenge } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { type L1Origin } from "@al-ft/midgard-core/l1-origin";
 
 import type { CommitteePromiseAdoptionConfig } from "./config.promise-admission.js";
 import type { DaCommitteeMember } from "./domain.js";
@@ -109,6 +110,8 @@ export type CommitteeConfig = {
   readonly cardanoProviderUrls: readonly string[];
   /** Absent when no local node ledger is configured; reward-account reads then fail closed. */
   readonly nativeLedger?: NativeLedgerConfig;
+  /** The operator-configured L1 origin point (`L1_ORIGIN`); absent when unset. */
+  readonly l1Origin?: L1Origin;
   readonly finalityDepth: number;
   /** Signed recovery horizon, distinct from confirmation admission. */
   readonly automaticRecoveryMaxDepth: number;

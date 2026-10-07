@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { chainPoint, type L1NodeTransport } from "@al-ft/l1-node-transport";
 
 import { encodeOutRef } from "../codec.js";
-import { decodeUtxoEntries } from "../decode/utxo-answer.js";
+import { decodeLedgerUtxos } from "../decode/utxo.js";
 import type { OutputSummary, OutRef, Point } from "../types.js";
 import {
   reading,
@@ -48,7 +48,7 @@ const byOutRef = (a: Row, b: Row): number =>
 
 /** Decodes a `utxo_by_address` answer: `{[txHash, index] => output}`. */
 export const decodeUtxoAnswer = (bytes: Uint8Array): Row[] =>
-  decodeUtxoEntries(bytes).map(({ outRef, output }) => row(outRef, output));
+  decodeLedgerUtxos(bytes).map((utxo) => row(utxo.outRef, utxo.output));
 
 type Baseline = Readonly<{ origin: string; outRefs: readonly string[] }>;
 

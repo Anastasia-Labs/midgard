@@ -7,9 +7,11 @@
  *
  * `run` follows the node into `<dir>/follower.sqlite`, compares after every
  * event and appends to `<dir>/journal.jsonl`; restarted, it resumes from the
- * store's cursor. Exit status: 0 stopped on request or at the limit, 3 an
- * intervention (do not restart; an operator must act), 4 refused, 1 crashed
- * (safe to restart).
+ * store's cursor. Another process holding or taking over the store's writer
+ * lease (`store_locked`) is waited out: it starts the store again with
+ * backoff and resumes, never exits on it. Exit status: 0 stopped on request
+ * or at the limit, 3 an intervention (do not restart; an operator must act),
+ * 4 refused, 1 crashed (safe to restart).
  */
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -30,7 +32,7 @@ import {
 import { ledgerComparator } from "./ledger-comparator.js";
 import { isShadowPlugin, type ShadowPlugin } from "./plugin.js";
 import { projectionStoreOptions } from "./projection.js";
-import { runSoak } from "./soak.js";
+import { runSoak, type SoakStop, startWhenFree } from "./soak.js";
 import { readSoakConfig } from "./soak-config.js";
 
 const log = (line: string): void => {
@@ -112,19 +114,44 @@ const run = async (
       ),
       path: join(dir, "follower.sqlite"),
     });
-    const started = await store.start();
-    if (started.kind !== "ready") {
-      log(`store refused to start: ${started.reason}: ${started.detail}`);
-      return 3;
-    }
-    if ((await store.cursor()) === null) {
-      await transport.whenReady();
-      const origin = await tipOrigin(transport);
-      const init = await store.initialize(origin);
-      if (init.kind !== "initialized")
-        throw new Error(`initialize: ${init.kind}`);
-      log(`initialized at height ${origin.height} slot ${origin.point.slot}`);
-    }
+    const abort = new AbortController();
+    const onSignal = (): void => abort.abort();
+    process.once("SIGINT", onSignal);
+    process.once("SIGTERM", onSignal);
+    // Another writer holding (or taking over) the store's lease is
+    // transient: wait it out and start again, never exit on it.
+    const startStore = async (
+      current: FactStore,
+    ): Promise<"ready" | "stopped" | "intervention"> => {
+      for (;;) {
+        const started = await startWhenFree(current, {
+          signal: abort.signal,
+          log,
+        });
+        if (started === undefined) return "stopped";
+        if (started.kind !== "ready") {
+          log(
+            `store refused to start: intervention ${started.reason}: ${started.detail}`,
+          );
+          return "intervention";
+        }
+        if ((await current.cursor()) !== null) return "ready";
+        await transport.whenReady();
+        const origin = await tipOrigin(transport);
+        const init = await current.initialize(origin);
+        if (init.kind === "store_locked") {
+          log(`store locked at initialize, starting again: ${init.detail}`);
+          continue;
+        }
+        if (init.kind !== "initialized")
+          throw new Error(`initialize: ${init.kind}`);
+        log(`initialized at height ${origin.height} slot ${origin.point.slot}`);
+        return "ready";
+      }
+    };
+    const first = await startStore(store);
+    if (first === "intervention") return 3;
+    if (first === "stopped") return 0;
     if (config.ledgerAddresses.length > 0)
       comparators.push(
         ledgerComparator({
@@ -142,19 +169,24 @@ const run = async (
           options: config.plugins[index]?.options,
         })),
       );
-    const abort = new AbortController();
-    const onSignal = (): void => abort.abort();
-    process.once("SIGINT", onSignal);
-    process.once("SIGTERM", onSignal);
-    const stopped = await runSoak({
-      dir,
-      store,
-      openChainSync: (options) => transport.openChainSync(options),
-      comparators,
-      signal: abort.signal,
-      log,
-      ...(maxEvents === undefined ? {} : { maxEvents }),
-    });
+    let stopped: SoakStop;
+    let events = 0;
+    for (;;) {
+      stopped = await runSoak({
+        dir,
+        store,
+        openChainSync: (options) => transport.openChainSync(options),
+        comparators,
+        signal: abort.signal,
+        log,
+        ...(maxEvents === undefined ? {} : { maxEvents: maxEvents - events }),
+      });
+      events += stopped.events;
+      if (stopped.reason !== "store_locked") break;
+      const again = await startStore(store);
+      if (again === "intervention") return 3;
+      if (again === "stopped") break;
+    }
     log(formatSummary(await report(dir)));
     return stopped.reason === "intervention"
       ? 3

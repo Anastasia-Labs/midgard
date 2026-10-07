@@ -9,7 +9,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { blake2b256 } from "../../src/codec.js";
-import { decodeUtxoEntries } from "../../src/decode/utxo-answer.js";
+import { decodeLedgerUtxos } from "../../src/decode/utxo.js";
 import { witnessDatum } from "../../src/decode/witness.js";
 import {
   decodeEraHistory,
@@ -104,7 +104,7 @@ describe("UTxO mapping", () => {
       }),
     ]);
     expect(
-      decodeUtxoEntries(answer).map((entry) =>
+      decodeLedgerUtxos(answer).map((entry) =>
         toLucidUtxo(entry.outRef, entry.output),
       ),
     ).toEqual(outputs.map(lucidOracle));

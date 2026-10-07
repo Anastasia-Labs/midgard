@@ -28,7 +28,7 @@ import {
 import { readArray, skipItem, slice } from "../cbor/reader.js";
 import { blake2b256 } from "../codec.js";
 import { addressCredentials } from "../decode/output.js";
-import { decodeUtxoEntries, type LedgerUtxo } from "../decode/utxo-answer.js";
+import { decodeLedgerUtxos, type LedgerUtxo } from "../decode/utxo.js";
 import type { SqlTx } from "../sql/backend.js";
 import { datumByHashIn } from "../store/datum.js";
 import type { FactStore } from "../store/fact-store.js";
@@ -407,7 +407,7 @@ export class L1FollowerProvider implements Provider {
   async #ledgerUtxos(
     query: Parameters<L1NodeTransport["query"]>[0],
   ): Promise<readonly LedgerUtxo[]> {
-    return decodeUtxoEntries(
+    return decodeLedgerUtxos(
       await this.#node(() => this.#transport.query(query)),
     );
   }

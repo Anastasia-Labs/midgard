@@ -42,6 +42,7 @@ export {
   type SoakOptions,
   type SoakStop,
   type SoakStream,
+  startWhenFree,
 } from "./soak.js";
 export {
   readSoakConfig,

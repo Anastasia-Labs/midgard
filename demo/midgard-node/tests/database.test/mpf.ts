@@ -100,7 +100,7 @@ export const registerMpfTests = () => {
                       "mpf-audit-test",
                       (mpfOwner) =>
                         Effect.gen(function* () {
-                          yield* Effect.sleep("180 millis");
+                          yield* Effect.sleep("2500 millis"); // 2.5 TTLs: needs renewal
                           yield* StateQueueMutationLeasesDB.revalidate(
                             stateQueueToken,
                           );
@@ -120,11 +120,11 @@ export const registerMpfTests = () => {
                             }),
                           ).toBe(false);
                         }),
-                      { ttlMs: 90, renewIntervalMs: 20 },
+                      { ttlMs: 1_000, renewIntervalMs: 50 },
                     );
                   expect(mpfResult._tag).toBe("Ran");
                 }),
-              { ttlMs: 90, renewIntervalMs: 20 },
+              { ttlMs: 1_000, renewIntervalMs: 50 },
             );
             expect(result._tag).toBe("Ran");
           }),

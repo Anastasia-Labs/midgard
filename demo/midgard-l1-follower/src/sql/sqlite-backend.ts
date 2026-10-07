@@ -1,12 +1,18 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 
 import {
+  isSqliteMutexBusy,
+  SqliteProcessMutex,
+} from "@al-ft/midgard-core/sqlite-process-mutex";
+
+import {
   type Dialect,
   RollbackWith,
   type SqlBackend,
   type SqlRow,
   type SqlTx,
   type SqlValue,
+  type WriterLease,
 } from "./backend.js";
 
 export const sqliteDialect: Dialect = {
@@ -55,6 +61,34 @@ class Mutex {
   }
 }
 
+/** The writer lease's sidecar file, next to the database. */
+export const writerLeasePath = (path: string): string => `${path}.writer-lease`;
+
+const isMemory = (path: string): boolean => path === "" || path === ":memory:";
+
+/**
+ * Takes core's `SqliteProcessMutex` on the sidecar: a kernel lock that the
+ * process's death releases. An in-memory database is private to its
+ * connection, so its lease is always free.
+ */
+const acquireSqliteLease = (path: string): WriterLease | null => {
+  if (isMemory(path))
+    return { lost: () => false, release: async () => undefined };
+  let mutex: SqliteProcessMutex;
+  try {
+    mutex = SqliteProcessMutex.acquire(writerLeasePath(path));
+  } catch (error) {
+    if (isSqliteMutexBusy(error)) return null;
+    throw error;
+  }
+  return {
+    lost: () => false,
+    release: async () => {
+      mutex.close();
+    },
+  };
+};
+
 /**
  * The SQLite backend (watcher only, §18.1 Q1). One connection in WAL mode
  * with `synchronous = FULL` and foreign keys on. Writers take
@@ -102,6 +136,7 @@ export const openSqliteBackend = (path: string): SqlBackend => {
           throw error;
         }
       }),
+    acquireWriterLease: async () => acquireSqliteLease(path),
     close: async () => {
       await mutex.run(async () => {
         statements.clear();

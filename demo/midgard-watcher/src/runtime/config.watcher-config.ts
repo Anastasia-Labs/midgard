@@ -1,3 +1,5 @@
+import { type L1Origin } from "@al-ft/midgard-core/l1-origin";
+
 import { type WatcherCustomNetwork } from "./custom-network.js";
 
 export const WATCHER_CONFIG_SCHEMA_VERSION =
@@ -19,6 +21,7 @@ export const WATCHER_CONFIG_BOUNDS = {
     max: WATCHER_CARDANO_SECURITY_PARAMETER_K,
   },
   deadlineMs: { min: 1_000, max: 86_400_000 },
+  l1OriginSlot: { min: 0, max: Number.MAX_SAFE_INTEGER },
 } as const;
 
 export type WatcherConfigMode = "development" | "acceptance";
@@ -59,6 +62,12 @@ export type WatcherL1SourceConfig =
 
 export type WatcherL1Config = Readonly<{
   source: WatcherL1SourceConfig;
+  /**
+   * Operator override of the deployment's L1 origin: the point immediately
+   * before the block holding the prepareHubOracleNonce tx, where the L1
+   * follower starts. Absent means the deployment's own origin applies.
+   */
+  origin?: L1Origin;
   requestTimeoutMs: number;
   maxConcurrency: number;
   finality: Readonly<{

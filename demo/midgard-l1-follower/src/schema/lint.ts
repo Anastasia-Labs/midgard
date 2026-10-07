@@ -27,7 +27,46 @@ const HEADER = /^\s*--\s*class:\s*([A-Za-z-]+)\s*;\s*retention:\s*(.*?)\s*$/u;
 const isTableClass = (value: string): value is TableClass =>
   (TABLE_CLASSES as readonly string[]).includes(value);
 
-type Scan = { declared: DeclaredTable[]; problems: SchemaLintProblem[] };
+/** A foreign key a migration declares: `table` references `target`. */
+type ForeignKey = Readonly<{
+  namespace: string;
+  migration: string;
+  table: string;
+  target: string;
+}>;
+
+type Scan = {
+  declared: DeclaredTable[];
+  problems: SchemaLintProblem[];
+  foreignKeys: ForeignKey[];
+};
+
+const emptyScan = (): Scan => ({ declared: [], problems: [], foreignKeys: [] });
+
+const STATEMENT_OWNER =
+  /^\s*(?:CREATE\s+(?:TEMP(?:ORARY)?\s+|UNLOGGED\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?|ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?)("?)([A-Za-z_][A-Za-z0-9_.]*)\1/iu;
+const REFERENCES = /\bREFERENCES\s+("?)([A-Za-z_][A-Za-z0-9_.]*)\1/giu;
+
+/** The foreign keys of every `CREATE TABLE` and `ALTER TABLE` statement. */
+const scanForeignKeys = (
+  namespace: string,
+  id: string,
+  sql: string,
+  scan: Scan,
+): void => {
+  const code = sql.replace(/\/\*[\s\S]*?\*\//gu, " ").replace(/--[^\n]*/gu, "");
+  for (const statement of code.split(";")) {
+    const owner = STATEMENT_OWNER.exec(statement);
+    if (owner === null) continue;
+    for (const reference of statement.matchAll(REFERENCES))
+      scan.foreignKeys.push({
+        namespace,
+        migration: id,
+        table: (owner[2] ?? "").toLowerCase(),
+        target: (reference[2] ?? "").toLowerCase(),
+      });
+  }
+};
 
 const scanMigration = (
   namespace: string,
@@ -71,6 +110,7 @@ const scanMigration = (
       retention,
     });
   });
+  scanForeignKeys(namespace, id, sql, scan);
   if (
     /\bCREATE\s+TABLE\b/iu.test(sql) &&
     !lines.some((line) => CREATE_TABLE.test(line))
@@ -85,22 +125,53 @@ const scanMigration = (
 };
 
 /**
+ * The tables one migration declares, and its header problems. The migration
+ * runner refuses a migration with problems, so every table it creates is
+ * in the catalog with its class (`l1_follower_tables`).
+ */
+export const migrationTables = (
+  namespace: string,
+  id: string,
+  sql: string,
+): Readonly<{ declared: DeclaredTable[]; problems: SchemaLintProblem[] }> => {
+  const scan = emptyScan();
+  scanMigration(namespace, id, sql, scan);
+  return scan;
+};
+
+/**
  * The schema lint (§5.1, §7.2, §11): every table in every migration declares
  * a class and a retention rule on the line above its `CREATE TABLE`, and
  * every D-t table is in the temporal registry (and every registered table is
- * a declared D-t or D-x table). Returns the problems; empty means clean.
+ * a declared D-t or D-x table). A class B table declares no foreign key into
+ * a table that is not class B: `follower reset --to-origin` and a rewind
+ * delete non-B rows, and must never be blocked by, or cascade into, B rows.
+ * Returns the problems; empty means clean.
  */
 export const lintSchema = (
   sets: readonly MigrationSet[],
   registry?: TemporalRegistry,
 ): SchemaLintProblem[] => {
-  const scan: Scan = { declared: [], problems: [] };
+  const scan = emptyScan();
   for (const set of sets)
     for (const migration of set.migrations)
       scanMigration(set.namespace, migration.id, migration.sql, scan);
   const declaredByName = new Map(
     scan.declared.map((table) => [table.table, table]),
   );
+  for (const key of scan.foreignKeys) {
+    if (declaredByName.get(key.table)?.tableClass !== "B") continue;
+    const target = declaredByName.get(key.target)?.tableClass;
+    if (target === "B") continue;
+    scan.problems.push({
+      namespace: key.namespace,
+      migration: key.migration,
+      table: key.table,
+      message: `class B table references ${key.target} (${
+        target === undefined ? "declared by no migration" : `class ${target}`
+      }); a class B table may reference only class B tables`,
+    });
+  }
   for (const table of scan.declared)
     if (table.tableClass === "D-t" && registry?.has(table.table) !== true)
       scan.problems.push({
@@ -130,7 +201,7 @@ export const lintSchema = (
 export const declaredTables = (
   sets: readonly MigrationSet[],
 ): DeclaredTable[] => {
-  const scan: Scan = { declared: [], problems: [] };
+  const scan = emptyScan();
   for (const set of sets)
     for (const migration of set.migrations)
       scanMigration(set.namespace, migration.id, migration.sql, scan);

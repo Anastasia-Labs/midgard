@@ -156,7 +156,7 @@ export const runProperty = async (
     expectKind(await store.start(), "ready", "start");
     expectKind(await store.initialize(origin), "initialized", "initialize");
     expectKind(
-      (await store.insertSeedOutputs(origin.point.slot, seeds)) ?? {
+      (await store.insertSeedOutputs(origin.point, seeds)) ?? {
         kind: "null",
       },
       "seeded",
@@ -246,7 +246,9 @@ export const runProperty = async (
       if (options.pruneEvery !== undefined && step % options.pruneEvery === 0) {
         const pruned = await store.prune(options.pruneBudget ?? 50);
         if ("kind" in pruned)
-          throw new PropertyFailure(`prune failed: ${pruned.error.message}`);
+          throw new PropertyFailure(
+            `prune failed: ${pruned.kind === "error" ? pruned.error.message : pruned.detail}`,
+          );
         stats.prunes += 1;
       }
       const cursor = await store.cursor();

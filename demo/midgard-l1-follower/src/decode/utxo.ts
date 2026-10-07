@@ -10,10 +10,11 @@ import { readOutput } from "./output.js";
 export type LedgerUtxo = Readonly<{ outRef: OutRef; output: OutputSummary }>;
 
 /**
- * Decodes a ledger `utxo_by_address` or `utxo_by_txin` answer,
- * `{[txHash, index] => output}`, keeping each output's exact byte slices.
+ * Decodes a LocalStateQuery UTxO answer (`utxo_by_address`,
+ * `utxo_by_txin`): a map from `[txHash, index]` to the ledger's output, in
+ * the same encoding a transaction body uses. Throws `CborReadError`.
  */
-export const decodeUtxoEntries = (bytes: Uint8Array): LedgerUtxo[] =>
+export const decodeLedgerUtxos = (bytes: Uint8Array): LedgerUtxo[] =>
   readMap(bytes, 0).entries.map(({ key, value }) => {
     const [hash, index] = readArray(bytes, key).items;
     if (hash === undefined || index === undefined)

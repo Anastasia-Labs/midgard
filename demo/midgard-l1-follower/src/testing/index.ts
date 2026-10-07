@@ -63,3 +63,4 @@ export {
   simUniverse,
   type SimUtxo,
 } from "./sim-chain.js";
+export { type ForkWalletSeed, type SeedStats } from "./wallet-seed-run.js";

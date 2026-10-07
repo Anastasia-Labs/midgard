@@ -30,8 +30,12 @@ export type JournalRecord =
   | Readonly<{
       type: "stop";
       at: string;
-      /** `intervention` stops the soak until an operator acts. */
-      reason: "intervention" | "limit" | "signal" | "refused";
+      /**
+       * `intervention` stops the soak until an operator acts; `store_locked`
+       * (another writer took the store's lease) is transient: the soak
+       * starts the store again and resumes from its cursor.
+       */
+      reason: "intervention" | "limit" | "signal" | "refused" | "store_locked";
       detail: string;
     }>;
 

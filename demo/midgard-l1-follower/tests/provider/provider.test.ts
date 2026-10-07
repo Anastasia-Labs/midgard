@@ -243,7 +243,7 @@ describe.each(providerAdapters(databases, scratch))(
         kind: "initialized",
       });
       expect(
-        await store.insertSeedOutputs(100, [
+        await store.insertSeedOutputs(ORIGIN.point, [
           { outRef: SEEDED.outRef, output: SEEDED.summary },
         ]),
       ).toMatchObject({ kind: "seeded" });

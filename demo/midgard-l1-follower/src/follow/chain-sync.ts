@@ -29,7 +29,12 @@ export type BlockUndecodable = Readonly<{
   detail: string;
 }>;
 
-/** What one chain-sync event did to the store. */
+/**
+ * What one chain-sync event did to the store. `store_locked` (the writer
+ * lease was lost or the store fenced by a newer writer) changed nothing and
+ * is transient: the caller stops applying, acknowledges nothing and calls
+ * `start()` again, then reopens chain-sync from the store's cursor.
+ */
 export type FollowStep =
   | Readonly<{ event: "roll_forward"; result: ApplyResult | BlockUndecodable }>
   | Readonly<{ event: "roll_backward"; result: RewindResult }>;
@@ -78,11 +83,23 @@ export const applyChainSyncEvent = async (
   return { event: "roll_forward", result: await store.applyBlock(block) };
 };
 
-/** Whether a step left the store on the event's point (safe to acknowledge). */
+/**
+ * Whether a step left the store on the event's point (safe to acknowledge).
+ * Never true for `store_locked`, `error`, an intervention or an undecodable
+ * block.
+ */
 export const stepSettled = (step: FollowStep): boolean =>
   step.result.kind === "applied" ||
   step.result.kind === "rewound" ||
   step.result.kind === "noop";
+
+/**
+ * Whether a step found the store locked: another writer holds or took over
+ * its lease. Transient, never an intervention: stop applying and call
+ * `start()` again.
+ */
+export const stepLocked = (step: FollowStep): boolean =>
+  step.result.kind === "store_locked";
 
 const RECENT_POINTS = 64;
 const MAX_POINTS = 256;
