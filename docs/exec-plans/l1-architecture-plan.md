@@ -1522,14 +1522,14 @@ except the M2 row (§1.4).
 
 | Group | Files | Lines | Removed by |
 |---|---|---|---|
-| `l1-event-history-*` (Ogmios ChainSync journal) | 17 | 3,624 | N1 |
-| `l1-ledger-snapshot.ts` | 1 | 289 | N1 |
+| `l1-event-history-*` (Ogmios ChainSync journal) | 17 | 3,624 | N1-close |
+| `l1-ledger-snapshot.ts` | 1 | 289 | N1-close |
 | `local-ledger-slot.ts`, `local-ogmios-slot.ts` | 2 | 114 | F7 |
-| `services/event-history-owner*` | 11 | 1,761 | N1 |
-| `services/event-history-runtime.ts`, `event-history-producer.ts`, `event-history-recovery.ts` | 3 | 1,017 | N1 |
-| `database/eventHistoryJournal*`, `eventHistoryJournalCodec.ts` | 8 | 1,967 | N1 |
-| `database/eventHistoryLedgerReceipts.ts`, `eventHistoryLedgerRepair.ts`, `eventHistoryMaterialization.ts`, `eventHistoryReplayReceipts.ts` | 4 | 1,398 | N1 |
-| `database/eventHistoryAuthority*` | 3 | 581 | N1 |
+| `services/event-history-owner*` | 11 | 1,761 | N1-close |
+| `services/event-history-runtime.ts`, `event-history-producer.ts`, `event-history-recovery.ts` | 3 | 1,017 | N1-close |
+| `database/eventHistoryJournal*`, `eventHistoryJournalCodec.ts` | 8 | 1,967 | N1-close |
+| `database/eventHistoryLedgerReceipts.ts`, `eventHistoryLedgerRepair.ts`, `eventHistoryMaterialization.ts`, `eventHistoryReplayReceipts.ts` | 4 | 1,398 | N1-close |
+| `database/eventHistoryAuthority*` | 3 | 581 | N1-close |
 | `database/eventHistoryForeignCensus.ts`, `workers/commit-block-header.foreign-event-census*` | 2 | 454 | N3 |
 | `database/foreignNativeAdoptions.ts` | 1 | 494 | N3 |
 | `database/foreignTipReconciliations*`, `workers/t2-foreign-event-reconciliation*` | 12 | 2,728 | L8 |
@@ -1698,7 +1698,8 @@ deferred are not part of the program pull request.
 
 | Ticket | Scope | Depends on | Acceptance |
 |---|---|---|---|
-| **N1** | Lists, events, key set and deposit spendability as projections over facts, using `slotNow` and never `new Date()`. Delete the event-history stack (§13.1). | F1–F5, F7, F8 | Simulator fork scenarios: every node projection equals a fresh replay of the facts after every operation. Devnet journeys pass with no Kupo or Ogmios configured. Each intervention N1 introduces fails `/readyz` with a named reason; the process never exits or restart-loops. An orphaned-origin id is readmitted, and a retired key is refused. Per-block apply is O(r) (B2, ratio ≤ 1.2). |
+| **N1** | Lists, events, key set and deposit spendability as projections over facts, using `slotNow` and never `new Date()`. Ingestion moves to the follower through a typed follower-change driver, and member identity moves to the §5.4 event key plus an immutable admission point, with the commit horizon at min(journal coverage, follower covered tip). Delete the user-event ingestion fibers and whatever becomes reader-free; the event-history control plane goes at N1-close (§13.1). | F1–F5, F7, F8 | Simulator fork scenarios: every node projection equals a fresh replay of the facts after every operation. Devnet journeys pass with no Kupo or Ogmios configured. Each intervention N1 introduces fails `/readyz` with a named reason; the process never exits or restart-loops. An orphaned-origin id is readmitted, and a retired key is refused. Per-block apply is O(r) (B2, ratio ≤ 1.2). |
+| **N1-close** | Inside this program's pull request, after the node tickets that read the journal have moved to follower identity. Delete the event-history control plane (owner, runtime, producer, recovery, authority, journal core, ledger receipts, `l1-event-history-*`, `l1-ledger-snapshot`; §13.1 rows marked N1-close). Re-source the U3 horizon from the follower. Remove the node's Kupo and Ogmios config keys. Run the node devnet journeys with no Kupo or Ogmios. The I5 gate stays with I5. | N1, I1, I3, I5, N3, N4, N6, U3 | Grep finds no reader of the deleted rows. Devnet journeys pass with no Kupo or Ogmios configured. Each N1 intervention fails `/readyz` with a named reason; the process never exits or restart-loops. |
 | **N2** | State-queue projection. Every fiber reads it. Delete the topology walks and the address-wide scans (NC6). | N1 | Zero L1 reads in fiber ticks (checked by grep and a test spy). Third-party outputs paid to the queue address never enter the projection. |
 | **N3** | In-order landed-block processing (#744/#695) on facts: adopt when the node holds the post-state, otherwise fetch, replay and compare. Own blocks are never replayed. Delete the census and foreign adoption; rewrite the foreign-base verify (NC9). Runs on today's MPF owner until M2 (§1.4). | N2 | A foreign block that lands is processed exactly once. A rollback that removes it reverts the projection. No per-commit verify remains. |
 | **N4** | Correction admission as a temporal projection (§7.4). Delete correction rewind, restore and recovery. Absorbs L4: delete `refuseRewoundStateQueueCorrectionRollback` and the `state_queue_correction_rewind` halt, and reinstate removed own journals from class B. Until M1–M3, the MPF follows the rewind through `restoreRetainedRoot` (§1.4). | N2 | From L4: a correction admitted at cd, then rolled back at depth cd + 1 (below k): commit, merge and settlement resume with no intervention, and the ledger root equals a fresh replay. A correction that lands again rewinds exactly once. A rollback beyond k: unready, no exit. The node process never restarts; until M1–M3, at most one MPF child restart per rewind. |
