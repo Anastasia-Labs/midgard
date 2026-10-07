@@ -132,7 +132,13 @@ const openShadow = (
         },
         "postgres",
       ),
-      connection: { connectionString: plan.databaseUrl, maxConnections: 4 },
+      connection: {
+        connectionString: plan.databaseUrl,
+        maxConnections: 4,
+        // A dropped connection fails the next query into the loop's backoff.
+        onConnectionError: (error) =>
+          log(`L1 follower shadow: database connection lost: ${error.message}`),
+      },
     });
   } catch (error) {
     void transport.close();

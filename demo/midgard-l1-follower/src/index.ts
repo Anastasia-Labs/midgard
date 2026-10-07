@@ -24,6 +24,22 @@ export {
   storePoint,
   transportPoint,
 } from "./follow/chain-sync.js";
+export { classifyFailure, type FailureClass } from "./follow/failure.js";
+export {
+  DEFAULT_STUCK_AFTER,
+  followChain,
+  type FollowChainOptions,
+  FOLLOWER_APPLY_STUCK,
+  FOLLOWER_CATCHING_UP,
+  FOLLOWER_WAITING,
+  type FollowReadiness,
+  type FollowReadinessReason,
+  type FollowStatus,
+  type FollowWaitCause,
+  LOOP_PRUNE_BUDGET,
+  LOOP_PRUNE_EVERY,
+  readinessOf,
+} from "./follow/loop.js";
 export { startWhenFree } from "./follow/start.js";
 export {
   createWalletSeeder,

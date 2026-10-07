@@ -6,6 +6,7 @@
 export {
   forkCorpus,
   forkEpisodeArbitrary,
+  type ForkPruneOption,
   forkScenarioArbitrary,
   type NamedScenario,
 } from "./arbitrary.js";
@@ -39,6 +40,7 @@ export {
   FACT_QUERIES,
   type StoreDump,
 } from "./replay.js";
+export { diffPruned, dumpRetained, retainedQueries } from "./retention.js";
 export { Rng } from "./rng.js";
 export {
   buildForkSteps,

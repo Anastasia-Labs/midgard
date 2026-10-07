@@ -21,7 +21,8 @@ import {
   type ForkScenario,
   type ForkStep,
 } from "./episodes.js";
-import { diffDumps, dumpStore } from "./replay.js";
+import { diffDumps, dumpStore, type StoreDump } from "./replay.js";
+import { diffPruned, dumpRetained } from "./retention.js";
 import { Rng } from "./rng.js";
 import { SimChain, type SimOrigin, simUniverse } from "./sim-chain.js";
 import {
@@ -102,7 +103,14 @@ export type ForkRunStats = SeedStats & {
   rollbacks: number;
   checkpoints: number;
   rowsChecked: number;
+  /** Prunes run to completion (`ForkStep.prune`), and the rows they deleted. */
+  prunes: number;
+  prunedRows: number;
 };
+
+/** The budget of each prune step the simulator runs: small, so steps cut. */
+const SIM_PRUNE_BUDGET = 2;
+const SIM_PRUNE_MAX_STEPS = 100_000;
 
 export type ForkRunOutcome =
   | Readonly<{ ok: true; stats: ForkRunStats }>
@@ -191,9 +199,11 @@ const listSource = (steps: readonly ForkStep[]): EventSource => {
 
 /**
  * Runs a scenario through the sequential writer (`applyChainSyncEvent`,
- * F6 being deferred). After every event: every fact and registered
- * temporal table equals a fresh forward-only SQLite replay of the model's
- * current chain, INV1–INV6 hold, the tracked-outref cache equals the
+ * F6 being deferred), pruning to completion after each step flagged
+ * `prune`. After every event: every fact and registered temporal table
+ * equals a fresh forward-only SQLite replay of the model's current chain
+ * (once pruned: holds only rows of it and every row retention keeps),
+ * INV1–INV6 hold, the tracked-outref cache equals the
  * replay's and every projection check passes. At each checkpoint the
  * shape's facts and the model's live tracked set hold.
  */
@@ -216,6 +226,8 @@ export const runForkScenario = async (
     rollbacks: 0,
     checkpoints: 0,
     rowsChecked: 0,
+    prunes: 0,
+    prunedRows: 0,
     ...zeroSeedStats(),
   };
   const store = await options.open(optionsFor);
@@ -252,6 +264,36 @@ export const runForkScenario = async (
     return reference;
   };
   let reference = await rebuild();
+  /** Prunes the store under test to completion, in small budgeted steps. */
+  const pruneAll = async (): Promise<void> => {
+    for (let n = 0; n < SIM_PRUNE_MAX_STEPS; n += 1) {
+      const pruned = await store.prune(SIM_PRUNE_BUDGET);
+      if ("kind" in pruned)
+        throw new ForkFailure(
+          `prune: ${pruned.kind === "error" ? pruned.error.message : pruned.detail}`,
+        );
+      for (const rows of Object.values(pruned.deleted))
+        stats.prunedRows += rows;
+      if (pruned.done) {
+        stats.prunes += 1;
+        return;
+      }
+    }
+    throw new ForkFailure(`prune: not done after ${SIM_PRUNE_MAX_STEPS} steps`);
+  };
+  /**
+   * The store against the fresh replay. Unpruned (prunedThroughSlot still
+   * the origin's), every table equals the replay's. Pruned, the store holds
+   * only rows of the replay and every row retention keeps (`diffPruned`).
+   */
+  const compare = async (expected: StoreDump): Promise<string | null> => {
+    const actual = await dumpStore(store);
+    const cursor = await store.cursor();
+    const s = cursor?.prunedThroughSlot ?? SIM_ORIGIN.point.slot;
+    if (s === SIM_ORIGIN.point.slot) return diffDumps(actual, expected);
+    const pins = optionsFor("sqlite").retentionPins ?? {};
+    return diffPruned(actual, expected, await dumpRetained(reference, pins, s));
+  };
   let index = 0;
   try {
     const started = await store.start();
@@ -304,8 +346,12 @@ export const runForkScenario = async (
         await reference.close();
         reference = await rebuild();
       }
+      if (step.prune === true) {
+        await pruneAll();
+        await seedRun.afterPrune();
+      }
       const expectedDump = await dumpStore(reference);
-      const diff = diffDumps(await dumpStore(store), expectedDump);
+      const diff = await compare(expectedDump);
       if (diff !== null)
         throw new ForkFailure(`state differs from a fresh replay: ${diff}`);
       for (const rows of Object.values(expectedDump))

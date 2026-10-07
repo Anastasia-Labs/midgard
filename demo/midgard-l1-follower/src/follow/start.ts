@@ -18,6 +18,7 @@ const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
  * Starts the store, waiting out `store_locked` (another process holds the
  * writer lease) with backoff instead of exiting. Returns the first other
  * result (`ready`, or an intervention), or `undefined` once `signal` aborts.
+ * `onLocked` hears each `store_locked` before the wait.
  */
 export const startWhenFree = async (
   store: FactStore,
@@ -25,6 +26,7 @@ export const startWhenFree = async (
     signal?: AbortSignal;
     backoffMs?: Readonly<{ initial: number; max: number }>;
     log?: (line: string) => void;
+    onLocked?: (locked: StoreLocked) => void | Promise<void>;
   }> = {},
 ): Promise<Exclude<StartResult, StoreLocked> | undefined> => {
   const backoff = options.backoffMs ?? { initial: 500, max: 30_000 };
@@ -39,6 +41,7 @@ export const startWhenFree = async (
     options.log?.(
       `store locked, starting again in ${delay} ms: ${started.detail}`,
     );
+    await options.onLocked?.(started);
     await sleep(delay, options.signal);
   }
 };
