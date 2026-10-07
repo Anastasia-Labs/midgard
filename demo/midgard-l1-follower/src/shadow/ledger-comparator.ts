@@ -3,14 +3,8 @@ import { join } from "node:path";
 
 import { chainPoint, type L1NodeTransport } from "@al-ft/l1-node-transport";
 
-import {
-  readArray,
-  readBytes,
-  readMap,
-  readSmallUint,
-} from "../cbor/reader.js";
 import { encodeOutRef } from "../codec.js";
-import { readOutput } from "../decode/output.js";
+import { decodeUtxoEntries } from "../decode/utxo-answer.js";
 import type { OutputSummary, OutRef, Point } from "../types.js";
 import {
   reading,
@@ -54,15 +48,7 @@ const byOutRef = (a: Row, b: Row): number =>
 
 /** Decodes a `utxo_by_address` answer: `{[txHash, index] => output}`. */
 export const decodeUtxoAnswer = (bytes: Uint8Array): Row[] =>
-  readMap(bytes, 0).entries.map(({ key, value }) => {
-    const [hash, index] = readArray(bytes, key).items;
-    if (hash === undefined || index === undefined)
-      throw new Error("utxo key must be [hash, index]");
-    return row(
-      { txHash: readBytes(bytes, hash), index: readSmallUint(bytes, index) },
-      readOutput(bytes, value),
-    );
-  });
+  decodeUtxoEntries(bytes).map(({ outRef, output }) => row(outRef, output));
 
 type Baseline = Readonly<{ origin: string; outRefs: readonly string[] }>;
 
