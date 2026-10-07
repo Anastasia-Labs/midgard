@@ -56,6 +56,7 @@ export const preparationPlan = (root, name, { sourceOnly = false } = {}) => {
       "midgard-node",
       "midgard-node-tools",
       "da-committee-node",
+      "@al-ft/midgard-l1-follower",
     ].includes(pkg.name),
     blueprint: [
       "midgard-node",

@@ -150,7 +150,11 @@ export default tseslint.config(
     // and `midgard-validation/src/plutus-data-narrowing.ts` the Plutus-Data
     // ones; grep either for the pattern to copy when ratcheting the next
     // package. This list only ever grows.
-    files: ["midgard-core/**/*.ts", "midgard-validation/**/*.ts"],
+    files: [
+      "midgard-core/**/*.ts",
+      "midgard-validation/**/*.ts",
+      "midgard-l1-follower/**/*.ts",
+    ],
     rules: {
       "@typescript-eslint/no-unsafe-argument": "error",
       "@typescript-eslint/no-unsafe-assignment": "error",

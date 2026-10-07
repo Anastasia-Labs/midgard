@@ -1,0 +1,13 @@
+import { randomUUID } from "node:crypto";
+import http from "node:http";
+import { connect } from "@al-ft/l1-node-transport";
+
+export const bad = async (): Promise<number> => {
+  const now = Date.now();
+  const started = new Date();
+  const jitter = Math.random();
+  const response = await fetch("https://example.invalid");
+  const sidecar = await import("../../l1-node-transport/src/client.js");
+  void [randomUUID, http, connect, started, response, sidecar, process.hrtime.bigint()];
+  return now + jitter;
+};

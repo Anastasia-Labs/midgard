@@ -10,3 +10,4 @@ packages:
   - da-committee-node
   - midgard-test-support
   - l1-node-transport
+  - midgard-l1-follower
