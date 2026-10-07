@@ -8,7 +8,7 @@ import "effect";
 import "../database/daPayloadTerminalOutcomes.js";
 import "../database/eventHistoryRecoveryPlans.js";
 import "../l1-tx-order-carriage.js";
-import "../local-ledger-slot.js";
+import "@al-ft/midgard-core/ogmios-slot";
 import "./state-queue-correction-observer.parse-state-queue-correction-observer-state.js";
 import "./state-queue-correction-observer.create-database-state-queue-correction-observer-store.js";
 import "./state-queue-correction-observer.reconcile-state-queue-correction-observer.js";

@@ -316,6 +316,7 @@ export default tseslint.config(
     },
     rules: {
       "midgard/apply-params-through-blueprint": "error",
+      "midgard/depth-through-heads": "error",
       "midgard/exact-fee-no-change-output": "error",
       "midgard/fault-proof-reference-scripts-only": "error",
       "midgard/local-uplc-eval": "error",

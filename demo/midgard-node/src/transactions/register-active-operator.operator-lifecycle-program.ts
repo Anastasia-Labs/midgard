@@ -48,7 +48,7 @@ import { canActivateRegisteredOperatorImmediately } from "./register-active-oper
 import {
   alignUnixTimeMsToSlotBoundary,
   currentTimeMsForLucidOrEmulatorFallback,
-  resolveCurrentTimeMs,
+  resolveL1NowMsOrRefuse,
 } from "./register-active-operator/clock.js";
 import {
   handleSignSubmit,
@@ -468,7 +468,7 @@ export const operatorLifecycleProgram = (
         );
       }
 
-      const registerBuildTime = yield* resolveCurrentTimeMs(lucid);
+      const registerBuildTime = currentTimeMsForLucidOrEmulatorFallback(lucid);
       const registerValidTo = alignUnixTimeMsToSlotBoundary(
         lucid,
         registerBuildTime + ACTIVATION_VALIDITY_WINDOW_MS,
@@ -727,7 +727,7 @@ export const operatorLifecycleProgram = (
       registeredNode.datum,
       contracts.activeOperators,
     );
-    const initialNow = yield* resolveCurrentTimeMs(lucid);
+    const initialNow = yield* resolveL1NowMsOrRefuse(lucid, "activation");
     if (!immediateActivation && initialNow < activationTime) {
       // `activate-only` is an operator verb: refuse now and name the time,
       // like the other time-gated verbs, instead of holding the process.

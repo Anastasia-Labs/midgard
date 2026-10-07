@@ -26,7 +26,7 @@ import "../../database/index.js";
 import "../../database/utils/common.js";
 import "../../fibers/queue-metrics.js";
 import "../../fibers/slot-aware-due-work.js";
-import "../../local-ledger-slot.js";
+import "@al-ft/midgard-core/ogmios-slot";
 import "../../operator-wallet-view.js";
 import "../../services/event-history-producer.js";
 import "../../services/index.js";

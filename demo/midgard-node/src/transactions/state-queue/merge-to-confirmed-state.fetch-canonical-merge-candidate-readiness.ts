@@ -6,6 +6,7 @@ import { Effect, Metric, Ref } from "effect";
 import { jsonReplacer } from "../../commands/command-utils.js";
 import { Entry as LedgerEntry } from "../../database/utils/ledger.js";
 import { emitQueueStateMetrics } from "../../fibers/queue-metrics.js";
+import { l1NowUnixTimeMs } from "../../l1-heads.js";
 import { Globals } from "../../services/index.js";
 import { breakDownTx } from "../../utils.js";
 import { BlockTxPayload } from "../utils.js";
@@ -109,11 +110,16 @@ const isEmptyConfirmedStateLinkError = (error: unknown): boolean =>
   "cause" in error &&
   (error as { readonly cause?: unknown }).cause === 'Given link is "Empty"';
 
+/**
+ * Classifies the oldest queued block for merging. Maturity is judged at the
+ * L1 `slotNow` (plan §3.6), never the wall clock: a clock that runs fast must
+ * not call a block mature early. An unknown L1 slot fails the attempt with a
+ * `StateQueueError`, and the merge fiber retries.
+ */
 export const fetchCanonicalMergeCandidateReadiness = (
   lucid: LucidEvolution,
   fetchConfig: SDK.StateQueueFetchConfig,
   _contracts: SDK.MidgardValidators,
-  nowUnixTime: number = Date.now(),
 ): Effect.Effect<
   CanonicalMergeCandidateReadiness,
   | SDK.DataCoercionError
@@ -168,6 +174,15 @@ export const fetchCanonicalMergeCandidateReadiness = (
     const mergeMaturity = mergeMaturityWindow(
       lucid,
       Number(blockHeader.endTime),
+    );
+    const nowUnixTime = yield* l1NowUnixTimeMs(lucid).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message: "Merge paused until the L1 slot is known",
+            cause,
+          }),
+      ),
     );
     return {
       status: "candidate",

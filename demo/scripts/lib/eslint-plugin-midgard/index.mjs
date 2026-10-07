@@ -7,6 +7,7 @@
 // docs/agents/lint-rules.md.
 
 import applyParamsThroughBlueprint from "./rules/apply-params-through-blueprint.mjs";
+import depthThroughHeads from "./rules/depth-through-heads.mjs";
 import exactFeeNoChangeOutput from "./rules/exact-fee-no-change-output.mjs";
 import faultProofReferenceScriptsOnly from "./rules/fault-proof-reference-scripts-only.mjs";
 import localUplcEval from "./rules/local-uplc-eval.mjs";
@@ -24,6 +25,7 @@ export default {
   meta: { name: "eslint-plugin-midgard" },
   rules: {
     "apply-params-through-blueprint": applyParamsThroughBlueprint,
+    "depth-through-heads": depthThroughHeads,
     "exact-fee-no-change-output": exactFeeNoChangeOutput,
     "fault-proof-reference-scripts-only": faultProofReferenceScriptsOnly,
     "local-uplc-eval": localUplcEval,

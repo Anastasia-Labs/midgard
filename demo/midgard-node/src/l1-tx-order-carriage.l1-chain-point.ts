@@ -2,9 +2,8 @@ import {
   type MidgardFieldCarriage,
   type ResolvedCarriageReferenceInput,
 } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { normalizeOgmiosHttpUrl } from "@al-ft/midgard-core/ogmios-slot";
 import { type OutRefLike } from "@al-ft/midgard-core/out-ref";
-
-import { normalizeOgmiosHttpUrl } from "./local-ledger-slot.js";
 
 /**
  * The node's own read of a forced order's `docs/spec/midgard-tx.md` §8 carriage

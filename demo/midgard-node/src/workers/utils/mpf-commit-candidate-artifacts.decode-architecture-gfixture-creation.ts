@@ -1,3 +1,5 @@
+import type { ShelleyGenesisSlotEvidence } from "@al-ft/midgard-core/ogmios-slot";
+
 import {
   boundedNonEmptyString,
   canonicalAbsolutePath,
@@ -8,7 +10,6 @@ import {
   positiveSafeInteger,
   sha256Digest,
 } from "../../artifact-schema.js";
-import type { ShelleyGenesisSlotEvidence } from "../../local-ledger-slot.js";
 import {
   type ArchitectureGCommitCandidateInput,
   type ArchitectureGCorpusFunding,

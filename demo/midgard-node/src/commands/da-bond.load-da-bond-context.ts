@@ -1,4 +1,8 @@
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  normalizeOgmiosHttpUrl,
+  parseOgmiosTipSlot,
+} from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
@@ -14,9 +18,7 @@ import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import {
   fetchLocalOgmiosShelleyGenesisSlotConfig,
   fetchLocalOgmiosSubmitSlotSnapshot,
-  normalizeOgmiosHttpUrl,
-  parseOgmiosTipSlot,
-} from "../local-ledger-slot.js";
+} from "../l1-heads.js";
 import { customSlotConfigFromShelleyGenesis } from "../lucid-time.js";
 import {
   makeNodeKupmios,

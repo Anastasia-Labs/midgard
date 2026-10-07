@@ -1,3 +1,4 @@
+import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as LE from "@lucid-evolution/lucid";
 import { Config, Effect, Option, Schedule } from "effect";
 
@@ -7,8 +8,9 @@ import {
 } from "../custom-slot-mapping.js";
 import {
   fetchLocalOgmiosSubmitSlotSnapshot,
-  type SubmitSlotSnapshot,
-} from "../local-ogmios-slot.js";
+  observeL1Tip,
+  registerL1TipSource,
+} from "../l1-heads.js";
 import { providerRouteSummary } from "../provider-diagnostics.js";
 import { configureReferencePublication } from "../transactions/reference-publication.js";
 import { synchronizePublicationIndexer } from "../transactions/reference-publication-provider.js";
@@ -84,7 +86,7 @@ const makeLucid: Effect.Effect<
   );
   const slotConfig = slotMapping.slotConfig;
   const ogmiosTipMaxAgeMs = slotMapping.tipMaxAgeMs;
-  const readSubmitSlotSnapshotOnce = () =>
+  const readLedgerTip = () =>
     fetchLocalOgmiosSubmitSlotSnapshot({
       ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
       timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
@@ -158,6 +160,19 @@ const makeLucid: Effect.Effect<
     ),
   );
   yield* switchToReferenceScriptWallet;
+  // Both clients read one L1 view: their `l1SlotNow` comes from this ledger
+  // tip, and every submit-slot read below is observed into it.
+  registerL1TipSource(
+    [lucid, referenceScriptsApi],
+    readLedgerTip,
+    slotConfig === undefined ? {} : { slotLengthMs: slotConfig.slotLength },
+  );
+  const readSubmitSlotSnapshotOnce = () =>
+    readLedgerTip().pipe(
+      Effect.tap((snapshot) =>
+        Effect.sync(() => observeL1Tip(lucid, snapshot)),
+      ),
+    );
   const referenceScriptsWalletAddress = yield* Effect.tryPromise({
     try: () => referenceScriptsApi.wallet().address(),
     catch: (e) =>

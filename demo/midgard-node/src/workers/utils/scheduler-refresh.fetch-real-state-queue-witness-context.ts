@@ -1,3 +1,4 @@
+import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
@@ -8,7 +9,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { SubmitSlotSnapshot } from "../../local-ledger-slot.js";
 import { type OperatorWalletView } from "../../operator-wallet-view.js";
 import {
   fetchReferenceScriptUtxosProgram,

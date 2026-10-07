@@ -1,9 +1,9 @@
+import { SUBMIT_SLOT_LENGTH_MS } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { mergeReferenceScripts } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { Clock, Effect, Option } from "effect";
 
-import { SUBMIT_SLOT_LENGTH_MS } from "../local-ledger-slot.js";
 import { Database, Lucid, MidgardContracts } from "../services/index.js";
 import {
   fetchReferenceScriptUtxosProgram,
