@@ -9,6 +9,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import {
+  COMMITTEE_PRUNE,
   committeeForkCorpus,
   committeeSimProjection,
   SIM_K,
@@ -22,7 +23,10 @@ const openSqlite: ForkRunOptions["open"] = (optionsFor) =>
     openSqliteFactStore({ ...optionsFor("sqlite"), path: ":memory:" }),
   );
 
-const corpus = [...forkCorpus(SIM_K), ...committeeForkCorpus()];
+const corpus = [
+  ...forkCorpus(SIM_K, COMMITTEE_PRUNE),
+  ...committeeForkCorpus(),
+];
 
 describe("committee projections in the fork simulator (SQLite)", () => {
   const totals = zeroStats();
@@ -57,17 +61,22 @@ describe("committee projections in the fork simulator (SQLite)", () => {
 
   it(`holds for ${RUNS.toString()} random scenarios (fast-check)`, async () => {
     await fc.assert(
-      fc.asyncProperty(forkScenarioArbitrary(SIM_K), async (scenario) => {
-        const outcome = await runForkScenario(scenario, {
-          open: openSqlite,
-          k: SIM_K,
-          projections: [
-            committeeSimProjection(zeroStats(), { expectHealthy: true }),
-          ],
-        });
-        if (!outcome.ok)
-          throw new Error(`step ${outcome.step.toString()}: ${outcome.reason}`);
-      }),
+      fc.asyncProperty(
+        forkScenarioArbitrary(SIM_K, undefined, COMMITTEE_PRUNE),
+        async (scenario) => {
+          const outcome = await runForkScenario(scenario, {
+            open: openSqlite,
+            k: SIM_K,
+            projections: [
+              committeeSimProjection(zeroStats(), { expectHealthy: true }),
+            ],
+          });
+          if (!outcome.ok)
+            throw new Error(
+              `step ${outcome.step.toString()}: ${outcome.reason}`,
+            );
+        },
+      ),
       { numRuns: RUNS, seed: 0xc1_5eed },
     );
     // Sixty whole scenarios, each replayed fresh after every event: about

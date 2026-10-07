@@ -8,6 +8,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { postgresTestDatabases } from "../helpers/postgres-database.js";
 import {
+  COMMITTEE_PRUNE,
   committeeForkCorpus,
   committeeSimProjection,
   SIM_K,
@@ -33,7 +34,7 @@ const openPostgres: ForkRunOptions["open"] = async (optionsFor) => {
 // derivation and the reads is held to the same oracle.
 describe("committee projections in the fork simulator (Postgres)", () => {
   it.each(
-    [...forkCorpus(SIM_K), ...committeeForkCorpus()].map(
+    [...forkCorpus(SIM_K, COMMITTEE_PRUNE), ...committeeForkCorpus()].map(
       (entry) => [entry.name, entry.scenario] as const,
     ),
   )("corpus: %s", async (_, scenario) => {

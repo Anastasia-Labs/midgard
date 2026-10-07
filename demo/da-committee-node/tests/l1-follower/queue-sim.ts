@@ -34,6 +34,14 @@ import {
 
 export * from "./queue-sim-traffic.js";
 
+/**
+ * The simulator's prune cases stay off for the committee until C1: the
+ * committee check compares obligations with an exact oracle, and over
+ * pruned rows the reads differ from it (C1 relaxes the oracle and turns
+ * these cases on; review finding 6, E7).
+ */
+export const COMMITTEE_PRUNE = { prune: false } as const;
+
 /** The expected landed queue, from the canonical blocks alone. */
 export type ExpectedQueue = Readonly<{
   healthy: boolean;

@@ -91,6 +91,12 @@ export type SeedRun = Readonly<{
    * reference must be rebuilt.
    */
   afterEvent(index: number): Promise<string | { rebuild: boolean }>;
+  /**
+   * After a prune: seed rows the store no longer holds stop being expected
+   * there (the reference still replays them). The runner's retention
+   * comparison, run right after, fails if any of them was still retained.
+   */
+  afterPrune(): Promise<void>;
   /** The reference replay's step at `height`: tracks and seeds as the store did. */
   replay(reference: FactStore, height: number): Promise<void>;
   /** The model's live tracked keys, as the store can know them now. */
@@ -114,6 +120,10 @@ export const createSeedRun = (
    * it, every later block with it. A rewind below its seed point removes it.
    */
   const seeded = new Map<string, SeedRow & { knownFrom: number }>();
+  /** Seed rows (keys of `seeded`) a prune removed from the store. */
+  const prunedSeeds = new Set<string>();
+  const expectedInStore = (): Map<string, SeedRow> =>
+    new Map([...seeded].filter(([key]) => !prunedSeeds.has(key)));
   /**
    * The height from which the store has tracked the added wallets (null
    * before `addWallets`): the cursor's height when they were added, lowered
@@ -140,6 +150,7 @@ export const createSeedRun = (
       if (rewound.to.slot < row.seedSlot) {
         below = true;
         seeded.delete(key);
+        prunedSeeds.delete(key);
         stats.seedRowsRewound += 1;
         if (createdAbove.has(row.seed.outRef.txHash.toString("hex")))
           stats.orphanedSeeds += 1;
@@ -183,7 +194,7 @@ export const createSeedRun = (
         }
         grew = true;
       }
-    const drift = seedRowsDiffer(seeded, now);
+    const drift = seedRowsDiffer(expectedInStore(), now);
     return drift === null ? grew : `seed: ${drift}`;
   };
 
@@ -211,13 +222,21 @@ export const createSeedRun = (
       }
       if (index + 1 < walletSeed.startAfter) {
         // A rewind deletes exactly the seed rows above its target (§7.1).
-        const touched = seedRowsDiffer(seeded, await readSeedRows(store));
+        const touched = seedRowsDiffer(
+          expectedInStore(),
+          await readSeedRows(store),
+        );
         return touched === null ? { rebuild } : touched;
       }
       const result = await seedStep(seeder, walletSeed);
       return typeof result === "string"
         ? result
         : { rebuild: rebuild || result };
+    },
+    afterPrune: async () => {
+      if (walletSeed === undefined) return;
+      const now = await readSeedRows(store);
+      for (const key of seeded.keys()) if (!now.has(key)) prunedSeeds.add(key);
     },
     replay: async (reference, height) => {
       if (height === addedFrom)
