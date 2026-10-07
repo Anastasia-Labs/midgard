@@ -271,6 +271,19 @@ export const demoChecks = (root, packages) => {
         );
         const others = selected.filter((name) => !singles.includes(name));
         return [
+          // The watcher suite drives the compiled Go helper. Use its guarded
+          // recipe on this checkout's current inputs, as hosted CI does.
+          ...(selected.includes("midgard-watcher")
+            ? [
+                step([
+                  "pnpm",
+                  "--dir",
+                  "demo/midgard-watcher",
+                  "run",
+                  "native:build",
+                ]),
+              ]
+            : []),
           ...(others.length
             ? [step(pnpmRun(others, script, options.extra))]
             : []),
