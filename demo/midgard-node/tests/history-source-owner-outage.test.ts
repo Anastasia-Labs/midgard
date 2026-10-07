@@ -85,7 +85,11 @@ it(
 
 // Each new session journals the blocks that arrived meanwhile, then fails the
 // same way before its gate can reopen. Those appends are not progress.
-const completion = { failing: false, failures: 0 };
+const completion = {
+  failing: false,
+  failures: 0,
+  failedHead: undefined as string | undefined,
+};
 it(
   "keeps the gate closed through recurrent recoverable completion failures beyond escalation until completion succeeds",
   scenario(
@@ -93,18 +97,45 @@ it(
       Effect.gen(function* () {
         const stopped = yield* Effect.fork(Effect.either(owner.awaitStopped));
         const journaled = forwards().length;
+        const awaitFailedCompletion = (head: string) =>
+          eventually(
+            Effect.suspend(() =>
+              forwards().includes(head) && completion.failedHead === head
+                ? Effect.void
+                : Effect.fail("waiting for journaled head to fail completion"),
+            ),
+          ).pipe(
+            Effect.catchAll(() =>
+              Effect.gen(function* () {
+                return yield* Effect.fail(
+                  new Error(
+                    `Completion did not fail at journaled head ${head}: ${JSON.stringify(
+                      {
+                        completion,
+                        forwards: forwards(),
+                        frontier: yield* owner.frontier,
+                        source: yield* owner.sourceStatus,
+                        stopped: stopped.unsafePoll(),
+                      },
+                    )}`,
+                  ),
+                );
+              }),
+            ),
+          );
         // An open gate appends without completing; a reconnect completes.
         completion.failing = true;
         link.drop();
-        const advancing = yield* Effect.fork(
-          Effect.forever(
-            advance.pipe(Effect.zipRight(Effect.sleep("150 millis"))),
-          ),
-        );
+        // Hold each source tip stable until the real journal and preparation
+        // reach it; producing faster than replay can keep completion out of reach.
+        const first = yield* advance;
+        yield* awaitFailedCompletion(first.id);
         yield* Effect.sleep(OUTAGE_LIMIT_MS + 500);
-        yield* Fiber.interrupt(advancing);
+        const second = yield* advance;
+        yield* awaitFailedCompletion(second.id);
         expect(stopped.unsafePoll()).toBeNull();
         expect(completion.failures).toBeGreaterThan(1);
+        expect((yield* owner.sourceStatus).escalated).toBe(true);
         // Reconnected sessions kept journaling new blocks behind the gate.
         expect(forwards().length - journaled).toBeGreaterThan(1);
         expect((yield* owner.frontier).ready).toBe(false);
@@ -119,11 +150,17 @@ it(
       }),
     {
       ...bounds,
-      reset: () => Object.assign(completion, { failing: false, failures: 0 }),
-      prepareCompletion: () =>
+      reset: () =>
+        Object.assign(completion, {
+          failing: false,
+          failures: 0,
+          failedHead: undefined,
+        }),
+      prepareCompletion: (checkpoint) =>
         Effect.suspend(() => {
           if (!completion.failing) return Effect.void;
           completion.failures += 1;
+          completion.failedHead = checkpoint.head.id;
           return Effect.die(
             new L1SourceUnavailable("Kupo has not indexed the released body"),
           );
