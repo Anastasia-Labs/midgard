@@ -934,6 +934,9 @@ importers:
       '@al-ft/midgard-fault-proofs':
         specifier: workspace:*
         version: link:../midgard-fault-proofs
+      '@al-ft/midgard-l1-follower':
+        specifier: workspace:*
+        version: link:../midgard-l1-follower
       '@al-ft/midgard-sdk':
         specifier: workspace:*
         version: link:../midgard-sdk

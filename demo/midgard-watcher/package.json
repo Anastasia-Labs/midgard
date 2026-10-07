@@ -46,6 +46,7 @@
     "@al-ft/l1-node-transport": "workspace:*",
     "@al-ft/midgard-core": "workspace:*",
     "@al-ft/midgard-fault-proofs": "workspace:*",
+    "@al-ft/midgard-l1-follower": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
     "@al-ft/midgard-validation": "workspace:*",
     "@chainsafe/libp2p-noise": "17.0.0",
