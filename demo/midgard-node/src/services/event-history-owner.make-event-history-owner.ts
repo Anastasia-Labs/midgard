@@ -929,7 +929,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
       /** Whether the source is following, reconnecting or waiting for Kupo,
        * with the current outage's start, attempts and last error. */
       sourceStatus: Effect.sync(() => outage.status()),
-      /** Set while pending recovery holds retention more than k blocks back. */
+      /** Set while retained evidence holds retention more than k blocks back. */
       retentionHold: Effect.sync(() => notices.retentionHold()),
       /** The gate, and how far the journal head is behind the source tip. */
       frontier: Effect.sync(

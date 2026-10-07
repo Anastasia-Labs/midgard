@@ -41,7 +41,7 @@ export const makeHistoryOwnerNotices = (input: {
         )
         .catch(() => undefined);
     },
-    // Warn once when a pending recovery starts holding the anchor more than k
+    // Warn once when retained evidence starts holding the anchor more than k
     // blocks back, and once when it lets go.
     retention: async (hold: Journal.RetentionHold | undefined) => {
       const heldBlocks =
@@ -64,7 +64,7 @@ export const makeHistoryOwnerNotices = (input: {
               "History retention hold released; the journal anchor advances again",
             )
           : Effect.logWarning(
-              "History retention held by pending signed-header recovery: the journal anchor is more than the rollback horizon behind",
+              "History retention held by settlement or foreign-adoption evidence: the journal anchor is more than the rollback horizon behind",
             )
         ).pipe(
           Effect.annotateLogs({

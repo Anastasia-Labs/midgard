@@ -1206,7 +1206,7 @@
   },
   {
     "file": "midgard-node/tests/event-history-retired-membership.test.ts",
-    "max": 930,
+    "max": 894,
     "reason": "admit is the dominant indivisible declaration (148 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1231,8 +1231,8 @@
   },
   {
     "file": "midgard-node/tests/history-source-owner-retention.test.ts",
-    "max": 628,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+    "max": 600,
+    "reason": "Retained production-owner lifecycle registration shares its emulator, follower gates and restart state across retention, readiness and rollback assertions. Independent fixture helpers are extracted; dividing the registration requires a separately verified harness refactor."
   },
   {
     "file": "midgard-node/tests/initialization-emulator.test.ts",

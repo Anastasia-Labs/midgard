@@ -13,9 +13,14 @@ import { Effect } from "effect";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import * as Authority from "../src/database/eventHistoryAuthority.js";
+import * as ForeignCensus from "../src/database/eventHistoryForeignCensus.js";
 import * as Journal from "../src/database/eventHistoryJournal.js";
 import { pendingHistoryLedgerDisposition } from "../src/database/eventHistoryLedgerRepair.js";
 import { materializeCanonicalHistory } from "../src/database/eventHistoryMaterialization.js";
+import {
+  prepareHistoryRecoveryPlan,
+  SIGNED_HEADER_RECOVERY_DOMAIN,
+} from "../src/database/eventHistoryRecoveryPlans.js";
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { formatDatabaseError } from "../src/database/utils/common.js";
 import {
@@ -28,15 +33,9 @@ import type { HistoryTransition } from "../src/l1-event-history-transition.js";
 import type { LedgerSnapshotOutput } from "../src/l1-ledger-snapshot.js";
 import { NodeConfig } from "../src/services/config.js";
 import { Database } from "../src/services/database.js";
+import { makeRetainedHistoryAppender } from "../src/services/event-history-owner.retention.js";
 import { HistoryProducer } from "../src/services/event-history-producer.js";
-import {
-  signedHeaderRecoveryCandidates,
-  signedHeaderRecoveryHoldSlot,
-} from "../src/services/history-signed-header-recovery.js";
-import {
-  evaluateSignedIntentCoverage,
-  type SignedIntentCoverageBlock,
-} from "../src/services/signed-intent-canonical-coverage.js";
+import { signedHeaderRecoveryCandidates } from "../src/services/history-signed-header-recovery.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
 import { retainEverything } from "./helpers/history-journal-retention.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
@@ -357,7 +356,7 @@ beforeEach(async () => {
         name: string;
       }>`SELECT current_database() AS name`;
       expect(database?.name).toBe(testDatabaseName());
-      yield* sql`TRUNCATE event_history_recovery_plans, event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalizations, pending_block_finalization_deposits, pending_block_finalization_withdrawals, pending_block_finalization_txs, pending_block_finalization_forced_transactions, pending_block_finalization_transition_trace, pending_block_finalization_event_to_step, pending_block_finalization_validation_traces, pending_block_finalization_validation_trace_witnesses, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts, tx_admission_payloads, tx_admissions, mempool, mempool_tx_deltas, address_history, processed_mempool, blocks, immutable`;
+      yield* sql`TRUNCATE event_history_census_frontier, event_history_census_blocks, event_history_recovery_plans, event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalizations, pending_block_finalization_deposits, pending_block_finalization_withdrawals, pending_block_finalization_txs, pending_block_finalization_forced_transactions, pending_block_finalization_transition_trace, pending_block_finalization_event_to_step, pending_block_finalization_validation_traces, pending_block_finalization_validation_trace_witnesses, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts, tx_admission_payloads, tx_admissions, mempool, mempool_tx_deltas, address_history, processed_mempool, blocks, immutable`;
     }),
   );
 });
@@ -751,14 +750,10 @@ describe.each(["deposit", "withdrawal"] as const)(
   },
 );
 
-// Retention hold: the single-sourced recovery candidate query pins the journal
-// anchor so the retained canonical range still starts at or before the signed
-// validity start. The hold is bounded: once the header's TTL is more than the
-// finality depth behind the tip, that retained range classifies it
-// covered_absent, and the abandonment recovery then writes releases the hold.
-it("holds the retention anchor behind a stale unresolved signed header until recovery abandons it", async () => {
-  const validity = { start: 103n, ttl: 104n };
-  const f = await fixture("deposit", validity);
+// Modeled source/native roots, real SQL recovery plan and production appender.
+// A signed orphan-funded candidate and its durable plan must not pin ancestry.
+it("advances journal pruning while a signed-header recovery plan remains prepared", async () => {
+  const f = await fixture("deposit", { start: 103n, ttl: 104n });
   for (let n = 0; n < 2; n++)
     await run(
       Authority.withRecovery(
@@ -766,107 +761,103 @@ it("holds the retention anchor behind a stale unresolved signed header until rec
         Journal.undoHead(binding, await read(), Effect.void),
       ),
     );
-  expect(
-    (await run(signedHeaderRecoveryCandidates(binding.digest))).map((row) =>
-      row.header_hash.toString("hex"),
+  const candidates = () => run(signedHeaderRecoveryCandidates(binding.digest));
+  expect((await candidates()).map((row) => row.header_hash)).toEqual([
+    f.headerHash,
+  ]);
+  const checkpoint = await read();
+  const plan = await run(
+    Authority.withRecovery(
+      f.token,
+      prepareHistoryRecoveryPlan(
+        checkpoint,
+        {
+          bindingDigest: binding.digest,
+          manifestId: binding.manifestId,
+          headerHash: f.headerHash.toString("hex"),
+          signedTransactionHash: CML.hash_transaction(
+            CML.Transaction.from_cbor_bytes(f.signedCbor).body(),
+          ).to_hex(),
+          signedTransactionCborSha256: createHash("sha256")
+            .update(f.signedCbor)
+            .digest("hex"),
+          expectedRoot: hash(600),
+          targetRoot: hash(601),
+          journalDigest: hash(602),
+        },
+        hash(603),
+        SIGNED_HEADER_RECOVERY_DOMAIN,
+      ),
     ),
-  ).toEqual([f.headerHash.toString("hex")]);
-  expect(await run(signedHeaderRecoveryHoldSlot(binding.digest))).toBe(103);
-  // Horizon 1 against a far tip: without the hold every step would advance
-  // the anchor to one block behind head.
-  let hold: Journal.RetentionHold | undefined;
-  const forward = async (n: number) => {
+  );
+  const retainedPlan = () =>
+    run(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql`SELECT * FROM event_history_recovery_plans
+          WHERE recovery_id = ${Buffer.from(plan.recoveryId, "hex")}`;
+      }),
+    );
+  const stored = await retainedPlan();
+  expect(stored).toHaveLength(1);
+  expect(stored[0]).toMatchObject({ state: "prepared" });
+  const append = makeRetainedHistoryAppender({
+    binding,
+    rollbackHorizon: 1,
+    requireCheckpoint: Journal.loadCurrent(binding).pipe(
+      Effect.map((value) => {
+        if (value === null) throw new Error("Missing checkpoint");
+        return value;
+      }),
+    ),
+  });
+  for (let n = 20; n < 26; n++) {
     const prepared = await prepare(await read(), n);
-    const appended = await run(
+    // Model the activation of the empty census before exercising the appender;
+    // this SQL component fixture does not claim authenticated L1 activation.
+    if (n === 20)
+      await run(
+        Authority.withRecovery(
+          f.token,
+          ForeignCensus.append({
+            binding,
+            block: prepared.block,
+            receipt: prepared.receipt,
+            activation: {
+              point: prepared.block.point,
+              parent: prepared.block.parent,
+              transactionIndex: 0,
+              transactionHash: hash(604),
+              receipt: prepared.receipt,
+            },
+          }),
+        ),
+      );
+    const retained = await run(
       Authority.withRecovery(
         f.token,
-        signedHeaderRecoveryHoldSlot(binding.digest).pipe(
-          Effect.flatMap((holdSlot) =>
-            Journal.append(binding, prepared, () => Effect.void, {
-              tipHeight: 10_000,
-              horizon: 1,
-              holdSlot,
-            }),
-          ),
-        ),
+        append(prepared, 10_000, ({ after }) => Effect.succeed(after)),
       ),
     );
-    hold = appended.applied ? appended.hold : undefined;
-    return read();
-  };
-  let current = await read();
-  for (let n = 20; n < 26; n++) current = await forward(n);
-  // Reported, not silent: without the hold the anchor would be at height 6.
-  expect(hold).toEqual({
-    holdSlot: 103,
-    anchorHeight: 3,
-    unheldAnchorHeight: 6,
-  });
-  // Heights 2..7 at slots 101..106. The first retained block (height 4, slot
-  // 103) is the last one not later than the signed validity start.
+    expect(retained.hold).toBeUndefined();
+  }
+  const current = await read();
   expect(current.head).toEqual({ id: hash(25), slot: 106, height: 7 });
-  expect(current.anchor).toEqual({ id: hash(21), slot: 102, height: 3 });
+  expect(current.anchor).toEqual({ id: hash(24), slot: 105, height: 6 });
+  expect(await retainedPlan()).toEqual(stored);
+  expect((await candidates()).map((row) => row.header_hash)).toEqual([
+    f.headerHash,
+  ]);
   const applications = await run(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{
-        ledger_receipt: string;
-        canonical: boolean;
-      }>`SELECT ledger_receipt, canonical FROM event_history_block_applications
-        WHERE binding_digest = ${Buffer.from(binding.digest, "hex")} ORDER BY block_height`;
+      return yield* sql<{ block_height: number }>`SELECT block_height
+        FROM event_history_block_applications
+        WHERE binding_digest = ${Buffer.from(binding.digest, "hex")}
+        ORDER BY block_height`;
     }),
   );
-  // The undone admission blocks were orphans rooted behind the anchor.
-  expect(applications.every((row) => row.canonical)).toBe(true);
-  const blocks = applications.map((row) => {
-    const { block } = JSON.parse(row.ledger_receipt) as {
-      block: SignedIntentCoverageBlock;
-    };
-    return {
-      point: block.point,
-      parent: block.parent,
-      transactions: block.transactions,
-    };
-  });
-  expect(blocks.map((block) => block.point.height)).toEqual([4, 5, 6, 7]);
-  const txHash = CML.hash_transaction(
-    CML.Transaction.from_cbor_bytes(f.signedCbor).body(),
-  ).to_hex();
-  const classify = (range: typeof blocks) =>
-    evaluateSignedIntentCoverage({
-      signedTxCbor: f.signedCbor.toString("hex"),
-      expectedTxHash: txHash,
-      bindingDigest: binding.digest,
-      manifestId: binding.manifestId,
-      start: range[0]!.point,
-      head: range.at(-1)!.point,
-      blocks: range,
-      requiredFinalityDepth: 2,
-    });
-  expect(classify(blocks).kind).toBe("covered_absent");
-  // One more block of pruning would have made it unclassifiable.
-  expect(() => classify(blocks.slice(1))).toThrow(
-    /omits the earliest-inclusion boundary/,
-  );
-  // Recovery's covered_absent disposition abandons the header; the next
-  // forward step then advances the anchor as far as the horizon allows.
-  await run(
-    Authority.withRecovery(
-      f.token,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`UPDATE pending_block_finalizations SET status = 'abandoned'
-          WHERE header_hash = ${f.headerHash}`;
-      }),
-    ),
-  );
-  expect(await run(signedHeaderRecoveryHoldSlot(binding.digest))).toBe(
-    undefined,
-  );
-  current = await forward(26);
-  expect(hold).toBeUndefined();
-  expect(current.anchor).toEqual({ id: hash(25), slot: 106, height: 7 });
-  expect(current.head.height).toBe(8);
+  expect(applications.map((row) => Number(row.block_height))).toEqual([7]);
 });
 
 // A candidate recovery cannot classify from coverage (no signed validity start)
@@ -888,9 +879,6 @@ it("keeps an unclassifiable pinned candidate pending without holding retention",
       row.header_hash.toString("hex"),
     ),
   ).toEqual([f.headerHash.toString("hex")]);
-  expect(await run(signedHeaderRecoveryHoldSlot(binding.digest))).toBe(
-    undefined,
-  );
   expect(
     await run(
       Authority.withRecovery(
@@ -903,28 +891,4 @@ it("keeps an unclassifiable pinned candidate pending without holding retention",
       ),
     ),
   ).toMatchObject({ status: "pending" });
-});
-
-it("fails closed, naming the header, on an unreadable stored signed body", async () => {
-  const f = await fixture("deposit", { start: 103n, ttl: 104n });
-  for (let n = 0; n < 2; n++)
-    await run(
-      Authority.withRecovery(
-        f.token,
-        Journal.undoHead(binding, await read(), Effect.void),
-      ),
-    );
-  expect(await run(signedHeaderRecoveryHoldSlot(binding.digest))).toBe(103);
-  await run(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`UPDATE pending_block_finalizations SET signed_tx_cbor = ${Buffer.from("84ff", "hex")}
-        WHERE header_hash = ${f.headerHash}`;
-    }),
-  );
-  await expect(
-    run(signedHeaderRecoveryHoldSlot(binding.digest)),
-  ).rejects.toThrow(
-    `Recovery candidate ${f.headerHash.toString("hex")} has an unreadable signed body`,
-  );
 });
