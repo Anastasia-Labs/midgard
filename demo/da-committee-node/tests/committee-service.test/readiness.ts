@@ -13,7 +13,6 @@ import {
 import { DaPeerRegistry } from "../../src/da/libp2p/DaPeerRegistry.js";
 import { type StateQueueProvider } from "../../src/l1/state-queue-scanner.js";
 import { loadDaSigner } from "../../src/signer.js";
-import { JsonFileCommitteeStore } from "../../src/store.js";
 import { createCommitteeTickRunner } from "../../src/tick-runner.js";
 import {
   minimalConfig,
@@ -21,7 +20,7 @@ import {
   tempDir,
 } from ".././helpers.js";
 import { withFinalSnapshot } from ".././helpers/final-snapshot.js";
-import { openJsonCommitteeStore } from "./fixtures.js";
+import { openTestCommitteeStore } from "./fixtures.js";
 
 export const registerReadinessTests = () => {
   it("registers the store-backed conflict handler before libp2p startup", async () => {
@@ -29,7 +28,6 @@ export const registerReadinessTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -40,7 +38,7 @@ export const registerReadinessTests = () => {
 
     new CommitteeService({
       config,
-      store: await JsonFileCommitteeStore.open(dir),
+      store: await openTestCommitteeStore(),
       stateQueueProvider: { fetchStateQueueNodes: async () => [] },
       payloadSource: {
         fetchPayloadCandidates: async () => ({
@@ -63,7 +61,6 @@ export const registerReadinessTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -74,7 +71,7 @@ export const registerReadinessTests = () => {
       | undefined;
     const service = new CommitteeService({
       config,
-      store: await openJsonCommitteeStore(dir),
+      store: await openTestCommitteeStore(),
       stateQueueProvider: {
         ...withFinalSnapshot({ fetchStateQueueNodes: async () => [] }),
         chainSyncCatchUpProgress: () => catchUp,
@@ -107,7 +104,6 @@ export const registerReadinessTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -115,7 +111,7 @@ export const registerReadinessTests = () => {
     });
     const service = new CommitteeService({
       config,
-      store: await openJsonCommitteeStore(dir),
+      store: await openTestCommitteeStore(),
       stateQueueProvider: withFinalSnapshot({
         fetchStateQueueNodes: async () => [],
       }),
@@ -155,7 +151,6 @@ export const registerReadinessTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -163,7 +158,7 @@ export const registerReadinessTests = () => {
     });
     const service = new CommitteeService({
       config,
-      store: await openJsonCommitteeStore(dir),
+      store: await openTestCommitteeStore(),
       stateQueueProvider: withFinalSnapshot({
         fetchStateQueueNodes: async () => [],
       }),
@@ -227,7 +222,6 @@ export const registerReadinessTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -235,7 +229,7 @@ export const registerReadinessTests = () => {
     });
     const service = new CommitteeService({
       config,
-      store: await openJsonCommitteeStore(dir),
+      store: await openTestCommitteeStore(),
       stateQueueProvider: withFinalSnapshot({
         fetchStateQueueNodes: async () => [],
       }),
@@ -336,7 +330,6 @@ export const registerReadinessTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -348,7 +341,7 @@ export const registerReadinessTests = () => {
       | undefined;
     const service = new CommitteeService({
       config,
-      store: await openJsonCommitteeStore(dir),
+      store: await openTestCommitteeStore(),
       stateQueueProvider: {
         ...withFinalSnapshot({ fetchStateQueueNodes: async () => [] }),
         chainSyncCatchUpProgress: () => catchUp,

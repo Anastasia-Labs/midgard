@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { outRefKey } from "../../src/codec.js";
 import { decodeBlock } from "../../src/decode/block.js";
-import type { FollowerProjection } from "../../src/shadow/index.js";
+import type { FollowerProjection } from "../../src/index.js";
 import {
   buildForkSteps,
   forkCorpus,

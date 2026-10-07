@@ -24,8 +24,10 @@ export default defineConfig({
           name: "da-committee-node",
           include: configDefaults.include,
           // `tsc` emits compiled copies of `tests/` under `dist/`; Vitest 4
-          // dropped `dist` from its default excludes.
-          exclude: [...configDefaults.exclude, "**/dist/**"],
+          // dropped `dist` from its default excludes. Benchmarks run only
+          // through `pnpm bench` (`vitest.bench.config.ts`): their timings
+          // mean nothing under the default timeout on a shared runner.
+          exclude: [...configDefaults.exclude, "**/dist/**", "bench/**"],
           globalSetup: ["./tests/global-setup.ts"],
         },
       },

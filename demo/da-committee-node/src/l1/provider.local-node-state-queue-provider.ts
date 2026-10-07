@@ -334,13 +334,8 @@ export const localNodeChainCursorPath = (
     LoadedCommitteeConfig["l1Source"],
     { readonly sourceMode: "local_node" }
   >,
-  localState: LoadedCommitteeConfig["localState"],
 ): string => {
-  const cursorPath =
-    source.chainSyncCursorPath ??
-    (localState.kind === "file"
-      ? `${localState.path}.chain-sync-cursor`
-      : undefined);
+  const cursorPath = source.chainSyncCursorPath;
   if (cursorPath === undefined) {
     throw new Error(
       "CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH is required for durable local-node chain sync",

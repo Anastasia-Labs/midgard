@@ -106,13 +106,11 @@ export const minimalAvailabilityChallengeYields =
     ) as MidgardNodeDeployment["availabilityChallengeYields"];
 
 export const minimalConfig = ({
-  dir,
   manifestPath,
   deploymentInfoPath,
   signerSeed,
   signerPublicKey,
 }: {
-  readonly dir: string;
   readonly manifestPath: string;
   readonly deploymentInfoPath: string;
   readonly signerSeed: string;
@@ -249,7 +247,11 @@ export const minimalConfig = ({
   },
   l1SubmitterIds: [],
   l1LeaderFailoverMs: 0,
-  localState: { kind: "file", path: join(dir, "store") },
+  // Tests open their own store; this URL is never connected to.
+  localState: {
+    kind: "database",
+    url: "postgresql://unused.invalid/committee",
+  },
   daParams: {
     committeeHex: signerPublicKey,
     committeeSignersHash: "",

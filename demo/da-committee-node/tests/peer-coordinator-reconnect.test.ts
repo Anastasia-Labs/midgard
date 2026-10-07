@@ -8,9 +8,8 @@ import {
   signDaAttestation,
   validateDaSignerMembership,
 } from "../src/signer.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
-import { tempDir } from "./helpers.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
 import {
   availabilityCommitmentAuthority,
   commitmentFor,
@@ -42,7 +41,7 @@ const harness = async (retryMaxAttempts = 2) => {
     signer,
     signerIndex: 0,
   });
-  const store = await JsonFileCommitteeStore.open(await tempDir());
+  const store = await openTestCommitteeStore();
   // The poll records the peer reachable only for a header whose payload this
   // node verified; its bytes do not matter to a poll that returns nothing.
   Object.assign(store, {

@@ -158,5 +158,5 @@ export const libp2pConfigEnv = (
     DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
   ),
   DA_LIBP2P_PRIVATE_KEY_SOURCE: LIBP2P_PRIVATE_KEY_SOURCE,
-  DA_COMMITTEE_DB_PATH: join(dir, "db"),
+  DA_COMMITTEE_DATABASE_URL: "postgresql://unused.invalid/committee",
 });

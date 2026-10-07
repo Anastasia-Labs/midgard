@@ -19,10 +19,9 @@ import { assertAvailabilityResponderSourceHealthy } from "../src/availability/so
 import { SubmitterReconciler } from "../src/coordinator/submitter-reconciler.js";
 import { StoreBackedDaAttestationProtocol } from "../src/da/libp2p/attestations.js";
 import { DaLibp2pPayloadProtocolHandlers } from "../src/da/libp2p/payload-protocols.js";
-import { type CommitteeStore, JsonFileCommitteeStore } from "../src/store.js";
+import { type CommitteeStore } from "../src/store.js";
 import { PostgresCommitteeStore } from "../src/store/postgres.js";
 import { PostgresPublicRetainedDaStore } from "../src/store/public-retained-da.js";
-import { tempDir } from "./helpers.js";
 import {
   challengeFixture,
   commitment,
@@ -30,6 +29,7 @@ import {
   deploymentIdentity,
   payload,
 } from "./helpers/availability-challenge.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
 import { postgresTestDatabases } from "./helpers/postgres-database.js";
 import {
   divergentBytes,
@@ -56,19 +56,7 @@ afterAll(async () => {
   await databases.dropAll();
 });
 
-const openJson = async (): Promise<CommitteeStore> => {
-  const store = await JsonFileCommitteeStore.open(await tempDir());
-  openStores.add(store);
-  return store;
-};
-
-const openPostgres = async (): Promise<CommitteeStore> => {
-  const store = await PostgresCommitteeStore.open(
-    (await databases.create()).url,
-  );
-  openStores.add(store);
-  return store;
-};
+const openStore = (): Promise<CommitteeStore> => openTestCommitteeStore();
 
 const retained = (
   store: CommitteeStore,
@@ -90,10 +78,8 @@ const byHeader = (headerHash: string) =>
     maxInlineBytes: 1_000_000,
   });
 
-describe.each([
-  ["JSON", openJson],
-  ["Postgres", openPostgres],
-] as const)("%s store: a quarantined member's existing promises", (_, open) => {
+describe("a quarantined member's existing promises", () => {
+  const open = openStore;
   it("keeps the exact verified bytes it signed retrievable and answerable", async () => {
     const store = await quarantinedStore(open);
     await expect(store.getL1SourceState()).resolves.toMatchObject({
@@ -447,7 +433,7 @@ describe("the public retained-DA listener of a quarantined member", () => {
 
 describe("availability responder chain authority", () => {
   it("accepts only a healthy source bound to the configured authority", async () => {
-    const store = await openJson();
+    const store = await openStore();
     await expect(
       assertAvailabilityResponderSourceHealthy(store, responderConfig),
     ).rejects.toThrow(/healthy authenticated/u);
@@ -468,7 +454,7 @@ describe("availability responder chain authority", () => {
       { network: "Mainnet" },
       { sourceMode: "external_providers" as const },
     ]) {
-      const unbound = await openJson();
+      const unbound = await openStore();
       await unbound.saveL1SourceState({
         ...sourceState("healthy", []),
         ...other,

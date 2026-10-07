@@ -4,13 +4,9 @@
  * comparison. Never imported by production code.
  */
 export {
-  type FollowerProjection,
-  mergeTrackedSets,
-  projectionStoreOptions,
-} from "../shadow/projection.js";
-export {
   forkCorpus,
   forkEpisodeArbitrary,
+  type ForkPruneOption,
   forkScenarioArbitrary,
   type NamedScenario,
 } from "./arbitrary.js";
@@ -19,8 +15,10 @@ export {
   type EncodedBlock,
   encodeTxBody,
   encodeUtxoAnswer,
+  encodeWitnessSet,
   type SimBlock,
   type SimOutput,
+  type SimRedeemer,
   type SimTx,
   simTxHash,
 } from "./block-cbor.js";
@@ -42,6 +40,7 @@ export {
   FACT_QUERIES,
   type StoreDump,
 } from "./replay.js";
+export { diffPruned, dumpRetained, retainedQueries } from "./retention.js";
 export { Rng } from "./rng.js";
 export {
   buildForkSteps,

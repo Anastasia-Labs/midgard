@@ -7,10 +7,7 @@ import {
 } from "../src/availability/promise-capacity-evidence.js";
 import { retiredPromiseCutoffs } from "../src/availability/promise-cutoff-source.js";
 import { deriveExpectedDaAvailabilityCommitment } from "../src/peer/signatures.js";
-import {
-  promiseAdmissionFixture,
-  stores,
-} from "./helpers/promise-admission.js";
+import { promiseAdmissionFixture } from "./helpers/promise-admission.js";
 
 // Signs one promise, then wires the committee's capacity source to a
 // controllable selected chain over that promise's cutoff.
@@ -142,7 +139,6 @@ describe("persisted capacity certificate at the actual committee signing boundar
     // Persisted floor-cross evidence, rather than this process's memo, fences
     // subsequent admission even if the provider reports the old point again.
     await state.activeStore.close();
-    stores.delete(state.activeStore);
     state.activeStore = await f.open();
     state.orphan = false;
     expect((await check()).decision).toMatchObject({

@@ -9,11 +9,11 @@ import "./store.committee-store.js";
 import "./store.parse-decision-outbox-record.js";
 import "./store.persisted-decision-transition.js";
 import "./store.parse-stored-record-map.js";
-import "./store.json-file-committee-store.js";
 import "./store.libp2p-submitted-da-payload-record.js";
 export {
   type CommitteeDeploymentRecord,
   type CommitteeStore,
+  type CommitteeStoreReadinessCounts,
   DecisionEffectInFlightError,
   type DecisionOutboxRecord,
   type DecisionOutboxStatus,
@@ -26,11 +26,6 @@ export {
   UNKNOWN_STATE_QUEUE_STATUS,
 } from "./store.committee-store.js";
 export {
-  JsonFileCommitteeStore,
-  parseL1SourceState,
-  resolveDaPayloadSave,
-} from "./store.json-file-committee-store.js";
-export {
   libp2pSubmittedDaPayloadRecord,
   withObservedStatus,
 } from "./store.libp2p-submitted-da-payload-record.js";
@@ -38,6 +33,7 @@ export {
   decisionEffectId,
   parseDecisionOutboxRecord,
 } from "./store.parse-decision-outbox-record.js";
+export { parseL1SourceState } from "./store.parse-l1-source-state.js";
 export {
   jsonReplacer,
   jsonReviver,
@@ -48,6 +44,7 @@ export {
   mergeQuarantinedL1SourceState,
   persistedDecisionTransition,
 } from "./store.persisted-decision-transition.js";
+export { resolveDaPayloadSave } from "./store/resolve-da-payload-save.js";
 export type { CommitteeRetirementCertificate } from "./store/retirement-certificate.js";
 export type {
   CommitteeRetirementBinding,

@@ -179,7 +179,10 @@ describe("the live L1 reads main() wires prove Custom identity against the confi
         chainSyncCursorPath: join(dir, "chain-sync-cursor.json"),
         queryProviderUrls: [kupmiosUrl(ogmios)],
       },
-      localState: { kind: "file", path: join(dir, "state.json") },
+      localState: {
+        kind: "database",
+        url: "postgresql://unused.invalid/committee",
+      },
     } as unknown as LoadedCommitteeConfig);
     const queryPoint = (
       built as unknown as {
@@ -204,7 +207,10 @@ describe("the live L1 reads main() wires prove Custom identity against the confi
         chainSyncCursorPath: join(dir, "chain-sync-cursor.json"),
         queryProviderUrls: [],
       },
-      localState: { kind: "file", path: join(dir, "state.json") },
+      localState: {
+        kind: "database",
+        url: "postgresql://unused.invalid/committee",
+      },
     } as unknown as LoadedCommitteeConfig);
     await expect(
       onLiveCustomChain(() => authority.synchronizeToTip(1)),

@@ -63,7 +63,7 @@ with an exact inner length and SHA-256.
   roots except `prev_utxos_root`) and the seven committed counts, and compares
   the embedded header and header hash with L1;
 - stores deployment, header, payload, signature, peer, and L1 submission state
-  in a JSON-file or PostgreSQL store;
+  in a PostgreSQL store, shared with the L1 follower's tables;
 - signs the canonical availability-commitment digest only after the payload is
   verified and the signer belongs to the configured committee;
 - exchanges signatures with committee peers and, when L1 submission is
@@ -164,12 +164,13 @@ and contract-deployment manifests, and its own database URL/role. Its derived
 peer ID must equal the deployment-manifest `public_retained_da.peer_id`; the
 manifest parser rejects using a producer or committee peer ID for this profile.
 
-The public executable refuses `DA_COMMITTEE_DB_PATH` and `DA_COMMITTEE_DATABASE_URL`:
-the file store cannot be safely shared with the committee process, and mutable
-committee database credentials are not public-reader credentials. It accepts
-only `DA_PUBLIC_RETAINED_DA_DATABASE_URL` with a separately configured role
-that is verified at startup to have `SELECT` and no DML privilege on
-`committee_da_payloads` and `committee_state_queue_headers`. Each lookup is in an
+The public executable refuses `DA_COMMITTEE_DATABASE_URL`: mutable committee
+database credentials are not public-reader credentials. It accepts only
+`DA_PUBLIC_RETAINED_DA_DATABASE_URL` with a separately configured role that is
+verified at startup to have `SELECT` and no DML privilege on
+`committee_da_payloads` and `committee_state_queue_headers`, and no privilege
+on any other table: the committee's private tables and the L1 follower's
+tables in the same database are out of its reach. Each lookup is in an
 explicit PostgreSQL `READ ONLY` transaction; the public process never creates
 or migrates schema.
 
@@ -230,7 +231,7 @@ event_to_step:{deployment_fingerprint}:{header_hash}:{event_key}
 attestations:{deployment_fingerprint}:{header_hash}
 ```
 
-The current JSON/PostgreSQL store models these as deployment, header, payload,
+The PostgreSQL store models these as deployment, header, payload,
 signature, peer, attestation-candidate, and L1-submission records. The libp2p
 protocols expose header-, step-, and event-keyed retrieval without requiring a
 particular storage-engine key syntax. Payload conflict checks prevent replacing
@@ -421,8 +422,7 @@ Native rollback replay and fresh floor proofs still check the checkpoint with
 an empty retained suffix. A proved crossing records a sticky durable breach;
 missing proof holds progress. Neither restart nor an operator clock clears it.
 
-JSON replacement fsyncs the file and containing directory; PostgreSQL removes
-cohorts and advances metadata in one guarded transaction. The singleton and all
+PostgreSQL removes cohorts and advances metadata in one guarded transaction. The singleton and all
 retained families count toward the same row and encoded-byte budget. This is an
 application recovery boundary, not detection of an arbitrary rollback of the
 entire local database. Production adoption requires the configured factory's
@@ -660,7 +660,7 @@ Required alerts:
 ## Implementation Status
 
 The implementation provides canonical `DaPayload`, manifest-bound libp2p V1 transport, header/root/count
-validation, JSON/PostgreSQL stores, signer membership checks, peer signature
+validation, the PostgreSQL store, signer membership checks, peer signature
 exchange, and optional on-chain `Init`/`AddSignatures`/`ApplyToStateQueue`
 reconciliation. The focused package checks are `pnpm build`, `pnpm typecheck`,
 `pnpm test`, and `pnpm guard:no-http-da-transport` in

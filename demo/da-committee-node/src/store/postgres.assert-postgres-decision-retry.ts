@@ -125,19 +125,35 @@ export const upsertSignatureWithClient = async (
   client: PoolClient,
   record: DaSignatureRecordV1,
 ): Promise<void> => {
+  // The member's own signature is its signed decision (class B): the
+  // header's end time is kept in its row, for the obligations projection.
+  const endTimeMs =
+    record.source === "local" ? signedEndTimeMs(record).toString() : null;
   await client.query(
     `INSERT INTO committee_da_signatures
-       (header_hash, commitment_digest, signer_index, record, updated_at)
-     VALUES ($1, $2, $3, $4::jsonb, NOW())
+       (header_hash, commitment_digest, signer_index, record, end_time_ms, updated_at)
+     VALUES ($1, $2, $3, $4::jsonb, $5, NOW())
      ON CONFLICT (header_hash, commitment_digest, signer_index) DO UPDATE SET
-       record = EXCLUDED.record, updated_at = NOW()`,
+       record = EXCLUDED.record,
+       end_time_ms = EXCLUDED.end_time_ms,
+       updated_at = NOW()`,
     [
       record.headerHash,
       record.availabilityCommitmentDigest,
       record.signerIndex,
       encodeRecord(record),
+      endTimeMs,
     ],
   );
+};
+
+const signedEndTimeMs = (record: DaSignatureRecordV1): bigint => {
+  const text = record.validation.l1Header.endTime;
+  if (!/^(0|[1-9][0-9]*)$/u.test(text))
+    throw new Error(
+      `local DA signature for ${record.headerHash} has no end time in milliseconds`,
+    );
+  return BigInt(text);
 };
 
 export const queryOne = async <T>(
@@ -211,7 +227,7 @@ export const assertConflictEvidenceRowIdentity = (
     row.evidence_hash !== record.evidenceHash ||
     row.header_hash !== record.headerHash ||
     row.commitment_digest !== record.commitmentDigest ||
-    row.conflicting_header_hash !== record.conflictingHeaderHash ||
+    record.conflictingHeaderHash !== record.headerHash ||
     row.conflicting_commitment_digest !== record.conflictingCommitmentDigest ||
     row.signer_index !== record.signerIndex ||
     row.reporter_peer_id !== record.reporterPeerId

@@ -19,7 +19,7 @@ import {
 import {
   commitmentAuthority,
   failPayloadSource,
-  openJsonCommitteeStore,
+  openTestCommitteeStore,
 } from "./fixtures.js";
 
 export const registerL1IntegrityTests = () => {
@@ -28,13 +28,12 @@ export const registerL1IntegrityTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
       signerPublicKey: signer.publicKeyHex,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const service = new CommitteeService({
       config,
       store,
@@ -73,7 +72,6 @@ export const registerL1IntegrityTests = () => {
       const seed = "00".repeat(31) + seedByte;
       const signer = await loadDaSigner(`hex:${seed}`);
       const config = minimalConfig({
-        dir,
         manifestPath: `${dir}/manifest.json`,
         deploymentInfoPath: `${dir}/deployment.json`,
         signerSeed: seed,
@@ -149,7 +147,7 @@ export const registerL1IntegrityTests = () => {
           return { rollbackSinceCapture: false };
         },
       };
-      const store = await openJsonCommitteeStore(dir);
+      const store = await openTestCommitteeStore();
       const service = new CommitteeService({
         config: configured,
         store,

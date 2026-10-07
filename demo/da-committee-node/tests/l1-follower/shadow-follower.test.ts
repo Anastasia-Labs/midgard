@@ -465,12 +465,6 @@ describe("shadow follower gating", () => {
     expect(reason({ ...config, nativeLedger: undefined })).toMatch(
       /local node/u,
     );
-    expect(
-      reason({
-        ...config,
-        localState: { kind: "file", path: "/run/state.json" },
-      }),
-    ).toMatch(/Postgres/u);
     for (const hubOracleOneShot of [
       undefined,
       { txHash: "cd".repeat(31), outputIndex: 0 },

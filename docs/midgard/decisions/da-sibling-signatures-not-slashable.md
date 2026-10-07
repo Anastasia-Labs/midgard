@@ -83,17 +83,17 @@ bounded retention when the pair straddled the retired set.
 - Recovery gating is unchanged. Only records that can reach it are narrower.
 - Stores written before the ruling may hold a relayed cross-header record.
   The codec refuses such a record on read, so a running committee could not
-  read its own store without a fix. Both stores therefore drop these records
-  when they open
-  (`demo/da-committee-node/src/store/drop-cross-header-conflict-evidence.ts`):
-  - Postgres runs an idempotent `DELETE ... WHERE header_hash <>
-conflicting_header_hash` in one transaction during schema initialisation.
-  - The JSON store filters the records on load and writes the cleaned state
-    back.
-  - Both log `committee_store_dropped_cross_header_conflict_evidence` at warn
-    level with the count.
-    The `conflicting_header_hash` column now always equals `header_hash`. It is
-    dropped in the C2 committee-schema rework.
+  read its own store without a fix. The committee store is Postgres only
+  (C2), and its schema upgrade removes these records when the store opens
+  (`demo/da-committee-node/src/store/postgres.schema.ts`):
+  - While the `conflicting_header_hash` column still exists, the upgrade
+    deletes every row whose `header_hash` differs from it.
+  - It then drops the column. The digest ordering check that a new table
+    carries is added in its place.
+  - All of this runs in the one transaction that opens the store, and it does
+    nothing on a store that is already upgraded.
+  - The drop-on-open module that C4 used for this, and its JSON-store
+    filtering, were deleted in C2 along with the JSON backend.
 
 ## Consequence for C1
 
@@ -122,11 +122,12 @@ until that header is final (k) or provably unable to land.
   and gossip ingest. Siblings return `undefined`, and ingest refuses them with
   nothing stored. One header with two digests still yields evidence and is
   stored.
-- `demo/da-committee-node/tests/conflict-evidence-cross-header-cleanup.test.ts`
-  seeds a cross-header record and a same-header record into a JSON store and
-  into a Postgres store, then reopens each store. The cross-header record is
-  gone and the same-header record is kept. The conflict-evidence read and the
-  retirement snapshot read both succeed.
+- `demo/da-committee-node/tests/conflict-evidence-cross-header-upgrade.test.ts`
+  rebuilds the conflict-evidence table as it was before the ruling. It seeds a
+  cross-header record and a same-header record, then reopens the store. The
+  cross-header record and the column are gone and the same-header record is
+  kept. The conflict-evidence read and the retirement snapshot read both
+  succeed, and the digest ordering check holds.
 - `demo/midgard-core/tests/da-transport-conflict-evidence.test.ts` checks that
   the codec refuses a cross-header pair on both encode and decode. The golden
   vector in `da-transport-vectors.test.ts` now uses one header hash with two

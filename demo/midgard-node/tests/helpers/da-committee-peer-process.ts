@@ -6,12 +6,12 @@ import {
   DaLibp2pNode,
   processWideDaPayloadSubmitAdmission,
 } from "da-committee-node/da/libp2p";
-import { JsonFileCommitteeStore } from "da-committee-node/store";
+import { PostgresCommitteeStore } from "da-committee-node/store/postgres";
 
 type PeerProcessConfig = {
   readonly peerIndex: number;
   readonly privateKeySource: string;
-  readonly storeDir: string;
+  readonly databaseUrl: string;
   readonly metricsPath: string;
   readonly transport: Libp2pDaTransportConfig;
 };
@@ -21,7 +21,7 @@ if (configPath === undefined) throw new Error("missing peer config path");
 const input = JSON.parse(
   await readFile(configPath, "utf8"),
 ) as PeerProcessConfig;
-const store = await JsonFileCommitteeStore.open(input.storeDir);
+const store = await PostgresCommitteeStore.open(input.databaseUrl);
 const handlers = new Map(
   createDaLibp2pPayloadRequestHandlers({
     deploymentFingerprint: input.transport.deploymentFingerprint,
@@ -76,7 +76,7 @@ const stop = async () => {
   try {
     await node.stop().catch(() => undefined);
   } finally {
-    await store.close?.().catch(() => undefined);
+    await store.close().catch(() => undefined);
     process.exit(0);
   }
 };

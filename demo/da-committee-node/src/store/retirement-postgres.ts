@@ -196,9 +196,6 @@ export const writePostgresRetirementPlan = async (
   );
   return next;
 };
-export const RETIREMENT_SCHEMA_SQL =
-  "CREATE TABLE IF NOT EXISTS committee_retirement_metadata(id integer PRIMARY KEY CHECK(id=1),record jsonb NOT NULL)";
-
 export const assertPostgresRetirementResources = async (
   client: PoolClient,
   data: StoreData,

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 
-// Decides whether a Node CI run runs the L1 fork simulator and shadow-diff
-// suites (`pnpm --dir demo -r --if-present run test:fork-sim`). A pull
-// request runs them only when it touches one of their inputs; every other
-// event (a push to main, a manual dispatch) always runs them.
+// Decides whether a Node CI run runs the L1 fork simulator suites
+// (`pnpm --dir demo -r --if-present run test:fork-sim`). A pull request runs
+// them only when it touches one of their inputs; every other event (a push
+// to main, a manual dispatch) always runs them.
 //
 // The inputs are derived, not listed by hand, so a role package that plugs
-// its projection or comparator into the simulator is covered the moment it
-// declares the script:
+// its projection into the simulator is covered the moment it declares the
+// script:
 //   - every workspace package whose package.json defines `test:fork-sim`
 //     (today midgard-l1-follower; C1, W1 and N1 add theirs), and every
 //     workspace package those depend on, transitively, through a

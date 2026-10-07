@@ -103,7 +103,6 @@ describe("the L1 factories main() calls build Custom Lucid on the genesis mappin
     const url = kupmiosUrl(ogmios);
     return {
       ...minimalConfig({
-        dir,
         manifestPath: join(dir, "manifest.json"),
         deploymentInfoPath: join(dir, "deployment.json"),
         signerSeed: "00".repeat(32),

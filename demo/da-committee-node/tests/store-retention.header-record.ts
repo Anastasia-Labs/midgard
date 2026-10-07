@@ -1,18 +1,15 @@
-import { randomBytes } from "node:crypto";
-
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Client } from "pg";
-import { afterAll, afterEach } from "vitest";
 
 import type {
   DaPayloadRecord,
   StateQueueHeaderRecord,
   StateQueueHeaderStatus,
 } from "../src/domain.js";
-import { type CommitteeStore, JsonFileCommitteeStore } from "../src/store.js";
-import { PostgresCommitteeStore } from "../src/store/postgres.js";
-import { fixtureHeaderBase, tempDir } from "./helpers.js";
+import { type CommitteeStore } from "../src/store.js";
+import type { PostgresCommitteeStore } from "../src/store/postgres.js";
+import { fixtureHeaderBase } from "./helpers.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
 
 export const FINGERPRINT = "cd".repeat(32);
 
@@ -33,67 +30,9 @@ export const retentionOptions = (nowMs = NOW) => ({
   liveQueueHeaderHashes: new Set([hashOf(201), hashOf(202)]),
 });
 
-const openStores = new Set<CommitteeStore>();
-
-afterEach(async () => {
-  await Promise.all([...openStores].map(async (store) => store.close?.()));
-  openStores.clear();
-});
-
-export const openStore = async (): Promise<JsonFileCommitteeStore> => {
-  const store = await JsonFileCommitteeStore.open(await tempDir());
-  openStores.add(store);
-  return store;
-};
-
-const postgresAdmin = {
-  host: process.env.POSTGRES_HOST ?? "127.0.0.1",
-  port: Number(process.env.POSTGRES_PORT ?? "5433"),
-  user: process.env.POSTGRES_USER ?? "postgres",
-  password: process.env.POSTGRES_PASSWORD ?? "postgres",
-};
-
-const postgresDatabases: string[] = [];
-
-/**
- * A committee store on a fresh database of the workspace test cluster
- * (`scripts/start-test-postgres.sh`); fails closed when none is reachable.
- */
-export const openPostgresStore = async (): Promise<PostgresCommitteeStore> => {
-  const databaseName = `${process.env.MIDGARD_TEST_DATABASE_PREFIX ?? "codex_rel_committee_retention"}_${randomBytes(6).toString("hex")}`;
-  const admin = new Client({
-    ...postgresAdmin,
-    database: process.env.POSTGRES_DB ?? "postgres",
-  });
-  await admin.connect();
-  try {
-    await admin.query(`CREATE DATABASE ${databaseName}`);
-  } finally {
-    await admin.end();
-  }
-  postgresDatabases.push(databaseName);
-  const store = await PostgresCommitteeStore.open(
-    `postgresql://${postgresAdmin.user}:${postgresAdmin.password}@${postgresAdmin.host}:${postgresAdmin.port.toString()}/${databaseName}`,
-  );
-  openStores.add(store);
-  return store;
-};
-
-afterAll(async () => {
-  if (postgresDatabases.length === 0) return;
-  const admin = new Client({
-    ...postgresAdmin,
-    database: process.env.POSTGRES_DB ?? "postgres",
-  });
-  await admin.connect();
-  try {
-    for (const databaseName of postgresDatabases) {
-      await admin.query(`DROP DATABASE IF EXISTS ${databaseName}`);
-    }
-  } finally {
-    await admin.end();
-  }
-});
+/** A committee store on a fresh test database, closed after the test. */
+export const openStore = (): Promise<PostgresCommitteeStore> =>
+  openTestCommitteeStore();
 
 const headerRecord = (
   headerHash: string,

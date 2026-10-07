@@ -13,6 +13,12 @@
  * reads. Each Lucid client the node builds registers its source here
  * (`registerL1TipSource`); every snapshot read through it is observed. An
  * emulator client has its own exact chain slot and needs no source.
+ *
+ * `l1BlockBelowCoveredTip(store, d)` is the heads source for "the block d
+ * below the covered tip": the follower block at depth d + 1 under the
+ * store's cursor (the covered tip has depth 1). U3 caps the history commit
+ * end time at `slot(tip − d) + W − 1` from it once N1 deletes the census
+ * tables.
  */
 import {
   type LocalOgmiosShelleyGenesisSlotOptions,
@@ -23,8 +29,11 @@ import {
   SUBMIT_SLOT_LENGTH_MS,
   type SubmitSlotSnapshot,
 } from "@al-ft/midgard-core/ogmios-slot";
+import type { FactStore, Point as L1Point } from "@al-ft/midgard-l1-follower";
 import {
   createSlotClock,
+  depth,
+  heightAtDepth,
   type MonotonicClock,
   type SlotClock,
 } from "@al-ft/midgard-l1-follower/heads";
@@ -212,4 +221,63 @@ export const localOgmiosSubmitSlotEvidence = (
       ? []
       : [`lastTipUpdate=${health.lastTipUpdate}`]),
   ].join(",");
+};
+
+/** The block d below the follower's covered tip, or why there is none. */
+export type L1BlockBelowCoveredTip =
+  | Readonly<{
+      kind: "block";
+      point: L1Point;
+      height: number;
+      /** `depth(tip, point)`: always d + 1. */
+      depth: number;
+      /** The covered tip (the store's cursor) the block was read under. */
+      tip: Readonly<{ point: L1Point; height: number }>;
+    }>
+  | Readonly<{
+      kind: "unavailable";
+      /**
+       * `not_initialized`: the store has no cursor yet. `outside_history`:
+       * that height lies below the follower's origin or its pruned history.
+       * Both are transient for a caller: it holds its horizon and retries.
+       */
+      reason: "not_initialized" | "outside_history";
+      detail: string;
+    }>;
+
+/**
+ * The block d below the covered tip (the follower cursor), read through the
+ * heads module's `depth()`: the block at depth d + 1. d = 0 is the covered
+ * tip itself.
+ */
+export const l1BlockBelowCoveredTip = async (
+  store: Pick<FactStore, "cursor" | "blockAtHeight">,
+  lagBlocks: number,
+): Promise<L1BlockBelowCoveredTip> => {
+  if (!Number.isSafeInteger(lagBlocks) || lagBlocks < 0)
+    throw new RangeError(
+      `the lag d must be a non-negative integer, got ${String(lagBlocks)}`,
+    );
+  const cursor = await store.cursor();
+  if (cursor === null)
+    return {
+      kind: "unavailable",
+      reason: "not_initialized",
+      detail: "the follower store has no covered tip yet",
+    };
+  const height = heightAtDepth(cursor.height, lagBlocks + 1);
+  const block = height < 0 ? null : await store.blockAtHeight(height);
+  if (block === null)
+    return {
+      kind: "unavailable",
+      reason: "outside_history",
+      detail: `no follower block at height ${height.toString()} (${lagBlocks.toString()} below the covered tip at ${cursor.height.toString()}): below the origin or pruned`,
+    };
+  return {
+    kind: "block",
+    point: { slot: block.slot, hash: block.hash },
+    height: block.height,
+    depth: depth(cursor.height, block.height),
+    tip: { point: cursor.point, height: cursor.height },
+  };
 };

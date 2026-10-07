@@ -35,6 +35,11 @@ export type ForkShape = (typeof FORK_SHAPES)[number];
  * - `phase2_failed`: the old transaction failed phase 2 (C consumed, its
  *   collateral return created). `variant % 3`: 0 it lands failed again,
  *   1 a valid replacement spends F instead, 2 nothing replaces it.
+ *
+ * With `prune`, the store prunes to completion (`ForkStep.prune`) after the
+ * old branch's last block, so the rollback rewinds over pruned rows, and
+ * again after the rollback, whose cursor drop leaves the boundary below rows
+ * pruned before (the review's E7 case).
  */
 export type ForkEpisode = Readonly<{
   shape: ForkShape;
@@ -43,6 +48,7 @@ export type ForkEpisode = Readonly<{
   landAt: number;
   variant: number;
   lead: number;
+  prune?: boolean;
 }>;
 
 export type ForkScenario = Readonly<{
@@ -79,6 +85,8 @@ export type ForkCheckpoint = Readonly<{
 export type ForkStep = Readonly<{
   event: ChainSyncEvent;
   checkpoint?: ForkCheckpoint;
+  /** After this event, prune the store to completion (`FactStore.prune`). */
+  prune?: boolean;
 }>;
 
 /**
@@ -257,9 +265,16 @@ export class EpisodeBuilder {
     const last = this.steps.pop();
     if (last === undefined) throw new Error("checkpoint before any event");
     this.steps.push({
-      event: last.event,
+      ...last,
       checkpoint: { label, checks, liveTracked: this.chain.liveTracked() },
     });
+  }
+
+  /** Prunes after the latest event. */
+  private markPrune(): void {
+    const last = this.steps.pop();
+    if (last === undefined) throw new Error("prune before any event");
+    this.steps.push({ ...last, prune: true });
   }
 
   episode(episode: ForkEpisode, index: number): void {
@@ -310,7 +325,11 @@ export class EpisodeBuilder {
           : spend([trackedOut, { address: u.untrackedAddress, lovelace: 1n }]);
     for (let i = 0; i < episode.depth; i += 1)
       this.block(i === 0 && old !== undefined ? [old] : []);
-    this.steps.push({ event: chain.backward(episode.depth) });
+    if (episode.prune === true) this.markPrune();
+    this.steps.push({
+      event: chain.backward(episode.depth),
+      ...(episode.prune === true ? { prune: true } : {}),
+    });
     const oldHash = old === undefined ? null : simTxHash(old);
     this.checkpoint(`${label}: after the rollback`, [
       ...(oldHash === null

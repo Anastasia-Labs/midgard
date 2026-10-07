@@ -36,8 +36,10 @@ import {
   startCommitteeTickLoop,
 } from "./tick-runner.js";
 
-/** Upper bound on the shutdown before exiting for a lost store instance lock. */
-const STORE_LOCK_LOST_SHUTDOWN_GRACE_MS = 10_000;
+/** Why the store's instance lock refuses decision effects. */
+type StoreLockRefusal =
+  | "store_instance_lock_reacquiring"
+  | "store_instance_lock_held_elsewhere";
 
 const main = async (): Promise<void> => {
   loadRuntimeConfig();
@@ -60,32 +62,30 @@ const main = async (): Promise<void> => {
     process.stderr.write(line);
   };
 
-  // Bound once shutdown exists; until then a lost lock exits at once.
-  // eslint-disable-next-line prefer-const
-  let exitForLostStoreInstanceLock: (() => void) | undefined;
-  let storeLockSuspended = false;
+  // Why the store's instance lock refuses work, while it does. The process
+  // never exits on it: readiness names the reason and the lock keeps trying.
+  let storeLockRefusal: StoreLockRefusal | undefined;
   const storeLockEvents: PostgresStoreInstanceLockEvents = {
     // Postgres went away: refuse work until the lock is held again.
     onInstanceLockSuspended: (error) => {
-      storeLockSuspended = true;
+      storeLockRefusal = "store_instance_lock_reacquiring";
       write(
         `${JSON.stringify({ event: "committee_store_instance_lock_suspended", error: error.message })}\n`,
       );
     },
+    // Another live process holds the lock: this one is the passive member
+    // and takes over when that process's session ends.
+    onInstanceLockHeldElsewhere: (error) => {
+      storeLockRefusal = "store_instance_lock_held_elsewhere";
+      write(
+        `${JSON.stringify({ event: "committee_store_instance_lock_passive", error: error.message })}\n`,
+      );
+    },
     onInstanceLockRestored: () => {
-      storeLockSuspended = false;
+      storeLockRefusal = undefined;
       write(
         `${JSON.stringify({ event: "committee_store_instance_lock_restored" })}\n`,
       );
-    },
-    // Another live process holds the lock now, so this one stops running
-    // decision effects and exits for its supervisor to restart it.
-    onInstanceLockLost: (error) => {
-      write(
-        `${JSON.stringify({ event: "committee_store_instance_lock_lost", error: error.message })}\n`,
-      );
-      if (exitForLostStoreInstanceLock === undefined) process.exit(1);
-      exitForLostStoreInstanceLock();
     },
   };
 
@@ -174,27 +174,13 @@ const main = async (): Promise<void> => {
     await api?.close();
     await runtime.close();
   };
-  exitForLostStoreInstanceLock = () => {
-    let grace: ReturnType<typeof setTimeout> | undefined;
-    void Promise.race([
-      shutdown(),
-      new Promise<void>((resolve) => {
-        grace = setTimeout(resolve, STORE_LOCK_LOST_SHUTDOWN_GRACE_MS);
-      }),
-    ])
-      .catch(() => undefined)
-      .finally(() => {
-        clearTimeout(grace);
-        process.exit(1);
-      });
-  };
   const tickRunner = createCommitteeTickRunner({
-    // No decision is attempted while the store's instance lock is being
-    // taken again; the tick reports why and the next one retries.
+    // No decision is attempted while the store's instance lock refuses
+    // work; the tick reports why and the next one retries.
     tick: () =>
-      storeLockSuspended
-        ? Promise.resolve(STORE_LOCK_REACQUIRING_TICK)
-        : service.tick(),
+      storeLockRefusal === undefined
+        ? service.tick()
+        : Promise.resolve(storeLockRefusedTick(storeLockRefusal)),
     // The responder runs on its own interval; a scan only nudges it.
     runAvailabilityResponse: responseLoop.nudge,
     ...runtime.daBondPool.tickRunnerDeps(runtime.onChainCoordinator),
@@ -246,7 +232,7 @@ const main = async (): Promise<void> => {
         : [
             `l1_view_unavailable:${liveness.l1ViewUnavailable.l1ViewAgeMs.toString()}`,
           ]),
-      ...(storeLockSuspended ? ["store_instance_lock_reacquiring"] : []),
+      ...(storeLockRefusal === undefined ? [] : [storeLockRefusal]),
       ...(preflight?.reasons() ?? []),
       ...responseLoop.reasons(),
     ];
@@ -290,15 +276,16 @@ const main = async (): Promise<void> => {
   });
 };
 
-/** The tick result while the store's instance lock is being taken again. */
-const STORE_LOCK_REACQUIRING_TICK = {
-  scannedHeaders: 0,
-  signedHeaders: 0,
-  reconciledHeaders: 0,
-  skippedHeaders: 0,
-  payloadFetches: [],
-  errors: ["store_instance_lock_reacquiring"],
-} as const;
+/** The tick result while the store's instance lock refuses work. */
+const storeLockRefusedTick = (reason: StoreLockRefusal) =>
+  ({
+    scannedHeaders: 0,
+    signedHeaders: 0,
+    reconciledHeaders: 0,
+    skippedHeaders: 0,
+    payloadFetches: [],
+    errors: [reason],
+  }) as const;
 
 /** The configuration with automatic funding switched off. */
 const withoutAutoFund = (

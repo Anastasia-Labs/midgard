@@ -12,9 +12,9 @@ import type {
 } from "../src/l1/da-attestation-reader.js";
 import { L1SourceIntegrityError } from "../src/l1/source-integrity.js";
 import { loadDaSigner, validateDaSignerMembership } from "../src/signer.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
 import { minimalConfig, tempDir } from "./helpers.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
 
 describe("committee node startup DA params checks", () => {
   const startup = async (
@@ -36,7 +36,6 @@ describe("committee node startup DA params checks", () => {
     );
     const config = {
       ...minimalConfig({
-        dir,
         manifestPath: `${dir}/manifest.json`,
         deploymentInfoPath: `${dir}/deployment.json`,
         signerSeed: seed,
@@ -53,7 +52,7 @@ describe("committee node startup DA params checks", () => {
       signer,
       signerIndex: committeeKeys.indexOf(signer.publicKeyHex),
     });
-    const store = await JsonFileCommitteeStore.open(dir);
+    const store = await openTestCommitteeStore();
     const events: string[] = [];
     const reads = { count: 0 };
     const service = new CommitteeService({

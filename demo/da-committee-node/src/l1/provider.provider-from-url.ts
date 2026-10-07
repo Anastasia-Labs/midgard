@@ -54,7 +54,7 @@ export const providerFromConfig = async (
   if (config.l1Source.sourceMode === "local_node") {
     const localSource = config.l1Source;
     const authority = localNodeChainAuthorityFromConfig(config);
-    const cursorPath = localNodeChainCursorPath(localSource, config.localState);
+    const cursorPath = localNodeChainCursorPath(localSource);
     const authorityFingerprint = localAuthorityFingerprint(
       config.network,
       localSource.authorityNodeId,

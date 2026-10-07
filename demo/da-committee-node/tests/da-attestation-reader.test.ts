@@ -25,7 +25,6 @@ describe("LucidDaAttestationChainReader", () => {
     // representable committee has two sorted-unique members.
     const committeeHex = "01".repeat(32) + "02".repeat(32);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: "00".repeat(32),
@@ -75,7 +74,6 @@ describe("LucidDaAttestationChainReader", () => {
     const dir = await tempDir();
     const committeeHex = "01".repeat(32);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: "00".repeat(32),
@@ -133,7 +131,6 @@ describe("LucidDaAttestationChainReader", () => {
   it("fails closed on malformed bytes at a policy-matched DA UTxO", async () => {
     const dir = await tempDir();
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: "00".repeat(32),
@@ -168,7 +165,6 @@ describe("LucidDaAttestationChainReader", () => {
     const dir = await tempDir();
     const committeeHex = "01".repeat(32);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: "00".repeat(32),

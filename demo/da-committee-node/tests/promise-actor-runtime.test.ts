@@ -61,7 +61,6 @@ describe("committee actor runtime drainage", () => {
           },
         );
         const config = minimalConfig({
-          dir: dirs.at(-1)!,
           manifestPath: "fixture",
           deploymentInfoPath: "fixture",
           signerSeed: "00".repeat(31) + "01",

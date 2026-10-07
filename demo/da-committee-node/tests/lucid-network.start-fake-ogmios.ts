@@ -236,7 +236,10 @@ export const KUPMIOS_SITES: readonly KupmiosSite[] = [
           chainSyncCursorPath: join(dir, "chain-sync-cursor.json"),
           queryProviderUrls: [kupmiosUrl(ogmios)],
         },
-        localState: { kind: "file", path: join(dir, "state.json") },
+        localState: {
+          kind: "database",
+          url: "postgresql://unused.invalid/committee",
+        },
       } as unknown as LoadedCommitteeConfig);
       return lucidOf(reader);
     },

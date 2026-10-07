@@ -22,6 +22,7 @@ import {
   parseDaStoredPayloadRecord,
   type StateQueueHeaderRecord,
 } from "../domain.js";
+import type { SignedHeader } from "../l1/follower/obligations.js";
 import type {
   L1RecoveryCertificate,
   L1RecoverySnapshot,
@@ -29,6 +30,7 @@ import type {
 import {
   type CommitteeDeploymentRecord,
   type CommitteeStore,
+  type CommitteeStoreReadinessCounts,
   type DecisionOutboxRecord,
   type DecisionOutboxStatus,
   InFlightDecisionAttempts,
@@ -66,7 +68,10 @@ import {
   upsertSignatureWithClient,
 } from "./postgres.assert-postgres-decision-retry.js";
 import { PostgresStoreInstanceLock } from "./postgres.instance-lock.js";
-import { initializeCommitteeSchema } from "./postgres.schema.js";
+import {
+  COMMITTEE_READINESS_COUNTS_SQL,
+  initializeCommitteeSchema,
+} from "./postgres.schema.js";
 import * as capacity from "./promise-capacity-postgres.js";
 import { postgresPromiseResources } from "./promise-resource-usage.js";
 import {
@@ -86,7 +91,6 @@ import {
   assertPostgresRetirementResources,
   readPostgresRetirementData,
   readPostgresRetirementFloor,
-  RETIREMENT_SCHEMA_SQL,
 } from "./retirement-postgres.js";
 import { PostgresRetirementOperations } from "./retirement-postgres-operations.js";
 import {
@@ -99,7 +103,7 @@ export class PostgresCommitteeStore implements CommitteeStore {
   private readonly retirement = new CommitteeRetirementController();
   private readonly retirementOperations: PostgresRetirementOperations;
   private readonly pool: Pool;
-  private readonly instanceLock: PostgresStoreInstanceLock;
+  readonly instanceLock: PostgresStoreInstanceLock;
   private readonly inFlightDecisions = new InFlightDecisionAttempts();
 
   readL1RecoverySnapshot(): Promise<L1RecoverySnapshot> {
@@ -605,6 +609,51 @@ export class PostgresCommitteeStore implements CommitteeStore {
     );
   }
 
+  async readinessCounts(): Promise<CommitteeStoreReadinessCounts> {
+    const result = await this.pool.query<{
+      readonly totals: Readonly<Record<string, string | number>> | null;
+      readonly missing_payloads: string;
+      readonly verified_missing_l1_attestation: string;
+    }>(COMMITTEE_READINESS_COUNTS_SQL);
+    const row = result.rows[0];
+    const total = (name: string): number => {
+      const value = Number(row?.totals?.[name]);
+      if (!Number.isSafeInteger(value) || value < 0)
+        throw new Error(`committee store counter ${name} is unavailable`);
+      return value;
+    };
+    return {
+      discoveredHeaders: total("headers"),
+      missingPayloads: Number(row?.missing_payloads ?? 0),
+      verifiedPayloads: total("verified_payloads"),
+      verifiedPayloadsMissingL1Attestation: Number(
+        row?.verified_missing_l1_attestation ?? 0,
+      ),
+      signatures: total("signatures"),
+      l1AttestationSubmissions: total("l1_submissions"),
+      submittedOrConfirmedL1Attestations: total(
+        "submitted_or_confirmed_headers",
+      ),
+    };
+  }
+
+  async listSignedDecisions(): Promise<readonly SignedHeader[]> {
+    const result = await this.pool.query<{
+      readonly header_hash: string;
+      readonly end_time_ms: string;
+    }>(
+      `SELECT DISTINCT ON (header_hash)
+              header_hash, end_time_ms::text AS end_time_ms
+       FROM committee_da_signatures
+       WHERE end_time_ms IS NOT NULL
+       ORDER BY header_hash`,
+    );
+    return result.rows.map((row) => ({
+      headerHash: row.header_hash,
+      endTimeMs: BigInt(row.end_time_ms),
+    }));
+  }
+
   async getStateQueueHeader(
     headerHash: string,
   ): Promise<StateQueueHeaderRecord | undefined> {
@@ -764,21 +813,19 @@ export class PostgresCommitteeStore implements CommitteeStore {
          evidence_hash,
          header_hash,
          commitment_digest,
-         conflicting_header_hash,
          conflicting_commitment_digest,
          signer_index,
          reporter_peer_id,
          record,
          created_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, NOW())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW())
        ON CONFLICT (deployment_fingerprint, evidence_hash) DO NOTHING`,
         [
           canonicalRecord.deploymentFingerprint,
           canonicalRecord.evidenceHash,
           canonicalRecord.headerHash,
           canonicalRecord.commitmentDigest,
-          canonicalRecord.conflictingHeaderHash,
           canonicalRecord.conflictingCommitmentDigest,
           canonicalRecord.signerIndex,
           canonicalRecord.reporterPeerId,
@@ -794,13 +841,13 @@ export class PostgresCommitteeStore implements CommitteeStore {
     return this.listParsedRecords(
       headerHash === undefined
         ? `SELECT deployment_fingerprint, evidence_hash, header_hash,
-                  commitment_digest, conflicting_header_hash,
+                  commitment_digest,
                   conflicting_commitment_digest, signer_index, reporter_peer_id,
                   record
            FROM committee_da_conflict_evidence
            ORDER BY header_hash, signer_index, evidence_hash`
         : `SELECT deployment_fingerprint, evidence_hash, header_hash,
-                  commitment_digest, conflicting_header_hash,
+                  commitment_digest,
                   conflicting_commitment_digest, signer_index, reporter_peer_id,
                   record
            FROM committee_da_conflict_evidence
@@ -967,7 +1014,6 @@ export class PostgresCommitteeStore implements CommitteeStore {
   }
   private async initSchema(): Promise<void> {
     await this.renameLegacyTables();
-    await this.pool.query(RETIREMENT_SCHEMA_SQL);
     await initializeCommitteeSchema(this.pool);
   }
 

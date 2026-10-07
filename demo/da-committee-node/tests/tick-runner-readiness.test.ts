@@ -11,13 +11,14 @@ import {
   CommitteeService,
 } from "../src/committee-service.js";
 import { loadDaSigner } from "../src/signer.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
+import { type PostgresCommitteeStore } from "../src/store/postgres.js";
 import type { RetentionL1View } from "../src/store/retention.js";
 import {
   createCommitteeTickRunner,
   l1ViewStaleMs,
 } from "../src/tick-runner.js";
 import { minimalConfig, payloadSourceFromBytes, tempDir } from "./helpers.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
 import { withFinalSnapshot } from "./helpers/final-snapshot.js";
 
 const POLL_MS = 2_000;
@@ -142,17 +143,16 @@ const harness = (
 };
 
 let dir: string;
-let store: JsonFileCommitteeStore;
+let store: PostgresCommitteeStore;
 let service: CommitteeService;
 
 beforeAll(async () => {
   dir = await tempDir();
   const seed = "00".repeat(31) + "01";
   const signer = await loadDaSigner(`hex:${seed}`);
-  store = await JsonFileCommitteeStore.open(dir);
+  store = await openTestCommitteeStore();
   service = new CommitteeService({
     config: minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,

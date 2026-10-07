@@ -28,7 +28,7 @@ import {
   createStateQueueChain,
 } from ".././helpers/state-queue-chain.js";
 import {
-  openJsonCommitteeStore,
+  openTestCommitteeStore,
   runAnchorAheadOfObservations,
 } from "./fixtures.js";
 
@@ -56,7 +56,6 @@ export const registerL1FinalityTests = () => {
       const seed = "00".repeat(31) + seedByte;
       const signer = await loadDaSigner(`hex:${seed}`);
       const base = minimalConfig({
-        dir,
         manifestPath: `${dir}/manifest.json`,
         deploymentInfoPath: `${dir}/deployment.json`,
         signerSeed: seed,
@@ -103,7 +102,7 @@ export const registerL1FinalityTests = () => {
         tip,
       });
       const clock = { nowMs: Date.parse("2026-07-28T00:00:00.000Z") };
-      const store = await openJsonCommitteeStore(dir);
+      const store = await openTestCommitteeStore();
       const events: Record<string, unknown>[] = [];
       const chainProvider: StateQueueProvider = {
         fetchStateQueueNodes: async () => chain.snapshot().nodes,

@@ -4,7 +4,11 @@ import { join } from "node:path";
 
 import { parse } from "dotenv";
 
-import { generateDaServices, writePrivateEnv } from "./da-services.js";
+import {
+  generateDaServices,
+  stackDaReaderGrantSql,
+  writePrivateEnv,
+} from "./da-services.js";
 import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent, writeDurableJson } from "./journal.js";
 import { containerNativeLedger } from "./native-ledger.js";
@@ -351,7 +355,7 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
           );
         await processes.compose(
           "committee-start",
-          ["up", "-d", ...runtime.committeeServices, "public-retained-da"],
+          ["up", "-d", ...runtime.committeeServices],
           runtime.compose,
         );
         const expected = await committeeExpectation(processes);
@@ -372,6 +376,33 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
               ? ready
               : undefined;
           },
+        );
+        // The committee nodes have created their tables, so the public reader
+        // can be granted exactly the two it serves, and only then started.
+        // Signer indexes, and so the member databases, are 0..n-1.
+        for (const signerIndex of processes.config.da.members.keys())
+          await processes.compose(
+            `public-reader-grant-${signerIndex}`,
+            [
+              "exec",
+              "-T",
+              "da-postgres",
+              "psql",
+              "-v",
+              "ON_ERROR_STOP=1",
+              "-U",
+              "midgard_da_writer",
+              "-d",
+              `midgard_da_${signerIndex}`,
+              "-c",
+              stackDaReaderGrantSql(signerIndex),
+            ],
+            runtime.compose,
+          );
+        await processes.compose(
+          "public-reader-start",
+          ["up", "-d", "public-retained-da"],
+          runtime.compose,
         );
         // Bind only before the producer container first starts. Docker holds its
         // port even while the node restarts or is not ready yet, so ask Compose.

@@ -30,10 +30,11 @@ import {
   countSummaryFromHeader,
   expectedCommitment,
   failPayloadSource,
-  openJsonCommitteeStore,
+  openTestCommitteeStore,
   payloadCandidates,
   rootSummaryFromHeader,
   submitted,
+  testStoreDatabase,
 } from "./fixtures.js";
 
 export const registerLifecycleTests = () => {
@@ -43,7 +44,6 @@ export const registerLifecycleTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -73,7 +73,7 @@ export const registerLifecycleTests = () => {
     });
     let scans = 0;
     let payloadFetches = 0;
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
@@ -120,7 +120,6 @@ export const registerLifecycleTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -140,7 +139,7 @@ export const registerLifecycleTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const payloadSource = payloadSourceFromBytes(payloadCbor);
     const published: string[] = [];
     const service = new CommitteeService({
@@ -181,7 +180,6 @@ export const registerLifecycleTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -201,7 +199,7 @@ export const registerLifecycleTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const payloadSource = payloadSourceFromBytes(payloadCbor);
     const published: string[] = [];
     const service = new CommitteeService({
@@ -262,7 +260,6 @@ export const registerLifecycleTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -282,7 +279,7 @@ export const registerLifecycleTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const commitment = expectedCommitment(
       configWithDaHash,
       headerHash,
@@ -384,7 +381,6 @@ export const registerLifecycleTests = () => {
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -404,7 +400,7 @@ export const registerLifecycleTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const payloadSource = payloadSourceFromBytes(payloadCbor);
     const initialized = candidateRecord({
       headerHash,
@@ -468,7 +464,6 @@ export const registerLifecycleTests = () => {
     const peerPublicKey = "ff".repeat(32);
     const committeeHex = signer.publicKeyHex + peerPublicKey;
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -490,7 +485,7 @@ export const registerLifecycleTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const payloadSource = payloadSourceFromBytes(payloadCbor);
     const initialized = candidateRecord({
       headerHash,
@@ -589,7 +584,6 @@ export const registerLifecycleTests = () => {
     const peerSigner = await loadDaSigner(`hex:${"00".repeat(31)}02`);
     const committeeHex = signer.publicKeyHex + peerSigner.publicKeyHex;
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -611,12 +605,68 @@ export const registerLifecycleTests = () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const commitment = expectedCommitment(
       configWithDaHash,
       headerHash,
       payloadCbor,
     );
+    const initialized = candidateRecord({
+      headerHash,
+      committeeSignersHash: signerValidation.committeeSignersHash,
+      attestationCount: 0,
+      threshold: 2,
+    });
+    const threshold = candidateRecord({
+      headerHash,
+      committeeSignersHash: signerValidation.committeeSignersHash,
+      attestationCount: 2,
+      threshold: 2,
+      status: "threshold",
+      bitmap: "c0" + "00".repeat(31),
+    });
+    const candidateResponses = [[initialized], [threshold]];
+    const calls: string[] = [];
+    const coordinator = new OnChainLifecycleCoordinator({
+      threshold: 2,
+      visibilityRetryCount: 0,
+      peerSignaturesFor: (candidateHeaderHash) =>
+        store.listDaSignatures(candidateHeaderHash),
+      chainReader: {
+        fetchDaAttestationCandidates: async () =>
+          candidateResponses.shift() ?? [threshold],
+      },
+      recordSubmission: (record) => store.saveL1Submission(record),
+      submitter: {
+        initAttestation: async () => {
+          throw new Error("unexpected init");
+        },
+        addSignatures: async ({ signerIndexes }) => {
+          calls.push(`add:${signerIndexes.join(",")}`);
+          return submitted("addTx");
+        },
+        applyAttestation: async ({ candidate }) => {
+          calls.push(`apply:${candidate.outRef}`);
+          return submitted("applyTx");
+        },
+      },
+    });
+    const service = new CommitteeService({
+      config: configWithDaHash,
+      store,
+      stateQueueProvider: withFinalSnapshot({
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 10 }),
+        ],
+      }),
+      payloadSource: payloadSourceFromBytes(payloadCbor),
+      signer,
+      signerValidation,
+      coordinator,
+    });
+
+    await service.initialize();
+    // Peer signatures arrive once the store holds an L1 source state.
     await store.saveDaSignature({
       deploymentFingerprint: configWithDaHash.deploymentFingerprint,
       headerHash,
@@ -683,61 +733,6 @@ export const registerLifecycleTests = () => {
         },
       },
     });
-    const initialized = candidateRecord({
-      headerHash,
-      committeeSignersHash: signerValidation.committeeSignersHash,
-      attestationCount: 0,
-      threshold: 2,
-    });
-    const threshold = candidateRecord({
-      headerHash,
-      committeeSignersHash: signerValidation.committeeSignersHash,
-      attestationCount: 2,
-      threshold: 2,
-      status: "threshold",
-      bitmap: "c0" + "00".repeat(31),
-    });
-    const candidateResponses = [[initialized], [threshold]];
-    const calls: string[] = [];
-    const coordinator = new OnChainLifecycleCoordinator({
-      threshold: 2,
-      visibilityRetryCount: 0,
-      peerSignaturesFor: (candidateHeaderHash) =>
-        store.listDaSignatures(candidateHeaderHash),
-      chainReader: {
-        fetchDaAttestationCandidates: async () =>
-          candidateResponses.shift() ?? [threshold],
-      },
-      recordSubmission: (record) => store.saveL1Submission(record),
-      submitter: {
-        initAttestation: async () => {
-          throw new Error("unexpected init");
-        },
-        addSignatures: async ({ signerIndexes }) => {
-          calls.push(`add:${signerIndexes.join(",")}`);
-          return submitted("addTx");
-        },
-        applyAttestation: async ({ candidate }) => {
-          calls.push(`apply:${candidate.outRef}`);
-          return submitted("applyTx");
-        },
-      },
-    });
-    const service = new CommitteeService({
-      config: configWithDaHash,
-      store,
-      stateQueueProvider: withFinalSnapshot({
-        fetchStateQueueNodes: async () => [
-          makeObservedNode({ header, headerHash, depth: 10 }),
-        ],
-      }),
-      payloadSource: payloadSourceFromBytes(payloadCbor),
-      signer,
-      signerValidation,
-      coordinator,
-    });
-
-    await service.initialize();
     await expect(service.tick()).resolves.toMatchObject({
       scannedHeaders: 1,
       signedHeaders: 1,
@@ -762,7 +757,6 @@ export const registerLifecycleTests = () => {
     );
     const config = {
       ...minimalConfig({
-        dir,
         manifestPath: `${dir}/manifest.json`,
         deploymentInfoPath: `${dir}/deployment.json`,
         signerSeed: "00".repeat(31) + "01",
@@ -852,7 +846,7 @@ export const registerLifecycleTests = () => {
       },
     ];
     const peerId = "peer-libp2p-1";
-    const store = await openJsonCommitteeStore(dir);
+    const store = await openTestCommitteeStore();
     const initialized = candidateRecord({
       headerHash,
       committeeSignersHash,
@@ -962,7 +956,6 @@ export const registerLifecycleTests = () => {
     const peerPublicKey = "ee".repeat(32);
     const committeeHex = signer.publicKeyHex + peerPublicKey;
     const config = minimalConfig({
-      dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: seed,
@@ -1007,7 +1000,8 @@ export const registerLifecycleTests = () => {
       bitmap: "c0" + "00".repeat(31),
     });
     const calls: string[] = [];
-    const firstStore = await openJsonCommitteeStore(dir);
+    const database = await testStoreDatabase();
+    const firstStore = await openTestCommitteeStore(database);
     const firstCoordinator = new OnChainLifecycleCoordinator({
       threshold: 2,
       visibilityRetryCount: 0,
@@ -1065,7 +1059,7 @@ export const registerLifecycleTests = () => {
     ).resolves.toMatchObject({ broadcastStatus: "posted" });
 
     await firstStore.close();
-    const restartedStore = await openJsonCommitteeStore(dir);
+    const restartedStore = await openTestCommitteeStore(database);
     const restartedCoordinator = new OnChainLifecycleCoordinator({
       threshold: 2,
       visibilityRetryCount: 0,

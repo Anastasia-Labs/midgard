@@ -18,7 +18,7 @@ import {
   RECOVERABLE_L1_REASON,
   verifyL1Recovery,
 } from "../src/l1/recovery-incident.js";
-import { type CommitteeStore, JsonFileCommitteeStore } from "../src/store.js";
+import { type CommitteeStore } from "../src/store.js";
 import { PostgresCommitteeStore } from "../src/store/postgres.js";
 import { makePayloadFixture, minimalConfig, tempDir } from "./helpers.js";
 import { postgresTestDatabases } from "./helpers/postgres-database.js";
@@ -32,15 +32,13 @@ afterEach(async () => {
   opened.clear();
 });
 afterAll(() => databases.dropAll());
-const fixture = async (backend: "JSON" | "Postgres", withSignature = false) => {
+const fixture = async (withSignature = false) => {
   const dir = await tempDir();
-  const store =
-    backend === "JSON"
-      ? await JsonFileCommitteeStore.open(dir)
-      : await PostgresCommitteeStore.open((await databases.create()).url);
+  const store = await PostgresCommitteeStore.open(
+    (await databases.create()).url,
+  );
   opened.add(store);
   const base = minimalConfig({
-    dir,
     manifestPath: "/public-manifest",
     deploymentInfoPath: "/public-deployment",
     signerSeed: "01".repeat(32),
@@ -171,7 +169,7 @@ it.each([
 ])(
   "joins a physical sibling before CQ refusal (%j)",
   async ({ expire, fail }) => {
-    const f = await fixture("JSON");
+    const f = await fixture();
     let arrived!: () => void;
     const started = new Promise<void>((resolve) => {
       arrived = resolve;

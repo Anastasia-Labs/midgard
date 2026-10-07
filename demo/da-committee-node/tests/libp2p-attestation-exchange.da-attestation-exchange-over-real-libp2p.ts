@@ -49,7 +49,7 @@ import {
   validateDaCommittee,
   validateDaSignerMembership,
 } from "../src/signer.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
+import { type PostgresCommitteeStore } from "../src/store/postgres.js";
 import { bytesToHex } from "../src/utils/hex.js";
 import {
   makeObservedNode,
@@ -428,7 +428,7 @@ const startMembers = async ({
   })),
 }: {
   readonly committee: Committee;
-  readonly stores: readonly JsonFileCommitteeStore[];
+  readonly stores: readonly PostgresCommitteeStore[];
   readonly options?: readonly MemberOptions[];
 }): Promise<RunningMember[]> => {
   const keySources = stores.map(
@@ -571,7 +571,7 @@ const runCommitteeLifecycle = async ({
   readonly peerSignatureSource: "gossip" | "pull";
 }): Promise<readonly string[]> => {
   const committee = await makeCommittee(2);
-  const stores = await openStores(2);
+  const stores = await openStores(2, { serviceOwned: true });
   const members = await startMembers({
     committee,
     stores,
@@ -589,7 +589,6 @@ const runCommitteeLifecycle = async ({
     };
     const config = {
       ...minimalConfig({
-        dir: `${dir}/member-${signerIndex.toString()}`,
         manifestPath: `${dir}/manifest.json`,
         deploymentInfoPath: `${dir}/deployment.json`,
         signerSeed: committee.signerSeeds[signerIndex]!,
@@ -820,7 +819,7 @@ const signatureRecord = ({
 });
 
 const saveVerifiedPayload = async (
-  store: JsonFileCommitteeStore,
+  store: PostgresCommitteeStore,
   {
     deploymentFingerprint,
     headerHash,
