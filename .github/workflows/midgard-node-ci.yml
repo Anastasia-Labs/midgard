@@ -503,6 +503,43 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm --dir demo/lucid-midgard test
 
+  # The node transport sidecar every role reads the node through: its Go
+  # session against the mock node-to-client node, and the TypeScript client
+  # against the built sidecar and the fake sidecar callers' tests use.
+  l1-node-transport:
+    name: l1-node-transport
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: demo/l1-node-transport/native/go.sum
+      - uses: ./.github/actions/demo-setup
+      - name: Vet and test the transport sidecar
+        run: |
+          set -euo pipefail
+          test "$(go version | awk '{print $3}')" = "go1.26.5"
+          go -C demo/l1-node-transport/native mod verify
+          pnpm --dir demo/l1-node-transport run native:test
+      # The guarded build stamps the binary with its source and compiler
+      # identity; verbose so a compiler error reaches this log.
+      - name: Build the transport sidecar
+        env:
+          MIDGARD_CONTRIB_VERBOSE: "1"
+        run: pnpm --dir demo/l1-node-transport run native:build
+      - name: Build, typecheck and test the transport client
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          pnpm --dir demo/l1-node-transport run build
+          pnpm --dir demo/l1-node-transport run typecheck
+          pnpm --dir demo/l1-node-transport test
+      - name: Format check the transport package
+        if: ${{ !cancelled() }}
+        run: pnpm --dir demo/l1-node-transport run format-check
+
   midgard-core:
     name: midgard-core
     needs: [aiken-fork, blueprint]
@@ -679,9 +716,9 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm --dir demo/midgard-watcher run format-check
 
-  # The watcher suite. The Go helper's own tests, compose stack and image are
-  # covered by midgard-watcher-ci.yml. The helper is compiled here because the
-  # watcher suite drives the built binary through its TypeScript owner.
+  # The watcher suite. Its compose stack and image are covered by
+  # midgard-watcher-ci.yml; its node reads go through the node transport,
+  # which the suite replaces with the transport's fake sidecar.
   # Every test file runs in its own fork and re-imports the SDK and validation
   # graph, so on a two-fork hosted runner wall time grows with the file count.
   # Sharded like fault-proofs once ~210 files outgrew one 45-minute job.
@@ -696,20 +733,10 @@ jobs:
         shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version: "1.26.0"
-          cache-dependency-path: demo/midgard-watcher/native-chain-sync/go.sum
       - uses: ./.github/actions/demo-setup
         with:
           blueprint: "true"
           interactive-blueprint: "true"
-      # The guarded build stamps the binary with its source and compiler
-      # identity; verbose so a compiler error reaches this log.
-      - name: Build the native chain-sync helper the watcher suite drives
-        env:
-          MIDGARD_CONTRIB_VERBOSE: "1"
-        run: pnpm --dir demo/midgard-watcher run native:build
       # Vitest loads every workspace package from source, but
       # tests/runtime/authority-initialization-command.test.ts runs the built
       # CLI (dist/cli.js) in a plain Node child, which imports the built core,
@@ -1044,6 +1071,7 @@ jobs:
       - node-image
       - golden-channels
       - lucid-midgard
+      - l1-node-transport
       - midgard-core
       - midgard-sdk
       - midgard-validation

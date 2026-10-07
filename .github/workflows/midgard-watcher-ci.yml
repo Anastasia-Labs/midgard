@@ -9,6 +9,7 @@ on:
       - "scripts/pnpm.mjs"
       - "scripts/bin/**"
       - "demo/midgard-watcher/**"
+      - "demo/l1-node-transport/**"
       - "demo/midgard-fault-proofs/**"
       - "demo/midgard-sdk/**"
       - "demo/midgard-core/**"
@@ -28,6 +29,7 @@ on:
       - "scripts/pnpm.mjs"
       - "scripts/bin/**"
       - "demo/midgard-watcher/**"
+      - "demo/l1-node-transport/**"
       - "demo/midgard-fault-proofs/**"
       - "demo/midgard-sdk/**"
       - "demo/midgard-core/**"
@@ -56,22 +58,23 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: "1.26.0"
-          cache-dependency-path: demo/midgard-watcher/native-chain-sync/go.sum
-      - name: Assert and test pinned native chain-sync helper
-        working-directory: demo/midgard-watcher/native-chain-sync
+          go-version: "1.26.5"
+          cache-dependency-path: demo/l1-node-transport/native/go.sum
+      - name: Assert and test the pinned node transport sidecar
+        working-directory: demo/l1-node-transport/native
         run: |
           set -euo pipefail
-          test "$(go version | awk '{print $3}')" = "go1.26.0"
+          test "$(go version | awk '{print $3}')" = "go1.26.5"
           go mod verify
+          go vet ./...
           go test ./...
-          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -buildid=" -o /tmp/midgard-chain-sync .
-          test -x /tmp/midgard-chain-sync
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -buildid=" -o /tmp/midgard-l1-node-transport .
+          test -x /tmp/midgard-l1-node-transport
       # The watcher's TypeScript build, typecheck, format check and test suite
       # run in midgard-node-ci.yml (its lint in that workflow's workspace lint
       # job), which triggers on a superset of these paths and builds the Aiken
       # blueprint those tests read. This job covers what that one does not:
-      # the native helper, the compose stack and the production image.
+      # the node transport sidecar, the compose stack and the production image.
       # The operator launch surface: the compose file must render from
       # `.env.example` alone, like the node stacks in midgard-node-ci.yml.
       - name: Render the watcher compose stack from .env.example

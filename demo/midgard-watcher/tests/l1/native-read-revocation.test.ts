@@ -1,4 +1,3 @@
-import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import type { Duplex } from "node:stream";
@@ -27,9 +26,9 @@ import {
   config,
   INTERSECTION,
   readIdentityFixture,
-  spawnFixture,
   waitFor,
 } from "./native-chain-sync.config.js";
+import { fakeNodeTransport } from "./native-chain-sync.fake-transport.js";
 
 const deferred = () => {
   let resolve!: () => void;
@@ -83,7 +82,7 @@ const stalledOgmios = async () => {
   };
 };
 
-it.each(["exit", "error", "abort", "rollback"] as const)(
+it.each(["exit", "stream_failure", "abort", "rollback"] as const)(
   "aborts the actual native read transport on %s after native provenance revocation",
   async (lifecycle) => {
     const ogmios = await stalledOgmios();
@@ -134,7 +133,7 @@ it.each(["exit", "error", "abort", "rollback"] as const)(
     });
     const nativeSignal = new AbortController();
     const gate = deferred();
-    let child!: ChildProcessWithoutNullStreams;
+    const transport = await fakeNodeTransport();
     let receipt: WatcherNativeChainSyncEventReceipt | undefined;
     let event: WatcherNativeChainSyncEvent | undefined;
     let retiredReceiptAtHook = false;
@@ -159,7 +158,7 @@ it.each(["exit", "error", "abort", "rollback"] as const)(
       onRollbackArrived: scopes.invalidate,
     });
     const common = {
-      binaryPath: "/test/native-chain-sync",
+      binaryPath: transport.binaryPath,
       watcherConfig,
       startupTimeoutMs: 2000,
       onEvent: handler,
@@ -168,10 +167,6 @@ it.each(["exit", "error", "abort", "rollback"] as const)(
           event !== undefined &&
           watcherNativeChainSyncEventReceipt(event) === null;
         scopes.invalidate();
-      },
-      unsafeSpawnForTest: () => {
-        child = spawnFixture("honest")();
-        return child;
       },
       unsafeReadIdentityFileForTest: readIdentityFixture,
     };
@@ -188,14 +183,8 @@ it.each(["exit", "error", "abort", "rollback"] as const)(
           });
     try {
       await waitFor(() => ogmios.requests() === 1);
-      if (lifecycle === "exit") {
-        const exited = new Promise<void>((resolve) =>
-          child.once("exit", () => resolve()),
-        );
-        child.kill("SIGTERM");
-        await exited;
-      } else if (lifecycle === "error")
-        child.emit("error", new Error("native lifecycle fault"));
+      if (lifecycle === "exit") process.kill(transport.pid(), "SIGKILL");
+      else if (lifecycle === "stream_failure") transport.failStreams();
       else if (lifecycle === "abort")
         nativeSignal.abort(new Error("native lifetime aborted"));
       expect(await read).toBeInstanceOf(WatcherStateQueueReadRetired);
@@ -217,11 +206,11 @@ it.each(["exit", "error", "abort", "rollback"] as const)(
 
 it("runs native cleanup and reports an unexpected lifetime-hook fault", async () => {
   const gate = deferred();
-  let child!: ChildProcessWithoutNullStreams;
+  const transport = await fakeNodeTransport();
   let reached = false;
   const fault = new Error("infallible lifetime hook failed");
   const runtime = await startWatcherNativeChainSync({
-    binaryPath: "/test/native-chain-sync",
+    binaryPath: transport.binaryPath,
     watcherConfig: config(),
     intersection: INTERSECTION,
     startupTimeoutMs: 2000,
@@ -232,15 +221,11 @@ it("runs native cleanup and reports an unexpected lifetime-hook fault", async ()
     onAuthorityRevoked: () => {
       throw fault;
     },
-    unsafeSpawnForTest: () => {
-      child = spawnFixture("honest")();
-      return child;
-    },
     unsafeReadIdentityFileForTest: readIdentityFixture,
   });
   try {
     await waitFor(() => reached);
-    child.emit("error", new Error("native lifecycle fault"));
+    transport.failStreams();
     const close = runtime.close();
     const rejected = expect(close).rejects.toMatchObject({
       message: "native read lifetime revocation failed",
@@ -251,7 +236,6 @@ it("runs native cleanup and reports an unexpected lifetime-hook fault", async ()
     await expect(runtime.done).rejects.toThrow(
       "native read lifetime revocation failed",
     );
-    expect(child.killed).toBe(true);
   } finally {
     gate.resolve();
     await runtime.close().catch(() => undefined);

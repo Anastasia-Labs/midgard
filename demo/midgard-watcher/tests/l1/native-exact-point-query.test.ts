@@ -1,6 +1,9 @@
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
+import { closeSharedL1NodeTransports } from "@al-ft/l1-node-transport";
+import { writeFakeSidecar } from "@al-ft/l1-node-transport/testing/fake-sidecar";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -15,31 +18,33 @@ import {
 } from "../support/native-exact-point-query-config.js";
 const predecessor = { blockHash: "aa".repeat(32), blockNo: "9", slot: "100" };
 const target = { blockHash: "bb".repeat(32), blockNo: "10", slot: "101" };
+const handlerModule = fileURLToPath(
+  new URL("../support/native-chain-sync-handler.mjs", import.meta.url),
+);
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
   for (const close of cleanup.splice(0).reverse()) await close();
+  await closeSharedL1NodeTransports();
 });
 const input = async (mode = "query_idle", timeoutMs = 2000) => {
-  const dir = await mkdtemp(join("/var/tmp", "native-exact-query-"));
+  const dir = await realpath(
+    await mkdtemp(join("/var/tmp", "native-exact-query-")),
+  );
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   const nodeConfig = join(dir, "node.json");
   const genesisConfig = join(dir, "genesis.json");
-  const binaryPath = join(dir, "helper");
+  const binaryPath = join(dir, "node-transport");
   await writeFile(genesisConfig, GENESIS_BYTES);
   await writeFile(
     nodeConfig,
     JSON.stringify({ ShelleyGenesisFile: genesisConfig }),
   );
-  await writeFile(
-    binaryPath,
-    `#!${process.execPath}
-if (process.argv[2] === "--exact-point-service") await import(${JSON.stringify(new URL("../support/native-exact-point-service-shim.mjs", import.meta.url).href)});
-process.argv[2] = ${JSON.stringify(mode)};
-await import(${JSON.stringify(new URL("../support/native-chain-sync-fixture.mjs", import.meta.url).href)});
-`,
-  );
-  await chmod(binaryPath, 0o700);
+  await writeFakeSidecar({
+    path: binaryPath,
+    handlerModule,
+    options: { mode, magic: 1 },
+  });
   return {
     binaryPath,
     watcherConfig: config(nodeConfig, genesisConfig),
@@ -98,14 +103,6 @@ describe("bounded native exact-point query", () => {
   });
   it.each([
     [
-      "wrong_operation",
-      "native chain-sync ready identity differs from startup authority",
-    ],
-    [
-      "missing_operation",
-      "native chain-sync ready event has unknown or missing fields",
-    ],
-    [
       "query_wrong_target",
       "native exact-point query returned a different target",
     ],
@@ -113,10 +110,17 @@ describe("bounded native exact-point query", () => {
   ])("refuses %s", async (mode, expected) => {
     await expect(open(mode)).rejects.toThrow(expected);
   });
-  it.each(["query_exit", "query_extra"])("revokes on %s", async (mode) => {
+  it.each(["query_exit", "query_fail"])("revokes on %s", async (mode) => {
     const query = await open(mode);
     await delay(200);
     expect(() => readWatcherNativeExactPointQuery(query.receipt)).toThrow();
+  });
+  it("holds a block past the target behind the query's single credit", async () => {
+    const query = await open("query_extra");
+    await delay(200);
+    expect(
+      readWatcherNativeExactPointQuery(query.receipt).event.blockHash,
+    ).toBe(target.blockHash);
   });
   it("expires monotonically even when wall time moves backward", async () => {
     const query = await open("query_idle", 400);

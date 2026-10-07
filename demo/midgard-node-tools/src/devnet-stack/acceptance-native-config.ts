@@ -69,7 +69,7 @@ export const loadAcceptanceNativeReadConfig = async (
   requireFreshDists(layout, "read-only payout acceptance");
   const stamp = codeStamp(runtimeDistTargets(layout));
   const paths = releasePaths(layout);
-  const binaryPath = join(layout.bin, "midgard-chain-sync");
+  const binaryPath = join(layout.bin, "midgard-l1-node-transport");
   const files = [
     layout.watcherProcessConfig,
     layout.watcherRuntimeConfig,

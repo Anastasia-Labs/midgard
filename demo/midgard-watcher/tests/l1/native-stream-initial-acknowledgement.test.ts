@@ -10,15 +10,14 @@ import {
 import { parseWatcherConfig } from "../../src/runtime/config.js";
 import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
 
-describe("native fixture initial stream acknowledgement", () => {
+describe("native stream initial acknowledgement", () => {
   it("emits the selected intersection once, ahead of every forward frame", async () => {
     const fixture = await createSyntheticUserEventOriginFixture({
       nativeTipMode: "controlled",
-      nativeStreamInitialAcknowledgement: true,
     });
     let stream: WatcherNativeChainSyncRuntime | undefined;
     try {
-      // The tip the helper reports is set here, from the fixture's own block
+      // The tip the node reports is set here, from the fixture's own block
       // registry, so nothing in the expected frames is read back out of the
       // supervisor's view of the stream it is being tested on.
       const tip = {

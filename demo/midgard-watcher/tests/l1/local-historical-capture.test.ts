@@ -3,6 +3,8 @@ import "node:fs/promises";
 import "node:path";
 import "node:perf_hooks";
 import "node:url";
+import "@al-ft/l1-node-transport";
+import "@al-ft/l1-node-transport/testing/fake-sidecar";
 import "@al-ft/midgard-core/codec/hash";
 import "@al-ft/midgard-core/deployment-manifest-identity";
 import "@al-ft/midgard-fault-proofs";
@@ -22,11 +24,13 @@ import "../support/deployment-authority-fixture.js";
 import "./local-historical-capture.config.js";
 
 import { createHash } from "node:crypto";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
+import { closeSharedL1NodeTransports } from "@al-ft/l1-node-transport";
+import { writeFakeSidecar } from "@al-ft/l1-node-transport/testing/fake-sidecar";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
@@ -86,6 +90,9 @@ import {
 const rawPath = fileURLToPath(
   new URL("../support/conway-block.hex", import.meta.url),
 );
+const handlerModule = fileURLToPath(
+  new URL("../support/local-historical-capture-handler.mjs", import.meta.url),
+);
 
 let referenceFixture: ReferenceFixture;
 
@@ -124,16 +131,19 @@ const cleanup: (() => Promise<void>)[] = [];
 
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
+  await closeSharedL1NodeTransports();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 const fixture = async (options: FixtureOptions = {}) => {
-  const dir = await mkdtemp(join("/var/tmp", "local-historical-capture-"));
+  const dir = await realpath(
+    await mkdtemp(join("/var/tmp", "local-historical-capture-")),
+  );
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   const nodeConfig = join(dir, "node.json");
   const genesisConfig = join(dir, "genesis.json");
-  const binaryPath = join(dir, "helper");
+  const binaryPath = join(dir, "node-transport");
   const logPath = join(dir, "events.jsonl");
   await writeFile(genesisConfig, GENESIS_BYTES);
   await writeFile(
@@ -141,52 +151,21 @@ const fixture = async (options: FixtureOptions = {}) => {
     JSON.stringify({ ShelleyGenesisFile: genesisConfig }),
   );
   await writeFile(logPath, "");
-  // The existing executable fixture still owns ready/stdin/stdout/lifecycle.
-  // Only its ordinary payload is adapted to existing Conway bytes, without
-  // mocking the supervisor, query receipt, native admission or source factory.
-  await writeFile(
-    binaryPath,
-    `#!${process.execPath}
-import { appendFileSync, readFileSync } from "node:fs"; if (process.argv[2] === "--exact-point-service") await import(${JSON.stringify(new URL("../support/native-exact-point-service-shim.mjs", import.meta.url).href)});
-const logPath = ${JSON.stringify(logPath)};
-const records = readFileSync(logPath, "utf8").trim().split("\\n").filter(Boolean).map(JSON.parse);
-const query = records.filter(x => x.kind === "start").length + 1;
-const log = (kind, value) => appendFileSync(logPath, JSON.stringify({kind, query, ...(value === undefined ? {} : {value})}) + "\\n");
-const previousPid = records.findLast(x => x.kind === "start")?.value?.pid;
-let previousProcessAlive = false;
-if (previousPid !== undefined) {
-  try { process.kill(previousPid, 0); previousProcessAlive = true; }
-  catch (error) { if (error.code !== "ESRCH") throw error; }
-}
-log("start", {pid: process.pid, previousProcessAlive});
-process.once("exit", () => log("stop"));
-const modes = ${JSON.stringify(options.modes ?? ["query_idle", "query_idle"])};
-process.argv[2] = modes[(query - 1) % modes.length];
-const metadata = ${JSON.stringify(metadata)};
-const raw = readFileSync(${JSON.stringify(rawPath)}, "utf8").trim();
-const canonical = value => {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value !== null && typeof value === "object") return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]));
-  return value;
-};
-const output = process.stdout.write.bind(process.stdout);
-process.stdout.write = (chunk, ...args) => {
-  const value = JSON.parse(chunk.toString());
-  if (value.kind === "ready") value.currentTip = {kind:"point", blockHash: "77".repeat(32), blockNo: (BigInt(metadata.blockNo) + 1n).toString(), slot: (BigInt(metadata.slot) + 1n).toString()};
-  if (value.kind === "roll_forward") {
-    Object.assign(value, metadata, {rawBlockCbor: raw});
-    if (query % 2 === 0 && ${JSON.stringify(options.secondBlockType ?? null)} !== null) value.blockType = ${JSON.stringify(options.secondBlockType ?? null)};
-    const offsets = ${JSON.stringify(options.tipOffsets ?? [3000, 5000])};
-    const depthOffset = BigInt(offsets[(query - 1) % offsets.length]);
-    value.tip = {kind:"point", blockHash: (query % 2 === 0 ? "99" : "88").repeat(32), blockNo: (BigInt(metadata.blockNo) + depthOffset).toString(), slot: (BigInt(metadata.slot) + depthOffset).toString()};
-  }
-  log(value.kind, value);
-  return output(JSON.stringify(canonical(value)) + "\\n", ...args);
-};
-await import(${JSON.stringify(new URL("../support/native-chain-sync-fixture.mjs", import.meta.url).href)});
-`,
-  );
-  await chmod(binaryPath, 0o700);
+  // The fake node transport serves each exact-point query the unchanged
+  // ordinary Conway block, without mocking the supervisor, query receipt,
+  // native admission or source factory.
+  await writeFakeSidecar({
+    path: binaryPath,
+    handlerModule,
+    options: {
+      logPath,
+      rawPath,
+      metadata,
+      modes: options.modes ?? ["query_idle", "query_idle"],
+      tipOffsets: options.tipOffsets ?? [3000, 5000],
+      secondBlockType: options.secondBlockType ?? null,
+    },
+  });
   const logs = async (): Promise<Log[]> =>
     (await readFile(logPath, "utf8"))
       .trim()
@@ -515,7 +494,7 @@ describe("owned local historical capture", () => {
       );
       expect(
         records.find(({ kind, query }) => kind === "start" && query === 2)
-          ?.value?.previousProcessAlive,
+          ?.value?.previousQueryOpen,
       ).toBe(false);
       const delivered = records.find(
         ({ kind, query }) => kind === "roll_forward" && query === 2,
@@ -626,18 +605,12 @@ describe("owned local historical capture", () => {
       expect(await outcome).toMatchObject({
         message: expect.stringMatching(/cancel|aborted/),
       });
-      const pid = (await f.logs()).find(({ kind }) => kind === "start")?.value
-        ?.pid;
-      expect(typeof pid).toBe("number");
-      await f.waitFor(() => {
-        try {
-          process.kill(pid as number, 0);
-          return false;
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-          return true;
-        }
-      });
+      // The cancelled query's stream is closed at the node.
+      await f.waitFor(async () =>
+        (await f.logs()).some(
+          ({ kind, query }) => kind === "stop" && query === 1,
+        ),
+      );
     },
   );
 
@@ -690,7 +663,7 @@ describe("owned local historical capture", () => {
     expect(await f.logs()).toHaveLength(0);
   });
 
-  it("revokes on observed helper exit without treating an idle query as monitoring", async () => {
+  it("revokes on observed sidecar exit without treating an idle query as monitoring", async () => {
     const f = await fixture({ modes: ["query_idle", "query_exit"] });
     const capture = await f.open();
     await f.waitFor(async () =>

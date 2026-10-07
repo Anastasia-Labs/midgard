@@ -83,7 +83,7 @@ export const serviceSpecs = (
           layout,
           run,
           identities,
-          chainSyncBinary: artifacts.chainSyncBinary,
+          transportBinary: artifacts.transportBinary,
           index,
         }),
         healthUrl: `${base}/healthz`,

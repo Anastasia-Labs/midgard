@@ -9,16 +9,17 @@ export function nativeLedgerPaths(processes: StackProcesses) {
     socketDirectory: join(processes.config.nodeRoot, "cardano/ipc"),
     binary: resolve(
       processes.config.nodeRoot,
-      "../midgard-watcher/dist/native/midgard-chain-sync",
+      "../l1-node-transport/dist/native/midgard-l1-node-transport",
     ),
   };
 }
-/** The one chain-sync binary, built on the host with the pinned Go toolchain. */
-const CONTAINER_CHAIN_SYNC_BINARY = "/app/native-ledger/midgard-chain-sync";
+/** The node transport sidecar, built on the host with the pinned Go toolchain. */
+const CONTAINER_TRANSPORT_BINARY =
+  "/app/native-ledger/midgard-l1-node-transport";
 export function containerChainSync(processes: StackProcesses) {
   return {
-    path: CONTAINER_CHAIN_SYNC_BINARY,
-    volume: `${nativeLedgerPaths(processes).binary}:${CONTAINER_CHAIN_SYNC_BINARY}:ro`,
+    path: CONTAINER_TRANSPORT_BINARY,
+    volume: `${nativeLedgerPaths(processes).binary}:${CONTAINER_TRANSPORT_BINARY}:ro`,
   };
 }
 /**

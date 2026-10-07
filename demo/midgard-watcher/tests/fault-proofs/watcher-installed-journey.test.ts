@@ -264,7 +264,6 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         nativeTipBaseDepth: 40,
         blockSlotInterval: 20,
         nativeTipMode: "controlled",
-        nativeStreamInitialAcknowledgement: true,
         published: {
           deployment: configuration.nativeDeployment,
           inclusionSlot: initializationStatus.confirmation.slot,

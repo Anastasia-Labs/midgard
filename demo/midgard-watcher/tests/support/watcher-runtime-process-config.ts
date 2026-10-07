@@ -113,7 +113,7 @@ export const writeWatcherRuntimeProcessConfig = async (
     deploymentAuthorityPath: join(directory, "deployment-authority.json"),
     ruleBundlePath: join(directory, "rule-bundle.json"),
     fundingProfileBundlePath: join(directory, "funding-profiles.json"),
-    nativeChainSyncBinaryPath: "/usr/local/bin/midgard-chain-sync",
+    nativeChainSyncBinaryPath: "/usr/local/bin/midgard-l1-node-transport",
     trustedHeadAuthorityEndpoint: "http://127.0.0.1:43123",
     operationsEndpoint: "http://127.0.0.1:43124",
     httpBearerSecretSource: environment("MIDGARD_WATCHER_TRUSTED_HEAD_BEARER"),

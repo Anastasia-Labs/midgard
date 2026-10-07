@@ -8,6 +8,8 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
+import { closeSharedL1NodeTransports } from "@al-ft/l1-node-transport";
+import { writeFakeSidecar } from "@al-ft/l1-node-transport/testing/fake-sidecar";
 import {
   encodeCborArrayRaw,
   encodeCborBytes,
@@ -28,10 +30,79 @@ import { config as baseConfig } from "midgard-watcher/tests/l1/native-chain-sync
 import type { HistoryWindowPoint } from "../../src/devnet-stack/history-native-window-proof.js";
 
 /**
- * Replaces the synthetic native's control file by rename. The native re-reads
- * it every 10 ms from its own process; a truncate-then-write lets that read see
- * an empty file, whose JSON.parse failure kills the native and ends the stream
- * under test.
+ * The node behind the fixture's fake node transport, written into the fixture
+ * root because compiled probes bundle this module away from its source
+ * directory. Each chain-sync stream logs its first intersection point to
+ * `startsPath`, intersects there on the chain in `eventsPath` (re-read per
+ * stream), delivers the rows after it, then every event appended to
+ * `controlPath`. While `stallPath` exists a new stream intersects and then
+ * delivers nothing. Rows and controls are watcher native chain-sync events.
+ */
+const HANDLER_SOURCE = String.raw`
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
+
+const point = (value) =>
+  value.kind === "origin"
+    ? "origin"
+    : { slot: BigInt(value.slot), hash: value.blockHash };
+const tip = (value) =>
+  value.kind === "origin"
+    ? { point: "origin", blockNo: 0n }
+    : { point: point(value), blockNo: BigInt(value.blockNo) };
+const deliver = (stream, event) =>
+  event.kind === "roll_forward"
+    ? stream.rollForward({
+        point: point({ ...event, kind: "point" }),
+        blockNo: BigInt(event.blockNo),
+        blockType: Number(event.blockType),
+        prevHash: event.prevHash === "" ? null : event.prevHash,
+        tip: tip(event.tip),
+        block: Buffer.from(event.rawBlockCbor, "hex"),
+      })
+    : stream.rollBackward({ point: point(event.point), tip: tip(event.tip) });
+
+export default (options) => ({
+  openStream: ({ points }, stream) => {
+    const first = points[0];
+    appendFileSync(
+      options.startsPath,
+      JSON.stringify(
+        first === "origin"
+          ? { kind: "origin" }
+          : { kind: "point", blockHash: first.hash, slot: String(first.slot) },
+      ) + "\n",
+    );
+    const rows = JSON.parse(readFileSync(options.eventsPath, "utf8"));
+    const current = tip(rows.at(-1).tip);
+    const index =
+      first === "origin"
+        ? -1
+        : rows.findIndex(
+            (row) => row.blockHash === first.hash && BigInt(row.slot) === first.slot,
+          );
+    if (index < 0 && first !== "origin") return { notFound: current };
+    if (existsSync(options.stallPath)) return { intersection: first, tip: current };
+    for (const row of rows.slice(index + 1)) deliver(stream, row);
+    let seen = 0;
+    let closed = false;
+    stream.onClose(() => {
+      closed = true;
+    });
+    const timer = setInterval(() => {
+      if (closed) return clearInterval(timer);
+      const controls = JSON.parse(readFileSync(options.controlPath, "utf8"));
+      while (seen < controls.length) deliver(stream, controls[seen++]);
+    }, 10);
+    return { intersection: first, tip: current };
+  },
+});
+`;
+
+/**
+ * Replaces the synthetic node's control file by rename. The node re-reads it
+ * every 10 ms from the sidecar process; a truncate-then-write lets that read
+ * see an empty file, whose JSON.parse failure kills the sidecar and fails the
+ * stream under test.
  */
 export const writeSyntheticControls = (
   controlPath: string,
@@ -105,7 +176,7 @@ const emptyBlock = (
     body.free();
   }
 };
-export const windowFixture = (last: number) => {
+export const windowFixture = async (last: number) => {
   const root = mkdtempSync("/var/tmp/codex-rel-history-window-");
   const directories: readonly [string, string] = [
     join(root, "a"),
@@ -190,25 +261,13 @@ export const windowFixture = (last: number) => {
     },
   };
   const stallPath = join(root, "synthetic-stall");
-  const binaryPath = join(root, "synthetic-native.mjs");
-  writeFileSync(
-    binaryPath,
-    `#!/usr/bin/env node
-import {readFileSync,appendFileSync,existsSync} from "node:fs";import {createHash} from "node:crypto";import {createInterface} from "node:readline";
-const canon=v=>v===null||typeof v!=="object"?JSON.stringify(v):Array.isArray(v)?"["+v.map(canon).join(",")+"]":"{"+Object.keys(v).sort().map(k=>JSON.stringify(k)+":"+canon(v[k])).join(",")+"}";
-const reader=createInterface({input:process.stdin});const line=await new Promise(r=>reader.once("line",r));const s=JSON.parse(line);const rows=JSON.parse(readFileSync(${JSON.stringify(eventsPath)},"utf8"));const tip=rows[rows.length-1].tip;
-appendFileSync(${JSON.stringify(startsPath)},JSON.stringify(s.intersection)+"\\n");
-const emit=v=>new Promise(r=>process.stdout.write(canon(v)+"\\n",r));
-const stop=()=>process.exit(0);process.once("SIGTERM",stop);process.once("SIGINT",stop);
-await emit({schemaVersion:s.schemaVersion,kind:"ready",authorityNodeId:s.authorityNodeId,currentTip:tip,genesisIdentitySha256:s.genesisIdentitySha256,network:s.network,networkMagic:s.networkMagic,operation:s.operation,selectedIntersection:s.intersection,socketPath:s.socketPath,startupDigest:createHash("sha256").update(line).digest("hex")});
-await emit({schemaVersion:s.schemaVersion,kind:"roll_backward",point:s.intersection,tip});
-const index=s.intersection.kind==="origin"?-1:rows.findIndex(e=>e.blockHash===s.intersection.blockHash&&e.slot===s.intersection.slot);if(s.intersection.kind!=="origin"&&index<0)process.exit(69);
-if(existsSync(${JSON.stringify(stallPath)}))await new Promise(()=>{});
-for(let n=index+1;n<rows.length;n++)await emit(rows[n]);
-let seen=0;setInterval(async()=>{const controls=JSON.parse(readFileSync(${JSON.stringify(controlPath)},"utf8"));while(seen<controls.length)await emit(controls[seen++]);},10);
-`,
-    { mode: 0o700 },
-  );
+  const handlerModule = join(root, "synthetic-node.mjs");
+  writeFileSync(handlerModule, HANDLER_SOURCE);
+  const binaryPath = await writeFakeSidecar({
+    path: join(root, "synthetic-node-transport"),
+    handlerModule,
+    options: { eventsPath, controlPath, startsPath, stallPath },
+  });
   const runtimes: WatcherNativeChainSyncRuntime[] = [];
   const startMain = async (
     onEvent: (event: WatcherNativeChainSyncEvent) => Promise<void>,
@@ -270,6 +329,7 @@ let seen=0;setInterval(async()=>{const controls=JSON.parse(readFileSync(${JSON.s
     close: async () => {
       try {
         await Promise.all(runtimes.map((r) => r.close()));
+        await closeSharedL1NodeTransports();
       } finally {
         rmSync(root, { recursive: true, force: true });
       }

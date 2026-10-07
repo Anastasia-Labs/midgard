@@ -80,10 +80,10 @@ it("generates committee configurations accepted by the real loader with persiste
       join(directory, "cardano/ipc/node.socket"),
     );
     expect(parseNativeLedgerSettings(containerLedger.env)?.binaryPath).toBe(
-      "/app/native-ledger/midgard-chain-sync",
+      "/app/native-ledger/midgard-l1-node-transport",
     );
     expect(containerLedger.volumes).toContain(
-      `${hostLedger!.binaryPath}:/app/native-ledger/midgard-chain-sync:ro`,
+      `${hostLedger!.binaryPath}:/app/native-ledger/midgard-l1-node-transport:ro`,
     );
     const env: Record<string, string> = {
       DA_THRESHOLD: "2",
@@ -168,11 +168,11 @@ it("generates committee configurations accepted by the real loader with persiste
       });
       expect(loaded.l1Source.sourceMode).toBe("local_node");
       expect(loaded.nativeLedger?.binaryPath).toBe(
-        "/app/native-ledger/midgard-chain-sync",
+        "/app/native-ledger/midgard-l1-node-transport",
       );
       // The host's pinned build, the same binary the node container mounts.
       expect(services[`da-committee-${member.signerIndex}`]!.volumes).toContain(
-        `${hostLedger!.binaryPath}:/app/native-ledger/midgard-chain-sync:ro`,
+        `${hostLedger!.binaryPath}:/app/native-ledger/midgard-l1-node-transport:ro`,
       );
       expect(loaded.signerIndex).toBe(member.signerIndex);
       expect(loaded.signerKeySource).toBe(

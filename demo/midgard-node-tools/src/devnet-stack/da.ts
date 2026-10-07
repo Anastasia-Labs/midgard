@@ -172,10 +172,10 @@ export const committeeEnvironment = (input: {
   readonly layout: Layout;
   readonly run: RunEnv;
   readonly identities: Identities;
-  readonly chainSyncBinary: string;
+  readonly transportBinary: string;
   readonly index: number;
 }): Record<string, string> => {
-  const { layout, run, identities, chainSyncBinary, index } = input;
+  const { layout, run, identities, transportBinary, index } = input;
   const member = committeeMembers(identities)[index];
   if (member === undefined) throw new Error(`no committee member ${index}`);
   const data = layout.committeeData(index);
@@ -193,7 +193,7 @@ export const committeeEnvironment = (input: {
     CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH: `${data}/chain-sync-cursor.json`,
     CARDANO_LOCAL_NODE_SOCKET_PATH: layout.cardanoSocket,
     CARDANO_LOCAL_NODE_CONFIG_PATH: layout.hostCardanoConfig,
-    CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH: chainSyncBinary,
+    CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH: transportBinary,
     CARDANO_NETWORK_MAGIC: String(run.networkMagic),
     // The committee refuses any value but its manifest's confirmation depth,
     // which is the compiled deployment profile's.

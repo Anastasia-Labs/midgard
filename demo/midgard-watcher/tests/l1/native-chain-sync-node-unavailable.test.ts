@@ -9,60 +9,56 @@ import {
   config,
   INTERSECTION,
   readIdentityFixture,
-  spawnFixture,
 } from "./native-chain-sync.config.js";
+import { fakeNodeTransport } from "./native-chain-sync.fake-transport.js";
 
-/** Spawns each scripted helper mode once, in order, then an honest helper. */
-const scripted = (modes: readonly string[]) => {
-  const spawned: string[] = [];
-  return {
-    spawned,
-    spawn: () => {
-      const mode = modes[spawned.length] ?? "honest";
-      spawned.push(mode);
-      return spawnFixture(mode)();
-    },
-  };
-};
-
-const startWith = (
-  modes: readonly string[],
+/**
+ * Starts against a node that takes each scripted step once, in order, then
+ * follows honestly. "hello:<code>" refuses a session's handshake; every other
+ * step answers one chain-sync open.
+ */
+const startWith = async (
+  steps: readonly string[],
   extra: Partial<Parameters<typeof startWatcherNativeChainSyncWithRetry>[0]>,
+  mode = "honest",
 ) => {
-  const helper = scripted(modes);
+  const transport = await fakeNodeTransport(mode, { steps });
   const warn = vi.fn();
   const runtime = startWatcherNativeChainSyncWithRetry({
-    binaryPath: "/test/native-chain-sync",
+    binaryPath: transport.binaryPath,
     watcherConfig: config(),
     intersectionCandidates: [INTERSECTION],
     startupTimeoutMs: 2_000,
     onEvent: async () => undefined,
-    unsafeSpawnForTest: helper.spawn,
     unsafeReadIdentityFileForTest: readIdentityFixture,
     warn,
     retryDelayMs: () => 1,
     ...extra,
   });
-  return { helper, warn, runtime };
+  const taken = () =>
+    transport.journal().filter((line) => line.startsWith("step "));
+  return { taken, warn, runtime };
 };
 
 describe("native chain-sync startup while the node does not answer", () => {
   it("waits for a restarting node and starts exactly one stream once it answers", async () => {
-    const { helper, warn, runtime } = startWith(
+    const { taken, warn, runtime } = await startWith(
       [
-        "fail:node_handshake_failed",
-        "fail:node_handshake_failed",
-        "fail:tip_query_failed",
+        "hello:node_handshake_failed",
+        "hello:node_handshake_failed",
+        "fail:node_unavailable",
       ],
       {},
     );
     const started = await runtime;
     try {
-      expect(helper.spawned).toEqual([
-        "fail:node_handshake_failed",
-        "fail:node_handshake_failed",
-        "fail:tip_query_failed",
-        "honest",
+      // The transport rides out the refused handshakes within the start
+      // bound; the refused open is retried as a new start.
+      expect(taken()).toEqual([
+        "step hello:node_handshake_failed",
+        "step hello:node_handshake_failed",
+        "step fail:node_unavailable",
+        "step honest",
       ]);
       expect(
         watcherNativeChainSyncAuthorityDetails(started.authority)
@@ -72,7 +68,7 @@ describe("native chain-sync startup while the node does not answer", () => {
       expect(warn).toHaveBeenCalledOnce();
       expect(warn).toHaveBeenCalledWith({
         event: "native_node_unavailable",
-        code: "node_handshake_failed",
+        code: "node_unavailable",
         retryAfterMs: 1,
       });
     } finally {
@@ -80,39 +76,56 @@ describe("native chain-sync startup while the node does not answer", () => {
     }
   });
 
-  it("waits out a node that does not become ready in time", async () => {
-    const { helper, runtime } = startWith(["no_ready"], {
+  it("stays unready past the start bound while the node refuses its handshake", async () => {
+    const { taken, warn, runtime } = await startWith(
+      ["hello:node_unreachable", "hello:node_unreachable"],
+      { startupTimeoutMs: 200 },
+    );
+    const started = await runtime;
+    try {
+      expect(taken()).toEqual([
+        "step hello:node_unreachable",
+        "step hello:node_unreachable",
+        "step honest",
+      ]);
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn).toHaveBeenCalledWith({
+        event: "native_node_unavailable",
+        code: "node_unreachable",
+        retryAfterMs: 1,
+      });
+    } finally {
+      await started.close();
+    }
+  });
+
+  it("waits out a node that does not answer the intersection in time", async () => {
+    const { taken, runtime } = await startWith(["no_ready"], {
       startupTimeoutMs: 200,
     });
     const started = await runtime;
     try {
-      expect(helper.spawned).toEqual(["no_ready", "honest"]);
+      expect(taken()).toEqual(["step no_ready", "step honest"]);
     } finally {
       await started.close();
     }
   });
 
   it.each([
-    "invalid_startup",
-    "connection_setup_failed",
-    "intersection_failed",
-  ])("still refuses startup on %s, at once", async (code) => {
-    const { helper, warn, runtime } = startWith([`fail:${code}`], {});
-    await expect(runtime).rejects.toMatchObject({
-      name: "NativeChainSyncStartupFailure",
-      code,
-    });
-    expect(helper.spawned).toEqual([`fail:${code}`]);
-    expect(warn).not.toHaveBeenCalled();
-  });
-
-  it("still refuses a helper whose readiness contradicts its startup", async () => {
-    const { helper, runtime } = startWith(["forged_ready"], {});
-    await expect(runtime).rejects.toThrow(
-      "native chain-sync ready identity differs from startup authority",
-    );
-    expect(helper.spawned).toEqual(["forged_ready"]);
-  });
+    ["invalid_points", ["fail:invalid_points"], "honest"],
+    ["intersection_failed", [], "retry_intersection"],
+  ] as const)(
+    "still refuses startup on %s, at once",
+    async (code, steps, mode) => {
+      const { taken, warn, runtime } = await startWith(steps, {}, mode);
+      await expect(runtime).rejects.toMatchObject({
+        name: "NativeChainSyncStartupFailure",
+        code,
+      });
+      expect(taken()).toHaveLength(1);
+      expect(warn).not.toHaveBeenCalled();
+    },
+  );
 
   it("bounds a native process start by its own two-minute floor, never the per-request timeout", () => {
     const base = config();

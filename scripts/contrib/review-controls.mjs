@@ -45,11 +45,8 @@ const controls = [
     name: "native-output-partition",
     file: "files.mjs",
     change: (text) =>
-      text.replace(
-        /!Object\.entries\(NATIVE_RECIPES\)\.some\([\s\S]*?\) &&/u,
-        "true &&",
-      ),
-    match: "watcher native outputs have separate ownership",
+      text.replace(/!nativeOutputs\.some\([\s\S]*?\) &&/u, "true &&"),
+    match: "native outputs have separate ownership",
     failure: /adding the separately guarded Go binary/u,
     testFile: "identity.test.mjs",
   },

@@ -1,16 +1,15 @@
-import "node:child_process";
 import "node:crypto";
 import "node:fs";
 import "node:fs/promises";
 import "node:path";
 import "node:perf_hooks";
+import "@al-ft/l1-node-transport";
 import "@al-ft/midgard-core/native-reward-account";
 import "../runtime/config.js";
 import "../storage/durable-store.js";
 import "./native-chain-sync.exact-record.js";
 import "./native-chain-sync.derive-watcher-native-genesis-identity.js";
-import "./native-chain-sync.exact-point-session.js";
-import "./native-chain-sync.exact-point-service.js";
+import "./native-chain-sync.transport-event.js";
 import "./native-chain-sync.start-native-supervisor.js";
 import "./native-chain-sync.open-watcher-native-exact-point-query.js";
 import "./native-chain-sync.start-watcher-native-chain-sync-with-retry.js";
@@ -19,7 +18,6 @@ export {
   parseWatcherNativeChainSyncEvent,
   type WatcherNativeNodeConfig,
 } from "./native-chain-sync.derive-watcher-native-genesis-identity.js";
-export { WATCHER_NATIVE_EXACT_POINT_SERVICE_FLAG } from "./native-chain-sync.exact-point-service.js";
 export {
   readWatcherNativeChainSyncEventReceipt,
   WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,

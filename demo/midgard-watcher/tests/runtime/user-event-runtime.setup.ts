@@ -145,7 +145,6 @@ export const setup = async (
   const fixture = await createSyntheticUserEventOriginFixture({
     nativeTipBaseDepth: 100,
     nativeTipMode,
-    nativeStreamInitialAcknowledgement: true,
     ruleBundleCommitment: computeWatcherRuleBundleCommitment(ruleBundle),
   });
   const directory = await mkdtemp("/var/tmp/user-event-runtime-release-");

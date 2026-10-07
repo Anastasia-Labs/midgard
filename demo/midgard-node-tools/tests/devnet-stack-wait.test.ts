@@ -88,7 +88,7 @@ const context = (): DeployContext => {
   const artifacts = {
     nativeOwnerBinary: "o",
     nativeOwnerSha256: "h",
-    chainSyncBinary: "c",
+    transportBinary: "c",
   };
   const layout = makeLayout(dir);
   mkdirSync(layout.state, { recursive: true });

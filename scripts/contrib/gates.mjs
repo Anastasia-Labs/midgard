@@ -60,6 +60,10 @@ export const GATES = {
       ],
     ],
     ["@al-ft/midgard-fault-proofs", ["tests/workflow-runtime.test.ts"]],
+    [
+      "@al-ft/l1-node-transport",
+      ["tests/frame.test.ts", "tests/transport.test.ts"],
+    ],
   ],
   lifecycle: [
     [

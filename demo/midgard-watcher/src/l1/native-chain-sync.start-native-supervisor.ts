@@ -2,42 +2,93 @@ import { constants } from "node:fs";
 import { access, realpath } from "node:fs/promises";
 import { isAbsolute, normalize } from "node:path";
 
+import {
+  type ChainSyncEvent,
+  type ChainSyncStream,
+  sharedL1NodeTransport,
+} from "@al-ft/l1-node-transport";
+
 import { watcherCanonicalJson } from "../storage/durable-store.js";
-import { watcherNativeChildDrain } from "./native-chain-sync.child-drain.js";
 import {
   deriveWatcherNativeGenesisIdentity,
-  lines,
   type NativeStreamInput,
-  parseJsonLine,
-  parseWatcherNativeChainSyncEvent,
-  productionSpawn,
   sha256,
 } from "./native-chain-sync.derive-watcher-native-genesis-identity.js";
-import { exactPointServiceSession } from "./native-chain-sync.exact-point-service.js";
 import {
   authorityDetails,
   authorityLiveness,
   eventReceiptBrand,
   eventReceipts,
-  exactRecord,
-  MAX_QUERY_STDOUT_BYTES,
-  MAX_STDERR_BYTES,
-  MAX_STDERR_DIAGNOSTIC_BYTES,
+  MAX_INTERSECTIONS,
   NativeChainSyncStartupFailure,
   type NativeOperation,
   parsePoint,
-  parseTip,
   receiptsByEvent,
   WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
   type WatcherNativeChainSyncAuthority,
   watcherNativeChainSyncAuthorityDetails,
+  type WatcherNativeChainSyncEvent,
+  type WatcherNativeChainSyncPoint,
   type WatcherNativeChainSyncRuntime,
 } from "./native-chain-sync.exact-record.js";
+import {
+  fromChainPoint,
+  fromChainTip,
+  startupFailure,
+  toChainPoint,
+  watcherEvent,
+} from "./native-chain-sync.transport-event.js";
 
+/**
+ * Credit of a following stream: a deep window while it catches up, and one
+ * outstanding block at the tip, so a closed stream frees its node connection
+ * after at most one more block.
+ */
+const STREAM_CREDIT = Object.freeze({
+  catchUpWindow: 50,
+  tipWindow: 1,
+  catchUpDistance: 10n,
+});
+
+/**
+ * Intersection candidates in preference order: at most MAX_INTERSECTIONS,
+ * no duplicates, and the Origin only as the final fallback.
+ */
+export const parseIntersectionCandidates = (
+  candidates: readonly WatcherNativeChainSyncPoint[],
+): readonly WatcherNativeChainSyncPoint[] => {
+  if (candidates.length === 0 || candidates.length > MAX_INTERSECTIONS) {
+    throw new Error(
+      "native chain-sync intersection candidate bounds are invalid",
+    );
+  }
+  const seen = new Set<string>();
+  return Object.freeze(
+    candidates.map((candidate, index) => {
+      const parsed = parsePoint(candidate, "native intersection candidate");
+      const key = watcherCanonicalJson(parsed);
+      if (seen.has(key))
+        throw new Error("native intersection candidate is duplicated");
+      if (parsed.kind === "origin" && index !== candidates.length - 1) {
+        throw new Error("native Origin candidate must be the final fallback");
+      }
+      seen.add(key);
+      return parsed;
+    }),
+  );
+};
+
+/**
+ * One native chain-sync read over the process's shared node transport: a
+ * following stream, or one exact-point query. The node and the intersection
+ * are admitted before the returned authority exists. Every delivered event is
+ * checked for order and carries a receipt that a rollback, a stream failure
+ * or close revokes.
+ */
 export const startNativeSupervisor = async (
-  input: NativeStreamInput & {
+  input: Omit<NativeStreamInput, "intersection"> & {
+    readonly intersections: readonly WatcherNativeChainSyncPoint[];
     readonly operation: NativeOperation;
-    readonly signal?: AbortSignal;
   },
 ): Promise<WatcherNativeChainSyncRuntime> => {
   input.signal?.throwIfAborted();
@@ -53,22 +104,17 @@ export const startNativeSupervisor = async (
   ) {
     throw new Error("native chain-sync startup bounds are invalid");
   }
+  const intersections = parseIntersectionCandidates(input.intersections);
   const binaryPath = input.binaryPath;
   if (!isAbsolute(binaryPath) || normalize(binaryPath) !== binaryPath) {
     throw new Error("native chain-sync binary path is not canonical");
   }
-  if (input.unsafeSpawnForTest === undefined) {
-    if ((await realpath(binaryPath)) !== binaryPath) {
-      throw new Error("native chain-sync binary path traverses a symlink");
-    }
-    input.signal?.throwIfAborted();
-    await access(binaryPath, constants.X_OK);
-    input.signal?.throwIfAborted();
+  if ((await realpath(binaryPath)) !== binaryPath) {
+    throw new Error("native chain-sync binary path traverses a symlink");
   }
-  const intersection = parsePoint(
-    input.intersection,
-    "native startup intersection",
-  );
+  input.signal?.throwIfAborted();
+  await access(binaryPath, constants.X_OK);
+  input.signal?.throwIfAborted();
   const source = input.watcherConfig.l1.source;
   const { genesisIdentitySha256, networkMagic } =
     await deriveWatcherNativeGenesisIdentity({
@@ -83,28 +129,16 @@ export const startNativeSupervisor = async (
   const startup = Object.freeze({
     authorityNodeId: source.authorityNodeId,
     genesisIdentitySha256,
-    intersection,
+    intersections,
     network: input.watcherConfig.targetNetwork,
     networkMagic,
     operation: input.operation,
     schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
     socketPath: source.chainSync.socketPath,
   });
-  const startupJson = watcherCanonicalJson(startup);
-  const startupDigest = sha256(startupJson);
-  if (Buffer.byteLength(startupJson, "utf8") + 1 > 64 * 1024) {
-    throw new Error("native chain-sync startup exceeds its byte bound");
-  }
-  input.signal?.throwIfAborted();
-  // Exact-point queries are sessions of the persistent helper; a stream owns
-  // its helper process for the stream's whole lifetime.
-  const child = (
-    input.unsafeSpawnForTest ??
-    (input.operation.kind === "exact_point"
-      ? exactPointServiceSession
-      : productionSpawn)
-  )(binaryPath);
-  const drainage = watcherNativeChildDrain(child);
+  const startupDigest = sha256(watcherCanonicalJson(startup));
+  const exact = input.operation.kind === "exact_point";
+
   const eventProvenance = { active: true, generation: 0n };
   let revocationFailure: Error | undefined;
   const revokeEventProvenance = (): void => {
@@ -116,7 +150,7 @@ export const startNativeSupervisor = async (
         input.onAuthorityRevoked?.();
       } catch (cause) {
         // Admission stays revoked and cleanup still runs; expose the lifecycle
-        // integrity error through done/close rather than an event-listener throw.
+        // integrity error through done/close rather than a listener throw.
         revocationFailure = new Error(
           "native read lifetime revocation failed",
           { cause },
@@ -124,32 +158,95 @@ export const startNativeSupervisor = async (
       }
     }
   };
-  // Lifecycle events remain observable while the ordered callback is awaiting.
-  child.once("exit", revokeEventProvenance);
-  child.once("error", revokeEventProvenance);
-  child.stdin.end(`${startupJson}\n`, "utf8");
 
+  let stream: ChainSyncStream | undefined;
   let closing = false;
-  const abortHandler = () => {
+  const running: { done?: Promise<void> } = {};
+  let closePromise: Promise<void> | undefined;
+  const close = (): Promise<void> => {
     revokeEventProvenance();
-    rejectReady(input.signal?.reason);
-    void close();
+    closePromise ??= (async () => {
+      closing = true;
+      await stream?.close();
+      await running.done?.catch(() => undefined);
+      if (revocationFailure !== undefined) throw revocationFailure;
+    })();
+    return closePromise;
   };
-  let resolveReady!: (authority: WatcherNativeChainSyncAuthority) => void;
-  let rejectReady!: (error: unknown) => void;
-  const ready = new Promise<WatcherNativeChainSyncAuthority>(
-    (resolve, reject) => {
-      resolveReady = resolve;
-      rejectReady = reject;
-    },
+
+  const startupBoundMs = input.startupTimeoutMs;
+  const opened = (async () => {
+    const transport = sharedL1NodeTransport({
+      binaryPath,
+      socketPath: source.chainSync.socketPath,
+      networkMagic,
+    });
+    await transport.whenReady(startupBoundMs);
+    if (closing) throw new Error("native chain-sync read was closed");
+    const owned = transport.openChainSync({
+      points: intersections.map(toChainPoint),
+      credit: exact ? 1 : STREAM_CREDIT,
+      resume: false,
+    });
+    stream = owned;
+    // A failed stream revokes admission at once, even while an event
+    // callback is still awaited.
+    void owned.ended.then((cause) => {
+      if (cause !== null) revokeEventProvenance();
+    });
+    return await owned.opened;
+  })();
+  void opened.catch(() => undefined);
+  // An abort rejects with the caller's own reason, whatever it is.
+  let rejectStartup!: (reason: unknown) => void;
+  const startupBound = new Promise<never>((_, reject) => {
+    rejectStartup = reject;
+  });
+  const startupTimer = setTimeout(
+    () => rejectStartup(new NativeChainSyncStartupFailure("startup_timed_out")),
+    startupBoundMs,
   );
+  const abortStartup = (): void => rejectStartup(input.signal?.reason);
+  input.signal?.addEventListener("abort", abortStartup, { once: true });
+  if (input.signal?.aborted === true) abortStartup();
+  let selection: Awaited<typeof opened>;
+  try {
+    selection = await Promise.race([opened, startupBound]);
+  } catch (error) {
+    revokeEventProvenance();
+    await close().catch(() => undefined);
+    throw revocationFailure ?? startupFailure(error);
+  } finally {
+    clearTimeout(startupTimer);
+    input.signal?.removeEventListener("abort", abortStartup);
+  }
+  const owned = stream!;
+  const selectedIntersection = fromChainPoint(selection.intersection);
+  const currentTip = fromChainTip(selection.tip);
+  const details = Object.freeze({
+    network: startup.network,
+    authorityNodeId: startup.authorityNodeId,
+    genesisIdentitySha256: startup.genesisIdentitySha256,
+    socketPath: startup.socketPath,
+    startupDigest,
+    operation: startup.operation,
+    selectedIntersection,
+    currentTip,
+  });
+  const authority: WatcherNativeChainSyncAuthority = Object.freeze({
+    schemaVersion: "midgard-watcher-native-chain-sync-authority-v1" as const,
+    authorityDigest: sha256(watcherCanonicalJson(details)),
+  });
+  authorityDetails.set(authority, details);
+  authorityLiveness.set(authority, { active: true });
+
   const knownPoints = new Map<
     string,
     Readonly<{ slot: bigint; blockNo: bigint }>
   >();
-  if (intersection.kind === "point") {
-    knownPoints.set(intersection.blockHash, {
-      slot: BigInt(intersection.slot),
+  if (selectedIntersection.kind === "point") {
+    knownPoints.set(selectedIntersection.blockHash, {
+      slot: BigInt(selectedIntersection.slot),
       blockNo: -1n,
     });
   }
@@ -159,274 +256,162 @@ export const startNativeSupervisor = async (
     slot: bigint;
     blockNo: bigint;
   }> | null =
-    intersection.kind === "point"
+    selectedIntersection.kind === "point"
       ? Object.freeze({
-          hash: intersection.blockHash,
-          slot: BigInt(intersection.slot),
+          hash: selectedIntersection.blockHash,
+          slot: BigInt(selectedIntersection.slot),
           blockNo: -1n,
         })
       : null;
-  let sawReady = false;
-  let queryEventCount = 0;
   let queryAcknowledged = false;
   let queryCaptured = false;
-  let mintedAuthority: WatcherNativeChainSyncAuthority | undefined;
 
-  let stderrTail = Buffer.alloc(0);
-  let rejectedLine: string | undefined;
-  const stderrDrain = (async () => {
-    try {
-      let total = 0;
-      for await (const chunk of child.stderr) {
-        total += chunk.byteLength;
-        stderrTail = Buffer.concat([stderrTail, chunk]).subarray(
-          -MAX_STDERR_DIAGNOSTIC_BYTES,
-        );
-        if (total > MAX_STDERR_BYTES) {
-          child.kill("SIGKILL");
-          throw new Error("native chain-sync stderr exceeded its bound");
-        }
-      }
-    } catch (error) {
-      revokeEventProvenance();
-      throw error;
+  const checkExact = (event: WatcherNativeChainSyncEvent): void => {
+    if (input.operation.kind !== "exact_point") return;
+    if (queryCaptured) {
+      throw new Error("native exact-point query emitted an extra event");
     }
-  })();
+    if (event.kind === "roll_backward") {
+      if (
+        queryAcknowledged ||
+        watcherCanonicalJson(event.point) !==
+          watcherCanonicalJson(selectedIntersection)
+      ) {
+        throw new Error("native exact-point query rolled back");
+      }
+      queryAcknowledged = true;
+      return;
+    }
+    const target = input.operation.target;
+    if (
+      selectedIntersection.kind !== "point" ||
+      event.blockHash !== target.blockHash ||
+      event.slot !== target.slot ||
+      event.blockNo !== target.blockNo ||
+      event.prevHash !== selectedIntersection.blockHash
+    ) {
+      throw new Error("native exact-point query returned a different target");
+    }
+    queryCaptured = true;
+  };
 
-  void stderrDrain.catch(() => undefined);
+  const checkOrder = (event: WatcherNativeChainSyncEvent): void => {
+    if (event.kind === "roll_forward") {
+      const slot = BigInt(event.slot);
+      const blockNo = BigInt(event.blockNo);
+      if (
+        (current !== null &&
+          (event.prevHash !== current.hash ||
+            slot <= current.slot ||
+            blockNo <= current.blockNo)) ||
+        (current === null && !knownPoints.has(event.prevHash))
+      ) {
+        throw new Error("native chain-sync roll-forward is out of order");
+      }
+      current = Object.freeze({ hash: event.blockHash, slot, blockNo });
+      knownPoints.set(event.blockHash, { slot, blockNo });
+      return;
+    }
+    const rollbackHash =
+      event.point.kind === "origin" ? "" : event.point.blockHash;
+    const rollbackSlot =
+      event.point.kind === "origin" ? 0n : BigInt(event.point.slot);
+    const rollback = knownPoints.get(rollbackHash);
+    if (rollback === undefined) {
+      // The node can roll back below the intersection. That ancestor has not
+      // been delivered in this read; its block number is learned from the
+      // next child. Durable recovery still proves both fork paths before
+      // consumer authority can resume.
+      if (
+        selectedIntersection.kind !== "point" ||
+        rollbackSlot >= BigInt(selectedIntersection.slot) ||
+        (current !== null && rollbackSlot >= current.slot)
+      )
+        throw new Error(
+          "native chain-sync rollback target is not durable history",
+        );
+      knownPoints.set(rollbackHash, { slot: rollbackSlot, blockNo: -1n });
+    } else if (rollback.slot !== rollbackSlot) {
+      throw new Error(
+        "native chain-sync rollback target is not durable history",
+      );
+    }
+    current = Object.freeze({
+      hash: rollbackHash,
+      slot: rollbackSlot,
+      blockNo: rollback?.blockNo ?? -1n,
+    });
+    for (const [hash, point] of knownPoints) {
+      if (point.slot > rollbackSlot) knownPoints.delete(hash);
+    }
+    eventProvenance.generation += 1n;
+  };
+
+  const deliver = async (event: WatcherNativeChainSyncEvent): Promise<void> => {
+    checkExact(event);
+    checkOrder(event);
+    if (eventProvenance.active) {
+      const generation = eventProvenance.generation;
+      const receipt = Object.freeze({ [eventReceiptBrand]: true as const });
+      eventReceipts.set(
+        receipt,
+        Object.freeze({
+          value: Object.freeze({
+            authority,
+            startupDigest,
+            event,
+            eventDigest: sha256(watcherCanonicalJson(event)),
+          }),
+          isLive: () =>
+            eventProvenance.active &&
+            eventProvenance.generation === generation &&
+            watcherNativeChainSyncAuthorityDetails(authority) !== null,
+        }),
+      );
+      receiptsByEvent.set(event, receipt);
+    }
+    await input.onEvent(event);
+  };
+
+  const abortHandler = (): void => {
+    revokeEventProvenance();
+    void close().catch(() => undefined);
+  };
   const done = (async () => {
     try {
-      for await (const line of lines(
-        child.stdout,
-        input.operation.kind === "exact_point"
-          ? MAX_QUERY_STDOUT_BYTES
-          : undefined,
-      )) {
-        rejectedLine = line;
-        const value = parseJsonLine(line);
-        if (
-          typeof value === "object" &&
-          value !== null &&
-          (value as { kind?: unknown }).kind === "error"
-        ) {
-          const failure = exactRecord(
-            value,
-            ["code", "kind", "schemaVersion"],
-            "native chain-sync failure",
+      // The node's first reply acknowledges the intersection. The transport
+      // consumes it, so the read delivers it as its first event.
+      await deliver(
+        Object.freeze({
+          schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
+          kind: "roll_backward",
+          point: selectedIntersection,
+          tip: currentTip,
+        }),
+      );
+      for (;;) {
+        let next: ChainSyncEvent | undefined;
+        try {
+          next = await owned.next();
+        } catch (cause) {
+          throw new Error(
+            `native chain-sync runtime failed: ${(cause as Error).message}`,
+            { cause },
           );
-          if (
-            failure.schemaVersion !==
-              WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION ||
-            typeof failure.code !== "string" ||
-            !/^[a-z][a-z0-9_]{0,62}$/u.test(failure.code)
-          )
-            throw new Error("native chain-sync emitted an invalid failure");
-          if (!sawReady) throw new NativeChainSyncStartupFailure(failure.code);
-          throw new Error(`native chain-sync runtime failed: ${failure.code}`);
         }
-        if (!sawReady) {
-          const record = exactRecord(
-            value,
-            [
-              "authorityNodeId",
-              "currentTip",
-              "genesisIdentitySha256",
-              "kind",
-              "network",
-              "networkMagic",
-              "operation",
-              "schemaVersion",
-              "selectedIntersection",
-              "socketPath",
-              "startupDigest",
-            ],
-            "native chain-sync ready event",
-          );
-          const selectedIntersection = parsePoint(
-            record.selectedIntersection,
-            "native selected intersection",
-          );
-          if (
-            record.kind !== "ready" ||
-            record.schemaVersion !== WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION ||
-            record.authorityNodeId !== startup.authorityNodeId ||
-            record.genesisIdentitySha256 !== startup.genesisIdentitySha256 ||
-            record.network !== startup.network ||
-            record.networkMagic !== startup.networkMagic ||
-            watcherCanonicalJson(record.operation) !==
-              watcherCanonicalJson(startup.operation) ||
-            watcherCanonicalJson(selectedIntersection) !==
-              watcherCanonicalJson(intersection) ||
-            record.socketPath !== startup.socketPath ||
-            record.startupDigest !== startupDigest
-          ) {
-            throw new Error(
-              "native chain-sync ready identity differs from startup authority",
-            );
-          }
-          const currentTip = parseTip(record.currentTip);
-          const details = Object.freeze({
-            network: startup.network,
-            authorityNodeId: startup.authorityNodeId,
-            genesisIdentitySha256: startup.genesisIdentitySha256,
-            socketPath: startup.socketPath,
-            startupDigest,
-            operation: startup.operation,
-            selectedIntersection,
-            currentTip,
-          });
-          const authority = Object.freeze({
-            schemaVersion:
-              "midgard-watcher-native-chain-sync-authority-v1" as const,
-            authorityDigest: sha256(watcherCanonicalJson(details)),
-          });
-          authorityDetails.set(authority, details);
-          authorityLiveness.set(authority, { active: true });
-          mintedAuthority = authority;
-          sawReady = true;
-          resolveReady(authority);
-          rejectedLine = undefined;
-          continue;
-        }
-        const event = parseWatcherNativeChainSyncEvent(value);
-        if (input.operation.kind === "exact_point") {
-          queryEventCount += 1;
-          if (queryCaptured || queryEventCount > 2) {
-            throw new Error("native exact-point query emitted an extra event");
-          }
-          if (event.kind === "roll_backward") {
-            if (
-              queryAcknowledged ||
-              watcherCanonicalJson(event.point) !==
-                watcherCanonicalJson(intersection)
-            ) {
-              throw new Error("native exact-point query rolled back");
-            }
-            queryAcknowledged = true;
-          } else {
-            const target = input.operation.target;
-            if (
-              intersection.kind !== "point" ||
-              event.blockHash !== target.blockHash ||
-              event.slot !== target.slot ||
-              event.blockNo !== target.blockNo ||
-              event.prevHash !== intersection.blockHash
-            ) {
-              throw new Error(
-                "native exact-point query returned a different target",
-              );
-            }
-            queryCaptured = true;
-          }
-        }
-        if (event.kind === "roll_forward") {
-          const slot = BigInt(event.slot);
-          const blockNo = BigInt(event.blockNo);
-          if (
-            (current !== null &&
-              (event.prevHash !== current.hash ||
-                slot <= current.slot ||
-                blockNo <= current.blockNo)) ||
-            (current === null && !knownPoints.has(event.prevHash))
-          ) {
-            throw new Error("native chain-sync roll-forward is out of order");
-          }
-          current = Object.freeze({ hash: event.blockHash, slot, blockNo });
-          knownPoints.set(event.blockHash, { slot, blockNo });
-        } else {
-          const rollbackHash =
-            event.point.kind === "origin" ? "" : event.point.blockHash;
-          const rollbackSlot =
-            event.point.kind === "origin" ? 0n : BigInt(event.point.slot);
-          const rollback = knownPoints.get(rollbackHash);
-          if (rollback === undefined) {
-            // The authenticated node can roll back below FindIntersect. That
-            // ancestor has not been delivered in this session; its block
-            // number is learned from the next child. Durable recovery still
-            // proves both fork paths before consumer authority can resume.
-            if (
-              intersection.kind !== "point" ||
-              rollbackSlot >= BigInt(intersection.slot) ||
-              (current !== null && rollbackSlot >= current.slot)
-            )
-              throw new Error(
-                "native chain-sync rollback target is not durable history",
-              );
-            knownPoints.set(rollbackHash, { slot: rollbackSlot, blockNo: -1n });
-          } else if (rollback.slot !== rollbackSlot) {
-            throw new Error(
-              "native chain-sync rollback target is not durable history",
-            );
-          }
-          current = Object.freeze({
-            hash: rollbackHash,
-            slot: rollbackSlot,
-            blockNo: rollback?.blockNo ?? -1n,
-          });
-          for (const [hash, point] of knownPoints) {
-            if (point.slot > rollbackSlot) knownPoints.delete(hash);
-          }
-          eventProvenance.generation += 1n;
-        }
-        if (eventProvenance.active && mintedAuthority !== undefined) {
-          const authority = mintedAuthority;
-          const generation = eventProvenance.generation;
-          const receipt = Object.freeze({ [eventReceiptBrand]: true as const });
-          eventReceipts.set(
-            receipt,
-            Object.freeze({
-              value: Object.freeze({
-                authority,
-                startupDigest,
-                event,
-                eventDigest: sha256(watcherCanonicalJson(event)),
-              }),
-              isLive: () =>
-                eventProvenance.active &&
-                eventProvenance.generation === generation &&
-                watcherNativeChainSyncAuthorityDetails(authority) !== null,
-            }),
-          );
-          receiptsByEvent.set(event, receipt);
-        }
-        rejectedLine = undefined;
-        await input.onEvent(event);
+        if (next === undefined) break;
+        await deliver(watcherEvent(next));
+        // An exact-point query holds its single credit: no block follows.
+        if (!exact && !closing) owned.ack(next.seq);
       }
-      await stderrDrain;
       if (!closing)
-        throw new Error("native chain-sync process exited unexpectedly");
-    } catch (error) {
-      revokeEventProvenance();
-      const failure = error instanceof Error ? error : new Error(String(error));
-      rejectReady(failure);
-      if (!closing) child.kill("SIGKILL");
-      if (rejectedLine !== undefined) {
-        // A terminal native error is stdout control data, not a chain event.
-        // Drain its preceding stderr after process termination, with a bound
-        // for a broken child; never include raw block payloads in diagnostics.
-        let diagnosticTimer: ReturnType<typeof setTimeout> | undefined;
-        await Promise.race([
-          stderrDrain.catch(() => undefined),
-          new Promise<void>((resolve) => {
-            diagnosticTimer = setTimeout(resolve, 1000);
-          }),
-        ]);
-        if (diagnosticTimer !== undefined) clearTimeout(diagnosticTimer);
-        failure.message += `; nativePid=${child.pid ?? "unavailable"} nativeOperation=${watcherCanonicalJson(input.operation)} nativeStartupDigest=${startupDigest} nativeLineBytes=${Buffer.byteLength(rejectedLine)} nativeLineSha256=${sha256(rejectedLine)} stderrTail=${JSON.stringify(stderrTail.toString("utf8"))}`;
-      }
-      throw failure;
+        throw new Error("native chain-sync stream ended unexpectedly");
     } finally {
       revokeEventProvenance();
-      if (abortHandler !== undefined) {
-        input.signal?.removeEventListener("abort", abortHandler);
-      }
-      const liveness =
-        mintedAuthority === undefined
-          ? undefined
-          : authorityLiveness.get(mintedAuthority);
+      input.signal?.removeEventListener("abort", abortHandler);
+      const liveness = authorityLiveness.get(authority);
       if (liveness !== undefined) liveness.active = false;
-      await drainage.closed;
-      await stderrDrain.catch(() => undefined);
+      if (!closing) await owned.close();
     }
   })()
     .then(() => {
@@ -435,43 +420,11 @@ export const startNativeSupervisor = async (
     .catch((error: unknown) => {
       throw revocationFailure ?? error;
     });
+  running.done = done;
   void done.catch(() => undefined);
-
-  let closePromise: Promise<void> | undefined;
-  const close = (): Promise<void> => {
-    revokeEventProvenance();
-    closePromise ??= (async () => {
-      closing = true;
-      await drainage.terminate();
-      await done.catch(() => undefined);
-      if (revocationFailure !== undefined) throw revocationFailure;
-    })();
-    return closePromise;
-  };
 
   input.signal?.addEventListener("abort", abortHandler, { once: true });
   if (input.signal?.aborted === true) abortHandler();
-
-  let startupTimer: NodeJS.Timeout | undefined;
-  const authority = await Promise.race([
-    ready,
-    new Promise<never>((_, reject) => {
-      startupTimer = setTimeout(
-        () => reject(new NativeChainSyncStartupFailure("startup_timed_out")),
-        input.startupTimeoutMs,
-      );
-    }),
-  ])
-    .catch(async (error: unknown) => {
-      revokeEventProvenance();
-      closing = true;
-      child.kill("SIGKILL");
-      await close();
-      throw revocationFailure ?? error;
-    })
-    .finally(() => {
-      if (startupTimer !== undefined) clearTimeout(startupTimer);
-    });
 
   return Object.freeze({ authority, done, close });
 };

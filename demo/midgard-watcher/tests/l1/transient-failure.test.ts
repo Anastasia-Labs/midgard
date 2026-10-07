@@ -33,8 +33,12 @@ describe("watcher L1 transient failure", () => {
       new NativeChainSyncStartupFailure("node_handshake_failed"),
     ],
     [
-      "a native helper at its session bound",
-      new NativeChainSyncStartupFailure("service_session_limit"),
+      "a node transport whose sidecar is restarting",
+      new NativeChainSyncStartupFailure("sidecar_restarting"),
+    ],
+    [
+      "a node that dropped its connection",
+      new NativeChainSyncStartupFailure("node_connection_lost"),
     ],
     [
       "a transient wrapped in a workflow error",
@@ -70,8 +74,12 @@ describe("watcher L1 transient failure", () => {
     ],
     ["an HTTP refusal", fetchFailed("EACCES")],
     [
-      "a native startup the helper refused",
-      new NativeChainSyncStartupFailure("invalid_startup"),
+      "a native intersection the node refused",
+      new NativeChainSyncStartupFailure("intersection_failed"),
+    ],
+    [
+      "a transport that was closed",
+      new NativeChainSyncStartupFailure("stopped"),
     ],
     ["a non-error", "ECONNREFUSED"],
     [

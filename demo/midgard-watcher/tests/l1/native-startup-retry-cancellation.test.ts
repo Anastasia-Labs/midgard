@@ -6,9 +6,12 @@ import { config, INTERSECTION } from "./native-chain-sync.config.js";
 
 const { start } = vi.hoisted(() => ({ start: vi.fn() }));
 vi.mock(
-  "../../src/l1/native-chain-sync.open-watcher-native-exact-point-query.js",
-  () => ({
-    startWatcherNativeChainSync: start,
+  "../../src/l1/native-chain-sync.start-native-supervisor.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../src/l1/native-chain-sync.start-native-supervisor.js")
+    >()),
+    startNativeSupervisor: start,
   }),
 );
 
@@ -21,7 +24,7 @@ const input = (signal: AbortSignal) => ({
   signal,
 });
 
-it("cancels a retry wait with its owned reason and never starts another candidate", async () => {
+it("cancels a retry wait with its owned reason and never starts another attempt", async () => {
   const controller = new AbortController();
   const reason = new Error("owned retry stopped");
   start
@@ -103,7 +106,7 @@ it("refuses a retired owner before any native attempt", async () => {
   expect(start).not.toHaveBeenCalled();
 });
 
-it("joins an owner retired between the candidate walk and public retry return", async () => {
+it("joins an owner retired between the start and public retry return", async () => {
   const controller = new AbortController();
   const reason = new Error("owned public return retired");
   const close = vi.fn(async () => {});

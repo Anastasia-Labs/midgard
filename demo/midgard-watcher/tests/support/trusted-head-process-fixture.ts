@@ -68,6 +68,7 @@ export const startWatcherTrustedHeadAuthorityChildForTest = async (
               if (args.pluginData === "external-resolution") return undefined;
               if (
                 args.path.startsWith("@al-ft/midgard-") ||
+                args.path.startsWith("@al-ft/l1-node-transport") ||
                 args.path.startsWith("midgard-node") ||
                 args.path.startsWith("da-committee-node")
               )

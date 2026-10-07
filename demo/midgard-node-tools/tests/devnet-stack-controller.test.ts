@@ -411,7 +411,7 @@ describe("nodeEnvironment", () => {
     const artifacts = {
       nativeOwnerBinary: "o",
       nativeOwnerSha256: "h",
-      chainSyncBinary: "c",
+      transportBinary: "c",
     };
     for (const role of ["command", "listen"] as const)
       expect(

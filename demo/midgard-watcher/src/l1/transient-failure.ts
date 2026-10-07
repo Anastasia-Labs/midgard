@@ -20,20 +20,25 @@ const NETWORK_FAILURE_CODES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Startup failures that say only that the node did not answer: its socket did
- * not accept, its tip query or the chain-sync session broke before readiness,
- * or it did not become ready in time. A node that is restarting or still
- * opening its database gives exactly these. A persistent exact-point helper
- * at its live-session bound is a transient overload of the same kind. A
- * rejected intersection, an invalid startup and every identity mismatch are
- * not among them.
+ * Startup failures that say only that the node did not answer: the node
+ * transport was not ready (its sidecar was starting or restarting, or the
+ * node's socket did not accept, did not complete the handshake or dropped the
+ * connection), an auxiliary node connection could not be opened, or the read
+ * did not start in time. A node that is restarting or still opening its
+ * database gives exactly these. A rejected intersection, an invalid startup
+ * and every identity mismatch are not among them.
  */
 const NODE_UNAVAILABLE_CODES: ReadonlySet<string> = new Set([
+  "sidecar_starting",
+  "sidecar_restarting",
+  "sidecar_unavailable",
+  "sidecar_exited",
+  "node_unreachable",
   "node_handshake_failed",
-  "tip_query_failed",
-  "chain_sync_failed",
+  "node_connection_lost",
+  "node_unresponsive",
+  "node_unavailable",
   "startup_timed_out",
-  "service_session_limit",
 ]);
 
 export const isWatcherNativeNodeUnavailable = (

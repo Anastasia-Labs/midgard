@@ -1,0 +1,49 @@
+{
+  "name": "@al-ft/l1-node-transport",
+  "version": "0.1.0",
+  "description": "One long-lived node-to-client sidecar per process: chain-sync, local state query, submit and mempool monitor over one framed pipe",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "testing"
+  ],
+  "exports": {
+    ".": {
+      "midgard-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./testing/fake-sidecar": {
+      "types": "./testing/fake-sidecar.d.mts",
+      "default": "./testing/fake-sidecar.mjs"
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/contrib.mjs build --package @al-ft/l1-node-transport",
+    "build:contrib-raw": "tsup src/index.ts --format esm --dts",
+    "clean": "rimraf dist",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" vitest.config.ts tsup.config.ts package.json tsconfig.json README.md \"testing/**/*.{mjs,d.mts}\"",
+    "format-check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" vitest.config.ts tsup.config.ts package.json tsconfig.json README.md \"testing/**/*.{mjs,d.mts}\"",
+    "lint": "eslint . --max-warnings=0",
+    "native:build": "node ../../scripts/contrib.mjs native --package @al-ft/l1-node-transport",
+    "native:build:contrib-raw": "mkdir -p dist/native && go -C native build -buildvcs=false -trimpath -o ../dist/native/midgard-l1-node-transport .",
+    "native:test": "go -C native vet ./... && go -C native test -race ./...",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@noble/hashes": "^2.0.1",
+    "@types/node": "^22.17.0",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=22.16.0 <23"
+  }
+}

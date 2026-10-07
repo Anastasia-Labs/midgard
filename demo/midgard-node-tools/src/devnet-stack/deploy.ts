@@ -47,16 +47,16 @@ export const ensureArtifacts = (layout: Layout): Artifacts => {
     nativeOwnerBinary,
     0o755,
   );
-  const chainSyncBinary = join(layout.bin, "midgard-chain-sync");
+  const transportBinary = join(layout.bin, "midgard-l1-node-transport");
   copyOnce(
-    join(layout.watcherRoot, "dist/native/midgard-chain-sync"),
-    chainSyncBinary,
+    join(layout.transportRoot, "dist/native/midgard-l1-node-transport"),
+    transportBinary,
     0o755,
   );
   return {
     nativeOwnerBinary,
     nativeOwnerSha256: sha256File(nativeOwnerBinary),
-    chainSyncBinary,
+    transportBinary,
   };
 };
 

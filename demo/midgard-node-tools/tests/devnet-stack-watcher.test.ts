@@ -231,7 +231,7 @@ beforeAll(async () => {
     artifacts: {
       nativeOwnerBinary: join(layout.bin, "native-owner"),
       nativeOwnerSha256: "00".repeat(32),
-      chainSyncBinary: join(layout.bin, "midgard-chain-sync"),
+      transportBinary: join(layout.bin, "midgard-l1-node-transport"),
     },
   };
 

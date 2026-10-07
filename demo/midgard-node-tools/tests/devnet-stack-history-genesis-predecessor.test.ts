@@ -10,7 +10,7 @@ import { createHistoryChainFollower } from "../src/devnet-stack/watcher-history-
 import { windowFixture } from "./helpers/history-native-window-fixture.js";
 
 it("restarts the strict production follower from its actual native genesis-short archive without resetting retained state", async () => {
-  const source = windowFixture(0);
+  const source = await windowFixture(0);
   try {
     const directories = ["writer-a", "writer-b"].map((role) => {
       const directory = join(source.root, role);

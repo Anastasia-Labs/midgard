@@ -1,19 +1,16 @@
 import { type WatcherConfig } from "../runtime/config.js";
 import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
-import { watcherCanonicalJson } from "../storage/durable-store.js";
+import { type ReadIdentityFile } from "./native-chain-sync.derive-watcher-native-genesis-identity.js";
 import {
-  type ReadIdentityFile,
-  type SpawnProcess,
-} from "./native-chain-sync.derive-watcher-native-genesis-identity.js";
-import {
-  MAX_INTERSECTIONS,
-  NativeChainSyncStartupFailure,
-  parsePoint,
+  type NativeChainSyncStartupFailure,
   type WatcherNativeChainSyncEvent,
   type WatcherNativeChainSyncPoint,
   type WatcherNativeChainSyncRuntime,
 } from "./native-chain-sync.exact-record.js";
-import { startWatcherNativeChainSync } from "./native-chain-sync.open-watcher-native-exact-point-query.js";
+import {
+  parseIntersectionCandidates,
+  startNativeSupervisor,
+} from "./native-chain-sync.start-native-supervisor.js";
 import { isWatcherNativeNodeUnavailable } from "./transient-failure.js";
 import { retryWatcherL1Transient } from "./transient-retry.js";
 
@@ -30,8 +27,8 @@ const writeNodeWait = (warning: WatcherNativeNodeWait): void => {
 };
 
 /**
- * Bound on one native process start: spawn, node handshake, intersection and
- * tip. It is a process-start bound, not a per-request one, so a node that is
+ * Bound on one native read start: a ready node transport, the intersection
+ * and the tip. It is a start bound, not a per-request one, so a node that is
  * slow to answer after its own restart is not cut off at the request timeout.
  * A start that still times out is retried like any node-unavailable start.
  */
@@ -47,7 +44,6 @@ export const startWatcherNativeChainSyncWithRetry = async (input: {
   readonly startupTimeoutMs: number;
   readonly onEvent: (event: WatcherNativeChainSyncEvent) => Promise<void>;
   readonly onAuthorityRevoked?: () => void;
-  readonly unsafeSpawnForTest?: SpawnProcess;
   readonly unsafeReadIdentityFileForTest?: ReadIdentityFile;
   /** Defaults to one JSON line on stderr when the node first does not answer. */
   readonly warn?: (warning: WatcherNativeNodeWait) => void;
@@ -55,31 +51,10 @@ export const startWatcherNativeChainSyncWithRetry = async (input: {
 }): Promise<WatcherNativeChainSyncRuntime> => {
   const signal = input.signal;
   signal?.throwIfAborted();
-  if (
-    input.intersectionCandidates.length === 0 ||
-    input.intersectionCandidates.length > MAX_INTERSECTIONS
-  ) {
-    throw new Error(
-      "native chain-sync intersection candidate bounds are invalid",
-    );
-  }
-  const seen = new Set<string>();
-  const candidates = input.intersectionCandidates.map((candidate, index) => {
-    const parsed = parsePoint(candidate, "native intersection candidate");
-    const key = watcherCanonicalJson(parsed);
-    if (seen.has(key))
-      throw new Error("native intersection candidate is duplicated");
-    if (
-      parsed.kind === "origin" &&
-      index !== input.intersectionCandidates.length - 1
-    ) {
-      throw new Error("native Origin candidate must be the final fallback");
-    }
-    seen.add(key);
-    return parsed;
-  });
-  // An unanswering node restarts the whole walk, newest candidate first, after
-  // a capped backoff; it never ends startup.
+  const candidates = parseIntersectionCandidates(input.intersectionCandidates);
+  // One intersection over every candidate: the node takes the first one it
+  // has, newest first. An unanswering node restarts the start after a capped
+  // backoff; it never ends startup.
   let waiting: { readonly error: unknown } | undefined;
   let runtime: WatcherNativeChainSyncRuntime;
   try {
@@ -87,7 +62,24 @@ export const startWatcherNativeChainSyncWithRetry = async (input: {
       () => {
         waiting = undefined;
         signal?.throwIfAborted();
-        return walk(input, candidates, signal);
+        return startNativeSupervisor({
+          binaryPath: input.binaryPath,
+          ...(signal === undefined ? {} : { signal }),
+          watcherConfig: input.watcherConfig,
+          intersections: candidates,
+          startupTimeoutMs: input.startupTimeoutMs,
+          onEvent: input.onEvent,
+          ...(input.onAuthorityRevoked === undefined
+            ? {}
+            : { onAuthorityRevoked: input.onAuthorityRevoked }),
+          operation: Object.freeze({ kind: "stream" }),
+          ...(input.unsafeReadIdentityFileForTest === undefined
+            ? {}
+            : {
+                unsafeReadIdentityFileForTest:
+                  input.unsafeReadIdentityFileForTest,
+              }),
+        });
       },
       {
         signal,
@@ -122,56 +114,4 @@ export const startWatcherNativeChainSyncWithRetry = async (input: {
     signal.throwIfAborted();
   }
   return runtime;
-};
-
-const walk = async (
-  input: Parameters<typeof startWatcherNativeChainSyncWithRetry>[0],
-  candidates: readonly WatcherNativeChainSyncPoint[],
-  signal?: AbortSignal,
-): Promise<WatcherNativeChainSyncRuntime> => {
-  let lastIntersectionFailure: NativeChainSyncStartupFailure | undefined;
-  for (const intersection of candidates) {
-    signal?.throwIfAborted();
-    let runtime: WatcherNativeChainSyncRuntime;
-    try {
-      runtime = await startWatcherNativeChainSync({
-        binaryPath: input.binaryPath,
-        signal,
-        watcherConfig: input.watcherConfig,
-        intersection,
-        startupTimeoutMs: input.startupTimeoutMs,
-        onEvent: input.onEvent,
-        onAuthorityRevoked: input.onAuthorityRevoked,
-        ...(input.unsafeSpawnForTest === undefined
-          ? {}
-          : { unsafeSpawnForTest: input.unsafeSpawnForTest }),
-        ...(input.unsafeReadIdentityFileForTest === undefined
-          ? {}
-          : {
-              unsafeReadIdentityFileForTest:
-                input.unsafeReadIdentityFileForTest,
-            }),
-      });
-    } catch (error) {
-      if (
-        !(error instanceof NativeChainSyncStartupFailure) ||
-        error.code !== "intersection_failed"
-      ) {
-        throw error;
-      }
-      lastIntersectionFailure = error;
-      continue;
-    }
-    // Only startup intersection refusal advances the walk; a close failure is
-    // an owned drainage failure even if it uses the same error type/code.
-    if (signal?.aborted === true) {
-      await runtime.close();
-      signal.throwIfAborted();
-    }
-    return runtime;
-  }
-  throw (
-    lastIntersectionFailure ??
-    new Error("native chain-sync did not admit an intersection")
-  );
 };
