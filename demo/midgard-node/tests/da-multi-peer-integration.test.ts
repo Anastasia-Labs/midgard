@@ -132,8 +132,11 @@ describe("real multi-peer DA publication", () => {
       }
       const submitHandler = requestHandlers.get(submitProtocolId)!;
       requestHandlers.set(submitProtocolId, async (context) => {
+        // A dead peer: it answers only after the producer's deadline.
         if (index === 2 && slowThirdPeer) {
-          await new Promise((resolve) => setTimeout(resolve, 14_000));
+          await new Promise((resolve) =>
+            setTimeout(resolve, DA_TRANSPORT_LIMITS.requestTimeoutMs + 1_000),
+          );
         }
         if (index === 2 && rejectEnvelopeOnThirdPeer) {
           const request = decodeDaPayloadSubmitRequestCbor(

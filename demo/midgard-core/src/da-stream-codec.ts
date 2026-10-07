@@ -59,7 +59,7 @@ export async function* decodeDaStreamFrames(
   let frame: Buffer | undefined;
   let frameOffset = 0;
   let frameStartedAt: number | undefined;
-  for await (const chunk of chunks) {
+  for await (const chunk of untilRemoteWriteCloses(chunks)) {
     const bytes = chunkView(chunk);
     if (bytes.byteLength === 0) {
       continue;
@@ -127,6 +127,51 @@ export async function* decodeDaStreamFrames(
   }
   if (expectedLength !== undefined || prefixOffset > 0) {
     throw new Error("incomplete DA libp2p stream frame");
+  }
+}
+
+/** What a libp2p stream says about the remote's writable end. */
+type DaRemoteWriteStatus = {
+  readonly remoteWriteStatus: string;
+  readonly readBufferLength: number;
+};
+
+const reportsRemoteWriteStatus = (
+  chunks: AsyncIterable<DaStreamChunk> | Iterable<DaStreamChunk>,
+): chunks is AsyncIterable<DaStreamChunk> & DaRemoteWriteStatus =>
+  Symbol.asyncIterator in chunks &&
+  "remoteWriteStatus" in chunks &&
+  "readBufferLength" in chunks;
+
+/**
+ * A libp2p stream's iterator ends on the remote's end-of-stream event, which
+ * reaches only a listener attached when it fires. A reader that starts after
+ * the remote closed its writable end, such as a payload submit queued behind
+ * admission, gets the buffered bytes and then waits for an event already
+ * gone, until the request deadline. The stream's status still says the remote
+ * is done: once its unread buffer is empty, the stream has ended.
+ */
+async function* untilRemoteWriteCloses(
+  chunks: AsyncIterable<DaStreamChunk> | Iterable<DaStreamChunk>,
+): AsyncGenerator<DaStreamChunk> {
+  if (!reportsRemoteWriteStatus(chunks)) {
+    yield* chunks;
+    return;
+  }
+  const iterator = chunks[Symbol.asyncIterator]();
+  try {
+    while (
+      chunks.remoteWriteStatus !== "closed" ||
+      chunks.readBufferLength > 0
+    ) {
+      const next = await iterator.next();
+      if (next.done === true) {
+        return;
+      }
+      yield next.value;
+    }
+  } finally {
+    await iterator.return?.();
   }
 }
 
