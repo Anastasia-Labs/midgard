@@ -79,8 +79,9 @@ and holds it until `close()`:
   `<database>.writer-lease` (an in-memory database needs none).
 
 While another process holds it, `start()` returns `{ kind: "store_locked",
-detail }`, never throws and never exits. The caller retries with backoff, and
-readiness reports `store_locked` as a transient reason. This is the committee's
+detail }`, never throws and never exits. The caller retries with backoff;
+`followChain` (below) reports it as `l1_follower_waiting` with cause
+`store_locked`, a transient reason. This is the committee's
 active/passive pair (C2): the passive member's follower waits, and takes over
 within one retry once the active process dies, because its lock dies with its
 session or process.
@@ -211,8 +212,12 @@ openSqliteFactStore(options: FactStoreOptions & { path: string }): FactStore
 createFactStore(backend: SqlBackend, options: FactStoreOptions): FactStore
 
 type PostgresConnection =
-  | { pool: pg.Pool } // caller-owned; close() leaves it open
-  | { connectionString: string; maxConnections?: number };
+  | { pool: pg.Pool } // caller-owned; close() leaves it open; caller listens for 'error'
+  | {
+      connectionString: string;
+      maxConnections?: number;
+      onConnectionError?: (error: Error) => void; // a connection Postgres dropped
+    };
 
 type FactStoreOptions = {
   securityParameter: number; // k in blocks
@@ -264,6 +269,12 @@ hash }`, `{ by: "unit", policyId, assetName? }` or `{ by: "outref", outRefs }`.
 `cursor.prunedThroughSlot`) or `not_initialized`. `pointStatus` reports
 `depth` as the heads module counts it: 1 at the cursor.
 
+A backend that owns its pool listens for every connection's `'error'` (an
+idle pooled one, and one checked out for a transaction): Postgres dropping a
+connection (a restart, a failover, an idle reaper, `pg_terminate_backend`)
+never reaches the process as an uncaught exception. The pool discards the
+client; a transaction on it rejects, which the follow loop backs off from.
+
 ### Views (§8.1)
 
 A view is `(generation, point, height)`. `viewValid(view)` is true while no
@@ -272,7 +283,9 @@ write in the role's own transaction, run `viewValidQuery(dialect, view)` (it
 takes `FOR SHARE` on the cursor row, so no rewind commits between the check
 and the write) or `viewValidIn(tx, dialect, view)`. Another process learns
 of rewinds, and of resets, with `listenForGenerations(pool, (generation) =>
-…)`, which returns an async `stop()`. Generations never repeat: `initialize`
+…, onConnectionLost?)`, which returns an async `stop()`. If Postgres drops
+the listening connection, listening has stopped: `onConnectionLost(error)` is
+told (never an uncaught `'error'`) and the caller listens again. Generations never repeat: `initialize`
 starts at the writer row's next generation (0 on a new store), and a reset
 raises it above every generation used before.
 
@@ -419,12 +432,93 @@ the follower replays from an origin more than k blocks deep).
 ### Following chain-sync
 
 ```ts
+followChain(options: FollowChainOptions): Promise<FollowStatus>
 applyChainSyncEvent(store, event: ChainSyncEvent): Promise<FollowStep>
 stepSettled(step: FollowStep): boolean // applied, rewound or noop
 intersectionPoints(store): Promise<BlockPoint[]>
 storePoint(point: BlockPoint): Point; transportPoint(point: Point): BlockPoint
-startWhenFree(store, { signal?, backoffMs?, log? }): Promise<StartResult | undefined>
+startWhenFree(store, { signal?, backoffMs?, log?, onLocked? }): Promise<StartResult | undefined>
+classifyFailure(error): "transient" | "deterministic" | "unknown"
 ```
+
+`followChain` is every role's follow loop. It starts the store (waiting out
+the writer lease), starts from the configured origin or resumes from the
+store's own intersection points, applies each event and acknowledges it
+once the store settled it, checks `protocolInitStatus` at every tip, and
+prunes. It never throws and never exits the process: transient failures
+back off (capped exponential, default 500 ms to 30 s) and start again; an
+intervention stops the loop and stays in its status until the operator acts
+and the process restarts. It resolves with the final status once stopped by
+an intervention or by `signal`.
+
+```ts
+type FollowChainOptions = {
+  store: FactStore;
+  transport: Pick<L1NodeTransport, "openChainSync">;
+  origin: OriginConfig;
+  signal: AbortSignal;
+  credit?: number; // the chain-sync credit (default 64)
+  backoffMs?: { initial: number; max: number };
+  log?: (line: string) => void;
+  onStatus?: (status: FollowStatus) => void | Promise<void>; // awaited; a throw is logged
+  stuckAfter?: number; // default 5
+  prune?: { budget?: number; everyEvents?: number }; // default 500 rows, every 100 events
+};
+
+type FollowStatus = {
+  state: "starting" | "following" | "waiting" | "intervention" | "stopped";
+  readiness: { reason: FollowReadinessReason; detail: string }[]; // empty: ready
+  interventions: { reason: InterventionReason; detail: string }[];
+  waiting: {
+    cause: "store_locked" | "stream" | "store" | "apply";
+    detail: string;
+  } | null;
+  stuck: { at: string; failures: number; detail: string } | null;
+  protocolInit: "seen" | "pending" | "unknown";
+  cursor: { slot: number; height: number; generation: number } | null;
+  tip: { slot: number; height: number } | null; // the node tip of the last applied event
+  atTip: boolean; // the cursor is that tip
+  events: number; // events applied by this loop
+  lastError: string | null; // cleared by the next applied event
+  prune: {
+    steps: number;
+    prunedThroughSlot: number | null;
+    lastError: string | null;
+  };
+};
+```
+
+`readiness` is what the role's `/readyz` reports; `/healthz` is the role's
+own concern (the loop never makes the process unhealthy). Its reasons:
+
+| Reason                              | When                                                                                                                                                                                                                                    |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rollback_beyond_k` (R1)            | a rewind deeper than k or below `prunedThroughSlot`, or a roll-backward to the genesis. Stops the loop.                                                                                                                                 |
+| `intersection_outside_history` (R2) | the node has none of a resumed store's intersection points. Stops the loop.                                                                                                                                                             |
+| `origin_after_protocol_init` (R3)   | at the tip without the protocol-init spend. The loop keeps following; cleared once the spend is stored.                                                                                                                                 |
+| `origin_not_on_chain` (R4)          | a fresh store's origin is not on the node's chain. Stops the loop.                                                                                                                                                                      |
+| `store_integrity` (R5)              | the store fails INV1–INV6 at start or after a rewind. Stops the loop.                                                                                                                                                                   |
+| `origin_mismatch`                   | the store was initialized at another origin. Stops the loop.                                                                                                                                                                            |
+| `l1_follower_apply_stuck`           | one event failed to apply `stuckAfter` times in a row, or once with a deterministic failure (an undecodable block, a constraint or data error). The loop keeps retrying; the next applied event clears it.                              |
+| `l1_follower_waiting`               | backing off from a transient failure: the writer lease (`store_locked`), a stream failure or end (`stream`), a failed start or read (`store`), an apply failure below the stuck threshold (`apply`). Cleared by the next applied event. |
+| `l1_follower_catching_up`           | the cursor is not at the node tip of the last applied event (and before the first one). A role whose decisions stay safe on a lagging view may ignore it.                                                                               |
+
+`classifyFailure` sorts a failed write: `transient` (Postgres SQLSTATE
+classes 08, 40, 53, 55, 57, network errno codes, pg's own connection errors,
+SQLite BUSY and LOCKED) never counts toward `stuckAfter`; `deterministic`
+(SQLSTATE 22, 23, 42, SQLite CONSTRAINT and MISMATCH) escalates at once;
+`unknown` (anything else, and an `ApplyRejection`) counts toward
+`stuckAfter`. A failure to start or resume escalates only when
+deterministic.
+
+Pruning runs inside the loop, under its error handling: after each applied
+event at the tip, and every `everyEvents` applied events while catching up
+(then after every event until a step reports `done`), one `prune(budget)`
+step. The default budget, 500 rows per table per step, is the one B8 showed
+keeps every table at its plateau with one step per block; each step is one
+write transaction deleting at most 500 rows from each table, so it holds the
+writer for a bounded time between two events. A failed step is logged and
+reported in `prune.lastError`, and the next one retries.
 
 `applyChainSyncEvent` decodes a roll-forward and applies it, or rewinds to a
 roll-backward's point. A rollback to the genesis is R1 `rollback_beyond_k`
@@ -433,8 +527,8 @@ without touching the store; an undecodable block is `block_undecodable`.
 256, 512, ... below the cursor, then the store's origin (at most 256 points,
 the transport's limit). `startWhenFree` starts the store and waits out
 `store_locked` (another process holds the writer lease) with backoff instead
-of exiting; it returns the first other start result, or `undefined` once
-`signal` aborts.
+of exiting, telling `onLocked` each time; it returns the first other start
+result, or `undefined` once `signal` aborts.
 
 ### Role projections
 
@@ -460,15 +554,29 @@ one, or absent).
 
 ```ts
 runForkScenario(scenario, { open, k, projections?, source?, prepare?, walletSeed? }): Promise<ForkRunOutcome>
-forkScenarioArbitrary(k): fc.Arbitrary<ForkScenario> // fast-check
-forkCorpus(k): NamedScenario[] // every shape and variant at depths 1, k/2, k
+forkScenarioArbitrary(k, maxEpisodes?, { prune? }): fc.Arbitrary<ForkScenario> // fast-check
+forkCorpus(k, { prune? }): NamedScenario[] // every shape and variant at depths 1, k/2, k, and the prune cases
 ```
+
+An episode with `prune` prunes the store to completion (in budget-2 steps)
+after its old branch's last block and again after its rollback: the
+rollback rewinds over pruned rows, and its cursor drop leaves rows pruned
+before within k of the new cursor (the E7 case). The corpus adds every shape
+pruned around a depth-k rollback and the chain of every shape pruned;
+`{ prune: false }` leaves prune cases out.
 
 After every event `runForkScenario` checks that the store equals a store
 rebuilt from scratch from the canonical chain (every fact and temporal
 table), that INV1–INV6 hold, that the tracked outputs and spenders at each
 episode's checkpoints match the simulator's own ledger model, and every
-plugged projection's `check`. `source` replaces the
+plugged projection's `check`. Once the store has pruned
+(`prunedThroughSlot` above the origin), "equals" becomes two checks against
+the unpruned rebuild: every row the store holds is a row of the rebuild, and
+every row the rebuild holds that plan §11 retention keeps at
+`prunedThroughSlot` is in the store (`retainedQueries`, `diffPruned`;
+live and recently spent outputs, rows a projection's `retentionPins` pin,
+checkpoint blocks, D-t rows by their retention rule). Until then the check is
+plain equality. `source` replaces the
 in-memory event list with a real one (the transport test serves it through a
 fake sidecar and the real frame client).
 
@@ -492,10 +600,11 @@ package's `test:fork-sim` (see below).
 
 The follower's correctness gate is the fork simulator, not a comparison with
 the code it replaces. After every operation of every scenario (each
-roll-forward, rollback and wallet seed), every fact table and every
+roll-forward, rollback, prune and wallet seed), every fact table and every
 projection's D-t table must equal a fresh forward-only replay of the
-current canonical chain, INV1–INV6 must hold and each projection's `check`
-must pass. Role packages plug their projections into the same runner from
+current canonical chain (once pruned: hold only its rows and every row
+retention keeps), INV1–INV6 must hold and each projection's `check` must
+pass. Role packages plug their projections into the same runner from
 their own `test:fork-sim` script. The devnet journeys then run the follower
 against real node CBOR, with no Kupo or Ogmios.
 

@@ -46,10 +46,22 @@ const executor = (client: pg.PoolClient): SqlTx => ({
 });
 
 export type PostgresConnection =
-  /** A pool the caller owns; `close()` leaves it open. */
+  /**
+   * A pool the caller owns; `close()` leaves it open. The caller attaches
+   * the pool's `'error'` listener.
+   */
   | { pool: pg.Pool }
   /** A connection string; the backend owns and closes its pool. */
-  | { connectionString: string; maxConnections?: number };
+  | {
+      connectionString: string;
+      maxConnections?: number;
+      /**
+       * Told about a connection Postgres dropped (a restart, a failover, an
+       * idle reaper). Nothing else is needed: the pool discards the client
+       * and the next query opens a new connection or fails like any other.
+       */
+      onConnectionError?: (error: Error) => void;
+    };
 
 /**
  * The writer lease key: one per database and schema, like the committee's
@@ -108,13 +120,21 @@ export const openPostgresBackend = (
   connection: PostgresConnection,
 ): SqlBackend => {
   const owned = !("pool" in connection);
-  const pool =
+  const onConnectionError =
     "pool" in connection
-      ? connection.pool
-      : new pg.Pool({
-          connectionString: connection.connectionString,
-          max: connection.maxConnections ?? 4,
-        });
+      ? () => undefined
+      : (connection.onConnectionError ?? (() => undefined));
+  let pool: pg.Pool;
+  if ("pool" in connection) pool = connection.pool;
+  else {
+    pool = new pg.Pool({
+      connectionString: connection.connectionString,
+      max: connection.maxConnections ?? 4,
+    });
+    // pg re-emits an idle client's error on its pool; with no listener it
+    // is an uncaught exception that exits the process.
+    pool.on("error", onConnectionError);
+  }
   return {
     dialect: postgresDialect,
     transaction: async <T>(
@@ -122,6 +142,9 @@ export const openPostgresBackend = (
       run: (tx: SqlTx) => Promise<T>,
     ): Promise<T> => {
       const client = await pool.connect();
+      // While checked out the pool's idle listener is detached, so a dropped
+      // connection's 'error' needs one here; the pending query rejects.
+      client.on("error", onConnectionError);
       let released = false;
       try {
         await client.query(
@@ -143,6 +166,7 @@ export const openPostgresBackend = (
         if (error instanceof RollbackWith) return error.value as T;
         throw error;
       } finally {
+        client.off("error", onConnectionError);
         if (!released) client.release();
       }
     },
