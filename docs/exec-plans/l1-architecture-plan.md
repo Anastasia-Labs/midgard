@@ -590,8 +590,9 @@ startup, after every rewind and in the property test.
   below `output_count`. Failed txs create only the collateral return.
 - **INV5.** Nothing lies above the cursor, and blocks above the origin form a
   parent-linked chain with consecutive heights.
-- **INV6.** Seed rows have `seed_slot` set and were never created at or after
-  the origin.
+- **INV6.** No seed row lies above the cursor, and no stored tx contradicts a
+  seed row: its creator, if stored, sits at or below `seed_slot` and creates
+  that index.
 
 ```sql
 -- INV1
@@ -615,8 +616,12 @@ SELECT * FROM l1_blocks WHERE slot > (SELECT slot FROM l1_follower_cursor);
 SELECT b.* FROM l1_blocks b LEFT JOIN l1_blocks pb ON pb.hash = b.parent_hash
  WHERE b.slot > (SELECT origin_slot FROM l1_follower_cursor)
    AND (pb.hash IS NULL OR pb.height + 1 <> b.height);
--- INV6: a seed row whose creating tx the follower saw was created after origin and must not be a seed row
-SELECT o.* FROM l1_outputs o JOIN l1_txs t ON t.tx_hash = o.tx_hash WHERE o.created_slot IS NULL;
+-- INV6
+SELECT * FROM l1_outputs WHERE seed_slot > (SELECT slot FROM l1_follower_cursor);
+SELECT o.* FROM l1_outputs o JOIN l1_txs t ON t.tx_hash = o.tx_hash
+ WHERE o.seed_slot IS NOT NULL AND (t.block_slot > o.seed_slot
+   OR (t.is_valid AND o.output_index >= t.output_count)
+   OR (NOT t.is_valid AND NOT (t.has_collateral_return AND o.output_index = t.output_count)));
 ```
 
 The `int2send` concatenation relies on the 34-byte outref encoding. A
@@ -712,14 +717,20 @@ There are no ledger snapshots and no Kupo index.
    - If the cursor reaches the tip without seeing it, `/readyz` fails with
      `origin_after_protocol_init`. This is an intervention case: the fix is a
      config value.
-4. **Wallet seed.** Own wallets can hold pre-origin UTxOs.
+4. **Wallet seed.** Own wallets can hold UTxOs the follower has no row for:
+   pre-origin outputs, and outputs paid to a wallet before it was tracked.
    - Once the cursor is within k of the tip, acquire LSQ at the cursor point
      P. LSQ can only acquire volatile points.
    - Call `GetUTxOByAddress(own wallets)` and insert, as seed rows
-     (`created_slot NULL, seed_slot = P`), the outrefs that are not already
-     stored.
-   - Those outrefs predate O, so no rewind above O touches them.
-   - Repeat the seed whenever a wallet is added.
+     (`created_slot NULL, seed_slot = P`), the outrefs not already stored as
+     an output row.
+   - The write is refused (`cursor_moved`) unless the cursor is still P; the
+     seed then reads again at the new cursor.
+   - A seed is a fact observed at P. A rewind to T < P deletes the seed rows
+     with `seed_slot > T` in the rewind's transaction, and the wallet is owed
+     a seed again. Every wallet takes this one path; none waits for k.
+   - Repeat the seed whenever a wallet is added. Until a wallet's seed lands,
+     the role reports the transient reason `wallet_seed_pending`.
 5. **Rollback below O, or below the oldest retained block.** This cannot
    happen on a correct node once O is k deep. If it does happen, it is an
    intervention case (§7.5).
@@ -1656,7 +1667,7 @@ deferred are not part of the program pull request.
 | **F1** | Sidecar v2 (§4.2): move to `demo/l1-node-transport/`; one long-lived process; multi-point `FindIntersect`; credit window; length-prefixed frames; LSQ, LocalTxSubmission and LocalTxMonitor. Delete the per-candidate spawns and the exact-point helper service with its per-session node connections (WC3; updated at 17fdffd9b). | — | Conformance against a local devnet node: intersect on the point list, `roll_backward` ordering under a forced fork, credit never exceeded, raw bytes round-trip, `submit` returns the ledger's rejection bytes, `has_tx` agrees with the mempool. A sidecar crash and restart resume from the acknowledged sequence with no gap and no duplicate. |
 | **F2** | The `demo/midgard-l1-follower/` package: the `FactStore` interface, Postgres and SQLite adapters, the §5.2 DDL, rewind (§7.1), the temporal registry (§7.2), schema lint (class and retention), and invariants INV1–INV6. | — | The property test from §7.2 passes on both adapters with 10^4 random operations. The lint fails a fixture migration that has no class. Rewind cost is linear in the rows above the target (B3). |
 | **F3** | Origin: the `l1Origin` manifest field (rides the redeploy), an operator-config override until then, the `deployment:check` invariant (origin before the `prepareHubOracleNonce` block), the R3 and R4 assertions, and the `follower find-origin` tool. | F1, F2 | An origin after protocol init: unready R3. A wrong hash: R4. `find-origin` on devnet returns the point immediately before the block holding the tx. |
-| **F4** | LSQ wallet seed (§5.3, step 4). | F1, F2 | Pre-origin wallet UTxOs appear as seed rows. A rewind above the origin never touches them. Adding a wallet re-seeds. |
+| **F4** | LSQ wallet seed (§5.3, step 4). | F1, F2 | Pre-origin wallet UTxOs appear as seed rows. A rewind at or above a seed's point never touches it; a rewind below it deletes the seed rows and the wallet re-seeds. Adding a wallet re-seeds. |
 | **F5** | A Lucid `Provider` over the read API and the sidecar (UTxOs, datums, protocol parameters, slot config from era history, submit), with local evaluation. | F1, F2 | Wallet coin selection, reference-script publication and one tx of each node family build and submit on devnet with no Kupo or Ogmios configured. |
 | **F6** | **Deferred (§1.4).** Decode pool, reorder buffer, ordered writer, batching and the tracked-outref cache (§6). | F2 | B1 and B2 targets met. Under random worker delays, writes stay in sequence order. After a rewind, the cache equals a fresh load. |
 | **F7** | Heads module (§9): levels, `depth()`, `slotNow`, and a lint against direct k or cd comparisons. Deletes `local-ledger-slot` (§13.1). Takes L7's rule: the three depth variants (§3.5) become one `depth()`, and every §3.6 site that no other ticket deletes reads `slotNow`. | F2 | Level transitions are correct under the fork simulator. The lint flags a fixture that compares against `confirmationDepth`. From L7: a fake clock 10 minutes fast changes no L1 decision. |
