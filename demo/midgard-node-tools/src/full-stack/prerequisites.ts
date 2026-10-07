@@ -50,6 +50,7 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
   );
   for (const name of [
     "@al-ft/lucid-midgard",
+    "@al-ft/l1-node-transport",
     "@al-ft/midgard-core",
     "@al-ft/midgard-sdk",
     "@al-ft/midgard-validation",
@@ -66,9 +67,9 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
       "host",
     );
   await processes.command(
-    "native-chain-sync-build",
+    "native-l1-node-transport-build",
     "pnpm",
-    ["--filter", "midgard-watcher", "native:build"],
+    ["--filter", "@al-ft/l1-node-transport", "native:build"],
     { CGO_ENABLED: "0", GOTOOLCHAIN: "go1.25.7" },
     workspace,
     "host",

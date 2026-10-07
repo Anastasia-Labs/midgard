@@ -16,7 +16,7 @@ export const journeyNativeNodeQuery = async (
       "Journey native query requires its isolated devnet genesis",
     );
   return {
-    binaryPath: join(runDirectory, "work/midgard-chain-sync"),
+    binaryPath: join(runDirectory, "work/midgard-l1-node-transport"),
     timeoutMs: 10_000,
     watcherConfig: {
       targetNetwork: "Custom",

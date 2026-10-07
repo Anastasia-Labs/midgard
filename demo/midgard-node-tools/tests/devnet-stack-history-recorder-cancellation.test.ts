@@ -134,8 +134,8 @@ it
       writeFileSync(layout.watcherRuntimeConfig, JSON.stringify(raw));
       mkdirSync(layout.bin, { recursive: true });
       cpSync(
-        join(layout.watcherRoot, "dist/native/midgard-chain-sync"),
-        join(layout.bin, "midgard-chain-sync"),
+        join(layout.transportRoot, "dist/native/midgard-l1-node-transport"),
+        join(layout.bin, "midgard-l1-node-transport"),
       );
       writeFileSync(
         join(layout.bin, "architecture-g-owner"),

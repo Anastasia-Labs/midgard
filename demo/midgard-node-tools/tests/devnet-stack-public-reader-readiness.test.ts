@@ -79,7 +79,7 @@ const context: DeployContext = {
   artifacts: {
     nativeOwnerBinary: "/synthetic/owner",
     nativeOwnerSha256: "synthetic",
-    chainSyncBinary: "/synthetic/chain-sync",
+    transportBinary: "/synthetic/chain-sync",
   },
 };
 

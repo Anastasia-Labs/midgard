@@ -12,19 +12,19 @@ import {
   config,
   INTERSECTION,
   readIdentityFixture,
-  spawnFixture,
 } from "../l1/native-chain-sync.config.js";
+import { fakeNodeTransport } from "../l1/native-chain-sync.fake-transport.js";
 
 const HELD =
   "Watcher restart remains quarantined: authenticated recovery evidence is incomplete";
 
-/** Starts the honest helper for each attempt and counts open streams. */
+/** Follows an honest node for each attempt and counts open streams. */
 const nativeHelper = () => {
   const counts = { started: 0, closed: 0 };
   const start: typeof startWatcherNativeChainSyncWithRetry = async (input) => {
     const runtime = await startWatcherNativeChainSyncWithRetry({
       ...input,
-      unsafeSpawnForTest: spawnFixture("honest"),
+      binaryPath: (await fakeNodeTransport()).binaryPath,
       unsafeReadIdentityFileForTest: readIdentityFixture,
     });
     counts.started += 1;

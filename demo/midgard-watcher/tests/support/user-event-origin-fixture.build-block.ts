@@ -123,7 +123,6 @@ export type SyntheticNativeTip = Readonly<{
 }>;
 
 export type SyntheticNativeQuery = Readonly<{
-  startupDigest: string;
   target: SyntheticNativeTip;
   tip: SyntheticNativeTip;
 }>;

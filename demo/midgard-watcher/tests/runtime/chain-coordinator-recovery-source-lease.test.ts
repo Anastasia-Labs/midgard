@@ -13,8 +13,8 @@ import {
   config,
   INTERSECTION,
   readIdentityFixture,
-  spawnFixture,
 } from "../l1/native-chain-sync.config.js";
+import { fakeNodeTransport } from "../l1/native-chain-sync.fake-transport.js";
 
 const hash = (byte: string) => byte.repeat(64);
 
@@ -25,11 +25,10 @@ describe("quarantine retry native lease", () => {
       resolveEvent = resolve;
     });
     const native = await startWatcherNativeChainSync({
-      binaryPath: "/test/native-chain-sync",
+      binaryPath: (await fakeNodeTransport("below_intersection")).binaryPath,
       watcherConfig: config(),
       intersection: INTERSECTION,
       startupTimeoutMs: 10_000,
-      unsafeSpawnForTest: spawnFixture("below_intersection"),
       unsafeReadIdentityFileForTest: readIdentityFixture,
       onEvent: async (event) => {
         if (

@@ -133,7 +133,7 @@ describe("nodeEnvironment history genesis pin", () => {
   const artifacts = {
     nativeOwnerBinary: "o",
     nativeOwnerSha256: "h",
-    chainSyncBinary: "c",
+    transportBinary: "c",
   };
 
   it("carries the pin to listen and to commands", () => {

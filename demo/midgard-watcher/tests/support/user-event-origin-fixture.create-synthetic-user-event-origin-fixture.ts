@@ -1,15 +1,18 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
-  chmod,
   mkdtemp,
   readFile,
+  realpath,
   rename,
   rm,
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
+import { closeSharedL1NodeTransports } from "@al-ft/l1-node-transport";
+import { writeFakeSidecar } from "@al-ft/l1-node-transport/testing/fake-sidecar";
 import { CML } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
@@ -47,14 +50,16 @@ import {
   type SyntheticUserEventBlock,
   withFixtureCml,
 } from "./user-event-origin-fixture.make-config.js";
-import { syntheticNativeHelperScript } from "./user-event-origin-fixture.native-helper-script.js";
+
+const nativeHandlerModule = fileURLToPath(
+  new URL("./user-event-origin-fixture.native-handler.mjs", import.meta.url),
+);
 
 export const createSyntheticUserEventOriginFixture = async (
   options: Readonly<{
     queryEndpoints?: Readonly<{ ogmios: string; kupo: string }>;
     nativeTipBaseDepth?: number;
     nativeTipMode?: "query_counter" | "controlled";
-    nativeStreamInitialAcknowledgement?: boolean;
     blockSlotInterval?: number;
     ruleBundleCommitment?: string;
     protocolParameters?: unknown;
@@ -77,10 +82,6 @@ export const createSyntheticUserEventOriginFixture = async (
     throw new Error("Synthetic block slot interval is outside fixture bounds");
   }
   const nativeTipMode = options.nativeTipMode ?? "query_counter";
-  const nativeStreamInitialAcknowledgement =
-    options.nativeStreamInitialAcknowledgement ?? false;
-  if (typeof nativeStreamInitialAcknowledgement !== "boolean")
-    throw new Error("Synthetic stream acknowledgement option must be boolean");
   if (nativeTipMode !== "query_counter" && nativeTipMode !== "controlled")
     throw new Error("Unknown synthetic native tip mode");
   if (
@@ -91,10 +92,13 @@ export const createSyntheticUserEventOriginFixture = async (
     throw new Error(
       "Synthetic native tip base depth is outside fixture bounds",
     );
-  const dir = await mkdtemp(join("/var/tmp", "synthetic-user-event-origin-"));
+  // The transport binary path must be canonical.
+  const dir = await realpath(
+    await mkdtemp(join("/var/tmp", "synthetic-user-event-origin-")),
+  );
   const nodeConfig = join(dir, "node.json");
   const genesisConfig = join(dir, "genesis.json");
-  const binaryPath = join(dir, "helper.mjs");
+  const binaryPath = join(dir, "node-transport");
   const registryPath = join(dir, "blocks.json");
   const counterPath = join(dir, "counter");
   const tipPath = join(dir, "tip.json");
@@ -380,19 +384,18 @@ export const createSyntheticUserEventOriginFixture = async (
   registerCreating(initialization.transactionCbor, activationBlock);
   const persistBlocks = () => writeAtomic(registryPath, blocks);
   await persistBlocks();
-  await writeFile(
-    binaryPath,
-    syntheticNativeHelperScript({
+  await writeFakeSidecar({
+    path: binaryPath,
+    handlerModule: nativeHandlerModule,
+    options: {
       controlPath,
       registryPath,
       counterPath,
       tipPath,
       queryLogPath,
       nativeTipBaseDepth,
-      nativeStreamInitialAcknowledgement,
-    }),
-  );
-  await chmod(binaryPath, 0o700);
+    },
+  });
   class BoundarySocket extends EventTarget {
     readyState = 0;
     intersection = { slot: Number(anchor.slot), id: anchor.blockHash };
@@ -882,7 +885,6 @@ export const createSyntheticUserEventOriginFixture = async (
         .map((line) => {
           const query = JSON.parse(line) as SyntheticNativeQuery;
           return Object.freeze({
-            startupDigest: query.startupDigest,
             target: snapshotTip(query.target),
             tip: snapshotTip(query.tip),
           });
@@ -950,12 +952,20 @@ export const createSyntheticUserEventOriginFixture = async (
           .reverse()
           .map((stop) => stop()),
       );
+      const transports = await Promise.allSettled([
+        closeSharedL1NodeTransports(),
+      ]);
       const cleanup = await Promise.allSettled([
         rm(dir, { recursive: true, force: true }),
         Promise.resolve().then(() => vi.unstubAllGlobals()),
       ]);
-      const errors = [...stopControl, ...outcomes, ...cleanup].flatMap(
-        (result) => (result.status === "rejected" ? [result.reason] : []),
+      const errors = [
+        ...stopControl,
+        ...outcomes,
+        ...transports,
+        ...cleanup,
+      ].flatMap((result) =>
+        result.status === "rejected" ? [result.reason] : [],
       );
       if (errors.length > 0)
         throw new AggregateError(

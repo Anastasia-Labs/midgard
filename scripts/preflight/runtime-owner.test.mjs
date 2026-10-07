@@ -200,8 +200,9 @@ test("Node CI covers every package build, typecheck and full suite", () => {
     );
   }
   assert.ok(
-    jobs["midgard-watcher"].steps.some(
-      (step) => step.run === "pnpm --dir demo/midgard-watcher run native:build",
+    jobs["l1-node-transport"].steps.some(
+      (step) =>
+        step.run === "pnpm --dir demo/l1-node-transport run native:build",
     ),
   );
   assert.ok(

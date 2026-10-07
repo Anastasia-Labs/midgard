@@ -17,10 +17,13 @@ import { withResource } from "./resources.mjs";
 import { NATIVE_RECIPES } from "./native-recipes.mjs";
 export { NATIVE_RECIPES } from "./native-recipes.mjs";
 
-const versions = (commands) =>
-  commands.map((argv) => ({
+// Tools report from the recipe's toolsDirectory, so a toolchain the sources
+// select there (a Go module's go directive) is the one recorded.
+const versions = (root, pkg, recipe) =>
+  recipe.tools.map((argv) => ({
     argv,
     version: execFileSync(argv[0], argv.slice(1), {
+      cwd: resolve(root, pkg.directory, recipe.toolsDirectory ?? "."),
       encoding: "utf8",
       timeout: 5000,
     }).trim(),
@@ -43,7 +46,8 @@ export const checkNative = (root, name) => {
       stamp.root !== realpathSync(root) ||
       stamp.inputs.sha256 !== inputIdentity(root, name).sha256 ||
       stamp.outputs.sha256 !== hashFiles(root, [output]).sha256 ||
-      JSON.stringify(stamp.tools) !== JSON.stringify(versions(recipe.tools))
+      JSON.stringify(stamp.tools) !==
+        JSON.stringify(versions(root, pkg, recipe))
     )
       throw new Error(
         "native binary sources, contents, checkout or compiler changed",
@@ -74,7 +78,7 @@ export const buildNative = async (
         async (buildEnv) => {
           const directory = runDirectory();
           const before = inputIdentity(root, pkg.name);
-          const tools = versions(recipe.tools);
+          const tools = versions(root, pkg, recipe);
           rmSync(
             `${resolve(root, pkg.directory, recipe.output)}.contrib-native-v1.json`,
             { force: true },

@@ -42,10 +42,11 @@ provider, set all three of these absolute paths, or none:
 ```sh
 CARDANO_LOCAL_NODE_SOCKET_PATH=/run/cardano/node.socket
 CARDANO_LOCAL_NODE_CONFIG_PATH=/etc/cardano/config.json
-CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH=/opt/midgard/midgard-chain-sync
+CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH=/opt/midgard/midgard-l1-node-transport
 ```
 
-Build the helper with `pnpm --dir demo/midgard-watcher run native:build`. The
+The binary is the node transport sidecar; build it with
+`pnpm --dir demo/l1-node-transport run native:build`. The
 node configuration's Shelley genesis must match the configured network. The
 query uses `CARDANO_LOCAL_NODE_AUTHORITY_ID` when set, otherwise
 `local-cardano-node`. Without these settings, registration checks fail closed.

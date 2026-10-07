@@ -1,16 +1,9 @@
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { fileURLToPath } from "node:url";
 
-import { startWatcherNativeChainSync } from "../../src/l1/native-chain-sync.js";
 import {
   WATCHER_CONFIG_SCHEMA_VERSION,
   type WatcherConfig,
 } from "../../src/runtime/config.js";
-
-const fixturePath = fileURLToPath(
-  new URL("../support/native-chain-sync-fixture.mjs", import.meta.url),
-);
 
 export const NODE_CONFIG_PATH = "/etc/cardano/node-config.json";
 
@@ -102,11 +95,6 @@ export const config = (): WatcherConfig =>
     }),
   });
 
-export const spawnFixture = (mode: string) => () =>
-  spawn(process.execPath, [fixturePath, mode], {
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-
 export const readIdentityFixture = async (
   path: string,
 ): Promise<Uint8Array> => {
@@ -114,25 +102,6 @@ export const readIdentityFixture = async (
   if (path === GENESIS_CONFIG_PATH) return GENESIS_CONFIG_BYTES;
   throw new Error("unexpected native identity fixture path");
 };
-
-export const start = async (
-  mode: string,
-  onEvent: Parameters<typeof startWatcherNativeChainSync>[0]["onEvent"],
-  onSpawn?: (child: ChildProcessWithoutNullStreams) => void,
-) =>
-  await startWatcherNativeChainSync({
-    binaryPath: "/test/native-chain-sync",
-    watcherConfig: config(),
-    intersection: INTERSECTION,
-    startupTimeoutMs: 2_000,
-    onEvent,
-    unsafeSpawnForTest: () => {
-      const child = spawnFixture(mode)();
-      onSpawn?.(child);
-      return child;
-    },
-    unsafeReadIdentityFileForTest: readIdentityFixture,
-  });
 
 export const waitFor = async (predicate: () => boolean): Promise<void> => {
   const deadline = Date.now() + 2_000;

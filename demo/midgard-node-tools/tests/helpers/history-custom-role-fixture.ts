@@ -200,7 +200,7 @@ const run = async () => {
     deploymentAuthorityPath: paths.authority,
     ruleBundlePath: paths.rules,
     fundingProfileBundlePath: paths.fundingProfiles,
-    nativeChainSyncBinaryPath: join(layout.bin, "midgard-chain-sync"),
+    nativeChainSyncBinaryPath: join(layout.bin, "midgard-l1-node-transport"),
     workflowJournalDirectory: join(root, "workflows"),
   });
   config.availability.journalPath = join(root, "availability.sqlite");

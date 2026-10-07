@@ -133,9 +133,12 @@ test("reproduction refuses a native output deleted after its successful build", 
       },
     }),
   );
-  for (const name of ["midgard-node", "midgard-watcher"]) {
+  for (const [directory, name] of [
+    ["midgard-node", "midgard-node"],
+    ["l1-node-transport", "@al-ft/l1-node-transport"],
+  ]) {
     put(
-      `demo/${name}/package.json`,
+      `demo/${directory}/package.json`,
       JSON.stringify({
         name,
         scripts: {
@@ -148,6 +151,7 @@ test("reproduction refuses a native output deleted after its successful build", 
     );
   }
   put("demo/midgard-node/native/mpf-event-flat-wasm/Cargo.toml", "[package]\n");
+  put("demo/l1-node-transport/native/go.mod", "module fixture\n");
   put("demo/midgard-node/scripts/generate.mjs", "// fixture generator\n");
   put(
     ".agents/skills/regenerating-goldens-and-ledgers/scripts/channels.json",
@@ -166,16 +170,16 @@ test("reproduction refuses a native output deleted after its successful build", 
   );
   put(
     "check-native.mjs",
-    "import {rmSync} from 'node:fs';if(process.env.CONTRIB_FIXTURE_DROP_NATIVE==='1')rmSync('demo/midgard-watcher/dist/native',{recursive:true});\n",
+    "import {rmSync} from 'node:fs';if(process.env.CONTRIB_FIXTURE_DROP_NATIVE==='1')rmSync('demo/l1-node-transport/dist/native',{recursive:true});\n",
   );
   // A shared build input, so the traced compiler reads only bound files.
   put(
     "demo/scripts/fixture-compiler.mjs",
-    "import {mkdirSync,writeFileSync} from 'node:fs';const recipe=process.argv[2];const output=recipe==='build:contrib-raw'?'dist/index.js':recipe==='native:build:contrib-raw'?'dist/native/midgard-chain-sync':'native/mpf-event-flat-wasm/target/release/architecture-g-owner';mkdirSync(output.slice(0,output.lastIndexOf('/')),{recursive:true});writeFileSync(output,'fixture output');\n",
+    "import {mkdirSync,writeFileSync} from 'node:fs';const recipe=process.argv[2];const output=recipe==='build:contrib-raw'?'dist/index.js':recipe==='native:build:contrib-raw'?'dist/native/midgard-l1-node-transport':'native/mpf-event-flat-wasm/target/release/architecture-g-owner';mkdirSync(output.slice(0,output.lastIndexOf('/')),{recursive:true});writeFileSync(output,'fixture output');\n",
   );
   put(
     "guarded-build.mjs",
-    `import {resolve} from 'node:path';import {buildPackage} from ${JSON.stringify(new URL("./build.mjs", import.meta.url).href)};for(const name of ['example','midgard-node','midgard-watcher']){const result=await buildPackage(resolve(process.cwd(),'..'),name);if(result.exitCode)process.exit(result.exitCode);}\n`,
+    `import {resolve} from 'node:path';import {buildPackage} from ${JSON.stringify(new URL("./build.mjs", import.meta.url).href)};for(const name of ['example','midgard-node','@al-ft/l1-node-transport']){const result=await buildPackage(resolve(process.cwd(),'..'),name);if(result.exitCode)process.exit(result.exitCode);}\n`,
   );
   writeFileSync(
     resolve(tools, "corepack"),
@@ -205,6 +209,6 @@ test("reproduction refuses a native output deleted after its successful build", 
   );
   assert.match(
     deleted.reason,
-    /final native output.*midgard-watcher.*missing/u,
+    /final native output.*@al-ft\/l1-node-transport.*missing/u,
   );
 });

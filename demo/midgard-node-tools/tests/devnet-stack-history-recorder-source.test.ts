@@ -10,8 +10,8 @@ import { startHistoryRecorderSource } from "../src/devnet-stack/history-recorder
 import { createHistoryChainFollower } from "../src/devnet-stack/watcher-history-chain.js";
 import { windowFixture } from "./helpers/history-native-window-fixture.js";
 
-const setup = (last: number) => {
-  const fixture = windowFixture(last);
+const setup = async (last: number) => {
+  const fixture = await windowFixture(last);
   const directories = ["actual-writer-a", "actual-writer-b"].map((name) => {
     const directory = join(fixture.root, name);
     mkdirSync(join(directory, "canonical"), { recursive: true });
@@ -49,7 +49,7 @@ const setup = (last: number) => {
 };
 
 it("uses the actual native producer, bounded full-window source and strict retained restart", async () => {
-  const f = setup(2161);
+  const f = await setup(2161);
   let source:
     | Awaited<ReturnType<typeof startHistoryRecorderSource>>
     | undefined;
@@ -102,7 +102,7 @@ it("uses the actual native producer, bounded full-window source and strict retai
 }, 210000);
 
 it("revokes before a live rewind and reacquires from the actual fork roll-forward without an Origin reset", async () => {
-  const f = setup(2);
+  const f = await setup(2);
   let source:
     | Awaited<ReturnType<typeof startHistoryRecorderSource>>
     | undefined;

@@ -2,12 +2,10 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
 
 import { createProbeSet, probeNix } from "./probes.mjs";
-import { buildRegistry } from "./registry.mjs";
 import {
   changedFiles,
   collectChanges,
@@ -26,87 +24,6 @@ import {
 // instead of the temporary one, which breaks every worktree that shares it.
 for (const key of Object.keys(process.env))
   if (key.startsWith("GIT_")) delete process.env[key];
-
-const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const nativeBuild = [
-  "pnpm",
-  "--dir",
-  "demo/midgard-watcher",
-  "run",
-  "native:build",
-];
-
-// Drive the real selection and execution order with a fresh checkout's missing
-// helper, without running the runtime matrix to test orchestration.
-for (const [label, changed, options] of [
-  ["watcher edit", ["demo/midgard-watcher/src/index.ts"], {}],
-  ["dependency edit", ["demo/midgard-core/src/index.ts"], {}],
-  ["full selection", [], { full: true }],
-]) {
-  test(`preflight prepares the native helper before watcher tests: ${label}`, async () => {
-    const plan = planPreflight(buildRegistry(projectRoot), changed, options);
-    plan.planned = plan.planned.filter(({ check }) => check.id === "demo-test");
-    assert.equal(plan.planned.length, 1);
-    let helperReady = false;
-    let watcherRan = false;
-    const report = await runPreflight({
-      root: projectRoot,
-      plan,
-      probes: { get: async () => ({ status: "available" }), invalidate() {} },
-      log() {},
-      runStep: async (_root, step) => {
-        if (JSON.stringify(step.argv) === JSON.stringify(nativeBuild)) {
-          helperReady = true;
-        } else if (step.argv.includes("midgard-watcher")) {
-          assert.ok(
-            helperReady,
-            "compiled native helper is missing before watcher suite",
-          );
-          watcherRan = true;
-        }
-        return { status: 0, output: "", durationMs: 1 };
-      },
-    });
-    assert.equal(report.exitCode, EXIT.passed);
-    assert.equal(watcherRan, true);
-  });
-}
-
-test("preflight stops before watcher tests when the guarded native build fails", async () => {
-  const plan = planPreflight(buildRegistry(projectRoot), [
-    "demo/midgard-watcher/src/index.ts",
-  ]);
-  plan.planned = plan.planned.filter(({ check }) => check.id === "demo-test");
-  const dispatched = [];
-  const report = await runPreflight({
-    root: projectRoot,
-    plan,
-    probes: { get: async () => ({ status: "available" }), invalidate() {} },
-    log() {},
-    runStep: async (_root, step) => {
-      dispatched.push(step.argv);
-      return { status: 1, output: "native build refused", durationMs: 1 };
-    },
-  });
-  assert.deepEqual(dispatched, [nativeBuild]);
-  assert.equal(report.exitCode, EXIT.failed);
-});
-
-test("preflight omits the watcher native build from the pre-push fast slice", () => {
-  const plan = planPreflight(
-    buildRegistry(projectRoot),
-    ["demo/midgard-watcher/src/index.ts"],
-    { prePush: true },
-  );
-  assert.ok(!plan.planned.some(({ check }) => check.id === "demo-test"));
-  assert.ok(
-    !plan.planned
-      .flatMap(({ steps }) => steps)
-      .some(
-        (step) => JSON.stringify(step.argv) === JSON.stringify(nativeBuild),
-      ),
-  );
-});
 
 test("interrupted preflight stops dispatching later checks and never reports a pass", async () => {
   const controller = new AbortController();

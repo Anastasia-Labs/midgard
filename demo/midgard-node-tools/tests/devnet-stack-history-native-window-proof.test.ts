@@ -14,7 +14,7 @@ import {
 } from "../src/devnet-stack/history-native-window-proof.js";
 import { windowFixture } from "./helpers/history-native-window-fixture.js";
 
-const fixtures: ReturnType<typeof windowFixture>[] = [];
+const fixtures: Awaited<ReturnType<typeof windowFixture>>[] = [];
 afterEach(async () => {
   await Promise.all(fixtures.splice(0).map((f) => f.close()));
 });
@@ -22,7 +22,7 @@ const setup = async (
   last: number,
   onForward?: (event: WatcherNativeChainSyncEvent) => Promise<void>,
 ) => {
-  const f = windowFixture(last);
+  const f = await windowFixture(last);
   fixtures.push(f);
   const sealer = createHistoryWindowSealer({
     actor: {
@@ -243,7 +243,7 @@ it("bounds a stalled actual source capture and keeps it transient and unknown", 
 });
 
 it("initializes from actual genesis roll-forward and reacquires after actual rollback without a restart", async () => {
-  const f = windowFixture(5);
+  const f = await windowFixture(5);
   fixtures.push(f);
   const sealer = createHistoryWindowSealer({
     actor: {

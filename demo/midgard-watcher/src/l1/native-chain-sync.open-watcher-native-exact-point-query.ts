@@ -20,11 +20,14 @@ import { startNativeSupervisor } from "./native-chain-sync.start-native-supervis
 
 export const startWatcherNativeChainSync = async (
   input: NativeStreamInput,
-): Promise<WatcherNativeChainSyncRuntime> =>
-  await startNativeSupervisor({
-    ...input,
+): Promise<WatcherNativeChainSyncRuntime> => {
+  const { intersection, ...rest } = input;
+  return await startNativeSupervisor({
+    ...rest,
+    intersections: [intersection],
     operation: Object.freeze({ kind: "stream" }),
   });
+};
 
 const queryReceiptBrand = Symbol("native-exact-point-query-receipt");
 
@@ -85,7 +88,7 @@ const parseBlockPoint = (value: unknown, label: string): NativeBlockPoint => {
   return result;
 };
 
-/** Owns one configured helper query; callers cannot supply acquired events. */
+/** Owns one configured exact-point read; callers cannot supply acquired events. */
 export const openWatcherNativeExactPointQuery = async (input: {
   readonly binaryPath: string;
   readonly watcherConfig: unknown;
@@ -183,11 +186,13 @@ export const openWatcherNativeExactPointQuery = async (input: {
     startup = startNativeSupervisor({
       binaryPath: input.binaryPath,
       watcherConfig,
-      intersection: Object.freeze({
-        kind: "point",
-        blockHash: predecessor.blockHash,
-        slot: predecessor.slot,
-      }),
+      intersections: [
+        Object.freeze({
+          kind: "point",
+          blockHash: predecessor.blockHash,
+          slot: predecessor.slot,
+        }),
+      ],
       startupTimeoutMs: timeoutMs,
       operation: Object.freeze({
         kind: "exact_point",
@@ -222,14 +227,14 @@ export const openWatcherNativeExactPointQuery = async (input: {
     runtime = await Promise.race([startup, cancellation]);
     void runtime.done.then(
       () => {
-        invalidate(new Error("native exact-point helper exited"));
+        invalidate(new Error("native exact-point read ended"));
         cleanup();
       },
       (error: unknown) => {
         invalidate(
           error instanceof Error
             ? error
-            : new Error("native exact-point helper failed"),
+            : new Error("native exact-point read failed"),
         );
         cleanup();
       },
@@ -287,7 +292,7 @@ export const openWatcherNativeExactPointQuery = async (input: {
     invalidate(new Error("native exact-point query failed"));
     cleanup();
     // Identity reads may still be pending. They recheck cancellation before
-    // spawning; a helper that was already spawned is closed by the core.
+    // opening; a read that was already opened is closed by the supervisor.
     if (runtime !== undefined) await runtime.close();
     else if (startup !== undefined)
       void startup.then((owned) => owned.close()).catch(() => undefined);

@@ -1,16 +1,24 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  chainPoint,
+  closeSharedL1NodeTransports,
+  type RewardAccountSnapshot,
+} from "@al-ft/l1-node-transport";
+import {
+  LEDGER_HANDLER,
+  writeFakeSidecar,
+} from "@al-ft/l1-node-transport/testing/fake-sidecar";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
+  admitNativeRewardAccount,
   type NativeLedgerAuthority,
   nativeLedgerAuthoritySource,
   NativeLedgerKupmios,
-  parseNativeRewardAccountResult,
   queryNativeRewardAccount,
   resolveNativeLedgerAuthority,
 } from "../src/native-reward-account.js";
@@ -18,60 +26,53 @@ import {
 const SCRIPT_REWARD_ADDRESS =
   "stake_test17rrxhht4hajr32nu03ymgt6dascxfukfuz5wu3qqefvcdlq4a2z47";
 const SCRIPT_HASH = "c66bdd75bf6438aa7c7c49b42f4dec3064f2c9e0a8ee4400ca5986fc";
+const POOL_HASH = "ac".repeat(28);
 
-const expected = {
-  credential: { type: "Script" as const, hash: "ab".repeat(28) },
-  startupDigest: "cd".repeat(32),
-};
-const registeredWithoutDelegation = () => ({
-  ...expected,
-  kind: "reward_account",
-  depositLovelace: "2000000",
-  point: { blockHash: "ef".repeat(32), blockNo: "42", slot: "99" },
-  poolIdHash: null,
+const registeredWithoutDelegation = (): RewardAccountSnapshot => ({
   registered: true,
-  rewardsLovelace: "0",
-  schemaVersion: NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
+  depositLovelace: 2_000_000n,
+  rewardsLovelace: 0n,
+  poolIdHash: null,
+  point: chainPoint(99n, "ef".repeat(32)),
+  blockNo: 42n,
 });
 
 describe("native reward-account admission", () => {
   it("keeps registered credentials with no rewards or delegation registered", () => {
-    expect(
-      parseNativeRewardAccountResult(registeredWithoutDelegation(), expected),
-    ).toEqual({ registered: true, rewards: 0n, poolId: null });
+    expect(admitNativeRewardAccount(registeredWithoutDelegation())).toEqual({
+      registered: true,
+      rewards: 0n,
+      poolId: null,
+    });
   });
 
   it("admits an absent ledger credential", () => {
     expect(
-      parseNativeRewardAccountResult(
-        {
-          ...registeredWithoutDelegation(),
-          registered: false,
-          depositLovelace: null,
-        },
-        expected,
-      ),
+      admitNativeRewardAccount({
+        ...registeredWithoutDelegation(),
+        registered: false,
+        depositLovelace: null,
+      }),
     ).toEqual({ registered: false, rewards: 0n, poolId: null });
   });
 
-  it.each([
+  it("names the delegated pool by its bech32 id", () => {
+    const { poolId } = admitNativeRewardAccount({
+      ...registeredWithoutDelegation(),
+      poolIdHash: POOL_HASH,
+    });
+    expect(poolId).toMatch(/^pool1/u);
+  });
+
+  it.each<Partial<RewardAccountSnapshot>>([
     { registered: true, depositLovelace: null },
     { registered: false },
-    { registered: false, depositLovelace: null, rewardsLovelace: "1" },
-    { registered: false, depositLovelace: null, poolIdHash: "ac".repeat(28) },
-    { credential: { type: "Key", hash: expected.credential.hash } },
-    { credential: { type: "Script", hash: "01".repeat(28) } },
-    { startupDigest: "00".repeat(32) },
-    { rewardsLovelace: "-1" },
-    { point: { blockHash: "00".repeat(32), blockNo: "1.5", slot: "99" } },
-    { schemaVersion: "midgard-watcher-native-chain-sync-v0" },
-    { extra: true },
-  ])("refuses inconsistent or substituted ledger state: %j", (change) => {
+    { registered: false, depositLovelace: null, rewardsLovelace: 1n },
+    { registered: false, depositLovelace: null, poolIdHash: POOL_HASH },
+    { poolIdHash: "ac".repeat(27) },
+  ])("refuses inconsistent ledger state (case %#)", (change) => {
     expect(() =>
-      parseNativeRewardAccountResult(
-        { ...registeredWithoutDelegation(), ...change },
-        expected,
-      ),
+      admitNativeRewardAccount({ ...registeredWithoutDelegation(), ...change }),
     ).toThrow();
   });
 });
@@ -97,24 +98,13 @@ describe("native ledger authority", () => {
     socketPath,
     timeoutMs: 5000,
   });
-  /** A helper double that answers as the ledger would for one credential. */
-  const writeHelper = async (answer: string) => {
-    await writeFile(
-      binaryPath,
-      `#!${process.execPath}
-const { createHash } = require("node:crypto");
-let line = "";
-process.stdin.on("data", (chunk) => (line += chunk));
-process.stdin.on("end", () => {
-  const startup = line.slice(0, -1);
-  const request = JSON.parse(startup);
-  const digest = createHash("sha256").update(startup).digest("hex");
-  const answer = ${answer};
-  process.stdout.write(JSON.stringify(answer(request, digest)) + "\\n");
-});
-`,
-    );
-    await chmod(binaryPath, 0o755);
+  /** A node transport whose node's ledger registers the script credential. */
+  const writeTransport = async (options: Record<string, unknown> = {}) => {
+    await writeFakeSidecar({
+      path: binaryPath,
+      handlerModule: LEDGER_HANDLER,
+      options: { magic: 1, scriptHash: SCRIPT_HASH, ...options },
+    });
   };
 
   beforeEach(async () => {
@@ -122,10 +112,11 @@ process.stdin.on("end", () => {
       await mkdtemp(join(tmpdir(), "midgard-native-ledger-")),
     );
     socketPath = join(directory, "node.socket");
-    binaryPath = join(directory, "helper.cjs");
+    binaryPath = join(directory, "node-transport");
     await writeFile(socketPath, "");
   });
   afterEach(async () => {
+    await closeSharedL1NodeTransports();
     await rm(directory, { recursive: true, force: true });
   });
 
@@ -161,51 +152,51 @@ process.stdin.on("end", () => {
     ).rejects.toThrow(/absolute path without symlinks/u);
   });
 
-  it("asks the helper for the address's credential and admits its bound answer", async () => {
+  it("reads the address's credential from the node ledger", async () => {
     await writeNode(1);
-    await writeHelper(`(request, digest) => ({
-      credential: request.operation.credential,
-      depositLovelace: "2000000",
-      kind: "reward_account",
-      point: { blockHash: "ef".repeat(32), blockNo: "42", slot: "99" },
-      poolIdHash: null,
-      registered: request.operation.credential.hash === "${SCRIPT_HASH}" &&
-        request.operation.credential.type === "Script" &&
-        request.operation.kind === "reward_account" &&
-        request.intersection.kind === "origin" &&
-        request.networkMagic === 1,
-      rewardsLovelace: "0",
-      schemaVersion: request.schemaVersion,
-      startupDigest: digest,
-    })`);
+    await writeTransport({ rewards: 7, pool: POOL_HASH });
+    const authority = await resolveNativeLedgerAuthority(input());
+    const state = await queryNativeRewardAccount(
+      authority,
+      SCRIPT_REWARD_ADDRESS,
+    );
+    expect(state).toMatchObject({ registered: true, rewards: 7n });
+    expect(state.poolId).toMatch(/^pool1/u);
+  });
+
+  it("keeps a registered, undelegated credential registered", async () => {
+    await writeNode(1);
+    await writeTransport();
     const authority = await resolveNativeLedgerAuthority(input());
     expect(
       await queryNativeRewardAccount(authority, SCRIPT_REWARD_ADDRESS),
     ).toEqual({ registered: true, rewards: 0n, poolId: null });
   });
 
-  it("refuses an answer bound to a different startup", async () => {
+  it("reports a credential the ledger does not hold as unregistered", async () => {
     await writeNode(1);
-    await writeHelper(`(request) => ({
-      credential: request.operation.credential,
-      depositLovelace: "2000000",
-      kind: "reward_account",
-      point: { blockHash: "ef".repeat(32), blockNo: "42", slot: "99" },
-      poolIdHash: null,
-      registered: true,
-      rewardsLovelace: "0",
-      schemaVersion: request.schemaVersion,
-      startupDigest: "00".repeat(32),
-    })`);
+    await writeTransport({ scriptHash: "01".repeat(28) });
+    const authority = await resolveNativeLedgerAuthority(input());
+    expect(
+      await queryNativeRewardAccount(authority, SCRIPT_REWARD_ADDRESS),
+    ).toEqual({ registered: false, rewards: 0n, poolId: null });
+  });
+
+  it("fails a read the node does not answer within the timeout", async () => {
+    await writeNode(1);
+    await writeTransport({ silent: true });
     const authority = await resolveNativeLedgerAuthority(input());
     await expect(
-      queryNativeRewardAccount(authority, SCRIPT_REWARD_ADDRESS),
-    ).rejects.toThrow(/differs from the requested credential/u);
+      queryNativeRewardAccount(
+        { ...authority, timeoutMs: 300 },
+        SCRIPT_REWARD_ADDRESS,
+      ),
+    ).rejects.toThrow(/no answer within 300 ms/u);
   });
 
   it("refuses a reward address from another network", async () => {
     await writeNode(1);
-    await writeHelper(`() => ({})`);
+    await writeTransport();
     const authority = await resolveNativeLedgerAuthority(input());
     await expect(
       queryNativeRewardAccount(
@@ -213,6 +204,18 @@ process.stdin.on("end", () => {
         SCRIPT_REWARD_ADDRESS,
       ),
     ).rejects.toThrow(/differs from the native node network/u);
+  });
+
+  it("refuses a transport binary path that is not canonical", async () => {
+    await writeNode(1);
+    await writeTransport();
+    const authority = await resolveNativeLedgerAuthority({
+      ...input(),
+      binaryPath: `${directory}/./node-transport`,
+    });
+    await expect(
+      queryNativeRewardAccount(authority, SCRIPT_REWARD_ADDRESS),
+    ).rejects.toThrow(/absolute path without symlinks/u);
   });
 
   it("retries authority resolution after a failure instead of caching it", async () => {

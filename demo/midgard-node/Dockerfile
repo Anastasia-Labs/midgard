@@ -24,6 +24,7 @@ COPY vendor ./vendor
 # chain's sources are copied and built below, and `deploy --prod` ships only
 # that chain. midgard-node-tools is dev-only and never enters the image.
 COPY lucid-midgard/package.json ./lucid-midgard/package.json
+COPY l1-node-transport/package.json ./l1-node-transport/package.json
 COPY midgard-core/package.json ./midgard-core/package.json
 COPY midgard-validation/package.json ./midgard-validation/package.json
 COPY midgard-fault-proofs/package.json ./midgard-fault-proofs/package.json
@@ -41,6 +42,7 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 # contributor builds, and the repository tooling is outside this demo context.
 FROM workspace AS build
 COPY lucid-midgard ./lucid-midgard
+COPY l1-node-transport ./l1-node-transport
 COPY midgard-core ./midgard-core
 COPY midgard-validation ./midgard-validation
 COPY midgard-fault-proofs ./midgard-fault-proofs
@@ -50,6 +52,7 @@ COPY midgard-node ./midgard-node
 # midgard-node's build compiles only itself, and its runtime imports each of
 # these packages' dist, so every one is built here, dependencies first.
 RUN pnpm --filter @al-ft/lucid-midgard run build:contrib-raw
+RUN pnpm --filter @al-ft/l1-node-transport run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-core run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-sdk run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-validation run build:contrib-raw

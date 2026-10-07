@@ -67,7 +67,7 @@ export const captureAcceptanceNativeRead = async <T>(
   use: (scope: AcceptanceNativePayoutScope) => Promise<T>,
   unsafeNativeForTest: Pick<
     Parameters<typeof config.native.startWatcherNativeChainSync>[0],
-    "unsafeSpawnForTest" | "unsafeReadIdentityFileForTest"
+    "unsafeReadIdentityFileForTest"
   > = {},
 ): Promise<{ value: T; boundary: AcceptanceNativePayoutBoundary }> => {
   if (scope.deadlineEpochMs === undefined)

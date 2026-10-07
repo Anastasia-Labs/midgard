@@ -30,6 +30,7 @@ export const makeLayout = (runDir: string) => {
     nodeRoot: join(demo, "midgard-node"),
     daRoot: join(demo, "da-committee-node"),
     watcherRoot: join(demo, "midgard-watcher"),
+    transportRoot: join(demo, "l1-node-transport"),
     toolsRoot: join(demo, "midgard-node-tools"),
     phase4Root,
     phase4Scripts: join(phase4Root, "scripts"),

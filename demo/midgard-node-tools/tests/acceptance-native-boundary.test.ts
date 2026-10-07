@@ -20,11 +20,11 @@ const scope = (signal?: AbortSignal, timeoutMs = 2000) =>
 
 it("reads exact acquired current outputs losslessly and joins both physical owners before returning", async () => {
   const server = await ogmiosFixture();
-  const helper = nativeFixture();
+  const helper = await nativeFixture();
   const read = scope();
   try {
     const result = await captureAcceptanceNativeRead(
-      readConfig(server.endpoint),
+      readConfig(server.endpoint, helper),
       read,
       async (current) => {
         expect(current.point).toEqual(POINT);
@@ -58,13 +58,13 @@ it.each(["wrongAcquire", "wrongSelected", "wrongEnvelope"] as const)(
   "rejects %s before any payout read and drains transports",
   async (option) => {
     const server = await ogmiosFixture({ [option]: true });
-    const helper = nativeFixture();
+    const helper = await nativeFixture();
     const read = scope();
     let entered = false;
     try {
       await expect(
         captureAcceptanceNativeRead(
-          readConfig(server.endpoint),
+          readConfig(server.endpoint, helper),
           read,
           async () => {
             entered = true;
@@ -96,12 +96,12 @@ it.each(["forward", "rollback", "exit", "error"] as const)(
   "revokes an active acquired read on native %s with physical query cancellation",
   async (command) => {
     const server = await ogmiosFixture({ stallQuery: true });
-    const helper = nativeFixture();
+    const helper = await nativeFixture();
     const read = scope();
     let signal!: AbortSignal;
     try {
       const result = captureAcceptanceNativeRead(
-        readConfig(server.endpoint),
+        readConfig(server.endpoint, helper),
         read,
         async (current) => {
           signal = current.signal;
@@ -113,7 +113,7 @@ it.each(["forward", "rollback", "exit", "error"] as const)(
       await waitFor(() =>
         server.requests.some((r) => r.method === "queryLedgerState/utxo"),
       );
-      helper.child().send(command);
+      helper.send(command);
       await rejected;
       expect(signal.aborted).toBe(true);
       expect(helper.closed()).toBe(true);
@@ -128,12 +128,12 @@ it.each(["forward", "rollback", "exit", "error"] as const)(
 
 it("refuses cached payout success when final selected tip advanced without an already delivered native callback", async () => {
   const server = await ogmiosFixture();
-  const helper = nativeFixture();
+  const helper = await nativeFixture();
   const read = scope();
   try {
     await expect(
       captureAcceptanceNativeRead(
-        readConfig(server.endpoint),
+        readConfig(server.endpoint, helper),
         read,
         async (current) => {
           await current.queryExactOutRefs(refs);
@@ -152,12 +152,12 @@ it("refuses cached payout success when final selected tip advanced without an al
 
 it("refuses public run or code mutation at the final fence", async () => {
   const server = await ogmiosFixture();
-  const helper = nativeFixture();
+  const helper = await nativeFixture();
   const read = scope();
   try {
     await expect(
       captureAcceptanceNativeRead(
-        readConfig(server.endpoint, async () => {
+        readConfig(server.endpoint, helper, async () => {
           throw new Error("public run changed");
         }),
         read,
@@ -172,34 +172,14 @@ it("refuses public run or code mutation at the final fence", async () => {
   }
 });
 
-it("rejects a different native authority and joins its rejected startup", async () => {
-  const server = await ogmiosFixture();
-  const helper = nativeFixture("wrong-authority");
-  const read = scope();
-  try {
-    await expect(
-      captureAcceptanceNativeRead(
-        readConfig(server.endpoint),
-        read,
-        async () => true,
-        helper,
-      ),
-    ).rejects.toThrow("identity");
-    expect(helper.closed()).toBe(true);
-  } finally {
-    read.close();
-    await server.close();
-  }
-});
-
 it("does not promote a readiness tip into a fabricated current forward", async () => {
   const server = await ogmiosFixture();
-  const helper = nativeFixture("no-current");
+  const helper = await nativeFixture("no-current");
   const read = scope(undefined, 300);
   try {
     await expect(
       captureAcceptanceNativeRead(
-        readConfig(server.endpoint),
+        readConfig(server.endpoint, helper),
         read,
         async () => true,
         helper,
@@ -217,12 +197,12 @@ it("does not promote a readiness tip into a fabricated current forward", async (
 
 it("cancels caller-revoked actual I/O and waits for an uncooperative peer's physical TCP close", async () => {
   const server = await ogmiosFixture({ stallQuery: true });
-  const helper = nativeFixture();
+  const helper = await nativeFixture();
   const controller = new AbortController();
   const read = scope(controller.signal);
   try {
     const result = captureAcceptanceNativeRead(
-      readConfig(server.endpoint),
+      readConfig(server.endpoint, helper),
       read,
       async (current) => await current.queryExactOutRefs(refs),
       helper,
@@ -244,11 +224,11 @@ it("cancels caller-revoked actual I/O and waits for an uncooperative peer's phys
 
 it("runs the existing exact transaction/depth readers within one native boundary and physically joins each socket", async () => {
   const server = await ogmiosFixture();
-  const helper = nativeFixture();
+  const helper = await nativeFixture();
   const read = scope();
   try {
     const result = await captureAcceptanceNativeRead(
-      readConfig(server.endpoint),
+      readConfig(server.endpoint, helper),
       read,
       async (current) => {
         const transaction = await current.readExactTransaction({
@@ -282,12 +262,12 @@ it("runs the existing exact transaction/depth readers within one native boundary
 
 it("rejects an independently answered lineage tip on another same-height fork", async () => {
   const server = await ogmiosFixture({ wrongLineageTip: true });
-  const helper = nativeFixture();
+  const helper = await nativeFixture();
   const read = scope();
   try {
     await expect(
       captureAcceptanceNativeRead(
-        readConfig(server.endpoint),
+        readConfig(server.endpoint, helper),
         read,
         async (current) =>
           await current.canonicalBlockDepth({
@@ -310,11 +290,11 @@ it.each(["stallDepth", "stallBlock"] as const)(
   "cancels an actual %s lineage request on native loss and joins its physical owner",
   async (option) => {
     const server = await ogmiosFixture({ [option]: true });
-    const helper = nativeFixture();
+    const helper = await nativeFixture();
     const read = scope();
     try {
       const result = captureAcceptanceNativeRead(
-        readConfig(server.endpoint),
+        readConfig(server.endpoint, helper),
         read,
         async (current) =>
           option === "stallDepth"
@@ -338,7 +318,7 @@ it.each(["stallDepth", "stallBlock"] as const)(
               .length >= 3
           : server.requests.some((r) => r.method === "nextBlock"),
       );
-      helper.child().send("exit");
+      helper.send("exit");
       await rejected;
       await waitFor(() => server.closed() === 2);
       expect(server.active()).toBe(0);
@@ -352,7 +332,7 @@ it.each(["stallDepth", "stallBlock"] as const)(
 
 it("retains callback ownership after cancellation until the underlying callback settles", async () => {
   const server = await ogmiosFixture();
-  const helper = nativeFixture();
+  const helper = await nativeFixture();
   const read = scope();
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
@@ -362,7 +342,7 @@ it("retains callback ownership after cancellation until the underlying callback 
   let retired = false;
   try {
     const result = captureAcceptanceNativeRead(
-      readConfig(server.endpoint),
+      readConfig(server.endpoint, helper),
       read,
       async (current) => {
         await current.queryExactOutRefs(refs);
@@ -379,7 +359,7 @@ it("retains callback ownership after cancellation until the underlying callback 
         retired = true;
       });
     await waitFor(() => entered);
-    helper.child().send("forward");
+    helper.send("forward");
     await waitFor(() => helper.closed());
     expect(retired).toBe(false);
     release();

@@ -535,7 +535,7 @@ export const createLiveDaBondPoolJourneyPort = async (
   const nativeLedgerPaths = {
     socket: join(runDirectory, "cardano/ipc/node.socket"),
     config: join(runDirectory, "config/config.json"),
-    binary: join(runDirectory, "work/midgard-chain-sync"),
+    binary: join(runDirectory, "work/midgard-l1-node-transport"),
   };
   const nativeLedger = Object.values(nativeLedgerPaths).every((path) =>
     existsSync(path),

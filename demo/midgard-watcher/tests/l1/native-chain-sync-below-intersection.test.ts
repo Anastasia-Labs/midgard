@@ -5,7 +5,8 @@ import {
   type WatcherNativeChainSyncEvent,
   watcherNativeChainSyncEventReceipt,
 } from "../../src/l1/native-chain-sync.js";
-import { start, waitFor } from "./native-chain-sync.config.js";
+import { waitFor } from "./native-chain-sync.config.js";
+import { start } from "./native-chain-sync.fake-transport.js";
 describe("native below-intersection rollback", () => {
   it("continues after an authenticated rollback below the session intersection", async () => {
     const events: WatcherNativeChainSyncEvent[] = [];
@@ -14,12 +15,14 @@ describe("native below-intersection rollback", () => {
       events.push(event);
     });
     try {
-      await waitFor(() => events.length === 3);
-      expect(events[1]).toMatchObject({
+      // The intersection acknowledgement, the block, the rollback below the
+      // intersection and the block on the other branch.
+      await waitFor(() => events.length === 4);
+      expect(events[2]).toMatchObject({
         kind: "roll_backward",
         point: { slot: "90", blockHash: "dd".repeat(32) },
       });
-      expect(events[2]).toMatchObject({
+      expect(events[3]).toMatchObject({
         kind: "roll_forward",
         prevHash: "dd".repeat(32),
         blockNo: "9",

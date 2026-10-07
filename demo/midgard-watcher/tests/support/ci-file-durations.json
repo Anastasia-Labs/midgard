@@ -105,8 +105,6 @@
     "tests/l1/native-chain-sync-node-unavailable.test.ts": 1.8,
     "tests/l1/native-chain-sync.test.ts": 2.3,
     "tests/l1/native-exact-point-query.test.ts": 4.3,
-    "tests/l1/native-exact-point-service-binary.test.ts": 2.1,
-    "tests/l1/native-exact-point-service.test.ts": 14.7,
     "tests/l1/native-read-revocation.test.ts": 1.9,
     "tests/l1/native-startup-drain.test.ts": 6.3,
     "tests/l1/native-startup-retry-cancellation.test.ts": 4.3,

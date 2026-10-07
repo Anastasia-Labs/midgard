@@ -1,6 +1,11 @@
-import { chmod, realpath, rm, writeFile } from "node:fs/promises";
+import { realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { closeSharedL1NodeTransports } from "@al-ft/l1-node-transport";
+import {
+  LEDGER_HANDLER,
+  writeFakeSidecar,
+} from "@al-ft/l1-node-transport/testing/fake-sidecar";
 import { NativeLedgerKupmios } from "@al-ft/midgard-core/native-reward-account";
 import {
   credentialToRewardAddress,
@@ -21,44 +26,23 @@ const rewardAddress = credentialToRewardAddress("Preprod", {
   hash: SCRIPT_HASH,
 });
 
-// Answers the helper's startup line the way the native chain-sync helper
-// does for a registered, undelegated script reward account.
-const HELPER_SOURCE = `#!/usr/bin/env node
-const { createHash } = require("node:crypto");
-let input = "";
-process.stdin.on("data", (chunk) => (input += chunk));
-process.stdin.on("end", () => {
-  const startup = input.replace(/\\n$/u, "");
-  const request = JSON.parse(startup);
-  process.stdout.write(
-    JSON.stringify({
-      credential: request.operation.credential,
-      depositLovelace: "2000000",
-      kind: "reward_account",
-      point: { blockHash: "cd".repeat(32), blockNo: "7", slot: "42" },
-      poolIdHash: null,
-      registered: true,
-      rewardsLovelace: "0",
-      schemaVersion: request.schemaVersion,
-      startupDigest: createHash("sha256").update(startup, "utf8").digest("hex"),
-    }) + "\\n",
-  );
-});
-`;
-
 const writeLocalLedger = async (): Promise<NativeLedgerConfig> => {
   const dir = await realpath(await tempDir());
   const nodeConfigPath = join(dir, "config.json");
   const socketPath = join(dir, "node.socket");
-  const binaryPath = join(dir, "midgard-chain-sync.cjs");
+  const binaryPath = join(dir, "node-transport");
   await writeFile(join(dir, "shelley-genesis.json"), '{"networkMagic":1}');
   await writeFile(
     nodeConfigPath,
     JSON.stringify({ ShelleyGenesisFile: "shelley-genesis.json" }),
   );
   await writeFile(socketPath, "");
-  await writeFile(binaryPath, HELPER_SOURCE);
-  await chmod(binaryPath, 0o755);
+  // The node ledger registers the script account, undelegated.
+  await writeFakeSidecar({
+    path: binaryPath,
+    handlerModule: LEDGER_HANDLER,
+    options: { magic: PREPROD_MAGIC, scriptHash: SCRIPT_HASH },
+  });
   return {
     authorityNodeId: "local-cardano-node",
     socketPath,
@@ -75,8 +59,9 @@ describe("lucidFromProviderUrl", () => {
       "getProtocolParameters",
     ).mockResolvedValue(PROTOCOL_PARAMETERS_DEFAULT);
   });
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks();
+    await closeSharedL1NodeTransports();
   });
 
   it("builds Kupmios providers whose reward-account state comes from the local ledger", async () => {

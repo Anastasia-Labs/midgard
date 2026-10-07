@@ -13,7 +13,7 @@ import { loadWatcherModule } from "../../src/devnet-stack/watcher-release.js";
 import { windowFixture } from "./history-native-window-fixture.js";
 
 const run = async () => {
-  const f = windowFixture(0);
+  const f = await windowFixture(0);
   let native: WatcherNativeChainSyncRuntime | undefined;
   try {
     const watcher = await loadWatcherModule(makeLayout(f.root));

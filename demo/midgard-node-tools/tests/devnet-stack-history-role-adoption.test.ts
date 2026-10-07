@@ -89,7 +89,7 @@ const exerciseRoles = async (
     | "child-refusal"
     | "registry-drift",
 ) => {
-  const f = windowFixture(2161);
+  const f = await windowFixture(2161);
   const layout = makeLayout(join(f.root, "run"));
   const children: HistoryOwnedChild[] = [];
   const setupStarted = performance.now();
@@ -204,7 +204,7 @@ const exerciseRoles = async (
     writeFileSync(layout.watcherProcessConfig, JSON.stringify(config));
     writeFileSync(layout.watcherRuntimeConfig, JSON.stringify(raw));
     mkdirSync(layout.bin, { recursive: true });
-    cpSync(f.binaryPath, join(layout.bin, "midgard-chain-sync"));
+    cpSync(f.binaryPath, join(layout.bin, "midgard-l1-node-transport"));
     writeFileSync(
       join(layout.bin, "architecture-g-owner"),
       "synthetic unused owner",

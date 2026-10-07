@@ -9,3 +9,4 @@ packages:
   - midgard-watcher
   - da-committee-node
   - midgard-test-support
+  - l1-node-transport

@@ -105,7 +105,6 @@ describe("durable history recovery startup ordering", () => {
         ogmios: `ws://127.0.0.1:${ogmios.port}`,
       },
       nativeTipBaseDepth: 100,
-      nativeStreamInitialAcknowledgement: true,
       ruleBundleCommitment: computeWatcherRuleBundleCommitment(ruleBundle),
     });
     const directory = await mkdtemp("/var/tmp/history-recovery-durable-");

@@ -46,7 +46,7 @@ beforeAll(async () => {
   });
 }, 30000);
 const setup = async () => {
-  const f = windowFixture(2161);
+  const f = await windowFixture(2161);
   cleanups.push(() => f.close());
   const actor = {
     role: "history-recorder" as const,
@@ -225,7 +225,7 @@ const child = async (input: {
   return { port: ready.port, client, stop, ready };
 };
 const archive = async (
-  f: ReturnType<typeof windowFixture>,
+  f: Awaited<ReturnType<typeof windowFixture>>,
   offer: HistoryWindowOffer,
   index: 0 | 1,
   wrongKey = false,

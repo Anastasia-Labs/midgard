@@ -61,7 +61,7 @@ export const validateEnvironment = async (logDir: string): Promise<void> => {
 /**
  * Pinned dependencies, the profile's contracts and every runtime the stack
  * executes: lockfile install, profile build (Aiken blueprint + generated
- * profile), workspace dist, native MPF owner and chain-sync helper. Its logs
+ * profile), workspace dist, native MPF owner and node transport sidecar. Its logs
  * go to `logDir`, outside the run directory: on a fresh run the directory is
  * still to be generated, and generation moves any earlier content aside.
  */
@@ -96,8 +96,8 @@ export const buildEverything = async (
   );
   console.log("build: workspace packages");
   await run("pnpm", ["run", "build"], "workspace-build");
-  console.log("build: native MPF owner and chain-sync helper");
-  const [owner, chainSync] = nativeBuildTargets(layout);
+  console.log("build: native MPF owner and node transport sidecar");
+  const [owner, transport] = nativeBuildTargets(layout);
   await buildDatedToStart(owner!, async () => {
     await run(
       "pnpm",
@@ -105,11 +105,11 @@ export const buildEverything = async (
       "native-owner",
     );
   });
-  await buildDatedToStart(chainSync!, async () => {
+  await buildDatedToStart(transport!, async () => {
     await run(
       "pnpm",
-      ["--dir", "midgard-watcher", "run", "native:build"],
-      "native-chain-sync",
+      ["--dir", "l1-node-transport", "run", "native:build"],
+      "native-l1-node-transport",
     );
   });
 };

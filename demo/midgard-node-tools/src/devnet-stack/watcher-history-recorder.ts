@@ -97,7 +97,7 @@ export const runHistoryRecorder = async (
     directories,
     chain,
     watcherConfig,
-    binaryPath: artifacts.chainSyncBinary,
+    binaryPath: artifacts.transportBinary,
     signal: dispatch?.signal,
   });
   let stopReadiness: () => void;

@@ -121,8 +121,13 @@ describe("synthetic native stream and controlled tip", () => {
         },
       });
       streams.push(enumeration);
-      await expect.poll(() => enumerated.length, { timeout: 10_000 }).toBe(64);
-      for (const [index, event] of enumerated.entries()) {
+      // The stream opens by rolling back to its intersection.
+      await expect.poll(() => enumerated.length, { timeout: 10_000 }).toBe(65);
+      expect(enumerated[0]).toMatchObject({
+        kind: "roll_backward",
+        point: { blockHash: fixture.emptySuccessorBlock.point.blockHash },
+      });
+      for (const [index, event] of enumerated.slice(1).entries()) {
         expect(event.kind).toBe("roll_forward");
         if (event.kind !== "roll_forward")
           throw new Error("Expected native block");
@@ -206,13 +211,13 @@ describe("synthetic native stream and controlled tip", () => {
       expect(
         new Set(firstQueries.map((query) => query.target.blockHash)).size,
       ).toBe(64);
-      expect(monitored).toEqual([]);
+      expect(monitored.map(({ kind }) => kind)).toEqual(["roll_backward"]);
       const unchanged = await capture(blocks[0]!, pending[0]!);
       expect(unchanged.finality.result.action).toBe("duplicate");
       expect(unchanged.tip).toEqual(initialTip);
       const grown = await fixture.growNativeTip();
-      await expect.poll(() => monitored.length, { timeout: 10_000 }).toBe(1);
-      const advancement = monitored[0]!;
+      await expect.poll(() => monitored.length, { timeout: 10_000 }).toBe(2);
+      const advancement = monitored[1]!;
       if (advancement.kind !== "roll_forward")
         throw new Error("Expected tip advancement");
       expect(admitWatcherNativeRollForwardBlock(advancement).blockHash).toBe(
@@ -238,22 +243,18 @@ describe("synthetic native stream and controlled tip", () => {
       );
       await fixture.rollbackNativeStream(initialTip);
       await expect
-        .poll(() => monitored.some((event) => event.kind === "roll_backward"), {
-          timeout: 10_000,
-        })
+        .poll(() => monitored.length >= 3, { timeout: 10_000 })
         .toBe(true);
-      expect(monitored.find((event) => event.kind === "roll_backward")).toEqual(
-        {
-          schemaVersion: advancement.schemaVersion,
-          kind: "roll_backward",
-          point: {
-            kind: "point",
-            blockHash: initialTip.blockHash,
-            slot: initialTip.slot,
-          },
-          tip: { kind: "point", ...grown },
+      expect(monitored[2]).toEqual({
+        schemaVersion: advancement.schemaVersion,
+        kind: "roll_backward",
+        point: {
+          kind: "point",
+          blockHash: initialTip.blockHash,
+          slot: initialTip.slot,
         },
-      );
+        tip: { kind: "point", ...grown },
+      });
       expect(() =>
         readWatcherNativeChainSyncEventReceipt(nativeReceipt),
       ).toThrow();

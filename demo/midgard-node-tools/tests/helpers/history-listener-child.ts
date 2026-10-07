@@ -75,7 +75,7 @@ const run = async () => {
   });
   if (actor === null) throw Error("synthetic actual child actor malformed");
   if (actor.role === "history-recorder") {
-    const fixture = windowFixture(2161);
+    const fixture = await windowFixture(2161);
     let close: (() => void) | undefined;
     try {
       const windowActor = {

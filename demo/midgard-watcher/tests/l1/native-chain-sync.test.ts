@@ -1,4 +1,3 @@
-import "node:child_process";
 import "node:crypto";
 import "node:url";
 import "vitest";
@@ -7,8 +6,8 @@ import "../../src/l1/native-chain-sync.js";
 import "../../src/runtime/config.js";
 import "../../src/storage/durable-store.js";
 import "./native-chain-sync.config.js";
+import "./native-chain-sync.fake-transport.js";
 
-import { type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
@@ -39,10 +38,12 @@ import {
   NODE_CONFIG_BYTES,
   NODE_CONFIG_PATH,
   readIdentityFixture,
-  spawnFixture,
-  start,
   waitFor,
 } from "./native-chain-sync.config.js";
+import {
+  fakeNodeTransport,
+  start,
+} from "./native-chain-sync.fake-transport.js";
 
 describe("native Cardano node-to-client chain-sync supervisor", () => {
   it.each(["matching", "magic", "zeroTime", "slotLength", "hardFork"])(
@@ -76,9 +77,11 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
       const genesisIdentitySha256 = createHash("sha256")
         .update(genesisBytes)
         .digest("hex");
-      let spawned = false;
+      const transport = await fakeNodeTransport("honest", {
+        magic: customNetwork.networkMagic,
+      });
       const pending = startWatcherNativeChainSync({
-        binaryPath: "/test/native-chain-sync",
+        binaryPath: transport.binaryPath,
         watcherConfig: {
           ...base,
           targetNetwork: "Custom",
@@ -94,10 +97,6 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
         intersection: INTERSECTION,
         startupTimeoutMs: 2000,
         onEvent: async () => {},
-        unsafeSpawnForTest: () => {
-          spawned = true;
-          return spawnFixture("honest")();
-        },
         unsafeReadIdentityFileForTest: async (path) => {
           if (path === NODE_CONFIG_PATH) return nodeBytes;
           if (path === GENESIS_CONFIG_PATH) return genesisBytes;
@@ -116,12 +115,12 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
         } finally {
           await runtime.close();
         }
-        expect(spawned).toBe(true);
+        expect(transport.journal()).toContain("step honest");
       } else {
         await expect(pending).rejects.toThrow(
           variant === "magic" ? "network magic differs" : "slot clock differs",
         );
-        expect(spawned).toBe(false);
+        expect(transport.journal()).toEqual([]);
       }
     },
   );
@@ -144,10 +143,12 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
       expect(() =>
         readWatcherNativeChainSyncEventReceipt({ ...receipt }),
       ).toThrow("absent or stale");
-      if (event.kind === "roll_backward") {
-        expect(watcherNativeChainSyncEventReceipt(events[0]!)).toBeNull();
+      // A rollback past the intersection acknowledgement revokes the
+      // receipts delivered before it.
+      if (event.kind === "roll_backward" && events.length > 0) {
+        expect(watcherNativeChainSyncEventReceipt(events[1]!)).toBeNull();
         expect(() =>
-          readWatcherNativeChainSyncEventReceipt(receipts[0]!),
+          readWatcherNativeChainSyncEventReceipt(receipts[1]!),
         ).toThrow("absent or stale");
       }
       events.push(event);
@@ -155,8 +156,9 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
       captured.push(readWatcherNativeChainSyncEventReceipt(receipt));
     });
     try {
-      await waitFor(() => events.length === 2);
+      await waitFor(() => events.length === 3);
       expect(events).toMatchObject([
+        { kind: "roll_backward", point: INTERSECTION },
         {
           kind: "roll_forward",
           blockType: "6",
@@ -180,8 +182,8 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
         expect(Object.isFrozen(value.event)).toBe(true);
         expect(Object.isFrozen(value.event.tip)).toBe(true);
       }
-      expect(readWatcherNativeChainSyncEventReceipt(receipts[1]!)).toBe(
-        captured[1],
+      expect(readWatcherNativeChainSyncEventReceipt(receipts[2]!)).toBe(
+        captured[2],
       );
       expect(watcherNativeChainSyncAuthorityDetails(runtime.authority)).toEqual(
         {
@@ -226,8 +228,8 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
     } finally {
       await runtime.close();
     }
-    expect(watcherNativeChainSyncEventReceipt(events[1]!)).toBeNull();
-    expect(() => readWatcherNativeChainSyncEventReceipt(receipts[1]!)).toThrow(
+    expect(watcherNativeChainSyncEventReceipt(events[2]!)).toBeNull();
+    expect(() => readWatcherNativeChainSyncEventReceipt(receipts[2]!)).toThrow(
       "absent or stale",
     );
   });
@@ -268,10 +270,10 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
     }
   });
 
-  it.each(["exit", "error"] as const)(
-    "revokes provenance when helper %s is observed during a pending callback",
+  it.each(["sidecar_exit", "stream_failure"] as const)(
+    "revokes provenance when a %s is observed during a pending callback",
     async (lifecycle) => {
-      let child!: ChildProcessWithoutNullStreams;
+      const transport = await fakeNodeTransport();
       let release!: () => void;
       const gate = new Promise<void>((resolve) => {
         release = resolve;
@@ -289,32 +291,26 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
           await gate;
           callbackCompleted = true;
         },
-        (spawned) => {
-          child = spawned;
-        },
+        transport,
       );
       try {
         await waitFor(() => receipts.length === 1);
         const receipt = receipts[0]!;
         const { event } = readWatcherNativeChainSyncEventReceipt(receipt);
-        if (lifecycle === "exit") {
-          const exited = new Promise<void>((resolve) => {
-            child.once("exit", () => resolve());
-          });
-          child.kill("SIGTERM");
-          await exited;
-        } else {
-          child.emit("error", new Error("native fixture lifecycle error"));
-        }
+        if (lifecycle === "sidecar_exit")
+          process.kill(transport.pid(), "SIGKILL");
+        else transport.failStreams();
+        await waitFor(() => watcherNativeChainSyncEventReceipt(event) === null);
         expect(callbackCompleted).toBe(false);
-        expect(watcherNativeChainSyncEventReceipt(event)).toBeNull();
         expect(() => readWatcherNativeChainSyncEventReceipt(receipt)).toThrow(
           "absent or stale",
         );
         release();
-        if (lifecycle === "exit") {
-          await expect(runtime.done).rejects.toThrow("exited unexpectedly");
-        }
+        await expect(runtime.done).rejects.toThrow(
+          lifecycle === "sidecar_exit"
+            ? "transport sidecar ended"
+            : "node_connection_lost",
+        );
       } finally {
         release();
         await runtime.close();
@@ -322,49 +318,19 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
     },
   );
 
-  it("reports exact native failures after ready and preserves bounded stderr diagnostics", async () => {
+  it("reports a stream failure after startup with its cause", async () => {
     const events: WatcherNativeChainSyncEvent[] = [];
     const runtime = await start("runtime_failure", async (event) => {
       events.push(event);
     });
     try {
       await expect(runtime.done).rejects.toThrow(
-        "native chain-sync runtime failed: chain_sync_failed",
+        "native chain-sync runtime failed: chain-sync stream failed: node_connection_lost: actual underlying socket failure",
       );
-      await expect(runtime.done).rejects.toThrow(
-        "actual underlying socket failure",
-      );
-      await expect(runtime.done).rejects.toThrow("nativeLineSha256=");
-      expect(events).toHaveLength(0);
-      expect(
-        watcherNativeChainSyncAuthorityDetails(runtime.authority),
-      ).toBeNull();
-    } finally {
-      await runtime.close();
-    }
-  });
-
-  it("bounds retained stderr while keeping the terminal cause", async () => {
-    const runtime = await start("runtime_failure_large_stderr", async () => {});
-    try {
-      const failure = await runtime.done.catch((error: unknown) => error);
-      expect(failure).toBeInstanceOf(Error);
-      if (!(failure instanceof Error))
-        throw new Error("missing native failure");
-      expect(failure.message).toContain("actual underlying socket failure");
-      expect(failure.message).not.toContain("discarded stderr prefix");
-      expect(Buffer.byteLength(failure.message)).toBeLessThan(9_000);
-    } finally {
-      await runtime.close();
-    }
-  });
-
-  it("rejects extra fields on a post-ready native failure", async () => {
-    const runtime = await start("malformed_runtime_failure", async () => {
-      throw new Error("unexpected chain event");
-    });
-    try {
-      await expect(runtime.done).rejects.toThrow('unknown=["extra"]');
+      // Only the intersection acknowledgement was delivered.
+      expect(events).toMatchObject([
+        { kind: "roll_backward", point: INTERSECTION },
+      ]);
       expect(
         watcherNativeChainSyncAuthorityDetails(runtime.authority),
       ).toBeNull();
@@ -392,27 +358,17 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
     }
   });
 
-  it("rejects substituted startup identity before minting authority", async () => {
-    await expect(start("forged_ready", async () => undefined)).rejects.toThrow(
-      "ready identity differs",
-    );
-  });
-
-  it("derives genesis identity from the exact node config before spawning", async () => {
-    let spawnCount = 0;
+  it("derives genesis identity from the exact node config before opening a stream", async () => {
+    const transport = await fakeNodeTransport();
     const invoke = async (
       readIdentityFile: (path: string) => Promise<Uint8Array>,
     ) =>
       await startWatcherNativeChainSync({
-        binaryPath: "/test/native-chain-sync",
+        binaryPath: transport.binaryPath,
         watcherConfig: config(),
         intersection: INTERSECTION,
         startupTimeoutMs: 2_000,
         onEvent: async () => undefined,
-        unsafeSpawnForTest: () => {
-          spawnCount += 1;
-          return spawnFixture("honest")();
-        },
         unsafeReadIdentityFileForTest: readIdentityFile,
       });
 
@@ -432,7 +388,7 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
           : new TextEncoder().encode(JSON.stringify({ networkMagic: 2 })),
       ),
     ).rejects.toThrow("network magic differs");
-    expect(spawnCount).toBe(0);
+    expect(transport.journal()).toEqual([]);
   });
 
   it.each(["reordered", "first_slot_regression", "unknown_rollback"])(
@@ -447,7 +403,8 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
       await expect(runtime.done).rejects.toThrow(
         /out of order|not durable history/u,
       );
-      expect(receipts).toHaveLength(mode === "unknown_rollback" ? 1 : 0);
+      // The intersection acknowledgement precedes the hostile event.
+      expect(receipts).toHaveLength(mode === "unknown_rollback" ? 2 : 1);
       for (const receipt of receipts) {
         expect(() => readWatcherNativeChainSyncEventReceipt(receipt)).toThrow(
           "absent or stale",
@@ -457,23 +414,26 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
     },
   );
 
-  it("surfaces helper process crash after authenticated startup", async () => {
+  it("surfaces a sidecar crash after authenticated startup", async () => {
     const runtime = await start("crash", async () => undefined);
-    await expect(runtime.done).rejects.toThrow("exited unexpectedly");
+    await expect(runtime.done).rejects.toThrow(
+      "transport sidecar ended (code 23",
+    );
     await runtime.close();
   });
 
-  it("retries durable ancestors one process at a time and binds explicit Origin", async () => {
+  it("offers every durable ancestor in one intersection and binds explicit Origin", async () => {
+    const transport = await fakeNodeTransport("retry_intersection");
     const runtime = await startWatcherNativeChainSyncWithRetry({
-      binaryPath: "/test/native-chain-sync",
+      binaryPath: transport.binaryPath,
       watcherConfig: config(),
       intersectionCandidates: [INTERSECTION, { kind: "origin" }],
       startupTimeoutMs: 2_000,
       onEvent: async () => undefined,
-      unsafeSpawnForTest: spawnFixture("retry_intersection"),
       unsafeReadIdentityFileForTest: readIdentityFixture,
     });
     try {
+      expect(transport.journal()).toEqual(["step retry_intersection"]);
       expect(
         watcherNativeChainSyncAuthorityDetails(runtime.authority)
           ?.selectedIntersection,
