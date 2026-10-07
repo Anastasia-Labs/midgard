@@ -995,7 +995,7 @@ on an unparseable config or a port conflict.
 | R7 | `operator_removed` | The operator is no longer in the active set (D-N7) | Expected end state; re-register or retire. |
 | R8 | `wallet_below_floor` | Own wallet funds fall below the fee floor for pending intents | Fund the wallet. An automatic refill loop is open decision-register item DR-B3 (`public-testnet-decisions-2026-10-01/source-context.md:139`), not decided here. |
 | R9 | `manifest_mismatch` | The config does not match the finalised manifest identity | Fix the config. |
-| R10 | `origin_mismatch` | The configured `l1Origin` differs from the origin the follower store was initialised at | Restore the previous `l1Origin`, or run `follower reset --to-origin` to replay from the new one. The reset never deletes class B rows. |
+| R10 | `origin_mismatch` | The configured `l1Origin` differs from the origin the follower store was initialised at | Restore the previous `l1Origin`, or run `follower reset --to-origin` to replay from the new one. The reset never deletes class B or class C rows: signed material stays, and foreign payloads stay while referenced. |
 
 Everything else is transient and recovers automatically with backoff, while
 `/readyz` reports a reason:
