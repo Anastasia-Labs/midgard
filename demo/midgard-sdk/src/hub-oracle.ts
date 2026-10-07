@@ -30,6 +30,7 @@ import {
   UnspecifiedNetworkError,
 } from "./common.js";
 import {
+  calculateCorrectionLockMinLovelace,
   CORRECTION_LOCK_ASSET_NAME,
   CorrectionLockDatum,
 } from "./correction-lock.js";
@@ -219,6 +220,11 @@ export const incompleteHubOracleInitTxProgram = (
           CORRECTION_LOCK_ASSET_NAME,
         )]: 1n,
       };
+      const correctionLockLovelace = calculateCorrectionLockMinLovelace(lucid, {
+        correctionLockAddress:
+          params.validators.correctionLock.spendingScriptAddress,
+        hubOraclePolicyId: params.hubOracleMintValidator.policyId,
+      });
 
       return lucid
         .newTx()
@@ -241,7 +247,7 @@ export const incompleteHubOracleInitTxProgram = (
         .pay.ToContract(
           params.validators.correctionLock.spendingScriptAddress,
           { kind: "inline", value: Data.to("Idle", CorrectionLockDatum) },
-          correctionLockAssets,
+          { ...correctionLockAssets, lovelace: correctionLockLovelace },
         )
         .attach.MintingPolicy(params.hubOracleMintValidator.mintingScript);
     } else {
