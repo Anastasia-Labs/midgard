@@ -4,6 +4,11 @@ import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { blake2b256, BlockDecodeError, decodeBlock } from "../src/index.js";
+import {
+  encodeBlock,
+  encodeTxBody,
+  encodeWitnessSet,
+} from "../src/testing/block-cbor.js";
 import * as c from "../src/testing/cbor-writer.js";
 
 const fixture = (name: string): Buffer =>
@@ -375,5 +380,55 @@ describe("decodeBlock phase-2 failures and reference scripts", () => {
     expect(block.txs[1]?.outputs[0]?.scriptRef?.bytes.equals(native)).toBe(
       true,
     );
+  });
+});
+
+describe("decodeBlock on simulator redeemers", () => {
+  it("reads the simulator's Conway-map redeemers, which CML also reads, with a script_data_hash in the body", () => {
+    const data = c.array(c.uint(7), c.bytes(Buffer.from("ab", "hex")));
+    const plain = {
+      inputs: [{ txHash: Buffer.alloc(32, 1), index: 0 }],
+      outputs: [{ address: Buffer.alloc(29, 0x70), lovelace: 2_000_000n }],
+      nonce: 1,
+    };
+    const redeemed = {
+      ...plain,
+      redeemers: [
+        { purpose: "mint" as const, index: 0, data },
+        { purpose: "spend" as const, index: 2, data: c.uint(5) },
+      ],
+    };
+    const encoded = encodeBlock({
+      height: 1,
+      slot: 10,
+      prevHash: null,
+      branch: 0,
+      txs: [plain, redeemed],
+    });
+    const block = decodeBlock(encoded.raw);
+    expect(block.txs[0]?.redeemers).toEqual([]);
+    expect(
+      block.txs[1]?.redeemers.map((r) => [r.purpose, r.index, hex(r.data)]),
+    ).toEqual([
+      ["mint", 0, hex(data)],
+      ["spend", 2, hex(c.uint(5))],
+    ]);
+    expect(block.txs[1]?.hash.equals(block.txs[0]?.hash as Buffer)).toBe(false);
+    expect(
+      CML.TransactionBody.from_cbor_bytes(
+        encodeTxBody(plain),
+      ).script_data_hash(),
+    ).toBeUndefined();
+    expect(
+      CML.TransactionBody.from_cbor_bytes(encodeTxBody(redeemed))
+        .script_data_hash()
+        ?.to_hex(),
+    ).toHaveLength(64);
+    const witness = CML.TransactionWitnessSet.from_cbor_bytes(
+      encodeWitnessSet(redeemed),
+    );
+    expect(
+      witness.redeemers()?.as_map_redeemer_key_to_redeemer_val()?.keys().len(),
+    ).toBe(2);
   });
 });

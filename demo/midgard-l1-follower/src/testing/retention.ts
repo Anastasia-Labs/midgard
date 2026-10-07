@@ -7,22 +7,34 @@ import { dumpStore, FACT_QUERIES, type StoreDump } from "./replay.js";
  * Whether a registered temporal row (alias `alias`) is retained once the
  * store pruned through slot `s`, from the plan §11 rules: a `closed_k_deep`
  * versioned row while it is open or closed after `s`, a `created_k_deep`
- * append-only row while it was created after `s`, and every other row
- * (`owner`, or a rule the shape never meets) forever.
+ * append-only row while it was created after `s`, every other row (`owner`,
+ * or a rule the shape never meets) forever, and any row while a retained
+ * row of a table in its `pinnedBy` matches it.
  */
 const rowRetained = (
+  tables: readonly TemporalTableSpec[],
   table: TemporalTableSpec,
   alias: string,
   s: number,
+  depth = 0,
 ): string => {
-  if (table.retention.kind === "closed_k_deep" && table.shape === "versioned")
-    return `(${alias}.${table.endColumn} IS NULL OR ${alias}.${table.endColumn} > ${s})`;
-  if (
-    table.retention.kind === "created_k_deep" &&
-    table.shape === "append_only"
-  )
-    return `${alias}.${table.slotColumn} > ${s}`;
-  return "1 = 1";
+  const own =
+    table.retention.kind === "closed_k_deep" && table.shape === "versioned"
+      ? `(${alias}.${table.endColumn} IS NULL OR ${alias}.${table.endColumn} > ${s})`
+      : table.retention.kind === "created_k_deep" &&
+          table.shape === "append_only"
+        ? `${alias}.${table.slotColumn} > ${s}`
+        : "1 = 1";
+  const pins = (table.pinnedBy ?? []).map((pin) => {
+    const pinning = tables.find((t) => t.name === pin.table);
+    const inner = `q${depth.toString()}`;
+    const retained =
+      pinning === undefined
+        ? "1 = 1"
+        : rowRetained(tables, pinning, inner, s, depth + 1);
+    return ` OR EXISTS (SELECT 1 FROM ${pin.table} ${inner} WHERE ${inner}.${pin.tableColumn} = ${alias}.${pin.column} AND ${retained})`;
+  });
+  return `(${own}${pins.join("")})`;
 };
 
 const OUTPUT_RETAINED = (alias: string, s: number): string =>
@@ -55,7 +67,7 @@ export const retainedQueries = (
       .map((pin) => {
         const table = tables.find((t) => t.name === pin.table);
         const retained =
-          table === undefined ? "1 = 1" : rowRetained(table, "p", s);
+          table === undefined ? "1 = 1" : rowRetained(tables, table, "p", s);
         return ` OR EXISTS (SELECT 1 FROM ${pin.table} p WHERE p.${pin.column} = ${value} AND ${retained})`;
       })
       .join("");
@@ -77,7 +89,7 @@ export const retainedQueries = (
   };
   for (const table of tables)
     queries[table.name] =
-      `SELECT * FROM ${table.name} r WHERE ${rowRetained(table, "r", s)}`;
+      `SELECT * FROM ${table.name} r WHERE ${rowRetained(tables, table, "r", s)}`;
   return queries;
 };
 

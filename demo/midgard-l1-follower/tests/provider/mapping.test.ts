@@ -108,6 +108,12 @@ describe("UTxO mapping", () => {
         toLucidUtxo(entry.outRef, entry.output),
       ),
     ).toEqual(outputs.map(lucidOracle));
+    // Each output's bytes exactly as answered, not a re-encoding.
+    expect(
+      decodeLedgerUtxos(answer).map((entry) =>
+        entry.outputCbor.toString("hex"),
+      ),
+    ).toEqual(outputs.map((output) => output.bytes.toString("hex")));
   });
 });
 

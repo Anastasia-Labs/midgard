@@ -20,12 +20,14 @@ import {
   lockOutput,
   queueOutput,
 } from "../indexers/authenticated-state-queue-observation.queue-output.js";
+import { checkpointDerivation } from "./checkpoints.js";
+import { recordDaAttestations } from "./projection.da-attestations.js";
 import {
-  CHECKPOINT_TEMPORAL_TABLES,
-  checkpointDerivation,
-  checkpointMigrationSql,
-} from "./checkpoints.js";
+  WATCHER_TEMPORAL_TABLES,
+  watcherMigrations,
+} from "./projection.schema.js";
 import {
+  WATCHER_DA_ATTESTATIONS_TABLE,
   WATCHER_QUEUE_OUTPUTS_TABLE,
   WATCHER_QUEUE_UNIT_HISTORY_TABLE,
 } from "./tables.js";
@@ -45,6 +47,7 @@ import {
  */
 
 export {
+  WATCHER_DA_ATTESTATIONS_TABLE,
   WATCHER_QUEUE_CHECKPOINTS_TABLE,
   WATCHER_QUEUE_OUTPUTS_TABLE,
   WATCHER_QUEUE_UNIT_HISTORY_TABLE,
@@ -66,6 +69,8 @@ export type WatcherProjectionDeployment = Readonly<{
   availabilityChallengeMint: string;
   /** The pooled DA bond the availability snapshot reads. */
   daBondPoolSpend: string;
+  /** The DA attestation (DAAT) policy: Apply burns the header's DAAT the commitment is read from. */
+  daAttestationMint: string;
 }>;
 
 export type WatcherProjection = Readonly<{
@@ -76,94 +81,6 @@ export type WatcherProjection = Readonly<{
   derivations: readonly DerivationHook[];
   retentionPins: RetentionPins;
 }>;
-
-const TEMPORAL_TABLES: readonly TemporalTableSpec[] = [
-  {
-    name: WATCHER_QUEUE_OUTPUTS_TABLE,
-    shape: "versioned",
-    startColumn: "from_slot",
-    endColumn: "to_slot",
-    retention: { kind: "closed_k_deep" },
-  },
-  {
-    name: WATCHER_QUEUE_UNIT_HISTORY_TABLE,
-    shape: "versioned",
-    startColumn: "from_slot",
-    endColumn: "to_slot",
-    retention: { kind: "closed_k_deep" },
-  },
-  ...CHECKPOINT_TEMPORAL_TABLES,
-];
-
-const migrationSql = (dialect: DialectName): string => {
-  const bytes = dialect === "postgres" ? "bytea" : "BLOB";
-  const int8 = dialect === "postgres" ? "bigint" : "INTEGER";
-  return `
--- class: D-t; retention: current rows forever; closed rows once to_slot is k deep
-CREATE TABLE ${WATCHER_QUEUE_OUTPUTS_TABLE} (
-  tx_hash ${bytes} NOT NULL,
-  output_index integer NOT NULL,
-  kind text NOT NULL CHECK (kind IN ('root', 'node', 'lock', 'malformed')),
-  header_hash ${bytes},
-  next_header_hash ${bytes},
-  header_cbor ${bytes},
-  state_queue_node_cbor ${bytes},
-  datum_cbor ${bytes},
-  malformed text,
-  anchor_tx_hash ${bytes} NOT NULL,
-  anchor_slot ${int8} NOT NULL,
-  anchor_block_hash ${bytes} NOT NULL,
-  anchor_height ${int8} NOT NULL,
-  from_slot ${int8} NOT NULL,
-  to_slot ${int8},
-  PRIMARY KEY (tx_hash, output_index)
-);
-CREATE INDEX ${WATCHER_QUEUE_OUTPUTS_TABLE}_from ON ${WATCHER_QUEUE_OUTPUTS_TABLE} (from_slot);
-CREATE INDEX ${WATCHER_QUEUE_OUTPUTS_TABLE}_to ON ${WATCHER_QUEUE_OUTPUTS_TABLE} (to_slot);
-CREATE INDEX ${WATCHER_QUEUE_OUTPUTS_TABLE}_header ON ${WATCHER_QUEUE_OUTPUTS_TABLE} (header_hash);
-CREATE INDEX ${WATCHER_QUEUE_OUTPUTS_TABLE}_anchor ON ${WATCHER_QUEUE_OUTPUTS_TABLE} (anchor_tx_hash);
-`;
-};
-
-/**
- * Per state-queue node header, every canonical tx that created or spent one
- * of its node outputs: the unit history the old Kupmios reads return for
- * the node unit. A header's rows close when its node leaves the queue.
- */
-const unitHistoryMigrationSql = (dialect: DialectName): string => {
-  const bytes = dialect === "postgres" ? "bytea" : "BLOB";
-  const int8 = dialect === "postgres" ? "bigint" : "INTEGER";
-  return `
--- class: D-t; retention: rows of a header in the queue forever; closed rows once to_slot (the header's removal) is k deep
-CREATE TABLE ${WATCHER_QUEUE_UNIT_HISTORY_TABLE} (
-  header_hash ${bytes} NOT NULL,
-  tx_hash ${bytes} NOT NULL,
-  block_hash ${bytes} NOT NULL,
-  block_height ${int8} NOT NULL,
-  from_slot ${int8} NOT NULL,
-  to_slot ${int8},
-  PRIMARY KEY (header_hash, tx_hash)
-);
-CREATE INDEX ${WATCHER_QUEUE_UNIT_HISTORY_TABLE}_from ON ${WATCHER_QUEUE_UNIT_HISTORY_TABLE} (from_slot);
-CREATE INDEX ${WATCHER_QUEUE_UNIT_HISTORY_TABLE}_to ON ${WATCHER_QUEUE_UNIT_HISTORY_TABLE} (to_slot);
-CREATE INDEX ${WATCHER_QUEUE_UNIT_HISTORY_TABLE}_tx ON ${WATCHER_QUEUE_UNIT_HISTORY_TABLE} (tx_hash);
-`;
-};
-
-const watcherMigrations = (dialect: DialectName): MigrationSet => ({
-  namespace: "watcher",
-  migrations: [
-    { id: "0001_watcher_queue_outputs", sql: migrationSql(dialect) },
-    {
-      id: "0002_watcher_queue_unit_history",
-      sql: unitHistoryMigrationSql(dialect),
-    },
-    {
-      id: "0003_watcher_queue_checkpoints",
-      sql: checkpointMigrationSql(dialect),
-    },
-  ],
-});
 
 type Anchor = Readonly<{
   txHash: Buffer;
@@ -330,10 +247,14 @@ const recordUnitHistory = async (
       ],
     );
     if (!created.has(header))
-      await tx.query(
-        `UPDATE ${WATCHER_QUEUE_UNIT_HISTORY_TABLE} SET to_slot = ? WHERE header_hash = ? AND to_slot IS NULL`,
-        [block.point.slot, hexBytes(header)],
-      );
+      for (const table of [
+        WATCHER_QUEUE_UNIT_HISTORY_TABLE,
+        WATCHER_DA_ATTESTATIONS_TABLE,
+      ])
+        await tx.query(
+          `UPDATE ${table} SET to_slot = ? WHERE header_hash = ? AND to_slot IS NULL`,
+          [block.point.slot, hexBytes(header)],
+        );
   }
 };
 
@@ -353,10 +274,19 @@ const derivation = (
   };
   return {
     name: "watcher_state_queue",
-    writes: [WATCHER_QUEUE_OUTPUTS_TABLE, WATCHER_QUEUE_UNIT_HISTORY_TABLE],
+    writes: [
+      WATCHER_QUEUE_OUTPUTS_TABLE,
+      WATCHER_QUEUE_UNIT_HISTORY_TABLE,
+      WATCHER_DA_ATTESTATIONS_TABLE,
+    ],
     apply: async (context) => {
       const { tx, block } = context;
       for (const entry of context.qualified) {
+        await recordDaAttestations(
+          context,
+          entry,
+          deployment.daAttestationMint,
+        );
         const inherited = await closeSpent(tx, context, entry.spent);
         const created = new Set<string>();
         const candidates = entry.created.filter(
@@ -429,8 +359,13 @@ const derivation = (
  * credential (so the protocol-init tx stays stored while that output is
  * live, which R3's check relies on), the fraud-proof, availability-challenge
  * and DA-bond-pool credentials (the outputs a correction references and the
- * availability snapshot reads), and the state-queue and hub-oracle policies
- * (the init tx qualifies through its hub-oracle mint).
+ * availability snapshot reads), and the state-queue, hub-oracle and DAAT
+ * policies (the init tx qualifies through its hub-oracle mint; a DAAT's
+ * creating tx holds the attested commitment).
+ *
+ * Retention: a tx stays stored while a live queue output is anchored at it,
+ * while it is in the unit history of a header still queued (or removed less
+ * than k blocks ago), and while it created a DAAT of such a header.
  */
 export const watcherProjection = (
   deployment: WatcherProjectionDeployment,
@@ -451,9 +386,13 @@ export const watcherProjection = (
         deployment.availabilityChallengeSpend,
         deployment.daBondPoolSpend,
       ]),
-      policies: new Set([deployment.stateQueueMint, deployment.hubOracleMint]),
+      policies: new Set([
+        deployment.stateQueueMint,
+        deployment.hubOracleMint,
+        deployment.daAttestationMint,
+      ]),
     },
-    temporalTables: TEMPORAL_TABLES,
+    temporalTables: WATCHER_TEMPORAL_TABLES,
     migrations: watcherMigrations,
     derivations: [
       checkpointDerivation(deployment),
@@ -464,6 +403,8 @@ export const watcherProjection = (
         { table: WATCHER_QUEUE_OUTPUTS_TABLE, column: "anchor_tx_hash" },
         // A node's history txs stay readable while the header is queued.
         { table: WATCHER_QUEUE_UNIT_HISTORY_TABLE, column: "tx_hash" },
+        // The attested commitment's DAAT, while the header can be challenged.
+        { table: WATCHER_DA_ATTESTATIONS_TABLE, column: "tx_hash" },
       ],
     },
   };

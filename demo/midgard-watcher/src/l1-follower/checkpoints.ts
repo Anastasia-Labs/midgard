@@ -1,5 +1,4 @@
 import {
-  computeFraudProofRawL1PointId,
   type FraudProofRawL1Transaction,
   type FraudProofRawL1Utxo,
 } from "@al-ft/midgard-fault-proofs";
@@ -33,10 +32,14 @@ import {
 import {
   decodeLockOutputs,
   reconstructQueue,
+  resolvedInOrder,
 } from "../indexers/authenticated-state-queue-observation.reconstruct-queue.js";
 import type { WatcherProjectionDeployment } from "./projection.js";
 import { parseOutRefLabel, resolveRawUtxoIn } from "./reads.js";
-import { WATCHER_QUEUE_CHECKPOINTS_TABLE } from "./tables.js";
+import {
+  WATCHER_QUEUE_CHECKPOINTS_TABLE,
+  WATCHER_QUEUE_UNIT_HISTORY_TABLE,
+} from "./tables.js";
 import { readWatcherQueueView } from "./view.js";
 
 /**
@@ -51,10 +54,11 @@ import { readWatcherQueueView } from "./view.js";
  * depth derives the SDK checkpoint (`deriveStateQueueAuthenticatedReplayCheckpoint`)
  * from the row, as the old observation does at its release or inclusion depth.
  *
- * Inputs resolve from the follower's tracked outputs (the queue, the lock,
- * the fraud-proof outputs). An untracked input resolves to a stand-in output
- * that no queue, lock or fraud-proof decoder accepts; the old derivation
- * reads those inputs only to find queue or lock outputs among them.
+ * Inputs resolve from the follower's tracked outputs. The tracked set
+ * covers every queue, lock and fraud-proof output (by payment credential or
+ * policy), so an input that does not resolve carries no protocol unit: the
+ * derivation leaves it out of the resolved lists, never substitutes bytes
+ * for it, and every decoder it runs looks only for protocol outputs.
  */
 
 export const CHECKPOINT_TEMPORAL_TABLES: readonly TemporalTableSpec[] = [
@@ -63,6 +67,14 @@ export const CHECKPOINT_TEMPORAL_TABLES: readonly TemporalTableSpec[] = [
     shape: "append_only",
     slotColumn: "block_slot",
     retention: { kind: "created_k_deep" },
+    // A header's history stays readable until the header is merged and k deep.
+    pinnedBy: [
+      {
+        column: "tx_hash",
+        table: WATCHER_QUEUE_UNIT_HISTORY_TABLE,
+        tableColumn: "tx_hash",
+      },
+    ],
   },
 ];
 
@@ -70,7 +82,7 @@ export const checkpointMigrationSql = (dialect: DialectName): string => {
   const bytes = dialect === "postgres" ? "bytea" : "BLOB";
   const int8 = dialect === "postgres" ? "bigint" : "INTEGER";
   return `
--- class: D-t; retention: rows once block_slot is k deep
+-- class: D-t; retention: rows once block_slot is k deep, unless a unit-history row names the tx
 CREATE TABLE ${WATCHER_QUEUE_CHECKPOINTS_TABLE} (
   block_slot ${int8} NOT NULL,
   tx_index integer NOT NULL,
@@ -127,16 +139,6 @@ export const transitionRedeemers = (
         Number(left.index) - Number(right.index),
     );
 
-/** Plain ADA at an enterprise key address: no decoder the derivation runs accepts it. */
-const STAND_IN_OUTPUT_CBOR = `a200581d61${"00".repeat(28)}011a000f4240`;
-
-const standIn = (outRef: string): FraudProofRawL1Utxo => ({
-  outRef,
-  outputCbor: STAND_IN_OUTPUT_CBOR,
-  datumCbor: null,
-  referenceScriptCbor: null,
-});
-
 /** One stored transition: everything the SDK checkpoint needs but the read-time point and depth. */
 export type WatcherQueueTransition = Readonly<{
   transactionHash: string;
@@ -159,16 +161,16 @@ type Addresses = Readonly<{
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-const resolveAll = async (
+/** The tracked outputs among `labels`, in label order. */
+const resolveTracked = async (
   tx: SqlTx,
   labels: readonly string[],
 ): Promise<FraudProofRawL1Utxo[]> =>
-  Promise.all(
-    labels.map(
-      async (label) =>
-        (await resolveRawUtxoIn(tx, parseOutRefLabel(label))) ?? standIn(label),
-    ),
-  );
+  (
+    await Promise.all(
+      labels.map((label) => resolveRawUtxoIn(tx, parseOutRefLabel(label))),
+    )
+  ).filter((utxo): utxo is FraudProofRawL1Utxo => utxo !== null);
 
 /**
  * One transaction through the old derivation's steps. Null: it does not
@@ -187,8 +189,11 @@ const transition = async (
   try {
     const spentInputOutRefs = outputReferences(body.inputs());
     const referenceInputOutRefs = outputReferences(body.reference_inputs());
-    const resolvedInputs = await resolveAll(tx, spentInputOutRefs);
-    const resolvedReferenceInputs = await resolveAll(tx, referenceInputOutRefs);
+    const resolvedInputs = await resolveTracked(tx, spentInputOutRefs);
+    const resolvedReferenceInputs = await resolveTracked(
+      tx,
+      referenceInputOutRefs,
+    );
     const policies = mintPolicyIds(body);
     const outputs = body.outputs();
     let outputTouchesQueue = false;
@@ -260,6 +265,7 @@ const transition = async (
       fraudProofPolicyId: deployment.fraudProofMint,
       fraudProofAddress: addresses.fraudProof,
       availabilityChallengePolicyId: deployment.availabilityChallengeMint,
+      inOrder: resolvedInOrder,
     });
     return {
       transactionHash: txHash,
@@ -364,85 +370,5 @@ export const checkpointDerivation = (
         }
       }
     },
-  };
-};
-
-/** The checkpoints of one block, read at a finality depth. */
-export type WatcherBlockCheckpoints =
-  | Readonly<{
-      kind: "ok";
-      checkpoints: readonly SDK.StateQueueAuthenticatedReplayCheckpoint[];
-      correctionLockWitnesses: readonly SDK.StateQueueCorrectionLockWitness[];
-    }>
-  | Readonly<{ kind: "failed"; transactionHash: string; failure: string }>;
-
-/**
- * The SDK checkpoints of the block at `block`, as the authenticated
- * observation of that block records them at `finalityDepth`.
- */
-export const readWatcherCheckpoints = async (
-  tx: SqlTx,
-  block: Readonly<{ slot: number; hash: Buffer; height: number }>,
-  options: Readonly<{
-    deploymentIdentityDigest: string;
-    stateQueuePolicyId: string;
-    finalityDepth: number;
-  }>,
-): Promise<WatcherBlockCheckpoints> => {
-  const rows = await tx.query(
-    `SELECT tx_hash, transition, failure FROM ${WATCHER_QUEUE_CHECKPOINTS_TABLE} WHERE block_slot = ? AND block_hash = ? ORDER BY tx_index`,
-    [block.slot, block.hash],
-  );
-  const point = {
-    blockHash: block.hash.toString("hex"),
-    slot: block.slot.toString(),
-    blockNo: block.height.toString(),
-  };
-  const chainPointId = computeFraudProofRawL1PointId(point);
-  const checkpoints: SDK.StateQueueAuthenticatedReplayCheckpoint[] = [];
-  for (const row of rows) {
-    const txHash = Buffer.from(row.tx_hash as Uint8Array).toString("hex");
-    if (row.failure !== null)
-      return {
-        kind: "failed",
-        transactionHash: txHash,
-        failure: row.failure as string,
-      };
-    const stored = JSON.parse(
-      row.transition as string,
-    ) as WatcherQueueTransition;
-    const checkpoint = SDK.deriveStateQueueAuthenticatedReplayCheckpoint({
-      deploymentIdentityDigest: options.deploymentIdentityDigest,
-      stateQueuePolicyId: options.stateQueuePolicyId,
-      transactionHash: stored.transactionHash,
-      blockHash: point.blockHash,
-      slot: point.slot,
-      blockNo: point.blockNo,
-      transactionIndex: stored.transactionIndex,
-      chainPointId,
-      finalityDepth: options.finalityDepth.toString(),
-      mintPolicyIds: stored.mintPolicyIds,
-      redeemers: stored.redeemers,
-      spentInputOutRefs: stored.spentInputOutRefs,
-      referenceInputOutRefs: stored.referenceInputOutRefs,
-      correctionLockWitness: stored.correctionLockWitness,
-      previousQueue: stored.previousQueue,
-      nextQueue: stored.nextQueue,
-    });
-    if (checkpoint === null)
-      return {
-        kind: "failed",
-        transactionHash: txHash,
-        failure:
-          "state-queue transaction failed authenticated checkpoint derivation",
-      };
-    checkpoints.push(checkpoint);
-  }
-  return {
-    kind: "ok",
-    checkpoints,
-    correctionLockWitnesses: checkpoints.map(
-      ({ correctionLockWitness: witness }) => witness,
-    ),
   };
 };

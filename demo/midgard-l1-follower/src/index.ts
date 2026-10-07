@@ -106,6 +106,7 @@ export {
   type RetentionRule,
   type Statement,
   type TemporalRegistry,
+  type TemporalRowPin,
   type TemporalTableSpec,
 } from "./registry.js";
 export {

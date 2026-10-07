@@ -7,7 +7,7 @@ import {
   RegistryError,
   ROLLBACK_LOG_ROWS,
 } from "../src/index.js";
-import { options, ORIGIN } from "./support/small-chain.js";
+import { chain, options, ORIGIN } from "./support/small-chain.js";
 
 describe("rollback log retention (SQLite)", () => {
   it("keeps the last 1,000 l1_rollbacks rows", async () => {
@@ -153,6 +153,61 @@ describe("temporal registry", () => {
       ],
     ],
     [
+      "an unregistered pinning table",
+      [
+        {
+          name: "t",
+          shape: "append_only",
+          slotColumn: "slot",
+          retention: { kind: "created_k_deep" },
+          pinnedBy: [{ column: "id", table: "nope", tableColumn: "id" }],
+        },
+      ],
+    ],
+    [
+      "a pin through a pinned table",
+      [
+        {
+          name: "a",
+          shape: "append_only",
+          slotColumn: "slot",
+          retention: { kind: "created_k_deep" },
+          pinnedBy: [{ column: "id", table: "b", tableColumn: "id" }],
+        },
+        {
+          name: "b",
+          shape: "append_only",
+          slotColumn: "slot",
+          retention: { kind: "created_k_deep" },
+          pinnedBy: [{ column: "id", table: "c", tableColumn: "id" }],
+        },
+        {
+          name: "c",
+          shape: "append_only",
+          slotColumn: "slot",
+          retention: { kind: "created_k_deep" },
+        },
+      ],
+    ],
+    [
+      "a pin column that is not an identifier",
+      [
+        {
+          name: "a",
+          shape: "append_only",
+          slotColumn: "slot",
+          retention: { kind: "created_k_deep" },
+          pinnedBy: [{ column: "id = 1 OR 1", table: "c", tableColumn: "id" }],
+        },
+        {
+          name: "c",
+          shape: "append_only",
+          slotColumn: "slot",
+          retention: { kind: "created_k_deep" },
+        },
+      ],
+    ],
+    [
       "a retention that does not fit the shape",
       [
         {
@@ -165,5 +220,90 @@ describe("temporal registry", () => {
     ],
   ] as const)("refuses %s", (_, specs) => {
     expect(() => createTemporalRegistry(specs)).toThrow(RegistryError);
+  });
+});
+
+describe("temporal row pins (SQLite)", () => {
+  const ids = async (
+    store: ReturnType<typeof openSqliteFactStore>,
+    table: string,
+  ): Promise<number[]> =>
+    (
+      await store.transaction("read", (sql) =>
+        sql.query(`SELECT id FROM ${table} ORDER BY id`),
+      )
+    ).map((row) => Number(row.id));
+
+  const pruneAll = async (store: ReturnType<typeof openSqliteFactStore>) => {
+    for (let n = 0; n < 10; n += 1) {
+      const pruned = await store.prune(100);
+      if ("kind" in pruned) throw new Error(pruned.kind);
+      if (pruned.done) return;
+    }
+  };
+
+  it("keeps a row past its rule while a pinning row lives, then prunes it", async () => {
+    const store = openSqliteFactStore({
+      ...options(2),
+      path: ":memory:",
+      temporalTables: [
+        {
+          name: "keeper",
+          shape: "versioned",
+          startColumn: "from_slot",
+          endColumn: "to_slot",
+          retention: { kind: "closed_k_deep" },
+        },
+        {
+          name: "log",
+          shape: "append_only",
+          slotColumn: "slot",
+          retention: { kind: "created_k_deep" },
+          pinnedBy: [{ column: "id", table: "keeper", tableColumn: "id" }],
+        },
+      ],
+      migrations: [
+        {
+          namespace: "pins",
+          migrations: [
+            {
+              id: "0001",
+              sql: `
+-- class: D-t; retention: closed rows once to_slot is k deep
+CREATE TABLE keeper (id integer NOT NULL, from_slot INTEGER NOT NULL, to_slot INTEGER);
+-- class: D-t; retention: rows once slot is k deep, unless a keeper row names them
+CREATE TABLE log (id integer NOT NULL, slot INTEGER NOT NULL);
+`,
+            },
+          ],
+        },
+      ],
+    });
+    try {
+      await store.start();
+      await store.initialize(ORIGIN);
+      for (const block of chain())
+        expect(await store.applyBlock(block)).toMatchObject({
+          kind: "applied",
+        });
+      // Height 53, k 2: the final boundary is b1 (slot 101).
+      await store.transaction("write", async (sql) => {
+        await sql.query("INSERT INTO log (id, slot) VALUES (1, 101), (2, 101)");
+        await sql.query(
+          "INSERT INTO keeper (id, from_slot, to_slot) VALUES (1, 101, NULL)",
+        );
+      });
+      await pruneAll(store);
+      expect(await ids(store, "log")).toEqual([1]);
+      await store.transaction("write", (sql) =>
+        sql.query("UPDATE keeper SET to_slot = 101 WHERE id = 1"),
+      );
+      await pruneAll(store);
+      await pruneAll(store);
+      expect(await ids(store, "keeper")).toEqual([]);
+      expect(await ids(store, "log")).toEqual([]);
+    } finally {
+      await store.close();
+    }
   });
 });
