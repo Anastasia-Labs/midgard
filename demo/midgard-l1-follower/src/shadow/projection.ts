@@ -3,6 +3,7 @@ import type { MigrationSet } from "../schema/migrate.js";
 import type { DialectName } from "../sql/backend.js";
 import type { DerivationHook, RetentionPins } from "../store/context.js";
 import type { FactStore, FactStoreOptions } from "../store/fact-store.js";
+import type { SimOutput } from "../testing/block-cbor.js";
 import type { ForkStep, ScenarioTraffic } from "../testing/episodes.js";
 import type { SimChain } from "../testing/sim-chain.js";
 import type { TrackedSet } from "../types.js";
@@ -22,6 +23,12 @@ export type FollowerProjection = Readonly<{
   derivations?: readonly DerivationHook[];
   retentionPins?: RetentionPins;
   traffic?: ScenarioTraffic;
+  /**
+   * Outputs only this projection's `traffic` may spend: the filler never
+   * picks them as inputs or collateral (a contract's own UTxOs, which no
+   * third party can spend on chain). Referencing them stays allowed.
+   */
+  protects?: (output: SimOutput) => boolean;
   /** Returns a failure text, or null when the projection holds at this step. */
   check?: (
     context: Readonly<{ store: FactStore; step: ForkStep; chain: SimChain }>,

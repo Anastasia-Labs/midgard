@@ -19,8 +19,10 @@ export {
   type EncodedBlock,
   encodeTxBody,
   encodeUtxoAnswer,
+  encodeWitnessSet,
   type SimBlock,
   type SimOutput,
+  type SimRedeemer,
   type SimTx,
   simTxHash,
 } from "./block-cbor.js";
