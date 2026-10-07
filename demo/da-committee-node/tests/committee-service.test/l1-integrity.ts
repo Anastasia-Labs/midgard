@@ -1,7 +1,9 @@
+import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
 import { CommitteeService } from "../../src/committee-service.js";
+import { StoreBackedDaAttestationProtocol } from "../../src/da/libp2p/attestations.js";
 import { type ChainSyncCursor } from "../../src/l1/provider.js";
 import { L1SourceIntegrityError } from "../../src/l1/source-integrity.js";
 import { loadDaSigner, validateDaSignerMembership } from "../../src/signer.js";
@@ -14,7 +16,11 @@ import {
   payloadSourceFromBytes,
   tempDir,
 } from ".././helpers.js";
-import { failPayloadSource, openJsonCommitteeStore } from "./fixtures.js";
+import {
+  commitmentAuthority,
+  failPayloadSource,
+  openJsonCommitteeStore,
+} from "./fixtures.js";
 
 export const registerL1IntegrityTests = () => {
   it("fails readiness after a scanner tick failure", async () => {
@@ -114,6 +120,7 @@ export const registerL1IntegrityTests = () => {
       });
       const source: {
         failure?: Error;
+        daAttestation?: SDK.DaAvailabilityStateQueueStatus;
         consumedCursor?: ChainSyncCursor;
         nowMs: number;
       } = { nowMs: Date.parse("2026-07-28T00:00:00.000Z") };
@@ -122,7 +129,12 @@ export const registerL1IntegrityTests = () => {
         fetchStateQueueSnapshot: async () => {
           if (source.failure !== undefined) throw source.failure;
           return {
-            nodes: [node],
+            nodes: [
+              {
+                ...node,
+                daAttestation: source.daAttestation ?? node.daAttestation,
+              },
+            ],
             confirmedHeaderHash: "00".repeat(28),
             confirmedStateOutRef: `${"00".repeat(32)}#0`,
             observedChainPoint: node.chainPoint,
@@ -155,8 +167,134 @@ export const registerL1IntegrityTests = () => {
         header: await store.getStateQueueHeader(headerHash),
         payload: await store.getDaPayload(headerHash),
       });
-      return { service, store, source, headerHash, durable };
+      return {
+        service,
+        store,
+        source,
+        headerHash,
+        durable,
+        node,
+        config: configured,
+        signerValidation,
+      };
     };
+
+    it.each([
+      {
+        kind: "Attested",
+        status: { Attested: { commitment_hash: "33".repeat(32) } },
+      },
+      {
+        kind: "Challenged",
+        status: {
+          Challenged: {
+            commitment_hash: "33".repeat(32),
+            challenge_asset_name: "44".repeat(32),
+          },
+        },
+      },
+      {
+        kind: "Published",
+        status: { Published: { terminal_commitment: "55".repeat(32) } },
+      },
+    ] satisfies readonly {
+      kind: string;
+      status: SDK.DaAvailabilityStateQueueStatus;
+    }[])(
+      "surfaces an observed $kind disagreement with a signed Unattested output to readiness and peers",
+      async ({ status }) => {
+        const {
+          service,
+          store,
+          source,
+          headerHash,
+          durable,
+          node,
+          config,
+          signerValidation,
+        } = await observedCommittee("45");
+        await expect(service.tick()).resolves.toMatchObject({
+          signedHeaders: 1,
+          errors: [],
+        });
+        // Identical repeated chain observation agrees with the durable decision.
+        await expect(service.tick()).resolves.toMatchObject({
+          signedHeaders: 0,
+          errors: [],
+        });
+        const before = await durable();
+        const signatures = await store.listDaSignatures(headerHash);
+        expect(signatures).toHaveLength(1);
+        const protocol = new StoreBackedDaAttestationProtocol({
+          deploymentFingerprint: config.deploymentFingerprint,
+          localPeerId: "local",
+          committeeValidation: signerValidation,
+          availabilityCommitmentAuthority: commitmentAuthority(config),
+          store,
+        });
+        const peerRequest = { record: signatures[0]!, sourcePeerId: "peer-a" };
+        await expect(protocol.acceptAttestation(peerRequest)).resolves.toEqual({
+          status: "accepted",
+        });
+        await expect(
+          protocol.attestationsByHeader({
+            deploymentFingerprint: config.deploymentFingerprint,
+            headerHash,
+          }),
+        ).resolves.toHaveLength(1);
+
+        source.daAttestation = status;
+        const message = `state-queue status disagreement at unchanged output ${node.outRef}: stored=Unattested, observed=${SDK.daAvailabilityStateQueueStatusIdentity(status)}`;
+        const result = service.tick();
+        await expect(result).rejects.toBeInstanceOf(L1SourceIntegrityError);
+        await expect(result).rejects.toThrow(message);
+        const reason = `l1_source_integrity_failed: ${message}`;
+        const after = await durable();
+        expect(after.l1Source).toMatchObject({
+          status: "quarantined",
+          quarantineReason: reason,
+        });
+        expect(after.header).toMatchObject({
+          status: "conflicted",
+          validationErrors: [`l1_source_quarantined:${reason}`],
+        });
+        expect(after.payload).toEqual(before.payload);
+        await expect(service.readinessSnapshot()).resolves.toMatchObject({
+          ready: false,
+          l1Source: { status: "quarantined", quarantineReason: reason },
+          scanner: { status: "failed", errors: [message] },
+        });
+        await expect(protocol.acceptAttestation(peerRequest)).resolves.toEqual({
+          status: "rejected",
+          reason: "L1 source is quarantined",
+        });
+        await expect(
+          protocol.attestationsByHeader({
+            deploymentFingerprint: config.deploymentFingerprint,
+            headerHash,
+          }),
+        ).resolves.toEqual([]);
+        await expect(store.listDaSignatures(headerHash)).resolves.toMatchObject(
+          [{ broadcastStatus: "post_failed" }],
+        );
+        await expect(
+          store.listDecisionOutbox(headerHash),
+        ).resolves.toMatchObject([
+          { status: "failed", lastError: `l1_source_quarantined:${reason}` },
+        ]);
+
+        // A peer's valid signature or a healthy reread cannot clear a durable hold.
+        source.daAttestation = undefined;
+        await expect(service.tick()).resolves.toEqual({
+          scannedHeaders: 0,
+          signedHeaders: 0,
+          reconciledHeaders: 0,
+          skippedHeaders: 0,
+          payloadFetches: [],
+          errors: [`L1 source quarantined: ${reason}`],
+        });
+      },
+    );
 
     // The five transients observed live, each as its provider raises it.
     const transients = [
