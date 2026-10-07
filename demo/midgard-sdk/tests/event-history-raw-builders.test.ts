@@ -11,7 +11,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { type AddressData } from "../src/common.js";
 import { HubOracleDatum } from "../src/hub-oracle.js";
@@ -257,7 +257,11 @@ describe("raw admission assembly (mocked completion; no ledger acceptance claim)
       prepared.context,
       prepared.request.payloadCbor,
       auth,
+      1_060_000,
     );
+    expectTypeOf<
+      Parameters<typeof buildEventHistoryPublication>
+    >().toMatchTypeOf<[unknown, unknown, unknown, number]>();
     if (published.plan.kind !== "External")
       throw new Error("Expected external plan");
     expect(outputs[0]!.datum).toBe(published.plan.datumCbor);
@@ -266,15 +270,6 @@ describe("raw admission assembly (mocked completion; no ledger acceptance claim)
       localUPLCEval: true,
       coinSelection: false,
     });
-    expect(tx.validTo).not.toHaveBeenCalled();
-    // A durable submission bounds the body, so a publication that never
-    // lands stops holding its funding inputs.
-    await buildEventHistoryPublication(
-      prepared.context,
-      prepared.request.payloadCbor,
-      auth,
-      1_060_000,
-    );
     expect(tx.validTo.mock.calls).toEqual([[1_060_000]]);
     await expect(
       buildEventHistoryPublication(

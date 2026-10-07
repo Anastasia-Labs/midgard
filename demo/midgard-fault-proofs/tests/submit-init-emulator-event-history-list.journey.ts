@@ -317,14 +317,14 @@ export const journey = async (
           )
           .complete({ coinSelection: false, localUPLCEval: true })
       : (
-          await buildEventHistoryPublication(await buildContext(), payload, {
-            PublicKeyCredential: [h.owner],
-          })
+          await buildEventHistoryPublication(
+            await buildContext(),
+            payload,
+            { PublicKeyCredential: [h.owner] },
+            h.emulator.now() + 60_000,
+          )
         ).tx;
-    const publicationHash = await h.submit(
-      "prepublish-payload",
-      await publication,
-    );
+    const publicationHash = await h.submit("prepublish", await publication);
     const publishedAddress =
       admissionFault === "wrong-retention-address"
         ? h.hubAddress

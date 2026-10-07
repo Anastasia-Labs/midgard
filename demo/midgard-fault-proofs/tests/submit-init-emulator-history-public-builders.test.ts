@@ -149,6 +149,7 @@ it.each([
         prepared.context,
         prepared.request.payloadCbor,
         prepared.request.reclaimAuth,
+        validity.validTo,
       );
       const hash = await h.submit(`${kind}-public-publication`, publication.tx);
       [externalData] = await h.lucid.utxosByOutRef([

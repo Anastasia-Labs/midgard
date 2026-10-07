@@ -39,7 +39,6 @@ import {
 } from "./deposit-flow-emulator-shared.js";
 import { openAutomaticSettlement } from "./helpers/automatic-settlement-lifecycle.js";
 import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
-
 /** Successful node classification and actual mature merge establish both
  * settlement frontiers. The observation transport labels remain synthetic. */
 it("streams public raw events through production reconciliation, native commitment, refund, payout and reclaim", async () => {
@@ -66,6 +65,7 @@ it("streams public raw events through production reconciliation, native commitme
       prepared.context,
       prepared.plan.payloadCbor,
       prepared.request.reclaimAuth,
+      fixture.emulator.now() + 60_000,
     );
     const signed = await publication.tx.sign.withWallet().complete();
     const hash = await signed.submit();
