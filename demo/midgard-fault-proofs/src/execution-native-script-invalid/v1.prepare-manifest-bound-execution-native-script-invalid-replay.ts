@@ -41,8 +41,8 @@ export const EXECUTION_NATIVE_SCRIPT_INVALID_CONFIG_KEYS = Object.freeze([
   "lucid",
   "signer",
   "source",
-  "historicalCheckpointStore",
-  "historicalSource",
+  "historicalNativeScriptCheckpointStore",
+  "historicalNativeScriptHistorySource",
   "stateQueueMutationLeaseCoordinator",
   "referenceScripts",
 ] as const);
@@ -104,8 +104,8 @@ export type ManifestBoundExecutionNativeScriptInvalidWorkflowConfig = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-  historicalCheckpointStore: HistoricalNativeScriptCheckpointStore;
-  historicalSource: HistoricalNativeScriptHistorySource;
+  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
+  historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   referenceScripts: ExecutionNativeScriptInvalidWorkflowReferenceScripts;
 }>;
@@ -116,8 +116,8 @@ export type ManifestBoundExecutionNativeScriptInvalidWorkflow = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-  historicalCheckpointStore: HistoricalNativeScriptCheckpointStore;
-  historicalSource: HistoricalNativeScriptHistorySource;
+  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
+  historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   contracts: ExecutionNativeScriptInvalidContracts;
   references: ExecutionNativeScriptInvalidWorkflowReferenceScripts;
@@ -199,8 +199,8 @@ export const prepareManifestBoundExecutionNativeScriptInvalidReplay =
     });
     const corpus = await resolveHistoricalNativeScriptCorpus({
       deploymentFingerprint: workflow.binding.deploymentFingerprint,
-      checkpointStore: workflow.historicalCheckpointStore,
-      historySource: workflow.historicalSource,
+      checkpointStore: workflow.historicalNativeScriptCheckpointStore,
+      historySource: workflow.historicalNativeScriptHistorySource,
       currentEvidence: block,
       sources,
     });

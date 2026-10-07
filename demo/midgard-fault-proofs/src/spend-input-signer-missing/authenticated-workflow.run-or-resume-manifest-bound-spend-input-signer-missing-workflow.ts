@@ -74,8 +74,10 @@ export const createManifestBoundSpendInputSignerMissingWorkflow = async (
     stateQueueMutationLeaseCoordinator:
       input.stateQueueMutationLeaseCoordinator,
     decisionDigest: input.decisionDigest,
-    historicalCheckpointStore: input.historicalCheckpointStore,
-    historicalSource: input.historicalSource,
+    historicalNativeScriptCheckpointStore:
+      input.historicalNativeScriptCheckpointStore,
+    historicalNativeScriptHistorySource:
+      input.historicalNativeScriptHistorySource,
   });
 };
 
@@ -105,8 +107,8 @@ export const runOrResumeManifestBoundSpendInputSignerMissingWorkflow =
     });
     const corpus = await resolveHistoricalNativeScriptCorpus({
       deploymentFingerprint: input.workflow.binding.deploymentFingerprint,
-      checkpointStore: input.workflow.historicalCheckpointStore,
-      historySource: input.workflow.historicalSource,
+      checkpointStore: input.workflow.historicalNativeScriptCheckpointStore,
+      historySource: input.workflow.historicalNativeScriptHistorySource,
       currentEvidence: canonical,
       sources: input.sources,
     });
@@ -158,8 +160,8 @@ export const createSpendInputSignerMissingRecoveryAdapter = (
   const resolveReplayContext = async (canonical: CanonicalBlockEvidence) => {
     const corpus = await resolveHistoricalNativeScriptCorpus({
       deploymentFingerprint: binding.deploymentFingerprint,
-      checkpointStore: workflow.historicalCheckpointStore,
-      historySource: workflow.historicalSource,
+      checkpointStore: workflow.historicalNativeScriptCheckpointStore,
+      historySource: workflow.historicalNativeScriptHistorySource,
       currentEvidence: canonical,
       sources,
     });

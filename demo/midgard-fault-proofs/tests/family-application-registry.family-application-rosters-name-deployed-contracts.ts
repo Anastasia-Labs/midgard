@@ -320,9 +320,29 @@ describe("family application records declare the infrastructure they read", () =
         infrastructure,
         references: referenceRoles(record.roster),
       });
-      const values = Object.values(config);
-      expect(values, category).toContain(HISTORICAL_AUTHORITY.historySource);
-      expect(values, category).toContain(HISTORICAL_AUTHORITY.checkpointStore);
+      expect(config.historicalNativeScriptHistorySource, category).toBe(
+        HISTORICAL_AUTHORITY.historySource,
+      );
+      expect(config.historicalNativeScriptCheckpointStore, category).toBe(
+        HISTORICAL_AUTHORITY.checkpointStore,
+      );
+      for (const obsoleteField of [
+        "historicalSource",
+        "historicalCheckpointStore",
+        "historySource",
+        "checkpointStore",
+      ]) {
+        expect(config, category).not.toHaveProperty(obsoleteField);
+      }
+      if (category === "missingNativeScriptTx") {
+        expect(config.historicalNativeScriptL1Roster, category).toBe(
+          HISTORICAL_AUTHORITY.l1SourceRoster,
+        );
+      } else {
+        expect(config, category).not.toHaveProperty(
+          "historicalNativeScriptL1Roster",
+        );
+      }
     }
   });
 });

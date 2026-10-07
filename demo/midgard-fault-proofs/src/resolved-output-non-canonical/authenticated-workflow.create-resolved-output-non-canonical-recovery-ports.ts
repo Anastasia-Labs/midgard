@@ -115,8 +115,8 @@ export type ManifestBoundResolvedOutputNonCanonicalWorkflowConfig =
       source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-      historicalCheckpointStore: HistoricalNativeScriptCheckpointStore;
-      historicalSource: HistoricalNativeScriptHistorySource;
+      historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
+      historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
     }>;
 
 export type ManifestBoundResolvedOutputNonCanonicalWorkflow = Readonly<{
@@ -127,8 +127,8 @@ export type ManifestBoundResolvedOutputNonCanonicalWorkflow = Readonly<{
   l1: FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   decisionDigest: string;
-  historicalCheckpointStore: HistoricalNativeScriptCheckpointStore;
-  historicalSource: HistoricalNativeScriptHistorySource;
+  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
+  historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
 }>;
 
 export const resolvedOutputStageFromL1 = (
@@ -205,8 +205,8 @@ export const createResolvedOutputNonCanonicalRecoveryPorts = (
   const resolveReplayContext = async (canonical: CanonicalBlockEvidence) => {
     const corpus = await resolveHistoricalNativeScriptCorpus({
       deploymentFingerprint: binding.deploymentFingerprint,
-      checkpointStore: workflow.historicalCheckpointStore,
-      historySource: workflow.historicalSource,
+      checkpointStore: workflow.historicalNativeScriptCheckpointStore,
+      historySource: workflow.historicalNativeScriptHistorySource,
       currentEvidence: canonical,
       sources,
     });

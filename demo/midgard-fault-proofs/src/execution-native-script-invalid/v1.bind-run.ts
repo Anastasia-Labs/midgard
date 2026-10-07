@@ -123,8 +123,10 @@ export const createManifestBoundExecutionNativeScriptInvalidWorkflow = async (
     lucid: config.lucid,
     signer: config.signer,
     source: config.source,
-    historicalCheckpointStore: config.historicalCheckpointStore,
-    historicalSource: config.historicalSource,
+    historicalNativeScriptCheckpointStore:
+      config.historicalNativeScriptCheckpointStore,
+    historicalNativeScriptHistorySource:
+      config.historicalNativeScriptHistorySource,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
     contracts,
@@ -147,8 +149,8 @@ const bindRun = (context: BoundContext) => {
   ) => {
     const corpus = await resolveHistoricalNativeScriptCorpus({
       deploymentFingerprint: workflow.binding.deploymentFingerprint,
-      checkpointStore: workflow.historicalCheckpointStore,
-      historySource: workflow.historicalSource,
+      checkpointStore: workflow.historicalNativeScriptCheckpointStore,
+      historySource: workflow.historicalNativeScriptHistorySource,
       currentEvidence: block,
       sources,
     });

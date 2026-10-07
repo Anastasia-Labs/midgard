@@ -73,8 +73,8 @@ export const cursorAssemblyRuntimeFixture = ({
       ...config.referenceScripts,
       removal: config.auxiliaryReferenceScripts ?? {},
     },
-    historicalCheckpointStore: {},
-    historicalSource: {},
+    historicalNativeScriptCheckpointStore: {},
+    historicalNativeScriptHistorySource: {},
   };
   return category === "executionNativeScriptInvalid" ||
     category === "resolvedOutputNonCanonical"
