@@ -4,8 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { createCommitteeApiServer } from "../src/api/server.js";
 import type { CommitteeReadinessSnapshot } from "../src/committee-service.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
-import { tempDir } from "./helpers.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
 
 const readinessSnapshot = (
   ready: boolean,
@@ -67,7 +66,7 @@ const readinessSnapshot = (
 
 describe("committee node API", () => {
   it("serves process health, readiness, and manifest only", async () => {
-    const store = await JsonFileCommitteeStore.open(await tempDir());
+    const store = await openTestCommitteeStore();
     const api = createCommitteeApiServer({
       deploymentFingerprint: "dep",
       signerIndex: 0,
@@ -108,7 +107,7 @@ describe("committee node API", () => {
   });
 
   it("returns 503 readiness with reasons when the snapshot is not ready", async () => {
-    const store = await JsonFileCommitteeStore.open(await tempDir());
+    const store = await openTestCommitteeStore();
     const api = createCommitteeApiServer({
       deploymentFingerprint: "dep",
       signerIndex: 0,
@@ -132,7 +131,7 @@ describe("committee node API", () => {
   });
 
   it("does not expose DA payload, status, or signature routes over HTTP", async () => {
-    const store = await JsonFileCommitteeStore.open(await tempDir());
+    const store = await openTestCommitteeStore();
     const api = createCommitteeApiServer({
       deploymentFingerprint: "dep",
       signerIndex: 0,

@@ -25,12 +25,9 @@ export const loadPublicRetainedDaRuntimeConfig = async (
     );
   }
   rejectRetiredWatcherEnvNames(env);
-  if (
-    env.DA_COMMITTEE_DB_PATH !== undefined ||
-    env.DA_COMMITTEE_DATABASE_URL !== undefined
-  ) {
+  if (env.DA_COMMITTEE_DATABASE_URL !== undefined) {
     throw new Error(
-      "public retained-DA process requires DA_PUBLIC_RETAINED_DA_DATABASE_URL and must not receive DA_COMMITTEE_DB_PATH or DA_COMMITTEE_DATABASE_URL",
+      "public retained-DA process requires DA_PUBLIC_RETAINED_DA_DATABASE_URL and must not receive DA_COMMITTEE_DATABASE_URL",
     );
   }
   const deploymentManifestPath = requireEnv(

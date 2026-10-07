@@ -128,6 +128,14 @@ it("generates committee configurations accepted by the real loader with persiste
     const generated = await generateDaServices(
       new StackProcesses(config, env),
     ).finally(() => process.umask(umask));
+    // The init script runs before any table exists, so it grants the reader
+    // no table: no default privilege that would reach every future table.
+    const init = await readFile(
+      join(generated.directory, "da-postgres-init.sh"),
+      "utf8",
+    );
+    expect(init).toContain("CREATE ROLE midgard_da_reader");
+    expect(init).not.toMatch(/DEFAULT PRIVILEGES|GRANT SELECT/u);
     for (const name of ["da-postgres-init.sh", "committee-0.json"])
       expect((await stat(join(generated.directory, name))).mode & 0o044).toBe(
         0o044,

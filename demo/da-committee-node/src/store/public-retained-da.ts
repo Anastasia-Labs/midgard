@@ -15,6 +15,16 @@ export type PublicRetainedDaStore = Pick<
 
 type StoredRecordRow = { readonly record: unknown };
 
+/**
+ * The only tables the public reader's role may read. It must hold no
+ * privilege on any other table in the database, the L1 follower's and the
+ * committee's private tables included.
+ */
+export const PUBLIC_RETAINED_DA_TABLES = Object.freeze([
+  "committee_da_payloads",
+  "committee_state_queue_headers",
+] as const);
+
 export type PublicRetainedDaPoolClient = {
   query<T extends Record<string, unknown> = Record<string, unknown>>(
     query: string,
@@ -36,7 +46,8 @@ export type PublicRetainedDaPoolFactory = (options: {
  * A database-only, read-only adapter. It never initializes schema or shares
  * the committee process's mutable store credentials. Every query runs in an
  * explicit PostgreSQL READ ONLY transaction, and startup verifies that the
- * configured role has SELECT but no DML privilege on either exposed table.
+ * configured role has SELECT but no DML privilege on either exposed table,
+ * and no privilege at all on any other table in the database.
  */
 export class PostgresPublicRetainedDaStore implements PublicRetainedDaStore {
   private constructor(private readonly pool: PublicRetainedDaPool) {}
@@ -126,6 +137,7 @@ export class PostgresPublicRetainedDaStore implements PublicRetainedDaStore {
         readonly payload_write: boolean;
         readonly header_select: boolean;
         readonly header_write: boolean;
+        readonly other_table_access: boolean;
       }>(`
         SELECT current_user,
                session_user,
@@ -156,7 +168,19 @@ export class PostgresPublicRetainedDaStore implements PublicRetainedDaStore {
                has_table_privilege(current_user, 'committee_state_queue_headers', 'INSERT')
                  OR has_table_privilege(current_user, 'committee_state_queue_headers', 'UPDATE')
                  OR has_table_privilege(current_user, 'committee_state_queue_headers', 'DELETE')
-                 OR has_table_privilege(current_user, 'committee_state_queue_headers', 'TRUNCATE') AS header_write
+                 OR has_table_privilege(current_user, 'committee_state_queue_headers', 'TRUNCATE') AS header_write,
+               EXISTS (
+                 SELECT 1
+                 FROM pg_class relation
+                 JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+                 WHERE relation.relkind IN ('r', 'p', 'v', 'm', 'f')
+                   AND namespace.nspname <> 'information_schema'
+                   AND namespace.nspname NOT LIKE 'pg\\_%'
+                   AND NOT (namespace.nspname = 'public'
+                            AND relation.relname IN ('committee_da_payloads', 'committee_state_queue_headers'))
+                   AND (has_any_column_privilege(current_user, relation.oid, 'SELECT, INSERT, UPDATE, REFERENCES')
+                        OR has_table_privilege(current_user, relation.oid, 'DELETE, TRUNCATE, TRIGGER'))
+               ) AS other_table_access
         FROM pg_roles role
         WHERE role.rolname = current_user
       `);
@@ -175,10 +199,11 @@ export class PostgresPublicRetainedDaStore implements PublicRetainedDaStore {
         !access.payload_select ||
         !access.header_select ||
         access.payload_write ||
-        access.header_write
+        access.header_write ||
+        access.other_table_access
       ) {
         throw new Error(
-          "DA public retained-DA database role must be the configured SELECT-only role for payload and state-header tables",
+          "DA public retained-DA database role must be the configured SELECT-only role for payload and state-header tables, with no privilege on any other table",
         );
       }
     });

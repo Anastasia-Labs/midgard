@@ -191,7 +191,6 @@ const RETIRED_WATCHER_ENV_NAMES: Readonly<Record<string, string>> = {
   WATCHER_API_HOST: "DA_COMMITTEE_API_HOST",
   WATCHER_API_PORT: "DA_COMMITTEE_API_PORT",
   WATCHER_POLL_INTERVAL_MS: "DA_COMMITTEE_POLL_INTERVAL_MS",
-  WATCHER_DB_PATH: "DA_COMMITTEE_DB_PATH",
   WATCHER_DATABASE_URL: "DA_COMMITTEE_DATABASE_URL",
 };
 
@@ -215,22 +214,11 @@ export const rejectRetiredWatcherEnvNames = (env: Env): void => {
 
 export const localState = (env: Env): LocalStateConfig => {
   rejectRetiredWatcherEnvNames(env);
-  const dbPath = optionalNonEmpty(env.DA_COMMITTEE_DB_PATH);
   const databaseUrl = optionalNonEmpty(env.DA_COMMITTEE_DATABASE_URL);
-  if (dbPath !== undefined && databaseUrl !== undefined) {
-    throw new Error(
-      "set only one of DA_COMMITTEE_DB_PATH or DA_COMMITTEE_DATABASE_URL",
-    );
+  if (databaseUrl === undefined) {
+    throw new Error("DA_COMMITTEE_DATABASE_URL is required");
   }
-  if (dbPath !== undefined) {
-    return { kind: "file", path: dbPath };
-  }
-  if (databaseUrl !== undefined) {
-    return { kind: "database", url: databaseUrl };
-  }
-  throw new Error(
-    "DA_COMMITTEE_DB_PATH or DA_COMMITTEE_DATABASE_URL is required",
-  );
+  return { kind: "database", url: databaseUrl };
 };
 
 export const availabilityJournalPath = (env: Env): string | undefined => {

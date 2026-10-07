@@ -17,6 +17,31 @@ import type { StackProcesses } from "./process.js";
 /** Project-scoped, so two stacks on one host never overwrite each other's image. */
 const STACK_DA_IMAGE = "midgard-stack-da:${COMPOSE_PROJECT_NAME}";
 
+/** The public retained-DA reader's login and the only tables it may read. */
+export const STACK_DA_READER_ROLE = "midgard_da_reader";
+export const STACK_DA_READER_TABLES = [
+  "committee_da_payloads",
+  "committee_state_queue_headers",
+] as const;
+
+/**
+ * The reader's table grants in one member's database, run once the committee
+ * node has created its tables. It first removes every other table privilege,
+ * including the default privileges earlier stacks granted on every table, so
+ * the role never reaches a follower or private committee table. Only member
+ * 0's database is served; the others keep no table grant at all.
+ */
+export const stackDaReaderGrantSql = (signerIndex: number): string =>
+  [
+    `ALTER DEFAULT PRIVILEGES FOR ROLE midgard_da_writer IN SCHEMA public REVOKE ALL ON TABLES FROM ${STACK_DA_READER_ROLE};`,
+    `REVOKE ALL ON ALL TABLES IN SCHEMA public FROM ${STACK_DA_READER_ROLE};`,
+    ...(signerIndex === 0
+      ? [
+          `GRANT SELECT ON ${STACK_DA_READER_TABLES.join(", ")} TO ${STACK_DA_READER_ROLE};`,
+        ]
+      : []),
+  ].join(" ");
+
 export async function writePrivateEnv(
   path: string,
   env: Record<string, string>,
@@ -114,7 +139,7 @@ export async function generateDaServices(processes: StackProcesses) {
   // Container users (postgres, node) read these; an explicit mode is not masked by the umask.
   await writeTextFileAtomic(
     init,
-    `#!/bin/sh\nset -eu\nreader_password_sql=$(printf '%s' "$STACK_DA_READER_PASSWORD" | sed "s/'/''/g")\nprintf "CREATE ROLE midgard_da_reader LOGIN PASSWORD '%s';\\n" "$reader_password_sql" | psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"\nfor index in ${members.map((member) => member.signerIndex).join(" ")}; do\n  database="midgard_da_$index"\n  if [ "$index" != 0 ]; then createdb --username "$POSTGRES_USER" "$database"; fi\n  printf '%s\\n' 'GRANT CONNECT ON DATABASE '"$database"' TO midgard_da_reader;' 'GRANT USAGE ON SCHEMA public TO midgard_da_reader;' 'ALTER DEFAULT PRIVILEGES FOR ROLE midgard_da_writer IN SCHEMA public GRANT SELECT ON TABLES TO midgard_da_reader;' | psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$database"\ndone\n`,
+    `#!/bin/sh\nset -eu\nreader_password_sql=$(printf '%s' "$STACK_DA_READER_PASSWORD" | sed "s/'/''/g")\nprintf "CREATE ROLE midgard_da_reader LOGIN PASSWORD '%s';\\n" "$reader_password_sql" | psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"\nfor index in ${members.map((member) => member.signerIndex).join(" ")}; do\n  database="midgard_da_$index"\n  if [ "$index" != 0 ]; then createdb --username "$POSTGRES_USER" "$database"; fi\n  printf '%s\\n' 'GRANT CONNECT ON DATABASE '"$database"' TO midgard_da_reader;' 'GRANT USAGE ON SCHEMA public TO midgard_da_reader;' | psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$database"\ndone\n`,
     { mode: 0o644 },
   );
   services["da-postgres"] = {

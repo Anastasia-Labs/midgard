@@ -1,7 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
@@ -27,10 +24,11 @@ import {
   DaPayloadSubmitAdmission,
 } from "da-committee-node/da/libp2p";
 import { hashBlockHeader } from "da-committee-node/l1/state-queue-scanner";
-import { JsonFileCommitteeStore } from "da-committee-node/store";
+import { PostgresCommitteeStore } from "da-committee-node/store/postgres";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
+import { postgresTestDatabases } from "../../da-committee-node/tests/helpers/postgres-database.js";
 import {
   createDaLibp2pProducerTransport,
   type DaProducerCommitteePeer,
@@ -39,6 +37,7 @@ import {
   publishDaPayloadInsert,
 } from "../src/da/libp2p-producer.js";
 import { DaPayloadsDB } from "../src/database/index.js";
+import { TEST_DATABASE_PREFIX } from "./test-env.js";
 
 const DEPLOYMENT = "a5".repeat(32);
 
@@ -74,15 +73,20 @@ describe("real multi-peer DA publication", () => {
       multiaddrs: [`/ip4/127.0.0.1/tcp/0/p2p/${producerIdentity.peerId}`],
       roles: ["producer"],
     };
-    // The committee helpers' tempDir() needs that package's global setup,
-    // which this suite does not run.
-    const tempRoot = await mkdtemp(join(tmpdir(), "midgard-da-multi-peer-"));
-    onTestFinished(() => rm(tempRoot, { recursive: true, force: true }));
-    const stores = await Promise.all(
-      committeeSeeds.map(async () =>
-        JsonFileCommitteeStore.open(await mkdtemp(join(tempRoot, "store-"))),
-      ),
-    );
+    const databases = postgresTestDatabases(TEST_DATABASE_PREFIX);
+    const stores: PostgresCommitteeStore[] = [];
+    onTestFinished(async () => {
+      try {
+        await Promise.all(stores.map((store) => store.close()));
+      } finally {
+        await databases.dropAll();
+      }
+    });
+    for (let index = 0; index < committeeSeeds.length; index += 1) {
+      stores.push(
+        await PostgresCommitteeStore.open((await databases.create()).url),
+      );
+    }
     let slowThirdPeer = false;
     let rejectEnvelopeOnThirdPeer = false;
     const committeeNodes = committeeSeeds.map((seed, index) => {

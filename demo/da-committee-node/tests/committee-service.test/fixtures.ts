@@ -1,5 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { afterAll, afterEach } from "vitest";
+import { afterAll } from "vitest";
 
 import { retainedAvailabilityPayload } from "../../src/availability/retained-payload.js";
 import { type CommitteeConfig } from "../../src/config.js";
@@ -17,24 +17,15 @@ import {
   type DaAvailabilityCommitmentAuthority,
   deriveExpectedDaAvailabilityCommitment,
 } from "../../src/peer/signatures.js";
-import { JsonFileCommitteeStore } from "../../src/store.js";
+import { type CommitteeStore } from "../../src/store.js";
 import { postgresTestDatabases } from ".././helpers/postgres-database.js";
 
-const openStores = new Set<JsonFileCommitteeStore>();
+export {
+  openTestCommitteeStore,
+  testStoreDatabase,
+} from "../helpers/committee-store.js";
 
-export const openJsonCommitteeStore = async (
-  path: string,
-): Promise<JsonFileCommitteeStore> => {
-  const store = await JsonFileCommitteeStore.open(path);
-  openStores.add(store);
-  return store;
-};
 export const registerCommitteeCleanup = () => {
-  afterEach(async () => {
-    await Promise.all([...openStores].map(async (store) => store.close()));
-    openStores.clear();
-  });
-
   afterAll(async () => {
     await postgresDatabases.dropAll();
   });
@@ -70,7 +61,7 @@ export const expectedCommitment = (
  * `headerHash`, read the way the availability responder reads them.
  */
 export const retainedSignedPayload = async (
-  store: JsonFileCommitteeStore,
+  store: CommitteeStore,
   config: CommitmentConfig & Pick<CommitteeConfig, "deploymentFingerprint">,
   headerHash: string,
 ): Promise<Uint8Array | undefined> => {
@@ -95,7 +86,7 @@ export const retainedSignedPayload = async (
  * reaches the decision-transition check behind a successful scan.
  */
 export const runAnchorAheadOfObservations = async (
-  store: JsonFileCommitteeStore,
+  store: CommitteeStore,
   queue: SDK.StateQueueTransitionNode[],
 ): Promise<void> => {
   const state = (await store.getL1SourceState())!;

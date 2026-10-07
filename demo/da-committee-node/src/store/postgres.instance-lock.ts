@@ -6,17 +6,18 @@ export const INSTANCE_LOCK_RECONNECT_MAX_MS = 30_000;
 
 export type PostgresStoreInstanceLockEvents = {
   /**
-   * Called once when the lock is found held by another process: the attempt
-   * to take it reached Postgres and was refused. The store then refuses
-   * every decision effect for good, and the process must stop.
+   * Called when an attempt to take the lock again reached Postgres and was
+   * refused: another process holds it. This process is now the passive
+   * member. It keeps refusing every decision effect and keeps trying, and
+   * takes over once the holder's session ends.
    */
-  readonly onInstanceLockLost?: (error: Error) => void;
+  readonly onInstanceLockHeldElsewhere?: (error: Error) => void;
   /**
    * Called when the session holding the lock ends. Every decision effect is
    * refused while the lock reconnects and is taken again.
    */
   readonly onInstanceLockSuspended?: (error: Error) => void;
-  /** Called when a suspended lock is held again. */
+  /** Called when a suspended or passive lock is held again. */
   readonly onInstanceLockRestored?: () => void;
 };
 
@@ -61,7 +62,7 @@ const holderOfLockSql = `SELECT l.pid, a.backend_start::text AS backend_start
      AND ((l.classid::bigint << 32) | l.objid::bigint) = $1::bigint`;
 
 const heldElsewhereMessage =
-  "committee node Postgres store is already exclusively leased by another live committee node process; stop that process before starting another on the same store";
+  "committee node Postgres store instance lock is held by another live committee node process; this process stays passive and takes over when that process's session ends";
 
 /**
  * Opens a dedicated session and tries the lock on it. Throws
@@ -161,21 +162,24 @@ const trySession = async (
  * connection dropped), the lock is suspended: every decision effect is
  * refused, and the session is reopened with bounded backoff and the lock
  * tried again. Taken again, the store resumes. Refused by a reachable
- * Postgres, another process holds it, and the lock is lost for good, unless
- * the holder is this process's own ended session, which the server can keep
- * after the connection broke on this side only: that session is terminated
- * and the lock tried again. Effects
- * this process completes after a gap are still checked against their
- * attempt count, so work another holder did in between is never overwritten.
+ * Postgres, another process holds it: this process becomes the passive
+ * member, refuses every decision effect, and keeps trying at the backoff
+ * ceiling until the holder's session ends, then takes over. The holder can
+ * also be this process's own ended session, which the server can keep after
+ * the connection broke on this side only: that session is terminated and
+ * the lock tried again. Effects this process completes after a gap are
+ * still checked against their attempt count, so work another holder did in
+ * between is never overwritten. Nothing here ends the process.
  *
  * The key is derived from the schema the store's tables resolve to, so two
  * stores in different schemas of one database do not exclude each other.
  */
 export class PostgresStoreInstanceLock {
   private session: LockSession;
-  /** Set while suspended or once lost; decision effects are refused. */
+  /** Set while suspended or passive; decision effects are refused. */
   private refusal: Error | undefined;
-  private lost = false;
+  /** Whether the last refused attempt found another process holding it. */
+  private heldElsewhere = false;
   private releasing = false;
 
   private constructor(
@@ -227,25 +231,22 @@ export class PostgresStoreInstanceLock {
         this.session = session;
         this.watch(session);
         this.refusal = undefined;
+        this.heldElsewhere = false;
         this.events.onInstanceLockRestored?.();
         return;
       } catch (error) {
         if (error instanceof InstanceLockHeldElsewhereError) {
-          this.lost = true;
-          this.refusal = new Error(
-            "committee node Postgres store lost its instance lock: another live committee node process holds it; this process must stop",
-          );
-          this.events.onInstanceLockLost?.(this.refusal);
-          return;
+          if (!this.heldElsewhere) {
+            this.heldElsewhere = true;
+            this.refusal = new Error(
+              "committee node Postgres store is passive: another live committee node process holds its instance lock; decision effects are refused until that process's session ends and this one takes over",
+            );
+            this.events.onInstanceLockHeldElsewhere?.(this.refusal);
+          }
         }
         delayMs = Math.min(INSTANCE_LOCK_RECONNECT_MAX_MS, delayMs * 2);
       }
     }
-  }
-
-  /** Whether the lock is suspended and being taken again. */
-  suspended(): boolean {
-    return this.refusal !== undefined && !this.lost;
   }
 
   assertHeld(): void {

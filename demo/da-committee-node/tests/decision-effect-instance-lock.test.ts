@@ -5,14 +5,16 @@ import {
   decisionEffectId,
   DecisionEffectInFlightError,
   type DecisionOutboxRecord,
-  JsonFileCommitteeStore,
   type L1SourceState,
 } from "../src/store.js";
+import {
+  INSTANCE_LOCK_RECONNECT_MAX_MS,
+  isInstanceLockHeldElsewhere,
+} from "../src/store/postgres.instance-lock.js";
 import {
   PostgresCommitteeStore,
   type PostgresCommitteeStoreOptions,
 } from "../src/store/postgres.js";
-import { tempDir } from "./helpers.js";
 import {
   postgresTestDatabases,
   terminateInstanceLockSessions,
@@ -40,25 +42,7 @@ type StoreLocation = {
     options?: PostgresCommitteeStoreOptions,
   ) => Promise<CommitteeStore>;
   readonly kill: (store: CommitteeStore) => Promise<void>;
-  readonly terminateLockSession?: () => Promise<void>;
-};
-
-const jsonLocation = async (): Promise<StoreLocation> => {
-  const dir = await tempDir();
-  return {
-    open: async () => {
-      const store = await JsonFileCommitteeStore.open(dir);
-      openStores.add(store);
-      return store;
-    },
-    // A crash drops the JSON store's process mutex and leaves its stamp,
-    // which the next holder overwrites; closing does the same, and leaves
-    // the same durable rows behind.
-    kill: async (store) => {
-      openStores.delete(store);
-      await store.close?.();
-    },
-  };
+  readonly terminateLockSession: () => Promise<void>;
 };
 
 const postgresLocation = async (): Promise<StoreLocation> => {
@@ -165,93 +149,84 @@ const complete = (
     updatedAt: "2026-07-28T01:00:00.000Z",
   });
 
-const stores = [
-  ["the JSON file store", jsonLocation],
-  ["the Postgres store", postgresLocation],
-] as const;
-
 describe("decision effect attempts across committee node processes", () => {
-  it.each(stores)(
-    "are reclaimed at once from a process that died mid-attempt, by %s",
-    async (_label, location) => {
-      const at = await location();
-      const crashed = await at.open();
-      await crashed.beginDecisionEffect({ effect: reconcile, sourceState });
-      await at.kill(crashed);
+  it("are reclaimed at once from a process that died mid-attempt", async () => {
+    const at = await postgresLocation();
+    const crashed = await at.open();
+    await crashed.beginDecisionEffect({ effect: reconcile, sourceState });
+    await at.kill(crashed);
 
-      const restarted = await at.open();
-      await expect(
-        restarted.getDecisionOutbox(reconcile.effectId),
-      ).resolves.toMatchObject({ status: "pending", attemptCount: 1 });
-      // One millisecond after the dead attempt: there is no lease to wait out.
-      await restarted.beginDecisionEffect({
-        effect: attempt(2, 1),
-        sourceState: (await restarted.getL1SourceState())!,
-      });
-      await expect(complete(restarted, 1)).rejects.toThrow(
-        /does not match the pending attempt/u,
-      );
-      await complete(restarted, 2);
-      await expect(
-        restarted.getDecisionOutbox(reconcile.effectId),
-      ).resolves.toMatchObject({ status: "reconciled", attemptCount: 2 });
-    },
-  );
+    const restarted = await at.open();
+    await expect(
+      restarted.getDecisionOutbox(reconcile.effectId),
+    ).resolves.toMatchObject({ status: "pending", attemptCount: 1 });
+    // One millisecond after the dead attempt: there is no lease to wait out.
+    await restarted.beginDecisionEffect({
+      effect: attempt(2, 1),
+      sourceState: (await restarted.getL1SourceState())!,
+    });
+    await expect(complete(restarted, 1)).rejects.toThrow(
+      /does not match the pending attempt/u,
+    );
+    await complete(restarted, 2);
+    await expect(
+      restarted.getDecisionOutbox(reconcile.effectId),
+    ).resolves.toMatchObject({ status: "reconciled", attemptCount: 2 });
+  });
 
-  it.each(stores)(
-    "are never run twice while live, however long they take, by %s",
-    async (_label, location) => {
-      const at = await location();
-      const live = await at.open();
-      await live.beginDecisionEffect({ effect: reconcile, sourceState });
+  it("are never run twice while live, however long they take", async () => {
+    const at = await postgresLocation();
+    const live = await at.open();
+    await live.beginDecisionEffect({ effect: reconcile, sourceState });
 
-      await expect(at.open()).rejects.toThrow(/already exclusively leased/u);
+    await expect(at.open()).rejects.toThrow(
+      /held by another live committee node process/u,
+    );
 
-      // An hour later the attempt is still running in the live process, and
-      // it is still the only attempt.
-      const retry = live.beginDecisionEffect({
+    // An hour later the attempt is still running in the live process, and
+    // it is still the only attempt.
+    const retry = live.beginDecisionEffect({
+      effect: attempt(2, 60 * 60 * 1000),
+      sourceState: (await live.getL1SourceState())!,
+    });
+    await expect(retry).rejects.toBeInstanceOf(DecisionEffectInFlightError);
+    await expect(retry).rejects.toThrow(
+      /still in flight in this committee node process/u,
+    );
+    await expect(
+      live.getDecisionOutbox(reconcile.effectId),
+    ).resolves.toMatchObject({ status: "pending", attemptCount: 1 });
+
+    // A completion naming another attempt neither completes nor frees it.
+    await expect(complete(live, 2)).rejects.toThrow(
+      /does not match the pending attempt/u,
+    );
+    await expect(
+      live.beginDecisionEffect({
         effect: attempt(2, 60 * 60 * 1000),
         sourceState: (await live.getL1SourceState())!,
-      });
-      await expect(retry).rejects.toBeInstanceOf(DecisionEffectInFlightError);
-      await expect(retry).rejects.toThrow(
-        /still in flight in this committee node process/u,
-      );
-      await expect(
-        live.getDecisionOutbox(reconcile.effectId),
-      ).resolves.toMatchObject({ status: "pending", attemptCount: 1 });
+      }),
+    ).rejects.toBeInstanceOf(DecisionEffectInFlightError);
 
-      // A completion naming another attempt neither completes nor frees it.
-      await expect(complete(live, 2)).rejects.toThrow(
-        /does not match the pending attempt/u,
-      );
-      await expect(
-        live.beginDecisionEffect({
-          effect: attempt(2, 60 * 60 * 1000),
-          sourceState: (await live.getL1SourceState())!,
-        }),
-      ).rejects.toBeInstanceOf(DecisionEffectInFlightError);
-
-      await complete(live, 1);
-      await live.beginDecisionEffect({
-        effect: attempt(2, 60 * 60 * 1000),
-        sourceState: (await live.getL1SourceState())!,
-      });
-      await complete(live, 2);
-    },
-  );
+    await complete(live, 1);
+    await live.beginDecisionEffect({
+      effect: attempt(2, 60 * 60 * 1000),
+      sourceState: (await live.getL1SourceState())!,
+    });
+    await complete(live, 2);
+  });
 
   it("refuse every effect while a Postgres store's lock session is gone, then resume exactly once when the lock is free again", async () => {
     const at = await postgresLocation();
-    const onInstanceLockLost = vi.fn();
+    const onInstanceLockHeldElsewhere = vi.fn();
     const onInstanceLockSuspended = vi.fn();
     const onInstanceLockRestored = vi.fn();
     const live = await at.open({
-      onInstanceLockLost,
+      onInstanceLockHeldElsewhere,
       onInstanceLockSuspended,
       onInstanceLockRestored,
     });
-    await at.terminateLockSession!();
+    await at.terminateLockSession();
     await vi.waitFor(() => {
       expect(onInstanceLockSuspended).toHaveBeenCalledOnce();
     });
@@ -273,38 +248,72 @@ describe("decision effect attempts across committee node processes", () => {
     await expect(
       live.getDecisionOutbox(reconcile.effectId),
     ).resolves.toMatchObject({ status: "reconciled", attemptCount: 1 });
-    expect(onInstanceLockLost).not.toHaveBeenCalled();
+    expect(onInstanceLockHeldElsewhere).not.toHaveBeenCalled();
     // Held again: a second process is still refused.
-    await expect(at.open()).rejects.toThrow(/already exclusively leased/u);
+    await expect(at.open()).rejects.toThrow(
+      /held by another live committee node process/u,
+    );
   });
 
-  it("fail closed for good, and tell the process to stop, when another process holds the lock by the time it is tried again", async () => {
+  it("keep a displaced member passive, refusing every effect, until the holder dies, then hand over within one reconnect with no effect lost or run twice", async () => {
     const at = await postgresLocation();
-    const onInstanceLockLost = vi.fn();
-    const onInstanceLockRestored = vi.fn();
+    const passiveEvents: string[] = [];
     const orphaned = await at.open({
-      onInstanceLockLost,
-      onInstanceLockRestored,
+      onInstanceLockHeldElsewhere: () => passiveEvents.push("held_elsewhere"),
+      onInstanceLockRestored: () => passiveEvents.push("restored"),
     });
-    await at.terminateLockSession!();
-    // A successor takes the free lock before the orphan tries again.
-    const successor = await at.open();
+    await at.terminateLockSession();
+    // A successor takes the free lock before the orphan tries again; the
+    // orphan becomes the passive member and stays up.
+    const active = await at.open();
     await vi.waitFor(
       () => {
-        expect(onInstanceLockLost).toHaveBeenCalledOnce();
+        expect(passiveEvents).toEqual(["held_elsewhere"]);
       },
       { timeout: 5_000 },
     );
-    expect(onInstanceLockLost.mock.calls[0]?.[0]).toBeInstanceOf(Error);
-    expect(onInstanceLockRestored).not.toHaveBeenCalled();
     await expect(
       orphaned.beginDecisionEffect({ effect: reconcile, sourceState }),
-    ).rejects.toThrow(/lost its instance lock/u);
-    await expect(complete(orphaned, 1)).rejects.toThrow(
-      /lost its instance lock/u,
-    );
+    ).rejects.toThrow(/is passive/u);
+    await expect(complete(orphaned, 1)).rejects.toThrow(/is passive/u);
+    // A third member starting now is refused as well, in the way startup
+    // retries (`starting:store_instance_lock_held`), not as a fatal error.
+    const refused = await at.open().catch((error: unknown) => error);
+    expect(isInstanceLockHeldElsewhere(refused)).toBe(true);
 
-    await successor.beginDecisionEffect({ effect: reconcile, sourceState });
-    await complete(successor, 1);
-  });
+    // The active member begins the effect and dies mid-attempt.
+    await active.beginDecisionEffect({ effect: reconcile, sourceState });
+    const diedAtMs = Date.now();
+    await at.kill(active);
+
+    // One reconnect later the passive member holds the lock: its retry
+    // interval never exceeds the reconnect ceiling.
+    await vi.waitFor(
+      () => {
+        expect(passiveEvents).toEqual(["held_elsewhere", "restored"]);
+      },
+      { timeout: INSTANCE_LOCK_RECONNECT_MAX_MS + 5_000, interval: 50 },
+    );
+    expect(Date.now() - diedAtMs).toBeLessThanOrEqual(
+      INSTANCE_LOCK_RECONNECT_MAX_MS + 1_000,
+    );
+    // The dead attempt is there, exactly once, and is redone exactly once.
+    await expect(
+      orphaned.getDecisionOutbox(reconcile.effectId),
+    ).resolves.toMatchObject({ status: "pending", attemptCount: 1 });
+    await orphaned.beginDecisionEffect({
+      effect: attempt(2, 1),
+      sourceState: (await orphaned.getL1SourceState())!,
+    });
+    await expect(complete(orphaned, 1)).rejects.toThrow(
+      /does not match the pending attempt/u,
+    );
+    await complete(orphaned, 2);
+    await expect(
+      orphaned.getDecisionOutbox(reconcile.effectId),
+    ).resolves.toMatchObject({ status: "reconciled", attemptCount: 2 });
+    await expect(orphaned.listDecisionOutbox(headerHash)).resolves.toHaveLength(
+      1,
+    );
+  }, 60_000);
 });

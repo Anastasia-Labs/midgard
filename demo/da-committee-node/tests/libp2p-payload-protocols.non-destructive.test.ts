@@ -32,8 +32,9 @@ import {
 } from "../src/da/libp2p/payload-protocols.js";
 import { DaLibp2pPayloadSource } from "../src/da/libp2p/payload-source.js";
 import type { DaPayloadRecord } from "../src/domain.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
-import { makePayloadFixture, tempDir } from "./helpers.js";
+import { type PostgresCommitteeStore } from "../src/store/postgres.js";
+import { makePayloadFixture } from "./helpers.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
 import {
   deploymentFingerprint,
   deploymentFingerprintBytes,
@@ -43,10 +44,10 @@ import {
 
 const makeLoggedHandlers = async (): Promise<{
   readonly handlers: DaLibp2pPayloadProtocolHandlers;
-  readonly store: JsonFileCommitteeStore;
+  readonly store: PostgresCommitteeStore;
   readonly logged: string[];
 }> => {
-  const store = await JsonFileCommitteeStore.open(await tempDir());
+  const store = await openTestCommitteeStore();
   const logged: string[] = [];
   return {
     store,

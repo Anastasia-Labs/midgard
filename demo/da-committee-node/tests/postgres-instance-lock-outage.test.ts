@@ -128,7 +128,7 @@ describe("Postgres store instance lock across a Postgres outage", () => {
     const proxy = await outageProxy(new URL(database.url));
     const events: string[] = [];
     const store = await PostgresCommitteeStore.open(proxy.url, {
-      onInstanceLockLost: () => events.push("lost"),
+      onInstanceLockHeldElsewhere: () => events.push("held_elsewhere"),
       onInstanceLockSuspended: () => events.push("suspended"),
       onInstanceLockRestored: () => events.push("restored"),
     });
@@ -171,7 +171,7 @@ describe("Postgres store instance lock across a Postgres outage", () => {
     await expect(
       store.getDecisionOutbox(effect.effectId),
     ).resolves.toMatchObject({ status: "reconciled", attemptCount: 1 });
-    expect(events).not.toContain("lost");
+    expect(events).not.toContain("held_elsewhere");
   }, 20_000);
 });
 
@@ -181,7 +181,7 @@ describe("Postgres store instance lock after a half-open connection drop", () =>
     const proxy = await outageProxy(new URL(database.url));
     const events: string[] = [];
     const store = await PostgresCommitteeStore.open(proxy.url, {
-      onInstanceLockLost: () => events.push("lost"),
+      onInstanceLockHeldElsewhere: () => events.push("held_elsewhere"),
       onInstanceLockSuspended: () => events.push("suspended"),
       onInstanceLockRestored: () => events.push("restored"),
     });
@@ -213,7 +213,7 @@ describe("Postgres store instance lock after a half-open connection drop", () =>
     expect(events).toEqual(["suspended", "restored"]);
     // Held again: a second process is still refused.
     await expect(PostgresCommitteeStore.open(database.url)).rejects.toThrow(
-      /already exclusively leased/u,
+      /held by another live committee node process/u,
     );
   }, 20_000);
 });

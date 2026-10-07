@@ -1,5 +1,5 @@
 import type { LocalStateConfig } from "../config.js";
-import { type CommitteeStore, JsonFileCommitteeStore } from "../store.js";
+import type { CommitteeStore } from "../store.js";
 import {
   PostgresCommitteeStore,
   type PostgresCommitteeStoreOptions,
@@ -8,15 +8,5 @@ import {
 export const openCommitteeStore = async (
   localState: LocalStateConfig,
   options: PostgresCommitteeStoreOptions = {},
-): Promise<CommitteeStore> => {
-  switch (localState.kind) {
-    case "file":
-      return JsonFileCommitteeStore.open(localState.path, {
-        ...(options.onInstanceLockLost === undefined
-          ? {}
-          : { onLost: options.onInstanceLockLost }),
-      });
-    case "database":
-      return PostgresCommitteeStore.open(localState.url, options);
-  }
-};
+): Promise<CommitteeStore> =>
+  PostgresCommitteeStore.open(localState.url, options);

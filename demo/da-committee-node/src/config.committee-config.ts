@@ -17,9 +17,10 @@ export type DaParamsConfig = {
   readonly threshold: number;
 };
 
-export type LocalStateConfig =
-  | { readonly kind: "file"; readonly path: string }
-  | { readonly kind: "database"; readonly url: string };
+export type LocalStateConfig = {
+  readonly kind: "database";
+  readonly url: string;
+};
 
 export type CardanoL1SourceConfig =
   | {

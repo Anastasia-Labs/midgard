@@ -171,6 +171,29 @@ describe("runtime services step", () => {
     expect(preflight.args).toContain("dial-only");
     expect(preflight.args).not.toContain("bind-listen");
   });
+  it("starts the public reader only after granting it exactly its two tables in the migrated database", async () => {
+    const { processes, services } = await stack();
+    await services.execute(undefined);
+    const ids = processes.calls.map((call) => call.id);
+    const committee = ids.indexOf("committee-start");
+    const grant = ids.indexOf("public-reader-grant-0");
+    const reader = ids.indexOf("public-reader-start");
+    expect(committee).toBeGreaterThan(-1);
+    expect(grant).toBeGreaterThan(committee);
+    expect(reader).toBeGreaterThan(grant);
+    expect(processes.calls[committee]!.args).not.toContain(
+      "public-retained-da",
+    );
+    const sql = processes.calls[grant]!.args.at(-1)!;
+    expect(processes.calls[grant]!.args).toContain("midgard_da_0");
+    expect(sql).toContain(
+      "REVOKE ALL ON ALL TABLES IN SCHEMA public FROM midgard_da_reader;",
+    );
+    expect(sql).toContain("REVOKE ALL ON TABLES FROM midgard_da_reader;");
+    expect(
+      sql.match(/GRANT SELECT ON ([^;]+) TO midgard_da_reader;/u)?.[1],
+    ).toBe("committee_da_payloads, committee_state_queue_headers");
+  });
   it("binds the producer port only before its container first starts", async () => {
     const { processes, services } = await stack();
     await services.execute(undefined);

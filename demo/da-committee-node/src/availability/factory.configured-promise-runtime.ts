@@ -10,7 +10,7 @@ import { committeeScopedAttemptLucid } from "../l1/availability-scoped-lucid.js"
 import { committeeScopedUtxos } from "../l1/availability-scoped-utxos.js";
 import type { ChainSyncReplayProvider } from "../l1/provider.js";
 import type { StateQueueProvider } from "../l1/state-queue-scanner.js";
-import { type CommitteeStore, JsonFileCommitteeStore } from "../store.js";
+import type { CommitteeStore } from "../store.js";
 import {
   committeeBoundReadContext,
   drainCommitteeReadResources,
@@ -63,8 +63,6 @@ export const configuredCommitteePromiseRuntime = async (input: {
 }) => {
   const { config, lucid, deployment, journal, store, actorId, chainProvider } =
     input;
-  if (!(store instanceof JsonFileCommitteeStore))
-    throw new Error("Controlled admission requires the calibrated JSON store");
   if (!isReplayProvider(chainProvider))
     throw new Error(
       "Adopted profile requires bounded canonical cursor authority",

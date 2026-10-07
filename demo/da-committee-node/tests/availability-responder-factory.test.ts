@@ -13,12 +13,11 @@ import {
   availabilityResponderFromConfig,
 } from "../src/availability/factory.js";
 import type { CommitteeL1ClientConfig } from "../src/config.js";
-import { JsonFileCommitteeStore } from "../src/store.js";
 import { minimalConfig, tempDir } from "./helpers.js";
+import { openTestCommitteeStore } from "./helpers/committee-store.js";
 
 const configFor = (dir: string): CommitteeL1ClientConfig => ({
   ...minimalConfig({
-    dir,
     manifestPath: join(dir, "manifest.json"),
     deploymentInfoPath: join(dir, "deployment.json"),
     signerSeed: "00".repeat(32),
@@ -51,7 +50,7 @@ describe("availability responder production factory", () => {
   it("requires explicit durable journal and independent wallet configuration", async () => {
     const dir = await tempDir();
     const config = configFor(dir);
-    const store = await JsonFileCommitteeStore.open(join(dir, "store.json"));
+    const store = await openTestCommitteeStore();
     await expect(
       availabilityResponderFromConfig(
         { ...config, availabilityJournalPath: undefined },
@@ -70,7 +69,7 @@ describe("availability responder production factory", () => {
 
   it("requires a canonical local node before any signing work", async () => {
     const dir = await tempDir();
-    const store = await JsonFileCommitteeStore.open(join(dir, "store.json"));
+    const store = await openTestCommitteeStore();
     await expect(
       availabilityResponderFromConfig(
         {
@@ -91,7 +90,7 @@ describe("availability responder production factory", () => {
     const lucid = await Lucid(new Emulator([account]), "Custom");
     const keyFile = join(dir, "responder.key");
     await writeFile(keyFile, `private-key:${account.privateKey}`);
-    const store = await JsonFileCommitteeStore.open(join(dir, "store.json"));
+    const store = await openTestCommitteeStore();
     await expect(
       availabilityResponderFromConfig(
         {
