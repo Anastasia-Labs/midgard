@@ -18,6 +18,10 @@ import {
   type L1ProviderHealthEvidence,
   type MempoolLedgerDeltaLog,
 } from "./globals.next-l1-provider-health-evidence.js";
+import {
+  L1_FOLLOWER_NOT_STARTED,
+  type L1FollowerState,
+} from "./l1-follower.readiness.js";
 import type { NativeMpfOwnerService } from "./mpf-native-owner/index.js";
 
 /**
@@ -144,6 +148,11 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const EVENT_HISTORY_OWNER = yield* Ref.make<EventHistoryOwner | undefined>(
       undefined,
     );
+    // The node's L1 follower (N1): the shared follow loop and its
+    // follower-change driver, or why the node has none.
+    const L1_FOLLOWER = yield* Ref.make<L1FollowerState>(
+      L1_FOLLOWER_NOT_STARTED,
+    );
 
     const NATIVE_MPF_OWNER = yield* Ref.make<NativeMpfOwnerService | undefined>(
       undefined,
@@ -236,6 +245,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       TX_QUEUE_WAKE_GENERATION,
       NATIVE_MPF_OWNER,
       EVENT_HISTORY_OWNER,
+      L1_FOLLOWER,
       FOREIGN_BASE_VERIFICATION,
       ADMISSION_BACKLOG_GAUGE,
       LOCAL_FINALIZATION_PENDING,

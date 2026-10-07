@@ -105,11 +105,15 @@ export type L1QueueHeader = {
   readonly decodeError: string | null;
 };
 
+/**
+ * A deposit's payload as both sides can state it. It carries no L1 tx hash:
+ * the node holds the immutable admission tx, an L1 list read only the
+ * order's current output, which a later list insertion moves.
+ */
 export type DepositPayload = {
   readonly eventId: string;
   readonly info: string;
   readonly inclusionTimeMs: number;
-  readonly l1TxHash: string;
   readonly ledgerTxId: string;
   readonly ledgerOutput: string;
   readonly ledgerAddress: string;

@@ -773,21 +773,20 @@ const drainReplica = async (
                   ),
                   "hex",
                 );
-                yield* DepositsDB.insertEntries([
-                  {
-                    [DepositsDB.Columns.ID]: eventId,
-                    [DepositsDB.Columns.INFO]: hash("info"),
-                    [DepositsDB.Columns.INCLUSION_TIME]: new Date(0),
-                    [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: hash("l1"),
-                    [DepositsDB.Columns.LEDGER_TX_ID]: hash("ledger"),
-                    [DepositsDB.Columns.LEDGER_OUTPUT]: Buffer.from([0x80]),
-                    [DepositsDB.Columns.LEDGER_ADDRESS]:
-                      "addr_test1_phase2_benchmark_deposit",
-                    [DepositsDB.Columns.PROJECTED_HEADER_HASH]: null,
-                    [DepositsDB.Columns.STATUS]: DepositsDB.Status.Awaiting,
-                  },
-                ]);
-                yield* projectDepositsToMempoolLedger.pipe(
+                const deposit: DepositsDB.Entry = {
+                  [DepositsDB.Columns.ID]: eventId,
+                  [DepositsDB.Columns.INFO]: hash("info"),
+                  [DepositsDB.Columns.INCLUSION_TIME]: new Date(0),
+                  [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: hash("l1"),
+                  [DepositsDB.Columns.LEDGER_TX_ID]: hash("ledger"),
+                  [DepositsDB.Columns.LEDGER_OUTPUT]: Buffer.from([0x80]),
+                  [DepositsDB.Columns.LEDGER_ADDRESS]:
+                    "addr_test1_phase2_benchmark_deposit",
+                  [DepositsDB.Columns.PROJECTED_HEADER_HASH]: null,
+                  [DepositsDB.Columns.STATUS]: DepositsDB.Status.Awaiting,
+                };
+                yield* DepositsDB.insertEntries([deposit]);
+                yield* projectDepositsToMempoolLedger([deposit]).pipe(
                   Effect.provideService(NodeConfig, nodeConfig),
                 );
                 depositProjectionDeltaBumps += 1;

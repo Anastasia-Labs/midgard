@@ -6,6 +6,7 @@ import retainedScriptMaterialSql from "./sql/0004_retained_script_material.sql";
 import foreignEventCensusSql from "./sql/0005_foreign_event_census.sql";
 import foreignNativeAdoptionSql from "./sql/0006_foreign_native_adoption.sql";
 import dropForeignTipReconciliationsSql from "./sql/0007_drop_foreign_tip_reconciliations.sql";
+import followerAdmissionIdentitySql from "./sql/0008_follower_admission_identity.sql";
 
 export type Migration = {
   readonly version: number;
@@ -63,6 +64,13 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "drop_foreign_tip_reconciliations",
     checksumSha256: sha256Hex(dropForeignTipReconciliationsSql),
     sql: dropForeignTipReconciliationsSql,
+    transactional: true,
+  },
+  {
+    version: 8,
+    name: "follower_admission_identity",
+    checksumSha256: sha256Hex(followerAdmissionIdentitySql),
+    sql: followerAdmissionIdentitySql,
     transactional: true,
   },
 ] as const;
@@ -152,6 +160,7 @@ export const APPLICATION_TABLE_NAMES = [
   "event_history_incarnations",
   "event_history_l2_ledger_receipts",
   "event_history_recovery_plans",
+  "follower_event_ingestion",
 ] as const;
 
 export const APPLICATION_INDEX_NAMES = [
@@ -206,8 +215,9 @@ export const APPLICATION_INDEX_NAMES = [
   "uniq_event_history_canonical_event",
   "uniq_event_history_canonical_key",
   "idx_event_history_incarnations_orphans",
-  "idx_deposits_utxos_history_association",
-  "idx_withdrawal_utxos_history_association",
+  "idx_deposits_utxos_l1_admission",
+  "idx_withdrawal_utxos_l1_admission",
+  "idx_withdrawal_utxos_l1_admission_tx",
   "event_history_l2_ledger_receipts_unreversed",
   "event_history_recovery_plans_prepared",
 ] as const;

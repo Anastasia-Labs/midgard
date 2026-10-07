@@ -7,21 +7,13 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Data, toUnit } from "@lucid-evolution/lucid";
-import { Effect, Option, Tracer } from "effect";
+import { Effect, Tracer } from "effect";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as Deposits from "../src/database/deposits.js";
 import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as Journal from "../src/database/eventHistoryJournal.js";
 import { pendingHistoryLedgerDisposition } from "../src/database/eventHistoryLedgerRepair.js";
-import {
-  MATERIALIZATION_CHUNK,
-  materializeCanonicalHistory,
-} from "../src/database/eventHistoryMaterialization.js";
 import { formatDatabaseError } from "../src/database/utils/common.js";
-import * as Withdrawals from "../src/database/withdrawals.js";
-import { reconcileDepositProjection } from "../src/fibers/project-deposits-to-mempool-ledger.js";
-import { historyIncarnationEntry } from "../src/l1-event-history-entries.js";
 import {
   type HistoryIncarnation,
   historyIncarnationDigest,
@@ -103,7 +95,6 @@ const HEAD_SLOT = 100_000_000;
 const HEAD_HEIGHT = 5_000_000;
 const HEAD_ID = sha("ready-append-seed-head");
 const DECODE_CHUNK = 400;
-const INSERT_CHUNK = 250;
 const owner = "aa".repeat(28);
 const address = {
   paymentCredential: { PublicKeyCredential: [owner] as [string] },
@@ -314,34 +305,13 @@ const retiredHistory = async (n: number) => {
   return incarnations;
 };
 
-/** The production owner's reconciliation (event-history-runtime). */
-const reconcile = (
-  change: HistoryOwnerChange,
-  materialize = materializeCanonicalHistory,
-) =>
-  Effect.gen(function* () {
-    const pending = yield* pendingHistoryLedgerDisposition(change);
-    if (pending !== undefined) return pending;
-    yield* materialize(change, "Preprod");
-    const { reconciled } = yield* reconcileDepositProjection(
-      new Date(change.after.head.slot * 1000),
-    );
-    const owned = yield* Authority.currentOwnedTransaction;
-    if (
-      reconciled.spendableUpserts.length > 0 &&
-      Option.isSome(owned) &&
-      owned.value.state === "ready"
-    )
-      return {
-        status: "pending" as const,
-        reason: "Deposit projection restored spendable ledger rows",
-      };
-    return undefined;
-  });
+/** The production owner's reconciliation (event-history-runtime) with no
+ * L1 follower: the follower-change driver writes the event rows (E-N1-2
+ * ruling 1), so the journal's own reconcile is the ledger disposition. */
+const reconcile = (change: HistoryOwnerChange) =>
+  pendingHistoryLedgerDisposition(change);
 
-/** Seed the journal at the model origin with `history`, and the event rows a
- * long-running node keeps for them: the exact bytes materialization derives,
- * with their association, since consumed or finalized. Then the startup
+/** Seed the journal at the model origin with `history`, then the startup
  * resume, and Ready. */
 const startReady = async (history: readonly HistoryIncarnation[]) => {
   const token = await run(
@@ -372,49 +342,6 @@ const startReady = async (history: readonly HistoryIncarnation[]) => {
           originReceiptDigest: sha(receipt),
           incarnations: history,
         });
-        const sql = yield* SqlClient.SqlClient;
-        const header = Buffer.alloc(28, 7);
-        const rows: Record<string, Record<string, unknown>[]> = {
-          [Deposits.tableName]: [],
-          [Withdrawals.tableName]: [],
-        };
-        for (const incarnation of history) {
-          const materialized = yield* historyIncarnationEntry(
-            incarnation,
-            "Preprod",
-          );
-          const association = {
-            history_binding_digest: Buffer.from(binding.digest, "hex"),
-            history_incarnation_id: Buffer.from(incarnation.id, "hex"),
-          };
-          if (materialized.kind === "deposit")
-            rows[Deposits.tableName]!.push({
-              ...materialized.entry,
-              [Deposits.Columns.STATUS]: "consumed",
-              [Deposits.Columns.PROJECTED_HEADER_HASH]: header,
-              ...association,
-            });
-          else
-            rows[Withdrawals.tableName]!.push({
-              ...materialized.entry,
-              [Withdrawals.Columns.STATUS]: "finalized",
-              [Withdrawals.Columns.VALIDITY]: "WithdrawalIsValid",
-              [Withdrawals.Columns.SETTLEMENT_EVENT_INFO]:
-                materialized.entry[Withdrawals.Columns.RAW_EVENT_INFO],
-              [Withdrawals.Columns.PROJECTED_HEADER_HASH]: header,
-              [Withdrawals.Columns.VALIDITY_DETAIL]:
-                sql`CAST(${JSON.stringify(materialized.entry[Withdrawals.Columns.VALIDITY_DETAIL])} AS TEXT)::JSONB`,
-              ...association,
-            });
-        }
-        for (const [table, entries] of Object.entries(rows))
-          for (let at = 0; at < entries.length; at += INSERT_CHUNK) {
-            const batch = entries.slice(at, at + INSERT_CHUNK);
-            const columns = Object.keys(batch[0]!);
-            yield* sql`INSERT INTO ${sql(table)}
-              (${sql.csv(columns.map((column) => sql`${sql(column)}`))})
-              VALUES ${sql.csv(batch.map((entry) => sql`(${sql.csv(columns.map((column) => sql`${entry[column] as never}`))})`))}`;
-          }
       }),
     ),
   );
@@ -588,13 +515,7 @@ const appendReady = (
   token: Authority.Token,
   before: Journal.Checkpoint,
   prepared: ReturnType<typeof Journal.prepareAppend>,
-  {
-    horizon = 2160,
-    materialize = materializeCanonicalHistory,
-  }: {
-    horizon?: number;
-    materialize?: typeof materializeCanonicalHistory;
-  } = {},
+  { horizon = 2160 }: { horizon?: number } = {},
 ) =>
   Authority.withReadyAppend(
     token,
@@ -602,10 +523,7 @@ const appendReady = (
       binding,
       prepared,
       ({ after, changes }) =>
-        reconcile(
-          { kind: "forward", before, after, changes },
-          materialize,
-        ).pipe(
+        reconcile({ kind: "forward", before, after, changes }).pipe(
           Effect.flatMap((pending) =>
             pending === undefined
               ? Effect.succeed(after)
@@ -646,39 +564,6 @@ const sqlRun = (
       return yield* program(yield* SqlClient.SqlClient);
     }),
   );
-
-/** Event-table rows the current transaction has read so far, from the
- * backend's unflushed counters: heap tuples returned by sequential scans plus
- * index entries returned by any index scan (plain, bitmap or index-only). */
-const eventRowsRead = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const [row] = yield* sql<{ rows: string }>`
-    WITH tables AS (
-      SELECT unnest(ARRAY['deposits_utxos', 'withdrawal_utxos']::regclass[])::oid AS oid
-    )
-    SELECT coalesce(sum(pg_stat_get_xact_tuples_returned(oid)), 0)::text AS rows FROM (
-      SELECT oid FROM tables
-      UNION ALL SELECT indexrelid FROM pg_index WHERE indrelid IN (SELECT oid FROM tables)
-    ) relations`;
-  return Number(row!.rows);
-}).pipe(Effect.orDie);
-/** The production materialization, counting the event rows it reads. At
- * these table sizes the planner may rightly prefer a sequential scan of a few
- * pages, which reads every row whatever the predicate; with it disabled the
- * count is the rows the predicates select (an unindexable or unscoped
- * predicate still reads the whole table). */
-const materializeCounting =
-  (read: { rows?: number }): typeof materializeCanonicalHistory =>
-  (change, network) =>
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`SET LOCAL enable_seqscan = off`.pipe(Effect.orDie);
-      const before = yield* eventRowsRead;
-      const result = yield* materializeCanonicalHistory(change, network);
-      read.rows = (yield* eventRowsRead) - before;
-      yield* sql`SET LOCAL enable_seqscan TO DEFAULT`.pipe(Effect.orDie);
-      return result;
-    });
 
 beforeAll(async () => {
   contracts = await loadRealMidgardContractsForTest({
@@ -737,7 +622,7 @@ const clear = () =>
 beforeEach(clear);
 
 describe("Ready head append", () => {
-  it("costs the same statements, savepoints and event rows read whatever the retained history", async () => {
+  it("costs the same statements and savepoints whatever the retained history", async () => {
     const measure = async (n: number) => {
       await clear();
       const { token, checkpoint, resume } = await startReady(
@@ -745,13 +630,8 @@ describe("Ready head append", () => {
       );
       expect(checkpoint.incarnations).toHaveLength(n);
       const { prepared } = await admit(checkpoint, `measure-${n}`);
-      const read: { rows?: number } = {};
       const admission = await run(
-        counted(
-          appendReady(token, checkpoint, prepared, {
-            materialize: materializeCounting(read),
-          }),
-        ),
+        counted(appendReady(token, checkpoint, prepared)),
       );
       if (!admission.value.applied) throw new Error("Append did not apply");
       const admitted = admission.value.result;
@@ -766,84 +646,18 @@ describe("Ready head append", () => {
       );
       if (!empty.value.applied) throw new Error("Append did not apply");
       expect(empty.value.result.incarnations).toHaveLength(n + 1);
-      // The Ready appends materialized the admission, and the startup resume
-      // still verifies every row.
-      const [row] = (await sqlRun(
-        (sql) =>
-          sql`SELECT history_incarnation_id FROM deposits_utxos WHERE event_id = ${Buffer.from(prepared.changes[0]!.after.event.idCbor, "hex")}`,
-      )) as { history_incarnation_id: Buffer }[];
-      expect(row!.history_incarnation_id.toString("hex")).toBe(
-        prepared.changes[0]!.after.id,
-      );
       expect((await restart(token)).checkpoint).toEqual(empty.value.result);
-      return {
-        admission: cost(admission),
-        empty: cost(empty),
-        resume,
-        eventRowsRead: read.rows!,
-      };
+      return { admission: cost(admission), empty: cost(empty), resume };
     };
     const small = await measure(200);
     const large = await measure(2000);
     console.info(
       `Ready append and resume at 200 vs 2000 retained incarnations: ${JSON.stringify({ small, large })}`,
     );
-    expect({ admission: large.admission, empty: large.empty }).toEqual({
-      admission: small.admission,
-      empty: small.empty,
-    });
-    // The admission's materialization, eligibility checks included, reads
-    // only the rows of the incarnation it staged.
-    expect(small.eventRowsRead).toBeGreaterThan(0);
-    expect(large.eventRowsRead).toBe(small.eventRowsRead);
-    // The startup resume still walks every incarnation, a chunk per
-    // statement and without a savepoint per row.
-    expect(large.resume.transactions).toBe(small.resume.transactions);
-    expect(
-      large.resume.statements - small.resume.statements,
-    ).toBeLessThanOrEqual(
-      3 *
-        (Math.ceil(2000 / MATERIALIZATION_CHUNK) -
-          Math.ceil(200 / MATERIALIZATION_CHUNK)),
-    );
+    // The journal's reconcile no longer walks event rows (the follower-change
+    // driver writes them), so the resume costs the same too.
+    expect(large).toEqual(small);
   }, 600_000);
-
-  it.each(["deposit", "withdrawal"] as const)(
-    "writes a %s continuation's new location and returns the checkpoint a load reads",
-    async (kind) => {
-      const { token, checkpoint } = await startReady(await retiredHistory(4));
-      const { prepared, order } = await admit(checkpoint, "admit", kind);
-      const admitted = await applied(token, checkpoint, prepared);
-      expect(admitted).toEqual(await run(Journal.load(binding)));
-      const eventId = Buffer.from(
-        prepared.changes[0]!.after.event.idCbor,
-        "hex",
-      );
-      const location = () =>
-        sqlRun((sql) =>
-          kind === "deposit"
-            ? sql`SELECT encode(deposit_l1_tx_hash, 'hex') AS tx_hash, NULL AS output_index FROM deposits_utxos WHERE event_id = ${eventId}`
-            : sql`SELECT encode(withdrawal_l1_tx_hash, 'hex') AS tx_hash, withdrawal_l1_output_index AS output_index FROM withdrawal_utxos WHERE event_id = ${eventId}`,
-        );
-      expect(await location()).toEqual([
-        {
-          tx_hash: order.txHash,
-          output_index: kind === "deposit" ? null : order.outputIndex,
-        },
-      ]);
-      const continuation = await move(admitted, "move", kind, order);
-      const continued = await applied(token, admitted, continuation.prepared);
-      expect(await location()).toEqual([
-        {
-          tx_hash: continuation.moved.txHash,
-          output_index:
-            kind === "deposit" ? null : continuation.moved.outputIndex,
-        },
-      ]);
-      expect(continued).toEqual(await run(Journal.load(binding)));
-      expect((await restart(token)).checkpoint).toEqual(continued);
-    },
-  );
 
   it("refuses a staged incarnation whose stored image is not the one it was prepared from", async () => {
     const { token, checkpoint } = await startReady(await retiredHistory(4));
@@ -1016,110 +830,6 @@ describe("Ready head append", () => {
       await run(Journal.load(binding)),
     );
   });
-
-  it("leaves unstaged rows to the startup resume, which still refuses corrupted bytes and associations", async () => {
-    const history = await retiredHistory(6);
-    const deposit = Buffer.from(
-      history.find((value) => value.kind === "deposit")!.event.idCbor,
-      "hex",
-    );
-    const withdrawal = history.find((value) => value.kind === "withdrawal")!;
-    const stray = Buffer.from(sha("stray"), "hex");
-    const started = await startReady(history);
-    let token = started.token;
-    // Each corruption is outside the rows a Ready append's block stages, so
-    // the append does not read it; the startup resume walks every row and
-    // refuses it, and accepts the journal again once it is repaired.
-    const detected = async (
-      current: Journal.Checkpoint,
-      block: ReturnType<typeof Journal.prepareAppend>,
-      refused: RegExp,
-      repair: (sql: SqlClient.SqlClient) => Effect.Effect<unknown, unknown>,
-    ) => {
-      const next = await applied(token, current, block);
-      await expect(restart(token)).rejects.toThrow(refused);
-      await sqlRun(repair);
-      const restarted = await restart(token);
-      expect(restarted.checkpoint).toEqual(next);
-      token = restarted.token;
-      return next;
-    };
-
-    await sqlRun(
-      (sql) =>
-        sql`UPDATE deposits_utxos SET event_info = event_info || ${Buffer.from("00", "hex")} WHERE event_id = ${deposit}`,
-    );
-    const first = await admit(started.checkpoint, "first", "deposit");
-    let current = await detected(
-      started.checkpoint,
-      first.prepared,
-      /same event_id has conflicting persisted payload/,
-      (sql) =>
-        sql`UPDATE deposits_utxos SET event_info = substring(event_info FROM 1 FOR octet_length(event_info) - 1) WHERE event_id = ${deposit}`,
-    );
-
-    await sqlRun(
-      (sql) =>
-        sql`UPDATE withdrawal_utxos SET history_binding_digest = NULL, history_incarnation_id = NULL WHERE event_id = ${Buffer.from(withdrawal.event.idCbor, "hex")}`,
-    );
-    current = await detected(
-      current,
-      (await admit(current, "second", "withdrawal")).prepared,
-      /without its exact history incarnation/,
-      (sql) =>
-        sql`UPDATE withdrawal_utxos SET history_binding_digest = ${Buffer.from(binding.digest, "hex")}, history_incarnation_id = ${Buffer.from(withdrawal.id, "hex")} WHERE event_id = ${Buffer.from(withdrawal.event.idCbor, "hex")}`,
-    );
-
-    // A local row no incarnation admits, under an unused public ID.
-    await sqlRun((sql) =>
-      sql.withTransaction(
-        Effect.all([
-          sql`CREATE TEMPORARY TABLE stray_deposit ON COMMIT DROP AS SELECT * FROM deposits_utxos WHERE event_id = ${deposit}`,
-          sql`UPDATE stray_deposit SET event_id = ${stray}, history_binding_digest = NULL, history_incarnation_id = NULL`,
-          sql`INSERT INTO deposits_utxos SELECT * FROM stray_deposit`,
-        ]),
-      ),
-    );
-    await detected(
-      current,
-      (await move(current, "third", "deposit", first.order)).prepared,
-      /Local event eligibility is not backed by this canonical history/,
-      (sql) => sql`DELETE FROM deposits_utxos WHERE event_id = ${stray}`,
-    );
-  });
-
-  it("the startup resume checks the incarnations on both sides of a walk chunk boundary", async () => {
-    const started = await startReady(
-      await retiredHistory(MATERIALIZATION_CHUNK + 2),
-    );
-    let token = started.token;
-    for (const position of [
-      MATERIALIZATION_CHUNK - 1,
-      MATERIALIZATION_CHUNK,
-      MATERIALIZATION_CHUNK + 1,
-    ]) {
-      const incarnation = started.checkpoint.incarnations[position]!;
-      const eventId = Buffer.from(incarnation.event.idCbor, "hex");
-      const [table, column] =
-        incarnation.kind === "deposit"
-          ? [Deposits.tableName, "event_info"]
-          : [Withdrawals.tableName, "raw_event_info"];
-      await sqlRun(
-        (sql) =>
-          sql`UPDATE ${sql(table)} SET ${sql(column)} = ${sql(column)} || ${Buffer.from("00", "hex")} WHERE event_id = ${eventId}`,
-      );
-      await expect(restart(token)).rejects.toThrow(
-        /same event_id has conflicting persisted payload/,
-      );
-      await sqlRun(
-        (sql) =>
-          sql`UPDATE ${sql(table)} SET ${sql(column)} = substring(${sql(column)} FROM 1 FOR octet_length(${sql(column)}) - 1) WHERE event_id = ${eventId}`,
-      );
-      const restarted = await restart(token);
-      expect(restarted.checkpoint).toEqual(started.checkpoint);
-      token = restarted.token;
-    }
-  }, 300_000);
 });
 
 describe("history binding identity across restarts", () => {
@@ -1158,7 +868,7 @@ describe("history binding identity across restarts", () => {
     slotLength: { milliseconds: 1000 },
   };
 
-  it("adopts rows under a rebuilt binding and refuses them under another chain's binding", async () => {
+  it("rebuilds the same binding through another Ogmios address and only another chain changes it", async () => {
     const modelBinding = binding;
     try {
       const captured = await productionBinding(
@@ -1166,87 +876,29 @@ describe("history binding identity across restarts", () => {
         "http://localhost:1337",
       );
       binding = captured;
-      const history = await retiredHistory(4);
-      const started = await startReady(history);
-      const rowsBound = () =>
-        sqlRun(
-          (sql) =>
-            sql`SELECT encode(history_binding_digest, 'hex') AS digest, count(*)::int AS n
-              FROM deposits_utxos GROUP BY history_binding_digest
-              UNION ALL
-              SELECT encode(history_binding_digest, 'hex') AS digest, count(*)::int AS n
-              FROM withdrawal_utxos GROUP BY history_binding_digest`,
-        );
-      const boundBefore = await rowsBound();
+      const started = await startReady(await retiredHistory(4));
 
       // Same chain and deployment through another Ogmios address: the
-      // restart's binding is the captured one, and the startup resume adopts
-      // every row it walks.
+      // restart's binding is the captured one, and the startup resume loads
+      // the same journal under it.
       binding = await productionBinding(
         structuredClone(genesis),
         "ws://ogmios-proxy.example:2337/",
       );
       expect(binding).toEqual(captured);
-      expect(binding.digest).toBe(captured.digest);
       const restarted = await restart(started.token);
       expect(restarted.checkpoint).toEqual(started.checkpoint);
 
-      // Another chain (a different network magic) is a different binding. The
-      // same public events captured under it are new incarnations, and the
-      // resume refuses to adopt the rows bound to the first chain's history.
+      // Another chain (a different network magic) is a different binding,
+      // under which the same public events are new incarnations.
       binding = await productionBinding(
         { ...genesis, networkMagic: 2 },
         "ws://ogmios-proxy.example:2337/",
       );
       expect(binding.digest).not.toBe(captured.digest);
-      const otherHistory = await retiredHistory(4);
-      expect(otherHistory.map((value) => value.event.idCbor)).toEqual(
-        history.map((value) => value.event.idCbor),
+      expect((await retiredHistory(4)).map((value) => value.id)).not.toEqual(
+        started.checkpoint.incarnations.map((value) => value.id),
       );
-      expect(otherHistory.map((value) => value.id)).not.toEqual(
-        history.map((value) => value.id),
-      );
-      // The next start captures that other history into a fresh journal.
-      const recovering = await run(
-        Authority.acquire({
-          deploymentIdentity: binding.manifestId,
-          ownerToken: restarted.token.ownerToken,
-          leaseDurationMs: 600_000,
-        }),
-      );
-      await run(
-        Authority.withRecovery(
-          recovering,
-          Effect.gen(function* () {
-            const capture = yield* decodeBoundEventHistoryLedgerSnapshot(
-              {
-                point: { id: HEAD_ID, slot: HEAD_SLOT },
-                addresses,
-                outputs: initialOutputs,
-              },
-              binding,
-            );
-            const receipt = "Explicit model origin; not ledger admission";
-            yield* Journal.seed({
-              binding,
-              capture,
-              height: HEAD_HEIGHT,
-              originReceipt: receipt,
-              originReceiptDigest: sha(receipt),
-              incarnations: otherHistory,
-            });
-          }),
-        ),
-      );
-      await expect(restart(recovering)).rejects.toThrow(
-        /without its exact history incarnation/,
-      );
-      // Nothing was re-keyed: every row still names the first history.
-      expect(await rowsBound()).toEqual(boundBefore);
-      expect(boundBefore).toEqual([
-        { digest: captured.digest, n: 2 },
-        { digest: captured.digest, n: 2 },
-      ]);
     } finally {
       binding = modelBinding;
     }

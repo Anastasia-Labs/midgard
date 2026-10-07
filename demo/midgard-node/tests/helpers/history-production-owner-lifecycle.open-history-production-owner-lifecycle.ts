@@ -44,6 +44,7 @@ import {
 } from "../deposit-flow-emulator-shared.js";
 import { testDatabaseName } from "../test-env.js";
 import { resetApplicationTables } from "../utils.js";
+import { readyWithEmulatorFollower } from "./emulator-l1-follower.js";
 import {
   awaitHistoryAuthorityReleased,
   GATE_CLOSED_SETTLE_MS,
@@ -110,9 +111,8 @@ export const openHistoryProductionOwnerLifecycle = async (
     )
       .flat()
       .map(historyOutputObservation);
-  /** Seal the emulator's current tip as the next authenticated source point
-   * and offer it to whichever owner is (or next) connected, without waiting
-   * for any readiness. */
+  /** Seal the emulator's tip as the next authenticated source point and offer
+   * it to whichever owner is (or next) connected, without awaiting readiness. */
   const sealTip = async (
     onEmptyInterval: (empty: RecordedHistoryBatch) => void = () => {},
   ) => {
@@ -281,15 +281,18 @@ export const openHistoryProductionOwnerLifecycle = async (
       if (stopped)
         throw new Error("This production fixture runtime generation is closed");
     };
-    /** Seal the emulator's current tip as the next authenticated source
-     * point and hand it to the owner, without waiting for readiness. */
     const appendTip = async () => {
       requireRunning();
       return sealTip((empty) => emptyIntervals.push(empty));
     };
+    /** The owner Ready at `point`, then the follower driver applied there. */
+    const readyAt = (point: Parameters<typeof owner.awaitReadyAt>[0]) =>
+      runtime.runPromise(
+        readyWithEmulatorFollower(owner.awaitReadyAt(point), fixture, globals),
+      );
     const synchronize = async (): Promise<void> => {
       const tip = await appendTip();
-      const coverage = await runtime.runPromise(owner.awaitReadyAt(tip));
+      const coverage = await readyAt(tip);
       const checkpoint = await runtime.runPromise(Journal.load(binding));
       if (checkpoint === null) throw new Error("Ready owner has no checkpoint");
       const provider = await runtime.runPromise(
@@ -334,13 +337,10 @@ export const openHistoryProductionOwnerLifecycle = async (
         ledger,
       });
     };
-    /**
-     * Append the next source point while pending recovery keeps the gate
-     * closed. The owner must journal the point (its head reaches the tip),
-     * and then stay not ready with a pending reconciliation for a settle
-     * period that covers its convergence attempt; `synchronize` would wait for
-     * a readiness that a refused recovery never grants.
-     */
+    /** Append the next source point while pending recovery keeps the gate
+     * closed: the owner journals it, then stays not ready and pending for a
+     * settle period covering its convergence attempt (`synchronize` would
+     * wait for a readiness a refused recovery never grants). */
     const appendTipWhileGateClosed = async () => {
       const tip = await appendTip();
       // Date is faked by the emulator fixture; measure real elapsed time.
@@ -518,6 +518,7 @@ export const openHistoryProductionOwnerLifecycle = async (
       production: { owner, cache, nodeConfig, synchronize, onCommitAttempt },
       commitAttempts,
       synchronize,
+      readyAt,
       appendTipWhileGateClosed,
       command,
       runWithoutSynchronizing,
@@ -552,10 +553,9 @@ export const openHistoryProductionOwnerLifecycle = async (
         const holder = (await readHistoryAuthority())?.owner_token;
         await initial.stopRuntime();
         stoppedGenerations.push(previous);
-        // `afterStop` runs before the release check: a caller whose stopped
-        // owner cannot retire its lease (a revoked generation) lapses it
-        // here, and the check below still refuses any lease that remains
-        // live before the next generation starts.
+        // `afterStop` runs before the release check: a stopped owner that
+        // cannot retire its lease (revoked generation) lapses it here, and
+        // the check still refuses any lease live before the next generation.
         await afterStop?.();
         await awaitHistoryAuthorityReleased(holder);
         const next = await startRuntime(

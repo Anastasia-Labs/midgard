@@ -13,6 +13,10 @@ import {
   Globals,
   nextL1ProviderHealthEvidence,
 } from "../src/services/globals.js";
+import {
+  L1_FOLLOWER_NOT_STARTED,
+  type L1FollowerState,
+} from "../src/services/l1-follower.readiness.js";
 import { Lucid } from "../src/services/lucid.js";
 import {
   ContractDeploymentIdentity,
@@ -24,6 +28,11 @@ import {
   header,
   journalFixture,
 } from "./local-mutation-job-abandonment.journal-fixture.js";
+import {
+  followingAtTip,
+  runningFollower,
+  seedCaughtUpL1Follower,
+} from "./readiness-l1-follower.fixture.js";
 import { seedVerifiedForeignBase } from "./readiness-verified-foreign-base.fixture.js";
 import { withFailingStatements } from "./sql-fault-injection.js";
 import { provideDatabaseLayers } from "./utils.js";
@@ -74,6 +83,7 @@ type Readyz = {
   readonly pendingFinalizationAgeMs?: number | null;
   readonly signedIntentUnresolvedAgeMs?: number | null;
   readonly providerQueryHealthy?: boolean;
+  readonly l1Follower?: { readonly state: string };
 };
 
 const SUCCESS_NOW: readonly ProviderObservation[] = [
@@ -87,6 +97,8 @@ const readyz = ({
   ogmiosTipMaxAgeMs,
   forceProviderProbe = false,
   foreignBaseVerified = true,
+  l1Follower,
+  path = "readyz",
 }: {
   readonly provider?: readonly ProviderObservation[];
   readonly databaseDown?: boolean;
@@ -96,6 +108,9 @@ const readyz = ({
   /** False models a node whose commitment tick has not yet checked the
    * canonical base of its current history authority. */
   readonly foreignBaseVerified?: boolean;
+  /** The L1 follower state; a caught-up follower by default. */
+  readonly l1Follower?: L1FollowerState;
+  readonly path?: "readyz" | "healthz";
 } = {}): Promise<Readyz> =>
   Effect.runPromise(
     provideDatabaseLayers(
@@ -111,6 +126,7 @@ const readyz = ({
           yield* journal;
           const globals = yield* Globals;
           if (foreignBaseVerified) yield* seedVerifiedForeignBase(globals);
+          yield* seedCaughtUpL1Follower(globals, l1Follower);
           for (const observation of provider)
             yield* Ref.update(globals.L1_PROVIDER_HEALTH, (current) =>
               nextL1ProviderHealthEvidence({
@@ -130,7 +146,7 @@ const readyz = ({
             Effect.provideService(
               HttpServerRequest.HttpServerRequest,
               HttpServerRequest.fromWeb(
-                new Request("http://midgard.test/readyz"),
+                new Request(`http://midgard.test/${path}`),
               ),
             ),
           );
@@ -147,7 +163,7 @@ const readyz = ({
             Readyz,
             "status"
           >;
-          return { status: web.status, ...body };
+          return { ...body, status: web.status };
         }).pipe(Effect.ensuring(Effect.orDie(clear)));
       }).pipe(
         Effect.provideService(NodeConfig, {
@@ -374,5 +390,82 @@ describe("GET /readyz under internal transients", () => {
     // Admission does not wait on the journal: still ready.
     expect(signedPastBound.reasons).toEqual([]);
     expect(signedPastBound.status).toBe(200);
+  });
+});
+
+describe("GET /readyz names the L1 follower's reasons (N1)", () => {
+  const holds = async (state: L1FollowerState, reason: string) => {
+    const response = await readyz({ l1Follower: state });
+    expect(response.status).toBe(503);
+    expect(response.ready).toBe(false);
+    expect(response.reasons).toEqual([reason]);
+    // The process stays up: liveness answers throughout.
+    const health = await readyz({ l1Follower: state, path: "healthz" });
+    expect(health.status).toBe(200);
+    return response;
+  };
+
+  it("is ready with the follower at the tip and nothing held", async () => {
+    const response = await readyz({ l1Follower: runningFollower() });
+    expect(response.status).toBe(200);
+    expect(response.reasons).toEqual([]);
+    expect(response.l1Follower?.state).toBe("following");
+  });
+
+  it("names a node without a follower, not yet started or unconfigured", async () => {
+    const response = await holds(
+      L1_FOLLOWER_NOT_STARTED,
+      "l1_follower_unconfigured",
+    );
+    expect(response.l1Follower?.state).toBe("unconfigured");
+  });
+
+  it("names each follow-loop reason", async () => {
+    await holds(
+      runningFollower(followingAtTip({ atTip: false })),
+      "l1_follower_catching_up",
+    );
+    await holds(
+      runningFollower(
+        followingAtTip({
+          state: "waiting",
+          waiting: { cause: "stream", detail: "socket closed" },
+        }),
+      ),
+      "l1_follower_waiting",
+    );
+    await holds(
+      runningFollower(
+        followingAtTip({
+          state: "waiting",
+          stuck: { at: "rollforward 5.ab", failures: 5, detail: "boom" },
+        }),
+      ),
+      "l1_follower_apply_stuck",
+    );
+    await holds(
+      runningFollower(
+        followingAtTip({
+          state: "intervention",
+          interventions: [
+            { reason: "rollback_beyond_k", detail: "rolled back 3000 blocks" },
+          ],
+        }),
+      ),
+      "rollback_beyond_k",
+    );
+  });
+
+  it("names each hold of the follower-change driver", async () => {
+    for (const reason of [
+      "l1_events_orphan_recovery",
+      "l1_events_ingestion_waiting",
+      "l1_events_ingestion_failed",
+      "l1_events_hook_failed",
+    ])
+      await holds(
+        runningFollower(followingAtTip(), [{ reason, detail: "fixture" }]),
+        reason,
+      );
   });
 });

@@ -216,8 +216,9 @@ export type RawRow = Omit<
 };
 
 export type MemberRecord = {
-  readonly history_binding_digest?: Buffer | null;
-  readonly history_incarnation_id?: Buffer | null;
+  /** The follower admission identity of a deposit or withdrawal member. */
+  readonly l1_event_key?: Buffer | null;
+  readonly l1_origin_outref?: Buffer | null;
   [MemberColumns.HEADER_HASH]: Buffer;
   [MemberColumns.MEMBER_ID]: Buffer;
   [MemberColumns.ORDINAL]: number;

@@ -8,11 +8,13 @@
  * wall clock may still pick `valid_to` for a new tx, never declare anything
  * due, expired or mature.
  *
- * The tip source is the local Ogmios ledger tip (`queryNetwork/tip`) until the
- * node reads the follower (N1), which replaces the source and these Ogmios
- * reads. Each Lucid client the node builds registers its source here
- * (`registerL1TipSource`); every snapshot read through it is observed. An
- * emulator client has its own exact chain slot and needs no source.
+ * The tip is the L1 follower's covered tip (N1): the cursor of the follower
+ * store in the node database (`l1_follower_cursor`), the same tip `depth()`
+ * counts from. Every node process that opens the node database (the main
+ * thread, its worker threads, a CLI command) installs one reader of it
+ * (`installL1FollowerTipReader`), and each Lucid client the node builds
+ * registers it as its source (`registerL1TipSource`). An emulator client has
+ * its own exact chain slot and needs no source.
  *
  * `l1BlockBelowCoveredTip(store, d)` is the heads source for "the block d
  * below the covered tip": the follower block at depth d + 1 under the
@@ -54,9 +56,12 @@ export class L1SlotUnknownError extends Data.TaggedError("L1SlotUnknownError")<{
 /** A tip read is reused for this long before `l1SlotNow` reads again. */
 export const L1_TIP_REFRESH_MS = 1_000;
 
+/** Reads the tip slot: the follower's covered tip in production. */
+export type L1TipRead = () => Effect.Effect<number, unknown>;
+
 type TipSource = {
   readonly clock: SlotClock;
-  readonly read: () => Effect.Effect<SubmitSlotSnapshot, unknown>;
+  readonly read: L1TipRead;
   readonly monotonicNowMs: MonotonicClock;
   lastReadAtMs: number | undefined;
 };
@@ -67,9 +72,31 @@ const sources = new WeakMap<LucidEvolution, TipSource>();
 
 const monotonicNow: MonotonicClock = () => performance.now();
 
-/** The ledger tip a snapshot carries (its `currentSlot` runs on wall time). */
-export const snapshotTipSlot = (snapshot: SubmitSlotSnapshot): number =>
-  snapshot.ledgerTipSlot ?? snapshot.currentSlot;
+let followerTipReader: L1TipRead | undefined;
+
+/**
+ * Installs this process's reader of the follower's covered tip (one per
+ * process; the node database layer installs it). A later install replaces
+ * an earlier one.
+ */
+export const installL1FollowerTipReader = (read: L1TipRead): void => {
+  followerTipReader = read;
+};
+
+/**
+ * The follower's covered tip slot through this process's reader. Fails while
+ * none is installed or the follower store has no cursor yet; `l1SlotNow`
+ * then keeps its last estimate, or stays unknown.
+ */
+export const readL1FollowerTipSlot: L1TipRead = () =>
+  followerTipReader === undefined
+    ? Effect.fail(
+        new L1SlotUnknownError({
+          message:
+            "L1 slot unknown: this process has no reader of the follower's covered tip",
+        }),
+      )
+    : followerTipReader();
 
 /**
  * Registers one tip source for live Lucid clients that share an L1 view. A
@@ -78,7 +105,7 @@ export const snapshotTipSlot = (snapshot: SubmitSlotSnapshot): number =>
  */
 export const registerL1TipSource = (
   apis: readonly LucidEvolution[],
-  read: () => Effect.Effect<SubmitSlotSnapshot, unknown>,
+  read: L1TipRead,
   options: {
     readonly slotLengthMs?: number;
     readonly monotonicNowMs?: MonotonicClock;
@@ -97,14 +124,11 @@ export const registerL1TipSource = (
   for (const api of apis) sources.set(api, source);
 };
 
-/** Records a tip read made outside `l1SlotNow` for this client. */
-export const observeL1Tip = (
-  api: LucidEvolution,
-  snapshot: SubmitSlotSnapshot,
-): void => {
+/** Records a tip slot read outside `l1SlotNow` for this client. */
+export const observeL1Tip = (api: LucidEvolution, tipSlot: number): void => {
   const source = sources.get(api);
   if (source === undefined) return;
-  source.clock.observeTipSlot(snapshotTipSlot(snapshot));
+  source.clock.observeTipSlot(tipSlot);
   source.lastReadAtMs = source.monotonicNowMs();
 };
 

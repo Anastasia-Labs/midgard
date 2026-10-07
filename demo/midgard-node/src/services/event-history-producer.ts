@@ -22,6 +22,13 @@ export const HistoryProducer = Context.GenericTag<HistoryProducerPermit>(
 export const UnownedHistoryFixture = Context.GenericTag<true>(
   "midgard/UnownedHistoryFixture",
 );
+/** The follower-change driver's ingestion capability (plan §7.3, N1). Its
+ * writer checks the follower view under `FOR SHARE` in the same transaction,
+ * so a Ready producer may ingest with it: the write is gated by both the
+ * producer (until I5 replaces it) and the follower. */
+export const FollowerIngestion = Context.GenericTag<true>(
+  "midgard/FollowerIngestion",
+);
 const fixtureTransaction = Context.GenericTag<true>(
   "midgard/UnownedHistoryFixtureTransaction",
 );
@@ -161,14 +168,17 @@ export const withHistoryWrite = <A, E, R>(
       .pipe(Effect.mapError(unavailable));
   });
 
-/** Only canonical source reconciliation may ingest or initially project events.
- * A Ready producer cannot turn a polling result into canonical eligibility. */
+/** Only canonical source reconciliation, or the follower-change driver under
+ * a Ready producer, may ingest or initially project events. A Ready producer
+ * alone cannot turn a polling result into canonical eligibility. */
 export const withHistoryIngestion = <A, E, R>(work: Effect.Effect<A, E, R>) =>
   withHistoryWrite(
     Effect.gen(function* () {
       const transaction = yield* Authority.currentOwnedTransaction;
       if (Option.isSome(transaction)) {
-        yield* Authority.requireSourceTransaction;
+        const follower = yield* Effect.serviceOption(FollowerIngestion);
+        if (Option.isNone(follower) || transaction.value.state !== "ready")
+          yield* Authority.requireSourceTransaction;
       } else {
         const fixture = yield* Effect.serviceOption(fixtureTransaction);
         if (Option.isNone(fixture))

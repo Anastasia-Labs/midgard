@@ -55,6 +55,7 @@ import {
   fetchSchedulerDatum,
   findUtxoWithUnit,
   ImmutableDB,
+  ingestEmulatorEventsUnowned,
   initializeNodeRuntime,
   initializePayoutProgram,
   initializeProtocol,
@@ -67,7 +68,6 @@ import {
   mergeMaturityWindow,
   paymentCredentialOf,
   payoutStatusProgram,
-  reconcileVisibleWithdrawalUTxOs,
   reserveUtxosProgram,
   resetActiveRuntimePaths,
   resolveEventSettlementProofProgram,
@@ -889,15 +889,15 @@ describe("deposit flow emulator", { concurrent: false }, () => {
     );
 
     const withdrawalFetch = await runNodeCommandProgram(
-      reconcileVisibleWithdrawalUTxOs(),
+      ingestEmulatorEventsUnowned(fixture, { globals }),
       { fixture, lucidService, globals },
     );
-    expect(withdrawalFetch.reconciledCount).toEqual(1);
+    expect(withdrawalFetch.inserted).toEqual(1);
     const withdrawalFetchAgain = await runNodeCommandProgram(
-      reconcileVisibleWithdrawalUTxOs(),
+      ingestEmulatorEventsUnowned(fixture, { globals }),
       { fixture, lucidService, globals },
     );
-    expect(withdrawalFetchAgain.reconciledCount).toEqual(1);
+    expect(withdrawalFetchAgain.inserted).toEqual(0);
     // Once the withdrawal is pending, admission refuses a new spend of its
     // outref durably, before it touches mempool_ledger.
     expect([

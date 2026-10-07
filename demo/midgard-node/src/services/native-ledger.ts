@@ -4,6 +4,7 @@ import {
   nativeLedgerAuthoritySource,
   NativeLedgerKupmios,
   type NativeLedgerNetwork,
+  resolveNativeLedgerAuthority,
 } from "@al-ft/midgard-core/native-reward-account";
 
 /**
@@ -83,3 +84,21 @@ export const makeNodeKupmios = (input: {
           },
     ),
   );
+
+/**
+ * The local node's network magic, from its config's Shelley genesis, checked
+ * against the configured network exactly as the reward-account reads check
+ * it. The L1 follower's chain-sync session handshakes with it.
+ */
+export const nativeLedgerNetworkMagic = async (
+  settings: NativeLedgerSettings,
+  network: NativeLedgerNetwork,
+): Promise<number> =>
+  (
+    await resolveNativeLedgerAuthority({
+      ...settings,
+      authorityNodeId: NATIVE_LEDGER_AUTHORITY_ID,
+      network,
+      timeoutMs: NATIVE_LEDGER_QUERY_TIMEOUT_MS,
+    })
+  ).networkMagic;

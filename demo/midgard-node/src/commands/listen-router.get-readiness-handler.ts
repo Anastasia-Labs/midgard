@@ -22,6 +22,7 @@ import {
   Lucid,
   NodeConfig,
 } from "../services/index.js";
+import { l1FollowerReadiness } from "../services/l1-follower.readiness.js";
 import { activeLivenessReasons } from "../services/liveness-halt.js";
 import { settlementReadinessReason } from "../services/settlement-readiness.js";
 import {
@@ -275,6 +276,11 @@ export const getReadinessHandler = Effect.gen(function* () {
   } else if (nativeMpfDiagnostics?._tag === "Left") {
     reasons.push("native_mpf_owner_unhealthy");
   }
+  // The L1 follower (N1): every named reason of the follow loop and of the
+  // follower-change driver fails readiness; the process stays up.
+  const l1Follower = l1FollowerReadiness(yield* Ref.get(globals.L1_FOLLOWER));
+  for (const reason of l1Follower.reasons)
+    if (!reasons.includes(reason)) reasons.push(reason);
   const details: string[] = [];
   const daFramePressure = yield* Ref.get(globals.COMMIT_DA_FRAME_PRESSURE);
   const commitDaFramePressure =
@@ -424,6 +430,7 @@ export const getReadinessHandler = Effect.gen(function* () {
             },
     eventHistoryRetentionHold,
     eventHistoryFrontier,
+    l1Follower: l1Follower.report,
     livenessReasons,
     commitDaFramePressure,
     mergeReadiness,

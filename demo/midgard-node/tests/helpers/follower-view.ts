@@ -1,0 +1,266 @@
+/**
+ * The L1 follower's tables as the node's event ingestion reads them (N1),
+ * written directly for tests without a followed chain: the cursor and its
+ * tip block (one generation, synthetic hashes, height = slot) and the
+ * never-reuse key set `l1_event_keys`.
+ *
+ * `followerMaterialize` stands in for the deleted journal materialization in
+ * tests that still drive the history journal: the follower's key set becomes
+ * the change's history (a placed incarnation's key at its admission output,
+ * an unplaced one's key removed, as a follower rewind removes it), then the
+ * owner's orphan repair runs and the follower-change driver's ingestion
+ * writes the event rows.
+ */
+import { createHash } from "node:crypto";
+
+import { encodeOutRef, type View } from "@al-ft/midgard-l1-follower";
+import { SqlClient } from "@effect/sql";
+import type { Network } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
+import { repairUnpublishedHistoryLedger } from "../../src/database/eventHistoryLedgerRepair.js";
+import { reconcileFollowerEvents } from "../../src/database/follower-events.js";
+import { DatabaseError } from "../../src/database/utils/common.js";
+import type { HistoryIncarnation } from "../../src/l1-event-history-provenance.js";
+import type { IngestionPlan } from "../../src/l1-events/driver.js";
+import type { ProjectedEvent } from "../../src/l1-events/index.js";
+import type { HistoryOwnerChange } from "../../src/services/event-history-owner.js";
+import {
+  UnownedHistoryFixture,
+  withHistoryIngestion,
+} from "../../src/services/event-history-producer.js";
+
+export const FOLLOWER_GENERATION = 1;
+
+/** A synthetic block hash, distinct per slot and per follower generation. */
+export const followerBlockHash = (
+  slot: number,
+  generation: number = FOLLOWER_GENERATION,
+): Buffer =>
+  createHash("sha256")
+    .update(
+      generation === FOLLOWER_GENERATION
+        ? `test-l1-follower:${slot}`
+        : `test-l1-follower:${slot}:${generation}`,
+    )
+    .digest();
+
+/** The follower's cursor at `slot`, on a tip block of its own. */
+export const writeFollowerTip = (
+  slot: number,
+  generation: number = FOLLOWER_GENERATION,
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const hash = followerBlockHash(slot, generation);
+    yield* sql`INSERT INTO l1_blocks (slot, hash, height, parent_hash, qualifying_tx_count)
+      VALUES (${slot}, ${hash}, ${slot}, NULL, 0) ON CONFLICT DO NOTHING`;
+    yield* sql`INSERT INTO l1_follower_cursor
+        (id, slot, hash, height, generation, origin_slot, origin_hash, pruned_through_slot)
+      VALUES (true, ${slot}, ${hash}, ${slot}, ${generation}, 0, ${Buffer.alloc(32)}, 0)
+      ON CONFLICT (id) DO UPDATE SET slot = EXCLUDED.slot, hash = EXCLUDED.hash,
+        height = EXCLUDED.height, generation = EXCLUDED.generation`;
+    const view: View = {
+      generation,
+      point: { slot, hash },
+      height: slot,
+    };
+    return view;
+  });
+
+const outRefOf = (event: ProjectedEvent) =>
+  encodeOutRef({
+    txHash: Buffer.from(event.admission.outRef.txHash),
+    index: event.admission.outRef.index,
+  });
+
+/** Admits `events`' keys at their admission outputs (a known key is kept). */
+export const admitFollowerKeys = (events: readonly ProjectedEvent[]) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    for (const event of events)
+      yield* sql`INSERT INTO l1_event_keys (kind, key, origin_outref, first_canonical_slot)
+        VALUES (${event.kind}, ${Buffer.from(event.key, "hex")}, ${outRefOf(event)},
+          ${event.admission.slot}) ON CONFLICT DO NOTHING`;
+  });
+
+/**
+ * Removes `event`'s key, as a follower rewind past its admission does; with
+ * `originOutRef`, only while the key is still that admission's.
+ */
+export const rewindFollowerKey = (
+  event: Pick<ProjectedEvent, "kind" | "key">,
+  originOutRef?: Buffer,
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`DELETE FROM l1_event_keys
+      WHERE kind = ${event.kind} AND key = ${Buffer.from(event.key, "hex")}
+        ${originOutRef === undefined ? sql`` : sql`AND origin_outref = ${originOutRef}`}`;
+  });
+
+/** A journal incarnation's admission outref, as the follower's key set encodes it. */
+export const incarnationOutRef = (incarnation: HistoryIncarnation): Buffer =>
+  encodeOutRef({
+    txHash: Buffer.from(incarnation.event.outRef.txHash, "hex"),
+    index: incarnation.event.outRef.outputIndex,
+  });
+
+/**
+ * The follower's rewind past every unplaced incarnation of `history`: each
+ * one's key goes while it is still that admission's.
+ */
+export const rewindUnplacedFollowerKeys = (
+  history: Readonly<{ incarnations: readonly HistoryIncarnation[] }>,
+) =>
+  Effect.forEach(
+    history.incarnations.filter(
+      (incarnation) => incarnation.placement === null,
+    ),
+    (incarnation) =>
+      rewindFollowerKey(
+        { kind: incarnation.kind, key: incarnation.event.key },
+        incarnationOutRef(incarnation),
+      ),
+    { discard: true },
+  );
+
+/** The follower view at `slot` with `events` admitted, as an ingestion plan. */
+export const writeFollowerView = (
+  slot: number,
+  events: readonly ProjectedEvent[],
+  generation: number = FOLLOWER_GENERATION,
+) =>
+  Effect.gen(function* () {
+    const view = yield* writeFollowerTip(slot, generation);
+    yield* admitFollowerKeys(events);
+    return { view, events } satisfies IngestionPlan;
+  });
+
+const placementOf = (
+  at: NonNullable<HistoryIncarnation["placement"]>["admission"],
+) => ({
+  blockHash: at.blockHash,
+  slot: at.slot,
+  height: at.height,
+  txHash: at.transactionHash,
+  txIndex: at.transactionIndex,
+});
+
+/** A placed journal incarnation as the follower's event projection holds it. */
+export const projectedFromIncarnation = (
+  incarnation: HistoryIncarnation,
+): ProjectedEvent => {
+  const placement = incarnation.placement;
+  if (placement === null)
+    throw new Error("An orphaned incarnation is unplaced");
+  const { event } = incarnation;
+  const admissionOutRef = {
+    txHash: Buffer.from(event.outRef.txHash, "hex"),
+    index: event.outRef.outputIndex,
+  };
+  const retirement = placement.retirement;
+  const location =
+    placement.current?.outRef ?? retirement?.outRef ?? event.outRef;
+  return {
+    kind: incarnation.kind,
+    key: event.key,
+    idCbor: event.idCbor,
+    inclusionTime: event.inclusionTime,
+    factsCbor: event.factsCbor,
+    payloadCbor: event.payloadCbor,
+    originalAssetsCbor: event.originalAssetsCbor,
+    admission: { ...placementOf(placement.admission), outRef: admissionOutRef },
+    retirement:
+      retirement === null
+        ? null
+        : {
+            ...placementOf(retirement.at),
+            outRef: {
+              txHash: Buffer.from(retirement.outRef.txHash, "hex"),
+              index: retirement.outRef.outputIndex,
+            },
+            reason: retirement.reason,
+            observerRedeemerIndex: retirement.observerRedeemerIndex,
+            witnessCbor: retirement.witnessCbor,
+          },
+    location: {
+      txHash: Buffer.from(location.txHash, "hex"),
+      index: location.outputIndex,
+    },
+  };
+};
+
+/** POSIX ms of a model slot (the journal tests' 1 s slots from zero). */
+const modelSlotTime = (slot: number) => slot * 1000;
+
+/**
+ * The follower's key set at `change.after`'s history, the orphan repair, then
+ * the driver's ingestion of every placed incarnation, in the caller's source
+ * transaction. Deposits are not projected (`cutoffMs` 0).
+ */
+export const followerMaterialize = (
+  change: HistoryOwnerChange,
+  network: Network,
+) =>
+  Effect.gen(function* () {
+    yield* rewindUnplacedFollowerKeys(change.after);
+    const placed = change.after.incarnations
+      .filter((incarnation) => incarnation.placement !== null)
+      .map(projectedFromIncarnation);
+    const plan = yield* writeFollowerView(change.after.head.slot, placed);
+    yield* repairUnpublishedHistoryLedger(change);
+    const outcome = yield* reconcileFollowerEvents(plan, {
+      network,
+      slotToUnixTime: modelSlotTime,
+      cutoffMs: 0,
+    });
+    if (outcome.kind === "stale")
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: "follower_event_ingestion",
+          message: "The test follower view moved",
+          cause: undefined,
+        }),
+      );
+    if (outcome.ingestion.orphans > 0)
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: "follower_event_ingestion",
+          message:
+            "Orphaned history admission requires dependent L2 repair before readiness",
+          cause: outcome.ingestion.orphans,
+        }),
+      );
+    return outcome.ingestion;
+  });
+
+/**
+ * The follower-change driver's ingestion of `events` at a follower view at
+ * `slot`, without a history owner (the unowned-history fixture gate); model
+ * slots are 1 s from zero and no deposit is projected.
+ */
+export const ingestFollowerViewUnowned = (
+  slot: number,
+  events: readonly ProjectedEvent[] = [],
+  generation: number = FOLLOWER_GENERATION,
+) =>
+  Effect.gen(function* () {
+    const plan = yield* writeFollowerView(slot, events, generation);
+    const outcome = yield* withHistoryIngestion(
+      reconcileFollowerEvents(plan, {
+        network: "Preprod",
+        slotToUnixTime: modelSlotTime,
+        cutoffMs: 0,
+      }),
+    ).pipe(Effect.provideService(UnownedHistoryFixture, true));
+    if (outcome.kind === "stale")
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: "follower_event_ingestion",
+          message: "The test follower view moved",
+          cause: undefined,
+        }),
+      );
+    return outcome.ingestion;
+  });

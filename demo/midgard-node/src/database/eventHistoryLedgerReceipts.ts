@@ -10,6 +10,7 @@ import { Effect, Option } from "effect";
 
 import { requireCandidateHistory } from "../services/event-history-producer.js";
 import type { ProcessedTx } from "../utils.js";
+import { canonicalAdmission } from "./l1-admission-identity.js";
 import { compactLedgerEffects } from "./mempool.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
@@ -139,15 +140,16 @@ export const beginAcceptedLedgerReceipt = (
     const sourceIds = before.flatMap((row) =>
       row.source_event_id === null ? [] : [row.source_event_id],
     );
+    // The source deposits' follower admissions stay share-locked to commit, so
+    // a follower rewind cannot orphan one under an accepted receipt.
+    yield* sql`SELECT 1 FROM deposits_utxos d JOIN l1_event_keys k ON k.kind = 'deposit'
+      AND k.key = d.l1_event_key AND k.origin_outref = d.l1_origin_outref
+      WHERE d.event_id = ANY(${pg.array(byteaArray(sourceIds))}::bytea[]) FOR SHARE OF k`;
     const invalidOrigins = yield* sql<{
       event_id: Buffer;
     }>`SELECT d.event_id FROM deposits_utxos d
-      LEFT JOIN event_history_incarnations i ON i.binding_digest = d.history_binding_digest
-        AND i.incarnation_id = d.history_incarnation_id
       WHERE d.event_id = ANY(${pg.array(byteaArray(sourceIds))}::bytea[])
-        AND (d.history_binding_digest IS DISTINCT FROM ${Buffer.from(coverage.bindingDigest, "hex")}
-          OR i.origin_canonical IS DISTINCT FROM true OR i.kind IS DISTINCT FROM 'deposit'
-          OR i.event_id IS DISTINCT FROM d.event_id) LIMIT 1`;
+        AND NOT ${canonicalAdmission(sql, "d", "deposit")} LIMIT 1`;
     if (invalidOrigins.length !== 0)
       return yield* fail(
         "Accepted ledger receipt depends on a noncanonical deposit incarnation",

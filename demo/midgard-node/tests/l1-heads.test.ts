@@ -24,7 +24,7 @@ import {
   registerL1TipSource,
 } from "../src/l1-heads.js";
 import { operatorStatusProgram } from "../src/transactions/operators/status.js";
-import { TEN_MINUTES_MS, tipSnapshot } from "./helpers/l1-tip.js";
+import { TEN_MINUTES_MS } from "./helpers/l1-tip.js";
 
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -254,7 +254,7 @@ describe("l1SlotNow", () => {
       () =>
         tip === null
           ? Effect.fail(new Error("Ogmios unreachable"))
-          : Effect.succeed(tipSnapshot(tip)),
+          : Effect.succeed(tip),
       { slotLengthMs: 1_000, monotonicNowMs: () => monotonicMs },
     );
     const unknown = await Effect.runPromise(Effect.either(l1SlotNow(api)));
@@ -284,7 +284,7 @@ describe("l1SlotNow", () => {
       () =>
         Effect.sync(() => {
           reads += 1;
-          return tipSnapshot(50);
+          return 50;
         }),
       { slotLengthMs: 1_000, monotonicNowMs: () => monotonicMs },
     );
@@ -293,7 +293,7 @@ describe("l1SlotNow", () => {
     expect(reads).toBe(1);
     // A submit-slot read elsewhere is observed and refreshes the window.
     monotonicMs += L1_TIP_REFRESH_MS - 1;
-    observeL1Tip(api, tipSnapshot(60));
+    observeL1Tip(api, 60);
     monotonicMs += L1_TIP_REFRESH_MS - 1;
     expect(await Effect.runPromise(l1SlotNow(api))).toBe(60);
     expect(reads).toBe(1);
@@ -316,7 +316,7 @@ describe("l1SlotNow", () => {
     const live = await liveClient();
     const tipSlot = live.currentSlot();
     let monotonicMs = 0;
-    registerL1TipSource([live], () => Effect.succeed(tipSnapshot(tipSlot)), {
+    registerL1TipSource([live], () => Effect.succeed(tipSlot), {
       slotLengthMs: 1_000,
       monotonicNowMs: () => monotonicMs,
     });
@@ -379,7 +379,7 @@ describe("operator decisions read L1 now", () => {
   it("does not call an activation time reached on a wall clock 10 minutes fast", async () => {
     const live = await liveClient();
     const tipSlot = live.currentSlot();
-    registerL1TipSource([live], () => Effect.succeed(tipSnapshot(tipSlot)), {
+    registerL1TipSource([live], () => Effect.succeed(tipSlot), {
       slotLengthMs: 1_000,
       monotonicNowMs: () => 0,
     });

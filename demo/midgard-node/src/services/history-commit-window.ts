@@ -1,5 +1,7 @@
 import { EVENT_WAIT_DURATION_MS } from "@al-ft/midgard-sdk";
+import { Effect } from "effect";
 
+import { followerEligibilityHorizon } from "../database/follower-events.js";
 import type {
   CommitTimingBudget,
   CommitTimingCheckpoint,
@@ -23,6 +25,25 @@ export const historyEligibilityHorizon = (
     );
   return end;
 };
+
+/**
+ * The commit end-time horizon (E-N1-2 item 3): min(journal coverage, the
+ * follower's ingestion horizon). A block never claims an end time past the
+ * events the follower-change driver has ingested; before its first
+ * ingestion (or after a rewind removed it) nothing is eligible and the
+ * commit holds (`null`). `coverage` is the owner's journal coverage when the
+ * commit runs under a history producer; N1-close drops that term.
+ */
+export const commitEventHorizon = (
+  coverage: HistoryOwnerCoverage | undefined,
+) =>
+  Effect.map(followerEligibilityHorizon, (follower) =>
+    follower === null
+      ? null
+      : coverage === undefined
+        ? follower
+        : Math.min(follower, historyEligibilityHorizon(coverage)),
+  );
 
 /** The fixed header interval cannot be extended to rescue a slow build. These
  * stage reserves apply only to a source-owned short-window attempt; expiration

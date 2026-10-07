@@ -16,7 +16,6 @@ import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as ForeignCensus from "../src/database/eventHistoryForeignCensus.js";
 import * as Journal from "../src/database/eventHistoryJournal.js";
 import { pendingHistoryLedgerDisposition } from "../src/database/eventHistoryLedgerRepair.js";
-import { materializeCanonicalHistory } from "../src/database/eventHistoryMaterialization.js";
 import {
   prepareHistoryRecoveryPlan,
   SIGNED_HEADER_RECOVERY_DOMAIN,
@@ -37,6 +36,12 @@ import { makeRetainedHistoryAppender } from "../src/services/event-history-owner
 import { HistoryProducer } from "../src/services/event-history-producer.js";
 import { signedHeaderRecoveryCandidates } from "../src/services/history-signed-header-recovery.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
+import {
+  followerMaterialize,
+  incarnationOutRef,
+  rewindFollowerKey,
+  rewindUnplacedFollowerKeys,
+} from "./helpers/follower-view.js";
 import { retainEverything } from "./helpers/history-journal-retention.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { applyMidgardNodeTestEnv, testDatabaseName } from "./test-env.js";
@@ -356,13 +361,14 @@ beforeEach(async () => {
         name: string;
       }>`SELECT current_database() AS name`;
       expect(database?.name).toBe(testDatabaseName());
-      yield* sql`TRUNCATE event_history_census_frontier, event_history_census_blocks, event_history_recovery_plans, event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalizations, pending_block_finalization_deposits, pending_block_finalization_withdrawals, pending_block_finalization_txs, pending_block_finalization_forced_transactions, pending_block_finalization_transition_trace, pending_block_finalization_event_to_step, pending_block_finalization_validation_traces, pending_block_finalization_validation_trace_witnesses, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts, tx_admission_payloads, tx_admissions, mempool, mempool_tx_deltas, address_history, processed_mempool, blocks, immutable`;
+      yield* sql`TRUNCATE event_history_census_frontier, event_history_census_blocks, event_history_recovery_plans, event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalizations, pending_block_finalization_deposits, pending_block_finalization_withdrawals, pending_block_finalization_txs, pending_block_finalization_forced_transactions, pending_block_finalization_transition_trace, pending_block_finalization_event_to_step, pending_block_finalization_validation_traces, pending_block_finalization_validation_trace_witnesses, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts, tx_admission_payloads, tx_admissions, mempool, mempool_tx_deltas, address_history, processed_mempool, blocks, immutable, follower_event_ingestion, l1_event_keys, l1_follower_cursor, l1_blocks CASCADE`;
     }),
   );
 });
 const prepareSignedHeader = async (
   token: Authority.Token,
   checkpoint: Journal.Checkpoint,
+  member: Readonly<{ kind: Kind; id: Buffer; entry: never }>,
   validity?: Readonly<{ start: bigint; ttl: bigint }>,
 ) => {
   await run(
@@ -458,12 +464,12 @@ const prepareSignedHeader = async (
         expectedCounts: counts,
       },
       blockEndTime: new Date(time.getTime() + 60_000),
-      depositEventIds: [],
-      depositEntries: [],
+      depositEventIds: member.kind === "deposit" ? [member.id] : [],
+      depositEntries: member.kind === "deposit" ? [member.entry] : [],
       forcedTransactionEventIds: [],
       forcedTransactionEntries: [],
-      withdrawalEventIds: [],
-      withdrawalEntries: [],
+      withdrawalEventIds: member.kind === "withdrawal" ? [member.id] : [],
+      withdrawalEntries: member.kind === "withdrawal" ? [member.entry] : [],
       mempoolTxIds: [],
       mempoolTxs: [],
       mempoolTxSourceTable: "none",
@@ -507,16 +513,22 @@ const rows = (table: string, order: string) =>
       }>`SELECT to_jsonb(t) AS row FROM ${sql(table)} t ORDER BY ${sql(order)}`;
     }),
   );
+/** The follower's rewind under a journal undo (the head's admissions go). */
+const followerRewind = Effect.suspend(() => Journal.load(binding)).pipe(
+  Effect.flatMap((after) =>
+    after === null
+      ? Effect.die("Missing checkpoint")
+      : rewindUnplacedFollowerKeys(after),
+  ),
+);
 const reconcile =
   (before: Journal.Checkpoint) =>
   ({ after, changes }: Journal.Appended) =>
-    materializeCanonicalHistory(
-      { kind: "forward", before, after, changes },
-      "Preprod",
-    );
+    followerMaterialize({ kind: "forward", before, after, changes }, "Preprod");
 const fixture = async (
   kind: Kind,
   validity?: Readonly<{ start: bigint; ttl: bigint }>,
+  orphaned = false,
 ) => {
   const started = await start();
   for (const [height, eventNumber] of [
@@ -546,66 +558,48 @@ const fixture = async (
   if (first === undefined || other === undefined)
     throw new Error("Missing distinct modeled admissions");
   expect(first.event.idCbor).not.toBe(other.event.idCbor);
-  const retained = await prepareSignedHeader(
-    started.token,
-    checkpoint,
-    validity,
-  );
   const table = tables(kind);
-  const payload = Buffer.from(
-    plutusConstrFieldCbor(first.event.payloadCbor, [0, 1]),
-    "hex",
-  );
-  const member = {
-    header_hash: retained.headerHash,
-    member_id: Buffer.from(first.event.idCbor, "hex"),
-    ordinal: 0,
-    payload_cbor: payload,
-    payload_sha256: createHash("sha256").update(payload).digest(),
-    source_table: table.live,
-    source_id: Buffer.from(first.event.idCbor, "hex"),
-    source_time_stamp_tz: new Date(Number(first.event.inclusionTime)),
-    history_binding_digest: Buffer.from(binding.digest, "hex"),
-    history_incarnation_id: Buffer.from(first.id, "hex"),
-  };
-  await run(
+  const id = Buffer.from(first.event.idCbor, "hex");
+  // The live row as a commit reads it (a withdrawal classified valid).
+  const entry = await run(
     Authority.withRecovery(
-      retained.token,
+      started.token,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        // Retained member bytes are inserted directly to isolate FK behavior from
-        // classification/commit construction. No modeled validity becomes authority.
-        const entry =
-          kind === "deposit"
-            ? member
-            : {
-                ...member,
-                validity: "WithdrawalIsValid",
-                validity_detail: sql`'{}'::jsonb`,
-                classification_revision: 0,
-                classification_sha256: createHash("sha256")
-                  .update(payload)
-                  .digest(),
-              };
-        yield* sql`INSERT INTO ${sql(table.members)} (${sql.csv(Object.keys(entry).map((column) => sql`${sql(column)}`))}) VALUES (${sql.csv(Object.values(entry).map((value) => sql`${value}`))})`;
+        if (kind === "withdrawal")
+          yield* sql`UPDATE withdrawal_utxos SET settlement_event_info = raw_event_info,
+            validity = 'WithdrawalIsValid', validity_detail = '{}'::jsonb WHERE event_id = ${id}`;
+        if (orphaned)
+          yield* rewindFollowerKey(
+            { kind, key: first.event.key },
+            incarnationOutRef(first),
+          );
+        return (yield* sql<never>`SELECT * FROM ${sql(table.live)} WHERE event_id = ${id}`)[0]!;
       }),
     ),
   );
-  return { ...retained, checkpoint, first, other, table, member };
+  const member = { kind, id, entry };
+  const retained = await prepareSignedHeader(
+    started.token,
+    checkpoint,
+    member,
+    validity,
+  );
+  return { ...retained, checkpoint, first, other, table };
 };
 
 // All refused mutations are caught outside withRecovery, so PostgreSQL rolls
 // back the whole attempted write; no exception is swallowed inside a transaction.
-const expectForeignKey = async (
+const expectRefusal = async (
   program: Effect.Effect<unknown, unknown, SqlClient.SqlClient>,
-  constraint?: string,
+  code: "23503" | "23514",
+  constraint: string,
 ) => {
   const result = await run(program.pipe(Effect.either));
   expect(result._tag).toBe("Left");
-  if (result._tag !== "Left") throw new Error("Expected foreign-key refusal");
-  expect(formatDatabaseError(result.left)).toContain("23503");
-  if (constraint !== undefined)
-    expect(formatDatabaseError(result.left)).toContain(constraint);
+  if (result._tag !== "Left") throw new Error("Expected a constraint refusal");
+  expect(formatDatabaseError(result.left)).toContain(code);
+  expect(formatDatabaseError(result.left)).toContain(constraint);
 };
 
 describe.each(["deposit", "withdrawal"] as const)(
@@ -625,7 +619,7 @@ describe.each(["deposit", "withdrawal"] as const)(
         await run(
           Authority.withRecovery(
             f.token,
-            Journal.undoHead(binding, await read(), Effect.void),
+            Journal.undoHead(binding, await read(), followerRewind),
           ),
         );
       const orphaned = await read();
@@ -680,41 +674,35 @@ describe.each(["deposit", "withdrawal"] as const)(
       expect(fresh.event.outRef.txHash).not.toBe(f.first.event.outRef.txHash);
       const live = await rows(f.table.live, "event_id");
       expect(live).toHaveLength(1);
-      expect(live[0]!.row.history_incarnation_id).toBe(`\\x${fresh.id}`);
+      expect(live[0]!.row).toMatchObject({
+        l1_event_key: `\\x${fresh.event.key}`,
+        l1_origin_outref: `\\x${incarnationOutRef(fresh).toString("hex")}`,
+      });
       expect(await rows(f.table.members, "ordinal")).toEqual(archived);
       expect(await rows("pending_block_finalizations", "header_hash")).toEqual(
         headers,
       );
-      // The retained original cannot disappear while archived membership points
-      // to it, even though no live row refers to this old incarnation anymore.
-      await expectForeignKey(
-        Authority.withRecovery(
-          f.token,
-          Effect.gen(function* () {
-            const sql = yield* SqlClient.SqlClient;
-            yield* sql`DELETE FROM event_history_incarnations WHERE binding_digest=${Buffer.from(binding.digest, "hex")} AND incarnation_id=${Buffer.from(f.first.id, "hex")}`;
-          }),
-        ),
-      );
-      expect(await rows(f.table.members, "ordinal")).toEqual(archived);
+      // The archived member keeps the old admission's identity by value: the
+      // same key, a different admission output than the live replacement.
+      expect(archived[0]!.row).toMatchObject({
+        l1_event_key: `\\x${f.first.event.key}`,
+        l1_origin_outref: `\\x${incarnationOutRef(f.first).toString("hex")}`,
+      });
+      expect(fresh.event.key).toBe(f.first.event.key);
     });
 
+    // A member's identity is the follower's (event key, admission output) by
+    // value; signing checks it, and the schema refuses a malformed/half one.
     it.each([
-      "member_id",
-      "history_incarnation_id",
-      "history_binding_digest",
+      ["a short event key", "l1_event_key", Buffer.alloc(31, 1)],
+      ["a short admission output", "l1_origin_outref", Buffer.alloc(33, 1)],
+      ["a half identity", "l1_origin_outref", null],
     ] as const)(
-      "refuses mismatched %s while preserving all archived bytes",
-      async (field) => {
+      "refuses %s while preserving all archived bytes",
+      async (_case, field, value) => {
         const f = await fixture(kind);
         const before = await rows(f.table.members, "ordinal");
-        const value =
-          field === "member_id"
-            ? Buffer.from(f.other.event.idCbor, "hex")
-            : field === "history_incarnation_id"
-              ? Buffer.from(f.other.id, "hex")
-              : Buffer.from(hash(2222), "hex");
-        await expectForeignKey(
+        await expectRefusal(
           Authority.withRecovery(
             f.token,
             Effect.gen(function* () {
@@ -722,9 +710,8 @@ describe.each(["deposit", "withdrawal"] as const)(
               yield* sql`UPDATE ${sql(f.table.members)} SET ${sql(field)}=${value} WHERE header_hash=${f.headerHash}`;
             }),
           ),
-          field === "history_binding_digest"
-            ? undefined
-            : `${f.table.members}_member_id_fkey`,
+          "23514",
+          `${f.table.members}_l1_admission_check`,
         );
         expect(await rows(f.table.members, "ordinal")).toEqual(before);
         const live = await rows(f.table.live, "event_id");
@@ -732,10 +719,16 @@ describe.each(["deposit", "withdrawal"] as const)(
       },
     );
 
+    it("refuses to sign a member whose follower admission was rewound", async () => {
+      await expect(fixture(kind, undefined, true)).rejects.toThrow(
+        "Pending member has no exact canonical history incarnation",
+      );
+    });
+
     it("retains the header foreign key", async () => {
       const f = await fixture(kind);
       const before = await rows(f.table.members, "ordinal");
-      await expectForeignKey(
+      await expectRefusal(
         Authority.withRecovery(
           f.token,
           Effect.gen(function* () {
@@ -743,6 +736,7 @@ describe.each(["deposit", "withdrawal"] as const)(
             yield* sql`UPDATE ${sql(f.table.members)} SET header_hash=${Buffer.alloc(28, 0xff)}`;
           }),
         ),
+        "23503",
         `${f.table.members}_header_hash_fkey`,
       );
       expect(await rows(f.table.members, "ordinal")).toEqual(before);
@@ -758,10 +752,10 @@ it("advances journal pruning while a signed-header recovery plan remains prepare
     await run(
       Authority.withRecovery(
         f.token,
-        Journal.undoHead(binding, await read(), Effect.void),
+        Journal.undoHead(binding, await read(), followerRewind),
       ),
     );
-  const candidates = () => run(signedHeaderRecoveryCandidates(binding.digest));
+  const candidates = () => run(signedHeaderRecoveryCandidates());
   expect((await candidates()).map((row) => row.header_hash)).toEqual([
     f.headerHash,
   ]);
@@ -870,12 +864,12 @@ it("keeps an unclassifiable pinned candidate pending without holding retention",
     await run(
       Authority.withRecovery(
         f.token,
-        Journal.undoHead(binding, await read(), Effect.void),
+        Journal.undoHead(binding, await read(), followerRewind),
       ),
     );
   const after = await read();
   expect(
-    (await run(signedHeaderRecoveryCandidates(binding.digest))).map((row) =>
+    (await run(signedHeaderRecoveryCandidates())).map((row) =>
       row.header_hash.toString("hex"),
     ),
   ).toEqual([f.headerHash.toString("hex")]);

@@ -114,15 +114,12 @@ vi.mock("../src/database/index.js", async () => {
     },
   };
 });
-vi.mock("../src/fibers/fetch-and-insert-deposit-utxos.js", () => ({
-  fetchAndInsertDepositUTxOsForCommitBarrier: vi.fn((end: Date) =>
-    Effect.succeed(end),
-  ),
-}));
-vi.mock("../src/fibers/fetch-and-insert-withdrawal-utxos.js", () => ({
-  fetchAndInsertWithdrawalUTxOsForCommitBarrier: vi.fn((end: Date) =>
-    Effect.succeed(end),
-  ),
+// The follower-change driver has ingested past any planned end time.
+vi.mock("../src/database/follower-events.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../src/database/follower-events.js")
+  >()),
+  followerEligibilityHorizon: Effect.succeed(Number.MAX_SAFE_INTEGER),
 }));
 vi.mock("../src/fibers/fetch-and-insert-tx-order-utxos.js", () => ({
   fetchAndInsertTxOrderUTxOsForCommitBarrier: vi.fn((end: Date) =>

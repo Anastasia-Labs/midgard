@@ -39,8 +39,6 @@ import "../src/database/index.js";
 import "../src/database/utils/ledger.js";
 import "../src/fibers/block-commitment.js";
 import "../src/fibers/block-confirmation.js";
-import "../src/fibers/fetch-and-insert-deposit-utxos.js";
-import "../src/fibers/fetch-and-insert-withdrawal-utxos.js";
 import "../src/fibers/merge.js";
 import "../src/fibers/slot-aware-due-work.js";
 import "../src/lucid-time.js";
@@ -72,7 +70,7 @@ import "../src/workers/utils/commit-end-time.js";
 import "../src/workers/utils/common.js";
 import "../src/workers/utils/scheduler-refresh.js";
 import "./helpers/availability-challenge.js";
-import "./helpers/deposit-projection.js";
+import "./helpers/emulator-l1-follower.js";
 import "./helpers/emulator-submit-slot-snapshot.js";
 import "./helpers/native-owner-binary.js";
 import "./helpers/real-midgard-contracts.js";
@@ -161,15 +159,7 @@ import {
 import * as Ledger from "../src/database/utils/ledger.js";
 import { promoteOrRecoverNativeMpf } from "../src/fibers/block-commitment.js";
 import { buildBlockConfirmationAction } from "../src/fibers/block-confirmation.js";
-import {
-  fetchAndInsertDepositUTxOsForCommitBarrier,
-  reconcileVisibleDepositUTxOs,
-} from "../src/fibers/fetch-and-insert-deposit-utxos.js";
 import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "../src/fibers/fetch-and-insert-tx-order-utxos.js";
-import {
-  fetchAndInsertWithdrawalUTxOsForCommitBarrier,
-  reconcileVisibleWithdrawalUTxOs,
-} from "../src/fibers/fetch-and-insert-withdrawal-utxos.js";
 import { mergeAction, type MergeActionResult } from "../src/fibers/merge.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import { canonicalSlotConfigForLucid } from "../src/lucid-time.js";
@@ -262,7 +252,11 @@ import {
   submitDepositWithDiagnostics,
 } from "./deposit-flow-emulator-shared.submit-with-wallet.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
-import { projectDepositsToMempoolLedger } from "./helpers/deposit-projection.js";
+import {
+  driveEmulatorFollower,
+  ingestEmulatorEventsUnowned,
+  syncEmulatorFollower,
+} from "./helpers/emulator-l1-follower.js";
 import {
   nativeOwnerBinaryPath,
   nativeOwnerBinarySha256,
@@ -927,6 +921,10 @@ export const runCommitWorkerUntilSubmitted = async ({
             : HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS),
       });
     await production?.synchronize();
+    // Without an owner, the driver's ingestion runs under the fixture gate;
+    // an owned fixture's synchronize drives the follower itself.
+    if (production === undefined)
+      await runNodeDatabaseEffect(ingestEmulatorEventsUnowned(fixture));
     const output = await runCommitWorker(
       fixture.contracts,
       lucidService,
@@ -1070,16 +1068,19 @@ export const runBarrierRefresherForTest = async (
   globals: Globals,
   fixture: EmulatorFixture,
   lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
+  options: Readonly<{ projectToLedger?: boolean }> = {},
 ) => {
   const nodeConfig = await makeNodeConfigForFixture(fixture);
-  // Ingest the three user-event sources up to now, in barrier order.
+  // The follower's event ingestion at the emulator tip (deposits due by now
+  // projected on request), then the tx-order barrier up to now.
   const barrierPass = Effect.gen(function* () {
-    const deposit = yield* fetchAndInsertDepositUTxOsForCommitBarrier(
-      new Date(),
-    );
-    const withdrawal =
-      yield* fetchAndInsertWithdrawalUTxOsForCommitBarrier(deposit);
-    yield* fetchAndInsertTxOrderUTxOsForCommitBarrier(withdrawal);
+    yield* ingestEmulatorEventsUnowned(fixture, {
+      globals,
+      ...(options.projectToLedger === true
+        ? { projectThroughMs: Date.now() }
+        : {}),
+    });
+    yield* fetchAndInsertTxOrderUTxOsForCommitBarrier(new Date());
   });
   return Effect.runPromise(
     barrierPass.pipe(
@@ -1444,14 +1445,9 @@ export const submitDepositAndRefreshBarriers = async ({
   );
   await advanceEmulatorPastUnixTime(fixture, latestInclusionTimeMs);
   vi.setSystemTime(new Date(fixture.emulator.now()));
-  await runBarrierRefresherForTest(globals, fixture, lucidService);
-  if (projectToLedger) {
-    await runNodeCommandProgram(projectDepositsToMempoolLedger, {
-      fixture,
-      lucidService,
-      globals,
-    });
-  }
+  await runBarrierRefresherForTest(globals, fixture, lucidService, {
+    projectToLedger,
+  });
   return { submittedTxHash };
 };
 
@@ -1789,12 +1785,14 @@ export {
   Database,
   decodeNodeUtxo,
   DepositsDB,
+  driveEmulatorFollower,
   Effect,
   encodeMidgardCekProgramMaterialSidecar,
   fetchStateQueueSnapshotProgram,
   ForcedTransactionsDB,
   Globals,
   ImmutableDB,
+  ingestEmulatorEventsUnowned,
   initializePayoutProgram,
   Ledger,
   LucidService,
@@ -1813,11 +1811,8 @@ export {
   payoutStatusProgram,
   PendingBlockFinalizationsDB,
   processedTxFromValidatedTx,
-  projectDepositsToMempoolLedger,
   Queue,
   randomUUID,
-  reconcileVisibleDepositUTxOs,
-  reconcileVisibleWithdrawalUTxOs,
   Ref,
   reserveUtxosProgram,
   resolveCurrentOperatorSchedulerWindow,
@@ -1829,6 +1824,7 @@ export {
   serializeStateQueueUTxO,
   SqlClient,
   StateQueueMutationLeasesDB,
+  syncEmulatorFollower,
   toUnit,
   TxAdmissionsDB,
   TxUtils,

@@ -22,16 +22,16 @@ const readHistoryRows = () =>
       }>`SELECT binding_digest FROM event_history_cursor ORDER BY binding_digest`;
       const deposits = yield* sql<{
         event_id: Buffer;
-        history_binding_digest: Buffer | null;
-        history_incarnation_id: Buffer | null;
-      }>`SELECT event_id, history_binding_digest, history_incarnation_id
+        l1_event_key: Buffer | null;
+        l1_origin_outref: Buffer | null;
+      }>`SELECT event_id, l1_event_key, l1_origin_outref
         FROM deposits_utxos ORDER BY event_id`;
       return {
         cursors: cursors.map((row) => row.binding_digest.toString("hex")),
         deposits: deposits.map((row) => ({
           eventId: row.event_id.toString("hex"),
-          bindingDigest: row.history_binding_digest?.toString("hex"),
-          incarnationId: row.history_incarnation_id?.toString("hex"),
+          eventKey: row.l1_event_key?.toString("hex"),
+          originOutRef: row.l1_origin_outref?.toString("hex"),
         })),
       };
     }).pipe(Effect.provide(Database.layer)),
@@ -40,9 +40,11 @@ const readHistoryRows = () =>
 /** The production composition derives its history binding from the chain and
  * the deployment only. A node restarted against the same recorded chain behind
  * a different Ogmios host and port keeps its binding, so it adopts the journal
- * and the materialized deposit rows it captured before, rather than capturing
- * a second history and refusing its own rows. Transport ancestry is synthetic;
- * the chain, deployment, materialization and restart are the production path. */
+ * it captured before and keeps the deposit rows the follower-change driver
+ * ingested, rather than capturing a second history. Transport ancestry is
+ * synthetic, and the follower stands in for the emulator chain
+ * (`emulator-l1-follower.ts`); the chain, deployment, ingestion and restart
+ * are the production path. */
 it("adopts its captured history after a restart through another Ogmios endpoint", async () => {
   const initial = await openHistoryProductionOwnerLifecycle();
   const { fixture, lucidService, binding } = initial;
@@ -94,13 +96,16 @@ it("adopts its captured history after a restart through another Ogmios endpoint"
     expect(before.deposits[0]!.eventId).toBe(
       deposits[0]!.idCbor.toString("hex"),
     );
-    expect(before.deposits[0]!.bindingDigest).toBe(binding.digest);
-    expect(before.deposits[0]!.incarnationId).toMatch(/^[0-9a-f]{64}$/u);
+    // The follower admission identity: the event key and the deposit output.
+    expect(before.deposits[0]!.eventKey).toMatch(/^[0-9a-f]{64}$/u);
+    expect(before.deposits[0]!.originOutRef).toMatch(
+      new RegExp(`^${depositHash}[0-9a-f]{4}$`, "u"),
+    );
 
     // The restart synchronizes on start: it reaches Ready only by loading the
-    // journal under the fixture's binding and re-walking every materialized
-    // row. A binding that named the endpoint would find no journal, capture a
-    // fresh history and refuse the existing deposit row by its public ID.
+    // journal under the fixture's binding; the driver's ingestion at the same
+    // follower view leaves the row unchanged. A binding that named the
+    // endpoint would find no journal and capture a fresh history.
     h = await initial.restartRuntime({
       ogmiosUrl: "ws://ogmios-behind-proxy.invalid:2337",
     });

@@ -193,35 +193,24 @@ export const recordObserverState = ({
       );
   });
 
-/** Gives the journal `label` one deposit member bound to its own
- * event-history incarnation, canonical or orphaned (L1 rolled its origin
- * back). Creates the history cursor the incarnation hangs off on first use. */
+/** Gives the journal `label` one deposit member with its own follower
+ * admission identity, canonical (the follower's key set holds it) or orphaned
+ * (a follower rewind removed it: L1 rolled its origin back). */
 export const recordDepositMember = (label: string, canonical: boolean) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const bytes = (tag: string, length = 32) =>
       deterministicFixtureBytes(`history-retention-prune:${tag}`, length);
-    const binding = bytes("binding");
-    yield* sql`INSERT INTO event_history_cursor (
-        binding_digest, manifest_id, origin_receipt, origin_receipt_digest,
-        anchor_hash, anchor_slot, anchor_height, anchor_snapshot_digest,
-        head_hash, head_slot, head_height, snapshot_digest, revision, addresses
-      ) VALUES (${binding}, ${DEPLOYMENT}, 'retention fixture', ${bytes("receipt")},
-        ${bytes("anchor")}, 1, 1, ${bytes("snapshot")}, ${bytes("anchor")}, 1, 1,
-        ${bytes("snapshot")}, 0, '[]'::jsonb)
-      ON CONFLICT (binding_digest) DO NOTHING`;
-    const incarnation = bytes(`incarnation:${label}`);
     const eventId = bytes(`event:${label}`, 36);
-    yield* sql`INSERT INTO event_history_incarnations (
-        binding_digest, incarnation_id, kind, event_id, event_key,
-        origin_canonical, incarnation_record, incarnation_digest
-      ) VALUES (${binding}, ${incarnation}, 'deposit', ${eventId},
-        ${bytes(`key:${label}`)}, ${canonical}, 'retention fixture',
-        ${bytes(`digest:${label}`)})`;
+    const key = bytes(`key:${label}`);
+    const origin = bytes(`origin:${label}`, 34);
+    if (canonical)
+      yield* sql`INSERT INTO l1_event_keys (kind, key, origin_outref, first_canonical_slot)
+        VALUES ('deposit', ${key}, ${origin}, 1)`;
     yield* sql`INSERT INTO pending_block_finalization_deposits (
         header_hash, member_id, ordinal, payload_cbor, payload_sha256,
         source_table, source_id, source_time_stamp_tz,
-        history_binding_digest, history_incarnation_id
+        l1_event_key, l1_origin_outref
       ) VALUES (${header(label)}, ${eventId}, 0, '\\x00', ${bytes(`payload:${label}`)},
-        'deposits_utxos', ${eventId}, NOW(), ${binding}, ${incarnation})`;
+        'deposits_utxos', ${eventId}, NOW(), ${key}, ${origin})`;
   });

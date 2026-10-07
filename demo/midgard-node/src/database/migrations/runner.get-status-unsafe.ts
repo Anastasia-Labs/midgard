@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
 import { Database } from "../../services/database.js";
+import { installFollowerSchema } from "../follower-schema.js";
 import {
   APPLICATION_INDEX_NAMES,
   APPLICATION_TABLE_NAMES,
@@ -64,6 +65,17 @@ export const migrate = ({
           return { _tag: "Failure", error: result.left } as const;
         }
       }
+      // The node's SQL joins the follower's admission identity, so its
+      // tables are part of every migrated node database.
+      yield* installFollowerSchema.pipe(
+        Effect.mapError((cause) =>
+          migrationError(
+            "follower_schema_failed",
+            "Failed to install the L1 follower schema",
+            cause,
+          ),
+        ),
+      );
       const finalApplied = yield* readAppliedMigrations;
       yield* validateAppliedLedgerEffect(finalApplied, "exact");
       yield* verifyApplicationShape;

@@ -253,15 +253,17 @@ describe("source-owned foreign native adoption SQL", () => {
     await run(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        yield* sql`INSERT INTO event_history_incarnations(binding_digest,incarnation_id,kind,event_id,event_key,
-        origin_canonical,incarnation_record,incarnation_digest) VALUES (${Buffer.from(binding.digest, "hex")},
-        ${Buffer.alloc(32, 16)},'withdrawal',${id},${Buffer.alloc(32, 15)},true,'Explicit modeled source incarnation',${Buffer.alloc(32, 17)})`;
+        // Explicit modeled follower admission of the source event.
+        const key = Buffer.alloc(32, 15);
+        const origin = Buffer.concat([Buffer.alloc(32, 15), Buffer.alloc(2)]);
+        yield* sql`INSERT INTO l1_event_keys(kind,key,origin_outref,first_canonical_slot)
+        VALUES ('withdrawal',${key},${origin},0)`;
         yield* sql`INSERT INTO withdrawal_utxos(event_id,raw_event_info,inclusion_time,withdrawal_l1_tx_hash,
         withdrawal_l1_output_index,asset_name,l2_outref,l2_owner,l2_value,l1_address,l1_datum,
-        refund_address,refund_datum,status,history_binding_digest,history_incarnation_id)
+        refund_address,refund_datum,status,l1_event_key,l1_origin_outref)
         VALUES (${id},${Buffer.from("80", "hex")},NOW(),${Buffer.alloc(32, 15)},0,${Buffer.from("01", "hex")},
           ${id},${Buffer.alloc(28, 1)},${Buffer.from("80", "hex")},${Buffer.from("01", "hex")},${Buffer.from("80", "hex")},
-          ${Buffer.from("01", "hex")},${Buffer.from("80", "hex")},'awaiting',${Buffer.from(binding.digest, "hex")},${Buffer.alloc(32, 16)})`;
+          ${Buffer.from("01", "hex")},${Buffer.from("80", "hex")},'awaiting',${key},${origin})`;
       }),
     );
     await run(

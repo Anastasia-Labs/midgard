@@ -26,7 +26,6 @@ import {
   decodeJournalIncarnation,
   encodeJournalIncarnation,
 } from "../src/database/eventHistoryJournalCodec.js";
-import { materializeCanonicalHistory } from "../src/database/eventHistoryMaterialization.js";
 import * as ReplayReceipts from "../src/database/eventHistoryReplayReceipts.js";
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { formatDatabaseError } from "../src/database/utils/common.js";
@@ -56,6 +55,11 @@ import {
   HistoryPreparation,
   HistoryRecoverySuperseded,
 } from "../src/services/event-history-recovery.js";
+import {
+  followerMaterialize,
+  incarnationOutRef,
+  rewindFollowerKey,
+} from "./helpers/follower-view.js";
 import { retainEverything } from "./helpers/history-journal-retention.js";
 import { seedHistoryJournalFixture } from "./helpers/history-journal-start.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
@@ -202,7 +206,7 @@ beforeEach(async () =>
   run(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts, history_journal_l2_probe`;
+      yield* sql`TRUNCATE event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts, history_journal_l2_probe, pending_block_finalizations, processed_mempool, follower_event_ingestion, l1_event_keys, l1_follower_cursor, l1_blocks CASCADE`;
     }),
   ),
 );
@@ -1304,14 +1308,14 @@ describe("durable paired history journal", () => {
 });
 
 it.each(["deposit", "withdrawal"] as const)(
-  "materializes canonical %s admission atomically and refuses orphan credit",
+  "ingests canonical %s admission atomically and refuses orphan credit",
   async (kind) => {
     const { token, checkpoint } = await start();
     const prepared = await admit(checkpoint, 2, kind);
     const reconcile =
       (before: Journal.Checkpoint) =>
       ({ after, changes }: Journal.Appended) =>
-        materializeCanonicalHistory(
+        followerMaterialize(
           { kind: "forward", before, after, changes },
           "Preprod",
         );
@@ -1320,7 +1324,7 @@ it.each(["deposit", "withdrawal"] as const)(
         Effect.flatMap((after) =>
           after === null
             ? Effect.die("missing checkpoint")
-            : materializeCanonicalHistory(
+            : followerMaterialize(
                 { kind: "rollback", before, after },
                 "Preprod",
               ),
@@ -1344,25 +1348,22 @@ it.each(["deposit", "withdrawal"] as const)(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           return yield* sql<{
-            history_binding_digest: Buffer;
-            history_incarnation_id: Buffer;
+            l1_event_key: Buffer;
+            l1_origin_outref: Buffer;
             status: string;
-          }>`SELECT event_id, history_binding_digest, history_incarnation_id, status FROM ${sql(table)}`;
+          }>`SELECT event_id, l1_event_key, l1_origin_outref, status FROM ${sql(table)}`;
         }),
       );
     let materialized = await rows();
     expect(materialized).toHaveLength(1);
-    expect(materialized[0]!.history_binding_digest.toString("hex")).toBe(
-      binding.digest,
-    );
-    expect(materialized[0]!.history_incarnation_id.toString("hex")).toBe(
-      admitted.incarnations[0]!.id,
-    );
+    const at = admitted.incarnations[0]!;
+    expect(materialized[0]!.l1_event_key.toString("hex")).toBe(at.event.key);
+    expect(materialized[0]!.l1_origin_outref).toEqual(incarnationOutRef(at));
     expect(materialized[0]!.status).toBe("awaiting");
     await run(
       Authority.withRecovery(
         token,
-        materializeCanonicalHistory(
+        followerMaterialize(
           { kind: "resume", before: admitted, after: admitted },
           "Preprod",
         ),
@@ -1554,7 +1555,7 @@ it.each(["deposit", "withdrawal"] as const)(
     await run(
       Authority.withRecovery(
         recovery,
-        materializeCanonicalHistory(
+        followerMaterialize(
           { kind: "resume", before: admitted, after: admitted },
           "Preprod",
         ),
@@ -1606,7 +1607,7 @@ it("rolls back bounded preparation writes when source preparation is superseded"
 });
 
 it.each(["deposit", "withdrawal"] as const)(
-  "checks retained %s journal incarnation before atomic effects",
+  "checks retained %s follower admission before atomic effects",
   async (kind) => {
     const { token, checkpoint } = await start();
     await run(
@@ -1624,7 +1625,7 @@ it.each(["deposit", "withdrawal"] as const)(
     await run(
       Authority.withRecovery(
         token,
-        materializeCanonicalHistory(
+        followerMaterialize(
           { kind: "resume", before: admitted, after: admitted },
           "Preprod",
         ),
@@ -1634,10 +1635,11 @@ it.each(["deposit", "withdrawal"] as const)(
     const converted = await Effect.runPromise(
       historyIncarnationEntry(incarnation, "Preprod"),
     );
+    const origin = incarnationOutRef(incarnation);
     const member = {
       [Pending.MemberColumns.MEMBER_ID]: converted.entry.event_id,
-      history_binding_digest: Buffer.from(binding.digest, "hex"),
-      history_incarnation_id: Buffer.from(incarnation.id, "hex"),
+      l1_event_key: Buffer.from(incarnation.event.key, "hex"),
+      l1_origin_outref: origin,
     };
     const members = (value: typeof member) => ({
       depositMembers: kind === "deposit" ? [value] : [],
@@ -1650,8 +1652,8 @@ it.each(["deposit", "withdrawal"] as const)(
       ),
     );
     for (const wrong of [
-      { ...member, history_incarnation_id: Buffer.from(hash(999), "hex") },
-      { ...member, history_binding_digest: Buffer.from(hash(998), "hex") },
+      { ...member, l1_event_key: Buffer.from(hash(999), "hex") },
+      { ...member, l1_origin_outref: Buffer.alloc(34, 9) },
     ]) {
       await expect(
         run(
@@ -1667,13 +1669,11 @@ it.each(["deposit", "withdrawal"] as const)(
       ).rejects.toThrow();
       expect((await counts())[0]!.l2).toBe("0");
     }
+    // The follower rewinds past the admission: the member is orphaned.
     await run(
       Authority.withRecovery(
         token,
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          yield* sql`UPDATE event_history_incarnations SET origin_canonical = false WHERE incarnation_id = ${member.history_incarnation_id}`;
-        }),
+        rewindFollowerKey({ kind, key: incarnation.event.key }, origin),
       ),
     );
     await expect(

@@ -15,16 +15,16 @@ HTTP server and configured retained-payload server; this table is not a count of
 every running fiber. `monitor-mempool` runs only when the node is started
 with `-m` / `--with-monitoring`. The barrel also exports modules that are not running
 fibers: `operator-watchdog-policy` supplies pure watchdog decisions and status
-helpers; `fetch-and-insert-deposit-utxos` and `fetch-and-insert-withdrawal-utxos`
-supply the commit-barrier refreshes; `project-deposits-to-mempool-ledger`
-supplies the deposit projection the history owner runs.
+helpers.
 
 Deposit and withdrawal discovery and deposit projection are not fibers. The
-history owner materializes L1 deposit and withdrawal events from canonical
-history and, on each L1 change it reconciles, projects the deposits whose
-inclusion time is due. Projected outputs stay hidden from spendable queries
-until confirmation assigns their block header. Block commitment also refreshes
-deposits and withdrawals up to its commit barrier.
+node's L1 follower projects deposit and withdrawal events from the chain it
+follows, and on each follower change the follower-change driver writes them
+into the node database and, in the same transaction, projects the deposits
+whose inclusion time is due. Projected outputs stay hidden from spendable
+queries until confirmation assigns their block header. Block commitment never
+claims an end time past the events the follower has ingested; it refreshes
+only transaction orders up to its commit barrier.
 
 ## The fibers
 

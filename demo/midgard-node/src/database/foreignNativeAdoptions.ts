@@ -19,6 +19,7 @@ import {
 } from "./eventHistoryAuthority.js";
 import { requeueUnpublishedHistoryLedger } from "./eventHistoryLedgerRepair.js";
 import { retainVerifiedForeignSegments } from "./foreignVerifiedSegments.js";
+import { canonicalAdmission, sameAdmission } from "./l1-admission-identity.js";
 import * as MpfEngineState from "./mpfEngineState.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
@@ -86,10 +87,11 @@ const retainEventProjection = (adoptionId: Buffer, events: AdoptionEvents) =>
       const provenance =
         table.key === "forced"
           ? sql`TRUE`
-          : sql`
-        actual.history_binding_digest = (SELECT binding_digest FROM foreign_native_adoptions WHERE adoption_id = ${adoptionId})
-        AND EXISTS (SELECT 1 FROM event_history_incarnations i WHERE i.binding_digest = actual.history_binding_digest
-          AND i.incarnation_id = actual.history_incarnation_id AND i.origin_canonical AND i.event_id = actual.${sql(table.id)})`;
+          : canonicalAdmission(
+              sql,
+              "actual",
+              table.key === "deposits" ? "deposit" : "withdrawal",
+            );
       const rows = yield* sql`SELECT 1 FROM ${sql(table.name)} actual,
       jsonb_to_recordset(CAST(${JSON.stringify(expected)} AS TEXT)::jsonb) e(id text,header text)
       WHERE actual.${sql(table.id)} = decode(e.id,'hex')
@@ -132,7 +134,7 @@ const inverseEventProjection = (adoptionId: Buffer) =>
         table.key === "forced"
           ? sql`d.raw_datum = old.raw_datum
       AND d.tx_order_l1_tx_hash = old.tx_order_l1_tx_hash AND d.tx_order_l1_output_index = old.tx_order_l1_output_index`
-          : sql`d.history_binding_digest = old.history_binding_digest AND d.history_incarnation_id = old.history_incarnation_id`;
+          : sameAdmission(sql, "d", "old");
       yield* sql`UPDATE ${sql(table.name)} d SET status = old.status, projected_header_hash = old.projected_header_hash
       FROM foreign_native_adoptions p,
         LATERAL jsonb_populate_recordset(NULL::${sql(table.name)},p.event_before->${table.key}) old
@@ -144,7 +146,7 @@ const inverseEventProjection = (adoptionId: Buffer) =>
     FROM foreign_native_adoptions p,
       LATERAL jsonb_populate_recordset(NULL::withdrawal_utxos,p.event_before->'withdrawals') old
     WHERE p.adoption_id = ${adoptionId} AND d.event_id = old.event_id
-      AND d.history_binding_digest = old.history_binding_digest AND d.history_incarnation_id = old.history_incarnation_id`;
+      AND ${sameAdmission(sql, "d", "old")}`;
   });
 export const retainedReplay = (plan: Adoption): PersistedNativeMpfReplay => {
   const record = plan.replay_record;

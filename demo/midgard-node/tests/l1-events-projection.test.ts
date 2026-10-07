@@ -14,6 +14,8 @@ import {
   withdrawalDataToEntry,
 } from "../src/l1-event-history-entries.js";
 import {
+  dueByCutoff,
+  dueByCutoffNow,
   eventListAt,
   eventProjection,
   eventsAt,
@@ -21,8 +23,7 @@ import {
   type ProjectedEvent,
   type SlotTime,
   slotToPosixMs,
-  spendableDepositsAt,
-  spendableDepositsNow,
+  spendableAt,
   userEventEntry,
 } from "../src/l1-events/index.js";
 import {
@@ -247,7 +248,7 @@ describe.each(["sqlite", "postgres"] as const)(
       expect(await refusals(d.store)).toEqual([]);
     });
 
-    it("decides deposit spendability at slotNow, so a fast wall clock spends nothing early", async () => {
+    it("decides deposit due-ness at slotNow, so a fast wall clock makes nothing due early", async () => {
       const d = await driver();
       await d.forward([]);
       const tipMs = slotToPosixMs(SLOT_TIME, d.tip.point.slot + 1);
@@ -261,7 +262,7 @@ describe.each(["sqlite", "postgres"] as const)(
       const at = d.tip.point;
       expect(
         ok(
-          await spendableDepositsAt(d.store, DEPOSITS, at, {
+          await dueByCutoff(d.store, DEPOSITS, at, {
             slot: at.slot,
             slotTime: SLOT_TIME,
           }),
@@ -275,28 +276,60 @@ describe.each(["sqlite", "postgres"] as const)(
         monotonicNowMs: () => 0,
       });
       expect(
-        await spendableDepositsNow(d.store, DEPOSITS, at, clock, SLOT_TIME),
+        await dueByCutoffNow(d.store, DEPOSITS, at, clock, SLOT_TIME),
       ).toEqual({ kind: "no_slot_now" });
       clock.observeTipSlot(at.slot);
-      const now = await spendableDepositsNow(
-        d.store,
-        DEPOSITS,
-        at,
-        clock,
-        SLOT_TIME,
-      );
+      const now = await dueByCutoffNow(d.store, DEPOSITS, at, clock, SLOT_TIME);
       expect(now.kind === "ok" && now.value.map((s) => s.key)).toEqual([
         due.key,
       ]);
       // The later deposit becomes due once the chain itself reaches it.
       expect(
         ok(
-          await spendableDepositsAt(d.store, DEPOSITS, at, {
+          await dueByCutoff(d.store, DEPOSITS, at, {
             slot: at.slot + 700,
             slotTime: SLOT_TIME,
           }),
         ).map((s) => s.key),
       ).toEqual([due.key, later.key]);
+    });
+
+    it("makes a deposit spendable only by own-block inclusion, never by a clock ahead of the tip (P4)", async () => {
+      const d = await driver();
+      await d.forward([]);
+      const tipMs = slotToPosixMs(SLOT_TIME, d.tip.point.slot + 1);
+      const long = eventOrder("deposit", nonceRef(), {
+        inclusionTime: BigInt(tipMs - 5_000),
+      });
+      const fresh = eventOrder("deposit", nonceRef(), {
+        inclusionTime: BigInt(tipMs + 600_000),
+      });
+      await d.forward([admissionTx(long, 30), admissionTx(fresh, 31)]);
+      const at = d.tip.point;
+      const ids = ok(await eventsAt(d.store, DEPOSITS, at)).map((e) => ({
+        key: e.key,
+        idCbor: e.idCbor,
+      }));
+      const longId = ids.find((e) => e.key === long.key)!.idCbor;
+      const freshId = ids.find((e) => e.key === fresh.key)!.idCbor;
+      // A wall clock a day ahead: nothing is included, so nothing is spendable.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(Date.now() + 24 * 3_600_000);
+      expect(ok(await spendableAt(d.store, DEPOSITS, at, new Set()))).toEqual(
+        [],
+      );
+      // Inclusion, not due-ness, decides: the not-yet-due deposit is spendable
+      // once an own block includes it; the due one is not until included.
+      expect(
+        ok(await spendableAt(d.store, DEPOSITS, at, new Set([freshId]))).map(
+          (s) => s.key,
+        ),
+      ).toEqual([fresh.key]);
+      expect(
+        ok(await spendableAt(d.store, DEPOSITS, at, new Set([longId, freshId])))
+          .map((s) => s.key)
+          .sort(),
+      ).toEqual([long.key, fresh.key].sort());
     });
 
     it("walks the list from its root and reports a broken walk as unhealthy", async () => {

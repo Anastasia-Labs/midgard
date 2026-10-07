@@ -14,9 +14,7 @@ import {
   Columns as TxColumns,
   type EntryWithTimeStamp,
 } from "../database/utils/tx.js";
-import { fetchAndInsertDepositUTxOsForCommitBarrier } from "../fibers/fetch-and-insert-deposit-utxos.js";
 import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "../fibers/fetch-and-insert-tx-order-utxos.js";
-import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "../fibers/fetch-and-insert-withdrawal-utxos.js";
 import { unixTimeToSlotForConfig } from "../lucid-time.js";
 import {
   configureCommitMpfRuntime,
@@ -26,8 +24,8 @@ import {
 } from "../mpf/index.js";
 import { assertHistoryProducer } from "../services/event-history-producer.js";
 import {
+  commitEventHorizon,
   HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
-  historyEligibilityHorizon,
 } from "../services/history-commit-window.js";
 import {
   ContractDeploymentIdentity,
@@ -234,30 +232,23 @@ export const buildOnVerifiedCommitBaseProgram = (
         );
       }
     }
+    // The event horizon (E-N1-2 item 3): the follower-change driver wrote
+    // every event row, so deposits and withdrawals are visible through
+    // min(journal coverage, follower ingestion). Nothing ingested yet: no
+    // end time is safe, so the commit holds.
+    const eventHorizonMs = yield* commitEventHorizon(
+      workerInput.history?.coverage,
+    );
+    if (eventHorizonMs === null) {
+      yield* Effect.logInfo(
+        "🔹 The L1 follower has not ingested events at its current chain; holding the commit.",
+      );
+      return { type: "NothingToCommitOutput" } satisfies WorkerOutput;
+    }
     const historyEndTime =
-      workerInput.history === undefined
-        ? undefined
-        : new Date(historyEligibilityHorizon(workerInput.history.coverage));
-    const depositIngestionBarrierTime =
-      workerInput.history !== undefined
-        ? historyEndTime!
-        : yield* acquireCommitLucidOnce.pipe(
-            Effect.flatMap((lucid) =>
-              fetchAndInsertDepositUTxOsForCommitBarrier(new Date()).pipe(
-                Effect.provideService(Lucid, lucid),
-              ),
-            ),
-          );
-    const withdrawalIngestionBarrierTime =
-      workerInput.history !== undefined
-        ? historyEndTime!
-        : yield* acquireCommitLucidOnce.pipe(
-            Effect.flatMap((lucid) =>
-              fetchAndInsertWithdrawalUTxOsForCommitBarrier(
-                depositIngestionBarrierTime,
-              ).pipe(Effect.provideService(Lucid, lucid)),
-            ),
-          );
+      workerInput.history === undefined ? undefined : new Date(eventHorizonMs);
+    const depositIngestionBarrierTime = new Date(eventHorizonMs);
+    const withdrawalIngestionBarrierTime = depositIngestionBarrierTime;
     const txOrderIngestionBarrierTime = yield* acquireCommitLucidOnce.pipe(
       Effect.flatMap((lucid) =>
         fetchAndInsertTxOrderUTxOsForCommitBarrier(

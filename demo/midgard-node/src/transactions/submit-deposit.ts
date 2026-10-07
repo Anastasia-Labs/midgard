@@ -12,7 +12,6 @@ import "@lucid-evolution/lucid";
 import "effect";
 import "../asset-specs.js";
 import "../database/index.js";
-import "../fibers/fetch-and-insert-deposit-utxos.js";
 import "../services/index.js";
 import "./event-history-submission.js";
 import "./submit-deposit.deposit-submission-attempt-from-completed-tx.js";

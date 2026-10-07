@@ -73,6 +73,9 @@ const expectEveryCase = (stats: EventSimStats): void => {
     "retiredKeyRefusals",
     "sameKeyOtherKind",
     "notYetDue",
+    "prunedRetirements",
+    "refusedAfterPrune",
+    "admittedAfterPrune",
   ] as const)
     expect({ field, count: stats[field] > 0 }).toEqual({ field, count: true });
 };

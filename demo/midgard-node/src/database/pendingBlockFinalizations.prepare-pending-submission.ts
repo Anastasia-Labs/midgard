@@ -10,6 +10,12 @@ import {
 import * as DepositsDB from "./deposits.js";
 import * as ForcedTransactionsDB from "./forcedTransactions.js";
 import {
+  ADMISSION_KIND_OF,
+  type AdmissionIdentity,
+  IdentityColumns,
+  NO_IDENTITY,
+} from "./l1-admission-identity.js";
+import {
   ACTIVE_STATUSES,
   Columns,
   depositsTableName,
@@ -380,20 +386,16 @@ export const preparePendingSubmission = (
         const permit = candidateHistory;
         const memberHistory = (eventTable: string, eventId: Buffer) =>
           Effect.gen(function* () {
-            if (Option.isNone(permit))
-              return {
-                history_binding_digest: null,
-                history_incarnation_id: null,
-              };
-            const rows = yield* sql<{
-              history_binding_digest: Buffer;
-              history_incarnation_id: Buffer;
-            }>`
-            SELECT e.history_binding_digest, e.history_incarnation_id FROM ${sql(eventTable)} e
-            JOIN event_history_incarnations i ON i.binding_digest = e.history_binding_digest AND i.incarnation_id = e.history_incarnation_id
-            WHERE e.event_id = ${eventId} AND i.event_id = e.event_id AND i.origin_canonical = true
-              AND i.binding_digest = ${Buffer.from(permit.value.coverage.bindingDigest, "hex")}
-            FOR UPDATE OF e`;
+            if (Option.isNone(permit)) return NO_IDENTITY;
+            // The member's follower admission identity, canonical in the
+            // follower's key set now. The key row is share-locked so a
+            // follower rewind cannot orphan it before this journal commits.
+            const kind = ADMISSION_KIND_OF[eventTable]!;
+            const rows = yield* sql<AdmissionIdentity>`
+            SELECT e.l1_event_key, e.l1_origin_outref FROM ${sql(eventTable)} e
+            JOIN l1_event_keys k ON k.kind = ${kind} AND k.key = e.l1_event_key AND k.origin_outref = e.l1_origin_outref
+            WHERE e.event_id = ${eventId}
+            FOR UPDATE OF e FOR SHARE OF k`;
             if (rows.length !== 1)
               return yield* Effect.fail(
                 new DatabaseError({
@@ -448,8 +450,8 @@ export const preparePendingSubmission = (
             WithdrawalMemberColumns.VALIDITY,
             WithdrawalMemberColumns.VALIDITY_DETAIL,
             WithdrawalMemberColumns.CLASSIFICATION_SHA256,
-            "history_binding_digest",
-            "history_incarnation_id",
+            IdentityColumns.EVENT_KEY,
+            IdentityColumns.ORIGIN_OUTREF,
           ] as const;
           yield* sql`INSERT INTO ${sql(withdrawalsTableName)} (${sql.csv(columns.map((column) => sql`${sql(column)}`))}) VALUES (${sql.csv(columns.map((column) => sql`${values[column]}`))})`;
         }

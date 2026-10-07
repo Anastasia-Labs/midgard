@@ -82,7 +82,6 @@ export const depositPayload = {
   eventId: "d8799f58200101",
   info: "d87980",
   inclusionTimeMs: 1_000,
-  l1TxHash: h32("01"),
   ledgerTxId: h32("02"),
   ledgerOutput: "b0b0",
   ledgerAddress: "addr_test1",

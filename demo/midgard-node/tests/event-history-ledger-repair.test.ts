@@ -25,9 +25,9 @@ import { CML, Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import * as Deposits from "../src/database/deposits.js";
 import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as Journal from "../src/database/eventHistoryJournal.js";
-import { materializeCanonicalHistory } from "../src/database/eventHistoryMaterialization.js";
 import * as Ledger from "../src/database/mempoolLedger.js";
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import * as Admissions from "../src/database/txAdmissions.js";
@@ -48,6 +48,10 @@ import { HistoryProducer } from "../src/services/event-history-producer.js";
 import { WriteBehind, WriteBehindLive } from "../src/services/write-behind.js";
 import { breakDownTx, type ProcessedTx } from "../src/utils.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
+import {
+  followerMaterialize,
+  incarnationOutRef,
+} from "./helpers/follower-view.js";
 import { retainEverything } from "./helpers/history-journal-retention.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import {
@@ -434,26 +438,20 @@ beforeEach(async () => {
         name: string;
       }>`SELECT current_database() AS name`;
       expect(database?.name).toBe(testDatabaseName());
-      yield* sql`TRUNCATE event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalizations, pending_block_finalization_deposits, pending_block_finalization_withdrawals, pending_block_finalization_txs, pending_block_finalization_forced_transactions, pending_block_finalization_transition_trace, pending_block_finalization_event_to_step, pending_block_finalization_validation_traces, pending_block_finalization_validation_trace_witnesses, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts, tx_admission_payloads, tx_admissions, mempool, mempool_tx_deltas, address_history, processed_mempool, blocks, immutable`;
+      yield* sql`TRUNCATE event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalizations, pending_block_finalization_deposits, pending_block_finalization_withdrawals, pending_block_finalization_txs, pending_block_finalization_forced_transactions, pending_block_finalization_transition_trace, pending_block_finalization_event_to_step, pending_block_finalization_validation_traces, pending_block_finalization_validation_trace_witnesses, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts, tx_admission_payloads, tx_admissions, mempool, mempool_tx_deltas, address_history, processed_mempool, blocks, immutable, follower_event_ingestion, l1_event_keys, l1_follower_cursor, l1_blocks CASCADE`;
     }),
   );
 });
 const reconcile =
   (before: Journal.Checkpoint) =>
   ({ after, changes }: Journal.Appended) =>
-    materializeCanonicalHistory(
-      { kind: "forward", before, after, changes },
-      "Preprod",
-    );
+    followerMaterialize({ kind: "forward", before, after, changes }, "Preprod");
 const repair = (before: Journal.Checkpoint) =>
   Journal.load(binding).pipe(
     Effect.flatMap((after) =>
       after === null
         ? Effect.die("Missing checkpoint")
-        : materializeCanonicalHistory(
-            { kind: "rollback", before, after },
-            "Preprod",
-          ),
+        : followerMaterialize({ kind: "rollback", before, after }, "Preprod"),
     ),
   );
 const append = async (
@@ -489,13 +487,14 @@ const readyFixture = async (withdrawalFirst = false) => {
     ),
   );
   if (converted.kind !== "deposit") throw new Error("Expected deposit");
-  const source: Ledger.DepositEntry = {
-    tx_id: converted.entry.ledger_tx_id,
-    outref: makeOutRefCbor(converted.entry.ledger_tx_id),
-    output: converted.entry.ledger_output,
-    address: converted.entry.ledger_address,
-    source_event_id: converted.entry.event_id,
-  };
+  const source: Ledger.DepositEntry = await run(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [row] = yield* sql<Deposits.Entry>`SELECT * FROM deposits_utxos
+        WHERE event_id = ${converted.entry.event_id}`;
+      return yield* Deposits.toMempoolLedgerEntry(row!);
+    }),
+  );
   const bases = [920, 921].map((n) => ({
     tx_id: Buffer.from(hash(n), "hex"),
     outref: makeOutRefCbor(hash(n)),
@@ -711,7 +710,7 @@ describe("unpublished history-dependent ledger repair", () => {
     await run(
       Authority.withRecovery(
         recovered.token,
-        materializeCanonicalHistory(
+        followerMaterialize(
           {
             kind: "resume",
             before: recovered.checkpoint,
@@ -806,7 +805,8 @@ describe("unpublished history-dependent ledger repair", () => {
     expect(state.deposits).toHaveLength(1);
     expect(state.deposits[0]).toMatchObject({
       event_id: bytea(f.source.source_event_id),
-      history_incarnation_id: bytea(Buffer.from(active.id, "hex")),
+      l1_event_key: bytea(Buffer.from(active.event.key, "hex")),
+      l1_origin_outref: bytea(incarnationOutRef(active)),
       status: "awaiting",
       projected_header_hash: null,
     });

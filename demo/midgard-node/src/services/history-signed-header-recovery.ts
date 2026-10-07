@@ -8,18 +8,23 @@ import { Effect, Option, Ref } from "effect";
 import * as Authority from "../database/eventHistoryAuthority.js";
 import { loadCanonicalHistoryCoverage } from "../database/eventHistoryCanonicalCoverage.js";
 import type { Checkpoint } from "../database/eventHistoryJournal.js";
-import { AuthorizedHistoryHeaderRetirement } from "../database/eventHistoryLedgerRepair.js";
-import { materializeCanonicalHistory } from "../database/eventHistoryMaterialization.js";
+import {
+  AuthorizedHistoryHeaderRetirement,
+  repairUnpublishedHistoryLedger,
+} from "../database/eventHistoryLedgerRepair.js";
 import {
   prepareRetainedNativeHistoryRecoveryPlan,
   SIGNED_HEADER_RECOVERY_DOMAIN,
 } from "../database/eventHistoryRecoveryPlans.js";
+import {
+  orphanedAdmission,
+  sameAdmission,
+} from "../database/l1-admission-identity.js";
 import * as MutationJobsDB from "../database/mutationJobs.js";
 import * as Pending from "../database/pendingBlockFinalizations.js";
 import * as StateQueueLeases from "../database/stateQueueMutationLeases.js";
 import { DatabaseError } from "../database/utils/common.js";
 import type { MinimalEntry } from "../database/utils/ledger.js";
-import { reconcileDepositProjection } from "../fibers/project-deposits-to-mempool-ledger.js";
 import {
   eventHistoryCanonicalJson,
   type EventHistorySourceBinding,
@@ -40,6 +45,10 @@ import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
 import { Globals } from "./globals.js";
 import { executeHistoryDependentRecovery } from "./history-dependent-recovery.js";
 import { validateRecoveryStateQueue } from "./history-recovery-state-queue.js";
+import {
+  ingestAtCaughtUpView,
+  repairWhenFollowerCaughtUp,
+} from "./l1-follower.recovery.js";
 import { ProductionNativeMpfOwnerService } from "./mpf-native-owner/service.js";
 import { evaluateSignedIntentCoverage } from "./signed-intent-canonical-coverage.js";
 
@@ -76,10 +85,11 @@ const ledgerIdentity = (rows: readonly MinimalEntry[]) =>
   );
 
 /** The single source of the headers signed-header recovery still has to
- * classify: not abandoned, with a deposit member whose admission incarnation is
- * no longer origin-canonical. These candidates do not hold journal retention.
+ * classify: not abandoned, with a deposit member whose follower admission L1
+ * no longer holds in its key set. These candidates do not hold journal
+ * retention.
  */
-export const signedHeaderRecoveryCandidates = (bindingDigest: string) =>
+export const signedHeaderRecoveryCandidates = () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     return yield* sql<{
@@ -87,8 +97,7 @@ export const signedHeaderRecoveryCandidates = (bindingDigest: string) =>
       signed_tx_cbor: Buffer | null;
     }>`SELECT DISTINCT p.header_hash, p.signed_tx_cbor
       FROM pending_block_finalizations p JOIN pending_block_finalization_deposits m ON m.header_hash = p.header_hash
-      JOIN event_history_incarnations i ON i.binding_digest = m.history_binding_digest AND i.incarnation_id = m.history_incarnation_id
-      WHERE i.binding_digest = ${Buffer.from(bindingDigest, "hex")} AND NOT i.origin_canonical
+      WHERE ${orphanedAdmission(sql, "m", "deposit")}
         AND p.status <> 'abandoned'`;
   });
 
@@ -153,9 +162,7 @@ export const prepareSignedHeaderRecovery = (input: {
     const candidate = yield* owned(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const headers = yield* signedHeaderRecoveryCandidates(
-          input.binding.digest,
-        );
+        const headers = yield* signedHeaderRecoveryCandidates();
         if (headers.length !== 1) return undefined;
         const maybe = yield* Pending.retrieveByHeaderHash(
           headers[0]!.header_hash,
@@ -178,10 +185,9 @@ export const prepareSignedHeaderRecovery = (input: {
           return undefined;
         const remaining =
           yield* sql`SELECT 1 FROM pending_block_finalization_deposits m
-      LEFT JOIN event_history_incarnations i ON i.binding_digest = m.history_binding_digest AND i.incarnation_id = m.history_incarnation_id
-      LEFT JOIN deposits_utxos d ON d.history_binding_digest = m.history_binding_digest AND d.history_incarnation_id = m.history_incarnation_id
+      LEFT JOIN deposits_utxos d ON ${sameAdmission(sql, "d", "m")}
       WHERE m.header_hash = ${record[C.HEADER_HASH]} AND
-        (i.binding_digest IS DISTINCT FROM ${Buffer.from(input.binding.digest, "hex")} OR i.origin_canonical IS DISTINCT FROM false
+        (NOT (${orphanedAdmission(sql, "m", "deposit")})
           OR d.projected_header_hash IS DISTINCT FROM m.header_hash)`;
         const otherPending =
           yield* sql`SELECT 1 FROM pending_block_finalizations WHERE status NOT IN ('finalized','abandoned')
@@ -400,13 +406,16 @@ export const prepareSignedHeaderRecovery = (input: {
           record[C.HEADER_HASH],
           "signed commit proved absent from canonical L1 history; journal retired by signed-header recovery",
         );
-        yield* materializeCanonicalHistory(
-          { kind: "resume", before: checkpoint, after: checkpoint },
-          input.config.NETWORK,
-        ).pipe(
-          Effect.provideService(AuthorizedHistoryHeaderRetirement, {
-            headerHash: record[C.HEADER_HASH],
-          }),
+        yield* repairWhenFollowerCaughtUp(
+          repairUnpublishedHistoryLedger({
+            kind: "resume",
+            before: checkpoint,
+            after: checkpoint,
+          }).pipe(
+            Effect.provideService(AuthorizedHistoryHeaderRetirement, {
+              headerHash: record[C.HEADER_HASH],
+            }),
+          ),
         );
         // The full commit worker lifetime was drained before this preparation.
         // Retire only this immutable journal's lease, atomically with its proved
@@ -421,9 +430,11 @@ export const prepareSignedHeaderRecovery = (input: {
           return yield* Effect.fail(
             failure("Native SQL marker changed before dependent recovery"),
           );
-        yield* reconcileDepositProjection(
-          new Date(input.slotToUnixTime(checkpoint.head.slot)),
-        );
+        yield* ingestAtCaughtUpView({
+          cutoffSlot: checkpoint.head.slot,
+          network: input.config.NETWORK,
+          slotToUnixTime: input.slotToUnixTime,
+        });
       }),
     });
   });

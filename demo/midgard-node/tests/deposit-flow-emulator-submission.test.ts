@@ -18,6 +18,7 @@ import {
   fetchLatestCommittedBlock,
   fetchSchedulerDatum,
   Globals,
+  ingestEmulatorEventsUnowned,
   initializeNodeRuntime,
   initializeProtocol,
   LucidService,
@@ -29,8 +30,6 @@ import {
   MidgardContracts,
   NodeConfig,
   PendingBlockFinalizationsDB,
-  projectDepositsToMempoolLedger,
-  reconcileVisibleDepositUTxOs,
   Ref,
   resetActiveRuntimePaths,
   runBlockConfirmation,
@@ -217,16 +216,12 @@ describe("deposit flow emulator", { concurrent: false }, () => {
 
     const globalsBeforeCommit = await makeGlobalsService();
     await runNodeCommandProgram(
-      reconcileVisibleDepositUTxOs({
-        inclusionTimeUpperBound: BigInt(Date.now()),
+      ingestEmulatorEventsUnowned(fixture, {
+        globals: globalsBeforeCommit,
+        projectThroughMs: Date.now(),
       }),
       { fixture, lucidService, globals: globalsBeforeCommit },
     );
-    await runNodeCommandProgram(projectDepositsToMempoolLedger, {
-      fixture,
-      lucidService,
-      globals: globalsBeforeCommit,
-    });
 
     const rawUtxosAfterBackgroundProjection = await runNodeDatabaseEffect(
       MempoolLedgerDB.retrieveByAddress(l2Address),

@@ -25,10 +25,10 @@ import {
   Effect,
   ensureSeparateCollateralUtxo,
   expectedAuthenticatedEventRoot,
+  ingestEmulatorEventsUnowned,
   initializePayoutProgram,
   paymentCredentialOf,
   payoutStatusProgram,
-  reconcileVisibleWithdrawalUTxOs,
   refreshWalletUtxosFromProvider,
   resolveEventSettlementProofProgram,
   runNodeCommandProgram,
@@ -312,8 +312,8 @@ it("preserves public raw external events through real settlement, refund, payout
     );
     vi.setSystemTime(fixture.emulator.now());
     expect(
-      (await command(reconcileVisibleWithdrawalUTxOs())).reconciledCount,
-    ).toBe(1);
+      await command(ingestEmulatorEventsUnowned(fixture, { globals })),
+    ).toMatchObject({ inserted: 1 });
     const invalidBlock = await commitConfirmRecoverAndMerge(context);
     const invalidResolution = await command(
       resolveEventSettlementProofProgram({
@@ -557,8 +557,8 @@ it("preserves public raw external events through real settlement, refund, payout
     );
     vi.setSystemTime(fixture.emulator.now());
     expect(
-      (await command(reconcileVisibleWithdrawalUTxOs())).reconciledCount,
-    ).toBe(1);
+      await command(ingestEmulatorEventsUnowned(fixture, { globals })),
+    ).toMatchObject({ inserted: 1 });
     const withdrawalBlock = await commitConfirmRecoverAndMerge(context);
     const resolution = await command(
       resolveEventSettlementProofProgram({
