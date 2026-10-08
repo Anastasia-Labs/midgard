@@ -14,9 +14,9 @@ import {
   DaPayloadAnnouncementsDB,
   DaPayloadPublicationsDB,
   DaPayloadsDB,
-  DaPayloadTerminalOutcomesDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
+import { deploymentIdentityDigestOf } from "../l1-queue-terminals/index.js";
 import type { Database } from "../services/database.js";
 import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
 
@@ -44,8 +44,8 @@ export const reconcileDaPublicationsOnce = ({
 }: {
   readonly limit?: number;
   readonly leaseOwner?: string;
-  /** Verified manifest ID scoping authenticated removal outcomes; absent for
-   * a derived contract bundle (see `DaPayloadTerminalOutcomesDB.owedPayload`). */
+  /** Verified manifest ID; absent for a derived contract bundle, which
+   * consults no removal (see `owedPayload` in `l1-queue-terminals`). */
   readonly deploymentIdentityDigest?: Buffer;
 } = {}): Effect.Effect<
   DaPublicationReconcileSummary,
@@ -266,10 +266,9 @@ export const daPublicationReconcilerFiber = (
 ): Effect.Effect<void, never, Database | ContractDeploymentIdentity> =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🟢 DA publication reconciler fiber started.");
-    const deploymentIdentityDigest =
-      DaPayloadTerminalOutcomesDB.deploymentIdentityDigestOf(
-        yield* ContractDeploymentIdentity,
-      );
+    const deploymentIdentityDigest = deploymentIdentityDigestOf(
+      yield* ContractDeploymentIdentity,
+    );
     yield* Effect.repeat(
       reconcileDaPublicationsOnce({ deploymentIdentityDigest }).pipe(
         Effect.catchAllCause((cause) =>

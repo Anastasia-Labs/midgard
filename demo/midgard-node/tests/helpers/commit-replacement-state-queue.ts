@@ -41,7 +41,7 @@ import { Lucid } from "../../src/services/lucid.js";
 import { ContractDeploymentIdentity } from "../../src/services/midgard-contracts.js";
 import { selectNodeWallet } from "../../src/transactions/utils.wallet-view.js";
 import { SDK } from "../deposit-flow-emulator-shared.js";
-import type { Lifecycle } from "./correction-rewind-scenario.js";
+import type { Lifecycle } from "./correction-admission-scenario.js";
 import { nodeFactStore } from "./emulator-operator-set.js";
 import type { emulatorState } from "./emulator-snapshot.js";
 import {

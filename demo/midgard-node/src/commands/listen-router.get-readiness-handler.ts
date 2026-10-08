@@ -3,13 +3,11 @@ import "./listen-router.post-tx-status-batch-handler.js";
 import { HttpServerResponse } from "@effect/platform";
 import { Effect, Option, Ref } from "effect";
 
-import {
-  DaPayloadTerminalOutcomesDB,
-  StateQueueMutationLeasesDB,
-} from "../database/index.js";
+import { StateQueueMutationLeasesDB } from "../database/index.js";
 import { attestationTimeoutCorrectionReadinessBounds } from "../fibers/index.js";
 import { localOgmiosSubmitSlotEvidence } from "../l1-heads.js";
 import { READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS } from "../l1-provider-readiness-probe.js";
+import { deploymentIdentityDigestOf } from "../l1-queue-terminals/index.js";
 import {
   DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
   ValidationPool,
@@ -68,9 +66,7 @@ export const getReadinessHandler = Effect.gen(function* () {
 
   const databaseState = yield* Effect.either(
     readReadinessDatabaseState(
-      DaPayloadTerminalOutcomesDB.deploymentIdentityDigestOf(
-        yield* ContractDeploymentIdentity,
-      ),
+      deploymentIdentityDigestOf(yield* ContractDeploymentIdentity),
     ),
   );
   if (databaseState._tag === "Left") {

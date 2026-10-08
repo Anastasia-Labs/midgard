@@ -175,9 +175,8 @@ describe("startup retires state-queue leases of a killed node process", () => {
           yield* observedJournal(live);
           yield* failedLocalJob(live, "delta invalid");
           const token = yield* leftBehind("block_commitment");
-          // As failed-local-finalization-correction-emulator calls it while a
-          // runtime is live: a bare database layer, with no startup
-          // preparation, producer permit or fixture gate.
+          // Called while a runtime is live, on a bare database layer: no
+          // startup preparation, producer permit or fixture gate.
           const exit = yield* Effect.promise(() =>
             Effect.runPromiseExit(
               assertStartupMutationJobsRecoverable.pipe(

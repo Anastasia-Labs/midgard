@@ -50,6 +50,8 @@ const txId = Buffer.alloc(32, 0xaa);
 const header = Buffer.alloc(28, 0xbb);
 const otherHeader = Buffer.alloc(28, 0xcc);
 const root = "11".repeat(32);
+/** The follower's covered tip height in every case. */
+const TIP_HEIGHT = 1_000;
 const ownerToken = "00000000-0000-4000-8000-000000000001";
 const unavailable = new HistoryRecoverySuperseded({ message: "test rollback" });
 const coverage: HistoryOwnerCoverage = {
@@ -63,8 +65,8 @@ type Options = {
   status?: string;
   job?: string;
   outcome?: string;
-  foreign?: boolean;
-  wrongPolicy?: boolean;
+  /** The merge tx is one block short of `safe` (cd deep) at the tip. */
+  shallow?: boolean;
   wrongRoot?: boolean;
   ambiguous?: boolean;
   oldAbandoned?: boolean;
@@ -128,7 +130,9 @@ const query = (route: "GET" | "batch", options: Options = {}) =>
             yield* sql`CREATE TEMP TABLE pending_block_finalizations (header_hash bytea PRIMARY KEY, status text, expected_utxos_root text) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE pending_block_finalization_txs (header_hash bytea, member_id bytea) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE local_mutation_jobs (job_id text, kind text, status text, payload jsonb) ON COMMIT DROP`;
-            yield* sql`CREATE TEMP TABLE da_payload_terminal_outcomes (header_hash bytea, terminal_outcome text, transition_kind text, deployment_identity_digest bytea, state_queue_policy_id bytea, finality_depth bigint) ON COMMIT DROP`;
+            yield* sql`CREATE TEMP TABLE node_l1_queue_terminals (header_hash bytea, terminal_outcome text, height bigint) ON COMMIT DROP`;
+            yield* sql`CREATE TEMP TABLE l1_follower_cursor (height bigint) ON COMMIT DROP`;
+            yield* sql`INSERT INTO l1_follower_cursor VALUES (${TIP_HEIGHT})`;
             yield* sql`CREATE TEMP TABLE event_history_authority (singleton boolean, deployment_identity bytea, owner_token uuid, generation bigint, state text, lease_until timestamptz) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE immutable (tx_id bytea) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE mempool (tx_id bytea, included_by bytea) ON COMMIT DROP`;
@@ -146,11 +150,14 @@ const query = (route: "GET" | "batch", options: Options = {}) =>
               yield* sql`INSERT INTO local_mutation_jobs VALUES (${"confirmed_merge_finalization:" + header.toString("hex")}, 'confirmed_merge_finalization', ${options.job}, ${JSON.stringify({ headerHash: header.toString("hex"), confirmedLedgerSnapshotRoot: options.wrongRoot ? "55".repeat(32) : root })}::jsonb)`;
             }
             if (options.outcome) {
-              yield* sql`INSERT INTO da_payload_terminal_outcomes VALUES (${header}, ${options.outcome}, ${options.outcome === "merged" ? "merge" : "fraud_removal"}, ${Buffer.from(options.foreign ? "66".repeat(32) : manifest.manifestId, "hex")}, ${Buffer.from(options.wrongPolicy ? "77".repeat(28) : manifest.contracts.stateQueueMint.scriptHash, "hex")}, ${manifest.l1Finality.confirmationDepth}::bigint)`;
+              // `safe`: at least cd deep at the tip (depth = tip - height + 1).
+              const safeHeight =
+                TIP_HEIGHT - manifest.l1Finality.confirmationDepth + 1;
+              yield* sql`INSERT INTO node_l1_queue_terminals VALUES (${header}, ${options.outcome}, ${options.shallow ? safeHeight + 1 : safeHeight})`;
             }
             yield* sql`INSERT INTO event_history_authority VALUES (true, ${Buffer.from(manifest.manifestId, "hex")}, ${ownerToken}::uuid, 1, ${options.authority ?? "ready"}, clock_timestamp() + (${options.expired ? -1 : 60000} * interval '1 millisecond'))`;
             if (options.revoked)
-              yield* sql`DELETE FROM da_payload_terminal_outcomes`;
+              yield* sql`DELETE FROM node_l1_queue_terminals`;
             const handler =
               route === "GET"
                 ? getTxStatusHandler.pipe(
@@ -218,8 +225,7 @@ for (const route of ["GET", "batch"] as const)
       { job: "completed" },
       { outcome: "merged" },
       { job: "completed", outcome: "removed" },
-      { job: "completed", outcome: "merged", foreign: true },
-      { job: "completed", outcome: "merged", wrongPolicy: true },
+      { job: "completed", outcome: "merged", shallow: true },
       { job: "completed", outcome: "merged", wrongRoot: true },
       { job: "completed", outcome: "merged", ambiguous: true },
       { job: "completed", outcome: "merged", status: "abandoned" },

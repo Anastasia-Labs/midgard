@@ -30,16 +30,12 @@ import {
   type JournalSummary,
   type L1StateView,
   type LedgerPointResult,
-  type ObserverSnapshot,
   type PendingTxDelta,
   type SqlDepositRow,
   type SqlStateSnapshot,
   type SqlWithdrawalRow,
 } from "./state-reconciliation.compares.js";
-import {
-  decodeObserverState,
-  materializePoint,
-} from "./state-reconciliation.materialize-point.js";
+import { materializePoint } from "./state-reconciliation.materialize-point.js";
 import {
   ACTIVE_JOURNAL_STATUSES,
   describeError,
@@ -59,12 +55,10 @@ import {
  */
 export const collectSqlStateSnapshot = ({
   committedTipHeaderHash,
-  stateQueuePolicyId,
 }: {
   readonly committedTipHeaderHash: (
     journals: ReadonlyMap<string, JournalSummary>,
   ) => string | null;
-  readonly stateQueuePolicyId: string;
 }): Effect.Effect<SqlStateSnapshot, unknown, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -247,27 +241,18 @@ export const collectSqlStateSnapshot = ({
           SELECT DISTINCT b.header_hash FROM blocks b
           WHERE NOT EXISTS (SELECT 1 FROM node_confirmed_merges m
             WHERE m.header_hash = b.header_hash)`;
-        const observerRows = yield* sql<{ readonly state_record: unknown }>`
-          SELECT state_record FROM state_queue_terminal_observer_states
-          WHERE state_queue_policy_id = ${Buffer.from(stateQueuePolicyId, "hex")}`;
-        let observer: ObserverSnapshot;
-        if (observerRows.length === 0) {
-          observer = { kind: "absent" };
-        } else if (observerRows.length > 1) {
-          observer = {
-            kind: "invalid",
-            reason: "more than one observer state row for this policy",
-          };
-        } else {
-          try {
-            observer = decodeObserverState(
-              observerRows[0]!.state_record,
-              stateQueuePolicyId,
-            );
-          } catch (error) {
-            observer = { kind: "invalid", reason: describeError(error) };
-          }
-        }
+        // A header whose newest terminal row is a removal: a landed tx
+        // took it out of the queue, and no later tx put it back and took it
+        // out again.
+        const removalRows = yield* sql<{
+          readonly header_hash: Buffer;
+          readonly transaction_hash: Buffer;
+          readonly terminal_outcome: string;
+        }>`
+          SELECT DISTINCT ON (terminal.header_hash)
+            terminal.header_hash, terminal.transaction_hash, terminal.terminal_outcome
+          FROM node_l1_queue_terminals terminal
+          ORDER BY terminal.header_hash, terminal.height DESC, terminal.tx_index DESC`;
         return {
           confirmedRoot,
           confirmedRootError,
@@ -281,7 +266,16 @@ export const collectSqlStateSnapshot = ({
           mempoolLedger,
           pendingTxs,
           blockHeaderHashes: blockRows.map((row) => toHex(row.header_hash)),
-          observer,
+          queueRemovals: removalRows.flatMap((row) =>
+            row.terminal_outcome === "removed"
+              ? [
+                  {
+                    headerHash: toHex(row.header_hash),
+                    transactionHash: toHex(row.transaction_hash),
+                  },
+                ]
+              : [],
+          ),
         } satisfies SqlStateSnapshot;
       }),
     );

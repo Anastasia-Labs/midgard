@@ -5,27 +5,14 @@ import {
   type TimeoutCorrectionJournalStore,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
-import { Effect, type Either, Ref, Runtime } from "effect";
+import { Effect, type Either, Ref } from "effect";
 
 import { ATTESTATION_TIMEOUT_CORRECTION_FAILURE_THRESHOLD } from "../commands/readiness.js";
-import { DaPayloadTerminalOutcomesDB } from "../database/index.js";
-import { retrieveCorrectionObserverJournalDependencies } from "../database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
 import {
   type AttestationTimeoutObservation,
   observeAttestationTimeoutQueue,
 } from "../services/attestation-timeout-observation.js";
 import { type AttestationTimeoutCorrectionHealth } from "../services/globals.js";
-import {
-  authorizeStateQueueCorrectionReinclusion,
-  createDatabaseStateQueueCorrectionObserverStore,
-  Database,
-  Globals,
-  reconcileStateQueueCorrectionObserver,
-  refuseRewoundStateQueueCorrectionRollback,
-  type StateQueueCorrectionObserverResult,
-  type StateQueueCorrectionObserverSource,
-} from "../services/index.js";
 import {
   type IntentJournalService,
   type IntentPlan,
@@ -222,84 +209,3 @@ export const withCorrectionIntentJournal = (
     },
   };
 };
-
-/**
- * Admits authenticated state-queue corrections into the durable observer.
- *
- * A removed block this node committed has already moved the native ledger
- * root, so its reinclusion is a rewind, not a forward write: the fiber only
- * admits the correction (the observer persists it) and the history owner's
- * recovery rewinds the native root and reincludes the payloads (see
- * state-queue-correction-rewind). The admission needs no producer, so a gate
- * the owner closed for an earlier removal of the same suffix never blocks
- * admitting the later one. The native rewind has no inverse, so a post-finality
- * rollback of a rewound removal is refused as an integrity failure.
- */
-export const reconcileStateQueueCorrections = ({
-  source,
-  deploymentIdentityDigest,
-  stateQueuePolicyId,
-  requiredFinalityDepth,
-  deploymentManifest,
-}: {
-  readonly source: StateQueueCorrectionObserverSource;
-  readonly deploymentIdentityDigest: string;
-  readonly stateQueuePolicyId: string;
-  readonly requiredFinalityDepth: bigint;
-  readonly deploymentManifest: unknown;
-}): Effect.Effect<
-  StateQueueCorrectionObserverResult,
-  unknown,
-  Database | Globals
-> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const run = Runtime.runPromise(yield* Effect.runtime<Database | Globals>());
-    const authority = {
-      expectedDeploymentIdentityDigest: deploymentIdentityDigest,
-      requiredFinalityDepth,
-    };
-    return yield* Effect.tryPromise({
-      try: () =>
-        reconcileStateQueueCorrectionObserver({
-          deploymentIdentityDigest,
-          stateQueuePolicyId,
-          requiredFinalityDepth,
-          source,
-          store: createDatabaseStateQueueCorrectionObserverStore({
-            sql,
-            deploymentManifest,
-          }),
-          reinclude: async (transition) => {
-            // Refuse an unauthorized transition before the observer admits it.
-            authorizeStateQueueCorrectionReinclusion(transition, authority);
-          },
-          // Refused before the terminal outcome is revoked, so the DA
-          // 'removed' authority of a rewound block survives the refusal.
-          assertRollbackPermitted: async (transition) => {
-            await run(
-              refuseRewoundStateQueueCorrectionRollback(transition, authority),
-            );
-          },
-          restoreAfterRollback: async (transition) => {
-            // The native rewind has no inverse: a rolled-back removal whose
-            // rewind ran is an explicit integrity failure, and one whose
-            // rewind never ran left nothing to restore.
-            await run(
-              refuseRewoundStateQueueCorrectionRollback(transition, authority),
-            );
-          },
-          revokeTerminal: async (transition) => {
-            await run(
-              DaPayloadTerminalOutcomesDB.revokeAuthenticatedTransition(
-                transition,
-                deploymentManifest,
-              ),
-            );
-          },
-          journalDependencies: () =>
-            run(retrieveCorrectionObserverJournalDependencies),
-        }),
-      catch: (cause) => cause,
-    });
-  });

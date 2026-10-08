@@ -63,6 +63,19 @@ export type LandedSimStats = TrafficStats & {
   /** Folds on the frontier's lineage the prune deleted. */
   prunedFolds: number;
   rollbacksRemovingProcessed: number;
+  /**
+   * Corrections admitted: a queue tail removal that landed took processed
+   * rows out, with no rollback (the event just after the last compared one).
+   */
+  correctionsAdmitted: number;
+  /** Rollbacks that undid an admitted correction: its rows are back. */
+  correctionRollbacks: number;
+  /** Rows an undone correction gave back that a later removal took again. */
+  correctionsReadmitted: number;
+  /** Rollbacks deeper than k the follower refused with nothing changed. */
+  beyondKRefused: number;
+  /** `removed` queue-terminal rows (admitted corrections) the projection wrote. */
+  terminalRemovals: number;
   admitted: number;
   directRejections: number;
   dependentRejections: number;
@@ -130,6 +143,11 @@ export const zeroLandedSimStats = (): LandedSimStats => ({
   retainedFolds: 0,
   prunedFolds: 0,
   rollbacksRemovingProcessed: 0,
+  correctionsAdmitted: 0,
+  correctionRollbacks: 0,
+  correctionsReadmitted: 0,
+  beyondKRefused: 0,
+  terminalRemovals: 0,
   admitted: 0,
   directRejections: 0,
   dependentRejections: 0,

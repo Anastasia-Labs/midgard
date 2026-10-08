@@ -15,13 +15,13 @@ import {
   Globals,
   NodeConfig,
 } from "../src/services/index.js";
+import { insertQueueTerminal } from "./helpers/queue-terminal-rows.js";
 import {
   DAY_MS,
   DEPLOYMENT,
   insertLease,
   journals,
   leaseTokens,
-  recordObserverState,
   remainingLabels,
 } from "./history-retention-prune.fixtures.js";
 import { header } from "./local-mutation-job-abandonment.journal-fixture.js";
@@ -126,10 +126,16 @@ const seed = Effect.gen(function* () {
       endedAgoMs: (40 - index) * DAY_MS,
     })),
   );
-  yield* recordObserverState({ admitted: [header("observer-named")] });
+  // A landed merge of the oldest journal the follower holds no final height
+  // for: the finality hold keeps it.
+  yield* insertQueueTerminal({
+    headerHash: header("terminal-named"),
+    outcome: "merged",
+    height: 1,
+  });
 });
 
-const JOURNALS = ["observer-named", "plain", "newest"];
+const JOURNALS = ["terminal-named", "plain", "newest"];
 
 const sweep = (setup: { readonly refuseProducer?: boolean } = {}) =>
   Effect.runPromise(
@@ -214,9 +220,9 @@ describe("a retention sweep with RETENTION_DAYS unset (B5)", () => {
     expect(result.leases).toContain("ended-inside");
     expect(result.leases).not.toContain("ended-outside");
     expect(result.leases).toHaveLength(101);
-    // Under the unowned fixture capability; the observer-named journal and
+    // Under the unowned fixture capability; the terminal-named journal and
     // the newest are kept.
-    expect(result.journals).toEqual(["observer-named", "newest"]);
+    expect(result.journals).toEqual(["terminal-named", "newest"]);
   });
 
   it("keeps every journal and still prunes the rest when the history owner refuses the permit", async () => {

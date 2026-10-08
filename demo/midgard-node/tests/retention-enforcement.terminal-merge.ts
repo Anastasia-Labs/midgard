@@ -2,98 +2,50 @@ import { RETENTION_MS_PER_DAY } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  DaPayloadsDB,
-  DaPayloadTerminalOutcomesDB,
-} from "../src/database/index.js";
+import { DaPayloadsDB } from "../src/database/index.js";
 import { computeChallengeableCutoff } from "../src/database/retention-policy.js";
-import { fetchDaPayloadRetirementProofs } from "../src/fibers/retention-sweeper.da-retirement-view.js";
 import {
   ContractDeploymentIdentity,
   Globals,
   NodeConfig,
 } from "../src/services/index.js";
+import { insertQueueTerminal } from "./helpers/queue-terminal-rows.js";
 import {
   daPayloadFixture,
   deploymentManifest,
   h32,
   NOW,
 } from "./retention-enforcement.q54-executable-retention-deadline-alert.js";
-import { terminalRemoval } from "./retention-enforcement.terminal-removal.js";
 import { deterministicFixtureBytes } from "./utils.js";
 
-export const terminalMerge = (
+/**
+ * The greatest final height the fixtures' L1 views carry: a terminal row at
+ * or below it is final, one above it can still roll back.
+ */
+export const FINAL_THROUGH = 1_000;
+
+/** A height above `FINAL_THROUGH`: a terminal row that is not final yet. */
+export const NOT_FINAL = FINAL_THROUGH + 1;
+
+/**
+ * Records that a landed tx took `headerHash` out of the state queue, as the
+ * queue-terminal projection derives it: one `node_l1_queue_terminals` row at
+ * `height` (final by default).
+ */
+export const seedQueueTerminal = (
   headerHash: Buffer,
+  outcome: "merged" | "removed",
   sequence: number,
-  finalityDepth = BigInt(deploymentManifest.l1Finality.confirmationDepth),
-): SDK.StateQueueAuthenticatedTransition => {
-  const policyId = deploymentManifest.contracts.stateQueueMint.scriptHash;
-  const transactionHash = h32(sequence.toString(16));
-  const rootOutRef = `${h32("0")}#0`;
-  const headerOutRef = `${h32((sequence + 4).toString(16))}#0`;
-  const redeemer = {
-    MergeToConfirmedStateV1: {
-      yield_to_ref_input_index: 0n,
-      header_node_key: headerHash.toString("hex"),
-      confirmed_state_input_outref: {
-        transactionId: h32("0"),
-        outputIndex: 0n,
-      },
-      confirmed_state_output_index: 0n,
-      m_settlement_redeemer_index: null,
-      merged_block_withdrawals_root: h32("1"),
-      merged_block_forced_transactions_root: h32("2"),
-      merged_block_transactions_root: h32("3"),
-      merged_block_deposits_root: h32("4"),
-      merged_block_transition_trace_root: h32("5"),
-      merged_block_event_to_step_root: h32("6"),
-      merged_block_validation_traces_root: h32("7"),
-      merged_block_withdrawal_count: 0n,
-      merged_block_forced_transaction_count: 0n,
-      merged_block_l2_transaction_count: 0n,
-      merged_block_deposit_count: 0n,
-      merged_block_total_event_count: 0n,
-      merged_block_transition_step_count: 0n,
-      merged_block_validation_trace_count: 0n,
-    },
-  } as const;
-  const transition = SDK.deriveStateQueueAuthenticatedTransition({
-    deploymentIdentityDigest: deploymentManifest.manifestId,
-    stateQueuePolicyId: policyId,
-    transactionHash,
-    blockHash: h32((sequence + 8).toString(16)),
-    slot: (100 + sequence).toString(),
-    blockNo: (90 + sequence).toString(),
-    transactionIndex: "0",
-    chainPointId: h32((sequence + 12).toString(16)),
-    finalityDepth: finalityDepth.toString(),
-    mintPolicyIds: [policyId],
-    referenceInputOutRefs: [`${h32("f")}#0`],
-    correctionLockWitness: {
-      kind: "idle_reference",
-      referenceOutRef: `${h32("f")}#0`,
-      datum: "Idle",
-    },
-    redeemers: [
-      {
-        purpose: "mint",
-        index: "0",
-        cborHex: Data.to(redeemer, SDK.StateQueueRedeemer),
-      },
-    ],
-    spentInputOutRefs: [rootOutRef, headerOutRef],
-    previousQueue: [
-      { headerHash: null, outRef: rootOutRef },
-      { headerHash: headerHash.toString("hex"), outRef: headerOutRef },
-    ],
-    nextQueue: [{ headerHash: null, outRef: `${transactionHash}#0` }],
+  height = sequence,
+): Effect.Effect<void, unknown, SqlClient.SqlClient> =>
+  insertQueueTerminal({
+    headerHash,
+    outcome,
+    height,
+    transactionHash: Buffer.from(h32(sequence.toString(16)), "hex"),
   });
-  if (transition === null) throw new Error("invalid terminal merge fixture");
-  return transition;
-};
 
 const publishedFixture = (endTime: Date, sequence = 1) => {
   const header: SDK.Header = {
@@ -117,11 +69,14 @@ const publishedFixture = (endTime: Date, sequence = 1) => {
     Effect.runSync(SDK.hashBlockHeader(header)),
     "hex",
   );
-  const transition = terminalMerge(headerHash, sequence);
-  return { headerHash, transition };
+  return { headerHash };
 };
 
-export const seedPublished = (endTime: Date, sequence = 1) =>
+/**
+ * A published payload whose header a landed tx merged at `height` (final by
+ * default).
+ */
+export const seedPublished = (endTime: Date, sequence = 1, height = sequence) =>
   Effect.gen(function* () {
     const fixture = publishedFixture(endTime, sequence);
     const row = {
@@ -131,57 +86,12 @@ export const seedPublished = (endTime: Date, sequence = 1) =>
     yield* DaPayloadsDB.upsertAvailable(row);
     const sql = yield* SqlClient.SqlClient;
     yield* sql`UPDATE da_payloads SET created_at = ${new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY)} WHERE header_hash = ${fixture.headerHash}`;
-    yield* DaPayloadTerminalOutcomesDB.recordAuthenticatedTransition(
-      fixture.transition,
-      deploymentManifest,
-    );
+    yield* seedQueueTerminal(fixture.headerHash, "merged", sequence, height);
     return fixture;
   });
 
-export const seedTerminal = (
-  headerHash: Buffer,
-  sequence: number,
-): Effect.Effect<void, unknown, SqlClient.SqlClient> =>
-  DaPayloadTerminalOutcomesDB.recordAuthenticatedTransition(
-    terminalMerge(headerHash, sequence),
-    deploymentManifest,
-  );
-
 export const manifestDigest = (): Buffer =>
   Buffer.from(deploymentManifest.manifestId, "hex");
-
-/** Records an SDK-authenticated `removed` outcome under `digest`. */
-export const seedRemoved = (
-  headerHash: Buffer,
-  sequence: number,
-  digest: Buffer,
-): Effect.Effect<void, unknown, SqlClient.SqlClient> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const transition = terminalRemoval(
-      headerHash,
-      sequence,
-      digest.toString("hex"),
-    );
-    yield* sql`
-      INSERT INTO da_payload_terminal_outcomes (
-        header_hash, terminal_outcome, transition_kind,
-        deployment_identity_digest, state_queue_policy_id,
-        transaction_hash, block_hash, slot, block_no,
-        transaction_index, chain_point_id, finality_depth,
-        transition_digest, transition_record
-      ) VALUES (
-        ${headerHash}, 'removed', ${transition.transitionKind}, ${digest},
-        ${Buffer.from(deploymentManifest.contracts.stateQueueMint.scriptHash, "hex")},
-        ${Buffer.from(transition.transactionHash, "hex")},
-        ${Buffer.from(transition.blockHash, "hex")}, ${transition.slot},
-        ${transition.blockNo}, ${Number(transition.transactionIndex)},
-        ${Buffer.from(transition.chainPointId, "hex")},
-        ${transition.finalityDepth},
-        ${Buffer.from(transition.transitionDigest, "hex")},
-        ${JSON.stringify(transition)}
-      )`;
-  });
 
 /** An L1 view that references none of the seeded payloads. */
 const unrelatedView: DaPayloadsDB.RetentionL1View = {
@@ -189,32 +99,25 @@ const unrelatedView: DaPayloadsDB.RetentionL1View = {
   liveQueueHeaderHashes: [deterministicFixtureBytes("unrelated-live", 28)],
 };
 
+/**
+ * Prunes at `NOW` under this deployment (or `digest`), at `view` as given
+ * (a view without `finalThroughHeight` has no final height), or by default
+ * at a view of none of the seeded payloads final through `FINAL_THROUGH`.
+ */
 export const prune = (
   options: {
     readonly view?: DaPayloadsDB.RetentionL1View;
     readonly digest?: Buffer | undefined;
   } = {},
 ) =>
-  Effect.gen(function* () {
-    const retirement = yield* fetchDaPayloadRetirementProofs({
-      deploymentIdentityDigest: deploymentManifest.manifestId,
-      stateQueuePolicyId:
-        deploymentManifest.contracts.stateQueueMint.scriptHash,
-      automaticRecoveryMaxDepth:
-        deploymentManifest.l1Finality.automaticRecoveryMaxDepth,
-      // Old broad fixtures assume terminal history has since crossed k; the
-      // focused proof suite pins real depth boundaries independently.
-      source: { canonicalDepth: async () => 2162n },
-    });
-    return yield* DaPayloadsDB.pruneBeyondRetention({
-      challengeableCutoff: computeChallengeableCutoff(NOW),
-      view: {
-        ...(options.view ?? unrelatedView),
-        retirementProofs: retirement.proofs,
-      },
-      deploymentIdentityDigest:
-        "digest" in options ? options.digest : manifestDigest(),
-    });
+  DaPayloadsDB.pruneBeyondRetention({
+    challengeableCutoff: computeChallengeableCutoff(NOW),
+    view: options.view ?? {
+      ...unrelatedView,
+      finalThroughHeight: FINAL_THROUGH,
+    },
+    deploymentIdentityDigest:
+      "digest" in options ? options.digest : manifestDigest(),
   });
 
 export const remainingHashes = Effect.gen(function* () {

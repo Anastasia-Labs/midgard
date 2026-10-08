@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildListenRouter } from "../src/commands/listen-router.js";
 import { takeCommitWorkerOutput } from "../src/fibers/block-commitment.js";
+import { LANDED_BLOCK_REBASE_SOURCE } from "../src/landed-blocks/holds.js";
 import { NodeConfig } from "../src/services/config.js";
 import {
   Globals,
@@ -24,7 +25,6 @@ import {
   COMMIT_DA_FRAME_LEDGER_CEILING,
   COMMIT_DA_FRAME_SOURCE,
   HaltSource,
-  HISTORY_CORRECTION_REWIND_SOURCE,
   raiseLivenessIncident,
 } from "../src/services/liveness-halt.js";
 import { Lucid } from "../src/services/lucid.js";
@@ -157,8 +157,8 @@ const onNode = <A, E>(
     ),
   );
 
-const SOURCE = HaltSource.stateQueueCorrectionRewind;
-const REASON = "state_queue_correction_rewind_conflict";
+const SOURCE = HaltSource.operatorMembership;
+const REASON = "operator_removed";
 const ESCALATE_AFTER_MS = 10 * 60_000;
 
 describe("GET /readyz liveness reasons", () => {
@@ -322,21 +322,19 @@ describe("GET /readyz liveness reasons", () => {
       Effect.gen(function* () {
         yield* raiseLivenessIncident(
           globals,
-          HaltSource.stateQueueCorrectionRewind,
-          "state_queue_correction_rewind_conflict",
-          "removal disagrees with L1",
+          HaltSource.operatorMembership,
+          "operator_removed",
+          "this operator is retired in the follower's operator set",
           { escalateAfterMs: 0 },
         );
         return yield* readyz;
       }),
     );
     expect(escalated.status).toBe(503);
-    expect(escalated.reasons).toEqual([
-      "state_queue_correction_rewind_conflict",
-    ]);
+    expect(escalated.reasons).toEqual(["operator_removed"]);
     expect(escalated.livenessReasons).toEqual([
       expect.objectContaining({
-        source: HaltSource.stateQueueCorrectionRewind,
+        source: HaltSource.operatorMembership,
         escalateAfterMs: 0,
         escalated: true,
       }),
@@ -371,7 +369,7 @@ describe("GET /readyz liveness reasons", () => {
         yield* raiseLivenessIncident(globals, SOURCE, REASON, "confirmation");
         yield* raiseLivenessIncident(
           globals,
-          HISTORY_CORRECTION_REWIND_SOURCE,
+          LANDED_BLOCK_REBASE_SOURCE,
           REASON,
           "history",
         );
@@ -381,6 +379,6 @@ describe("GET /readyz liveness reasons", () => {
     expect(both.reasons).toEqual([REASON]);
     expect(
       (both.livenessReasons ?? []).map((entry) => entry.source).sort(),
-    ).toEqual([SOURCE, HISTORY_CORRECTION_REWIND_SOURCE].sort());
+    ).toEqual([SOURCE, LANDED_BLOCK_REBASE_SOURCE].sort());
   });
 });

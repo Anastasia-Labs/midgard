@@ -220,13 +220,10 @@ export const withdrawalMemberToAssignment = (
  * landed-merge walk stops at a header with no journal, so pruning one before
  * its merge is folded locally would skip that merge silently), and any
  * journal whose header is still challenge-relevant (`challengeRelevantHeader`:
- * the confirmed head, a live queue header, a header DA retention holds for
- * finality, or one any recorded correction-observer transition, pending or
- * admitted, merged or removed, or the observer's durable cursor still names,
- * so a merge admitted at confirmation depth keeps its journal until it is
- * final at k), any journal whose merge the observer has not recorded since it
- * was folded locally (or every journal, while the deployment has no observer
- * record), and any journal with an orphaned event member
+ * the confirmed head, a live queue header, or a header DA retention holds for
+ * finality: live in the follower's facts, or merged or removed by a landed tx
+ * that is not final yet, so a landed merge keeps its journal until it is
+ * final at k), and any journal with an orphaned event member
  * (`orphanMemberJournal`). Recovery dependencies are also kept:
  * unfinished/abandoned journals' bases, same-base siblings and descendants,
  * and every retained native recovery plan's primary/member headers. Each batch
@@ -272,17 +269,7 @@ export const pruneFinalizedBeyondChallengeability = ({
               WHERE job.${sql(MutationJobsDB.Columns.JOB_ID)} =
                   ${MutationJobsDB.confirmedMergeFinalizationJobId("")}::text ||
                   encode(${sql(tableName)}.${sql(Columns.HEADER_HASH)}, 'hex')
-                AND job.${sql(MutationJobsDB.Columns.STATUS)} = ${MutationJobsDB.Status.Completed}
-                -- The observer saved its record after the merge was folded
-                -- locally. The journal is past the retention window, so its
-                -- header was committed long before that save: the record
-                -- still queues the header, names its merge, or dropped the
-                -- merge as final beyond k. No record (NULL) keeps every
-                -- journal.
-                AND job.${sql(MutationJobsDB.Columns.COMPLETED_AT)} < (
-                  SELECT observer.updated_at
-                  FROM state_queue_terminal_observer_states AS observer
-                  WHERE observer.deployment_identity_digest = ${deploymentIdentityDigest}))
+                AND job.${sql(MutationJobsDB.Columns.STATUS)} = ${MutationJobsDB.Status.Completed})
             AND ${sql(Columns.HEADER_HASH)} <> (
               SELECT newest.${sql(Columns.HEADER_HASH)} FROM ${sql(
                 tableName,
@@ -304,48 +291,3 @@ export const pruneFinalizedBeyondChallengeability = ({
         ),
       ),
   });
-
-/** Retained journals recovery still reads, plus merges not finalized locally.
- * Finalized same-base siblings/descendants and recovery-plan members need
- * recorded landing evidence too. Settled finalized journals alone do not hold
- * their observer transition forever: that would cycle with journal retention. */
-export const retrieveCorrectionObserverJournalDependencies: Effect.Effect<
-  readonly Readonly<{
-    headerHash: string;
-    baseTailHeaderHash: string;
-    baseTailOutRef: string;
-    abandoned: boolean;
-  }>[],
-  DatabaseError,
-  Database
-> = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const rows = yield* sql<{
-    readonly header_hash: Buffer;
-    readonly base_tail_header_hash: Buffer;
-    readonly base_tail_out_ref: string;
-    readonly status: Status;
-  }>`SELECT ${sql(Columns.HEADER_HASH)}, ${sql(Columns.BASE_TAIL_HEADER_HASH)},
-      ${sql(Columns.BASE_TAIL_OUT_REF)}, ${sql(Columns.STATUS)}
-    FROM ${sql(tableName)}
-    WHERE ${sql(Columns.STATUS)} <> ${Status.LocallyApplied}
-      OR ${recoveryRelevantJournal(sql, `${tableName}.${Columns.HEADER_HASH}`)}
-      OR NOT EXISTS (
-        SELECT 1 FROM ${sql(MutationJobsDB.tableName)} AS job
-        WHERE job.${sql(MutationJobsDB.Columns.JOB_ID)} =
-            ${MutationJobsDB.confirmedMergeFinalizationJobId("")}::text ||
-            encode(${sql(tableName)}.${sql(Columns.HEADER_HASH)}, 'hex')
-          AND job.${sql(MutationJobsDB.Columns.STATUS)} = ${MutationJobsDB.Status.Completed})
-    ORDER BY ${sql(Columns.HEADER_HASH)}`;
-  return rows.map((row) => ({
-    headerHash: row.header_hash.toString("hex"),
-    baseTailHeaderHash: row.base_tail_header_hash.toString("hex"),
-    baseTailOutRef: row.base_tail_out_ref,
-    abandoned: row.status === Status.Abandoned,
-  }));
-}).pipe(
-  sqlErrorToDatabaseError(
-    tableName,
-    "Failed to read the journals the correction observer depends on",
-  ),
-);

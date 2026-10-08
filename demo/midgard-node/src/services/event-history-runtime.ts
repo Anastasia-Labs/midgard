@@ -17,23 +17,13 @@ import {
 import { NodeConfig } from "./config.js";
 import { makeEventHistoryOwner } from "./event-history-owner.js";
 import { HistoryPreparation } from "./event-history-recovery.js";
-import { Globals } from "./globals.globals.js";
 import { ingestAtFollowerView } from "./l1-follower.recovery.js";
-import {
-  clearLivenessIncident,
-  HISTORY_CORRECTION_REWIND_SOURCE,
-} from "./liveness-halt.js";
 import { Lucid } from "./lucid.js";
 import { MempoolLedgerCache } from "./mempool-ledger-cache.js";
 import {
   ContractDeploymentIdentity,
   MidgardContracts,
 } from "./midgard-contracts.js";
-import {
-  CORRECTION_REWIND_HELD_ON_NATIVE_STATE,
-  prepareStateQueueCorrectionRewind,
-  stateQueueCorrectionRewindDisposition,
-} from "./state-queue-correction-rewind.js";
 import { WriteBehind } from "./write-behind.js";
 
 type OwnerOptions<E, R> = Parameters<typeof makeEventHistoryOwner<E, R>>[0];
@@ -73,30 +63,12 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
           cause,
         }),
     });
-    // The ledger root is a promoted native owner: a correction that removes a
-    // committed block rewinds it through this owner's recovery.
-    const rewindAuthority =
-      identity.manifestId !== undefined && identity.manifest !== undefined
-        ? {
-            manifestId: identity.manifestId,
-            stateQueuePolicyId: contracts.stateQueue.policyId,
-            requiredFinalityDepth: BigInt(
-              identity.manifest.l1Finality.confirmationDepth,
-            ),
-          }
-        : undefined;
     return yield* makeEventHistoryOwner<
       | E
       | DatabaseError
-      | Effect.Effect.Error<
-          ReturnType<typeof prepareStateQueueCorrectionRewind>
-        >
       | Effect.Effect.Error<ReturnType<typeof prepareLandedBlockRebase>>,
       | R
       | SqlClient.SqlClient
-      | Effect.Effect.Context<
-          ReturnType<typeof prepareStateQueueCorrectionRewind>
-        >
       | Effect.Effect.Context<ReturnType<typeof prepareLandedBlockRebase>>
     >({
       ...input,
@@ -104,42 +76,13 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
         (
           input.prepareCompletion?.(checkpoint, preparation) ?? Effect.void
         ).pipe(Effect.provideService(HistoryPreparation, preparation)),
-      preparePendingReconciliation: (checkpoint, preparation) =>
-        identity.manifest === undefined
-          ? Effect.fail(
-              new DatabaseError({
-                table: "event_history_recovery_plans",
-                message:
-                  "Recovery requires the bound deployment finality profile",
-                cause: undefined,
-              }),
-            )
-          : // A retained or owed correction rewind runs first: it resolves
-            // the removed blocks' journals, and a prepared plan of either kind
-            // must be applied before another can be prepared.
-            (rewindAuthority === undefined
-              ? Effect.succeed(undefined)
-              : prepareStateQueueCorrectionRewind({
-                  bindingDigest: binding.digest,
-                  checkpoint,
-                  preparation,
-                  config,
-                  authority: rewindAuthority,
-                })
-            ).pipe(
-              // A correction rewind held on the native owner's state still
-              // owns the removed local suffix and that root: the landed-block
-              // rebase waits for the next pass instead of moving a root a
-              // held recovery owns. Otherwise the rebase follows the landed
-              // blocks, disposing of the own journals that cannot land and
-              // reviving the abandoned ones that landed (whichever lands
-              // wins).
-              Effect.flatMap((rewind) =>
-                rewind === CORRECTION_REWIND_HELD_ON_NATIVE_STATE
-                  ? Effect.void
-                  : prepareLandedBlockRebase(preparation),
-              ),
-            ),
+      // A rollback, or a landed correction that removed blocks the working
+      // ledger held, is recomputed by the landed-block rebase: it disposes
+      // of the own journals that cannot land, revives the abandoned ones
+      // that landed (whichever lands wins), and moves native MPF and the
+      // working ledger to the processed landed chain.
+      preparePendingReconciliation: (_checkpoint, preparation) =>
+        prepareLandedBlockRebase(preparation),
       binding,
       histories,
       cache,
@@ -156,17 +99,6 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
           if (rebase !== undefined) return rebase;
           const pending = yield* pendingHistoryLedgerDisposition(change);
           if (pending !== undefined) return pending;
-          if (rewindAuthority !== undefined) {
-            const rewind =
-              yield* stateQueueCorrectionRewindDisposition(rewindAuthority);
-            if (rewind !== undefined) return rewind;
-            // No admitted removal leaves a local journal unresolved, so no
-            // rewind evaluation will run to clear its held reason.
-            yield* clearLivenessIncident(
-              yield* Globals,
-              HISTORY_CORRECTION_REWIND_SOURCE,
-            );
-          }
           // The follower-change driver writes the event rows (E-N1-2
           // ruling 1); the owner's reconcile repairs orphans and, in a
           // recovery, ingests at the follower's view.

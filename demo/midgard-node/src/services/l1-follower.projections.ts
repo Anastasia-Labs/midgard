@@ -15,6 +15,7 @@ import {
   type OperatorActivityRecord,
   operatorSetProjection,
 } from "../l1-operator-set/index.js";
+import { queueTerminalProjection } from "../l1-queue-terminals/index.js";
 import { landedStateQueueProjection } from "../landed-blocks/index.js";
 import type { Database } from "./database.js";
 import type { L1FollowerPlan } from "./l1-follower.plan.js";
@@ -28,6 +29,7 @@ export const nodeFollowerProjections = (
   const projections: FollowerProjection[] = [
     eventProjection(plan.projection),
     landedStateQueueProjection(plan.stateQueue, run),
+    queueTerminalProjection(plan.stateQueue),
     operatorSetProjection(plan.operatorSet, () => activity.record),
     forcedOrderProjection(plan.forcedOrders),
     // Stores a settlement attempt's `final` in the prune step that prunes

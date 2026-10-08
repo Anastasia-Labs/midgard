@@ -1,13 +1,13 @@
 /**
  * Prepared recovery plans of the retired kinds (`retired-plans.ts`): a node
  * that prepared a signed-header recovery, a signed-intent release, a
- * displaced-block revival or a displacement compensation before those
- * services were deleted keeps the history reconciliation pending, and the
- * correction rewind waiting, until something removes the plan. The
- * landed-block rebase does: a retained one makes the rebase due, the rebase
- * moves the native MPF to the landed target from wherever the plan's
- * restore left it, and discards the plan in its SQL transaction. A prepared
- * correction rewind, and an applied receipt of any kind, stay as they were.
+ * displaced-block revival, a displacement compensation or a correction
+ * rewind before those services were deleted keeps the history
+ * reconciliation pending until something removes the plan. The landed-block
+ * rebase does: a retained one makes the rebase due, the rebase moves the
+ * native MPF to the landed target from wherever the plan's restore left it,
+ * and discards the plan in its SQL transaction. An applied receipt of any
+ * kind, and a prepared plan of a domain no version wrote, stay as they were.
  */
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
@@ -15,11 +15,10 @@ import { describe, expect, it } from "vitest";
 
 import * as Authority from "../src/database/eventHistoryAuthority.js";
 import { pendingHistoryLedgerDisposition } from "../src/database/eventHistoryLedgerRepair.js";
-import { DISPLACEMENT_COMPENSATION_RECOVERY_DOMAIN } from "../src/database/eventHistoryRecoveryPlans.displacement-compensation.js";
 import {
   CORRECTION_REWIND_RECOVERY_DOMAIN,
   DISPLACED_BLOCK_REVIVAL_RECOVERY_DOMAIN,
-  retainedPreparedRecoveryPlan,
+  DISPLACEMENT_COMPENSATION_RECOVERY_DOMAIN,
   SIGNED_HEADER_RECOVERY_DOMAIN,
   SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN,
 } from "../src/database/eventHistoryRecoveryPlans.js";
@@ -48,7 +47,11 @@ const RETIRED = [
   ["signed_intent_release", SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN],
   ["displaced_block_revival", DISPLACED_BLOCK_REVIVAL_RECOVERY_DOMAIN],
   ["displacement_compensation", DISPLACEMENT_COMPENSATION_RECOVERY_DOMAIN],
+  ["correction_rewind", CORRECTION_REWIND_RECOVERY_DOMAIN],
 ] as const;
+
+/** A domain no node version wrote: its plan is not a retired kind. */
+const UNKNOWN_DOMAIN = "midgard-history-unknown-intent-v1";
 
 const BINDING = Buffer.alloc(32, 0x61);
 const OTHER_BINDING = Buffer.alloc(32, 0x62);
@@ -139,7 +142,7 @@ describe(
   { concurrent: false },
   () => {
     it.each(RETIRED)(
-      "discards a prepared %s plan, releasing the reconciliation and the rewind, and leaves kept plans",
+      "discards a prepared %s plan, releasing the reconciliation, and leaves other plans",
       async (_kind, domain) => {
         const { native, globals } = await settled();
         const retired: Plan = {
@@ -154,13 +157,13 @@ describe(
           domain,
           state: "applied",
         };
-        const rewind: Plan = {
+        const unknown: Plan = {
           id: Buffer.alloc(32, 0x03),
           binding: OTHER_BINDING,
-          domain: CORRECTION_REWIND_RECOVERY_DOMAIN,
+          domain: UNKNOWN_DOMAIN,
           state: "prepared",
         };
-        for (const row of [retired, receipt, rewind]) await plan(globals, row);
+        for (const row of [retired, receipt, unknown]) await plan(globals, row);
         // Its native restore ran before the process stopped.
         native.durableRoot = root(0x55);
 
@@ -179,21 +182,17 @@ describe(
         expect(native.durableRoot).toBe(R1);
         expect(await plans(globals)).toEqual([
           [hex(receipt.id), "applied"],
-          [hex(rewind.id), "prepared"],
+          [hex(unknown.id), "prepared"],
         ]);
         expect(await disposition(globals, BINDING)).toBeUndefined();
-        // The correction rewind no longer finds a retained plan to wait for.
-        expect(
-          await run(globals, retainedPreparedRecoveryPlan(hex(BINDING))),
-        ).toBeUndefined();
-        // The kept plan still owns its binding's reconciliation.
+        // The unknown plan still owns its binding's reconciliation.
         expect(await disposition(globals, OTHER_BINDING)).toMatchObject({
           status: "pending",
         });
       },
     );
 
-    it("does not make the rebase due for a prepared correction rewind or an applied receipt", async () => {
+    it("does not make the rebase due for an applied receipt or a prepared plan of an unknown domain", async () => {
       const { native, globals } = await settled();
       const rows: Plan[] = [
         {
@@ -205,12 +204,12 @@ describe(
         {
           id: Buffer.alloc(32, 0x03),
           binding: OTHER_BINDING,
-          domain: CORRECTION_REWIND_RECOVERY_DOMAIN,
+          domain: UNKNOWN_DOMAIN,
           state: "prepared",
         },
       ];
       for (const row of rows) await plan(globals, row);
-      // A correction rewind owns the root its restore moved to.
+      // Nothing makes the rebase due, so the native root stays where it is.
       native.durableRoot = root(0x55);
 
       expect(await run(globals, landedBlockRebaseDisposition)).toBeUndefined();

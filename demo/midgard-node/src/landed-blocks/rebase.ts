@@ -82,6 +82,10 @@ import {
   settleChainDeposits,
 } from "./rebase-events.js";
 import { rebasePlan, type RebaseTarget, walkTarget } from "./rebase-target.js";
+import {
+  LandedChainRootNotRetained,
+  restoreRefusalHold,
+} from "./restore-holds.js";
 import { discardRetiredPlans } from "./retired-plans.js";
 import { markRows, recordSettlements } from "./settlements.js";
 import { deleteRows, markApplied } from "./store.js";
@@ -146,9 +150,7 @@ export const moveNativeRoot = (
     // the frontier's root is retained unless the store lost it.
     if (from < 0)
       return yield* Effect.fail(
-        new Error(
-          `The native MPF retains no root of the processed landed chain (durable root ${durableRoot}, confirmed-ledger frontier root ${roots[0]!}). The native MPF store keeps every root it promoted, and the frontier's root was promoted when its block was applied, so the store at LEDGER_MPF_DB_PATH lost it (replaced, restored from an older copy or damaged). The rebase holds with native MPF, the SQL root and the journals unchanged, and the history owner retries it on its backoff while the history gate stays closed, which holds block production. Operator action is needed: stop the node, install at LEDGER_MPF_DB_PATH a native MPF store that retains root ${roots[0]!} in full (such as a copy of this node's store taken at or after that root), and restart it; the next rebase completes.`,
-        ),
+        new LandedChainRootNotRetained(durableRoot, roots[0]!),
       );
     for (let index = from + 1; index < roots.length; index++) {
       const base = roots[index - 1]!;
@@ -316,17 +318,25 @@ const causeChain = (failure: unknown) => {
   return chain;
 };
 
-/** The hold a failed rebase shows: its reason, and the failure as detail. */
+/**
+ * The hold a failed rebase shows: its reason, the failure as detail, and
+ * how long it stays raised before it escalates. A refused native restore
+ * is named by its refusal (`restore-holds.ts`).
+ */
 const failureHold = (failure: unknown) => {
   const chain = causeChain(failure);
   const parts: string[] = [];
   for (const part of chain.map((cause) => formatUnknownError(cause)))
     if (parts.at(-1) !== part) parts.push(part);
+  const restore = restoreRefusalHold(chain);
   return {
-    reason: chain.some((cause) => cause instanceof UndecidedBatchMember)
-      ? LANDED_BLOCK_BATCH_UNDECIDED
-      : LANDED_BLOCK_REBASE_FAILED,
+    reason:
+      restore?.reason ??
+      (chain.some((cause) => cause instanceof UndecidedBatchMember)
+        ? LANDED_BLOCK_BATCH_UNDECIDED
+        : LANDED_BLOCK_REBASE_FAILED),
     detail: parts.join("; caused by "),
+    escalateAfterMs: restore?.escalateAfterMs,
   };
 };
 
@@ -340,8 +350,9 @@ const failureHold = (failure: unknown) => {
  * deadline, a superseded preparation) and an interrupt propagate as before.
  * Any other failure is caught here: it is recorded
  * (`LANDED_BLOCK_REBASE_FAILURE`), raised as a liveness reason with its
- * detail (`landed_block_batch_undecided` when the batch closure met an
- * undecided receipt member, `landed_block_rebase_failed` otherwise), and
+ * detail (a refused native restore's named reason, `restore-holds.ts`;
+ * `landed_block_batch_undecided` when the batch closure met an undecided
+ * receipt member; `landed_block_rebase_failed` otherwise), and
  * the preparation returns, so the reconciliation stays pending on the
  * owner's backoff and the owner retries it; the record and the reason
  * clear once a rebase runs.
@@ -392,7 +403,7 @@ export const prepareLandedBlockRebase = (
           isRecoverableHistorySourceFailure(failure)
         )
           return Effect.failCause(cause);
-        const hold = failureHold(failure);
+        const { escalateAfterMs, ...hold } = failureHold(failure);
         return Effect.gen(function* () {
           yield* Ref.set(globals.LANDED_BLOCK_REBASE_FAILURE, hold);
           yield* raiseLivenessIncident(
@@ -400,6 +411,7 @@ export const prepareLandedBlockRebase = (
             LANDED_BLOCK_REBASE_SOURCE,
             hold.reason,
             hold.detail,
+            escalateAfterMs === undefined ? {} : { escalateAfterMs },
           );
           return "failed" as const;
         });

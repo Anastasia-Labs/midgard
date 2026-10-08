@@ -46,7 +46,6 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import { LANDED_COMMIT_BASE_PENDING } from "../src/workers/commit-block-header.resolve-commit-base-ledger-entries.js";
-import { nativeRoot } from "./attestation-timeout-reinclusion-emulator.expect-rewound-and-recommitted.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
@@ -60,17 +59,20 @@ import {
   openNodeServices,
 } from "./helpers/commit-replacement-state-queue.js";
 import {
-  admitTransfer,
-  buildDepositorTransfer,
   closeLifecycle,
-  depositorL2Utxos,
-  dropPendingEmulatorTransaction,
   finalizeLocally,
   type Lifecycle,
+  nativeRoot,
   readJournal,
   submitDeposit,
   synchronizeBounded,
-} from "./helpers/correction-rewind-scenario.js";
+} from "./helpers/correction-admission-scenario.js";
+import {
+  admitTransfer,
+  buildDepositorTransfer,
+  depositorL2Utxos,
+} from "./helpers/emulator-l2-transfer.js";
+import { dropPendingEmulatorTransaction } from "./helpers/emulator-rollback.js";
 import { emulatorState } from "./helpers/emulator-snapshot.js";
 import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
 import { makeRollbackHistoryTransport } from "./helpers/history-rollback-transport.js";

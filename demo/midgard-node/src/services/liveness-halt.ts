@@ -18,10 +18,6 @@ import {
  * running.
  */
 export const HaltSource = {
-  /** An admitted state-queue correction whose native rewind already ran was
-   * rolled back below its release depth (see
-   * `StateQueueCorrectionRewindIntegrityError`). */
-  stateQueueCorrectionRewind: "state_queue_correction_rewind",
   /** This operator is removed (`operator_removed`, plan §7.5 R7): retired,
    * or in no list after having been active, in the follower's operator set
    * (see `publishOperatorMembership`). Holds every operator duty; a rollback
@@ -33,19 +29,16 @@ export type HaltSource = (typeof HaltSource)[keyof typeof HaltSource];
 
 /** The fibers that build or submit block commitments. */
 export const COMMIT_HALT_SOURCES: readonly HaltSource[] = [
-  HaltSource.stateQueueCorrectionRewind,
   HaltSource.operatorMembership,
 ];
 
 /** The settlement worker. */
 export const SETTLEMENT_HALT_SOURCES: readonly HaltSource[] = [
-  HaltSource.stateQueueCorrectionRewind,
   HaltSource.operatorMembership,
 ];
 
 /** The merge fiber, which folds the state queue into the confirmed state. */
 export const MERGE_HALT_SOURCES: readonly HaltSource[] = [
-  HaltSource.stateQueueCorrectionRewind,
   HaltSource.operatorMembership,
 ];
 
@@ -311,55 +304,38 @@ export const restartedAcrossHalts = <A, E, R>(
     }
   });
 
-/** The source the state-queue correction rewind raises under while it holds
- * on a removed block's journal. It holds no fiber: the rewind's disposition keeps the history gate closed,
- * which holds block production. (`HaltSource.stateQueueCorrectionRewind`
- * is a different, halting source.) Every rewind evaluation re-derives it;
- * it clears once the reinclusion completes, once an evaluation holds for
- * another reason or finds nothing owed, and once no admitted removal leaves
- * a local journal unresolved. */
-export const HISTORY_CORRECTION_REWIND_SOURCE = "history_correction_rewind";
+/** The landed-block rebase's native restore was refused because the native
+ * MPF store retains no root of the processed landed chain in full (every
+ * `restoreCanonicalRoot` it tried returned `NativeMpfRootNotRetained`).
+ * Raised under the rebase's source (`landed_block_rebase`). The refusal
+ * changes nothing: the rebase holds with native MPF, the SQL root and the
+ * journals as they are and the history gate closed, and the history owner
+ * retries it on its backoff; the next rebase evaluation that runs, or
+ * finds no rebase due, clears it. The node cannot put the root's closure back
+ * itself: the operator stops it, installs a native MPF store that retains
+ * the root in full, and restarts it. */
+export const NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED =
+  "native_mpf_restore_root_not_retained";
 
-/** The earliest removed block's journal base is bound neither by a retained
- * parent journal (none has its base tail header hash) nor by its own header:
- * its header bytes do not hash to the removed header, or its replay base
- * (base tail header hash, base root) or candidate root is not that header's
- * predecessor or root (see `validateChain`). The rewind reads its target root
- * from those columns, so it holds: native MPF, the SQL root and the journal
- * stay as they are. */
-export const CORRECTION_REWIND_JOURNAL_UNBOUND =
-  "correction_rewind_journal_unbound";
-
-/** A correction rewind whose native restore was refused because the native
- * MPF store does not retain its target root (the removed chain's replay
- * base) in full (`NativeMpfRootNotRetained`). The refusal changes nothing,
- * so the rewind holds with its plan retained and native MPF, the SQL root
- * and the journals as they are, and every evaluation retries the restore.
- * A completed rewind, any other outcome of a rewind evaluation, or a
- * reconcile with no rewind owed clears it. The node cannot put the root's
- * closure back itself: the operator stops it, installs a native MPF store
- * that retains the root in full, and restarts it. */
-export const CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED =
-  "correction_rewind_target_root_not_retained";
-
-/** A history recovery's native restore (the correction rewind) was refused because the target root's node closure is in the
- * native MPF store but its full index is over a full-index cap
+/** The landed-block rebase's native restore was refused because the target
+ * root's node closure is in the native MPF store but its full index is over
+ * a full-index cap
  * (`NativeMpfFullIndexCapExceeded`, whose message names the cap,
  * `FULL_INDEX_MAX_RECORDS` or `FULL_INDEX_MAX_BYTES`, and its value). Raised
- * under the recovery's own source. The refusal changes nothing: the
- * recovery holds with its plan retained, native MPF, the SQL root and the
- * journals as they are, and the history gate closed; every evaluation
- * retries the restore, and one of that source that meets no such refusal
- * clears it. The caps are fixed in the node build (the TypeScript owner and
- * its native child each enforce them), so the node cannot load the root
+ * under the rebase's source. The refusal changes nothing: the rebase holds
+ * with native MPF, the SQL root and the journals as they are, and the
+ * history gate closed; every evaluation retries the restore, and the next
+ * rebase evaluation that runs, or finds no rebase due, clears it. The caps
+ * are fixed in the node build (the TypeScript owner and its native child
+ * each enforce them), so the node cannot load the root
  * until it runs a build whose caps cover it. */
 export const NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED =
   "native_mpf_restore_index_cap_exceeded";
 
-/** A history recovery's native restore was refused because reading the
+/** The landed-block rebase's native restore was refused because reading the
  * target root's node closure from the native MPF store failed
  * (`NativeMpfRestoreReadFailed`): a LevelDB read error other than a missing,
- * corrupt or undecodable record. Raised under the recovery's own source.
+ * corrupt or undecodable record. Raised under the rebase's source.
  * The refusal changes nothing, and every evaluation retries the restore on
  * the history owner's backoff; the first that reads the closure clears it
  * (or raises the refusal that read finds). Escalated, in the log and on

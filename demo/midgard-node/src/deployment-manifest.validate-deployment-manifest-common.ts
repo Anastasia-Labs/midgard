@@ -178,8 +178,8 @@ const validateDeploymentManifestCommon = (
 // arrives under a new manifestId and misses this cache. The common checks
 // are a pure function of that content and module constants. The checks
 // above them (exact root keys, consensus profile) stay uncached; they are
-// cheap. The repeated cost this avoids is the per-contract script hashing,
-// which a running node paid on every correction-observer load and save.
+// cheap. The repeated cost this avoids is the per-contract script hashing
+// on every repeated parse of the same manifest.
 const NODE_VERIFIED_MANIFEST_ID_CACHE_LIMIT = 64;
 const nodeVerifiedManifestIds = new Set<string>();
 

@@ -2,16 +2,19 @@ import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-prof
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
+import {
+  latestMergedHeader,
+  liveQueueNodeHeader,
+  nonFinalTerminalHeader,
+  removedHeader,
+} from "../l1-queue-terminals/reads.js";
 import { Database } from "../services/database.js";
 import {
   STORE_ADVISORY_LOCK_KEY,
   STORE_ADVISORY_LOCK_NAMESPACE,
 } from "./cekProgramMaterial.canonical-entries.js";
 import { collectUnownedMaterial } from "./cekProgramMaterial.collect-unowned.js";
-import {
-  observerCursorHeader,
-  recoveryRelevantJournal,
-} from "./retention-holds.js";
+import { recoveryRelevantJournal } from "./retention-holds.js";
 import {
   clearTable,
   DatabaseError,
@@ -274,124 +277,52 @@ export const removeByHeaderHash = (
   );
 
 /**
- * The node's authenticated L1 view of the state queue: the header hash in the
- * `ConfirmedState` datum and the hash of every header node currently in the
- * queue. The only payloads exempt from retention pruning.
+ * The node's L1 view of the state queue for retention: the header hash in
+ * the `ConfirmedState` datum and the hash of every header node in the
+ * landed queue (the only payloads exempt from retention pruning), and the
+ * greatest final height at that view.
  */
-export type DaPayloadRetirementProof = Readonly<{
-  headerHash: string;
-  payloadSha256: string;
-  transactionHash: string;
-  blockHash: string;
-  transitionDigest: string;
-}>;
-
 export type RetentionL1View = {
   readonly confirmedHeadHash: Buffer;
   readonly liveQueueHeaderHashes: readonly Buffer[];
-  /** Fresh canonical proofs for these exact bytes and terminal identities. */
-  readonly retirementProofs?: readonly DaPayloadRetirementProof[];
-  readonly retirementProofUnavailable?: boolean;
+  /**
+   * The greatest height deeper than k at the view (`heightAtDepth(tip,
+   * k + 1)`): a terminal row at or below it survives every legal rollback.
+   * Absent, no terminal row counts as final. Under a later tip or a
+   * rollback of at most k it only holds more.
+   */
+  readonly finalThroughHeight?: number;
 };
 
 /**
- * Holds the latest merge boundary, pending removals, and every terminal
- * outcome without a fresh canonical retirement proof for its exact point,
- * transition and original payload hash. Confirmation admission cannot retire
- * bytes; the signed automatic recovery horizon counts blocks AFTER inclusion.
- * Callers without fresh proof retain terminal bytes and retry later.
+ * Holds every payload a rollback could still need, re-read from the
+ * follower's facts and the queue-terminal projection in the statement that
+ * acts: a header whose node is live in the facts (even one the caller's view
+ * missed: a rollback put it back), a header a landed tx took out of the
+ * queue that is not final yet, and the newest merged header whose merge is
+ * final (the merge boundary a reader at finality sees). Nothing is held
+ * without a verified deployment.
  */
-const retirementProofKey = (proof: DaPayloadRetirementProof): string =>
-  [
-    proof.headerHash,
-    proof.payloadSha256,
-    proof.transactionHash,
-    proof.blockHash,
-    proof.transitionDigest,
-  ].join(":");
-
-/** SQL binding of a current proof to the original bytes and terminal identity. */
-export const terminalRecoveryUnproven = (
-  sql: SqlClient.SqlClient,
-  deploymentIdentityDigest: Buffer,
-  headerColumn: string,
-  proofs: readonly DaPayloadRetirementProof[] = [],
-) => sql`EXISTS (
-  SELECT 1 FROM da_payload_terminal_outcomes terminal
-  JOIN da_payloads bytes ON bytes.header_hash = terminal.header_hash
-  WHERE terminal.header_hash = ${sql(headerColumn)}
-    AND terminal.deployment_identity_digest = ${deploymentIdentityDigest}
-    AND ${
-      proofs.length === 0
-        ? sql`TRUE`
-        : sql`concat_ws(':', encode(terminal.header_hash, 'hex'),
-      encode(bytes.payload_sha256, 'hex'), encode(terminal.transaction_hash, 'hex'),
-      encode(terminal.block_hash, 'hex'), encode(terminal.transition_digest, 'hex')) NOT IN ${sql.in(proofs.map(retirementProofKey))}`
-    })`;
-
 export const finalityHeldPayload = (
   sql: SqlClient.SqlClient,
   deploymentIdentityDigest: Buffer | undefined,
   headerColumn: string = `${tableName}.${Columns.HEADER_HASH}`,
-  proofs: readonly DaPayloadRetirementProof[] = [],
+  finalThroughHeight?: number,
 ) =>
   deploymentIdentityDigest === undefined
     ? sql`FALSE`
-    : sql`(${terminalRecoveryUnproven(sql, deploymentIdentityDigest, headerColumn, proofs)}
-      OR ${observerCursorHeader(sql, headerColumn, deploymentIdentityDigest)}
-      OR ${sql(headerColumn)} IN (
-        SELECT latest.header_hash FROM (
-          SELECT terminal.header_hash FROM da_payload_terminal_outcomes AS terminal
-          WHERE terminal.terminal_outcome = 'merged'
-            AND terminal.deployment_identity_digest = ${deploymentIdentityDigest}
-          ORDER BY terminal.block_no DESC, terminal.transaction_index DESC
-          LIMIT 1) AS latest
-        UNION ALL
-        SELECT decode(removed.header_hex, 'hex')
-        FROM state_queue_terminal_observer_states AS observer,
-          jsonb_array_elements(
-            CASE jsonb_typeof(observer.state_record)
-              WHEN 'string' THEN (observer.state_record #>> '{}')::jsonb
-              ELSE observer.state_record
-            END -> 'pending') AS pending(transition),
-          jsonb_array_elements_text(
-            pending.transition -> 'removedHeaderHashes') AS removed(header_hex)
-        WHERE observer.deployment_identity_digest = ${deploymentIdentityDigest}
-          AND removed.header_hex ~ '^[0-9a-f]{56}$'
-        UNION ALL
-        SELECT decode(removed.header_hex, 'hex')
-        FROM state_queue_terminal_observer_states AS observer,
-          jsonb_array_elements(
-            CASE jsonb_typeof(observer.state_record)
-              WHEN 'string' THEN (observer.state_record #>> '{}')::jsonb
-              ELSE observer.state_record
-            END -> 'admitted') AS admitted(transition),
-          jsonb_array_elements_text(
-            admitted.transition -> 'removedHeaderHashes') AS removed(header_hex)
-        WHERE observer.deployment_identity_digest = ${deploymentIdentityDigest}
-          AND removed.header_hex ~ '^[0-9a-f]{56}$'
-          -- A revoke happens before the observer saves its restored cursor.
-          -- A different terminal cannot release this admitted transition.
-          -- Matching terminals are held above unless their exact bytes and
-          -- identity have a fresh authenticated retirement proof.
-          AND NOT EXISTS (
-            SELECT 1 FROM da_payload_terminal_outcomes AS terminal
-            WHERE terminal.deployment_identity_digest = ${deploymentIdentityDigest}
-              AND terminal.header_hash = decode(removed.header_hex, 'hex')
-              AND encode(terminal.transaction_hash, 'hex') = admitted.transition ->> 'transactionHash'
-              AND encode(terminal.block_hash, 'hex') = admitted.transition ->> 'blockHash'
-              AND encode(terminal.transition_digest, 'hex') = admitted.transition ->> 'transitionDigest')))`;
+    : sql`(${liveQueueNodeHeader(sql, headerColumn)}
+      OR ${nonFinalTerminalHeader(sql, headerColumn, finalThroughHeight)}
+      OR ${latestMergedHeader(sql, headerColumn, finalThroughHeight)})`;
 
 /**
  * Retention prune (GOAL_SPEC 9.4 / Q54), the SQL form of the core
  * `daRetentionPruneDecision`.
  *
- * Challengeability age or a removed outcome permits deletion only after
- * terminal recovery finality, and never for the confirmed head, live queue,
- * durable live cursor, pending/revoked admitted transition or a journal still
- * read by recovery. Fresh proofs are
- * compared again against the current terminal identity and byte hash in the
- * DELETE statement. Missing proof retains bytes; bounded sweeps retry it.
+ * Challengeability age or a removal permits deletion only once the removal
+ * is final, and never for the confirmed head, the live queue, a header held
+ * for finality (`finalityHeldPayload`, re-read in the DELETE statement) or a
+ * journal still read by recovery.
  */
 export const pruneBeyondRetention = (args: {
   readonly challengeableCutoff: Date;
@@ -407,10 +338,7 @@ export const pruneBeyondRetention = (args: {
     const removed =
       args.deploymentIdentityDigest === undefined
         ? sql`FALSE`
-        : sql`${sql(Columns.HEADER_HASH)} IN (
-            SELECT terminal.header_hash FROM da_payload_terminal_outcomes AS terminal
-            WHERE terminal.terminal_outcome = 'removed'
-              AND terminal.deployment_identity_digest = ${args.deploymentIdentityDigest})`;
+        : removedHeader(sql, `${tableName}.${Columns.HEADER_HASH}`);
     return yield* sql.withTransaction(
       Effect.gen(function* () {
         yield* sql`SELECT pg_advisory_xact_lock(${STORE_ADVISORY_LOCK_NAMESPACE}, ${STORE_ADVISORY_LOCK_KEY})`;
@@ -418,7 +346,7 @@ export const pruneBeyondRetention = (args: {
       DELETE FROM ${sql(tableName)}
       WHERE (${sql(Columns.BLOCK_END_TIME)} < ${args.challengeableCutoff} OR ${removed})
         AND NOT ${sql.in(Columns.HEADER_HASH, exempt)}
-        AND NOT ${finalityHeldPayload(sql, args.deploymentIdentityDigest, `${tableName}.${Columns.HEADER_HASH}`, args.view.retirementProofs)}
+        AND NOT ${finalityHeldPayload(sql, args.deploymentIdentityDigest, `${tableName}.${Columns.HEADER_HASH}`, args.view.finalThroughHeight)}
         AND NOT ${args.deploymentIdentityDigest === undefined ? sql`FALSE` : recoveryRelevantJournal(sql, Columns.HEADER_HASH, args.deploymentIdentityDigest)}
       RETURNING ${sql(Columns.HEADER_HASH)}`;
         yield* collectUnownedMaterial;

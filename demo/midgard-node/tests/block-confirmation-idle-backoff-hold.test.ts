@@ -37,9 +37,9 @@ describe("confirmation idle backoff under a liveness hold", () => {
         const globals = yield* idleNode;
         yield* raiseLivenessIncident(
           globals,
-          HaltSource.stateQueueCorrectionRewind,
-          "state_queue_correction_rewind_conflict",
-          "removal disagrees with L1",
+          HaltSource.operatorMembership,
+          "operator_removed",
+          "this operator is retired in the follower's operator set",
         );
         return yield* skipIdleConfirmationTick(globals, Option.none());
       }),

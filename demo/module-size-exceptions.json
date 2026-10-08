@@ -936,8 +936,8 @@
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
-    "max": 1077,
-    "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+3): reads the horizon lag d from config.history-commit-horizon-lag.ts, which refuses a negative, fractional or deeper-than-k value at startup. I5 (+3): reads the node-behind bound L1_NODE_BEHIND_MAX_MS from config.node-behind.ts, which refuses a non-positive or fractional value at startup."
+    "max": 1062,
+    "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+3): reads the horizon lag d from config.history-commit-horizon-lag.ts, which refuses a negative, fractional or deeper-than-k value at startup. I5 (+3): reads the node-behind bound L1_NODE_BEHIND_MAX_MS from config.node-behind.ts, which refuses a non-positive or fractional value at startup. N4 (-15): the deleted correction observer's STATE_QUEUE_CORRECTION_FINALITY_DEPTH is no longer read."
   },
   {
     "file": "midgard-node/src/services/event-history-owner.make-event-history-owner.ts",
@@ -993,11 +993,6 @@
     "file": "midgard-node/tests/admission-writer.test.ts",
     "max": 501,
     "reason": "Retained test registration “durable admission microbatch writer” (437 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-node/tests/attestation-timeout-reinclusion-hardening-emulator.test.ts",
-    "max": 526,
-    "reason": "Five independent emulator scenarios of the unlanded-descendant and rollback hardening, the largest “abandons a removed block's unlanded descendant…” (152 lines); the held, retained and rolled-back repairs already moved to attestation-timeout-reinclusion-held-repair-emulator.test.ts for the per-file time budget. Splitting the remaining five again would add another file's module load and fixture restore for 26 lines."
   },
   {
     "file": "midgard-node/tests/availability-challenge-command.test.ts",
@@ -1081,7 +1076,7 @@
   },
   {
     "file": "midgard-node/tests/database.test/finalization.register-finalization-tests.ts",
-    "max": 907,
+    "max": 725,
     "reason": "registerFinalizationTests is the dominant indivisible declaration (874 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1135,16 +1130,6 @@
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
-    "file": "midgard-node/tests/event-history-recovery-plans.durable-history-recovery-plans-modeled-source-real-sql.ts",
-    "max": 582,
-    "reason": "Retained test registration “durable history recovery plans (modeled source, real SQL)” (556 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-node/tests/event-history-recovery-plans.retained-native-recovery-root-selection-real-sql-component.ts",
-    "max": 507,
-    "reason": "Retained test registration “retained native recovery root selection (real SQL component)” (477 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
     "file": "midgard-node/tests/event-history-recovery.test.ts",
     "max": 596,
     "reason": "Retained test registration “canonical history recovery composition” (457 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
@@ -1166,8 +1151,8 @@
   },
   {
     "file": "midgard-node/tests/helpers/history-production-owner-lifecycle.open-history-production-owner-lifecycle.ts",
-    "max": 589,
-    "reason": "openHistoryProductionOwnerLifecycle is the dominant indivisible declaration (518 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N2 (+9): each generation follows the emulator's state queue into the node's follower facts (P1) inside the generation's scope. I1 (+3): the runtime provides the journal of a process with no follower. N3d (+1): a restart stops the running generation, so one test can restart the node twice."
+    "max": 621,
+    "reason": "openHistoryProductionOwnerLifecycle is the dominant indivisible declaration (518 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N2 (+9): each generation follows the emulator's state queue into the node's follower facts (P1) inside the generation's scope. I1 (+3): the runtime provides the journal of a process with no follower. N3d (+1): a restart stops the running generation, so one test can restart the node twice. N4 (+32): with `landedBlocks`, each generation runs landed-block processing after every driver run (the store opens in history-production-owner-lifecycle.open-landed-blocks.ts), closes it before the runtime, and exposes the hook's last hold."
   },
   {
     "file": "midgard-node/tests/history-source-owner-retention.test.ts",
@@ -1330,13 +1315,8 @@
     "reason": "Retained test registration “SDK canonical ABI fixtures” (1000 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
-    "file": "midgard-node/tests/state-queue-correction-observer.test.ts",
-    "max": 1133,
-    "reason": "Retained test registration “node-owned state-queue correction observer” (1137 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
     "file": "midgard-node/tests/state-reconciliation.test.ts",
-    "max": 917,
+    "max": 901,
     "reason": "Retained test registration “state reconciliation evaluator” (874 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {

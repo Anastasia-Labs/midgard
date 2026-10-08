@@ -2,6 +2,7 @@ import {
   MIDGARD_RETENTION_WINDOW,
   RETENTION_MS_PER_DAY,
 } from "@al-ft/midgard-core";
+import { heightAtDepth } from "@al-ft/midgard-l1-follower/heads";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import {
@@ -32,12 +33,12 @@ import {
 } from "../database/retention-policy.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { l1NowUnixTimeMs, L1SlotUnknownError } from "../l1-heads.js";
+import { pruneFinalQueueTerminals } from "../l1-queue-terminals/index.js";
 import {
   ContractDeploymentIdentity,
   Database,
   Globals,
   Lucid,
-  makeLocalKupmiosStateQueueCorrectionSource,
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
@@ -46,7 +47,7 @@ import {
   clearLivenessIncident,
   raiseLivenessIncident,
 } from "../services/liveness-halt.js";
-import { fetchDaPayloadRetirementProofs } from "./retention-sweeper.da-retirement-view.js";
+import { settlementDepthParameters } from "../services/settlement.status.js";
 import {
   RETENTION_HISTORY_PRUNE_BUDGET_MS,
   withRetentionHistoryProducer,
@@ -91,7 +92,7 @@ const publishDaPayloadRetentionDeadline = (
             sql,
             deploymentIdentityDigest,
             "da_payloads.header_hash",
-            view.retirementProofs,
+            view.finalThroughHeight,
           )}`;
     const rows = yield* sql<{
       readonly oldest_block_end_time: Date | null;
@@ -146,14 +147,16 @@ export const retentionL1ViewTimeoutMs = (input: {
 
 /**
  * The retention exemption sets from the landed state queue (P1): the
- * confirmed header and every live block header.
+ * confirmed header and every live block header, and the greatest final
+ * height at the queue's view (deeper than the deployment's k).
  */
 export const fetchRetentionL1View: Effect.Effect<
   DaPayloadsDB.RetentionL1View,
   SDK.StateQueueError,
-  MidgardContracts | SqlClient.SqlClient
+  MidgardContracts | ContractDeploymentIdentity | SqlClient.SqlClient
 > = Effect.gen(function* () {
   const contracts = yield* MidgardContracts;
+  const { securityParameter } = yield* settlementDepthParameters;
   const queue = yield* requireLandedStateQueue(
     contracts.stateQueue,
     "the retention sweep",
@@ -170,46 +173,7 @@ export const fetchRetentionL1View: Effect.Effect<
     liveQueueHeaderHashes: queue.nodes.map((node) =>
       Buffer.from(node.headerHash, "hex"),
     ),
-  };
-});
-
-/** Production view includes fresh retirement evidence; topology-only readers stay unchanged. */
-export const fetchRetentionL1ViewWithRetirement = Effect.gen(function* () {
-  const view = yield* fetchRetentionL1View;
-  const contracts = yield* MidgardContracts;
-  const config = yield* NodeConfig;
-  const identity = yield* ContractDeploymentIdentity;
-  const retirement =
-    identity.manifest === undefined || identity.manifestId === undefined
-      ? { proofs: [], unavailable: false }
-      : yield* fetchDaPayloadRetirementProofs({
-          deploymentIdentityDigest: identity.manifestId,
-          stateQueuePolicyId: contracts.stateQueue.policyId,
-          automaticRecoveryMaxDepth:
-            identity.manifest.l1Finality.automaticRecoveryMaxDepth,
-          source: makeLocalKupmiosStateQueueCorrectionSource({
-            deploymentIdentityDigest: identity.manifestId,
-            stateQueuePolicyId: contracts.stateQueue.policyId,
-            stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-            hubOraclePolicyId: contracts.hubOracle.policyId,
-            correctionLockAddress:
-              contracts.correctionLock.spendingScriptAddress,
-            fraudProofPolicyId: contracts.fraudProof.policyId,
-            fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
-            kupoUrl: config.L1_KUPO_KEY,
-            ogmiosUrl: config.L1_OGMIOS_KEY,
-            readQueue: async () => [],
-          }),
-        }).pipe(
-          Effect.catchAll(() =>
-            Effect.succeed({ proofs: [], unavailable: true }),
-          ),
-        );
-  return {
-    confirmedHeadHash: view.confirmedHeadHash,
-    liveQueueHeaderHashes: view.liveQueueHeaderHashes,
-    retirementProofs: retirement.proofs,
-    retirementProofUnavailable: retirement.unavailable,
+    finalThroughHeight: heightAtDepth(queue.view.height, securityParameter + 1),
   };
 });
 
@@ -218,7 +182,8 @@ export const fetchRetentionL1ViewWithRetirement = Effect.gen(function* () {
  *
  * DA payloads are pruned on the consensus-derived challengeability horizon and
  * the L1 exemption sets whenever an L1 view is available, regardless of
- * RETENTION_DAYS. Housekeeping runs only while the window
+ * RETENTION_DAYS; then the final queue-terminal rows that name no retained
+ * payload or journal (`pruneFinalQueueTerminals`). Housekeeping runs only while the window
  * `resolveHousekeepingRetentionDays` derives from the verified manifest (or
  * an explicit longer RETENTION_DAYS) is non-zero, never inside the DA
  * challenge horizon (`computeHousekeepingCutoff`):
@@ -268,6 +233,10 @@ export const retentionSweepAction = (
     if (Either.isLeft(daPayloadsPruned))
       return yield* Effect.fail(daPayloadsPruned.left);
     const prunedDaPayloads = daPayloadsPruned.right;
+    const prunedQueueTerminals =
+      view?.finalThroughHeight === undefined
+        ? 0
+        : yield* pruneFinalQueueTerminals(view.finalThroughHeight);
     // Startup already refused a window shorter than the manifest's
     // (assertDeploymentManifestMatchesConfig); should it still not resolve,
     // nothing is pruned.
@@ -285,7 +254,7 @@ export const retentionSweepAction = (
     );
     if (!shouldPruneRetention(retentionDays)) {
       yield* Effect.logInfo(
-        `🧹 Retention sweep done (challengeableCutoff=${challengeableCutoff.toISOString()}, housekeeping disabled: no verified manifest window and RETENTION_DAYS unset, or RETENTION_DAYS=0): da_payloads=${prunedDaPayloads}, mempool_tx_deltas=${prunedOrphanDeltas}`,
+        `🧹 Retention sweep done (challengeableCutoff=${challengeableCutoff.toISOString()}, housekeeping disabled: no verified manifest window and RETENTION_DAYS unset, or RETENTION_DAYS=0): da_payloads=${prunedDaPayloads}, queue_terminals=${prunedQueueTerminals}, mempool_tx_deltas=${prunedOrphanDeltas}`,
       );
       return;
     }
@@ -319,7 +288,7 @@ export const retentionSweepAction = (
           );
 
     yield* Effect.logInfo(
-      `🧹 Retention sweep done (retentionDays=${retentionDays.toString()}, cutoff=${cutoff.toISOString()}, challengeableCutoff=${challengeableCutoff.toISOString()}): da_payloads=${prunedDaPayloads}, tx_rejections=${prunedTxRejections}, address_history=${prunedAddressHistory}, state_queue_mutation_leases=${prunedLeases}, pending_block_finalizations=${prunedJournals ?? "skipped"}, mempool_tx_deltas=${prunedOrphanDeltas}`,
+      `🧹 Retention sweep done (retentionDays=${retentionDays.toString()}, cutoff=${cutoff.toISOString()}, challengeableCutoff=${challengeableCutoff.toISOString()}): da_payloads=${prunedDaPayloads}, queue_terminals=${prunedQueueTerminals}, tx_rejections=${prunedTxRejections}, address_history=${prunedAddressHistory}, state_queue_mutation_leases=${prunedLeases}, pending_block_finalizations=${prunedJournals ?? "skipped"}, mempool_tx_deltas=${prunedOrphanDeltas}`,
     );
   });
 
@@ -382,8 +351,7 @@ export const retentionSweeperFiber = (
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
     const globals = yield* Globals;
-    const fetchL1View =
-      options.fetchL1View ?? fetchRetentionL1ViewWithRetirement;
+    const fetchL1View = options.fetchL1View ?? fetchRetentionL1View;
     const nowMs = options.nowMs ?? (() => Date.now());
     const l1NowMs =
       options.l1NowMs ??
@@ -452,16 +420,6 @@ export const retentionSweeperFiber = (
       });
       yield* Ref.set(lastL1ViewAtMs, startedAtMs);
       yield* clearLivenessIncident(globals, RETENTION_L1_VIEW_SOURCE);
-      if (view.retirementProofUnavailable === true) {
-        yield* raiseLivenessIncident(
-          globals,
-          "retention_da_recovery",
-          "retention_da_recovery_proof_unavailable",
-          "terminal DA payloads remain retained: canonical recovery proof is unavailable; the next sweep retries",
-        );
-      } else {
-        yield* clearLivenessIncident(globals, "retention_da_recovery");
-      }
       if (Either.isLeft(sweptAt)) {
         yield* Effect.logWarning(
           `retention_pass_skipped: ${sweptAt.left.message}`,

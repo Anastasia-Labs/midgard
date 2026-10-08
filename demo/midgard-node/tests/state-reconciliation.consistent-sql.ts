@@ -238,18 +238,7 @@ const consistentSql = (): SqlStateSnapshot => ({
     },
   ],
   blockHeaderHashes: [TIP],
-  observer: {
-    kind: "present",
-    admitted: [
-      {
-        transactionHash: h32("78"),
-        transitionKind: "timeout_correction",
-        removedHeaderHashes: [REMOVED],
-        transitionDigest: DIGEST,
-      },
-    ],
-    pendingCount: 0,
-  },
+  queueRemovals: [{ headerHash: REMOVED, transactionHash: h32("78") }],
 });
 
 const consistentNative = (): NativeRootObservation => ({

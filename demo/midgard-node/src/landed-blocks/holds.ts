@@ -4,6 +4,11 @@
  * clears once the condition does.
  */
 import type { DriverHold } from "../l1-events/driver.js";
+import {
+  NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
+  NATIVE_MPF_RESTORE_READ_TRANSIENT,
+  NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
+} from "../services/liveness-halt.js";
 
 /** A landed block does not replay to its header, or does not link to its parent. Never adopted. */
 export const LANDED_BLOCK_INVALID = "landed_block_invalid";
@@ -105,6 +110,9 @@ const PRIORITY = [
   LANDED_BLOCK_DA_REFETCH_PENDING,
   LANDED_BLOCK_AWAITING_DA,
   LANDED_BLOCK_BATCH_UNDECIDED,
+  NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
+  NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
+  NATIVE_MPF_RESTORE_READ_TRANSIENT,
   LANDED_BLOCK_REBASE_FAILED,
   LANDED_BLOCK_REPLAY_INCOMPLETE,
   LANDED_BLOCK_REPLAY_FAILED,

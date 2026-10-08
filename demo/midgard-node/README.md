@@ -76,14 +76,13 @@ It is responsible for:
   (except entries of a transaction still in the mempool or processed
   mempool), ended `state_queue_mutation_leases` that no retained journal
   names, and locally applied `pending_block_finalizations` journals whose confirmed
-  merge completed locally before the correction observer last saved its
-  state. A journal is kept while its header is the L1 confirmed head, live in
-  the L1 state queue, held for finality, still in the correction observer's
-  cursor queue, or named by a pending or admitted correction transition, and
+  merge completed locally. A journal is kept while its header is the L1
+  confirmed head, live in the L1 state queue (in the caller's view or in the
+  follower's facts), or held for finality (a landed tx merged or removed it
+  and that tx is not final yet, or it is the newest merge that is final), and
   while one of its deposit or withdrawal members belongs to an event-history
   incarnation that L1 rolled back (signed-header recovery and ledger repair
-  read those). The newest finalized journal is always kept, and no journal is
-  pruned while the deployment has no correction-observer record. Unfinished
+  read those). The newest finalized journal is always kept. Unfinished
   and abandoned journals retain their bases, same-base siblings and
   descendants; retained recovery plans retain all their journal members. The
   journal prune runs under the history-producer
