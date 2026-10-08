@@ -1,4 +1,3 @@
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   slotAlignedLowerBoundAtOrAfter,
   type SlotClock,
@@ -15,122 +14,138 @@ import {
   type TimeoutCorrectionJournal,
   type TimeoutCorrectionJournalStore,
   type TimeoutCorrectionStepReconciliation,
-  type TimeoutCorrectionTransactionStatus,
 } from "./remove-unattested-block.parse-timeout-correction-journal.js";
 import {
   reconcileLastTimeoutCorrectionStep,
+  type TimeoutCorrectionAttemptObservation,
+  timeoutCorrectionAttemptStatus,
   type TimeoutCorrectionRecovery,
 } from "./remove-unattested-block.reconcile-last-timeout-correction-step.js";
 import { type ResolvedProverSigner } from "./runtime.js";
 import {
-  createLocalKupmiosHttpOgmiosRawSource,
-  readAdmittedLocalKupmiosSignedTransactionRecovery,
-  rebroadcastAdmittedLocalKupmiosSignedTransaction,
-} from "./workflow/local-kupmios-http-ogmios-source.js";
-import {
-  computeFraudProofReleaseFinalityPolicyDigest,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  validateVerifiedFraudProofReleaseFinalityPolicy,
-} from "./workflow/release-finality-policy.js";
-import {
-  reconcileSignedWorkflowTransaction,
-  type SignedTransactionRecoveryObservation,
+  inspectSignedWorkflowTransaction,
   type SignedWorkflowTransaction,
 } from "./workflow/signed-transaction-reconciliation.js";
 import { type SupersededAttemptReadSchedule } from "./workflow/superseded-attempt-read-schedule.js";
 
-/** Same admitted, canonical signed-attempt recovery used by proof workflows. */
-export const createLocalKupmiosTimeoutCorrectionRecovery = (input: {
-  readonly deploymentManifest: unknown;
-  readonly kupoUrl: string;
-  readonly ogmiosUrl: string;
-  readonly network: Network;
-}): TimeoutCorrectionRecovery => {
-  const manifest = verifyFinalizedDeploymentManifest(input.deploymentManifest);
-  if (manifest.network !== input.network)
-    throw new Error(
-      "Timeout recovery network differs from its finalized deployment.",
-    );
-  const policy = manifest.l1Finality;
-  const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy({
-    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: manifest.manifestId,
-    blueprintHash: manifest.artifacts.blueprintHash,
-    policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
-    policy,
-  });
-  const source = createLocalKupmiosHttpOgmiosRawSource({
-    sourceId: `attestation-timeout:${releaseFinality.deploymentIdentityDigest}`,
-    kupoHttpUrl: input.kupoUrl,
-    ogmiosUrl: input.ogmiosUrl,
-    releaseFinality,
-    observationDepth: "inclusion",
-  });
-  return {
-    observeSignedTransaction: (signed) =>
-      readAdmittedLocalKupmiosSignedTransactionRecovery({ source, ...signed }),
-    rebroadcastSignedTransaction: (signed) =>
-      rebroadcastAdmittedLocalKupmiosSignedTransaction({ source, ...signed }),
-  };
-};
-
-/** Bare not_found/failed is ambiguous; only admitted canonical observations retire attempts. */
+/**
+ * Reconciles the sole unresolved attempt from one observation of it. Nothing
+ * here resubmits: the node's intent reconciler resends a live journaled
+ * attempt, and a CLI run has no reconciler (see `submitUnattestedTimeoutCorrection`).
+ */
 export const recoverTimeoutCorrectionAttempt = async (input: {
   readonly journal: TimeoutCorrectionJournal;
   readonly queue: readonly StateQueueUTxO[];
-  readonly transactionStatus: TimeoutCorrectionTransactionStatus;
-  readonly allowRebroadcast?: boolean;
-  readonly recovery?: TimeoutCorrectionRecovery;
-  readonly authorizeResubmission: (
+  readonly observe: (
     signed: SignedWorkflowTransaction,
-  ) => Promise<void>;
+  ) => Promise<TimeoutCorrectionAttemptObservation>;
 }): Promise<TimeoutCorrectionStepReconciliation> => {
   const step = input.journal.steps.find(
     (entry) => entry.status === "prepared" || entry.status === "submitted",
   );
   if (step === undefined)
     return { disposition: "none", journal: input.journal };
-  let canonical: SignedTransactionRecoveryObservation | undefined;
-  const result = await reconcileSignedWorkflowTransaction({
+  const signed = {
     transactionHash: step.txHash,
     signedTransactionCborHex: step.signedCbor,
-    observe:
-      input.recovery === undefined
-        ? undefined
-        : async (signed) => {
-            canonical = await input.recovery!.observeSignedTransaction(signed);
-            return canonical;
-          },
-    rebroadcast:
-      input.allowRebroadcast === false
-        ? undefined
-        : input.recovery?.rebroadcastSignedTransaction,
-    authorizeResubmission: input.authorizeResubmission,
-  });
-  if (result.kind === "conflict")
-    throw new Error(`Timeout correction canonical conflict: ${result.reason}`);
-  const impossible =
-    result.kind === "not_found" &&
-    (canonical?.status === "expired" ||
-      canonical?.status === "invalidated" ||
-      canonical?.status === "expired_at_tip" ||
-      canonical?.status === "invalidated_at_tip");
-  const status =
-    canonical?.status === "included"
-      ? "confirmed"
-      : impossible &&
-          result.retirement !== undefined &&
-          (canonical?.status === "expired" ||
-            canonical?.status === "invalidated")
-        ? canonical.status
-        : // Impossible at the tip but within k: superseded, not retired.
-          impossible
-          ? "superseded"
-          : input.recovery === undefined &&
-              input.transactionStatus === "confirmed"
-            ? "confirmed"
-            : "unknown";
-  return reconcileLastTimeoutCorrectionStep(input.journal, input.queue, status);
+  };
+  inspectSignedWorkflowTransaction(signed);
+  // An unreadable source decides nothing: the attempt stays pending.
+  const observed = await input.observe(signed).catch(
+    (cause: unknown): TimeoutCorrectionAttemptObservation => ({
+      status: "unknown",
+      final: false,
+      canonicalPoint: null,
+      releaseFinalPoint: null,
+      reason: `observation failed: ${String(cause)}`,
+    }),
+  );
+  return reconcileLastTimeoutCorrectionStep(
+    input.journal,
+    input.queue,
+    timeoutCorrectionAttemptStatus(observed),
+  );
+};
+
+/**
+ * A CLI run's observation of its attempts: it has no follower, so no
+ * recovery reader. An attempt the provider reports confirmed is included;
+ * one this run submitted is pending until its validity passes by the clock;
+ * any other is abandoned, so its replacement shares its inputs and the
+ * ledger refuses that replacement while the attempt is in flight.
+ */
+export const unjournaledTimeoutCorrectionObserver =
+  (
+    lucid: LucidEvolution,
+    nowMs: () => number,
+    submittedThisRun: ReadonlySet<string>,
+  ) =>
+  async (
+    signed: SignedWorkflowTransaction,
+  ): Promise<TimeoutCorrectionAttemptObservation> => {
+    const unread = {
+      final: false,
+      canonicalPoint: null,
+      releaseFinalPoint: null,
+    } as const;
+    const { status } = await lucid
+      .transactionStatus(signed.transactionHash)
+      .catch(() => ({ status: "not_found" as const }));
+    if (status === "confirmed")
+      return { ...unread, status: "included", reason: "provider confirmed" };
+    const { expiresAtSlot } = inspectSignedWorkflowTransaction(signed);
+    return submittedThisRun.has(signed.transactionHash) &&
+      expiresAtSlot !== undefined &&
+      nowMs() < lucid.slotToUnixTime(Number(expiresAtSlot))
+      ? { ...unread, status: "pending", reason: "submitted by this run" }
+      : { ...unread, status: "abandoned", reason: "no recovery reader" };
+  };
+
+/**
+ * A CLI run (no follower, so its submissions are unjournaled: `no_follower`)
+ * submitted a correction whose inputs the ledger already holds spent: an
+ * earlier attempt, ours or another actor's, is still in flight or has just
+ * landed. Nothing was sent. Run the command again once it settles.
+ */
+export class TimeoutCorrectionAttemptInFlightError extends Error {
+  readonly txHash: string;
+  constructor(txHash: string, options?: { readonly cause?: unknown }) {
+    super(
+      `Timeout correction ${txHash} was refused: its inputs are already spent, so an earlier attempt is still in flight or has just landed. Run the command again once it settles.`,
+      options,
+    );
+    this.name = "TimeoutCorrectionAttemptInFlightError";
+    this.txHash = txHash;
+  }
+}
+
+const SPENT_INPUT_REJECTION =
+  /BadInputsUTxO|UnknownInput|unknownOutputReferences|JSON-RPC error 3117\b|"code":\s*3117\b|does not exist or was already spent/u;
+
+/**
+ * The ledger refused a submission because an input is spent or unknown
+ * (Ogmios 3117 / `BadInputsUTxO`, Blockfrost's ledger text, the emulator's
+ * "already spent"), searched through the error's message, cause chain and
+ * structured fields.
+ */
+export const isSpentInputSubmitRejection = (error: unknown): boolean => {
+  const seen = new Set<unknown>();
+  const search = (value: unknown): boolean => {
+    if (typeof value === "string") return SPENT_INPUT_REJECTION.test(value);
+    if (typeof value !== "object" || value === null || seen.has(value))
+      return false;
+    seen.add(value);
+    if (
+      value instanceof Error &&
+      (search(value.message) || search(value.cause))
+    )
+      return true;
+    const record = value as Record<string, unknown>;
+    if ("unknownOutputReferences" in record || "badInputs" in record)
+      return true;
+    return Object.values(record).some(search);
+  };
+  return search(error);
 };
 
 export type SubmitUnattestedTimeoutCorrectionParams = {
@@ -142,6 +157,15 @@ export type SubmitUnattestedTimeoutCorrectionParams = {
   readonly awaitConfirmation?: boolean;
   readonly nowMs?: () => number;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
+  /**
+   * The node's read of its retained attempts, from its intent journal and
+   * follower facts. Without one (a CLI run), an attempt is confirmed by the
+   * provider's transaction status, waited on only while this run submitted
+   * it and its validity has not passed, and otherwise abandoned: a
+   * replacement then shares its inputs, and the ledger refuses that
+   * replacement while the attempt is still in flight
+   * (`TimeoutCorrectionAttemptInFlightError`).
+   */
   readonly recovery?: TimeoutCorrectionRecovery;
   /** Bounds re-reads of abandoned attempts; process-wide by default. */
   readonly attemptReadSchedule?: SupersededAttemptReadSchedule;

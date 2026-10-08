@@ -3,7 +3,6 @@ import { dirname, resolve } from "node:path";
 
 import {
   createFileTimeoutCorrectionJournalStore,
-  createLocalKupmiosTimeoutCorrectionRecovery,
   submitUnattestedTimeoutCorrection,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -35,6 +34,7 @@ import {
   HaltSource,
   raiseLivenessIncident,
 } from "../services/liveness-halt.js";
+import { intentJournalTimeoutCorrectionRecovery } from "./attestation-timeout-correction.intent-journal-recovery.js";
 import {
   observeAndRecordAttestationTimeoutQueue,
   reconcileStateQueueCorrections,
@@ -95,6 +95,12 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
         ),
       );
     }
+    const recoveryDepths = {
+      confirmationDepth:
+        deploymentIdentity.manifest.l1Finality.confirmationDepth,
+      securityParameter:
+        deploymentIdentity.manifest.l1Finality.automaticRecoveryMaxDepth,
+    };
     const manifestFinalityDepth =
       deploymentIdentity.l1Finality?.confirmationDepth;
     if (
@@ -252,12 +258,12 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
                 },
                 journalStore,
                 awaitConfirmation: true,
-                recovery: createLocalKupmiosTimeoutCorrectionRecovery({
-                  deploymentManifest: deploymentIdentity.manifest,
-                  kupoUrl: nodeConfig.L1_KUPO_KEY,
-                  ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-                  network: nodeConfig.NETWORK,
-                }),
+                // Retained attempts are observed from the intent journal and
+                // follower facts only; S6 alone resends a live one.
+                recovery: intentJournalTimeoutCorrectionRecovery(
+                  (effect) => Runtime.runPromise(runtime)(effect),
+                  recoveryDepths,
+                ),
               }),
             catch: (cause) => cause,
           });

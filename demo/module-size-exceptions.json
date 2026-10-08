@@ -211,8 +211,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/remove-unattested-block.submit-unattested-timeout-correction.ts",
-    "max": 573,
-    "reason": "submitUnattestedTimeoutCorrection is the dominant indivisible declaration (518 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 558,
+    "reason": "submitUnattestedTimeoutCorrection is the dominant indivisible declaration (496 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. TC (-15): recovery is one observation (the node's intent-journal read, or a CLI run's provider status) and resubmission is the node's intent reconciler's alone, so the resubmission authorization and the CLI observer left this module."
   },
   {
     "file": "midgard-fault-proofs/src/resolved-output-non-canonical/central-journal.create-resolved-output-non-canonical-central-journal-adapter.ts",
@@ -461,8 +461,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/remove-unattested-block-submit.test.ts",
-    "max": 666,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+    "max": 749,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. TC (+83): a CLI run (no recovery reader) is covered through the same mocked workflow: a prior run's attempt is abandoned and the ledger's refusal of its replacement is the named in-flight error, and an own submission is waited on only while valid; the mock-free refusal classifier lives in its own file."
   },
   {
     "file": "midgard-fault-proofs/tests/resolved-output-non-canonical-lifecycle.test.ts",

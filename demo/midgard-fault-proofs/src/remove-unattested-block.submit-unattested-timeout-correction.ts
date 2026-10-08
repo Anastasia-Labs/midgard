@@ -19,6 +19,7 @@ import { Effect } from "effect";
 import { parseContractDeploymentInfo } from "./inspect-contracts.js";
 import {
   headerHashOf,
+  replaceJournalStepStatus,
   type TimeoutCorrectionJournalStep,
   transactionInputOutRefs,
 } from "./remove-unattested-block.parse-timeout-correction-journal.js";
@@ -34,9 +35,12 @@ import {
   type SubmitUnattestedTimeoutCorrectionResult,
 } from "./remove-unattested-block.reconcile-last-timeout-correction-step.js";
 import {
+  isSpentInputSubmitRejection,
   recoverTimeoutCorrectionAttempt,
   resolveTimeoutCorrectionValidityRange,
   type SubmitUnattestedTimeoutCorrectionParams,
+  TimeoutCorrectionAttemptInFlightError,
+  unjournaledTimeoutCorrectionObserver,
 } from "./remove-unattested-block.recover-timeout-correction-attempt.js";
 import {
   adoptLandedTimeoutCorrectionAttempts,
@@ -51,7 +55,10 @@ import {
   requireSingletonUtxo,
 } from "./runtime.js";
 import { selectFeeInput } from "./step-support.js";
-import { inspectSignedWorkflowTransaction } from "./workflow/signed-transaction-reconciliation.js";
+import {
+  inspectSignedWorkflowTransaction,
+  type SignedWorkflowTransaction,
+} from "./workflow/signed-transaction-reconciliation.js";
 
 export const submitUnattestedTimeoutCorrection = async ({
   lucid,
@@ -151,6 +158,11 @@ export const submitUnattestedTimeoutCorrection = async ({
     Effect.runPromise(
       fetchSortedStateQueueUTxOsProgram(lucid, stateQueueConfig),
     );
+  const submittedThisRun = new Set<string>();
+  const observeAttempt =
+    recovery === undefined
+      ? unjournaledTimeoutCorrectionObserver(lucid, nowMs, submittedThisRun)
+      : (signed: SignedWorkflowTransaction) => recovery.observeAttempt(signed);
 
   let queue = await loadQueue();
   const initialLock = await loadCorrectionLock();
@@ -174,12 +186,7 @@ export const submitUnattestedTimeoutCorrection = async ({
       const reconciled = await recoverTimeoutCorrectionAttempt({
         journal,
         queue,
-        transactionStatus: "unknown",
-        recovery,
-        allowRebroadcast: false,
-        authorizeResubmission: async () => {
-          throw new Error("A competing correction owns the lock.");
-        },
+        observe: observeAttempt,
       });
       if (reconciled.disposition === "pending")
         return pendingTimeoutCorrection(journal);
@@ -254,7 +261,7 @@ export const submitUnattestedTimeoutCorrection = async ({
       const reopened = await adoptLandedTimeoutCorrectionAttempts({
         journal: reopenRolledBackTimeoutCorrectionSteps(journal, queue),
         queue,
-        recovery,
+        observe: observeAttempt,
         nowMs: nowMs(),
         ...(attemptReadSchedule === undefined
           ? {}
@@ -277,49 +284,10 @@ export const submitUnattestedTimeoutCorrection = async ({
         (step) => step.status === "prepared" || step.status === "submitted",
       );
       if (lastStep !== undefined) {
-        const txStatus = await lucid
-          .transactionStatus(lastStep.txHash)
-          .catch(() => ({ status: "not_found" as const }));
-        const activeTargetHeaderHash = journal.targetHeaderHash;
         const reconciliation = await recoverTimeoutCorrectionAttempt({
           journal,
           queue,
-          transactionStatus: txStatus.status,
-          recovery,
-          authorizeResubmission: async (signed) => {
-            const retained = await journalStore.load();
-            const pending = retained?.steps.find(
-              (step) =>
-                step.status === "prepared" || step.status === "submitted",
-            );
-            if (
-              retained?.targetHeaderHash !== activeTargetHeaderHash ||
-              pending?.txHash !== signed.transactionHash ||
-              pending.signedCbor !== signed.signedTransactionCborHex
-            )
-              throw new Error(
-                "Timeout rebroadcast no longer matches the retained active attempt.",
-              );
-            const currentQueue = await loadQueue();
-            const currentPlan = planNextTimeoutCorrection(
-              currentQueue,
-              activeTargetHeaderHash,
-            );
-            const lock = await loadCorrectionLock();
-            if (
-              currentPlan === undefined ||
-              currentPlan.removed.datum.key === "Empty" ||
-              headerHashOf(currentPlan.removed) !== pending.removedHeaderHash ||
-              (lock.datum !== "Idle" &&
-                (lock.datum.Locked.correction_identity !==
-                  "AttestationTimeout" ||
-                  lock.datum.Locked.target_header_hash !==
-                    activeTargetHeaderHash))
-            )
-              throw new Error(
-                "Timeout rebroadcast requires the same live target, descendant and correction owner.",
-              );
-          },
+          observe: observeAttempt,
         });
         journal = reconciliation.journal;
         if (reconciliation.disposition === "pending") {
@@ -516,9 +484,25 @@ export const submitUnattestedTimeoutCorrection = async ({
       let submittedTxHash: string;
       try {
         submittedTxHash = await signed.submit();
-      } catch {
+      } catch (error) {
+        if (recovery === undefined && isSpentInputSubmitRejection(error)) {
+          // Refused, so never sent. Abandoned, not retired: whichever of it
+          // and the in-flight attempt could still land, a replacement must
+          // share an input with both.
+          journal = replaceJournalStepStatus(
+            journal,
+            journal.steps.length - 1,
+            "abandoned",
+          );
+          await journalStore.save(journal);
+          leaseReleased = await releaseTimeoutCorrectionLeaseBeforeYield(lease);
+          throw new TimeoutCorrectionAttemptInFlightError(txHash, {
+            cause: error,
+          });
+        }
         // Submission may have reached the node. The next iteration observes
-        // these exact retained bytes before authorizing any replacement.
+        // these exact retained bytes before signing any replacement.
+        submittedThisRun.add(txHash);
         if (awaitConfirmation) continue;
         leaseReleased = await releaseTimeoutCorrectionLeaseBeforeYield(lease);
         return {
@@ -532,6 +516,7 @@ export const submitUnattestedTimeoutCorrection = async ({
             .map((entry) => entry.removedHeaderHash),
         };
       }
+      submittedThisRun.add(txHash);
       if (submittedTxHash !== txHash) {
         throw new Error(
           `Provider returned transaction hash ${submittedTxHash}, expected ${txHash}.`,
@@ -562,7 +547,7 @@ export const submitUnattestedTimeoutCorrection = async ({
             .map((entry) => entry.removedHeaderHash),
         };
       }
-      // Canonical signed-byte recovery and queue observation confirm on the next iteration.
+      // The attempt's observation and the queue confirm it on the next iteration.
     }
   } catch (error) {
     if (lease !== undefined && !leaseReleased) {

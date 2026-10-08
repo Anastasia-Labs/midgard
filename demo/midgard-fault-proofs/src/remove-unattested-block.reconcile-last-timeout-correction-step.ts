@@ -19,10 +19,7 @@ import {
   type TimeoutCorrectionTxKind,
 } from "./remove-unattested-block.parse-timeout-correction-journal.js";
 import { requireMatchingScriptHash } from "./runtime.js";
-import {
-  type SignedTransactionRecoveryObservation,
-  type SignedWorkflowTransaction,
-} from "./workflow/signed-transaction-reconciliation.js";
+import { type SignedWorkflowTransaction } from "./workflow/signed-transaction-reconciliation.js";
 
 /**
  * Reconcile the sole recoverable transaction intent against both its
@@ -289,18 +286,75 @@ export const requireDeploymentScript = (
   return script;
 };
 
-export type TimeoutCorrectionRecovery = Readonly<{
-  observeSignedTransaction(
-    input: SignedWorkflowTransaction,
-  ): Promise<SignedTransactionRecoveryObservation>;
-  rebroadcastSignedTransaction(
-    input: SignedWorkflowTransaction & {
-      readonly authorizeResubmission: (
-        input: SignedWorkflowTransaction,
-      ) => Promise<void>;
-    },
-  ): Promise<string>;
+/** An L1 point: a slot and its block hash (hex). */
+export type TimeoutCorrectionL1Point = Readonly<{ slot: number; hash: string }>;
+
+/**
+ * What a recovery knows of one retained signed attempt. It is read, never
+ * acted on: no recovery resubmits (the node's intent reconciler is the only
+ * resubmitter).
+ *
+ * - `included`: on the chain, at `inclusion`.
+ * - `pending`: it may still land, so it keeps holding the correction.
+ * - `expired`, `invalidated`, `conflict`, `abandoned`: it cannot land on the
+ *   chain at `canonicalPoint`. Only `final` makes that permanent.
+ * - `unknown`: no answer now (the source is not ready); retried.
+ */
+export type TimeoutCorrectionAttemptObservation = Readonly<{
+  status:
+    | "included"
+    | "pending"
+    | "expired"
+    | "invalidated"
+    | "conflict"
+    | "abandoned"
+    | "unknown";
+  /**
+   * Beyond every legal rollback (depth > k): an inclusion that stays, or a
+   * dead reason that can no longer be undone.
+   */
+  final: boolean;
+  /** The chain tip the observation was read at, when there is one. */
+  canonicalPoint: TimeoutCorrectionL1Point | null;
+  /** The block at depth k + 1 under `canonicalPoint`, when it is known. */
+  releaseFinalPoint: TimeoutCorrectionL1Point | null;
+  /**
+   * `included`: the block it landed in, its depth under `canonicalPoint` (1
+   * at the tip) and the level that depth has (plan §9).
+   */
+  inclusion?: Readonly<{
+    slot: number;
+    height: number;
+    depth: number;
+    level: "landed" | "safe" | "final";
+  }>;
+  /** `pending`: every input it spends is unspent on the chain now. */
+  inputsAvailable?: boolean;
+  reason: string;
 }>;
+
+/** The read-only source of attempt observations (see the observation). */
+export type TimeoutCorrectionRecovery = Readonly<{
+  observeAttempt(
+    input: SignedWorkflowTransaction,
+  ): Promise<TimeoutCorrectionAttemptObservation>;
+}>;
+
+/**
+ * The journal transition an observation implies: included is confirmed once
+ * the queue shows its effect, a final dead attempt is retired, and one dead
+ * only at the tip is superseded (abandoned, so a replacement must share an
+ * input with it and whichever lands wins).
+ */
+export const timeoutCorrectionAttemptStatus = (
+  observed: TimeoutCorrectionAttemptObservation,
+): TimeoutCorrectionTransactionStatus => {
+  if (observed.status === "included") return "confirmed";
+  if (observed.status === "pending" || observed.status === "unknown")
+    return "pending";
+  if (!observed.final) return "superseded";
+  return observed.status === "expired" ? "expired" : "invalidated";
+};
 
 export type SubmitUnattestedTimeoutCorrectionResult = {
   readonly status: "empty" | "not-ready" | "pending" | "complete";
