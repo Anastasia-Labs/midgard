@@ -500,14 +500,10 @@ export const registerAdmissionsTests = () => {
               [TxRejectionsDB.Columns.REJECT_DETAIL]: detail,
             });
             yield* persistCommitStageRejectedTransactions({
-              rejectedTxHashes: [successful.txId],
               rejectionEntries: [
                 rejectionFor(successful.txId, "commit-stage rejection"),
               ],
-              ledgerRevert: {
-                rejected: [],
-                resolveInputPostState: () => undefined,
-              },
+              resolveInputPostState: () => undefined,
             });
             expect(
               yield* MempoolDB.retrieveTxCborByHash(successful.txId).pipe(
@@ -525,14 +521,10 @@ export const registerAdmissionsTests = () => {
             );
             const failed = yield* Effect.either(
               persistCommitStageRejectedTransactions({
-                rejectedTxHashes: [conflicting.txId],
                 rejectionEntries: [
                   rejectionFor(conflicting.txId, "duplicate conflict"),
                 ],
-                ledgerRevert: {
-                  rejected: [],
-                  resolveInputPostState: () => undefined,
-                },
+                resolveInputPostState: () => undefined,
               }),
             );
             expect(failed._tag).toBe("Left");
@@ -646,7 +638,7 @@ export const registerAdmissionsTests = () => {
             });
             yield* MempoolDB.applyLedgerEffectsCore([child]);
             yield* MempoolTxDeltasDB.upsertMany(
-              [child, unrelated].map(({ txId, spent, produced }) => ({
+              [rejected, child, unrelated].map(({ txId, spent, produced }) => ({
                 txId,
                 spent,
                 produced,
@@ -666,8 +658,7 @@ export const registerAdmissionsTests = () => {
               yield* depositStatus(childDeposit[DepositsDB.Columns.ID]),
             ).toEqual(Option.some(DepositsDB.Status.Consumed));
 
-            const reverted = yield* persistCommitStageRejectedTransactions({
-              rejectedTxHashes: [rejected.txId],
+            const outcome = yield* persistCommitStageRejectedTransactions({
               rejectionEntries: [
                 {
                   [TxRejectionsDB.Columns.TX_ID]: rejected.txId,
@@ -676,26 +667,26 @@ export const registerAdmissionsTests = () => {
                   [TxRejectionsDB.Columns.REJECT_DETAIL]: "withdrawn input",
                 },
               ],
-              ledgerRevert: {
-                rejected: [rejected],
-                // The block consumes `spentByBlock` and leaves every other
-                // committed output unspent.
-                resolveInputPostState: commitStageInputPostState({
-                  baseLedgerOutputs: new Map(
-                    committed.map((e) => [
-                      outRef(e).toString("hex"),
-                      e[LedgerUtils.Columns.OUTPUT],
-                    ]),
-                  ),
-                  insertedOutputs: new Map(),
-                  spentOutRefHexes: new Set([
-                    outRef(spentByBlock).toString("hex"),
+              // The block consumes `spentByBlock` and leaves every other
+              // committed output unspent.
+              resolveInputPostState: commitStageInputPostState({
+                baseLedgerOutputs: new Map(
+                  committed.map((e) => [
+                    outRef(e).toString("hex"),
+                    e[LedgerUtils.Columns.OUTPUT],
                   ]),
-                }),
-              },
+                ),
+                insertedOutputs: new Map(),
+                spentOutRefHexes: new Set([
+                  outRef(spentByBlock).toString("hex"),
+                ]),
+              }),
             });
 
-            expect(reverted).toBe(true);
+            expect(outcome).toMatchObject({
+              _tag: "Persisted",
+              ledgerChanged: true,
+            });
             const ledger = (yield* MempoolLedgerDB.retrieve)
               .map((row) => ({
                 [MempoolLedgerDB.Columns.TX_ID]:

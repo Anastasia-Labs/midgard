@@ -30,6 +30,12 @@ export type RejectionCodes = Readonly<
 
 export type Rejection = Readonly<{ tx: PendingTx; reason: RejectionReason }>;
 
+/** The code and detail one rejection is recorded with, by hex transaction id. */
+export type RejectionCodeOf = (
+  id: string,
+  rejection: Rejection,
+) => Readonly<{ code: string; detail: string }>;
+
 /** Rejections keyed by hex transaction id. */
 export type Rejections = ReadonlyMap<string, Rejection>;
 
@@ -121,7 +127,8 @@ export const producedByRejections = (rejected: Rejections) =>
 
 /**
  * Removes rejected transactions from the pending sets and undoes their
- * acceptance: a terminal rejection row and admission, no address history, and
+ * acceptance: a terminal rejection row and admission (coded by reason, or per
+ * transaction), no address history, and
  * every acceptance receipt they belong to reversed. A receipt whose other
  * members are all in `settled` (transactions a base block includes) or
  * recorded as settled on it is reversed with them: those members are
@@ -130,7 +137,7 @@ export const producedByRejections = (rejected: Rejections) =>
  */
 export const recordRejections = (
   rejected: Rejections,
-  codes: RejectionCodes,
+  codes: RejectionCodes | RejectionCodeOf,
   settled: readonly Buffer[] = [],
 ) =>
   Effect.gen(function* () {
@@ -150,9 +157,11 @@ export const recordRejections = (
       yield* ProcessedMempoolDB.clearTxs(processedIds);
       yield* MempoolTxDeltasDB.clearTxs(processedIds);
     }
-    const rejections = [...rejected.entries()].map(([id, { reason }]) => ({
+    const rejections = [...rejected.entries()].map(([id, rejection]) => ({
       txId: Buffer.from(id, "hex"),
-      ...codes[reason],
+      ...(typeof codes === "function"
+        ? codes(id, rejection)
+        : codes[rejection.reason]),
     }));
     yield* TxRejectionsDB.insertMany(
       rejections.map(({ txId, code, detail }) => ({

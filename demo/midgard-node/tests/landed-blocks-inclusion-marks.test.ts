@@ -12,7 +12,9 @@
  * - an own block that lands and folds with no rebase between leaves its
  *   receipt members recorded settled, so a later rejection of a co-member
  *   leaves them settled;
- * - commit selection reads no marked row.
+ * - commit selection reads no marked row;
+ * - a skipped submission moves its selected mempool rows to the processed
+ *   mempool with the marks they hold at the move, not at the selection.
  */
 
 import {
@@ -32,6 +34,7 @@ import { describe, expect, it } from "vitest";
 import {
   ConfirmedLedgerDB,
   MempoolDB,
+  MempoolInclusionsDB,
   ProcessedMempoolDB,
   TxUtils,
 } from "../src/database/index.js";
@@ -51,7 +54,10 @@ import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydrati
 import { withHistoryWrite } from "../src/services/event-history-producer.js";
 import { finalizeConfirmedMergeTransaction } from "../src/transactions/state-queue/merge-to-confirmed-state.finalize-confirmed-merge-program.js";
 import { selectCommitTxCandidates } from "../src/workers/utils/commit-block-planner.select-commit-tx-candidates.js";
-import { finalizeCommittedBlockLocally } from "../src/workers/utils/commit-submission.js";
+import {
+  finalizeCommittedBlockLocally,
+  skippedSubmissionProgram,
+} from "../src/workers/utils/commit-submission.js";
 import {
   admitPending,
   type SimPendingTx,
@@ -441,6 +447,54 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
     );
     expect(kept.map((row) => hex(row.tx_id)).sort()).toEqual(
       [m1!, m2!, m3!, p1!].map((tx) => hex(tx.id)).sort(),
+    );
+  });
+
+  it("moves a mark set between a skipped submission's selection and its transfer with the row", async () => {
+    const [x, y] = [41, 42].map((label, at) => nativeTx(label, [], at + 1));
+    const globals = await processOf(freshNative());
+    await seedFrontier(globals);
+    await run(globals, admitPending([x!, y!]));
+    const selected = (
+      await run(globals, MempoolDB.retrievePage({ limit: 100 }))
+    ).entries;
+    expect(
+      selected.map((row) => hex(row[TxUtils.Columns.TX_ID])).sort(),
+    ).toEqual([x!, y!].map((tx) => hex(tx.id)).sort());
+    // A block includes x after the selection.
+    await sqlRun(globals, () => MempoolInclusionsDB.markIncluded(OWN, [x!.id]));
+    await run(
+      globals,
+      skippedSubmissionProgram(
+        selected,
+        selected.map((row) => row[TxUtils.Columns.TX_ID]),
+      ),
+    );
+    const tables = await run(
+      globals,
+      Effect.flatMap(
+        SqlClient.SqlClient,
+        (sql) => sql<{
+          table: string;
+          tx_id: Buffer;
+          included_by: Buffer | null;
+        }>`
+          SELECT 'mempool' AS table, tx_id, included_by FROM mempool
+          UNION ALL SELECT 'processed', tx_id, included_by FROM processed_mempool
+          ORDER BY tx_id`,
+      ),
+    );
+    expect(
+      tables.map((row) => [
+        row.table,
+        hex(row.tx_id),
+        row.included_by === null ? null : hex(row.included_by),
+      ]),
+    ).toEqual(
+      [
+        ["processed", hex(x!.id), OWN],
+        ["processed", hex(y!.id), null],
+      ].sort(([, left], [, right]) => (left! < right! ? -1 : 1)),
     );
   });
 });

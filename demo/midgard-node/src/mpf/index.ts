@@ -11,20 +11,25 @@ export {
   verifyKeyValuePhasNonMembershipProof,
 } from "../workers/utils/mpf/phas.js";
 export {
+  COMMIT_REJECT_CODE_BATCH_MEMBER,
   COMMIT_REJECT_CODE_DECODE_FAILED,
   COMMIT_REJECT_CODE_FORCED_TRANSACTION_INPUT,
   COMMIT_REJECT_CODE_SAME_BLOCK_DEPOSIT_INPUT,
   COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT,
   COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT,
   commitStageInputPostState,
-  type CommitStageLedgerRevert,
+  type CommitStageTxEffects,
   commitTxDeltaCacheHitCounter,
   commitTxDeltaFallbackDecodedCounter,
-  persistCommitStageRejectedTransactions,
   type ResolvedTxDeltaForCommit,
   resolveTxDeltaForCommit,
   revertCommitStageRejectedLedgerEffects,
 } from "./commit-rejection.js";
+export {
+  type CommitStageRejectionOutcome,
+  persistCommitStageRejectedTransactions,
+  settleCommitStageRejections,
+} from "./commit-rejection.persist-commit-stage-rejected-transactions.js";
 export {
   configureCommitMpfRuntime,
   configureMpfArenaLimits,
