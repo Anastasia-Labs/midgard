@@ -44,6 +44,7 @@ describe("schema lint (class and retention)", () => {
       "l1_follower_cursor",
       "l1_output_assets",
       "l1_outputs",
+      "l1_protocol_init",
       "l1_rollbacks",
       "l1_scripts",
       "l1_tx_mint_policies",

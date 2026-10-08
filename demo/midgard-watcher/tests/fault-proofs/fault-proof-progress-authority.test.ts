@@ -446,6 +446,7 @@ describe("supervisor progress authority: proof retention", () => {
           ...storelessProofRetention,
           pin: async ({ category, headerHash }) => {
             pinned.push(`${category}/${headerHash}`);
+            return { kind: "pinned" };
           },
         },
       });

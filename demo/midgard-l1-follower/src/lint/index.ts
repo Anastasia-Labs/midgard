@@ -11,9 +11,13 @@ export {
   type TableClass,
 } from "../schema/lint.js";
 export {
+  type DeterminismAllowance,
   type DeterminismLintOptions,
+  type DeterminismModulesOptions,
+  type DeterminismModulesReport,
   type DeterminismProblem,
   type DeterminismRule,
   lintDeterminism,
+  lintDeterminismModules,
   lintDeterminismSource,
 } from "./determinism.js";

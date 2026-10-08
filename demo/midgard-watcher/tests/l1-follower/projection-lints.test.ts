@@ -1,9 +1,10 @@
-import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 import { createTemporalRegistry } from "@al-ft/midgard-l1-follower";
 import {
   declaredTables,
   lintDeterminism,
+  lintDeterminismModules,
   lintSchema,
 } from "@al-ft/midgard-l1-follower/lint";
 import { describe, expect, it } from "vitest";
@@ -29,8 +30,40 @@ import { SIM_WATCHER_DEPLOYMENT } from "../support/l1-follower-state-queue-traff
 const projection = watcherProjection(SIM_WATCHER_DEPLOYMENT);
 
 /**
- * The projection's sources, and the old decoders it reuses with their local
- * imports (the lint is per file, not transitive).
+ * Every follower module of the watcher and every module it imports, except
+ * the processes and the sources that reach the node (the runtime, the
+ * deployment wiring, the fault-proof L1 source and the ledger queries).
+ */
+const LINTED = lintDeterminismModules({
+  root: fileURLToPath(new URL("../..", import.meta.url)),
+  include: ["src/l1-follower/*.ts"],
+  exclude: [
+    "src/l1-follower/deployment-follower.ts",
+    "src/l1-follower/fault-proof-l1-source*.ts",
+    "src/l1-follower/follower-runtime.ts",
+    "src/l1-follower/raw-reads.ledger.ts",
+  ],
+  allow: [
+    {
+      path: "src/indexers/authenticated-state-queue-observation.parse-persisted-observation.ts",
+      rule: "environment",
+      text: "process.env",
+      reason:
+        "the guard of the test-only replay admission, which no projection calls",
+    },
+    {
+      path: "src/l1-follower/tx-inputs.ts",
+      rule: "clock",
+      text: "setTimeout",
+      reason:
+        "the ingest resolver's retry timer; the raw reads call only resolveStoredInputIn",
+    },
+  ],
+});
+
+/**
+ * The projection's sources and the old decoders it reuses, as the lint once
+ * named them by hand: it must still reach each.
  */
 const PROJECTION_SOURCES = [
   "src/l1-follower/projection.ts",
@@ -87,17 +120,11 @@ describe("watcher projection lints (F2 schema, F4 determinism)", () => {
     ).not.toEqual([]);
   });
 
-  it("uses no clock, randomness or network in the projection's sources", async () => {
-    const files = await Promise.all(
-      PROJECTION_SOURCES.map(async (path) => ({
-        path,
-        source: await readFile(
-          new URL(`../../${path}`, import.meta.url),
-          "utf8",
-        ),
-      })),
+  it("uses no clock, randomness, network or host read in the projection's sources and their imports", () => {
+    expect(LINTED.problems).toEqual([]);
+    expect(LINTED.files).toEqual(
+      expect.arrayContaining(PROJECTION_SOURCES) as unknown,
     );
-    expect(lintDeterminism(files)).toEqual([]);
     expect(
       lintDeterminism([
         { path: "probe.ts", source: "export const now = () => Date.now();" },

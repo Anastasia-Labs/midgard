@@ -124,8 +124,9 @@ export type BodyFields = {
   collateralReturn: OutputSummary | null;
   mint: Assets;
   withdrawals: WithdrawalSummary[];
-  invalidBefore: number | null;
-  invalidAfter: number | null;
+  /** Validity interval start and TTL are ledger Word64 slots. */
+  invalidBefore: bigint | null;
+  invalidAfter: bigint | null;
 };
 
 /** Reads one transaction body map; `body` must be exactly the map's bytes. */
@@ -155,13 +156,13 @@ export const readBody = (body: Buffer): BodyFields => {
         );
         break;
       case 3:
-        fields.invalidAfter = readSmallUint(body, value);
+        fields.invalidAfter = readUint(body, value);
         break;
       case 5:
         fields.withdrawals = readWithdrawals(body, value);
         break;
       case 8:
-        fields.invalidBefore = readSmallUint(body, value);
+        fields.invalidBefore = readUint(body, value);
         break;
       case 9:
         fields.mint = readMultiAsset(body, value, true);

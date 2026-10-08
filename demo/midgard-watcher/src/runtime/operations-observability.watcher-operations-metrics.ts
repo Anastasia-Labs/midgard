@@ -222,8 +222,9 @@ export type WatcherOperationsStatus = Readonly<{
   l1Readiness: readonly Readonly<{ reason: string; detail: string }>[];
   /**
    * Named L1 degradations, for example `l1_tx_inputs_unresolvable` for
-   * recorded txs no open proof needs whose inputs can never resolve. Reported
-   * only: they never add a readiness reason.
+   * recorded txs no open proof needs whose inputs can never resolve, or
+   * `l1_proof_history_pruned` for open proofs whose history pruning removed
+   * before a pin held it. Reported only: they never add a readiness reason.
    */
   l1Degradations: readonly WatcherOperationsL1Degradation[];
   retainedDaTransport: WatcherRetainedDaTransportStatus;

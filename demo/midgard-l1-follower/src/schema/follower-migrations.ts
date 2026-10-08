@@ -11,6 +11,8 @@ import type { MigrationSet } from "./migrate.js";
  * Deltas from the §5.2 draft, all additive: `l1_outputs_script_ref` (the
  * `l1_scripts` retention check and its foreign key) and
  * `l1_event_keys_slot` (the rewind deletes keys above the target, §5.4),
+ * `l1_protocol_init` (the §5.3 step 3 fact that the tx spending the
+ * manifest's `hubOracleOneShot` outref landed; it outlives the pruned tx),
  * and `l1_follower_cursor.pruned_through_slot`: the highest slot at or below
  * which pruning may have removed spent outputs, closed temporal rows or
  * blocks. Facts are complete for every slot at or above it, so it bounds
@@ -42,8 +44,8 @@ CREATE TABLE l1_txs (
   mint             jsonb   NOT NULL,
   withdrawals      jsonb   NOT NULL,
   redeemers        jsonb   NOT NULL,
-  invalid_before   bigint,
-  invalid_after    bigint,
+  invalid_before   numeric(20,0),
+  invalid_after    numeric(20,0),
   body_cbor        bytea   NOT NULL,
   witness_cbor     bytea   NOT NULL,
   aux_cbor         bytea,
@@ -131,6 +133,13 @@ CREATE TABLE l1_event_keys (
   PRIMARY KEY (kind, key)
 );
 
+-- class: A; retention: forever while canonical; prune never removes it, a rewind below its slot removes it
+CREATE TABLE l1_protocol_init (
+  one_shot bytea PRIMARY KEY,
+  tx_hash bytea NOT NULL,
+  slot bigint NOT NULL
+);
+
 CREATE INDEX l1_outputs_address_live ON l1_outputs (address) WHERE spent_slot IS NULL;
 CREATE INDEX l1_outputs_payment_live ON l1_outputs (payment_cred) WHERE spent_slot IS NULL;
 CREATE INDEX l1_outputs_stake_live ON l1_outputs (stake_cred) WHERE spent_slot IS NULL;
@@ -168,8 +177,8 @@ CREATE TABLE l1_txs (
   mint             TEXT    NOT NULL,
   withdrawals      TEXT    NOT NULL,
   redeemers        TEXT    NOT NULL,
-  invalid_before   INTEGER,
-  invalid_after    INTEGER,
+  invalid_before   TEXT,
+  invalid_after    TEXT,
   body_cbor        BLOB    NOT NULL,
   witness_cbor     BLOB    NOT NULL,
   aux_cbor         BLOB,
@@ -255,6 +264,13 @@ CREATE TABLE l1_event_keys (
   origin_outref BLOB NOT NULL,
   first_canonical_slot INTEGER NOT NULL,
   PRIMARY KEY (kind, key)
+);
+
+-- class: A; retention: forever while canonical; prune never removes it, a rewind below its slot removes it
+CREATE TABLE l1_protocol_init (
+  one_shot BLOB PRIMARY KEY,
+  tx_hash BLOB NOT NULL,
+  slot INTEGER NOT NULL
 );
 
 CREATE INDEX l1_outputs_address_live ON l1_outputs (address) WHERE spent_slot IS NULL;

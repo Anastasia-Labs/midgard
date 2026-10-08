@@ -310,6 +310,18 @@ const createdIndexes = (txCbor: Buffer): number => {
 };
 
 /**
+ * A decoded validity bound as a journal slot: null when absent, undefined
+ * when past `Number.MAX_SAFE_INTEGER`, which the journal's slot columns and
+ * status arithmetic do not carry.
+ */
+const slotBound = (bound: bigint | null): number | null | undefined =>
+  bound === null
+    ? null
+    : bound <= BigInt(Number.MAX_SAFE_INTEGER)
+      ? Number(bound)
+      : undefined;
+
+/**
  * S5: journals a newly signed transaction before its first submission
  * (§8.2), in the caller's write transaction. Idempotent per tx hash.
  */
@@ -331,6 +343,14 @@ export const recordIntentIn = async (
       kind: "undecodable",
       detail:
         "a bare transaction body carries no witnesses; journal the signed transaction",
+    };
+  const validFromSlot = slotBound(decoded.invalidBefore);
+  const validToSlot = slotBound(decoded.invalidAfter);
+  if (validFromSlot === undefined || validToSlot === undefined)
+    return {
+      kind: "undecodable",
+      detail:
+        "a validity bound is past the journal's slot range (Number.MAX_SAFE_INTEGER)",
     };
   const txHash = decoded.hash;
   const existing = await readIntentsIn(tx, dialect, [txHash]);
@@ -404,8 +424,8 @@ export const recordIntentIn = async (
     referenceInputs: decoded.referenceInputs,
     collaterals: decoded.collaterals,
     ownOutputs,
-    validFromSlot: decoded.invalidBefore,
-    validToSlot: decoded.invalidAfter,
+    validFromSlot,
+    validToSlot,
     dependsOn,
     built: view,
     contentRef: input.contentRef ?? null,

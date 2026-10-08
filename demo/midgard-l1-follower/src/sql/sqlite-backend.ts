@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 
 import {
@@ -68,21 +69,29 @@ const isMemory = (path: string): boolean => path === "" || path === ":memory:";
 
 /**
  * Takes core's `SqliteProcessMutex` on the sidecar: a kernel lock that the
- * process's death releases. An in-memory database is private to its
- * connection, so its lease is always free.
+ * process's death releases. The lock is held on the sidecar file this
+ * process opened, so the lease is lost once that file is no longer at the
+ * sidecar path (deleted or replaced): another process can then take a lock
+ * on a new file there. An in-memory database is private to its connection,
+ * so its lease is always free and never lost.
  */
 const acquireSqliteLease = (path: string): WriterLease | null => {
   if (isMemory(path))
     return { lost: () => false, release: async () => undefined };
+  const leasePath = writerLeasePath(path);
   let mutex: SqliteProcessMutex;
   try {
-    mutex = SqliteProcessMutex.acquire(writerLeasePath(path));
+    mutex = SqliteProcessMutex.acquire(leasePath);
   } catch (error) {
     if (isSqliteMutexBusy(error)) return null;
     throw error;
   }
+  const held = statSync(leasePath);
   return {
-    lost: () => false,
+    lost: () => {
+      const now = statSync(leasePath, { throwIfNoEntry: false });
+      return now === undefined || now.ino !== held.ino || now.dev !== held.dev;
+    },
     release: async () => {
       mutex.close();
     },

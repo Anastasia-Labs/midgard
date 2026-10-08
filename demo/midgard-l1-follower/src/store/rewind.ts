@@ -43,7 +43,15 @@ export type RewindFault =
    */
   | "keep_seed_rows_above_target"
   /** Also deletes seed rows seeded at the target itself. */
-  | "delete_seed_rows_at_target";
+  | "delete_seed_rows_at_target"
+  /**
+   * Throws after the cursor moved and the rollback row is written, as a
+   * dropped connection would: the whole rewind must roll back as one unit.
+   */
+  | "fail_after_cursor_update";
+
+/** What the `fail_after_cursor_update` fault throws. */
+export class InjectedRewindFailure extends Error {}
 
 const intervention = (
   reason: Intervention["reason"],
@@ -153,6 +161,7 @@ export const rewindIn = async (
   await tx.query("DELETE FROM l1_event_keys WHERE first_canonical_slot > ?", [
     targetSlot,
   ]);
+  await tx.query("DELETE FROM l1_protocol_init WHERE slot > ?", [targetSlot]);
   await tx.query("DELETE FROM l1_txs WHERE block_slot > ?", [targetSlot]);
   await tx.query("DELETE FROM l1_blocks WHERE slot > ?", [targetSlot]);
   const generation = cursor.generation + 1;
@@ -171,6 +180,8 @@ export const rewindIn = async (
       depth,
     ],
   );
+  if (fault === "fail_after_cursor_update")
+    throw new InjectedRewindFailure("injected failure after the cursor update");
   const report = await runInvariantChecks(tx, dialect, registry, "post_rewind");
   if (!report.ok)
     throw new RollbackWith(

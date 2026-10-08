@@ -37,6 +37,7 @@ export {
   type FollowChainOptions,
   FOLLOWER_APPLY_STUCK,
   FOLLOWER_CATCHING_UP,
+  FOLLOWER_MIGRATION_FAILED,
   FOLLOWER_WAITING,
   type FollowReadiness,
   type FollowReadinessReason,
@@ -233,6 +234,11 @@ export type {
   InvariantReport,
   InvariantViolation,
 } from "./store/invariants.js";
+export {
+  type PinResult,
+  pinRetainedIn,
+  type RetainedPin,
+} from "./store/pin.js";
 export {
   CHECKPOINT_INTERVAL,
   type PruneResult,

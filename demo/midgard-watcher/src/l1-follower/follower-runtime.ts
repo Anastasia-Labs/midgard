@@ -298,10 +298,11 @@ export const openWatcherFollowerRuntime = (
     status: () => latest,
     readiness,
     degradations: async () => {
+      const proofs = proofRetention.degradations();
       try {
-        return (await txInputs.assess()).degradations;
+        return [...(await txInputs.assess()).degradations, ...proofs];
       } catch {
-        return [];
+        return proofs;
       }
     },
     onChange: (listener: (status: FollowStatus) => void) => {

@@ -205,6 +205,27 @@ describe("recording an intent (§8.2)", () => {
     });
   });
 
+  it("records a validity bound up to the safe slot range and refuses one past it", async () => {
+    await h.store.initialize(SIM_ORIGIN);
+    const safe = BigInt(Number.MAX_SAFE_INTEGER);
+    const kept = await h.record(
+      spend(h.chain, await h.fund(), { invalidAfter: safe }),
+    );
+    expect(kept).toMatchObject({ kind: "recorded" });
+    if (kept.kind === "recorded")
+      expect(kept.intent.validToSlot).toBe(Number.MAX_SAFE_INTEGER);
+    expect(
+      await h.record(
+        spend(h.chain, await h.fund(), { invalidAfter: safe + 1n }),
+      ),
+    ).toMatchObject({ kind: "undecodable" });
+    expect(
+      await h.record(
+        spend(h.chain, await h.fund(), { invalidBefore: 2n ** 64n - 1n }),
+      ),
+    ).toMatchObject({ kind: "undecodable" });
+  });
+
   it("refuses an input that is neither a fact nor a recorded intent's output", async () => {
     await h.store.initialize(SIM_ORIGIN);
     const outside = h.chain.outsideInput();

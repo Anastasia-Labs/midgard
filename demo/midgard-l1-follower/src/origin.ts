@@ -193,23 +193,24 @@ export type ProtocolInitStatus =
   | StoreError;
 
 /**
- * The completeness assertion of §5.3 step 3. `seen` once a stored valid tx
- * spent the `hubOracleOneShot` outref (the protocol-init tx, which qualifies
- * through the hub policy mint, so the role's tracked set must hold that
- * policy). Until the cursor reaches the node tip the answer is `pending`; at
- * the tip without the spend it is R3. It is not sticky: a later call that
- * finds the spend answers `seen`.
+ * The completeness assertion of §5.3 step 3. `seen` once the store holds the
+ * protocol-init fact: a valid tx spent the `hubOracleOneShot` outref in an
+ * applied block (`FactStore.watchProtocolInit`). Until the cursor reaches
+ * the node tip the answer is `pending`; at the tip without the fact it is
+ * R3. It is not sticky: a later call that finds the fact answers `seen`.
  *
- * The init tx stays stored while any output it created is live (R1b); the
- * hub-oracle output is one of them for as long as the deployment runs.
+ * The fact is class A and outlives the init tx: the tx row is pruned once
+ * the outputs it created are spent and k deep, but prune never removes the
+ * fact. A rewind below the init block removes it, and the block landing
+ * again records it again.
  */
 export const protocolInitStatus = async (
-  store: Pick<FactStore, "cursor" | "txSpending">,
+  store: Pick<FactStore, "cursor" | "protocolInit">,
   config: OriginConfig,
   tip: Point,
 ): Promise<ProtocolInitStatus> => {
   try {
-    const spend = await store.txSpending(config.hubOracleOneShot);
+    const spend = await store.protocolInit(config.hubOracleOneShot);
     if (spend !== null) return { kind: "seen", ...spend };
     const cursor = await store.cursor();
     if (cursor === null)

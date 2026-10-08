@@ -1521,8 +1521,8 @@
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-progress-authority.ts",
-    "max": 506,
-    "reason": "createWatcherFaultProofProgressAuthority is one state owner: admission, execution updates, reconciliation and completion close over one objective index, decision cache and authority epoch, and share their revision checks; splitting it would redesign that ownership rather than separate independent declarations. W1 (+15): the authority pins each open objective's L1 history in the follower and releases it once the objective's completion marker holds (E1 ruling)."
+    "max": 524,
+    "reason": "createWatcherFaultProofProgressAuthority is one state owner: admission, execution updates, reconciliation and completion close over one objective index, decision cache and authority epoch, and share their revision checks; splitting it would redesign that ownership rather than separate independent declarations. W1 (+15): the authority pins each open objective's L1 history in the follower and releases it once the objective's completion marker holds (E1 ruling). F-fix (+1): completion markers are made and matched at the follower's k (the deployment's security parameter), read once from the retention. F-fix (+17): a pin that pruning beat is remembered per objective and retried on each later new observation, so the objective stays open and named rather than silently unheld."
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-supervisor.create-supervisor.ts",

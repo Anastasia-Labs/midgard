@@ -42,6 +42,7 @@ import {
   type InvariantReport,
   runInvariantChecks,
 } from "./invariants.js";
+import { type PinResult, pinRetainedIn, type RetainedPin } from "./pin.js";
 import { pruneIn, type PruneResult } from "./prune.js";
 import * as reads from "./reads.js";
 import {
@@ -121,6 +122,8 @@ export type GenerationListener = (
 export type FactStore = Readonly<{
   dialect: SqlBackend["dialect"];
   registry: TemporalRegistry;
+  /** The security parameter k this store rewinds and prunes with, in blocks. */
+  securityParameter: number;
   /**
    * Takes the writer lease (`store_locked` while another process holds it;
    * retry with backoff), migrates, runs INV1–INV6 (R5 on failure), loads
@@ -139,11 +142,29 @@ export type FactStore = Readonly<{
     outputs: readonly SeedOutput[],
   ): Promise<SeedResult | SeedCursorMoved | StoreError | StoreLocked | null>;
   setTrackedSet(trackedSet: TrackedSet): void;
+  /**
+   * The manifest's `hubOracleOneShot` outref: each applied block that holds
+   * a valid tx spending it records the durable protocol-init fact (§5.3
+   * step 3). Set it before following; `followChain` does.
+   */
+  watchProtocolInit(oneShot: OutRef): void;
+  /** The protocol-init fact for `oneShot`; it outlives the pruning of the init tx. */
+  protocolInit(oneShot: OutRef): Promise<reads.TxSpending | null>;
   trackedSet(): TrackedSet;
   /** Whether an outref is a live tracked row (the in-memory set). */
   isTrackedLive(outRef: OutRef): boolean;
   liveOutRefCount(): number;
   prune(budget?: number): Promise<PruneResult | StoreError | StoreLocked>;
+  /**
+   * Writes a retention pin under the cursor lock, in one write transaction
+   * of its own (`pinRetainedIn`): `already_pruned` when pruning removed the
+   * pinned rows first, and then nothing is written. Every role pin goes
+   * through it. It runs outside the writer lane and needs no writer lease,
+   * by design: a pin row is a role row, not a fact, and the only write it
+   * must be ordered against is a prune step, which the cursor lock orders.
+   * So a reader process can pin.
+   */
+  pinRetained(pin: RetainedPin): Promise<PinResult>;
   checkInvariants(): Promise<InvariantReport>;
   cursor(): Promise<Cursor | null>;
   currentView(): Promise<View | null>;
@@ -224,6 +245,7 @@ export const createFactStore = (
   const live = new Set<string>();
   const listeners = new Set<GenerationListener>();
   let tracked = options.trackedSet;
+  let protocolInitOneShot: OutRef | null = null;
   let broken: Intervention | null = null;
   let started = false;
   let lease: WriterLease | null = null;
@@ -272,6 +294,7 @@ export const createFactStore = (
   const store: FactStore = {
     dialect,
     registry,
+    securityParameter: options.securityParameter,
     start: () =>
       lane.run(async (): Promise<StartResult> => {
         if (lease !== null && (fenced || lease.lost())) {
@@ -292,6 +315,8 @@ export const createFactStore = (
         const report = await checkInvariants();
         if (!report.ok)
           return markBroken(`at start: ${describeViolations(report)}`);
+        // A clean start recovers an earlier R5 (after a reset, say).
+        broken = null;
         live.clear();
         const count = await loadLiveOutRefs(
           (after) =>
@@ -328,7 +353,14 @@ export const createFactStore = (
         if (refusal !== null) return refusal;
         try {
           const result = await fencedWrite((tx) =>
-            applyBlockIn(tx, context, block, tracked, (key) => live.has(key)),
+            applyBlockIn(
+              tx,
+              context,
+              block,
+              tracked,
+              (key) => live.has(key),
+              protocolInitOneShot,
+            ),
           );
           if (result.kind === "applied") {
             for (const outRef of result.spent) live.delete(outRefKey(outRef));
@@ -392,10 +424,16 @@ export const createFactStore = (
       tracked = next;
     },
     trackedSet: () => tracked,
+    watchProtocolInit: (oneShot) => {
+      protocolInitOneShot = oneShot;
+    },
+    protocolInit: (oneShot) => read((tx) => reads.protocolInitIn(tx, oneShot)),
     isTrackedLive: (outRef) => live.has(outRefKey(outRef)),
     liveOutRefCount: () => live.size,
     prune: (budget = DEFAULT_PRUNE_BUDGET) =>
       lane.run(async () => {
+        if (broken !== null)
+          return { kind: "error", error: new Error(broken.detail) } as const;
         const refusal = writeRefusal();
         if (refusal !== null) return refusal;
         try {
@@ -404,6 +442,8 @@ export const createFactStore = (
           return { kind: "error", error: asError(error) } as const;
         }
       }),
+    pinRetained: (pin) =>
+      backend.transaction("write", (tx) => pinRetainedIn(tx, dialect, pin)),
     checkInvariants,
     cursor: () => read((tx) => reads.tipIn(tx, dialect)),
     currentView: () => read((tx) => currentViewIn(tx, dialect)),

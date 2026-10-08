@@ -88,8 +88,9 @@ export type TxSummary = Readonly<{
   mint: Assets;
   withdrawals: readonly WithdrawalSummary[];
   redeemers: readonly RedeemerSummary[];
-  invalidBefore: number | null;
-  invalidAfter: number | null;
+  /** Ledger Word64 slots: the full range exceeds 2^53 - 1. */
+  invalidBefore: bigint | null;
+  invalidAfter: bigint | null;
 }>;
 
 /** The decoded form of one block: what the sequential writer applies. */
@@ -154,8 +155,9 @@ export type StoredTx = Readonly<{
   mint: Assets;
   withdrawals: readonly WithdrawalSummary[];
   redeemers: readonly RedeemerSummary[];
-  invalidBefore: number | null;
-  invalidAfter: number | null;
+  /** Ledger Word64 slots: the full range exceeds 2^53 - 1. */
+  invalidBefore: bigint | null;
+  invalidAfter: bigint | null;
   bodyCbor: Buffer;
   witnessCbor: Buffer;
   auxCbor: Buffer | null;

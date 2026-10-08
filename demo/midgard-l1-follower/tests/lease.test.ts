@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -6,9 +6,15 @@ import { setTimeout as sleep } from "node:timers/promises";
 import pg from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 
-import type { BlockSummary, FactStore, StartResult } from "../src/index.js";
+import {
+  type BlockSummary,
+  type FactStore,
+  openSqliteFactStore,
+  type StartResult,
+  writerLeasePath,
+} from "../src/index.js";
 import { testDatabases } from "./support/postgres.js";
-import { resetAdapters } from "./support/reset-stores.js";
+import { resetAdapters, roleOptions } from "./support/reset-stores.js";
 import { chain, ORIGIN } from "./support/small-chain.js";
 
 const databases = testDatabases();
@@ -99,6 +105,32 @@ describe.each(resetAdapters(databases, scratch))(
     });
   },
 );
+
+describe("writer lease (sqlite sidecar)", () => {
+  it("is lost once its sidecar file is gone: the holder's next write is store_locked, and it starts again on a new sidecar", async () => {
+    const path = join(scratch, `${String(Math.random()).slice(2)}.db`);
+    const store = openSqliteFactStore({ ...roleOptions("sqlite"), path });
+    try {
+      expect(await store.start()).toMatchObject({ kind: "ready" });
+      expect(await store.initialize(ORIGIN)).toMatchObject({
+        kind: "initialized",
+      });
+      unlinkSync(writerLeasePath(path));
+      // Another process could now lock a new sidecar at the same path.
+      expect(await store.applyBlock(b1)).toMatchObject({
+        kind: "store_locked",
+        detail: expect.stringMatching(
+          /lost the store's writer lease/u,
+        ) as unknown,
+      });
+      expect((await store.cursor())?.height).toBe(ORIGIN.height);
+      expect(await store.start()).toMatchObject({ kind: "ready" });
+      expect(await store.applyBlock(b1)).toMatchObject({ kind: "applied" });
+    } finally {
+      await store.close();
+    }
+  });
+});
 
 describe("writer lease (postgres session)", () => {
   it("the waiter takes over within one reconnect once the holder's lease session is killed; the old holder cannot start or write", async () => {

@@ -9,6 +9,7 @@ import {
   protocolInitStatus,
   startFromOrigin,
 } from "../origin.js";
+import { FollowerMigrationError } from "../schema/migrate.js";
 import type { Intervention } from "../types.js";
 import {
   applyChainSyncEvent,
@@ -69,6 +70,7 @@ export const followChain = async (
   options: FollowChainOptions,
 ): Promise<FollowStatus> => {
   const { store, signal } = options;
+  store.watchProtocolInit(options.origin.hubOracleOneShot);
   const backoff = options.backoffMs ?? { initial: 500, max: 30_000 };
   const log = options.log ?? (() => undefined);
   const credit = options.credit ?? 64;
@@ -326,7 +328,10 @@ export const followChain = async (
         await wait();
         continue;
       }
-      if (status.stuck !== null && status.stuck.at === "store")
+      if (
+        status.stuck !== null &&
+        (status.stuck.at === "store" || status.stuck.at === "migration")
+      )
         await publish({ stuck: null });
       let stream: ChainSyncStream;
       let first: ChainSyncEvent | undefined;
@@ -394,7 +399,11 @@ export const followChain = async (
       // A follower failure must not reach the role: record it, back off and
       // start again.
       log(`follower failed, starting again: ${message(error)}`);
-      await failed("store", message(error), classifyFailure(error));
+      // A migration the store refuses (a changed or unknown applied
+      // migration) fails the same way on every start: stuck at once, named.
+      if (error instanceof FollowerMigrationError)
+        await failed("store", message(error), "deterministic", "migration");
+      else await failed("store", message(error), classifyFailure(error));
       await wait();
     }
   }

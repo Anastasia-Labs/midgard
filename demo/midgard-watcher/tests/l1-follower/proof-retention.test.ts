@@ -6,198 +6,33 @@
  * commit funded by an untracked operator UTxO still resolves after the
  * node's ledger window has moved past its inclusion block.
  */
-import type { OutRef } from "@al-ft/midgard-l1-follower";
-import type { SimTx } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { WatcherProjectionDeployment } from "../../src/l1-follower/projection.js";
-import { createWatcherProofRetention } from "../../src/l1-follower/proof-retention.js";
 import {
-  type LedgerOutputsQuery,
-  ledgerOutputsQueryFromTransport,
-} from "../../src/l1-follower/raw-reads.ledger.js";
-import {
-  WATCHER_DEPARTED_HEADERS_TABLE,
-  WATCHER_QUEUE_UNIT_HISTORY_TABLE,
   WATCHER_TX_INPUTS_TABLE,
   WATCHER_UNIT_HISTORY_TABLE,
 } from "../../src/l1-follower/tables.js";
 import {
-  createTxInputsResolver,
   L1_TX_INPUTS_UNRESOLVABLE,
   L1_TX_INPUTS_UNRESOLVED,
 } from "../../src/l1-follower/tx-inputs.js";
 import {
-  D,
-  harness,
   K,
   okValue,
   reasonOf,
-  SEED,
-  X,
 } from "../support/l1-follower-raw-reads-fixture.js";
-import { removeTailTx } from "../support/l1-follower-state-queue-removal.js";
 import {
-  commitTx,
-  initTx,
-  queueState,
-} from "../support/l1-follower-state-queue-traffic.js";
+  closeRemovedHeaders,
+  departedRows,
+  FOLLOWED_UNIT,
+  historyRows,
+  nodeUnit,
+  type Removed,
+  removedHeader,
+  txRows,
+} from "../support/proof-retention-removed-header.js";
 
-const FOLLOWED = "70".repeat(28);
-const FOLLOWING: WatcherProjectionDeployment = {
-  ...D,
-  followedScripts: [FOLLOWED],
-};
-const FOLLOWED_UNIT = `${FOLLOWED}aa`;
-const scriptAddress = (hash: string): Buffer =>
-  Buffer.concat([Buffer.of(0x70), Buffer.from(hash, "hex")]);
-const one = (policy: string, name: string, quantity = 1n) =>
-  new Map([[policy, new Map([[name, quantity]])]]);
-const nodeUnit = (header: string): string =>
-  `${D.stateQueueMint}${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${header}`;
-
-const closers: (() => Promise<void>)[] = [];
-afterEach(async () => {
-  for (const close of closers.splice(0).reverse()) await close();
-});
-
-type Ledger = Readonly<{
-  query: LedgerOutputsQuery;
-  down: (on: boolean) => void;
-}>;
-
-/**
- * A follower with the proof-retention and tx-input seams, and a chain with
- * one header committed on an untracked operator UTxO (U#0, paid to X by a
- * tx the follower never stores) and then removed as fraudulent.
- */
-const removedHeader = async (
-  options: Readonly<{
-    pin: boolean;
-    resolveAtIngest: boolean;
-    followUnit?: boolean;
-    /** Resolve the init's inputs while its parent is in the window. */
-    resolveInit?: boolean;
-  }>,
-) => {
-  const h = await harness(options.followUnit === true ? FOLLOWING : D);
-  closers.push(() => h.store.close());
-  const real = ledgerOutputsQueryFromTransport(h.node);
-  let isDown = false;
-  const ledger: Ledger = {
-    query: async (point, outRefs) =>
-      isDown
-        ? { kind: "unavailable", detail: "the node is down" }
-        : await real(point, outRefs),
-    down: (on) => {
-      isDown = on;
-    },
-  };
-  const resolver = createTxInputsResolver({
-    store: h.store,
-    ledger: ledger.query,
-  });
-  closers.push(() => resolver.close());
-  const retention = createWatcherProofRetention(h.store);
-
-  const funding: SimTx = {
-    inputs: [h.chain.outsideInput()],
-    outputs: [{ address: X, lovelace: 4_000_000n }],
-    nonce: h.chain.nonce(),
-  };
-  const [u] = (await h.forward([funding])).hashes as [string];
-  const operatorUtxo: OutRef = { txHash: Buffer.from(u, "hex"), index: 0 };
-  // The init spends the wallet seed: an input the model ledger holds.
-  await h.forward([initTx(D, undefined, SEED.outRef)]);
-  // The follower is within the node's window at the init: its seed input
-  // resolves from the ledger.
-  if (options.resolveInit !== false) expect(await resolver.step()).toEqual([]);
-  const commit = commitTx(queueState(h.chain, D)!, D, operatorUtxo);
-  const header = [
-    ...(commit.mint?.get(D.stateQueueMint)?.keys() ?? []),
-  ][0]!.slice(SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length);
-  const committed = await h.forward([commit]);
-  const commitHash = committed.hashes[0]!;
-  if (options.resolveAtIngest) expect(await resolver.step()).toEqual([]);
-  const target = { category: "doubleSpend", headerHash: header };
-  if (options.pin) await retention.pin(target);
-
-  let unitTxs: string[] = [];
-  if (options.followUnit === true) {
-    // A computation-thread stand-in: minted, then burned, so its history
-    // closes and goes k deep like the removed header's.
-    const minted = (
-      await h.forward([
-        {
-          inputs: [{ txHash: Buffer.alloc(32, 0xd1), index: 0 }],
-          outputs: [
-            {
-              address: scriptAddress(FOLLOWED),
-              lovelace: 2_000_000n,
-              assets: one(FOLLOWED, "aa"),
-            },
-          ],
-          mint: one(FOLLOWED, "aa"),
-          nonce: h.chain.nonce(),
-        },
-      ])
-    ).hashes[0]!;
-    const burned = (
-      await h.forward([
-        {
-          inputs: [{ txHash: Buffer.from(minted, "hex"), index: 0 }],
-          outputs: [{ address: X, lovelace: 2_000_000n }],
-          mint: one(FOLLOWED, "aa", -1n),
-          nonce: h.chain.nonce(),
-        },
-      ])
-    ).hashes[0]!;
-    unitTxs = [minted, burned];
-  }
-  const removal = await h.forward([removeTailTx(queueState(h.chain, D)!, D)]);
-
-  const count = async (table: string, column: string, value: string) =>
-    Number(
-      (
-        await h.store.transaction("read", (tx) =>
-          tx.query(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} = ?`, [
-            Buffer.from(value, "hex"),
-          ]),
-        )
-      )[0]!.n,
-    );
-  /** Moves the tip `blocks` past the removal and prunes everything k deep. */
-  const passK = async (blocks = K + 4) => {
-    for (let i = 0; i < blocks; i += 1) await h.forward([]);
-    await h.pruneAll();
-  };
-  return {
-    h,
-    ledger,
-    resolver,
-    retention,
-    target,
-    header,
-    commitHash,
-    commitPoint: committed.point,
-    removalPoint: removal.point,
-    removalHash: removal.hashes[0]!,
-    operatorUtxo: `${u}#0`,
-    unitTxs,
-    count,
-    passK,
-  };
-};
-
-type Removed = Awaited<ReturnType<typeof removedHeader>>;
-
-const historyRows = (r: Removed) =>
-  r.count(WATCHER_QUEUE_UNIT_HISTORY_TABLE, "header_hash", r.header);
-const departedRows = (r: Removed) =>
-  r.count(WATCHER_DEPARTED_HEADERS_TABLE, "header_hash", r.header);
-const txRows = (r: Removed, txHash: string) =>
-  r.count("l1_txs", "tx_hash", txHash);
+afterEach(closeRemovedHeaders);
 
 describe("proof retention: a removed header's history past k", () => {
   it("holds the pinned history, txs and departed row while the proof runs past K blocks", async () => {
@@ -271,7 +106,8 @@ describe("proof retention: a removed header's history past k", () => {
       resolveAtIngest: true,
       followUnit: true,
     });
-    await r.retention.holdUnits(r.header, [FOLLOWED_UNIT]);
+    const held = await r.retention.holdUnits(r.header, [FOLLOWED_UNIT]);
+    expect(held).toEqual({ kind: "held" });
     await r.passK();
     expect(
       await r.count(WATCHER_UNIT_HISTORY_TABLE, "unit", FOLLOWED_UNIT),
@@ -288,17 +124,22 @@ describe("proof retention: a removed header's history past k", () => {
     ).toBe(0);
   });
 
-  it("writes no unit hold for an unpinned header", async () => {
-    const r = await removedHeader({
-      pin: false,
-      resolveAtIngest: true,
-      followUnit: true,
-    });
-    await r.retention.holdUnits(r.header, [FOLLOWED_UNIT]);
+  it("pins a removed header whose history is closed but not yet k deep", async () => {
+    const r = await removedHeader({ pin: false, resolveAtIngest: true });
+    expect(await r.retention.pin(r.target)).toEqual({ kind: "pinned" });
     await r.passK();
-    expect(
-      await r.count(WATCHER_UNIT_HISTORY_TABLE, "unit", FOLLOWED_UNIT),
-    ).toBe(0);
+    expect(await historyRows(r)).toBeGreaterThan(0);
+    expect(await departedRows(r)).toBe(1);
+  });
+
+  it("pins a second category on a header another pin already holds past k", async () => {
+    const r = await removedHeader({ pin: true, resolveAtIngest: true });
+    await r.passK();
+    const second = { category: "otherCategory", headerHash: r.header };
+    expect(await r.retention.pin(second)).toEqual({ kind: "pinned" });
+    await r.retention.release(r.target);
+    await r.passK(1);
+    expect(await historyRows(r)).toBeGreaterThan(0);
   });
 });
 

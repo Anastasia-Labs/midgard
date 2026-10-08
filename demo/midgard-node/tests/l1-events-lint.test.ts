@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import {
   createTemporalRegistry,
@@ -7,13 +8,23 @@ import {
 import {
   declaredTables,
   lintDeterminism,
+  lintDeterminismModules,
   lintSchema,
 } from "@al-ft/midgard-l1-follower/lint";
 import { describe, expect, it } from "vitest";
 
 import { EVENT_TABLES, eventMigrations } from "../src/l1-events/index.js";
 
-/** The node event projection's S3 modules: what runs in the writer transaction. */
+/**
+ * The node event projection's modules (what runs in the writer transaction,
+ * and the driver and reads beside it) and every module they import.
+ */
+const LINTED = lintDeterminismModules({
+  root: fileURLToPath(new URL("..", import.meta.url)),
+  include: ["src/l1-events/*.ts"],
+});
+
+/** The S3 modules the lint once named by hand: it must still reach each. */
 const DERIVATION_MODULES = [
   "src/l1-events/config.ts",
   "src/l1-events/schema.ts",
@@ -48,16 +59,18 @@ describe("node event projection lints", () => {
     ]);
   });
 
-  it("keeps the derivation modules free of clocks, randomness and the network", () => {
-    const files = DERIVATION_MODULES.map(read);
-    expect(lintDeterminism(files)).toEqual([]);
+  it("keeps the modules and their imports free of clocks, randomness, the network and the host", () => {
+    expect(LINTED.problems).toEqual([]);
+    expect(LINTED.files).toEqual(
+      expect.arrayContaining(DERIVATION_MODULES) as unknown,
+    );
     // The lint is live on these files: a clock read in the derivation is caught.
-    const [derive] = files.filter((file) => file.path.endsWith("derive.ts"));
+    const derive = read("src/l1-events/derive.ts");
     expect(
       lintDeterminism([
         {
-          ...derive!,
-          source: `${derive!.source}\nexport const t = Date.now();\n`,
+          ...derive,
+          source: `${derive.source}\nexport const t = Date.now();\n`,
         },
       ]).map((problem) => problem.rule),
     ).toEqual(["clock"]);

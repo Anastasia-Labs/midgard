@@ -268,8 +268,8 @@ export class ChainGenerator {
             },
           ]
         : [],
-      invalidBefore: rng.chance(0.3) ? rng.range(0, 1000) : null,
-      invalidAfter: rng.chance(0.5) ? rng.range(1000, 100000) : null,
+      invalidBefore: rng.chance(0.3) ? BigInt(rng.range(0, 1000)) : null,
+      invalidAfter: rng.chance(0.5) ? BigInt(rng.range(1000, 100000)) : null,
     };
   }
 

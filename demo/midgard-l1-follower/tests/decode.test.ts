@@ -98,12 +98,10 @@ describe("decodeBlock on a real Conway mainnet block", () => {
         body.reference_inputs()?.len() ?? 0,
       );
       expect(tx.mint.size).toBe(body.mint()?.keys().len() ?? 0);
-      expect(
-        tx.invalidAfter === null ? undefined : BigInt(tx.invalidAfter),
-      ).toBe(body.ttl());
-      expect(
-        tx.invalidBefore === null ? undefined : BigInt(tx.invalidBefore),
-      ).toBe(body.validity_interval_start());
+      expect(tx.invalidAfter ?? undefined).toBe(body.ttl());
+      expect(tx.invalidBefore ?? undefined).toBe(
+        body.validity_interval_start(),
+      );
       expect(tx.redeemers.length).toBe(
         (() => {
           const redeemers = witnesses.get(tx.index).redeemers();
@@ -241,7 +239,7 @@ describe("decodeBlock on non-canonical encodings", () => {
         .get(policy.toString("hex"))
         ?.get(Buffer.from("tok").toString("hex")),
     ).toBe(-2n);
-    expect(tx?.invalidAfter).toBe(99_999);
+    expect(tx?.invalidAfter).toBe(99_999n);
     expect(tx?.redeemers).toEqual([
       { purpose: "spend", index: 0, data: c.arrayIndef(c.uint(7)) },
     ]);

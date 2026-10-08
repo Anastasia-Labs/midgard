@@ -10,13 +10,20 @@ export const FOLLOWER_CATCHING_UP = "l1_follower_catching_up";
 export const FOLLOWER_WAITING = "l1_follower_waiting";
 /** One point keeps failing to apply; an operator has to look. */
 export const FOLLOWER_APPLY_STUCK = "l1_follower_apply_stuck";
+/**
+ * The store refused its migrations at start (an applied migration changed
+ * or is unknown): every start fails the same way, so an operator has to
+ * look; the process stays up and keeps retrying.
+ */
+export const FOLLOWER_MIGRATION_FAILED = "l1_follower_migration_failed";
 
 /** A named reason a role's `/readyz` reports while the follower holds it unready. */
 export type FollowReadinessReason =
   | InterventionReason
   | typeof FOLLOWER_CATCHING_UP
   | typeof FOLLOWER_WAITING
-  | typeof FOLLOWER_APPLY_STUCK;
+  | typeof FOLLOWER_APPLY_STUCK
+  | typeof FOLLOWER_MIGRATION_FAILED;
 
 export type FollowReadiness = Readonly<{
   reason: FollowReadinessReason;
@@ -101,7 +108,12 @@ export const readinessOf = (
     reason: i.reason,
     detail: i.detail,
   }));
-  if (status.stuck !== null)
+  if (status.stuck?.at === "migration")
+    reasons.push({
+      reason: FOLLOWER_MIGRATION_FAILED,
+      detail: `the store refused its migrations: ${status.stuck.detail}`,
+    });
+  else if (status.stuck !== null)
     reasons.push({
       reason: FOLLOWER_APPLY_STUCK,
       detail: `${status.stuck.at} failed ${status.stuck.failures} times: ${status.stuck.detail}`,
