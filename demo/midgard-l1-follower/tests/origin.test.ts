@@ -164,6 +164,7 @@ describe.each(adapters)(
       expect(result.cursor.origin.hash.equals(ORIGIN.point.hash)).toBe(true);
       expect(result.first.point).toEqual(chainPoint(101n, hex(B1.hash)));
       // The runner applies the first block, then follows on.
+      store.watchProtocolInit(INIT_SPENT);
       for (const block of blocks)
         expect(await store.applyBlock(block)).toMatchObject({
           kind: "applied",
@@ -246,6 +247,7 @@ describe.each(adapters)(
         throw new Error(`expected initialized, got ${JSON.stringify(result)}`);
       await result.stream.close();
       const config = { origin: B1, hubOracleOneShot: INIT_SPENT };
+      store.watchProtocolInit(INIT_SPENT);
       expect(await store.applyBlock(at(1))).toMatchObject({ kind: "applied" });
       expect(await protocolInitStatus(store, config, B3)).toMatchObject({
         kind: "pending",
@@ -267,8 +269,10 @@ describe.each(adapters)("R3 completeness assertion ($name)", (adapter) => {
   const startedAt = async (
     origin: Readonly<{ point: Point; height: number }>,
     applied: readonly BlockSummary[],
+    oneShot: OriginConfig["hubOracleOneShot"],
   ) => {
     const { store } = await adapter.open(2);
+    store.watchProtocolInit(oneShot);
     await store.start();
     expect(await store.initialize(origin)).toMatchObject({
       kind: "initialized",
@@ -279,7 +283,7 @@ describe.each(adapters)("R3 completeness assertion ($name)", (adapter) => {
   };
 
   it("an origin before the init tx sees its spend: never R3", async () => {
-    const store = await startedAt(ORIGIN, blocks);
+    const store = await startedAt(ORIGIN, blocks, INIT_SPENT);
     expect(
       await protocolInitStatus(
         store,
@@ -291,7 +295,7 @@ describe.each(adapters)("R3 completeness assertion ($name)", (adapter) => {
   });
 
   it("a phase-2-failed tx listing the outref as an input is not its spend", async () => {
-    const store = await startedAt(ORIGIN, blocks);
+    const store = await startedAt(ORIGIN, blocks, NEVER_SPENT);
     expect(
       await protocolInitStatus(
         store,
@@ -306,7 +310,7 @@ describe.each(adapters)("R3 completeness assertion ($name)", (adapter) => {
   });
 
   it("is not sticky: an init tx that lands later clears it", async () => {
-    const store = await startedAt(ORIGIN, blocks);
+    const store = await startedAt(ORIGIN, blocks, NEVER_SPENT);
     const config = { origin: ORIGIN.point, hubOracleOneShot: NEVER_SPENT };
     expect(await protocolInitStatus(store, config, B3)).toMatchObject({
       reason: "origin_after_protocol_init",

@@ -153,6 +153,7 @@ export const rewindIn = async (
   await tx.query("DELETE FROM l1_event_keys WHERE first_canonical_slot > ?", [
     targetSlot,
   ]);
+  await tx.query("DELETE FROM l1_protocol_init WHERE slot > ?", [targetSlot]);
   await tx.query("DELETE FROM l1_txs WHERE block_slot > ?", [targetSlot]);
   await tx.query("DELETE FROM l1_blocks WHERE slot > ?", [targetSlot]);
   const generation = cursor.generation + 1;

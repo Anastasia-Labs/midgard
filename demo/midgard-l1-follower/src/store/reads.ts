@@ -219,6 +219,26 @@ export const txSpendingIn = async (
     : { txHash: asBuffer(row.tx_hash), slot: asNumber(row.block_slot) };
 };
 
+/**
+ * The protocol-init fact for `oneShot` (§5.3 step 3): the valid tx that
+ * spent it and its slot, recorded when the block applied. Unlike
+ * `txSpendingIn` it survives the pruning of that tx.
+ */
+export const protocolInitIn = async (
+  tx: SqlTx,
+  oneShot: OutRef,
+): Promise<TxSpending | null> => {
+  const row = (
+    await tx.query(
+      "SELECT tx_hash, slot FROM l1_protocol_init WHERE one_shot = ?",
+      [encodeOutRef(oneShot)],
+    )
+  )[0];
+  return row === undefined
+    ? null
+    : { txHash: asBuffer(row.tx_hash), slot: asNumber(row.slot) };
+};
+
 export const txByHashIn = async (
   tx: SqlTx,
   dialect: Dialect,

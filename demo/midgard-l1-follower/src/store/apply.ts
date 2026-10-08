@@ -1,5 +1,6 @@
 import {
   assetsToJson,
+  encodeOutRef,
   mintPolicies,
   redeemersToJson,
   withdrawalsToJson,
@@ -66,9 +67,37 @@ const continuityProblem = (
 };
 
 /**
+ * Records the protocol-init fact (§5.3 step 3) when a valid tx in the block
+ * spends the watched `hubOracleOneShot` outref, whether or not that tx
+ * qualifies. The fact outlives the tx row: prune never removes it, and a
+ * rewind below its slot does.
+ */
+const recordProtocolInit = async (
+  tx: SqlTx,
+  block: BlockSummary,
+  oneShot: OutRef | null,
+): Promise<void> => {
+  if (oneShot === null) return;
+  const spender = block.txs.find(
+    (summary) =>
+      summary.isValid &&
+      summary.inputs.some(
+        (input) =>
+          input.index === oneShot.index && input.txHash.equals(oneShot.txHash),
+      ),
+  );
+  if (spender === undefined) return;
+  await tx.query(
+    "INSERT INTO l1_protocol_init (one_shot, tx_hash, slot) VALUES (?, ?, ?) ON CONFLICT (one_shot) DO NOTHING",
+    [encodeOutRef(oneShot), spender.hash, block.point.slot],
+  );
+};
+
+/**
  * Applies one block in the caller's write transaction (the sequential
  * writer, §6 item 4 with one transaction per block): qualification against
  * the tracked-outref set, fact rows, the S3 derivations, then the cursor.
+ * `protocolInit` is the watched `hubOracleOneShot` outref, if any.
  */
 export const applyBlockIn = async (
   tx: SqlTx,
@@ -76,6 +105,7 @@ export const applyBlockIn = async (
   block: BlockSummary,
   tracked: TrackedSet,
   isLive: (key: string) => boolean,
+  protocolInit: OutRef | null,
 ): Promise<BlockApplied | ApplyRejection> => {
   const { dialect } = context;
   const previous = await readCursor(tx, dialect, "update");
@@ -153,6 +183,7 @@ export const applyBlockIn = async (
         );
       spent.push(outRef);
     }
+  await recordProtocolInit(tx, block, protocolInit);
   for (const derivation of context.derivations)
     await derivation.apply({ tx, dialect, block, qualified, previous });
   await tx.query(

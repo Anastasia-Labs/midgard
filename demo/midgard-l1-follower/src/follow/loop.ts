@@ -69,6 +69,7 @@ export const followChain = async (
   options: FollowChainOptions,
 ): Promise<FollowStatus> => {
   const { store, signal } = options;
+  store.watchProtocolInit(options.origin.hubOracleOneShot);
   const backoff = options.backoffMs ?? { initial: 500, max: 30_000 };
   const log = options.log ?? (() => undefined);
   const credit = options.credit ?? 64;

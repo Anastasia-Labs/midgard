@@ -53,6 +53,7 @@ const FACT_QUERIES: Readonly<Record<string, string>> = {
   l1_scripts:
     "SELECT * FROM l1_scripts s WHERE EXISTS (SELECT 1 FROM l1_outputs o WHERE o.script_ref_hash = s.script_hash)",
   l1_event_keys: "SELECT * FROM l1_event_keys",
+  l1_protocol_init: "SELECT * FROM l1_protocol_init",
   // The generation and the rollback log are history, not chain state.
   l1_follower_cursor:
     "SELECT slot, hash, height, origin_slot, origin_hash FROM l1_follower_cursor",

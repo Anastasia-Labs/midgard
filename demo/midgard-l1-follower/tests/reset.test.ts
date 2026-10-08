@@ -49,6 +49,8 @@ const count = async (store: FactStore, table: string): Promise<number> =>
 const followed = async (location: Location): Promise<void> => {
   const store = location.store();
   try {
+    // TX1 in b1 spends fill(0x01)#0: a protocol-init fact for the reset to clear.
+    store.watchProtocolInit({ txHash: fill(0x01), index: 0 });
     expect(await store.start()).toMatchObject({ kind: "ready" });
     expect(await store.initialize(ORIGIN)).toMatchObject({
       kind: "initialized",
@@ -66,6 +68,7 @@ const followed = async (location: Location): Promise<void> => {
       );
     });
     expect(await count(store, "fixture_block_marks")).toBe(3);
+    expect(await count(store, "l1_protocol_init")).toBe(1);
     expect(await count(store, "l1_outputs")).toBeGreaterThan(0);
   } finally {
     await store.close();
@@ -134,6 +137,7 @@ describe.each(resetAdapters(databases, scratch))(
           "l1_txs",
           "l1_outputs",
           "l1_event_keys",
+          "l1_protocol_init",
           "l1_rollbacks",
           "fixture_block_marks",
           "fixture_spend_log",

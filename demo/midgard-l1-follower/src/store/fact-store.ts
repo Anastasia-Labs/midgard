@@ -132,6 +132,14 @@ export type FactStore = Readonly<{
     outputs: readonly SeedOutput[],
   ): Promise<SeedResult | SeedCursorMoved | StoreError | StoreLocked | null>;
   setTrackedSet(trackedSet: TrackedSet): void;
+  /**
+   * The manifest's `hubOracleOneShot` outref: each applied block that holds
+   * a valid tx spending it records the durable protocol-init fact (§5.3
+   * step 3). Set it before following; `followChain` does.
+   */
+  watchProtocolInit(oneShot: OutRef): void;
+  /** The protocol-init fact for `oneShot`; it outlives the pruning of the init tx. */
+  protocolInit(oneShot: OutRef): Promise<reads.TxSpending | null>;
   trackedSet(): TrackedSet;
   /** Whether an outref is a live tracked row (the in-memory set). */
   isTrackedLive(outRef: OutRef): boolean;
@@ -216,6 +224,7 @@ export const createFactStore = (
   const live = new Set<string>();
   const listeners = new Set<GenerationListener>();
   let tracked = options.trackedSet;
+  let protocolInitOneShot: OutRef | null = null;
   let broken: Intervention | null = null;
   let started = false;
   let lease: WriterLease | null = null;
@@ -320,7 +329,14 @@ export const createFactStore = (
         if (refusal !== null) return refusal;
         try {
           const result = await fencedWrite((tx) =>
-            applyBlockIn(tx, context, block, tracked, (key) => live.has(key)),
+            applyBlockIn(
+              tx,
+              context,
+              block,
+              tracked,
+              (key) => live.has(key),
+              protocolInitOneShot,
+            ),
           );
           if (result.kind === "applied") {
             for (const outRef of result.spent) live.delete(outRefKey(outRef));
@@ -384,6 +400,10 @@ export const createFactStore = (
       tracked = next;
     },
     trackedSet: () => tracked,
+    watchProtocolInit: (oneShot) => {
+      protocolInitOneShot = oneShot;
+    },
+    protocolInit: (oneShot) => read((tx) => reads.protocolInitIn(tx, oneShot)),
     isTrackedLive: (outRef) => live.has(outRefKey(outRef)),
     liveOutRefCount: () => live.size,
     prune: (budget = DEFAULT_PRUNE_BUDGET) =>

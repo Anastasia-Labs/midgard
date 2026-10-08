@@ -11,6 +11,8 @@ import type { MigrationSet } from "./migrate.js";
  * Deltas from the §5.2 draft, all additive: `l1_outputs_script_ref` (the
  * `l1_scripts` retention check and its foreign key) and
  * `l1_event_keys_slot` (the rewind deletes keys above the target, §5.4),
+ * `l1_protocol_init` (the §5.3 step 3 fact that the tx spending the
+ * manifest's `hubOracleOneShot` outref landed; it outlives the pruned tx),
  * and `l1_follower_cursor.pruned_through_slot`: the highest slot at or below
  * which pruning may have removed spent outputs, closed temporal rows or
  * blocks. Facts are complete for every slot at or above it, so it bounds
@@ -129,6 +131,13 @@ CREATE TABLE l1_event_keys (
   origin_outref bytea NOT NULL,
   first_canonical_slot bigint NOT NULL,
   PRIMARY KEY (kind, key)
+);
+
+-- class: A; retention: forever while canonical; prune never removes it, a rewind below its slot removes it
+CREATE TABLE l1_protocol_init (
+  one_shot bytea PRIMARY KEY,
+  tx_hash bytea NOT NULL,
+  slot bigint NOT NULL
 );
 
 CREATE INDEX l1_outputs_address_live ON l1_outputs (address) WHERE spent_slot IS NULL;
@@ -255,6 +264,13 @@ CREATE TABLE l1_event_keys (
   origin_outref BLOB NOT NULL,
   first_canonical_slot INTEGER NOT NULL,
   PRIMARY KEY (kind, key)
+);
+
+-- class: A; retention: forever while canonical; prune never removes it, a rewind below its slot removes it
+CREATE TABLE l1_protocol_init (
+  one_shot BLOB PRIMARY KEY,
+  tx_hash BLOB NOT NULL,
+  slot INTEGER NOT NULL
 );
 
 CREATE INDEX l1_outputs_address_live ON l1_outputs (address) WHERE spent_slot IS NULL;

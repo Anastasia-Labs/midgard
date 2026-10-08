@@ -77,6 +77,11 @@ const aboveCursorChecks = (registry: TemporalRegistry): Check[] => [
   },
   {
     invariant: "INV5",
+    check: "protocol init above cursor",
+    sql: `SELECT one_shot FROM l1_protocol_init WHERE slot > ${CURSOR_SLOT}`,
+  },
+  {
+    invariant: "INV5",
     check: "cursor is not a stored block",
     sql: `SELECT c.slot FROM l1_follower_cursor c WHERE NOT EXISTS (
       SELECT 1 FROM l1_blocks b WHERE b.slot = c.slot AND b.hash = c.hash AND b.height = c.height)`,
