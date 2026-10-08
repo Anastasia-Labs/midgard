@@ -8,6 +8,10 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { postgresTestDatabases } from "../helpers/postgres-database.js";
 import {
+  availabilityReadsSimProjection,
+  zeroAvailabilityReadStats,
+} from "./availability-reads-sim.js";
+import {
   committeeForkCorpus,
   committeeSimProjection,
   SIM_K,
@@ -34,28 +38,23 @@ const openPostgres: ForkRunOptions["open"] = async (optionsFor) => {
 // corpus runs here too so the Postgres dialect of the migrations, the
 // derivation and the reads is held to the same oracle.
 describe("committee projections in the fork simulator (Postgres)", () => {
-  // Each scenario opens its own database; the longest takes 2.6 s locally
-  // and ran past the 5 s default on a loaded CI runner.
   it.each(
     [...forkCorpus(SIM_K), ...committeeForkCorpus()].map(
       (entry) => [entry.name, entry.scenario] as const,
     ),
-  )(
-    "corpus: %s",
-    async (_, scenario) => {
-      const stats = zeroStats();
-      const outcome = await runForkScenario(scenario, {
-        open: openPostgres,
-        k: SIM_K,
-        projections: [committeeSimProjection(stats, { expectHealthy: true })],
-      });
-      expect(
-        outcome.ok
-          ? "ok"
-          : `step ${outcome.step.toString()}: ${outcome.reason}`,
-      ).toBe("ok");
-      expect(stats.steps).toBe(outcome.stats.events);
-    },
-    60_000,
-  );
+  )("corpus: %s", { timeout: 60_000 }, async (_, scenario) => {
+    const stats = zeroStats();
+    const outcome = await runForkScenario(scenario, {
+      open: openPostgres,
+      k: SIM_K,
+      projections: [
+        committeeSimProjection(stats, { expectHealthy: true }),
+        availabilityReadsSimProjection(zeroAvailabilityReadStats()),
+      ],
+    });
+    expect(
+      outcome.ok ? "ok" : `step ${outcome.step.toString()}: ${outcome.reason}`,
+    ).toBe("ok");
+    expect(stats.steps).toBe(outcome.stats.events);
+  });
 });

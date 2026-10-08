@@ -2,8 +2,10 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { entropyToMnemonic } from "bip39";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { committeeEnvironment } from "../src/devnet-stack/da.js";
 import {
   ensureL1Origin,
   recordedL1Origin,
@@ -168,6 +170,45 @@ describe("the devnet node environment", () => {
         role: "listen",
       }),
     ).toThrow(NodeFollowerUnconfiguredError);
+  });
+});
+
+describe("the devnet committee environment", () => {
+  it("makes each committee's L1 follower run from the run's recorded origin, with no chain index", async () => {
+    const layout = runLayout();
+    await ensureL1Origin({ layout, run, artifacts }, oneShot, () =>
+      Promise.resolve({ origin, nonceTxHash: "ab".repeat(32), nonceBlock }),
+    );
+    const members = {
+      ...identities,
+      seeds: {
+        ...identities.seeds,
+        operator: entropyToMnemonic("01".repeat(16)),
+        daCosigner: entropyToMnemonic("02".repeat(16)),
+      },
+    } as Identities;
+    for (const index of [0, 1]) {
+      const env = committeeEnvironment({
+        layout,
+        run,
+        identities: members,
+        transportBinary: artifacts.transportBinary,
+        index,
+        l1Origin: recordedL1Origin(layout, oneShot),
+      });
+      expect(env.L1_ORIGIN).toBe(`41.${"cd".repeat(32)}`);
+      expect(env.CARDANO_LOCAL_NODE_SOCKET_PATH).toBe(layout.cardanoSocket);
+      expect(env.CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH).toBe(
+        artifacts.transportBinary,
+      );
+      expect(
+        Object.keys(env).filter((name) =>
+          /KUPO|OGMIOS|PROVIDER_URL|L1_SOURCE_MODE|CHAIN_SYNC_(URL|CURSOR)/u.test(
+            name,
+          ),
+        ),
+      ).toEqual([]);
+    }
   });
 });
 

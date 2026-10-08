@@ -179,6 +179,6 @@ you are about to write. The short sha opens the full account:
   a block shortly after the node adopts it, so one read of both tips can
   straddle a block. The committee persisted a terminal quarantine on that
   race. It was found on live services; the fix added a bounded retry and
-  provider tests for it (`demo/da-committee-node/tests/provider.test.ts`).
+  provider tests for it (`demo/da-committee-node/tests/provider.test.ts` (since deleted)). <!-- doc-links:historical -->
   _Rule:_ timing between real services surfaces at level 6; once understood,
   pin it lower with a double that reproduces the straddle.

@@ -136,12 +136,14 @@ export const classifyResponse = (status, bodyText) => {
     body = undefined;
   }
   const object = body !== null && typeof body === "object" ? body : undefined;
-  // A quarantined DA committee L1 source never becomes healthy again without
-  // an operator (demo/da-committee-node/src/store.ts, mergeL1SourceState).
-  if (object?.l1Source?.status === "quarantined")
+  // A DA committee whose L1 follower holds it on an intervention (such as
+  // rollback_beyond_k) stays up and unready until an operator clears it
+  // (demo/da-committee-node/src/l1/follower/l1-follower.ts,
+  // committeeL1InterventionReason), so no wait can pass.
+  if (object?.l1Source?.status === "intervention")
     return {
       state: "terminal",
-      detail: `l1Source quarantined: ${object.l1Source.quarantineReason ?? "no reason given"}`,
+      detail: `l1Source intervention: ${object.l1Source.intervention ?? "no reason given"}`,
     };
   const reasons = Array.isArray(object?.reasons)
     ? ` reasons=${object.reasons.slice(0, 8).join(",")}`

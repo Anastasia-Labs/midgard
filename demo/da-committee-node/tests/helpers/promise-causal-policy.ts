@@ -14,7 +14,7 @@ export const testPromiseCausalPolicy = (
     mono = 0,
     generation = 0;
   const artifact: CommitteePromiseCausalArtifact = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     policyId: "private-controlled-test",
     binding: {
       deploymentFingerprint: hash,
@@ -28,7 +28,7 @@ export const testPromiseCausalPolicy = (
     sourceBinding: {
       sourceDigest: hash,
       genesisDigest: hash,
-      rollbackGeneration: 0,
+      view: { generation: 0, slot: 100, blockHash: hash },
     },
     enforcement: Object.entries({
       cursor: 5000,
@@ -79,7 +79,7 @@ export const testPromiseCausalPolicy = (
     adoptedFaultModelDigest: hash,
     upperNetworkTimeMs: () => now,
     assertEpochCurrent: () => {
-      if (generation !== artifact.sourceBinding.rollbackGeneration)
+      if (generation !== artifact.sourceBinding.view.generation)
         throw new Error("rollback_generation_changed");
     },
     nowMs: () => now,

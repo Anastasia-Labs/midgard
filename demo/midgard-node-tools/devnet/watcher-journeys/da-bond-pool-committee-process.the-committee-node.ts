@@ -11,8 +11,8 @@ import {
 import {
   answer,
   fakeClock,
-  quarantined,
-  REPLAY_STUCK,
+  intervention,
+  ROLLBACK_BEYOND_K,
   shortReason,
   T0,
   withdrawingReason,
@@ -171,18 +171,14 @@ describe("the committee node's view of the port's pool snapshot", () => {
     expect(malformedCalls).toBe(1);
   });
 
-  it("returns at once when the node's L1 source is quarantined", async () => {
+  it("returns at once when the node's L1 follower holds it on an intervention", async () => {
     const clock = fakeClock();
     const since = clock.now();
     let reads = 0;
     const sync = await awaitDaBondPoolCommitteeSync({
       read: async () => {
         reads += 1;
-        return answer(
-          [`L1 source is quarantined: ${REPLAY_STUCK}`],
-          since - 1,
-          quarantined,
-        );
+        return answer([ROLLBACK_BEYOND_K], since - 1, intervention);
       },
       expected: view({ state: "bonded", backing: 100n }),
       since,
@@ -191,7 +187,7 @@ describe("the committee node's view of the port's pool snapshot", () => {
       ...clock,
     });
     expect(sync).toMatchObject({ synced: false, reads: 1 });
-    expect(sync.readyz.l1Source).toEqual(quarantined);
+    expect(sync.readyz.l1Source).toEqual(intervention);
     expect(reads).toBe(1);
     expect(clock.now()).toBe(since);
   });

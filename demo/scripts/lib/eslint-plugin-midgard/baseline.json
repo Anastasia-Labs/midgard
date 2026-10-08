@@ -84,10 +84,6 @@
     }
   },
   "midgard/locale-compare-explicit-locale": {
-    "da-committee-node/src/l1/terminal-retention-observation.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": ["left.headerHash.localeCompare(right.headerHash),"]
-    },
     "da-committee-node/src/peer/signatures.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["firstIdentity.localeCompare(secondIdentity) < 0"]
@@ -416,14 +412,6 @@
     "da-committee-node/src/l1/da-attestation-reader.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["left.outRef.localeCompare(right.outRef),"]
-    },
-    "da-committee-node/src/l1/state-queue-replay-provider.open-rpc.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
-    },
-    "da-committee-node/src/l1/state-queue-replay-provider.create-local-kupmios-state-queue-replay-provider.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": ["left.transactionHash.localeCompare(right.transactionHash),"]
     },
     "da-committee-node/src/l1/submitter.classify-l1-submitter-utxos.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
@@ -946,12 +934,6 @@
         ".sort((a, b) => outRefKey(a).localeCompare(outRefKey(b)))",
         ".sort(([a], [b]) => a.localeCompare(b))"
       ]
-    },
-    "da-committee-node/src/l1/provider.lucid-state-queue-provider.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "canonicalObservedNode(left).localeCompare(canonicalObservedNode(right)),"
-      ]
     }
   },
   "midgard/no-recursive-plutus-data": {
@@ -1206,20 +1188,6 @@
     }
   },
   "midgard/depth-through-heads": {
-    "da-committee-node/src/l1/state-queue-scanner.ts": {
-      "reason": "Replay walk bound and observed-point depth in the committee's state-queue scanner; C1 deletes the scanner (the committee reads the follower) and C3 moves its durable actions to `final`.",
-      "sites": [
-        "if (checkpoints.length > walkLimit) {",
-        "(snapshot.observedChainPoint.depth ?? 0) >"
-      ]
-    },
-    "da-committee-node/src/l1/terminal-retention-observation.ts": {
-      "reason": "Committee retention release against its own finality depth; C3 moves committee durable actions to `final` (depth > k).",
-      "sites": [
-        "({ finalityDepth }) => BigInt(finalityDepth) < retirementDepth,",
-        "(record.observedChainPoint.depth ?? -1) <="
-      ]
-    },
     "midgard-core/src/availability-operation-journal.ts": {
       "reason": "Availability-challenge intent journal: cd/k shape check and the prune rule; I1 takes D-N8 (derived status for the SDK availability challenge).",
       "sites": [

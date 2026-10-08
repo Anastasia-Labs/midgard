@@ -54,6 +54,8 @@ export async function readRuntimeConfiguration(processes: StackProcesses) {
 export async function runtimeInputDigest(processes: StackProcesses) {
   const { config } = processes;
   const hash = createHash("sha256").update(JSON.stringify(config));
+  // The committee environments carry the run's origin.
+  hash.update(`\0L1_ORIGIN\0${processes.env.L1_ORIGIN ?? ""}`);
   for (const path of [
     config.envFile,
     config.watcher.composeEnvFile,

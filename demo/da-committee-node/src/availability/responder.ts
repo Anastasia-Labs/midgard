@@ -71,16 +71,17 @@ export type AvailabilityResponderMissedDeadline = Readonly<{
 export const AVAILABILITY_RESPONDER_MAX_DRAIN_STEPS = 32;
 
 /**
- * The committee's chain-sync cursor is not at the aligned Kupmios tip, or the
- * tip moved while a boundary was read. Every responder step is refused until
- * the committee's next L1 scan catches the cursor up, so this aborts the step
- * like any error; but it is the normal wait for that scan, not a failure, and
- * the tick reports it as `awaiting_scan` instead of throwing it.
+ * The committee's L1 follower holds the committee unready (catching up,
+ * waiting on its node, or a rollback it cannot follow), or its view moved
+ * while a boundary was read. Every responder step is refused until the
+ * follower is ready again, so this aborts the step like any error; but it is
+ * the normal wait for the follower, not a failure, and the tick reports it as
+ * `awaiting_scan` instead of throwing it. `/readyz` names the reason.
  */
 export class AvailabilityResponderAwaitingScanError extends Error {
-  constructor() {
+  constructor(detail?: string) {
     super(
-      "Availability responder awaits the next canonical committee node L1 scan before acting",
+      `Availability responder awaits the committee's L1 follower before acting${detail === undefined ? "" : `: ${detail}`}`,
     );
     this.name = "AvailabilityResponderAwaitingScanError";
   }

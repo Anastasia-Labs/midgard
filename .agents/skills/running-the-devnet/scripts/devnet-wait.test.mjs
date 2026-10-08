@@ -165,17 +165,20 @@ test("crashed: a --pid that has exited is exit 1", async () => {
   assert.match(output, /is not running/);
 });
 
-test("crashed: a quarantined DA committee L1 source is terminal", async () => {
+test("crashed: a DA committee held on an L1 follower intervention is terminal", async () => {
   const url = await serve(() => [
     503,
     {
       ready: false,
-      l1Source: { status: "quarantined", quarantineReason: "fork" },
+      l1Source: {
+        status: "intervention",
+        intervention: "rollback_beyond_k: fork",
+      },
     },
   ]);
   const { code, output } = await run(["--url", url, "--timeout", "5"]);
   assert.equal(code, 1, output);
-  assert.match(output, /quarantined: fork/);
+  assert.match(output, /intervention: rollback_beyond_k: fork/);
 });
 
 // Negative self-tests: answers that look healthy at a glance must not pass.

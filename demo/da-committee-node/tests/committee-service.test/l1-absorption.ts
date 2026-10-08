@@ -20,8 +20,11 @@ import { credentialToAddress, getAddressDetails } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { deferredAvailabilityResponder } from "../../src/availability/deferred-responder.js";
+import { AvailabilityResponderAwaitingScanError as AwaitingScan } from "../../src/availability/responder.js";
 import { CommitteeService } from "../../src/committee-service.js";
 import type { Header } from "../../src/domain.js";
+import { committeeAvailabilityReads } from "../../src/l1/follower/availability-reads.js";
 import { committeeTracked } from "../../src/l1/follower/committee-follower-config.js";
 import { committeeL1Source } from "../../src/l1/follower/l1-follower.js";
 import { committeeProjection } from "../../src/l1/follower/projection.js";
@@ -187,15 +190,16 @@ const harness = async () => {
 
   const payloads = new Map<string, Buffer>();
   const committeeStore = await openTestCommitteeStore();
+  const l1 = committeeL1Source({
+    store: facts,
+    parameters: PARAMETERS,
+    status: () => status,
+    slotTime: async () => SIM_SLOT_TIME,
+  });
   const service = new CommitteeService({
     config,
     store: committeeStore,
-    l1: committeeL1Source({
-      store: facts,
-      parameters: PARAMETERS,
-      status: () => status,
-      slotTime: async () => SIM_SLOT_TIME,
-    }),
+    l1,
     payloadSource: {
       fetchPayloadCandidates: async (headerHash) => {
         const payload = payloads.get(headerHash);
@@ -220,6 +224,11 @@ const harness = async () => {
   return {
     chain,
     service,
+    availabilityReads: committeeAvailabilityReads({
+      store: facts,
+      readiness: () => l1.readiness(),
+    }),
+    l1,
     committeeStore,
     status: () => status,
     loopOutcome: () => loopOutcome,
@@ -444,6 +453,12 @@ export const registerL1AbsorptionTests = () => {
       await h.synced();
       await expect(readyTick(h)).resolves.toMatchObject({ signedHeaders: 1 });
       const decided = await h.committeeStore.listDaSignatures(first.headerHash);
+      const tip = await h.availabilityReads.readBoundary();
+      const idle = { challenges: 0, status: "idle" as const };
+      const responder = deferredAvailabilityResponder(h.l1, async () => ({
+        responder: { drain: async () => idle },
+        close: () => undefined,
+      }));
 
       h.backward(K + 1);
       await h.reached((current) => current.state === "intervention");
@@ -458,7 +473,21 @@ export const registerL1AbsorptionTests = () => {
         expect(snapshot.reasons).toEqual([
           expect.stringMatching(/^rollback_beyond_k: /u),
         ]);
+        expect(snapshot.l1Source).toMatchObject({
+          status: "intervention",
+          intervention: expect.stringMatching(/^rollback_beyond_k: /u),
+        });
+        // Availability, promise and retirement reads hold on it too.
+        const refused = h.availabilityReads.readBoundary();
+        await expect(refused).rejects.toBeInstanceOf(AwaitingScan);
+        await expect(refused).rejects.toThrow(/rollback_beyond_k: /u);
+        await expect(responder.responder.drain()).resolves.toMatchObject({
+          status: "awaiting_scan",
+          detail: expect.stringMatching(/rollback_beyond_k: /u),
+        });
       }
+      // The store kept its view: only the readiness gate holds the reads.
+      await expect(h.availabilityReads.viewValid(tip.view)).resolves.toBe(true);
       // The loop stopped on the intervention without failing; the
       // committee keeps ticking and serving its readiness.
       expect(h.loopOutcome()).not.toBe("rejected");

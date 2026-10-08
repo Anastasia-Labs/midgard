@@ -17,7 +17,7 @@ export const shortReason = (backing: bigint, at: number) =>
 export const withdrawingReason = (unlockAt: bigint, at: number) =>
   `da_bond_pool_withdrawing: unlockAt=${unlockAt}, checkedAt=${iso(at)}`;
 
-export type L1Source = { status: string; quarantineReason?: string };
+export type L1Source = { status: string; intervention?: string };
 
 const body = (
   reasons: readonly string[],
@@ -42,11 +42,12 @@ export const answer = (
   body: body(reasons, lastStartedAt, l1Source),
 });
 
-export const REPLAY_STUCK = "committee replay cannot advance its durable queue";
+export const ROLLBACK_BEYOND_K =
+  "rollback_beyond_k: the node rolled back 2161 blocks";
 
-export const quarantined: L1Source = {
-  status: "quarantined",
-  quarantineReason: REPLAY_STUCK,
+export const intervention: L1Source = {
+  status: "intervention",
+  intervention: ROLLBACK_BEYOND_K,
 };
 
 /** A clock that `sleep` advances. */

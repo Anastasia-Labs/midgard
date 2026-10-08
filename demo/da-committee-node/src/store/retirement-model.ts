@@ -5,7 +5,7 @@ import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
 
 import type { PromiseCapacityPoint } from "../availability/promise-capacity-evidence.js";
 import type { StateQueueHeaderRecord } from "../domain.js";
-import { hashBlockHeader } from "../l1/state-queue-scanner.js";
+import { headerHashOf } from "../l1/follower/queue-derivation.js";
 import type { StoreData } from "../store.committee-store.js";
 
 export type CommitteeRetirementBinding = Readonly<{
@@ -267,7 +267,7 @@ export const authenticatedHeaderEnd = (
     typeof end !== "bigint" ||
     end < 0n ||
     end > BigInt(Number.MAX_SAFE_INTEGER) ||
-    hashBlockHeader(record.header) !== record.headerHash ||
+    headerHashOf(record.header) !== record.headerHash ||
     record.computedHeaderHash !== record.headerHash ||
     record.validationErrors.length
   )

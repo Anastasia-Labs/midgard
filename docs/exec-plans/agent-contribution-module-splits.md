@@ -15,7 +15,7 @@ threshold. All nine were decomposed; the final inventory covers 4,784 source fil
 zero source files above 5,000 lines and 93 above 2,000 lines. The inventory
 uses `git ls-files --cached --others --exclude-standard -z`, deduplicates paths,
 reads existing source files and counts physical lines. The largest is now
-`demo/da-committee-node/tests/provider.test.ts` at 4,474 lines. JSON datasets,
+`demo/da-committee-node/tests/provider.test.ts` (since deleted) at 4,474 lines. JSON datasets, <!-- doc-links:historical -->
 lockfiles and documents are not source modules in that inventory.
 
 The [work plan](agent-contribution-parallel-work.md#oversized-module-sweep)

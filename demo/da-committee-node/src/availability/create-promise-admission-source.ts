@@ -2,11 +2,10 @@ import type { AvailabilityOperationJournal } from "@al-ft/midgard-core/availabil
 import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { CommitteeL1ClientConfig } from "../config.js";
-import { promiseCanonicalPointReader } from "../l1/promise-capacity-point.js";
-import type { ChainSyncCursor } from "../l1/provider.js";
+import type { CommitteeAvailabilityReads } from "../l1/follower/availability-reads.js";
 import type { CommitteeStore } from "../store.js";
 import { terminalRecoveryFinal } from "../store/retention.js";
 import type { CommitteeRetirementPort } from "../store/retirement-model.js";
@@ -25,12 +24,12 @@ import { committeePromiseRetirementAdmission } from "./promise-retirement-admiss
 import type { CommitteePromiseRuntimePolicyAuthority } from "./promise-runtime-policy.js";
 import { promiseSchedulingSource } from "./promise-scheduling-source.js";
 import { promiseSignatureResourceReserve } from "./promise-signature-resource-reserve.js";
-import {
-  committeeScopedWebSocketFactory,
-  type CommitteeSourceReadLimits,
-} from "./scoped-transports.js";
 
-/** Production source construction, shared by the configured factory and probes. */
+/**
+ * Production source construction, shared by the configured factory and probes.
+ * The boundary is the committee follower's view and its `rollbackGeneration`
+ * is that view's generation (plan §8.1); canonical points are follower reads.
+ */
 export const createCommitteePromiseAdmissionSource = (args: {
   config: CommitteeL1ClientConfig;
   deployment: SDK.DaAvailabilityDeployment;
@@ -38,10 +37,7 @@ export const createCommitteePromiseAdmissionSource = (args: {
   store: CommitteeStore;
   journal: AvailabilityOperationJournal;
   lucid: LucidEvolution;
-  ogmiosUrl: string;
-  currentCursor: (
-    scope?: SDK.DaAvailabilityReadScope,
-  ) => Promise<ChainSyncCursor>;
+  reads: Pick<CommitteeAvailabilityReads, "canonicalPoint">;
   readBoundary: ReturnType<
     typeof availabilityResponderOperations
   >["readBoundary"];
@@ -54,14 +50,8 @@ export const createCommitteePromiseAdmissionSource = (args: {
     scope?: SDK.DaAvailabilityReadScope,
   ) => Promise<number>;
   openReadScope?: () => SDK.DaAvailabilityReadScope;
-  sourceReadLimits?: CommitteeSourceReadLimits;
   /** Explicit adopted dual-set model; never inferred from elapsed wall time. */
   currentSchedulingEnabled?: boolean;
-  scopedReadUtxos?: (
-    address: string,
-    scope: SDK.DaAvailabilityReadScope,
-  ) => Promise<UTxO[]>;
-  walletAddress?: string;
   readProtocolDigest?: (scope: SDK.DaAvailabilityReadScope) => Promise<string>;
   drainReadResources?: (scope?: SDK.DaAvailabilityReadScope) => Promise<void>;
   assertCollateralCurrent?: (
@@ -69,7 +59,11 @@ export const createCommitteePromiseAdmissionSource = (args: {
   ) => Promise<void>;
   /** Fresh real reconciliation must cover compatible retained claims at this boundary. */
   assertCompatibleClaimsCurrent?: (
-    boundary: Readonly<{ pointId: string; blockNo: number }>,
+    boundary: Readonly<{
+      pointId: string;
+      blockNo: number;
+      generation: number;
+    }>,
     scope?: SDK.DaAvailabilityReadScope,
     metadata?: ReturnType<AvailabilityOperationJournal["actorSnapshot"]>,
   ) => Promise<void>;
@@ -92,12 +86,9 @@ export const createCommitteePromiseAdmissionSource = (args: {
     store,
     journal,
     lucid,
-    ogmiosUrl,
-    currentCursor,
+    reads,
     readBoundary,
     assertActuationCurrent,
-    sourceReadLimits,
-    scopedReadUtxos,
   } = args;
   const contractManifestId = config.contractDeploymentInfo.manifestId;
   if (typeof contractManifestId !== "string")
@@ -106,12 +97,9 @@ export const createCommitteePromiseAdmissionSource = (args: {
     ? promiseSchedulingSource({
         lucid,
         deployment,
-        ogmiosUrl,
-        currentCursor,
+        reads,
         readBoundary,
         assertActuationCurrent,
-        limits: sourceReadLimits,
-        readUtxos: scopedReadUtxos,
         openWindowMs: SELECTED_DEPLOYMENT_PROFILE.timing.da_challenge_window_ms,
       })
     : undefined;
@@ -153,11 +141,7 @@ export const createCommitteePromiseAdmissionSource = (args: {
       throw new Error("Journal exceeds the adopted retained-row domain");
     const [usage, wallet] = await committeePromiseJoinedReads([
       readStoreUsage(scope),
-      read(() =>
-        scope && scopedReadUtxos && args.walletAddress
-          ? scopedReadUtxos(args.walletAddress, scope)
-          : lucid.wallet().getUtxos(),
-      ),
+      read(() => lucid.wallet().getUtxos()),
     ]);
     scope?.assertCurrent();
     assertActorRuntimeIdle();
@@ -213,7 +197,6 @@ export const createCommitteePromiseAdmissionSource = (args: {
       await assertResources();
       await assertActuationCurrent(scope);
       const retirementGuard = await retirement.capture(scope);
-      const cursorBefore = await read(() => currentCursor(scope));
       const before = await readBoundary(scope);
       if (actorBefore.reservedResourceCount > 0 && !actorBusy(actorBefore))
         await args.assertCompatibleClaimsCurrent!(before, scope, actorBefore);
@@ -230,7 +213,6 @@ export const createCommitteePromiseAdmissionSource = (args: {
           ? undefined
           : {
               scope,
-              readUtxos: scopedReadUtxos,
               onSnapshot: (snapshot) => {
                 rawSnapshot = snapshot;
               },
@@ -326,29 +308,14 @@ export const createCommitteePromiseAdmissionSource = (args: {
               slotTimeMs: (slot) => lucid.slotToUnixTime(slot),
               liabilities,
               readCanonicalPoint: (point) =>
-                read(() =>
-                  promiseCanonicalPointReader(
-                    ogmiosUrl,
-                    scope && sourceReadLimits
-                      ? committeeScopedWebSocketFactory(scope, sourceReadLimits)
-                      : undefined,
-                    {
-                      slot: before.slot,
-                      blockHash: before.blockHash,
-                      blockNo: before.blockNo,
-                    },
-                  )(point),
-                ),
+                read(() => reads.canonicalPoint(point, before)),
               assertCurrent: async () => {
                 await assertActuationCurrent(scope);
                 const current = await readBoundary(scope);
-                const cursor = await read(() => currentCursor(scope));
                 if (
                   current.pointId !== before.pointId ||
                   current.blockNo !== before.blockNo ||
-                  cursor.rollbackGeneration !==
-                    cursorBefore.rollbackGeneration ||
-                  cursor.sequence !== cursorBefore.sequence
+                  current.generation !== before.generation
                 )
                   throw new Error(
                     "Canonical generation changed during capacity retirement proof",
@@ -362,7 +329,7 @@ export const createCommitteePromiseAdmissionSource = (args: {
               rawSnapshot,
               complete,
               scope,
-              cursor: cursorBefore,
+              generation: before.generation,
               point: {
                 slot: before.slot,
                 blockHash: before.blockHash,
@@ -374,22 +341,17 @@ export const createCommitteePromiseAdmissionSource = (args: {
             })
           : undefined;
       const after = await readBoundary(scope);
-      const cursorAfter = await read(() => currentCursor(scope));
       if (
         before.pointId !== after.pointId ||
-        cursorBefore.sequence !== cursorAfter.sequence ||
-        cursorBefore.rollbackGeneration !== cursorAfter.rollbackGeneration
+        before.blockNo !== after.blockNo ||
+        before.generation !== after.generation
       )
         throw new Error("Canonical source changed during promise discovery");
       const actorAfter = actorSnapshot();
       if (actorAfter.reservedResourceCount > 0 && !actorBusy(actorAfter))
         await args.assertCompatibleClaimsCurrent!(after, scope, actorAfter);
       const [walletInputs, storeUsage] = await committeePromiseJoinedReads([
-        read(() =>
-          scope && scopedReadUtxos && args.walletAddress
-            ? scopedReadUtxos(args.walletAddress, scope)
-            : lucid.wallet().getUtxos(),
-        ),
+        read(() => lucid.wallet().getUtxos()),
         assertResources(),
       ]);
       await assertActuationCurrent(scope);
@@ -408,7 +370,7 @@ export const createCommitteePromiseAdmissionSource = (args: {
       return {
         boundary: {
           pointId: before.pointId,
-          rollbackGeneration: cursorAfter.rollbackGeneration,
+          rollbackGeneration: after.generation,
           observedAtMs: Date.now(),
           actorStateDigest: actorFinal.stateDigest,
           retirementGuard,
@@ -436,7 +398,6 @@ export const createCommitteePromiseAdmissionSource = (args: {
     },
     assertCurrent: async (boundary, scope, candidate) => {
       assertActorRuntimeIdle();
-      const read = committeePromiseOwnedRead(scope);
       const actorBefore = actorSnapshot();
       if (
         actorBusy(actorBefore) ||
@@ -471,10 +432,9 @@ export const createCommitteePromiseAdmissionSource = (args: {
         scope,
         candidate?.record,
       );
-      const cursor = await read(() => currentCursor(scope));
       if (
         point.pointId !== boundary.pointId ||
-        cursor.rollbackGeneration !== boundary.rollbackGeneration
+        point.generation !== boundary.rollbackGeneration
       )
         throw new Error("Promise admission canonical boundary changed");
       await args.drainReadResources?.(scope);

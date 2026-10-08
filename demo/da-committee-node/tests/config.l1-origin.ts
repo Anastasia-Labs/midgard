@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { loadCommitteeConfig } from "../src/config.js";
+import { tempDir } from "./helpers.js";
 import {
   libp2pConfigEnv,
   libp2pManifest,
   writeConfigFiles,
-} from "./config.load-committee-config.js";
-import { tempDir } from "./helpers.js";
+} from "./helpers/committee-config-files.js";
 
 describe("loadCommitteeConfig: L1_ORIGIN", () => {
   it("reads L1_ORIGIN as the operator-configured origin, absent when unset", async () => {
@@ -16,7 +16,7 @@ describe("loadCommitteeConfig: L1_ORIGIN", () => {
       libp2pManifest("01".repeat(32)),
     );
     const env = {
-      ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+      ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
       DA_SIGNER_INDEX: "0",
       DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
     };

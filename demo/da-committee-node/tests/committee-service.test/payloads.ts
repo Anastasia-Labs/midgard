@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 import { CommitteeService } from "../../src/committee-service.js";
 import { daPayloadSha256 } from "../../src/da/payload.js";
 import { type Header } from "../../src/domain.js";
-import { hashBlockHeader } from "../../src/l1/state-queue-scanner.js";
+import { headerHashOf } from "../../src/l1/follower/queue-derivation.js";
 import { loadDaSigner, validateDaSignerMembership } from "../../src/signer.js";
 import { bytesToHex } from "../../src/utils/hex.js";
 import {
@@ -441,7 +441,7 @@ export const registerPayloadsTests = () => {
 
 const reverifyHarness = async (payloadBytes: Buffer, header: Header) => {
   const dir = await tempDir();
-  const headerHash = hashBlockHeader(header);
+  const headerHash = headerHashOf(header);
   const seed = "00".repeat(31) + "01";
   const signer = await loadDaSigner(`hex:${seed}`);
   const config = minimalConfig({

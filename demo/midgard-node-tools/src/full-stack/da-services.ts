@@ -2,12 +2,14 @@ import { chmod, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { formatL1Origin, parseL1Origin } from "@al-ft/midgard-core/l1-origin";
 import {
   generateDaLibp2pRuntimeManifest,
   writeDaLibp2pRuntimeManifest,
 } from "midgard-node/da/libp2p-runtime-manifest";
 import { writeTextFileAtomic } from "midgard-node/files/atomic-write";
 
+import { L1OriginUndeterminedError } from "../l1-origin.js";
 import { configureStackCommittee } from "./committee.js";
 import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent } from "./journal.js";
@@ -76,6 +78,20 @@ export async function generateDaServices(processes: StackProcesses) {
     throw new Error(
       "Set the exact configured DA_THRESHOLD before running the stack",
     );
+  // Each committee follower starts from the run's origin, which the origin
+  // step restored; without it no committee environment is written.
+  const committeeL1Origin = (() => {
+    const text = env.L1_ORIGIN ?? "";
+    if (text === "")
+      throw new L1OriginUndeterminedError(
+        "the run has no L1 origin yet, so no committee environment is written",
+      );
+    try {
+      return formatL1Origin(parseL1Origin(text, "L1_ORIGIN"));
+    } catch (error) {
+      throw new L1OriginUndeterminedError((error as Error).message);
+    }
+  })();
   const members = (await configureStackCommittee(config, env)).map((member) => {
     const { signerIndex } = member;
     return {
@@ -180,12 +196,8 @@ export async function generateDaServices(processes: StackProcesses) {
       MIDGARD_NETWORK: "Preprod",
       MIDGARD_DEPLOYMENT_MANIFEST_PATH: "/config/committee.json",
       MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: "/config/manifest.json",
-      CARDANO_PROVIDER_URLS: `kupmios:${env.L1_KUPO_KEY}|${env.L1_OGMIOS_KEY}`,
-      CARDANO_L1_SOURCE_MODE: "local_node",
       CARDANO_LOCAL_NODE_AUTHORITY_ID: "local-cardano-node",
-      CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: `chain-sync:kupmios:${env.L1_KUPO_KEY}|${env.L1_OGMIOS_KEY}`,
-      CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
-        "/var/lib/midgard-da/chain-sync-cursor.json",
+      L1_ORIGIN: committeeL1Origin,
       CARDANO_LOCAL_NODE_SOCKET_PATH: "/ipc/node.socket",
       CARDANO_LOCAL_NODE_CONFIG_PATH: "/cardano-config/config.json",
       CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH: containerChainSync(processes).path,

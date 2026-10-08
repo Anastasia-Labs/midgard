@@ -11,7 +11,6 @@ import { promiseAdmissionFixture } from "./helpers/promise-admission.js";
 
 const seam = vi.hoisted(() => ({
   openStore: vi.fn(),
-  provider: vi.fn(),
   follower: vi.fn(),
   followerStopped: vi.fn(),
   factory: vi.fn(),
@@ -23,10 +22,6 @@ const seam = vi.hoisted(() => ({
 }));
 vi.mock("../src/store/factory.js", () => ({
   openCommitteeStore: seam.openStore,
-}));
-vi.mock("../src/l1/provider.js", async (original) => ({
-  ...(await original<typeof import("../src/l1/provider.js")>()),
-  providerFromConfig: seam.provider,
 }));
 vi.mock("../src/l1/follower/l1-follower.js", async (original) => ({
   ...(await original<typeof import("../src/l1/follower/l1-follower.js")>()),
@@ -73,7 +68,6 @@ const fixture = async () => {
   seam.payloads.mockImplementation(f.payloadSource.fetchPayloadCandidates);
   const identity = await identityFromSeedHex("01".repeat(32));
   seam.openStore.mockResolvedValue(f.store);
-  seam.provider.mockResolvedValue({});
   seam.followerStopped.mockResolvedValue(undefined);
   // The follower's facts hold no DA params output, so the runtime gets no
   // DA chain reader: a null follower store.
@@ -81,6 +75,7 @@ const fixture = async () => {
   seam.follower.mockResolvedValue({
     source: { ...f.provider, readiness: () => following.reasons },
     store: null,
+    provider: null,
     lucid: async () => {
       throw new Error("no Lucid in this fixture");
     },
@@ -112,12 +107,7 @@ const fixture = async () => {
       ],
     },
     availabilityPromiseAdoption: adoption,
-    cardanoL1Source: {
-      sourceMode: "local_node" as const,
-      authorityNodeId: "fixture",
-      authorityDigest: "11".repeat(32),
-      networkMagic: 2,
-    },
+    cardanoL1Source: { networkMagic: 2 },
   };
   const { DaPeerRegistry } = await import("../src/da/libp2p/DaPeerRegistry.js");
   return {
@@ -202,14 +192,56 @@ describe("actual node unsigned promise enrollment", () => {
     expect(seam.reconciled).not.toHaveBeenCalled();
   });
 
-  it("refuses the bootstrap scan on a follower reason no wait clears, stopping the follower and signing nothing", async () => {
+  it("holds the bootstrap scan on a follower reason no wait clears, reporting it with the process up, then proceeds once it clears", async () => {
     const f = await fixture();
     f.following.reasons = [
       { reason: "rollback_beyond_k", detail: "rolled back 7 blocks" },
     ];
-    await expect(openCommitteeNodeRuntime(f.local, {})).rejects.toThrow(
-      "rollback_beyond_k: rolled back 7 blocks",
+    seam.factory.mockImplementation(
+      async (_config: unknown, store: CommitteeStore) => {
+        expect(f.following.reasons).toEqual([]);
+        return {
+          responder: new AvailabilityResponder({
+            deploymentFingerprint: f.config.deploymentFingerprint,
+            deploymentIdentity: "fixture",
+            store,
+            reconcile: async () => "ready",
+            discover: async () => [],
+            execute: async () => "pending",
+          }),
+          promiseAdmissionSource: f.source,
+          close: () => {},
+        } satisfies Awaited<ReturnType<typeof availabilityResponderFromConfig>>;
+      },
     );
+    const held: string[] = [];
+    const runtime = await openCommitteeNodeRuntime(f.local, {}, (reasons) => {
+      held.push(reasons.map(({ reason }) => reason).join(","));
+      expect(seam.factory).not.toHaveBeenCalled();
+      expect(seam.published).not.toHaveBeenCalled();
+      // An operator repaired the follower.
+      f.following.reasons = [];
+    });
+    try {
+      expect(held).toEqual(["rollback_beyond_k"]);
+      expect(seam.factory).toHaveBeenCalledOnce();
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it("stops only when the caller's onL1Held throws (a one-shot run), stopping the follower and signing nothing", async () => {
+    const f = await fixture();
+    f.following.reasons = [
+      { reason: "rollback_beyond_k", detail: "rolled back 7 blocks" },
+    ];
+    await expect(
+      openCommitteeNodeRuntime(f.local, {}, (reasons) => {
+        throw new Error(
+          reasons.map(({ reason, detail }) => `${reason}: ${detail}`).join(),
+        );
+      }),
+    ).rejects.toThrow("rollback_beyond_k: rolled back 7 blocks");
     expect(seam.followerStopped).toHaveBeenCalledOnce();
     expect(seam.factory).not.toHaveBeenCalled();
     expect(seam.started).not.toHaveBeenCalled();

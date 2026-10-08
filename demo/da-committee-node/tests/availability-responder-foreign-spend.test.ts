@@ -16,8 +16,11 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { availabilityResponderOperations } from "../src/availability/factory.js";
-import { AvailabilityResponder } from "../src/availability/responder.js";
-import type { CanonicalChainPoint } from "../src/l1/provider.js";
+import {
+  AvailabilityResponder,
+  AvailabilityResponderAwaitingScanError,
+} from "../src/availability/responder.js";
+import { followerBoundary } from "./helpers/follower-boundary.js";
 
 /**
  * A committee Publish, Settle or Close spends only protocol UTxOs; the
@@ -50,7 +53,7 @@ afterEach(() =>
 const outRef = (utxo: UTxO) => `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
 type Evidence = {
-  /** The transaction Kupo names as the spender, as Ogmios serves it. */
+  /** The transaction the follower stored as the spender. */
   txHash: string;
   cbor?: string;
   blockNo: number;
@@ -147,21 +150,18 @@ const fixture = async (
 
   const chain = {
     slot: ours.validUntilSlot,
-    /** Tip points served by successive tip reads, before the steady tip. */
-    tipOverrides: [] as (Partial<CanonicalChainPoint> | undefined)[],
+    /** The follower's view generation; a rollback bumps it. */
+    generation: 0,
+    /** The follower's readiness reasons, which hold every boundary read. */
+    held: undefined as string | undefined,
+    /** Runs on every stored-transaction read, mid-pass. */
+    onReadTransaction: () => {},
     evidence: {
       txHash: rival,
       cbor: rivalCbor,
       blockNo: TIP_BLOCK_NO - FINALITY,
     } as Evidence | undefined,
   };
-  const tip = (): CanonicalChainPoint => ({
-    network: "Custom",
-    slot: chain.slot,
-    blockHash: TIP_HASH,
-    providerSource: "test",
-    observedAt: "test",
-  });
   const observed: LucidEvolution = {
     transactionStatus: async (txHash: string) => ({
       txHash,
@@ -172,15 +172,18 @@ const fixture = async (
   } as unknown as LucidEvolution;
   const operations = availabilityResponderOperations({
     lucid: observed,
-    readers: {
-      currentPoint: async () => ({ ...tip(), ...chain.tipOverrides.shift() }),
-      currentCursor: async () => ({
-        sequence: 1,
-        rollbackGeneration: 0,
-        point: tip(),
-      }),
-      tipBlockNo: async () => TIP_BLOCK_NO,
-      resolveInclusion: async () => ({}),
+    reads: {
+      readBoundary: async () => {
+        if (chain.held !== undefined)
+          throw new AvailabilityResponderAwaitingScanError(chain.held);
+        return followerBoundary(
+          { slot: chain.slot, blockHash: TIP_HASH, blockNo: TIP_BLOCK_NO },
+          chain.generation,
+        );
+      },
+      viewValid: async (view) => view.generation === chain.generation,
+      canonicalPoint: async () => null,
+      submissionPoint: async () => null,
       foreignSpend: {
         fetchSpend: async (ref) =>
           chain.evidence !== undefined &&
@@ -195,13 +198,16 @@ const fixture = async (
           slot: slot - 1,
           blockHash: "00".repeat(32),
         }),
-        readTransaction: async ({ point, txHash }) => ({
-          txHash,
-          point: { ...point, blockNo: chain.evidence!.blockNo },
-          ...(chain.evidence!.cbor === undefined
-            ? {}
-            : { cbor: chain.evidence!.cbor }),
-        }),
+        readTransaction: async ({ point, txHash }) => {
+          chain.onReadTransaction();
+          return {
+            txHash,
+            point: { ...point, blockNo: chain.evidence!.blockNo },
+            ...(chain.evidence!.cbor === undefined
+              ? {}
+              : { cbor: chain.evidence!.cbor }),
+          };
+        },
       },
     },
     assertSourceHealthy: async () => {},
@@ -268,12 +274,11 @@ const expectRefused = async (f: Fixture, message: string | RegExp) => {
 };
 
 /** Aborted like a refusal, but reported as the wait it is, not thrown. */
-const expectAwaitingScan = async (f: Fixture) => {
+const expectAwaitingScan = async (f: Fixture, detail: string) => {
   await expect(f.responder.tick()).resolves.toStrictEqual({
     challenges: 0,
     status: "awaiting_scan",
-    detail:
-      "Availability responder awaits the next canonical committee node L1 scan before acting",
+    detail: new AvailabilityResponderAwaitingScanError(detail).message,
   });
   expectNothingReleased(f);
 };
@@ -330,7 +335,7 @@ describe("committee responder after a rival spent its step's inputs", () => {
       },
     ],
     [
-      "the transaction Kupo names does not list the input",
+      "the stored spender transaction does not list the input",
       (f: Fixture) => {
         f.chain.evidence = { ...f.split, blockNo: TIP_BLOCK_NO - FINALITY };
       },
@@ -348,7 +353,7 @@ describe("committee responder after a rival spent its step's inputs", () => {
       },
     ],
     [
-      "Kupo reports no spend",
+      "the follower holds no spend",
       (f: Fixture) => {
         f.chain.evidence = undefined;
       },
@@ -383,7 +388,7 @@ describe("committee responder after a rival spent its step's inputs", () => {
       "Availability input spend lies above the canonical boundary",
     ],
     [
-      "Ogmios serves the spend without its raw transaction",
+      "the spend is served without its raw transaction",
       (f: Fixture) => {
         delete f.chain.evidence!.cbor;
       },
@@ -404,35 +409,46 @@ describe("committee responder after a rival spent its step's inputs", () => {
 
   it.each([
     [
-      "the tip moves during the height read",
+      "the follower holds the committee unready",
       (f: Fixture) => {
-        f.chain.tipOverrides = [
-          undefined,
-          undefined,
-          { slot: f.chain.slot + 1 },
-        ];
+        f.chain.held = "rollback_beyond_k: rolled back 7 blocks";
       },
+      "rollback_beyond_k: rolled back 7 blocks",
     ],
     [
-      "the height is read at a tip other than the cursor's point",
+      "a rollback undoes the reconciled view while the rival spend is read",
       (f: Fixture) => {
-        f.chain.tipOverrides = [
-          undefined,
-          { blockHash: "ef".repeat(32) },
-          { blockHash: "ef".repeat(32) },
-        ];
+        f.chain.onReadTransaction = () => {
+          f.chain.generation += 1;
+        };
       },
+      "its view rolled back since this pass reconciled; the next pass reconciles again",
     ],
   ])(
-    "awaits the next scan and releases nothing when %s",
-    async (_label, arrange) => {
+    "awaits the follower and releases nothing when %s",
+    async (_label, arrange, detail) => {
       const f = await fixture("settle", 3);
       try {
         arrange(f);
-        await expectAwaitingScan(f);
+        await expectAwaitingScan(f, detail);
       } finally {
         f.journal.close();
       }
     },
   );
+
+  it("awaits the next pass and releases nothing when the follower's view advances during the spend read", async () => {
+    const f = await fixture("settle", 3);
+    try {
+      f.chain.onReadTransaction = () => {
+        f.chain.slot += 1;
+      };
+      await expectAwaitingScan(
+        f,
+        "its view advanced during a canonical spend read; the next pass reads again",
+      );
+    } finally {
+      f.journal.close();
+    }
+  });
 });

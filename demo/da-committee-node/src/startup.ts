@@ -1,8 +1,6 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { L1NetworkMagicUnconfiguredError } from "./l1/provider.ogmios-rpc-session.js";
-import { L1SourceIntegrityError } from "./l1/source-integrity.js";
 import { isInstanceLockHeldElsewhere } from "./store/postgres.instance-lock.js";
 
 /** First wait before re-trying a startup that failed on a dependency. */
@@ -11,22 +9,14 @@ export const STARTUP_RETRY_INITIAL_MS = 1_000;
 export const STARTUP_RETRY_MAX_MS = 30_000;
 
 /**
- * A startup failure no retry can repair: the configuration contradicts the
- * deployment or the chain. Everything else a dependency throws while the
- * node starts (Postgres, the availability responder's Kupo or Ogmios not up
- * yet, a peer address that does not resolve yet) is retried.
- *
- * - the store holds state of another deployment
- *   (`stale_deployment_state_requires_fresh_redeploy`);
- * - the availability responder's L1 reads contradict the chain, or their
- *   network identity cannot be or is not proven (`L1SourceIntegrityError`,
- *   `L1NetworkMagicUnconfiguredError`).
+ * A startup failure no retry can repair: the store holds state of another
+ * deployment (`stale_deployment_state_requires_fresh_redeploy`). Everything
+ * else a dependency throws while the node starts (Postgres, the local node
+ * not up yet, a peer address that does not resolve yet) is retried.
  */
 export const isFatalStartupError = (error: unknown): boolean =>
-  error instanceof L1SourceIntegrityError ||
-  error instanceof L1NetworkMagicUnconfiguredError ||
-  (error instanceof Error &&
-    /stale_deployment_state_requires_fresh_redeploy/u.test(error.message));
+  error instanceof Error &&
+  /stale_deployment_state_requires_fresh_redeploy/u.test(error.message);
 
 /** The readiness reason a failed startup attempt reports. */
 export const startupReason = (error: unknown): string =>

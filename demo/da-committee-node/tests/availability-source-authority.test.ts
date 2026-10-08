@@ -5,20 +5,21 @@ import { l1SourceAuthorityDigest } from "../src/config.js";
 import type { CommitteeStore, L1SourceState } from "../src/store.js";
 import { openTestCommitteeStore } from "./helpers/committee-store.js";
 
-const l1Source = {
-  sourceMode: "local_node" as const,
+const nativeLedger = {
   authorityNodeId: "node-a",
-  chainSyncProviderUrl: "chain-sync:ogmios:ws://ogmios.local",
-  queryProviderUrls: ["kupmios:http://kupo.local|ws://ogmios.local"],
+  socketPath: "/run/cardano/node.socket",
+  nodeConfigPath: "/etc/cardano/config.json",
+  binaryPath: "/usr/local/bin/midgard-native-chain-sync",
 };
+const l1Origin = { slot: 100, blockHash: "ab".repeat(32) };
 const network = "Preprod";
-const responderConfig = { network, l1Source };
+const responderConfig = { network, nativeLedger, l1Origin };
 
 const sourceState = (): L1SourceState => ({
   schemaVersion: 1,
   sourceMode: "local_node",
   network,
-  authoritySha256: l1SourceAuthorityDigest(network, l1Source),
+  authoritySha256: l1SourceAuthorityDigest(responderConfig),
   status: "healthy",
   observations: [],
   observedAt: "2026-10-01T00:00:00.000Z",
@@ -42,23 +43,30 @@ describe("availability responder chain authority", () => {
     const store = await openStore();
     await expect(
       assertAvailabilityResponderSourceHealthy(store, responderConfig),
-    ).rejects.toThrow(/healthy authenticated/u);
+    ).rejects.toThrow(/bound to its configured L1 source/u);
     await store.saveL1SourceState(sourceState());
     await expect(
       assertAvailabilityResponderSourceHealthy(store, responderConfig),
     ).resolves.toBeUndefined();
     await expect(
       assertAvailabilityResponderSourceHealthy(store, {
-        network,
-        l1Source: { ...l1Source, authorityNodeId: "node-b" },
+        ...responderConfig,
+        nativeLedger: { ...nativeLedger, authorityNodeId: "node-b" },
       }),
-    ).rejects.toThrow(/healthy authenticated/u);
+    ).rejects.toThrow(/bound to its configured L1 source/u);
+    // Another L1 origin names another chain.
+    await expect(
+      assertAvailabilityResponderSourceHealthy(store, {
+        ...responderConfig,
+        l1Origin: { ...l1Origin, blockHash: "cd".repeat(32) },
+      }),
+    ).rejects.toThrow(/bound to its configured L1 source/u);
     // A source recorded on another network keeps the configured authority
     // digest, so only the network clause can refuse it.
     const unbound = await openStore();
     await unbound.saveL1SourceState({ ...sourceState(), network: "Mainnet" });
     await expect(
       assertAvailabilityResponderSourceHealthy(unbound, responderConfig),
-    ).rejects.toThrow(/healthy authenticated/u);
+    ).rejects.toThrow(/bound to its configured L1 source/u);
   });
 });

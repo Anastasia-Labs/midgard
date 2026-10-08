@@ -71,6 +71,9 @@ export const serviceSpecs = (
 ): ServiceSpec[] => {
   const { layout, run, identities, artifacts } = context;
   const ports = servicePorts(run);
+  // Every committee follower and the node start from the run's recorded
+  // origin; without one no service is specified.
+  const l1Origin = recordedL1Origin(layout, oneShot);
   const committees: ServiceSpec[] = Array.from(
     { length: COMMITTEE_SIZE },
     (_, index) => {
@@ -86,6 +89,7 @@ export const serviceSpecs = (
           identities,
           transportBinary: artifacts.transportBinary,
           index,
+          l1Origin,
         }),
         healthUrl: `${base}/healthz`,
         readyUrl: `${base}/readyz`,
@@ -114,7 +118,7 @@ export const serviceSpecs = (
       env: nodeEnvironment({
         ...context,
         oneShot,
-        l1Origin: recordedL1Origin(layout, oneShot),
+        l1Origin,
         historyGenesisPin: recordedHistoryGenesisPin(layout),
         role: "listen",
       }),

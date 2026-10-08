@@ -1,30 +1,27 @@
-import {
-  type CommitteeL1ClientConfig,
-  l1SourceAuthorityDigest,
-} from "../config.js";
+import { type CommitteeConfig, l1SourceAuthorityDigest } from "../config.js";
 import type { CommitteeStore } from "../store.js";
 
 /**
- * The chain authority every responder transaction needs: this committee
- * node's own local-node L1 source, healthy and bound to the configured
- * authority. Answering a challenge spends, so it is a new decision.
- * Reading the retained bytes that answer is not gated on this: those stay
- * servable to any holder that can act (see `retainedAvailabilityPayload`).
+ * The chain authority every responder transaction needs: the committee
+ * store bound to this committee's configured L1 source (its network, node
+ * authority and L1 origin). Answering a challenge spends, so it is a new
+ * decision. Reading the retained bytes that answer is not gated on this:
+ * those stay servable to any holder that can act (see
+ * `retainedAvailabilityPayload`).
  */
 export const assertAvailabilityResponderSourceHealthy = async (
   store: Pick<CommitteeStore, "getL1SourceState">,
-  config: Pick<CommitteeL1ClientConfig, "network" | "l1Source">,
+  config: Pick<CommitteeConfig, "network" | "l1Origin" | "nativeLedger">,
 ): Promise<void> => {
   const source = await store.getL1SourceState();
   if (
     source?.status !== "healthy" ||
     source.sourceMode !== "local_node" ||
     source.network !== config.network ||
-    source.authoritySha256 !==
-      l1SourceAuthorityDigest(config.network, config.l1Source)
+    source.authoritySha256 !== l1SourceAuthorityDigest(config)
   ) {
     throw new Error(
-      "Availability responder requires a healthy authenticated committee node L1 source; rollback recovery must finish first",
+      "Availability responder requires the committee store bound to its configured L1 source",
     );
   }
 };

@@ -5,12 +5,12 @@ import {
   parseNativeLedgerConfig,
   rejectRetiredWatcherEnvNames,
 } from "../src/config.js";
+import { tempDir } from "./helpers.js";
 import {
   libp2pConfigEnv,
   libp2pManifest,
   writeConfigFiles,
-} from "./config.load-committee-config.js";
-import { tempDir } from "./helpers.js";
+} from "./helpers/committee-config-files.js";
 
 describe("rejectRetiredWatcherEnvNames", () => {
   it("refuses the pre-split WATCHER_* names and points at the DA_COMMITTEE_* replacements", () => {
@@ -116,14 +116,14 @@ describe("local node ledger settings", () => {
       dir,
       libp2pManifest("01".repeat(32)),
     );
-    const baseEnv = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
+    const baseEnv = libp2pConfigEnv(manifestPath, deploymentInfoPath);
 
     expect((await loadCommitteeConfig(baseEnv)).nativeLedger).toBeUndefined();
     await expect(
       loadCommitteeConfig({ ...baseEnv, ...nativeLedgerEnv }),
     ).resolves.toMatchObject({
       nativeLedger: {
-        authorityNodeId: "test-cardano-node",
+        authorityNodeId: "local-cardano-node",
         socketPath: nativeLedgerEnv.CARDANO_LOCAL_NODE_SOCKET_PATH,
       },
     });

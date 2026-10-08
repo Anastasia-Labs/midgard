@@ -6,6 +6,7 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createCommitteePromiseAdmissionSource } from "../src/availability/create-promise-admission-source.js";
+import { followerBoundary } from "./helpers/follower-boundary.js";
 import { promiseAdmissionFixture } from "./helpers/promise-admission.js";
 
 const journals = new Set<ReturnType<typeof openAvailabilityOperationJournal>>();
@@ -20,22 +21,13 @@ const fixture = async (compatibleClaims = false, prepareClaims = false) => {
   const identity = String(f.config.contractDeploymentInfo.manifestId);
   const journal = openAvailabilityOperationJournal(join(f.dir, "actor.sqlite"));
   journals.add(journal);
-  const point = {
-    network: f.config.network,
+  const boundary = followerBoundary({
     slot: 100,
     blockHash: "34".repeat(32),
-    providerSource: "fixture",
-    observedAt: "2026-10-02T00:00:00.000Z",
-  };
-  const cursor = { sequence: 1, rollbackGeneration: 0, point };
-  const boundary = {
-    pointId: `${point.slot}:${point.blockHash}`,
-    slot: 100,
-    blockHash: point.blockHash,
     blockNo: 100,
-  };
+  });
   const controls = {
-    onCursor: async () => {},
+    onBoundary: async () => {},
     onDrain: async () => {},
     onActuation: async () => {},
     onCompatibleClaims: async () => {},
@@ -65,12 +57,11 @@ const fixture = async (compatibleClaims = false, prepareClaims = false) => {
     store: f.store,
     journal,
     lucid,
-    ogmiosUrl: "ws://unused",
-    currentCursor: async () => {
-      await controls.onCursor();
-      return cursor;
+    reads: { canonicalPoint: async () => null },
+    readBoundary: async () => {
+      await controls.onBoundary();
+      return boundary;
     },
-    readBoundary: async () => boundary,
     assertActuationCurrent: async () => controls.onActuation(),
     assertActorRuntimeIdle: () => controls.onRuntimeIdle(),
     drainReadResources: async () => controls.onDrain(),
@@ -213,10 +204,10 @@ describe("actual promise source actor interference", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("rejects an unsigned lease acquired during the final cursor await", async () => {
+  it("rejects an unsigned lease acquired during the final boundary await", async () => {
     const f = await fixture();
     const snapshot = await f.source.readSnapshot();
-    f.controls.onCursor = async () => {
+    f.controls.onBoundary = async () => {
       f.journal.acquire(f.actor, "late-builder", 0, 10);
     };
     await expect(f.source.assertCurrent(snapshot.boundary)).rejects.toThrow(

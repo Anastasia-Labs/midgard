@@ -23,7 +23,7 @@ import { inject } from "vitest";
 
 import { computeDaPayloadRoots } from "../src/da/payload.js";
 import type { Header, ObservedStateQueueNode } from "../src/domain.js";
-import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
+import { headerHashOf } from "../src/l1/follower/queue-derivation.js";
 import type {} from "./global-setup.js";
 import { fixtureValidationTrace } from "./helpers.validation-trace.js";
 
@@ -203,7 +203,7 @@ export const makePayloadFixture = async (
     transitionStepCount: counts.transitionStepCount,
     validationTraceCount: counts.validationTraceCount,
   };
-  const headerHash = hashBlockHeader(header);
+  const headerHash = headerHashOf(header);
   const payload: SDK.DaPayload = {
     ...payloadWithoutHash,
     block_body: {

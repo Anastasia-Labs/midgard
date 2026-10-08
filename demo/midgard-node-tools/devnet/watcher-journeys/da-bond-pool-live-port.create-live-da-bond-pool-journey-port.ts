@@ -96,6 +96,7 @@ import {
   type AvailabilityRequest,
   commitWithinLedgerValidity,
   DA_BOND_POOL_COMMITTEE_SUBMITTER_SECRETS,
+  daBondPoolCommitteeL1,
   DaBondPoolCommitteeUnavailableError,
   DaBondPoolJourneyQueueNotEmptyError,
   DaBondPoolJourneyResumeMismatchError,
@@ -532,14 +533,12 @@ export const createLiveDaBondPoolJourneyPort = async (
   const availabilitySubmitter = await submitterKey(
     DA_BOND_POOL_COMMITTEE_SUBMITTER_SECRETS.availability,
   );
-  const nativeLedgerPaths = {
-    socket: join(runDirectory, "cardano/ipc/node.socket"),
-    config: join(runDirectory, "config/config.json"),
-    binary: join(runDirectory, "work/midgard-l1-node-transport"),
-  };
-  const nativeLedger = Object.values(nativeLedgerPaths).every((path) =>
-    existsSync(path),
-  );
+  const { nativeLedger: nativeLedgerPaths, l1Origin: committeeL1Origin } =
+    await daBondPoolCommitteeL1({
+      runDirectory,
+      networkMagic: customNetwork.networkMagic,
+      nonceTxHash: manifest.hubOracleOneShot.txHash,
+    });
   const postgres = {
     database: context.runEnv.MIDGARD_PHASE4_POSTGRES_DATABASE,
     user: context.runEnv.MIDGARD_PHASE4_POSTGRES_USER,
@@ -605,11 +604,9 @@ export const createLiveDaBondPoolJourneyPort = async (
       deploymentManifestPath: manifestPath,
       network: manifest.network,
       networkMagic: customNetwork.networkMagic,
-      kupoUrl: context.kupoUrl,
-      ogmiosUrl: context.ogmiosUrl,
-      chainSyncCursorPath: join(committeeDirectory, "chain-sync-cursor.json"),
+      l1Origin: committeeL1Origin,
       finalityDepth: manifest.l1Finality.confirmationDepth,
-      ...(nativeLedger ? { nativeLedger: nativeLedgerPaths } : {}),
+      nativeLedger: nativeLedgerPaths,
     }),
     l1Submitter,
     availabilitySubmitter,
@@ -759,13 +756,9 @@ export const createLiveDaBondPoolJourneyPort = async (
       ...inheritedEnv,
       MIDGARD_CONFIG_MODE: "disabled",
       MIDGARD_DOTENV_MODE: "disabled",
-      ...(nativeLedger
-        ? {
-            L1_NODE_SOCKET_PATH: nativeLedgerPaths.socket,
-            L1_NODE_CONFIG_PATH: nativeLedgerPaths.config,
-            L1_NATIVE_CHAIN_SYNC_BINARY_PATH: nativeLedgerPaths.binary,
-          }
-        : {}),
+      L1_NODE_SOCKET_PATH: nativeLedgerPaths.socket,
+      L1_NODE_CONFIG_PATH: nativeLedgerPaths.config,
+      L1_NATIVE_CHAIN_SYNC_BINARY_PATH: nativeLedgerPaths.binary,
     },
     workDirectory: (label) => {
       const directory = join(

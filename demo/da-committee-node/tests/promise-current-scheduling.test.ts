@@ -7,6 +7,7 @@ import { currentPromiseScheduling } from "../src/availability/promise-current-sc
 import { promiseSchedulingSource } from "../src/availability/promise-scheduling-source.js";
 import type { StateQueueHeaderRecord } from "../src/domain.js";
 import { makePayloadFixture } from "./helpers.js";
+import { followerBoundary } from "./helpers/follower-boundary.js";
 
 const fixture = async () => {
   const payload = await makePayloadFixture(1);
@@ -226,38 +227,20 @@ describe("current timing scheduling versus protected restoration", () => {
   it("revalidates complete raw identities at the final fence despite unchanged point and counts", async () => {
     const f = await fixture();
     const scope = SDK.createDaAvailabilityReadScope({ attemptTimeoutMs: 1000 });
-    const cursor = {
-      sequence: 1,
-      rollbackGeneration: 0,
-      point: {
-        network: "Custom",
-        slot: f.args.boundary.slot,
-        blockHash: f.args.boundary.blockHash,
-        providerSource: "fixture",
-        observedAt: "2026-10-02T00:00:00Z",
-      },
-    };
     let queue = f.args.rawSnapshot.stateQueueUtxos;
     const source = promiseSchedulingSource({
-      lucid: { slotToUnixTime: () => f.cutoff } as unknown as LucidEvolution,
+      lucid: {
+        slotToUnixTime: () => f.cutoff,
+        utxosAt: async (address: string) =>
+          address === "queue" ? queue : address === "lock" ? [f.lock] : [],
+      } as unknown as LucidEvolution,
       deployment: f.args.deployment,
-      ogmiosUrl: "ws://unused",
       openWindowMs: 720000,
-      limits: {
-        requestRefusalMs: 1000,
-        httpResponseBytes: 4096,
-        webSocketMessageBytes: 4096,
-        rawUtxos: 10,
-      },
-      readUtxos: async (address, readScope) => {
+      reads: { canonicalPoint: async () => null },
+      readBoundary: async (readScope) => {
         expect(readScope).toBe(scope);
-        return address === "queue" ? queue : address === "lock" ? [f.lock] : [];
+        return followerBoundary(f.args.boundary);
       },
-      currentCursor: async () => cursor,
-      readBoundary: async () => ({
-        ...f.args.boundary,
-        pointId: `${f.args.boundary.slot}:${f.args.boundary.blockHash}`,
-      }),
       assertActuationCurrent: async () => {},
     });
     try {
@@ -267,7 +250,7 @@ describe("current timing scheduling versus protected restoration", () => {
         complete: true,
         scope,
         point: f.args.boundary,
-        cursor,
+        generation: 0,
       });
       await expect(
         source.assertCurrent(receipt.digest, scope),
@@ -289,17 +272,6 @@ describe("current timing scheduling versus protected restoration", () => {
   it("does not let an older overlapping capture replace the newer certificate", async () => {
     const f = await fixture();
     const scope = SDK.createDaAvailabilityReadScope({ attemptTimeoutMs: 1000 });
-    const cursor = {
-      sequence: 1,
-      rollbackGeneration: 0,
-      point: {
-        network: "Custom",
-        slot: f.args.boundary.slot,
-        blockHash: f.args.boundary.blockHash,
-        providerSource: "fixture",
-        observedAt: "fixture",
-      },
-    };
     let releaseFirst!: () => void;
     let enteredFirst!: () => void;
     const entered = new Promise<void>((resolve) => {
@@ -311,23 +283,15 @@ describe("current timing scheduling versus protected restoration", () => {
     let first = true;
     let queue = [f.root, f.node];
     const source = promiseSchedulingSource({
-      lucid: { slotToUnixTime: () => f.cutoff } as unknown as LucidEvolution,
+      lucid: {
+        slotToUnixTime: () => f.cutoff,
+        utxosAt: async (address: string) =>
+          address === "queue" ? queue : address === "lock" ? [f.lock] : [],
+      } as unknown as LucidEvolution,
       deployment: f.args.deployment,
-      ogmiosUrl: "ws://unused",
       openWindowMs: 720000,
-      limits: {
-        requestRefusalMs: 1000,
-        httpResponseBytes: 4096,
-        webSocketMessageBytes: 4096,
-        rawUtxos: 10,
-      },
-      readUtxos: async (address) =>
-        address === "queue" ? queue : address === "lock" ? [f.lock] : [],
-      currentCursor: async () => cursor,
-      readBoundary: async () => ({
-        ...f.args.boundary,
-        pointId: `${f.args.boundary.slot}:${f.args.boundary.blockHash}`,
-      }),
+      reads: { canonicalPoint: async () => null },
+      readBoundary: async () => followerBoundary(f.args.boundary),
       assertActuationCurrent: async () => {
         if (first) {
           first = false;
@@ -342,7 +306,7 @@ describe("current timing scheduling versus protected restoration", () => {
       complete: true,
       scope,
       point: f.args.boundary,
-      cursor,
+      generation: 0,
     };
     const older = source.capture(input);
     const olderResult = older.then(

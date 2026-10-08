@@ -13,6 +13,8 @@ import { loadCommitteeConfig, type LoadedCommitteeConfig } from "./config.js";
 import { l1SubmitterWalletPreflightFromConfig } from "./coordinator/factory.js";
 import { DaPeerRegistry } from "./da/libp2p/index.js";
 import {
+  committeeL1InterventionReason,
+  type CommitteeL1Readiness,
   openCommitteeL1Reader,
   untilCommitteeL1SourceReady,
 } from "./l1/follower/l1-follower.js";
@@ -97,8 +99,17 @@ const main = async (): Promise<void> => {
   const starting = once
     ? undefined
     : await listenStartingServer(config.apiPort, config.apiHost);
+  // While the L1 follower holds the committee the attempt waits, process up,
+  // naming the follower's reasons on /readyz; a one-shot run fails instead
+  // on a reason no wait clears.
+  const onL1Held = (reasons: readonly CommitteeL1Readiness[]): void => {
+    if (once) throwOnL1Intervention(reasons);
+    starting?.setReason(
+      `starting:${reasons.map(({ reason, detail }) => `${reason}: ${detail}`).join("; ")}`,
+    );
+  };
   const runtime = await retryStartup({
-    attempt: () => openCommitteeNodeRuntime(local, storeLockEvents),
+    attempt: () => openCommitteeNodeRuntime(local, storeLockEvents, onL1Held),
     onFailure: (reason) => starting?.setReason(reason),
     write,
     ...(once ? { isFatal: () => true } : {}),
@@ -206,7 +217,9 @@ const main = async (): Promise<void> => {
   if (once) {
     try {
       await preflight?.start();
-      await untilCommitteeL1SourceReady(runtime.l1);
+      await untilCommitteeL1SourceReady(runtime.l1, {
+        onHeld: throwOnL1Intervention,
+      });
       const viewBeforeTick = service.latestL1View();
       const result = await service.tick();
       await responseLoop.run();
@@ -377,6 +390,15 @@ const runL1WalletPreflightCommand = async (
   }
 };
 
+/** A one-shot run cannot wait on an operator: it fails on such a reason. */
+const throwOnL1Intervention = (
+  reasons: readonly CommitteeL1Readiness[],
+): void => {
+  const blocking = committeeL1InterventionReason(reasons);
+  if (blocking !== undefined)
+    throw new Error(`${blocking.reason}: ${blocking.detail}`);
+};
+
 const printHelp = (): void => {
   process.stdout.write(`da-committee-node
 
@@ -391,14 +413,8 @@ The committee reads L1 through its own chain follower on the local node:
 L1_ORIGIN, the native ledger (CARDANO_LOCAL_NODE_SOCKET_PATH,
 CARDANO_LOCAL_NODE_CONFIG_PATH and CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH) and
 the deployment's hubOracleOneShot. Until all are set it stays unready with
-l1_follower_not_configured.
-Supported CARDANO_PROVIDER_URLS forms (availability responder only):
-  kupmios:http://kupo:1442|http://ogmios:1337
-  fixture:/path/to/state-queue.json (tests only; requires
-    CARDANO_L1_TEST_MODE=true)
-CARDANO_L1_SOURCE_MODE=local_node requires CARDANO_LOCAL_NODE_AUTHORITY_ID,
-CARDANO_LOCAL_NODE_CHAIN_SYNC_URL=chain-sync:<provider> and
-CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH=/durable/path/cursor.jsonl.
+l1_follower_unconfigured. The availability responder reads and submits
+through the same follower; no chain index (Kupo, Ogmios) is configured.
 `);
 };
 

@@ -13,8 +13,9 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  committeeL1InterventionReason,
   committeeL1Source,
-  L1_FOLLOWER_NOT_CONFIGURED,
+  L1_FOLLOWER_UNCONFIGURED,
   untilCommitteeL1SourceReady,
 } from "../../src/l1/follower/l1-follower.js";
 import { committeeProjection } from "../../src/l1/follower/projection.js";
@@ -191,7 +192,7 @@ describe("waiting for the committee's L1 source", () => {
   it("resolves at once when nothing but an owed seed holds it", async () => {
     const source = scripted([{ reason: WALLET_SEED_PENDING, detail: "owed" }]);
     await expect(
-      untilCommitteeL1SourceReady(source, 1),
+      untilCommitteeL1SourceReady(source, { pollMs: 1 }),
     ).resolves.toBeUndefined();
     expect(source.calls()).toBe(1);
   });
@@ -205,22 +206,67 @@ describe("waiting for the committee's L1 source", () => {
         [],
       );
       await expect(
-        untilCommitteeL1SourceReady(source, 1),
+        untilCommitteeL1SourceReady(source, { pollMs: 1 }),
       ).resolves.toBeUndefined();
       expect(source.calls()).toBe(3);
     },
   );
 
-  it.each(["rollback_beyond_k", L1_FOLLOWER_NOT_CONFIGURED])(
-    "throws %s, which no wait clears",
+  it.each(["rollback_beyond_k", L1_FOLLOWER_UNCONFIGURED])(
+    "holds on %s, which no wait clears, reporting it every poll and never giving up",
     async (reason) => {
-      const source = scripted([
-        { reason: FOLLOWER_CATCHING_UP, detail: "behind" },
-        { reason, detail: "named" },
-      ]);
-      await expect(untilCommitteeL1SourceReady(source, 1)).rejects.toThrow(
-        `${reason}: named`,
+      const held = { reason, detail: "named" };
+      const source = scripted(
+        [{ reason: FOLLOWER_CATCHING_UP, detail: "behind" }],
+        [held],
+        [held],
+        [held],
+        // An operator repaired it: the wait resolves, the process never left.
+        [],
       );
+      const reported: string[] = [];
+      await expect(
+        untilCommitteeL1SourceReady(source, {
+          pollMs: 1,
+          onHeld: (reasons) =>
+            reported.push(
+              committeeL1InterventionReason(reasons)?.reason ?? "transient",
+            ),
+        }),
+      ).resolves.toBeUndefined();
+      expect(reported).toEqual(["transient", reason, reason, reason]);
+      expect(source.calls()).toBe(5);
     },
   );
+
+  it("stops only when its caller's onHeld throws (a one-shot run)", async () => {
+    const source = scripted([{ reason: "rollback_beyond_k", detail: "named" }]);
+    await expect(
+      untilCommitteeL1SourceReady(source, {
+        pollMs: 1,
+        onHeld: (reasons) => {
+          const stuck = committeeL1InterventionReason(reasons);
+          if (stuck !== undefined)
+            throw new Error(`${stuck.reason}: ${stuck.detail}`);
+        },
+      }),
+    ).rejects.toThrow("rollback_beyond_k: named");
+    expect(source.calls()).toBe(1);
+  });
+
+  it("names only reasons no wait clears as interventions", () => {
+    expect(
+      committeeL1InterventionReason([
+        { reason: FOLLOWER_CATCHING_UP, detail: "a" },
+        { reason: FOLLOWER_WAITING, detail: "b" },
+        { reason: WALLET_SEED_PENDING, detail: "c" },
+      ]),
+    ).toBeUndefined();
+    expect(
+      committeeL1InterventionReason([
+        { reason: FOLLOWER_WAITING, detail: "b" },
+        { reason: "rollback_beyond_k", detail: "deep" },
+      ]),
+    ).toEqual({ reason: "rollback_beyond_k", detail: "deep" });
+  });
 });

@@ -13,7 +13,7 @@ import { blake2b } from "@noble/hashes/blake2.js";
 
 import { verifyDaPayloadAgainstHeader } from "../../src/da/payload.js";
 import type { StateQueueHeaderRecord } from "../../src/domain.js";
-import { hashBlockHeader } from "../../src/l1/state-queue-scanner.js";
+import { headerHashOf } from "../../src/l1/follower/queue-derivation.js";
 import { deriveExpectedDaAvailabilityCommitment } from "../../src/peer/signatures.js";
 import { loadDaSigner, signDaAttestation } from "../../src/signer.js";
 import {
@@ -40,7 +40,24 @@ export const descendantPoint = {
   blockHash: "56".repeat(32),
   blockNo: 5161,
 };
-export const retentionFixture = async (store: CommitteeStore) => {
+/**
+ * The chain the seeded rows name: the block every row was observed at, the
+ * block its capacity was certified at, and the committee's L1 submission.
+ */
+export type RetentionSeedChain = Readonly<{
+  observed: typeof oldPoint;
+  certified: typeof oldPoint;
+  submissionTxHash: string;
+}>;
+
+export const retentionFixture = async (
+  store: CommitteeStore,
+  seedChain: RetentionSeedChain = {
+    observed: oldPoint,
+    certified: expiryPoint,
+    submissionTxHash: "88".repeat(32),
+  },
+) => {
   const dir = await tempDir(),
     journal = openAvailabilityOperationJournal(join(dir, "journal.sqlite"));
   const key = CML.PrivateKey.from_normal_bytes(new Uint8Array(32).fill(7));
@@ -176,7 +193,7 @@ export const retentionFixture = async (store: CommitteeStore) => {
         ? variant.toString(16).padStart(56, "0")
         : base.header.operatorVkey,
     };
-    const headerHash = hashBlockHeader(h);
+    const headerHash = headerHashOf(h);
     return {
       deploymentFingerprint,
       headerHash,
@@ -186,9 +203,9 @@ export const retentionFixture = async (store: CommitteeStore) => {
       computedHeaderHash: headerHash,
       daAttestation: SDK.NO_DA_ATTESTATION,
       observedChainPoint: {
-        slot: oldPoint.slot,
-        blockHash: oldPoint.blockHash,
-        blockHeight: oldPoint.blockNo,
+        slot: seedChain.observed.slot,
+        blockHash: seedChain.observed.blockHash,
+        blockHeight: seedChain.observed.blockNo,
         depth: 5000,
         finalized: true,
         providerSource: "authenticated_state_queue_transition_v1",
@@ -273,8 +290,8 @@ export const retentionFixture = async (store: CommitteeStore) => {
       headerHash: h.headerHash,
       stateQueueOutRef: h.stateQueueOutRef,
       stateQueueStatus: h.status,
-      slot: oldPoint.slot,
-      blockHash: oldPoint.blockHash,
+      slot: seedChain.observed.slot,
+      blockHash: seedChain.observed.blockHash,
       finalized: true,
       hasPersistedDecision: true,
     };
@@ -299,8 +316,8 @@ export const retentionFixture = async (store: CommitteeStore) => {
       headerHash: h.headerHash,
       stateQueueOutRef: h.stateQueueOutRef,
       signerIndex: 0,
-      slot: oldPoint.slot,
-      blockHash: oldPoint.blockHash,
+      slot: seedChain.observed.slot,
+      blockHash: seedChain.observed.blockHash,
       finalized: true as const,
       status: "pending" as const,
       attemptCount: 1,
@@ -324,8 +341,8 @@ export const retentionFixture = async (store: CommitteeStore) => {
       cutoffTimeMs: end + 720000,
       recoveryDepth: 2160,
       retirementKind: "terminal",
-      point: oldPoint,
-      certifiedAt: expiryPoint,
+      point: seedChain.observed,
+      certifiedAt: seedChain.certified,
     });
     await store.saveDaAttestationCandidate({
       deploymentFingerprint,
@@ -343,7 +360,7 @@ export const retentionFixture = async (store: CommitteeStore) => {
       deploymentFingerprint,
       headerHash: h.headerHash,
       txKind: "apply",
-      txHash: "88".repeat(32),
+      txHash: seedChain.submissionTxHash,
       inputsUsed: [],
       submittedAt: "2026-10-02T00:00:00.000Z",
       resultStatus: "confirmed",

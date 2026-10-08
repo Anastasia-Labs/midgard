@@ -63,8 +63,8 @@ export const healthyL1SourceState: L1SourceState = Object.freeze({
 
 /**
  * Makes `store` ready for decision writes, as node startup does. A test whose
- * store a `CommitteeService` later initializes, or that later quarantines the
- * source, passes that service's source identity.
+ * store a `CommitteeService` later initializes passes that service's source
+ * identity.
  */
 export const saveHealthyL1SourceState = async (
   store: PostgresCommitteeStore,

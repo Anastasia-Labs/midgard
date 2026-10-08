@@ -54,6 +54,7 @@ import type {
   DaSignatureRecord,
   StateQueueHeaderRecord,
 } from "./domain.js";
+import { committeeL1InterventionReason } from "./l1/follower/l1-follower.js";
 import {
   buildDaSignatureConflictEvidence,
   classifyDaLocalSigningCommitment,
@@ -66,7 +67,6 @@ import {
   type DecisionOutboxRecord,
   hasPayloadBytes,
   type L1ObservedDecision,
-  type L1SourceState,
 } from "./store.js";
 import { hexToBytes } from "./utils/hex.js";
 
@@ -206,7 +206,7 @@ export class CommitteeService {
       }
       await this.deps.store.saveL1SourceState({
         schemaVersion: 1,
-        sourceMode: this.l1SourceMode(),
+        sourceMode: "local_node",
         network: this.deps.config.network,
         authoritySha256: this.l1SourceAuthoritySha256(),
         status: "healthy",
@@ -311,10 +311,10 @@ export class CommitteeService {
     }
     // The follower's named reasons, read live, then why the last tick that
     // read a view decided nothing.
+    const l1Held = this.deps.l1.readiness();
+    const l1Intervention = committeeL1InterventionReason(l1Held);
     reasons.push(
-      ...this.deps.l1
-        .readiness()
-        .map(({ reason, detail }) => `${reason}: ${detail}`),
+      ...l1Held.map(({ reason, detail }) => `${reason}: ${detail}`),
       ...(this.l1SourceMismatch === undefined ? [] : [this.l1SourceMismatch]),
       ...this.holdReasons,
     );
@@ -377,8 +377,13 @@ export class CommitteeService {
         ? {}
         : { promiseAdmission: this.promiseAdmission }),
       l1Source: {
-        sourceMode: this.l1SourceMode(),
-        status: l1SourceState?.status ?? "uninitialized",
+        sourceMode: "local_node",
+        ...(l1Intervention === undefined
+          ? { status: l1SourceState?.status ?? "uninitialized" }
+          : {
+              status: "intervention" as const,
+              intervention: `${l1Intervention.reason}: ${l1Intervention.detail}`,
+            }),
         ...(l1SourceState?.observedAt === undefined
           ? {}
           : { observedAt: l1SourceState.observedAt }),
@@ -781,15 +786,8 @@ export class CommitteeService {
     }
   }
 
-  private l1SourceMode(): L1SourceState["sourceMode"] {
-    return this.deps.config.l1Source.sourceMode;
-  }
-
   private l1SourceAuthoritySha256(): string {
-    return l1SourceAuthorityDigest(
-      this.deps.config.network,
-      this.deps.config.l1Source,
-    );
+    return l1SourceAuthorityDigest(this.deps.config);
   }
 
   /**
@@ -833,7 +831,7 @@ export class CommitteeService {
       return;
     await this.deps.store.saveL1SourceState({
       schemaVersion: 1,
-      sourceMode: this.l1SourceMode(),
+      sourceMode: "local_node",
       network: this.deps.config.network,
       authoritySha256: this.l1SourceAuthoritySha256(),
       status: "healthy",
@@ -1365,7 +1363,7 @@ export class CommitteeService {
       schemaVersion: 1,
       effectId,
       deploymentFingerprint: this.deps.config.deploymentFingerprint,
-      sourceMode: this.l1SourceMode(),
+      sourceMode: "local_node",
       network: this.deps.config.network,
       effectKind,
       headerHash: record.headerHash,
@@ -1395,7 +1393,7 @@ export class CommitteeService {
       effect,
       sourceState: {
         schemaVersion: 1,
-        sourceMode: this.l1SourceMode(),
+        sourceMode: "local_node",
         network: this.deps.config.network,
         authoritySha256: this.l1SourceAuthoritySha256(),
         status: "healthy",

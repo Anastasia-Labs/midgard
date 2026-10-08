@@ -47,7 +47,7 @@ const hubOracleOneShot = (
  * (`L1_ORIGIN`), the local node (the native ledger's socket and transport
  * binary) and the manifest's `hubOracleOneShot`. Its tables share the
  * committee store's database. Anything missing leaves the committee unready
- * with `l1_follower_not_configured`; it never fails startup.
+ * with `l1_follower_unconfigured`; it never fails startup.
  */
 export const committeeL1FollowerPlan = (
   config: LoadedCommitteeConfig,

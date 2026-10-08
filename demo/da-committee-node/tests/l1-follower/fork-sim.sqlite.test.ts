@@ -9,6 +9,11 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import {
+  availabilityReadsSimProjection,
+  type AvailabilityReadStats,
+  zeroAvailabilityReadStats,
+} from "./availability-reads-sim.js";
+import {
   committeeForkCorpus,
   committeeSimProjection,
   SIM_K,
@@ -26,15 +31,20 @@ const corpus = [...forkCorpus(SIM_K), ...committeeForkCorpus()];
 
 describe("committee projections in the fork simulator (SQLite)", () => {
   const totals = zeroStats();
+  const readTotals = zeroAvailabilityReadStats();
 
   it.each(corpus.map((entry) => [entry.name, entry.scenario] as const))(
     "corpus: %s",
     async (_, scenario) => {
       const stats = zeroStats();
+      const reads = zeroAvailabilityReadStats();
       const outcome = await runForkScenario(scenario, {
         open: openSqlite,
         k: SIM_K,
-        projections: [committeeSimProjection(stats, { expectHealthy: true })],
+        projections: [
+          committeeSimProjection(stats, { expectHealthy: true }),
+          availabilityReadsSimProjection(reads),
+        ],
       });
       expect(
         outcome.ok
@@ -42,8 +52,13 @@ describe("committee projections in the fork simulator (SQLite)", () => {
           : `step ${outcome.step.toString()}: ${outcome.reason}`,
       ).toBe("ok");
       expect(stats.steps).toBe(outcome.stats.events);
+      expect(reads.steps).toBe(outcome.stats.events);
       for (const key of Object.keys(totals) as (keyof typeof totals)[])
         totals[key] += stats[key];
+      for (const key of Object.keys(
+        readTotals,
+      ) as (keyof AvailabilityReadStats)[])
+        readTotals[key] += reads[key];
     },
   );
 
@@ -63,6 +78,18 @@ describe("committee projections in the fork simulator (SQLite)", () => {
     expect(totals.unhealthy).toBe(0);
   });
 
+  // The availability, promise and retirement reads over the store equal
+  // those over a fresh replay after every event of the same corpus: it must
+  // reach a read of each kind, abandoned branches and a pruned store.
+  it("the corpus reads canonical and abandoned points, submissions and spends, invalidates views, and reads a pruned store", () => {
+    expect(readTotals.canonical).toBeGreaterThan(0);
+    expect(readTotals.offChain).toBeGreaterThan(0);
+    expect(readTotals.submitted).toBeGreaterThan(0);
+    expect(readTotals.spends).toBeGreaterThan(0);
+    expect(readTotals.invalidatedViews).toBeGreaterThan(0);
+    expect(readTotals.prunedReads).toBeGreaterThan(0);
+  });
+
   it(`holds for ${RUNS.toString()} random scenarios (fast-check)`, async () => {
     await fc.assert(
       fc.asyncProperty(forkScenarioArbitrary(SIM_K), async (scenario) => {
@@ -71,6 +98,7 @@ describe("committee projections in the fork simulator (SQLite)", () => {
           k: SIM_K,
           projections: [
             committeeSimProjection(zeroStats(), { expectHealthy: true }),
+            availabilityReadsSimProjection(zeroAvailabilityReadStats()),
           ],
         });
         if (!outcome.ok)

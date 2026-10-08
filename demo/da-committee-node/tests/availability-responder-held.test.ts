@@ -21,6 +21,7 @@ import {
   availabilityResponderReportLine,
 } from "../src/availability/responder.js";
 import { createAvailabilityResponseLoop } from "../src/availability-response-loop.js";
+import { followerBoundary } from "./helpers/follower-boundary.js";
 
 /**
  * A held intent stops the responder signing, so it must never read as an
@@ -104,13 +105,11 @@ const confirmedSettle = async () => {
   journal.persist(lease, ours, Date.now());
   journal.transition(lease, ours.id, "confirmed", "5:aa", null, Date.now());
   journal.release(lease);
-  const point = {
-    network: "Custom" as const,
+  const boundary = followerBoundary({
     slot: ours.validUntilSlot - 1,
     blockHash: "ab".repeat(32),
-    providerSource: "test",
-    observedAt: "test",
-  };
+    blockNo: 1_000,
+  });
   const spendPoint = { slot: 50, blockHash: "cd".repeat(32) };
   const operations = availabilityResponderOperations({
     // Not found, its input gone: missing-input evidence.
@@ -121,15 +120,11 @@ const confirmedSettle = async () => {
       }),
       utxosByOutRef: async () => [],
     } as unknown as LucidEvolution,
-    readers: {
-      currentPoint: async () => point,
-      currentCursor: async () => ({
-        sequence: 1,
-        rollbackGeneration: 0,
-        point,
-      }),
-      tipBlockNo: async () => 1_000,
-      resolveInclusion: async () => ({}),
+    reads: {
+      readBoundary: async () => boundary,
+      viewValid: async () => true,
+      canonicalPoint: async () => null,
+      submissionPoint: async () => null,
       foreignSpend: {
         fetchSpend: async () => ({
           transactionId: ours.txHash,

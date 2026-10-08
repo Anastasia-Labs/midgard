@@ -19,7 +19,7 @@ export type QueueOutputProblem =
   | "malformed_nft"
   /** No inline datum, or one that is not a root or a V1 node. */
   | "malformed_datum"
-  // The three node checks the current scanner makes (state-queue-scanner.ts).
+  // The three node checks a state-queue node must pass.
   | "linked_list_key_mismatch"
   | "block_asset_prefix_mismatch"
   | "block_asset_suffix_mismatch";

@@ -2,6 +2,8 @@ import { MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION } from "@al-ft/midgard-core/de
 import type { MigrationSet } from "@al-ft/midgard-l1-follower";
 import type { Pool } from "pg";
 
+import { upgradeCommitteeL1Records } from "./postgres.upgrade-l1-records.js";
+
 /**
  * Header statuses that are not yet final: the headers a readiness probe
  * inspects one by one. Every other status is history, read only by count.
@@ -182,6 +184,10 @@ CREATE TABLE IF NOT EXISTS committee_store_counts (
  * signature records, whose canonical end time the write path checked. A
  * value that is not a bounded decimal stays NULL rather than failing the
  * open.
+ * Their decision outbox records may carry the quarantine fields the L1
+ * source no longer has (C1); the fields are stripped and the rest of each
+ * record kept. `upgradeCommitteeL1Records` then upgrades the L1 source
+ * state, which needs the record parser.
  */
 const COMMITTEE_STORE_UPGRADE_SQL = `
 DO $$
@@ -207,6 +213,9 @@ UPDATE committee_da_signatures
   WHERE end_time_ms IS NULL
     AND record->>'source' = 'local'
     AND record->'validation'->'l1Header'->>'endTime' ~ '^(0|[1-9][0-9]{0,17})$';
+UPDATE committee_decision_outbox
+  SET record = record - 'quarantineReason' - 'quarantinedAt'
+  WHERE record ?| ARRAY['quarantineReason', 'quarantinedAt'];
 `;
 
 /**
@@ -386,7 +395,9 @@ export const committeeStoreMigrations: MigrationSet = {
 
 /**
  * Creates or upgrades the committee store schema. One multi-statement query
- * runs as one implicit transaction: it applies whole or not at all.
+ * runs as one implicit transaction: it applies whole or not at all. The L1
+ * records are upgraded after it (`upgradeCommitteeL1Records`); that step
+ * may refuse the open with a named readiness reason, never exit.
  */
 export const initializeCommitteeSchema = async (pool: Pool): Promise<void> => {
   await pool.query(
@@ -396,6 +407,7 @@ export const initializeCommitteeSchema = async (pool: Pool): Promise<void> => {
       COMMITTEE_STORE_DERIVED_SQL,
     ].join("\n"),
   );
+  await upgradeCommitteeL1Records(pool);
 };
 
 /**
