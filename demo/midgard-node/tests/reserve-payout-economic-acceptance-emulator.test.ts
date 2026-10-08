@@ -46,6 +46,7 @@ import {
   walletFromSeed,
 } from "./deposit-flow-emulator-shared.js";
 import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import { findRedeemerDataCbor } from "./helpers/redeemer-inspection.js";
 import {
   evaluationContext,
@@ -166,9 +167,11 @@ it("enforces reserve sibling/accounting and exact payout economics on a real set
     );
     await ensureSeparateCollateralUtxo(lucid);
     await h.command(
-      absorbConfirmedDepositToReserveProgram({
-        eventId: deposit.idCbor.toString("hex"),
-      }),
+      withoutFollowerJournal(
+        absorbConfirmedDepositToReserveProgram({
+          eventId: deposit.idCbor.toString("hex"),
+        }),
+      ),
     );
     const reserves = await lucid.utxosAt(
       fixture.contracts.reserve.spendingScriptAddress,
@@ -259,7 +262,9 @@ it("enforces reserve sibling/accounting and exact payout economics on a real set
     );
     expect((await h.command(utxosProgram(ownerAddress))).utxoCount).toBe(0);
     const eventId = withdrawal.idCbor.toString("hex");
-    await h.command(initializePayoutProgram({ eventId }));
+    await h.command(
+      withoutFollowerJournal(initializePayoutProgram({ eventId })),
+    );
     const payoutUnit = fixture.contracts.payout.policyId + withdrawal.assetName;
     const payoutInputs = await lucid.utxosAtWithUnit(
       fixture.contracts.payout.spendingScriptAddress,

@@ -20,6 +20,10 @@ import {
 import * as Journal from "../database/eventHistorySubmissions.js";
 import { Database } from "../services/database.js";
 import {
+  IntentJournalWithoutFollower,
+  unjournaledSubmission,
+} from "../services/intent-journal.js";
+import {
   assertHistorySubmissionAttempt,
   decodeHistorySubmissionRequest,
   encodeHistorySubmissionRequest,
@@ -115,7 +119,15 @@ export const historySubmissionTransport = (
       throw new Error("Wallet changed the history transaction body");
     try {
       await Effect.runPromise(
-        submitSignedTxWithRecovery(lucid, signed, attempt.txHash),
+        submitSignedTxWithRecovery(
+          lucid,
+          signed,
+          attempt.txHash,
+          unjournaledSubmission(
+            "user_wallet",
+            `event_history:${attempt.txHash}`,
+          ),
+        ).pipe(Effect.provide(IntentJournalWithoutFollower)),
       );
       await Effect.runPromise(
         awaitSubmittedTransactionConfirmation(lucid, {

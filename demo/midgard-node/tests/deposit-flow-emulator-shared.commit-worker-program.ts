@@ -34,6 +34,7 @@ import {
   ensureSeparateCollateralUtxo,
 } from "./deposit-flow-emulator-shared.submit-with-wallet.js";
 import { deriveEmulatorSubmitSlotSnapshot } from "./helpers/emulator-submit-slot-snapshot.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 export const submitWithdrawalWithDiagnostics = async (
   fixture: EmulatorFixture,
@@ -151,7 +152,7 @@ export const alignCommitSchedulerBeforeTestWorker = async ({
     // view a confirmed submission pinned. Without it, a later refresh reads a
     // pin that an earlier no-confirmation refresh already spent.
     await Effect.runPromise(lucidService.switchToOperatorsMainWallet);
-    const alignment = await Effect.runPromise(
+    const alignment = await runWithoutFollower(
       fetchRealStateQueueWitnessContext(
         lucidService.api,
         fixture.contracts,

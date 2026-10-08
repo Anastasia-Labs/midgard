@@ -14,6 +14,7 @@ export {
 export {
   encodeBlock,
   type EncodedBlock,
+  encodeSimTx,
   encodeTxBody,
   encodeUtxoAnswer,
   encodeWitnessSet,

@@ -35,6 +35,7 @@ import {
   settlementCauseDetail,
 } from "../src/services/settlement-call.js";
 import { runSettlementWorker } from "../src/workers/settlement.run-settlement-worker.js";
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 vi.mock(
@@ -202,18 +203,20 @@ const exitReport = async (program: Effect.Effect<unknown, unknown>) => {
 describe("settlement tick reporting", () => {
   it("names the failing submit, its job and the provider's error", async () => {
     const { report } = await run(
-      firstTick(() => ({
-        submitTx: () =>
-          Promise.reject(
-            new OgmiosJsonRpcError({
-              code: 3005,
-              message: "Some transactions failed to pass validation.",
-              data: { valueNotConserved: true },
-              method: "submitTransaction",
-              id: null,
-            }),
-          ),
-      })),
+      withoutFollowerJournal(
+        firstTick(() => ({
+          submitTx: () =>
+            Promise.reject(
+              new OgmiosJsonRpcError({
+                code: 3005,
+                message: "Some transactions failed to pass validation.",
+                data: { valueNotConserved: true },
+                method: "submitTransaction",
+                id: null,
+              }),
+            ),
+        })),
+      ),
     );
     expect(report.state).toBe("error");
     expect(report.detail).toContain(
@@ -226,11 +229,13 @@ describe("settlement tick reporting", () => {
 
   it("names a job's failing build step in its stored error and the report", async () => {
     const { report, lastError } = await run(
-      firstTick(() => ({
-        unbuilt: true,
-        utxosAt: () => Promise.reject(new Error("Kupo timed out")),
-        submitTx: () => Promise.reject(new Error("never reached")),
-      })),
+      withoutFollowerJournal(
+        firstTick(() => ({
+          unbuilt: true,
+          utxosAt: () => Promise.reject(new Error("Kupo timed out")),
+          submitTx: () => Promise.reject(new Error("never reached")),
+        })),
+      ),
     );
     const detail = `settlement withdrawal ${EVENT_ID} initialize: settlement wallet utxosAt: Kupo timed out`;
     expect(lastError).toBe(detail);
@@ -241,10 +246,12 @@ describe("settlement tick reporting", () => {
 
   it("names a failing status read with the provider's message", async () => {
     const { report, attempt } = await run(
-      firstTick(() => ({
-        transactionStatus: () => Promise.reject(new Error("socket hang up")),
-        submitTx: () => Promise.reject(new Error("never reached")),
-      })),
+      withoutFollowerJournal(
+        firstTick(() => ({
+          transactionStatus: () => Promise.reject(new Error("socket hang up")),
+          submitTx: () => Promise.reject(new Error("never reached")),
+        })),
+      ),
     );
     expect(report.state).toBe("error");
     expect(report.detail).toContain(
@@ -255,18 +262,20 @@ describe("settlement tick reporting", () => {
 
   it("waits, without an error, while the node refuses the resubmitted body's spent inputs", async () => {
     const { report, reports, attempt } = await run(
-      firstTick(() => ({
-        submitTx: () =>
-          Promise.reject(
-            new OgmiosJsonRpcError({
-              code: 3997,
-              message:
-                "All inputs are spent. Transaction has probably already been included",
-              method: "submitTransaction",
-              id: null,
-            }),
-          ),
-      })),
+      withoutFollowerJournal(
+        firstTick(() => ({
+          submitTx: () =>
+            Promise.reject(
+              new OgmiosJsonRpcError({
+                code: 3997,
+                message:
+                  "All inputs are spent. Transaction has probably already been included",
+                method: "submitTransaction",
+                id: null,
+              }),
+            ),
+        })),
+      ),
     );
     expect(report.state).toBe("waiting");
     expect(report.detail).toBe(
@@ -278,9 +287,11 @@ describe("settlement tick reporting", () => {
 
   it("reports a successful submit as a completed tick with no error", async () => {
     const { report, reports } = await run(
-      firstTick((attempt) => ({
-        submitTx: async () => attempt.tx_hash,
-      })),
+      withoutFollowerJournal(
+        firstTick((attempt) => ({
+          submitTx: async () => attempt.tx_hash,
+        })),
+      ),
     );
     expect(report).toMatchObject({
       state: "waiting",
@@ -296,18 +307,20 @@ describe("settlement tick reporting", () => {
       L1_SETTLEMENT_SEED_PHRASE: "",
     };
     const { posted, closed, exitCode } = await exitReport(
-      settlementProgram(() => undefined).pipe(
-        Effect.provideService(NodeConfig, config),
-        Effect.provideService(ContractDeploymentIdentity, {
-          kind: "manifest",
-          manifestId: deploymentId,
-        } as unknown as ContractDeploymentIdentity),
-        Effect.provideService(
-          MidgardContracts,
-          {} as unknown as MidgardContracts,
+      withoutFollowerJournal(
+        settlementProgram(() => undefined).pipe(
+          Effect.provideService(NodeConfig, config),
+          Effect.provideService(ContractDeploymentIdentity, {
+            kind: "manifest",
+            manifestId: deploymentId,
+          } as unknown as ContractDeploymentIdentity),
+          Effect.provideService(
+            MidgardContracts,
+            {} as unknown as MidgardContracts,
+          ),
+          Effect.provideService(Lucid, new Lucid({} as unknown as Lucid)),
+          provideDatabaseLayers,
         ),
-        Effect.provideService(Lucid, new Lucid({} as unknown as Lucid)),
-        provideDatabaseLayers,
       ),
     );
     expect(posted).toEqual([

@@ -527,7 +527,7 @@ export const initializeProtocol = async ({
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(emulator.now()));
 
-  await Effect.runPromise(
+  await runWithoutFollower(
     ensureEventHistoryRewardAccountsRegisteredProgram(
       referenceScriptsLucid,
       contracts,
@@ -552,12 +552,12 @@ export const initializeProtocol = async ({
   const completedInitTx = await initTx.complete({ localUPLCEval: true });
   const signedInitTx = await completedInitTx.sign.withWallet().complete();
   await operatorLucid.awaitTx(await signedInitTx.submit());
-  await Effect.runPromise(
+  await runWithoutFollower(
     ensurePhasMembershipRewardAccountRegisteredProgram(operatorLucid),
   );
 
   vi.setSystemTime(new Date(emulator.now()));
-  await Effect.runPromise(
+  await runWithoutFollower(
     registerOperatorProgram(
       operatorLucid,
       contracts,
@@ -567,7 +567,7 @@ export const initializeProtocol = async ({
   );
   emulator.awaitSlot(REGISTRATION_ACTIVATION_DELAY_SLOTS);
   vi.setSystemTime(new Date(emulator.now()));
-  await Effect.runPromise(
+  await runWithoutFollower(
     activateOperatorProgram(
       operatorLucid,
       contracts,
@@ -791,7 +791,9 @@ const fixtureNodeConfigFromEnvironment = NodeConfig.pipe(
   })),
 );
 
+import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import { runOwnedNativeCommit } from "./deposit-flow-emulator-shared.run-owned-native-commit.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 const runFixtureCommitProgram = (
   contracts: SDK.MidgardValidators,
@@ -868,7 +870,7 @@ export const runCommitWorker = async (
       sizeOfProcessedTxsSoFar: 0,
     },
   } satisfies CommitWorkerInput;
-  const leaseResult = await Effect.runPromise(
+  const leaseResult = await runWithoutFollower(
     StateQueueMutationLeasesDB.tryWithLease(
       "deposit-flow-emulator",
       (stateQueueLeaseToken) =>
@@ -996,7 +998,7 @@ export const runMergeUntilMerged = async ({
       await production?.synchronize();
       if (production === undefined)
         await Effect.runPromise(attachUnownedNativeOwner(globals));
-      lastResult = await Effect.runPromise(
+      lastResult = await runWithoutFollower(
         mergeAction(force).pipe(
           withEmulatorStateQueue(
             lucidService.api,
@@ -1300,6 +1302,7 @@ export const runNodeCommandProgram = <A>(
         Effect.provideService(NodeConfig, nodeConfig),
         Effect.provide(Database.layer),
         Effect.provideService(UnownedHistoryFixture, true),
+        Effect.provide(IntentJournalWithoutFollower),
       ) as Effect.Effect<A, any, never>,
     );
   });
@@ -1336,7 +1339,7 @@ export const runLocalFinalizationRecoveryWorker = async (
     }),
   );
 
-  const output = await Effect.runPromise(
+  const output = await runWithoutFollower(
     runFixtureCommitProgram(
       contracts,
       lucidService,

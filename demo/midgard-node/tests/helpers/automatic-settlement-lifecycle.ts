@@ -18,6 +18,7 @@ import {
 } from "../../src/services/settlement.js";
 import * as publicationProvider from "../../src/transactions/reference-publication-provider.js";
 import type { openHistoryProductionOwnerLifecycle } from "./history-production-owner-lifecycle.js";
+import { withoutFollowerJournal } from "./intent-journal.js";
 
 /** Real builders, signatures, script execution, SQL queue and reconciliation.
  * As in the owner fixture, only network point labels/transport are synthetic. */
@@ -126,7 +127,7 @@ export const openAutomaticSettlement = async (
   const runPhase = async (eventId: string, phase: Journal.SettlementPhase) => {
     for (let i = 0; i < 40; i++) {
       await h.command(Journal.renew(owner));
-      await h.runWithoutSynchronizing(tick);
+      await h.runWithoutSynchronizing(withoutFollowerJournal(tick));
       const pending = await h.runWithoutSynchronizing(
         Journal.pending(owner.deploymentId),
       );

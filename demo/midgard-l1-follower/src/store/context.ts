@@ -35,6 +35,21 @@ export type RetentionPins = Readonly<{
   blocks?: readonly RetentionPin[];
 }>;
 
+/**
+ * Retention for a role's class B table whose rows are decided by the facts
+ * (the intent journal, §8.2). It runs in the prune step, after the boundary
+ * is fixed and before spent outputs at or below it are deleted, so it reads
+ * every fact its rows depend on. It deletes the rows terminal at or below
+ * the boundary and returns how many; it is not budgeted.
+ */
+export type PruneHook = Readonly<{
+  /** The table it prunes (the key of its count in `PruneResult.deleted`). */
+  table: string;
+  apply(
+    context: Readonly<{ tx: SqlTx; dialect: Dialect; boundarySlot: number }>,
+  ): Promise<number>;
+}>;
+
 export type StoreContext = Readonly<{
   backend: SqlBackend;
   dialect: Dialect;
@@ -43,4 +58,5 @@ export type StoreContext = Readonly<{
   registry: TemporalRegistry;
   derivations: readonly DerivationHook[];
   pins: RetentionPins;
+  pruneHooks: readonly PruneHook[];
 }>;

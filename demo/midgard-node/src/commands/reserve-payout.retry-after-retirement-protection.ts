@@ -9,6 +9,7 @@ import { Clock, Effect, Option } from "effect";
 import { followerSqlTx } from "../database/follower-schema.js";
 import { eventOrderByIdIn } from "../l1-events/by-id.js";
 import { Database, Lucid, MidgardContracts } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import {
   fetchReferenceScriptUtxosProgram,
   type ReferenceScriptTarget,
@@ -258,7 +259,7 @@ export const absorbConfirmedDepositToReserveProgram = (
 ): Effect.Effect<
   PayoutCommandResult,
   unknown,
-  Database | Lucid | MidgardContracts
+  Database | Lucid | MidgardContracts | IntentJournal
 > =>
   Effect.gen(function* () {
     const eventId = parseEventId(config.eventId, "--deposit-event-id");

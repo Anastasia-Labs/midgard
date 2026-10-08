@@ -17,6 +17,11 @@ import { ReservePayoutTransport } from "../transactions/reserve-payout.js";
 import { TxSignError } from "../transactions/utils.js";
 import { NodeConfig } from "./config.js";
 import { Database } from "./database.js";
+import {
+  IntentJournal,
+  IntentJournalLive,
+  journaledIntent,
+} from "./intent-journal.js";
 import { Lucid } from "./lucid.js";
 import {
   ContractDeploymentIdentity,
@@ -90,6 +95,7 @@ const buildJob = (
 ) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const journal = yield* IntentJournal;
     let phase = job.phase;
     if (
       phase !== "complete" &&
@@ -153,6 +159,16 @@ const buildJob = (
             };
             yield* settlementCheck("inspect settlement attempt", () =>
               inspectSettlementAttempt(attempt),
+            );
+            // The exact bytes are journaled before the checkpoint that leads
+            // to their first send; a refusal stops the attempt.
+            yield* journal.record(
+              journaledIntent(
+                "settlement",
+                `settlement:${job.kind}:${job.event_id}:${selectedPhase}`,
+              ),
+              attempt.signed_cbor,
+              attempt.tx_hash,
             );
             yield* Journal.saveAttempt(owner, attempt);
             return attempt.tx_hash;
@@ -363,5 +379,8 @@ export const settlementProgram = (
 export const settlementWorkerLayer = Layer.mergeAll(
   MidgardContractServices,
   Lucid.Default,
-  Database.workerLayer,
-).pipe(Layer.provideMerge(NodeConfig.layer));
+  IntentJournalLive,
+).pipe(
+  Layer.provideMerge(Database.workerLayer),
+  Layer.provideMerge(NodeConfig.layer),
+);

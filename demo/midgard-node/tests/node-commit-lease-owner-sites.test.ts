@@ -13,6 +13,7 @@ import {
 } from "../src/services/index.js";
 import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
 import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 // Startup retires a killed node's ledger MPF lease only under the node-process
@@ -145,7 +146,9 @@ const probeWorkerLeaseOwner = (owner: string) => {
 
 const expectWorkerAcceptsOwner = async (owner: string) => {
   captured.acceptedWorkerOwner = undefined;
-  const exit = await Effect.runPromiseExit(probeWorkerLeaseOwner(owner));
+  const exit = await Effect.runPromiseExit(
+    withoutFollowerJournal(probeWorkerLeaseOwner(owner)),
+  );
   expect(Exit.isFailure(exit)).toBe(true);
   // A busy lease stops this probe before ledger or submission work. Reaching
   // the lease acquisition proves the real worker accepted the parent's owner.
@@ -196,7 +199,9 @@ describe("node commit sites take the ledger MPF lease as a node process", () => 
       "node-commit:12345678-1234-1123-8123-123456789abc",
     ]) {
       captured.acceptedWorkerOwner = undefined;
-      const exit = await Effect.runPromiseExit(probeWorkerLeaseOwner(owner));
+      const exit = await Effect.runPromiseExit(
+        withoutFollowerJournal(probeWorkerLeaseOwner(owner)),
+      );
       expect(Exit.isFailure(exit)).toBe(true);
       expect(captured.acceptedWorkerOwner).toBeUndefined();
     }

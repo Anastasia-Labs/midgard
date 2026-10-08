@@ -20,6 +20,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+import { IntentJournalWithoutFollower } from "midgard-node/services/intent-journal";
 import { activateOperatorProgram } from "midgard-node/transactions/register-active-operator";
 import {
   loadWatcherVerifiedDeploymentAuthority,
@@ -319,7 +320,7 @@ it.skipIf(runDirectory === undefined || !selected)(
             SDK.getProtocolParameters("Preprod").required_bond,
             publisher,
             publisherAddress,
-          ),
+          ).pipe(Effect.provide(IntentJournalWithoutFollower)),
         );
       } catch (cause) {
         if (!captured) throw cause;

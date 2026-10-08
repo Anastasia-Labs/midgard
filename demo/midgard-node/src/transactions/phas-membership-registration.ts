@@ -13,6 +13,10 @@ import { Effect } from "effect";
 import { exactObjectKeys } from "../exact-object-keys.js";
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import {
+  type IntentJournal,
+  journaledIntent,
+} from "../services/intent-journal.js";
+import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
@@ -342,8 +346,16 @@ const defaultSubmitRegistrationTx = (
   built: {
     readonly tx: TxSignBuilder;
   },
-): Effect.Effect<string, TxConfirmError | TxSignError | TxSubmitError> =>
-  handleSignSubmit(lucid, built.tx);
+): Effect.Effect<
+  string,
+  TxConfirmError | TxSignError | TxSubmitError,
+  IntentJournal
+> =>
+  handleSignSubmit(
+    lucid,
+    built.tx,
+    journaledIntent("phas_membership", "phas_membership:reward_registration"),
+  );
 
 export const ensurePhasMembershipRewardAccountRegisteredProgram = (
   lucid: LucidEvolution,
@@ -354,7 +366,8 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
   | SDK.UnspecifiedNetworkError
   | TxConfirmError
   | TxSignError
-  | TxSubmitError
+  | TxSubmitError,
+  IntentJournal
 > =>
   Effect.gen(function* () {
     const script = loadPhasMembershipWithdrawalScript();

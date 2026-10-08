@@ -16,6 +16,7 @@ import {
   type DaLocalSignerConfig,
   daLocalSigners,
 } from "midgard-node/da/local-signers";
+import { IntentJournalWithoutFollower } from "midgard-node/services/intent-journal";
 import { availabilityParametersFromManifest } from "midgard-node/services/midgard-contracts";
 import { daAttestationInitOutputLovelace } from "midgard-node/transactions/da-attestation";
 import {
@@ -168,7 +169,7 @@ export const createPublishedWatcherBlockActor = async ({
         bond,
         publisher,
         publicationAddress,
-      ),
+      ).pipe(Effect.provide(IntentJournalWithoutFollower)),
     );
     const activeBeforeActivation = await lucid.utxosAtWithUnit(
       contracts.activeOperators.spendingScriptAddress,
@@ -224,7 +225,7 @@ export const createPublishedWatcherBlockActor = async ({
         bond,
         publisher,
         publicationAddress,
-      ),
+      ).pipe(Effect.provide(IntentJournalWithoutFollower)),
     );
     active = await one(
       contracts.activeOperators.spendingScriptAddress,

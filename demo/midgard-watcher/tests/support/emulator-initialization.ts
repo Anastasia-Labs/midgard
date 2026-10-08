@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import { Emulator, generateEmulatorAccount } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+import { IntentJournalWithoutFollower } from "midgard-node/services/intent-journal";
 import {
   createMainnetEmulatorLucid,
   MAINNET_PROTOCOL_PARAMETERS,
@@ -45,13 +46,16 @@ export const createEmulatorInitialization = async () => {
     await createReferenceScriptAuthPolicy(publisherLucid, emulator.now()),
   );
   const references = await Effect.runPromise(
-    ensureAtomicProtocolInitReferenceScriptsProgram(publisherLucid, contracts),
+    ensureAtomicProtocolInitReferenceScriptsProgram(
+      publisherLucid,
+      contracts,
+    ).pipe(Effect.provide(IntentJournalWithoutFollower)),
   );
   await Effect.runPromise(
     ensureEventHistoryRewardAccountsRegisteredProgram(
       publisherLucid,
       contracts,
-    ),
+    ).pipe(Effect.provide(IntentJournalWithoutFollower)),
   );
   const builder = await Effect.runPromise(
     buildAtomicProtocolInitTxProgram(

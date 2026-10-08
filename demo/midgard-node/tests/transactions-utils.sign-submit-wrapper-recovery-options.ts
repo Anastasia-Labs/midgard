@@ -9,6 +9,7 @@ import {
   handleSignSubmitNoConfirmation,
   signSubmitTransaction,
 } from "../src/transactions/utils.js";
+import { runWithoutFollower, TEST_INTENT } from "./helpers/intent-journal.js";
 import {
   fakeSignBuilder,
   fakeWrapperLucid,
@@ -302,19 +303,25 @@ describe("sign/submit wrapper recovery options", () => {
     };
     const signBuilder = fakeSignBuilder(signed);
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
-        signSubmitTransaction(fakeWrapperLucid() as never, signBuilder, {
-          label: "operator registration",
-          slotSnapshot: () =>
-            Effect.succeed({
-              source: "test",
-              currentSlot: slots.shift() ?? 12,
-              observedAtMs: 1_779_150_000_000,
-              slotLengthMs: 1_000,
-            }),
-          sleep: (milliseconds) => Effect.sync(() => waits.push(milliseconds)),
-        }),
+        signSubmitTransaction(
+          fakeWrapperLucid() as never,
+          signBuilder,
+          TEST_INTENT,
+          {
+            label: "operator registration",
+            slotSnapshot: () =>
+              Effect.succeed({
+                source: "test",
+                currentSlot: slots.shift() ?? 12,
+                observedAtMs: 1_779_150_000_000,
+                slotLengthMs: 1_000,
+              }),
+            sleep: (milliseconds) =>
+              Effect.sync(() => waits.push(milliseconds)),
+          },
+        ),
       ),
     );
 
@@ -331,11 +338,12 @@ describe("sign/submit wrapper recovery options", () => {
       submitProgram,
     };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         handleSignSubmitNoConfirmation(
           fakeWrapperLucid() as never,
           fakeSignBuilder(signed),
+          TEST_INTENT,
           {
             requireSlotForBoundedTx: true,
             slotSnapshot: () => Effect.fail(new Error("slot unavailable")),
@@ -356,11 +364,12 @@ describe("sign/submit wrapper recovery options", () => {
       submitProgram,
     };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         signSubmitTransaction(
           fakeWrapperLucid() as never,
           fakeSignBuilder(signed),
+          TEST_INTENT,
           {
             inlineWaitPolicy: "defer_positive_wait",
             noInlineSubmitDefer: {
@@ -407,10 +416,11 @@ describe("sign/submit wrapper recovery options", () => {
       submitProgram,
     };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       handleSignSubmitNoConfirmation(
         fakeWrapperLucid() as never,
         fakeSignBuilder(signed),
+        TEST_INTENT,
         {
           inlineWaitPolicy: "defer_positive_wait",
           noInlineSubmitDefer: {
@@ -456,10 +466,11 @@ describe("sign/submit wrapper recovery options", () => {
       submitProgram,
     };
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       handleSignSubmitNoConfirmation(
         fakeWrapperLucid() as never,
         fakeSignBuilder(signed),
+        TEST_INTENT,
         {
           inlineWaitPolicy: "defer_positive_wait",
           noInlineSubmitDefer: {

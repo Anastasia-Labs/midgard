@@ -2,6 +2,10 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { LucidEvolution, TxSignBuilder } from "@lucid-evolution/lucid";
 import { Duration, Effect, Schedule } from "effect";
 
+import type {
+  IntentJournal,
+  SubmissionIntent,
+} from "../services/intent-journal.js";
 import {
   awaitExactTransactionConfirmation,
   awaitRequiredOutputVisibility,
@@ -38,30 +42,40 @@ import { submitSignedTxWithRecovery } from "./utils.submit-signed-tx-with-recove
 export function handleSignSubmit(
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
+  intent: SubmissionIntent,
   options: NoInlineSubmitRecoveryOptions,
 ): Effect.Effect<
   string,
-  TxSignError | TxSubmitError | TxConfirmError | NoInlineSubmitDefer
+  TxSignError | TxSubmitError | TxConfirmError | NoInlineSubmitDefer,
+  IntentJournal
 >;
 
 export function handleSignSubmit(
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
+  intent: SubmissionIntent,
   options?: SubmitRecoveryOptions,
-): Effect.Effect<string, TxSignError | TxSubmitError | TxConfirmError>;
+): Effect.Effect<
+  string,
+  TxSignError | TxSubmitError | TxConfirmError,
+  IntentJournal
+>;
 
 export function handleSignSubmit(
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
+  intent: SubmissionIntent,
   options: SubmitRecoveryOptions = {},
 ): Effect.Effect<
   string,
-  TxSignError | TxSubmitError | TxConfirmError | NoInlineSubmitDefer
+  TxSignError | TxSubmitError | TxConfirmError | NoInlineSubmitDefer,
+  IntentJournal
 > {
   return Effect.gen(function* () {
     const submission = yield* signSubmitTransaction(
       lucid,
       signBuilder,
+      intent,
       options,
     );
     return yield* awaitSubmittedTransactionConfirmation(
@@ -184,28 +198,36 @@ export const awaitSubmittedTransactionConfirmation = (
 export function handleSignSubmitNoConfirmation(
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
+  intent: SubmissionIntent,
   options: NoInlineSubmitRecoveryOptions,
-): Effect.Effect<SignSubmitNoConfirmationResult, TxSignError | TxSubmitError>;
+): Effect.Effect<
+  SignSubmitNoConfirmationResult,
+  TxSignError | TxSubmitError,
+  IntentJournal
+>;
 
 export function handleSignSubmitNoConfirmation(
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
+  intent: SubmissionIntent,
   options?: SubmitRecoveryOptions,
-): Effect.Effect<string, TxSignError | TxSubmitError>;
+): Effect.Effect<string, TxSignError | TxSubmitError, IntentJournal>;
 
 export function handleSignSubmitNoConfirmation(
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
+  intent: SubmissionIntent,
   options: SubmitRecoveryOptions = {},
 ): Effect.Effect<
   string | SignSubmitNoConfirmationResult,
-  TxSignError | TxSubmitError | NoInlineSubmitDefer
+  TxSignError | TxSubmitError | NoInlineSubmitDefer,
+  IntentJournal
 > {
   const returnNoInlineDefer =
     options.inlineWaitPolicy === "defer_positive_wait";
   return Effect.gen(function* () {
     const submissionResult = yield* Effect.either(
-      signSubmitTransactionWithDefer(lucid, signBuilder, options),
+      signSubmitTransactionWithDefer(lucid, signBuilder, intent, options),
     );
     if (submissionResult._tag === "Left") {
       const error = submissionResult.left;
@@ -239,38 +261,45 @@ export function handleSignSubmitNoConfirmation(
 export function signSubmitTransaction(
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
+  intent: SubmissionIntent,
   options: SubmitRecoveryOptions & {
     readonly inlineWaitPolicy: "defer_positive_wait";
   },
 ): Effect.Effect<
   SignSubmitContext,
-  TxSubmitError | TxSignError | NoInlineSubmitDefer
+  TxSubmitError | TxSignError | NoInlineSubmitDefer,
+  IntentJournal
 >;
 
 export function signSubmitTransaction(
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
+  intent: SubmissionIntent,
   options?: SubmitRecoveryOptions,
-): Effect.Effect<SignSubmitContext, TxSubmitError | TxSignError>;
+): Effect.Effect<SignSubmitContext, TxSubmitError | TxSignError, IntentJournal>;
 
 export function signSubmitTransaction(
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
+  intent: SubmissionIntent,
   options: SubmitRecoveryOptions = {},
 ): Effect.Effect<
   SignSubmitContext,
-  TxSubmitError | TxSignError | NoInlineSubmitDefer
+  TxSubmitError | TxSignError | NoInlineSubmitDefer,
+  IntentJournal
 > {
-  return signSubmitTransactionWithDefer(lucid, signBuilder, options);
+  return signSubmitTransactionWithDefer(lucid, signBuilder, intent, options);
 }
 
 const signSubmitTransactionWithDefer = (
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
+  intent: SubmissionIntent,
   options: SubmitRecoveryOptions = {},
 ): Effect.Effect<
   SignSubmitContext,
-  TxSubmitError | TxSignError | NoInlineSubmitDefer
+  TxSubmitError | TxSignError | NoInlineSubmitDefer,
+  IntentJournal
 > =>
   Effect.gen(function* () {
     const walletAddr = yield* Effect.tryPromise(() =>
@@ -298,7 +327,13 @@ const signSubmitTransactionWithDefer = (
       `✍  Signed tx prepared: txHash=${txHash}, cborBytes=${signedTxCbor.length / 2}`,
     );
     yield* Effect.logInfo("✉️  Submitting transaction...");
-    yield* submitSignedTxWithRecovery(lucid, signed, txHash, options).pipe(
+    yield* submitSignedTxWithRecovery(
+      lucid,
+      signed,
+      txHash,
+      intent,
+      options,
+    ).pipe(
       Effect.tapError((e) =>
         isNoInlineSubmitDefer(e)
           ? Effect.void

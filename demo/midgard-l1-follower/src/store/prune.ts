@@ -86,6 +86,10 @@ export const pruneIn = async (
     await tx.query("UPDATE l1_follower_cursor SET pruned_through_slot = ?", [
       boundarySlot,
     ]);
+  for (const hook of context.pruneHooks)
+    deleted[hook.table] =
+      (deleted[hook.table] ?? 0) +
+      (await hook.apply({ tx, dialect, boundarySlot }));
   await step("l1_outputs", "t.spent_slot IS NOT NULL AND t.spent_slot <= ?", [
     boundarySlot,
   ]);

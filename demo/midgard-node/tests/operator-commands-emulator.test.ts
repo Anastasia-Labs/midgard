@@ -28,6 +28,10 @@ import {
   submitInactivityStrikeProgram,
 } from "../src/transactions/operators/takeover.js";
 import {
+  runWithoutFollower,
+  withoutFollowerJournal,
+} from "./helpers/intent-journal.js";
+import {
   advanceEmulatorPastUnixTime,
   appointFirstSchedulerOperator,
   fetchInactivityDirectorySnapshot,
@@ -128,7 +132,7 @@ describe("voluntary retirement and bond recovery", () => {
     )!;
 
     const idleLucid = await fixture.lucidFor(idle.keyHash);
-    const idleRetirement = await Effect.runPromise(
+    const idleRetirement = await runWithoutFollower(
       retireOperatorProgram(
         idleLucid,
         fixture.contracts,
@@ -147,22 +151,24 @@ describe("voluntary retirement and bond recovery", () => {
 
     // Retiring again is refused locally with a printable reason.
     const again = await expectRefusal(
-      retireOperatorProgram(
-        idleLucid,
-        fixture.contracts,
-        fixture.referenceScriptsAddress,
-        {
-          operatorKeyHash: idle.keyHash,
-          mode: "voluntary",
-          economics: ECONOMICS,
-        },
+      withoutFollowerJournal(
+        retireOperatorProgram(
+          idleLucid,
+          fixture.contracts,
+          fixture.referenceScriptsAddress,
+          {
+            operatorKeyHash: idle.keyHash,
+            mode: "voluntary",
+            economics: ECONOMICS,
+          },
+        ),
       ),
     );
     expect(again).toBeInstanceOf(OperatorExitRefusal);
     expect((again as Error).message).toMatch(/retired, not active/);
 
     const scheduledLucid = await fixture.lucidFor(appointed.operatorKeyHash);
-    const lastRetirement = await Effect.runPromise(
+    const lastRetirement = await runWithoutFollower(
       retireOperatorProgram(
         scheduledLucid,
         fixture.contracts,
@@ -184,7 +190,7 @@ describe("voluntary retirement and bond recovery", () => {
     for (const operator of [idle.keyHash, appointed.operatorKeyHash]) {
       const before = await report(fixture, operator);
       expect(before.bondRecoverable).toBe(true);
-      const recovery = await Effect.runPromise(
+      const recovery = await runWithoutFollower(
         recoverOperatorBondProgram(
           await fixture.lucidFor(operator),
           fixture.contracts,
@@ -198,11 +204,13 @@ describe("voluntary retirement and bond recovery", () => {
     }
 
     const nothingLeft = await expectRefusal(
-      recoverOperatorBondProgram(
-        idleLucid,
-        fixture.contracts,
-        fixture.referenceScriptsAddress,
-        { operatorKeyHash: idle.keyHash },
+      withoutFollowerJournal(
+        recoverOperatorBondProgram(
+          idleLucid,
+          fixture.contracts,
+          fixture.referenceScriptsAddress,
+          { operatorKeyHash: idle.keyHash },
+        ),
       ),
     );
     expect(nothingLeft).toBeInstanceOf(OperatorExitRefusal);
@@ -215,15 +223,17 @@ describe("voluntary retirement and bond recovery", () => {
     const emptyWallet = await Lucid(fixture.emulator, "Custom");
     emptyWallet.selectWallet.fromSeed(generateSeedPhrase());
     const refusal = await expectRefusal(
-      retireOperatorProgram(
-        emptyWallet,
-        fixture.contracts,
-        fixture.referenceScriptsAddress,
-        {
-          operatorKeyHash: operator.keyHash,
-          mode: "voluntary",
-          economics: ECONOMICS,
-        },
+      withoutFollowerJournal(
+        retireOperatorProgram(
+          emptyWallet,
+          fixture.contracts,
+          fixture.referenceScriptsAddress,
+          {
+            operatorKeyHash: operator.keyHash,
+            mode: "voluntary",
+            economics: ECONOMICS,
+          },
+        ),
       ),
     );
     expect(refusal).toBeInstanceOf(OperatorFundingShortfall);
@@ -258,7 +268,7 @@ describe("takeover planning, strike, and forced retirement", () => {
       throw new Error("unreachable");
     }
     expect(due.plan.newOperatorKey).toBe(successor.keyHash);
-    const strike = await Effect.runPromise(
+    const strike = await runWithoutFollower(
       submitInactivityStrikeProgram(
         successorLucid,
         fixture.contracts,
@@ -278,16 +288,18 @@ describe("takeover planning, strike, and forced retirement", () => {
 
     // Forced retirement is refused locally below the strike limit.
     const tooEarly = await expectRefusal(
-      retireOperatorProgram(
-        successorLucid,
-        fixture.contracts,
-        fixture.referenceScriptsAddress,
-        {
-          mode: "forced-inactivity",
-          snapshot: await fetchInactivityDirectorySnapshot(fixture),
-          operatorKeyHash: appointed.operatorKeyHash,
-          economics: ECONOMICS,
-        },
+      withoutFollowerJournal(
+        retireOperatorProgram(
+          successorLucid,
+          fixture.contracts,
+          fixture.referenceScriptsAddress,
+          {
+            mode: "forced-inactivity",
+            snapshot: await fetchInactivityDirectorySnapshot(fixture),
+            operatorKeyHash: appointed.operatorKeyHash,
+            economics: ECONOMICS,
+          },
+        ),
       ),
     );
     expect(tooEarly).toBeInstanceOf(OperatorExitRefusal);
@@ -303,7 +315,7 @@ describe("takeover planning, strike, and forced retirement", () => {
 
     // Past the cap the voluntary verb is refused before anything is built.
     const appointedLucid = await fixture.lucidFor(appointed.operatorKeyHash);
-    const capped = await Effect.runPromise(
+    const capped = await runWithoutFollower(
       retireOperatorProgram(
         appointedLucid,
         fixture.contracts,
@@ -319,7 +331,7 @@ describe("takeover planning, strike, and forced retirement", () => {
     expect((capped as Error).message).toMatch(/can only be force-retired/);
 
     // Anyone may submit; the successor's wallet does, paying nothing net.
-    const forced = await Effect.runPromise(
+    const forced = await runWithoutFollower(
       retireOperatorProgram(
         successorLucid,
         fixture.contracts,
@@ -343,7 +355,7 @@ describe("takeover planning, strike, and forced retirement", () => {
     expect(retired.bondRecoverable).toBe(true);
 
     // The partially slashed bond comes back to the operator in full.
-    const recovery = await Effect.runPromise(
+    const recovery = await runWithoutFollower(
       recoverOperatorBondProgram(
         await fixture.lucidFor(appointed.operatorKeyHash),
         fixture.contracts,

@@ -16,6 +16,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import {
   ReservePayoutTransport,
   submitAddReserveFundsToPayoutProgram,
@@ -41,7 +42,7 @@ export const initializePayoutProgram = (
 ): Effect.Effect<
   PayoutCommandResult,
   unknown,
-  Database | Lucid | MidgardContracts
+  Database | Lucid | MidgardContracts | IntentJournal
 > =>
   Effect.gen(function* () {
     const eventId = parseEventId(config.eventId, "--withdrawal-event-id");
@@ -162,7 +163,7 @@ export const addReserveFundsToPayoutProgram = (
 ): Effect.Effect<
   PayoutCommandResult,
   unknown,
-  Database | Lucid | MidgardContracts
+  Database | Lucid | MidgardContracts | IntentJournal
 > =>
   Effect.gen(function* () {
     const eventId = parseEventId(config.eventId, "--withdrawal-event-id");
@@ -264,7 +265,7 @@ export const concludePayoutProgram = (
 ): Effect.Effect<
   PayoutCommandResult,
   unknown,
-  Database | Lucid | MidgardContracts | NodeConfig
+  Database | Lucid | MidgardContracts | NodeConfig | IntentJournal
 > =>
   Effect.gen(function* () {
     const eventId = parseEventId(config.eventId, "--withdrawal-event-id");

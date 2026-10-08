@@ -1,0 +1,286 @@
+/**
+ * The node's intent journal (§8.2) and S6 (§8.3) over a Lucid emulator:
+ * a Postgres follower store carrying the intent journal, the emulator's
+ * landed transactions applied to it as blocks, and a node transport whose
+ * mempool, submission and ledger-state answers are the emulator's.
+ *
+ * - Every transaction the emulator accepts is captured as its exact bytes;
+ *   `follow` applies the ones confirmed since the last call, one block per
+ *   emulator block height, with synthetic block hashes.
+ * - The journal records through the production `recordSignedIntent`, on a
+ *   node SQL client over the same database, as `IntentJournalLive` does.
+ * - The wallet seed is the production seeder's, answered from the
+ *   emulator's UTxO set at the asked addresses.
+ *
+ * Differences from a followed chain, none of which these tests rely on:
+ * synthetic block hashes, a block only where a transaction landed, and no
+ * redeemers in the stored summaries (wallet transactions carry none).
+ */
+import { createHash } from "node:crypto";
+
+import {
+  type BlockSummary,
+  compareOutRefs,
+  decodeTransaction,
+  type FactStore,
+  intentJournalProjection,
+  openPostgresFactStore,
+  type OutputSummary,
+  projectionStoreOptions,
+  type TxSummary,
+} from "@al-ft/midgard-l1-follower";
+import { encodeUtxoAnswer } from "@al-ft/midgard-l1-follower/testing";
+import { SqlClient } from "@effect/sql";
+import { PgClient } from "@effect/sql-pg";
+import {
+  CML,
+  Emulator,
+  type EmulatorAccount,
+  generateEmulatorAccount,
+  getAddressDetails,
+  Lucid,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+import { Effect, Layer, ManagedRuntime, Redacted } from "effect";
+
+import {
+  IntentJournal,
+  type IntentJournalService,
+  recordSignedIntent,
+} from "../../src/services/intent-journal.js";
+import {
+  createNodeIntentStage,
+  nodeFamilyPredicate,
+} from "../../src/services/l1-follower.intents.js";
+import type { testDatabases } from "./l1-events-store.js";
+import { SIM_QUEUE_CONFIG } from "./state-queue-sim.fixtures.js";
+
+export const EMULATOR_K = 6;
+
+const addressBytes = (bech32: string): Buffer =>
+  Buffer.from(getAddressDetails(bech32).address.hex, "hex");
+
+const blockHash = (height: number): Buffer =>
+  createHash("sha256").update(`intent-emulator-block-${height}`).digest();
+
+/** A transaction's summary as the follower stores it, from its exact bytes. */
+const txSummary = (cbor: Buffer, index: number): TxSummary => {
+  const decoded = decodeTransaction(cbor);
+  const tx = CML.Transaction.from_cbor_bytes(cbor);
+  return {
+    hash: decoded.hash,
+    index,
+    isValid: true,
+    bodyCbor: decoded.bodyCbor,
+    witnessCbor: Buffer.from(tx.witness_set().to_cbor_bytes()),
+    auxCbor: null,
+    inputs: [...decoded.inputs].sort(compareOutRefs),
+    referenceInputs: [...decoded.referenceInputs].sort(compareOutRefs),
+    collaterals: [...decoded.collaterals].sort(compareOutRefs),
+    outputs: decoded.outputs,
+    collateralReturn: decoded.collateralReturn,
+    mint: decoded.mint,
+    withdrawals: decoded.withdrawals,
+    redeemers: [],
+    invalidBefore: decoded.invalidBefore,
+    invalidAfter: decoded.invalidAfter,
+  };
+};
+
+const simOutputOf = (utxo: UTxO) => ({
+  outRef: { txHash: Buffer.from(utxo.txHash, "hex"), index: utxo.outputIndex },
+  output: {
+    address: addressBytes(utxo.address),
+    lovelace: utxo.assets.lovelace ?? 0n,
+  },
+});
+
+export type IntentEmulator = Awaited<ReturnType<typeof openIntentEmulator>>;
+
+/**
+ * An emulator with the node's own wallet (`own`) and a wallet that only
+ * receives (`payee`), and the node's follower store at the emulator's
+ * origin, tracking the own wallet.
+ */
+export const openIntentEmulator = async (
+  databases: ReturnType<typeof testDatabases>,
+) => {
+  const own: EmulatorAccount = generateEmulatorAccount({
+    lovelace: 50_000_000n,
+  });
+  const payee = generateEmulatorAccount({ lovelace: 5_000_000n });
+  const emulator = new Emulator([own, payee]);
+  const accepted = new Map<string, Buffer>();
+  const submitTx = emulator.submitTx.bind(emulator);
+  emulator.submitTx = async (tx) => {
+    const hash = await submitTx(tx);
+    accepted.set(hash, Buffer.from(tx, "hex"));
+    return hash;
+  };
+  const wallet = async (): Promise<LucidEvolution> => {
+    const lucid = await Lucid(emulator, "Custom");
+    lucid.selectWallet.fromSeed(own.seedPhrase);
+    return lucid;
+  };
+  const ownAddress = addressBytes(own.address);
+  const connectionString = await databases.create();
+  const store: FactStore = openPostgresFactStore({
+    ...projectionStoreOptions(
+      [intentJournalProjection],
+      {
+        securityParameter: EMULATOR_K,
+        trackedSet: {
+          addresses: new Set([ownAddress.toString("hex")]),
+          paymentCredentials: new Set(),
+          policies: new Set(),
+        },
+      },
+      "postgres",
+    ),
+    connection: { connectionString },
+  });
+  const started = await store.start();
+  if (started.kind !== "ready")
+    throw new Error(`store start: ${JSON.stringify(started)}`);
+  const origin = { slot: emulator.slot, hash: blockHash(0) };
+  const init = await store.initialize({ point: origin, height: 0 });
+  if (init.kind !== "initialized") throw new Error(`initialize: ${init.kind}`);
+
+  let tip = { hash: origin.hash, height: 0 };
+  const applied = new Set<string>();
+  /** Applies the transactions the emulator confirmed since the last call. */
+  const follow = async (): Promise<void> => {
+    const byHeight = new Map<number, { slot: number; hashes: string[] }>();
+    for (const [hash, status] of Object.entries(emulator.transactionHistory))
+      if (status.status === "confirmed" && !applied.has(hash)) {
+        const block = byHeight.get(status.blockHeight) ?? {
+          slot: status.slot,
+          hashes: [],
+        };
+        block.hashes.push(hash);
+        byHeight.set(status.blockHeight, block);
+      }
+    for (const height of [...byHeight.keys()].sort((a, b) => a - b)) {
+      const { slot, hashes } = byHeight.get(height)!;
+      const blockHeight = tip.height + 1;
+      const block: BlockSummary = {
+        point: { slot, hash: blockHash(blockHeight) },
+        height: blockHeight,
+        parentHash: tip.hash,
+        txs: hashes.sort().map((hash, index) => {
+          const cbor = accepted.get(hash);
+          if (cbor === undefined)
+            throw new Error(`the emulator confirmed ${hash} unseen`);
+          return txSummary(cbor, index);
+        }),
+      };
+      const result = await store.applyBlock(block);
+      if (result.kind !== "applied") throw new Error(`apply: ${result.kind}`);
+      for (const hash of hashes) applied.add(hash);
+      tip = { hash: block.point.hash, height: blockHeight };
+    }
+  };
+
+  const sent: Buffer[] = [];
+  const transport = {
+    hasTx: (txId: string) =>
+      Promise.resolve(emulator.transactionHistory[txId]?.status === "pending"),
+    submit: async (bytes: Uint8Array) => {
+      sent.push(Buffer.from(bytes));
+      try {
+        await emulator.submitTx(Buffer.from(bytes).toString("hex"));
+        return { accepted: true } as const;
+      } catch (error) {
+        return {
+          accepted: false,
+          rejection: Buffer.from(String(error)),
+        } as const;
+      }
+    },
+    withLedgerState: <T>(
+      _at: unknown,
+      use: (session: {
+        query: (query: { addresses: readonly Buffer[] }) => Promise<Uint8Array>;
+      }) => Promise<T>,
+    ): Promise<T> =>
+      use({
+        query: async ({ addresses }) => {
+          const wanted = new Set(addresses.map((a) => a.toString("hex")));
+          const utxos = Object.values(emulator.ledger)
+            .filter(({ spent }) => !spent)
+            .map(({ utxo }) => utxo)
+            .filter((utxo) =>
+              wanted.has(addressBytes(utxo.address).toString("hex")),
+            );
+          return encodeUtxoAnswer(utxos.map(simOutputOf));
+        },
+      }),
+  };
+
+  const runtime = ManagedRuntime.make(
+    PgClient.layer({ url: Redacted.make(connectionString) }),
+  );
+  const sql = await runtime.runPromise(SqlClient.SqlClient);
+  const isOwnOutput = (output: OutputSummary) =>
+    output.address.equals(ownAddress);
+  /** The production journal over the node database, as `IntentJournalLive` records. */
+  const journal: IntentJournalService = {
+    record: (intent, signedTxCbor, txHash) =>
+      intent.kind === "unjournaled"
+        ? Effect.die("the emulator journal takes journaled intents")
+        : recordSignedIntent(intent, signedTxCbor, txHash, isOwnOutput).pipe(
+            Effect.provideService(SqlClient.SqlClient, sql),
+          ),
+    holds: () => [],
+  };
+  const journalLayer = Layer.succeed(IntentJournal, journal);
+  const record = (
+    ...args: Parameters<IntentJournalService["record"]>
+  ): Promise<unknown> => Effect.runPromise(journal.record(...args));
+
+  const stage = createNodeIntentStage({
+    store,
+    transport: transport as never,
+    securityParameter: EMULATOR_K,
+    seededAddresses: [ownAddress],
+    // No intent here names a header, so the predicate reads no projection.
+    wanted: nodeFamilyPredicate(store, SIM_QUEUE_CONFIG),
+    log: () => undefined,
+  });
+
+  const close = async () => {
+    stage.close();
+    await runtime.dispose();
+    await store.close();
+  };
+  return {
+    emulator,
+    own,
+    payee,
+    wallet,
+    store,
+    follow,
+    sent,
+    accepted,
+    record,
+    journal,
+    journalLayer,
+    stage,
+    close,
+  };
+};
+
+/** A signed payment from the own wallet; `wallet` picks the instance (and so its UTxO view). */
+export const signedPayment = async (
+  lucid: LucidEvolution,
+  to: string,
+  lovelace: bigint,
+) => {
+  const signed = await (
+    await lucid.newTx().pay.ToAddress(to, { lovelace }).complete()
+  ).sign
+    .withWallet()
+    .complete();
+  return { cbor: signed.toCBOR(), hash: signed.toHash() };
+};

@@ -5,7 +5,10 @@
  * `l1_follower_waiting`, `l1_follower_apply_stuck`), every hold of the
  * follower-change driver (`l1_events_*`, and the forced-order hook's
  * `forced_order_carriage_pending`, `forced_order_admission_stopped` and
- * `forced_order_ingestion_failed`), and
+ * `forced_order_ingestion_failed`), the intent stage's (`wallet_seed_pending`,
+ * `intent_reconcile_failed`, `intent_reconcile_transient`) and the intent
+ * journal's refusals (`intent_journal_*`, `intent_input_untracked`,
+ * `intent_bytes_mismatch`, `intent_undecodable`), and
  * `l1_follower_unconfigured` while the node has no follower. Each fails
  * readiness by name; none stops the process, and `/healthz` stays live.
  */
@@ -26,15 +29,14 @@ export type L1FollowerHandle = Readonly<{
   kind: "running";
   /** The follow loop's latest status. */
   status: () => FollowStatus;
-  /** The driver's holds from its latest run. */
+  /** The driver's and the intent stage's holds from their latest run, and the journal's refusals. */
   holds: () => readonly DriverHold[];
   /** Reads the event projection at the follower's current view. */
   planCurrent: () => Promise<FollowerPlanRead>;
 }>;
 
 export type L1FollowerState =
-  | Readonly<{ kind: "unconfigured"; detail: string }>
-  | L1FollowerHandle;
+  Readonly<{ kind: "unconfigured"; detail: string }> | L1FollowerHandle;
 
 /**
  * The follower has applied the chain through the node's tip with no

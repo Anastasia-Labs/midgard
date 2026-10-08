@@ -34,6 +34,7 @@ import {
   NativeMpfWorkerPortClient,
   NodeConfig,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import { outRefLabel } from "../tx-context.js";
 import {
   alignCommitMpfsToBase,
@@ -111,7 +112,11 @@ export const buildOnVerifiedCommitBaseProgram = (
 ): Effect.Effect<
   WorkerOutput,
   unknown,
-  MidgardContracts | ContractDeploymentIdentity | Database | NodeConfig
+  | MidgardContracts
+  | ContractDeploymentIdentity
+  | Database
+  | NodeConfig
+  | IntentJournal
 > =>
   Effect.gen(function* () {
     let acquiredCommitLucid: Lucid | undefined;

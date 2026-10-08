@@ -10,7 +10,6 @@ import {
   SLOT_CONFIG_NETWORK,
   unixTimeToEnclosingSlot,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 import { expect, vi } from "vitest";
 
 import {
@@ -37,6 +36,7 @@ import {
   historyOutputObservation,
 } from "./history-projection-observations.js";
 import { type RecordedHistoryBatch } from "./history-source-owner-emulator.recorded-history-batch.js";
+import { runWithoutFollower } from "./intent-journal.js";
 import {
   createMainnetEmulatorLucid,
   MAINNET_PROTOCOL_PARAMETERS,
@@ -204,7 +204,7 @@ const deployHistorySource = async (
   lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
   vi.setSystemTime(emulator.now());
   const emulatorCreationTimeMs = emulator.now();
-  await Effect.runPromise(
+  await runWithoutFollower(
     registerOperatorProgram(
       lucid,
       contracts,
@@ -214,7 +214,7 @@ const deployHistorySource = async (
   );
   emulator.awaitSlot(REGISTRATION_ACTIVATION_DELAY_SLOTS);
   vi.setSystemTime(emulator.now());
-  await Effect.runPromise(
+  await runWithoutFollower(
     activateOperatorProgram(
       lucid,
       contracts,

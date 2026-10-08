@@ -24,6 +24,7 @@ import {
   settlementProgram,
   settlementWalletAddress,
 } from "../src/services/settlement.js";
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 const run = <A, E>(
@@ -93,73 +94,78 @@ const worker = (token: string, seed: string) =>
 describe("settlement ownership handoff", () => {
   it("resumes a handed-over token at once and holds a foreign live owner off", async () => {
     await run(
-      Effect.gen(function* () {
-        const seed = generateSeedPhrase();
-        const handedOver = randomUUID();
-        const foreign = {
-          deploymentId,
-          walletAddress: settlementWalletAddress({
-            ...(yield* NodeConfig),
-            L1_SETTLEMENT_SEED_PHRASE: seed,
-          }),
-          token: randomUUID(),
-        };
-        // Another node process holds a live lease: stand by, as startup.
-        yield* Journal.renew(foreign);
-        const waiting = yield* worker(handedOver, seed);
-        yield* waiting.until("starting");
-        expect(waiting.reports.map((report) => report.detail)).toContain(
-          `waiting for the previous settlement ownership lease: ${REFUSAL}`,
-        );
-        expect(
-          waiting.reports.some((report) => report.state === "running"),
-        ).toBe(false);
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`UPDATE settlement_owners SET lease_until = clock_timestamp() - interval '1 second'`;
-        yield* waiting.until("running");
-        // The node stops that worker; its replacement carries the same token
-        // and resumes the still-live lease without waiting for it to expire.
-        yield* Fiber.interrupt(waiting.fiber);
-        const started = Date.now();
-        const replacement = yield* worker(handedOver, seed);
-        yield* replacement.until("running");
-        expect(Date.now() - started).toBeLessThan(5_000);
-        expect(
-          replacement.reports.some((report) => report.state === "starting"),
-        ).toBe(false);
-        // The foreign process stays fenced while the replacement holds it.
-        expect((yield* Effect.either(Journal.renew(foreign)))._tag).toBe(
-          "Left",
-        );
-        expect((yield* Effect.either(Journal.assertOwner(foreign)))._tag).toBe(
-          "Left",
-        );
-        yield* Fiber.interrupt(replacement.fiber);
-      }),
+      withoutFollowerJournal(
+        Effect.gen(function* () {
+          const seed = generateSeedPhrase();
+          const handedOver = randomUUID();
+          const foreign = {
+            deploymentId,
+            walletAddress: settlementWalletAddress({
+              ...(yield* NodeConfig),
+              L1_SETTLEMENT_SEED_PHRASE: seed,
+            }),
+            token: randomUUID(),
+          };
+          // Another node process holds a live lease: stand by, as startup.
+          yield* Journal.renew(foreign);
+          const waiting = yield* worker(handedOver, seed);
+          yield* waiting.until("starting");
+          expect(waiting.reports.map((report) => report.detail)).toContain(
+            `waiting for the previous settlement ownership lease: ${REFUSAL}`,
+          );
+          expect(
+            waiting.reports.some((report) => report.state === "running"),
+          ).toBe(false);
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE settlement_owners SET lease_until = clock_timestamp() - interval '1 second'`;
+          yield* waiting.until("running");
+          // The node stops that worker; its replacement carries the same token
+          // and resumes the still-live lease without waiting for it to expire.
+          yield* Fiber.interrupt(waiting.fiber);
+          const started = Date.now();
+          const replacement = yield* worker(handedOver, seed);
+          yield* replacement.until("running");
+          expect(Date.now() - started).toBeLessThan(5_000);
+          expect(
+            replacement.reports.some((report) => report.state === "starting"),
+          ).toBe(false);
+          // The foreign process stays fenced while the replacement holds it.
+          expect((yield* Effect.either(Journal.renew(foreign)))._tag).toBe(
+            "Left",
+          );
+          expect(
+            (yield* Effect.either(Journal.assertOwner(foreign)))._tag,
+          ).toBe("Left");
+          yield* Fiber.interrupt(replacement.fiber);
+        }),
+      ),
     );
   }, 60_000);
 
   it("fails at once, without a lease wait, when settlement is bound to another wallet", async () => {
     await run(
-      Effect.gen(function* () {
-        // An expired lease: only the changed wallet refuses this renew.
-        yield* Journal.renew({
-          deploymentId,
-          walletAddress: "previous-settlement-wallet",
-          token: randomUUID(),
-        });
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`UPDATE settlement_owners SET lease_until = clock_timestamp() - interval '1 second'`;
-        const started = Date.now();
-        const rebound = yield* worker(randomUUID(), generateSeedPhrase());
-        const exit = yield* Fiber.await(rebound.fiber).pipe(
-          Effect.timeout("5 seconds"),
-        );
-        expect(Date.now() - started).toBeLessThan(5_000);
-        expect(Exit.isFailure(exit)).toBe(true);
-        if (Exit.isFailure(exit)) expect(String(exit.cause)).toContain(REFUSAL);
-        expect(rebound.reports).toEqual([]);
-      }),
+      withoutFollowerJournal(
+        Effect.gen(function* () {
+          // An expired lease: only the changed wallet refuses this renew.
+          yield* Journal.renew({
+            deploymentId,
+            walletAddress: "previous-settlement-wallet",
+            token: randomUUID(),
+          });
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE settlement_owners SET lease_until = clock_timestamp() - interval '1 second'`;
+          const started = Date.now();
+          const rebound = yield* worker(randomUUID(), generateSeedPhrase());
+          const exit = yield* Fiber.await(rebound.fiber).pipe(
+            Effect.timeout("5 seconds"),
+          );
+          expect(Date.now() - started).toBeLessThan(5_000);
+          expect(Exit.isFailure(exit)).toBe(true);
+          if (Exit.isFailure(exit))
+            expect(String(exit.cause)).toContain(REFUSAL);
+          expect(rebound.reports).toEqual([]);
+        }),
+      ),
     );
   }, 30_000);
 });

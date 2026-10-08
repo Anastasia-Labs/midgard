@@ -11,6 +11,7 @@ import {
   registerOperatorProgram,
 } from "../src/transactions/register-active-operator.js";
 import { alignUnixTimeToSlotBoundary } from "../src/workers/utils/commit-end-time.js";
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import {
   BOND_LOVELACE,
   describeFailure,
@@ -124,20 +125,24 @@ export const registerAndActivate = async ({
   readonly emulator: Emulator;
 }): Promise<void> => {
   await runProgram(
-    registerOperatorProgram(
-      operatorLucid,
-      contracts,
-      BOND_LOVELACE,
-      referenceScriptsLucid,
+    withoutFollowerJournal(
+      registerOperatorProgram(
+        operatorLucid,
+        contracts,
+        BOND_LOVELACE,
+        referenceScriptsLucid,
+      ),
     ),
   );
   emulator.awaitSlot(180);
   await runProgram(
-    activateOperatorProgram(
-      operatorLucid,
-      contracts,
-      BOND_LOVELACE,
-      referenceScriptsLucid,
+    withoutFollowerJournal(
+      activateOperatorProgram(
+        operatorLucid,
+        contracts,
+        BOND_LOVELACE,
+        referenceScriptsLucid,
+      ),
     ),
   );
 };

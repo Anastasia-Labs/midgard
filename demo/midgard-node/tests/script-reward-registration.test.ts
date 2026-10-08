@@ -12,6 +12,7 @@ import { expect, it } from "vitest";
 
 import { ensureAvailabilityChallengeRewardAccountsRegisteredProgram } from "../src/transactions/availability-challenge-registration.js";
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 it("registers all four real availability credentials (open, settle, close and timeout) with exact deposits and resumes idempotently", async () => {
@@ -34,7 +35,7 @@ it("registers all four real availability credentials (open, settle, close and ti
     submitted.push(cbor);
     return submit(cbor);
   };
-  const first = await Effect.runPromise(
+  const first = await runWithoutFollower(
     ensureAvailabilityChallengeRewardAccountsRegisteredProgram(
       lucid,
       contracts,
@@ -84,7 +85,7 @@ it("registers all four real availability credentials (open, settle, close and ti
   expect(100_000_000n - remaining).toBe(
     4n * PROTOCOL_PARAMETERS_DEFAULT.keyDeposit + fees,
   );
-  const second = await Effect.runPromise(
+  const second = await runWithoutFollower(
     ensureAvailabilityChallengeRewardAccountsRegisteredProgram(
       lucid,
       contracts,
@@ -123,7 +124,7 @@ it("registers history observers within the size limit without spending reserved 
     return submit(cbor);
   };
   const run = () =>
-    Effect.runPromise(
+    runWithoutFollower(
       ensureEventHistoryRewardAccountsRegisteredProgram(lucid, contracts).pipe(
         Effect.mapError((error) => new Error(inspect(error, { depth: 8 }))),
       ),

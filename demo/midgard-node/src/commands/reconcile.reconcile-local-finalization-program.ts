@@ -16,6 +16,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import { runCommitBlockHeaderWorkerProgram } from "../workers/commit-block-header.js";
 import {
   serializeStateQueueUTxO,
@@ -45,7 +46,12 @@ export const reconcileLocalFinalizationProgram = ({
 }): Effect.Effect<
   ReconciliationResult,
   unknown,
-  Database | Lucid | MidgardContracts | ContractDeploymentIdentity | NodeConfig
+  | Database
+  | Lucid
+  | MidgardContracts
+  | ContractDeploymentIdentity
+  | NodeConfig
+  | IntentJournal
 > =>
   Effect.gen(function* () {
     const headerHashHex = headerHash.toString("hex");

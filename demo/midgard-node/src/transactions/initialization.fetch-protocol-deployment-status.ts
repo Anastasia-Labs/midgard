@@ -9,6 +9,7 @@ import { Effect, Schedule } from "effect";
 
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import { NodeConfig } from "../services/config.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import { Lucid } from "../services/lucid.js";
 import {
   type ContractDeploymentIdentityValue,
@@ -250,7 +251,7 @@ export const buildAtomicProtocolInitTxProgram = (
 export const program: Effect.Effect<
   string,
   unknown,
-  Lucid | MidgardContracts | NodeConfig
+  Lucid | MidgardContracts | NodeConfig | IntentJournal
 > = Effect.gen(function* () {
   const lucidService = yield* Lucid;
   const contracts = yield* MidgardContracts;

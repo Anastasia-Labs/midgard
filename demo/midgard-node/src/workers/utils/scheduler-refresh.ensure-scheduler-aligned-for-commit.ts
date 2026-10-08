@@ -10,6 +10,10 @@ import {
   fetchOperatorWalletView,
   type OperatorWalletView,
 } from "../../operator-wallet-view.js";
+import {
+  type IntentJournal,
+  journaledIntent,
+} from "../../services/intent-journal.js";
 import { planSubmitTiming } from "../../transactions/submit-timing.js";
 import {
   handleSignSubmitNoConfirmation,
@@ -62,7 +66,8 @@ export const ensureSchedulerAlignedForCommit = (
   allowSchedulerRefresh: boolean = true,
 ): Effect.Effect<
   SchedulerAlignmentResult,
-  SDK.StateQueueError | TxSignError | TxSubmitError
+  SDK.StateQueueError | TxSignError | TxSubmitError,
+  IntentJournal
 > =>
   Effect.gen(function* () {
     const resolveOperatorWalletView = (
@@ -362,6 +367,10 @@ export const ensureSchedulerAlignedForCommit = (
       const refreshSubmitResult = yield* handleSignSubmitNoConfirmation(
         lucid,
         refreshTx,
+        journaledIntent(
+          "scheduler_refresh",
+          `scheduler:${schedulerRefInput.txHash}#${schedulerRefInput.outputIndex.toString()}`,
+        ),
         submitRecoveryOptions,
       );
       if (refreshSubmitResult.status === "deferred") {

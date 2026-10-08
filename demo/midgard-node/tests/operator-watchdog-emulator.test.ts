@@ -28,6 +28,7 @@ import {
 } from "../src/services/index.js";
 import { planTakeoverProgram } from "../src/transactions/operators/takeover.js";
 import { publishEmulatorOperatorSet } from "./helpers/emulator-operator-set.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
   advanceEmulatorPastUnixTime,
   appointFirstSchedulerOperator,
@@ -78,7 +79,7 @@ describe("operator watchdog wallet selection", () => {
     } as unknown as Lucid;
     const selectedAddress = Effect.promise(() => shared.wallet().address());
 
-    const outcome = await Effect.runPromise(
+    const outcome = await runWithoutFollower(
       Effect.gen(function* () {
         const globals = yield* Globals;
         const lucid = yield* Lucid;

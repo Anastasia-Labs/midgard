@@ -73,6 +73,19 @@ vi.mock("../src/commands/listen-startup.js", async (importOriginal) => {
     ).pipe(Effect.zipRight(Effect.fail(new Error("stop after the releases")))),
   };
 });
+vi.mock("../src/services/intent-journal.js", async (importOriginal) => {
+  const { Effect } = await import("effect");
+  return {
+    ...(await importOriginal<
+      typeof import("../src/services/intent-journal.js")
+    >()),
+    // The journal opens on the node database, which this wiring never reaches.
+    makeIntentJournal: Effect.succeed({
+      record: () => Effect.die("this wiring submits nothing"),
+      holds: () => [],
+    }),
+  };
+});
 vi.mock("../src/services/l1-follower.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/services/l1-follower.js")>()),
   startL1Follower: await recordStep("l1-follower"),

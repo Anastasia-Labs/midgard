@@ -10,6 +10,10 @@ import {
 import { Effect } from "effect";
 
 import { slotToUnixTimeForLucidOrEmulatorFallback } from "../lucid-time.js";
+import {
+  type IntentJournal,
+  unjournaledSubmission,
+} from "../services/intent-journal.js";
 import { outRefLabel } from "../tx-context.js";
 import {
   DEFAULT_DEPLOYMENT_VALIDITY_BACKOFF_MS,
@@ -142,7 +146,8 @@ export const completeAndSubmit = (
   failureMessage: string,
 ): Effect.Effect<
   string,
-  SDK.LucidError | TxConfirmError | TxSignError | TxSubmitError
+  SDK.LucidError | TxConfirmError | TxSignError | TxSubmitError,
+  IntentJournal
 > =>
   Effect.gen(function* () {
     const unsignedTx = yield* Effect.tryPromise({
@@ -153,7 +158,11 @@ export const completeAndSubmit = (
           cause,
         }),
     });
-    return yield* handleSignSubmit(lucid, unsignedTx as TxSignBuilder);
+    return yield* handleSignSubmit(
+      lucid,
+      unsignedTx as TxSignBuilder,
+      unjournaledSubmission("bootstrap", `initialization:${failureMessage}`),
+    );
   });
 
 /**

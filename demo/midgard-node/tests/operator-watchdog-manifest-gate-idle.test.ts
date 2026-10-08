@@ -29,8 +29,10 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../src/services/index.js";
+import type { IntentJournal } from "../src/services/intent-journal.js";
 import { planTakeoverProgram } from "../src/transactions/operators/takeover.js";
 import { publishEmulatorOperatorSet } from "./helpers/emulator-operator-set.js";
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import {
   advanceEmulatorPastUnixTime,
   appointFirstSchedulerOperator,
@@ -71,11 +73,16 @@ describe("operator watchdog manifest gate on ticks with no strike due", () => {
       effect: Effect.Effect<
         A,
         never,
-        Globals | Lucid | MidgardContracts | NodeConfig | SqlClient.SqlClient
+        | Globals
+        | IntentJournal
+        | Lucid
+        | MidgardContracts
+        | NodeConfig
+        | SqlClient.SqlClient
       >,
     ) =>
       Effect.runPromise(
-        effect.pipe(
+        withoutFollowerJournal(effect).pipe(
           Effect.provide(
             Layer.mergeAll(
               Globals.Default,

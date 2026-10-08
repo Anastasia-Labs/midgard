@@ -7,6 +7,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import type { IntentJournal } from "../services/intent-journal.js";
+import { journaledIntent } from "../services/intent-journal.js";
 import { outRefLabel } from "../tx-context.js";
 import {
   buildReferenceScriptSweepPlan,
@@ -168,7 +170,11 @@ export const sweepRetiredReferenceScriptsProgram = ({
   readonly live: LiveReferenceScriptDeployment;
   readonly limits: ReferenceScriptSweepLimits;
   readonly options: ReferenceScriptSweepOptions;
-}): Effect.Effect<ReferenceScriptSweepResult, ReferenceScriptSweepError> =>
+}): Effect.Effect<
+  ReferenceScriptSweepResult,
+  ReferenceScriptSweepError,
+  IntentJournal
+> =>
   Effect.gen(function* () {
     const retiredAuthPolicyId = yield* Effect.try({
       try: () =>
@@ -255,10 +261,18 @@ export const sweepRetiredReferenceScriptsProgram = ({
       yield* Effect.logInfo(
         `Submitting reference-script sweep batch ${(submitted.length + 1).toString()}: inputs=${batch.inputs.length.toString()},fee=${built.fee.toString()},tx_bytes=${built.txBytes.toString()},reference_script_bytes=${batch.referenceScriptBytes.toString()},token_disposition=${current.disposition.kind}`,
       );
-      const txHash = yield* handleSignSubmit(lucid, built.unsigned, {
-        confirmationTimeoutMs: REFERENCE_SCRIPT_CONFIRMATION_TIMEOUT_MS,
-        confirmationRetries: 0,
-      });
+      const txHash = yield* handleSignSubmit(
+        lucid,
+        built.unsigned,
+        journaledIntent(
+          "reference_sweep",
+          `reference_sweep:${outRefLabel(batch.inputs[0]!)}+${batch.inputs.length.toString()}`,
+        ),
+        {
+          confirmationTimeoutMs: REFERENCE_SCRIPT_CONFIRMATION_TIMEOUT_MS,
+          confirmationRetries: 0,
+        },
+      );
       for (const input of batch.inputs) {
         spentOutRefs.add(outRefLabel(input));
       }

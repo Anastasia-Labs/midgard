@@ -15,6 +15,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import type { DaLocalSignerConfig } from "midgard-node/da/local-signers";
+import { IntentJournalWithoutFollower } from "midgard-node/services/intent-journal";
 import { activateRegisteredOperatorProgram } from "midgard-node/transactions/register-active-operator";
 import { canActivateRegisteredOperatorImmediately } from "midgard-node/transactions/register-active-operator/activation";
 
@@ -465,7 +466,7 @@ export const stagePublishedDepositTrace = async (
         successorVkey,
         publisher,
         await publisher.wallet().address(),
-      ),
+      ).pipe(Effect.provide(IntentJournalWithoutFollower)),
     );
     if (
       (

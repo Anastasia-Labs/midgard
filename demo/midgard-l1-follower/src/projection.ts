@@ -1,7 +1,11 @@
 import type { TemporalTableSpec } from "./registry.js";
 import type { MigrationSet } from "./schema/migrate.js";
 import type { DialectName } from "./sql/backend.js";
-import type { DerivationHook, RetentionPins } from "./store/context.js";
+import type {
+  DerivationHook,
+  PruneHook,
+  RetentionPins,
+} from "./store/context.js";
 import type { FactStore, FactStoreOptions } from "./store/fact-store.js";
 import type { SimOutput } from "./testing/block-cbor.js";
 import type { ForkStep, ScenarioTraffic } from "./testing/episodes.js";
@@ -22,6 +26,7 @@ export type FollowerProjection = Readonly<{
   migrations?: (dialect: DialectName) => MigrationSet;
   derivations?: readonly DerivationHook[];
   retentionPins?: RetentionPins;
+  pruneHooks?: readonly PruneHook[];
   traffic?: ScenarioTraffic;
   /**
    * Outputs only this projection's `traffic` may spend: the filler never
@@ -77,6 +82,7 @@ export const projectionStoreOptions = (
       p.migrations === undefined ? [] : [p.migrations(dialect)],
     ),
     derivations: projections.flatMap((p) => p.derivations ?? []),
+    pruneHooks: projections.flatMap((p) => p.pruneHooks ?? []),
     ...(pins.length === 0
       ? {}
       : {

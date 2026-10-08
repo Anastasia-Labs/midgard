@@ -5,6 +5,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { journaledIntent } from "../services/intent-journal.js";
 import { handleSignSubmit } from "./utils.js";
 
 /** Check ledger readiness without changing deployment or wallet state. */
@@ -108,7 +109,16 @@ export const ensureAvailabilityChallengeRewardAccountsRegisteredProgram = (
         });
         // Requery on submission failure too: another initializer may register this
         // credential concurrently. Only authoritative ledger registration recovers it.
-        const submitted = yield* Effect.either(handleSignSubmit(lucid, tx));
+        const submitted = yield* Effect.either(
+          handleSignSubmit(
+            lucid,
+            tx,
+            journaledIntent(
+              "script_reward_registration",
+              `script_reward_registration:availability_challenge:${action}`,
+            ),
+          ),
+        );
         if (submitted._tag === "Left") {
           if (!(yield* query()).registered)
             return yield* Effect.fail(submitted.left);

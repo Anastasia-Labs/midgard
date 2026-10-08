@@ -7,6 +7,11 @@ import {
   BeforeSignedTransactionSubmission,
   submitSignedTxWithRecovery,
 } from "../src/transactions/utils.js";
+import {
+  runWithoutFollower,
+  TEST_INTENT,
+  withoutFollowerJournal,
+} from "./helpers/intent-journal.js";
 import { signedTxCbor } from "./transactions-utils.parse-outside-validity-interval-details.js";
 
 describe("durable signed intent handoff", () => {
@@ -21,24 +26,27 @@ describe("durable signed intent handoff", () => {
       }),
     );
     const fiber = Effect.runFork(
-      submitSignedTxWithRecovery(
-        {} as never,
-        { toCBOR: () => cbor, submitProgram } as never,
-        "intent-hash",
-      ).pipe(
-        Effect.provideService(BeforeSignedTransactionSubmission, {
-          persist: (intent) =>
-            Effect.gen(function* () {
-              expect(intent).toEqual({
-                txHash: "intent-hash",
-                signedTxCbor: cbor,
-              });
-              calls.push("persist-start");
-              yield* Deferred.succeed(entered, undefined);
-              yield* Deferred.await(committed);
-              calls.push("persist-committed");
-            }),
-        }),
+      withoutFollowerJournal(
+        submitSignedTxWithRecovery(
+          {} as never,
+          { toCBOR: () => cbor, submitProgram } as never,
+          "intent-hash",
+          TEST_INTENT,
+        ).pipe(
+          Effect.provideService(BeforeSignedTransactionSubmission, {
+            persist: (intent) =>
+              Effect.gen(function* () {
+                expect(intent).toEqual({
+                  txHash: "intent-hash",
+                  signedTxCbor: cbor,
+                });
+                calls.push("persist-start");
+                yield* Deferred.succeed(entered, undefined);
+                yield* Deferred.await(committed);
+                calls.push("persist-committed");
+              }),
+          }),
+        ),
       ),
     );
     await Effect.runPromise(Deferred.await(entered));
@@ -50,11 +58,12 @@ describe("durable signed intent handoff", () => {
   it("does not invoke the provider when durable intent persistence fails", async () => {
     const submitProgram = vi.fn(() => Effect.void);
     await expect(
-      Effect.runPromise(
+      runWithoutFollower(
         submitSignedTxWithRecovery(
           {} as never,
           { toCBOR: () => signedTxCbor({}), submitProgram } as never,
           "intent-hash",
+          TEST_INTENT,
         ).pipe(
           Effect.provideService(BeforeSignedTransactionSubmission, {
             persist: () => Effect.fail(new Error("stale owner")),

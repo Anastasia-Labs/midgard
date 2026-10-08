@@ -85,6 +85,47 @@ export {
   type TipObservation,
 } from "./heads.js";
 export {
+  appendIntentEventIn,
+  insertIntentIn,
+  type Intent,
+  type IntentEvent,
+  type OwnOutput,
+  readIntentEventsIn,
+  readIntentsByContentIn,
+  readIntentsByWorkflowIn,
+  readIntentsIn,
+  recordIntentIn,
+  type RecordIntentInput,
+  type RecordIntentResult,
+} from "./intents/journal.js";
+export { intentJournalProjection } from "./intents/projection.js";
+export { INTENT_PRUNE_HOOK, pruneIntentsIn } from "./intents/prune.js";
+export {
+  createIntentReconciler,
+  type IntentReconciler,
+  type IntentReconcilerOptions,
+  liveAction,
+  type ReconcileAction,
+  type ReconciledIntent,
+  type ReconcileReport,
+  settledAction,
+  type SubmitOutcome,
+} from "./intents/reconcile.js";
+export {
+  INTENT_EVENT_KINDS,
+  INTENT_MIGRATION_NAMESPACE,
+  type IntentEventKind,
+  intentMigrations,
+} from "./intents/schema.js";
+export {
+  deriveIntentStatusesIn,
+  type IntentState,
+  type IntentStatus,
+  type IntentStatuses,
+  type IntentStatusKind,
+  isDeadStatus,
+} from "./intents/status.js";
+export {
   type LinkedQueueEntry,
   type LinkedQueueUnhealthyReason,
   type LinkedQueueWalk,
@@ -172,6 +213,7 @@ export type { ApplyRejection, BlockApplied } from "./store/apply.js";
 export type {
   DerivationContext,
   DerivationHook,
+  PruneHook,
   RetentionPin,
   RetentionPins,
 } from "./store/context.js";

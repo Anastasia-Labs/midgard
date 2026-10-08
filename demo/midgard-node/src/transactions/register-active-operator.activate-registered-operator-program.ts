@@ -5,6 +5,7 @@ import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { Lucid, MidgardContracts } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import { configuredOperatorEconomicsProgram } from "./operators/exit.js";
 import { OperatorFundingShortfall } from "./operators/funding-preflight.js";
 import {
@@ -29,7 +30,8 @@ export const registerAndActivateOperatorProgram = (
   | OperatorFundingShortfall
   | TxConfirmError
   | TxSignError
-  | TxSubmitError
+  | TxSubmitError,
+  IntentJournal
 > =>
   operatorLifecycleProgram(
     lucid,
@@ -60,7 +62,8 @@ export const registerOperatorProgram = (
   | OperatorFundingShortfall
   | TxConfirmError
   | TxSignError
-  | TxSubmitError
+  | TxSubmitError,
+  IntentJournal
 > =>
   operatorLifecycleProgram(
     lucid,
@@ -88,7 +91,8 @@ export const activateOperatorProgram = (
   | OperatorFundingShortfall
   | TxConfirmError
   | TxSignError
-  | TxSubmitError
+  | TxSubmitError,
+  IntentJournal
 > =>
   operatorLifecycleProgram(
     lucid,
@@ -123,7 +127,8 @@ export const activateRegisteredOperatorProgram = (
   | OperatorFundingShortfall
   | TxConfirmError
   | TxSignError
-  | TxSubmitError
+  | TxSubmitError,
+  IntentJournal
 > =>
   operatorLifecycleProgram(
     lucid,
@@ -153,7 +158,8 @@ export const deregisterOperatorProgram = (
   | OperatorFundingShortfall
   | TxConfirmError
   | TxSignError
-  | TxSubmitError
+  | TxSubmitError,
+  IntentJournal
 > =>
   operatorLifecycleProgram(
     lucid,

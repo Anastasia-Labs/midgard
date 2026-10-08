@@ -18,6 +18,8 @@ import {
   TxSubmitError,
 } from "../src/transactions/utils.js";
 import { submitErrorReferencesOutRef } from "../src/workers/commit-block-header/submission.run-with-stale-operator-wallet-retry.js";
+import { runWithoutFollower, TEST_INTENT } from "./helpers/intent-journal.js";
+import { signedTxCbor } from "./transactions-utils.parse-outside-validity-interval-details.js";
 
 const TX_HASH =
   "378e3ff088ab820ca7454704bb9ba6c1584c6df8e33eddaa59982995750fff09";
@@ -96,15 +98,16 @@ describe("Ogmios 3997 'All inputs are spent' submit errors", () => {
     const submitProgram = vi.fn(() => Effect.fail(allInputsSpent()));
     const awaitTxConfirmation = vi.fn();
 
-    const result = await Effect.runPromise(
+    const result = await runWithoutFollower(
       Effect.either(
         submitSignedTxWithRecovery(
           {
             config: () => ({ provider: undefined }),
             awaitTxConfirmation,
           } as never,
-          { submitProgram } as never,
+          { submitProgram, toCBOR: () => signedTxCbor({}) } as never,
           TX_HASH,
+          TEST_INTENT,
           { ...noInlineCommit, sleep: () => Effect.void },
         ),
       ),

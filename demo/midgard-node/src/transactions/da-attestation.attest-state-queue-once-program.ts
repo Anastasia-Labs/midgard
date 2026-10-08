@@ -15,6 +15,7 @@ import {
   Lucid,
   MidgardContracts,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import { attestHeader } from "./da-attestation.attest-header.js";
 import {
   type AttestStateQueueHeaderResult,
@@ -44,7 +45,12 @@ export const attestStateQueueOnceProgram = (
   | TxConfirmError
   | TxSignError
   | TxSubmitError,
-  Lucid | MidgardContracts | NodeConfig | Database | ContractDeploymentIdentity
+  | Lucid
+  | MidgardContracts
+  | NodeConfig
+  | Database
+  | ContractDeploymentIdentity
+  | IntentJournal
 > =>
   Effect.gen(function* () {
     const lucidService = yield* Lucid;

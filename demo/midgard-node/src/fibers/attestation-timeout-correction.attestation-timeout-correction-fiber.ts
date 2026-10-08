@@ -8,6 +8,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import {
   attestationTimeoutCorrectionAction,
   attestationTimeoutCorrectionStep,
@@ -27,6 +28,7 @@ export const attestationTimeoutCorrectionFiber = (
   | Database
   | Globals
   | NodeConfig
+  | IntentJournal
 > =>
   Effect.gen(function* () {
     const globals = yield* Globals;

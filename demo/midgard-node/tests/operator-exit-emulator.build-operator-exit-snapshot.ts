@@ -22,6 +22,7 @@ import {
   resolveReferenceScriptTargetsProgram,
 } from "../src/transactions/reference-scripts.js";
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
@@ -200,15 +201,19 @@ const buildOperatorExitSnapshot = async (): Promise<OperatorExitSnapshot> => {
     referenceScriptAuth,
   );
   const referenceScriptPublications = await runProgram(
-    ensureAtomicProtocolInitReferenceScriptsProgram(
-      referenceScriptsLucid,
-      contracts,
+    withoutFollowerJournal(
+      ensureAtomicProtocolInitReferenceScriptsProgram(
+        referenceScriptsLucid,
+        contracts,
+      ),
     ),
   );
   await runProgram(
-    ensureEventHistoryRewardAccountsRegisteredProgram(
-      referenceScriptsLucid,
-      contracts,
+    withoutFollowerJournal(
+      ensureEventHistoryRewardAccountsRegisteredProgram(
+        referenceScriptsLucid,
+        contracts,
+      ),
     ),
   );
   const initTx = await runProgram(

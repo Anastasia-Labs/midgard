@@ -1,4 +1,5 @@
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
+import { isDeadStatus } from "@al-ft/midgard-l1-follower";
 import { depth as depthOf, isSafe } from "@al-ft/midgard-l1-follower/heads";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -12,6 +13,7 @@ import { EventSettlementProofError } from "../commands/event-settlement-proof.js
 import * as Journal from "../database/settlement.js";
 import { synchronizePublicationIndexerPoint } from "../transactions/reference-publication-provider.js";
 import { NodeConfig, type NodeConfigDep } from "./config.js";
+import { readIntentStatus } from "./intent-journal.js";
 import { ContractDeploymentIdentity } from "./midgard-contracts.js";
 import {
   describeSettlementError,
@@ -279,6 +281,11 @@ export const reconcileAttempt = (
       );
     }
     yield* Journal.assertOwner(owner);
+    // A dead intent (§8.2: an input spent by another tx, expired, failed) is
+    // never resubmitted; its attempt waits for the expiry decision above.
+    const intentStatus = yield* readIntentStatus(attempt.tx_hash);
+    if (intentStatus !== null && isDeadStatus(intentStatus))
+      return `settlement transaction ${attempt.tx_hash} is dead (${intentStatus.kind}); not resubmitted`;
     const provider = lucid.config().provider;
     if (provider === undefined)
       return yield* Effect.fail(new Error("Settlement provider unavailable"));

@@ -41,6 +41,7 @@ import {
   utxosProgram,
 } from "./deposit-flow-emulator-shared.js";
 import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 /** In-process composition of the real worker, production owner, parent failure
  * classifier and SQL mutation lease. Provider acceptance and response loss are
@@ -105,7 +106,7 @@ it("fails the parent operation lease after accepted response loss while a later 
     const currentBlockStartTimeMs = await getStateQueueDatumEndTime(
       latestBlock.datum,
     );
-    return Effect.runPromise(
+    return runWithoutFollower(
       Leases.tryWithLease(
         "history-parent-lease-fixture",
         (stateQueueLeaseToken) => {

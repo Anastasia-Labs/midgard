@@ -16,6 +16,10 @@ import {
   MidgardContractServices,
   NodeConfig,
 } from "../services/index.js";
+import {
+  type IntentJournal,
+  IntentJournalLive,
+} from "../services/intent-journal.js";
 
 export const EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS = 120_000;
 
@@ -35,11 +39,17 @@ export const provideCommitBlockWorkerServices = <A, E>(
   effect: Effect.Effect<
     A,
     E,
-    MidgardContracts | ContractDeploymentIdentity | Database | NodeConfig
+    | MidgardContracts
+    | ContractDeploymentIdentity
+    | Database
+    | NodeConfig
+    | IntentJournal
   >,
 ): Effect.Effect<A, E | ConfigError | DatabaseInitializationError, never> =>
   pipe(
     effect,
+    // The worker journals in the node database; the node's S6 reconciles.
+    Effect.provide(IntentJournalLive),
     Effect.provide(MidgardContractServices),
     Effect.provide(Database.workerLayer),
     Effect.provide(NodeConfig.layer),

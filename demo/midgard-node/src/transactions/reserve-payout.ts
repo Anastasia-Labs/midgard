@@ -3,6 +3,10 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Context, Effect, Option } from "effect";
 
 import {
+  type IntentJournal,
+  journaledIntent,
+} from "../services/intent-journal.js";
+import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
@@ -49,31 +53,44 @@ export const ReservePayoutTransport = Context.GenericTag<{
   ) => Effect.Effect<string, ReservePayoutSubmitError>;
 }>("midgard/ReservePayoutTransport");
 
+/** The reserve payout steps, as journaled workflow keys. */
+type ReservePayoutStep =
+  | "absorb_deposit"
+  | "initialize"
+  | "add_funds"
+  | "conclude";
+
 const send = (
   lucid: LucidEvolution,
   tx: SDK.BuiltReservePayoutTx<unknown>["tx"],
+  step: ReservePayoutStep,
   requiredOutputIndexes: readonly number[] = [],
   evidenceOutputIndexes: readonly number[] = requiredOutputIndexes,
-) =>
+): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
   Effect.gen(function* () {
     const transport = yield* Effect.serviceOption(ReservePayoutTransport);
     return yield* Option.isSome(transport)
       ? transport.value.prepare(tx, evidenceOutputIndexes)
-      : handleSignSubmit(lucid, tx, { requiredOutputIndexes });
+      : handleSignSubmit(
+          lucid,
+          tx,
+          journaledIntent("reserve_payout", `reserve_payout:${step}`),
+          { requiredOutputIndexes },
+        );
   });
 
 export const submitAbsorbConfirmedDepositToReserveProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   config: SDK.AbsorbConfirmedDepositConfig,
-): Effect.Effect<string, ReservePayoutSubmitError> =>
+): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
   Effect.gen(function* () {
     const built = yield* SDK.buildAbsorbConfirmedDepositToReserveTxProgram(
       lucid,
       contracts,
       config,
     );
-    return yield* send(lucid, built.tx, [
+    return yield* send(lucid, built.tx, "absorb_deposit", [
       Number(built.layout.reserveOutputIndex),
     ]);
   });
@@ -82,14 +99,14 @@ export const submitInitializePayoutProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   config: SDK.InitializePayoutConfig,
-): Effect.Effect<string, ReservePayoutSubmitError> =>
+): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
   Effect.gen(function* () {
     const built = yield* SDK.buildInitializePayoutTxProgram(
       lucid,
       contracts,
       config,
     );
-    return yield* send(lucid, built.tx, [
+    return yield* send(lucid, built.tx, "initialize", [
       Number(built.layout.payoutOutputIndex),
     ]);
   });
@@ -98,14 +115,14 @@ export const submitAddReserveFundsToPayoutProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   config: SDK.AddReserveFundsConfig,
-): Effect.Effect<string, ReservePayoutSubmitError> =>
+): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
   Effect.gen(function* () {
     const built = yield* SDK.buildAddReserveFundsToPayoutTxProgram(
       lucid,
       contracts,
       config,
     );
-    return yield* send(lucid, built.tx, [
+    return yield* send(lucid, built.tx, "add_funds", [
       Number(built.layout.payoutOutputIndex),
     ]);
   });
@@ -114,7 +131,7 @@ export const submitConcludePayoutProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   config: SDK.ConcludePayoutConfig,
-): Effect.Effect<string, ReservePayoutSubmitError> =>
+): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
   Effect.gen(function* () {
     const built = yield* SDK.buildConcludePayoutTxProgram(
       lucid,
@@ -124,6 +141,7 @@ export const submitConcludePayoutProgram = (
     return yield* send(
       lucid,
       built.tx,
+      "conclude",
       [],
       [Number(built.layout.l1OutputIndex)],
     );

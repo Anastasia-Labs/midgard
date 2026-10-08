@@ -16,6 +16,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
 import {
   awaitPostMergeSnapshot,
   landedStateQueueSnapshot,
@@ -68,7 +69,7 @@ export const mergeActionWithL1ControlPlaneHeld = (
   | TxConfirmError
   | TxSubmitError
   | TxSignError,
-  Lucid | MidgardContracts | Database | Globals | NodeConfig
+  Lucid | MidgardContracts | Database | Globals | NodeConfig | IntentJournal
 > =>
   Effect.gen(function* () {
     // The L1 control plane's hold began when this attempt acquired it.

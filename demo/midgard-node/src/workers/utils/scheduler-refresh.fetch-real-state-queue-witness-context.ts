@@ -10,6 +10,7 @@ import {
 import { Effect } from "effect";
 
 import { type OperatorWalletView } from "../../operator-wallet-view.js";
+import type { IntentJournal } from "../../services/intent-journal.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
@@ -40,7 +41,8 @@ export const fetchRealStateQueueWitnessContext = (
   allowSchedulerRefresh: boolean = true,
 ): Effect.Effect<
   RealStateQueueWitnessContext | CommitTimingDueWork,
-  SDK.StateQueueError | TxSignError | TxSubmitError
+  SDK.StateQueueError | TxSignError | TxSubmitError,
+  IntentJournal
 > =>
   Effect.gen(function* () {
     const operatorKeyHash = yield* getOperatorKeyHash(lucid);
