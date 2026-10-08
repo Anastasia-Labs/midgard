@@ -51,8 +51,8 @@ const heldOnNativeState = (reason: string) =>
 
 /** What a preparation that held on the native owner's state returns. The
  * removed local suffix stays this rewind's to resolve, so no later recovery
- * step may act on that native root in the same pass (foreign adoption would
- * otherwise try to replay from a root it cannot place). */
+ * step may act on that native root in the same pass (the landed-block rebase
+ * would otherwise try to move it from a root it cannot place). */
 export const CORRECTION_REWIND_HELD_ON_NATIVE_STATE =
   "correction_rewind_held_on_native_state" as const;
 

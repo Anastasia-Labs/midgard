@@ -2,7 +2,6 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Runtime } from "effect";
 
 import * as Authority from "../database/eventHistoryAuthority.js";
-import * as ForeignCensus from "../database/eventHistoryForeignCensus.js";
 import * as Journal from "../database/eventHistoryJournal.js";
 import * as ReplayReceipts from "../database/eventHistoryReplayReceipts.js";
 import type { DatabaseError } from "../database/utils/common.js";
@@ -176,7 +175,6 @@ export const makeEventHistoryOwner = <E, R>(input: {
     let transport = sessionTransport(signal);
     let checkpoint: Journal.Checkpoint | null = null;
     let replay: EventHistoryListReplay | undefined;
-    let reacquiringCensus = false;
     let tip: HistoryChainTip | "origin" | undefined;
     let epoch = 0;
     let ready = false;
@@ -380,13 +378,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
     // Only a closed gate (first start, rollback, escalated append) runs this
     // full recovery: producer drain, preparation, cache reload and Ready.
     const converge = async () => {
-      if (
-        ready ||
-        reacquiringCensus ||
-        checkpoint === null ||
-        tip === undefined ||
-        tip === "origin"
-      )
+      if (ready || checkpoint === null || tip === undefined || tip === "origin")
         return;
       const head = checkpoint.head;
       if (!samePoint(head, tip) || head.height !== tip.height) return;
@@ -554,7 +546,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
     };
 
     const forward = async (block: BoundHistoryChainBlock) => {
-      if (checkpoint === null || reacquiringCensus) {
+      if (checkpoint === null) {
         const active = await handle;
         const step = await withCreatingBodies(
           transport,
@@ -591,36 +583,11 @@ export const makeEventHistoryOwner = <E, R>(input: {
               receipt: step.receipt,
               replay: step.state,
               maximumReceiptBytes: input.maximumReceiptBytes,
-            }).pipe(
-              Effect.zipRight(
-                ForeignCensus.append({
-                  binding: input.binding,
-                  block,
-                  receipt: step.receipt,
-                  activation: step.state.activation,
-                }),
-              ),
-            ),
+            }),
           ),
         );
         replay = step.state;
         outage.replayed(block.point.height);
-        if (reacquiringCensus) {
-          if (checkpoint === null)
-            throw new Error("Census reacquisition lost its journal checkpoint");
-          if (samePoint(replay.point, checkpoint.head)) {
-            if (replay.point.height !== checkpoint.head.height)
-              throw new Error(
-                "Census reacquisition height differs from journal",
-              );
-            reacquiringCensus = false;
-            replay = undefined;
-          } else if (replay.point.slot >= checkpoint.head.slot)
-            throw new Error(
-              "Census reacquisition passed the retained canonical checkpoint",
-            );
-          return;
-        }
         if (seedCapture === undefined)
           throw new Error("History first-start capture is missing");
         const at = seedCapture.history.ledger.point;
@@ -739,23 +706,6 @@ export const makeEventHistoryOwner = <E, R>(input: {
           expectedTransactionHash: input.expectedInitializationTransactionHash,
         });
         intersections = [activation.predecessor];
-      } else if (
-        !(await run(ForeignCensus.covers(input.binding, checkpoint.head)))
-      ) {
-        // Upgrade/recovery reuses this owner's one follower. Keep the source
-        // gate closed while independently rebuilding the complete census from
-        // activation to the exact retained head; never seed from a current list.
-        const active = await handle;
-        await run(
-          active.persist(ForeignCensus.beginReacquisition(input.binding)),
-        );
-        activation = await locateEventHistoryActivation(transport, {
-          binding: input.binding,
-          capture: checkpoint.capture,
-          expectedTransactionHash: input.expectedInitializationTransactionHash,
-        });
-        reacquiringCensus = true;
-        intersections = [activation.predecessor];
       } else
         intersections = await run(
           Journal.intersections(input.binding, checkpoint),
@@ -773,27 +723,15 @@ export const makeEventHistoryOwner = <E, R>(input: {
         onIntersection: (point) => {
           // Resuming exactly at the head keeps the journal; anything else
           // rewinds it and closes the gate like a rollback.
-          if (
-            !reacquiringCensus &&
-            checkpoint !== null &&
-            !samePoint(checkpoint.head, point)
-          )
+          if (checkpoint !== null && !samePoint(checkpoint.head, point))
             invalidate("history source intersection rewinds the journal");
           void sourceWork(async () => {
-            if (!reacquiringCensus && checkpoint !== null) await rewind(point);
+            if (checkpoint !== null) await rewind(point);
           }).catch(() => undefined);
         },
         // Appending at the head never closes the gate (see appendReady).
         onForward: (block) => sourceWork(() => forward(block)),
         onRollback: (point) => {
-          if (reacquiringCensus) {
-            fail(
-              new Error(
-                "History source rolled back during census reacquisition; restart from authenticated activation",
-              ),
-            );
-            return;
-          }
           invalidate("history source rolled back");
           // The frontier legitimately moves back only here; the response that
           // carried this rollback reports the new tip next.
@@ -867,8 +805,6 @@ export const makeEventHistoryOwner = <E, R>(input: {
         // Session-scoped source state; the journal is reloaded by start().
         tip = undefined;
         replay = undefined;
-        // A census reacquisition restarts from activation in the next session.
-        reacquiringCensus = false;
         seedCapture = undefined;
         activation = undefined;
         convergenceQueued = false;

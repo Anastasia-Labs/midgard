@@ -1,5 +1,4 @@
 import type { OperatorMembershipState } from "../l1-operator-set/membership.js";
-import type { ForeignBaseVerificationState } from "../services/foreign-base-verification.js";
 
 /** Path segment of the node's readiness route, `GET /readyz`. */
 export const READINESS_ENDPOINT = "readyz";
@@ -31,7 +30,6 @@ export type ReadinessInput = {
    * arrives as the liveness reason `operator_removed`, and `unknown` is a
    * readiness detail. */
   readonly operatorMembership?: OperatorMembershipState;
-  readonly foreignBaseVerification: ForeignBaseVerificationState;
   readonly validationPool?: {
     readonly configuredWorkers: number;
     readonly liveWorkers: number;
@@ -93,14 +91,6 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
   if (!input.dbHealthy) {
     reasons.push("db_unhealthy");
   }
-
-  const foreignBase = input.foreignBaseVerification;
-  if (foreignBase.status === "unobserved")
-    reasons.push("foreign_base_verification_unobserved");
-  else if (foreignBase.status !== "verified")
-    reasons.push(
-      `foreign_base_verification_${foreignBase.status}:${foreignBase.foreignHeaderHash ?? "initial"}${foreignBase.reason === null ? "" : `:${foreignBase.reason}`}`,
-    );
 
   const heartbeatThreshold = Math.max(1, input.maxHeartbeatAgeMs);
   const heartbeatEntries: readonly [string, number][] = [

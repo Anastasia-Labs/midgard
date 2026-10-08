@@ -27,7 +27,6 @@ import {
   shouldSkipForRegisteredCommitDueWork,
   tryAcquireCommitMutationWorkerPhase,
 } from "./block-commitment.should-skip-for-registered-commit-due-work.js";
-import { verifyForeignBaseOnIdleTick } from "./block-commitment.verify-idle-foreign-base.js";
 import {
   publishFinalizedDaPayloadBestEffort,
   runAfterL1ControlPlaneRelease,
@@ -114,11 +113,7 @@ export const blockCommitmentAction: Effect.Effect<
   yield* publishCommitHorizonLagReadiness;
   const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
   if (!RESET_IN_PROGRESS) {
-    if (yield* shouldSkipIdleCommitPipelineBeforeSchedulerAlignment) {
-      // Readiness evidence must not wait for work to commit.
-      yield* verifyForeignBaseOnIdleTick;
-      return;
-    }
+    if (yield* shouldSkipIdleCommitPipelineBeforeSchedulerAlignment) return;
     if (yield* shouldSkipForActivePendingFinalization) {
       return;
     }

@@ -13,7 +13,6 @@ import { Effect } from "effect";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import * as Authority from "../src/database/eventHistoryAuthority.js";
-import * as ForeignCensus from "../src/database/eventHistoryForeignCensus.js";
 import * as Journal from "../src/database/eventHistoryJournal.js";
 import { pendingHistoryLedgerDisposition } from "../src/database/eventHistoryLedgerRepair.js";
 import {
@@ -361,7 +360,7 @@ beforeEach(async () => {
         name: string;
       }>`SELECT current_database() AS name`;
       expect(database?.name).toBe(testDatabaseName());
-      yield* sql`TRUNCATE event_history_census_frontier, event_history_census_blocks, event_history_recovery_plans, event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalizations, pending_block_finalization_deposits, pending_block_finalization_withdrawals, pending_block_finalization_txs, pending_block_finalization_forced_transactions, pending_block_finalization_transition_trace, pending_block_finalization_event_to_step, pending_block_finalization_validation_traces, pending_block_finalization_validation_trace_witnesses, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts, tx_admission_payloads, tx_admissions, mempool, mempool_tx_deltas, address_history, processed_mempool, blocks, immutable, follower_event_ingestion, l1_event_keys, l1_follower_cursor, l1_blocks CASCADE`;
+      yield* sql`TRUNCATE event_history_recovery_plans, event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalizations, pending_block_finalization_deposits, pending_block_finalization_withdrawals, pending_block_finalization_txs, pending_block_finalization_forced_transactions, pending_block_finalization_transition_trace, pending_block_finalization_event_to_step, pending_block_finalization_validation_traces, pending_block_finalization_validation_trace_witnesses, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts, tx_admission_payloads, tx_admissions, mempool, mempool_tx_deltas, address_history, processed_mempool, blocks, immutable, follower_event_ingestion, l1_event_keys, l1_follower_cursor, l1_blocks CASCADE`;
     }),
   );
 });
@@ -807,26 +806,6 @@ it("advances journal pruning while a signed-header recovery plan remains prepare
   });
   for (let n = 20; n < 26; n++) {
     const prepared = await prepare(await read(), n);
-    // Model the activation of the empty census before exercising the appender;
-    // this SQL component fixture does not claim authenticated L1 activation.
-    if (n === 20)
-      await run(
-        Authority.withRecovery(
-          f.token,
-          ForeignCensus.append({
-            binding,
-            block: prepared.block,
-            receipt: prepared.receipt,
-            activation: {
-              point: prepared.block.point,
-              parent: prepared.block.parent,
-              transactionIndex: 0,
-              transactionHash: hash(604),
-              receipt: prepared.receipt,
-            },
-          }),
-        ),
-      );
     const retained = await run(
       Authority.withRecovery(
         f.token,

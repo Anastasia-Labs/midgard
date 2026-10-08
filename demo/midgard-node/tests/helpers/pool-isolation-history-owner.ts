@@ -78,8 +78,6 @@ export const makePoolIsolationHistoryOwner = (input: {
                 );
               const digest = Buffer.from(binding.digest, "hex");
               // Exact helper binding only; no CASCADE and no unrelated event rows.
-              yield* batchSql`DELETE FROM event_history_census_frontier WHERE binding_digest = ${digest}`;
-              yield* batchSql`DELETE FROM event_history_census_blocks WHERE binding_digest = ${digest}`;
               yield* batchSql`DELETE FROM event_history_l2_ledger_receipts WHERE binding_digest = ${digest}`;
               yield* batchSql`DELETE FROM event_history_replay_receipts WHERE binding_digest = ${digest}`;
               yield* batchSql`DELETE FROM event_history_block_applications WHERE binding_digest = ${digest}`;

@@ -2,13 +2,11 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { expect, it, vi } from "vitest";
 
-import { NodeConfig } from "../src/services/config.js";
 import { Database } from "../src/services/database.js";
 import {
   type CommitHorizonLag,
   HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
 } from "../src/services/history-commit-window.js";
-import { foreignEventCensus } from "../src/workers/commit-block-header.foreign-event-census.js";
 import { refreshCommitUserEventSourcesThroughBlockEnd } from "../src/workers/commit-block-header/submission.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
@@ -20,7 +18,6 @@ import {
   SDK,
   stateQueueFetchConfig,
 } from "./deposit-flow-emulator-shared.js";
-import { fixture as foreignBlockFixture } from "./foreign-block-import.fixture.js";
 import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
 
 type Lifecycle = Awaited<
@@ -78,9 +75,8 @@ const followNextBlock = async (h: Lifecycle) => {
  * deposit commit built with d = 1 lands, its end at the follower block one
  * below the covered tip. Adversarial: an end above that lagged cap is
  * refused by the final recheck before submission
- * (`refreshCommitUserEventSourcesThroughBlockEnd`), and a foreign window
- * above it is not verified yet (`foreignEventCensus`), while d = 0 accepts
- * both. Each test opens its own lifecycle: the shared emulator harness
+ * (`refreshCommitUserEventSourcesThroughBlockEnd`), while d = 0 accepts
+ * it. Each test opens its own lifecycle: the shared emulator harness
  * resets the node runtime after every test.
  */
 const withLifecycle = async (test: (h: Lifecycle) => Promise<void>) => {
@@ -169,7 +165,7 @@ it("lands a deposit commit built with d = 1, its end at the lagged cap", () =>
     );
   }));
 
-it("refuses an end above the lagged cap at the final recheck, and holds a foreign window above it", () =>
+it("refuses an end above the lagged cap at the final recheck", () =>
   withLifecycle(async (h) => {
     await followNextBlock(h);
     await followNextBlock(h);
@@ -192,29 +188,4 @@ it("refuses an end above the lagged cap at the final recheck, and holds a foreig
     expect((await recheck(laggedCap, 1))._tag).toBe("Right");
     // Unlagged, the same end is inside the horizon: the lag refused it.
     expect((await recheck(laggedCap + 1, 0))._tag).toBe("Right");
-
-    const { header } = (await foreignBlockFixture()).block_body;
-    const census = (lagBlocks: number) =>
-      h.runWithoutSynchronizing(
-        Effect.either(
-          foreignEventCensus("ab".repeat(28), {
-            ...header,
-            startTime: BigInt(laggedCap - 1000),
-            endTime: BigInt(laggedCap + 1),
-          }),
-        ).pipe(
-          Effect.provideService(NodeConfig, {
-            ...h.production.nodeConfig,
-            HISTORY_COMMIT_HORIZON_LAG_BLOCKS: lagBlocks,
-          }),
-        ),
-      );
-    const held = await census(1);
-    expect(held._tag).toBe("Left");
-    expect(held._tag === "Left" && held.left).toMatchObject({
-      reason: "missing",
-      detail:
-        "The foreign event window is not yet the horizon lag below the L1 follower's covered tip",
-    });
-    expect((await census(0))._tag).toBe("Right");
   }));

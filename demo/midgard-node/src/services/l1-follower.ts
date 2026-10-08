@@ -25,6 +25,9 @@
  *   with the landed queue's tail for the watchdog, and derives this
  *   operator's membership: a removed operator is unready `operator_removed`
  *   with its duties held, and stays up.
+ * - The driver's landed-block hook (N3, `landed-blocks/`) processes each
+ *   landed block once, in queue order: an own block from its journal, a
+ *   foreign one by replay; what it cannot do yet is a named hold.
  * - The driver's forced-order hook (N10, plan §12.3) ingests the forced
  *   orders the follower projects, resolving carriage its blocks did not
  *   carry through the local node's ledger and the configured content
@@ -57,7 +60,6 @@ import {
 } from "../forced-orders/index.js";
 import {
   createFollowerDriver,
-  type DriverHold,
   EVENTS_INGESTION_FAILED,
   EVENTS_INGESTION_WAITING,
   EVENTS_ORPHAN_RECOVERY,
@@ -75,6 +77,10 @@ import {
   landedStateQueueHook,
   stateQueueProjection,
 } from "../l1-state-queue/index.js";
+import {
+  landedBlockHook,
+  nodeLandedBlockPorts,
+} from "../landed-blocks/index.js";
 import { NodeConfig } from "./config.js";
 import type { Database } from "./database.js";
 import {
@@ -85,6 +91,7 @@ import {
   withHistoryIngestion,
 } from "./event-history-producer.js";
 import { Globals } from "./globals.globals.js";
+import { coalescedRunner } from "./l1-follower.coalesced-runner.js";
 import { followerOperatorSet } from "./l1-follower.operator-set.js";
 import { l1FollowerPlan } from "./l1-follower.plan.js";
 import {
@@ -223,58 +230,6 @@ export const readyProducerSink = Effect.gen(function* () {
   return sink;
 });
 
-/** Retry delays for a held driver: capped exponential. */
-const RETRY_INITIAL_MS = 500;
-const RETRY_MAX_MS = 30_000;
-
-/**
- * Runs `run` once per trigger, coalesced: at most one run at a time and one
- * queued; a run that ends with holds is retried on a capped backoff until a
- * run clears them or `signal` aborts.
- */
-export const coalescedRunner = (
-  run: () => Promise<readonly DriverHold[]>,
-  signal: AbortSignal,
-): (() => void) => {
-  let running = false;
-  let queued = false;
-  let retryMs = RETRY_INITIAL_MS;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const trigger = (): void => {
-    if (signal.aborted) return;
-    if (timer !== undefined) {
-      clearTimeout(timer);
-      timer = undefined;
-    }
-    if (running) {
-      queued = true;
-      return;
-    }
-    running = true;
-    void run()
-      .catch(() => [{ reason: EVENTS_INGESTION_FAILED, detail: "driver run" }])
-      .then((holds) => {
-        running = false;
-        if (queued) {
-          queued = false;
-          trigger();
-          return;
-        }
-        if (holds.length === 0 || signal.aborted) {
-          retryMs = RETRY_INITIAL_MS;
-          return;
-        }
-        timer = setTimeout(trigger, retryMs);
-        timer.unref?.();
-        retryMs = Math.min(retryMs * 2, RETRY_MAX_MS);
-      });
-  };
-  signal.addEventListener("abort", () => {
-    if (timer !== undefined) clearTimeout(timer);
-  });
-  return trigger;
-};
-
 const cursorKey = (status: FollowStatus): string | null =>
   status.cursor === null
     ? null
@@ -379,7 +334,9 @@ export const startL1Follower = Effect.gen(function* () {
       `the follower store or transport did not open: ${message(opened.left.error)}`,
     );
   const { transport, store, abort } = opened.right;
-  const dbRuntime = yield* Effect.runtime<Database | NodeConfig>();
+  const dbRuntime = yield* Effect.runtime<
+    Database | NodeConfig | Globals | Lucid | ContractDeploymentIdentity
+  >();
   const operatorSet = yield* followerOperatorSet({
     store,
     config: plan.operatorSet,
@@ -415,6 +372,12 @@ export const startL1Follower = Effect.gen(function* () {
       ...(operatorSet.hook === undefined
         ? {}
         : { settlementAndOperatorSet: operatorSet.hook }),
+      foreignBlockInclusion: landedBlockHook({
+        store,
+        config: plan.stateQueue,
+        ports: nodeLandedBlockPorts({ store, events: plan.projection }),
+        run: (effect) => Runtime.runPromise(dbRuntime)(effect),
+      }),
       forcedOrderIngestion: forcedOrderIngestionHook({
         store,
         config: plan.forcedOrders,

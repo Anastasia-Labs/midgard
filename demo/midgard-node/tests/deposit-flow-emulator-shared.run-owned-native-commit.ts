@@ -5,10 +5,6 @@ import {
   promoteOrRecoverNativeMpf,
   publishCommitMempoolLedgerMutation,
 } from "../src/fibers/block-commitment.js";
-import {
-  notifyForeignNativeAdoptionRequested,
-  prepareForeignBaseForCommitment,
-} from "../src/fibers/block-commitment.prepare-foreign-base.js";
 import { HistoryProducer } from "../src/services/event-history-producer.js";
 import { Globals } from "../src/services/globals.js";
 import { Lucid, MidgardContracts, NodeConfig } from "../src/services/index.js";
@@ -21,18 +17,15 @@ import type {
 } from "./deposit-flow-emulator-shared.commit-worker-program.js";
 import type { makeLucidRuntimeService } from "./deposit-flow-emulator-shared.js";
 
-/** Follow the production parent: request foreign adoption while holding a
- * producer, then notify the source owner only after that producer exits. */
+/** Follow the production parent: build under a history producer. */
 export const runOwnedNativeCommit = (
   contracts: SDK.MidgardValidators,
   lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
   production: OwnedCommitFixture,
   input: CommitWorkerInput,
   run: (input: CommitWorkerInput) => ReturnType<typeof commitWorkerProgram>,
-  verifyForeignBase = true,
-) => {
-  let adoptionRequested = false;
-  return production.owner
+) =>
+  production.owner
     .runProducer((token, assertCurrent, coverage) =>
       Effect.gen(function* () {
         const startedAtMs = Date.now();
@@ -46,19 +39,6 @@ export const runOwnedNativeCommit = (
             native,
             input.data.availableLocalFinalizationBlock,
           ).pipe(Effect.provideService(HistoryProducer, { token, coverage }));
-        }
-        if (native !== undefined && verifyForeignBase) {
-          const prepared = yield* prepareForeignBaseForCommitment({
-            localFinalizationPending: input.data.localFinalizationPending,
-            availableConfirmedBlock: input.data.availableConfirmedBlock,
-            owner: native,
-            globals: production.globals,
-            scope: undefined,
-          });
-          if (prepared !== undefined) {
-            adoptionRequested = prepared.adoptionRequested;
-            return prepared.output;
-          }
         }
         const nativeMpf =
           native === undefined
@@ -108,10 +88,8 @@ export const runOwnedNativeCommit = (
       }).pipe(Effect.provideService(HistoryProducer, { token, coverage })),
     )
     .pipe(
-      Effect.tap(() => notifyForeignNativeAdoptionRequested(adoptionRequested)),
       Effect.provideService(Globals, production.globals),
       Effect.provideService(Lucid, lucidService as never),
       Effect.provideService(MidgardContracts, contracts as never),
       Effect.provideService(NodeConfig, production.nodeConfig),
     );
-};

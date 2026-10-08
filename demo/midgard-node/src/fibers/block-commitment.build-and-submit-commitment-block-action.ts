@@ -9,7 +9,6 @@ import {
   HistoryProducer,
   runHistoryProducer,
 } from "../services/event-history-producer.js";
-import type { ForeignBaseVerificationScope } from "../services/foreign-base-verification.js";
 import {
   Database,
   Globals,
@@ -29,12 +28,6 @@ import {
 import { WorkerError } from "../workers/utils/common.js";
 import { extendCommitmentHoldForBacklog } from "./block-commitment.commit-hold-budget.js";
 import { promoteCommitWorkerNativeResult } from "./block-commitment.native-result.js";
-import {
-  applyCommitForeignVerification,
-  beginCommitForeignVerification,
-  notifyForeignNativeAdoptionRequested,
-  prepareForeignBaseForCommitment,
-} from "./block-commitment.prepare-foreign-base.js";
 import {
   commitBlockCounter,
   commitBlockNumTxGauge,
@@ -59,7 +52,6 @@ import { registerSlotAwareDueWork } from "./slot-aware-due-work.js";
 export const buildAndSubmitCommitmentBlockAction = (
   stateQueueLeaseToken?: string,
 ) => {
-  let adoptionRequested = false;
   return Effect.gen(function* () {
     const history = yield* HistoryProducer;
     const workerStartedAt = Date.now();
@@ -76,7 +68,6 @@ export const buildAndSubmitCommitmentBlockAction = (
     let CURRENT_BLOCK_START_TIME_MS = yield* Ref.get(
       globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
     );
-    let foreignVerificationScope: ForeignBaseVerificationScope | undefined;
     let BASE_SNAPSHOT_ID: string | undefined;
     let STATE_QUEUE_HAS_UNMERGED_TAIL = false;
     if (!LOCAL_FINALIZATION_PENDING) {
@@ -88,13 +79,6 @@ export const buildAndSubmitCommitmentBlockAction = (
       AVAILABLE_CONFIRMED_BLOCK = snapshot.tailCommitBase.utxo;
       CURRENT_BLOCK_START_TIME_MS = snapshot.tailCommitBase.blockEndTimeMs;
       BASE_SNAPSHOT_ID = snapshot.snapshotId;
-      foreignVerificationScope = yield* beginCommitForeignVerification(
-        globals,
-        {
-          ...history.token,
-          baseHeaderHash: snapshot.tailCommitBase.headerHash,
-        },
-      );
       STATE_QUEUE_HAS_UNMERGED_TAIL =
         snapshot.root.outRef !== snapshot.tailCommitBase.outRef;
       const activePending = yield* PendingBlockFinalizationsDB.retrieveActive();
@@ -166,17 +150,6 @@ export const buildAndSubmitCommitmentBlockAction = (
         nativeMpfOwner,
         AVAILABLE_LOCAL_FINALIZATION_BLOCK,
       );
-    }
-    const foreignBase = yield* prepareForeignBaseForCommitment({
-      localFinalizationPending: LOCAL_FINALIZATION_PENDING,
-      availableConfirmedBlock: AVAILABLE_CONFIRMED_BLOCK,
-      owner: nativeMpfOwner,
-      globals,
-      scope: foreignVerificationScope,
-    });
-    if (foreignBase !== undefined) {
-      adoptionRequested = foreignBase.adoptionRequested;
-      return foreignBase.output;
     }
     const nativeMpfInput = yield* nativeMpfWorkerInput(
       nativeMpfOwner,
@@ -297,12 +270,6 @@ export const buildAndSubmitCommitmentBlockAction = (
       globals,
       workerOutput,
       nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
-    );
-
-    yield* applyCommitForeignVerification(
-      globals,
-      foreignVerificationScope,
-      workerOutput,
     );
 
     switch (workerOutput.type) {
@@ -426,8 +393,5 @@ export const buildAndSubmitCommitmentBlockAction = (
     }
     yield* emitQueueStateMetrics;
     return workerOutput;
-  }).pipe(
-    runHistoryProducer,
-    Effect.tap(() => notifyForeignNativeAdoptionRequested(adoptionRequested)),
-  );
+  }).pipe(runHistoryProducer);
 };

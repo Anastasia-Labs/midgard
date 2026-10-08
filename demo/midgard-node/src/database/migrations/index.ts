@@ -7,6 +7,7 @@ import foreignEventCensusSql from "./sql/0005_foreign_event_census.sql";
 import foreignNativeAdoptionSql from "./sql/0006_foreign_native_adoption.sql";
 import dropForeignTipReconciliationsSql from "./sql/0007_drop_foreign_tip_reconciliations.sql";
 import followerAdmissionIdentitySql from "./sql/0008_follower_admission_identity.sql";
+import landedBlocksSql from "./sql/0009_landed_blocks.sql";
 
 export type Migration = {
   readonly version: number;
@@ -73,6 +74,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: followerAdmissionIdentitySql,
     transactional: true,
   },
+  {
+    version: 9,
+    name: "landed_blocks",
+    checksumSha256: sha256Hex(landedBlocksSql),
+    sql: landedBlocksSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -118,9 +126,6 @@ export const APPLICATION_TABLE_NAMES = [
   "commit_build_calibration",
   "deposits_utxos",
   "forced_transaction_utxos",
-  "foreign_native_adoptions",
-  "foreign_verified_segments",
-  "foreign_confirmed_frontier",
   "withdrawal_utxos",
   "immutable",
   "mempool",
@@ -153,20 +158,18 @@ export const APPLICATION_TABLE_NAMES = [
   "event_history_authority",
   "event_history_replay_receipts",
   "event_history_cursor",
-  "event_history_census_frontier",
-  "event_history_census_blocks",
   "event_history_block_applications",
   "event_history_live_outputs",
   "event_history_incarnations",
   "event_history_l2_ledger_receipts",
   "event_history_recovery_plans",
   "follower_event_ingestion",
+  "node_landed_blocks",
+  "node_working_ledger_basis",
+  "node_confirmed_ledger_frontier",
 ] as const;
 
 export const APPLICATION_INDEX_NAMES = [
-  "uniq_foreign_native_adoption_pending",
-  "idx_foreign_native_adoption_source",
-  "idx_foreign_verified_segment_parent",
   "settlement_jobs_due",
   "settlement_jobs_generation",
   "settlement_one_pending",
@@ -209,7 +212,6 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_deposit_submission_attempts_deposit_event_id",
   "idx_deposit_submission_attempts_status_submitted_at",
   "uniq_event_history_canonical_block",
-  "uniq_event_history_census_canonical_height",
   "uniq_event_history_canonical_height",
   "uniq_event_history_incarnation_event",
   "uniq_event_history_canonical_event",
@@ -220,6 +222,7 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_withdrawal_utxos_l1_admission_tx",
   "event_history_l2_ledger_receipts_unreversed",
   "event_history_recovery_plans_prepared",
+  "uniq_node_landed_blocks_processed_parent",
 ] as const;
 
 export const migrationByVersion = new Map(

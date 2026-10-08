@@ -2,18 +2,9 @@ import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect, Option } from "effect";
 
-import * as CekProgramMaterialDB from "../database/cekProgramMaterial.js";
+import { DepositsDB, MempoolLedgerDB } from "../database/index.js";
 import {
-  DepositsDB,
-  MempoolDB,
-  MempoolLedgerDB,
-  MempoolTxDeltasDB,
-  ProcessedMempoolDB,
-  TxAdmissionsDB,
-  TxRejectionsDB,
-} from "../database/index.js";
-import {
-  DatabaseError,
+  type DatabaseError,
   sqlErrorToDatabaseError,
 } from "../database/utils/common.js";
 import * as Ledger from "../database/utils/ledger.js";
@@ -21,22 +12,25 @@ import * as Tx from "../database/utils/tx.js";
 import type { Database } from "./database.js";
 import {
   ancestorRow,
-  byteaArray,
-  confirmedRow,
   depositRow,
+  type LedgerRestoreResult,
+  REJECTIONS,
+  type WithdrawalLedgerRestore,
+} from "./state-queue-correction-ledger-restore.load-pending-txs.js";
+import {
+  byteaArray,
+  closeRejections,
+  confirmedRow,
   failure,
   hex,
   insertRows,
-  type LedgerRestoreResult,
   type LedgerRow,
   loadPendingTxs,
-  type PendingTx,
   presentOutRefs,
-  type RejectionReason,
-  REJECTIONS,
+  producedByRejections,
+  recordRejections,
   table,
-  type WithdrawalLedgerRestore,
-} from "./state-queue-correction-ledger-restore.load-pending-txs.js";
+} from "./working-ledger-recompute.js";
 
 export const restoreSpeculativeLedgerAfterCorrection = (input: {
   readonly withdrawals: readonly WithdrawalLedgerRestore[];
@@ -115,25 +109,17 @@ export const restoreSpeculativeLedgerAfterCorrection = (input: {
       });
     }
     const tainted = new Set(reopenedDepositOutRefs.keys());
-    const pendingById = new Map(
-      pending.map((tx) => [hex(tx.entry[Tx.Columns.TX_ID]), tx] as const),
-    );
-    const rejected = new Map<
-      string,
-      { tx: PendingTx; reason: RejectionReason }
-    >();
-    const reject = (tx: PendingTx, reason: RejectionReason) => {
-      rejected.set(hex(tx.entry[Tx.Columns.TX_ID]), { tx, reason });
-      for (const row of tx.produced)
-        tainted.add(hex(row[MempoolLedgerDB.Columns.OUTREF]));
-    };
-    for (let widened = true; widened; ) {
-      widened = false;
+    const rejected = yield* closeRejections({
+      pending,
+      onReject: (tx) => {
+        for (const row of tx.produced)
+          tainted.add(hex(row[MempoolLedgerDB.Columns.OUTREF]));
+      },
       // Spending closure over reopened deposit outputs.
-      for (let changed = true; changed; ) {
-        changed = false;
+      spread: (reject, done) => {
+        let changed = false;
         for (const tx of pending) {
-          if (rejected.has(hex(tx.entry[Tx.Columns.TX_ID]))) continue;
+          if (done.has(hex(tx.entry[Tx.Columns.TX_ID]))) continue;
           const spent = tx.spent.map(hex);
           if (!spent.some((outRef) => tainted.has(outRef))) continue;
           reject(
@@ -144,30 +130,9 @@ export const restoreSpeculativeLedgerAfterCorrection = (input: {
           );
           changed = true;
         }
-      }
-      if (rejected.size === 0) break;
-      // Batch closure: every co-member of an unreversed acceptance receipt.
-      const coMembers = yield* sql<{ sequence: string; tx_id: Buffer }>`
-        SELECT r.sequence::text AS sequence, ids.tx_id
-        FROM event_history_l2_ledger_receipts r, unnest(r.tx_ids) AS ids(tx_id)
-        WHERE r.reversed_at_revision IS NULL
-          AND r.tx_ids && ${pg.array(byteaArray([...rejected.values()].map(({ tx }) => tx.entry[Tx.Columns.TX_ID])))}::bytea[]
-        ORDER BY r.sequence, ids.tx_id`;
-      for (const { sequence, tx_id } of coMembers) {
-        const id = hex(tx_id);
-        if (rejected.has(id)) continue;
-        const tx = pendingById.get(id);
-        if (tx === undefined)
-          return yield* Effect.fail(
-            failure(
-              "A rejected transaction was accepted in one batch with a transaction that is no longer pending, so the batch's acceptance cannot be reversed",
-              { receipt: sequence, txId: id },
-            ),
-          );
-        reject(tx, "batch");
-        widened = true;
-      }
-    }
+        return changed;
+      },
+    });
     if (rejected.size === 0)
       return {
         restoredWithdrawalOutputs: withdrawalRows.length,
@@ -176,13 +141,7 @@ export const restoreSpeculativeLedgerAfterCorrection = (input: {
 
     const rejectedTxs = [...rejected.values()].map(({ tx }) => tx);
     const rejectedIds = rejectedTxs.map((tx) => tx.entry[Tx.Columns.TX_ID]);
-    const producedByRejected = new Map(
-      rejectedTxs.flatMap((tx) =>
-        tx.produced.map(
-          (row) => [hex(row[MempoolLedgerDB.Columns.OUTREF]), row] as const,
-        ),
-      ),
-    );
+    const producedByRejected = producedByRejections(rejected);
     const external = new Map<string, Buffer>();
     for (const tx of rejectedTxs)
       for (const outRef of tx.spent)
@@ -247,53 +206,10 @@ export const restoreSpeculativeLedgerAfterCorrection = (input: {
       restoredDepositIds.map((row) => row.source_event_id),
     );
 
-    const mempoolIds = rejectedTxs
-      .filter(({ source }) => source === "mempool")
-      .map((tx) => tx.entry[Tx.Columns.TX_ID]);
-    const processedIds = rejectedTxs
-      .filter(({ source }) => source === "processed")
-      .map((tx) => tx.entry[Tx.Columns.TX_ID]);
-    if (mempoolIds.length > 0) yield* MempoolDB.clearTxs(mempoolIds);
-    if (processedIds.length > 0) {
-      yield* ProcessedMempoolDB.clearTxs(processedIds);
-      yield* MempoolTxDeltasDB.clearTxs(processedIds);
-    }
-    const rejections = [...rejected.entries()].map(([id, { reason }]) => ({
-      txId: Buffer.from(id, "hex"),
-      ...REJECTIONS[reason],
-    }));
-    yield* TxRejectionsDB.insertMany(
-      rejections.map(({ txId, code, detail }) => ({
-        [TxRejectionsDB.Columns.TX_ID]: txId,
-        [TxRejectionsDB.Columns.REJECT_CODE]: code,
-        [TxRejectionsDB.Columns.REJECT_DETAIL]: detail,
-      })),
-    );
     // Undo the acceptance itself: the terminal admission, its address
     // history, and the batch receipts, which no longer describe a pending
     // ledger overlay (the before-images above were read from them first).
-    yield* TxAdmissionsDB.markAcceptedRejectedAfterCorrection(rejections);
-    yield* sql`DELETE FROM address_history
-      WHERE tx_id = ANY(${pg.array(byteaArray(rejectedIds))}::bytea[])`;
-    yield* sql`UPDATE event_history_l2_ledger_receipts r
-      SET reversed_at_revision = c.revision
-      FROM event_history_cursor c
-      WHERE c.binding_digest = r.binding_digest
-        AND r.reversed_at_revision IS NULL
-        AND r.tx_ids <@ ${pg.array(byteaArray(rejectedIds))}::bytea[]`;
-    const unreversed = yield* sql<{ sequence: string }>`
-      SELECT sequence::text AS sequence FROM event_history_l2_ledger_receipts
-      WHERE reversed_at_revision IS NULL
-        AND tx_ids && ${pg.array(byteaArray(rejectedIds))}::bytea[]
-      LIMIT 1`;
-    if (unreversed.length !== 0)
-      return yield* Effect.fail(
-        failure(
-          "A rejected transaction's acceptance receipt could not be reversed",
-          unreversed[0]?.sequence,
-        ),
-      );
-    yield* CekProgramMaterialDB.releaseAdmissionOwnership(rejectedIds);
+    yield* recordRejections(rejected, REJECTIONS);
     return {
       restoredWithdrawalOutputs: withdrawalRows.length,
       rejectedTransactions: rejectedIds,
