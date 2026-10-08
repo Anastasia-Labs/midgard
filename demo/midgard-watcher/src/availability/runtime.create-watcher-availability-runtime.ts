@@ -1,17 +1,17 @@
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
-import {
-  type LocalKupmiosFraudProofRawSource,
-  retainedDaAttemptsOnlyUnavailable,
-} from "@al-ft/midgard-fault-proofs";
+import { retainedDaAttemptsOnlyUnavailable } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Lucid, paymentCredentialOf } from "@lucid-evolution/lucid";
+import {
+  Lucid,
+  paymentCredentialOf,
+  type Provider,
+} from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
 import {
   assertWatcherStateQueueObservation,
   type WatcherAuthenticatedStateQueueObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
-import { WatcherLocalKupmios } from "../l1/native-reward-account.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import {
   loadWatcherSecretText,
@@ -29,6 +29,7 @@ import {
   watcherAvailabilityQueueStatus,
 } from "./action.js";
 import { createWatcherAvailabilityDeployment } from "./deployment.js";
+import type { WatcherAvailabilityL1 } from "./follower-reads.js";
 import { createWatcherAvailabilityObservation } from "./observation.js";
 import {
   deriveWatcherDaBondPoolObservation,
@@ -69,11 +70,13 @@ import {
 export const createWatcherAvailabilityRuntime = async (input: {
   config: WatcherProcessConfig;
   identity: VerifiedWatcherDeploymentIdentity;
-  rawSource: LocalKupmiosFraudProofRawSource;
-  /** Read-only payload reconstruction may follow reversible fault-proof inclusion. */
+  /** The watcher's chain follower: raw reads, and the provider every build uses. */
+  l1: WatcherAvailabilityL1 & Readonly<{ provider: Provider }>;
+  /** The verified deployment's release depth. */
+  confirmationDepth: number;
+  /** Read-only payload reconstruction may follow reversible fault-proof inclusion (the tip view). */
   faultProofObservation?: Readonly<{
-    rawSource: LocalKupmiosFraudProofRawSource;
-    currentObservation(): WatcherAuthenticatedStateQueueObservation;
+    currentObservation(): WatcherAuthenticatedStateQueueObservation | null;
   }>;
   mergedHeaders?: WatcherReleasedHeadersReader;
   proverWalletAddress: string;
@@ -93,29 +96,10 @@ export const createWatcherAvailabilityRuntime = async (input: {
    */
   onDaBondPoolReadFailure: (error: string) => void;
 }): Promise<WatcherAvailabilityRuntime> => {
-  const source = input.config.watcherConfig.l1.source;
-  if (source.sourceMode !== "local_node")
-    throw new Error("Availability actuation requires local-node authority");
-  const kupo = required(
-    source.queryServices.find(({ kind }) => kind === "kupo"),
-    "Kupo source",
-  );
-  const ogmios = required(
-    source.queryServices.find(({ kind }) => kind === "ogmios"),
-    "Ogmios source",
-  );
-  const lucid = await Lucid(
-    new WatcherLocalKupmios(kupo.endpoint, ogmios.endpoint, {
-      watcherConfig: input.config.watcherConfig,
-      binaryPath: input.config.nativeChainSyncBinaryPath,
-      timeoutMs: input.config.watcherConfig.l1.requestTimeoutMs,
-    }),
-    input.identity.network,
-    {
-      evaluator: createScalusEvaluator(),
-      slotConfig: input.config.watcherConfig.customNetwork?.slotConfig,
-    },
-  );
+  const lucid = await Lucid(input.l1.provider, input.identity.network, {
+    evaluator: createScalusEvaluator(),
+    slotConfig: input.config.watcherConfig.customNetwork?.slotConfig,
+  });
   const secret = await loadWatcherSecretText(
     input.config.availability.keySource,
   );
@@ -138,7 +122,8 @@ export const createWatcherAvailabilityRuntime = async (input: {
   );
   const intake = createWatcherAvailabilityObservation({
     identity: input.identity,
-    source: input.rawSource,
+    l1: input.l1,
+    confirmationDepth: input.confirmationDepth,
     deployment,
   });
   const publicDa = await createWatcherRetainedDaRuntime({
@@ -165,7 +150,9 @@ export const createWatcherAvailabilityRuntime = async (input: {
   const l1PayloadSource = createWatcherL1AvailabilityPayloadSource({
     identity: input.identity,
     deployment,
-    rawSource: input.faultProofObservation?.rawSource ?? input.rawSource,
+    l1: input.l1,
+    minimumConfirmationDepth:
+      input.faultProofObservation === undefined ? input.confirmationDepth : 1,
     lucid,
     currentObservation:
       input.faultProofObservation?.currentObservation ?? (() => current),
@@ -311,6 +298,8 @@ export const createWatcherAvailabilityRuntime = async (input: {
         createWatcherAvailabilityReadAttempt({
           config: input.config,
           identity: input.identity,
+          l1: input.l1,
+          confirmationDepth: input.confirmationDepth,
           deployment,
           observation,
           baseLucid: lucid,

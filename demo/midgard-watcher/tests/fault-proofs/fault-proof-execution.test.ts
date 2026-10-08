@@ -2,8 +2,8 @@ import { join } from "node:path";
 
 import {
   createWorkflowActuationPermitController,
-  LocalKupmiosCheckpointChangedError,
-  LocalKupmiosTransportUnavailableError,
+  FraudProofL1CheckpointChangedError,
+  FraudProofL1UnavailableError,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
 import { KupmiosError } from "@lucid-evolution/lucid";
@@ -133,7 +133,7 @@ describe("supervisor execution adapter with durable funding", () => {
   it("waits for a fresh observation when a typed canonical capture changes", async () => {
     const test = await setup();
     test.runOrResume.mockRejectedValueOnce(
-      new LocalKupmiosCheckpointChangedError("checkpoint changed"),
+      new FraudProofL1CheckpointChangedError("checkpoint changed"),
     );
     expect(await test.execution.execute(test.input)).toEqual({
       kind: "pending",
@@ -236,9 +236,7 @@ describe("supervisor execution adapter with durable funding", () => {
       test.fixture.initial.workflowId,
     );
     vi.mocked(test.fixture.adapter.reconcile).mockRejectedValueOnce(
-      new LocalKupmiosTransportUnavailableError(
-        "Ogmios connection unavailable",
-      ),
+      new FraudProofL1UnavailableError("the follower has no cursor yet"),
     );
     expect(await test.execution.execute(test.input)).toMatchObject({
       kind: "retryable",
@@ -325,7 +323,7 @@ describe("supervisor execution adapter with durable funding", () => {
     );
     const before = await test.fixture.records();
     test.verifyCompleted.mockRejectedValueOnce(
-      new LocalKupmiosTransportUnavailableError("HTTP 503"),
+      new FraudProofL1UnavailableError("the follower has no cursor yet"),
     );
     const request = {
       job: test.input.job,

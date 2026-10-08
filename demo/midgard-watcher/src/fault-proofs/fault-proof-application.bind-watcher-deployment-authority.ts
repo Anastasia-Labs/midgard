@@ -12,6 +12,7 @@ import {
   plainRecord,
   type WatcherFaultProofApplicationDependencies,
   type WatcherFaultProofInfrastructureAuthority,
+  type WatcherFaultProofL1,
   type WatcherHistoricalNativeScriptHistoryOverlay,
 } from "./fault-proof-application.production-dependencies.js";
 
@@ -172,7 +173,7 @@ export const readSecret = async ({
 /**
  * What binds the invocation to the verified deployment and reaches its
  * published scripts: the admitted local-node authority, the manifest,
- * blueprint and deployment info, a Lucid instance over Kupo/Ogmios and the
+ * blueprint and deployment info, a Lucid instance over the chain follower and the
  * resolver a family's roster is resolved through. It reads no secret, so the
  * startup-readiness path can prove the deployment's published scripts were
  * found without holding the prover wallet. The
@@ -187,8 +188,6 @@ type WatcherDeploymentBinding = Readonly<{
     WatcherConfig["l1"]["source"],
     { sourceMode: "local_node" }
   >;
-  kupoHttpUrl: string;
-  ogmiosUrl: string;
   lucid: LucidEvolution;
   resolveReferenceScript: WatcherWorkflowInfrastructure["resolveReferenceScript"];
 }>;
@@ -196,9 +195,11 @@ type WatcherDeploymentBinding = Readonly<{
 export const bindWatcherDeploymentAuthority = async ({
   watcherConfig,
   infrastructure,
+  l1,
   dependencies,
 }: {
   readonly watcherConfig: WatcherConfig;
+  readonly l1: WatcherFaultProofL1;
   readonly infrastructure: WatcherFaultProofInfrastructureAuthority;
   readonly dependencies: WatcherFaultProofApplicationDependencies;
 }): Promise<WatcherDeploymentBinding> => {
@@ -207,15 +208,6 @@ export const bindWatcherDeploymentAuthority = async ({
     throw new Error(
       "watcher production workflows require the admitted local-node L1 source",
     );
-  }
-  const kupo = localL1Source.queryServices.find(
-    (service) => service.kind === "kupo",
-  );
-  const ogmios = localL1Source.queryServices.find(
-    (service) => service.kind === "ogmios",
-  );
-  if (kupo === undefined || ogmios === undefined) {
-    throw new Error("watcher local-node authority omitted Kupo or Ogmios");
   }
   const [manifestPath, blueprintPath, deploymentInfoPath] = await Promise.all([
     requireCanonicalFile(infrastructure.manifestPath, dependencies),
@@ -253,16 +245,13 @@ export const bindWatcherDeploymentAuthority = async ({
   const lucid = await dependencies.makeLucid({
     network: watcherConfig.targetNetwork,
     slotConfig: watcherConfig.customNetwork?.slotConfig,
-    kupoHttpUrl: kupo.endpoint,
-    ogmiosUrl: ogmios.endpoint,
+    provider: l1.provider,
   });
   return Object.freeze({
     manifest,
     blueprintJson,
     deploymentInfo: deploymentInfoValue,
     localL1Source,
-    kupoHttpUrl: kupo.endpoint,
-    ogmiosUrl: ogmios.endpoint,
     lucid,
     resolveReferenceScript: async ({ contractName }) =>
       await dependencies.resolveReferenceScript({

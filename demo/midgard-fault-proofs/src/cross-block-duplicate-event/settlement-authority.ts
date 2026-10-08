@@ -20,11 +20,7 @@ import {
   type HistoricalNativeScriptHistorySource,
   requireHistoricalNativeScriptHistoryAuthority,
 } from "../workflow/historical-native-script-corpus.js";
-import {
-  createLocalKupmiosHttpOgmiosRawSource,
-  type LocalKupmiosHttpOgmiosSourceConfig,
-} from "../workflow/local-kupmios-http-ogmios-source.js";
-import { createLocalKupmiosFraudProofRawL1SnapshotAuthority } from "../workflow/local-kupmios-raw-l1-authority.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   admitFraudProofRawL1Snapshot,
   computeFraudProofRawL1SnapshotEvidenceDigest,
@@ -335,12 +331,12 @@ const construct = ({
 };
 export const createCrossBlockSettlementAuthority = ({
   binding,
-  source,
+  l1,
   historySource,
   checkpointStore,
 }: {
   binding: Binding;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1: FraudProofL1Source;
   historySource: HistoricalNativeScriptHistorySource;
   checkpointStore: HistoricalNativeScriptCheckpointStore;
 }) => {
@@ -352,18 +348,15 @@ export const createCrossBlockSettlementAuthority = ({
   return construct({
     binding,
     historySource,
-    raw: createLocalKupmiosFraudProofRawL1SnapshotAuthority({
-      source: createLocalKupmiosHttpOgmiosRawSource({
-        ...source,
-        releaseFinality: binding.releaseFinality,
-      }),
+    raw: l1.snapshotAuthority({
       releaseFinality: binding.releaseFinality,
+      observationDepth: "release_finality",
     }),
   });
 };
 
-/** Test-only raw Cardano transport seam. Production constructs the admitted
- * loopback Kupo/Ogmios and retained-history quorum above. All snapshot and
+/** Test-only raw Cardano transport seam. Production constructs the
+ * fault-proof L1 source and retained-history quorum above. All snapshot and
  * root admission runs identically; this seam supplies no verdict callback. */
 export const unsafeCreateCrossBlockSettlementAuthorityFromRawForTest =
   construct;

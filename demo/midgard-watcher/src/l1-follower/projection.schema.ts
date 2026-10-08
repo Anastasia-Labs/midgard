@@ -13,6 +13,18 @@ import {
   daAttestationsMigrationSql,
 } from "./projection.da-attestations.js";
 import {
+  DEPARTED_HEADERS_TEMPORAL_TABLE,
+  departedHeadersMigrationSql,
+} from "./projection.departed-headers.js";
+import {
+  FOLLOWED_UNITS_TEMPORAL_TABLES,
+  followedUnitsMigrationSql,
+} from "./projection.followed-units.js";
+import {
+  PROTOCOL_INIT_FAULTS_TEMPORAL_TABLE,
+  protocolInitFaultsMigrationSql,
+} from "./projection.protocol-init.js";
+import {
   WATCHER_QUEUE_OUTPUTS_TABLE,
   WATCHER_QUEUE_UNIT_HISTORY_TABLE,
 } from "./tables.js";
@@ -35,6 +47,9 @@ export const WATCHER_TEMPORAL_TABLES: readonly TemporalTableSpec[] = [
     retention: { kind: "closed_k_deep" },
   },
   DA_ATTESTATIONS_TEMPORAL_TABLE,
+  PROTOCOL_INIT_FAULTS_TEMPORAL_TABLE,
+  DEPARTED_HEADERS_TEMPORAL_TABLE,
+  ...FOLLOWED_UNITS_TEMPORAL_TABLES,
   ...CHECKPOINT_TEMPORAL_TABLES,
 ];
 
@@ -108,6 +123,18 @@ export const watcherMigrations = (dialect: DialectName): MigrationSet => ({
     {
       id: "0004_watcher_da_attestations",
       sql: daAttestationsMigrationSql(dialect),
+    },
+    {
+      id: "0005_watcher_protocol_init_faults",
+      sql: protocolInitFaultsMigrationSql(dialect),
+    },
+    {
+      id: "0006_watcher_departed_headers",
+      sql: departedHeadersMigrationSql(dialect),
+    },
+    {
+      id: "0007_watcher_followed_units",
+      sql: followedUnitsMigrationSql(dialect),
     },
   ],
 });

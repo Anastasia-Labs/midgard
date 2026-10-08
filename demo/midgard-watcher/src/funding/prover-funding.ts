@@ -3,20 +3,16 @@ import type { DatabaseSync } from "node:sqlite";
 import {
   computeDeploymentManifestJsonDigest,
   type DeploymentManifestCardanoProtocolParameters,
-  deriveDeploymentManifestCardanoProtocolParametersFromOgmios,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import {
-  isTransientOgmiosJsonRpcFailure,
-  OgmiosJsonRpcError,
-} from "@al-ft/midgard-core/ogmios-json-rpc-error";
-import { LocalKupmiosTransportUnavailableError } from "@al-ft/midgard-fault-proofs";
 
+import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
 import {
   assertVerifiedWatcherDeploymentIdentity,
   assertWatcherDeploymentProtocolParameterAuthority,
   type VerifiedWatcherDeploymentIdentity,
   watcherDeploymentProtocolParameterAuthority,
 } from "../runtime/deployment-identity.js";
+import { deriveDeploymentManifestCardanoProtocolParametersFromLedger } from "./prover-funding.ledger-parameters.js";
 import { createWatcherProtocolParameterHistoryStorage } from "./prover-funding-parameter-history.js";
 import {
   type WatcherProverFundingReservationRecord,
@@ -29,7 +25,7 @@ export const WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY =
 export type WatcherProtocolParameterRuntimeAuthority = Readonly<{
   schemaVersion: typeof WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY;
   deploymentFingerprint: string;
-  source: "local_ogmios" | "signed_deployment" | "authenticated_history";
+  source: "local_node" | "signed_deployment" | "authenticated_history";
   sourceEndpoint: string;
   snapshot: DeploymentManifestCardanoProtocolParameters;
   snapshotDigest: string;
@@ -52,175 +48,48 @@ export const assertWatcherProtocolParameterRuntimeAuthority = (
   }
 };
 
-const canonicalLoopbackOgmiosUrl = (value: string): string => {
-  if (value.trim() !== value) {
-    throw new Error("prover funding Ogmios URL is not canonical");
-  }
-  const parsed = new URL(value);
-  if (!/^https?:$/u.test(parsed.protocol)) {
-    throw new Error("prover funding requires Ogmios HTTP");
-  }
-  const hostname = parsed.hostname.toLowerCase();
-  if (
-    hostname !== "localhost" &&
-    hostname !== "127.0.0.1" &&
-    hostname !== "::1" &&
-    hostname !== "[::1]"
-  ) {
-    throw new Error("prover funding requires loopback Ogmios");
-  }
-  if (parsed.username !== "" || parsed.password !== "") {
-    throw new Error("prover funding Ogmios URL must not contain credentials");
-  }
-  parsed.hash = "";
-  parsed.pathname = "/";
-  parsed.search = "";
-  return parsed.toString().replace(/\/$/u, "");
-};
-
 /**
- * Throws the funding outage for a JSON-RPC `error` answer whose code says the
- * node cannot answer now (syncing, crossing an era, lost its node). Ogmios's
- * HTTP endpoint answers every JSON-RPC error with HTTP 400, so only the code
- * tells such an answer apart from a refused request; a refusal returns here
- * and stays hard at the caller.
+ * Reads the node's current parameters through `query` (the raw
+ * `protocol_params` local-state-query answer). A node that cannot answer now
+ * is the funding outage, kept as an L1 transient by its cause; an answer that
+ * does not decode stays a hard failure.
  */
-const throwIfTransientJsonRpcAnswer = (body: string): void => {
-  let value: unknown;
+const queryLiveProtocolParameters = async (
+  query: () => Promise<Uint8Array>,
+): Promise<DeploymentManifestCardanoProtocolParameters> => {
+  let bytes: Uint8Array;
   try {
-    value = JSON.parse(body) as unknown;
-  } catch {
-    return;
-  }
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !Object.prototype.hasOwnProperty.call(value, "error")
-  )
-    return;
-  const message =
-    "Current local funding parameters are temporarily unavailable";
-  const answer = new OgmiosJsonRpcError(
-    "prover funding Ogmios answered with a JSON-RPC error",
-    (value as { readonly error: unknown }).error,
-  );
-  if (!isTransientOgmiosJsonRpcFailure(answer)) return;
-  throw new WatcherProverFundingUnavailableError(message, {
-    cause: new LocalKupmiosTransportUnavailableError(message, {
-      cause: answer,
-    }),
-  });
-};
-
-const queryLiveProtocolParameters = async ({
-  endpoint,
-  timeoutMs,
-  fetchImpl,
-}: {
-  readonly endpoint: string;
-  readonly timeoutMs: number;
-  readonly fetchImpl: typeof fetch;
-}): Promise<unknown> => {
-  if (
-    !Number.isSafeInteger(timeoutMs) ||
-    timeoutMs < 100 ||
-    timeoutMs > 120_000
-  ) {
-    throw new Error("prover funding Ogmios timeout is out of bounds");
-  }
-  const id = "midgard-watcher-prover-funding-parameters-v1";
-  let response: Response;
-  let body: string;
-  try {
-    response = await fetchImpl(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "queryLedgerState/protocolParameters",
-        id,
-      }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    body = await response.text();
+    bytes = await query();
   } catch (cause) {
-    // This try covers only trusted read transport, never parsers or signers.
-    // The transport cause keeps it classified as an L1 transient as well.
-    const message =
-      "Current local funding parameters are temporarily unavailable";
-    throw new WatcherProverFundingUnavailableError(message, {
-      cause: new LocalKupmiosTransportUnavailableError(message, { cause }),
-    });
+    if (!isWatcherL1TransientFailure(cause)) throw cause;
+    throw new WatcherProverFundingUnavailableError(
+      "Current local funding parameters are temporarily unavailable",
+      { cause },
+    );
   }
-  if (!response.ok) {
-    const message = `prover funding Ogmios query failed with HTTP ${response.status.toString()}`;
-    // A busy or restarting Ogmios, not an answer about the parameters.
-    if (
-      response.status === 408 ||
-      response.status === 425 ||
-      response.status === 429 ||
-      response.status >= 500
-    )
-      throw new WatcherProverFundingUnavailableError(message, {
-        cause: new LocalKupmiosTransportUnavailableError(message),
-      });
-    throwIfTransientJsonRpcAnswer(body);
-    throw new Error(message);
-  }
-  let value: unknown;
-  try {
-    value = JSON.parse(body) as unknown;
-  } catch (cause) {
-    throw new Error("prover funding Ogmios response is not JSON", { cause });
-  }
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) {
-    throw new Error("prover funding Ogmios response is not a plain object");
-  }
-  const envelope = value as Readonly<Record<string, unknown>>;
-  throwIfTransientJsonRpcAnswer(body);
-  if (
-    envelope.jsonrpc !== "2.0" ||
-    envelope.id !== id ||
-    Object.prototype.hasOwnProperty.call(envelope, "error") ||
-    !Object.prototype.hasOwnProperty.call(envelope, "result")
-  ) {
-    throw new Error("prover funding Ogmios response identity is invalid");
-  }
-  return value;
+  return deriveDeploymentManifestCardanoProtocolParametersFromLedger(bytes);
 };
 
 const createRuntimeAuthority = async ({
   deploymentIdentity,
-  ogmiosUrl,
-  timeoutMs,
-  fetchImpl,
+  query,
 }: {
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
-  readonly ogmiosUrl: string;
-  readonly timeoutMs: number;
-  readonly fetchImpl: typeof fetch;
+  readonly query: () => Promise<Uint8Array>;
 }): Promise<WatcherProtocolParameterRuntimeAuthority> => {
   assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
   const signed =
     watcherDeploymentProtocolParameterAuthority(deploymentIdentity);
   assertWatcherDeploymentProtocolParameterAuthority(signed);
-  const endpoint = canonicalLoopbackOgmiosUrl(ogmiosUrl);
-  const live = deriveDeploymentManifestCardanoProtocolParametersFromOgmios(
-    await queryLiveProtocolParameters({ endpoint, timeoutMs, fetchImpl }),
-  );
+  const live = await queryLiveProtocolParameters(query);
   const liveDigest = computeDeploymentManifestJsonDigest(live);
   // The signed snapshot authenticates deployment-time measurements, not future
   // L1 fees. Local native startup continues to authenticate the chain identity.
   const identity = Object.freeze({
     schemaVersion: WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY,
     deploymentFingerprint: deploymentIdentity.manifestId,
-    source: "local_ogmios" as const,
-    sourceEndpoint: endpoint,
+    source: "local_node" as const,
+    sourceEndpoint: "",
     snapshot: live,
     snapshotDigest: liveDigest,
   });
@@ -230,36 +99,23 @@ const createRuntimeAuthority = async ({
   });
   admittedRuntimeAuthorities.add(authority);
   refreshRuntimeAuthorities.set(authority, () =>
-    createRuntimeAuthority({
-      deploymentIdentity,
-      ogmiosUrl,
-      timeoutMs,
-      fetchImpl,
-    }),
+    createRuntimeAuthority({ deploymentIdentity, query }),
   );
   return authority;
 };
 
+/**
+ * The live funding parameters from the watcher's node: `query` returns the
+ * raw `protocol_params` local-state-query answer (the node transport's
+ * `query({ query: "protocol_params" })`).
+ */
 export const createWatcherProtocolParameterRuntimeAuthority = async (
   input: Readonly<{
     deploymentIdentity: VerifiedWatcherDeploymentIdentity;
-    ogmiosUrl: string;
-    timeoutMs: number;
+    query: () => Promise<Uint8Array>;
   }>,
 ): Promise<WatcherProtocolParameterRuntimeAuthority> =>
-  await createRuntimeAuthority({ ...input, fetchImpl: fetch });
-
-/** Narrow transport seam. It cannot admit a structural deployment identity. */
-export const unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest =
-  async (
-    input: Readonly<{
-      deploymentIdentity: VerifiedWatcherDeploymentIdentity;
-      ogmiosUrl: string;
-      timeoutMs: number;
-      fetchImpl: typeof fetch;
-    }>,
-  ): Promise<WatcherProtocolParameterRuntimeAuthority> =>
-    await createRuntimeAuthority(input);
+  await createRuntimeAuthority(input);
 
 /** One bounded local query; transport and admission failures remain failures. */
 export const refreshWatcherProtocolParameterRuntimeAuthority = async (
@@ -365,7 +221,7 @@ export const createWatcherProtocolParameterHistory = (input: {
     rememberCapacity: (record, authority) => {
       assertWatcherProtocolParameterRuntimeAuthority(authority);
       if (
-        authority.source !== "local_ogmios" ||
+        authority.source !== "local_node" ||
         authority.deploymentFingerprint !== input.deploymentIdentity.manifestId
       )
         throw new Error(

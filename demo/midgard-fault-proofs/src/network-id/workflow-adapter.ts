@@ -18,8 +18,7 @@ import "../workflow/action-changed.js";
 import "../workflow/complete-replay.js";
 import "../workflow/deployment-manifest-binding.js";
 import "../workflow/family-l1-observation.js";
-import "../workflow/local-kupmios-http-ogmios-source.js";
-import "../workflow/local-kupmios-raw-l1-authority.js";
+import "../workflow/l1-source.js";
 import "../workflow/orchestrator.js";
 import "../workflow/raw-l1-family-derivation.js";
 import "../workflow/raw-l1-publication-observation.js";
@@ -55,7 +54,7 @@ export {
 } from "./workflow-adapter.create-manifest-bound-network-id-workflow.js";
 export {
   createNetworkIdAuthenticatedL1TerminalVerifier,
-  createNetworkIdLocalKupmiosL1ObservationPort,
+  createNetworkIdL1ObservationPort,
   createNetworkIdRawL1ObservationPort,
   type NetworkIdWorkflowAdapterConfig,
 } from "./workflow-adapter.create-network-id-raw-l1-observation-port.js";

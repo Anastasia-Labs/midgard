@@ -1,21 +1,11 @@
 import {
-  credentialToAddress,
-  scriptHashToCredential,
-} from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
-
-import {
-  createLocalKupmiosFraudProofRawL1SnapshotAuthority,
   createLocalKupmiosHttpOgmiosRawSource,
   type FraudProofRawL1Fetch,
 } from "../src/workflow/index.js";
 import {
   ANCESTOR,
-  chainPoint,
-  DEPLOYMENT,
   EARLIER,
   OgmiosBoundarySocket,
-  RELEASE,
   releaseFinality,
   response,
   TARGET,
@@ -138,72 +128,3 @@ export const sourceFixture = ({
   });
   return { source, requests, sockets, socketCreated };
 };
-
-describe("shared concrete Kupmios snapshot captures", () => {
-  it.each([false, true])(
-    "holds the complete source lifetime across concurrent captures (separate authorities: %s)",
-    async (separateAuthorities) => {
-      let releaseScan!: () => void;
-      let scanStarted!: () => void;
-      const scanPending = new Promise<void>((resolve) => {
-        releaseScan = resolve;
-      });
-      const started = new Promise<void>((resolve) => {
-        scanStarted = resolve;
-      });
-      let firstScan = true;
-      const fixture = sourceFixture({
-        beforeFetch: async (url) => {
-          if (url.includes("/matches/") && firstScan) {
-            firstScan = false;
-            scanStarted();
-            await scanPending;
-          }
-        },
-      });
-      const firstAuthority = createLocalKupmiosFraudProofRawL1SnapshotAuthority(
-        { source: fixture.source, releaseFinality },
-      );
-      const secondAuthority = separateAuthorities
-        ? createLocalKupmiosFraudProofRawL1SnapshotAuthority({
-            source: fixture.source,
-            releaseFinality,
-          })
-        : firstAuthority;
-      const request = {
-        deploymentIdentityDigest: DEPLOYMENT,
-        blueprintHash: RELEASE,
-        finalityPolicyDigest: releaseFinality.policyDigest,
-        headerHash: "11".repeat(28),
-        scopes: [
-          {
-            role: "state_queue" as const,
-            address: credentialToAddress(
-              "Preprod",
-              scriptHashToCredential("31".repeat(28)),
-            ),
-          },
-        ],
-        historyUnits: [],
-      };
-      const first = firstAuthority.capture(request);
-      await started;
-      const second = secondAuthority.capture(request);
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      const tipQueriesWhilePending = fixture.sockets.filter(
-        (socket) => socket.originIntersection,
-      ).length;
-      releaseScan();
-      const snapshots = await Promise.all([first, second]);
-      expect(tipQueriesWhilePending).toBe(1);
-      expect(snapshots[0]).toEqual(snapshots[1]);
-      // Each capture independently establishes and finally rechecks its boundary.
-      expect(
-        fixture.sockets.filter((socket) => socket.originIntersection),
-      ).toHaveLength(4);
-      expect(snapshots[0]).toMatchObject({
-        cursor: { point: chainPoint(), confirmationDepth: 30 },
-      });
-    },
-  );
-});

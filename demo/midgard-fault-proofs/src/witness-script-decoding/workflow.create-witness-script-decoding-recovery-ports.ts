@@ -23,7 +23,7 @@ import {
 } from "../workflow/family-definition.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
 import {
   captureLocallyEvaluatedTransaction,
@@ -110,7 +110,7 @@ export const createManifestBoundWitnessScriptDecodingRuntime = ({
 export type ManifestBoundWitnessScriptDecodingWorkflowConfig =
   LoadManifestBoundWitnessScriptDecodingConfig &
     Readonly<{
-      source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+      l1Source: FraudProofL1Source;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
     }>;

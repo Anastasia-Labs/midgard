@@ -23,7 +23,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { watcherProjection } from "../../src/l1-follower/projection.js";
+import {
+  watcherProjection,
+  type WatcherProjectionDeployment,
+  watcherUnitHistoryPolicies,
+} from "../../src/l1-follower/projection.js";
 import { createFollowerRawReads } from "../../src/l1-follower/raw-reads.js";
 import { ledgerOutputsFromTransport } from "../../src/l1-follower/raw-reads.ledger.js";
 import {
@@ -123,9 +127,9 @@ type Landed = Readonly<{ hashes: string[]; point: FraudProofRawL1Point }>;
  * block of the current chain (for the LocalStateQuery seam): acquirable only
  * within k of the tip, as the node's volatile window.
  */
-export const harness = async () => {
+export const harness = async (deployment: WatcherProjectionDeployment = D) => {
   const store = openSqliteFactStore({
-    ...simStoreOptions([watcherProjection(D)], K, "sqlite"),
+    ...simStoreOptions([watcherProjection(deployment)], K, "sqlite"),
     path: ":memory:",
   });
   expect((await store.start()).kind).toBe("ready");
@@ -198,7 +202,8 @@ export const harness = async () => {
   };
   const reads = (withLedger = false): FollowerRawReads =>
     createFollowerRawReads(store, {
-      stateQueuePolicyId: D.stateQueueMint,
+      stateQueuePolicyId: deployment.stateQueueMint,
+      unitHistoryPolicies: watcherUnitHistoryPolicies(deployment),
       ...(withLedger
         ? { ledgerOutputsAt: ledgerOutputsFromTransport(node) }
         : {}),

@@ -5,7 +5,10 @@ import type {
 } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import { WATCHER_DA_ATTESTATIONS_TABLE } from "./tables.js";
+import {
+  WATCHER_DA_ATTESTATIONS_TABLE,
+  WATCHER_QUEUE_OUTPUTS_TABLE,
+} from "./tables.js";
 
 export const DA_ATTESTATIONS_TEMPORAL_TABLE: TemporalTableSpec = {
   name: WATCHER_DA_ATTESTATIONS_TABLE,
@@ -46,7 +49,27 @@ const DAAT_NAME = new RegExp(
   "u",
 );
 
-/** Records the tx that created each output holding a header's DAAT. */
+/** Whether the header has a live queue node when the tx is applied (before it spends anything). */
+const headerQueued = async (
+  tx: DerivationContext["tx"],
+  header: string,
+): Promise<boolean> =>
+  (
+    await tx.query(
+      `SELECT 1 FROM ${WATCHER_QUEUE_OUTPUTS_TABLE} WHERE kind = 'node' AND header_hash = ? AND to_slot IS NULL`,
+      [Buffer.from(header, "hex")],
+    )
+  ).length > 0;
+
+/**
+ * Records the tx that created each output holding a header's DAAT, for a
+ * header that is queued when the tx applies. A DAAT is minted only against a
+ * live queue node referenced by the minting tx (the attestation policy's
+ * Init), and a header's rows close when it leaves the queue, so every row
+ * this records is closed once that header is gone. A DAAT naming a header
+ * that is not queued opens no row: no decision reads it, and an open row
+ * would pin its tx forever.
+ */
 export const recordDaAttestations = async (
   context: DerivationContext,
   entry: DerivationContext["qualified"][number],
@@ -60,7 +83,8 @@ export const recordDaAttestations = async (
       const match = DAAT_NAME.exec(name);
       if (match !== null) headers.add(match[1]!);
     }
-  for (const header of headers)
+  for (const header of headers) {
+    if (!(await headerQueued(tx, header))) continue;
     await tx.query(
       `INSERT INTO ${WATCHER_DA_ATTESTATIONS_TABLE} (header_hash, tx_hash, block_height, from_slot, to_slot) VALUES (?, ?, ?, ?, NULL)`,
       [
@@ -70,4 +94,5 @@ export const recordDaAttestations = async (
         block.point.slot,
       ],
     );
+  }
 };

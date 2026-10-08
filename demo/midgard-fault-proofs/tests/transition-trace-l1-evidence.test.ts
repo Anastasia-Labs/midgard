@@ -23,7 +23,7 @@ import {
 } from "../src/transition-trace/replay-authority.js";
 import { VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import * as historicalCorpus from "../src/workflow/historical-native-script-corpus.js";
-import { LocalKupmiosCheckpointChangedError } from "../src/workflow/local-kupmios-raw-l1-authority.js";
+import { FraudProofL1CheckpointChangedError } from "../src/workflow/l1-source.js";
 import * as rawSnapshot from "../src/workflow/raw-l1-snapshot.js";
 import {
   computeFraudProofRawL1PointId,
@@ -38,6 +38,7 @@ import {
 } from "../src/workflow/release-finality-policy.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
+import { fraudProofL1SourceForTest } from "./support/fraud-proof-l1-source.js";
 import {
   buildRetainedPlutusIdentityFixture,
   captureRetainedPlutusIdentityOrigins,
@@ -45,16 +46,6 @@ import {
 } from "./support/retained-reason-classifier.js";
 
 const transport = vi.hoisted(() => ({ raw: undefined as unknown }));
-vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
-  const actual =
-    await load<typeof import("../src/workflow/family-l1-observation.js")>();
-  return {
-    ...actual,
-    createFraudProofFamilyLocalKupmiosL1ObservationPort: () => ({
-      rawL1: transport.raw,
-    }),
-  };
-});
 
 let seed: FraudProofRawL1Snapshot;
 let retained: Awaited<ReturnType<typeof buildRetainedPlutusIdentityFixture>>;
@@ -357,7 +348,7 @@ describe("transition trace immutable L1 evidence", () => {
           },
         },
       }),
-    ).rejects.toBeInstanceOf(LocalKupmiosCheckpointChangedError);
+    ).rejects.toBeInstanceOf(FraudProofL1CheckpointChangedError);
     expect(captures).toBe(5);
   });
 
@@ -394,7 +385,7 @@ describe("transition trace immutable L1 evidence", () => {
       });
       await expect(result).rejects.toBeInstanceOf(Error);
       await expect(result).rejects.not.toBeInstanceOf(
-        LocalKupmiosCheckpointChangedError,
+        FraudProofL1CheckpointChangedError,
       );
       expect(captures).toBe(3);
     },
@@ -437,7 +428,7 @@ describe("transition trace immutable L1 evidence", () => {
       const transitionTraceEventAuthority = createTransitionTraceEventAuthority(
         {
           binding,
-          source: {} as never,
+          l1: fraudProofL1SourceForTest({ authority: () => transport.raw }),
         },
       );
       return (

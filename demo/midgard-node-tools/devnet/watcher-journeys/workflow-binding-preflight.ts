@@ -9,15 +9,20 @@ import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 import {
   createWatcherFaultProofReadinessApplication,
   decodeWatcherAuthenticationKey32,
+  deriveWatcherNativeGenesisIdentity,
   loadWatcherSecretText,
   loadWatcherVerifiedDeploymentAuthority,
   loadWatcherWorkflowFundingProfileOverlay,
   WATCHER_STARTUP_READINESS_HEADER_HASH,
+  watcherDeploymentAppliedScriptHashes,
+  watcherDeploymentProtocolScriptAuthority,
   type WatcherFaultProofStartupReadiness,
+  watcherFollowedScripts,
   type WatcherProcessConfig,
 } from "midgard-watcher";
 
 import { writeJourneyArtifact } from "./artifacts.js";
+import { openJourneyFollowerL1 } from "./journey-follower-l1.js";
 
 const sha256 = (bytes: Uint8Array | string) =>
   createHash("sha256").update(bytes).digest("hex");
@@ -44,7 +49,8 @@ const sourceIdentity = async () => {
 };
 
 /** Bind every installed runner using the same production loaders as watcher startup.
- * Reference UTxOs and ledger parameters are read from the configured provider;
+ * Reference UTxOs and ledger parameters are read through a follower of the
+ * run's node, which the binding opens beside the installed watcher's own;
  * no classification, workflow execution, signing, or native replay is started. */
 export const verifyJourneyWorkflowBindings = async (input: {
   directory: string;
@@ -88,12 +94,51 @@ export const verifyJourneyWorkflowBindings = async (input: {
       ),
     ),
   });
-  const application = createWatcherFaultProofReadinessApplication({
-    deploymentAuthority: authority,
-    infrastructure: input.config.faultProofInfrastructure,
-    historicalNativeScriptCheckpointStore: checkpointStore,
-    fundingProfileOverlay,
+  const watcherConfig = input.config.watcherConfig;
+  if (watcherConfig.l1.source.sourceMode !== "local_node")
+    throw new Error("Workflow binding requires the local-node L1 source");
+  const follower = await openJourneyFollowerL1({
+    authority: watcherDeploymentProtocolScriptAuthority(
+      authority.deploymentIdentity,
+    ),
+    followedScripts: watcherFollowedScripts({
+      contractScriptHashes: watcherDeploymentAppliedScriptHashes(
+        authority.deploymentIdentity,
+      ),
+      blueprint: JSON.parse(
+        await readFile(
+          input.config.faultProofInfrastructure.blueprintPath,
+          "utf8",
+        ),
+      ),
+    }),
+    node: {
+      binaryPath: input.config.nativeChainSyncBinaryPath,
+      socketPath: watcherConfig.l1.source.chainSync.socketPath,
+      networkMagic: (
+        await deriveWatcherNativeGenesisIdentity({ watcherConfig })
+      ).networkMagic,
+    },
+    origin: watcherConfig.l1.origin,
+    automaticRecoveryMaxDepth:
+      watcherConfig.l1.finality.rollback.postFinalityRecoveryMaxDepth,
+    storeDirectory: input.directory,
   });
+  let application: ReturnType<
+    typeof createWatcherFaultProofReadinessApplication
+  >;
+  try {
+    application = createWatcherFaultProofReadinessApplication({
+      l1: follower.l1,
+      deploymentAuthority: authority,
+      infrastructure: input.config.faultProofInfrastructure,
+      historicalNativeScriptCheckpointStore: checkpointStore,
+      fundingProfileOverlay,
+    });
+  } catch (cause) {
+    await follower.close();
+    throw cause;
+  }
   const receipts: {
     category: string;
     outcome: "passed" | "failed";
@@ -197,5 +242,6 @@ export const verifyJourneyWorkflowBindings = async (input: {
     throw cause;
   } finally {
     await application.close();
+    await follower.close();
   }
 };

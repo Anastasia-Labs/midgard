@@ -2,8 +2,6 @@ import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { type WatcherLocalKupmiosNativeObservation } from "../l1/local-kupmios-native-observation.js";
-import type { WatcherNativeBlockAdmission } from "../l1/native-block-admission.js";
 import { watcherSameCanonicalJson } from "../storage/durable-store.js";
 
 export const WATCHER_AUTHENTICATED_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION =
@@ -115,44 +113,6 @@ export type WatcherStateQueueHeaderObservation = Readonly<{
   finalityDepth: string;
 }>;
 
-export type WatcherStateQueueObservationSource = Readonly<{
-  /** Ephemeral exact finalized point, including blocks with no queue transition. */
-  latestFinalizedObservation?(): WatcherAuthenticatedStateQueueObservation | null;
-  /** Volatile inclusion view; it must never be appended to the finalized store. */
-  observeIncluded?(
-    input: Readonly<{
-      nativeBlock: WatcherNativeBlockAdmission;
-      localObservation: WatcherLocalKupmiosNativeObservation;
-      previous: WatcherAuthenticatedStateQueueObservation;
-    }>,
-  ): Promise<WatcherAuthenticatedStateQueueObservation>;
-  observe(
-    input: Readonly<{
-      nativeBlock: WatcherNativeBlockAdmission;
-      localObservation: WatcherLocalKupmiosNativeObservation;
-      previous: WatcherAuthenticatedStateQueueObservation | null;
-    }>,
-  ): Promise<WatcherAuthenticatedStateQueueObservation | null>;
-  bootstrap(): Promise<WatcherStateQueueRecovery>;
-  restore(
-    input: Readonly<{
-      persistedObservations: readonly unknown[];
-    }>,
-  ): Promise<WatcherStateQueueRecovery>;
-  resolveRetainedHeader(
-    input: Readonly<{ headerHash: string }>,
-  ): Promise<WatcherStateQueueHeaderObservation>;
-  /**
-   * Headers of `observation` that left the L1 queue at release finality,
-   * merged into confirmed state or removed, by hash.
-   */
-  resolveMergedHeaders?(
-    input: Readonly<{
-      observation: WatcherAuthenticatedStateQueueObservation;
-    }>,
-  ): Promise<ReadonlyMap<string, WatcherReleasedHeaderProof>>;
-}>;
-
 /** L1 evidence that a queued header was merged into confirmed state. */
 export type WatcherMergedHeaderProof = Readonly<{
   headerHash: string;
@@ -188,26 +148,6 @@ export type WatcherRemovedHeaderProof = Readonly<{
 export type WatcherReleasedHeaderProof =
   | WatcherMergedHeaderProof
   | WatcherRemovedHeaderProof;
-
-export type WatcherStateQueueRecovery = Readonly<{
-  previous: WatcherAuthenticatedStateQueueObservation;
-  /** Newest durable records rejected by raw-L1 prefix re-admission. */
-  discardedObservationCount: number;
-  replayIntersection: Readonly<{
-    blockHash: string;
-    blockNo: string;
-    slot: string;
-    chainPointId: string;
-  }>;
-  catchupBoundary: Readonly<{
-    blockHash: string;
-    blockNo: string;
-    slot: string;
-    chainPointId: string;
-    finalityDepth: string;
-    ogmiosTipBlockNo: string;
-  }>;
-}>;
 
 export const admittedObservations = new WeakSet<object>();
 
@@ -355,3 +295,20 @@ export const parsePersistedHeader = (
     return null;
   }
 };
+
+/**
+ * The retained HeaderV1 exists on L1 but none of its authenticated queue
+ * outputs carries a public DA attachment yet. The committee attests a block
+ * after the operator commits it, so a successor can reach classification
+ * before its predecessor's attestation is included. This is a wait
+ * condition for the classifier, not a divergence, and it clears on its own
+ * once the attestation transaction is included.
+ */
+export class WatcherRetainedHeaderAttestationPendingError extends Error {
+  constructor(readonly headerHash: string) {
+    super(
+      "retained HeaderV1 lookup requires an authenticated public DA attachment",
+    );
+    this.name = "WatcherRetainedHeaderAttestationPendingError";
+  }
+}

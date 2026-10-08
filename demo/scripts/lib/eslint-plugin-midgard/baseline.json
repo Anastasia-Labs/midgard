@@ -1351,7 +1351,9 @@
     },
     "midgard-watcher/src/availability/observation.ts": {
       "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
-      "sites": ["BigInt(observation.nativePoint.finalityDepth) <"]
+      "sites": [
+        "BigInt(observation.nativePoint.finalityDepth) < BigInt(confirmationDepth)"
+      ]
     },
     "midgard-watcher/src/availability/published-payload.ts": {
       "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",

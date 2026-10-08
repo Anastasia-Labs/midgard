@@ -144,7 +144,7 @@ const fixture = (category: AssembledFamilyCategory) => {
     observe: vi.fn(),
   };
   const observe = vi
-    .spyOn(observations, "createFraudProofFamilyLocalKupmiosL1ObservationPort")
+    .spyOn(observations, "createFraudProofFamilyL1ObservationPort")
     .mockReturnValue(l1 as never);
   const withField = vi.spyOn(fieldCarriage, "withFieldCarriagePrerequisite");
   const withChunks = vi.spyOn(proofChunks, "withProofChunkPrerequisite");
@@ -162,7 +162,7 @@ const fixture = (category: AssembledFamilyCategory) => {
         "fieldPreimageCertificateMint",
       )!,
     },
-    source: {},
+    l1Source: {},
     auxiliaryReferenceScripts: Object.fromEntries(
       Object.entries(definition.auxiliaryReferenceScripts ?? {}).map(
         ([role, contractName]) => [role, references.get(contractName)!],

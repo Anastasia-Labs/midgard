@@ -117,7 +117,7 @@ import {
 } from "./family-application-registry.resolve-roster-parts.js";
 import { type FamilyCategory } from "./family-definition.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "./l1-source.js";
 
 /**
  * Derives the record of a cursor family that binds the admitted decision
@@ -329,7 +329,7 @@ export type AuthenticatedCertificateFamilyConfig = Readonly<{
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   referenceScripts: Readonly<{

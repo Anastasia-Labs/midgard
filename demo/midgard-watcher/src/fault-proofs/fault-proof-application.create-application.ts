@@ -14,16 +14,13 @@ import {
   createHeaderClassifier,
   createHistoricalNativeScriptHistorySource,
   createHistoricalNativeScriptProviderRoster,
-  createLocalKupmiosFraudProofRawL1SnapshotAuthority,
-  createLocalKupmiosHttpOgmiosRawSource,
   FAMILY_APPLICATION_REGISTRY,
   type FamilyValidationChallengePort,
+  FraudProofL1CheckpointChangedError,
   type HeaderDecision,
   headerDecisionReplayContext,
   installWorkflowApplicationRegistry,
   journalJsonDigest,
-  LocalKupmiosCheckpointChangedError,
-  LocalKupmiosExactPointNotCanonicalError,
   normalizeJournalJson,
   requireHistoricalNativeScriptHistoryAuthority,
   resolveFamilyApplicationReferences,
@@ -81,6 +78,7 @@ import {
   buildCommonInfrastructure,
   predecessorObservationForClassifier,
   type WatcherFaultProofApplicationWithLoaderForTest,
+  watcherFaultProofSourceId,
 } from "./fault-proof-application.build-common-infrastructure.js";
 import {
   WATCHER_FAULT_PROOF_APPLICATION,
@@ -123,6 +121,7 @@ export function createApplication({
   }
   const deploymentIdentity = options.deploymentIdentity;
   assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
+  const l1 = options.l1;
   const deploymentAuthority = options.deploymentAuthority;
   const replayTranscriptStore = options.replayTranscriptStore;
   const userEventRuntime = options.userEventRuntime;
@@ -282,6 +281,7 @@ export function createApplication({
         historicalNativeScriptAuthority,
         replayContexts,
         validationChallenge,
+        l1,
         dependencies,
         environment: environmentSnapshot,
       }),
@@ -317,20 +317,6 @@ export function createApplication({
   const loadClassifier = (watcherConfigValue: unknown, headerHash: string) => {
     classifierPromise ??= (async () => {
       const watcherConfig = parseWatcherConfig(watcherConfigValue);
-      if (watcherConfig.l1.source.sourceMode !== "local_node")
-        throw new Error(
-          "cross-block settlement authority requires local-node source",
-        );
-      const kupo = watcherConfig.l1.source.queryServices.find(
-        (service) => service.kind === "kupo",
-      );
-      const ogmios = watcherConfig.l1.source.queryServices.find(
-        (service) => service.kind === "ogmios",
-      );
-      if (kupo === undefined || ogmios === undefined)
-        throw new Error(
-          "cross-block settlement authority requires Kupo and Ogmios",
-        );
       const [manifestJson, blueprintJson, deploymentInfoJson] =
         await Promise.all(
           [
@@ -360,12 +346,9 @@ export function createApplication({
         throw new Error("cross-block settlement classifier changed deployment");
       const settlementAuthority = createCrossBlockSettlementAuthority({
         binding,
-        source: {
-          sourceId: `watcher-settlement-history/${deploymentIdentity.manifestId}`,
-          kupoHttpUrl: kupo.endpoint,
-          ogmiosUrl: ogmios.endpoint,
-          timeoutMs: watcherConfig.l1.requestTimeoutMs,
-        },
+        l1: l1.source(
+          `watcher-settlement-history/${deploymentIdentity.manifestId}`,
+        ),
         historySource: historicalNativeScriptAuthority.historySource,
         checkpointStore: historicalNativeScriptAuthority.checkpointStore,
       });
@@ -386,12 +369,9 @@ export function createApplication({
       const transitionTraceEventAuthority = createTransitionTraceEventAuthority(
         {
           binding: transitionBinding,
-          source: {
-            sourceId: `watcher-transition-events/${deploymentIdentity.manifestId}`,
-            kupoHttpUrl: kupo.endpoint,
-            ogmiosUrl: ogmios.endpoint,
-            timeoutMs: watcherConfig.l1.requestTimeoutMs,
-          },
+          l1: l1.source(
+            `watcher-transition-events/${deploymentIdentity.manifestId}`,
+          ),
         },
       );
       await watcherDeploymentReleaseFinalityAuthority(
@@ -402,8 +382,7 @@ export function createApplication({
       const lucid = await dependencies.makeLucid({
         network: watcherConfig.targetNetwork,
         slotConfig: watcherConfig.customNetwork?.slotConfig,
-        kupoHttpUrl: kupo.endpoint,
-        ogmiosUrl: ogmios.endpoint,
+        provider: l1.provider,
       });
       const proverSecret = await readSecret({
         source: watcherConfig.proverWallet.keySource,
@@ -696,6 +675,7 @@ export function createApplication({
       const { resolveReferenceScript } = await bindWatcherDeploymentAuthority({
         watcherConfig,
         infrastructure,
+        l1,
         dependencies,
       });
       const { referenceScriptOutRefs } =
@@ -735,14 +715,6 @@ export function createApplication({
         throw new Error(
           "completed workflow verification requires local-node authority",
         );
-      const kupo = config.l1.source.queryServices.find(
-        ({ kind }) => kind === "kupo",
-      );
-      const ogmios = config.l1.source.queryServices.find(
-        ({ kind }) => kind === "ogmios",
-      );
-      if (kupo === undefined || ogmios === undefined)
-        throw new Error("completed workflow authority omitted Kupo or Ogmios");
       const binding = await bindFraudProofTerminalDeployment({
         manifest: JSON.parse(manifestJson!),
         blueprintJson: blueprintJson!,
@@ -764,25 +736,18 @@ export function createApplication({
         throw new Error(
           "completed workflow changed its verified deployment release",
         );
-      const source = createLocalKupmiosHttpOgmiosRawSource({
-        sourceId: [
-          "watcher-fault-proof",
-          input.category,
-          deploymentIdentity.manifestId,
-          config.l1.source.authorityNodeId,
-          config.l1.source.chainSync.genesisIdentitySha256,
-        ].join("/"),
-        kupoHttpUrl: kupo.endpoint,
-        ogmiosUrl: ogmios.endpoint,
-        timeoutMs: config.l1.requestTimeoutMs,
-        releaseFinality: binding.releaseFinality,
-        observationDepth: "inclusion",
-      });
-      const authority = createLocalKupmiosFraudProofRawL1SnapshotAuthority({
-        source,
-        releaseFinality: binding.releaseFinality,
-        observationDepth: "inclusion",
-      });
+      const authority = l1
+        .source(
+          watcherFaultProofSourceId({
+            category: input.category,
+            manifestId: deploymentIdentity.manifestId,
+            localL1Source: config.l1.source,
+          }),
+        )
+        .snapshotAuthority({
+          releaseFinality: binding.releaseFinality,
+          observationDepth: "inclusion",
+        });
       try {
         return await verifyCompletedWatcherReplayTranscriptWorkflow({
           ...(replayTranscriptStore === undefined
@@ -795,10 +760,7 @@ export function createApplication({
           decisionDigest: input.decisionDigest,
         });
       } catch (error) {
-        if (
-          error instanceof LocalKupmiosCheckpointChangedError ||
-          error instanceof LocalKupmiosExactPointNotCanonicalError
-        )
+        if (error instanceof FraudProofL1CheckpointChangedError)
           return { kind: "pending", reason: "checkpoint_changed" };
         throw error;
       }

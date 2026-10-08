@@ -10,9 +10,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   WATCHER_DA_ATTESTATIONS_TABLE,
+  WATCHER_DEPARTED_HEADERS_TABLE,
+  WATCHER_PROTOCOL_INIT_FAULTS_TABLE,
   WATCHER_QUEUE_CHECKPOINTS_TABLE,
   WATCHER_QUEUE_OUTPUTS_TABLE,
   WATCHER_QUEUE_UNIT_HISTORY_TABLE,
+  WATCHER_UNIT_CARRIERS_TABLE,
+  WATCHER_UNIT_HISTORY_TABLE,
   watcherProjection,
 } from "../../src/l1-follower/projection.js";
 import { SIM_WATCHER_DEPLOYMENT } from "../support/l1-follower-state-queue-traffic.js";
@@ -29,7 +33,10 @@ const PROJECTION_SOURCES = [
   "src/l1-follower/checkpoints.ts",
   "src/l1-follower/checkpoints.read.ts",
   "src/l1-follower/projection.schema.ts",
+  "src/l1-follower/projection.followed-units.ts",
   "src/l1-follower/projection.da-attestations.ts",
+  "src/l1-follower/projection.departed-headers.ts",
+  "src/l1-follower/projection.protocol-init.ts",
   "src/l1-follower/raw-reads.ts",
   "src/l1-follower/raw-reads.types.ts",
   "src/l1-follower/reads.ts",
@@ -42,7 +49,7 @@ const PROJECTION_SOURCES = [
 ];
 
 describe("watcher projection lints (F2 schema, F4 determinism)", () => {
-  it("declares four class D-t tables, registered as temporal, on both dialects", () => {
+  it("declares eight class D-t tables, registered as temporal, on both dialects", () => {
     const registry = createTemporalRegistry(projection.temporalTables);
     for (const dialect of ["postgres", "sqlite"] as const) {
       const sets = [projection.migrations(dialect)];
@@ -57,6 +64,10 @@ describe("watcher projection lints (F2 schema, F4 determinism)", () => {
         [WATCHER_QUEUE_UNIT_HISTORY_TABLE, "D-t"],
         [WATCHER_QUEUE_CHECKPOINTS_TABLE, "D-t"],
         [WATCHER_DA_ATTESTATIONS_TABLE, "D-t"],
+        [WATCHER_PROTOCOL_INIT_FAULTS_TABLE, "D-t"],
+        [WATCHER_DEPARTED_HEADERS_TABLE, "D-t"],
+        [WATCHER_UNIT_CARRIERS_TABLE, "D-t"],
+        [WATCHER_UNIT_HISTORY_TABLE, "D-t"],
       ]);
     }
   });

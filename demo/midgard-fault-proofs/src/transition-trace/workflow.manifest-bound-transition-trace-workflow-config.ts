@@ -11,7 +11,7 @@ import {
   type HistoricalNativeScriptHistorySource,
 } from "../workflow/historical-native-script-corpus.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { type TransitionDepositOpening } from "./history-opening.js";
 import { captureTransitionTraceL1Events } from "./l1-events.js";
 import { type TransitionProofInput } from "./proof-material.js";
@@ -70,7 +70,7 @@ export type ManifestBoundTransitionTraceWorkflowConfig = Readonly<{
   signer: ResolvedProverSigner;
   /** Every family step/yield and shared mint witness is published before Init. */
   referenceScripts: Readonly<Record<string, UTxO>>;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
   historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;

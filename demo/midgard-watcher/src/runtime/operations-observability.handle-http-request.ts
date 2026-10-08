@@ -27,6 +27,7 @@ export const handleWatcherOperationsHttpRequest = async (
       return jsonResponse(ready ? 200 : 503, {
         ready,
         reasons: status.readinessReasons,
+        l1: status.l1Readiness,
       });
     }
     if (url.pathname === "/v1/status" && url.search === "") {

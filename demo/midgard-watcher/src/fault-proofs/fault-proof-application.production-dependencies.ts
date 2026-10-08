@@ -13,7 +13,6 @@ import {
   type HistoricalNativeScriptHistorySource,
   type HistoricalNativeScriptProviderRoster,
   type HistoricalNativeScriptSourceRoster,
-  makeLucidForSubmit,
   parseContractDeploymentInfo,
   requireDeploymentReferenceScript,
   resolveProverSigner,
@@ -23,12 +22,18 @@ import {
   type WorkflowAdapterRunnerInput,
   type WorkflowApplicationRegistry,
 } from "@al-ft/midgard-fault-proofs";
+import { type FraudProofL1Source } from "@al-ft/midgard-fault-proofs";
 import {
   type AuthenticatedStateQueueHeaderObservation,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
-import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import {
+  Lucid,
+  type LucidEvolution,
+  type Provider,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
 import { type WatcherWorkflowFundingProfileOverlay } from "../funding/workflow-funding-profile-overlay.js";
 import {
@@ -130,7 +135,18 @@ export type WatcherFaultProofInfrastructureAuthority = Readonly<{
   historicalNativeScriptHistory: WatcherHistoricalNativeScriptHistoryOverlay;
 }>;
 
+/**
+ * The application's L1: the watcher's chain follower. `source` is the
+ * families' raw-read and signed-recovery source under one persisted source
+ * id; `provider` is the Lucid provider every binding builds through.
+ */
+export type WatcherFaultProofL1 = Readonly<{
+  source(sourceId: string): FraudProofL1Source;
+  provider: Provider;
+}>;
+
 export type WatcherFaultProofApplicationOptions = Readonly<{
+  l1: WatcherFaultProofL1;
   deploymentAuthority: VerifiedWatcherDeploymentAuthority;
   replayTranscriptStore: WatcherReplayTranscriptStore;
   userEventRuntime: WatcherUserEventRuntime;
@@ -229,8 +245,7 @@ export type WatcherFaultProofApplicationDependencies = Readonly<{
   canonicalPath(path: string): Promise<string>;
   makeLucid(input: {
     readonly network: WatcherConfig["targetNetwork"];
-    readonly kupoHttpUrl: string;
-    readonly ogmiosUrl: string;
+    readonly provider: Provider;
     readonly slotConfig?: NonNullable<
       WatcherConfig["customNetwork"]
     >["slotConfig"];
@@ -256,16 +271,11 @@ export const productionDependencies: WatcherFaultProofApplicationDependencies =
   Object.freeze({
     readText: async (path) => await readFile(path, "utf8"),
     canonicalPath: realpath,
-    makeLucid: async ({ network, kupoHttpUrl, ogmiosUrl, slotConfig }) =>
-      await makeLucidForSubmit(
-        {
-          network,
-          provider: "Kupmios",
-          slotConfig,
-          kupoUrl: kupoHttpUrl,
-          ogmiosUrl,
-        },
-        Object.freeze({}),
+    makeLucid: async ({ network, provider, slotConfig }) =>
+      await Lucid(
+        provider,
+        network,
+        slotConfig === undefined ? {} : { slotConfig },
       ),
     resolveSigner: ({ network, secret }) =>
       resolveProverSigner(

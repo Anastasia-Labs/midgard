@@ -20,8 +20,8 @@ import type {
   HistoricalNativeScriptProviderRoster,
 } from "./historical-native-script-corpus.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
+import type { FraudProofL1Source } from "./l1-source.js";
 import type { LinearFamilyCategory } from "./linear-family-spec.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowTerminalVerifier,
@@ -76,7 +76,7 @@ export type FamilyCommonInfrastructure = Readonly<{
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   /** The admitted decision this invocation acts on, when there is one. */
   decisionDigest?: string;

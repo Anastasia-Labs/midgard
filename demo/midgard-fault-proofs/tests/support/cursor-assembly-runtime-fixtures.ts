@@ -17,7 +17,7 @@ export const cursorAssemblyRuntimeFixture = ({
   readonly config: {
     readonly lucid: unknown;
     readonly signer: unknown;
-    readonly source: unknown;
+    readonly l1Source: unknown;
     readonly stateQueueMutationLeaseCoordinator: unknown;
     readonly referenceScripts: {
       readonly steps: readonly UTxO[];
@@ -59,7 +59,7 @@ export const cursorAssemblyRuntimeFixture = ({
     deployment,
     lucid: config.lucid,
     signer: config.signer,
-    source: config.source,
+    l1Source: config.l1Source,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
     config: {

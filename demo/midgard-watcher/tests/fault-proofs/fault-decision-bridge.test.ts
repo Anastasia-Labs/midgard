@@ -1,6 +1,3 @@
-import "node:fs/promises";
-import "node:path";
-import "node:sqlite";
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec/hash";
 import "@al-ft/midgard-fault-proofs";
@@ -11,29 +8,19 @@ import "../../src/fault-proofs/fault-decision-bridge.js";
 import "../../src/fault-proofs/fault-proof-application.js";
 import "../../src/indexers/authenticated-state-queue-observation.js";
 import "../../src/runtime/operations-observability.js";
-import "../../src/runtime/state-queue-runtime.js";
 import "./fault-decision-bridge.observation.js";
 import "./fault-decision-bridge.harness.js";
 
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-
-import {
-  authenticatedStateQueueObservationDigest,
-  LocalKupmiosCheckpointChangedError,
-} from "@al-ft/midgard-fault-proofs";
+import { LocalKupmiosCheckpointChangedError } from "@al-ft/midgard-fault-proofs";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
-import type { WatcherPersistedFaultDecisionRecord } from "../../src/fault-proofs/fault-decision-journal.js";
 import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import {
   type WatcherAuthenticatedStateQueueObservation,
   WatcherRetainedHeaderAttestationPendingError,
 } from "../../src/indexers/authenticated-state-queue-observation.js";
 import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
-import { createWatcherStateQueueRuntime } from "../../src/runtime/state-queue-runtime.js";
 import { harness } from "./fault-decision-bridge.harness.js";
 import {
   decision,
@@ -1290,161 +1277,3 @@ describe("production fault decision bridge", () => {
     );
   });
 });
-
-const retainedRunDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
-
-it.skipIf(retainedRunDirectory === undefined).each(["pending", "forward"])(
-  "retains the exact admitted target through %s follower hooks restored from retained queue snapshots",
-  async (mode) => {
-    const config = JSON.parse(
-      await readFile(
-        join(
-          retainedRunDirectory!,
-          "work/journeys/transition-trace/watcher-process.json",
-        ),
-        "utf8",
-      ),
-    );
-    const database = new DatabaseSync(config.watcherConfig.storage.path, {
-      readOnly: true,
-    });
-    let snapshots: WatcherAuthenticatedStateQueueObservation[];
-    try {
-      snapshots = database
-        .prepare(
-          "SELECT canonical_json FROM watcher_state_queue_observation_v1 ORDER BY sequence",
-        )
-        .all()
-        .map((row) => {
-          if (typeof row.canonical_json !== "string")
-            throw new Error("missing retained queue snapshot");
-          return JSON.parse(
-            row.canonical_json,
-          ) as WatcherAuthenticatedStateQueueObservation;
-        });
-    } finally {
-      database.close();
-    }
-    const current = snapshots.at(-1);
-    if (current === undefined)
-      throw new Error("retained replay requires queue snapshots");
-    const directory = join(config.workflowJournalDirectory, "fault-decisions");
-    const records: WatcherPersistedFaultDecisionRecord[] = await Promise.all(
-      (await readdir(directory))
-        .filter((file) => file.endsWith(".json"))
-        .sort()
-        .map(
-          async (file) =>
-            JSON.parse(
-              await readFile(join(directory, file), "utf8"),
-            ) as WatcherPersistedFaultDecisionRecord,
-        ),
-    );
-    const byHeader = new Map(
-      records.map((record) => [record.decision.headerHash, record.decision]),
-    );
-    let pending = new Set<string>();
-    let latest = current;
-    const h = harness({
-      current,
-      categoryByHeader: Object.fromEntries(
-        current.finalizedHeaders.map((row) => [
-          row.headerHash,
-          "transitionTrace",
-        ]),
-      ),
-      observationDigestOverride: authenticatedStateQueueObservationDigest,
-      pendingAvailabilityHeaders: () => pending,
-      classifyOverride: (value) => {
-        const found = byHeader.get(value.headerHash);
-        if (found === undefined) throw new Error("missing retained decision");
-        return found;
-      },
-      decisionUsesLocalEventHistory: mode === "pending",
-    });
-    const first = await h.bridge.prepareForRecovery(current);
-    if (first.target === null)
-      throw new Error("retained run has no admitted fault");
-    await h.bridge.recoverExisting();
-    const point = current.nativePoint;
-    const restore = vi.fn(async () => ({
-      previous: current,
-      discardedObservationCount: 0,
-      replayIntersection: point,
-      catchupBoundary: { ...point, ogmiosTipBlockNo: point.blockNo },
-    }));
-    const append = vi.fn(async () => "appended" as const);
-    const runtime = await createWatcherStateQueueRuntime({
-      store: {
-        readAll: async () => snapshots,
-        append,
-        rollbackTo: async () => undefined,
-      },
-      source: {
-        restore,
-        bootstrap: async () => {
-          throw new Error("must restore retained snapshots");
-        },
-        observe: async () => current,
-        latestFinalizedObservation: () => latest,
-        resolveRetainedHeader: async () => {
-          throw new Error("no new classification required");
-        },
-      },
-    });
-    const reconcileAvailability = vi.fn(async () => {
-      pending =
-        mode === "pending"
-          ? new Set([first.target!.headerHash])
-          : new Set<string>();
-    });
-    const hooks = runtime.bindFaultDecisionBridge(h.bridge, {
-      reconcile: reconcileAvailability,
-      invalidateForRollback: () => {
-        pending = new Set();
-      },
-    });
-    const callbacks = mode === "pending" ? 3 : 300;
-    for (let index = 0; index < callbacks; index += 1) {
-      if (mode === "forward") {
-        latest = {
-          ...current,
-          observationDigest: index.toString(16).padStart(64, "0"),
-          nativePoint: {
-            ...point,
-            blockNo: (BigInt(point.blockNo) + BigInt(index + 1)).toString(),
-            slot: (BigInt(point.slot) + BigInt(index + 1)).toString(),
-          },
-        };
-        h.admitted.add(latest);
-      }
-      h.bridge.beforeHistoryAdvance();
-      await Promise.resolve();
-      await hooks.onFinalized!({
-        nativeBlock: {} as never,
-        localObservation: {} as never,
-        relevance: "touched",
-      });
-    }
-    expect(restore).toHaveBeenCalledWith({ persistedObservations: snapshots });
-    expect(append).not.toHaveBeenCalled();
-    expect(reconcileAvailability).toHaveBeenCalledTimes(callbacks);
-    if (mode === "forward") {
-      expect(
-        h.application.classifyHeader.mock.calls.filter(
-          ([input]) =>
-            input.observation.headerHash === first.target!.headerHash,
-        ),
-      ).toHaveLength(1);
-      expect(h.application.classifyHeader).toHaveBeenCalledTimes(302);
-    }
-    expect(h.controllerGenerations).toEqual(["1"]);
-    expect(h.restrictions).toEqual([]);
-    expect(h.bridge.status().target).toEqual(first.target);
-    expect(h.retainedDecisionAuthorities.at(-1)).toBe(
-      first.target.decisionDigest,
-    );
-    h.bridge.invalidateForRollback();
-    expect(h.revocations).toEqual(["native_chain_rollback"]);
-  },
-);

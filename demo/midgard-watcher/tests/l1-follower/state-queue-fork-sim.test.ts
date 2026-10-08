@@ -25,8 +25,8 @@ import { createChainFollower } from "../support/l1-follower-chain-oracle.js";
 import {
   SIM_DA_ATTESTATION_ADDRESS,
   SIM_WATCHER_DEPLOYMENT,
-  stateQueueTraffic,
 } from "../support/l1-follower-state-queue-traffic.js";
+import { stateQueueTraffic } from "../support/l1-follower-state-queue-traffic.scenario.js";
 import {
   type Coverage,
   coverage,

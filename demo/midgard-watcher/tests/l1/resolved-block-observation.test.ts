@@ -17,7 +17,6 @@ import {
 import { CML } from "@lucid-evolution/lucid";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createWatcherStateQueueObservationSource } from "../../src/indexers/authenticated-state-queue-observation.js";
 import type { WatcherLocalKupmiosNativeObservation } from "../../src/l1/local-kupmios-native-observation.js";
 import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
 import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync.js";
@@ -349,18 +348,6 @@ describe("shared resolved block observation owner", () => {
         observation,
       ).rawBlock.transactions.map(({ txHash }) => txHash),
     ).toEqual(current.input.nativeBlock.transactionIds);
-  });
-
-  it("does not change queue candidate filtering when an ordinary block has no queue transition", async () => {
-    const current = await fixture();
-    const source = createWatcherStateQueueObservationSource(
-      current.sourceInput,
-    );
-    await expect(
-      source.observe({ ...current.input, previous: null }),
-    ).resolves.toBeNull();
-    expect(readAdmittedLocalKupmiosRawBlockAtPoint).toHaveBeenCalledTimes(1);
-    expect(readAdmittedLocalKupmiosRawTransaction).not.toHaveBeenCalled();
   });
 
   it("refuses copied sources, local authority and observation handles", async () => {

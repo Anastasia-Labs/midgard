@@ -105,27 +105,30 @@ describe("isolated availability parameter refresh", () => {
     }
   });
 
-  it("caps every fresh provider request at the shrinking shared remainder and refuses late results", async () => {
+  it("runs every provider request inside the attempt scope and refuses late results", async () => {
     let now = 1000;
     const backing = new Emulator([]);
     const protocol = await backing.getProtocolParameters();
-    const caps: number[] = [];
+    let reads = 0;
+    const read = backing.getProtocolParameters.bind(backing);
+    backing.getProtocolParameters = async () => {
+      reads += 1;
+      return await read();
+    };
     const scope = createDaAvailabilityReadScope({
       deadlineEpochMs: 1100,
       attemptTimeoutMs: 1000,
       nowMs: () => now,
       monotonicMs: () => now,
     });
-    const provider = watcherAvailabilityAttemptProvider(scope, 1000, (cap) => {
-      caps.push(cap);
-      return backing;
-    });
+    const provider = watcherAvailabilityAttemptProvider(scope, backing);
     try {
       await provider.getProtocolParameters();
       now += 60;
       await provider.getProtocolParameters();
-      expect(caps).toEqual([100, 40]);
+      expect(reads).toBe(2);
       backing.getProtocolParameters = async () => {
+        reads += 1;
         now += 40;
         return protocol;
       };
@@ -135,7 +138,7 @@ describe("isolated availability parameter refresh", () => {
       await expect(provider.getProtocolParameters()).rejects.toThrow(
         "deadline 1100 reached",
       );
-      expect(caps).toEqual([100, 40, 40]);
+      expect(reads).toBe(3);
       await expect(provider.submitTx("00")).rejects.toThrow("cannot submit");
     } finally {
       scope.close();

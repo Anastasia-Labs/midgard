@@ -8,8 +8,4 @@ import "../../src/indexers/authenticated-state-queue-observation.js";
 import "../../src/runtime/deployment-identity.js";
 import "../../src/storage/durable-store.js";
 import "../support/deployment-authority-fixture.js";
-import "./authenticated-state-queue-observation.fixture.js";
-import "./authenticated-state-queue-observation.append-fixture.js";
-import "./authenticated-state-queue-observation.availability-timeout-fixture.js";
 import "./authenticated-state-queue-observation.availability-lock-witness.js";
-import "./authenticated-state-queue-observation.production-state-queue-observation-source.js";

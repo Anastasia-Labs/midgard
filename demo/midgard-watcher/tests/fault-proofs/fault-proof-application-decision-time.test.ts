@@ -48,6 +48,7 @@ import {
   makeWatcherDeploymentAuthorityFixture,
   WATCHER_HISTORY_FIXTURE_BOUNDS,
 } from "../support/deployment-authority-fixture.js";
+import { testFaultProofL1 } from "./fault-proof-application.raw-config.js";
 
 /**
  * The classifier module is the double here; everything watcher-side runs for
@@ -515,6 +516,7 @@ describe("watcher decision-time predecessor ledger", () => {
     deps = dependencies();
     application = unsafeCreateWatcherFaultProofApplicationForTest(
       {
+        l1: testFaultProofL1(),
         deploymentIdentity: AUTHORITY.result,
         historicalNativeScriptCheckpointStore:
           unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest(),

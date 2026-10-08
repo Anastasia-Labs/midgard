@@ -18,7 +18,7 @@ import type {
   HistoricalNativeScriptHistorySource,
 } from "../workflow/historical-native-script-corpus.js";
 import { resolveHistoricalNativeScriptCorpus } from "../workflow/historical-native-script-corpus.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { type ExecutionNativeScriptInvalidContracts } from "./contracts.js";
 import { detectExecutionNativeScriptInvalidCanonicalViolations } from "./replay.js";
 import {
@@ -40,7 +40,7 @@ export const EXECUTION_NATIVE_SCRIPT_INVALID_CONFIG_KEYS = Object.freeze([
   "headerHash",
   "lucid",
   "signer",
-  "source",
+  "l1Source",
   "historicalNativeScriptCheckpointStore",
   "historicalNativeScriptHistorySource",
   "stateQueueMutationLeaseCoordinator",
@@ -103,7 +103,7 @@ export type ManifestBoundExecutionNativeScriptInvalidWorkflowConfig = Readonly<{
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
   historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
@@ -115,7 +115,7 @@ export type ManifestBoundExecutionNativeScriptInvalidWorkflow = Readonly<{
   binding: FraudProofWorkflowDeploymentBinding<"executionNativeScriptInvalid">;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
   historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;

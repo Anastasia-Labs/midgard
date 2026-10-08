@@ -154,7 +154,7 @@ it("retries without a progress reporter too", async () => {
     .mockResolvedValueOnce(7);
   await expect(
     createWatcherStartupProgress(undefined, () => 1)(
-      "state_queue_recovery",
+      "user_event_runtime",
       action,
     ),
   ).resolves.toBe(7);
@@ -164,10 +164,8 @@ it("retries without a progress reporter too", async () => {
 it.each([
   [
     "a genuine refusal in a retried stage",
-    "state_queue_recovery",
-    new Error(
-      "state-queue retained prefix changed after durable suffix revocation",
-    ),
+    "user_event_runtime",
+    new Error("user-event archive changed after durable suffix revocation"),
   ],
   [
     "an L1 transient in an identity stage",

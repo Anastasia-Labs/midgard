@@ -17,12 +17,12 @@ import type {
   PreimageCarriageRequirement,
 } from "./field-carriage-prerequisite.js";
 import type { JournalJsonObject } from "./journal.js";
+import type { FraudProofL1Source } from "./l1-source.js";
 import type { LinearFamilyTransactionPort } from "./linear-family-adapter.js";
 import {
   type LinearFamilyCategory,
   type LinearFamilySpecOf,
 } from "./linear-family-spec.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import type { FraudProofRawL1FamilyDefinition } from "./raw-l1-family-derivation.js";
 import type { FraudProofRawL1SnapshotAuthority } from "./raw-l1-snapshot.js";
@@ -136,7 +136,7 @@ export type ManifestBoundFamilyWorkflowConfig<
   >;
   /** Family-specific published scripts, keyed by the definition's role names. */
   auxiliaryReferenceScripts?: Readonly<Record<string, UTxO>>;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  l1Source: FraudProofL1Source;
   replayContext?: CompleteCanonicalReplayContext;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
@@ -175,7 +175,8 @@ export type FamilyAssemblyContext<
   references: FamilyReferenceScripts<Category, Witness, Certificate, StepCount>;
   /** Exact manifest-bound scripts declared in addition to steps and witnesses. */
   auxiliaryReferences: Readonly<Record<string, UTxO>>;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  /** The L1 source the port below reads; families build further reads on it. */
+  l1Source: FraudProofL1Source;
   /** Shared handles used by both the transaction port and adapter decorators. */
   fieldCarriagePrerequisites: readonly FieldCarriagePrerequisitePort<Category>[];
   l1: FraudProofFamilyL1ObservationPort<Category> & {

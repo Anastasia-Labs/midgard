@@ -15,7 +15,6 @@
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
 import type { OutRef } from "@al-ft/midgard-l1-follower";
 import type {
-  ScenarioTraffic,
   SimChain,
   SimOutput,
   SimTx,
@@ -55,14 +54,14 @@ export const SIM_HUB_ORACLE_ONE_SHOT: OutRef = {
   index: 0,
 };
 
-const outsideInput = (n: number): OutRef => {
+export const outsideInput = (n: number): OutRef => {
   const txHash = Buffer.alloc(32, 0x02);
   txHash[0] = 0xef;
   txHash.writeUInt32BE(n, 28);
   return { txHash, index: 0 };
 };
 
-const scriptAddress = (hash: string): Buffer =>
+export const scriptAddress = (hash: string): Buffer =>
   Buffer.concat([Buffer.of(0x70), Buffer.from(hash, "hex")]);
 
 const asset = (
@@ -94,6 +93,8 @@ const redeemer = (value: SDK.StateQueueRedeemer) => [
 /** The protocol-init tx: hub oracle (0), Idle CorrectionLock (1), queue root (2). */
 export const initTx = (
   deployment: WatcherProjectionDeployment = SIM_WATCHER_DEPLOYMENT,
+  /** Where the root output goes (the state-queue address unless set). */
+  rootAddress: Buffer = scriptAddress(deployment.stateQueueSpend),
 ): SimTx => {
   const { stateQueueMint: sq, hubOracleMint: hub } = deployment;
   return {
@@ -112,7 +113,7 @@ export const initTx = (
         datum: datum(Data.to("Idle", SDK.CorrectionLockDatum)),
       },
       {
-        address: scriptAddress(deployment.stateQueueSpend),
+        address: rootAddress,
         lovelace: 2_000_000n,
         assets: asset([[sq, SDK.STATE_QUEUE_ROOT_ASSET_NAME]]),
         datum: datum(
@@ -173,12 +174,15 @@ export const headerOf = (
 export const queueState = (
   chain: SimChain,
   deployment: WatcherProjectionDeployment = SIM_WATCHER_DEPLOYMENT,
+  /** Where the init tx put the root, when not at the state-queue address. */
+  rootAddress?: Buffer,
 ): QueueState | null => {
   const sqAddress = scriptAddress(deployment.stateQueueSpend);
   const live = chain.live();
   const queue = live.filter(
     (utxo) =>
-      utxo.output.address.equals(sqAddress) &&
+      (utxo.output.address.equals(sqAddress) ||
+        rootAddress?.equals(utxo.output.address) === true) &&
       unitOf(utxo, deployment.stateQueueMint) !== null,
   );
   const lock = live.find(
@@ -319,15 +323,79 @@ export const attestTx = (
   };
 };
 
-/** Burns a header's DAAT and re-outputs its node unchanged (a stand-in Apply). */
+/** The header a stray attestation names: never queued by any branch. */
+export const strayHeader = (n: number): string =>
+  computeHash28(Buffer.from(`stray-${n.toString()}`)).toString("hex");
+
+/** Mints a DAAT naming a header that was never queued. */
+export const strayAttestTx = (
+  n: number,
+  deployment: WatcherProjectionDeployment = SIM_WATCHER_DEPLOYMENT,
+): SimTx => ({
+  inputs: [outsideInput(n % 64)],
+  outputs: [
+    {
+      address: SIM_DA_ATTESTATION_ADDRESS,
+      lovelace: 2_000_000n,
+      assets: asset([[deployment.daAttestationMint, daatName(strayHeader(n))]]),
+      datum: datum(Data.to(strayHeader(n))),
+    },
+  ],
+  mint: asset([[deployment.daAttestationMint, daatName(strayHeader(n))]]),
+  nonce: 970_000 + n,
+});
+
+/** The node output with its DA status set to Attested (a stand-in commitment). */
+const attestedNode = (node: SimUtxo, headerHash: string): SimOutput => {
+  const assetName = `${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${headerHash}`;
+  const view = SDK.linkedListDatumToNodeView(
+    Data.from(
+      (node.output.datum as Buffer).toString("hex"),
+      SDK.LinkedListDatum,
+    ),
+    assetName,
+  );
+  const data = Data.castFrom(
+    view.data,
+    SDK.StateQueueNode,
+  ) as SDK.StateQueueNode;
+  const attested: SDK.StateQueueNode = {
+    ...data,
+    da_attestation: {
+      Attested: {
+        commitment_hash: computeHash28(Buffer.from(headerHash, "hex"))
+          .toString("hex")
+          .padEnd(64, "0"),
+      },
+    },
+  };
+  return {
+    ...node.output,
+    datum: datum(
+      Data.to(
+        SDK.nodeViewToLinkedListDatum({
+          ...view,
+          data: Data.castTo(attested, SDK.StateQueueNode),
+        }),
+        SDK.LinkedListDatum,
+      ),
+    ),
+  };
+};
+
+/**
+ * Burns a header's DAAT and re-outputs its node (a stand-in Apply):
+ * unchanged, or with its DA status set to Attested.
+ */
 export const applyTx = (
   node: SimUtxo,
   attestation: SimUtxo,
   headerHash: string,
   deployment: WatcherProjectionDeployment = SIM_WATCHER_DEPLOYMENT,
+  attestNode = false,
 ): SimTx => ({
   inputs: [node.outRef, attestation.outRef],
-  outputs: [node.output],
+  outputs: [attestNode ? attestedNode(node, headerHash) : node.output],
   mint: new Map([
     [deployment.daAttestationMint, new Map([[daatName(headerHash), -1n]])],
   ]),
@@ -389,78 +457,5 @@ export const mergeTx = (
       },
     }),
     nonce: nonceOf(first.outRef) + 2,
-  };
-};
-
-/** Plain ADA paid to the queue or lock address by a stranger: never a queue output. */
-const strangerTx = (
-  n: number,
-  deployment: WatcherProjectionDeployment,
-): SimTx => ({
-  inputs: [outsideInput(n % 64)],
-  outputs: [
-    {
-      address: scriptAddress(
-        n % 2 === 0
-          ? deployment.stateQueueSpend
-          : deployment.correctionLockSpend,
-      ),
-      lovelace: 3_000_000n,
-    },
-  ],
-  nonce: 950_000 + n,
-});
-
-/**
- * Per block: the init tx while there is no queue, else (with probability
- * `commitChance`) one append on the live tail; sometimes a stranger payment.
- */
-export const stateQueueTraffic = (
-  options: Readonly<{
-    deployment?: WatcherProjectionDeployment;
-    commitChance?: number;
-    strangerChance?: number;
-    /** Attest the tail, or apply a live attestation. */
-    attestChance?: number;
-    /** Merge the oldest header while three or more are queued. */
-    mergeChance?: number;
-  }> = {},
-): ScenarioTraffic => {
-  const deployment = options.deployment ?? SIM_WATCHER_DEPLOYMENT;
-  let strangers = 0;
-  return ({ chain, rng, claim }) => {
-    const txs: SimTx[] = [];
-    const state = queueState(chain, deployment);
-    if (state === null) {
-      if (rng.chance(0.5)) txs.push(initTx(deployment));
-    } else {
-      if (
-        state.length >= 4 &&
-        rng.chance(options.mergeChance ?? 0) &&
-        claim((state.ordered[0] as SimUtxo).outRef) &&
-        claim((state.ordered[1] as SimUtxo).outRef)
-      )
-        txs.push(mergeTx(state, deployment));
-      if (rng.chance(options.attestChance ?? 0)) {
-        const applicable = state.ordered.find((node) => {
-          const header = headerOf(node, deployment);
-          return header !== null && state.attestations.has(header);
-        });
-        if (applicable !== undefined) {
-          const header = headerOf(applicable, deployment) as string;
-          const attestation = state.attestations.get(header) as SimUtxo;
-          if (claim(applicable.outRef) && claim(attestation.outRef))
-            txs.push(applyTx(applicable, attestation, header, deployment));
-        } else if (state.tailHeaderHash !== null)
-          txs.push(attestTx(state, deployment));
-      }
-      if (rng.chance(options.commitChance ?? 0.5) && claim(state.tail.outRef))
-        txs.push(commitTx(state, deployment));
-    }
-    if (rng.chance(options.strangerChance ?? 0.1)) {
-      txs.push(strangerTx(strangers, deployment));
-      strangers += 1;
-    }
-    return txs;
   };
 };

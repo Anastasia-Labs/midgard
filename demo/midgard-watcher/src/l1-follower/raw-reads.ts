@@ -29,7 +29,10 @@ import {
   parseOutRefLabel,
   resolveRawUtxoIn,
 } from "./reads.js";
-import { WATCHER_QUEUE_UNIT_HISTORY_TABLE } from "./tables.js";
+import {
+  WATCHER_QUEUE_UNIT_HISTORY_TABLE,
+  WATCHER_UNIT_HISTORY_TABLE,
+} from "./tables.js";
 
 /**
  * The fraud-proof raw L1 reads, answered from the follower's facts and the
@@ -141,7 +144,9 @@ const hex = (value: unknown): string =>
 
 /**
  * The follower-backed raw reads for one store. `stateQueuePolicyId` names
- * the node units whose history the watcher projection records;
+ * the node units whose history the watcher projection records, and
+ * `unitHistoryPolicies` the policies whose units' histories it records
+ * (`watcherUnitHistoryPolicies`);
  * `ledgerOutputsAt` is the node's ledger state (absent: inputs resolve from
  * stored bodies only).
  */
@@ -149,6 +154,7 @@ export const createFollowerRawReads = (
   store: FactStore,
   options: Readonly<{
     stateQueuePolicyId: string;
+    unitHistoryPolicies?: ReadonlySet<string>;
     ledgerOutputsAt?: LedgerOutputsAt;
   }>,
 ): FollowerRawReads => {
@@ -257,7 +263,10 @@ export const createFollowerRawReads = (
     point,
   ) => {
     const match = nodeUnit.exec(unit);
-    if (match === null)
+    const followed =
+      /^[0-9a-f]{56}(?:[0-9a-f]{2}){0,32}$/u.test(unit) &&
+      (options.unitHistoryPolicies?.has(unit.slice(0, 56)) ?? false);
+    if (match === null && !followed)
       return refused(
         "unit_not_projected",
         `no projection records the history of unit ${unit}`,
@@ -265,13 +274,18 @@ export const createFollowerRawReads = (
     const block = await canonicalBlock(store, point);
     if (block.kind !== "ok") return block;
     const rows = await store.transaction("read", (tx) =>
-      tx.query(
-        `SELECT tx_hash, block_hash, block_height, from_slot FROM ${WATCHER_QUEUE_UNIT_HISTORY_TABLE} WHERE header_hash = ? AND from_slot <= ? ORDER BY from_slot, tx_hash`,
-        [Buffer.from(match[1]!, "hex"), block.value.slot],
-      ),
+      match !== null
+        ? tx.query(
+            `SELECT tx_hash, block_hash, block_height, from_slot FROM ${WATCHER_QUEUE_UNIT_HISTORY_TABLE} WHERE header_hash = ? AND from_slot <= ? ORDER BY from_slot, tx_hash`,
+            [Buffer.from(match[1]!, "hex"), block.value.slot],
+          )
+        : tx.query(
+            `SELECT tx_hash, block_hash, block_height, from_slot FROM ${WATCHER_UNIT_HISTORY_TABLE} WHERE unit = ? AND from_slot <= ? ORDER BY from_slot, tx_hash`,
+            [Buffer.from(unit, "hex"), block.value.slot],
+          ),
     );
-    // A header's rows go once its removal is k deep: after any pruning, no
-    // rows may be a history that was pruned.
+    // A unit's rows go once its removal (or burn) is k deep: after any
+    // pruning, no rows may be a history that was pruned.
     if (rows.length === 0 && (await prunedSinceOrigin(store)) !== null)
       return refused(
         "beyond_retention",

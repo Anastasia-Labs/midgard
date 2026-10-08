@@ -123,12 +123,9 @@ export {
 } from "./indexers/attestation-timeout-observation.js";
 export {
   assertWatcherStateQueueObservation,
-  createWatcherStateQueueObservationSource,
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherCorrectionLockObservation,
   type WatcherStateQueueHeaderObservation,
-  type WatcherStateQueueObservationSource,
-  type WatcherStateQueueRecovery,
 } from "./indexers/authenticated-state-queue-observation.js";
 export {
   makeWatcherStateQueueHeader,
@@ -268,6 +265,7 @@ export {
   WATCHER_NATIVE_BLOCK_ADMISSION_SCHEMA_VERSION,
   type WatcherNativeBlockAdmission,
 } from "./l1/native-block-admission.js";
+export { deriveWatcherNativeGenesisIdentity } from "./l1/native-chain-sync.derive-watcher-native-genesis-identity.js";
 export {
   parseWatcherNativeChainSyncEvent,
   startWatcherNativeChainSync,
@@ -349,11 +347,10 @@ export {
   type WatcherRollbackTransition,
 } from "./l1/rollback-engine.js";
 export {
-  createWatcherChainCoordinator,
-  unsafeCreateWatcherChainCoordinatorForTest,
-  WATCHER_CHAIN_COORDINATOR_SCHEMA_VERSION,
-  type WatcherChainCoordinator,
-} from "./runtime/chain-coordinator.js";
+  openWatcherDeploymentFollower,
+  type WatcherDeploymentFollower,
+  watcherFollowedScripts,
+} from "./l1-follower/deployment-follower.js";
 export {
   parseWatcherConfig,
   parseWatcherConfigJson,
@@ -391,6 +388,7 @@ export {
   WATCHER_DEPLOYMENT_PROTOCOL_SCRIPT_AUTHORITY_SCHEMA_VERSION,
   WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
   WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
+  watcherDeploymentAppliedScriptHashes,
   type WatcherDeploymentIdentityDiagnostic,
   watcherDeploymentIdentityDiagnostic,
   WatcherDeploymentIdentityError,
@@ -464,11 +462,6 @@ export {
   type WatcherCommand,
   type WatcherCommandIo,
 } from "./runtime/scaffold.js";
-export {
-  createWatcherStateQueueRuntime,
-  WATCHER_STATE_QUEUE_RUNTIME_SCHEMA_VERSION,
-  type WatcherStateQueueRuntime,
-} from "./runtime/state-queue-runtime.js";
 export * from "./runtime/trusted-head-authority.js";
 export {
   createWatcherTrustedHeadClientRuntime,
@@ -477,9 +470,15 @@ export {
   type WatcherTrustedHeadClientRuntime,
 } from "./runtime/trusted-head-runtime.js";
 export {
+  createWatcherDecisionDriver,
   createWatcherRuntime,
   mintWatcherProverFundingReservationPermit,
+  WATCHER_DECISION_PASS_FAILED,
+  WATCHER_RELEASE_OBSERVATION_PENDING,
   WATCHER_RUNTIME_SCHEMA_VERSION,
+  WATCHER_USER_EVENT_HISTORY_UNAVAILABLE,
+  type WatcherDecisionDriver,
+  type WatcherDecisionReadiness,
   type WatcherProverFundingUtxoProvider,
   type WatcherRuntime,
 } from "./runtime/watcher-runtime.js";

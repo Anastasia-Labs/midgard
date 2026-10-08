@@ -17,12 +17,10 @@ import type {
   JournalJsonObject,
 } from "../workflow/journal.js";
 import {
-  createLocalKupmiosHttpOgmiosRawSource,
-  type LocalKupmiosHttpOgmiosSourceConfig,
-  readAdmittedLocalKupmiosSignedTransactionRecovery,
-  rebroadcastAdmittedLocalKupmiosSignedTransaction,
-} from "../workflow/local-kupmios-http-ogmios-source.js";
-import { createLocalKupmiosFraudProofRawL1SnapshotAuthority } from "../workflow/local-kupmios-raw-l1-authority.js";
+  type FraudProofL1Source,
+  fraudProofSignedTransactionRecovery,
+  withFraudProofL1Recovery,
+} from "../workflow/l1-source.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofWorkflowTerminalVerifier,
@@ -45,7 +43,6 @@ import {
 } from "../workflow/raw-l1-snapshot.js";
 import type { VerifiedFraudProofReleaseEconomicsPolicy } from "../workflow/release-economics-policy.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "../workflow/release-finality-policy.js";
-import { type SignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
 import type { NetworkIdContracts } from "./contracts.js";
 import type { NetworkIdCatalogueCategory } from "./submit-common.js";
 import {
@@ -174,59 +171,32 @@ export const createNetworkIdRawL1ObservationPort = ({
   };
 };
 
-/** Concrete loopback Kupo HTTP + Ogmios WS production construction. */
-export const createNetworkIdLocalKupmiosL1ObservationPort = ({
-  source,
+/** Production construction over the fault-proof L1 source. */
+export const createNetworkIdL1ObservationPort = ({
+  l1,
   releaseFinality,
   releaseEconomics,
   definition,
 }: {
-  readonly source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  readonly l1: FraudProofL1Source;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
   readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
   readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: "networkId";
   };
-}): NetworkIdRawL1ObservationPort => {
-  const rawSource = createLocalKupmiosHttpOgmiosRawSource({
-    ...source,
-    releaseFinality,
-    observationDepth: "inclusion",
-  });
-  const port = createNetworkIdRawL1ObservationPort({
-    authority: createLocalKupmiosFraudProofRawL1SnapshotAuthority({
-      source: rawSource,
+}): NetworkIdRawL1ObservationPort =>
+  withFraudProofL1Recovery(
+    createNetworkIdRawL1ObservationPort({
+      authority: l1.snapshotAuthority({
+        releaseFinality,
+        observationDepth: "inclusion",
+      }),
       releaseFinality,
-      observationDepth: "inclusion",
+      releaseEconomics,
+      definition,
     }),
-    releaseFinality,
-    releaseEconomics,
-    definition,
-  });
-  const recovery = {
-    observeSignedTransaction: (input: SignedWorkflowTransaction) =>
-      readAdmittedLocalKupmiosSignedTransactionRecovery({
-        ...input,
-        source: rawSource,
-      }),
-    rebroadcastSignedTransaction: (
-      input: SignedWorkflowTransaction & {
-        readonly authorizeResubmission: (
-          input: SignedWorkflowTransaction,
-        ) => Promise<void>;
-      },
-    ) =>
-      rebroadcastAdmittedLocalKupmiosSignedTransaction({
-        ...input,
-        source: rawSource,
-      }),
-  };
-  return Object.freeze({
-    ...port,
-    ...recovery,
-    publications: Object.freeze({ ...port.publications, ...recovery }),
-  });
-};
+    fraudProofSignedTransactionRecovery(l1, releaseFinality),
+  );
 
 /** Independent second raw-L1 observation for terminal admission. */
 export const createNetworkIdAuthenticatedL1TerminalVerifier = (

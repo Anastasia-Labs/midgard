@@ -1,10 +1,17 @@
+import {
+  CborTag,
+  encodeCbor,
+  TransportTimeoutError,
+  TransportUnavailableError,
+} from "@al-ft/l1-node-transport";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   assertWatcherProtocolParameterRuntimeAuthority,
+  createWatcherProtocolParameterRuntimeAuthority,
   refreshWatcherProtocolParameterRuntimeAuthority,
-  unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest,
 } from "../../src/funding/prover-funding.js";
+import { deriveDeploymentManifestCardanoProtocolParametersFromLedger } from "../../src/funding/prover-funding.ledger-parameters.js";
 import { WatcherProverFundingUnavailableError } from "../../src/funding/prover-funding-reservation.js";
 import { isWatcherL1TransientFailure } from "../../src/l1/transient-failure.js";
 import { retryWatcherL1Transient } from "../../src/l1/transient-retry.js";
@@ -12,33 +19,16 @@ import {
   makeWatcherDeploymentAuthorityFixture,
   WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
 } from "../support/deployment-authority-fixture.js";
+import {
+  ledgerParameterQuery,
+  ledgerProtocolParameters,
+} from "../support/ledger-protocol-parameters.js";
 
-const ogmiosParameters = (minFeeCoefficient = 44) => ({
-  minFeeCoefficient,
-  minFeeConstant: { ada: { lovelace: 155381 } },
-  scriptExecutionPrices: { memory: "577/10000", cpu: "721/10000000" },
-  minUtxoDepositCoefficient: 4310,
-  collateralPercentage: 150,
-  maxCollateralInputs: 3,
-  maxTransactionSize: { bytes: 16384 },
-  maxValueSize: { bytes: 5000 },
-  maxExecutionUnitsPerTransaction: {
-    memory: 16_500_000,
-    cpu: 10_000_000_000,
-  },
-  minFeeReferenceScripts: {
-    base: 15,
-    range: 25_600,
-    multiplier: 1.2,
-  },
-  maxReferenceScriptsSizePerTransaction: { bytes: 204_800 },
-});
-
-const response = (id: string, result: unknown): Response =>
-  new Response(JSON.stringify({ jsonrpc: "2.0", id, result }), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
+const create = (
+  query: () => Promise<Uint8Array>,
+  deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result,
+) =>
+  createWatcherProtocolParameterRuntimeAuthority({ deploymentIdentity, query });
 
 describe("production prover protocol-parameter authority V1", () => {
   it("isolates mutable deployment-authority fixture clones around one admitted base", () => {
@@ -69,29 +59,16 @@ describe("production prover protocol-parameter authority V1", () => {
     expect(first.result).toBe(second.result);
   });
 
-  it("binds the signed snapshot to an exact live loopback Ogmios response", async () => {
+  it("binds the live parameters to the node's protocol_params answer", async () => {
     const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
-    const fetchImpl = vi.fn(
-      async (_url: string | URL | Request, init?: RequestInit) => {
-        const request = JSON.parse(String(init?.body)) as {
-          readonly id: string;
-        };
-        return response(request.id, ogmiosParameters());
-      },
-    ) as unknown as typeof fetch;
+    const query = vi.fn(ledgerParameterQuery());
 
-    const authority =
-      await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
-        deploymentIdentity,
-        ogmiosUrl: "http://127.0.0.1:1337",
-        timeoutMs: 10_000,
-        fetchImpl,
-      });
+    const authority = await create(query, deploymentIdentity);
 
+    expect(query).toHaveBeenCalledTimes(1);
     expect(authority).toMatchObject({
       deploymentFingerprint: deploymentIdentity.manifestId,
-      source: "local_ogmios",
-      sourceEndpoint: "http://127.0.0.1:1337",
+      source: "local_node",
       snapshot: WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
       snapshotDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
       authorityDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
@@ -107,202 +84,182 @@ describe("production prover protocol-parameter authority V1", () => {
     ).toThrow("not admitted");
   });
 
-  it("accepts legitimate parameter updates while rejecting remote sources and structural deployment identities", async () => {
+  it("accepts legitimate parameter updates while rejecting structural deployment identities", async () => {
     const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
-    const fetchImpl = vi.fn(
-      async (_url: string | URL | Request, init?: RequestInit) => {
-        const request = JSON.parse(String(init?.body)) as {
-          readonly id: string;
-        };
-        return response(request.id, ogmiosParameters(45));
-      },
-    ) as unknown as typeof fetch;
-    const invoke = (
-      overrides: Partial<{
-        deploymentIdentity: typeof deploymentIdentity;
-        ogmiosUrl: string;
-      }> = {},
-    ) =>
-      unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
-        deploymentIdentity: overrides.deploymentIdentity ?? deploymentIdentity,
-        ogmiosUrl: overrides.ogmiosUrl ?? "http://127.0.0.1:1337",
-        timeoutMs: 10_000,
-        fetchImpl,
-      });
-
-    const updated = await invoke();
+    const updated = await create(
+      ledgerParameterQuery({ minFeeA: 45n }),
+      deploymentIdentity,
+    );
     expect(updated.snapshot.minFeeA).toBe("45");
     expect(updated.snapshotDigest).not.toBe(
-      (
-        await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
-          deploymentIdentity,
-          ogmiosUrl: "http://127.0.0.1:1337",
-          timeoutMs: 10_000,
-          fetchImpl: vi.fn(async (_url, init) => {
-            const request = JSON.parse(String(init?.body)) as { id: string };
-            return response(request.id, ogmiosParameters());
-          }) as unknown as typeof fetch,
-        })
-      ).snapshotDigest,
+      (await create(ledgerParameterQuery(), deploymentIdentity)).snapshotDigest,
     );
     await expect(
-      invoke({ ogmiosUrl: "https://provider.example/ogmios" }),
-    ).rejects.toThrow("loopback");
-    await expect(
-      invoke({ deploymentIdentity: { ...deploymentIdentity } }),
+      create(ledgerParameterQuery(), { ...deploymentIdentity }),
     ).rejects.toThrow("invalid_field");
   });
 
-  it("types an Ogmios that is down or busy as an L1 transient, so startup waits and then binds once", async () => {
+  it("types a node that is down or restarting as an L1 transient, so startup waits and then binds once", async () => {
     const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
-    const outages: (() => Response)[] = [
+    const outages: (() => never)[] = [
       () => {
-        throw new DOMException("The operation timed out.", "TimeoutError");
+        throw new TransportUnavailableError(
+          "sidecar_starting",
+          "the sidecar is starting",
+        );
       },
       () => {
-        throw new TypeError("fetch failed", {
-          cause: Object.assign(new Error("connect ECONNREFUSED"), {
-            code: "ECONNREFUSED",
-          }),
-        });
+        throw new TransportUnavailableError(
+          "node_unreachable",
+          "connect ECONNREFUSED",
+        );
       },
-      () => new Response("starting", { status: 503 }),
+      () => {
+        throw new TransportTimeoutError("protocol_params timed out");
+      },
     ];
-    const fetchImpl = vi.fn(
-      async (_url: string | URL | Request, init?: RequestInit) => {
-        const outage = outages.shift();
-        if (outage !== undefined) return outage();
-        const request = JSON.parse(String(init?.body)) as {
-          readonly id: string;
-        };
-        return response(request.id, ogmiosParameters());
-      },
-    ) as unknown as typeof fetch;
+    const query = vi.fn(async () => {
+      const outage = outages.shift();
+      if (outage !== undefined) outage();
+      return ledgerProtocolParameters();
+    });
     const retries: string[] = [];
     const authority = await retryWatcherL1Transient(
-      () =>
-        unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
-          deploymentIdentity,
-          ogmiosUrl: "http://127.0.0.1:1337",
-          timeoutMs: 10_000,
-          fetchImpl,
-        }),
+      () => create(query, deploymentIdentity),
       { delayMs: () => 1, onRetry: (error) => retries.push(error.message) },
     );
     expect(authority.snapshot).toEqual(
       WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
     );
-    expect(fetchImpl).toHaveBeenCalledTimes(4);
-    expect(retries).toEqual([
-      "Current local funding parameters are temporarily unavailable",
-      "Current local funding parameters are temporarily unavailable",
-      "prover funding Ogmios query failed with HTTP 503",
-    ]);
+    expect(query).toHaveBeenCalledTimes(4);
+    expect(retries).toEqual(
+      Array.from(
+        { length: 3 },
+        () => "Current local funding parameters are temporarily unavailable",
+      ),
+    );
   });
 
-  it("keeps a refused protocol-parameter query hard", async () => {
-    const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
-    const failure =
-      await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
-        deploymentIdentity,
-        ogmiosUrl: "http://127.0.0.1:1337",
-        timeoutMs: 10_000,
-        fetchImpl: (async () =>
-          new Response("bad request", { status: 400 })) as typeof fetch,
-      }).catch((error: unknown) => error);
+  it("keeps a failed query that is not a transport outage hard", async () => {
+    const failure = await create(async () => {
+      throw new Error("the node refused the query");
+    }).catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toBe(
-      "prover funding Ogmios query failed with HTTP 400",
-    );
+    expect(failure).not.toBeInstanceOf(WatcherProverFundingUnavailableError);
+    expect((failure as Error).message).toBe("the node refused the query");
     expect(isWatcherL1TransientFailure(failure)).toBe(false);
   });
 
-  const queryOnce = async (answer: (id: string) => Response) =>
-    unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
-      deploymentIdentity: makeWatcherDeploymentAuthorityFixture().result,
-      ogmiosUrl: "http://127.0.0.1:1337",
-      timeoutMs: 10_000,
-      fetchImpl: (async (_url: string | URL | Request, init?: RequestInit) => {
-        const { id } = JSON.parse(String(init?.body)) as { id: string };
-        return answer(id);
-      }) as typeof fetch,
-    }).catch((error: unknown) => error);
-
-  const jsonRpcError = (id: string, code: number, status: number): Response =>
-    new Response(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id,
-        error: { code, message: `ogmios error ${code.toString()}` },
-      }),
-      { status, headers: { "content-type": "application/json" } },
-    );
-
-  it("types a JSON-RPC answer that says the node cannot answer now as an L1 transient", async () => {
-    // Ogmios's HTTP endpoint answers every JSON-RPC error with status 400.
-    for (const [code, status] of [
-      [2001, 400],
-      [2003, 400],
-      [-32000, 400],
-      [-32603, 400],
-      [2002, 200],
-    ] as const) {
-      const failure = await queryOnce((id) => jsonRpcError(id, code, status));
-      expect(failure).toBeInstanceOf(WatcherProverFundingUnavailableError);
-      expect(isWatcherL1TransientFailure(failure)).toBe(true);
-    }
-  });
-
-  it("keeps a JSON-RPC refusal of the request hard", async () => {
-    for (const [code, status] of [
-      [-32601, 400],
-      [-32602, 400],
-      [-32600, 200],
-    ] as const) {
-      const failure = await queryOnce((id) => jsonRpcError(id, code, status));
+  it("keeps an answer that is not Conway parameters hard", async () => {
+    for (const bytes of [
+      encodeCbor([1, 2, 3]),
+      encodeCbor({ minFeeA: 44 }),
+      Uint8Array.of(0xff),
+    ]) {
+      const failure = await create(async () => bytes).catch(
+        (error: unknown) => error,
+      );
       expect(failure).toBeInstanceOf(Error);
       expect(failure).not.toBeInstanceOf(WatcherProverFundingUnavailableError);
       expect(isWatcherL1TransientFailure(failure)).toBe(false);
     }
   });
+});
 
-  it("types a body that fails to arrive and HTTP 425 as L1 transients", async () => {
-    const lostBody = await queryOnce(() => {
-      const answer = new Response("{}", { status: 200 });
-      vi.spyOn(answer, "text").mockRejectedValue(
-        new TypeError("terminated", { cause: new Error("other side closed") }),
-      );
-      return answer;
+describe("Conway ledger protocol parameters", () => {
+  it("reads the funding fields at their Conway positions with exact reduced rationals", () => {
+    expect(
+      deriveDeploymentManifestCardanoProtocolParametersFromLedger(
+        ledgerProtocolParameters({
+          minFeeA: 47n,
+          minFeeB: 155_382n,
+          maxTxSize: 16_385n,
+          coinsPerUtxoByte: 4_311n,
+          priceMemory: [1154n, 20_000n],
+          priceSteps: [722n, 10_000_000n],
+          maxTxExUnits: [16_500_001n, 10_000_000_001n],
+          maxValueSize: 5_001n,
+          collateralPercentage: 151n,
+          maxCollateralInputs: 4n,
+          minFeeRefScriptCostPerByte: [30n, 2n],
+        }),
+      ),
+    ).toEqual({
+      minFeeA: "47",
+      minFeeB: "155382",
+      priceMemory: { numerator: "577", denominator: "10000" },
+      priceSteps: { numerator: "361", denominator: "5000000" },
+      coinsPerUtxoByte: "4311",
+      collateralPercentage: "151",
+      maxCollateralInputs: "4",
+      maxTxSize: "16385",
+      maxValueSize: "5001",
+      maxTxExUnits: { memory: "16500001", steps: "10000000001" },
+      referenceScriptFee: {
+        base: { numerator: "15", denominator: "1" },
+        range: "25600",
+        multiplier: { numerator: "6", denominator: "5" },
+        maximumSizeBytes: "204800",
+      },
     });
-    expect(lostBody).toBeInstanceOf(WatcherProverFundingUnavailableError);
-    expect(isWatcherL1TransientFailure(lostBody)).toBe(true);
-    const tooEarly = await queryOnce(
-      () => new Response("too early", { status: 425 }),
-    );
-    expect(tooEarly).toBeInstanceOf(WatcherProverFundingUnavailableError);
-    expect((tooEarly as Error).message).toBe(
-      "prover funding Ogmios query failed with HTTP 425",
-    );
-    expect(isWatcherL1TransientFailure(tooEarly)).toBe(true);
+  });
+
+  it("reads a bignum-tagged integer and an untagged rational pair", () => {
+    const custom = encodeCbor([
+      new CborTag(2n, Uint8Array.of(0x2c)),
+      155_381n,
+      0n,
+      16_384n,
+      ...Array.from({ length: 10 }, () => 0n),
+      4_310n,
+      0n,
+      [
+        [577n, 10_000n],
+        [721n, 10_000_000n],
+      ],
+      [16_500_000n, 10_000_000_000n],
+      0n,
+      5_000n,
+      150n,
+      3n,
+      ...Array.from({ length: 8 }, () => 0n),
+      new CborTag(30n, [15n, 1n]),
+    ]);
+    expect(
+      deriveDeploymentManifestCardanoProtocolParametersFromLedger(custom),
+    ).toEqual(WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS);
+  });
+
+  it("refuses a short array, a negative natural and a zero denominator", () => {
+    expect(() =>
+      deriveDeploymentManifestCardanoProtocolParametersFromLedger(
+        encodeCbor(Array.from({ length: 30 }, () => 0n)),
+      ),
+    ).toThrow("PParams is not an array of at least 31 items");
+    expect(() =>
+      deriveDeploymentManifestCardanoProtocolParametersFromLedger(
+        ledgerProtocolParameters({ minFeeA: -1n }),
+      ),
+    ).toThrow("minFeeA is negative");
+    expect(() =>
+      deriveDeploymentManifestCardanoProtocolParametersFromLedger(
+        ledgerProtocolParameters({ priceMemory: [577n, 0n] }),
+      ),
+    ).toThrow("priceMemory is not a nonnegative rational");
   });
 });
 
 it("defers a temporary parameter-query outage without admitting malformed replies", async () => {
-  const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
   let status = "live";
-  const authority =
-    await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
-      deploymentIdentity,
-      ogmiosUrl: "http://127.0.0.1:1337",
-      timeoutMs: 10_000,
-      fetchImpl: vi.fn(async (_url, init) => {
-        if (status === "outage")
-          return new Response("unavailable", { status: 503 });
-        if (status === "malformed") return new Response("invalid JSON");
-        const { id } = JSON.parse(String(init?.body)) as { id: string };
-        return response(id, ogmiosParameters());
-      }) as unknown as typeof fetch,
-    });
+  const authority = await create(async () => {
+    if (status === "outage")
+      throw new TransportUnavailableError(
+        "node_connection_lost",
+        "the node closed the connection",
+      );
+    if (status === "malformed") return Uint8Array.of(0x01);
+    return ledgerProtocolParameters();
+  });
   status = "outage";
   const outage = await refreshWatcherProtocolParameterRuntimeAuthority(
     authority,
@@ -312,5 +269,5 @@ it("defers a temporary parameter-query outage without admitting malformed replie
   status = "malformed";
   await expect(
     refreshWatcherProtocolParameterRuntimeAuthority(authority),
-  ).rejects.toThrow("not JSON");
+  ).rejects.toThrow("PParams is not an array");
 });

@@ -5,7 +5,6 @@ import {
   type WatcherStateQueueRemovalKind,
 } from "../indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import type { WatcherRetainedDaTransportStatus } from "../storage/retained-da-runtime.js";
-import type { WatcherChainCoordinator } from "./chain-coordinator.js";
 
 export const WATCHER_OPERATIONS_OBSERVABILITY =
   "midgard-watcher-production-operations-observability-v1" as const;
@@ -185,26 +184,33 @@ export type WatcherOperationsDiagnostic =
   | WatcherL1SourceDiagnostic
   | WatcherAlertDiagnostic;
 
+export type WatcherOperationsReadinessReason =
+  | "supervisor_not_accepting"
+  | "recovery_incomplete"
+  | "launch_scope_incomplete"
+  | "deadline_at_risk"
+  | "deadline_unsafe"
+  | "l1_source_unavailable"
+  | "l1_source_stale"
+  | "retained_da_transport_failed"
+  | "active_alert";
+
 export type WatcherOperationsStatus = Readonly<{
   schemaVersion: typeof WATCHER_OPERATIONS_OBSERVABILITY;
   deploymentFingerprint: string;
   observedAtMs: string;
   liveness: "live" | "stopping" | "stopped" | "blocked";
   readiness: "ready" | "not_ready";
-  readinessReasons: readonly (
-    | "supervisor_not_accepting"
-    | "recovery_incomplete"
-    | "launch_scope_incomplete"
-    | "deadline_at_risk"
-    | "deadline_unsafe"
-    | "l1_source_unavailable"
-    | "l1_source_stale"
-    | "retained_da_transport_failed"
-    | "active_alert"
-    | "coordinator_recovery_hold"
-  )[];
+  /**
+   * The watcher's own reasons, then each named L1 reason of `l1Readiness`
+   * (the follower's and the decision driver's, for example
+   * `l1_follower_catching_up`, `wallet_seed_pending` or a rollback
+   * intervention).
+   */
+  readinessReasons: readonly (WatcherOperationsReadinessReason | string)[];
+  /** The named L1 reasons with their detail; empty when L1 holds nothing. */
+  l1Readiness: readonly Readonly<{ reason: string; detail: string }>[];
   retainedDaTransport: WatcherRetainedDaTransportStatus;
-  coordinator: ReturnType<WatcherChainCoordinator["status"]> | null;
   launchScope: Readonly<{
     installedCategoryCount: string;
     requiredCategoryCount: string;

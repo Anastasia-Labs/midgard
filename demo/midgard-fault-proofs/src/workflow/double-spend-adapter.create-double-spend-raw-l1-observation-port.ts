@@ -6,12 +6,10 @@ import {
 
 import type { FraudProofWorkflowTerminal } from "./journal.js";
 import {
-  createLocalKupmiosHttpOgmiosRawSource,
-  type LocalKupmiosHttpOgmiosSourceConfig,
-  readAdmittedLocalKupmiosSignedTransactionRecovery,
-  rebroadcastAdmittedLocalKupmiosSignedTransaction,
-} from "./local-kupmios-http-ogmios-source.js";
-import { createLocalKupmiosFraudProofRawL1SnapshotAuthority } from "./local-kupmios-raw-l1-authority.js";
+  type FraudProofL1Source,
+  fraudProofSignedTransactionRecovery,
+  withFraudProofL1Recovery,
+} from "./l1-source.js";
 import type { FraudProofWorkflowTerminalVerifier } from "./orchestrator.js";
 import { FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER } from "./orchestrator.js";
 import {
@@ -32,7 +30,6 @@ import {
 } from "./raw-l1-snapshot.js";
 import type { VerifiedFraudProofReleaseEconomicsPolicy } from "./release-economics-policy.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
-import { type SignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";
 
 export const DOUBLE_SPEND_WORKFLOW_ADAPTER =
   "midgard-double-spend-production-workflow-adapter-v1" as const;
@@ -169,59 +166,32 @@ export const createDoubleSpendRawL1ObservationPort = ({
   } satisfies DoubleSpendL1ObservationPort;
 };
 
-/** Concrete loopback Kupo HTTP + Ogmios WS production construction. */
-export const createDoubleSpendLocalKupmiosL1ObservationPort = ({
-  source,
+/** Production construction over the fault-proof L1 source. */
+export const createDoubleSpendL1ObservationPort = ({
+  l1,
   releaseFinality,
   releaseEconomics,
   definition,
 }: {
-  readonly source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  readonly l1: FraudProofL1Source;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
   readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
   readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: "doubleSpend";
   };
-}): DoubleSpendL1ObservationPort => {
-  const rawSource = createLocalKupmiosHttpOgmiosRawSource({
-    ...source,
-    releaseFinality,
-    observationDepth: "inclusion",
-  });
-  const port = createDoubleSpendRawL1ObservationPort({
-    authority: createLocalKupmiosFraudProofRawL1SnapshotAuthority({
-      source: rawSource,
+}): DoubleSpendL1ObservationPort =>
+  withFraudProofL1Recovery(
+    createDoubleSpendRawL1ObservationPort({
+      authority: l1.snapshotAuthority({
+        releaseFinality,
+        observationDepth: "inclusion",
+      }),
       releaseFinality,
-      observationDepth: "inclusion",
+      releaseEconomics,
+      definition,
     }),
-    releaseFinality,
-    releaseEconomics,
-    definition,
-  });
-  const recovery = {
-    observeSignedTransaction: (input: SignedWorkflowTransaction) =>
-      readAdmittedLocalKupmiosSignedTransactionRecovery({
-        ...input,
-        source: rawSource,
-      }),
-    rebroadcastSignedTransaction: (
-      input: SignedWorkflowTransaction & {
-        readonly authorizeResubmission: (
-          input: SignedWorkflowTransaction,
-        ) => Promise<void>;
-      },
-    ) =>
-      rebroadcastAdmittedLocalKupmiosSignedTransaction({
-        ...input,
-        source: rawSource,
-      }),
-  };
-  return Object.freeze({
-    ...port,
-    ...recovery,
-    publications: Object.freeze({ ...port.publications, ...recovery }),
-  });
-};
+    fraudProofSignedTransactionRecovery(l1, releaseFinality),
+  );
 
 const sameTerminal = (
   left: FraudProofWorkflowTerminal,

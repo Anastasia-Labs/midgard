@@ -37,6 +37,7 @@ import {
   T,
   X,
 } from "../support/l1-follower-raw-reads-fixture.js";
+import { outRef, twinScenario } from "../support/l1-follower-raw-twin.js";
 
 /**
  * Behaviour of the follower-backed raw reads (ticket W1) on a hand-built
@@ -170,7 +171,8 @@ describe("follower raw reads on the simulator chain", () => {
     ).toEqual([]);
     for (const other of [
       `${D.stateQueueMint}${SDK.STATE_QUEUE_ROOT_ASSET_NAME}`,
-      `${D.hubOracleMint}${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${fx.header}`,
+      // A policy no projection follows (the hub-oracle policy now is one).
+      `${"7f".repeat(28)}${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${fx.header}`,
     ])
       expect(
         reasonOf(await reads.unitHistoryAtPoint(other, fx.points.p5)),
@@ -334,5 +336,144 @@ describe("follower raw reads on the simulator chain", () => {
         "point_not_canonical",
       );
     }
+  });
+});
+
+describe("follower raw reads: collateral returns and pruning across rollbacks", () => {
+  it("a failed transaction's collateral return reads at index outputs.len() (ruling 6)", async () => {
+    const h = await harness();
+    const A: SimTx = {
+      inputs: [h.chain.outsideInput()],
+      outputs: [{ address: T, lovelace: 5_000_000n }],
+      nonce: h.chain.nonce(),
+    };
+    const a = (await h.forward([A])).hashes[0]!;
+    const F: SimTx = {
+      inputs: [outRef(a, 0)],
+      collaterals: [outRef(a, 0)],
+      outputs: [
+        { address: T, lovelace: 1_000_000n },
+        { address: C, lovelace: 2_000_000n },
+        { address: T, lovelace: 1_500_000n },
+      ],
+      collateralReturn: { address: C, lovelace: 4_500_000n },
+      isValid: false,
+      nonce: h.chain.nonce(),
+    };
+    const landedF = await h.forward([F]);
+    const f = landedF.hashes[0]!;
+    const G: SimTx = {
+      inputs: [outRef(f, 3)],
+      outputs: [{ address: T, lovelace: 4_000_000n }],
+      nonce: h.chain.nonce(),
+    };
+    const landedG = await h.forward([G]);
+    const reads = h.reads();
+    const labels = [0, 1, 2, 3].map((index) => `${f}#${index.toString()}`);
+    const atF = okValue(
+      await reads.utxosByOutRefAtPoint([...labels, `${a}#0`], landedF.point),
+    );
+    expect(atF.outputs).toEqual([expected(F, f, 3)]);
+    expect([...atF.unknown].sort()).toEqual(labels.slice(0, 3).sort());
+    expect(atF.spends).toEqual([
+      { outRef: `${a}#0`, spendingTxHash: f, spendPoint: landedF.point },
+    ]);
+    expect(
+      okValue(await reads.addressUtxosAtPoint(bech32(C), landedF.point)),
+    ).toEqual([expected(F, f, 3)]);
+    expect(
+      okValue(await reads.rawTransaction(landedG.hashes[0]!, landedG.point))
+        .transaction.resolvedInputs,
+    ).toEqual([expected(F, f, 3)]);
+    expect(reasonOf(await reads.rawTransaction(f, landedF.point))).toBe(
+      "phase2_invalid",
+    );
+  });
+
+  it("prunes before and after deep rollbacks: retention exact, reads match the oracle (ruling 9)", async () => {
+    const { w, A, a, B, b, unit, landedCommit, r, landedR } =
+      await twinScenario();
+    // Prune, then roll back the k blocks the pruning left.
+    const first = await w.pruneAndDiff();
+    expect(first.diff).toBeNull();
+    let reads = w.pruned.reads();
+    const before = okValue(
+      await reads.utxosByOutRefAtPoint(
+        [`${a}#0`, `${a}#1`, `${a}#2`],
+        w.pruned.tipPoint(),
+      ),
+    );
+    expect(before.outputs).toEqual([expected(A, a, 2)]);
+    expect(before.spends).toEqual([
+      { outRef: `${a}#1`, spendingTxHash: r, spendPoint: landedR.point },
+    ]);
+    expect(before.beyondRetention).toEqual([`${a}#0`]);
+    await w.backward(K);
+    reads = w.pruned.reads();
+    // R is undone: A#1 is live again, and R is provably not included.
+    expect(
+      okValue(await reads.utxosByOutRefAtPoint([`${a}#1`], w.pruned.tipPoint()))
+        .outputs,
+    ).toEqual([expected(A, a, 1)]);
+    expect(
+      okValue(await reads.transactionInclusion(r, Number(landedR.point.slot))),
+    ).toBeNull();
+    // A new branch spends A#1 elsewhere; pruning after the rollback.
+    const R2: SimTx = {
+      inputs: [outRef(a, 1)],
+      outputs: [{ address: C, lovelace: 3_000_000n }],
+      nonce: w.chain.nonce(),
+    };
+    const landedR2 = await w.forward([R2]);
+    const r2 = landedR2.hashes[0]!;
+    await w.empty(K);
+    const second = await w.pruneAndDiff();
+    expect(second.diff).toBeNull();
+    expect(second.prunedThrough).toBeGreaterThanOrEqual(
+      Number(landedR2.point.slot),
+    );
+    reads = w.pruned.reads();
+    const tip = w.pruned.tipPoint();
+    // R's old slot is still above the window: provably absent; unhinted, the pruning may have held it.
+    expect(
+      okValue(await reads.transactionInclusion(r, Number(landedR.point.slot))),
+    ).toBeNull();
+    expect(reasonOf(await reads.transactionInclusion(r))).toBe(
+      "beyond_retention",
+    );
+    expect(
+      okValue(await reads.utxosByOutRefAtPoint([`${a}#1`], tip))
+        .beyondRetention,
+    ).toEqual([`${a}#1`]);
+    const atC = byOutRef([
+      expected(A, a, 2),
+      expected(B, b, 0),
+      expected(R2, r2, 0),
+    ]);
+    expect(
+      byOutRef(okValue(await reads.addressUtxosAtPoint(bech32(C), tip))),
+    ).toEqual(atC);
+    expect(
+      okValue(await reads.rawTransaction(r2, landedR2.point)).transaction
+        .resolvedInputs,
+    ).toEqual([expected(A, a, 1)]);
+    expect(
+      okValue(await reads.unitHistoryAtPoint(unit, tip)).transactions,
+    ).toEqual([
+      { txHash: landedCommit.hashes[0]!, inclusionPoint: landedCommit.point },
+    ]);
+    // A second deep rollback after the pruning, then pruning again.
+    await w.backward(K);
+    await w.empty(K + 1);
+    const third = await w.pruneAndDiff();
+    expect(third.diff).toBeNull();
+    const reference = w.reference.reads();
+    reads = w.pruned.reads();
+    for (const address of [bech32(C), bech32(T)])
+      expect(
+        await reads.addressUtxosAtPoint(address, w.pruned.tipPoint()),
+      ).toEqual(
+        await reference.addressUtxosAtPoint(address, w.reference.tipPoint()),
+      );
   });
 });

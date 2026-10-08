@@ -3,38 +3,32 @@ import { type WatcherFaultDecisionBridge } from "../fault-proofs/fault-decision-
 import { type WatcherFaultProofApplication } from "../fault-proofs/fault-proof-application.js";
 import { type WatcherFaultProofSupervisor } from "../fault-proofs/fault-proof-supervisor.js";
 import { type WatcherSqliteProverFundingReservationStoreRuntime } from "../funding/sqlite-prover-funding-reservation-store.js";
-import type { WatcherStateQueueReadScopes } from "../indexers/authenticated-state-queue-observation.read-scopes.js";
-import { createWatcherLocalKupmiosNativeObservationRuntime } from "../l1/local-kupmios-native-observation.js";
-import { type WatcherNativeChainSyncRuntime } from "../l1/native-chain-sync.js";
+import { type WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
 import { type WatcherRetainedDaOperationsBinding } from "../storage/retained-da-runtime.js";
 import { openWatcherSqliteDurableBackend } from "../storage/sqlite-durable-backend.js";
-import { type WatcherChainCoordinator } from "./chain-coordinator.js";
-import { createWatcherHistoryRecovery } from "./history-recovery.js";
 import { type WatcherOperationsHttpServer } from "./operations-http.js";
 import { type WatcherUserEventRuntime } from "./user-event-runtime.js";
+import { type WatcherDecisionDriver } from "./watcher-runtime.decision-driver.js";
 
+/**
+ * Closes whatever startup allocated, newest authority first: decisions and
+ * availability lose their authority synchronously before any await, then
+ * the driver, the HTTP surface, the supervisor and the stores close, and the
+ * follower (with its node transport) last.
+ */
 export const closeWatcherAllocatedResources = async (
   allocated: Readonly<{
-    readScopes?: () => WatcherStateQueueReadScopes | undefined;
-    historyRecovery: () =>
-      | ReturnType<typeof createWatcherHistoryRecovery>
-      | undefined;
-    activeCoordinator: () => WatcherChainCoordinator | undefined;
+    decisionDriver: () => WatcherDecisionDriver | undefined;
+    follower: () => WatcherFollowerRuntime | undefined;
     faultDecisionBridge: () => WatcherFaultDecisionBridge | undefined;
     availability: () => WatcherAvailabilityRuntime | undefined;
     retainedDaOperationsBinding: () =>
       | WatcherRetainedDaOperationsBinding
       | undefined;
     operationsHttp: () => WatcherOperationsHttpServer | undefined;
-    native: () => WatcherNativeChainSyncRuntime | undefined;
     faultProofSupervisor: () => WatcherFaultProofSupervisor | undefined;
     allocatedFaultProofApplication: () =>
       | WatcherFaultProofApplication
-      | undefined;
-    observation: () =>
-      | Awaited<
-          ReturnType<typeof createWatcherLocalKupmiosNativeObservationRuntime>
-        >
       | undefined;
     proverFundingStore: () =>
       | WatcherSqliteProverFundingReservationStoreRuntime
@@ -43,86 +37,26 @@ export const closeWatcherAllocatedResources = async (
     sqlite: () => Awaited<ReturnType<typeof openWatcherSqliteDurableBackend>>;
   }>,
 ): Promise<void> => {
-  allocated.readScopes?.()?.close();
-  allocated.historyRecovery()?.close();
-  const coordinatorStopped = allocated.activeCoordinator()?.stop();
   const failures: unknown[] = [];
   allocated.faultDecisionBridge()?.invalidateForShutdown();
   allocated.availability()?.invalidateForShutdown();
-  try {
-    allocated.retainedDaOperationsBinding()?.close();
-  } catch (error) {
-    failures.push(error);
-  }
-  const operationsHttp = allocated.operationsHttp();
-  if (operationsHttp !== undefined) {
+  const attempt = async (close: () => unknown): Promise<void> => {
     try {
-      await operationsHttp.close();
+      await close();
     } catch (error) {
       failures.push(error);
     }
-  }
-  const native = allocated.native();
-  if (native !== undefined) {
-    try {
-      await native.close();
-    } catch (error) {
-      failures.push(error);
-    }
-  }
-  try {
-    await coordinatorStopped;
-  } catch (error) {
-    failures.push(error);
-  }
-  const faultProofSupervisor = allocated.faultProofSupervisor();
-  if (faultProofSupervisor !== undefined) {
-    try {
-      await faultProofSupervisor.close();
-    } catch (error) {
-      failures.push(error);
-    }
-  }
-  const allocatedFaultProofApplication =
-    allocated.allocatedFaultProofApplication();
-  if (allocatedFaultProofApplication !== undefined) {
-    try {
-      await allocatedFaultProofApplication.close();
-    } catch (error) {
-      failures.push(error);
-    }
-  }
-  const availability = allocated.availability();
-  if (availability !== undefined) {
-    try {
-      await availability.close();
-    } catch (error) {
-      failures.push(error);
-    }
-  }
-  try {
-    allocated.observation()?.close();
-  } catch (error) {
-    failures.push(error);
-  }
-  try {
-    allocated.proverFundingStore()?.close();
-  } catch (error) {
-    failures.push(error);
-  }
-  const userEventRuntime = allocated.userEventRuntime();
-  if (userEventRuntime !== undefined) {
-    try {
-      await userEventRuntime.close();
-    } catch (error) {
-      failures.push(error);
-    }
-  }
-  try {
-    allocated.sqlite().close();
-  } catch (error) {
-    failures.push(error);
-  }
+  };
+  await attempt(() => allocated.decisionDriver()?.close());
+  await attempt(() => allocated.retainedDaOperationsBinding()?.close());
+  await attempt(() => allocated.operationsHttp()?.close());
+  await attempt(() => allocated.faultProofSupervisor()?.close());
+  await attempt(() => allocated.allocatedFaultProofApplication()?.close());
+  await attempt(() => allocated.availability()?.close());
+  await attempt(() => allocated.proverFundingStore()?.close());
+  await attempt(() => allocated.userEventRuntime()?.close());
+  await attempt(() => allocated.follower()?.close());
+  await attempt(() => allocated.sqlite().close());
   if (failures.length > 0) {
     throw new AggregateError(
       failures,

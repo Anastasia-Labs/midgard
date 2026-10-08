@@ -1,5 +1,6 @@
 import type { SqlRow, SqlTx } from "@al-ft/midgard-l1-follower";
 
+import { readProtocolInitFault } from "./projection.protocol-init.js";
 import { WATCHER_QUEUE_OUTPUTS_TABLE } from "./tables.js";
 
 /**
@@ -37,6 +38,7 @@ export type WatcherCorrectionLock = Readonly<{
 
 /** Why the live rows do not form one canonical queue. */
 export type WatcherQueueUnhealthyReason =
+  | "protocol_init_root_not_at_state_queue"
   | "malformed_output"
   | "duplicate_root"
   | "missing_root"
@@ -80,6 +82,12 @@ export const readWatcherQueueView = async (
   tx: SqlTx,
   slot: number,
 ): Promise<WatcherQueueView> => {
+  const misplacedRoot = await readProtocolInitFault(tx, slot);
+  if (misplacedRoot !== null)
+    return unhealthy(
+      "protocol_init_root_not_at_state_queue",
+      `protocol init root not at the state-queue address: ${misplacedRoot}`,
+    );
   const rows = await tx.query(
     `SELECT tx_hash, output_index, kind, header_hash, next_header_hash, header_cbor, state_queue_node_cbor, datum_cbor, malformed, anchor_tx_hash, anchor_slot, anchor_block_hash, anchor_height FROM ${WATCHER_QUEUE_OUTPUTS_TABLE} WHERE from_slot <= ? AND (to_slot IS NULL OR to_slot > ?) ORDER BY tx_hash, output_index`,
     [slot, slot],

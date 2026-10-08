@@ -1,3 +1,4 @@
+import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { reconstructWatcherAvailabilityPublishedPayload } from "../../src/availability/published-payload.js";
@@ -75,8 +76,24 @@ describe("watcher public L1 payload reconstruction", () => {
 
   it("requires the Open's challenger funding input to derive the record's DACH identity", async () => {
     const fixture = historyFixture();
+    // The same Open, spending an unrelated coin instead of the funding input.
+    const body = CML.TransactionBody.from_cbor_hex(fixture.open.raw.bodyCbor);
+    const inputs = CML.TransactionInputList.new();
+    inputs.add(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_hex("21".repeat(32)),
+        0n,
+      ),
+    );
+    const unrelatedBody = CML.TransactionBody.new(
+      inputs,
+      body.outputs(),
+      body.fee(),
+    );
+    unrelatedBody.set_ttl(body.ttl()!);
     const unrelated = {
       ...fixture.open.raw,
+      bodyCbor: unrelatedBody.to_canonical_cbor_hex(),
       resolvedInputs: fixture.open.raw.resolvedInputs.map((raw) => ({
         ...raw,
         outRef: `${"21".repeat(32)}#0`,

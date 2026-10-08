@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 
-import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 
 import {
@@ -20,22 +19,24 @@ import {
 } from "../fault-proofs/fault-proof-supervisor.js";
 import { createWatcherProtocolParameterRuntimeAuthority } from "../funding/prover-funding.js";
 import type { WatcherSqliteProverFundingReservationStoreRuntime } from "../funding/sqlite-prover-funding-reservation-store.js";
-import { createWatcherLocalKupmiosNativeObservationRuntime } from "../l1/local-kupmios-native-observation.js";
+import { deriveWatcherNativeGenesisIdentity } from "../l1/native-chain-sync.derive-watcher-native-genesis-identity.js";
 import {
-  startWatcherNativeChainSyncWithRetry,
-  type WatcherNativeChainSyncRuntime,
-} from "../l1/native-chain-sync.js";
+  openWatcherDeploymentFollower,
+  watcherFollowedScripts,
+} from "../l1-follower/deployment-follower.js";
+import { WATCHER_FAULT_PROOF_SOURCE_ID_PREFIX } from "../l1-follower/fault-proof-l1-source.js";
+import { type WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
+import { createWatcherQueueHeaderSource } from "../l1-follower/observation.js";
 import { createWatcherDurableRuntime } from "../storage/durable-runtime.js";
 import {
   bindWatcherRetainedDaOperations,
   type WatcherRetainedDaOperationsBinding,
 } from "../storage/retained-da-runtime.js";
+import { watcherDeploymentProtocolScriptAuthority } from "./deployment-identity.js";
 import {
-  createWatcherChainCoordinator,
-  type WatcherChainCoordinator,
-} from "./chain-coordinator.js";
-import { oldestRetainedCanonicalHint } from "./chain-coordinator.retained-canonical-prefix.js";
-import { createWatcherHistoryRecovery } from "./history-recovery.js";
+  watcherDeploymentAppliedScriptHashes,
+  watcherDeploymentReleaseFinalityPolicy,
+} from "./deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import {
   startWatcherOperationsHttpServer,
   type WatcherOperationsHttpServer,
@@ -49,7 +50,6 @@ import {
   loadWatcherSecretText,
   type WatcherProcessConfig,
 } from "./process-config.js";
-import { watcherReplayTranscriptRetirementHooks } from "./replay-transcript-retirement.js";
 import {
   createWatcherStartupProgress,
   type WatcherStartupProgress,
@@ -60,29 +60,47 @@ import {
 } from "./user-event-runtime.js";
 import { openWatcherProverFundingRuntime } from "./watcher-prover-funding-runtime.js";
 import { closeWatcherAllocatedResources } from "./watcher-runtime.close-allocated-resources.js";
+import { createWatcherRuntimeLifecycle } from "./watcher-runtime.create-lifecycle.js";
 import {
-  createWatcherRuntimeLifecycle,
-  createWatcherRuntimeSignals,
-} from "./watcher-runtime.create-lifecycle.js";
+  createWatcherDecisionDriver,
+  type WatcherDecisionDriver,
+} from "./watcher-runtime.decision-driver.js";
+import { createWatcherL1Readiness } from "./watcher-runtime.l1-readiness.js";
+import { type WatcherRuntime } from "./watcher-runtime.launch-checks.js";
 import {
-  readWatcherNativeRecoveryBoundary,
-  watcherRestartIntersectionCandidates,
-  type WatcherRuntime,
-} from "./watcher-runtime.create-watcher-native-event-handler.js";
-import {
-  observeWatcherNativeReadLifetime,
-  watcherRuntimeNativeStartupOptions,
-} from "./watcher-runtime.native-startup-options.js";
-import {
-  createWatcherRuntimeProverWallet,
   prepareWatcherRuntimeAuthority,
+  resolveWatcherRuntimeWalletAddress,
 } from "./watcher-runtime.prepare-authority.js";
-import {
-  prepareWatcherRuntimeWorkflows,
-  restoreWatcherRuntimeQueue,
-} from "./watcher-runtime.prepare-services.js";
-import { attemptWatcherRestartQuarantineRecovery } from "./watcher-runtime.restart-quarantine.js";
-/** Compose production startup and replay through the durable coordinator. */
+import { prepareWatcherRuntimeWorkflows } from "./watcher-runtime.prepare-services.js";
+
+/**
+ * The persisted sourceId of the watcher's state-queue observations, kept
+ * byte-identical to the earlier source so persisted records still match.
+ */
+const watcherObservationSourceId = (
+  manifestId: string,
+  authorityNodeId: string,
+): string =>
+  `${WATCHER_FAULT_PROOF_SOURCE_ID_PREFIX}${[
+    "watcher-native-crosscheck",
+    manifestId,
+    authorityNodeId,
+  ].join("/")}`;
+
+/** How often the cached L1 readiness is refreshed without a follower change. */
+const L1_READINESS_REFRESH_MS = 5_000;
+
+/**
+ * Compose production startup around the watcher's chain follower (ticket
+ * W1): every L1 read goes through the follower's fact store, and the
+ * decision driver decides from its projections at the tip and at the
+ * release depth.
+ *
+ * Liveness: the operations server binds before the first decision pass, so
+ * `/healthz` answers while the follower syncs; until the first pass
+ * completes, and whenever the follower or a pass holds decisions, `/readyz`
+ * names the reason. No L1 condition ends startup or the process.
+ */
 export const createWatcherRuntime = async (input: {
   readonly config: WatcherProcessConfig;
   readonly onStartupProgress?: (progress: WatcherStartupProgress) => void;
@@ -101,18 +119,11 @@ export const createWatcherRuntime = async (input: {
     fundingProfileOverlay,
     sqlite,
   } = await prepareWatcherRuntimeAuthority(input, startup);
+  const watcherConfig = input.config.watcherConfig;
 
-  let queueReadScopes:
-    | Parameters<typeof observeWatcherNativeReadLifetime>[1]
-    | undefined;
-  let activeCoordinator: WatcherChainCoordinator | undefined;
-  let native: WatcherNativeChainSyncRuntime | undefined;
+  let follower: WatcherFollowerRuntime | undefined;
+  let decisionDriver: WatcherDecisionDriver | undefined;
   let userEventRuntime: WatcherUserEventRuntime | undefined;
-  let observation:
-    | Awaited<
-        ReturnType<typeof createWatcherLocalKupmiosNativeObservationRuntime>
-      >
-    | undefined;
   let allocatedFaultProofApplication: WatcherFaultProofApplication | undefined;
   let faultProofSupervisor: WatcherFaultProofSupervisor | undefined;
   let faultDecisionBridge: WatcherFaultDecisionBridge | undefined;
@@ -124,36 +135,34 @@ export const createWatcherRuntime = async (input: {
   let proverFundingStore:
     | WatcherSqliteProverFundingReservationStoreRuntime
     | undefined;
-  const closeAllocatedResources = () =>
-    closeWatcherAllocatedResources({
-      readScopes: () => queueReadScopes,
-      historyRecovery: () => historyRecovery,
-      activeCoordinator: () => activeCoordinator,
+  let readinessTimer: ReturnType<typeof setInterval> | undefined;
+  let unsubscribeL1: (() => void)[] = [];
+  const closeAllocatedResources = async () => {
+    if (readinessTimer !== undefined) clearInterval(readinessTimer);
+    readinessTimer = undefined;
+    for (const unsubscribe of unsubscribeL1) unsubscribe();
+    unsubscribeL1 = [];
+    await closeWatcherAllocatedResources({
+      decisionDriver: () => decisionDriver,
+      follower: () => follower,
       faultDecisionBridge: () => faultDecisionBridge,
       availability: () => availability,
       retainedDaOperationsBinding: () => retainedDaOperationsBinding,
       operationsHttp: () => operationsHttp,
-      native: () => native,
       faultProofSupervisor: () => faultProofSupervisor,
       allocatedFaultProofApplication: () => allocatedFaultProofApplication,
-      observation: () => observation,
       proverFundingStore: () => proverFundingStore,
       userEventRuntime: () => userEventRuntime,
       sqlite: () => sqlite,
     });
+  };
 
-  let historyRecovery:
-    | ReturnType<typeof createWatcherHistoryRecovery>
-    | undefined;
-  const {
-    coordinatorReady,
-    resolveCoordinator,
-    rejectCoordinator,
-    nativeCaughtUp,
-    resolveCaughtUp,
-    rejectCaughtUp,
-  } = createWatcherRuntimeSignals();
   try {
+    const releaseFinality =
+      watcherDeploymentReleaseFinalityPolicy(deploymentIdentity).policy;
+    const releaseDepth = releaseFinality.confirmationDepth;
+    const authority =
+      watcherDeploymentProtocolScriptAuthority(deploymentIdentity);
     const durable = await createWatcherDurableRuntime({
       backend: sqlite.backend,
       userEventArchive: sqlite.userEventArchive,
@@ -161,40 +170,12 @@ export const createWatcherRuntime = async (input: {
       authenticationKey: trusted.rollbackAuthenticationKey,
       client: trusted.client,
     });
-    const blockProgress = sqlite.openBlockProgress(
-      trusted.rollbackAuthenticationKey,
-    );
-    const restoreQueue = () =>
-      restoreWatcherRuntimeQueue(input, {
-        sqlite,
-        deploymentIdentity,
-        startup,
-        onReadScopesAllocated: (scopes) => {
-          queueReadScopes?.close();
-          queueReadScopes = scopes;
-        },
-      });
-    const earlyQueue =
-      durable.readFinality().phase === "quarantined"
-        ? await restoreQueue()
-        : null;
-    if (earlyQueue !== null) {
-      await startup("post_finality_recovery", () =>
-        attemptWatcherRestartQuarantineRecovery({
-          durable,
-          blockProgress,
-          stateQueueCursor: earlyQueue.stateQueueRuntime.replayIntersection,
-          binaryPath: input.config.nativeChainSyncBinaryPath,
-          watcherConfig: input.config.watcherConfig,
-        }),
-      );
-    }
     const blueprintBytes = await readFile(
       input.config.faultProofInfrastructure.blueprintPath,
     );
     const eventHistory = await startup("user_event_runtime", async () =>
       createWatcherUserEventRuntime({
-        watcherConfig: input.config.watcherConfig,
+        watcherConfig,
         deploymentAuthority,
         blueprintBytes,
         nativeChainSyncBinaryPath: input.config.nativeChainSyncBinaryPath,
@@ -209,6 +190,41 @@ export const createWatcherRuntime = async (input: {
     const retireEventHistory = () =>
       faultDecisionBridge?.invalidateForHistoryChange();
     void eventHistory.done.then(retireEventHistory, retireEventHistory);
+
+    const { networkMagic } = await startup("l1_node_identity", () =>
+      deriveWatcherNativeGenesisIdentity({ watcherConfig }),
+    );
+    // Address derivation only; the runtime never holds a live signer. The
+    // executing runner re-resolves the same secret source itself.
+    const proverWalletAddress = resolveWatcherRuntimeWalletAddress(
+      input,
+      await loadWatcherSecretText(watcherConfig.proverWallet.keySource),
+    );
+    const availabilityWalletAddress = resolveWatcherRuntimeWalletAddress(
+      input,
+      await loadWatcherSecretText(input.config.availability.keySource),
+    );
+    const activeFollower = openWatcherDeploymentFollower({
+      authority,
+      storePath: `${watcherConfig.storage.path}.l1-follower.sqlite`,
+      automaticRecoveryMaxDepth: releaseFinality.automaticRecoveryMaxDepth,
+      origin: watcherConfig.l1.origin,
+      followedScripts: watcherFollowedScripts({
+        contractScriptHashes:
+          watcherDeploymentAppliedScriptHashes(deploymentIdentity),
+        blueprint: JSON.parse(Buffer.from(blueprintBytes).toString("utf8")),
+      }),
+      node: {
+        binaryPath: input.config.nativeChainSyncBinaryPath,
+        socketPath: localL1Source.chainSync.socketPath,
+        networkMagic,
+      },
+      walletAddresses: [proverWalletAddress, availabilityWalletAddress],
+      log: (line) => process.stderr.write(`${line}\n`),
+    });
+    follower = activeFollower;
+    const { store, rawReads, transport, provider } = activeFollower;
+
     const { faultProofApplication, faultProofReadiness } =
       await prepareWatcherRuntimeWorkflows(input, {
         deploymentAuthority,
@@ -218,30 +234,14 @@ export const createWatcherRuntime = async (input: {
         fundingProfileOverlay,
         startup,
         eventHistory,
+        l1: activeFollower.faultProofL1,
         onAllocated: (application) => {
           allocatedFaultProofApplication = application;
         },
       });
 
-    const {
-      rawSource,
-      inclusionRawSource,
-      stateQueueSource,
-      stateQueueRuntime,
-    } = earlyQueue ?? (await restoreQueue());
-    const kupoService = localL1Source.queryServices.find(
-      ({ kind }) => kind === "kupo",
-    );
-    const ogmiosService = localL1Source.queryServices.find(
-      ({ kind }) => kind === "ogmios",
-    );
-    if (kupoService === undefined || ogmiosService === undefined) {
-      throw new Error(
-        "watcher production runtime omitted its Kupo or Ogmios query authority",
-      );
-    }
     const fundingRuntime = await openWatcherProverFundingRuntime({
-      path: input.config.watcherConfig.storage.path,
+      path: watcherConfig.storage.path,
       authenticationKey: trusted.rollbackAuthenticationKey,
       deploymentIdentity,
       createProtocolParameters: () =>
@@ -249,8 +249,7 @@ export const createWatcherRuntime = async (input: {
           retryL1Read(() =>
             createWatcherProtocolParameterRuntimeAuthority({
               deploymentIdentity,
-              ogmiosUrl: ogmiosService.endpoint,
-              timeoutMs: input.config.watcherConfig.l1.requestTimeoutMs,
+              query: () => transport.query({ query: "protocol_params" }),
             }),
           ),
         ),
@@ -258,69 +257,66 @@ export const createWatcherRuntime = async (input: {
       journalRoot: input.config.workflowJournalDirectory,
     });
     proverFundingStore = fundingRuntime.store;
-    const proverFundingAuthorityFactory = fundingRuntime.factory;
 
-    // Address derivation only; the runtime never holds a live signer. The
-    // executing runner re-resolves the same secret source itself.
-    const proverSecret = await loadWatcherSecretText(
-      input.config.watcherConfig.proverWallet.keySource,
-    );
-    const { proverWalletAddress, proverUtxoProvider } =
-      createWatcherRuntimeProverWallet(
-        input,
-        proverSecret,
-        kupoService,
-        ogmiosService,
-      );
-    faultProofSupervisor = createWatcherFaultProofSupervisor({
+    const activeSupervisor = createWatcherFaultProofSupervisor({
       journalRoot: input.config.workflowJournalDirectory,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs: Math.max(
-        input.config.watcherConfig.deadlines.daFetchMs,
-        input.config.watcherConfig.deadlines.daPublishMs,
-        input.config.watcherConfig.deadlines.proofConstructMs,
-        input.config.watcherConfig.deadlines.proofSubmitMs,
+        watcherConfig.deadlines.daFetchMs,
+        watcherConfig.deadlines.daPublishMs,
+        watcherConfig.deadlines.proofConstructMs,
+        watcherConfig.deadlines.proofSubmitMs,
       ),
       queueAuthenticationKey: trusted.rollbackAuthenticationKey,
       execution: createWatcherFaultProofExecution({
         application: faultProofApplication,
-        fundingFactory: proverFundingAuthorityFactory,
+        fundingFactory: fundingRuntime.factory,
         walletAddress: proverWalletAddress,
-        provider: proverUtxoProvider,
+        provider,
         journalRoot: input.config.workflowJournalDirectory,
         runtimeConfigPath: input.config.watcherRuntimeConfigPath,
         deploymentFingerprint: deploymentIdentity.manifestId,
         operationsSink: () => operations.sink,
       }),
     });
+    faultProofSupervisor = activeSupervisor;
+
+    const l1 = createWatcherL1Readiness({
+      follower: activeFollower,
+      driver: () => decisionDriver,
+    });
+    const refreshFollowerReadiness = (): void => void l1.refresh();
+    const l1Readiness = l1.read;
     const operations = createWatcherOperationsObservability({
       deploymentFingerprint: deploymentIdentity.manifestId,
-      supervisor: faultProofSupervisor,
+      supervisor: activeSupervisor,
       launchScopeStatus: () => ({
         installedCategoryCount:
           faultProofApplication.installedCategories.length,
         requiredCategoryCount: FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
       }),
-      durableProofQueueStatus: faultProofSupervisor.durableQueueStatus,
+      durableProofQueueStatus: activeSupervisor.durableQueueStatus,
       retainedDaTransportStatus:
         faultProofApplication.retainedDaTransportStatus,
-      coordinatorStatus: () => activeCoordinator?.status() ?? null,
+      l1Readiness,
     });
     retainedDaOperationsBinding = bindWatcherRetainedDaOperations({
       deploymentIdentity,
       sink: operations.sink,
     });
-    availability = await createWatcherAvailabilityRuntime({
+    const headerSource = createWatcherQueueHeaderSource(store, {
+      releaseDepth,
+    });
+    const activeAvailability = await createWatcherAvailabilityRuntime({
       config: input.config,
       identity: deploymentIdentity,
-      rawSource,
+      l1: { reads: rawReads, store, provider },
+      confirmationDepth: releaseDepth,
       faultProofObservation: {
-        rawSource: inclusionRawSource,
-        currentObservation: stateQueueRuntime.current,
+        currentObservation: () => decisionDriver?.inclusion() ?? null,
       },
       mergedHeaders: async (observation) =>
-        (await stateQueueSource.resolveMergedHeaders?.({ observation })) ??
-        new Map(),
+        await headerSource.resolveMergedHeaders({ observation }),
       proverWalletAddress,
       onStatusTransition: input.onAvailabilityStatusTransition,
       // E5: the pool readout and its alerts reach /v1/status; they never make
@@ -333,162 +329,122 @@ export const createWatcherRuntime = async (input: {
         operations.sink,
       ),
     });
-    await startup("availability_reconciliation", () =>
-      availability!.reconcile(stateQueueRuntime.current(), false),
-    );
-    faultDecisionBridge = await createWatcherFaultDecisionBridge({
+    availability = activeAvailability;
+    const activeBridge = await createWatcherFaultDecisionBridge({
       application: faultProofApplication,
-      supervisor: faultProofSupervisor,
-      stateQueueSource,
+      supervisor: activeSupervisor,
+      stateQueueSource: headerSource,
       journalDirectory: input.config.workflowJournalDirectory,
       runtimeConfigPath: input.config.watcherRuntimeConfigPath,
       maximumClassificationConcurrency: 16,
       operationsSink: operations.sink,
-      pendingAvailabilityHeaders: availability.pendingAvailabilityHeaders,
+      pendingAvailabilityHeaders: activeAvailability.pendingAvailabilityHeaders,
     });
-    // Capture the full finalized backlog in bounded batches before recovering
-    // older queue headers. Their event views remain scoped to each header.
-    const restoredQueuePoint = stateQueueRuntime.catchupBoundary;
-    await startup("user_event_catchup", () =>
-      eventHistory.advanceThrough({
-        blockHash: restoredQueuePoint.blockHash,
-        blockNo: restoredQueuePoint.blockNo,
-        slot: restoredQueuePoint.slot,
-        pointId: computeFraudProofRawL1PointId(restoredQueuePoint),
-      }),
-    );
-    await startup("header_classification", () =>
-      faultDecisionBridge!.prepareForRecovery(stateQueueRuntime.current()),
-    );
-    const recoveredFaultProofWorkflowCount = await startup(
-      "workflow_recovery",
-      () => faultDecisionBridge!.recoverExisting(),
-    );
+    faultDecisionBridge = activeBridge;
     operationsHttp = await startWatcherOperationsHttpServer({
       endpoint: input.config.operationsEndpoint,
       observability: operations,
     });
-    const retainedFinality = durable.readFinality();
-    const intersectionCandidates = watcherRestartIntersectionCandidates({
-      oldestAuthenticatedHint: oldestRetainedCanonicalHint(durable),
-      progressHead: blockProgress.readHead(),
-      progressCandidates: blockProgress.readCandidates(),
-      authorityFinalized:
-        retainedFinality.finalized !== null ? retainedFinality.finalized : null,
-      stateQueueCursor: stateQueueRuntime.replayIntersection,
-    });
-    native = await startWatcherNativeChainSyncWithRetry(
-      watcherRuntimeNativeStartupOptions(input, {
-        intersectionCandidates,
-        coordinator: coordinatorReady,
-        onCaughtUp: resolveCaughtUp,
-        operationsSink: operations.sink,
-        sourceIdentityDigest: localL1Source.chainSync.genesisIdentitySha256,
-        readScopes: queueReadScopes!,
-      }),
+
+    const sourceIdentityDigest = localL1Source.chainSync.genesisIdentitySha256;
+    const retirementReady = () => {
+      const status = activeSupervisor.status();
+      return (
+        status.recovered &&
+        status.phase === "accepting" &&
+        status.unfinishedObjectiveCount === 0 &&
+        status.queuedJobCount === 0 &&
+        status.activeJob === null &&
+        status.blockedJob === null
+      );
+    };
+    const activeDriver = createWatcherDecisionDriver(
+      {
+        store,
+        onFollowerChange: activeFollower.onChange,
+        authority,
+        sourceId: watcherObservationSourceId(
+          deploymentIdentity.manifestId,
+          localL1Source.authorityNodeId,
+        ),
+        releaseDepth,
+        bridge: activeBridge,
+        availability: activeAvailability,
+        history: eventHistory,
+        retirement: {
+          ready: retirementReady,
+          retire: (observation) =>
+            sqlite.replayTranscripts.retireExpired({
+              observation,
+              network: watcherConfig.targetNetwork,
+              ...(watcherConfig.customNetwork === undefined
+                ? {}
+                : { customSlotConfig: watcherConfig.customNetwork.slotConfig }),
+            }),
+          reset: () => sqlite.replayTranscripts.resetRetirementWitnesses(),
+        },
+        onDecided: (tip) => {
+          const observedAtMs = BigInt(Date.now()).toString();
+          operations.sink.recordL1Source({
+            sourceIdentityDigest,
+            sourceMode: "local_node",
+            status: "consistent",
+            blockHash: tip.nativePoint.blockHash,
+            blockNo: tip.nativePoint.blockNo,
+            slot: tip.nativePoint.slot,
+            observedAtMs,
+          });
+          operations.sink.setAlert({
+            code: "chain_rollback",
+            subjectDigest: sourceIdentityDigest,
+            active: false,
+            observedAtMs,
+          });
+          refreshFollowerReadiness();
+        },
+        retryDelayMs: watcherConfig.l1.requestTimeoutMs,
+        log: (line) => process.stderr.write(`watcher decisions: ${line}\n`),
+      },
+      { atTip: () => activeFollower.status()?.atTip === true },
     );
-    observeWatcherNativeReadLifetime(
-      native.done,
-      queueReadScopes!,
-      rejectCaughtUp,
-    );
-    observation = await createWatcherLocalKupmiosNativeObservationRuntime({
-      watcherConfig: input.config.watcherConfig,
-      deploymentIdentity,
-      nativeAuthority: native.authority,
-      rawSource,
-    });
-    const details = readWatcherNativeRecoveryBoundary({
-      nativeAuthority: native.authority,
-      admittedIntersections: intersectionCandidates,
-    });
-    const queueHooks = stateQueueRuntime.bindFaultDecisionBridge(
-      faultDecisionBridge,
-      availability,
-    );
-    const activeUserEventRuntime = eventHistory;
-    const activeBridge = faultDecisionBridge;
-    const activeAvailability = availability;
-    const recovery = createWatcherHistoryRecovery({
-      history: activeUserEventRuntime,
-      queue: queueHooks,
-      bridge: activeBridge,
-      availability: activeAvailability,
-      quarantined: () => durable.readFinality().phase === "quarantined",
-      resume: async () => (await coordinatorReady).resume(),
-      retryDelayMs: input.config.watcherConfig.l1.requestTimeoutMs,
-      onPending: (pending) =>
+    decisionDriver = activeDriver;
+    unsubscribeL1 = [
+      activeFollower.onChange(refreshFollowerReadiness),
+      store.onGeneration(() => {
         operations.sink.setAlert({
           code: "chain_rollback",
-          subjectDigest: deploymentIdentity.manifestId,
-          active: pending,
+          subjectDigest: sourceIdentityDigest,
+          active: true,
           observedAtMs: BigInt(Date.now()).toString(),
-        }),
-    });
-    historyRecovery = recovery;
-    const coordinator = createWatcherChainCoordinator({
-      policy,
-      durable,
-      observation,
-      restartIntersection: details.selectedIntersection,
-      progress: blockProgress,
-      // One predicate decides relevance for every component: the user-event
-      // runtime's deployment policy plus its active event outrefs, extended
-      // with the queue nodes and correction lock the state queue follows.
-      relevance: (block) => {
-        const current = stateQueueRuntime.current();
-        return recovery.classify(block, [
-          ...current.finalizedQueue.map(({ outRef }) => outRef),
-          ...current.finalizedHeaders.map(({ queueOutRef }) => queueOutRef),
-          ...(current.finalizedCorrectionLock === null
-            ? []
-            : [current.finalizedCorrectionLock.outRef]),
-        ]);
-      },
-      hooks: watcherReplayTranscriptRetirementHooks({
-        recovery,
-        durable,
-        supervisor: faultProofSupervisor,
-        localObservationRuntime: observation,
-        stateQueueSource,
-        stateQueueRuntime,
-        store: sqlite.replayTranscripts,
-        config: input.config.watcherConfig,
+        });
       }),
-    });
-    activeCoordinator = coordinator;
-    resolveCoordinator(coordinator);
-    if (
-      details.currentTip.kind === "point" &&
-      details.selectedIntersection.blockHash === details.currentTip.blockHash &&
-      details.selectedIntersection.slot === details.currentTip.slot
-    ) {
-      resolveCaughtUp();
-    }
+    ];
+    readinessTimer = setInterval(
+      refreshFollowerReadiness,
+      L1_READINESS_REFRESH_MS,
+    );
+    readinessTimer.unref();
+    refreshFollowerReadiness();
+    activeDriver.wake();
+
+    const recoveredFaultProofWorkflowCount = await startup(
+      "workflow_recovery",
+      () => activeDriver.recovered,
+    );
     return createWatcherRuntimeLifecycle({
       deploymentAuthority,
-      policy,
-      coordinator,
       faultProofApplication,
       faultProofReadiness,
-      faultProofSupervisor,
+      faultProofSupervisor: activeSupervisor,
       operations,
       operationsHttp,
       recoveredFaultProofWorkflowCount,
-      availability,
-      recovery,
-      native,
-      activeUserEventRuntime,
-      nativeCaughtUp,
-      stateQueueRuntime,
+      availability: activeAvailability,
+      follower: activeFollower,
+      decisionDriver: activeDriver,
       closeAllocatedResources,
     });
   } catch (error) {
-    if (native !== undefined) {
-      rejectCoordinator(
-        error instanceof Error ? error : new Error(String(error)),
-      );
-    }
     try {
       await closeAllocatedResources();
     } catch (shutdownError) {

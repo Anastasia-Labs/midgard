@@ -18,7 +18,7 @@ import type {
   JournalJsonObject,
   JournalJsonValue,
 } from "./journal.js";
-import { type LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
+import type { FraudProofL1Source } from "./l1-source.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAction,
@@ -74,7 +74,7 @@ export type ManifestBoundDoubleSpendWorkflowConfig = Omit<
   readonly blueprintJson: string;
   readonly deploymentInfo: unknown;
   readonly headerHash: string;
-  readonly source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  readonly l1Source: FraudProofL1Source;
   readonly fieldPreimageCertificateReferenceScript: UTxO;
 };
 

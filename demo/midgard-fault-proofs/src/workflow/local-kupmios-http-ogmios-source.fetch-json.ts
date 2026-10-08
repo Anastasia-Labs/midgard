@@ -17,7 +17,6 @@ import {
   EVEN_HEX,
   type FraudProofRawL1Fetch,
   HEX_32,
-  isNetworkFailure,
   type KupoMatch,
   type KupoPoint,
   type KupoSpentPoint,
@@ -27,6 +26,7 @@ import {
   NATURAL,
   type OgmiosTip,
 } from "./local-kupmios-http-ogmios-source.read-admitted-local-kupmios-signed-transaction-recovery.js";
+import { isNetworkFailure } from "./network-failure.js";
 import {
   computeFraudProofRawL1PointId,
   type FraudProofRawL1Point,

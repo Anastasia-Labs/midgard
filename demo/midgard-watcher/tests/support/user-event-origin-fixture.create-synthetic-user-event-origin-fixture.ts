@@ -31,6 +31,10 @@ import {
   type WatcherUserEventScriptBinding,
 } from "../../src/runtime/deployment-identity.js";
 import {
+  type LedgerProtocolParameterOverrides,
+  ledgerProtocolParameters,
+} from "./ledger-protocol-parameters.js";
+import {
   buildBlock,
   type OriginDeployment,
   type SyntheticNativeQuery,
@@ -63,6 +67,11 @@ export const createSyntheticUserEventOriginFixture = async (
     blockSlotInterval?: number;
     ruleBundleCommitment?: string;
     protocolParameters?: unknown;
+    /**
+     * When given, the native node answers the `protocol_params` ledger
+     * query with these parameters (the follower's funding read).
+     */
+    nodeProtocolParameters?: LedgerProtocolParameterOverrides;
     /** Exact accepted transactions and identity from a live emulator deployment. */
     published?: Readonly<{
       deployment: OriginDeployment;
@@ -104,6 +113,7 @@ export const createSyntheticUserEventOriginFixture = async (
   const tipPath = join(dir, "tip.json");
   const controlPath = join(dir, "native-control.json");
   const queryLogPath = join(dir, "native-queries.jsonl");
+  const ledgerPath = join(dir, "ledger-outputs.json");
   await writeFile(genesisConfig, GENESIS_BYTES);
   await writeFile(
     nodeConfig,
@@ -132,6 +142,18 @@ export const createSyntheticUserEventOriginFixture = async (
   const outputsByUnit = new Map<string, CreatingOutput[]>();
   const consumptionsByOutRef = new Map<string, Consumption[]>();
   const closed: (() => Promise<void>)[] = [];
+  // The node's ledger, for `utxo_by_address`: the outputs the initialization
+  // frames leave unspent, and each native block's spends and outputs.
+  type LedgerOutput = Readonly<{
+    outRef: string;
+    address: string;
+    cbor: string;
+  }>;
+  const ledger = {
+    preOrigin: new Map<string, LedgerOutput>(),
+    blocks: {} as Record<string, { spent: string[]; created: LedgerOutput[] }>,
+  };
+  let initializing = true;
   const initialization = options.published ?? INITIALIZATION;
   const initializationTransaction = CML.Transaction.from_cbor_hex(
     initialization.transactionCbor,
@@ -346,6 +368,28 @@ export const createSyntheticUserEventOriginFixture = async (
         outputs: Object.freeze(outputs),
       });
       creating.push(source);
+      const created = Array.from({ length: bodyOutputs.len() }, (_, index) => {
+        const output = own(bodyOutputs.get(index));
+        return {
+          outRef: `${txHash}#${index}`,
+          address: Buffer.from(own(output.address()).to_raw_bytes()).toString(
+            "hex",
+          ),
+          cbor: output.to_cbor_hex(),
+        };
+      });
+      if (knownBlock !== undefined) {
+        const entry = (ledger.blocks[knownBlock.point.blockHash] ??= {
+          spent: [],
+          created: [],
+        });
+        entry.spent.push(...inputOutRefs);
+        entry.created.push(...created);
+      } else if (initializing) {
+        for (const outRef of inputOutRefs) ledger.preOrigin.delete(outRef);
+        for (const output of created)
+          ledger.preOrigin.set(output.outRef, output);
+      }
       creatingByHash.set(txHash, source);
       for (const output of outputs) {
         const addressRows = outputsByAddress.get(output.address) ?? [];
@@ -381,8 +425,15 @@ export const createSyntheticUserEventOriginFixture = async (
   };
   for (const frame of initialization.creatingTransactions)
     registerCreating(frame.transactionCbor);
+  initializing = false;
   registerCreating(initialization.transactionCbor, activationBlock);
-  const persistBlocks = () => writeAtomic(registryPath, blocks);
+  const persistBlocks = async () => {
+    await writeAtomic(ledgerPath, {
+      preOrigin: [...ledger.preOrigin.values()],
+      blocks: ledger.blocks,
+    });
+    await writeAtomic(registryPath, blocks);
+  };
   await persistBlocks();
   await writeFakeSidecar({
     path: binaryPath,
@@ -393,7 +444,15 @@ export const createSyntheticUserEventOriginFixture = async (
       counterPath,
       tipPath,
       queryLogPath,
+      ledgerPath,
       nativeTipBaseDepth,
+      ...(options.nodeProtocolParameters === undefined
+        ? {}
+        : {
+            protocolParametersHex: Buffer.from(
+              ledgerProtocolParameters(options.nodeProtocolParameters),
+            ).toString("hex"),
+          }),
     },
   });
   class BoundarySocket extends EventTarget {

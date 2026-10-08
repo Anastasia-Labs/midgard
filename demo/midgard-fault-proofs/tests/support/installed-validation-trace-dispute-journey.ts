@@ -370,7 +370,7 @@ export const stageInstalledValidationTraceDisputeJourney = async (
     headerHash: setup.headerHash,
     lucid: targetChallengerLucid,
     signer: challengerSigner,
-    source: {} as never,
+    l1Source: {} as never,
     decisionDigest: "dd".repeat(32),
     challenge,
     referenceScripts,
