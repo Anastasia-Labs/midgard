@@ -2,11 +2,10 @@ import { SUBMIT_SLOT_LENGTH_MS } from "@al-ft/midgard-core/ogmios-slot";
 import { postgresDialect } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { mergeReferenceScripts } from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { Clock, Effect, Option } from "effect";
 
-import { followerSqlTx } from "../database/follower-schema.js";
+import { inFollowerSnapshot } from "../database/follower-schema.js";
 import { eventOrderByIdIn } from "../l1-events/by-id.js";
 import { Database, Lucid, MidgardContracts } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
@@ -164,24 +163,17 @@ const readEventOrderById = (
   Database | MidgardContracts
 > =>
   Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
     const contracts = yield* MidgardContracts;
     const policyId =
       SDK.requireEventHistoryContracts(contracts)[kind].list.policyId;
-    const read = yield* sql
-      .withTransaction(
-        Effect.flatMap(followerSqlTx, (tx) =>
-          Effect.tryPromise(() =>
-            eventOrderByIdIn(tx, postgresDialect, { kind, policyId }, eventId),
-          ),
-        ),
-      )
-      .pipe(
-        Effect.mapError(
-          (cause) =>
-            new Error(`The ${kind} event projection is unreadable`, { cause }),
-        ),
-      );
+    const read = yield* inFollowerSnapshot((tx) =>
+      eventOrderByIdIn(tx, postgresDialect, { kind, policyId }, eventId),
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new Error(`The ${kind} event projection is unreadable`, { cause }),
+      ),
+    );
     const label = `${kind === "deposit" ? "Deposit" : "Withdrawal"} UTxO for event ${eventId.toString("hex")}`;
     if (read.kind === "absent")
       return yield* Effect.fail(
