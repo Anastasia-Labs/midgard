@@ -117,6 +117,7 @@ const driveToWorker = async (
       Effect.provideService(Lucid, { api: {} } as unknown as Lucid),
       Effect.provideService(MidgardContracts, {} as MidgardContracts),
       Effect.provide(Globals.Default),
+      withoutFollowerJournal,
     ),
   );
 

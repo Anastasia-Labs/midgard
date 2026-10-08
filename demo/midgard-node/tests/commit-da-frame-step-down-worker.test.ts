@@ -42,6 +42,7 @@ import {
   nodeConfig,
   workerInput,
 } from "./helpers/commit-da-frame-worker-fixture.js";
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 
 // The worker reads its candidates, its confirmed_ledger base and the native
 // owner through these seams; the block build itself is faked below.
@@ -261,6 +262,7 @@ const runWorker = async (
       Effect.provideService(UnownedHistoryFixture, true),
       Effect.provideService(SqlClient.SqlClient, fakeSql),
       Effect.provide(Logger.remove(Logger.defaultLogger)),
+      withoutFollowerJournal,
     ) as unknown as Effect.Effect<WorkerOutput, unknown, never>,
   )) as WorkerOutput;
   const daFrameNotices = notices.filter(

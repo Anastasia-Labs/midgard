@@ -23,6 +23,7 @@ import {
   submitTxBackedCommit,
 } from "../src/workers/commit-block-header/submission.js";
 import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
+import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 
 vi.mock("../src/database/index.js", async () => {
   const actual = await vi.importActual<
@@ -425,6 +426,7 @@ describe("canonical V1 commit profile", () => {
         ).pipe(
           Effect.provideService(NodeConfig, nodeConfig),
           Effect.provideService(ContractDeploymentIdentity, deploymentIdentity),
+          withoutFollowerJournal,
         ),
       );
 
