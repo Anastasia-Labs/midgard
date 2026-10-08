@@ -35,7 +35,24 @@ export type RejectionCodes = Readonly<
   Record<RejectionReason, Readonly<{ code: string; detail: string }>>
 >;
 
-export type Rejection = Readonly<{ tx: PendingTx; reason: RejectionReason }>;
+/**
+ * `causes` are the hex ids of the rejected transactions a "dependent" or
+ * "batch" rejection follows from: the producers of the rejected outputs it
+ * spends, or the rejected members of the batch it was accepted in. A
+ * rejection without them is not traced to another transaction.
+ */
+export type Rejection = Readonly<{
+  tx: PendingTx;
+  reason: RejectionReason;
+  causes?: readonly string[];
+}>;
+
+/** Rejects `tx` for `reason`, after the rejected transactions `causes`. */
+export type Reject = (
+  tx: PendingTx,
+  reason: "direct" | "dependent",
+  causes?: readonly string[],
+) => void;
 
 /** The code and detail one rejection is recorded with, by hex transaction id. */
 export type RejectionCodeOf = (
@@ -131,10 +148,7 @@ const receiptMembers = (
  */
 export const closeRejections = (input: {
   readonly pending: readonly PendingTx[];
-  readonly spread: (
-    reject: (tx: PendingTx, reason: "direct" | "dependent") => void,
-    rejected: Rejections,
-  ) => boolean;
+  readonly spread: (reject: Reject, rejected: Rejections) => boolean;
   readonly onReject?: (tx: PendingTx) => void;
   /** Hex ids of transactions a base block includes (none by default). */
   readonly settled?: ReadonlySet<string>;
@@ -147,8 +161,17 @@ export const closeRejections = (input: {
       input.pending.map((tx) => [txIdHex(tx), tx] as const),
     );
     const rejected = new Map<string, Rejection>();
-    const reject = (tx: PendingTx, reason: RejectionReason) => {
-      rejected.set(txIdHex(tx), { tx, reason });
+    const reject = (
+      tx: PendingTx,
+      reason: RejectionReason,
+      causes?: readonly string[],
+    ) => {
+      rejected.set(
+        txIdHex(tx),
+        causes === undefined || causes.length === 0
+          ? { tx, reason }
+          : { tx, reason, causes },
+      );
       input.onReject?.(tx);
     };
     // A member is decided when it is rejected, settled, or recorded
@@ -180,8 +203,14 @@ export const closeRejections = (input: {
       for (const members of bySequence.values()) {
         const decisions = members.map(decide);
         if (decisions.includes(undefined)) continue;
+        const causes = members
+          .filter(
+            (member) =>
+              member.rejected_earlier || rejected.has(hex(member.tx_id)),
+          )
+          .map((member) => hex(member.tx_id));
         for (const decision of decisions)
-          if (typeof decision === "object") reject(decision, "batch");
+          if (typeof decision === "object") reject(decision, "batch", causes);
       }
     }
     for (let widened = true; widened; ) {
@@ -192,6 +221,14 @@ export const closeRejections = (input: {
         sql,
         sql`r.tx_ids && ${pg.array(byteaArray([...rejected.values()].map(({ tx }) => tx.entry[Tx.Columns.TX_ID])))}::bytea[]`,
       );
+      // The rejected members of each receipt, before this pass widens it.
+      const causesOf = new Map<string, string[]>();
+      for (const member of coMembers)
+        if (rejected.has(hex(member.tx_id)))
+          causesOf.set(member.sequence, [
+            ...(causesOf.get(member.sequence) ?? []),
+            hex(member.tx_id),
+          ]);
       for (const member of coMembers) {
         const decision = decide(member);
         if (decision === "decided") continue;
@@ -204,7 +241,7 @@ export const closeRejections = (input: {
               cause: { receipt: member.sequence, txId: hex(member.tx_id) },
             }),
           );
-        reject(decision, "batch");
+        reject(decision, "batch", causesOf.get(member.sequence));
         widened = true;
       }
     }
@@ -292,6 +329,14 @@ export const recordRejections = (
           [TxRejectionsDB.Columns.REJECT_CODE]: code,
           [TxRejectionsDB.Columns.REJECT_DETAIL]: detail,
         })),
+      );
+      yield* TxRejectionsDB.insertCauses(
+        [...rejected.entries()].flatMap(([id, { causes }]) =>
+          (causes ?? []).map((cause) => ({
+            txId: Buffer.from(id, "hex"),
+            causeTxId: Buffer.from(cause, "hex"),
+          })),
+        ),
       );
       yield* TxAdmissionsDB.markAcceptedRejectedAfterCorrection(rejections);
       yield* sql`DELETE FROM address_history

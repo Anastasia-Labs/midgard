@@ -384,9 +384,9 @@ export const buildAndSubmitCommitmentBlockAction = (
         );
         break;
       }
-      case "AwaitingForeignDaOutput": {
+      case "AwaitingCommitBaseOutput": {
         yield* Effect.logWarning(
-          `🔹 Commit deferred awaiting verified foreign DA header_hash=${workerOutput.foreignHeaderHash} reason=${workerOutput.reason}`,
+          `🔹 Commit deferred awaiting its base header_hash=${workerOutput.baseHeaderHash}: ${workerOutput.detail}`,
         );
         break;
       }

@@ -106,10 +106,12 @@ export type RegisteredDueWorkOutput = {
   dueWork: SlotAwareDueWork;
 };
 
-export type AwaitingForeignDaOutput = {
-  readonly type: "AwaitingForeignDaOutput";
-  readonly foreignHeaderHash: string;
-  readonly reason: string;
+/** The commit waits for its base: a foreign tail landed-block processing
+ * has not applied to the working ledger yet. */
+export type AwaitingCommitBaseOutput = {
+  readonly type: "AwaitingCommitBaseOutput";
+  readonly baseHeaderHash: string;
+  readonly detail: string;
 };
 
 export type SubmittedAwaitingLocalFinalizationOutput = {
@@ -151,7 +153,7 @@ export type WorkerOutput =
   | NothingToCommitOutput
   | FailureOutput
   | RegisteredDueWorkOutput
-  | AwaitingForeignDaOutput
+  | AwaitingCommitBaseOutput
   | SubmittedAwaitingLocalFinalizationOutput
   | SubmittedAwaitingConfirmationOutput
   | SuccessfulLocalFinalizationRecoveryOutput;

@@ -289,11 +289,11 @@ describe("commit block worker output handling", () => {
       output: { type: "NothingToCommitOutput" },
       preserve: false,
     },
-    AwaitingForeignDaOutput: {
+    AwaitingCommitBaseOutput: {
       output: {
-        type: "AwaitingForeignDaOutput",
-        foreignHeaderHash: "dd".repeat(28),
-        reason: "foreign DA payload not yet retrievable",
+        type: "AwaitingCommitBaseOutput",
+        baseHeaderHash: "dd".repeat(28),
+        detail: "the foreign commit base is not processed yet",
       },
       preserve: false,
     },

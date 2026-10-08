@@ -59,6 +59,7 @@ import {
   processOf,
   R1,
   receipt,
+  rejectionCauses,
   rejections,
   run,
   seed,
@@ -236,6 +237,14 @@ describe(
           [b.id, COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT],
           [c.id, COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT],
         ]),
+      );
+      // The batch member and the dependent are traced to `b`; `b`'s own
+      // rejection is not traced to another transaction.
+      expect(await rejectionCauses(globals)).toEqual(
+        [
+          [hex(a.id), hex(b.id)],
+          [hex(c.id), hex(b.id)],
+        ].sort(),
       );
       expect(await unreversedReceipts(globals)).toBe(0);
       expect(await pendingIds(globals)).toEqual([]);

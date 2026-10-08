@@ -2,16 +2,18 @@
  * The production foreign replayer (`replayForeignBlock`, plan §7.3, N3) on
  * a real Postgres follower store and the node's DA table: a block's event
  * sets must equal the in-window events and forced orders the follower
- * facts hold at the view, in both polarities (honest blocks replay); a
+ * facts hold at the view, in both polarities (honest blocks replay; a known
+ * event outside the window is invalid, an unknown one a wait); a
  * block past what the view can know waits; the retained payload's identity
  * is checked; a fetched payload is kept only after the block replayed.
  */
 import type { FactStore } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Effect, Option } from "effect";
+import { Clock, Effect, Option } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { FOREIGN_DA_RETRY_MAX_MS } from "../src/da/foreign-retained-da.js";
 import { DaPayloadsDB } from "../src/database/index.js";
 import { FORCED_ORDERS_TABLE } from "../src/forced-orders/index.js";
 import { nodeLandedBlockPorts } from "../src/landed-blocks/node-ports.js";
@@ -47,11 +49,13 @@ import {
   forcedBlock,
   idKey,
   inNode,
+  inputFor,
   K,
   naming,
   nonceRef,
   repeating,
   replay,
+  replayerFor,
   retain,
   retained,
   retainedRow,
@@ -161,6 +165,21 @@ describe("foreign replay: deposits", () => {
     expect(await replayed(store, twice)).toMatchObject({
       kind: "invalid",
       detail: "the block names a deposit twice",
+    });
+  });
+
+  it("refuses a block naming a deposit the view knows outside the block's window", async () => {
+    const { store, chain } = await follow();
+    await admitDeposit(chain, 5n);
+    const [{ entry }] = (await depositsAt(store)) as [
+      Awaited<ReturnType<typeof depositsAt>>[number],
+    ];
+    const outside = await naming(await emptyBlock(), {
+      deposits: [[entry.idCbor, entry.infoCbor]],
+    });
+    expect(await replayed(store, outside)).toMatchObject({
+      kind: "invalid",
+      detail: `deposit ${entry.idCbor} is outside the block's window`,
     });
   });
 
@@ -307,20 +326,51 @@ describe("foreign replay: the view's horizon and the DA payload", () => {
     expect(await replay(store, block)).toMatchObject({ kind: "replayed" });
   });
 
-  it("refuses a retained payload whose digest or block differs", async () => {
+  it("deletes a retained payload that no longer verifies and waits on its refetch", async () => {
     const { store } = await follow();
     const block = await emptyBlock();
+    const time = { ms: 1_000_000 };
+    const clockAt: Clock.Clock = {
+      [Clock.ClockTypeId]: Clock.ClockTypeId,
+      unsafeCurrentTimeMillis: () => time.ms,
+      currentTimeMillis: Effect.sync(() => time.ms),
+      unsafeCurrentTimeNanos: () => BigInt(time.ms) * 1_000_000n,
+      currentTimeNanos: Effect.sync(() => BigInt(time.ms) * 1_000_000n),
+      sleep: () => Effect.void,
+    };
+    // One replayer across runs, as the follower keeps one.
+    const replayer = replayerFor(store);
+    const run = async (payload: SDK.DaPayload) =>
+      inNode(
+        replayer(await inputFor(store, payload)).pipe(
+          Effect.withClock(clockAt),
+        ),
+      );
     await retain(
       await retainedRow(block, (row) => ({
         ...row,
         payload_sha256: sha256(Buffer.from("other")),
       })),
     );
-    expect(await replay(store, block)).toEqual({
-      kind: "invalid",
-      detail: "the retained DA payload's identity differs from the block",
+    // No peer serves it: the row is gone, and the wait is named as a refetch.
+    expect(await run(block)).toMatchObject({
+      kind: "da_refetch_pending",
+      detail: expect.stringContaining(
+        "its stored digest or identity does not verify",
+      ),
     });
-    // Another block's payload under this header hash, digest intact.
+    expect(Option.isNone(await retained(block))).toBe(true);
+    // A later run still owes the refetch, so it still says so.
+    expect(await run(block)).toMatchObject({ kind: "da_refetch_pending" });
+    // Served once its backoff is over: refetched, replayed and retained.
+    time.ms += FOREIGN_DA_RETRY_MAX_MS;
+    serveDa(() => block);
+    expect(await run(block)).toMatchObject({ kind: "replayed" });
+    expect(Option.isSome(await retained(block))).toBe(true);
+    // Another block's payload under this header hash, digest intact: its
+    // body is not the block's, so it is deleted too and the block's own
+    // payload fetched. The identity check comes first, so its forced order
+    // is never waited on.
     await forget(block);
     const elsewhere = await forcedBlock();
     await retain(
@@ -329,14 +379,17 @@ describe("foreign replay: the view's horizon and the DA payload", () => {
         header_hash: Buffer.from(block.block_body.header_hash, "hex"),
       })),
     );
-    // Its body names a forced order the view does not know; the identity
-    // check comes first, so this is no wait on that order.
-    expect(await replay(store, block)).toEqual({
-      kind: "invalid",
-      detail: "the retained DA payload's identity differs from the block",
-    });
-    await forget(block);
-    expect(await replayed(store, block)).toMatchObject({ kind: "replayed" });
+    expect(await replay(store, block)).toMatchObject({ kind: "replayed" });
+    const kept = await retained(block);
+    expect(Option.isSome(kept) && kept.value.payload_cbor).toEqual(
+      (await retainedRow(block)).payload_cbor,
+    );
+  });
+
+  it("names a plain fetch wait missing when no retained row was deleted", async () => {
+    const { store } = await follow();
+    const block = await emptyBlock();
+    expect(await replay(store, block)).toMatchObject({ kind: "missing" });
   });
 
   it("keeps a fetched payload only once its block replayed", async () => {

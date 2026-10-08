@@ -19,6 +19,7 @@ export {
   findUndecidedBatchMember,
   producedByRejections,
   recordRejections,
+  type Reject,
   type Rejection,
   type RejectionCodes,
   type RejectionReason,

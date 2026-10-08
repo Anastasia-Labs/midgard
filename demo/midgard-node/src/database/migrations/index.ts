@@ -17,6 +17,7 @@ import settlementStatusDerivedSql from "./sql/0015_settlement_status_derived.sql
 import receiptRejectionsSql from "./sql/0016_receipt_rejections.sql";
 import dropSettlementHoldSlotSql from "./sql/0017_drop_settlement_hold_slot.sql";
 import landedBlocksOwnRemovedSql from "./sql/0018_landed_blocks_own_removed.sql";
+import txRejectionCausesSql from "./sql/0019_tx_rejection_causes.sql";
 
 export type Migration = {
   readonly version: number;
@@ -153,6 +154,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: landedBlocksOwnRemovedSql,
     transactional: true,
   },
+  {
+    version: 19,
+    name: "tx_rejection_causes",
+    checksumSha256: sha256Hex(txRejectionCausesSql),
+    sql: txRejectionCausesSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -206,6 +214,7 @@ export const APPLICATION_TABLE_NAMES = [
   "mempool_tx_deltas",
   "mpf_engine_state",
   "tx_rejections",
+  "tx_rejection_causes",
   "pending_block_finalizations",
   "pending_block_finalization_deposits",
   "pending_block_finalization_forced_transactions",
@@ -276,6 +285,7 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_tx_admissions_active_lease",
   "idx_tx_admissions_queued_arrival",
   "uniq_tx_rejections_tx_id",
+  "idx_tx_rejection_causes_cause",
   "idx_local_mutation_jobs_status_updated",
   "uniq_state_queue_mutation_leases_active_scope",
   "idx_state_queue_mutation_leases_status_updated",

@@ -25,7 +25,9 @@
  *   of them appears;
  * - a receipt with an undecided member is left as it is, and so is a repair
  *   whose batch rejection reaches one; the rebase runs;
- * - each rule has a mutant that fails its expectations.
+ * - each rule has a mutant that fails its expectations;
+ * - a rebase records what each dependent or batch rejection follows from
+ *   (`tx_rejection_causes`, migration 0019).
  */
 
 import { SqlClient } from "@effect/sql";
@@ -68,6 +70,7 @@ import {
   pendingTx,
   processOf,
   receipt,
+  rejectionCauses,
   rejections,
   run,
   seed,
@@ -200,6 +203,8 @@ describe(
     it("rejects the pending co-member as a batch member and reverses the receipt on the next rebase", async () => {
       const { globals, a, b } = await legacyBatch([]);
       expectRepaired(await observe(globals), a, b);
+      // The batch rejection is traced to the recorded member.
+      expect(await rejectionCauses(globals)).toEqual([[hex(b.id), hex(a.id)]]);
       // The repair is applied once: the next rebase finds nothing to do.
       expectRebased(await attempt(globals));
       expect(await rejections(globals)).toHaveLength(2);
@@ -446,3 +451,31 @@ describe(
     });
   },
 );
+
+describe("rejection causes", { concurrent: false }, () => {
+  it("records what a dependent or batch rejection follows from", async () => {
+    const globals = await processOf(freshNative());
+    await seed(globals);
+    // The processed block spends `E0`, the input of `a`; `c` spends `a`'s
+    // output; `b` was accepted in one batch with `a`.
+    const a = pendingTx("a", [E0.outref], 1);
+    const b = pendingTx("b", [], 2);
+    const c = pendingTx("c", [a.produced[0]!.outref], 3);
+    await run(globals, admitPending([a, b, c]));
+    await receipt(globals, [a.id, b.id]);
+    expectRebased(await attempt(globals));
+    expect(await rejections(globals)).toEqual(
+      [
+        [hex(a.id), REBASE_REJECTIONS.direct.code],
+        [hex(b.id), REBASE_REJECTIONS.batch.code],
+        [hex(c.id), REBASE_REJECTIONS.dependent.code],
+      ].sort(([x], [y]) => (x! < y! ? -1 : 1)),
+    );
+    expect(await rejectionCauses(globals)).toEqual(
+      [
+        [hex(b.id), hex(a.id)],
+        [hex(c.id), hex(a.id)],
+      ].sort(),
+    );
+  });
+});

@@ -4,7 +4,8 @@
  * never replayed, exactly once across runs; one whose journal is abandoned
  * is adopted unapplied for the rebase to revive, and the blocks after it
  * wait for its local finalization; a journal that does not describe the
- * landed block holds by name and records nothing; a merged own block folds
+ * landed block, or whose delta misses its header's root, holds the local
+ * fault by name and records nothing; a merged own block folds
  * into `confirmed_ledger` once its journal is locally applied (N5), once,
  * whether the merge fiber folded it first or not; a foreign block after it
  * replays on the journal's
@@ -24,6 +25,7 @@ import {
 import {
   CONFIRMED_LEDGER_OWN_BLOCK_PENDING,
   LANDED_BLOCK_INVALID,
+  LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
   LANDED_BLOCK_OWN_REVIVAL_PENDING,
   LANDED_BLOCK_REBASE_PENDING,
   LANDED_BLOCKS_WAITING,
@@ -182,7 +184,7 @@ describe("own landed blocks", () => {
     );
   }, 120_000);
 
-  it("never adopts an own block whose journal does not describe the landed block", async () => {
+  it("never adopts an own block whose journal does not describe the landed block, holding a local fault", async () => {
     const { a, f, genesisState, journalA } = await fixture();
     const state = harness();
     state.journals.set(a.hash, {
@@ -195,10 +197,38 @@ describe("own landed blocks", () => {
           ports(state),
           queueOf(genesisState, [a, f]),
         );
-        expect(held?.reason).toBe(LANDED_BLOCK_INVALID);
+        expect(held?.reason).toBe(LANDED_BLOCK_OWN_JOURNAL_MISMATCH);
         expect(held?.detail).toContain(a.hash);
         expect(yield* retrieveRows).toHaveLength(0);
         expect(state.replays).toHaveLength(0);
+      }),
+    );
+  }, 120_000);
+
+  it("recomputes an own block's root from its journal delta: a delta that misses the header's root holds a local fault, never landed_block_invalid", async () => {
+    const { a, f, genesisState, journalA } = await fixture();
+    const state = harness();
+    // The journal names the right base and root, but its delta keeps G0.
+    state.journals.set(a.hash, { ...journalA, spent: [] });
+    await inNode(
+      Effect.gen(function* () {
+        const held = yield* processLandedQueue(
+          ports(state),
+          queueOf(genesisState, [a, f]),
+        );
+        expect(held?.reason).toBe(LANDED_BLOCK_OWN_JOURNAL_MISMATCH);
+        expect(held?.detail).toContain(
+          `its header commits ${a.header.utxosRoot}`,
+        );
+        expect(held?.detail).not.toContain(LANDED_BLOCK_INVALID);
+        expect(yield* retrieveRows).toHaveLength(0);
+        expect(state.replays).toHaveLength(0);
+        // The journal's delta reaches the root: adopted, as in the first case.
+        state.journals.set(a.hash, journalA);
+        yield* processLandedQueue(ports(state), queueOf(genesisState, [a]));
+        expect((yield* retrieveRows).map((row) => row.headerHash)).toEqual([
+          a.hash,
+        ]);
       }),
     );
   }, 120_000);

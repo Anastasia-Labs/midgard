@@ -51,6 +51,72 @@ export const insertMany = (
     sqlErrorToDatabaseError(tableName, "Failed to insert tx rejections"),
   );
 
+/** The rejected transactions a rejection follows from (migration 0019). */
+export const causesTableName = "tx_rejection_causes";
+
+export type Cause = Readonly<{ txId: Buffer; causeTxId: Buffer }>;
+
+/** Records the causes of rejections inserted in the same transaction. */
+export const insertCauses = (
+  causes: readonly Cause[],
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (causes.length === 0) return;
+    const sql = yield* SqlClient.SqlClient;
+    for (let start = 0; start < causes.length; start += 1_000)
+      yield* sql`INSERT INTO ${sql(causesTableName)} ${sql.insert(
+        causes.slice(start, start + 1_000).map(({ txId, causeTxId }) => ({
+          tx_id: txId,
+          cause_tx_id: causeTxId,
+        })),
+      )}`;
+  }).pipe(
+    Effect.withLogSpan(`insert ${causesTableName}`),
+    sqlErrorToDatabaseError(
+      causesTableName,
+      "Failed to insert tx rejection causes",
+    ),
+  );
+
+/**
+ * Deletes the rejections of `txIds`, then every rejection whose recorded
+ * causes are all deleted ones, transitively; a rejection with no recorded
+ * cause is deleted only if it is one of `txIds`. Runs in the caller's
+ * transaction. Returns the deleted ids.
+ */
+export const deleteWithTracedRejections = (
+  txIds: readonly Buffer[],
+): Effect.Effect<readonly Buffer[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (txIds.length === 0) return [];
+    const sql = yield* SqlClient.SqlClient;
+    const deleted = new Map(txIds.map((id) => [id.toString("hex"), id]));
+    for (let frontier = [...txIds]; frontier.length > 0; ) {
+      const all = [...deleted.values()];
+      const traced = yield* sql<{ tx_id: Buffer }>`
+        SELECT c.tx_id FROM ${sql(causesTableName)} c
+        WHERE c.tx_id IN (SELECT tx_id FROM ${sql(causesTableName)}
+            WHERE cause_tx_id IN ${sql.in(frontier)})
+          AND c.tx_id NOT IN ${sql.in(all)}
+        GROUP BY c.tx_id
+        HAVING bool_and(c.cause_tx_id IN ${sql.in(all)})`;
+      frontier = traced.map(({ tx_id }) => tx_id);
+      for (const id of frontier) deleted.set(id.toString("hex"), id);
+    }
+    const ids = [...deleted.values()];
+    const removed: Buffer[] = [];
+    for (let start = 0; start < ids.length; start += 1_000)
+      removed.push(
+        ...(yield* sql<{ tx_id: Buffer }>`DELETE FROM ${sql(tableName)}
+          WHERE ${sql(Columns.TX_ID)} IN ${sql.in(ids.slice(start, start + 1_000))}
+          RETURNING ${sql(Columns.TX_ID)}`).map(({ tx_id }) => tx_id),
+      );
+    return removed;
+  }).pipe(
+    Effect.withLogSpan(`deleteWithTracedRejections ${tableName}`),
+    sqlErrorToDatabaseError(tableName, "Failed to delete tx rejections"),
+  );
+
 export const retrieveByTxId = (
   txId: Buffer,
 ): Effect.Effect<readonly Entry[], DatabaseError, Database> =>

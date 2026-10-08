@@ -251,6 +251,29 @@ export const retrieveByHeaderHash = (
   );
 
 /**
+ * Deletes one retained payload whose stored bytes no longer verify, so it
+ * can be fetched again. Takes the material-store lock first, as retention
+ * pruning does, and releases the material only that row owned.
+ */
+export const removeByHeaderHash = (
+  headerHash: Buffer,
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* sql`SELECT pg_advisory_xact_lock(${STORE_ADVISORY_LOCK_NAMESPACE}, ${STORE_ADVISORY_LOCK_KEY})`;
+        yield* sql`DELETE FROM ${sql(tableName)}
+          WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}`;
+        yield* collectUnownedMaterial;
+      }),
+    );
+  }).pipe(
+    Effect.withLogSpan(`removeByHeaderHash ${tableName}`),
+    sqlErrorToDatabaseError(tableName, "Failed to remove DA payload"),
+  );
+
+/**
  * The node's authenticated L1 view of the state queue: the header hash in the
  * `ConfirmedState` datum and the hash of every header node currently in the
  * queue. The only payloads exempt from retention pruning.

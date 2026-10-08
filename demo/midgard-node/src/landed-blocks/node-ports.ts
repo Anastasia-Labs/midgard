@@ -9,6 +9,7 @@ import { Effect, Ref } from "effect";
 
 import { followerViewValid } from "../database/follower-schema.js";
 import type { ForcedOrderConfig } from "../forced-orders/index.js";
+import type { DriverHold } from "../l1-events/driver.js";
 import type { StateQueueProjectionConfig } from "../l1-state-queue/index.js";
 import { utxoToLedgerInsertMaterial } from "../mpf/ledger-hydration.js";
 import { NodeConfig } from "../services/config.js";
@@ -18,6 +19,7 @@ import {
 } from "../services/event-history-producer.js";
 import { Globals } from "../services/globals.globals.js";
 import { readQueueHistory } from "./history.js";
+import { LANDED_BLOCK_REBASE_PENDING } from "./holds.js";
 import { ownJournal } from "./journal.js";
 import { ledgerRows } from "./ledger.js";
 import type { LandedBlockPorts } from "./ports.js";
@@ -47,11 +49,19 @@ const genesis = Effect.gen(function* () {
 export const requestRebase = (reason: string) =>
   Effect.gen(function* () {
     const plan = yield* rebasePlan;
-    if (plan.kind === "blocked") return plan.detail;
+    if (plan.kind === "blocked")
+      return {
+        reason: plan.reason ?? LANDED_BLOCK_REBASE_PENDING,
+        detail: plan.detail,
+      } satisfies DriverHold;
     if (plan.kind === "none") return undefined;
     const globals = yield* Globals;
     const owner = yield* Ref.get(globals.EVENT_HISTORY_OWNER);
-    if (owner === undefined) return "the history owner is not running yet";
+    if (owner === undefined)
+      return {
+        reason: LANDED_BLOCK_REBASE_PENDING,
+        detail: "the history owner is not running yet",
+      } satisfies DriverHold;
     // A recovery already running reaches the rebase through its reconcile;
     // asking again would restart it.
     if ((yield* owner.frontier).ready)
@@ -68,6 +78,13 @@ export const requestRebase = (reason: string) =>
 export const disposeDeadOwnCommits = requestRebase(
   "S6 derived the status of this node's own commits",
 ).pipe(
+  Effect.flatMap((held) =>
+    held === undefined || held.reason === LANDED_BLOCK_REBASE_PENDING
+      ? Effect.void
+      : Effect.logWarning(
+          `The own-commit disposition is held (${held.reason}): ${held.detail}`,
+        ),
+  ),
   Effect.catchAllCause((cause) =>
     Effect.logWarning(
       "The own-commit disposition could not be read; the next follower run reads it again",

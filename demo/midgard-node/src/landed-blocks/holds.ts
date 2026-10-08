@@ -8,6 +8,15 @@ import type { DriverHold } from "../l1-events/driver.js";
 /** A landed block does not replay to its header, or does not link to its parent. Never adopted. */
 export const LANDED_BLOCK_INVALID = "landed_block_invalid";
 /**
+ * This node's own landed block disagrees with its journal: the journal
+ * names another base or root, or its delta on the parent's ledger does not
+ * reach the header's root. A local fault (the block is this node's, and
+ * its header binds the root), never attributed to the block; processing
+ * stops at it until the journal is repaired.
+ */
+export const LANDED_BLOCK_OWN_JOURNAL_MISMATCH =
+  "landed_block_own_journal_mismatch";
+/**
  * This node's block landed after its journal was abandoned: blocks after it
  * wait until the rebase revived it and its local finalization ran (both
  * without operator action).
@@ -16,11 +25,34 @@ export const LANDED_BLOCK_OWN_REVIVAL_PENDING =
   "landed_block_own_revival_pending";
 /** A foreign block's DA payload is not available yet, or it ends past what the view can know. */
 export const LANDED_BLOCK_AWAITING_DA = "landed_block_awaiting_da";
-/** A foreign block names an event the follower does not know at the view. */
+/**
+ * A foreign block's retained DA payload no longer verified (its digest,
+ * identity or decoding), so the row was deleted and the payload is being
+ * fetched again; clears once a refetch is served.
+ */
+export const LANDED_BLOCK_DA_REFETCH_PENDING =
+  "landed_block_da_refetch_pending";
+/**
+ * A foreign block names an event the follower does not know at all at the
+ * view. It stays a wait, never `landed_block_invalid`, even at a view whose
+ * horizon covers the block's window: the follower's facts can lack an
+ * event for reasons local to this node (a retired event pruned without the
+ * landed-frontier floor, or one admitted before the follower's origin), so
+ * absence does not prove the block wrong, and a local gap is never blamed
+ * on the block. The block is not adopted either way, and the verdict is
+ * re-read on every run. An event the view knows but whose inclusion time
+ * is outside the block's window is the block's fault: `invalid`.
+ */
 export const LANDED_BLOCK_EVENT_UNKNOWN = "landed_block_event_unknown";
 /** A forced order admitted in a foreign block's window cannot be read back from the facts yet. */
 export const LANDED_BLOCK_FORCED_ORDER_PENDING =
   "landed_block_forced_order_pending";
+/**
+ * Importing a foreign block failed for a reason it cannot pin on the block:
+ * a local computation (an MPF root) or a replay failure it cannot classify.
+ * Never attributed to the block; every run retries it.
+ */
+export const LANDED_BLOCK_REPLAY_INCOMPLETE = "landed_block_replay_incomplete";
 /** Replaying or recording a landed block failed for a reason it could not classify. */
 export const LANDED_BLOCK_REPLAY_FAILED = "landed_block_replay_failed";
 /** The history owner is recovering, or the follower moved off the run's view ("view moved"); the next run retries. */
@@ -53,16 +85,28 @@ export const LANDED_BLOCK_REBASE_FAILED = "landed_block_rebase_failed";
  * and the reason clears once a rebase runs.
  */
 export const LANDED_BLOCK_BATCH_UNDECIDED = "landed_block_batch_undecided";
+/**
+ * The follower's admission tables (`l1_event_keys`,
+ * `node_l1_forced_order_fields`) are missing from the node database, so the
+ * own-journal disposition cannot tell whether a journal's event left the
+ * chain: the rebase is held until the schema is installed (`migrate`).
+ */
+export const LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING =
+  "landed_block_follower_schema_missing";
 /** The liveness source a failed rebase raises its reason under. */
 export const LANDED_BLOCK_REBASE_SOURCE = "landed_block_rebase";
 
 const PRIORITY = [
   LANDED_BLOCK_INVALID,
+  LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
+  LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
   LANDED_BLOCK_EVENT_UNKNOWN,
   LANDED_BLOCK_FORCED_ORDER_PENDING,
+  LANDED_BLOCK_DA_REFETCH_PENDING,
   LANDED_BLOCK_AWAITING_DA,
   LANDED_BLOCK_BATCH_UNDECIDED,
   LANDED_BLOCK_REBASE_FAILED,
+  LANDED_BLOCK_REPLAY_INCOMPLETE,
   LANDED_BLOCK_REPLAY_FAILED,
   CONFIRMED_LEDGER_BASE_MISMATCH,
   LANDED_BLOCKS_WAITING,

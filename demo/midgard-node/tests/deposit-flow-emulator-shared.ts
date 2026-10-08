@@ -929,8 +929,8 @@ export const runCommitWorkerUntilSubmitted = async ({
     lastOutput = output;
     if (
       production !== undefined &&
-      output?.type === "AwaitingForeignDaOutput" &&
-      output.reason === LANDED_COMMIT_BASE_PENDING
+      output?.type === "AwaitingCommitBaseOutput" &&
+      output.detail === LANDED_COMMIT_BASE_PENDING
     )
       continue;
     if (output?.type !== "RegisteredDueWorkOutput") {

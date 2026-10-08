@@ -19,9 +19,9 @@ export const databaseOperationsProgram = (
         return Effect.fail(cause);
       return cause.reason === "missing"
         ? Effect.succeed<WorkerOutput>({
-            type: "AwaitingForeignDaOutput",
-            foreignHeaderHash: cause.foreignHeaderHash,
-            reason: cause.detail,
+            type: "AwaitingCommitBaseOutput",
+            baseHeaderHash: cause.foreignHeaderHash,
+            detail: cause.detail,
           })
         : Effect.succeed<WorkerOutput>({
             type: "FailureOutput",

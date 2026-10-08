@@ -346,15 +346,17 @@ export const inputFor = async (
   };
 };
 
-/** Replays `payload` with the production replayer at the store's view. */
+/** The production replayer over `store`; the follower keeps one across runs. */
+export const replayerFor = (store: FactStore) =>
+  replayForeignBlock({
+    store,
+    events: EVENTS_CONFIG,
+    forcedOrders: FORCED_CONFIG,
+  });
+
+/** Replays `payload` with a fresh production replayer at the store's view. */
 export const replay = async (store: FactStore, payload: SDK.DaPayload) =>
-  inNode(
-    replayForeignBlock({
-      store,
-      events: EVENTS_CONFIG,
-      forcedOrders: FORCED_CONFIG,
-    })(await inputFor(store, payload)),
-  );
+  inNode(replayerFor(store)(await inputFor(store, payload)));
 
 /** The node's event-history owner is out of scope here: its producer
  * registration runs the work as is, so history writes (the replayer keeping

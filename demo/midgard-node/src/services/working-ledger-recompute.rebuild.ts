@@ -46,6 +46,7 @@ import {
 import {
   closeRejections,
   recordRejections,
+  type Reject,
   type RejectionCodes,
   type Rejections,
   txIdHex,
@@ -61,7 +62,7 @@ const simulate = (
   base: ReadonlyMap<string, Buffer>,
   pending: readonly PendingTx[],
   rejected: Rejections,
-  reject?: (tx: PendingTx, reason: "direct" | "dependent") => void,
+  reject?: Reject,
 ) => {
   const ledger = new Map(base);
   const producer = new Map<string, string>();
@@ -77,12 +78,14 @@ const simulate = (
     if (missing.length > 0) {
       out.add(id);
       changed = true;
-      reject?.(
-        tx,
-        missing.some((key) => out.has(producer.get(key) ?? ""))
-          ? "dependent"
-          : "direct",
-      );
+      const causes = [
+        ...new Set(
+          missing
+            .map((key) => producer.get(key))
+            .filter((id): id is string => id !== undefined && out.has(id)),
+        ),
+      ];
+      reject?.(tx, causes.length > 0 ? "dependent" : "direct", causes);
       continue;
     }
     for (const key of tx.spent.map(hex)) ledger.delete(key);
