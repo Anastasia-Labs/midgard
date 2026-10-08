@@ -2,7 +2,8 @@
  * The own-landed-block test's fixture (plan §7.3, §15 N3): a genesis
  * ledger, an own block A on it with its journal and a foreign block F on A,
  * their landed queue, and stub landed-block ports over the node database
- * that record replays and rebase requests and serve a set queue history.
+ * that record replays and rebases (held pending: the driver's recompute
+ * never runs here) and serve a set queue history.
  */
 import type { View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -10,22 +11,21 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { ConfirmedLedgerDB } from "../src/database/index.js";
-import { DatabaseError } from "../src/database/utils/common.js";
 import type * as Ledger from "../src/database/utils/ledger.js";
 import type {
   LandedStateQueue,
   LandedStateQueueElement,
 } from "../src/l1-state-queue/index.js";
+import { LANDED_BLOCK_REBASE_PENDING } from "../src/landed-blocks/holds.js";
 import { ledgerRows } from "../src/landed-blocks/ledger.js";
 import {
   type LandedBlockPorts,
   type OwnJournal,
-  ViewMoved,
 } from "../src/landed-blocks/ports.js";
 import type { ReplayInput } from "../src/landed-blocks/replay.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import type { Database } from "../src/services/database.js";
-import { withHistoryWrite } from "../src/services/event-history-producer.js";
+import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { rootDatum } from "./helpers/landed-blocks-sim.traffic.js";
 import { simDigest, simOutput } from "./helpers/landed-blocks-sim.universe.js";
 import {
@@ -185,17 +185,7 @@ export const harness = (): Harness => ({
 export const ports = (state: Harness): LandedBlockPorts<never> => ({
   confirmView: () => Effect.sync(() => state.viewHeld),
   queueHistory: () => Effect.sync(() => state.history),
-  // The fixture gate reports a failed write as its own refusal; the
-  // production producer gate passes the work's failure through, so a moved
-  // view is unwrapped here.
-  write: (work) =>
-    withHistoryWrite(work).pipe(
-      Effect.mapError((error) =>
-        error instanceof DatabaseError && error.cause instanceof ViewMoved
-          ? error.cause
-          : error,
-      ),
-    ),
+  write: (work) => withFollowerWrite(work),
   replay: (input) =>
     Effect.gen(function* () {
       state.replays.push(input);
@@ -217,12 +207,15 @@ export const ports = (state: Harness): LandedBlockPorts<never> => ({
     }),
   ownJournal: (headerHash) => Effect.succeed(state.journals.get(headerHash)),
   genesis: ledgerRows(GENESIS, new Map()),
-  requestRebase: () =>
+  // A driver rebase this fixture records and never runs: it stays pending.
+  rebase: () =>
     Effect.sync(() => {
       state.rebaseRequests += 1;
-      return undefined;
+      return {
+        reason: LANDED_BLOCK_REBASE_PENDING,
+        detail: "the driver's rebase has not run",
+      };
     }),
-  rebaseFailure: Effect.succeed(undefined),
 });
 
 export type Fixture = Readonly<{

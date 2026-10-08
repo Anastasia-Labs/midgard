@@ -96,6 +96,8 @@ import {
   makeOutRefCbor,
 } from ".././midgard-output-helpers.js";
 import { insertDeposits } from "../helpers/event-rows.js";
+import { writeFollowerTip } from "../helpers/follower-view.js";
+import { openFollowerWriteGateAt } from "../helpers/follower-write-gate.js";
 import { registerTestL1Tip } from "../helpers/l1-tip.js";
 import { databaseTestDirectory } from "./admissions.database-test-directory.js";
 import {
@@ -1540,14 +1542,15 @@ export const registerAdmissionsTests = () => {
                 { concurrency: "unbounded" },
               );
 
-            const { makePoolIsolationHistoryOwner } = yield* Effect.promise(
-              () => import("../helpers/pool-isolation-history-owner.js"),
-            );
-            const history = yield* makePoolIsolationHistoryOwner({
-              globals,
-              cache,
-            });
-
+            // The driver applied a view: the drain holds a follower permit.
+            const gate = yield* Effect.flatMap(
+              writeFollowerTip(10),
+              openFollowerWriteGateAt,
+            ).pipe(Effect.provideService(SqlClient.SqlClient, batchSql));
+            yield* Ref.update(globals.FOLLOWER_WRITE_GATE, (local) => ({
+              ...local,
+              epoch: gate.epoch,
+            }));
             yield* measure(24, Effect.void);
             const releases = yield* Effect.forEach(
               Array.from({ length: nodeConfig.POSTGRES_BATCH_POOL_SIZE }),
@@ -1652,10 +1655,7 @@ export const registerAdmissionsTests = () => {
                 Stream.runHead,
               );
               expect(yield* Ref.get(globals.TX_QUEUE_PROCESSOR_ACTIVE)).toBe(0);
-            }).pipe(
-              Effect.ensuring(releaseHolders),
-              Effect.ensuring(history.close),
-            );
+            }).pipe(Effect.ensuring(releaseHolders));
           }).pipe(Effect.scoped, Effect.provide(Globals.Default)),
         ),
     );

@@ -2,7 +2,7 @@ import "./block-confirmation.record-confirmed-pending-block.js";
 
 import { Effect, Schedule } from "effect";
 
-import { runHistoryProducer } from "../services/event-history-producer.js";
+import { runAtFollowerView } from "../services/follower-write-gate.js";
 import {
   Database,
   Globals,
@@ -14,12 +14,12 @@ import { type ConfirmationWorkerRunner } from "./block-confirmation.record-confi
 import { runConfirmationWorkerInThread } from "./block-confirmation.run-confirmation-worker-in-thread.js";
 
 export const blockConfirmationAction =
-  buildBlockConfirmationAction().pipe(runHistoryProducer);
+  buildBlockConfirmationAction().pipe(runAtFollowerView);
 
 /** One confirmation tick. */
 export const confirmationTick = (
   runWorker: ConfirmationWorkerRunner = runConfirmationWorkerInThread,
-) => buildBlockConfirmationAction(runWorker).pipe(runHistoryProducer);
+) => buildBlockConfirmationAction(runWorker).pipe(runAtFollowerView);
 
 /**
  * One confirmation tick under the fiber: a failure is logged and retried on

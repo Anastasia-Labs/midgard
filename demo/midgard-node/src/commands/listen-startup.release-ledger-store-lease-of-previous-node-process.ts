@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
 import { MpfEngineStateDB } from "../database/index.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 
 /**
  * Retires the ledger MPF lease a previous node process's commit worker or
@@ -21,7 +21,7 @@ export const releaseLedgerStoreLeaseOfPreviousNodeProcess = Effect.gen(
     const retired =
       yield* MpfEngineStateDB.retireLedgerStoreLeaseOfOwnerPrefixes(
         MpfEngineStateDB.NODE_PROCESS_LEDGER_LEASE_OWNER_PREFIXES,
-      ).pipe(withHistoryWrite);
+      ).pipe(withFollowerWrite);
     if (retired !== undefined)
       yield* Effect.logWarning(
         `Startup retired ledger MPF lease left by a previous node process: owner=${retired.owner},expires_at=${retired.expiresAt?.toISOString() ?? "null"}`,

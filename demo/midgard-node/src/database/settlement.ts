@@ -71,23 +71,27 @@ export const boundWalletAddress = (deploymentId: string) =>
     return rows[0]?.wallet_address;
   });
 
-/** Fences every journal write and submit against worker takeover and history recovery. */
+/**
+ * Fences every journal write and submit against worker takeover and the
+ * follower-change driver's recompute: the settlement lease is live, and the
+ * follower write gate (plan §8.1) holds an applied view with no recompute
+ * pending. Returns the gate's epoch.
+ */
 export const assertOwner = (owner: SettlementOwner) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<{ generation: string }>`SELECT a.generation::text
-    FROM settlement_owners s JOIN event_history_authority a ON a.singleton
+    const rows = yield* sql<{ epoch: string }>`SELECT g.epoch::text AS epoch
+    FROM settlement_owners s JOIN node_follower_write_gate g ON g.singleton
     WHERE s.deployment_id = ${owner.deploymentId} AND s.wallet_address = ${owner.walletAddress}
       AND s.owner_token = ${owner.token}::uuid AND s.lease_until > clock_timestamp()
-      AND a.deployment_identity = ${Buffer.from(owner.deploymentId, "hex")}
-      AND a.state = 'ready' AND a.lease_until > clock_timestamp()`;
+      AND g.pending_reason IS NULL AND g.applied_generation IS NOT NULL`;
     if (rows.length !== 1)
       return yield* Effect.fail(
         new Error(
-          "Settlement paused: ownership or authenticated history is not ready",
+          "Settlement paused: ownership is not held, or the follower-change driver has not published its view",
         ),
       );
-    return rows[0]!.generation;
+    return rows[0]!.epoch;
   });
 
 /**
@@ -140,22 +144,22 @@ export type SettlementFailingJob = {
   due_at: Date;
 };
 
-/** Read-only backlog of the current deployment's settlement jobs: how many
- * are unfinished, and the earliest-due unfinished ones whose last attempt
- * failed, with the worker's error. Jobs of another deployment never count. */
-export const inspectBacklog = (failingLimit: number) =>
+/** Read-only backlog of deployment `deploymentId`'s settlement jobs: how
+ * many are unfinished, and the earliest-due unfinished ones whose last
+ * attempt failed, with the worker's error. Jobs of another deployment never
+ * count. */
+export const inspectBacklog = (deploymentId: string, failingLimit: number) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const [counts, failing] = yield* Effect.all(
       [
         sql<{ count: string }>`SELECT COUNT(*)::text AS count
-        FROM settlement_jobs j JOIN event_history_authority a ON a.singleton
-        WHERE j.deployment_id = encode(a.deployment_identity, 'hex')
-          AND j.phase <> 'complete'`,
+        FROM settlement_jobs j
+        WHERE j.deployment_id = ${deploymentId} AND j.phase <> 'complete'`,
         sql<SettlementFailingJob>`SELECT j.kind, j.event_id, j.phase, j.failures,
           j.last_error, j.due_at
-        FROM settlement_jobs j JOIN event_history_authority a ON a.singleton
-        WHERE j.deployment_id = encode(a.deployment_identity, 'hex')
+        FROM settlement_jobs j
+        WHERE j.deployment_id = ${deploymentId}
           AND j.phase <> 'complete' AND j.last_error IS NOT NULL
         ORDER BY j.due_at, j.created_at, j.kind, j.event_id
         LIMIT ${failingLimit}`,

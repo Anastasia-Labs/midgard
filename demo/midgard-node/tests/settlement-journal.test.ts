@@ -5,7 +5,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as Authority from "../src/database/eventHistoryAuthority.js";
+import * as NodeDeployment from "../src/database/node-deployment.js";
 import * as Journal from "../src/database/settlement.js";
 import { NodeConfig } from "../src/services/config.js";
 import * as IntentJournal from "../src/services/intent-journal.js";
@@ -13,6 +13,10 @@ import {
   noOpenAttempt,
   settleAttempts,
 } from "../src/services/settlement.status.js";
+import {
+  holdFollowerWriteGate,
+  openFollowerWriteGate,
+} from "./helpers/follower-write-gate.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const run = <A, E>(
@@ -24,18 +28,12 @@ const owner = () => ({
   walletAddress: "settlement-wallet",
   token: randomUUID(),
 });
-const ready = Effect.gen(function* () {
-  const token = yield* Authority.acquire({
-    deploymentIdentity: deploymentId,
-    ownerToken: randomUUID(),
-    leaseDurationMs: 60_000,
-  });
-  yield* Authority.publishReady(token, {
-    point: { slot: 10, id: "b1".repeat(32) },
-    snapshotDigest: "c1".repeat(32),
-  });
-  return token;
-});
+/** The open follower write gate and the recorded deployment the settlement
+ * journal's writes and its enqueue trigger need. */
+const ready = Effect.zipRight(
+  openFollowerWriteGate,
+  NodeDeployment.record(deploymentId),
+);
 const insertJob = (eventId = "01") =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -314,14 +312,14 @@ describe("settlement durable submission journal", () => {
       }),
     );
   });
-  it("does not checkpoint new work while the canonical history owner is recovering", async () => {
+  it("does not checkpoint new work while the follower-change driver recomputes", async () => {
     const actor = owner();
     await run(
       Effect.gen(function* () {
-        const history = yield* ready;
+        yield* ready;
         yield* Journal.renew(actor);
         yield* insertJob();
-        yield* Authority.beginRecovery(history, "test rollback");
+        yield* holdFollowerWriteGate("a landed-block rebase");
         expect(
           (yield* Effect.either(
             Journal.saveAttempt(actor, attempt(), Effect.void),

@@ -48,6 +48,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/l1-event-history-signed-intent-restart-emulator.test.ts
  *   tests/l1-event-history-signed-intent-continuation-emulator.test.ts
  *   tests/commit-replacement-state-queue-emulator.test.ts
+ *   tests/follower-driver-recompute.test.ts
  *   tests/database.test.ts
  *   tests/da-bond-pool-bootstrap-emulator.test.ts
  *   tests/deposit-flow-emulator-commit-selection.test.ts
@@ -57,6 +58,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/deposit-flow-emulator-submission.test.ts
  *   tests/merge-landed-finalization.test.ts
  *   tests/merge-landed-finalization-emulator.test.ts
+ *   tests/merge-maturity-preflight.test.ts
  *   tests/migration-locking.test.ts
  *   tests/migration-runner.test.ts
  *   tests/pipeline-status-route.test.ts
@@ -68,7 +70,9 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/tx-admissions-monotone-timestamps.test.ts
  *   tests/block-commitment-signed-intent-skip.test.ts
  *   tests/history-retention-prune.test.ts
+ *   tests/retention-sweeper.history-permit.test.ts
  *   tests/readiness-honest-degradation-route.test.ts
+ *   tests/readiness-follower-write-gate-route.test.ts
  *   tests/state-queue-mutation-lease-settle-retry.test.ts
  *   tests/forced-order-carriage.test.ts
  *   tests/forced-order-carriage-emulator.test.ts

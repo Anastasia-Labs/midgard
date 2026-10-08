@@ -1,7 +1,6 @@
 /**
  * What the simulated node does around landed-block processing (N3, I3): it
- * admits pending transactions (one acceptance receipt per accepted batch),
- * commits its own block on the processed tip (the journal, then the
+ * admits pending transactions, commits its own block on the processed tip (the journal, then the
  * working-ledger move onto it), and finalizes its journal once the block is
  * merged (landed-block processing folds it into `confirmed_ledger`; the
  * transactions it included stay marked until that fold is final). The
@@ -21,12 +20,11 @@ import { moveNativeRoot, rebaseSql } from "../../src/landed-blocks/rebase.js";
 import { rebaseTargetOf } from "../../src/landed-blocks/rebase-target.js";
 import { retrieveRows } from "../../src/landed-blocks/store.js";
 import type { Database } from "../../src/services/database.js";
-import { withHistoryWrite } from "../../src/services/event-history-producer.js";
+import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
 import { makeOutRefCbor } from "../midgard-output-helpers.js";
 import {
   admitPending,
   clearRevivedRejections,
-  insertSimReceipt,
   restoreDisposedMembers,
   type SimPendingTx,
 } from "./landed-blocks-sim.mempool.js";
@@ -60,7 +58,7 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
     stats.revivalUnrejected += unrejected.length;
     if (unrejected.length > 0)
       await run(
-        withHistoryWrite(
+        withFollowerWrite(
           MempoolTxDeltasDB.upsertMany(
             unrejected.map((id) => {
               const tx = mempool.txs.get(id)!;
@@ -90,7 +88,7 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
         assertCurrent: Effect.void,
       }),
     );
-    await run(withHistoryWrite(rebaseSql(plan.target)));
+    await run(withFollowerWrite(rebaseSql(plan.target)));
     for (const disposal of plan.target.journals.dispose)
       restoreMembers(disposal.headerHash);
     await reviveRejections(plan.target.journals.revive);
@@ -122,7 +120,7 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
   const abandonActive = async (canonical: ReadonlySet<string>) => {
     const active = book.active!;
     await run(
-      withHistoryWrite(
+      withFollowerWrite(
         disposeJournals([
           {
             headerHash: active,
@@ -172,7 +170,7 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
 
   /**
    * Admits pending chains (one spending `tip`'s `X`, one spending that) and
-   * single spends of `Y` and the pool, every third admission as one batch.
+   * single spends of `Y` and the pool.
    */
   const admit = async (
     tip: Readonly<{ h: number; b: number }>,
@@ -217,17 +215,6 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
     }
     if (txs.length === 0) return;
     await run(admitPending(txs));
-    const batches =
-      txs.length > 1 && mempool.admitted % 3 !== 1
-        ? [txs]
-        : txs.map((tx) => [tx]);
-    for (const batch of batches) {
-      await run(insertSimReceipt(batch.map((tx) => tx.id)));
-      mempool.receipts.push({
-        ids: batch.map((tx) => hex(tx.id)),
-        reversed: false,
-      });
-    }
     mempool.survivors.push(...txs);
     for (const tx of txs) mempool.txs.set(hex(tx.id), tx);
     stats.admitted += txs.length;

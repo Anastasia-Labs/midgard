@@ -12,31 +12,31 @@ import {
 import { Cause, Chunk, Effect, Ref, Schedule } from "effect";
 
 import { TxAdmissionsDB } from "../database/index.js";
-import { isHistoryProducerGateClosed } from "../services/event-history-producer.js";
+import { isFollowerWriteHeld } from "../services/follower-write-gate.js";
 import {
   type NodeConfigDep,
   type ValidationPoolService,
 } from "../services/index.js";
 
-/** True when every failure in `cause` is a producer refused by a closed
- * history gate, with no defect: the concurrent drains of one iteration fail
- * (and interrupt each other) together while the owner recovers. */
-export const isHistoryGateClosedCause = (cause: Cause.Cause<unknown>) => {
+/** True when every failure in `cause` is a write the follower write gate
+ * held, with no defect: the concurrent drains of one iteration fail (and
+ * interrupt each other) together while the driver recomputes. */
+export const isFollowerWriteHeldCause = (cause: Cause.Cause<unknown>) => {
   const failures = Chunk.toReadonlyArray(Cause.failures(cause));
   return (
     failures.length > 0 &&
     Chunk.isEmpty(Cause.defects(cause)) &&
-    failures.every(isHistoryProducerGateClosed)
+    failures.every(isFollowerWriteHeld)
   );
 };
 
-export const HISTORY_GATE_CLOSED_MESSAGE =
-  "Transaction queue paused while the history owner recovers; admission resumes when its gate reopens.";
+export const FOLLOWER_WRITE_HELD_MESSAGE =
+  "Transaction queue paused while the follower-change driver recomputes; admission resumes when its gate reopens.";
 
 /**
  * Repeats a scheduled background action while logging and swallowing per-iteration
- * failures so the loop survives transient outages. A history gate closed for
- * a planned recovery is expected: it is logged once per closure at info,
+ * failures so the loop survives transient outages. A follower write gate held
+ * for a driver recompute is expected: it is logged once per closure at info,
  * without a stack, and then at debug until an iteration succeeds. Every other
  * failure keeps its full cause at WARN.
  */
@@ -50,12 +50,12 @@ export const repeatScheduledWithCauseLogging = <R>(
       action.pipe(
         Effect.zipRight(Ref.set(gateClosedReported, false)),
         Effect.catchAllCause((cause) =>
-          isHistoryGateClosedCause(cause)
+          isFollowerWriteHeldCause(cause)
             ? Ref.getAndSet(gateClosedReported, true).pipe(
                 Effect.flatMap((reported) =>
                   reported
-                    ? Effect.logDebug(HISTORY_GATE_CLOSED_MESSAGE)
-                    : Effect.logInfo(HISTORY_GATE_CLOSED_MESSAGE),
+                    ? Effect.logDebug(FOLLOWER_WRITE_HELD_MESSAGE)
+                    : Effect.logInfo(FOLLOWER_WRITE_HELD_MESSAGE),
                 ),
               )
             : Effect.logWarning(cause),

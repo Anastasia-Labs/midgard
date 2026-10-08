@@ -37,11 +37,11 @@ import {
   walletFromSeed,
 } from "./deposit-flow-emulator-shared.js";
 import { openAutomaticSettlement } from "./helpers/automatic-settlement-lifecycle.js";
-import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 /** Successful node classification and actual mature merge establish both
- * settlement frontiers. The observation transport labels remain synthetic. */
+ * settlement frontiers; the stand-in's block hashes and heights are synthetic. */
 it("streams public raw events through production reconciliation, native commitment, refund, payout and reclaim", async () => {
-  const h = await openHistoryProductionOwnerLifecycle({
+  const h = await openProductionLifecycle({
     eventHistoryProtectionDurationMs: 120_000n,
   });
   const automatic = await openAutomaticSettlement(h);
@@ -181,15 +181,17 @@ it("streams public raw events through production reconciliation, native commitme
     expect(Number(signedHeader.endTime)).toBe(
       block.commitOutput.blockEndTimeMs,
     );
-    const horizon =
-      attempt.coverage.includedThroughMs + SDK.EVENT_WAIT_DURATION_MS - 1;
+    // The producer ran at the driver's applied view, whose ingestion
+    // covers events through that view's slot time.
+    const includedThroughMs = lucid.slotToUnixTime(attempt.permit.view.slot);
+    const horizon = includedThroughMs + SDK.EVENT_WAIT_DURATION_MS - 1;
     expect(Number(signedHeader.endTime)).toBeLessThanOrEqual(horizon);
     expect(lucid.slotToUnixTime(Number(body.ttl())) - 1).toBe(
       Number(signedHeader.endTime),
     );
     if (futureEvent !== undefined) {
       expect(Number(futureEvent.facts.inclusion_time)).toBeGreaterThan(
-        attempt.coverage.includedThroughMs,
+        includedThroughMs,
       );
       expect(Number(futureEvent.facts.inclusion_time)).toBeLessThanOrEqual(
         Number(signedHeader.endTime),
@@ -464,11 +466,10 @@ it("streams public raw events through production reconciliation, native commitme
     vi.setSystemTime(fixture.emulator.now());
     await h.synchronize();
     // Advance the actual ledger beyond this sealed source's fixed horizon.
-    // Leave the transport tip untouched until the refused attempt has returned.
+    // Leave the follower's view as is until the refused attempt returns.
     const beforeState = await h.evidence();
     const beforeStale = {
-      points: structuredClone(beforeState.points),
-      journal: beforeState.journal,
+      gate: structuredClone(beforeState.gate),
       native: beforeState.native,
     };
     const nativeRootBefore = beforeStale.native?.durableRoot;
@@ -509,8 +510,7 @@ it("streams public raw events through production reconciliation, native commitme
       latestBefore,
     );
     const afterStale = await h.evidence();
-    expect(afterStale.points).toEqual(beforeStale.points);
-    expect(afterStale.journal).toEqual(beforeStale.journal);
+    expect(afterStale.gate).toEqual(beforeStale.gate);
     expect(afterStale.native?.durableRoot).toBe(nativeRootBefore);
     await h.synchronize();
     const invalidBlock = await commitConfirmRecoverAndMerge(context);
@@ -941,7 +941,7 @@ it("streams public raw events through production reconciliation, native commitme
           JSON.stringify(
             {
               scope:
-                "Actual public SDK external raw Deposit and invalid/valid Withdrawal admission; real node signature classification, commitment, attestation, mature merge, reserve absorption, exact raw refund/payout and owner-authorized reclamation of all3retained payloads; synthetic observation transport labels only. No fraud-proof or challenge transaction construction or invented reclaim time lock.",
+                "Actual public SDK external raw Deposit and invalid/valid Withdrawal admission; real node signature classification, commitment, attestation, mature merge, reserve absorption, exact raw refund/payout and owner-authorized reclamation of all3retained payloads; the follower stand-in's synthetic block hashes and heights only. No fraud-proof or challenge transaction construction or invented reclaim time lock.",
               manifestId: h.deployment.manifest.manifestId,
               blueprintSha256: h.deployment.manifest.artifacts.blueprintHash,
               deploymentInfoSha256: h.deploymentInfoSha256,

@@ -89,16 +89,28 @@ export const readAcceptanceSettlements = async (
   try {
     const result = await sql.begin("read only", async (read) => {
       scope.assertCurrent();
-      const authority = await read<
+      // The node's follower-change driver has published its view: the
+      // settlement rows are the ones its gated writers wrote at that view.
+      const gate = await read<
         { generation: string }[]
-      >`SELECT generation::text
-        FROM event_history_authority WHERE singleton
-        AND deployment_identity = decode(${deploymentId}, 'hex')
-        AND state = 'ready' AND lease_until > clock_timestamp()`;
+      >`SELECT applied_generation::text AS generation
+        FROM node_follower_write_gate WHERE singleton
+        AND pending_reason IS NULL AND applied_generation IS NOT NULL`;
       scope.assertCurrent();
       requireAcceptance(
-        authority.length === 1 && /^[0-9]+$/u.test(authority[0]!.generation),
-        "settlement authenticated history is not currently ready",
+        gate.length === 1 && /^[0-9]+$/u.test(gate[0]!.generation),
+        "settlement follower view is not currently published",
+      );
+      // The node's settlement rows are its manifest's deployment's; a row of
+      // any other deployment means this store is not that deployment's.
+      const foreign = await read<
+        { other: boolean }[]
+      >`SELECT EXISTS (SELECT 1 FROM settlement_jobs
+        WHERE deployment_id <> ${deploymentId}) AS other`;
+      scope.assertCurrent();
+      requireAcceptance(
+        foreign.length === 1 && foreign[0]!.other === false,
+        "settlement store holds another deployment's rows",
       );
       const attempts = await read<
         AcceptanceSettlementRow[]
@@ -131,7 +143,7 @@ export const readAcceptanceSettlements = async (
             ),
           "invalid or oversized settlement receipt locator",
         );
-      return { generation: authority[0]!.generation, attempts };
+      return { generation: gate[0]!.generation, attempts };
     });
     scope.assertCurrent();
     return result;

@@ -5,7 +5,10 @@ import {
   promoteOrRecoverNativeMpf,
   publishCommitMempoolLedgerMutation,
 } from "../src/fibers/block-commitment.js";
-import { HistoryProducer } from "../src/services/event-history-producer.js";
+import {
+  FollowerWrite,
+  runAtFollowerView,
+} from "../src/services/follower-write-gate.js";
 import { Globals } from "../src/services/globals.js";
 import { Lucid, MidgardContracts, NodeConfig } from "../src/services/index.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
@@ -17,7 +20,8 @@ import type {
 } from "./deposit-flow-emulator-shared.commit-worker-program.js";
 import type { makeLucidRuntimeService } from "./deposit-flow-emulator-shared.js";
 
-/** Follow the production parent: build under a history producer. */
+/** Follow the production parent: build as a producer at the follower
+ * driver's applied view (`runAtFollowerView`). */
 export const runOwnedNativeCommit = (
   contracts: SDK.MidgardValidators,
   lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
@@ -25,71 +29,68 @@ export const runOwnedNativeCommit = (
   input: CommitWorkerInput,
   run: (input: CommitWorkerInput) => ReturnType<typeof commitWorkerProgram>,
 ) =>
-  production.owner
-    .runProducer((token, assertCurrent, coverage) =>
-      Effect.gen(function* () {
-        const startedAtMs = Date.now();
-        const native = yield* Ref.get(production.globals.NATIVE_MPF_OWNER);
-        if (
-          native !== undefined &&
-          input.data.localFinalizationPending &&
-          input.data.availableLocalFinalizationBlock !== ""
-        ) {
-          yield* recoverNativeMpfForLocalFinalization(
-            native,
-            input.data.availableLocalFinalizationBlock,
-          ).pipe(Effect.provideService(HistoryProducer, { token, coverage }));
-        }
-        const nativeMpf =
-          native === undefined
-            ? undefined
-            : {
-                port: native.createWorkerPort(),
-                durableRoot: (yield* Effect.promise(() => native.diagnostics()))
-                  .durableRoot,
-                ownerBinarySha256:
-                  production.nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
-              };
-        const output = yield* run({
-          ...input,
-          history: { token, coverage },
-          nativeMpf,
-        }).pipe(
-          Effect.provideService(HistoryProducer, { token, coverage }),
-          Effect.provideService(MempoolLedgerCache, production.cache),
-          Effect.ensuring(Effect.sync(() => nativeMpf?.port.close())),
+  runAtFollowerView(
+    Effect.gen(function* () {
+      const permit = yield* FollowerWrite;
+      const startedAtMs = Date.now();
+      const native = yield* Ref.get(production.globals.NATIVE_MPF_OWNER);
+      if (
+        native !== undefined &&
+        input.data.localFinalizationPending &&
+        input.data.availableLocalFinalizationBlock !== ""
+      ) {
+        yield* recoverNativeMpfForLocalFinalization(
+          native,
+          input.data.availableLocalFinalizationBlock,
         );
-        yield* assertCurrent;
-        if (
-          "nativeMpfPromotion" in output &&
-          output.nativeMpfPromotion !== undefined
-        ) {
-          if (native === undefined)
-            return yield* Effect.die("Missing native owner for promotion");
-          yield* promoteOrRecoverNativeMpf({
-            owner: native,
-            handle: output.nativeMpfPromotion.handle,
-          });
-        }
-        yield* publishCommitMempoolLedgerMutation(
-          production.globals,
+      }
+      const nativeMpf =
+        native === undefined
+          ? undefined
+          : {
+              port: native.createWorkerPort(),
+              durableRoot: (yield* Effect.promise(() => native.diagnostics()))
+                .durableRoot,
+              ownerBinarySha256:
+                production.nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
+            };
+      const output = yield* run({
+        ...input,
+        history: permit,
+        nativeMpf,
+      }).pipe(
+        Effect.provideService(MempoolLedgerCache, production.cache),
+        Effect.ensuring(Effect.sync(() => nativeMpf?.port.close())),
+      );
+      if (
+        "nativeMpfPromotion" in output &&
+        output.nativeMpfPromotion !== undefined
+      ) {
+        if (native === undefined)
+          return yield* Effect.die("Missing native owner for promotion");
+        yield* promoteOrRecoverNativeMpf({
+          owner: native,
+          handle: output.nativeMpfPromotion.handle,
+        });
+      }
+      yield* publishCommitMempoolLedgerMutation(
+        production.globals,
+        output,
+        production.nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
+      );
+      yield* Effect.sync(() =>
+        production.onCommitAttempt?.({
+          permit,
+          startedAtMs,
+          finishedAtMs: Date.now(),
           output,
-          production.nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
-        );
-        yield* Effect.sync(() =>
-          production.onCommitAttempt?.({
-            coverage,
-            startedAtMs,
-            finishedAtMs: Date.now(),
-            output,
-          }),
-        );
-        return output;
-      }).pipe(Effect.provideService(HistoryProducer, { token, coverage })),
-    )
-    .pipe(
-      Effect.provideService(Globals, production.globals),
-      Effect.provideService(Lucid, lucidService as never),
-      Effect.provideService(MidgardContracts, contracts as never),
-      Effect.provideService(NodeConfig, production.nodeConfig),
-    );
+        }),
+      );
+      return output;
+    }),
+  ).pipe(
+    Effect.provideService(Globals, production.globals),
+    Effect.provideService(Lucid, lucidService as never),
+    Effect.provideService(MidgardContracts, contracts as never),
+    Effect.provideService(NodeConfig, production.nodeConfig),
+  );

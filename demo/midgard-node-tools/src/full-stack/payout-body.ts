@@ -1,6 +1,6 @@
 import { CML, valueToAssets } from "@lucid-evolution/lucid";
 import JSONBig from "json-bigint";
-import { decodeLedgerSnapshotOutput } from "midgard-node/l1-ledger-snapshot";
+import { decodeLedgerSnapshotOutput } from "midgard-node/l1-ogmios-utxo";
 
 export function equalAssets(
   left: Record<string, string | bigint>,

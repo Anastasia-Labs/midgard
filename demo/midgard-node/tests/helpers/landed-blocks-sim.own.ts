@@ -17,7 +17,7 @@ import {
   PendingBlockFinalizationsDB,
 } from "../../src/database/index.js";
 import type * as Ledger from "../../src/database/utils/ledger.js";
-import { withHistoryWrite } from "../../src/services/event-history-producer.js";
+import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
 import type { SimPendingTx } from "./landed-blocks-sim.mempool.js";
 import {
   linkedHeader,
@@ -48,7 +48,7 @@ export const JournalStatus = PendingBlockFinalizationsDB.Status;
 
 /** Writes the active journal of an own block the node just committed. */
 export const insertOwnJournal = (journal: SimOwnJournal) =>
-  withHistoryWrite(
+  withFollowerWrite(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       const header = Buffer.from(journal.headerHash, "hex");
@@ -123,7 +123,7 @@ export const setJournalStatus = (
   headerHash: string,
   status: PendingBlockFinalizationsDB.Status,
 ) =>
-  withHistoryWrite(
+  withFollowerWrite(
     Effect.flatMap(
       SqlClient.SqlClient,
       (sql) => sql`UPDATE pending_block_finalizations SET status = ${status}

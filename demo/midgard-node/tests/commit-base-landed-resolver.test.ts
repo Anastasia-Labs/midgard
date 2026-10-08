@@ -22,7 +22,7 @@ import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydrati
 import { ForeignBlockVerificationError } from "../src/mpf/verified-block-import.js";
 import type { NodeConfig } from "../src/services/config.js";
 import type { Database } from "../src/services/database.js";
-import { withHistoryWrite } from "../src/services/event-history-producer.js";
+import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import {
   LANDED_COMMIT_BASE_PENDING,
   resolveCommitBaseLedgerEntries,
@@ -104,7 +104,7 @@ const fixture = async (setup: Setup) => {
   };
   const { headerHash, tail } = await tailOf(header);
   await run(
-    withHistoryWrite(
+    withFollowerWrite(
       Effect.gen(function* () {
         yield* resetApplicationTables;
         yield* ConfirmedLedgerDB.insertMultiple([

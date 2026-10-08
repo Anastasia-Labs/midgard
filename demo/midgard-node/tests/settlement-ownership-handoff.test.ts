@@ -11,7 +11,6 @@ import { generateSeedPhrase } from "@lucid-evolution/lucid";
 import { Effect, Exit, Fiber } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as Journal from "../src/database/settlement.js";
 import { NodeConfig } from "../src/services/config.js";
 import { Lucid } from "../src/services/lucid.js";
@@ -24,6 +23,7 @@ import {
   settlementProgram,
   settlementWalletAddress,
 } from "../src/services/settlement.js";
+import { openFollowerWriteGate } from "./helpers/follower-write-gate.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
@@ -40,15 +40,7 @@ beforeEach(() =>
   run(
     Effect.gen(function* () {
       yield* resetApplicationTables;
-      const token = yield* Authority.acquire({
-        deploymentIdentity: deploymentId,
-        ownerToken: randomUUID(),
-        leaseDurationMs: 60_000,
-      });
-      yield* Authority.publishReady(token, {
-        point: { slot: 10, id: "b1".repeat(32) },
-        snapshotDigest: "c1".repeat(32),
-      });
+      yield* openFollowerWriteGate;
     }),
   ),
 );

@@ -31,13 +31,13 @@ import {
   SDK,
   utxosProgram,
 } from "./deposit-flow-emulator-shared.js";
-import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
 /** The provider accepts the real, locally evaluated commitment before its
  * response is lost. Network ancestry remains the harness's synthetic transport;
  * this case does not simulate restart or a state-queue pointer continuation. */
 it("retains the exact durable signed commitment after an accepted submission loses its response, then confirms and merges it", async () => {
-  const h = await openHistoryProductionOwnerLifecycle();
+  const h = await openProductionLifecycle();
   const { fixture, lucidService, globals, production } = h;
   const lucid = fixture.operatorLucid;
   const wallet = fixture.depositorLucid;

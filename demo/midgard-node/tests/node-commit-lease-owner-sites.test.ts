@@ -1,4 +1,5 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { SqlClient } from "@effect/sql";
 import { Effect, Exit, Ref } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
@@ -13,8 +14,9 @@ import {
 } from "../src/services/index.js";
 import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
 import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
+import { openFollowerWriteGate } from "./helpers/follower-write-gate.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // Startup retires a killed node's ledger MPF lease only under the node-process
 // owner prefix, so the node commit site must hand its worker an owner carrying
@@ -101,10 +103,13 @@ const config = {
 } as unknown as NodeConfig["Type"];
 
 /** Runs `site` with fresh globals holding an open native owner, and every
- * other service it reads stubbed: nothing past the worker launch runs. */
+ * other service it reads stubbed or on the node database: nothing past the
+ * worker launch runs. */
 const driveToWorker = async (
   site: Effect.Effect<unknown, unknown, never>,
-  setUp: (globals: Globals) => Effect.Effect<void>,
+  setUp: (
+    globals: Globals,
+  ) => Effect.Effect<void, unknown, SqlClient.SqlClient>,
 ) =>
   Effect.runPromiseExit(
     Effect.gen(function* () {
@@ -113,6 +118,7 @@ const driveToWorker = async (
       yield* setUp(globals);
       return yield* site;
     }).pipe(
+      provideDatabaseLayers,
       Effect.provideService(NodeConfig, config),
       Effect.provideService(Lucid, { api: {} } as unknown as Lucid),
       Effect.provideService(MidgardContracts, {} as MidgardContracts),
@@ -165,23 +171,17 @@ describe("node commit sites take the ledger MPF lease as a node process", () => 
         never
       >,
       (globals) =>
-        Effect.all(
-          [
-            // A history owner that admits the producer at once.
-            Ref.set(globals.EVENT_HISTORY_OWNER, {
-              runProducer: (
-                work: (
-                  token: unknown,
-                  assertCurrent: Effect.Effect<void>,
-                  coverage: unknown,
-                ) => Effect.Effect<unknown, unknown>,
-              ) => work({}, Effect.void, {}),
-            } as never),
-            // A pending local finalization skips the L1 state-queue preflight.
-            Ref.set(globals.LOCAL_FINALIZATION_PENDING, true),
-          ],
-          { discard: true },
-        ),
+        Effect.gen(function* () {
+          // A driver that applied a view: the producer's permit is taken at once.
+          yield* resetApplicationTables;
+          const { epoch } = yield* openFollowerWriteGate;
+          yield* Ref.update(globals.FOLLOWER_WRITE_GATE, (local) => ({
+            ...local,
+            epoch,
+          }));
+          // A pending local finalization skips the L1 state-queue preflight.
+          yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
+        }),
     );
     expect(Exit.isFailure(exit)).toBe(true);
     expectNodeProcessOwner(captured.commitWorkerOwner);

@@ -24,7 +24,7 @@ import {
   disposeJournals,
   ownJournalDisposition,
 } from "../src/landed-blocks/own-journals.js";
-import { withHistoryWrite } from "../src/services/event-history-producer.js";
+import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { FORCED_CONFIG } from "./helpers/forced-orders-chain.js";
 import {
   honest,
@@ -135,7 +135,7 @@ const NO_LANDED: LandedLedger = {
 const disposeOrphanHolders = () =>
   Effect.runPromise(
     provideDatabaseLayers(
-      withHistoryWrite(
+      withFollowerWrite(
         Effect.gen(function* () {
           const disposition = yield* ownJournalDisposition([], NO_LANDED);
           yield* disposeJournals(disposition.dispose);

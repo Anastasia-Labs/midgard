@@ -9,7 +9,6 @@ import {
   computeRetentionCutoff,
 } from "../src/database/retention-policy.js";
 import { retentionSweepAction } from "../src/fibers/retention-sweeper.js";
-import { HistoryRecoverySuperseded } from "../src/services/event-history-recovery.js";
 import {
   ContractDeploymentIdentity,
   Globals,
@@ -137,7 +136,7 @@ const seed = Effect.gen(function* () {
 
 const JOURNALS = ["terminal-named", "plain", "newest"];
 
-const sweep = (setup: { readonly refuseProducer?: boolean } = {}) =>
+const sweep = (setup: { readonly driverRecomputing?: boolean } = {}) =>
   Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
@@ -146,14 +145,14 @@ const sweep = (setup: { readonly refuseProducer?: boolean } = {}) =>
         yield* clear;
         return yield* Effect.gen(function* () {
           yield* seed;
-          if (setup.refuseProducer === true) {
+          if (setup.driverRecomputing === true) {
+            // The driver's recompute refuses the prune its permit.
             const globals = yield* Globals;
-            yield* Ref.set(globals.EVENT_HISTORY_OWNER, {
-              runProducer: () =>
-                Effect.fail(
-                  new HistoryRecoverySuperseded({ message: "recovering" }),
-                ),
-            } as never);
+            yield* Ref.update(globals.FOLLOWER_WRITE_GATE, (local) => ({
+              ...local,
+              epoch: "1",
+              recomputing: true,
+            }));
           }
           const nodeConfig = yield* NodeConfig;
           yield* retentionSweepAction(VIEW, new Date()).pipe(
@@ -220,13 +219,13 @@ describe("a retention sweep with RETENTION_DAYS unset (B5)", () => {
     expect(result.leases).toContain("ended-inside");
     expect(result.leases).not.toContain("ended-outside");
     expect(result.leases).toHaveLength(101);
-    // Under the unowned fixture capability; the terminal-named journal and
+    // Under the database fixture capability; the terminal-named journal and
     // the newest are kept.
     expect(result.journals).toEqual(["terminal-named", "newest"]);
   });
 
-  it("keeps every journal and still prunes the rest when the history owner refuses the permit", async () => {
-    const result = await sweep({ refuseProducer: true });
+  it("keeps every journal and still prunes the rest while the follower-change driver recomputes", async () => {
+    const result = await sweep({ driverRecomputing: true });
     expect(result.journals).toEqual(JOURNALS);
     expect(result.rejections).toEqual([hex("rejected-inside")]);
     expect(result.leases).not.toContain("ended-outside");

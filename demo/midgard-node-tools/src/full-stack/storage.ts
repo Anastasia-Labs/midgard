@@ -14,11 +14,12 @@ import type { StackStep } from "./workflow.js";
  * A fresh identity may only start over a store that holds no deployment. The
  * node's migrations create their own ledger rows, one calibration seed row
  * and, for the L1 follower's tables, a migration ledger, a table catalog and
- * one writer seed row, so a migrated, never-deployed database is fresh. A
- * writer row past its seed means a follower has run here. Never clear a store.
+ * one writer seed row, plus the follower write gate's seed row, so a
+ * migrated, never-deployed database is fresh. A writer row past its seed,
+ * or a gate row a driver has bumped, means a node has run here. Never clear a store.
  */
 export const FRESH_STORAGE_QUERY =
-  "DO $$ DECLARE relation record; populated boolean; BEGIN FOR relation IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('schema_migrations', 'schema_migration_events', 'l1_follower_migrations', 'l1_follower_tables') LOOP IF relation.tablename = 'commit_build_calibration' THEN SELECT EXISTS(SELECT 1 FROM public.commit_build_calibration WHERE NOT (id = 1 AND ms_per_tx_ewma = 1.0 AND sample_count = 0)) INTO populated; ELSIF relation.tablename = 'l1_follower_writer' THEN SELECT EXISTS(SELECT 1 FROM public.l1_follower_writer WHERE NOT (id = 1 AND writer_epoch = 0 AND next_generation = 0)) INTO populated; ELSE EXECUTE format('SELECT EXISTS(SELECT 1 FROM public.%I LIMIT 1)', relation.tablename) INTO populated; END IF; IF populated THEN RAISE EXCEPTION 'Fresh deployment requires empty local storage: %', relation.tablename; END IF; END LOOP; END $$; SELECT '{\"empty\":true}'::json";
+  "DO $$ DECLARE relation record; populated boolean; BEGIN FOR relation IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('schema_migrations', 'schema_migration_events', 'l1_follower_migrations', 'l1_follower_tables') LOOP IF relation.tablename = 'commit_build_calibration' THEN SELECT EXISTS(SELECT 1 FROM public.commit_build_calibration WHERE NOT (id = 1 AND ms_per_tx_ewma = 1.0 AND sample_count = 0)) INTO populated; ELSIF relation.tablename = 'l1_follower_writer' THEN SELECT EXISTS(SELECT 1 FROM public.l1_follower_writer WHERE NOT (id = 1 AND writer_epoch = 0 AND next_generation = 0)) INTO populated; ELSIF relation.tablename = 'node_follower_write_gate' THEN SELECT EXISTS(SELECT 1 FROM public.node_follower_write_gate WHERE NOT (singleton AND epoch = 0 AND applied_generation IS NULL AND pending_reason IS NULL)) INTO populated; ELSE EXECUTE format('SELECT EXISTS(SELECT 1 FROM public.%I LIMIT 1)', relation.tablename) INTO populated; END IF; IF populated THEN RAISE EXCEPTION 'Fresh deployment requires empty local storage: %', relation.tablename; END IF; END LOOP; END $$; SELECT '{\"empty\":true}'::json";
 
 export const IDENTITY_TABLE_QUERY =
   "SELECT json_build_object('exists', to_regclass('public.full_stack_controller_identity') IS NOT NULL)";
@@ -26,8 +27,15 @@ export const IDENTITY_ROW_QUERY =
   "SELECT row_to_json(identity) FROM full_stack_controller_identity identity";
 export const CLUSTER_IDENTITY_QUERY =
   "SELECT json_build_object('id', system_identifier::text) FROM pg_control_system()";
+/**
+ * The protocol initializations the node's L1 follower saw land: the
+ * transactions that spent the deployment's one-shot outref
+ * (`l1_protocol_init`, kept past pruning). A store attaches to an
+ * initialized deployment only when its follower saw that deployment's
+ * initialization, the manifest's `initProtocol.txHash`.
+ */
 export const ATTACHMENT_QUERY =
-  "SELECT json_build_object('manifestId', encode(deployment_identity, 'hex')) FROM event_history_authority WHERE singleton";
+  "SELECT json_build_object('initTxHashes', coalesce(json_agg(encode(tx_hash, 'hex') ORDER BY tx_hash), '[]'::json)) FROM l1_protocol_init";
 /** Records the identity once; a second writer's row is kept and returned, never replaced. */
 export const createIdentityQuery = (marker: {
   runId: string;
@@ -103,16 +111,24 @@ export async function assertPreservedStorage(processes: StackProcesses) {
   }
   const paths = stackPaths(processes);
   const manifest = (await readJsonIfPresent(paths.manifest)) as
-    | { manifestId?: string; steps?: { initProtocol?: { status?: string } } }
+    | {
+        manifestId?: string;
+        steps?: { initProtocol?: { status?: string; txHash?: string } };
+      }
     | undefined;
   if (
     manifest?.steps?.initProtocol?.status === "complete" &&
     !journal.steps.initialize
   ) {
+    const initTxHash = manifest.steps.initProtocol.txHash;
     const observed = (await sql(processes, ATTACHMENT_QUERY)) as {
-      manifestId: string;
+      initTxHashes: string[];
     } | null;
-    if (observed?.manifestId !== manifest.manifestId)
+    if (
+      initTxHash === undefined ||
+      !/^[0-9a-f]{64}$/u.test(initTxHash) ||
+      observed?.initTxHashes.includes(initTxHash) !== true
+    )
       throw new Error(
         "Existing deployment cannot attach to missing or mismatched local event history",
       );

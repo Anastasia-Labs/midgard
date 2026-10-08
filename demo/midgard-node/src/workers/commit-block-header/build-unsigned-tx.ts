@@ -3,11 +3,10 @@ import type { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
-import { HistoryProducer } from "../../services/event-history-producer.js";
+import { FollowerWrite } from "../../services/follower-write-gate.js";
 import {
   HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   historyCommitTimingBudget,
-  historyEligibilityHorizon,
 } from "../../services/history-commit-window.js";
 import {
   type ContractDeploymentIdentityValue,
@@ -123,7 +122,7 @@ export const buildUnsignedCommitTx = (
     // read of `latestBlock` precedes it; that tail is the commit's input, so
     // the commit lands only on a chain that holds it.
     const plan = yield* journal.openPlan;
-    const history = yield* Effect.serviceOption(HistoryProducer);
+    const history = yield* Effect.serviceOption(FollowerWrite);
     const ownedWindow = Option.isSome(history);
     const checkTimingBudget = ownedWindow
       ? historyCommitTimingBudget
@@ -177,10 +176,7 @@ export const buildUnsignedCommitTx = (
           : COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       });
     const fixedHistoryEnd = Option.isSome(history)
-      ? Math.min(
-          candidateEndTimeMs,
-          historyEligibilityHorizon(history.value.coverage),
-        )
+      ? candidateEndTimeMs
       : undefined;
     const finalEndTimeCap =
       fixedHistoryEnd === undefined
@@ -376,8 +372,8 @@ export const buildUnsignedCommitTx = (
           dependencyKey: `commit-block:${newHeaderHash}`,
           invalidationKey: `commit-block:${newHeaderHash}`,
         },
-        // The signed intent is journaled: the history owner releases it once
-        // its base output is spent, and block confirmation records a landing.
+        // The signed intent is journaled: the own-journal disposition releases
+        // it once its base output is spent, and block confirmation records a landing.
         unknownInputsFailFast: true,
       };
       const signAndSubmitProgram = handleSignSubmitNoConfirmation(

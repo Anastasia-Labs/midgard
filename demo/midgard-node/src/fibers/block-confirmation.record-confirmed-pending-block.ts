@@ -9,7 +9,7 @@ import {
   WithdrawalsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import {
   Database,
   Globals,
@@ -195,7 +195,7 @@ export const recordConfirmedPendingBlock = (
   Effect.gen(function* () {
     const journalHeaderHash =
       record[PendingBlockFinalizationsDB.Columns.HEADER_HASH];
-    return yield* withHistoryWrite(
+    return yield* withFollowerWrite(
       Effect.gen(function* () {
         yield* PendingBlockFinalizationsDB.assertCanonicalEventMembers(record);
         yield* DepositsDB.markProjectedByEventIds(
@@ -298,4 +298,4 @@ export const abandonPendingBlockIfPresent = (
       headerHash,
     );
     yield* PendingBlockFinalizationsDB.markAbandoned(headerHash);
-  }).pipe(withHistoryWrite);
+  }).pipe(withFollowerWrite);

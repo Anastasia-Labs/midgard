@@ -1,10 +1,11 @@
 /**
  * Whichever lands wins (plan §8.3, I3) for two real state-queue commits on
  * one tail. The production commit worker builds both, journaling them in
- * the production intent journal over the follower's facts. The production
- * history owner runs the landed-block rebase. The node's landed-block
- * processing (`processLandedQueue` over `nodeLandedBlockPorts`, the follower
- * run's hook) reads the emulator's queue through the follower stand-in.
+ * the production intent journal over the follower's facts. The
+ * follower-change driver's recompute runs the landed-block rebase. The
+ * node's landed-block processing (`processLandedQueue` over
+ * `nodeLandedBlockPorts`, the follower run's hook) reads the emulator's
+ * queue through the follower stand-in.
  *
  * - (a) The replacement lands. The old journal is disposed of, the native
  *   root returns to the base, and the next commit builds on the winner.
@@ -54,10 +55,7 @@ import {
   fetchLatestCommittedBlock,
   runCommitWorker,
 } from "./deposit-flow-emulator-shared.js";
-import {
-  followFork,
-  openNodeServices,
-} from "./helpers/commit-replacement-state-queue.js";
+import { openNodeServices } from "./helpers/commit-replacement-state-queue.js";
 import {
   closeLifecycle,
   finalizeLocally,
@@ -74,17 +72,17 @@ import {
 } from "./helpers/emulator-l2-transfer.js";
 import { dropPendingEmulatorTransaction } from "./helpers/emulator-rollback.js";
 import { emulatorState } from "./helpers/emulator-snapshot.js";
-import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
-import { makeRollbackHistoryTransport } from "./helpers/history-rollback-transport.js";
+import {
+  openProductionLifecycle,
+  type ProductionLifecycle,
+} from "./helpers/production-lifecycle.js";
 
 const C = Pending.Columns;
 const S = Pending.Status;
 
-let source: ReturnType<typeof makeRollbackHistoryTransport> | undefined;
-let h: Lifecycle;
-/** The handle the rounds run under: `h`, or after (c)'s rollback, its fork. */
+let h: ProductionLifecycle;
+/** The handle the rounds run under. */
 let live: Lifecycle;
-let observer: Pick<Lifecycle["observer"], "forgetDropped">;
 let node: Awaited<ReturnType<typeof openNodeServices>>;
 /** The landed block the next commit must build on. */
 let winner: string;
@@ -146,7 +144,7 @@ const statusOf = async (journal: Journal) =>
 const commitUnlanded = async () => {
   const committed = await commit();
   dropPendingEmulatorTransaction(h.fixture.emulator, committed.submittedTxHash);
-  observer.forgetDropped(committed.submittedTxHash);
+  h.observer.forgetDropped(committed.submittedTxHash);
   h.fixture.operatorLucid.clearUTxOOverride();
   await synchronizeBounded(live);
   return journalOf(committed.submittedHeaderHash);
@@ -186,12 +184,8 @@ const expectWinner = async (journal: Journal) => {
 };
 
 beforeAll(async () => {
-  h = await openHistoryProductionOwnerLifecycle({
-    transportFactory: (recorded) =>
-      (source = makeRollbackHistoryTransport(recorded)),
-  });
+  h = await openProductionLifecycle();
   live = h;
-  observer = h.observer;
   node = await openNodeServices(h);
   await advanceEmulatorPastLatestBlockEndTime(h.fixture);
   await synchronizeBounded(h);
@@ -307,13 +301,7 @@ const oldCommitLands = async () => {
 const depositLeavesChain = async () => {
   // The ancestor: nothing pending on L1, and no unpublished L2 transaction.
   expect(Object.keys(h.fixture.emulator.mempool)).toHaveLength(0);
-  const point = source!.points.at(-1)!.point;
-  expect(point.slot).toBe(h.fixture.emulator.slot);
-  const ancestor = {
-    id: point.id,
-    height: point.height,
-    state: emulatorState(h.fixture.emulator),
-  };
+  const ancestor = emulatorState(h.fixture.emulator);
 
   await deposit(15_000_000n);
   const old = await commitUnlanded();
@@ -321,11 +309,7 @@ const depositLeavesChain = async () => {
   expect(old.deposits).toHaveLength(1);
   expect(old.txs).toEqual([]);
 
-  ({ fork: live, observer } = await followFork({
-    h,
-    source: source!,
-    ancestor,
-  }));
+  await h.rollBackTo(ancestor, { synchronize: false });
   await synchronizeBounded(live);
   // Nothing else kills it: its signed commit is live.
   expect(await node.intentStatus(old.txHash)).toMatchObject({

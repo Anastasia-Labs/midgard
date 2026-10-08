@@ -7,7 +7,6 @@ import {
 import { Effect, Either, Option, Ref } from "effect";
 import { expect, it, vi } from "vitest";
 
-import * as Authority from "../src/database/eventHistoryAuthority.js";
 import {
   DepositsDB,
   MutationJobsDB,
@@ -16,7 +15,7 @@ import {
 import { mergeAction, type MergeActionResult } from "../src/fibers/merge.js";
 import { runLedgerPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
-import { HistoryProducer } from "../src/services/event-history-producer.js";
+import { DRIVER_RECOMPUTE_PENDING } from "../src/services/follower-write-gate.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
@@ -43,9 +42,10 @@ import {
   SDK,
 } from "./deposit-flow-emulator-shared.js";
 import { dropPendingEmulatorTransaction } from "./helpers/emulator-rollback.js";
-import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { holdFollowerWriteGate } from "./helpers/follower-write-gate.js";
 import { mirrorEmulatorStateQueue } from "./helpers/landed-state-queue.js";
 import { assertLandedMergeParentRefusal } from "./helpers/merge-landed-finalization-parent-refusal.js";
+import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
 // Every confirmed merge's in-flight local-finalization outcome as the merge
 // builder reports it, and an optional confirmation window replacing the
@@ -120,7 +120,7 @@ const CATCH_UP_ONLY = { expectedHeaderHash: "ff".repeat(28) };
 const openMergeLifecycle = async () => {
   mergeHooks.confirmedFinalizations.length = 0;
   mergeHooks.confirmationWindowMs = undefined;
-  const initial = await openHistoryProductionOwnerLifecycle();
+  const initial = await openProductionLifecycle();
   let h: Awaited<ReturnType<typeof initial.restartRuntime>> = initial;
   const { fixture, lucidService } = initial;
   const wallet = fixture.depositorLucid;
@@ -193,15 +193,16 @@ const openMergeLifecycle = async () => {
       PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
     ];
   };
-  const authorityState = async () =>
+  /** The recompute the follower write gate holds writes for, if any. */
+  const gatePending = async () =>
     (
       await sqlRun(
         (sql) =>
           sql<{
-            readonly state: string;
-          }>`SELECT state FROM event_history_authority`,
+            readonly reason: string | null;
+          }>`SELECT pending_reason AS reason FROM node_follower_write_gate`,
       )
-    )[0]!.state;
+    )[0]!.reason;
   const catchUp = () => run(mergeAction(true, CATCH_UP_ONLY));
 
   const submit = async (built: { tx: TxSignBuilder }) => {
@@ -330,34 +331,23 @@ const openMergeLifecycle = async () => {
     }
     throw new Error("Merge did not submit after three rounds");
   };
-  // The Lucid service with its L1 client's confirmation wait replaced; the
-  // merging-wallet switch runs under the merge's producer permit, which it
-  // hands to the replacement.
+  // The Lucid service with its L1 client's confirmation wait replaced.
   const withConfirmationWait = (
     awaitTx: (
       txHash: string,
       land: LucidEvolution["awaitTx"],
-      permit: Authority.Token,
     ) => Promise<boolean>,
   ) => {
-    let permit: Authority.Token | undefined;
     const api = new Proxy(lucidService.api, {
       get(target, property) {
         if (property === "awaitTx")
           return (txHash: string) =>
-            awaitTx(txHash, target.awaitTx.bind(target), permit!);
+            awaitTx(txHash, target.awaitTx.bind(target));
         const value = Reflect.get(target, property, target);
         return typeof value === "function" ? value.bind(target) : value;
       },
     });
-    return {
-      ...lucidService,
-      api,
-      switchToOperatorsMergingWallet: Effect.gen(function* () {
-        permit = (yield* HistoryProducer).token;
-        yield* lucidService.switchToOperatorsMergingWallet;
-      }),
-    };
+    return { ...lucidService, api };
   };
 
   // A forced merge of the oldest block whose confirmation wait never sees the
@@ -414,9 +404,6 @@ const openMergeLifecycle = async () => {
     return { txHash: heldTxHash!, txCbor: heldTxCbor! };
   };
 
-  // The shared worker shard keeps earlier suites' recovery plan rows, which
-  // the production lifecycle reset does not own.
-  await sqlRun((sql) => sql`DELETE FROM event_history_recovery_plans`);
   await advanceEmulatorPastLatestBlockEndTime(fixture);
 
   return {
@@ -430,7 +417,7 @@ const openMergeLifecycle = async () => {
     mergeJob,
     expectDeposits,
     expectedRoot,
-    authorityState,
+    gatePending,
     catchUp,
     commitDepositBlock,
     mergeUntilSubmitted,
@@ -467,7 +454,7 @@ const expectFinalizedOnce = async (
   expect(audit.diverged).toBe(false);
 };
 
-it("finalizes a landed merge whose local finalization failed or was refused by history recovery, exactly once", async () => {
+it("finalizes a landed merge whose local finalization failed or was held by a driver recompute, exactly once", async () => {
   const m = await openMergeLifecycle();
   const { fixture } = m;
   try {
@@ -526,24 +513,21 @@ it("finalizes a landed merge whose local finalization failed or was refused by h
     expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
     await expectFinalizedOnce(m, first, 2);
 
-    // --- B: history recovery revokes Ready while the merge lands. ---------
+    // --- B: a driver recompute holds the gate while the merge lands. ------
     const second = await m.commitDepositBlock(9_000_000n);
     expect(await m.queuedBlocks()).toBe(1);
-    let revocations = 0;
-    const revokingLucid = m.withConfirmationWait(
-      async (txHash, land, permit) => {
-        await m.run(
-          Authority.beginRecovery(
-            permit,
-            "test: history recovery began while the merge confirmed",
-          ),
-        );
-        revocations += 1;
-        return land(txHash);
-      },
-    );
-    const refused = await m.mergeUntilSubmitted(revokingLucid);
-    expect(revocations).toBe(1);
+    let holds = 0;
+    const holdingLucid = m.withConfirmationWait(async (txHash, land) => {
+      await m.run(
+        holdFollowerWriteGate(
+          "test: a recompute began while the merge confirmed",
+        ),
+      );
+      holds += 1;
+      return land(txHash);
+    });
+    const refused = await m.mergeUntilSubmitted(holdingLucid);
+    expect(holds).toBe(1);
     expect(Either.isLeft(refused)).toBe(true);
     expect(await m.queuedBlocks()).toBe(0);
     expect(mergeHooks.confirmedFinalizations.at(-1)).toEqual({
@@ -556,36 +540,27 @@ it("finalizes a landed merge whose local finalization failed or was refused by h
       [MutationJobsDB.Columns.ATTEMPTS]: 1,
     });
     expect(refusedJob?.[MutationJobsDB.Columns.LAST_ERROR]).toContain(
-      "History authority generation or owner changed",
+      DRIVER_RECOMPUTE_PENDING,
     );
     await m.expectDeposits(second, DepositsDB.Status.Projected);
-    expect(await m.authorityState()).toBe("recovering");
-    // No merge attempt, and so no catch-up, runs while the owner is not
-    // Ready.
-    const whileRecovering = await m.run(
+    expect(await m.gatePending()).toBe(DRIVER_RECOMPUTE_PENDING);
+    // No merge attempt, and so no catch-up, runs while the gate is held.
+    const whileHeld = await m.run(
       Effect.either(mergeAction(true, CATCH_UP_ONLY)),
     );
     expect(
-      Either.isLeft(whileRecovering) &&
-        (whileRecovering.left as { readonly _tag?: string })._tag,
+      Either.isLeft(whileHeld) &&
+        (whileHeld.left as { readonly _tag?: string })._tag,
     ).toBe("MergeProducerPermitUnavailable");
     expect(await m.mergeJob(second)).toMatchObject({
       [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Failed,
       [MutationJobsDB.Columns.ATTEMPTS]: 1,
     });
 
-    // The revoked owner's lease lapses (expired here, not waited out) and the
-    // node restarts: startup leaves the failed job to the runtime.
-    await m.restart(async () => {
-      await m.run(
-        Effect.flatMap(
-          SqlClient.SqlClient,
-          (sql) => sql`UPDATE event_history_authority
-            SET lease_until = clock_timestamp()`,
-        ),
-      );
-    });
-    expect(await m.authorityState()).toBe("ready");
+    // The node restarts: the fresh driver's first view recomputes and
+    // reopens the gate, and startup leaves the failed job to the runtime.
+    await m.restart();
+    expect(await m.gatePending()).toBeNull();
     expect((await m.catchUp()).status).toBe("skipped_merge_candidate_changed");
     await expectFinalizedOnce(m, second, 2);
     // Finalized once: a further attempt finds nothing left to do.

@@ -21,7 +21,7 @@ import {
   type NativeMpfBuildContext,
   processMpfs,
 } from "../mpf/index.js";
-import { assertHistoryProducer } from "../services/event-history-producer.js";
+import { assertFollowerWrite } from "../services/follower-write-gate.js";
 import {
   commitEventHorizon,
   HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
@@ -131,7 +131,7 @@ export const buildOnVerifiedCommitBaseProgram = (
           )
         : Effect.succeed(acquiredCommitLucid),
     );
-    yield* assertHistoryProducer(workerInput.history);
+    yield* assertFollowerWrite(workerInput.history);
     const workerStartedAtMs = Date.now();
     const nodeConfig = yield* NodeConfig;
     const deploymentIdentity = yield* ContractDeploymentIdentity;
@@ -238,20 +238,17 @@ export const buildOnVerifiedCommitBaseProgram = (
     }
     // The event horizon (E-N1-2 item 3): the follower-change driver wrote
     // every event row, so deposits, withdrawals and forced orders are
-    // visible through min(journal coverage, follower ingestion, the earliest
-    // forced order not yet rebuilt), capped by the horizon lag d. Nothing
+    // visible through min(follower ingestion, the earliest forced order not
+    // yet rebuilt), capped by the horizon lag d. Nothing
     // ingested yet, or no follower block d below its tip: no end time is
     // safe, so the commit holds. The Lucid clock is acquired only when d > 0.
-    const eventHorizonMs = yield* commitEventHorizon(
-      workerInput.history?.coverage,
-      {
-        lagBlocks: nodeConfig.HISTORY_COMMIT_HORIZON_LAG_BLOCKS,
-        slotToUnixTime: Effect.map(
-          acquireCommitLucidOnce,
-          (lucid) => lucid.api.slotToUnixTime,
-        ),
-      },
-    );
+    const eventHorizonMs = yield* commitEventHorizon({
+      lagBlocks: nodeConfig.HISTORY_COMMIT_HORIZON_LAG_BLOCKS,
+      slotToUnixTime: Effect.map(
+        acquireCommitLucidOnce,
+        (lucid) => lucid.api.slotToUnixTime,
+      ),
+    });
     if (eventHorizonMs === null) {
       yield* Effect.logInfo(
         "🔹 The L1 follower has not ingested events at its current chain, or has no block the horizon lag below its tip; holding the commit.",

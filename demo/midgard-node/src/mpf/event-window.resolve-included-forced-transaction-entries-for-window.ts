@@ -9,7 +9,7 @@ import {
   sqlErrorToDatabaseError,
 } from "../database/utils/common.js";
 import * as WithdrawalsDB from "../database/withdrawals.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { Database } from "../services/index.js";
 
 export const resolveIncludedDepositEntriesForWindow = ({
@@ -98,7 +98,7 @@ export const resolveIncludedDepositEntriesForWindow = ({
       }),
     );
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     sqlErrorToDatabaseError(
       DepositsDB.tableName,
       "Failed to resolve deposits for the current block window",

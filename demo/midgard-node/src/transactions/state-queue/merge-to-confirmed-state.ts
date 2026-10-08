@@ -27,7 +27,7 @@ import "../../database/utils/common.js";
 import "../../fibers/queue-metrics.js";
 import "../../fibers/slot-aware-due-work.js";
 import "@al-ft/midgard-core/ogmios-slot";
-import "../../services/event-history-producer.js";
+import "../../services/follower-write-gate.js";
 import "../../services/index.js";
 import "../../services/mpf-native-owner/index.js";
 import "../../utils.js";

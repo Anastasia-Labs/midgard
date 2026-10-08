@@ -4,15 +4,21 @@ import { performance } from "node:perf_hooks";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Duration, Effect, Either, Exit, Option, Ref } from "effect";
+import { SqlClient } from "@effect/sql";
+import { Duration, Effect, Either, Exit, identity, Option, Ref } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DatabaseError } from "../src/database/utils/common.js";
+import { Database } from "../src/services/database.js";
 import {
-  HistoryProducer,
-  type HistoryProducerPermit,
-  UnownedHistoryFixture,
-} from "../src/services/event-history-producer.js";
+  DRIVER_RECOMPUTE_PENDING,
+  FOLLOWER_VIEW_STALE,
+  FOLLOWER_VIEW_UNAPPLIED,
+  FollowerWrite,
+  FollowerWriteFixture,
+  followerWriteHoldOf,
+  type FollowerWritePermit,
+} from "../src/services/follower-write-gate.js";
 import {
   Globals,
   L1ControlPlaneTimeoutError,
@@ -24,6 +30,12 @@ import type {
 } from "../src/services/landed-state-queue.js";
 import { Lucid as LucidService } from "../src/services/lucid.js";
 import { MidgardContracts } from "../src/services/midgard-contracts.js";
+import { writeFollowerTip } from "./helpers/follower-view.js";
+import {
+  holdFollowerWriteGate,
+  openFollowerWriteGateAt,
+} from "./helpers/follower-write-gate.js";
+import { resetApplicationTables } from "./utils.js";
 
 const landedStateQueueSnapshotMock = vi.hoisted(() => vi.fn());
 const buildAndSubmitMergeTxMock = vi.hoisted(() => vi.fn());
@@ -200,50 +212,51 @@ const noCandidate = {
   reason: "confirmed_state_link_empty",
 };
 
-const stubPermit: HistoryProducerPermit = {
-  token: {
-    deploymentIdentity: "33".repeat(32),
-    ownerToken: "stub-owner",
-    generation: "1",
-  },
-  coverage: {
-    bindingDigest: "44".repeat(32),
-    checkpointRevision: "1",
-    point: { id: "55".repeat(32), slot: 1 },
-    snapshotDigest: "66".repeat(32),
-    includedThroughMs: 0,
-  },
-};
-
-const runProducerMock = vi.fn();
-
-/** Stands in for the node's history owner: registers the producer and hands
- * the work its permit, exactly the contract `runHistoryProducer` relies on. */
-const stubHistoryOwner = {
-  runProducer: <A, E, R>(
-    work: (
-      token: HistoryProducerPermit["token"],
-      assertCurrent: Effect.Effect<void>,
-      coverage: HistoryProducerPermit["coverage"],
-    ) => Effect.Effect<A, E, R>,
-  ) =>
-    Effect.suspend(() => {
-      runProducerMock();
-      return work(stubPermit.token, Effect.void, stubPermit.coverage);
-    }),
-};
-
+/**
+ * This process's follower write gate as the merge runs: `fixture` (no driver
+ * epoch; the fixture capability runs the work unregistered, no database),
+ * `applied` (a driver view; the merge registers and holds a permit, on
+ * Postgres), `recomputing`, or `none` (no view and no fixture).
+ */
 type MergeRunOptions = {
-  readonly historyOwner?: "stub" | "none" | { readonly runProducer: unknown };
-  readonly unownedFixture?: boolean;
+  readonly gate?: "fixture" | "applied" | "recomputing" | "none";
+  /** Also provides the fixture capability to an `applied` gate. */
+  readonly fixture?: boolean;
+  /** Runs once the `applied` gate is open, before the merge registers. */
+  readonly afterOpen?: Effect.Effect<unknown, unknown, SqlClient.SqlClient>;
   readonly expectedHeaderHash?: string;
 };
+
+/** The permits `applied` gates opened, oldest first. */
+const openedPermits: FollowerWritePermit[] = [];
+
+/** A driver's publish: the gate opens at the follower's tip in a new epoch. */
+const openAtFollowerTip = Effect.flatMap(
+  writeFollowerTip(10),
+  openFollowerWriteGateAt,
+);
+
+/** Opens the gate as this process's driver's. */
+const applyFollowerView = Effect.gen(function* () {
+  yield* resetApplicationTables;
+  const permit = yield* openAtFollowerTip;
+  openedPermits.push(permit);
+  yield* Ref.update((yield* Globals).FOLLOWER_WRITE_GATE, (local) => ({
+    ...local,
+    epoch: permit.epoch,
+  }));
+});
+
+/** The node database without the fixture capability (a runtime process). */
+const onNodeDatabase = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  effect.pipe(Effect.provide(Database.layer), Effect.provide(NodeConfig.layer));
 
 const mergeActionProgram = (
   force: boolean,
   {
-    historyOwner = "stub",
-    unownedFixture = false,
+    gate = "fixture",
+    fixture = false,
+    afterOpen,
     expectedHeaderHash,
   }: MergeRunOptions = {},
 ) => {
@@ -270,32 +283,41 @@ const mergeActionProgram = (
     switchToReferenceScriptWallet: Effect.void,
   });
 
-  return Effect.gen(function* () {
+  const program = Effect.gen(function* () {
     const globals = yield* Globals;
-    if (historyOwner !== "none")
-      yield* Ref.set(
-        globals.EVENT_HISTORY_OWNER,
-        (historyOwner === "stub" ? stubHistoryOwner : historyOwner) as never,
-      );
-    const program = mergeAction(force, { expectedHeaderHash });
-    return yield* unownedFixture
-      ? program.pipe(Effect.provideService(UnownedHistoryFixture, true))
-      : program;
+    if (gate === "applied") {
+      yield* applyFollowerView;
+      if (afterOpen !== undefined) yield* afterOpen;
+    }
+    if (gate === "recomputing")
+      yield* Ref.update(globals.FOLLOWER_WRITE_GATE, (local) => ({
+        ...local,
+        epoch: "1",
+        recomputing: true,
+      }));
+    const merge = mergeAction(force, { expectedHeaderHash });
+    return yield* gate === "fixture" || fixture
+      ? merge.pipe(Effect.provideService(FollowerWriteFixture, true))
+      : merge;
   }).pipe(
     Effect.provideService(LucidService, lucidService),
     Effect.provideService(MidgardContracts, fakeContracts as never),
     Effect.provide(Globals.Default),
-    Effect.provide(NodeConfig.layer),
+  );
+  return (
+    gate === "applied"
+      ? onNodeDatabase(program)
+      : program.pipe(Effect.provide(NodeConfig.layer))
   ) as Effect.Effect<MergeActionResult, unknown, never>;
 };
 
 const runMergeAction = (force: boolean, options: MergeRunOptions = {}) =>
   Effect.runPromise(mergeActionProgram(force, options));
 
-/** A builder that reports the history permit it ran under and merges. */
-const recordPermitAndMerge = (seen: (HistoryProducerPermit | null)[]) =>
+/** A builder that reports the follower write permit it ran under and merges. */
+const recordPermitAndMerge = (seen: (FollowerWritePermit | null)[]) =>
   Effect.gen(function* () {
-    const permit = yield* Effect.serviceOption(HistoryProducer);
+    const permit = yield* Effect.serviceOption(FollowerWrite);
     seen.push(Option.getOrNull(permit));
     return {
       status: "merged" as const,
@@ -303,6 +325,14 @@ const recordPermitAndMerge = (seen: (HistoryProducerPermit | null)[]) =>
       txHash: "bb".repeat(32),
     };
   });
+
+/** The named hold a permit-unavailable merge was refused for. */
+const permitRefusalReason = (outcome: Either.Either<unknown, unknown>) => {
+  const left = Either.isLeft(outcome) ? outcome.left : undefined;
+  expect(left).toBeInstanceOf(MergeProducerPermitUnavailable);
+  return followerWriteHoldOf((left as MergeProducerPermitUnavailable).cause)
+    ?.reason;
+};
 
 describe("merge maturity semantic preflight", () => {
   beforeEach(() => {
@@ -315,7 +345,7 @@ describe("merge maturity semantic preflight", () => {
     tryWithLeaseMock.mockReset();
     revalidateMock.mockReset();
     switchToOperatorsMergingWalletMock.mockReset();
-    runProducerMock.mockReset();
+    openedPermits.length = 0;
     finalizeLandedMergesProgramMock.mockImplementation(() =>
       Effect.succeed([]),
     );
@@ -374,15 +404,15 @@ describe("merge maturity semantic preflight", () => {
     );
 
     // An early skip still runs the catch-up first, under the permit.
-    const permits: (HistoryProducerPermit | null)[] = [];
+    const permits: (FollowerWritePermit | null)[] = [];
     finalizeLandedMergesProgramMock.mockImplementation(() =>
       Effect.gen(function* () {
-        const permit = yield* Effect.serviceOption(HistoryProducer);
+        const permit = yield* Effect.serviceOption(FollowerWrite);
         permits.push(Option.getOrNull(permit));
         return [];
       }),
     );
-    expect(await runMergeAction(false)).toMatchObject({
+    expect(await runMergeAction(false, { gate: "applied" })).toMatchObject({
       status: "skipped_oldest_block_not_mature",
     });
     expect(finalizeLandedMergesProgramMock).toHaveBeenCalledTimes(1);
@@ -390,7 +420,7 @@ describe("merge maturity semantic preflight", () => {
       stateQueueAddress: "addr_test1statequeue",
       stateQueuePolicyId: "00".repeat(28),
     });
-    expect(permits).toEqual([stubPermit]);
+    expect(permits).toEqual([openedPermits[0]]);
 
     // A catch-up failure fails the attempt: nothing is built on top of a
     // landed merge that is not finalized.
@@ -517,9 +547,10 @@ describe("merge maturity semantic preflight", () => {
   });
 });
 
-describe("merge history producer permit", () => {
+describe("merge follower write permit", () => {
   beforeEach(() => {
     slotAwareDueWorkRegistry.clearAll();
+    openedPermits.length = 0;
     for (const mock of [
       landedStateQueueSnapshotMock,
       buildAndSubmitMergeTxMock,
@@ -529,7 +560,6 @@ describe("merge history producer permit", () => {
       tryWithLeaseMock,
       revalidateMock,
       switchToOperatorsMergingWalletMock,
-      runProducerMock,
     ])
       mock.mockReset();
     finalizeLandedMergesProgramMock.mockImplementation(() =>
@@ -558,162 +588,128 @@ describe("merge history producer permit", () => {
     revalidateMock.mockImplementation(() => Effect.void);
   });
 
-  it("runs manual and scheduled merges under the history owner's producer permit", async () => {
-    const seen: (HistoryProducerPermit | null)[] = [];
+  it("runs manual and scheduled merges under a follower write permit", async () => {
+    const seen: (FollowerWritePermit | null)[] = [];
     buildAndSubmitMergeTxMock.mockImplementation(() =>
       recordPermitAndMerge(seen),
     );
 
-    const manual = await runMergeAction(true);
-    const scheduled = await runMergeAction(false);
+    const manual = await runMergeAction(true, { gate: "applied" });
+    const scheduled = await runMergeAction(false, { gate: "applied" });
 
     expect(manual).toMatchObject({ status: "merged", trigger: "manual" });
     expect(scheduled).toMatchObject({ status: "merged" });
-    expect(runProducerMock).toHaveBeenCalledTimes(2);
-    expect(seen).toEqual([stubPermit, stubPermit]);
+    expect(openedPermits).toHaveLength(2);
+    expect(seen).toEqual(openedPermits);
   });
 
-  it("never lets the model fixture bypass an acquired history owner", async () => {
-    const seen: (HistoryProducerPermit | null)[] = [];
+  it("never lets the fixture bypass a driver's applied view", async () => {
+    const seen: (FollowerWritePermit | null)[] = [];
     buildAndSubmitMergeTxMock.mockImplementation(() =>
       recordPermitAndMerge(seen),
     );
 
-    await runMergeAction(true, { unownedFixture: true });
+    await runMergeAction(true, { gate: "applied", fixture: true });
 
-    expect(runProducerMock).toHaveBeenCalledTimes(1);
-    expect(seen).toEqual([stubPermit]);
+    expect(seen).toEqual([openedPermits[0]]);
   });
 
-  it("refuses a merge before any L1 work when no history owner exists", async () => {
+  it("refuses a merge before any L1 work while no driver applied a view", async () => {
     const outcome = await Effect.runPromise(
-      Effect.either(mergeActionProgram(true, { historyOwner: "none" })),
+      Effect.either(mergeActionProgram(true, { gate: "none" })),
     );
 
-    expect(Either.isLeft(outcome)).toBe(true);
-    const left = Either.isLeft(outcome) ? outcome.left : undefined;
-    expect(left).toBeInstanceOf(MergeProducerPermitUnavailable);
-    expect(
-      formatUnknownError((left as MergeProducerPermitUnavailable).cause, {
-        includeCause: true,
-      }),
-    ).toContain("History owner is not initialized");
+    expect(permitRefusalReason(outcome)).toBe(FOLLOWER_VIEW_UNAPPLIED);
+    expect(finalizeLandedMergesProgramMock).not.toHaveBeenCalled();
     expect(fetchCanonicalMergeCandidateReadinessMock).not.toHaveBeenCalled();
     expect(tryWithLeaseMock).not.toHaveBeenCalled();
     expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
   });
 
-  it("reports a registration the owner refuses before the work as permit-unavailable", async () => {
-    const refusal = new Error("history owner is recovering");
-    const outcome = await Effect.runPromise(
-      Effect.either(
-        mergeActionProgram(true, {
-          historyOwner: {
-            runProducer: () => Effect.fail(refusal),
-          },
-        }),
-      ),
-    );
+  it.each([
+    [
+      "the driver is recomputing",
+      { gate: "recomputing" },
+      DRIVER_RECOMPUTE_PENDING,
+    ],
+    [
+      "a recompute is pending at the gate",
+      { gate: "applied", afterOpen: holdFollowerWriteGate("test recompute") },
+      DRIVER_RECOMPUTE_PENDING,
+    ],
+    [
+      "another driver took the gate",
+      { gate: "applied", afterOpen: openAtFollowerTip },
+      FOLLOWER_VIEW_STALE,
+    ],
+  ] as const)(
+    "reports a registration refused before the work as permit-unavailable (%s)",
+    async (_case, options, reason) => {
+      const outcome = await Effect.runPromise(
+        Effect.either(mergeActionProgram(true, options)),
+      );
 
-    const left = Either.isLeft(outcome) ? outcome.left : undefined;
-    expect(left).toBeInstanceOf(MergeProducerPermitUnavailable);
-    expect(
-      formatUnknownError((left as MergeProducerPermitUnavailable).cause, {
-        includeCause: true,
-      }),
-    ).toContain("history owner is recovering");
-    expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
-  });
+      expect(permitRefusalReason(outcome)).toBe(reason);
+      expect(finalizeLandedMergesProgramMock).not.toHaveBeenCalled();
+      expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
+    },
+  );
 
-  it("keeps the merge's own failure when the owner's trailing currency check also fails", async () => {
-    const superseded = new Error("History producer was superseded");
-    const trailingGuardOwner = {
-      runProducer: <A, E, R>(
-        work: (
-          token: HistoryProducerPermit["token"],
-          assertCurrent: Effect.Effect<void>,
-          coverage: HistoryProducerPermit["coverage"],
-        ) => Effect.Effect<A, E, R>,
-      ) =>
-        work(stubPermit.token, Effect.void, stubPermit.coverage).pipe(
-          Effect.zipRight(Effect.fail(superseded)),
-        ),
-    };
-    const submitError = new Error("submit refused by the ledger");
-    buildAndSubmitMergeTxMock.mockImplementation(() =>
-      Effect.fail(submitError),
-    );
-
-    const failed = await Effect.runPromise(
-      Effect.either(
-        mergeActionProgram(true, { historyOwner: trailingGuardOwner }),
-      ),
-    );
-    expect(Either.isLeft(failed) && failed.left).toBe(submitError);
-
-    // A merge that succeeded still reports the trailing check's failure.
-    const seen: (HistoryProducerPermit | null)[] = [];
-    buildAndSubmitMergeTxMock.mockImplementation(() =>
-      recordPermitAndMerge(seen),
-    );
-    const succeeded = await Effect.runPromise(
-      Effect.either(
-        mergeActionProgram(true, { historyOwner: trailingGuardOwner }),
-      ),
-    );
-    expect(
-      formatUnknownError(Either.isLeft(succeeded) && succeeded.left, {
-        includeCause: true,
-      }),
-    ).toContain("History producer was superseded");
-    expect(seen).toEqual([stubPermit]);
-  });
-
-  it("hands the builder a pre-submit check of the lease and the producer permit", async () => {
-    let assertSubmitAuthority:
-      | (() => Effect.Effect<void, unknown, never>)
-      | undefined;
+  it("hands the builder a pre-submit check of the lease and the follower write permit", async () => {
+    type SubmitCheck = () => Effect.Effect<void, unknown, never>;
+    let assertSubmitAuthority: SubmitCheck | undefined;
+    const seen: (FollowerWritePermit | null)[] = [];
     buildAndSubmitMergeTxMock.mockImplementation(
       (
         _lucid: unknown,
         _fetchConfig: unknown,
         _contracts: unknown,
-        options: {
-          readonly assertSubmitAuthority?: () => Effect.Effect<
-            void,
-            unknown,
-            never
-          >;
-        },
+        options: { readonly assertSubmitAuthority?: SubmitCheck },
       ) => {
         assertSubmitAuthority = options.assertSubmitAuthority;
-        return recordPermitAndMerge([]);
+        return recordPermitAndMerge(seen);
       },
     );
-    await runMergeAction(true);
+    await runMergeAction(true, { gate: "applied" });
     expect(assertSubmitAuthority).toBeDefined();
-    const check = assertSubmitAuthority!;
+    const permit = seen[0]!;
+    /** The check as the builder runs it (under the merge's permit): its failure. */
+    const failure = (withPermit = true) =>
+      Effect.runPromise(
+        onNodeDatabase(
+          assertSubmitAuthority!().pipe(
+            withPermit
+              ? Effect.provideService(FollowerWrite, permit)
+              : identity,
+            Effect.flip,
+            Effect.option,
+          ),
+        ),
+      ).then(Option.getOrUndefined);
+    const message = (error: unknown) =>
+      formatUnknownError(error, { includeCause: true });
 
     // A lost lease refuses before the permit is consulted.
     revalidateMock.mockImplementation(() =>
       Effect.fail(new Error("state-queue lease lost")),
     );
-    const leaseLost = await Effect.runPromise(Effect.either(check()));
-    expect(
-      formatUnknownError(Either.isLeft(leaseLost) && leaseLost.left, {
-        includeCause: true,
-      }),
-    ).toContain("state-queue lease lost");
+    expect(message(await failure())).toContain("state-queue lease lost");
     expect(revalidateMock).toHaveBeenLastCalledWith("test-lease-token");
 
-    // With the lease held, the check still needs a producer permit.
+    // With the lease held, the check passes while the permit is current.
     revalidateMock.mockImplementation(() => Effect.void);
-    const noPermit = await Effect.runPromise(Effect.either(check()));
-    expect(
-      formatUnknownError(Either.isLeft(noPermit) && noPermit.left, {
-        includeCause: true,
-      }),
-    ).toContain("Missing producer permit");
+    expect(await failure()).toBeUndefined();
+
+    // It needs a permit, and refuses one a recompute since superseded.
+    expect(message(await failure(false))).toContain(
+      "Missing follower write permit",
+    );
+    await Effect.runPromise(
+      onNodeDatabase(holdFollowerWriteGate("test recompute")),
+    );
+    expect(followerWriteHoldOf(await failure())?.reason).toBe(
+      DRIVER_RECOMPUTE_PENDING,
+    );
   });
 
   describe("past the L1 control-plane hold timeout", () => {
@@ -836,7 +832,7 @@ describe("merge history producer permit", () => {
   });
 
   it("merges a targeted header only while it is the oldest queued block", async () => {
-    const seen: (HistoryProducerPermit | null)[] = [];
+    const seen: (FollowerWritePermit | null)[] = [];
     buildAndSubmitMergeTxMock.mockImplementation(() =>
       recordPermitAndMerge(seen),
     );
@@ -868,8 +864,11 @@ describe("merge history producer permit", () => {
       Effect.succeed(makeCandidate("ready")),
     );
     expect(
-      await runMergeAction(true, { expectedHeaderHash: oldest }),
+      await runMergeAction(true, {
+        gate: "applied",
+        expectedHeaderHash: oldest,
+      }),
     ).toMatchObject({ status: "merged" });
-    expect(seen).toEqual([stubPermit]);
+    expect(seen).toEqual(openedPermits);
   });
 });

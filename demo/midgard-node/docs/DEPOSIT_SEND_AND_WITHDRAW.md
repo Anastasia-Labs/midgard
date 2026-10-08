@@ -424,7 +424,8 @@ registration transaction and relies on normal transaction confirmation.
 
 The L1 event may not have reached its inclusion time. Compare its
 `inclusionTime` with the current time, then check the node's `/readyz`
-reasons, for example `history_owner_not_ready`. Only the running node ingests
+reasons, for example `l1_follower_catching_up` or
+`l1_follower_view_unapplied`. Only the running node ingests
 L1 events; there is no one-shot ingestion command.
 
 ### `submit-withdrawal` Rejects The L2 Out-Ref

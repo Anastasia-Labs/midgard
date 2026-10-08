@@ -4,14 +4,17 @@
  * interventions R1 to R5 and `origin_mismatch`, `l1_follower_catching_up`,
  * `l1_follower_waiting`, `l1_follower_apply_stuck`,
  * `l1_follower_prune_failing`), every hold of the
- * follower-change driver (`l1_events_*`; the forced-order hook's
+ * follower-change driver (`l1_events_*`; the recompute's
+ * `startup_preparation_failed` and `l1_driver_recompute_failed`; a refused
+ * gated write's `l1_follower_view_stale` and `l1_driver_recompute_pending`;
+ * the forced-order hook's
  * `forced_order_carriage_pending`, `forced_order_admission_stopped` and
  * `forced_order_ingestion_failed`; and landed-block processing's, from
  * `landed-blocks/holds.ts`: `landed_block_invalid`,
  * `landed_block_own_journal_mismatch`,
  * `landed_block_follower_schema_missing`, `landed_block_event_unknown`,
  * `landed_block_forced_order_pending`, `landed_block_da_refetch_pending`,
- * `landed_block_awaiting_da`, `landed_block_batch_undecided`,
+ * `landed_block_awaiting_da`,
  * `landed_block_rebase_failed`, `landed_block_replay_incomplete`,
  * `landed_block_replay_failed`, `confirmed_ledger_base_mismatch`,
  * `landed_blocks_waiting`, `confirmed_ledger_behind`,

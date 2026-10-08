@@ -49,10 +49,7 @@ import {
 } from "../mpf/verified-block-import.js";
 import type { ImportedBlockReplayContext } from "../mpf/verified-block-import.replay-events.js";
 import { NodeConfig } from "../services/config.js";
-import {
-  runHistoryProducer,
-  withHistoryWrite,
-} from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { Lucid } from "../services/lucid.js";
 import type { ReplayInput, ReplayOutcome } from "./replay.js";
 import { payloadOf, type Refetching } from "./replay-foreign.payload.js";
@@ -362,9 +359,7 @@ export const replayForeignBlock = (deps: {
       });
       // Only a block that replayed keeps the payload it fetched.
       if (acquired !== undefined)
-        yield* runHistoryProducer(
-          withHistoryWrite(DaPayloadsDB.upsertAvailable(acquired)),
-        );
+        yield* withFollowerWrite(DaPayloadsDB.upsertAvailable(acquired));
       return {
         kind: "replayed",
         entries: imported.entries,

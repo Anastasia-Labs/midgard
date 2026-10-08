@@ -5,7 +5,7 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { Database } from "../services/database.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import {
   clearTable,
   DatabaseError,
@@ -75,7 +75,7 @@ export const restoreCorrectedClassification = (
       ),
     );
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     sqlErrorToDatabaseError(
       tableName,
       "Failed to restore corrected withdrawal classification",
@@ -110,7 +110,7 @@ export const markFinalizedByEventIds = (
       );
     }
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`markFinalizedByEventIds ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to mark withdrawals finalized"),
   );

@@ -17,7 +17,7 @@ import "../database/utils/tx.js";
 import "../e2e/commit-crash-checkpoint.js";
 import "../lucid-time.js";
 import "../mpf/index.js";
-import "../services/event-history-producer.js";
+import "../services/follower-write-gate.js";
 import "../services/history-commit-window.js";
 import "../services/index.js";
 import "../transactions/state-queue/confirmed-ledger-snapshot.js";

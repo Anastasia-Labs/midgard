@@ -3,11 +3,11 @@ import { valueToAssets } from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 
-import * as Ledger from "../database/utils/ledger.js";
 import {
   depositDataToEntry,
   withdrawalDataToEntry,
-} from "../l1-event-history-entries.js";
+} from "../database/user-event-entries.js";
+import * as Ledger from "../database/utils/ledger.js";
 import {
   Database,
   Lucid,

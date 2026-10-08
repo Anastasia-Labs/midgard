@@ -19,9 +19,9 @@ import {
 import { buildBlockConfirmationAction } from "../src/fibers/block-confirmation.js";
 import type { NodeConfigDep } from "../src/services/config.js";
 import {
-  HistoryProducer,
-  UnownedHistoryFixture,
-} from "../src/services/event-history-producer.js";
+  FollowerWriteFixture,
+  runAtFollowerView,
+} from "../src/services/follower-write-gate.js";
 import {
   Database,
   Globals,
@@ -122,21 +122,11 @@ export const runBlockConfirmation = (
     ).pipe(
       withEmulatorStateQueue(lucidService.api, contracts.stateQueue),
       (program) =>
-        production === undefined
-          ? program
-          : production.owner.runProducer((token, assertCurrent, coverage) =>
-              assertCurrent.pipe(
-                Effect.zipRight(
-                  Effect.provideService(program, HistoryProducer, {
-                    token,
-                    coverage,
-                  }),
-                ),
-              ),
-            ),
+        // As the confirmation fiber runs it: at the driver's applied view.
+        production === undefined ? program : runAtFollowerView(program),
       Effect.provideService(Globals, globals),
       Effect.provide(Database.layer),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
       nodeConfig === undefined
         ? Effect.provide(NodeConfig.layer)
         : Effect.provideService(NodeConfig, nodeConfig),

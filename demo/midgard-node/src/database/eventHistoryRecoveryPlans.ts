@@ -14,7 +14,7 @@ import { createHash } from "node:crypto";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
-import { eventHistoryCanonicalJson } from "../l1-event-history-source.js";
+import { losslessCanonicalJson } from "../lossless-canonical-json.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 const table = "event_history_recovery_plans";
@@ -101,7 +101,7 @@ export const retrieveAppliedRecoveryAfterJournal = (
       !isHash(targetRoot) ||
       (domain === DISPLACEMENT_COMPENSATION_RECOVERY_DOMAIN &&
         createHash("sha256")
-          .update(eventHistoryCanonicalJson(decoded))
+          .update(losslessCanonicalJson(decoded))
           .digest("hex") !== recoveryId)
     )
       return yield* Effect.fail(undecodable);

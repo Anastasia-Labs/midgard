@@ -2,7 +2,7 @@ import { Effect } from "effect";
 
 import { StateQueueMutationLeasesDB } from "../database/index.js";
 import { TIMEOUT_CORRECTION_LEASE_HOLDER } from "../fibers/attestation-timeout-correction.reconcile-state-queue-corrections.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { NODE_PROCESS_MPF_AUDIT_LEASES } from "./mpf-audit-leases.js";
 
 /**
@@ -34,7 +34,7 @@ const RETIRED_AT_STARTUP =
  * holder belongs to a process that is dead, or whose authority lapsed and
  * whose history writes are therefore refused; retiring the lease also fails
  * that process's next revalidate or renewal. The update runs through
- * withHistoryWrite, so it commits only while this process still owns the
+ * withFollowerWrite, so it commits only while this process still owns the
  * authority.
  */
 export const releaseStateQueueLeasesOfPreviousNodeProcess = Effect.gen(
@@ -43,7 +43,7 @@ export const releaseStateQueueLeasesOfPreviousNodeProcess = Effect.gen(
       yield* StateQueueMutationLeasesDB.retireActiveLeasesOfHolders(
         NODE_PROCESS_STATE_QUEUE_LEASE_HOLDERS,
         RETIRED_AT_STARTUP,
-      ).pipe(withHistoryWrite);
+      ).pipe(withFollowerWrite);
     for (const lease of retired)
       yield* Effect.logWarning(
         `Startup retired state-queue lease left by a previous node process: ${StateQueueMutationLeasesDB.describeActiveLease(lease)}`,

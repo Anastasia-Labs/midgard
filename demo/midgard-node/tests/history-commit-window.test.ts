@@ -6,16 +6,14 @@ import { describe, expect, it } from "vitest";
 
 import { followerEligibilityHorizon } from "../src/database/follower-events.js";
 import { FORCED_ORDERS_TABLE } from "../src/forced-orders/index.js";
-import type { HistoryOwnerCoverage } from "../src/services/event-history-owner.js";
 import {
-  HistoryProducer,
-  type HistoryProducerPermit,
-} from "../src/services/event-history-producer.js";
+  FollowerWrite,
+  type FollowerWritePermit,
+} from "../src/services/follower-write-gate.js";
 import {
   commitEventHorizon,
   type CommitHorizonLag,
   historyCommitTimingBudget,
-  historyEligibilityHorizon,
 } from "../src/services/history-commit-window.js";
 import { refreshCommitUserEventSourcesThroughBlockEnd } from "../src/workers/commit-block-header/submission.js";
 import {
@@ -29,79 +27,42 @@ import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
   Effect.runPromise(provideDatabaseLayers(effect));
 
-const permit: HistoryProducerPermit = {
-  token: {
-    deploymentIdentity: "11".repeat(32),
-    ownerToken: "isolated model",
-    generation: "1",
+/** A producer's permit; the recheck reads only that one is held. */
+const permit: FollowerWritePermit = {
+  view: {
+    generation: FOLLOWER_GENERATION,
+    slot: 100,
+    hash: "33".repeat(32),
+    height: 0,
   },
-  coverage: {
-    bindingDigest: "22".repeat(32),
-    checkpointRevision: "3",
-    point: { id: "33".repeat(32), slot: 100 },
-    snapshotDigest: "44".repeat(32),
-    includedThroughMs: 1_000_000,
-  },
+  epoch: "1",
 };
 
 describe("authenticated commit window", () => {
-  it("keeps the observed point distinct from the conservative eligibility horizon", () => {
-    const before = structuredClone(permit.coverage);
-    const horizon = historyEligibilityHorizon(permit.coverage);
-    // A future admission cannot have an inclusive upper bound before its
-    // actual future slot; its enforced event-wait delay lies beyond this
-    // horizon.
-    expect(horizon).toBeLessThan(
-      permit.coverage.includedThroughMs + EVENT_WAIT_DURATION_MS,
-    );
-    expect(permit.coverage).toEqual(before);
-    expect(() =>
-      historyEligibilityHorizon({
-        ...permit.coverage,
-        includedThroughMs: Number.MAX_SAFE_INTEGER,
+  // E-N1-2 item 3: the final recheck bounds the end time by min(follower
+  // ingestion, unbuilt forced orders); it polls nothing.
+  it("bounds the final recheck by the follower's ingestion horizon", async () => {
+    const ingestedSlot = 500;
+    await run(
+      Effect.gen(function* () {
+        yield* resetApplicationTables;
+        yield* ingestFollowerViewUnowned(ingestedSlot);
       }),
-    ).toThrow();
+    );
+    const expected = ingestedSlot * 1000 + EVENT_WAIT_DURATION_MS - 1;
+    expect(await run(commitEventHorizon(modelHorizonLag(0)))).toBe(expected);
+    const recheck = (end: number) =>
+      run(
+        refreshCommitUserEventSourcesThroughBlockEnd(
+          end,
+          modelHorizonLag(0),
+        ).pipe(Effect.provideService(FollowerWrite, permit)),
+      );
+    await recheck(expected);
+    await expect(recheck(expected + 1)).rejects.toThrow(
+      /exceeds the ingested event horizon/,
+    );
   });
-
-  // E-N1-2 item 3: the final recheck bounds the end time by min(owner
-  // coverage, follower ingestion, unbuilt forced orders); it polls nothing.
-  it.each([
-    ["owner coverage", 5_000],
-    ["follower ingestion", 500],
-  ] as const)(
-    "bounds the final recheck by %s, the lesser horizon",
-    async (_bound, ingestedSlot) => {
-      await run(
-        Effect.gen(function* () {
-          yield* resetApplicationTables;
-          yield* ingestFollowerViewUnowned(ingestedSlot);
-        }),
-      );
-      const expected = Math.min(
-        historyEligibilityHorizon(permit.coverage),
-        ingestedSlot * 1000 + EVENT_WAIT_DURATION_MS - 1,
-      );
-      expect(
-        await run(commitEventHorizon(permit.coverage, modelHorizonLag(0))),
-      ).toBe(expected);
-      // Never past the follower's covered tip: an event due by the horizon
-      // was admitted no later than the tip the driver ingested.
-      expect(expected - EVENT_WAIT_DURATION_MS + 1).toBeLessThanOrEqual(
-        ingestedSlot * 1000,
-      );
-      const recheck = (end: number) =>
-        run(
-          refreshCommitUserEventSourcesThroughBlockEnd(
-            end,
-            modelHorizonLag(0),
-          ).pipe(Effect.provideService(HistoryProducer, permit)),
-        );
-      await recheck(expected);
-      await expect(recheck(expected + 1)).rejects.toThrow(
-        /exceeds the ingested event horizon/,
-      );
-    },
-  );
 
   // N10: a live forced order the node has not rebuilt yet (carriage still
   // pending) may fall due at its inclusion time, so no block reaches it.
@@ -113,8 +74,7 @@ describe("authenticated commit window", () => {
       }),
     );
     const follower = 500_000 + EVENT_WAIT_DURATION_MS - 1;
-    const horizon = () =>
-      run(commitEventHorizon(undefined, modelHorizonLag(0)));
+    const horizon = () => run(commitEventHorizon(modelHorizonLag(0)));
     const order = (
       index: number,
       inclusionTime: number,
@@ -161,14 +121,13 @@ describe("authenticated commit window", () => {
         refreshCommitUserEventSourcesThroughBlockEnd(
           follower + 1,
           modelHorizonLag(0),
-        ).pipe(Effect.provideService(HistoryProducer, permit)),
+        ).pipe(Effect.provideService(FollowerWrite, permit)),
       ),
     ).rejects.toThrow(/exceeds the ingested event horizon/);
   });
 
   it("allows no end time before the first ingestion or after a rewind removes the ingested view", async () => {
-    const horizon = () =>
-      run(commitEventHorizon(permit.coverage, modelHorizonLag(0)));
+    const horizon = () => run(commitEventHorizon(modelHorizonLag(0)));
     await run(resetApplicationTables);
     expect(await horizon()).toBeNull();
     await run(ingestFollowerViewUnowned(500));
@@ -187,7 +146,7 @@ describe("authenticated commit window", () => {
         refreshCommitUserEventSourcesThroughBlockEnd(
           0,
           modelHorizonLag(0),
-        ).pipe(Effect.provideService(HistoryProducer, permit)),
+        ).pipe(Effect.provideService(FollowerWrite, permit)),
       ),
     ).rejects.toThrow(/exceeds the ingested event horizon/);
     // The driver's next run ingests the new generation's view.
@@ -196,7 +155,7 @@ describe("authenticated commit window", () => {
   });
 
   it("refuses an exhausted or invalid short-window attempt instead of moving its header end", () => {
-    const end = historyEligibilityHorizon(permit.coverage) + 1;
+    const end = 1_000_000 + EVENT_WAIT_DURATION_MS;
     const adequate = historyCommitTimingBudget({
       checkpoint: "pre_submit",
       resolvedEndTimeMs: end,
@@ -250,11 +209,6 @@ const followChain = (blocks: typeof chain = chain) =>
       );
     }),
   );
-/** Coverage far past the follower, so the follower side bounds the min. */
-const wideCoverage = {
-  ...permit.coverage,
-  includedThroughMs: 10_000_000,
-};
 /** The earliest event a block can hold: its inclusive validity upper bound is
  * at least the last millisecond of its own slot, and the enforced inclusion
  * time is that bound plus the event wait. */
@@ -271,18 +225,6 @@ const unreadClock: CommitHorizonLag<Error> = {
   lagBlocks: 0,
   slotToUnixTime: Effect.fail(new Error("the slot clock was read at d = 0")),
 };
-/** The commit horizon at the program tip before the lag: min(journal
- * coverage, follower ingestion), null without an ingestion. */
-const unlaggedOracle = (
-  follower: number | null,
-  coverage: HistoryOwnerCoverage | undefined,
-) =>
-  follower === null
-    ? null
-    : coverage === undefined
-      ? follower
-      : Math.min(follower, historyEligibilityHorizon(coverage));
-
 describe("horizon lag d on the commit end time", () => {
   it("keeps d = 0 byte-identical to the unlagged horizon, reading no lagged block and no clock", async () => {
     const states = [
@@ -293,17 +235,12 @@ describe("horizon lag d on the commit end time", () => {
     for (const [, arrange] of states) {
       await arrange();
       const follower = await run(followerEligibilityHorizon);
-      for (const coverage of [undefined, permit.coverage, wideCoverage]) {
-        const horizon = await run(commitEventHorizon(coverage, unreadClock));
-        expect(horizon).toBe(unlaggedOracle(follower, coverage));
-      }
+      expect(await run(commitEventHorizon(unreadClock))).toBe(follower);
     }
     // At the lone tip no block lies below it: any d > 0 would hold.
     await followChain([tip]);
-    expect(
-      await run(commitEventHorizon(wideCoverage, modelHorizonLag(1))),
-    ).toBeNull();
-    expect(await run(commitEventHorizon(wideCoverage, unreadClock))).toBe(
+    expect(await run(commitEventHorizon(modelHorizonLag(1)))).toBeNull();
+    expect(await run(commitEventHorizon(unreadClock))).toBe(
       tip.slot * 1000 + EVENT_WAIT_DURATION_MS - 1,
     );
   });
@@ -312,9 +249,7 @@ describe("horizon lag d on the commit end time", () => {
     "admits no event from the block %i below the follower's covered tip or above it",
     async (lagBlocks) => {
       await followChain();
-      const horizon = await run(
-        commitEventHorizon(wideCoverage, modelHorizonLag(lagBlocks)),
-      );
+      const horizon = await run(commitEventHorizon(modelHorizonLag(lagBlocks)));
       const lagged = chain.at(-1 - lagBlocks)!;
       expect(horizon).toBe(lagged.slot * 1000 + EVENT_WAIT_DURATION_MS - 1);
       const depths = dueDepths(horizon!);
@@ -329,47 +264,22 @@ describe("horizon lag d on the commit end time", () => {
     // Blocks 1_091 and 1_092 are one slot apart: at d = 2 the lagged block is
     // slot 1_092, and the earliest event of slot 1_091 lands on the cap.
     await followChain();
-    const horizon = await run(
-      commitEventHorizon(wideCoverage, modelHorizonLag(2)),
-    );
+    const horizon = await run(commitEventHorizon(modelHorizonLag(2)));
     expect(earliestInclusion(1_091)).toBe(horizon);
     expect(earliestInclusion(1_092)).toBe(horizon! + 1000);
   });
 
-  it("caps the journal side of the min with the same follower block", async () => {
-    await followChain();
-    const cap = 1_130_000 + EVENT_WAIT_DURATION_MS - 1;
-    const below = {
-      ...permit.coverage,
-      includedThroughMs: 1_100_000,
-    };
-    expect(
-      await run(commitEventHorizon(wideCoverage, modelHorizonLag(1))),
-    ).toBe(cap);
-    expect(await run(commitEventHorizon(below, modelHorizonLag(1)))).toBe(
-      historyEligibilityHorizon(below),
-    );
-    expect(await run(commitEventHorizon(undefined, modelHorizonLag(1)))).toBe(
-      cap,
-    );
-  });
-
   it("holds while the follower has no block d below its tip, and refuses the final end above the lagged cap", async () => {
     await followChain(chain.slice(-3));
-    expect(
-      await run(commitEventHorizon(wideCoverage, modelHorizonLag(3))),
-    ).toBeNull();
+    expect(await run(commitEventHorizon(modelHorizonLag(3)))).toBeNull();
     const cap = 1_092_000 + EVENT_WAIT_DURATION_MS - 1;
-    expect(
-      await run(commitEventHorizon(wideCoverage, modelHorizonLag(2))),
-    ).toBe(cap);
-    const wide: HistoryProducerPermit = { ...permit, coverage: wideCoverage };
+    expect(await run(commitEventHorizon(modelHorizonLag(2)))).toBe(cap);
     const refresh = (end: number, lagBlocks: number) =>
       run(
         refreshCommitUserEventSourcesThroughBlockEnd(
           end,
           modelHorizonLag(lagBlocks),
-        ).pipe(Effect.provideService(HistoryProducer, wide)),
+        ).pipe(Effect.provideService(FollowerWrite, permit)),
       );
     await expect(refresh(cap, 2)).resolves.toBeUndefined();
     await expect(refresh(cap + 1, 2)).rejects.toThrow(

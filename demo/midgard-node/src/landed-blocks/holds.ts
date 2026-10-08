@@ -60,7 +60,11 @@ export const LANDED_BLOCK_FORCED_ORDER_PENDING =
 export const LANDED_BLOCK_REPLAY_INCOMPLETE = "landed_block_replay_incomplete";
 /** Replaying or recording a landed block failed for a reason it could not classify. */
 export const LANDED_BLOCK_REPLAY_FAILED = "landed_block_replay_failed";
-/** The history owner is recovering, or the follower moved off the run's view ("view moved"); the next run retries. */
+/**
+ * The follower write gate refused a write by its named reason (a driver
+ * recompute pending, a view no longer on the chain), or the follower moved
+ * off the run's view ("view moved"); the next run retries.
+ */
 export const LANDED_BLOCKS_WAITING = "landed_blocks_waiting";
 /**
  * The merged queue root is on no lineage `confirmed_ledger` can reach: not
@@ -81,15 +85,8 @@ export const CONFIRMED_LEDGER_OWN_BLOCK_PENDING =
   "confirmed_ledger_own_block_pending";
 /** The working ledger and native MPF wait for the rebase onto the processed blocks. */
 export const LANDED_BLOCK_REBASE_PENDING = "landed_block_rebase_pending";
-/** The rebase failed; the history owner retries it on its backoff. */
+/** The rebase failed; the follower-change driver retries it on its backoff. */
 export const LANDED_BLOCK_REBASE_FAILED = "landed_block_rebase_failed";
-/**
- * The rebase's batch closure reached an acceptance receipt with a member
- * that is neither pending, settled, nor recorded rejected, so it cannot
- * reverse the batch; the history owner retries the rebase on its backoff,
- * and the reason clears once a rebase runs.
- */
-export const LANDED_BLOCK_BATCH_UNDECIDED = "landed_block_batch_undecided";
 /**
  * The follower's admission tables (`l1_event_keys`,
  * `node_l1_forced_order_fields`) are missing from the node database, so the
@@ -109,7 +106,6 @@ const PRIORITY = [
   LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_DA_REFETCH_PENDING,
   LANDED_BLOCK_AWAITING_DA,
-  LANDED_BLOCK_BATCH_UNDECIDED,
   NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED,
   NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
   NATIVE_MPF_RESTORE_READ_TRANSIENT,

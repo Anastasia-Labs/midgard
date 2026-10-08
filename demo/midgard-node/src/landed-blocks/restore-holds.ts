@@ -3,9 +3,9 @@
  * rebase moves native MPF (plan §1.4 "MPF interim", N4): the only
  * `restoreCanonicalRoot` caller. A refusal comes before the owner changes
  * its marker, so nothing changed: the rebase fails under its source with
- * the refusal's reason, the process stays up, the history gate stays
- * closed (holding block production), and the history owner retries the
- * rebase on its backoff. The next rebase evaluation that runs, or finds no
+ * the refusal's reason, the process stays up, the follower write gate
+ * stays pending (holding block production), and the follower-change
+ * driver retries the rebase on its backoff. The next rebase evaluation that runs, or finds no
  * rebase due, clears the reason.
  */
 import {
@@ -27,7 +27,7 @@ export class LandedChainRootNotRetained extends Error {
     readonly frontierRoot: string,
   ) {
     super(
-      `The native MPF retains no root of the processed landed chain (durable root ${durableRoot}, confirmed-ledger frontier root ${frontierRoot}). The native MPF store keeps every root it promoted, and the frontier's root was promoted when its block was applied, so the store at LEDGER_MPF_DB_PATH lost it (replaced, restored from an older copy or damaged). The rebase holds with native MPF, the SQL root and the journals unchanged, and the history owner retries it on its backoff while the history gate stays closed, which holds block production. Operator action is needed: stop the node, install at LEDGER_MPF_DB_PATH a native MPF store that retains root ${frontierRoot} in full (such as a copy of this node's store taken at or after that root), and restart it; the next rebase completes.`,
+      `The native MPF retains no root of the processed landed chain (durable root ${durableRoot}, confirmed-ledger frontier root ${frontierRoot}). The native MPF store keeps every root it promoted, and the frontier's root was promoted when its block was applied, so the store at LEDGER_MPF_DB_PATH lost it (replaced, restored from an older copy or damaged). The rebase holds with native MPF, the SQL root and the journals unchanged, and the follower-change driver retries it on its backoff while the follower write gate stays pending, which holds block production. Operator action is needed: stop the node, install at LEDGER_MPF_DB_PATH a native MPF store that retains root ${frontierRoot} in full (such as a copy of this node's store taken at or after that root), and restart it; the next rebase completes.`,
     );
   }
 }

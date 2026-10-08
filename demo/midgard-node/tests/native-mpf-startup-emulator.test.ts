@@ -36,12 +36,12 @@ import {
   utxosProgram,
   walletFromSeed,
 } from "./deposit-flow-emulator-shared.js";
-import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
 /** Actual public admissions and native promotion establish the empty restart
  * state. Network transport labels remain synthetic, as in the shared fixture. */
 it("restarts the production native initializer after withdrawal empties an unmerged and merged ledger without replaying genesis, and refuses a missing initialized store or a stale store beside a fresh database", async () => {
-  const h = await openHistoryProductionOwnerLifecycle();
+  const h = await openProductionLifecycle();
   const { fixture, lucidService, globals, production } = h;
   const context = { fixture, lucidService, globals, production };
   const wallet = fixture.depositorLucid;

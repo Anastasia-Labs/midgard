@@ -1,26 +1,19 @@
 /**
  * The landed-block rebase test's fixture (plan §7.3, N3): a frontier
  * ledger and one processed foreign block on it, a modelled native MPF owner
- * and its faults, one node process's globals, the owner's recovery
- * authority, one rebase attempt and what the node shows after it.
+ * and its faults, one node process's globals, one rebase attempt as the
+ * follower-change driver runs it (`rebaseIfDue` of its recompute, with no
+ * history owner) and what the node shows after it.
  */
-import { randomUUID } from "node:crypto";
-
 import { SqlClient } from "@effect/sql";
-import { Effect, Exit, Ref } from "effect";
+import { Effect, Ref } from "effect";
 import { expect } from "vitest";
 
 import { ConfirmedLedgerDB } from "../src/database/index.js";
 import type * as Ledger from "../src/database/utils/ledger.js";
-import {
-  LANDED_BLOCK_BATCH_UNDECIDED,
-  LANDED_BLOCK_REBASE_FAILED,
-} from "../src/landed-blocks/holds.js";
+import { LANDED_BLOCK_REBASE_FAILED } from "../src/landed-blocks/holds.js";
 import { ledgerRows } from "../src/landed-blocks/ledger.js";
-import {
-  landedBlockRebaseDisposition,
-  prepareLandedBlockRebase,
-} from "../src/landed-blocks/rebase.js";
+import { rebasePlan } from "../src/landed-blocks/rebase-target.js";
 import {
   Frontier,
   insertRow,
@@ -29,16 +22,14 @@ import {
 } from "../src/landed-blocks/store.js";
 import type { NodeConfig } from "../src/services/config.js";
 import type { Database } from "../src/services/database.js";
-import { withHistoryWrite } from "../src/services/event-history-producer.js";
-import type { HistoryRecoveryPreparation } from "../src/services/event-history-recovery.js";
 import { Globals } from "../src/services/globals.js";
 import { currentLivenessReasons } from "../src/services/globals.liveness-reasons.js";
-import { Lucid } from "../src/services/lucid.js";
-import { MidgardContracts } from "../src/services/midgard-contracts.js";
 import {
   type NativeMpfOwnerService,
   NativeMpfRootNotRetained,
 } from "../src/services/mpf-native-owner/protocol.js";
+import type { WriteBehind } from "../src/services/write-behind.js";
+import { testDriverRecompute, testWrite } from "./helpers/driver-recompute.js";
 import { simDigest, simOutput } from "./helpers/landed-blocks-sim.universe.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
@@ -98,50 +89,10 @@ export const processOf = async (native: Native) => {
 
 export const run = <A, E>(
   globals: Globals,
-  effect: Effect.Effect<A, E, Database | NodeConfig | Globals>,
+  effect: Effect.Effect<A, E, Database | NodeConfig | Globals | WriteBehind>,
 ) =>
   Effect.runPromise(
     provideDatabaseLayers(effect.pipe(Effect.provideService(Globals, globals))),
-  );
-
-export const DEPLOYMENT = "de".repeat(32);
-
-/** The owner's recovery authority, as its preparation holds it. */
-export const recovering = async (globals: Globals) => {
-  const token = {
-    deploymentIdentity: DEPLOYMENT,
-    ownerToken: randomUUID(),
-    generation: "0",
-  };
-  await run(
-    globals,
-    Effect.flatMap(SqlClient.SqlClient, (sql) =>
-      sql`DELETE FROM event_history_authority`.pipe(
-        Effect.zipRight(sql`INSERT INTO event_history_authority
-          (deployment_identity, owner_token, generation, state, reason, lease_until)
-          VALUES (${Buffer.from(DEPLOYMENT, "hex")}, ${token.ownerToken}::uuid, 0,
-            'recovering', 'landed-block rebase test',
-            clock_timestamp() + interval '1 hour')`),
-      ),
-    ),
-  );
-  return {
-    token,
-    assertCurrent: Effect.void,
-  } satisfies HistoryRecoveryPreparation;
-};
-
-/**
- * The test's own writes go through the unowned-history fixture gate, which
- * refuses while an owner holds the authority: the owner steps away first.
- */
-export const released = (globals: Globals) =>
-  run(
-    globals,
-    Effect.flatMap(
-      SqlClient.SqlClient,
-      (sql) => sql`DELETE FROM event_history_authority`,
-    ),
   );
 
 /** `confirmed_ledger` at the frontier holds `E0`; the processed foreign block spends it for `E1`. */
@@ -149,12 +100,12 @@ export const seed = async (
   globals: Globals,
   row: Partial<LandedBlockRow> = {},
 ) => {
-  await released(globals);
+  // The reset leaves the gate unapplied, so the seed runs as a fixture.
+  await run(globals, resetApplicationTables);
   await run(
     globals,
-    withHistoryWrite(
+    testWrite(
       Effect.gen(function* () {
-        yield* resetApplicationTables;
         yield* ConfirmedLedgerDB.insertMultiple([
           ...(yield* ledgerRows([E0], new Map())),
         ]);
@@ -186,35 +137,23 @@ export const sqlRun = async (
     sql: SqlClient.SqlClient,
   ) => Effect.Effect<unknown, unknown, Database | NodeConfig | Globals>,
 ) => {
-  await released(globals);
-  await run(
-    globals,
-    withHistoryWrite(Effect.flatMap(SqlClient.SqlClient, work)),
-  );
+  await run(globals, testWrite(Effect.flatMap(SqlClient.SqlClient, work)));
 };
 
-/** What the node shows after one rebase attempt. */
+/** What the node shows after one rebase attempt of the driver. */
 export const attempt = async (globals: Globals) => {
-  const preparation = await recovering(globals);
-  const exit = await Effect.runPromiseExit(
-    provideDatabaseLayers(
-      prepareLandedBlockRebase(preparation).pipe(
-        Effect.provideService(Globals, globals),
-        // Reached only to start a native owner; the modelled one is running.
-        Effect.provideService(Lucid, {} as Lucid),
-        Effect.provideService(MidgardContracts, {} as MidgardContracts),
-      ),
+  const hold = await run(
+    globals,
+    Effect.flatMap(testDriverRecompute(), (recompute) =>
+      recompute.rebaseIfDue("landed-block rebase test"),
     ),
   );
-  const held = await Effect.runPromise(
-    Ref.get(globals.LANDED_BLOCK_REBASE_FAILURE),
-  );
   return {
-    exit,
-    held: held?.reason,
-    failure: held?.detail,
+    hold,
+    held: hold?.reason,
+    failure: hold?.detail,
     reasons: await Effect.runPromise(currentLivenessReasons(globals)),
-    disposition: await run(globals, landedBlockRebaseDisposition),
+    due: (await run(globals, rebasePlan)).kind,
     applied: (await run(globals, retrieveRows)).map((row) => row.applied),
     working: (
       await run(
@@ -233,21 +172,18 @@ export const expectHeld = (
   detail: RegExp,
   reason: string = LANDED_BLOCK_REBASE_FAILED,
 ) => {
-  // The preparation returns: the owner is not failed by it.
-  expect(Exit.isSuccess(shown.exit)).toBe(true);
+  // The driver run returns its hold; nothing fails the process.
   expect(shown.failure).toMatch(detail);
   expect(shown.held).toBe(reason);
   expect(shown.reasons).toContain(reason);
-  expect(shown.disposition?.status).toBe("pending");
+  expect(shown.due).not.toBe("none");
   expect(shown.applied).toEqual([false]);
 };
 
 export const expectRebased = (shown: Awaited<ReturnType<typeof attempt>>) => {
-  expect(Exit.isSuccess(shown.exit)).toBe(true);
-  expect(shown.failure).toBeUndefined();
+  expect(shown.hold).toBeUndefined();
   expect(shown.reasons).not.toContain(LANDED_BLOCK_REBASE_FAILED);
-  expect(shown.reasons).not.toContain(LANDED_BLOCK_BATCH_UNDECIDED);
-  expect(shown.disposition).toBeUndefined();
+  expect(shown.due).toBe("none");
   expect(shown.applied).toEqual([true]);
   expect(shown.working).toContain(hex(E1.outref));
 };
@@ -257,32 +193,6 @@ export const freshNative = (): Native => ({
   retainsNothing: false,
   reaches: undefined,
 });
-
-export const BINDING = Buffer.alloc(32, 0x42);
-
-/** One unreversed acceptance receipt holding `txIds`. */
-export const receipt = (globals: Globals, txIds: readonly Buffer[]) =>
-  sqlRun(globals, (sql) =>
-    Effect.gen(function* () {
-      const digest = Buffer.alloc(32, 0x43);
-      yield* sql`INSERT INTO event_history_cursor (binding_digest, manifest_id,
-          origin_receipt, origin_receipt_digest, anchor_hash, anchor_slot,
-          anchor_height, anchor_snapshot_digest, head_hash, head_slot,
-          head_height, head_application_revision, snapshot_digest, revision,
-          addresses)
-        VALUES (${BINDING}, ${Buffer.from(DEPLOYMENT, "hex")}, 'origin',
-          ${digest}, ${digest}, 0, 0, ${digest}, ${digest}, 0, 0, NULL,
-          ${digest}, 0, '[]'::jsonb)
-        ON CONFLICT (binding_digest) DO NOTHING`;
-      yield* sql`INSERT INTO event_history_l2_ledger_receipts (binding_digest,
-          owner_generation, checkpoint_revision, head_hash, snapshot_digest,
-          tx_ids, reference_outrefs, ledger_before, reference_before,
-          deposits_before, payloads_before)
-        VALUES (${BINDING}, 0, 0, ${digest}, ${digest},
-          ${(sql as unknown as { array: (v: string[]) => unknown }).array(txIds.map((id) => `\\x${hex(id)}`)) as never}::bytea[],
-          '{}'::bytea[], '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb)`;
-    }),
-  );
 
 /** A pending transaction spending `spent`, admitted at `at` seconds. */
 export const pendingTx = (
@@ -323,29 +233,6 @@ export const rejectionCauses = (globals: Globals) =>
   ).then((rows) =>
     rows.map((row) => [hex(row.tx_id), hex(row.cause_tx_id)]).sort(),
   );
-
-/** The receipt settlements on record: `[tx id, settling header]` pairs. */
-export const settlements = (globals: Globals) =>
-  run(
-    globals,
-    Effect.flatMap(
-      SqlClient.SqlClient,
-      (sql) => sql<{ tx_id: Buffer; settled_by: Buffer }>`
-        SELECT tx_id, settled_by
-        FROM event_history_l2_ledger_receipt_settlements ORDER BY tx_id`,
-    ),
-  ).then((rows) => rows.map((row) => [hex(row.tx_id), hex(row.settled_by)]));
-
-/** The receipts no rejection has reversed. */
-export const unreversedReceipts = (globals: Globals) =>
-  run(
-    globals,
-    Effect.flatMap(
-      SqlClient.SqlClient,
-      (sql) => sql`SELECT 1 FROM event_history_l2_ledger_receipts
-        WHERE reversed_at_revision IS NULL`,
-    ),
-  ).then((rows) => rows.length);
 
 /**
  * A processed row, the seeded block's fields under `row`: foreign by default;

@@ -12,7 +12,11 @@ import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import * as Leases from "../src/database/stateQueueMutationLeases.js";
 import { classifyCommitWorkerOutputForMutationLease } from "../src/fibers/commit-worker-failure-classification.js";
 import { Database } from "../src/services/database.js";
-import { HistoryProducer } from "../src/services/event-history-producer.js";
+import {
+  FollowerWrite,
+  runAtFollowerView,
+} from "../src/services/follower-write-gate.js";
+import { Globals } from "../src/services/globals.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
 import { captureCommitWorkerFailure } from "../src/workers/commit-block-header.js";
@@ -40,15 +44,14 @@ import {
   serializeStateQueueUTxO,
   utxosProgram,
 } from "./deposit-flow-emulator-shared.js";
-import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
+import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
-/** In-process composition of the real worker, production owner, parent failure
- * classifier and SQL mutation lease. Provider acceptance and response loss are
- * real emulator actions. Transport ancestry is synthetic; Worker IPC, parent
- * listen scheduling, merge contention and process restart are not exercised. */
+/** The real worker, follower-change driver, parent failure classifier and SQL
+ * mutation lease, in process; provider acceptance and response loss are real
+ * emulator actions (no worker IPC, listen, merge contention or restart). */
 it("fails the parent operation lease after accepted response loss while a later lease preserves and then reconciles the signed intent", async () => {
-  const h = await openHistoryProductionOwnerLifecycle();
+  const h = await openProductionLifecycle();
   const { fixture, lucidService, globals, production } = h;
   const lucid = fixture.operatorLucid;
   const wallet = fixture.depositorLucid;
@@ -114,69 +117,66 @@ it("fails the parent operation lease after accepted response loss while a later 
             token: stateQueueLeaseToken,
           };
           attempts.push(attempt);
-          return production.owner.runProducer(
-            (token, assertCurrent, coverage) =>
-              Effect.gen(function* () {
-                const native = yield* Ref.get(globals.NATIVE_MPF_OWNER);
-                if (native === undefined)
-                  return yield* Effect.die("Missing native owner");
-                const port = native.createWorkerPort();
-                const output = yield* commitWorkerProgram(
-                  fixture.contracts,
-                  lucidService,
-                  {
-                    data: {
-                      availableConfirmedBlock,
-                      availableLocalFinalizationBlock: "",
-                      currentBlockStartTimeMs,
-                      forcedValidationSlotConfig: canonicalSlotConfigForLucid(
-                        lucidService.api,
-                      ),
-                      ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
-                      localFinalizationPending: false,
-                      mempoolTxsCountSoFar: 0,
-                      sizeOfProcessedTxsSoFar: 0,
-                      stateQueueLeaseToken,
-                    },
-                    history: { token, coverage },
-                    nativeMpf: {
-                      port,
-                      durableRoot: (yield* Effect.promise(() =>
-                        native.diagnostics(),
-                      )).durableRoot,
-                      ownerBinarySha256:
-                        production.nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
-                    },
-                  },
-                  undefined,
-                  production.nodeConfig,
-                ).pipe(
-                  Effect.provideService(HistoryProducer, { token, coverage }),
-                  Effect.provideService(MempoolLedgerCache, production.cache),
-                  Effect.ensuring(Effect.sync(() => port.close())),
-                  captureCommitWorkerFailure,
-                );
-                attempt.output = output;
-                yield* assertCurrent;
-                // The real parent classifies before publishing a promotion or globals.
-                // These two attempts must fail before any successful output publication.
-                return yield* classifyCommitWorkerOutputForMutationLease({
-                  output,
-                  stateQueueLeaseToken,
-                  retrieveJournalEvidence: (leaseToken) =>
-                    Pending.retrieveByStateQueueLeaseToken(leaseToken).pipe(
-                      Effect.map((rows) =>
-                        rows.map((row) => ({
-                          headerHash: row[Pending.Columns.HEADER_HASH],
-                          submittedTxHash:
-                            row[Pending.Columns.SUBMITTED_TX_HASH],
-                          status: row[Pending.Columns.STATUS],
-                        })),
-                      ),
+          return runAtFollowerView(
+            Effect.gen(function* () {
+              const permit = yield* FollowerWrite;
+              const native = yield* Ref.get(globals.NATIVE_MPF_OWNER);
+              if (native === undefined)
+                return yield* Effect.die("Missing native owner");
+              const port = native.createWorkerPort();
+              const output = yield* commitWorkerProgram(
+                fixture.contracts,
+                lucidService,
+                {
+                  data: {
+                    availableConfirmedBlock,
+                    availableLocalFinalizationBlock: "",
+                    currentBlockStartTimeMs,
+                    forcedValidationSlotConfig: canonicalSlotConfigForLucid(
+                      lucidService.api,
                     ),
-                });
-              }),
-          );
+                    ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
+                    localFinalizationPending: false,
+                    mempoolTxsCountSoFar: 0,
+                    sizeOfProcessedTxsSoFar: 0,
+                    stateQueueLeaseToken,
+                  },
+                  history: permit,
+                  nativeMpf: {
+                    port,
+                    durableRoot: (yield* Effect.promise(() =>
+                      native.diagnostics(),
+                    )).durableRoot,
+                    ownerBinarySha256:
+                      production.nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
+                  },
+                },
+                undefined,
+                production.nodeConfig,
+              ).pipe(
+                Effect.provideService(MempoolLedgerCache, production.cache),
+                Effect.ensuring(Effect.sync(() => port.close())),
+                captureCommitWorkerFailure,
+              );
+              attempt.output = output;
+              // The real parent classifies before publishing a promotion or globals.
+              // These two attempts must fail before any successful output publication.
+              return yield* classifyCommitWorkerOutputForMutationLease({
+                output,
+                stateQueueLeaseToken,
+                retrieveJournalEvidence: (leaseToken) =>
+                  Pending.retrieveByStateQueueLeaseToken(leaseToken).pipe(
+                    Effect.map((rows) =>
+                      rows.map((row) => ({
+                        headerHash: row[Pending.Columns.HEADER_HASH],
+                        submittedTxHash: row[Pending.Columns.SUBMITTED_TX_HASH],
+                        status: row[Pending.Columns.STATUS],
+                      })),
+                    ),
+                  ),
+              });
+            }),
+          ).pipe(Effect.provideService(Globals, globals));
         },
       ).pipe(
         Effect.either,
@@ -561,7 +561,7 @@ it("fails the parent operation lease after accepted response loss while a later 
           JSON.stringify(
             {
               scope:
-                "Actual emulator acceptance and lost response; real in-process parent classifier/lease/SQL composition under production history owner; later operation and canonical reconciliation/native finalization/mature merge. Synthetic ancestry. No actual Worker IPC, full listen scheduling, native parent failure catcher, merge contention or restart acceptance.",
+                "Actual emulator acceptance and lost response; real in-process parent classifier/lease/SQL composition under the follower-change driver; later operation and canonical reconciliation/native finalization/mature merge. Synthetic ancestry. No actual Worker IPC, full listen scheduling, native parent failure catcher, merge contention or restart acceptance.",
               manifestId: h.deployment.manifest.manifestId,
               blueprintSha256: h.deployment.manifest.artifacts.blueprintHash,
               deploymentInfoSha256: h.deploymentInfoSha256,

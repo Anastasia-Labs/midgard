@@ -112,6 +112,7 @@ export const encodePipelineStatusOldestActive = (
 export const getPipelineStatusHandler = Effect.gen(function* () {
   const globals = yield* Globals;
   const sql = yield* SqlClient;
+  const { manifestId } = yield* ContractDeploymentIdentity;
   const now = new Date();
   const [
     pendingCounts,
@@ -148,9 +149,12 @@ export const getPipelineStatusHandler = Effect.gen(function* () {
       sql<PipelineStatusCountOnlyRow>`SELECT COUNT(*)::bigint AS count FROM processed_mempool WHERE included_by IS NULL`,
       MutationJobsDB.countUnfinished,
       StateQueueMutationLeasesDB.inspect({ recentLimit: 5 }),
-      SettlementJournal.inspectBacklog(
-        PIPELINE_STATUS_FAILING_SETTLEMENT_JOB_LIMIT,
-      ),
+      manifestId === undefined
+        ? Effect.succeed({ unfinishedJobs: 0n, failingJobs: [] })
+        : SettlementJournal.inspectBacklog(
+            manifestId,
+            PIPELINE_STATUS_FAILING_SETTLEMENT_JOB_LIMIT,
+          ),
     ],
     { concurrency: "unbounded" },
   );

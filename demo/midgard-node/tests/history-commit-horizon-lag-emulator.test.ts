@@ -22,11 +22,9 @@ import {
   SDK,
   stateQueueFetchConfig,
 } from "./deposit-flow-emulator-shared.js";
-import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
-type Lifecycle = Awaited<
-  ReturnType<typeof openHistoryProductionOwnerLifecycle>
->;
+type Lifecycle = Awaited<ReturnType<typeof openProductionLifecycle>>;
 
 /**
  * The follower's covered tip, the block one below it and the ingested view
@@ -86,7 +84,7 @@ const followNextBlock = async (h: Lifecycle) => {
  * resets the node runtime after every test.
  */
 const withLifecycle = async (test: (h: Lifecycle) => Promise<void>) => {
-  const h = await openHistoryProductionOwnerLifecycle();
+  const h = await openProductionLifecycle();
   try {
     await test(h);
   } finally {

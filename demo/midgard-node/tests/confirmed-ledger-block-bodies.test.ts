@@ -155,7 +155,6 @@ describe("an own block's bodies live until its fold is final", () => {
         // records its merge point.
         expect(
           yield* finalizeConfirmedMergeTransaction({
-            headerHash: Buffer.from(s.a.hash, "hex"),
             journal: s.record,
           }),
         ).toBe("folded");
@@ -184,7 +183,6 @@ describe("an own block's bodies live until its fold is final", () => {
         // It lands and finalizes: the ledger is the fresh replay's.
         expect(
           yield* finalizeConfirmedMergeTransaction({
-            headerHash: read.headerHash,
             journal: s.record,
           }),
         ).toBe("folded");
@@ -214,7 +212,6 @@ describe("an own block's bodies live until its fold is final", () => {
         yield* BlocksDB.insert(Buffer.from(other, "hex"), [otherTx]);
         yield* processLandedQueue(ports(s.state), s.unmerged);
         yield* finalizeConfirmedMergeTransaction({
-          headerHash: Buffer.from(s.a.hash, "hex"),
           journal: s.record,
         });
         yield* processLandedQueue(ports(s.state), s.mergedAt7);

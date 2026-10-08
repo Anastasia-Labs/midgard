@@ -3,7 +3,7 @@ import "effect";
 import "worker_threads";
 import "../database/index.js";
 import "../services/canonical-journal-recovery.js";
-import "../services/event-history-producer.js";
+import "../services/follower-write-gate.js";
 import "../services/index.js";
 import "../transaction-confirmation-metadata.js";
 import "../workers/utils/commit-block-header.js";

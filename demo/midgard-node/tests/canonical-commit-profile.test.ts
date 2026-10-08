@@ -10,7 +10,7 @@ import {
   computeLedgerMpfRootFromLedgerEntries,
   processMpfs,
 } from "../src/mpf/index.js";
-import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
+import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import {
   ContractDeploymentIdentity,
   Lucid,
@@ -260,7 +260,7 @@ const fakeSql = Object.assign(
 const runEffect = <A>(effect: Effect.Effect<A, unknown, unknown>) =>
   Effect.runPromise(
     effect.pipe(
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
       Effect.provideService(SqlClient.SqlClient, fakeSql),
     ) as Effect.Effect<A, unknown, never>,
   );

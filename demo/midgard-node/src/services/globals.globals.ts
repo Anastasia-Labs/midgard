@@ -1,12 +1,15 @@
 import { TxHash } from "@lucid-evolution/lucid";
 import { Effect, Ref, SubscriptionRef } from "effect";
 
-import type { DriverHold } from "../l1-events/driver.js";
 import type { OperatorMembershipState } from "../l1-operator-set/membership.js";
 import type { PublishedOperatorSet } from "../l1-operator-set/snapshot.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import type { CommitDaFramePressureSnapshot } from "../workers/utils/commit-block-planner.commit-da-frame-notice.js";
 import type { EventHistoryOwner } from "./event-history-owner.js";
+import {
+  type FollowerWriteGateLocal,
+  initialFollowerWriteGateLocal,
+} from "./follower-write-gate.local.js";
 import type { IdleBackoffState } from "./globals.idle-backoff.js";
 import {
   initialL1ControlPlaneActivity,
@@ -145,11 +148,11 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const EVENT_HISTORY_OWNER = yield* Ref.make<EventHistoryOwner | undefined>(
       undefined,
     );
-    // Why the last landed-block rebase failed, until one succeeds: the
-    // reason and detail the landed-block hold shows
-    // (`landed_block_batch_undecided` or `landed_block_rebase_failed`).
-    const LANDED_BLOCK_REBASE_FAILURE = yield* Ref.make<DriverHold | undefined>(
-      undefined,
+    // This process's side of the follower write gate (plan §8.1): the epoch
+    // its driver took, whether a recompute is pending, and the producers
+    // running under permits (`follower-write-gate.ts`).
+    const FOLLOWER_WRITE_GATE = yield* Ref.make<FollowerWriteGateLocal>(
+      initialFollowerWriteGateLocal(),
     );
     // The node's L1 follower (N1): the shared follow loop and its
     // follower-change driver, or why the node has none.
@@ -249,7 +252,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       TX_QUEUE_WAKE_GENERATION,
       NATIVE_MPF_OWNER,
       EVENT_HISTORY_OWNER,
-      LANDED_BLOCK_REBASE_FAILURE,
+      FOLLOWER_WRITE_GATE,
       L1_FOLLOWER,
       L1_HEAD_SEQUENCE,
       ADMISSION_BACKLOG_GAUGE,

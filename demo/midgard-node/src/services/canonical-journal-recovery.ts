@@ -4,7 +4,7 @@ import { Effect, Option } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { eventHistoryCanonicalJson } from "../l1-event-history-source.js";
+import { losslessCanonicalJson } from "../lossless-canonical-json.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import { Database, MidgardContracts } from "./index.js";
 import { requireLandedStateQueue } from "./landed-state-queue.js";
@@ -52,7 +52,7 @@ export const signedIntentReplacementDigest = (
   const signed = record[J.SIGNED_TX_CBOR];
   if (intended == null || signed == null) return undefined;
   return sha(
-    eventHistoryCanonicalJson({
+    losslessCanonicalJson({
       domain: SIGNED_INTENT_REPLACEMENT_DOMAIN,
       headerHash: record[J.HEADER_HASH].toString("hex"),
       intendedTxHash: intended.toString("hex"),

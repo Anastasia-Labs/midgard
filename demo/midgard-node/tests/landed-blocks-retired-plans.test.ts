@@ -2,19 +2,17 @@
  * Prepared recovery plans of the retired kinds (`retired-plans.ts`): a node
  * that prepared a signed-header recovery, a signed-intent release, a
  * displaced-block revival, a displacement compensation or a correction
- * rewind before those services were deleted keeps the history
- * reconciliation pending until something removes the plan. The landed-block
- * rebase does: a retained one makes the rebase due, the rebase moves the
- * native MPF to the landed target from wherever the plan's restore left it,
- * and discards the plan in its SQL transaction. An applied receipt of any
- * kind, and a prepared plan of a domain no version wrote, stay as they were.
+ * rewind before those services were deleted keeps it until something
+ * removes it. The landed-block rebase the follower-change driver runs does:
+ * a retained one makes the rebase due, the rebase moves the native MPF to
+ * the landed target from wherever the plan's restore left it, and discards
+ * the plan in its SQL transaction. An applied receipt of any kind, and a
+ * prepared plan of a domain no version wrote, stay as they were.
  */
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import * as Authority from "../src/database/eventHistoryAuthority.js";
-import { pendingHistoryLedgerDisposition } from "../src/database/eventHistoryLedgerRepair.js";
 import {
   CORRECTION_REWIND_RECOVERY_DOMAIN,
   DISPLACED_BLOCK_REVIVAL_RECOVERY_DOMAIN,
@@ -22,12 +20,11 @@ import {
   SIGNED_HEADER_RECOVERY_DOMAIN,
   SIGNED_INTENT_RELEASE_RECOVERY_DOMAIN,
 } from "../src/database/eventHistoryRecoveryPlans.js";
-import { landedBlockRebaseDisposition } from "../src/landed-blocks/rebase.js";
+import { rebasePlan } from "../src/landed-blocks/rebase-target.js";
 import type { Globals } from "../src/services/globals.js";
 import {
   attempt,
   BLOCK,
-  DEPLOYMENT,
   E1,
   expectRebased,
   freshNative,
@@ -35,7 +32,6 @@ import {
   processOf,
   R0,
   R1,
-  recovering,
   root,
   run,
   seed,
@@ -53,6 +49,7 @@ const RETIRED = [
 /** A domain no node version wrote: its plan is not a retired kind. */
 const UNKNOWN_DOMAIN = "midgard-history-unknown-intent-v1";
 
+const DEPLOYMENT = "de".repeat(32);
 const BINDING = Buffer.alloc(32, 0x61);
 const OTHER_BINDING = Buffer.alloc(32, 0x62);
 const CHECKPOINT = Buffer.alloc(32, 0x63);
@@ -103,28 +100,9 @@ const plans = (globals: Globals) =>
     ),
   ).then((rows) => rows.map((row) => [hex(row.recovery_id), row.state]));
 
-/** The history owner's reconciliation of `binding`'s current checkpoint. */
-const disposition = async (globals: Globals, binding: Buffer) => {
-  const { token } = await recovering(globals);
-  const after = {
-    manifestId: DEPLOYMENT,
-    bindingDigest: hex(binding),
-    revision: 0,
-    head: { id: hex(CHECKPOINT) },
-    capture: { snapshotDigest: hex(CHECKPOINT) },
-  };
-  return run(
-    globals,
-    Authority.withRecovery(
-      token,
-      pendingHistoryLedgerDisposition({
-        kind: "resume",
-        before: after,
-        after,
-      } as never),
-    ),
-  );
-};
+/** Whether the landed-block rebase is due (and can run). */
+const due = (globals: Globals) =>
+  run(globals, rebasePlan).then((plan) => plan.kind);
 
 /** A node whose working ledger already follows the landed block. */
 const settled = async () => {
@@ -142,7 +120,7 @@ describe(
   { concurrent: false },
   () => {
     it.each(RETIRED)(
-      "discards a prepared %s plan, releasing the reconciliation, and leaves other plans",
+      "discards a prepared %s plan and leaves other plans",
       async (_kind, domain) => {
         const { native, globals } = await settled();
         const retired: Plan = {
@@ -167,16 +145,11 @@ describe(
         // Its native restore ran before the process stopped.
         native.durableRoot = root(0x55);
 
-        expect(await disposition(globals, BINDING)).toMatchObject({
-          status: "pending",
-        });
-        expect(await run(globals, landedBlockRebaseDisposition)).toMatchObject({
-          status: "pending",
-        });
+        expect(await due(globals)).toBe("ready");
 
         const shown = await attempt(globals);
-        expect(shown.failure).toBeUndefined();
-        expect(shown.disposition).toBeUndefined();
+        expect(shown.hold).toBeUndefined();
+        expect(shown.due).toBe("none");
         expect(shown.working).toEqual([hex(E1.outref)]);
         // The native MPF is back on the landed target.
         expect(native.durableRoot).toBe(R1);
@@ -184,11 +157,6 @@ describe(
           [hex(receipt.id), "applied"],
           [hex(unknown.id), "prepared"],
         ]);
-        expect(await disposition(globals, BINDING)).toBeUndefined();
-        // The unknown plan still owns its binding's reconciliation.
-        expect(await disposition(globals, OTHER_BINDING)).toMatchObject({
-          status: "pending",
-        });
       },
     );
 
@@ -212,17 +180,13 @@ describe(
       // Nothing makes the rebase due, so the native root stays where it is.
       native.durableRoot = root(0x55);
 
-      expect(await run(globals, landedBlockRebaseDisposition)).toBeUndefined();
+      expect(await due(globals)).toBe("none");
       const shown = await attempt(globals);
-      expect(shown.failure).toBeUndefined();
+      expect(shown.hold).toBeUndefined();
       expect(native.durableRoot).toBe(root(0x55));
       expect(await plans(globals)).toEqual(
         rows.map((row) => [hex(row.id), row.state]),
       );
-      expect(await disposition(globals, BINDING)).toBeUndefined();
-      expect(await disposition(globals, OTHER_BINDING)).toMatchObject({
-        status: "pending",
-      });
     });
   },
 );

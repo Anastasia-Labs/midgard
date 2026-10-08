@@ -18,7 +18,6 @@ import { Cause, Effect, Fiber } from "effect";
 import { UnknownException } from "effect/Cause";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as Journal from "../src/database/settlement.js";
 import { NodeConfig } from "../src/services/config.js";
 import {
@@ -40,6 +39,7 @@ import {
   settlementCauseDetail,
 } from "../src/services/settlement-call.js";
 import { runSettlementWorker } from "../src/workers/settlement.run-settlement-worker.js";
+import { openFollowerWriteGate } from "./helpers/follower-write-gate.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
@@ -69,15 +69,7 @@ beforeEach(() =>
   run(
     Effect.gen(function* () {
       yield* resetApplicationTables;
-      const token = yield* Authority.acquire({
-        deploymentIdentity: deploymentId,
-        ownerToken: randomUUID(),
-        leaseDurationMs: 60_000,
-      });
-      yield* Authority.publishReady(token, {
-        point: { slot: 10, id: "b1".repeat(32) },
-        snapshotDigest: "c1".repeat(32),
-      });
+      yield* openFollowerWriteGate;
     }),
   ),
 );

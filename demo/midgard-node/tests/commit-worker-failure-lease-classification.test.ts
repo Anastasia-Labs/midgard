@@ -137,7 +137,7 @@ import {
   classifyCommitWorkerOutputForMutationLease,
   type CommitWorkerFailureJournalEvidence,
 } from "../src/fibers/commit-worker-failure-classification.js";
-import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
+import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import { Lucid, NodeConfig } from "../src/services/index.js";
 import { buildUnsignedCommitTx } from "../src/workers/commit-block-header/build-unsigned-tx.js";
 import {
@@ -427,7 +427,7 @@ const runDepositOnlyCommit = () =>
     ).pipe(
       Effect.provideService(Lucid, fakeLucid),
       Effect.provideService(NodeConfig, unlaggedConfig),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
       Effect.provideService(SqlClient.SqlClient, fakeSql),
     ) as Effect.Effect<unknown, never, never>,
   );
@@ -446,7 +446,7 @@ const runTxBackedCommit = () =>
     ).pipe(
       Effect.provideService(Lucid, fakeLucid),
       Effect.provideService(NodeConfig, unlaggedConfig),
-      Effect.provideService(UnownedHistoryFixture, true),
+      Effect.provideService(FollowerWriteFixture, true),
       Effect.provideService(SqlClient.SqlClient, fakeSql),
     ) as Effect.Effect<unknown, never, never>,
   );

@@ -8,6 +8,7 @@ import { attestationTimeoutCorrectionReadinessBounds } from "../fibers/index.js"
 import { localOgmiosSubmitSlotEvidence } from "../l1-heads.js";
 import { READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS } from "../l1-provider-readiness-probe.js";
 import { deploymentIdentityDigestOf } from "../l1-queue-terminals/index.js";
+import { followerWriteGateReasons } from "../services/follower-write-gate.local.js";
 import {
   DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
   ValidationPool,
@@ -230,20 +231,17 @@ export const getReadinessHandler = Effect.gen(function* () {
   // only a settlement worker that keeps dying does.
   const settlementReason = settlementReadinessReason(settlement, Date.now());
   if (settlementReason !== undefined) reasons.push(settlementReason);
-  const historyOwner = yield* Ref.get(globals.EVENT_HISTORY_OWNER);
-  // The history gate: closed while recovering, and named when an open gate's
-  // follower falls further behind the source tip than it may.
-  const eventHistoryFrontier =
-    historyOwner === undefined ? null : yield* historyOwner.frontier;
-  if (eventHistoryFrontier !== null) {
-    if (!eventHistoryFrontier.ready) reasons.push("history_owner_not_ready");
-    else if (
-      eventHistoryFrontier.lagBlocks > eventHistoryFrontier.maximumLagBlocks
-    )
-      reasons.push(
-        `history_follower_lagging:${eventHistoryFrontier.lagBlocks}:${eventHistoryFrontier.maximumLagBlocks}`,
-      );
-  }
+  // The follower write gate (plan §8.1): unready until this process's
+  // follower-change driver published a view, and while its recompute is
+  // under way or held (the driver's holds below name why).
+  const gateLocal = yield* Ref.get(globals.FOLLOWER_WRITE_GATE);
+  for (const reason of followerWriteGateReasons(gateLocal))
+    if (!reasons.includes(reason)) reasons.push(reason);
+  const followerWriteGate = {
+    epoch: gateLocal.epoch ?? null,
+    recomputing: gateLocal.recomputing,
+    producers: gateLocal.producers.size,
+  };
   const nativeMpfOwner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
   const nativeMpfDiagnostics =
     nativeMpfOwner === undefined
@@ -411,7 +409,7 @@ export const getReadinessHandler = Effect.gen(function* () {
                 nativeMpfDiagnostics.right.ownerEpoch,
               ).toString("hex"),
             },
-    eventHistoryFrontier,
+    followerWriteGate,
     l1Follower: l1Follower.report,
     livenessReasons,
     commitDaFramePressure,

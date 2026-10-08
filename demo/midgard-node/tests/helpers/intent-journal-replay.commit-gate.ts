@@ -7,7 +7,7 @@
 import { SqlClient } from "@effect/sql";
 import { Effect, type ManagedRuntime, Option } from "effect";
 
-import { UnownedHistoryFixture } from "../../src/services/event-history-producer.js";
+import { FollowerWriteFixture } from "../../src/services/follower-write-gate.js";
 import type { IntentJournalService } from "../../src/services/intent-journal.js";
 import { BeforeSignedTransactionSubmission } from "../../src/transactions/utils.js";
 import { submitWithDurableIntent } from "../../src/workers/commit-block-header/submission.submit-with-durable-intent.js";
@@ -76,7 +76,7 @@ export const recordCommitThroughGate = async ({
                     }),
                 ),
         ),
-      ).pipe(Effect.provideService(UnownedHistoryFixture, true)),
+      ).pipe(Effect.provideService(FollowerWriteFixture, true)),
     ),
   );
   const written = await runtime.runPromise(signedOf(sql));

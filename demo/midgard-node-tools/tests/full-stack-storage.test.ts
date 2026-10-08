@@ -132,6 +132,8 @@ it("reports a failed storage query rather than a missing store", async () => {
     "storage-identity failed",
   );
 });
+const INIT_TX = "ab".repeat(32);
+
 describe("fresh storage", () => {
   const journal = (value: Awaited<ReturnType<typeof fixture>>) =>
     writeDurableJson(join(value.directory, "run/stack-journal.json"), {
@@ -168,25 +170,31 @@ describe("fresh storage", () => {
       "storage-identity failed",
     );
   });
-  it("attaches an initialized deployment only to its own event history", async () => {
+  it("attaches an initialized deployment only to a store whose follower saw its initialization", async () => {
     const value = await fixture();
     await writeDurableJson(
       join(value.directory, "deploymentInfo/contract-deployment-info.json"),
       {
         manifestId: value.marker.manifestId,
-        steps: { initProtocol: { status: "complete" } },
+        steps: { initProtocol: { status: "complete", txHash: INIT_TX } },
       },
     );
     value.answer({ [ATTACHMENT_QUERY]: null });
     await expect(assertPreservedStorage(value.processes)).rejects.toThrow(
       "missing or mismatched local event history",
     );
-    value.answer({
-      [ATTACHMENT_QUERY]: { manifestId: value.marker.manifestId },
-    });
+    value.answer({ [ATTACHMENT_QUERY]: { initTxHashes: ["cd".repeat(32)] } });
+    await expect(assertPreservedStorage(value.processes)).rejects.toThrow(
+      "missing or mismatched local event history",
+    );
+    value.answer({ [ATTACHMENT_QUERY]: { initTxHashes: [INIT_TX] } });
     await expect(
       assertPreservedStorage(value.processes),
     ).resolves.toBeUndefined();
-    expect(value.queries).toEqual([ATTACHMENT_QUERY, ATTACHMENT_QUERY]);
+    expect(value.queries).toEqual([
+      ATTACHMENT_QUERY,
+      ATTACHMENT_QUERY,
+      ATTACHMENT_QUERY,
+    ]);
   });
 });

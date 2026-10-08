@@ -5,7 +5,7 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
 import { Database } from "../services/database.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import {
   clearTable,
   DatabaseError,
@@ -193,7 +193,7 @@ export const retrieveProjectedEntries = (): Effect.Effect<
 export const markAwaitingAsProjected = (
   ids: readonly Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>
-  projectedEventAdapter.markAwaitingAsProjected(ids).pipe(withHistoryWrite);
+  projectedEventAdapter.markAwaitingAsProjected(ids).pipe(withFollowerWrite);
 
 export const markProjectedByEventIds = (
   ids: readonly Buffer[],
@@ -201,7 +201,7 @@ export const markProjectedByEventIds = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   projectedEventAdapter
     .markProjectedByEventIds(ids, projectedHeaderHash)
-    .pipe(withHistoryWrite);
+    .pipe(withFollowerWrite);
 
 export const clearProjectedHeaderAssignmentByEventIds = (
   ids: readonly Buffer[],
@@ -209,7 +209,7 @@ export const clearProjectedHeaderAssignmentByEventIds = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   projectedEventAdapter
     .clearProjectedHeaderAssignmentByEventIds(ids, projectedHeaderHash)
-    .pipe(withHistoryWrite);
+    .pipe(withFollowerWrite);
 
 export const markConsumedByEventIds = (
   ids: readonly Buffer[],
@@ -224,7 +224,7 @@ export const markConsumedByEventIds = (
       WHERE ${sql(Columns.ID)} IN ${sql.in(ids)}
         AND ${sql(Columns.STATUS)} IN (${Status.Projected}, ${Status.Consumed})`;
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`markConsumedByEventIds ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -291,7 +291,7 @@ export const delEntries = (
       Columns.ID,
     )} IN ${sql.in(ids)}`;
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.withLogSpan(`delEntries ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to delete deposit UTxOs"),
   );

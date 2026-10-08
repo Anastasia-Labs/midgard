@@ -15,18 +15,17 @@ import {
 } from "../../src/services/settlement.js";
 import { settlementDepthParameters } from "../../src/services/settlement.status.js";
 import * as publicationProvider from "../../src/transactions/reference-publication-provider.js";
-import type { openHistoryProductionOwnerLifecycle } from "./history-production-owner-lifecycle.js";
+import { followerBlockHash } from "./follower-view.js";
 import { withoutFollowerJournal } from "./intent-journal.js";
+import type { ProductionLifecycle } from "./production-lifecycle.js";
 
 /** Real builders, signatures, script execution, SQL queue and reconciliation.
- * As in the owner fixture, only network point labels/transport are synthetic,
- * and the S6 send of a pending journaled body is played by `runPhase`. No
- * follower runs, so the intent journal's derived status of an attempt is the
- * recorded history's: landed in the block that holds it, at its depth below
- * the recorded tip, else live. */
-export const openAutomaticSettlement = async (
-  h: Awaited<ReturnType<typeof openHistoryProductionOwnerLifecycle>>,
-) => {
+ * Only the indexer point's hash is synthetic (the follower stand-in's block
+ * hash at the emulator tip), and the S6 send of a pending journaled body is
+ * played by `runPhase`. No intent reconciler runs, so the intent journal's
+ * derived status of an attempt is the emulator's: landed in the block that
+ * holds it, at its depth below the emulator tip, else live. */
+export const openAutomaticSettlement = async (h: ProductionLifecycle) => {
   const operator = h.fixture.operatorLucid;
   const api = await makeLucid(h.fixture.emulator, operator.config().network!, {
     slotConfig: operator.config().slotConfig!,
@@ -59,43 +58,32 @@ export const openAutomaticSettlement = async (
     switchToOperatorsMainWallet: Effect.void,
   });
   const actualStatus = api.transactionStatus.bind(api);
-  const status = vi
-    .spyOn(api, "transactionStatus")
-    .mockImplementation(async (hash) => {
-      const observed = await actualStatus(hash);
-      if (observed.status !== "confirmed") return observed;
-      const block = (await h.evidence()).points.find((p) =>
-        p.transactions.some((tx) => tx.id === hash),
-      );
-      if (block === undefined)
-        throw new Error(`Missing recorded settlement block ${hash}`);
-      return {
-        ...observed,
-        confirmation: { ...observed.confirmation, blockHash: block.point.id },
-      };
-    });
   const barrier = vi
     .spyOn(publicationProvider, "synchronizePublicationIndexerPoint")
     .mockImplementation(async () => {
-      const points = (await h.evidence()).points;
-      return points[points.length - 1]!.point;
+      const slot = h.fixture.emulator.slot;
+      return { slot, id: followerBlockHash(slot).toString("hex") };
     });
   const journalStatus = vi
     .spyOn(IntentJournal, "readIntentStatus")
     .mockImplementation((hash) =>
       Effect.promise(async () => {
-        const points = (await h.evidence()).points;
-        const index = points.findIndex((p) =>
-          p.transactions.some((tx) => tx.id === hash),
-        );
-        return index < 0
-          ? { kind: "live" as const, inputsAvailable: true }
-          : {
-              kind: "landed" as const,
-              slot: points[index]!.point.slot,
-              height: index,
-              depth: points.length - index,
-            };
+        const observed = await actualStatus(hash);
+        if (observed.status !== "confirmed")
+          return { kind: "live" as const, inputsAvailable: true };
+        const { slot, blockHeight, confirmations } = observed.confirmation;
+        if (
+          slot === undefined ||
+          blockHeight === undefined ||
+          confirmations === undefined
+        )
+          throw new Error(`Emulator confirmation of ${hash} is incomplete`);
+        return {
+          kind: "landed" as const,
+          slot,
+          height: blockHeight,
+          depth: confirmations,
+        };
       }),
     );
   const depths = await h.command(settlementDepthParameters);
@@ -158,7 +146,8 @@ export const openAutomaticSettlement = async (
         expect(health.some((value) => value.state === "error")).toBe(false);
         return receipt;
       }
-      h.fixture.emulator.awaitSlot(1);
+      // One L1 block per round, so a landed attempt deepens every round.
+      h.fixture.emulator.awaitBlock(1);
       vi.setSystemTime(h.fixture.emulator.now());
       await h.synchronize();
     }
@@ -169,7 +158,6 @@ export const openAutomaticSettlement = async (
   return {
     runPhase,
     close: () => {
-      status.mockRestore();
       barrier.mockRestore();
       journalStatus.mockRestore();
     },

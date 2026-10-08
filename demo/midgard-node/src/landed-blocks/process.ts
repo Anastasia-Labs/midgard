@@ -14,7 +14,7 @@
  *    the same parent is kept (a `removed` one relands); every processed row
  *    the walk did not reach left the queue: a row the working ledger took in
  *    becomes `removed` (the rebase reverts it), any other is deleted,
- *    and the receipt settlements they recorded are rewound (`settlements.ts`).
+ *    and the pending-table marks they set are cleared (`settlements.ts`).
  *    The working ledger is rewound by that walk plus the rebase's recompute.
  * 3. Each new node, in queue order and exactly once (the row's primary key),
  *    must link to its parent (hash, root, start time). This node's own block
@@ -30,12 +30,11 @@
  *    and nothing after it is processed. A mismatch never feeds a fault-proof
  *    path.
  * 4. A row the working ledger does not hold yet (a foreign or a revived own
- *    one), or a removed row, asks the history owner for the rebase (which
- *    also disposes of the own journals that cannot land) and holds
- *    `landed_block_rebase_pending` until it ran, or, while the owner
- *    retries a rebase that failed, `landed_block_batch_undecided` (the
- *    batch closure met an undecided receipt member) or
- *    `landed_block_rebase_failed` (any other failure), with the failure.
+ *    one), or a removed row, runs the rebase (the driver's recompute, which
+ *    also disposes of the own journals that cannot land). One that cannot
+ *    finish yet holds its reason (`landed_block_rebase_pending` and its
+ *    detail, or `landed_block_rebase_failed` with the failure), and the
+ *    driver retries it on its backoff.
  * 5. With the frontier at the root, the retained folds' merge points are
  *    brought up to the queue history, and the folds whose merge is at or
  *    below the follower's prune boundary are dropped.
@@ -54,7 +53,7 @@ import type { DriverHold } from "../l1-events/driver.js";
 import type { LandedStateQueue } from "../l1-state-queue/index.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/ledger-hydration.js";
 import type { Database } from "../services/database.js";
-import { isHistoryProducerGateClosed } from "../services/event-history-producer.js";
+import { followerWriteHoldOf } from "../services/follower-write-gate.js";
 import type { MergePoint } from "./confirmed-merges.js";
 import {
   bootstrapFrontier,
@@ -79,7 +78,6 @@ import {
   LANDED_BLOCK_INVALID,
   LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
   LANDED_BLOCK_OWN_REVIVAL_PENDING,
-  LANDED_BLOCK_REBASE_PENDING,
   LANDED_BLOCK_REPLAY_FAILED,
   LANDED_BLOCK_REPLAY_INCOMPLETE,
   LANDED_BLOCKS_WAITING,
@@ -439,24 +437,21 @@ const run = <R>(
     }
     yield* settleMerges(ports, queue.view, root, point, history, options);
     if (rebaseNeeded(yield* retrieveRows)) {
-      // A failed rebase is already pending on the owner's backoff.
-      const failure = yield* ports.rebaseFailure;
-      if (failure !== undefined) holds.push(failure);
-      else {
-        const blocked = yield* ports.requestRebase(
-          "Landed blocks changed what the working ledger must hold",
-        );
-        holds.push(
-          blocked ??
-            hold(
-              LANDED_BLOCK_REBASE_PENDING,
-              "the working ledger and native MPF wait for the rebase onto the processed landed blocks",
-            ),
-        );
-      }
+      const held = yield* ports.rebase(
+        "Landed blocks changed what the working ledger must hold",
+      );
+      if (held !== undefined) holds.push(held);
     }
     return combineHolds(holds);
   });
+
+/** A write the follower gate refused waits by its named reason; any other failure is named. */
+const writeRefusedHold = (error: unknown) => {
+  const refused = followerWriteHoldOf(error);
+  return refused === undefined
+    ? hold(LANDED_BLOCK_REPLAY_FAILED, String(error))
+    : hold(LANDED_BLOCKS_WAITING, `${refused.reason}: ${refused.detail}`);
+};
 
 /**
  * Processes the landed queue `queue` (a healthy P1 read at the run's view).
@@ -471,18 +466,6 @@ export const processLandedQueue = <R>(
     Effect.catchAll((error) =>
       error instanceof ViewMoved
         ? Effect.succeed(hold(LANDED_BLOCKS_WAITING, "view moved"))
-        : isHistoryProducerGateClosed(error)
-          ? ports.rebaseFailure.pipe(
-              Effect.orElseSucceed(() => undefined),
-              Effect.map((failure) =>
-                failure === undefined
-                  ? hold(
-                      LANDED_BLOCKS_WAITING,
-                      "the history owner is recovering",
-                    )
-                  : failure,
-              ),
-            )
-          : Effect.succeed(hold(LANDED_BLOCK_REPLAY_FAILED, String(error))),
+        : Effect.succeed(writeRefusedHold(error)),
     ),
   );

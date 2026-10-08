@@ -4,7 +4,7 @@ import "@al-ft/midgard-validation";
 import "@effect/sql/SqlClient";
 import "effect";
 import "../database/index.js";
-import "../services/event-history-producer.js";
+import "../services/follower-write-gate.js";
 import "../services/index.js";
 import "./tx-queue-processor.classify-plutus-evaluation-failure.js";
 import "./tx-queue-processor.run-phase-afor-batch.js";
@@ -25,7 +25,7 @@ export {
 } from "./tx-queue-processor.classify-plutus-evaluation-failure.js";
 export {
   collectAcceptedProgramEnvelopes,
-  isHistoryGateClosedCause,
+  isFollowerWriteHeldCause,
   repeatScheduledWithCauseLogging,
   sampleValidationQueueWaits,
   withAdmissionLeaseRecovery,

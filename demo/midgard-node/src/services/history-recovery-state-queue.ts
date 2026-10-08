@@ -2,7 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { LedgerSnapshotOutput } from "../l1-ledger-snapshot.js";
+import type { LedgerSnapshotOutput } from "../l1-ogmios-utxo.js";
 
 /** Validates target evidence from an exact-point ledger capture. The caller
  * owns source authentication and generation fencing; this does not establish

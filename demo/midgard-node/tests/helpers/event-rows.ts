@@ -15,7 +15,7 @@ import {
   sqlErrorToDatabaseError,
 } from "../../src/database/utils/common.js";
 import type { Database } from "../../src/services/database.js";
-import { withHistoryIngestion } from "../../src/services/event-history-producer.js";
+import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
 
 const sameDepositPayload = (
   left: DepositsDB.Entry,
@@ -107,7 +107,7 @@ export const insertDeposits = (
       }),
     );
   }).pipe(
-    withHistoryIngestion,
+    withFollowerWrite,
     Effect.withLogSpan(`insertEntries ${DepositsDB.tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
       logDatabaseError(DepositsDB.tableName, "insertEntries", e),
@@ -272,7 +272,7 @@ export const insertWithdrawals = (
       }),
     );
   }).pipe(
-    withHistoryIngestion,
+    withFollowerWrite,
     Effect.withLogSpan(`insertEntries ${WithdrawalsDB.tableName}`),
     sqlErrorToDatabaseError(
       WithdrawalsDB.tableName,

@@ -1,10 +1,10 @@
 /**
- * The production owner's correction-admission scenario on the emulator
- * (plan §7.4, §15 N4): an own block committed, confirmed and locally
- * applied, never attested, then removed on L1 by an attestation-timeout
- * correction. The node learns of the removal only from the follower's facts
- * (the landed state queue), as on a followed chain; the history owner's
- * synchronization is what runs landed-block processing and its rebase.
+ * The correction-admission scenario on the emulator (plan §7.4, §15 N4):
+ * an own block committed, confirmed and locally applied, never attested,
+ * then removed on L1 by an attestation-timeout correction. The node learns
+ * of the removal only from the follower's facts (the landed state queue),
+ * as on a followed chain; the follower-change driver's synchronization runs
+ * landed-block processing and its rebase.
  *
  * `observe` reads everything the acceptance compares: the block's journal,
  * the deposits, the landed rows, the native MPF (durable root, child
@@ -36,7 +36,7 @@ import {
   runLocalFinalizationRecoveryWorker,
   SDK,
 } from "../deposit-flow-emulator-shared.js";
-import type { openHistoryProductionOwnerLifecycle } from "./history-production-owner-lifecycle.js";
+import type { ProductionLifecycle } from "./production-lifecycle.js";
 
 /** Bounded wait: `work` must settle within `ms` of real time, so a wedge
  * fails here instead of hanging until the test timeout. */
@@ -56,7 +56,7 @@ const settleWithin = async <A>(work: Promise<A>, ms: number) => {
   }
 };
 
-/** One history-owner synchronization, bounded, so a wedged owner fails here
+/** One driver synchronization, bounded, so a wedged driver fails here
  * instead of at the test timeout. */
 export const synchronizeBounded = (h: {
   synchronize: () => Promise<unknown>;
@@ -65,9 +65,7 @@ export const synchronizeBounded = (h: {
 const read = <A, E>(program: Effect.Effect<A, E, SqlClient.SqlClient>) =>
   Effect.runPromise(program.pipe(Effect.provide(Database.layer)));
 
-export type Lifecycle = Awaited<
-  ReturnType<typeof openHistoryProductionOwnerLifecycle>
->;
+export type Lifecycle = ProductionLifecycle;
 
 /** Close the lifecycle, then restore real timers whatever the close did. */
 export const closeLifecycle = async (h: Pick<Lifecycle, "close">) => {

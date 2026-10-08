@@ -1,8 +1,8 @@
 /**
  * The landed-block fork simulator's settle step (N3, I3): the node's
- * landed-block hook at the follower's view, then what the history owner's
- * reconcile does about its holds (the rebase, which also disposes of and
- * revives own journals), the commit path's local finalization of a revived
+ * landed-block hook at the follower's view, then the driver's recompute it
+ * holds for (the rebase, which also disposes of and revives own journals),
+ * the commit path's local finalization of a revived
  * block, and S6 deriving a commit dead whose base left without a rebase,
  * until nothing is left to do. A rebase is deferred now and then, and
  * every third one crashes after the native move and resumes after a
@@ -28,7 +28,7 @@ import {
 } from "../../src/landed-blocks/rebase-target.js";
 import { retrieveRows } from "../../src/landed-blocks/store.js";
 import type { Database } from "../../src/services/database.js";
-import { withHistoryWrite } from "../../src/services/event-history-producer.js";
+import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
 import {
   type ModelQueueHeaders,
   rootLineage,
@@ -182,7 +182,7 @@ export const simSettler = (
         stats.crashResumes += 1;
         continue;
       }
-      await run(withHistoryWrite(rebaseSql(plan.target)));
+      await run(withFollowerWrite(rebaseSql(plan.target)));
       await node.followDisposition(plan.target.journals, onQueue);
       rebuilds += 1;
     }

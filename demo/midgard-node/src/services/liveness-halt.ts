@@ -309,8 +309,8 @@ export const restartedAcrossHalts = <A, E, R>(
  * `restoreCanonicalRoot` it tried returned `NativeMpfRootNotRetained`).
  * Raised under the rebase's source (`landed_block_rebase`). The refusal
  * changes nothing: the rebase holds with native MPF, the SQL root and the
- * journals as they are and the history gate closed, and the history owner
- * retries it on its backoff; the next rebase evaluation that runs, or
+ * journals as they are and the follower write gate closed, and the
+ * follower-change driver retries it on its backoff; the next rebase evaluation that runs, or
  * finds no rebase due, clears it. The node cannot put the root's closure back
  * itself: the operator stops it, installs a native MPF store that retains
  * the root in full, and restarts it. */
@@ -324,7 +324,7 @@ export const NATIVE_MPF_RESTORE_ROOT_NOT_RETAINED =
  * `FULL_INDEX_MAX_RECORDS` or `FULL_INDEX_MAX_BYTES`, and its value). Raised
  * under the rebase's source. The refusal changes nothing: the rebase holds
  * with native MPF, the SQL root and the journals as they are, and the
- * history gate closed; every evaluation retries the restore, and the next
+ * follower write gate closed; every evaluation retries the restore, and the next
  * rebase evaluation that runs, or finds no rebase due, clears it. The caps
  * are fixed in the node build (the TypeScript owner and its native child
  * each enforce them), so the node cannot load the root
@@ -337,14 +337,15 @@ export const NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED =
  * (`NativeMpfRestoreReadFailed`): a LevelDB read error other than a missing,
  * corrupt or undecodable record. Raised under the rebase's source.
  * The refusal changes nothing, and every evaluation retries the restore on
- * the history owner's backoff; the first that reads the closure clears it
+ * the follower-change driver's backoff; the first that reads the closure clears it
  * (or raises the refusal that read finds). Escalated, in the log and on
  * readiness, after `NATIVE_MPF_RESTORE_READ_ESCALATION_MS`. */
 export const NATIVE_MPF_RESTORE_READ_TRANSIENT =
   "native_mpf_restore_read_transient";
 
 /** How long `NATIVE_MPF_RESTORE_READ_TRANSIENT` stays raised before it is
- * escalated: ten minutes (thirty nominal L1 blocks), well past the history owner's 30 s maximum backoff,
+ * escalated: ten minutes (thirty nominal L1 blocks), well past the
+ * follower-change driver's maximum backoff,
  * so a read that fails for that long is not a passing blip. */
 export const NATIVE_MPF_RESTORE_READ_ESCALATION_MS = 10 * 60_000;
 

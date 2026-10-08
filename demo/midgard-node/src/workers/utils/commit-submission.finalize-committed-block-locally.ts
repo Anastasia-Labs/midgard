@@ -3,7 +3,6 @@ import { fromHex } from "@lucid-evolution/lucid";
 import { Duration, Effect, Option } from "effect";
 
 import { seedDaPayloadPublicationOutboxFromEnv } from "../../da/libp2p-producer.js";
-import { currentOwnedTransaction } from "../../database/eventHistoryAuthority.js";
 import {
   BlocksDB,
   CekProgramMaterialDB,
@@ -20,7 +19,10 @@ import {
 } from "../../database/utils/common.js";
 import { Columns as TxColumns } from "../../database/utils/tx.js";
 import type { MidgardMpf, MpfError } from "../../mpf/index.js";
-import { withHistoryWrite } from "../../services/event-history-producer.js";
+import {
+  inRuntimeFollowerWrite,
+  withFollowerWrite,
+} from "../../services/follower-write-gate.js";
 import { type Database } from "../../services/index.js";
 import { materializeConfirmedLedgerSnapshot } from "../../transactions/state-queue/confirmed-ledger-snapshot.js";
 import { buildDaPayloadInsert } from "../commit-block-header/da-payload.js";
@@ -162,10 +164,7 @@ export const finalizeCommittedBlockLocally = (
             yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
               newHeaderHashBuffer,
             );
-          if (
-            Option.isNone(journal) &&
-            Option.isSome(yield* currentOwnedTransaction)
-          )
+          if (Option.isNone(journal) && (yield* inRuntimeFollowerWrite))
             return yield* Effect.fail(
               new DatabaseError({
                 table: PendingBlockFinalizationsDB.tableName,
@@ -229,7 +228,7 @@ export const finalizeCommittedBlockLocally = (
         }),
       )
       .pipe(
-        withHistoryWrite,
+        withFollowerWrite,
         sqlErrorToDatabaseError(
           "local_block_finalization",
           "Failed to finalize committed block locally",

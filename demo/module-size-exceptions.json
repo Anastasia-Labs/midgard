@@ -971,8 +971,8 @@
   },
   {
     "file": "midgard-node/src/workers/commit-block-header.build-on-verified-base-program.ts",
-    "max": 908,
-    "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+8): the planned event horizon is capped by the horizon lag d, with the Lucid clock acquired only when d > 0. I1 (+5): the commit submission names its journaled intent."
+    "max": 905,
+    "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+8): the planned event horizon is capped by the horizon lag d, with the Lucid clock acquired only when d > 0. I1 (+5): the commit submission names its journaled intent. N1H (-3): the event horizon no longer reads a history journal's coverage."
   },
   {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-deposit-only-commit.ts",
@@ -1091,8 +1091,8 @@
   },
   {
     "file": "midgard-node/tests/database.test/mpf.ts",
-    "max": 673,
-    "reason": "registerMpfTests is the dominant indivisible declaration (678 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N5 (-43): the locked confirmed-ledger delta-chain transaction it tested is gone; the fold by stored delta is tested in confirmed-ledger-temporal.test.ts. N5b (-2): the merge finalization no longer clears the block rows, so the refusal case needs no rows of its own."
+    "max": 668,
+    "reason": "registerMpfTests is the dominant indivisible declaration (678 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N5 (-43): the locked confirmed-ledger delta-chain transaction it tested is gone; the fold by stored delta is tested in confirmed-ledger-temporal.test.ts. N5b (-2): the merge finalization no longer clears the block rows, so the refusal case needs no rows of its own. N1H (-5): the merge finalization takes its header from the journal, so the calls pass no header hash."
   },
   {
     "file": "midgard-node/tests/deposit-flow-emulator-commit-selection.test.ts",
@@ -1106,23 +1106,18 @@
   },
   {
     "file": "midgard-node/tests/deposit-flow-emulator-shared.ts",
-    "max": 1838,
-    "reason": "Shared emulator harness: beforeAll/afterAll/afterEach own environment restoration, a writable manifest directory and per-test protocol lifecycle. Its mutually dependent helpers reference those bindings and hooks. Independent helpers were extracted; splitting the retained cohort needs an explicit harness ownership API. N2 (+21): the harness mirrors the emulator's state queue into the node's follower facts (P1) before it opens an owner and after each block, since the node reads its queue only from P1. N6 (+9): node commands run after the emulator's events are mirrored into the follower's event rows, since settlement opens an event by id from those rows (NC13). I1 (+3): the submissions and the node commands run under the journal of a process with no follower. I1-fix (+2): that journal keeps what it journals, so a flow's intents can be replayed onto a follower of its chain. I1-fix2 (+9): a commit worker run can take another journal, so a test runs the real worker under a follower-backed journal that refuses inside the commit's gate."
+    "max": 1820,
+    "reason": "Shared emulator harness: beforeAll/afterAll/afterEach own environment restoration, a writable manifest directory and per-test protocol lifecycle. Its mutually dependent helpers reference those bindings and hooks. Independent helpers were extracted; splitting the retained cohort needs an explicit harness ownership API. N2 (+21): the harness mirrors the emulator's state queue into the node's follower facts (P1) before it opens an owner and after each block, since the node reads its queue only from P1. N6 (+9): node commands run after the emulator's events are mirrored into the follower's event rows, since settlement opens an event by id from those rows (NC13). I1 (+3): the submissions and the node commands run under the journal of a process with no follower. I1-fix (+2): that journal keeps what it journals, so a flow's intents can be replayed onto a follower of its chain. I1-fix2 (+9): a commit worker run can take another journal, so a test runs the real worker under a follower-backed journal that refuses inside the commit's gate. N1H (-18): node commands run under the follower write fixture, and a merge under a production lifecycle takes its own producer permit, instead of an owner producer token."
   },
   {
     "file": "midgard-node/tests/event-history-journal.test.ts",
-    "max": 2120,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+    "max": 1865,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. N1H (-255): the history producer's candidate gate and polling refusals left with the follower write gate, and the event-member check moved to the follower's own tests."
   },
   {
     "file": "midgard-node/tests/event-history-ledger-receipts.test.ts",
     "max": 709,
     "reason": "Retained test registration “owned accepted-ledger inverse receipts” (223 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-node/tests/event-history-ledger-repair.test.ts",
-    "max": 1040,
-    "reason": "Retained test registration “unpublished history-dependent ledger repair” (276 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/event-history-ready-append.test.ts",
@@ -1135,11 +1130,6 @@
     "reason": "Retained test registration “canonical history recovery composition” (457 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
-    "file": "midgard-node/tests/event-history-retired-membership.test.ts",
-    "max": 817,
-    "reason": "admit is the dominant indivisible declaration (148 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
     "file": "midgard-node/tests/forced-transactions.test.ts",
     "max": 1168,
     "reason": "Retained test registration “V1 forced transaction material” (866 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. T161 (+236): adds the separate registration “forced transaction program material at its position” (an absent reference judged InputNotFound, a live reference's program committed for a Phase A rejection, node and committee agreement). Combined recovered source removes obsolete lines; cap reduced to the measured final source count."
@@ -1148,11 +1138,6 @@
     "file": "midgard-node/tests/helpers/availability-challenge-emulator.create-fixture.ts",
     "max": 797,
     "reason": "createFixture is the dominant indivisible declaration (688 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
-    "file": "midgard-node/tests/helpers/history-production-owner-lifecycle.open-history-production-owner-lifecycle.ts",
-    "max": 621,
-    "reason": "openHistoryProductionOwnerLifecycle is the dominant indivisible declaration (518 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N2 (+9): each generation follows the emulator's state queue into the node's follower facts (P1) inside the generation's scope. I1 (+3): the runtime provides the journal of a process with no follower. N3d (+1): a restart stops the running generation, so one test can restart the node twice. N4 (+32): with `landedBlocks`, each generation runs landed-block processing after every driver run (the store opens in history-production-owner-lifecycle.open-landed-blocks.ts), closes it before the runtime, and exposes the hook's last hold."
   },
   {
     "file": "midgard-node/tests/history-source-owner-retention.test.ts",
@@ -1231,13 +1216,13 @@
   },
   {
     "file": "midgard-node/tests/merge-landed-finalization-emulator.test.ts",
-    "max": 724,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. N2 (+11): the race seam moved from a Lucid read to the landed-queue (P1) read, a hoisted mock of that read. I1 (+2): its node programs run under the journal of a process with no follower. N5 (-3): the parent-refusal case passes its hooks and the finalization check whole."
+    "max": 699,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. N2 (+11): the race seam moved from a Lucid read to the landed-queue (P1) read, a hoisted mock of that read. I1 (+2): its node programs run under the journal of a process with no follower. N5 (-3): the parent-refusal case passes its hooks and the finalization check whole. N1H (-25): a driver recompute holding the follower write gate replaces the history owner's recovery, so the producer-permit plumbing and the lease expiry left."
   },
   {
     "file": "midgard-node/tests/merge-maturity-preflight.test.ts",
-    "max": 875,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+    "max": 874,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. N1H (-1): the merge registers at the follower write gate on Postgres instead of under a stubbed history owner."
   },
   {
     "file": "midgard-node/tests/midgard-contracts.test.ts",
@@ -1251,8 +1236,8 @@
   },
   {
     "file": "midgard-node/tests/mpf-audit-merge-permit-emulator.test.ts",
-    "max": 1019,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. I1 (+2): its node programs run under the journal of a process with no follower. N5 (+2): a merge folds only a journal bound to its landed header's parent, so the second block's journal is bound again before its merge."
+    "max": 1008,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. I1 (+2): its node programs run under the journal of a process with no follower. N5 (+2): a merge folds only a journal bound to its landed header's parent, so the second block's journal is bound again before its merge. N1H (-11): a driver recompute holding the follower write gate replaces the history owner's recovery and its lease expiry."
   },
   {
     "file": "midgard-node/tests/mpf-commit-candidate-probe-artifacts.test.ts",

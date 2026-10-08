@@ -15,7 +15,7 @@ import {
   collectAcceptedProgramEnvelopes,
   decideAdmissionBatch,
 } from "../src/fibers/tx-queue-processor.js";
-import { UnownedHistoryFixture } from "../src/services/event-history-producer.js";
+import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import {
   Database,
   Effect,
@@ -294,7 +294,7 @@ export const admitL2Tx = async (
           });
         }
       }).pipe(
-        Effect.provideService(UnownedHistoryFixture, true),
+        Effect.provideService(FollowerWriteFixture, true),
         Effect.provide(WriteBehindLive),
         Effect.provide(Database.layer),
         Effect.provide(NodeConfig.layer),

@@ -1,6 +1,6 @@
-import { SqlClient, type Statement } from "@effect/sql";
+import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
-import { Cause, Effect } from "effect";
+import { Effect } from "effect";
 
 import * as CekProgramMaterialDB from "../database/cekProgramMaterial.js";
 import {
@@ -11,35 +11,25 @@ import {
   TxAdmissionsDB,
   TxRejectionsDB,
 } from "../database/index.js";
-import { DatabaseError } from "../database/utils/common.js";
 import * as Tx from "../database/utils/tx.js";
 import {
   byteaArray,
-  failure,
   hex,
   type PendingTx,
-  table,
 } from "./working-ledger-recompute.pending-txs.js";
-import {
-  concluded,
-  settledByBlock,
-  settleRecordedRejections,
-} from "./working-ledger-recompute.receipt-members.js";
 
 /** Why a pending transaction left the working ledger: its own input became
- * unavailable, it spends a rejected transaction's output, or it was accepted
- * in one batch with a rejected transaction. */
-export type RejectionReason = "direct" | "dependent" | "batch";
+ * unavailable, or it spends a rejected transaction's output. */
+export type RejectionReason = "direct" | "dependent";
 
 export type RejectionCodes = Readonly<
   Record<RejectionReason, Readonly<{ code: string; detail: string }>>
 >;
 
 /**
- * `causes` are the hex ids of the rejected transactions a "dependent" or
- * "batch" rejection follows from: the producers of the rejected outputs it
- * spends, or the rejected members of the batch it was accepted in. A
- * rejection without them is not traced to another transaction.
+ * `causes` are the hex ids of the rejected transactions a "dependent"
+ * rejection follows from: the producers of the rejected outputs it spends.
+ * A rejection without them is not traced to another transaction.
  */
 export type Rejection = Readonly<{
   tx: PendingTx;
@@ -50,7 +40,7 @@ export type Rejection = Readonly<{
 /** Rejects `tx` for `reason`, after the rejected transactions `causes`. */
 export type Reject = (
   tx: PendingTx,
-  reason: "direct" | "dependent",
+  reason: RejectionReason,
   causes?: readonly string[],
 ) => void;
 
@@ -66,106 +56,25 @@ export type Rejections = ReadonlyMap<string, Rejection>;
 export const txIdHex = (tx: PendingTx) => hex(tx.entry[Tx.Columns.TX_ID]);
 
 /**
- * A rejection reaches an unreversed receipt with a member that is neither
- * pending, settled, recorded rejected on it, nor concluded: the closure
- * cannot decide that member, so the batch's acceptance cannot be reversed.
- */
-export class UndecidedBatchMember extends DatabaseError {}
-
-/** The `UndecidedBatchMember` in `failure`'s cause chain, if any. */
-export const undecidedBatchMemberIn = (failure: unknown) => {
-  let current = failure;
-  for (let depth = 0; depth < 8 && current !== undefined; depth += 1) {
-    if (current instanceof UndecidedBatchMember) return current;
-    current =
-      typeof current === "object" && current !== null
-        ? (current as { readonly cause?: unknown }).cause
-        : undefined;
-  }
-  return undefined;
-};
-
-/** The `UndecidedBatchMember` a failure or defect of `cause` carries. */
-export const findUndecidedBatchMember = (cause: Cause.Cause<unknown>) => {
-  for (const failure of [...Cause.failures(cause), ...Cause.defects(cause)]) {
-    const undecided = undecidedBatchMemberIn(failure);
-    if (undecided !== undefined) return undecided;
-  }
-  return undefined;
-};
-
-type ReceiptMember = {
-  sequence: string;
-  tx_id: Buffer;
-  settled: boolean;
-  rejected_earlier: boolean;
-  concluded: boolean;
-};
-
-/** The members of the unreversed receipts `which` selects, receipt by receipt. */
-const receiptMembers = (
-  sql: SqlClient.SqlClient,
-  which: Statement.Fragment,
-) => sql<ReceiptMember>`
-  SELECT r.sequence::text AS sequence, member.tx_id,
-    (EXISTS (SELECT 1 FROM event_history_l2_ledger_receipt_settlements s
-      WHERE s.receipt_sequence = r.sequence AND s.tx_id = member.tx_id)
-      OR ${settledByBlock(sql)}) AS settled,
-    EXISTS (SELECT 1 FROM event_history_l2_ledger_receipt_rejections x
-      WHERE x.receipt_sequence = r.sequence AND x.tx_id = member.tx_id)
-      AS rejected_earlier,
-    ${concluded(sql)} AS concluded
-  FROM event_history_l2_ledger_receipts r, unnest(r.tx_ids) AS member(tx_id)
-  WHERE r.reversed_at_revision IS NULL AND ${which}
-  ORDER BY r.sequence, member.tx_id`;
-
-/**
  * The transitive rejection closure over the pending transactions.
  *
  * `spread` runs one pass over the pending set and calls `reject` for every
  * transaction the rejections so far make invalid ("direct" or "dependent");
  * it returns whether it rejected anything. Passes repeat until none rejects.
- * Then every co-member of an unreversed acceptance receipt that holds a
- * rejected transaction is rejected as "batch" (a receipt is the inverse of
- * one accepted batch and cannot be split), and spreading resumes, until
- * nothing widens. A co-member in `settled` (one a base block includes), one
- * a landed block settled in an earlier rebuild (a row of
- * `event_history_l2_ledger_receipt_settlements`), or one this node's block
- * records place in a landed or folded block (`settledByBlock`) is settled by
- * that block, not rejected. A co-member that is not pending and is recorded
- * rejected on the receipt (`event_history_l2_ledger_receipt_rejections`,
- * migration 0016), or concluded (`concluded`: out of the pending tables for
- * good), left the batch earlier. Any other co-member that is no longer
- * pending is undecided: the closure fails with `UndecidedBatchMember`.
+ * Each pending transaction carries its own ledger effects (its per-transaction
+ * delta), so a transaction that spends a rejected one's output is found as a
+ * dependent whichever acceptance batch either came in.
  *
- * With `repairRecordedRejections`, after the first spreading the closure
- * rejects as "batch" the pending members of every unreversed receipt that
- * records a rejected member and has no undecided member;
- * `recordRejections` then reverses it. A receipt with an undecided member
- * is left as it is.
- *
- * `onReject` observes every rejection, including batch ones, in order.
+ * `onReject` observes every rejection, in order.
  */
 export const closeRejections = (input: {
   readonly pending: readonly PendingTx[];
   readonly spread: (reject: Reject, rejected: Rejections) => boolean;
   readonly onReject?: (tx: PendingTx) => void;
-  /** Hex ids of transactions a base block includes (none by default). */
-  readonly settled?: ReadonlySet<string>;
-  readonly repairRecordedRejections?: boolean;
 }) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const pg = sql as PgClient;
-    const pendingById = new Map(
-      input.pending.map((tx) => [txIdHex(tx), tx] as const),
-    );
+  Effect.sync(() => {
     const rejected = new Map<string, Rejection>();
-    const reject = (
-      tx: PendingTx,
-      reason: RejectionReason,
-      causes?: readonly string[],
-    ) => {
+    const reject: Reject = (tx, reason, causes) => {
       rejected.set(
         txIdHex(tx),
         causes === undefined || causes.length === 0
@@ -174,78 +83,8 @@ export const closeRejections = (input: {
       );
       input.onReject?.(tx);
     };
-    // A member is decided when it is rejected, settled, or recorded
-    // rejected on the receipt or concluded and no longer pending; a pending
-    // one is the batch member to reject.
-    const decide = (member: ReceiptMember) => {
-      const id = hex(member.tx_id);
-      if (rejected.has(id) || member.settled || input.settled?.has(id) === true)
-        return "decided" as const;
-      const tx = pendingById.get(id);
-      if (tx !== undefined) return tx;
-      return member.rejected_earlier || member.concluded
-        ? ("decided" as const)
-        : undefined;
-    };
     while (input.spread(reject, rejected));
-    if (input.repairRecordedRejections === true) {
-      const recorded = yield* receiptMembers(
-        sql,
-        sql`r.sequence IN (SELECT receipt_sequence
-          FROM event_history_l2_ledger_receipt_rejections)`,
-      );
-      const bySequence = new Map<string, ReceiptMember[]>();
-      for (const member of recorded) {
-        const members = bySequence.get(member.sequence) ?? [];
-        members.push(member);
-        bySequence.set(member.sequence, members);
-      }
-      for (const members of bySequence.values()) {
-        const decisions = members.map(decide);
-        if (decisions.includes(undefined)) continue;
-        const causes = members
-          .filter(
-            (member) =>
-              member.rejected_earlier || rejected.has(hex(member.tx_id)),
-          )
-          .map((member) => hex(member.tx_id));
-        for (const decision of decisions)
-          if (typeof decision === "object") reject(decision, "batch", causes);
-      }
-    }
-    for (let widened = true; widened; ) {
-      widened = false;
-      while (input.spread(reject, rejected));
-      if (rejected.size === 0) break;
-      const coMembers = yield* receiptMembers(
-        sql,
-        sql`r.tx_ids && ${pg.array(byteaArray([...rejected.values()].map(({ tx }) => tx.entry[Tx.Columns.TX_ID])))}::bytea[]`,
-      );
-      // The rejected members of each receipt, before this pass widens it.
-      const causesOf = new Map<string, string[]>();
-      for (const member of coMembers)
-        if (rejected.has(hex(member.tx_id)))
-          causesOf.set(member.sequence, [
-            ...(causesOf.get(member.sequence) ?? []),
-            hex(member.tx_id),
-          ]);
-      for (const member of coMembers) {
-        const decision = decide(member);
-        if (decision === "decided") continue;
-        if (decision === undefined)
-          return yield* Effect.fail(
-            new UndecidedBatchMember({
-              table,
-              message:
-                "A rejected transaction was accepted in one batch with a transaction that is no longer pending, so the batch's acceptance cannot be reversed",
-              cause: { receipt: member.sequence, txId: hex(member.tx_id) },
-            }),
-          );
-        reject(decision, "batch", causesOf.get(member.sequence));
-        widened = true;
-      }
-    }
-    return rejected;
+    return rejected as Rejections;
   });
 
 /** Every output the rejected set produced, keyed by hex outref. */
@@ -261,112 +100,54 @@ export const producedByRejections = (rejected: Rejections) =>
 /**
  * Removes rejected transactions from the pending sets and undoes their
  * acceptance: a terminal rejection row and admission (coded by reason, or per
- * transaction), no address history, and
- * every acceptance receipt they belong to reversed. A receipt whose other
- * members are all in `settled` (transactions a base block includes),
- * recorded as settled on it, settled by this node's block records, recorded
- * rejected on it, or concluded is reversed with them: those members are
- * settled by the base, or left the batch earlier. Every unreversed receipt
- * that records a rejected member and whose members are all decided that way
- * is reversed too, rejections or not, and its recorded rows go with it. A
- * recorded member out of the pending tables gets the admission and address
- * history of a rejected transaction (`settleRecordedRejections`). Ledger
- * rows are the caller's: run this after any read of the receipts'
- * before-images.
+ * transaction), no address history, and their script material released.
+ * Ledger rows are the caller's. Returns the rejected transaction ids.
  */
 export const recordRejections = (
   rejected: Rejections,
   codes: RejectionCodes | RejectionCodeOf,
-  settled: readonly Buffer[] = [],
 ) =>
   Effect.gen(function* () {
+    if (rejected.size === 0) return [] as readonly Buffer[];
     const sql = yield* SqlClient.SqlClient;
     const pg = sql as PgClient;
     const rejectedTxs = [...rejected.values()].map(({ tx }) => tx);
     const rejectedIds = rejectedTxs.map((tx) => tx.entry[Tx.Columns.TX_ID]);
-    const decided = pg.array(byteaArray([...rejectedIds, ...settled]));
-    const reverse = (which: Statement.Fragment) =>
-      sql`UPDATE event_history_l2_ledger_receipts r
-        SET reversed_at_revision = c.revision
-        FROM event_history_cursor c
-        WHERE c.binding_digest = r.binding_digest
-          AND r.reversed_at_revision IS NULL
-          AND ${which}
-          AND NOT EXISTS (
-            SELECT 1 FROM unnest(r.tx_ids) AS member(tx_id)
-            WHERE member.tx_id <> ALL(${decided}::bytea[])
-              AND NOT EXISTS (
-                SELECT 1 FROM event_history_l2_ledger_receipt_settlements s
-                WHERE s.receipt_sequence = r.sequence
-                  AND s.tx_id = member.tx_id)
-              AND NOT EXISTS (
-                SELECT 1 FROM event_history_l2_ledger_receipt_rejections x
-                WHERE x.receipt_sequence = r.sequence
-                  AND x.tx_id = member.tx_id)
-              AND NOT ${settledByBlock(sql)}
-              AND NOT ${concluded(sql)})`;
-    if (rejected.size > 0) {
-      const mempoolIds = rejectedTxs
-        .filter(({ source }) => source === "mempool")
-        .map((tx) => tx.entry[Tx.Columns.TX_ID]);
-      const processedIds = rejectedTxs
-        .filter(({ source }) => source === "processed")
-        .map((tx) => tx.entry[Tx.Columns.TX_ID]);
-      if (mempoolIds.length > 0) yield* MempoolDB.clearTxs(mempoolIds);
-      if (processedIds.length > 0) {
-        yield* ProcessedMempoolDB.clearTxs(processedIds);
-        yield* MempoolTxDeltasDB.clearTxs(processedIds);
-      }
-      const rejections = [...rejected.entries()].map(([id, rejection]) => ({
-        txId: Buffer.from(id, "hex"),
-        ...(typeof codes === "function"
-          ? codes(id, rejection)
-          : codes[rejection.reason]),
-      }));
-      yield* TxRejectionsDB.insertMany(
-        rejections.map(({ txId, code, detail }) => ({
-          [TxRejectionsDB.Columns.TX_ID]: txId,
-          [TxRejectionsDB.Columns.REJECT_CODE]: code,
-          [TxRejectionsDB.Columns.REJECT_DETAIL]: detail,
-        })),
-      );
-      yield* TxRejectionsDB.insertCauses(
-        [...rejected.entries()].flatMap(([id, { causes }]) =>
-          (causes ?? []).map((cause) => ({
-            txId: Buffer.from(id, "hex"),
-            causeTxId: Buffer.from(cause, "hex"),
-          })),
-        ),
-      );
-      yield* TxAdmissionsDB.markAcceptedRejectedAfterCorrection(rejections);
-      yield* sql`DELETE FROM address_history
-        WHERE tx_id = ANY(${pg.array(byteaArray(rejectedIds))}::bytea[])`;
-      yield* reverse(
-        sql`r.tx_ids && ${pg.array(byteaArray(rejectedIds))}::bytea[]`,
-      );
+    const mempoolIds = rejectedTxs
+      .filter(({ source }) => source === "mempool")
+      .map((tx) => tx.entry[Tx.Columns.TX_ID]);
+    const processedIds = rejectedTxs
+      .filter(({ source }) => source === "processed")
+      .map((tx) => tx.entry[Tx.Columns.TX_ID]);
+    if (mempoolIds.length > 0) yield* MempoolDB.clearTxs(mempoolIds);
+    if (processedIds.length > 0) {
+      yield* ProcessedMempoolDB.clearTxs(processedIds);
+      yield* MempoolTxDeltasDB.clearTxs(processedIds);
     }
-    yield* reverse(
-      sql`r.sequence IN (SELECT receipt_sequence
-        FROM event_history_l2_ledger_receipt_rejections)`,
+    const rejections = [...rejected.entries()].map(([id, rejection]) => ({
+      txId: Buffer.from(id, "hex"),
+      ...(typeof codes === "function"
+        ? codes(id, rejection)
+        : codes[rejection.reason]),
+    }));
+    yield* TxRejectionsDB.insertMany(
+      rejections.map(({ txId, code, detail }) => ({
+        [TxRejectionsDB.Columns.TX_ID]: txId,
+        [TxRejectionsDB.Columns.REJECT_CODE]: code,
+        [TxRejectionsDB.Columns.REJECT_DETAIL]: detail,
+      })),
     );
-    yield* settleRecordedRejections;
-    yield* sql`DELETE FROM event_history_l2_ledger_receipt_rejections x
-      USING event_history_l2_ledger_receipts r
-      WHERE r.sequence = x.receipt_sequence
-        AND r.reversed_at_revision IS NOT NULL`;
-    if (rejected.size === 0) return [] as readonly Buffer[];
-    const unreversed = yield* sql<{ sequence: string }>`
-      SELECT sequence::text AS sequence FROM event_history_l2_ledger_receipts
-      WHERE reversed_at_revision IS NULL
-        AND tx_ids && ${pg.array(byteaArray(rejectedIds))}::bytea[]
-      LIMIT 1`;
-    if (unreversed.length !== 0)
-      return yield* Effect.fail(
-        failure(
-          "A rejected transaction's acceptance receipt could not be reversed",
-          unreversed[0]?.sequence,
-        ),
-      );
+    yield* TxRejectionsDB.insertCauses(
+      [...rejected.entries()].flatMap(([id, { causes }]) =>
+        (causes ?? []).map((cause) => ({
+          txId: Buffer.from(id, "hex"),
+          causeTxId: Buffer.from(cause, "hex"),
+        })),
+      ),
+    );
+    yield* TxAdmissionsDB.markAcceptedRejectedAfterCorrection(rejections);
+    yield* sql`DELETE FROM address_history
+      WHERE tx_id = ANY(${pg.array(byteaArray(rejectedIds))}::bytea[])`;
     yield* CekProgramMaterialDB.releaseAdmissionOwnership(rejectedIds);
     return rejectedIds;
   });

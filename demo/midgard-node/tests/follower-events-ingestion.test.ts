@@ -32,9 +32,9 @@ import {
 } from "../src/l1-events/driver.js";
 import type { HistoryOwnerChange } from "../src/services/event-history-owner.js";
 import {
-  UnownedHistoryFixture,
-  withHistoryIngestion,
-} from "../src/services/event-history-producer.js";
+  FollowerWriteFixture,
+  withFollowerWrite,
+} from "../src/services/follower-write-gate.js";
 import { Globals } from "../src/services/globals.globals.js";
 import {
   ingestAtFollowerView,
@@ -126,15 +126,15 @@ const projectedEvents = async () => {
   };
 };
 
-/** The driver's sink under the unowned-history fixture gate. */
+/** The driver's sink under the follower write gate's fixture capability. */
 const ingest = (plan: IngestionPlan, cutoffMs = 0) =>
-  withHistoryIngestion(
+  withFollowerWrite(
     reconcileFollowerEvents(plan, {
       network: "Preprod",
       slotToUnixTime,
       cutoffMs,
     }),
-  ).pipe(Effect.provideService(UnownedHistoryFixture, true));
+  ).pipe(Effect.provideService(FollowerWriteFixture, true));
 
 const applied = (outcome: FollowerIngestionOutcome) => {
   if (outcome.kind !== "applied") throw new Error(`outcome ${outcome.kind}`);
@@ -393,14 +393,14 @@ describe("history owner follower gating", () => {
     });
 
   const ownerReconcile = (headSlot: number, repaired: Ref.Ref<number>) =>
-    withHistoryIngestion(
+    withFollowerWrite(
       ingestAtFollowerView({
         change: change(headSlot),
         repair: Ref.update(repaired, (count) => count + 1),
         network: "Preprod",
         slotToUnixTime,
       }),
-    ).pipe(Effect.provideService(UnownedHistoryFixture, true));
+    ).pipe(Effect.provideService(FollowerWriteFixture, true));
 
   it("judges no orphan and ingests nothing until the follower is caught up", async () => {
     const { early } = await projectedEvents();

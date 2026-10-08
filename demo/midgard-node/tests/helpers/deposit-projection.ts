@@ -3,7 +3,7 @@
  * inserted, projected as follower ingestion projects them: hidden
  * `mempool_ledger` rows, marked projected. Follower ingestion publishes no
  * validation-cache delta for hidden rows, so neither does this. Needs a
- * history-ingestion permit or the unowned-history fixture.
+ * follower write capability or the fixture capability.
  */
 import { Effect } from "effect";
 

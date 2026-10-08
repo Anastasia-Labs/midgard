@@ -2,7 +2,7 @@ import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Metric } from "effect";
 
 import { Database } from "../services/database.js";
-import { withHistoryWrite } from "../services/event-history-producer.js";
+import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { WriteBehind } from "../services/write-behind.js";
 import { ProcessedTx } from "../utils.js";
 import type * as AddressHistoryDB from "./addressHistory.js";
@@ -188,7 +188,7 @@ export const insertMultiple = (
       return;
     }
     const sql = yield* SqlClient.SqlClient;
-    yield* withHistoryWrite(
+    yield* withFollowerWrite(
       sql.withTransaction(insertMultipleCore(processedTxs)),
     );
     yield* enqueueAcceptedWriteBehind(processedTxs);

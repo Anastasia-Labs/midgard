@@ -23,7 +23,7 @@ import type { ConfirmedLedgerPosition } from "../../src/landed-blocks/position.j
 import { rebasePlan } from "../../src/landed-blocks/rebase-target.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../../src/mpf/ledger-hydration.js";
 import type { Database } from "../../src/services/database.js";
-import { withHistoryWrite } from "../../src/services/event-history-producer.js";
+import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
 import type { NativeMpfOwnerService } from "../../src/services/mpf-native-owner/protocol.js";
 import type { SimMempool } from "./landed-blocks-sim.mempool.js";
 import type { ModelQueueHeaders } from "./landed-blocks-sim.model.js";
@@ -84,13 +84,6 @@ export type LandedSimStats = TrafficStats & {
   latentHoleClosed: number;
   /** Pending transactions a processed foreign block included. */
   foreignIncluded: number;
-  batchRejections: number;
-  /** Batches rejected around a member a base block settled. */
-  batchSettled: number;
-  /** ...around a member an own block settled that had folded already. */
-  foldThenRejectOwn: number;
-  /** ...around a member a foreign block settled that had folded already. */
-  foldThenRejectForeign: number;
   ownCommits: number;
   /**
    * Rebases whose target held a live own block (a commit's, a journal
@@ -155,10 +148,6 @@ export const zeroLandedSimStats = (): LandedSimStats => ({
   latentHoleClosed: 0,
   ownAppends: 0,
   foreignIncluded: 0,
-  batchRejections: 0,
-  batchSettled: 0,
-  foldThenRejectOwn: 0,
-  foldThenRejectForeign: 0,
   ownCommits: 0,
   liveRebases: 0,
   ownProcessed: 0,
@@ -219,7 +208,7 @@ export const simPorts = (
 ): LandedBlockPorts<never> => ({
   confirmView: (view) => Effect.promise(() => store.viewValid(view)),
   queueHistory: (view) => readQueueHistory(store, SIM_QUEUE_CONFIG, view),
-  write: (work) => withHistoryWrite(work),
+  write: (work) => withFollowerWrite(work),
   replay: (input) =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
@@ -308,7 +297,10 @@ export const simPorts = (
     }),
   ownJournal,
   genesis: ledgerRows(env.universe.genesis, new Map()),
-  requestRebase: () =>
+  // The driver's recompute, as the settle step runs it after the hook
+  // (deferred, or crashed and resumed now and then): a due rebase is
+  // recorded as asked for and held pending until it ran.
+  rebase: () =>
     rebasePlan.pipe(
       Effect.map((plan) => {
         if (plan.kind === "blocked")
@@ -316,11 +308,14 @@ export const simPorts = (
             reason: plan.reason ?? LANDED_BLOCK_REBASE_PENDING,
             detail: plan.detail,
           };
-        if (plan.kind === "ready") requested.value = true;
-        return undefined;
+        if (plan.kind === "none") return undefined;
+        requested.value = true;
+        return {
+          reason: LANDED_BLOCK_REBASE_PENDING,
+          detail: "the settle step runs the driver's rebase",
+        };
       }),
     ),
-  rebaseFailure: Effect.succeed(undefined),
 });
 
 /** The canonical queue's headers, read from the canonical blocks' live outputs. */

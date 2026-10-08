@@ -33,14 +33,14 @@ import {
   SDK,
   utxosProgram,
 } from "./deposit-flow-emulator-shared.js";
-import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 import { retainSignedIntentContinuationEmptyChildDa } from "./helpers/signed-intent-continuation-empty-child-da.js";
 
 /** Real accepted commitment with a lost provider response, then an authorized
  * empty child recreating the parent outref. Synthetic transport ancestry;
  * block confirmation observes the parent through the recreated outref. */
 it("retains the original signed intent through an accepted queue pointer continuation before local confirmation", async () => {
-  const h = await openHistoryProductionOwnerLifecycle();
+  const h = await openProductionLifecycle();
   const { fixture, lucidService, globals, production } = h;
   const lucid = fixture.operatorLucid;
   const wallet = fixture.depositorLucid;
@@ -304,7 +304,7 @@ it("retains the original signed intent through an accepted queue pointer continu
         fixture.emulator.now() + HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
     });
     await h.synchronize();
-    // At the parent's TTL the history owner leaves the signed intent as it
+    // At the parent's TTL the follower driver leaves the signed intent as it
     // is: S6 and the landed-block rebase own it (whichever lands wins), and
     // block confirmation records the landed block below.
     const recordedAtTtl = await readIntent(accepted.txHash);

@@ -5,7 +5,7 @@ import { Duration, Effect, Exit, Metric, Ref } from "effect";
 import { TxAdmissionsDB, WithdrawalsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { l1SlotNow } from "../l1-heads.js";
-import { runHistoryProducer } from "../services/event-history-producer.js";
+import { runAtFollowerView } from "../services/follower-write-gate.js";
 import {
   Globals,
   Lucid,
@@ -339,4 +339,4 @@ export const txQueueProcessorAction = (
         );
       },
     );
-  }).pipe(runHistoryProducer);
+  }).pipe(runAtFollowerView);

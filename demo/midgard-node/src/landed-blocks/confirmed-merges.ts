@@ -13,7 +13,7 @@
  *   moved), moves the spent rows aside verbatim, inserts the produced rows,
  *   drops the block's landed row and moves the frontier to the block. It
  *   reads no whole ledger, computes no root and locks only the frontier row;
- *   every caller already holds the history producer's authority row lock.
+ *   every caller runs in a follower-gated write (`follower-write-gate.ts`).
  * - An unfold of the frontier reverses exactly that: the produced rows go,
  *   the spent rows come back, the events it moved reopen, the landed row is
  *   processed again with its stored flags, and the frontier is the parent.

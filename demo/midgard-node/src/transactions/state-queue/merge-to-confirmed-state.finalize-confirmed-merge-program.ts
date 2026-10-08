@@ -18,10 +18,9 @@ import {
   retrieveMergeLinks,
 } from "../../landed-blocks/confirmed-merges.js";
 import { ownFoldRow, ownJournalOf } from "../../landed-blocks/journal.js";
-import { recordSettlements } from "../../landed-blocks/settlements.js";
 import { Frontier } from "../../landed-blocks/store.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../../mpf/ledger-hydration.js";
-import { withHistoryWrite } from "../../services/event-history-producer.js";
+import { withFollowerWrite } from "../../services/follower-write-gate.js";
 import { Database, Globals } from "../../services/index.js";
 import {
   readLandedStateQueue,
@@ -101,19 +100,15 @@ const foldOwnMergeAtFrontier = (journal: PendingBlockFinalizationsDB.Record) =>
 
 /**
  * The confirmed-merge finalization's one transaction: the own block's fold
- * at the frontier (when the frontier is its base), then the receipt members
- * its transactions settle recorded (so a block that folds with no rebase
- * between still records them). The block's bodies (`blocks` rows) and the
+ * at the frontier (when the frontier is its base). The block's bodies (`blocks` rows) and the
  * pending-table rows it marked stay until its fold is final
  * (`releaseFinalFolds`): a rollback of this merge leaves the block queued,
  * and merging it again reads them. O(delta): no whole-ledger read, root or
  * table lock.
  */
 export const finalizeConfirmedMergeTransaction = ({
-  headerHash,
   journal,
 }: {
-  readonly headerHash: Buffer;
   readonly journal: PendingBlockFinalizationsDB.Record;
 }): Effect.Effect<ConfirmedMergeLedgerStep, DatabaseError, Database> =>
   Effect.gen(function* () {
@@ -124,17 +119,11 @@ export const finalizeConfirmedMergeTransaction = ({
         yield* Effect.logInfo(
           `🔸 Confirmed-ledger step of the merge finalization: ${step}.`,
         );
-        yield* recordSettlements([
-          {
-            headerHash: headerHash.toString("hex"),
-            txIds: journal.mempoolTxIds,
-          },
-        ]);
         return step;
       }),
     );
   }).pipe(
-    withHistoryWrite,
+    withFollowerWrite,
     Effect.mapError((error) =>
       error instanceof DatabaseError
         ? error
@@ -262,10 +251,7 @@ export const finalizeConfirmedMergeProgram = ({
         ledgerDeltaProducedCount: journal.ledgerDelta.produced.length,
       },
     });
-    const step = yield* finalizeConfirmedMergeTransaction({
-      headerHash,
-      journal,
-    });
+    const step = yield* finalizeConfirmedMergeTransaction({ journal });
     const ownerObservation = yield* observeNativeOwnerAfterConfirmedMerge({
       nativeMpfOwner: yield* Ref.get(globals.NATIVE_MPF_OWNER),
       confirmedLedgerRoot: headerUtxosRoot,

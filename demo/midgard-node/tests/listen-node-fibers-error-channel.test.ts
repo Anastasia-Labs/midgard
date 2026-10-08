@@ -35,7 +35,6 @@ export const startupFiberChecks = (
     nodeConfig,
     withMonitoring: false,
     startupFibers: {
-      historyOwnerStopped: Effect.fail(new Error("history owner stopped")),
       retainedPayloadServer: Effect.void,
     },
   });

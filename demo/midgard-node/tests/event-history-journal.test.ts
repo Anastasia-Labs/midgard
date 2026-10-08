@@ -17,9 +17,7 @@ import {
   encodeJournalIncarnation,
 } from "../src/database/eventHistoryJournalCodec.js";
 import * as ReplayReceipts from "../src/database/eventHistoryReplayReceipts.js";
-import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { formatDatabaseError } from "../src/database/utils/common.js";
-import { historyIncarnationEntry } from "../src/l1-event-history-entries.js";
 import {
   advanceEventHistoryListReplay,
   type EventHistoryListReplay,
@@ -44,11 +42,9 @@ import {
   HistoryPreparation,
   HistoryRecoverySuperseded,
 } from "../src/services/event-history-recovery.js";
-import { insertDeposits, insertWithdrawals } from "./helpers/event-rows.js";
 import {
   followerMaterialize,
   incarnationOutRef,
-  rewindFollowerKey,
 } from "./helpers/follower-view.js";
 import { retainEverything } from "./helpers/history-journal-retention.js";
 import { seedHistoryJournalFixture } from "./helpers/history-journal-start.js";
@@ -1367,171 +1363,6 @@ it.each(["deposit", "withdrawal"] as const)(
   },
 );
 
-it("requires exact Ready coverage for candidates even inside an owned transaction", async () => {
-  const { token, checkpoint } = await start();
-  const permit = {
-    token,
-    coverage: {
-      bindingDigest: binding.digest,
-      checkpointRevision: checkpoint.revision,
-      point: checkpoint.head,
-      snapshotDigest: checkpoint.capture.snapshotDigest,
-      includedThroughMs: checkpoint.head.slot,
-    },
-  };
-  await run(
-    Authority.publishReady(token, {
-      point: checkpoint.head,
-      snapshotDigest: checkpoint.capture.snapshotDigest,
-    }),
-  );
-  const candidate = (value: typeof permit) =>
-    requireCandidateHistory.pipe(Effect.provideService(HistoryProducer, value));
-  expect(
-    Option.isSome(await run(Authority.withReady(token, candidate(permit)))),
-  ).toBe(true);
-  const rejects = <A, E>(program: Effect.Effect<A, E, SqlClient.SqlClient>) =>
-    run(
-      program.pipe(
-        Effect.mapError((error) => new Error(formatDatabaseError(error))),
-      ),
-    );
-  await expect(
-    rejects(Authority.withReady(token, requireCandidateHistory)),
-  ).rejects.toThrow(/no checked producer context/);
-  await expect(
-    rejects(
-      Authority.withReady(
-        token,
-        candidate({
-          ...permit,
-          coverage: { ...permit.coverage, checkpointRevision: "999" },
-        }),
-      ),
-    ),
-  ).rejects.toThrow(/coverage changed/);
-  await expect(rejects(withHistoryWrite(Effect.void))).rejects.toThrow(
-    /cannot bypass an acquired history owner/,
-  );
-  const recovery = await run(
-    Authority.beginRecovery(token, "candidate refusal"),
-  );
-  await expect(
-    rejects(
-      Authority.withRecovery(
-        recovery,
-        candidate({ ...permit, token: recovery }),
-      ),
-    ),
-  ).rejects.toThrow(/Ready producer transaction/);
-});
-
-it("serializes an explicit unowned fixture against the first owner claim", async () => {
-  await run(
-    Effect.gen(function* () {
-      const entered = yield* Deferred.make<void>();
-      const finish = yield* Deferred.make<void>();
-      const attempting = yield* Deferred.make<void>();
-      const fixture = yield* Effect.fork(
-        withHistoryWrite(
-          Deferred.succeed(entered, undefined).pipe(
-            Effect.zipRight(Deferred.await(finish)),
-          ),
-        ),
-      );
-      yield* Deferred.await(entered);
-      const claimant = yield* Effect.fork(
-        Deferred.succeed(attempting, undefined).pipe(
-          Effect.zipRight(acquire()),
-        ),
-      );
-      yield* Deferred.await(attempting);
-      yield* Effect.yieldNow();
-      expect(Option.isNone(yield* Fiber.poll(claimant))).toBe(true);
-      yield* Deferred.succeed(finish, undefined);
-      yield* Fiber.join(fixture);
-      yield* Fiber.join(claimant);
-      const refused = yield* Effect.either(withHistoryWrite(Effect.void));
-      expect(refused._tag).toBe("Left");
-    }),
-  );
-});
-
-it.each(["deposit", "withdrawal"] as const)(
-  "refuses Ready-producer %s polling inserts and admits canonical recovery",
-  async (kind) => {
-    const { token, checkpoint } = await start();
-    await run(
-      Authority.withRecovery(
-        token,
-        Journal.append(
-          binding,
-          await admit(checkpoint, 2, kind),
-          () => Effect.void,
-          retainEverything,
-        ),
-      ),
-    );
-    const admitted = await read();
-    const converted = await Effect.runPromise(
-      historyIncarnationEntry(admitted.incarnations[0]!, "Preprod"),
-    );
-    const insert =
-      converted.kind === "deposit"
-        ? insertDeposits([converted.entry])
-        : insertWithdrawals([converted.entry]);
-    await run(
-      Authority.publishReady(token, {
-        point: admitted.head,
-        snapshotDigest: admitted.capture.snapshotDigest,
-      }),
-    );
-    const permit = {
-      token,
-      coverage: {
-        bindingDigest: binding.digest,
-        checkpointRevision: admitted.revision,
-        point: admitted.head,
-        snapshotDigest: admitted.capture.snapshotDigest,
-        includedThroughMs: admitted.head.slot,
-      },
-    };
-    await expect(
-      run(
-        insert.pipe(
-          Effect.provideService(HistoryProducer, permit),
-          Effect.mapError((error) => new Error(formatDatabaseError(error))),
-        ),
-      ),
-    ).rejects.toThrow(/owned source transaction/);
-    const count = () =>
-      run(
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          return yield* sql`SELECT event_id FROM ${sql(kind === "deposit" ? "deposits_utxos" : "withdrawal_utxos")}`;
-        }),
-      );
-    expect(await count()).toEqual([]);
-    const recovery = await run(
-      Authority.beginRecovery(token, "canonical ingestion"),
-    );
-    await run(
-      Authority.withRecovery(
-        recovery,
-        followerMaterialize(
-          { kind: "resume", before: admitted, after: admitted },
-          "Preprod",
-        ),
-      ),
-    );
-    expect(await count()).toHaveLength(1);
-    await expect(
-      run(insert.pipe(Effect.provideService(HistoryProducer, permit))),
-    ).rejects.toThrow();
-    expect(await count()).toHaveLength(1);
-  },
-);
-
 it("rolls back bounded preparation writes when source preparation is superseded", async () => {
   const { token } = await start();
   let checks = 0;
@@ -1568,92 +1399,6 @@ it("rolls back bounded preparation writes when source preparation is superseded"
     ),
   ).toEqual([]);
 });
-
-it.each(["deposit", "withdrawal"] as const)(
-  "checks retained %s follower admission before atomic effects",
-  async (kind) => {
-    const { token, checkpoint } = await start();
-    await run(
-      Authority.withRecovery(
-        token,
-        Journal.append(
-          binding,
-          await admit(checkpoint, 2, kind),
-          () => Effect.void,
-          retainEverything,
-        ),
-      ),
-    );
-    const admitted = await read();
-    await run(
-      Authority.withRecovery(
-        token,
-        followerMaterialize(
-          { kind: "resume", before: admitted, after: admitted },
-          "Preprod",
-        ),
-      ),
-    );
-    const incarnation = admitted.incarnations[0]!;
-    const converted = await Effect.runPromise(
-      historyIncarnationEntry(incarnation, "Preprod"),
-    );
-    const origin = incarnationOutRef(incarnation);
-    const member = {
-      [Pending.MemberColumns.MEMBER_ID]: converted.entry.event_id,
-      l1_event_key: Buffer.from(incarnation.event.key, "hex"),
-      l1_origin_outref: origin,
-    };
-    const members = (value: typeof member) => ({
-      depositMembers: kind === "deposit" ? [value] : [],
-      withdrawalMembers: kind === "withdrawal" ? [value] : [],
-    });
-    await run(
-      Authority.withRecovery(
-        token,
-        Pending.assertCanonicalEventMembers(members(member)),
-      ),
-    );
-    for (const wrong of [
-      { ...member, l1_event_key: Buffer.from(hash(999), "hex") },
-      { ...member, l1_origin_outref: Buffer.alloc(34, 9) },
-    ]) {
-      await expect(
-        run(
-          Authority.withRecovery(
-            token,
-            probe(17).pipe(
-              Effect.zipRight(
-                Pending.assertCanonicalEventMembers(members(wrong)),
-              ),
-            ),
-          ),
-        ),
-      ).rejects.toThrow();
-      expect((await counts())[0]!.l2).toBe("0");
-    }
-    // The follower rewinds past the admission: the member is orphaned.
-    await run(
-      Authority.withRecovery(
-        token,
-        rewindFollowerKey({ kind, key: incarnation.event.key }, origin),
-      ),
-    );
-    await expect(
-      run(
-        Authority.withRecovery(
-          token,
-          probe(17).pipe(
-            Effect.zipRight(
-              Pending.assertCanonicalEventMembers(members(member)),
-            ),
-          ),
-        ),
-      ),
-    ).rejects.toThrow();
-    expect((await counts())[0]!.l2).toBe("0");
-  },
-);
 
 describe("bounded journal retention", () => {
   const applicationRows = () =>

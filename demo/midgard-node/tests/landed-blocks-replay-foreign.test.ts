@@ -458,11 +458,16 @@ describe("foreign replay reads no node event table", () => {
 describe("the node's landed ports at a follower view", () => {
   it("confirm a view, and refuse it and its queue history once the follower left it", async () => {
     const { store, chain } = await follow();
-    const ports = nodeLandedBlockPorts(store, {
-      projection: EVENTS_CONFIG,
-      forcedOrders: FORCED_CONFIG,
-      stateQueue: SIM_QUEUE_CONFIG,
-    });
+    const ports = nodeLandedBlockPorts(
+      store,
+      {
+        projection: EVENTS_CONFIG,
+        forcedOrders: FORCED_CONFIG,
+        stateQueue: SIM_QUEUE_CONFIG,
+      },
+      // Not reached: no landed row asks for a rebase here.
+      () => Effect.succeed(undefined),
+    );
     await admitDeposit(chain);
     const before = (await store.currentView())!;
     expect(await inNode(ports.confirmView(before))).toBe(true);

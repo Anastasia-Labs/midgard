@@ -37,7 +37,6 @@ import { PgClient } from "@effect/sql-pg";
 import { Effect, ManagedRuntime, Redacted } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import * as Authority from "../src/database/eventHistoryAuthority.js";
 import { MIGRATIONS } from "../src/database/migrations/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
 import { splitSqlStatements } from "../src/database/migrations/runner.js";
@@ -49,6 +48,7 @@ import {
   settleAttempts,
   settlementLevel,
 } from "../src/services/settlement.status.js";
+import { openFollowerWriteGate } from "./helpers/follower-write-gate.js";
 import { ChainDriver, testDatabases } from "./helpers/l1-events-store.js";
 
 const K = 6;
@@ -181,17 +181,10 @@ const owner: Journal.SettlementOwner = {
   token: randomUUID(),
 };
 
-/** The history authority and settlement ownership the journal's writes need. */
+/** The open follower write gate and settlement ownership the journal's
+ * writes need. */
 const ownSettlement = Effect.gen(function* () {
-  const token = yield* Authority.acquire({
-    deploymentIdentity: deploymentId,
-    ownerToken: randomUUID(),
-    leaseDurationMs: 3_600_000,
-  });
-  yield* Authority.publishReady(token, {
-    point: { slot: 10, id: "b1".repeat(32) },
-    snapshotDigest: "c1".repeat(32),
-  });
+  yield* openFollowerWriteGate;
   yield* Journal.renew(owner);
 });
 

@@ -16,15 +16,13 @@ export {
 } from "./working-ledger-recompute.rebuild.js";
 export {
   closeRejections,
-  findUndecidedBatchMember,
   producedByRejections,
   recordRejections,
   type Reject,
   type Rejection,
+  type RejectionCodeOf,
   type RejectionCodes,
   type RejectionReason,
   type Rejections,
   txIdHex,
-  UndecidedBatchMember,
-  undecidedBatchMemberIn,
 } from "./working-ledger-recompute.reject-closure.js";

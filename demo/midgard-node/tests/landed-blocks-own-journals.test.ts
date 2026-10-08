@@ -47,7 +47,7 @@ import {
 } from "../src/landed-blocks/own-journals.js";
 import { rebasePlan } from "../src/landed-blocks/rebase-target.js";
 import { Frontier, type LandedBlockRow } from "../src/landed-blocks/store.js";
-import { withHistoryWrite } from "../src/services/event-history-producer.js";
+import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import {
   insertOwnJournal,
   JournalStatus,
@@ -121,7 +121,7 @@ const rebaseJournals = (
   rows: readonly LandedBlockRow[],
   chain: readonly LandedBlockRow[],
 ) =>
-  withHistoryWrite(
+  withFollowerWrite(
     Effect.gen(function* () {
       const disposition = yield* ownJournalDisposition(rows, landed(chain));
       yield* disposeJournals(disposition.dispose);
@@ -135,7 +135,7 @@ const statusOf = (headerHash: string) =>
 
 /** A deposit member of `headerHash` admitted under (key, origin). */
 const depositMember = (headerHash: string, key: Buffer, origin: Buffer) =>
-  withHistoryWrite(
+  withFollowerWrite(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       const payload = Buffer.from("deposit-member");
@@ -195,7 +195,7 @@ const withoutTable = <A, E, R>(table: string, work: Effect.Effect<A, E, R>) =>
 
 /** Records a rejection of `txId` after the rejected transactions `causes`. */
 const rejection = (txId: Buffer, causes: readonly Buffer[] = []) =>
-  withHistoryWrite(
+  withFollowerWrite(
     Effect.gen(function* () {
       yield* TxRejectionsDB.insertMany([
         {
@@ -414,7 +414,7 @@ describe("own block journals under whichever-lands-wins", () => {
     inNode(
       Effect.gen(function* () {
         yield* journal(C, G, JournalStatus.SubmittedUnconfirmed);
-        yield* withHistoryWrite(
+        yield* withFollowerWrite(
           Frontier.upsert({ headerHash: G, utxosRoot: ZERO_ROOT }),
         );
         for (const table of ["l1_event_keys", "node_l1_forced_order_fields"]) {

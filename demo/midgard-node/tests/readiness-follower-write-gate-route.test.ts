@@ -1,3 +1,9 @@
+/**
+ * `/readyz` names this process's side of the follower write gate (plan
+ * §8.1): unready until its follower-change driver applied a view, and while
+ * a recompute of that driver is under way or held. The follower's own
+ * readiness (catching up, lagging) is its reasons, read from the follower.
+ */
 import "./utils.js";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
@@ -8,10 +14,10 @@ import { describe, expect, it } from "vitest";
 import { buildListenRouter } from "../src/commands/listen-router.js";
 import { NodeConfig } from "../src/services/config.js";
 import {
-  type EventHistoryOwner,
-  HISTORY_READY_MAXIMUM_LAG_BLOCKS,
-  type HistoryOwnerFrontier,
-} from "../src/services/event-history-owner.js";
+  DRIVER_RECOMPUTE_PENDING,
+  FOLLOWER_VIEW_UNAPPLIED,
+  type FollowerWriteGateLocal,
+} from "../src/services/follower-write-gate.local.js";
 import {
   Globals,
   nextL1ProviderHealthEvidence,
@@ -22,6 +28,10 @@ import {
   MidgardContracts,
 } from "../src/services/midgard-contracts.js";
 import { ValidationPool } from "../src/services/validation-pool.js";
+import {
+  runningFollower,
+  seedCaughtUpL1Follower,
+} from "./readiness-l1-follower.fixture.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 // Only the settings /readyz reads. Fresh exact provider evidence keeps the
@@ -38,7 +48,15 @@ const nodeConfig = {
   MIN_QUEUE_LENGTH_FOR_MERGING: 1,
 } as unknown as NodeConfig["Type"];
 
-const readyz = (frontier: HistoryOwnerFrontier | undefined) =>
+type GateBody = {
+  readonly epoch: string | null;
+  readonly recomputing: boolean;
+  readonly producers: number;
+};
+
+/** `/readyz` of a node whose follower is at the tip, with the gate's
+ * local side `gate` (undefined: no driver applied a view). */
+const readyz = (gate: Partial<FollowerWriteGateLocal> | undefined) =>
   Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
@@ -51,14 +69,15 @@ const readyz = (frontier: HistoryOwnerFrontier | undefined) =>
             successKind: "exact",
           }),
         );
-        yield* Ref.set(
-          globals.EVENT_HISTORY_OWNER,
-          frontier === undefined
-            ? undefined
-            : ({
-                frontier: Effect.succeed(frontier),
-              } as unknown as EventHistoryOwner),
-        );
+        if (gate === undefined)
+          yield* Ref.set(globals.L1_FOLLOWER, runningFollower());
+        else {
+          yield* seedCaughtUpL1Follower(globals);
+          yield* Ref.update(globals.FOLLOWER_WRITE_GATE, (local) => ({
+            ...local,
+            ...gate,
+          }));
+        }
         const response = (yield* buildListenRouter().pipe(
           Effect.provideService(
             HttpServerRequest.HttpServerRequest,
@@ -71,13 +90,15 @@ const readyz = (frontier: HistoryOwnerFrontier | undefined) =>
           HttpServerResponse.toWeb(response).json(),
         )) as {
           readonly reasons: readonly string[];
-          readonly eventHistoryFrontier: HistoryOwnerFrontier | null;
+          readonly followerWriteGate: GateBody;
         };
         return {
-          history: body.reasons.filter((reason) =>
-            reason.startsWith("history_"),
+          gate: body.reasons.filter(
+            (reason) =>
+              reason === FOLLOWER_VIEW_UNAPPLIED ||
+              reason === DRIVER_RECOMPUTE_PENDING,
           ),
-          eventHistoryFrontier: body.eventHistoryFrontier,
+          followerWriteGate: body.followerWriteGate,
         };
       }).pipe(
         Effect.provideService(NodeConfig, nodeConfig),
@@ -101,54 +122,32 @@ const readyz = (frontier: HistoryOwnerFrontier | undefined) =>
         ),
         Effect.provide(Globals.Default),
       ) as Effect.Effect<
-        {
-          history: string[];
-          eventHistoryFrontier: HistoryOwnerFrontier | null;
-        },
+        { gate: string[]; followerWriteGate: GateBody },
         unknown,
         never
       >,
     ),
   );
 
-const frontier = (ready: boolean, lagBlocks: number): HistoryOwnerFrontier => ({
-  ready,
-  headHeight: 100,
-  tipHeight: 100 + lagBlocks,
-  lagBlocks,
-  maximumLagBlocks: HISTORY_READY_MAXIMUM_LAG_BLOCKS,
-});
-
-describe("GET /readyz history frontier", () => {
-  it.each([
-    ["an open gate at the tip", frontier(true, 0), []],
-    [
-      "an open gate exactly at the lag bound",
-      frontier(true, HISTORY_READY_MAXIMUM_LAG_BLOCKS),
-      [],
-    ],
-    [
-      "an open gate past the lag bound",
-      frontier(true, HISTORY_READY_MAXIMUM_LAG_BLOCKS + 1),
-      [
-        `history_follower_lagging:${HISTORY_READY_MAXIMUM_LAG_BLOCKS + 1}:${HISTORY_READY_MAXIMUM_LAG_BLOCKS}`,
-      ],
-    ],
-    [
-      "a closed gate, however far behind",
-      frontier(false, HISTORY_READY_MAXIMUM_LAG_BLOCKS + 1),
-      ["history_owner_not_ready"],
-    ],
-  ])("reports %s", async (_, observed, reasons) => {
-    const result = await readyz(observed);
-    expect(result.history).toEqual(reasons);
-    expect(result.eventHistoryFrontier).toEqual(observed);
+describe("GET /readyz follower write gate", () => {
+  it("is unready until the driver applied a view", async () => {
+    expect(await readyz(undefined)).toEqual({
+      gate: [FOLLOWER_VIEW_UNAPPLIED],
+      followerWriteGate: { epoch: null, recomputing: false, producers: 0 },
+    });
   });
 
-  it("reports no frontier and no history reason without a history owner", async () => {
-    expect(await readyz(undefined)).toEqual({
-      history: [],
-      eventHistoryFrontier: null,
+  it("is unready while the driver's recompute is under way or held", async () => {
+    expect(await readyz({ epoch: "4", recomputing: true })).toEqual({
+      gate: [DRIVER_RECOMPUTE_PENDING],
+      followerWriteGate: { epoch: "4", recomputing: true, producers: 0 },
+    });
+  });
+
+  it("names no gate reason once the driver's view is applied", async () => {
+    expect(await readyz({ epoch: "5", recomputing: false })).toEqual({
+      gate: [],
+      followerWriteGate: { epoch: "5", recomputing: false, producers: 0 },
     });
   });
 });

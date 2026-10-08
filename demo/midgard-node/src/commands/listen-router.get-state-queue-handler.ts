@@ -50,7 +50,8 @@ export const getMergeHandler = Effect.gen(function* () {
     ),
   );
   if (attempt._tag === "PermitUnavailable") {
-    // Nothing ran: the history owner is absent or not Ready. Retry later.
+    // Nothing ran: the follower-change driver has not published its view.
+    // Retry later.
     const cause = formatUnknownError(attempt.unavailable.cause, {
       includeCause: true,
     });

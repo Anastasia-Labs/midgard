@@ -14,7 +14,6 @@ import {
   reconcileMergeCompleteProgram,
   type ReconciliationResult,
 } from "../src/commands/reconcile.js";
-import * as Authority from "../src/database/eventHistoryAuthority.js";
 import { CORRECTION_REWIND_RECOVERY_DOMAIN } from "../src/database/eventHistoryRecoveryPlans.js";
 import {
   ConfirmedLedgerDB,
@@ -27,7 +26,10 @@ import { runLedgerPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import { hydrateLedgerMpfFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import type { NodeConfigDep } from "../src/services/config.js";
-import { HistoryProducer } from "../src/services/event-history-producer.js";
+import {
+  DRIVER_RECOMPUTE_PENDING,
+  FOLLOWER_VIEW_UNAPPLIED,
+} from "../src/services/follower-write-gate.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
@@ -57,7 +59,8 @@ import {
   runLocalFinalizationRecoveryWorker,
   SDK,
 } from "./deposit-flow-emulator-shared.js";
-import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { holdFollowerWriteGate } from "./helpers/follower-write-gate.js";
+import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
 type LedgerEntries = Parameters<typeof hydrateLedgerMpfFromLedgerEntries>[1];
 
@@ -97,12 +100,12 @@ vi.mock(
 
 /**
  * Actual public deposits, commits, confirmations and local finalizations under
- * the production history owner and Architecture G native owner; the merges run
- * through the admin GET /merge handler and `reconcile merge-complete --repair`
- * with no producer permit taken by the test.
+ * the production follower-change driver and Architecture G native owner; the
+ * merges run through the admin GET /merge handler and `reconcile
+ * merge-complete --repair` with no follower write permit taken by the test.
  */
-it("audits the native MPF root at the committed tip, and merges manually only under the history producer permit", async () => {
-  const initial = await openHistoryProductionOwnerLifecycle();
+it("audits the native MPF root at the committed tip, and merges manually only under a follower write permit", async () => {
+  const initial = await openProductionLifecycle();
   let h: Awaited<ReturnType<typeof initial.restartRuntime>> = initial;
   const { fixture, lucidService } = initial;
   let { globals, production } = h;
@@ -111,8 +114,8 @@ it("audits the native MPF root at the committed tip, and merges manually only un
   const histories = SDK.requireEventHistoryContracts(fixture.contracts);
   const scratch = await mkdtemp(join(tmpdir(), "midgard-audit-leveldb-"));
 
-  // The production node's services, without a producer permit or the
-  // unowned-model fixture: exactly what the admin router and the CLI get.
+  // The production node's services, without a follower write permit or the
+  // fixture capability: exactly what the admin router and the CLI get.
   type RunOverrides = {
     readonly globals?: Globals;
     readonly nodeConfig?: NodeConfigDep;
@@ -401,17 +404,16 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       (sql) => sql`DELETE FROM event_history_recovery_plans
         WHERE recovery_id = ${Buffer.from(recoveryId, "hex")}`,
     );
-  const authorityRow = async () =>
+  /** The recompute the follower write gate holds writes for, if any. */
+  const gatePending = async () =>
     (
       await sqlRun(
-        (sql) => sql<{
-          readonly generation: string;
-          readonly state: string;
-          readonly reason: string;
-        }>`SELECT generation::text AS generation, state, reason
-          FROM event_history_authority`,
+        (sql) =>
+          sql<{
+            readonly reason: string | null;
+          }>`SELECT pending_reason AS reason FROM node_follower_write_gate`,
       )
-    )[0]!;
+    )[0]!.reason;
   const decodeMergeBody = (response: {
     readonly status: number;
     readonly body: { readonly _tag: string; readonly body?: unknown };
@@ -734,7 +736,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     await writeJournalFields(second.headerHash, rebased);
     await acknowledgeCleanAudit();
 
-    // --- Bug C: manual merges under the running node's producer permit. ----
+    // --- Bug C: manual merges under the running node's follower write permit.
     await advanceEmulatorPastUnixTime(
       fixture,
       mergeMaturityWindow(fixture.operatorLucid, second.endTimeMs)
@@ -751,8 +753,8 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       repairActions: [],
       nextAction: expect.stringContaining(first.headerHash),
     });
-    // A standalone CLI process holds no history owner, so it cannot take the
-    // producer permit and must not merge.
+    // A standalone CLI process runs no follower-change driver, so it cannot
+    // take a follower write permit and must not merge.
     const standalone = await reconcile(first.headerHash, true, {
       globals: await makeGlobalsService(),
     });
@@ -763,38 +765,33 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     });
     expect(evidenceDetail(standalone, "merge_producer_permit")).toMatchObject({
       available: false,
-      reason: expect.stringContaining("History owner is not initialized"),
+      reason: expect.stringContaining(FOLLOWER_VIEW_UNAPPLIED),
     });
     const standaloneAdmin = await run(getMergeHandler, {
       globals: await makeGlobalsService(),
     });
     expect(standaloneAdmin.status).toBe(503);
     expect(decodeMergeBody(standaloneAdmin).cause).toContain(
-      "History owner is not initialized",
+      FOLLOWER_VIEW_UNAPPLIED,
     );
     expect((await queue()).blockCount).toBe(2);
     expect(await mergeJob(first.headerHash)).toBeUndefined();
 
-    // History recovery revokes the permit after the merge registered: the
+    // A driver recompute holds the gate after the merge registered: the
     // pre-submit check under the lease refuses before the transaction leaves,
     // since the local finalization after it could no longer write.
-    const authorityBefore = await authorityRow();
-    expect(authorityBefore.state).toBe("ready");
+    expect(await gatePending()).toBeNull();
     let revocations = 0;
     const revokingLucid = {
       ...lucidService,
       switchToOperatorsMergingWallet: Effect.gen(function* () {
-        const permit = yield* HistoryProducer;
-        yield* Authority.beginRecovery(
-          permit.token,
-          "test: history recovery began during a merge",
-        );
+        yield* holdFollowerWriteGate("test: a recompute began during a merge");
         revocations += 1;
         yield* lucidService.switchToOperatorsMergingWallet;
       }),
     };
-    // No follower synchronization after the revocation: the owner would
-    // (rightly) refuse to run until its recovery completes.
+    // No follower synchronization after the hold: a fresh driver run would
+    // recompute and reopen the gate.
     let revoked = await run(Effect.either(mergeAction(true)), {
       lucid: revokingLucid,
     });
@@ -819,31 +816,23 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     expect(
       Either.isLeft(revoked) &&
         formatUnknownError(revoked.left, { includeCause: true }),
-    ).toContain("History authority generation or owner changed");
+    ).toContain(DRIVER_RECOMPUTE_PENDING);
     expect((await queue()).blockCount).toBe(2);
     expect(await mergeJob(first.headerHash)).toBeUndefined();
-    expect(await authorityRow()).toMatchObject({ state: "recovering" });
-    // A node whose history owner is not Ready blocks the repair with evidence.
+    expect(await gatePending()).toBe(DRIVER_RECOMPUTE_PENDING);
+    // A node whose gate is held blocks the repair with evidence.
     const notReady = await reconcile(first.headerHash, true);
     expect(notReady).toMatchObject({ status: "blocked", repairActions: [] });
     expect(evidenceDetail(notReady, "merge_producer_permit")).toMatchObject({
       available: false,
-      reason: expect.stringContaining("History source gate is closed"),
+      reason: expect.stringContaining(DRIVER_RECOMPUTE_PENDING),
     });
     expect((await queue()).blockCount).toBe(2);
-    // An owner that lost its generation stays closed, and its lease cannot be
-    // retired under the revoked generation: the node restarts once that lease
-    // lapses (expired here rather than waited out).
-    h = await initial.restartRuntime({
-      afterStop: async () => {
-        await sqlRun(
-          (sql) => sql`UPDATE event_history_authority
-            SET lease_until = clock_timestamp()`,
-        );
-      },
-    });
+    // The node restarts: the fresh driver's first view recomputes and
+    // reopens the gate.
+    h = await initial.restartRuntime();
     ({ globals, production } = h);
-    expect(await authorityRow()).toMatchObject({ state: "ready" });
+    expect(await gatePending()).toBeNull();
 
     const repaired = await untilMergeSubmitted(
       () => reconcile(first.headerHash, true),

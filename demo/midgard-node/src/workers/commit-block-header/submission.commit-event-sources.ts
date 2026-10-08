@@ -16,7 +16,7 @@ import {
   sqlErrorToDatabaseError,
 } from "../../database/utils/common.js";
 import { type UtxoPayloadEntry } from "../../mpf/index.js";
-import { HistoryProducer } from "../../services/event-history-producer.js";
+import { FollowerWrite } from "../../services/follower-write-gate.js";
 import {
   commitEventHorizon,
   type CommitHorizonLag,
@@ -57,14 +57,14 @@ export const commitUserEventSourceIdSetsAreExact = ({
   sameSourceIdSet(pendingWithdrawalIds, includedWithdrawalIds);
 
 /**
- * Rechecks the final end time against the event horizon, min(journal
- * coverage, follower ingestion, the earliest forced order not yet rebuilt)
+ * Rechecks the final end time against the event horizon, min(follower
+ * ingestion, the earliest forced order not yet rebuilt)
  * (E-N1-2 item 3, N10) capped by the horizon lag (`horizonLag`). This is the
  * check that refuses a header end above the lagged cap before submission.
  * Deposits, withdrawals and forced orders are the follower-change driver's:
- * nothing here fetches them. Every runtime commit runs under a history
- * producer; the unowned model fixture (no producer) needs an ingestion but
- * plans its end time past it, as its source polling did before.
+ * nothing here fetches them. Every runtime commit runs with a follower
+ * write permit (`FollowerWrite`); a model fixture without one needs an
+ * ingestion but plans its end time past it.
  */
 export const refreshCommitUserEventSourcesThroughBlockEnd = <
   LE = never,
@@ -74,17 +74,11 @@ export const refreshCommitUserEventSourcesThroughBlockEnd = <
   horizonLag: CommitHorizonLag<LE, LR>,
 ) =>
   Effect.gen(function* () {
-    const history = yield* Effect.serviceOption(HistoryProducer);
-    const horizon = yield* commitEventHorizon(
-      Option.isSome(history) ? history.value.coverage : undefined,
-      horizonLag,
-    );
-    // The final header window may differ from the initial plan. Recheck the
-    // same immutable owner coverage; polling cannot extend its authority.
-    // preparePendingSubmission rechecks the generation and that this coverage
-    // is still a journaled prefix (the exact cursor, the anchor, or a
-    // canonical earlier block under a newer cursor revision) under the
-    // authority row lock, before journal writes.
+    const history = yield* Effect.serviceOption(FollowerWrite);
+    const horizon = yield* commitEventHorizon(horizonLag);
+    // The final header window may differ from the initial plan: recheck it
+    // against the horizon now. The journal write's gated transaction then
+    // rechecks the permit's view (plan §8.1).
     if (
       horizon === null ||
       (Option.isSome(history) && blockEndTimeMs > horizon)

@@ -1491,12 +1491,6 @@
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
     {
-      "file": "demo/midgard-node/tests/event-history-ledger-repair.test.ts",
-      "lines": 1049,
-      "reason": "Retained test registration \u201cunpublished history-dependent ledger repair\u201d (276 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
       "file": "demo/midgard-node/tests/event-history-ready-append.test.ts",
       "lines": 1254,
       "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures.",
@@ -1521,12 +1515,6 @@
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
     {
-      "file": "demo/midgard-node/tests/event-history-retired-membership.test.ts",
-      "lines": 930,
-      "reason": "admit is the dominant indivisible declaration (148 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
       "file": "demo/midgard-node/tests/forced-transactions.test.ts",
       "lines": 936,
       "reason": "Retained test registration \u201cV1 forced transaction material\u201d (866 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor.",
@@ -1536,12 +1524,6 @@
       "file": "demo/midgard-node/tests/helpers/availability-challenge-emulator.create-fixture.ts",
       "lines": 797,
       "reason": "createFixture is the dominant indivisible declaration (688 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
-      "enforcedBy": "ESLint exact file cap + module-size cap validator"
-    },
-    {
-      "file": "demo/midgard-node/tests/helpers/history-production-owner-lifecycle.open-history-production-owner-lifecycle.ts",
-      "lines": 576,
-      "reason": "openHistoryProductionOwnerLifecycle is the dominant indivisible declaration (518 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move.",
       "enforcedBy": "ESLint exact file cap + module-size cap validator"
     },
     {
