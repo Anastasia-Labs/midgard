@@ -1,4 +1,9 @@
-import type { FactStore, SqlTx } from "@al-ft/midgard-l1-follower";
+import {
+  type Cursor,
+  type FactStore,
+  pinRetainedIn,
+  type SqlTx,
+} from "@al-ft/midgard-l1-follower";
 
 import {
   COMMITTEE_PINNED_BLOCKS_TABLE,
@@ -65,19 +70,9 @@ export type CommitteePinWriteResult = Readonly<{
 
 const HEX_TX = /^[0-9a-f]{64}$/u;
 
-const prunedThroughIn = async (
-  tx: SqlTx,
-  store: Pick<FactStore, "dialect">,
-): Promise<number | null> => {
-  // The cursor row lock the prune takes first: a prune running now
-  // finishes before this write reads the window, and the next one waits
-  // for this write and then sees its pins.
-  const rows = await tx.query(
-    `SELECT pruned_through_slot FROM l1_follower_cursor${store.dialect.lockClause("update")}`,
-  );
-  const row = rows[0];
-  return row === undefined ? null : Number(row.pruned_through_slot);
-};
+/** Whether `slot` lies above the pruned window (all of it before init). */
+const above = (cursor: Cursor | null, slot: number): boolean =>
+  cursor === null || slot > cursor.prunedThroughSlot;
 
 const exists = async (
   tx: SqlTx,
@@ -87,21 +82,19 @@ const exists = async (
 
 /**
  * Writes one holder's pins, the committee's one pin write. In one follower
- * write transaction it takes the cursor row lock exactly as the prune does,
- * then inserts each new target only while the follower still stores it: a
- * target already pruned is returned in `alreadyPruned`, never inserted. A
- * block is still stored when its row exists or it lies above the pruned
- * window; a header while its queue rows exist or its slot lies above the
- * window. A tx not stored may not have landed yet, so it is always pinned.
+ * write transaction each new target is pinned through the follower's
+ * `pinRetainedIn`, under the cursor row lock every prune step takes first,
+ * and only while the follower still stores it: a target already pruned is
+ * returned in `alreadyPruned`, never inserted. A block is still stored when
+ * its row exists or it lies above the pruned window; a header while its
+ * queue rows exist or its slot lies above the window. A tx not stored may
+ * not have landed yet, so it is always pinned.
  */
 export const writeCommitteePins = async (
   store: Pick<FactStore, "transaction" | "dialect">,
   write: CommitteePinWrite,
 ): Promise<CommitteePinWriteResult> =>
   store.transaction("write", async (tx) => {
-    const prunedThrough = await prunedThroughIn(tx, store);
-    const above = (slot: number): boolean =>
-      prunedThrough === null || slot > prunedThrough;
     const { holder, targets } = write;
     const alreadyPruned: string[] = [];
 
@@ -116,17 +109,19 @@ export const writeCommitteePins = async (
     );
     for (const slot of [...blocks].sort((a, b) => a - b)) {
       if (heldBlocks.has(slot)) continue;
-      if (
-        !above(slot) &&
-        !(await exists(tx, "SELECT 1 FROM l1_blocks WHERE slot = ?", [slot]))
-      ) {
+      const pinned = await pinRetainedIn(tx, store.dialect, {
+        retained: async (_, cursor) =>
+          above(cursor, slot) ||
+          (await exists(tx, "SELECT 1 FROM l1_blocks WHERE slot = ?", [slot])),
+        insert: async () => {
+          await tx.query(
+            `INSERT INTO ${COMMITTEE_PINNED_BLOCKS_TABLE} (slot, holder) VALUES (?, ?)`,
+            [slot, holder],
+          );
+        },
+      });
+      if (pinned.kind === "already_pruned")
         alreadyPruned.push(`block at slot ${slot.toString()}`);
-        continue;
-      }
-      await tx.query(
-        `INSERT INTO ${COMMITTEE_PINNED_BLOCKS_TABLE} (slot, holder) VALUES (?, ?)`,
-        [slot, holder],
-      );
     }
 
     const txs = new Set(targets.txs.map((hash) => hash.toLowerCase()));
@@ -143,10 +138,15 @@ export const writeCommitteePins = async (
     );
     for (const hash of [...txs].sort()) {
       if (heldTxs.has(hash)) continue;
-      await tx.query(
-        `INSERT INTO ${COMMITTEE_PINNED_TXS_TABLE} (tx_hash, holder) VALUES (?, ?)`,
-        [Buffer.from(hash, "hex"), holder],
-      );
+      await pinRetainedIn(tx, store.dialect, {
+        retained: () => Promise.resolve(true),
+        insert: async () => {
+          await tx.query(
+            `INSERT INTO ${COMMITTEE_PINNED_TXS_TABLE} (tx_hash, holder) VALUES (?, ?)`,
+            [Buffer.from(hash, "hex"), holder],
+          );
+        },
+      });
     }
 
     const headers = new Map(
@@ -165,23 +165,25 @@ export const writeCommitteePins = async (
       a < b ? -1 : a > b ? 1 : 0,
     )) {
       if (heldHeaders.has(headerHash)) continue;
-      if (
-        !above(slot) &&
-        !(await exists(
-          tx,
-          `SELECT 1 FROM ${COMMITTEE_QUEUE_TABLE} WHERE header_hash = ? LIMIT 1`,
-          [headerHash],
-        ))
-      ) {
+      const pinned = await pinRetainedIn(tx, store.dialect, {
+        retained: async (_, cursor) =>
+          above(cursor, slot) ||
+          (await exists(
+            tx,
+            `SELECT 1 FROM ${COMMITTEE_QUEUE_TABLE} WHERE header_hash = ? LIMIT 1`,
+            [headerHash],
+          )),
+        insert: async () => {
+          await tx.query(
+            `INSERT INTO ${COMMITTEE_PINNED_HEADERS_TABLE} (header_hash, holder) VALUES (?, ?)`,
+            [headerHash, holder],
+          );
+        },
+      });
+      if (pinned.kind === "already_pruned")
         alreadyPruned.push(
           `state queue rows of header ${headerHash} (slot ${slot.toString()})`,
         );
-        continue;
-      }
-      await tx.query(
-        `INSERT INTO ${COMMITTEE_PINNED_HEADERS_TABLE} (header_hash, holder) VALUES (?, ?)`,
-        [headerHash, holder],
-      );
     }
 
     if (write.mode === "replace") {
