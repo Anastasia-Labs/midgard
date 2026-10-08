@@ -29,8 +29,8 @@ identified providers; it does not replace the local chain authority or provide
 actuation failover. Accepted L1 transaction bytes are indexed deterministically;
 the watcher does not become a second implementation of Cardano's validator rules.
 
-Durable replay needs integrity. Authenticate the watcher's block progress
-with a stable external rollback key and commit state atomically. A rollback
+Durable replay needs integrity. Authenticate the watcher's durable journal
+with a stable external key and commit state atomically. A rollback
 rewinds the follower's facts and recomputes every projection in-process; no
 state is quarantined and nothing needs a restart. A rollback deeper than the
 security parameter k leaves the watcher up and unready (`rollback_beyond_k`).

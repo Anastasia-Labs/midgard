@@ -8,10 +8,6 @@ import {
   type WatcherAuthenticatedStateQueueObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.exact-record.js";
-import {
-  createWatcherSqliteBlockProgressStore,
-  type WatcherBlockProgressStore,
-} from "./block-progress-store.js";
 import { watcherCanonicalJson } from "./durable-store.js";
 import {
   createWatcherSqliteReplayTranscriptStore,
@@ -58,8 +54,6 @@ export type WatcherSqliteDurableBackend = Readonly<{
   schemaVersion: typeof WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION;
   stateQueueObservations: WatcherSqliteStateQueueObservationStore;
   replayTranscripts: WatcherReplayTranscriptStore;
-  /** "Processed through block N" ring, authenticated with the rollback key. */
-  openBlockProgress(authenticationKey: Uint8Array): WatcherBlockProgressStore;
   close(): void;
 }>;
 
@@ -75,8 +69,8 @@ export type WatcherSqliteStateQueueObservationStore = Readonly<{
 }>;
 
 /**
- * The watcher's production SQLite store: state-queue observations, replay
- * transcripts and block progress.
+ * The watcher's production SQLite store: state-queue observations and replay
+ * transcripts.
  */
 const openWatcherSqliteDurableBackendInternal = async (
   input: {
@@ -386,8 +380,6 @@ const openWatcherSqliteDurableBackendInternal = async (
     schemaVersion: WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION,
     stateQueueObservations,
     replayTranscripts: createWatcherSqliteReplayTranscriptStore(database),
-    openBlockProgress: (authenticationKey) =>
-      createWatcherSqliteBlockProgressStore({ database, authenticationKey }),
     close: () => database.close(),
   });
 };
