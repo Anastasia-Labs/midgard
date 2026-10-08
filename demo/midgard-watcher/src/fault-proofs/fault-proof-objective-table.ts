@@ -296,6 +296,20 @@ export const watcherProofJobActive = (
     state: "active",
   }).length > 0;
 
+/** Whether a job of this objective is queued or active. Its next queue
+ * transition needs its row, so a release leaves the objective's rows to it. */
+export const watcherProofJobPending = (
+  database: WatcherJournalDatabase,
+  objective: WatcherProofObjective,
+): boolean =>
+  (["queued", "active"] as const).some(
+    (state) =>
+      database.rows("fault_proof_queue", {
+        scope: watcherObjectiveScope(objective.category, objective.headerHash),
+        state,
+      }).length > 0,
+  );
+
 /** Prunes a completion verified beyond rollback recovery: its workflow
  * journal, then its rows, decisions included. A crash in between leaves a
  * marked row with no execution, which the next start prunes. */

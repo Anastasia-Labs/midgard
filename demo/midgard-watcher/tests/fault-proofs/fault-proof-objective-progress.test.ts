@@ -28,6 +28,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
 import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-proof-execution.js";
+import { listWatcherProofObjectives } from "../../src/fault-proofs/fault-proof-objective-table.js";
 import {
   createWatcherFaultProofSupervisor,
   watcherFaultProofDeadline,
@@ -35,6 +36,10 @@ import {
 import { openWatcherJournalDatabase } from "../../src/fault-proofs/watcher-journal-database.js";
 import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.js";
 import { WatcherFaultProofL1RefusedError } from "../../src/l1-follower/fault-proof-l1-source.chain.js";
+import type {
+  WatcherProofRetention,
+  WatcherProofRetentionTarget,
+} from "../../src/l1-follower/proof-retention.js";
 import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.js";
 import { handleWatcherOperationsHttpRequest } from "../../src/runtime/operations-observability.handle-http-request.js";
 import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
@@ -384,6 +389,29 @@ const readyzReasons = async (
   return ((await response.json()) as { reasons: readonly string[] }).reasons;
 };
 
+/** A retention that records which objectives' L1 history it holds. */
+const recordingRetention = () => {
+  const pinned = new Set<string>();
+  const name = (target: WatcherProofRetentionTarget) =>
+    `${target.category}/${target.headerHash}`;
+  const retention: WatcherProofRetention = {
+    ...storelessProofRetention,
+    pin: async (target) => (pinned.add(name(target)), { kind: "pinned" }),
+    release: async (target) => void pinned.delete(name(target)),
+  };
+  return { pinned, retention };
+};
+
+/** The recorded objective rows, as `<category>/<headerHash>`. */
+const objectiveRows = (journalRoot: string): readonly string[] =>
+  listWatcherProofObjectives(
+    openWatcherJournalDatabase({
+      journalRoot,
+      authenticationKey: TEST_JOURNAL_KEY,
+    }),
+    ["doubleSpend"],
+  ).map(({ objective }) => `${objective.category}/${objective.headerHash}`);
+
 describe("proof objective progress with durable funding and journals", () => {
   it("holds an objective past its latest safe start with no signed attempt by name, again after a restart, until its header leaves the queue", async () => {
     const test = await setup(20n, true, true);
@@ -531,6 +559,92 @@ describe("proof objective progress with durable funding and journals", () => {
     expect(test.readiness()).toEqual([]);
     expect(test.runOrResume).toHaveBeenCalledOnce();
     expect(supervisor.status().phase).toBe("accepting");
+  });
+
+  it("releases an unheld objective with no signed attempt once its header leaves the queue, and admits it again if the header returns", async () => {
+    const test = await setup(BigInt(Date.now()), true, true);
+    const { pinned, retention } = recordingRetention();
+    const objective = `doubleSpend/${test.fixture.fresh.headerHash}`;
+    const expectOpen = (
+      supervisor: ReturnType<typeof test.createSupervisor>,
+    ) => {
+      expect(supervisor.status()).toMatchObject({
+        phase: "accepting",
+        unfinishedObjectiveCount: 1,
+        journalDecisionMissing: [],
+      });
+      expect([...pinned]).toEqual([objective]);
+      expect(objectiveRows(test.fixture.journalRoot)).toEqual([objective]);
+    };
+    const expectReleased = (
+      supervisor: ReturnType<typeof test.createSupervisor>,
+    ) => {
+      expect(supervisor.status()).toMatchObject({
+        phase: "accepting",
+        unfinishedObjectiveCount: 0,
+        journalDecisionMissing: [],
+      });
+      expect([...pinned]).toEqual([]);
+      expect(objectiveRows(test.fixture.journalRoot)).toEqual([]);
+    };
+    const supervisor = test.createSupervisor(retention);
+    // It runs inside its window, signs nothing and is not held.
+    await test.request(supervisor, 2).accepted;
+    await test.idle(supervisor);
+    expect(test.runOrResume).toHaveBeenCalledOnce();
+    expectOpen(supervisor);
+    // A new observation that still queues its header keeps it.
+    await test.request(supervisor, 3).accepted;
+    await test.idle(supervisor);
+    expectOpen(supervisor);
+    // Its header left the finalized queue: nothing drives it again, so its
+    // row, its L1 history pin and its unfinished count go.
+    await test.request(supervisor, 4, test.fixture.fresh, false).accepted;
+    await test.idle(supervisor);
+    expectReleased(supervisor);
+    const runs = test.runOrResume.mock.calls.length;
+    await supervisor.close();
+    // A restart over the same stores does not adopt it again.
+    await test.fixture.restartStore();
+    const restarted = test.createSupervisor(retention);
+    await test.request(restarted, 5, test.fixture.fresh, false).accepted;
+    await test.idle(restarted);
+    expectReleased(restarted);
+    expect(test.runOrResume).toHaveBeenCalledTimes(runs);
+    // A rollback that brings the header back admits it as a fresh objective.
+    await test.request(restarted, 6).accepted;
+    await test.idle(restarted);
+    expectOpen(restarted);
+    expect(test.runOrResume).toHaveBeenCalledTimes(runs + 1);
+  });
+
+  it("keeps reconciling an objective with a signed attempt after its header leaves the queue", async () => {
+    const test = await setup(BigInt(Date.now()));
+    const { pinned, retention } = recordingRetention();
+    const objective = `doubleSpend/${test.fixture.fresh.headerHash}`;
+    const supervisor = test.createSupervisor(retention);
+    await test.request(supervisor, 2).accepted;
+    await test.idle(supervisor);
+    expect(test.runOrResume).toHaveBeenCalledOnce();
+    test.setBeforeRun(async (invocation) => {
+      expect(
+        assertWorkflowActuationPermitIdentity({
+          permit: invocation.actuationPermit,
+          category: "doubleSpend",
+          rollbackGeneration: "3",
+        }).authority,
+      ).toBe("reconciliation");
+    });
+    await test.request(supervisor, 3, test.fixture.fresh, false).accepted;
+    await test.idle(supervisor);
+    expect(test.runOrResume).toHaveBeenCalledTimes(2);
+    expect(supervisor.status()).toMatchObject({
+      phase: "accepting",
+      unfinishedObjectiveCount: 1,
+      journalDecisionMissing: [],
+    });
+    expect([...pinned]).toEqual([objective]);
+    expect(objectiveRows(test.fixture.journalRoot)).toEqual([objective]);
   });
 
   it.each([

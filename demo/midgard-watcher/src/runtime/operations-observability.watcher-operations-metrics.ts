@@ -211,6 +211,12 @@ export type WatcherOperationsReadinessReason =
    * run again, the process up; clears once its header leaves the finalized
    * queue. */
   | "validation_transcript_pre_follower"
+  /** A fault-proof objective's latest safe start, fixed by its header, passed
+   * before it signed any attempt; it is listed in
+   * `supervisor.journalDecisionMissing` with this `readiness` and the detail
+   * `<category>/<headerHash>`. Held, never run again, the process up; clears
+   * once its header leaves the finalized queue. */
+  | "fault_proof_start_deadline_passed"
   /** A journal database was busy or locked past its timeout;
    * `supervisor.journalBusy` names the failure. The work is requeued in
    * process from durable state after a 1-30 s backoff; clears then. */
@@ -230,9 +236,10 @@ export type WatcherOperationsStatus = Readonly<{
   readiness: "ready" | "not_ready";
   /**
    * The watcher's own reasons, then each named L1 reason of `l1Readiness`
-   * (the follower's and the decision driver's, for example
-   * `l1_follower_catching_up`, `wallet_seed_pending` or a rollback
-   * intervention).
+   * (the follower's, the decision driver's and the proof execution's, for
+   * example `l1_follower_catching_up`, `wallet_seed_pending`, a rollback
+   * intervention or `fault_proof_l1_refused:<reason>`, an objective held on
+   * an L1 read the follower refused for `<reason>`).
    */
   readinessReasons: readonly (WatcherOperationsReadinessReason | string)[];
   /** The named L1 reasons with their detail; empty when L1 holds nothing. */
