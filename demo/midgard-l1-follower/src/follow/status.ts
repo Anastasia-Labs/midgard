@@ -63,6 +63,8 @@ export type FollowStatus = Readonly<{
     steps: number;
     prunedThroughSlot: number | null;
     lastError: string | null;
+    /** Slots a role's prune floor holds the boundary back (null: none). */
+    floorLagSlots: number | null;
   }>;
 }>;
 

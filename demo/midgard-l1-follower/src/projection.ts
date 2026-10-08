@@ -3,6 +3,7 @@ import type { MigrationSet } from "./schema/migrate.js";
 import type { DialectName } from "./sql/backend.js";
 import type {
   DerivationHook,
+  PruneFloor,
   PruneHook,
   RetentionPins,
 } from "./store/context.js";
@@ -27,6 +28,8 @@ export type FollowerProjection = Readonly<{
   derivations?: readonly DerivationHook[];
   retentionPins?: RetentionPins;
   pruneHooks?: readonly PruneHook[];
+  /** A floor on the prune boundary while the role still needs older facts. */
+  pruneFloor?: PruneFloor;
   traffic?: ScenarioTraffic;
   /**
    * Outputs only this projection's `traffic` may spend: the filler never
@@ -83,6 +86,9 @@ export const projectionStoreOptions = (
     ),
     derivations: projections.flatMap((p) => p.derivations ?? []),
     pruneHooks: projections.flatMap((p) => p.pruneHooks ?? []),
+    pruneFloors: projections.flatMap((p) =>
+      p.pruneFloor === undefined ? [] : [p.pruneFloor],
+    ),
     ...(pins.length === 0
       ? {}
       : {

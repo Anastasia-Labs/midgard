@@ -372,6 +372,46 @@ describe.each(adapters)("fact store ($name)", (adapter) => {
     }
   });
 
+  it("holds the prune boundary at the lowest role floor and reports the lag", async () => {
+    const floors: (number | null)[] = [101, null];
+    const { store } = await started(adapter, 1, 3, {
+      pruneFloors: [
+        { name: "first", floor: () => Promise.resolve(floors[0]!) },
+        { name: "second", floor: () => Promise.resolve(floors[1]!) },
+      ],
+    });
+    try {
+      // The boundary k=1 below the tip is b2 (103); the floor holds it at 101.
+      expect(await store.prune()).toMatchObject({
+        done: true,
+        prunedThroughSlot: 101,
+        floorLagSlots: 2,
+      });
+      // TX1#0 was spent at 103, above the floor: kept, and readable at b2.
+      expect(await store.output({ txHash: TX1, index: 0 })).not.toBeNull();
+      expect(await store.pointStatus(point(chain()[1]))).toMatchObject({
+        kind: "canonical",
+      });
+      // A floor at or above the boundary holds nothing.
+      floors[0] = 104;
+      floors[1] = 200;
+      expect(await store.prune()).toMatchObject({
+        prunedThroughSlot: 103,
+        floorLagSlots: null,
+      });
+      expect(await store.output({ txHash: TX1, index: 0 })).toBeNull();
+      // The boundary never moves back below what was pruned.
+      floors[0] = 100;
+      expect(await store.prune()).toMatchObject({
+        prunedThroughSlot: 103,
+        floorLagSlots: null,
+      });
+      expect((await store.checkInvariants()).ok).toBe(true);
+    } finally {
+      await store.close();
+    }
+  });
+
   if (adapter.name === "postgres")
     it("notifies other processes of a committed rewind", async () => {
       const { store, url } = await started(adapter);

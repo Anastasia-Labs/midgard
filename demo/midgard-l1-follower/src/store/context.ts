@@ -50,6 +50,20 @@ export type PruneHook = Readonly<{
   ): Promise<number>;
 }>;
 
+/**
+ * A role's floor on the prune boundary (§11): the boundary never passes the
+ * slot it returns, so every fact spent or closed after that slot is kept
+ * while the role still needs it; null sets no floor. It runs at the start of
+ * each prune step, in its transaction. With several floors the lowest holds.
+ */
+export type PruneFloor = Readonly<{
+  /** Who holds the floor (named in logs). */
+  name: string;
+  floor(
+    context: Readonly<{ tx: SqlTx; dialect: Dialect }>,
+  ): Promise<number | null>;
+}>;
+
 export type StoreContext = Readonly<{
   backend: SqlBackend;
   dialect: Dialect;
@@ -59,4 +73,5 @@ export type StoreContext = Readonly<{
   derivations: readonly DerivationHook[];
   pins: RetentionPins;
   pruneHooks: readonly PruneHook[];
+  pruneFloors: readonly PruneFloor[];
 }>;

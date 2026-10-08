@@ -33,6 +33,7 @@ import {
 } from "./apply.js";
 import type {
   DerivationHook,
+  PruneFloor,
   PruneHook,
   RetentionPins,
   StoreContext,
@@ -112,6 +113,8 @@ export type FactStoreOptions = Readonly<{
   retentionPins?: RetentionPins;
   /** Class B retention decided by the facts, run in each prune step. */
   pruneHooks?: readonly PruneHook[];
+  /** Roles' floors on the prune boundary. */
+  pruneFloors?: readonly PruneFloor[];
 }>;
 
 export type GenerationListener = (
@@ -218,6 +221,7 @@ export const createFactStore = (
     derivations,
     pins: options.retentionPins ?? {},
     pruneHooks: options.pruneHooks ?? [],
+    pruneFloors: options.pruneFloors ?? [],
   };
   const dialect = backend.dialect;
   const lane = new Lane();
