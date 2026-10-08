@@ -16,12 +16,15 @@ import {
 
 /**
  * What the store open checks the stored records against: the member's
- * current retirement binding (when its promise profile is adopted) and the
- * deployment's L1 origin (when configured).
+ * current retirement binding (when its promise profile is adopted), the
+ * deployment's L1 origin (when configured), and k, the depth past which a
+ * terminal header record is final (the manifest's
+ * `automaticRecoveryMaxDepth`).
  */
 export type CommitteeStoreOpenChecks = Readonly<{
   retirementBinding?: CommitteeRetirementBinding;
   l1Origin?: Readonly<{ slot: number }>;
+  securityParameter?: number;
 }>;
 
 /**
@@ -35,8 +38,9 @@ export const COMMITTEE_RETIREMENT_BINDING_CHANGED =
 /**
  * A stored record names an L1 point older than the configured `L1_ORIGIN`.
  * The follower's origin is the deployment's init point, so no committee
- * record can predate it: the configuration is wrong. The one startup error
- * the node exits on besides a stale deployment.
+ * record can predate it: the configuration is wrong. The open throws it, so
+ * the startup retry holds the node unready under it, the process up, until
+ * a restart on the corrected `L1_ORIGIN`.
  */
 export const COMMITTEE_STORE_POINT_BEFORE_L1_ORIGIN =
   "committee_store_point_before_l1_origin";

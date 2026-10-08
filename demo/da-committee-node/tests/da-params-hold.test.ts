@@ -13,12 +13,20 @@ import type {
 } from "../src/l1/da-attestation-reader.js";
 import { loadDaSigner, validateDaSignerMembership } from "../src/signer.js";
 import { bytesToHex } from "../src/utils/hex.js";
-import { minimalConfig, tempDir } from "./helpers.js";
+import {
+  makeObservedNode,
+  makePayloadFixture,
+  minimalConfig,
+  payloadSourceFromBytes,
+  tempDir,
+} from "./helpers.js";
 import { openTestCommitteeStore } from "./helpers/committee-store.js";
 import { fakeL1Source } from "./helpers/fake-l1-source.js";
 
 describe("the on-chain DA params, checked every tick", () => {
-  const committee = async () => {
+  type Signable = Awaited<ReturnType<typeof makePayloadFixture>>;
+  /** `signable`: one finalized, unattested header the tick could sign. */
+  const committee = async (signable?: Signable) => {
     const dir = await tempDir();
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
@@ -61,12 +69,26 @@ describe("the on-chain DA params, checked every tick", () => {
     const service = new CommitteeService({
       config,
       store,
-      l1: fakeL1Source({ fetchStateQueueNodes: async () => [] }),
-      payloadSource: {
-        fetchPayloadCandidates: async () => {
-          throw new Error("no header awaits a payload");
-        },
-      },
+      l1: fakeL1Source({
+        fetchStateQueueNodes: async () =>
+          signable === undefined
+            ? []
+            : [
+                makeObservedNode({
+                  header: signable.header,
+                  headerHash: signable.headerHash,
+                  depth: 10,
+                }),
+              ],
+      }),
+      payloadSource:
+        signable === undefined
+          ? {
+              fetchPayloadCandidates: async () => {
+                throw new Error("no header awaits a payload");
+              },
+            }
+          : payloadSourceFromBytes(signable.payloadCbor),
       signer,
       signerValidation,
       daChainReader: {
@@ -120,6 +142,35 @@ describe("the on-chain DA params, checked every tick", () => {
     await expect(service.readinessSnapshot()).resolves.toMatchObject({
       ready: true,
     });
+  });
+
+  it("holds a finalized header it could sign while the on-chain committee differs, and signs it once the committee agrees", async () => {
+    const signable = await makePayloadFixture();
+    const { service, store, chain, live } = await committee(signable);
+    await service.initialize();
+    chain.read = async () => ({
+      ...live,
+      committeeHex: "fe".repeat(32) + "ff".repeat(32),
+    });
+    for (let i = 0; i < 2; i += 1) {
+      await expect(service.tick()).resolves.toMatchObject({
+        signedHeaders: 0,
+        held: [
+          `${L1_DA_PARAMS_MISMATCH}: on-chain DA committee does not match committee node config`,
+        ],
+      });
+    }
+    await expect(store.listDaSignatures(signable.headerHash)).resolves.toEqual(
+      [],
+    );
+
+    chain.read = async () => live;
+    const result = await service.tick();
+    expect(result).toMatchObject({ signedHeaders: 1 });
+    expect(result.held).toBeUndefined();
+    await expect(
+      store.listDaSignatures(signable.headerHash),
+    ).resolves.toHaveLength(1);
   });
 
   it("refuses stale deployment state at startup, before any read", async () => {

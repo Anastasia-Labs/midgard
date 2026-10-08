@@ -22,6 +22,7 @@ import {
   committeeL1InterventionReason,
   committeeL1Source,
   L1_FOLLOWER_UNCONFIGURED,
+  L1_NODE_HANDSHAKE_FAILED,
   untilCommitteeL1SourceReady,
 } from "../../src/l1/follower/l1-follower.js";
 import { committeeProjection } from "../../src/l1/follower/projection.js";
@@ -159,6 +160,48 @@ describe("the committee's L1 source over the follower", () => {
     }
   });
 
+  it("names a refused node handshake an intervention, and any other unavailable node transient", () => {
+    const sourceAt = (node: FollowStatus["node"]) =>
+      committeeL1Source({
+        store: {} as FactStore,
+        parameters: { confirmationDepth: 2, securityParameter: 4 },
+        status: () =>
+          status({
+            node,
+            readiness: [
+              {
+                reason: FOLLOWER_NODE_UNAVAILABLE,
+                detail: `${node!.reason}: ${node!.detail}`,
+              },
+            ],
+          }),
+        slotTime: async () => SIM_SLOT_TIME,
+      });
+    const refused = sourceAt({
+      reason: "node_handshake_failed",
+      detail: "node handshake: version mismatch",
+    }).readiness();
+    expect(refused).toEqual([
+      {
+        reason: L1_NODE_HANDSHAKE_FAILED,
+        detail:
+          "the L1 node refused the handshake; check CARDANO_NETWORK_MAGIC and the node's network: node_handshake_failed: node handshake: version mismatch",
+      },
+    ]);
+    expect(committeeL1InterventionReason(refused)).toEqual(refused[0]);
+    const down = sourceAt({
+      reason: "node_unreachable",
+      detail: "dial unix: no such file",
+    }).readiness();
+    expect(down).toEqual([
+      {
+        reason: FOLLOWER_NODE_UNAVAILABLE,
+        detail: "node_unreachable: dial unix: no such file",
+      },
+    ]);
+    expect(committeeL1InterventionReason(down)).toBeUndefined();
+  });
+
   it("asks the store where a point stands, by its block hash bytes", async () => {
     const asked: unknown[] = [];
     const answer = { kind: "canonical" } as unknown as PointStatus;
@@ -291,6 +334,7 @@ describe("waiting for the committee's L1 source", () => {
     [FOLLOWER_MIGRATION_FAILED, "intervention"],
     [FOLLOWER_PRUNE_FAILING, "intervention"],
     [L1_FOLLOWER_UNCONFIGURED, "intervention"],
+    [L1_NODE_HANDSHAKE_FAILED, "intervention"],
     ["rollback_beyond_k", "intervention"],
     ["intersection_outside_history", "intervention"],
     ["origin_after_protocol_init", "intervention"],

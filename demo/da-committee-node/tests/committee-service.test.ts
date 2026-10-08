@@ -2,6 +2,7 @@ import { describe } from "vitest";
 
 import { registerCommitteeCleanup } from "./committee-service.test/fixtures.js";
 import { registerL1AbsorptionTests } from "./committee-service.test/l1-absorption.js";
+import { registerL1FinalityGateTests } from "./committee-service.test/l1-finality-gate.js";
 import { registerL1IntegrityTests } from "./committee-service.test/l1-integrity.js";
 import { registerLifecycleTests } from "./committee-service.test/lifecycle.js";
 import { registerParentStateTests } from "./committee-service.test/parent-state.js";
@@ -16,6 +17,7 @@ describe("CommitteeService", () => {
   registerSigningTests();
   registerL1IntegrityTests();
   registerL1AbsorptionTests();
+  registerL1FinalityGateTests();
   registerPayloadsTests();
   registerParentStateTests();
   registerLifecycleTests();

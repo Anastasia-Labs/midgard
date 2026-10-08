@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { Client } from "pg";
 import { describe, expect, it } from "vitest";
 
-import { isFatalStartupError, startupReason } from "../src/startup.js";
+import { startupReason } from "../src/startup.js";
 import type { CommitteeStoreOpenChecks } from "../src/store/postgres.open-checks.js";
 import type { CommitteeRetirementBinding } from "../src/store/retirement-model.js";
 import {
@@ -191,7 +191,6 @@ describe("a committee store the BASE build wrote, opened by this build", () => {
     );
     expect(refused).toBeInstanceOf(Error);
     // The startup retry reports it on /readyz and tries again.
-    expect(isFatalStartupError(refused)).toBe(false);
     expect(startupReason(refused)).toBe(
       "starting:committee_retirement_binding_changed: the stored retirement floor is bound to another actorId",
     );
@@ -200,17 +199,16 @@ describe("a committee store the BASE build wrote, opened by this build", () => {
     ).resolves.toEqual(stored);
   });
 
-  it("exits on a stored point older than L1_ORIGIN, naming it, and opens at the origin itself", async () => {
+  it("refuses a stored point older than L1_ORIGIN, naming it for /readyz, and opens at the origin itself", async () => {
     const database = await baseStore();
     const refused = await refusal(
       openTestCommitteeStore(database, {
         openChecks: { l1Origin: { slot: BASE_POINT_SLOT + 1 } },
       }),
     );
-    expect(isFatalStartupError(refused)).toBe(true);
-    expect((refused as Error).message).toMatch(
+    expect(startupReason(refused)).toMatch(
       new RegExp(
-        `^committee_store_point_before_l1_origin: the .+ names slot ${BASE_POINT_SLOT.toString()}, before L1_ORIGIN slot ${(BASE_POINT_SLOT + 1).toString()}; L1_ORIGIN must be the deployment's init point$`,
+        `^starting:committee_store_point_before_l1_origin: the .+ names slot ${BASE_POINT_SLOT.toString()}, before L1_ORIGIN slot ${(BASE_POINT_SLOT + 1).toString()}; L1_ORIGIN must be the deployment's init point$`,
         "u",
       ),
     );
@@ -232,7 +230,6 @@ describe("a committee store the BASE build wrote, opened by this build", () => {
     );
     const broken = await outbox(database.url);
     const refused = await refusal(openTestCommitteeStore(database));
-    expect(isFatalStartupError(refused)).toBe(false);
     expect(startupReason(refused)).toBe(
       `starting:committee_store_record_unreadable: 1 pending decision outbox record(s) do not parse (first ${pending!.id}); resolve or delete them`,
     );
@@ -245,6 +242,98 @@ describe("a committee store the BASE build wrote, opened by this build", () => {
       ...broken,
       [externalRows(broken).failed!.id]: stripped,
     });
+  });
+
+  it("demotes a terminal header record whose exit is not deeper than k to its landed status, not final, so the tick derives the exit again", async () => {
+    const K = 4;
+    const database = await baseStore();
+    const headers = () =>
+      records(database.url, "committee_state_queue_headers", "header_hash");
+    const [baseHash, base] = Object.entries(await headers())[0]!;
+    // Terminal rows an older build froze at a shallow depth, beside BASE's
+    // own row (removed, 5000 deep).
+    const terminalAt = (
+      byte: string,
+      status: string,
+      depth: number | undefined,
+      changes: Row = {},
+    ) => {
+      const { depth: _depth, ...point } = base.observedChainPoint as Row;
+      void _depth;
+      return {
+        ...base,
+        ...changes,
+        headerHash: byte.repeat(28),
+        status,
+        observedChainPoint: depth === undefined ? point : { ...point, depth },
+      };
+    };
+    const shallow = {
+      atK: terminalAt("c1", "merged", K),
+      attested: terminalAt("c2", "removed", 1, {
+        daAttestation: { Attested: { bitmap: "01" } },
+      }),
+      conflicted: terminalAt("c3", "merged", 2, {
+        validationErrors: ["linked_list_key_mismatch"],
+      }),
+      noDepth: terminalAt("c4", "removed", undefined),
+    };
+    const final = terminalAt("c5", "merged", K + 1);
+    await withClient(database.url, async (client) => {
+      for (const record of [...Object.values(shallow), final])
+        await client.query(
+          "INSERT INTO committee_state_queue_headers (header_hash, record) VALUES ($1, $2::jsonb)",
+          [record.headerHash, JSON.stringify(record)],
+        );
+    });
+    const store = await openTestCommitteeStore(database, {
+      openChecks: { securityParameter: K },
+    });
+    const demoted = (record: Row, status: string) => ({
+      ...record,
+      status,
+      finalized: false,
+      observedChainPoint: {
+        ...(record.observedChainPoint as Row),
+        finalized: false,
+      },
+    });
+    // The tick reads them again: its exits are asked of the follower.
+    const unsettled = await store.listUnsettledStateQueueHeaders();
+    await closeTestCommitteeStore(store);
+    expect(unsettled.map(({ headerHash }) => headerHash)).toEqual(
+      Object.values(shallow).map(({ headerHash }) => headerHash),
+    );
+    const after = await headers();
+    expect(Object.values(shallow).map((r) => after[r.headerHash])).toEqual([
+      demoted(shallow.atK, "unattested"),
+      demoted(shallow.attested, "attested"),
+      demoted(shallow.conflicted, "conflicted"),
+      demoted(shallow.noDepth, "unattested"),
+    ]);
+    // Final exits are kept as they were.
+    expect(after[baseHash]).toEqual(base);
+    expect(after[final.headerHash]).toEqual(final);
+    // A second open changes nothing.
+    const again = await openTestCommitteeStore(database, {
+      openChecks: { securityParameter: K },
+    });
+    await closeTestCommitteeStore(again);
+    await expect(headers()).resolves.toEqual(after);
+  });
+
+  it("leaves terminal header records as they are when the open is not given k", async () => {
+    const database = await baseStore();
+    const before = await records(
+      database.url,
+      "committee_state_queue_headers",
+      "header_hash",
+    );
+    const store = await openTestCommitteeStore(database);
+    await closeTestCommitteeStore(store);
+    await expect(
+      records(database.url, "committee_state_queue_headers", "header_hash"),
+    ).resolves.toEqual(before);
   });
 
   const OBSERVATION = {

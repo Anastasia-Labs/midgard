@@ -665,10 +665,10 @@ describe("loadCommitteeConfig", () => {
       await expect(loadCommitteeConfig(baseEnv)).rejects.toThrow(
         /CARDANO_NETWORK_MAGIC is required for Custom/,
       );
-      for (const invalid of ["-1", "01", "1.5", "4294967296"]) {
+      for (const invalid of ["-1", "0", "00", "01", "1.5", "4294967296"]) {
         await expect(
           loadCommitteeConfig({ ...baseEnv, CARDANO_NETWORK_MAGIC: invalid }),
-        ).rejects.toThrow(/CARDANO_NETWORK_MAGIC/);
+        ).rejects.toThrow(/^CARDANO_NETWORK_MAGIC must be .+ non-zero /u);
       }
 
       const config = await loadCommitteeConfig({

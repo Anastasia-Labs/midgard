@@ -32,6 +32,15 @@ export const COMMITTEE_STORE_RECORD_UNREADABLE =
  *   `committee_store_record_unreadable` naming it, and nothing is changed.
  *   Terminal records (published, reconciled, failed) are left as they are
  *   and never read here: the pending-record index serves the statement.
+ * - A merged or removed header record (class B) whose stored exit is not
+ *   deeper than k (`securityParameter`) is demoted to the status of its
+ *   landed output, not final. The tick reads only headers not yet settled
+ *   and writes a terminal record only once the exit is final, so such a
+ *   record would otherwise stay frozen at its shallow depth, its payload
+ *   held as `terminal_recovery_pending` for good. Demoted, the tick asks
+ *   the follower for the exit again and writes it once final; until then
+ *   the payload is retained as any header not yet settled. A store this
+ *   build wrote holds no such record, so the rewrite is a no-op there.
  *
  * The caller holds the store's instance lock; each write runs on a
  * connection the server confirms still holds it.
@@ -40,6 +49,7 @@ export const upgradeCommitteeL1Records = async (
   pool: Pool,
   lock: Pick<PostgresStoreInstanceLock, "assertHeldAtServer">,
   write: (line: string) => void = (line) => process.stderr.write(line),
+  securityParameter?: number,
 ): Promise<void> => {
   const state = await pool.query<{ readonly record: unknown }>(
     "SELECT record FROM committee_l1_source_state WHERE id = 1",
@@ -94,4 +104,55 @@ export const upgradeCommitteeL1Records = async (
         })}\n`,
       );
   });
+  if (securityParameter !== undefined)
+    await demoteShallowTerminalHeaders(pool, lock, write, securityParameter);
+};
+
+/**
+ * The status the follower's walk gives a landed output (any problem makes
+ * it conflicted), read from the stored record.
+ */
+const LANDED_STATUS_SQL = `CASE
+  WHEN jsonb_typeof(record->'validationErrors') = 'array'
+   AND jsonb_array_length(record->'validationErrors') > 0 THEN 'conflicted'
+  WHEN record->'daAttestation' = '"Unattested"'::jsonb THEN 'unattested'
+  ELSE 'attested'
+END`;
+
+const demoteShallowTerminalHeaders = async (
+  pool: Pool,
+  lock: Pick<PostgresStoreInstanceLock, "assertHeldAtServer">,
+  write: (line: string) => void,
+  securityParameter: number,
+): Promise<void> => {
+  if (!Number.isSafeInteger(securityParameter) || securityParameter < 0)
+    throw new Error("securityParameter must be a non-negative safe integer");
+  const demoted = await fencedOpenTransaction(pool, lock, (client) =>
+    client.query<{ readonly header_hash: string }>(
+      `UPDATE committee_state_queue_headers
+          SET record = jsonb_set(
+                jsonb_set(
+                  jsonb_set(record, '{status}', to_jsonb(${LANDED_STATUS_SQL})),
+                  '{finalized}', 'false'::jsonb),
+                '{observedChainPoint,finalized}', 'false'::jsonb),
+              updated_at = NOW()
+        WHERE record->>'status' IN ('merged', 'removed')
+          AND NOT COALESCE(
+            CASE WHEN jsonb_typeof(record->'observedChainPoint'->'depth') = 'number'
+                 THEN (record->'observedChainPoint'->>'depth')::numeric > $1
+            END,
+            false
+          )
+        RETURNING header_hash`,
+      [securityParameter],
+    ),
+  );
+  if (demoted.rows.length > 0)
+    write(
+      `${JSON.stringify({
+        event: "committee_terminal_headers_demoted",
+        securityParameter,
+        headers: demoted.rows.map(({ header_hash }) => header_hash).sort(),
+      })}\n`,
+    );
 };

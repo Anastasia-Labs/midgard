@@ -54,7 +54,6 @@ export type RetentionL1View = {
    * null while no block is final (nothing is then past its horizon).
    */
   readonly finalBlockTimeMs: number | null;
-  readonly recoveryProofUnavailable?: boolean;
 };
 
 /** What one retained payload's release is decided on. */
@@ -397,7 +396,6 @@ export const retentionCycleOptions = (
   confirmedHeadHash: view.confirmedHeadHash,
   liveQueueHeaderHashes: view.liveQueueHeaderHashes,
   finalBlockTimeMs: view.finalBlockTimeMs,
-  recoveryProofUnavailable: view.recoveryProofUnavailable,
 });
 
 const retentionDeadlineReportFromCandidates = (
@@ -459,8 +457,7 @@ const retentionDeadlineReportFromCandidates = (
       const missing = candidates.filter(
         (candidate) =>
           candidate.decision.reasonCode === "terminal_recovery_pending" &&
-          (options.recoveryProofUnavailable === true ||
-            candidate.terminalHistoryAuthorityMismatch ||
+          (candidate.terminalHistoryAuthorityMismatch ||
             candidate.fingerprintMismatch ||
             options.automaticRecoveryMaxDepth === undefined),
       ).length;

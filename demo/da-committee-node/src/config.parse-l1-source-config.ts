@@ -44,20 +44,22 @@ const cardanoNetworkMagic = (env: Env, network: string): number => {
   );
 };
 
+// Zero names no Cardano network: a handshake on it is refused, so it is a
+// configuration error here, not an unready node later.
 const networkMagicInteger = (value: string): number => {
-  if (!/^(?:0|[1-9][0-9]*)$/u.test(value)) {
+  if (!/^[1-9][0-9]*$/u.test(value)) {
     throw new Error(
-      "CARDANO_NETWORK_MAGIC must be a canonical unsigned 32-bit integer",
+      "CARDANO_NETWORK_MAGIC must be a canonical non-zero unsigned 32-bit integer",
     );
   }
   const parsed = Number(value);
   if (
     !Number.isSafeInteger(parsed) ||
-    parsed < 0 ||
+    parsed < 1 ||
     parsed > CARDANO_NETWORK_MAGIC_MAX
   ) {
     throw new Error(
-      "CARDANO_NETWORK_MAGIC must be a canonical unsigned 32-bit integer",
+      "CARDANO_NETWORK_MAGIC must be a canonical non-zero unsigned 32-bit integer",
     );
   }
   return parsed;

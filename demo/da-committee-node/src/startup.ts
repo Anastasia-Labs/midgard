@@ -8,21 +8,6 @@ export const STARTUP_RETRY_INITIAL_MS = 1_000;
 /** Ceiling of that wait as it doubles. */
 export const STARTUP_RETRY_MAX_MS = 30_000;
 
-/**
- * A startup failure no retry can repair: the store holds state of another
- * deployment (`stale_deployment_state_requires_fresh_redeploy`), or a stored
- * record names an L1 point before the configured `L1_ORIGIN`
- * (`committee_store_point_before_l1_origin`: the configuration is wrong).
- * Everything else a dependency throws while the node starts (Postgres, the
- * local node not up yet, a peer address that does not resolve yet) is
- * retried.
- */
-export const isFatalStartupError = (error: unknown): boolean =>
-  error instanceof Error &&
-  /stale_deployment_state_requires_fresh_redeploy|committee_store_point_before_l1_origin/u.test(
-    error.message,
-  );
-
 /** The readiness reason a failed startup attempt reports. */
 export const startupReason = (error: unknown): string =>
   isInstanceLockHeldElsewhere(error)
@@ -32,8 +17,17 @@ export const startupReason = (error: unknown): string =>
 /**
  * Runs `attempt` until it succeeds, with a doubling backoff between tries,
  * reporting each failure as the `starting:<reason>` it leaves readiness on.
- * Rethrows a fatal error at once. A failed attempt must release whatever it
- * opened before it throws.
+ * Rethrows an error `isFatal` names at once (a one-shot run names every
+ * error); the long-running node names none, so it never exits once its
+ * `/readyz` listener is bound. That includes a failure no wait repairs, such
+ * as a store holding another deployment's state
+ * (`stale_deployment_state_requires_fresh_redeploy`) or a stored point
+ * before the configured `L1_ORIGIN`
+ * (`committee_store_point_before_l1_origin`): each holds the node unready
+ * under its named reason, which carries the remedy, and the capped backoff
+ * keeps retrying, so the node starts once an operator resets the store or
+ * restarts it on a corrected configuration. A failed attempt must release
+ * whatever it opened before it throws.
  */
 export const retryStartup = async <T>(args: {
   readonly attempt: () => Promise<T>;
@@ -44,7 +38,7 @@ export const retryStartup = async <T>(args: {
   readonly initialMs?: number;
   readonly maxMs?: number;
 }): Promise<T> => {
-  const isFatal = args.isFatal ?? isFatalStartupError;
+  const isFatal = args.isFatal ?? (() => false);
   const sleep =
     args.sleep ??
     ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
