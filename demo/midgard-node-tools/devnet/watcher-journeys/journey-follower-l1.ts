@@ -67,6 +67,8 @@ export const journeyFollowerNode = (
   binaryPath: join(context.runDirectory, "work/midgard-l1-node-transport"),
   socketPath: join(context.runDirectory, "cardano/ipc/node.socket"),
   networkMagic: context.customNetwork.networkMagic,
+  // The bound the journey session configures for the run watcher's l1.
+  requestTimeoutMs: 30_000,
 });
 
 /**

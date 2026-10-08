@@ -109,7 +109,7 @@ export const classificationMissRecorder = (
   const handle = (input: MissInput): WatcherClassificationMiss => {
     const { error, subjectDigest, verification } = input;
     const header = input.observation.finalizedHeaders[input.index]!;
-    // Kupo, Ogmios, the node or a provider did not answer, or moved while a
+    // The follower, the node or a provider did not answer, or moved while a
     // snapshot was read (see `isWatcherL1TransientFailure`); or this
     // watcher's own DA node is not up, so no source was asked. Either way
     // the read is incomplete, which says nothing about the header.
@@ -212,39 +212,6 @@ export const classificationMissRecorder = (
         };
       }
       return { outcome, failure: input.error };
-    },
-  });
-};
-
-/** Production retry spacing for a deferred suffix: 1 s doubling to 60 s. */
-export const watcherDeferredRetryDelayMs = (consecutive: number): number =>
-  Math.min(60_000, 1_000 * 2 ** Math.min(Math.max(consecutive - 1, 0), 6));
-
-/**
- * Bounds how often a deferred suffix is retried. Every canonical wake asks;
- * only a wake after the current delay retries, and the delay grows with each
- * retry that defers again. A new queue observation always classifies.
- */
-export const deferredRetryBackoff = (
-  dependencies: Pick<
-    BridgeDependencies,
-    "deferredRetryDelayMs" | "monotonicNowMs"
-  >,
-) => {
-  const now = dependencies.monotonicNowMs ?? (() => performance.now());
-  let consecutive = 0;
-  let notBeforeMs = Number.NEGATIVE_INFINITY;
-  return Object.freeze({
-    settle: (deferred: boolean): void => {
-      consecutive = deferred ? consecutive + 1 : 0;
-      notBeforeMs = deferred
-        ? now() + (dependencies.deferredRetryDelayMs?.(consecutive) ?? 0)
-        : Number.NEGATIVE_INFINITY;
-    },
-    due: (): boolean => now() >= notBeforeMs,
-    reset: (): void => {
-      consecutive = 0;
-      notBeforeMs = Number.NEGATIVE_INFINITY;
     },
   });
 };

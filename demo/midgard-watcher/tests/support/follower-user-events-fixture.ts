@@ -14,16 +14,13 @@ import {
   openSqliteFactStore,
   projectionStoreOptions,
 } from "@al-ft/midgard-l1-follower";
-import { eventProjection } from "@al-ft/midgard-l1-follower/events";
 import { CML } from "@lucid-evolution/lucid";
 
 import { RELEASE_FINALITY_DEPTH } from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import { watcherFollowedScripts } from "../../src/l1-follower/deployment-follower.js";
+import { watcherFollowerProjections } from "../../src/l1-follower/follower-runtime.js";
 import { readWatcherObservation } from "../../src/l1-follower/observation.js";
-import {
-  watcherProjection,
-  watcherUnitHistoryPolicies,
-} from "../../src/l1-follower/projection.js";
+import { watcherUnitHistoryPolicies } from "../../src/l1-follower/projection.js";
 import { createWatcherProofRetention } from "../../src/l1-follower/proof-retention.js";
 import { createFollowerRawReads } from "../../src/l1-follower/raw-reads.js";
 import { createWatcherFollowerUserEvents } from "../../src/l1-follower/user-events.js";
@@ -175,10 +172,7 @@ export const openFollowerUserEvents = async (
   };
   const store: FactStore = openSqliteFactStore({
     ...projectionStoreOptions(
-      [
-        watcherProjection(projected),
-        eventProjection(deployment.scripts.eventProjection),
-      ],
+      watcherFollowerProjections(projected, deployment.scripts.eventProjection),
       {
         securityParameter: input.k ?? RELEASE_FINALITY_DEPTH + 2,
         trackedSet: {
@@ -300,6 +294,7 @@ export {
   forcedOrderBurnTransaction,
   type ForcedOrderPayload,
   forcedOrderTransaction,
+  listOrderRetirementTransaction,
   listOrderTransaction,
   PLACEHOLDER_FORCED_PAYLOAD,
   syntheticTransaction,

@@ -119,6 +119,7 @@ export const verifyJourneyWorkflowBindings = async (input: {
       networkMagic: (
         await deriveWatcherNativeGenesisIdentity({ watcherConfig })
       ).networkMagic,
+      requestTimeoutMs: watcherConfig.l1.requestTimeoutMs,
     },
     origin: watcherConfig.l1.origin,
     automaticRecoveryMaxDepth: watcherDeploymentReleaseFinalityPolicy(

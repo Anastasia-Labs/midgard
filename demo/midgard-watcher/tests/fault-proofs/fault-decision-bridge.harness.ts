@@ -37,7 +37,6 @@ export const harness = (input: {
   ) => ReadonlySet<string>;
   readonly mergedHeaders?: BridgeDependencies["mergedHeaders"];
   readonly warn?: BridgeDependencies["warn"];
-  readonly deferredRetryDelayMs?: BridgeDependencies["deferredRetryDelayMs"];
   readonly resolvePredecessorOverride?: (
     header: WatcherStateQueueHeaderObservation,
   ) => Promise<WatcherStateQueueHeaderObservation | undefined>;
@@ -103,9 +102,6 @@ export const harness = (input: {
         ? {}
         : { mergedHeaders: input.mergedHeaders }),
       ...(input.warn === undefined ? {} : { warn: input.warn }),
-      ...(input.deferredRetryDelayMs === undefined
-        ? {}
-        : { deferredRetryDelayMs: input.deferredRetryDelayMs }),
       retainDecisionAuthorities: (digest) =>
         retainedDecisionAuthorities.push(digest),
       decisionUsesLocalEventHistory: () =>

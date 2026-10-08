@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/anastasia-labs/midgard-l1-node-transport/mocknode"
+	gcbor "github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/protocol/localtxmonitor"
 	"github.com/fxamacker/cbor/v2"
 )
@@ -529,6 +531,30 @@ func TestDeepDatumBlockPassesHeaderDecode(t *testing.T) {
 	}
 	if _, _, _, err := blockIdentity(mocknode.BlockType, []byte{0x80}); err == nil {
 		t.Fatal("an empty array was admitted as a block")
+	}
+}
+
+func TestBlockBodyMustMatchItsHeader(t *testing.T) {
+	block, err := mocknode.MakeBlock(3, 30, mocknode.GenesisHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parts []gcbor.RawMessage
+	if _, err := gcbor.Decode(block.Raw, &parts); err != nil {
+		t.Fatal(err)
+	}
+	// A different invalid-transactions set: same header, another body.
+	tampered := append([]gcbor.RawMessage(nil), parts...)
+	tampered[4], err = gcbor.Encode([]uint{0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := gcbor.Encode(tampered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := blockIdentity(mocknode.BlockType, raw); !errors.Is(err, errBlockBodyMismatch) {
+		t.Fatalf("a block whose body differs from its header was admitted: %v", err)
 	}
 }
 

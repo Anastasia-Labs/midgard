@@ -9,11 +9,13 @@ import "../../src/runtime/watcher-runtime.js";
 import "./process-config.watcher-config-value.js";
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { join } from "node:path";
 
 import { h28 } from "@al-ft/midgard-test-support/hex";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { WatcherPermanentRefusalError } from "../../src/runtime/permanent-refusal.js";
 import {
   loadWatcherProcessConfigFile,
   parseWatcherProcessConfig,
@@ -51,6 +53,44 @@ describe("production process authority separation", () => {
     await expect(loadWatcherProcessConfigFile(path)).resolves.toEqual(config);
   });
 
+  it("refuses permanently a node socket path that exists and is not a socket, and admits a socket or a missing path", async () => {
+    const directory = await mkdtemp("/var/tmp/midgard-process-config-");
+    directories.push(directory);
+    const load = async (socketPath: string) => {
+      const value = watcherConfigValue();
+      value.l1.source.chainSync.socketPath = socketPath;
+      const path = join(directory, "process.json");
+      await writeFile(
+        path,
+        JSON.stringify({ ...productionConfig(), watcherConfig: value }),
+      );
+      return await loadWatcherProcessConfigFile(path);
+    };
+    const file = join(directory, "node.socket");
+    await writeFile(file, "");
+    for (const [path, kind] of [
+      [file, "a regular file"],
+      [directory, "a directory"],
+    ] as const) {
+      const refused = load(path);
+      await expect(refused).rejects.toBeInstanceOf(
+        WatcherPermanentRefusalError,
+      );
+      await expect(refused).rejects.toThrow(
+        `$.l1.source.chainSync.socketPath ${path} is ${kind}, not a socket`,
+      );
+    }
+    await expect(load(join(directory, "absent.socket"))).resolves.toBeDefined();
+    const socket = join(directory, "live.socket");
+    const server = createServer();
+    await new Promise<void>((resolve) => server.listen(socket, resolve));
+    try {
+      await expect(load(socket)).resolves.toBeDefined();
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
   it("admits only acceptance Preprod or Custom local-node watcher topology", () => {
     expect(productionConfig().watcherConfig.l1.source.sourceMode).toBe(
       "local_node",
@@ -68,17 +108,19 @@ describe("production process authority separation", () => {
         watcherRollbackKeySource:
           base.watcherConfig.storage.rollbackAuthorityKeySource,
       }),
-    ).toThrow("unknown or missing fields");
+    ).toThrow(
+      'unknown or missing fields: missing=[] unknown=["watcherRollbackKeySource"]',
+    );
     expect(() =>
       parseWatcherProcessConfig({
         ...base,
         readinessHeaderHash: h28(0x77),
       }),
-    ).toThrow("unknown or missing fields");
+    ).toThrow('missing=[] unknown=["readinessHeaderHash"]');
     expect(() => {
       const { ruleBundlePath: _omitted, ...withoutBundle } = base;
       return parseWatcherProcessConfig(withoutBundle);
-    }).toThrow("unknown or missing fields");
+    }).toThrow('missing=["ruleBundlePath"] unknown=[]');
     expect(() =>
       parseWatcherProcessConfig({
         ...base,

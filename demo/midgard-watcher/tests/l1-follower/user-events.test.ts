@@ -11,6 +11,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { RELEASE_FINALITY_DEPTH } from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-header.js";
+import { L1_PROOF_EVENT_PRUNED } from "../../src/l1-follower/proof-retention.js";
 import { WatcherUserEventUnavailable } from "../../src/l1-follower/user-events.js";
 import {
   assertWatcherUserEventAuthorityCurrent,
@@ -24,6 +25,7 @@ import {
   FORCED_ORDER_INCLUSION_TIME,
   forcedOrderBurnTransaction,
   forcedOrderTransaction,
+  listOrderRetirementTransaction,
   listOrderTransaction,
   openFollowerUserEvents,
   PLACEHOLDER_FORCED_PAYLOAD,
@@ -369,5 +371,110 @@ describe("watcher user events from follower facts", () => {
       }),
       /history was pruned/u,
     );
+  });
+
+  it("refuses a cutoff whose block hash is not the stored block at the commit's slot", async () => {
+    const setup = await commitChain();
+    const moved = { ...setup.header, observedBlockHash: "00".repeat(32) };
+    await unavailable(
+      setup.follower.userEvents.headerFence(moved),
+      /is not the stored block at slot/u,
+    );
+    await unavailable(
+      setup.follower.userEvents.eventAuthority({
+        kind: "deposit",
+        eventId: ID.deposit.cborHex,
+        throughHeader: moved,
+      }),
+      /is not the stored block at slot/u,
+    );
+  });
+});
+
+/**
+ * A deposit admitted before the commit, retired in the next block, and the
+ * commit made release-deep: the retired event's row prunes once its
+ * retirement is k deep, unless a hold under an open objective keeps it.
+ */
+const retiredDepositChain = async () => {
+  const follower = await openFollowerUserEvents({ deployment, k: K });
+  opened.push(follower);
+  const chain = syntheticChain();
+  const initializationTx = initializationTransaction(deployment.authority);
+  const depositTx = listOrderTransaction(deployment, "deposit", ID.deposit);
+  chain.next([initializationTx]);
+  chain.next([
+    depositTx,
+    commitTransaction(
+      deployment.authority,
+      transactionHash(initializationTx),
+      createSyntheticStateQueueHeader(),
+    ),
+  ]);
+  chain.next([
+    listOrderRetirementTransaction(
+      deployment,
+      "deposit",
+      ID.deposit,
+      depositTx,
+    ),
+  ]);
+  chain.empties(RELEASE_FINALITY_DEPTH - 2);
+  await follower.apply(chain.blocks);
+  const header = (await follower.observe()).finalizedHeaders[0]!;
+  const target = {
+    category: "validationTraceDispute",
+    headerHash: header.headerHash,
+  };
+  const deposit = () =>
+    follower.userEvents.eventAuthority({
+      kind: "deposit",
+      eventId: ID.deposit.cborHex,
+      throughHeader: header,
+    });
+  /** Applies K + 2 empty blocks, so the retirement is past k, and prunes. */
+  const pastK = async () => {
+    chain.empties(K + 2);
+    await follower.apply(chain.blocks.slice(-(K + 2)));
+    await follower.pruneAll();
+  };
+  return { follower, target, deposit, pastK };
+};
+
+describe("watcher user events held past k for an open objective", () => {
+  it("reads a retired deposit past k once a capture under the header's pin held it", async () => {
+    const { follower, target, deposit, pastK } = await retiredDepositChain();
+    await expect(follower.proofRetention.pin(target)).resolves.toEqual({
+      kind: "pinned",
+    });
+    const first = await readWatcherUserEventAuthority(await deposit());
+    await pastK();
+    await expect(
+      readWatcherUserEventAuthority(await deposit()),
+    ).resolves.toEqual(first);
+    expect(follower.proofRetention.readiness()).toEqual([]);
+    // Released, the row prunes as any retired event's does.
+    await follower.proofRetention.release(target);
+    await follower.pruneAll();
+    await unavailable(deposit(), /rows were pruned/u);
+  });
+
+  it("names a deposit pruned before a hold held it, until the objective is released", async () => {
+    const { follower, target, deposit, pastK } = await retiredDepositChain();
+    await follower.proofRetention.pin(target);
+    await pastK();
+    await unavailable(deposit(), /rows were pruned/u);
+    expect(follower.proofRetention.readiness()).toEqual([
+      expect.objectContaining({ reason: L1_PROOF_EVENT_PRUNED }),
+    ]);
+    await follower.proofRetention.release(target);
+    expect(follower.proofRetention.readiness()).toEqual([]);
+  });
+
+  it("names a pruned deposit read for no open objective, apart from one never admitted", async () => {
+    const { follower, deposit, pastK } = await retiredDepositChain();
+    await pastK();
+    await unavailable(deposit(), /rows were pruned/u);
+    expect(follower.proofRetention.readiness()).toEqual([]);
   });
 });

@@ -1,6 +1,7 @@
 import type { DialectName } from "@al-ft/midgard-l1-follower";
 
 import {
+  WATCHER_PROOF_PIN_EVENTS_TABLE,
   WATCHER_PROOF_PIN_UNITS_TABLE,
   WATCHER_PROOF_PINS_TABLE,
   WATCHER_TX_INPUTS_TABLE,
@@ -37,5 +38,24 @@ CREATE TABLE ${WATCHER_TX_INPUTS_TABLE} (
   PRIMARY KEY (tx_hash, out_tx_hash, out_index)
 );
 CREATE INDEX ${WATCHER_TX_INPUTS_TABLE}_out ON ${WATCHER_TX_INPUTS_TABLE} (out_tx_hash, out_index);
+`;
+};
+
+/**
+ * The event holds (see proof-retention.ts): the deposit and withdrawal
+ * events a held objective's proof reads, registered as row pins on the
+ * event projection's `node_l1_events` (`watcherEventProjection`).
+ */
+export const proofEventPinsMigrationSql = (dialect: DialectName): string => {
+  const bytes = dialect === "postgres" ? "bytea" : "BLOB";
+  return `
+-- class: B; retention: the watcher deletes a header's rows when it releases the header's last proof pin
+CREATE TABLE ${WATCHER_PROOF_PIN_EVENTS_TABLE} (
+  header_hash ${bytes} NOT NULL,
+  kind text NOT NULL,
+  event_key ${bytes} NOT NULL,
+  PRIMARY KEY (header_hash, kind, event_key)
+);
+CREATE INDEX ${WATCHER_PROOF_PIN_EVENTS_TABLE}_event ON ${WATCHER_PROOF_PIN_EVENTS_TABLE} (event_key);
 `;
 };

@@ -209,7 +209,12 @@ const watcherOver = (
       origin: SIM_ORIGIN.point,
       hubOracleOneShot: SIM_HUB_ORACLE_ONE_SHOT,
     },
-    node: { binaryPath: "unused", socketPath: "unused", networkMagic: 42 },
+    node: {
+      binaryPath: "unused",
+      socketPath: "unused",
+      networkMagic: 42,
+      requestTimeoutMs: 1_000,
+    },
     walletAddresses: [],
     unsafeTransportForTest: node.transport,
   });

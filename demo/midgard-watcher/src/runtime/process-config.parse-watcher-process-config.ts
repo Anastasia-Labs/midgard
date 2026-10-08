@@ -1,4 +1,4 @@
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 
@@ -7,6 +7,7 @@ import {
   parseWatcherStrictJsonValue,
   type WatcherWalletKeySource,
 } from "./config.js";
+import { WatcherPermanentRefusalError } from "./permanent-refusal.js";
 import {
   assertDistinctSources,
   canonicalPath,
@@ -181,7 +182,40 @@ const configFile = async (path: string): Promise<unknown> => {
   );
 };
 
+/**
+ * The node socket, when the path exists, must be a socket. A missing or
+ * unreadable path is left to the transport, which holds the watcher unready
+ * by name until the node creates it; a file or directory there is a
+ * configuration refusal no restart clears.
+ */
+const assertWatcherL1SocketPath = async (socketPath: string): Promise<void> => {
+  let entry: Awaited<ReturnType<typeof stat>>;
+  try {
+    entry = await stat(socketPath);
+  } catch {
+    return;
+  }
+  if (entry.isSocket()) return;
+  throw new WatcherPermanentRefusalError(
+    "l1_socket",
+    new Error(
+      `$.l1.source.chainSync.socketPath ${socketPath} is ${
+        entry.isDirectory()
+          ? "a directory"
+          : entry.isFile()
+            ? "a regular file"
+            : "a special file"
+      }, not a socket`,
+    ),
+  );
+};
+
 export const loadWatcherProcessConfigFile = async (
   path: string,
-): Promise<WatcherProcessConfig> =>
-  parseWatcherProcessConfig(await configFile(path));
+): Promise<WatcherProcessConfig> => {
+  const config = parseWatcherProcessConfig(await configFile(path));
+  await assertWatcherL1SocketPath(
+    config.watcherConfig.l1.source.chainSync.socketPath,
+  );
+  return config;
+};

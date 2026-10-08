@@ -22,6 +22,7 @@ import {
   watcherProjection,
 } from "../../src/l1-follower/projection.js";
 import {
+  WATCHER_PROOF_PIN_EVENTS_TABLE,
   WATCHER_PROOF_PIN_UNITS_TABLE,
   WATCHER_PROOF_PINS_TABLE,
   WATCHER_PRUNED_HEADERS_TABLE,
@@ -117,6 +118,7 @@ describe("watcher projection lints (F2 schema, F4 determinism)", () => {
         [WATCHER_PRUNED_UNITS_TABLE, "B"],
         [WATCHER_PRUNED_HEADERS_TABLE, "B"],
         [WATCHER_FOLLOWER_GENERATION_TABLE, "B"],
+        [WATCHER_PROOF_PIN_EVENTS_TABLE, "B"],
       ]);
     }
   });

@@ -200,7 +200,7 @@ export type EvaluateWatcherPhaseABlockInput = {
   readonly observation: AuthenticatedStateQueueHeaderObservation;
   /** The accepted W22 record for this block. */
   readonly reconstruction: WatcherHeaderRootReconstructionResult;
-  /** Exact public `DaPayloadEnvelopeV1` bytes, from the W21 store. */
+  /** Exact public `DaPayloadEnvelopeV1` bytes, from the header decision's canonical evidence. */
   readonly payloadEnvelopeCbor: Uint8Array;
   /** Provenance of those bytes; must be public/permissionless DA. */
   readonly daProvenance: EvidenceProvenance;
@@ -253,8 +253,8 @@ const bindReconstruction = (input: {
 };
 
 /**
- * The W24 entry point: an accepted W22 reconstruction plus the exact W21 block
- * bytes plus the W23 rule bundle produce a frozen, digest-bound record of the
+ * The W24 entry point: an accepted W22 reconstruction plus the exact block
+ * bytes from the header decision's canonical evidence plus the W23 rule bundle produce a frozen, digest-bound record of the
  * canonical Phase A verdict for every transaction in the block.
  */
 export const evaluateWatcherPhaseABlock = async (

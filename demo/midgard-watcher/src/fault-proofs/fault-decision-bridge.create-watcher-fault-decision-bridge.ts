@@ -13,7 +13,6 @@ import { assertWatcherStateQueueObservation } from "../indexers/authenticated-st
 import type { WatcherQueueHeaderSource } from "../l1-follower/observation.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
-import { watcherDeferredRetryDelayMs } from "./fault-decision-bridge.classification-miss.js";
 import { createBridge } from "./fault-decision-bridge.create-bridge.js";
 import {
   ACTION_CONFIRMATION_DEPTH,
@@ -103,7 +102,6 @@ export const createWatcherFaultDecisionBridge = async (input: {
           rollbackGeneration,
         }),
       deadlineForHeader: watcherFaultProofDeadline,
-      deferredRetryDelayMs: watcherDeferredRetryDelayMs,
       mergedHeaders: async (observation) =>
         await input.stateQueueSource.resolveMergedHeaders({ observation }),
       resolvePredecessorHeader: async (header) => {

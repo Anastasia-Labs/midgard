@@ -323,6 +323,8 @@ export type WatcherDeparture = Readonly<{
   headerHash: string;
   kind: WatcherDepartureKind;
   transactionHash: string;
+  /** The departing tx's index in its block: chain order within one slot. */
+  txIndex: number;
   blockHash: string;
   slot: number;
   height: number;
@@ -338,7 +340,7 @@ export const readDepartures = async (
   const result: WatcherDeparture[] = [];
   for (const header of headers) {
     const rows = await tx.query(
-      `SELECT kind, departure_tx_hash, departure_block_hash, departure_height, from_slot FROM ${WATCHER_DEPARTED_HEADERS_TABLE} WHERE header_hash = ? AND from_slot > ? AND from_slot <= ? ORDER BY from_slot`,
+      `SELECT kind, departure_tx_hash, departure_tx_index, departure_block_hash, departure_height, from_slot FROM ${WATCHER_DEPARTED_HEADERS_TABLE} WHERE header_hash = ? AND from_slot > ? AND from_slot <= ? ORDER BY from_slot, departure_tx_index`,
       [Buffer.from(header, "hex"), afterSlot, throughSlot],
     );
     for (const row of rows)
@@ -346,6 +348,7 @@ export const readDepartures = async (
         headerHash: header,
         kind: row.kind as WatcherDepartureKind,
         transactionHash: hex(row.departure_tx_hash),
+        txIndex: Number(row.departure_tx_index as number | string),
         blockHash: hex(row.departure_block_hash),
         slot: Number(row.from_slot as number | string),
         height: Number(row.departure_height as number | string),

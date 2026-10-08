@@ -44,9 +44,9 @@
  * `daProvenance` must be `public_or_permissionless_da` or the evaluation fails
  * closed.
  *
- * Every evaluation returns a versioned, canonical-JSON digest-bound record
- * (the finality-engine pattern), so two runs over the same bytes produce the
- * same `resultDigest`, and a decision can be replayed from the record alone.
+ * Every evaluation returns a versioned, canonical-JSON digest-bound record,
+ * so two runs over the same bytes produce the same `resultDigest`, and a
+ * decision can be replayed from the record alone.
  */
 
 import "node:crypto";

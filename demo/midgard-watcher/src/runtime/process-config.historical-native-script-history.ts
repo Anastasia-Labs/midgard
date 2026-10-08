@@ -33,7 +33,11 @@ export const exactRecord = (
     actual.length !== expected.length ||
     actual.some((key, index) => key !== expected[index])
   ) {
-    throw new Error(`${label} has unknown or missing fields`);
+    const missing = expected.filter((key) => !actual.includes(key));
+    const unknown = actual.filter((key) => !expected.includes(key));
+    throw new Error(
+      `${label} has unknown or missing fields: missing=${JSON.stringify(missing)} unknown=${JSON.stringify(unknown)}`,
+    );
   }
   return record;
 };

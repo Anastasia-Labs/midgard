@@ -150,7 +150,7 @@ export type WatcherProverFundingUtxoProvider = Readonly<{
  * decision digest, actuation permit, and rollback generation to a fresh
  * atomically reserved slice of the live prover wallet; the fault-proof
  * application can neither mint nor substitute this authority. All wallet and
- * protocol-input resolution goes through the same local-node Kupo/Ogmios
+ * protocol-input resolution goes through the same follower-backed L1
  * authority the runners execute against.
  */
 export const mintWatcherProverFundingReservationPermit = async (input: {
@@ -467,7 +467,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
             reason: error.message,
           };
         }
-        // Any read that only failed to reach Kupo, Ogmios, the node or a
+        // Any read that only failed to reach the follower, the node or a
         // provider, or found this watcher's own DA node not up yet, waits and
         // runs again; it says nothing about the fault.
         if (

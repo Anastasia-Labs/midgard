@@ -13,10 +13,6 @@ import {
   assertWatcherStateQueueObservation,
   type WatcherAuthenticatedStateQueueObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
-import {
-  assertWatcherNativeBlockAdmission,
-  type WatcherNativeBlockAdmission,
-} from "../l1/native-block-admission.js";
 import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
 import {
   openWatcherFaultDecisionJournal,
@@ -50,7 +46,6 @@ import { watcherJournalOpener } from "./watcher-journal-database.opener.js";
 
 export type WatcherFaultProofProgressRequest = Readonly<{
   observation: WatcherAuthenticatedStateQueueObservation;
-  nativeProgress?: WatcherNativeBlockAdmission;
   rollbackGeneration: string;
   fault?: Readonly<{
     decision: HeaderFaultDecision;
@@ -179,9 +174,6 @@ export const createWatcherFaultProofProgressAuthority = (input: {
   };
   let lastObservation: string | undefined;
   let generation = -1n;
-  let latestNativeProgress:
-    | Pick<WatcherNativeBlockAdmission, "blockHash" | "blockNo" | "slot">
-    | undefined;
   const readDecision = async (
     digest: string,
   ): Promise<HeaderFaultDecision | undefined> => {
@@ -421,53 +413,13 @@ export const createWatcherFaultProofProgressAuthority = (input: {
         BigInt(request.rollbackGeneration) < generation
       )
         return [];
-      const nextGeneration = BigInt(request.rollbackGeneration);
-      if (nextGeneration !== generation) latestNativeProgress = undefined;
-      generation = nextGeneration;
+      generation = BigInt(request.rollbackGeneration);
       await clearResolvedHolds(request.observation);
       if (epoch !== startedEpoch) return [];
+      // The revision changes with every admitted queue observation; the
+      // decision driver admits one per follower change, which is the wakeup.
       const queuePoint = request.observation.nativePoint;
-      const progress = request.nativeProgress;
-      if (progress !== undefined) {
-        assertWatcherNativeBlockAdmission(progress);
-        if (
-          BigInt(progress.blockNo) < BigInt(queuePoint.blockNo) ||
-          BigInt(progress.slot) < BigInt(queuePoint.slot) ||
-          (BigInt(progress.blockNo) > BigInt(queuePoint.blockNo) &&
-            BigInt(progress.slot) <= BigInt(queuePoint.slot)) ||
-          (progress.blockNo === queuePoint.blockNo &&
-            (progress.blockHash !== queuePoint.blockHash ||
-              progress.slot !== queuePoint.slot))
-        )
-          throw new Error(
-            "proof progress native point is behind or differs from its queue evidence",
-          );
-        if (latestNativeProgress !== undefined) {
-          if (BigInt(progress.blockNo) < BigInt(latestNativeProgress.blockNo))
-            return [];
-          if (
-            (progress.blockNo === latestNativeProgress.blockNo &&
-              (progress.blockHash !== latestNativeProgress.blockHash ||
-                progress.slot !== latestNativeProgress.slot)) ||
-            (BigInt(progress.blockNo) > BigInt(latestNativeProgress.blockNo) &&
-              BigInt(progress.slot) <= BigInt(latestNativeProgress.slot))
-          )
-            throw new Error("proof progress native point is not monotone");
-        }
-        // Only a bounded wakeup marker is retained. Queue, funding and terminal
-        // facts continue to come from their existing authenticated authorities.
-        latestNativeProgress = {
-          blockHash: progress.blockHash,
-          blockNo: progress.blockNo,
-          slot: progress.slot,
-        };
-      }
-      const progressPoint =
-        latestNativeProgress !== undefined &&
-        BigInt(latestNativeProgress.blockNo) > BigInt(queuePoint.blockNo)
-          ? latestNativeProgress
-          : queuePoint;
-      const observationRevision = `${request.observation.observationDigest}:${progressPoint.blockHash}`;
+      const observationRevision = `${request.observation.observationDigest}:${queuePoint.blockHash}`;
       const observationKey = `${request.rollbackGeneration}:${observationRevision}`;
       const changed = observationKey !== lastObservation;
       const contexts: WatcherFaultProofProgressContext[] = [];
@@ -602,7 +554,6 @@ export const createWatcherFaultProofProgressAuthority = (input: {
         delete objective.historical;
       }
       lastObservation = undefined;
-      latestNativeProgress = undefined;
       epoch += 1;
     },
     updateExecution,

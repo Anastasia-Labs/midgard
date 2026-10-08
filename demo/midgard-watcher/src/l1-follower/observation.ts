@@ -411,9 +411,10 @@ export const createWatcherQueueHeaderSource = (
         Number(observation.nativePoint.slot),
         boundary.slot,
       );
-      // Chain order; a transition the watcher does not prove ends the walk.
+      // Chain order, by tx within a block; a transition the watcher does
+      // not prove ends the walk.
       const ordered = [...departures].sort(
-        (left, right) => left.slot - right.slot,
+        (left, right) => left.slot - right.slot || left.txIndex - right.txIndex,
       );
       for (const departure of ordered) {
         const confirmationDepth = (

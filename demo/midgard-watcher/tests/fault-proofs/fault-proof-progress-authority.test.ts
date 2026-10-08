@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -15,8 +15,6 @@ import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-su
 import { isWatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { WATCHER_JOURNAL_DATABASE_FILE } from "../../src/fault-proofs/watcher-journal-database.js";
 import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.js";
-import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
-import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync.exact-record.js";
 import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import {
   cleanupFundingRecoveryFixtures,
@@ -95,86 +93,39 @@ describe("supervisor historical progress authority", () => {
     expect(load).not.toHaveBeenCalled();
   });
 
-  it("wakes retained signed work once for quiet native progress while reusing queue evidence", async () => {
+  it("wakes retained signed work once when the queue observation advances to a quiet native block", async () => {
     const test = await setup();
     expect(await test.authority.admit(test.request)).toHaveLength(1);
     expect(await test.authority.admit(test.request)).toEqual([]);
-    const metadata = {
-      blockHash:
-        "27807a70215e3e018eec9be8c619c692e06a78ebcb63daf90d7abe823f3bbf47",
-      blockNo: "12069665",
-      blockType: "7",
-      prevHash:
-        "ff51732269af51a2efaa2a7ad4a2ff5647af5629013a446511249e837be617a0",
-      slot: "159835207",
-    };
-    const nativeProgress = admitWatcherNativeRollForwardBlock({
-      ...metadata,
-      schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
-      kind: "roll_forward",
-      rawBlockCbor: (
-        await readFile(
-          new URL("../support/conway-block.hex", import.meta.url),
-          "utf8",
-        )
-      ).trim(),
-      tip: {
-        kind: "point",
-        blockHash: metadata.blockHash,
-        blockNo: metadata.blockNo,
-        slot: metadata.slot,
+    const { observationDigest: _digest, ...prior } = test.request.observation;
+    const advanced = {
+      ...prior,
+      nativePoint: {
+        ...prior.nativePoint,
+        blockNo: (BigInt(prior.nativePoint.blockNo) + 1n).toString(),
+        slot: (BigInt(prior.nativePoint.slot) + 20n).toString(),
+        blockHash:
+          "27807a70215e3e018eec9be8c619c692e06a78ebcb63daf90d7abe823f3bbf47",
       },
-    });
-    const request = { ...test.request, nativeProgress };
+    };
+    const quietObservation =
+      unsafeAdmitWatcherStateQueueObservationForReplayTest({
+        ...advanced,
+        observationDigest: watcherSha256CanonicalJson(advanced),
+      });
+    const request = { ...test.request, observation: quietObservation };
     const contexts = await test.authority.admit(request);
     expect(contexts).toHaveLength(1);
     expect(contexts[0]!.decision.decisionDigest).toBe(
       test.fixture.old.decisionDigest,
     );
     expect(contexts[0]!.observationRevision).toBe(
-      `${test.request.observation.observationDigest}:${nativeProgress.blockHash}`,
+      `${quietObservation.observationDigest}:${advanced.nativePoint.blockHash}`,
     );
-    expect(await test.authority.admit(request)).toEqual([]);
+    for (let i = 0; i < 5; i++)
+      expect(await test.authority.admit(request)).toEqual([]);
     expect(
       await test.authority.admit({ ...request, rollbackGeneration: "1" }),
-    ).toEqual([]);
-    await expect(
-      test.authority.admit({
-        ...request,
-        nativeProgress: { ...nativeProgress },
-      }),
-    ).rejects.toThrow("native block was not admitted");
-    await expect(
-      test.authority.admit({
-        ...request,
-        observation: progressObservation({
-          deploymentFingerprint: deploymentIdentity.manifestId,
-          revision: 20_000_000,
-        }),
-      }),
-    ).rejects.toThrow("behind or differs from its queue evidence");
-    const { observationDigest: _digest, ...prior } = test.request.observation;
-    const advanced = {
-      ...prior,
-      nativePoint: {
-        ...prior.nativePoint,
-        blockNo: nativeProgress.blockNo,
-        slot: nativeProgress.slot,
-        blockHash: nativeProgress.blockHash,
-      },
-    };
-    const samePointObservation =
-      unsafeAdmitWatcherStateQueueObservationForReplayTest({
-        ...advanced,
-        observationDigest: watcherSha256CanonicalJson(advanced),
-      });
-    const touchedRequest = {
-      ...test.request,
-      observation: samePointObservation,
-    };
-    expect(await test.authority.admit(touchedRequest)).toHaveLength(1);
-    expect(
-      await test.authority.admit({ ...touchedRequest, nativeProgress }),
     ).toEqual([]);
   });
 

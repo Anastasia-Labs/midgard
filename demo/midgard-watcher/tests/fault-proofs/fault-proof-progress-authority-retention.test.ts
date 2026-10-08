@@ -92,8 +92,10 @@ const recordingRetention = (securityParameter: number) => {
       released.push({ category, headerHash });
     },
     holdUnits: async () => ({ kind: "held" }),
+    holdEvents: async () => ({ kind: "held" }),
     pinned: async () => pinned,
     degradations: () => [],
+    readiness: () => [],
   };
   return { retention, pinned, released };
 };

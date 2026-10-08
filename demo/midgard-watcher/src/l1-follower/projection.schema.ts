@@ -25,7 +25,10 @@ import {
   PROTOCOL_INIT_FAULTS_TEMPORAL_TABLE,
   protocolInitFaultsMigrationSql,
 } from "./projection.protocol-init.js";
-import { proofRetentionMigrationSql } from "./proof-retention.schema.js";
+import {
+  proofEventPinsMigrationSql,
+  proofRetentionMigrationSql,
+} from "./proof-retention.schema.js";
 import { prunedKeysMigrationSql } from "./pruned-keys.js";
 import {
   WATCHER_PROOF_PINS_TABLE,
@@ -160,6 +163,10 @@ export const watcherMigrations = (dialect: DialectName): MigrationSet => ({
     {
       id: "0010_watcher_follower_generation",
       sql: followerGenerationMigrationSql(dialect),
+    },
+    {
+      id: "0011_watcher_proof_event_pins",
+      sql: proofEventPinsMigrationSql(dialect),
     },
   ],
 });

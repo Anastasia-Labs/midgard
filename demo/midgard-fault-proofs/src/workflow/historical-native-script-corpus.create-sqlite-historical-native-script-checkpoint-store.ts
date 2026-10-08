@@ -29,7 +29,7 @@ export const createSqliteHistoricalNativeScriptCheckpointStore = ({
   rollbackAuthenticationKey,
 }: {
   readonly path: string;
-  /** Authenticated key exposed by the watcher trusted-head runtime. */
+  /** The watcher's rollback authentication key (`storage.rollbackAuthorityKeySource`). */
   readonly rollbackAuthenticationKey: Uint8Array;
 }): HistoricalNativeScriptCheckpointStore => {
   if (

@@ -298,6 +298,41 @@ describe("watcher journal database integrity at startup", () => {
   });
 });
 
+describe("watcher journal counts", () => {
+  it("authenticates every row a state's count reads", async () => {
+    const root = await seeded();
+    const database = open(root);
+    expect(database.count("fault_proof_queue", "queued")).toBe(2);
+    // A row moved into the counted state under the open connection.
+    edit(root, `UPDATE ${QUEUE} SET state = 'queued' WHERE row_key = 'a'`);
+    expect(() => database.count("fault_proof_queue", "queued")).toThrow(
+      "row a MAC differs",
+    );
+  });
+
+  it("authenticates the stored row a staged write replaces", async () => {
+    const root = await seeded();
+    const database = open(root);
+    edit(root, `UPDATE ${QUEUE} SET state = 'finished' WHERE row_key = 'b'`);
+    // The count itself must refuse, before any commit reads the row.
+    let counted: unknown;
+    thrown(() =>
+      database.transaction((tx) => {
+        tx.put("fault_proof_queue", {
+          key: "b",
+          scope: "doubleSpend:b",
+          state: "active",
+          body: { key: "b", state: "active" },
+        });
+        counted = thrown(() => tx.count("fault_proof_queue", "active"));
+        throw new Error("rolled back");
+      }),
+    );
+    expect(counted).toSatisfy(isWatcherJournalIntegrityError);
+    expect(watcherJournalIntegrityFailure(root)).toContain("row b MAC differs");
+  });
+});
+
 describe("watcher journal database open failures", () => {
   it("retries an open that could not complete, without latching it", async () => {
     const root = await journalDirectory("midgard-journal-unavailable");
