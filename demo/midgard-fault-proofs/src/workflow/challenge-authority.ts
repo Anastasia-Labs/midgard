@@ -24,6 +24,7 @@ import {
   makeTransitionProofMaterial,
   type TransitionProofMaterial,
 } from "../transition-trace/proof-material.js";
+import { committedValidationClaimEndpointsAndSourceAreValid } from "../validation-dispute/claim-endpoints.js";
 
 export const W25_CHALLENGE_COORDINATE =
   "midgard-production-w25-challenge-coordinate-v1" as const;
@@ -237,7 +238,9 @@ export const transitionTraceProof = (
 /**
  * Rebuilds the challenger trace from the exact W25 replay input. The operator
  * claim is canonical Data and root-bound by the validation-dispute contract;
- * admission additionally refuses a trace descriptor identical to the claim.
+ * admission additionally refuses a trace descriptor identical to the claim,
+ * unless source verification routes the claim to the award, which never
+ * compares the two descriptors.
  */
 export const admitValidationTraceChallenge = async ({
   coordinate,
@@ -268,7 +271,10 @@ export const admitValidationTraceChallenge = async ({
     claim.descriptor_membership.value,
     ValidationTraceDescriptor,
   );
-  if (operatorDescriptorCbor === challengerDescriptorCbor) {
+  if (
+    operatorDescriptorCbor === challengerDescriptorCbor &&
+    committedValidationClaimEndpointsAndSourceAreValid(evidence.header, claim)
+  ) {
     throw new Error(
       "validation-trace W25 replay does not disagree with the operator descriptor",
     );

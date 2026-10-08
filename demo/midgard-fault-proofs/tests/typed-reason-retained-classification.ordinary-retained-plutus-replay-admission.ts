@@ -138,7 +138,7 @@ describe("ordinary retained Plutus replay admission", () => {
     );
   });
 
-  it("does not turn the shared Plutus/receive-language rejection hash into typed authority", async () => {
+  it("routes a normal source committed under the shared Plutus/receive-language rejection hash to source verification, not to typed authority", async () => {
     const plutus = await admitRetainedPlutus({
       verdict: "rejected",
       reason: { PlutusExecutionFailed: { execution_index: 0n } },
@@ -153,7 +153,15 @@ describe("ordinary retained Plutus replay admission", () => {
         plutus.evidence,
         plutus.context,
       );
-    expect(result.detections).toEqual([]);
+    expect(result.detections).toEqual([
+      expect.objectContaining({
+        violationId: "validation-trace",
+        headerHash: plutus.fixture.block.headerHash,
+        position: 0n,
+        diagnostic:
+          "Normal source at step 0 commits a non-accepting validation descriptor",
+      }),
+    ]);
   });
 
   it("refuses missing, copied and cross-header replay authority", async () => {

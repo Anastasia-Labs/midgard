@@ -10,6 +10,7 @@ import {
   DepositInfo,
   EventHistoryCommitment,
   EventHistoryOpening,
+  EventKey,
   opensEventHistoryCommitmentCbor,
   OutputReference,
   type RejectionReason,
@@ -36,6 +37,7 @@ import {
 import { type SourceEventRecord } from "../transition-trace/reconstruct.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import { type CompleteCanonicalReplayPredecessor } from "../workflow/complete-replay.js";
+import { eventSubject } from "../workflow/detection-subject.js";
 import { TYPED_REASON_DISPOSITIONS } from "../workflow/reason-disposition.js";
 import { type ReplayPrerequisiteFailure } from "../workflow/replay-prerequisite.js";
 
@@ -304,5 +306,42 @@ export const isInteractiveDisagreement = (
   );
 };
 
+/**
+ * Source verification binds a normal source to an accepting descriptor
+ * (`source_binding_is_exact` within
+ * `committed_claim_endpoints_and_source_are_valid`) and routes a dispute over
+ * any other descriptor to the award, whatever the replay, the rejection code
+ * or the committed prior root says.
+ */
+export const normalSourceDescriptorDoesNotAccept = (
+  material: ReplayMaterial,
+): boolean =>
+  material.sourceKind === "normal" &&
+  Data.from(material.committedDescriptorCbor, ValidationTraceDescriptor)
+    .verdict !== "Accepted";
+
 export const replayDetectionId = (entry: ReplayMaterial): string =>
   `validation-trace:${entry.sourceKind}:${entry.transactionIndex.toString()}:${entry.replay.replayInput.transactionId.toString("hex")}`;
+
+/** The validation-trace detection `entry` owes on `headerHash`, if any. */
+export const replayDetections = (
+  entry: ReplayMaterial,
+  headerHash: string,
+): readonly CanonicalViolationDetection[] => {
+  const diagnostic = normalSourceDescriptorDoesNotAccept(entry)
+    ? `Normal source at step ${entry.stepIndex.toString()} commits a non-accepting validation descriptor`
+    : isInteractiveDisagreement(entry)
+      ? `Canonical Plutus execution disagrees with the retained validation descriptor at step ${entry.stepIndex.toString()}`
+      : undefined;
+  if (diagnostic === undefined) return [];
+  return [
+    Object.freeze({
+      ...eventSubject(Data.from(entry.eventKeyCbor, EventKey)),
+      detectionId: replayDetectionId(entry),
+      headerHash,
+      violationId: "validation-trace",
+      position: BigInt(entry.transactionIndex),
+      diagnostic,
+    }),
+  ];
+};
