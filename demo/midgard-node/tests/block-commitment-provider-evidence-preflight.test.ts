@@ -318,7 +318,7 @@ describe("block commitment provider-evidence preflight", () => {
     expect(
       fetchRealStateQueueWitnessContextMock.mock.calls.map((call) => [
         call[2],
-        call[6],
+        call[5],
       ]),
     ).toStrictEqual([
       [nowMs + HISTORY_COMMIT_LANDING_MARGIN_MS, false],
