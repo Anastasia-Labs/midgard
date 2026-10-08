@@ -1,6 +1,9 @@
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
 import * as SDK from "@al-ft/midgard-sdk";
-import { paymentCredentialOf } from "@lucid-evolution/lucid";
+import {
+  type LucidEvolution,
+  paymentCredentialOf,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import type { AvailabilityResponseLoopEnforcement } from "../availability-response-loop.js";
@@ -10,8 +13,9 @@ import {
   daAttestationValidatorsFromDeployment,
 } from "../l1/deployment.js";
 import { committeeAvailabilityReads } from "../l1/follower/availability-reads.js";
+import { ownWalletAddress } from "../l1/follower/committee-follower-config.js";
 import type { CommitteeL1Follower } from "../l1/follower/l1-follower.js";
-import { selectL1SubmitterWallet } from "../l1/submitter.js";
+import { selectL1KeySourceWallet } from "../l1/submitter.js";
 import type { CommitteeStore } from "../store.js";
 import { createCommitteePromiseAdmissionSource } from "./create-promise-admission-source.js";
 import {
@@ -75,21 +79,10 @@ export const availabilityResponderFromConfig = async (
     ...(follower.retention === null ? {} : { retention: follower.retention }),
   });
   const lucid = await follower.lucid();
-  await selectL1SubmitterWallet(lucid, config.availabilitySubmitterKeySource);
-  const actor = paymentCredentialOf(await lucid.wallet().address());
-  if (actor.type !== "Key")
-    throw new Error("Availability responder requires a payment-key wallet");
-  if (config.l1SubmitterKeySource === undefined)
-    throw new Error(
-      "Availability responder requires the attestation wallet identity for isolation checks",
-    );
-  await selectL1SubmitterWallet(lucid, config.l1SubmitterKeySource);
-  if (paymentCredentialOf(await lucid.wallet().address()).hash === actor.hash) {
-    throw new Error(
-      "Availability responder and attestation submitter must use different payment credentials",
-    );
-  }
-  await selectL1SubmitterWallet(lucid, config.availabilitySubmitterKeySource);
+  const actor = await selectAvailabilityResponderWallet(lucid, {
+    ...config,
+    availabilitySubmitterKeySource: config.availabilitySubmitterKeySource,
+  });
   const contractManifestId = config.contractDeploymentInfo.manifestId;
   if (
     typeof contractManifestId !== "string" ||
@@ -156,7 +149,7 @@ export const availabilityResponderFromConfig = async (
           slotConfig: () => provider.slotConfig(),
         },
         deployment,
-        actorId: actor.hash,
+        actorId: actor,
         journal,
       });
     } catch (error) {
@@ -171,7 +164,7 @@ export const availabilityResponderFromConfig = async (
       assertSourceHealthy,
       context: {
         deploymentIdentity: contractManifestId,
-        actor: actor.hash,
+        actor,
         journal,
         stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
         minimumConfirmationDepth: config.finalityDepth,
@@ -190,7 +183,7 @@ export const availabilityResponderFromConfig = async (
     promiseAdmissionSource: createCommitteePromiseAdmissionSource({
       config,
       deployment,
-      actorId: actor.hash,
+      actorId: actor,
       store,
       journal,
       lucid,
@@ -244,4 +237,40 @@ export const availabilityResponderFromConfig = async (
       },
     }),
   };
+};
+
+/**
+ * The availability responder's startup wallet step: selects its wallet on
+ * `lucid` and returns the payment key hash it acts as. Refuses a script
+ * credential, and a wallet that shares the attestation submitter's payment
+ * credential.
+ *
+ * The selection holds no UTxO pin. Collateral is read afresh for every build
+ * (`availabilityResponderCollateral`), and Lucid finds the keys to sign with
+ * in the wallet's UTxOs. Under a pin taken here, collateral that arrived
+ * later (a top-up, or a refill after a phase-2 collateral loss) would be
+ * signed without its key, and every step refused until a restart.
+ */
+export const selectAvailabilityResponderWallet = async (
+  lucid: Pick<LucidEvolution, "selectWallet" | "wallet">,
+  config: Pick<CommitteeL1ClientConfig, "l1SubmitterKeySource" | "network"> & {
+    readonly availabilitySubmitterKeySource: string;
+  },
+): Promise<string> => {
+  await selectL1KeySourceWallet(lucid, config.availabilitySubmitterKeySource);
+  const actor = paymentCredentialOf(await lucid.wallet().address());
+  if (actor.type !== "Key")
+    throw new Error("Availability responder requires a payment-key wallet");
+  if (config.l1SubmitterKeySource === undefined)
+    throw new Error(
+      "Availability responder requires the attestation wallet identity for isolation checks",
+    );
+  const attestation = paymentCredentialOf(
+    await ownWalletAddress(config.l1SubmitterKeySource, config.network),
+  );
+  if (attestation.hash === actor.hash)
+    throw new Error(
+      "Availability responder and attestation submitter must use different payment credentials",
+    );
+  return actor.hash;
 };

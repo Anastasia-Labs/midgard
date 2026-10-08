@@ -294,8 +294,8 @@ describe("operator watchdog forced retirement from the operator set", () => {
 
     // The lowest operator retires: the retired list is root → lower, so the
     // target's predecessor there is lower, not the root.
-    // Its own Lucid: the submission pins its predicted wallet outputs, which
-    // would go stale under the strikes the fixture's wallet pays next.
+    // Its own Lucid, holding the retiring operator's wallet: a voluntary
+    // retirement needs the operator's own signature.
     const lowerLucid = await fixture.lucidFor(lower!.keyHash);
     await Effect.runPromise(
       withoutFollowerJournal(
