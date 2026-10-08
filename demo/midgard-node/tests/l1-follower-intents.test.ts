@@ -34,7 +34,10 @@ import {
   INTENT_RESUBMIT_REJECTED,
   nodeIntentTrackedSet,
 } from "../src/services/l1-follower.intents.js";
-import { testDatabases } from "./helpers/l1-events-store.js";
+import {
+  DROP_ALL_TIMEOUT_MS,
+  testDatabases,
+} from "./helpers/l1-events-store.js";
 import {
   GENESIS,
   intentStageScenarios,
@@ -55,7 +58,7 @@ afterEach(async () => {
 });
 afterAll(async () => {
   await databases.dropAll();
-});
+}, DROP_ALL_TIMEOUT_MS);
 
 const openScenario = intentStageScenarios(databases, opened);
 

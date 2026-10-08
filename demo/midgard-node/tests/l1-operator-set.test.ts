@@ -41,6 +41,7 @@ import { Globals } from "../src/services/globals.js";
 import { HaltSource } from "../src/services/liveness-halt.js";
 import {
   ChainDriver,
+  DROP_ALL_TIMEOUT_MS,
   storeOpener,
   testDatabases,
 } from "./helpers/l1-events-store.js";
@@ -70,7 +71,7 @@ afterEach(async () => {
 });
 afterAll(async () => {
   await databases.dropAll();
-});
+}, DROP_ALL_TIMEOUT_MS);
 
 /** A record that never keeps anything (a node database that lost it). */
 const lostRecord: OperatorActivityRecord = {

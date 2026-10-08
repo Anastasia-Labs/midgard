@@ -32,6 +32,7 @@ import { l1FollowerReadiness } from "../src/services/l1-follower.readiness.js";
 import { EVENTS_CONFIG } from "./helpers/l1-events-chain.js";
 import {
   ChainDriver,
+  DROP_ALL_TIMEOUT_MS,
   storeOpener,
   testDatabases,
 } from "./helpers/l1-events-store.js";
@@ -56,7 +57,7 @@ afterEach(async () => {
 });
 afterAll(async () => {
   await databases.dropAll();
-});
+}, DROP_ALL_TIMEOUT_MS);
 
 const GENESIS = "00".repeat(28);
 const ROOT = SDK.STATE_QUEUE_ROOT_ASSET_NAME;

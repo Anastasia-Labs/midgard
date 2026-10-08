@@ -28,7 +28,10 @@ import {
   type ForcedOrderSimStats,
   zeroForcedOrderSimStats,
 } from "./helpers/forced-orders-sim.js";
-import { testDatabases } from "./helpers/l1-events-store.js";
+import {
+  DROP_ALL_TIMEOUT_MS,
+  testDatabases,
+} from "./helpers/l1-events-store.js";
 
 const SIM_K = 6;
 const RUNS = Number(process.env.FORCED_ORDERS_FORK_SIM_RUNS ?? "10");
@@ -36,7 +39,7 @@ const databases = testDatabases();
 
 afterAll(async () => {
   await databases.dropAll();
-});
+}, DROP_ALL_TIMEOUT_MS);
 
 const openSqlite: ForkRunOptions["open"] = (optionsFor) =>
   Promise.resolve(

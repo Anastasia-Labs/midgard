@@ -50,6 +50,13 @@ const adminSql = (statement: string): Promise<void> =>
   ).then(() => undefined);
 
 /** Fresh databases named under the worktree's test prefix; fails closed when the cluster is down. */
+/**
+ * Hook budget for `dropAll`. Each `DROP DATABASE … WITH (FORCE)` runs on its
+ * own, and a suite that creates a database per run can need more than the
+ * 10 s hook default on a loaded CI runner.
+ */
+export const DROP_ALL_TIMEOUT_MS = 120_000;
+
 export const testDatabases = () => {
   const created: string[] = [];
   const prefix = TEST_DATABASE_PREFIX.toLowerCase().replace(

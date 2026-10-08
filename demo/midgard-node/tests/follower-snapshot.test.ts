@@ -13,7 +13,10 @@ import {
   followerSqlTx,
   inFollowerSnapshot,
 } from "../src/database/follower-schema.js";
-import { testDatabases } from "./helpers/l1-events-store.js";
+import {
+  DROP_ALL_TIMEOUT_MS,
+  testDatabases,
+} from "./helpers/l1-events-store.js";
 
 const databases = testDatabases();
 let connectionString: string;
@@ -52,7 +55,7 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => {
   await databases.dropAll();
-});
+}, DROP_ALL_TIMEOUT_MS);
 
 describe("inFollowerSnapshot (postgres)", () => {
   it("reads one snapshot across a commit from another connection", async () => {

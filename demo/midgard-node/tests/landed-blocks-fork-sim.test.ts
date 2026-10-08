@@ -52,7 +52,10 @@ import {
   ProductionNativeMpfOwnerService,
 } from "../src/services/mpf-native-owner/index.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
-import { testDatabases } from "./helpers/l1-events-store.js";
+import {
+  DROP_ALL_TIMEOUT_MS,
+  testDatabases,
+} from "./helpers/l1-events-store.js";
 import { landedBlocksSimProjection } from "./helpers/landed-blocks-sim.js";
 import {
   insertSimCursor,
@@ -88,7 +91,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await databases.dropAll();
-});
+}, DROP_ALL_TIMEOUT_MS);
 
 const openSqlite: ForkRunOptions["open"] = (optionsFor) =>
   Promise.resolve(

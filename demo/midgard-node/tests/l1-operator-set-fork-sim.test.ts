@@ -39,7 +39,10 @@ import {
   operatorSetProjection,
   type OperatorSetRead,
 } from "../src/l1-operator-set/index.js";
-import { testDatabases } from "./helpers/l1-events-store.js";
+import {
+  DROP_ALL_TIMEOUT_MS,
+  testDatabases,
+} from "./helpers/l1-events-store.js";
 import {
   loadOperatorSetChainFixture,
   OPERATOR_LISTS,
@@ -63,7 +66,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => {
   await databases.dropAll();
-});
+}, DROP_ALL_TIMEOUT_MS);
 
 type Stats = {
   checks: number;

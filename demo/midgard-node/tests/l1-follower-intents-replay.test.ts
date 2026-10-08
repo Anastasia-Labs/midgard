@@ -48,7 +48,10 @@ import {
 } from "../src/l1-state-queue/index.js";
 import { nodeFamilyPredicate } from "../src/services/l1-follower.intent-predicates.js";
 import { createNodeIntentStage } from "../src/services/l1-follower.intents.js";
-import { testDatabases } from "./helpers/l1-events-store.js";
+import {
+  DROP_ALL_TIMEOUT_MS,
+  testDatabases,
+} from "./helpers/l1-events-store.js";
 import {
   nodeDatum,
   QUEUE_ADDRESS,
@@ -67,7 +70,7 @@ afterEach(async () => {
 afterAll(async () => {
   await databases.dropAll();
   rmSync(scratch, { recursive: true, force: true });
-});
+}, DROP_ALL_TIMEOUT_MS);
 
 const K = 6;
 const GENESIS = "00".repeat(28);

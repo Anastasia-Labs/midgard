@@ -33,7 +33,10 @@ import {
   openIntentEmulator,
   signedPayment,
 } from "./helpers/intent-journal-emulator.js";
-import { testDatabases } from "./helpers/l1-events-store.js";
+import {
+  DROP_ALL_TIMEOUT_MS,
+  testDatabases,
+} from "./helpers/l1-events-store.js";
 
 const databases = testDatabases();
 const opened: IntentEmulator[] = [];
@@ -42,7 +45,7 @@ afterEach(async () => {
 });
 afterAll(async () => {
   await databases.dropAll();
-});
+}, DROP_ALL_TIMEOUT_MS);
 
 const open = async () => {
   const env = await openIntentEmulator(databases);
