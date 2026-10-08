@@ -29,7 +29,10 @@ import {
 import { openRetainedNativeOwner } from "./history-expired-intent-release.open-retained-native-owner.js";
 import { ownedBy } from "./history-expired-intent-release.owned.js";
 import type { ReplacedBlockRevivalInput } from "./history-expired-intent-release.prepare-replaced-block-revival.js";
-import { displacementIdentity } from "./history-expired-intent-release.recover-displacement.js";
+import {
+  baseJournalAggregate,
+  displacementIdentity,
+} from "./history-expired-intent-release.recover-displacement.js";
 import { canonicalEvidence } from "./history-expired-intent-release.replaced-block-landing.js";
 import { authenticateQueue } from "./history-expired-intent-release.signed-commit-node.js";
 import {
@@ -397,14 +400,14 @@ export const compensateDisplacement = (
           return yield* integrity(
             "Compensation SQL marker differs from the original finalized snapshot",
           );
+        // With a returned prefix the target root is its head's expected
+        // root; with none it is the original winner's base root, and the
+        // journal that base names supplies the aggregate only when its
+        // expected root is that target root.
         const aggregate =
           proof.prefix.length > 0
             ? proof.head.utxoPayloadAggregate
-            : Option.getOrUndefined(
-                yield* Pending.retrieveByHeaderHash(
-                  proof.winner[C.BASE_TAIL_HEADER_HASH],
-                ),
-              )?.utxoPayloadAggregate;
+            : yield* baseJournalAggregate(proof.winner, intent.targetRoot);
         yield* sql`UPDATE mpf_engine_state SET root_hex = ${intent.targetRoot}, utxo_payload_entry_count = ${aggregate?.entryCount ?? null}, utxo_payload_encoded_tuple_bytes = ${aggregate?.encodedTupleBytes ?? null}, updated_at = NOW() WHERE store_name = 'ledger'`;
         const reopened = yield* reincludeStateQueueCorrectedBlocks(
           intent.suffixMembers,

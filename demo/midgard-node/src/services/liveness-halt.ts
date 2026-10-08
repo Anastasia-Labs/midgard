@@ -339,6 +339,24 @@ export const SIGNED_INTENT_REPLACEMENT_INTEGRITY =
  * once a journal is active or no revival candidate remains. */
 export const SIGNED_INTENT_JOURNAL_UNBOUND = "signed_intent_journal_unbound";
 
+/** A native restore of the signed-intent release, or of the replaced-block
+ * revival (its displaced-chain rewind, its displacement compensation or its
+ * retained displacement's inverse), was refused because the native MPF store
+ * does not retain the target root in full (`NativeMpfRootNotRetained`): the
+ * sibling of `CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED`, raised under the
+ * release source (`HISTORY_SIGNED_INTENT_RELEASE_SOURCE`) or the revival
+ * source (`HISTORY_REPLACED_BLOCK_REVIVAL_SOURCE`). The refusal changes
+ * nothing: the recovery holds with its plan retained, native MPF, the SQL
+ * root and the journals as they are, and the history gate closed (the
+ * retained plan keeps the reconciliation pending); every evaluation retries
+ * the restore. An evaluation of that source that meets no such refusal
+ * clears it; so do the release runtime and the revival disposition once no
+ * plan is retained and nothing is in question. The node cannot put the
+ * root's closure back itself: the operator stops it, installs a native MPF
+ * store that retains the root in full, and restarts it. */
+export const SIGNED_INTENT_TARGET_ROOT_NOT_RETAINED =
+  "signed_intent_target_root_not_retained";
+
 /** The source the state-queue correction rewind raises under while it holds
  * on a removed block's journal. Like `HISTORY_SIGNED_INTENT_RELEASE_SOURCE`
  * it holds no fiber: the rewind's disposition keeps the history gate closed,

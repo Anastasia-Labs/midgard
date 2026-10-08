@@ -6,6 +6,7 @@ import { correctionRewindRemovedHeaders } from "../../src/database/eventHistoryR
 import * as Pending from "../../src/database/pendingBlockFinalizations.js";
 import { eventHistoryCanonicalJson } from "../../src/l1-event-history-source.js";
 import { sha } from "../../src/services/history-expired-intent-release.table.js";
+import { NativeMpfRootNotRetained } from "../../src/services/mpf-native-owner/protocol.js";
 import {
   admitSuffixRemoval,
   suffixRemoval,
@@ -15,6 +16,7 @@ import {
   bytes,
   hex,
   insertJournal,
+  retainedBaseJournal,
   signedCommit,
   TTL,
 } from "./history-expired-intent-release-before-ttl.js";
@@ -128,7 +130,31 @@ export type ScenarioOptions = {
     | "unknown root";
   beforeInitialCas?: boolean;
   removedSuffix?: boolean;
+  /** A journal of W's base (`BASE_HEADER`) carrying a UTxO payload
+   * aggregate, written before the last evaluation, whose expected root is
+   * W's base root ("target root") or another root ("other root"). */
+  baseJournal?: "target root" | "other root";
+  /** The native owner refuses the compensation's restore (twice) with
+   * `NativeMpfRootNotRetained`, as an owner that does not retain its target
+   * root in full does, before the last evaluation. */
+  compensationRootNotRetained?: boolean;
 };
+
+/** The UTxO payload aggregate `baseJournal` writes on the base journal. */
+export const BASE_AGGREGATE = { entryCount: "7", encodedTupleBytes: "700" };
+
+const ledgerAggregate = sql(
+  (sql) =>
+    sql<{
+      entry_count: string | null;
+      encoded_tuple_bytes: string | null;
+    }>`SELECT utxo_payload_entry_count::text AS entry_count, utxo_payload_encoded_tuple_bytes::text AS encoded_tuple_bytes FROM mpf_engine_state WHERE store_name = 'ledger'`,
+).pipe(
+  Effect.map((rows) => ({
+    entryCount: rows[0]?.entry_count ?? null,
+    encodedTupleBytes: rows[0]?.encoded_tuple_bytes ?? null,
+  })),
+);
 
 /** Real preparation/SQL/codec/receipts; only authenticated source transport and
  * native CAS are modelled. Fault triggers roll back actual SQL transactions. */
@@ -269,21 +295,27 @@ export const compensationScenario = (
         let nativeBoundaryPlans:
           | Awaited<Effect.Effect.Success<typeof plans>>
           | undefined;
-        owner.beforeRestore = async () => {
+        owner.beforeRestore = async ({ targetRoot }) => {
           nativeBoundaryPlans = await Effect.runPromise(
             plans.pipe(Effect.provideService(SqlClient.SqlClient, sqlService)),
           );
           if (options.stop === "before compensation CAS")
             throw new Error("stop before compensation CAS");
+          if (options.compensationRootNotRetained)
+            throw new NativeMpfRootNotRetained(targetRoot);
         };
         if (options.stop === "after compensation CAS")
           owner.afterRestore = async () => {
             throw new Error("stop after compensation CAS");
           };
         const interrupted = yield* revival(node);
+        const interruptedAgain = options.compensationRootNotRetained
+          ? yield* revival(node)
+          : undefined;
         const intermediate = yield* plans;
         const intermediateLedger = yield* ledgerRoot;
         const intermediateNative = owner.durableRoot;
+        const intermediateOperations = [...owner.operations];
         if (
           options.stop === "before replacement" ||
           options.stop === "before SQL receipt"
@@ -309,14 +341,24 @@ export const compensationScenario = (
           fixture.queue = returned(S_OUT, true) as never;
           fixture.coverage = deep(childOut.slice(0, 64), { [S_TX]: 4 });
         }
+        if (options.baseJournal !== undefined) {
+          yield* retainedBaseJournal;
+          yield* sql(
+            (sql) =>
+              sql`UPDATE pending_block_finalizations SET utxo_payload_entry_count = ${BASE_AGGREGATE.entryCount}, utxo_payload_encoded_tuple_bytes = ${BASE_AGGREGATE.encodedTupleBytes}${options.baseJournal === "other root" ? sql`, expected_utxos_root = ${"33".repeat(32)}` : sql``} WHERE header_hash = ${BASE_HEADER}`,
+          );
+        }
         const again = yield* revival(node);
         return {
+          interruptedAgain,
+          aggregate: yield* ledgerAggregate,
           initial,
           original,
           interrupted,
           intermediate,
           intermediateLedger,
           intermediateNative,
+          intermediateOperations,
           nativeBoundaryPlans,
           again,
           final: yield* plans,

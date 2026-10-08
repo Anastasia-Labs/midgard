@@ -1,22 +1,16 @@
-import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
+import { SIGNED_INTENT_TARGET_ROOT_NOT_RETAINED } from "../src/services/liveness-halt.js";
 import {
-  BASE_HEADER,
-  BASE_OUT,
   bytes,
-  hex,
   insertJournal,
-  retainedBaseJournal,
   signedCommit,
   TTL,
 } from "./helpers/history-expired-intent-release-before-ttl.js";
 import {
   journal,
-  queueNode,
-  root,
   S_COMMIT,
   S_HEADER,
   W_COMMIT,
@@ -27,16 +21,24 @@ import {
 } from "./helpers/history-expired-intent-release-displaced-sibling.js";
 import {
   type Fixture,
-  ledgerRoot,
   observerSees,
   onNode,
   ownerModel,
-  plans,
   revival,
   statusOf,
   UTXOS_ROOT,
   withNativeReplay,
 } from "./helpers/history-expired-intent-release-preparation.js";
+import {
+  deep,
+  observerNow,
+  outcome,
+  reversalOn,
+  S_NODE_OUT,
+  S_NODE_TX,
+  sHoldsTheSlot,
+  sql,
+} from "./helpers/history-expired-intent-release-reversal-scenario.js";
 
 /** Rollback past confirmation depth can switch a base slot's winner. Root-moving
  * displacements must reconcile retained native/SQL obligations across each stop. */
@@ -70,188 +72,7 @@ vi.mock("../src/workers/utils/commit-block-header.js", (original) =>
 
 const INTEGRITY = "signed_intent_replacement_integrity";
 const REVIVAL_SOURCE = "history_replaced_block_revival";
-const S_NODE_TX = hex("reversal:s-node-tx");
-const S_NODE_OUT = `${S_NODE_TX}#0`;
-
-/** The queue after the deep rollback: D links to S, whose node is on it. */
-const sHoldsTheSlot = {
-  root,
-  nodes: [
-    root,
-    queueNode(
-      BASE_HEADER.toString("hex"),
-      root.headerHash,
-      S_HEADER.toString("hex"),
-      BASE_OUT,
-    ),
-    queueNode(
-      S_HEADER.toString("hex"),
-      BASE_HEADER.toString("hex"),
-      undefined,
-      S_NODE_OUT,
-    ),
-  ],
-} as never;
-
-/** `tx`'s node output 6 blocks deep at head height 10, past the depth 3. */
-const deep = (tx: string) => ({ head: 10, start: 1, txs: { [tx]: 5 } });
-
-const sql = (
-  statement: (sql: SqlClient.SqlClient) => Effect.Effect<unknown, unknown>,
-) => Effect.flatMap(SqlClient.SqlClient, statement);
-
-/** The correction observer's cursor queue: the root, then `node`. */
-const observerNow = (node: { headerHash: string; outRef: string }) =>
-  sql((sql) => sql`DELETE FROM state_queue_terminal_observer_states`).pipe(
-    Effect.zipRight(observerSees([node])),
-  );
-
-const outcome = Effect.gen(function* () {
-  return {
-    w: (yield* statusOf(W_HEADER))?.status,
-    s: (yield* statusOf(S_HEADER))?.status,
-    plans: (yield* plans).map(({ state }) => state),
-    ledger: yield* ledgerRoot,
-  };
-});
-
-/** W revived over S, W locally finalized, then the rollback deeper than the
- * confirmation depth lands S again, and the revival runs twice. */
-const reversal = (
-  wChangedTheLedger: boolean,
-  stopAfterCas = false,
-  rollbackAfterCas = false,
-  stopInverse = false,
-  repeatCycle = false,
-) => {
-  const owner = ownerModel(UTXOS_ROOT);
-  return onNode(
-    owner,
-    (node) =>
-      Effect.gen(function* () {
-        yield* retainedBaseJournal;
-        yield* journal(
-          W_HEADER,
-          Pending.Status.Abandoned,
-          W_COMMIT,
-          2_000_000,
-          {
-            abandonment: "replacement",
-            empty: !wChangedTheLedger,
-          },
-        );
-        yield* withNativeReplay(W_HEADER);
-        yield* journal(
-          S_HEADER,
-          Pending.Status.LocallyApplied,
-          S_COMMIT,
-          3_000_000,
-          {
-            empty: true,
-          },
-        );
-        yield* observerNow({
-          headerHash: W_HEADER.toString("hex"),
-          outRef: W_NODE_OUT,
-        });
-        fixture.queue = wHoldsTheSlot;
-        fixture.coverage = deep(W_NODE_TX);
-        const forward = yield* revival(node);
-        const revived = yield* outcome;
-        // W's local finalization completes.
-        yield* sql(
-          (sql) => sql`UPDATE pending_block_finalizations
-            SET status = ${Pending.Status.LocallyApplied}
-            WHERE header_hash = ${W_HEADER}`,
-        );
-        owner.durableRoot = wChangedTheLedger ? "00".repeat(32) : UTXOS_ROOT;
-        yield* sql(
-          (sql) =>
-            sql`UPDATE mpf_engine_state SET root_hex = ${owner.durableRoot} WHERE store_name = 'ledger'`,
-        );
-        // The rollback deeper than the confirmation depth: S holds D's slot
-        // again, deep, and W's commit is gone from the canonical history.
-        yield* observerNow({
-          headerHash: S_HEADER.toString("hex"),
-          outRef: S_NODE_OUT,
-        });
-        fixture.queue = sHoldsTheSlot;
-        fixture.coverage = deep(S_NODE_TX);
-        if (stopAfterCas)
-          owner.afterRestore = async () => {
-            throw new Error("stop after displacement CAS");
-          };
-        const interrupted = stopAfterCas ? yield* revival(node) : undefined;
-        const retained = yield* plans;
-        owner.afterRestore = undefined;
-        if (rollbackAfterCas) {
-          yield* observerNow({
-            headerHash: W_HEADER.toString("hex"),
-            outRef: W_NODE_OUT,
-          });
-          fixture.queue = wHoldsTheSlot;
-          fixture.coverage = deep(W_NODE_TX);
-        }
-        if (stopInverse)
-          owner.afterRestore = async () => {
-            throw new Error("stop after inverse CAS");
-          };
-        const inverseInterrupted = stopInverse
-          ? yield* revival(node)
-          : undefined;
-        const inverseRetained = yield* plans;
-        owner.afterRestore = undefined;
-        const reversed = [yield* revival(node), yield* revival(node)];
-        const cycleAttempts = [];
-        if (repeatCycle) {
-          yield* sql(
-            (sql) =>
-              sql`UPDATE pending_block_finalizations SET status = ${Pending.Status.LocallyApplied} WHERE header_hash = ${S_HEADER}`,
-          );
-          yield* observerNow({
-            headerHash: W_HEADER.toString("hex"),
-            outRef: W_NODE_OUT,
-          });
-          fixture.queue = wHoldsTheSlot;
-          fixture.coverage = deep(W_NODE_TX);
-          cycleAttempts.push(yield* revival(node));
-          yield* sql(
-            (sql) =>
-              sql`UPDATE pending_block_finalizations SET status = ${Pending.Status.LocallyApplied} WHERE header_hash = ${W_HEADER}`,
-          );
-          owner.durableRoot = "00".repeat(32);
-          yield* sql(
-            (sql) =>
-              sql`UPDATE mpf_engine_state SET root_hex = ${owner.durableRoot} WHERE store_name = 'ledger'`,
-          );
-          yield* observerNow({
-            headerHash: S_HEADER.toString("hex"),
-            outRef: S_NODE_OUT,
-          });
-          fixture.queue = sHoldsTheSlot;
-          fixture.coverage = deep(S_NODE_TX);
-          cycleAttempts.push(yield* revival(node));
-        }
-
-        return {
-          cycleAttempts,
-          cyclePlans: yield* plans,
-          inverseInterrupted,
-          inverseRetained,
-          operations: owner.operations,
-          forward,
-          revived,
-          reversed,
-          after: yield* outcome,
-          durableRoot: owner.durableRoot,
-          restores: owner.restores,
-          interrupted,
-          retained: retained.map(({ state }) => state),
-        };
-      }),
-    UTXOS_ROOT,
-  );
-};
+const reversal = reversalOn(fixture);
 
 describe("a displacement undone by a rollback deeper than the confirmation depth", () => {
   it("revives the sibling again over the displaced winner when the winner changed no ledger state", async () => {
@@ -452,6 +273,40 @@ describe("retained displacement after a branch return", () => {
     expect(result.durableRoot).toBe(result.after.ledger);
     for (const attempt of result.reversed)
       expect(attempt.failure).toBeUndefined();
+  });
+});
+
+describe("a retained displacement whose inverse restore is refused as not retained", () => {
+  it("holds under the revival source with its plan prepared, then completes once the root is retained", async () => {
+    const result = await reversal(true, true, true, false, false, true);
+    const held = result.inverseHeld!;
+    for (const attempt of held.attempts) {
+      expect(attempt.failure).toBeUndefined();
+      expect(attempt.raised.get(REVIVAL_SOURCE)).toBe(
+        SIGNED_INTENT_TARGET_ROOT_NOT_RETAINED,
+      );
+    }
+    // Held: the displacement plan prepared, native MPF at its CAS target,
+    // the SQL marker where W's finalization left it, no further restore.
+    expect(held.plans).toEqual(result.inverseRetained);
+    expect(held.plans.map(({ state }) => state)).toEqual(["prepared"]);
+    expect(held.ledger).toBe("00".repeat(32));
+    expect(held.native).not.toBe(held.ledger);
+    // Only the displacement's own CAS ran; the refused inverse did not.
+    expect(held.operations).toHaveLength(1);
+    // Retained again: the inverse completes and the reason clears.
+    for (const attempt of result.reversed) {
+      expect(attempt.failure).toBeUndefined();
+      expect(attempt.raised.get(REVIVAL_SOURCE)).toBeUndefined();
+    }
+    expect(result.operations).toHaveLength(2);
+    expect(result.after.plans).not.toContain("prepared");
+    expect(result.after).toMatchObject({
+      w: Pending.Status.LocallyApplied,
+      s: Pending.Status.Abandoned,
+      ledger: "00".repeat(32),
+    });
+    expect(result.durableRoot).toBe(result.after.ledger);
   });
 });
 

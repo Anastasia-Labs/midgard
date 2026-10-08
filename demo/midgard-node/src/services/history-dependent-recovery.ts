@@ -8,7 +8,29 @@ import {
 } from "../database/eventHistoryRecoveryPlans.js";
 import { DatabaseError } from "../database/utils/common.js";
 import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
-import type { NativeMpfOwnerService } from "./mpf-native-owner/protocol.js";
+import {
+  type NativeMpfOwnerService,
+  NativeMpfRootNotRetained,
+} from "./mpf-native-owner/protocol.js";
+
+/** The `NativeMpfRootNotRetained` refusal on `cause`'s chain, if any: the
+ * native owner refused a restore because it does not retain the target root
+ * in full, before it changed its marker. Matched by class or by tag, through
+ * the `cause` links a failure that wraps it adds. */
+export const rootNotRetained = (
+  cause: unknown,
+): NativeMpfRootNotRetained | undefined => {
+  let current = cause;
+  for (let depth = 0; depth < 8 && current instanceof Object; depth += 1) {
+    if (
+      current instanceof NativeMpfRootNotRetained ||
+      (current as { _tag?: unknown })._tag === "NativeMpfRootNotRetained"
+    )
+      return current as NativeMpfRootNotRetained;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return undefined;
+};
 
 /** Production ordering for a source-authorized dependent rollback. The plan was
  * committed under recovery authority before this call; native mutation holds no

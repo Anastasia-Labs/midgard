@@ -2,6 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import {
+  HISTORY_REPLACED_BLOCK_REVIVAL_SOURCE,
+  SIGNED_INTENT_TARGET_ROOT_NOT_RETAINED,
+} from "../src/services/liveness-halt.js";
+import {
+  BASE_AGGREGATE,
   CHILD_ROOT,
   compensationScenario,
   PREFIX_ROOT,
@@ -164,4 +169,66 @@ describe("durable returned-prefix displacement compensation", () => {
       expect(result.replays).toBe(0);
     },
   );
+});
+
+describe("the SQL ledger marker a compensation with no returned prefix writes", () => {
+  // The original winner holds its base's slot again, so the compensation's
+  // target root is the winner's base root: the marker takes the UTxO payload
+  // aggregate of the journal the winner's base tail header hash names only
+  // when that journal's expected root equals the target root.
+  it.each([
+    ["target root", BASE_AGGREGATE],
+    ["other root", { entryCount: null, encodedTupleBytes: null }],
+  ] as const)(
+    "takes the base journal's aggregate only when its expected root is the target root (%s)",
+    async (baseJournal, aggregate) => {
+      const result = await compensationScenario(fixture, {
+        stop: "after compensation CAS",
+        branch: "original winner",
+        baseJournal,
+      });
+      expect(result.again.failure).toBeUndefined();
+      expect(result.final.map(({ state }) => state)).toEqual(["applied"]);
+      expect(result.native).toBe(UTXOS_ROOT);
+      expect(result.ledger).toBe(UTXOS_ROOT);
+      expect(result.aggregate).toEqual(aggregate);
+    },
+  );
+});
+
+describe("a displacement compensation whose restore is refused as not retained", () => {
+  it("holds under the revival source with its plan prepared, then completes once the root is retained", async () => {
+    const result = await compensationScenario(fixture, {
+      compensationRootNotRetained: true,
+    });
+    for (const attempt of [result.interrupted, result.interruptedAgain!]) {
+      expect(attempt.failure).toBeUndefined();
+      expect(attempt.raised.get(HISTORY_REPLACED_BLOCK_REVIVAL_SOURCE)).toBe(
+        SIGNED_INTENT_TARGET_ROOT_NOT_RETAINED,
+      );
+    }
+    // Held: the compensation plan prepared, native MPF at the original
+    // displacement's target, the SQL marker and the journals as they were.
+    expect(result.intermediate.map(({ state }) => state)).toEqual(["prepared"]);
+    expect(domain(result.intermediate[0]!)).toContain(
+      "displacement-compensation",
+    );
+    expect(result.intermediateNative).toBe(UTXOS_ROOT);
+    expect(result.intermediateLedger).toBe(CHILD_ROOT);
+    // Only the original displacement's restore ran; the refused one did not.
+    expect(result.intermediateOperations).toHaveLength(1);
+    // Retained again: the next evaluation completes it and clears the reason.
+    expect(result.again.failure).toBeUndefined();
+    expect(
+      result.again.raised.get(HISTORY_REPLACED_BLOCK_REVIVAL_SOURCE),
+    ).toBeUndefined();
+    expect(result.final.map(({ state }) => state)).toEqual(["applied"]);
+    expect(result.native).toBe(PREFIX_ROOT);
+    expect(result.ledger).toBe(PREFIX_ROOT);
+    expect(result.child?.status).toBe(Pending.Status.Abandoned);
+    expect(result.operations).toEqual([
+      ...result.intermediateOperations,
+      result.intermediate[0]?.recovery_id,
+    ]);
+  });
 });
