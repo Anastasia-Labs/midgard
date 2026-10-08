@@ -25,25 +25,38 @@
  * every event a removed block or an unknown header held goes back to
  * `awaiting`; every event a processed foreign block holds is projected to
  * it; removed rows are deleted, processed ones marked applied, and the
- * basis and the ledger-store root stamp move to the target.
+ * ledger-store root stamp moves to the target.
  */
 import { randomUUID } from "node:crypto";
 
-import { Effect, Ref } from "effect";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { Cause, Effect, Ref } from "effect";
 
 import { MpfEngineStateDB } from "../database/index.js";
 import { NodeConfig } from "../services/config.js";
+import { isRecoverableHistorySourceFailure } from "../services/event-history-owner.source-failure.js";
 import { withHistoryWrite } from "../services/event-history-producer.js";
 import {
   HistoryPreparation,
   type HistoryRecoveryPreparation,
 } from "../services/event-history-recovery.js";
 import { Globals } from "../services/globals.globals.js";
-import type { NativeMpfOwnerService } from "../services/mpf-native-owner/protocol.js";
+import {
+  clearLivenessIncident,
+  raiseLivenessIncident,
+} from "../services/liveness-halt.js";
+import {
+  type NativeMpfOwnerService,
+  NativeMpfRootNotRetained,
+} from "../services/mpf-native-owner/protocol.js";
 import { encodeNativeMpfEventLog } from "../services/mpf-native-owner/service.js";
 import { initializeArchitectureGOwner } from "../services/native-mpf-startup.js";
 import { rebuildWorkingLedger } from "../services/working-ledger-recompute.js";
 import { sha256Hex } from "../sha256.js";
+import {
+  LANDED_BLOCK_REBASE_FAILED,
+  LANDED_BLOCK_REBASE_SOURCE,
+} from "./holds.js";
 import { depositOutputs } from "./ledger.js";
 import {
   assignChainEvents,
@@ -51,7 +64,8 @@ import {
   settleChainDeposits,
 } from "./rebase-events.js";
 import { rebasePlan, type RebaseTarget, walkTarget } from "./rebase-target.js";
-import { Basis, deleteRows, markApplied } from "./store.js";
+import { recordSettlements } from "./settlements.js";
+import { deleteRows, markApplied } from "./store.js";
 
 export const REBASE_RECOVERY_DOMAIN = "midgard/landed-block-rebase/v1";
 
@@ -72,9 +86,6 @@ export const REBASE_REJECTIONS = {
 
 const promise = <A>(work: () => Promise<A>) =>
   Effect.tryPromise({ try: work, catch: (cause) => cause });
-
-const notRetained = (error: unknown) =>
-  error instanceof Error && error.message.includes("is not retained in full");
 
 export const rebaseRecoveryId = (durableRoot: string, targetRoot: string) =>
   sha256Hex(
@@ -108,7 +119,7 @@ export const moveNativeRoot = (
         ),
       );
       if (restored._tag === "Right") from = index;
-      else if (!notRetained(restored.left))
+      else if (!(restored.left instanceof NativeMpfRootNotRetained))
         return yield* Effect.fail(restored.left);
     }
     if (from < 0)
@@ -130,24 +141,34 @@ export const moveNativeRoot = (
           );
         continue;
       }
-      yield* preparation.assertCurrent;
-      const handle = yield* promise(() => owner.fork(base));
-      yield* Effect.gen(function* () {
-        const applied = yield* promise(() =>
-          owner.applyEvents(handle, encodeNativeMpfEventLog(base, stepEvents)),
-        );
-        if (applied.candidateRoot !== expected)
-          return yield* Effect.fail(
-            new Error(
-              `A landed block's delta reaches native root ${applied.candidateRoot}, not ${expected}`,
+      // Fork, apply and promote run to their end or their discard: an
+      // interrupt never leaves a fork behind. The preparation is still
+      // re-checked between the steps.
+      yield* Effect.uninterruptible(
+        Effect.gen(function* () {
+          yield* preparation.assertCurrent;
+          const handle = yield* promise(() => owner.fork(base));
+          yield* Effect.gen(function* () {
+            const applied = yield* promise(() =>
+              owner.applyEvents(
+                handle,
+                encodeNativeMpfEventLog(base, stepEvents),
+              ),
+            );
+            if (applied.candidateRoot !== expected)
+              return yield* Effect.fail(
+                new Error(
+                  `A landed block's delta reaches native root ${applied.candidateRoot}, not ${expected}`,
+                ),
+              );
+            yield* preparation.assertCurrent;
+            yield* promise(() => owner.promote(handle));
+          }).pipe(
+            Effect.onError(() =>
+              promise(() => owner.discard(handle)).pipe(Effect.ignore),
             ),
           );
-        yield* preparation.assertCurrent;
-        yield* promise(() => owner.promote(handle));
-      }).pipe(
-        Effect.onError(() =>
-          promise(() => owner.discard(handle)).pipe(Effect.ignore),
-        ),
+        }),
       );
     }
   });
@@ -174,6 +195,13 @@ export const rebaseSql = (target: RebaseTarget) =>
     const removed = target.rows.filter((row) => row.state === "removed");
     yield* resetUnheldEvents(target, removed);
     yield* assignChainEvents(foreign);
+    // A receipt member a processed (landed) row includes is settled by it
+    // from this rebuild on; the live own block has not landed.
+    yield* recordSettlements(
+      target.steps.flatMap((step) =>
+        step.row === undefined ? [] : [step.row],
+      ),
+    );
     const rebuilt = yield* rebuildWorkingLedger({
       base: ledger,
       baseDeposits: new Map(
@@ -191,48 +219,101 @@ export const rebaseSql = (target: RebaseTarget) =>
     yield* settleChainDeposits(foreign, rebuilt.ledger, deposits);
     yield* deleteRows(removed.map((row) => row.headerHash));
     yield* markApplied(foreign.map((row) => row.headerHash));
-    yield* Basis.upsert(target.tip);
     yield* MpfEngineStateDB.stampLedgerMigration(roots.at(-1)!);
     return rebuilt;
   });
 
 /**
+ * A failure and the causes under it: the history write gate reports a
+ * failed step under its own message, with the step's error as its cause.
+ */
+const failureDetail = (failure: unknown) => {
+  const parts: string[] = [];
+  let current = failure;
+  for (let depth = 0; depth < 8 && current !== undefined; depth += 1) {
+    const part = formatUnknownError(current);
+    if (parts.at(-1) !== part) parts.push(part);
+    current =
+      typeof current === "object" && current !== null
+        ? (current as { readonly cause?: unknown }).cause
+        : undefined;
+  }
+  return parts.join("; caused by ");
+};
+
+/**
  * The rebase, run from the history owner's pending-reconciliation
  * preparation. A rebase that cannot run yet (no lease, or a target that
  * waits for an own journal's resolution) leaves the reconciliation pending.
+ *
+ * A failure the owner treats as recoverable (a transport-class SQL error, a
+ * deadline, a superseded preparation) and an interrupt propagate as before.
+ * Any other failure is caught here: it is recorded
+ * (`LANDED_BLOCK_REBASE_FAILURE`), raised as the liveness reason
+ * `landed_block_rebase_failed` with its detail, and the preparation returns,
+ * so the reconciliation stays pending on the owner's backoff and the owner
+ * retries it; the record and the reason clear once a rebase runs.
  */
 export const prepareLandedBlockRebase = (
   preparation: HistoryRecoveryPreparation,
 ) =>
   Effect.gen(function* () {
-    const plan = yield* withHistoryWrite(rebasePlan);
-    if (plan.kind !== "ready") return;
     const globals = yield* Globals;
     const config = yield* NodeConfig;
-    const run = MpfEngineStateDB.tryWithLedgerStoreLease(
-      `landed-block-rebase:${randomUUID()}`,
-      () =>
-        Effect.gen(function* () {
-          const current = yield* Ref.get(globals.NATIVE_MPF_OWNER);
-          if (current === undefined)
-            yield* initializeArchitectureGOwner(
-              globals,
-              config,
-              preparation,
-              (owner) => moveNativeRoot(owner, plan.target, preparation),
-            );
-          else yield* moveNativeRoot(current, plan.target, preparation);
-          // Producers are drained for the preparation: the rows the plan
-          // read cannot change before the SQL step.
-          yield* preparation.assertCurrent;
-          yield* withHistoryWrite(rebaseSql(plan.target));
-        }),
-    );
-    const result = yield* run;
-    if (result._tag === "Busy")
+    const attempt = Effect.gen(function* () {
+      const plan = yield* withHistoryWrite(rebasePlan);
+      if (plan.kind !== "ready") return "idle" as const;
+      const run = MpfEngineStateDB.tryWithLedgerStoreLease(
+        `landed-block-rebase:${randomUUID()}`,
+        () =>
+          Effect.gen(function* () {
+            const current = yield* Ref.get(globals.NATIVE_MPF_OWNER);
+            if (current === undefined)
+              yield* initializeArchitectureGOwner(
+                globals,
+                config,
+                preparation,
+                (owner) => moveNativeRoot(owner, plan.target, preparation),
+              );
+            else yield* moveNativeRoot(current, plan.target, preparation);
+            // Producers are drained for the preparation: the rows the plan
+            // read cannot change before the SQL step.
+            yield* preparation.assertCurrent;
+            yield* withHistoryWrite(rebaseSql(plan.target));
+          }),
+      );
+      const result = yield* run;
+      if (result._tag !== "Busy") return "ran" as const;
       yield* Effect.logInfo(
         "Landed-block rebase waits for the ledger store lease",
       );
+      return "busy" as const;
+    });
+    const outcome = yield* attempt.pipe(
+      Effect.catchAllCause((cause) => {
+        const failure = Cause.squash(cause);
+        if (
+          Cause.isInterruptedOnly(cause) ||
+          isRecoverableHistorySourceFailure(failure)
+        )
+          return Effect.failCause(cause);
+        const detail = failureDetail(failure);
+        return Effect.gen(function* () {
+          yield* Ref.set(globals.LANDED_BLOCK_REBASE_FAILURE, detail);
+          yield* raiseLivenessIncident(
+            globals,
+            LANDED_BLOCK_REBASE_SOURCE,
+            LANDED_BLOCK_REBASE_FAILED,
+            detail,
+          );
+          return "failed" as const;
+        });
+      }),
+    );
+    if (outcome === "ran" || outcome === "idle") {
+      yield* Ref.set(globals.LANDED_BLOCK_REBASE_FAILURE, undefined);
+      yield* clearLivenessIncident(globals, LANDED_BLOCK_REBASE_SOURCE);
+    }
   }).pipe(Effect.provideService(HistoryPreparation, preparation));
 
 /** The owner's reconcile: pending while a rebase is due and can run. */

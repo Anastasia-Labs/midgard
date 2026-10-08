@@ -99,6 +99,8 @@ export type FollowStatus = Readonly<{
     lastError: string | null;
     /** Prune passes failed in a row; the next successful one resets it. */
     failures: number;
+    /** Slots a role's prune floor holds the boundary back (null: none). */
+    floorLagSlots: number | null;
   }>;
 }>;
 

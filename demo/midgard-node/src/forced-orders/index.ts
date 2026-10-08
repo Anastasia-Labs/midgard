@@ -36,7 +36,9 @@ export {
 } from "./ingest.js";
 export { forcedOrderProjection } from "./projection.js";
 export {
+  type AdmittedForcedOrder,
   type ForcedOrderRow,
+  forcedOrdersAdmittedAt,
   forcedOrdersAt,
   type ForcedOrderStatus,
 } from "./reads.js";

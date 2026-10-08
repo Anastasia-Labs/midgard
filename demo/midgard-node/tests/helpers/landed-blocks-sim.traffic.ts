@@ -5,7 +5,12 @@
  * its height and bit; a bad node (about one in ten) commits the other bit's
  * root, so its honest replay misses it; a late-DA node's payload is missing
  * on its first replay. The attested head merges into the root (a bad head
- * never does), and the tail can be removed.
+ * never does), and the tail can be removed. A long-late node's payload stays
+ * missing for several checks. About a third of the honest appends off
+ * deposit heights are blocks this node may commit (`ownHeader`): the driver commits it while its
+ * parent is the processed tail, so it lands as an own block, relanding
+ * like any append a rollback removed (its journal may have been abandoned
+ * by then); one that lands without a journal is just a foreign block.
  */
 import {
   type ScenarioTraffic,
@@ -41,7 +46,14 @@ export type SimBlockInfo = Readonly<{
   b: number;
   bad: boolean;
   lateDa: boolean;
+  /** The payload stays missing for several checks, not one replay. */
+  longLate: boolean;
+  /** This node committed the block (its journal describes it). */
+  own: boolean;
+  /** The header this node commits if its parent is the processed tail. */
+  ownHeader?: SDK.Header;
   prevHeaderHash: string | null;
+  endTime: bigint;
 }>;
 
 export type SimRegistry = Map<string, SimBlockInfo>;
@@ -50,7 +62,16 @@ export const newSimRegistry = (): SimRegistry =>
   new Map([
     [
       SDK.GENESIS_HEADER_HASH,
-      { h: 0, b: 0, bad: false, lateDa: false, prevHeaderHash: null },
+      {
+        h: 0,
+        b: 0,
+        bad: false,
+        lateDa: false,
+        longLate: false,
+        own: false,
+        prevHeaderHash: null,
+        endTime: 0n,
+      },
     ],
   ]);
 
@@ -63,6 +84,8 @@ export type TrafficStats = {
   tailRemovals: number;
   /** Rolled-back appends the traffic landed again. */
   relandedAppends: number;
+  /** Appends this node may commit before they land. */
+  ownAppends: number;
 };
 
 export const rootDatum = (
@@ -117,7 +140,7 @@ export const liveQueue = (
   };
 };
 
-const linkedHeader = (
+export const linkedHeader = (
   universe: SimUniverse,
   nonce: number,
   parent: Readonly<{ headerHash: string; utxosRoot: string; endTime: bigint }>,
@@ -143,6 +166,8 @@ export const landedBlocksTraffic = (
   universe: SimUniverse,
   registry: SimRegistry,
   stats: TrafficStats,
+  /** Attests the head and merges it whenever it can (the root moves often). */
+  mergeHeavy = false,
 ): ScenarioTraffic => {
   // Appends a rollback removed: re-landing one (the same transaction, so
   // the same node) exercises a removed row relanding.
@@ -215,14 +240,20 @@ export const landedBlocksTraffic = (
       const b = nonce % 2;
       const bad = rng.chance(0.1);
       const lateDa = !bad && rng.chance(0.15);
+      const mine = !bad && !lateDa && !hasDeposit(h) && rng.chance(0.3);
       const header = linkedHeader(universe, nonce, parent, h, bad ? 1 - b : b);
       const hash = SDK.stateQueueHeaderHash(header);
+      if (mine) stats.ownAppends += 1;
       registry.set(hash, {
         h,
         b,
         bad,
         lateDa,
+        longLate: lateDa && nonce % 3 === 0,
+        own: false,
+        ...(mine ? { ownHeader: header } : {}),
         prevHeaderHash: parent.headerHash,
+        endTime: header.endTime,
       });
       const last = tail ?? root.element;
       const append: SimTx = {
@@ -248,8 +279,13 @@ export const landedBlocksTraffic = (
     }
     if (nodes.length === 0) return [];
     const unattested = nodes.filter((node) => node.status === "Unattested");
-    if (roll < 0.65 && unattested.length > 0) {
-      const node = rng.pick(unattested);
+    const head = nodes[0]!;
+    const mergeable =
+      head.status !== "Unattested" && registry.get(head.key!)?.bad !== true;
+    if (roll < 0.65 && unattested.length > 0 && !(mergeHeavy && mergeable)) {
+      // The oldest first half the time, so heads attest and merge.
+      const node =
+        mergeHeavy || rng.chance(0.5) ? unattested[0]! : rng.pick(unattested);
       return spend(
         [node],
         {
@@ -269,12 +305,7 @@ export const landedBlocksTraffic = (
         () => (stats.attests += 1),
       );
     }
-    const head = nodes[0]!;
-    if (
-      roll < 0.85 &&
-      head.status !== "Unattested" &&
-      registry.get(head.key!)?.bad !== true
-    ) {
+    if ((roll < 0.85 || mergeHeavy) && mergeable) {
       const header = head.header!;
       return spend(
         [root.element, head],

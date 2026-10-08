@@ -224,6 +224,7 @@ export type { ApplyRejection, BlockApplied } from "./store/apply.js";
 export type {
   DerivationContext,
   DerivationHook,
+  PruneFloor,
   PruneHook,
   RetentionPin,
   RetentionPins,

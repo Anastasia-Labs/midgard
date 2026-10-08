@@ -1,8 +1,8 @@
 /**
  * What processing a foreign landed block needs from a replayer: the
  * block's post-state on its parent's ledger, or why it cannot be had yet
- * (`missing`: the DA payload or an event is not available yet) or ever
- * (`invalid`: the block does not replay to its header). A replayer throws
+ * (`missing`, `event_unknown`, `forced_order_pending`) or ever (`invalid`:
+ * the block does not replay to its header). A replayer throws
  * only for faults it cannot classify; the hook holds on those too.
  */
 import type { View } from "@al-ft/midgard-l1-follower";
@@ -31,9 +31,21 @@ export type Replayed = Readonly<{
   txIds: readonly Buffer[];
 }>;
 
+/**
+ * - `missing`: the DA payload is not available yet, or the block ends past
+ *   what the view can know;
+ * - `event_unknown`: the block names an event the follower does not know at
+ *   the view;
+ * - `forced_order_pending`: a forced order admitted in the block's window
+ *   cannot be read back from the facts at the view yet;
+ * - `invalid`: the block does not replay to its header.
+ */
 export type ReplayOutcome =
   | Replayed
-  | Readonly<{ kind: "missing" | "invalid"; detail: string }>;
+  | Readonly<{
+      kind: "missing" | "event_unknown" | "forced_order_pending" | "invalid";
+      detail: string;
+    }>;
 
 export type LandedBlockReplayer = (
   input: ReplayInput,

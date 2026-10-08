@@ -97,6 +97,7 @@ describe("splitSqlStatements", () => {
         name: "locally_applied_block_status",
         transactional: true,
       },
+      { version: 12, name: "receipt_settlements", transactional: true },
     ]);
   });
 
@@ -354,7 +355,8 @@ describe("applied fresh-install schema", () => {
           expect(dropped).toEqual([]);
 
           // Version 9 drops the census and foreign-adoption tables (N3) and
-          // adds the landed-block processing tables.
+          // adds the landed-block processing tables, with no working-ledger
+          // basis table (nothing reads one).
           const landed = yield* sql<{
             readonly relname: string;
           }>`SELECT relname
@@ -371,7 +373,6 @@ describe("applied fresh-install schema", () => {
           expect(landed.map((row) => row.relname)).toEqual([
             "node_confirmed_ledger_frontier",
             "node_landed_blocks",
-            "node_working_ledger_basis",
           ]);
 
           const constraints = yield* sql<{

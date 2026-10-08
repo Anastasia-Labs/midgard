@@ -1,10 +1,11 @@
 /**
  * The node's landed-block rows (plan §5.5 P3, N3): one per landed
  * state-queue block the node processed, with its net ledger delta against
- * its parent's ledger and the events it included, the confirmed-ledger
- * frontier (the landed header whose post-state `confirmed_ledger` holds),
- * and the working-ledger basis (the processed block the working ledger and
- * the native MPF were last rebuilt on). Migration 0009 holds the tables.
+ * its parent's ledger and the events it included, and the confirmed-ledger
+ * frontier (the landed header whose post-state `confirmed_ledger` holds).
+ * Migration 0009 holds the tables. What the working ledger is rebuilt on is
+ * not stored: it is the rows' `applied` flags and the ledger-store root
+ * stamp.
  */
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
@@ -18,7 +19,6 @@ import type * as Ledger from "../database/utils/ledger.js";
 
 export const tableName = "node_landed_blocks";
 export const frontierTableName = "node_confirmed_ledger_frontier";
-export const basisTableName = "node_working_ledger_basis";
 
 export type LandedBlockKind = "own" | "foreign";
 
@@ -201,6 +201,3 @@ const singleRow = (table: string) => ({
 
 /** The header whose post-state `confirmed_ledger` holds. */
 export const Frontier = singleRow(frontierTableName);
-
-/** The processed block the working ledger and native MPF were rebuilt on. */
-export const Basis = singleRow(basisTableName);

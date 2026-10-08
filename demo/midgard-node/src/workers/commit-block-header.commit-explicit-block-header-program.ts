@@ -24,7 +24,7 @@ import {
   EXPLICIT_COMMIT_CONFIRMATION_POLL_INTERVAL_MS,
   EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
-import { type ResolvedCommitBaseLedgerEntries } from "./commit-block-header.select-authenticated-foreign-base-candidate.js";
+import { type ResolvedCommitBaseLedgerEntries } from "./commit-block-header.resolve-commit-base-ledger-entries.js";
 import { buildUnsignedCommitTx } from "./commit-block-header/build-unsigned-tx.js";
 import { fetchLatestCommittedBlockLocal } from "./commit-block-header/state-queue.js";
 import { makeEventCommitments } from "./commit-block-header/transition-commitments.js";

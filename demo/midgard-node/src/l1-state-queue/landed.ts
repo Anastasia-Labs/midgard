@@ -15,6 +15,7 @@
  *   fresh replay whenever the facts do, and a rewind recomputes it.
  */
 import {
+  changedUtxosIn,
   currentViewIn,
   type Dialect,
   type LinkedQueueEntry,
@@ -180,6 +181,61 @@ export const landedStateQueueIn = async (
     queue: walkLandedStateQueue(view, read.utxos, config),
   };
 };
+
+/** The queue's retained history at a view, or why it cannot be read. */
+export type StateQueueHistoryRead =
+  | Readonly<{ kind: "ok"; elements: readonly LandedStateQueueElement[] }>
+  | LandedStateQueueRefusal;
+
+/** Where a stored output entered the facts: its block's slot, or its seed's. */
+export const enteredSlot = (stored: StoredOutput): number =>
+  stored.created?.slot ?? stored.seedSlot ?? 0;
+
+/**
+ * Every retained queue output that existed at or before `view`, live or
+ * spent since, as queue elements in ledger order: the queue's history within
+ * the follower's retention (spent queue outputs stay until the prune passes
+ * them). The roots carry every confirmed state, the nodes every header,
+ * merged or not. A view the follower rewound past is `view_moved`.
+ */
+export const stateQueueHistoryIn = async (
+  tx: SqlTx,
+  dialect: Dialect,
+  config: StateQueueProjectionConfig,
+  view: View,
+): Promise<StateQueueHistoryRead> => {
+  const read = await changedUtxosIn(
+    tx,
+    dialect,
+    { by: "unit", policyId: Buffer.from(config.policyId, "hex") },
+    null,
+  );
+  if (read.kind !== "ok") return read;
+  if (!(await viewValidIn(tx, dialect, view)))
+    return {
+      kind: "view_moved",
+      detail: `the follower moved off generation ${view.generation.toString()} at slot ${view.point.slot.toString()}`,
+    };
+  return {
+    kind: "ok",
+    elements: read.utxos.flatMap((stored) => {
+      const element =
+        enteredSlot(stored) > view.point.slot
+          ? null
+          : queueElementOf(stored, config);
+      return element === null ? [] : [element];
+    }),
+  };
+};
+
+/** A stored output as a queue element, or null if it is not a well-formed one. */
+export const queueElementOf = (
+  stored: StoredOutput,
+  config: StateQueueProjectionConfig,
+): LandedStateQueueElement | null =>
+  stored.output.address.equals(Buffer.from(config.address, "hex"))
+    ? (entryOf(stored, config)?.landed ?? null)
+    : null;
 
 /** The elements root first, in list order (the root is absent only when unhealthy). */
 export const landedElements = (

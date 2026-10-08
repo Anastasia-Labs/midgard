@@ -444,6 +444,7 @@ describe("GET /readyz names the L1 follower's reasons (N1)", () => {
             prunedThroughSlot: 40,
             lastError: "prune hook threw",
             failures: 3,
+            floorLagSlots: null,
           },
         }),
       ),

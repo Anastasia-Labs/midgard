@@ -29,6 +29,7 @@ export const followingAtTip = (
       steps: 0,
       prunedThroughSlot: null,
       lastError: null,
+      floorLagSlots: null,
       failures: 0,
     },
     ...change,

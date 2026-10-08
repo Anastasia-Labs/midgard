@@ -97,7 +97,13 @@ export const followChain = async (
     replaying: false,
     events: 0,
     lastError: null,
-    prune: { steps: 0, prunedThroughSlot: null, lastError: null, failures: 0 },
+    prune: {
+      steps: 0,
+      prunedThroughSlot: null,
+      lastError: null,
+      floorLagSlots: null,
+      failures: 0,
+    },
   };
   let status: FollowStatus = { ...initial, readiness: readinessOf(initial) };
   const publish = async (
@@ -193,6 +199,7 @@ export const followChain = async (
         steps: status.prune.steps + 1,
         prunedThroughSlot: pruned.prunedThroughSlot,
         lastError: null,
+        floorLagSlots: pruned.floorLagSlots,
         failures: 0,
       },
     });

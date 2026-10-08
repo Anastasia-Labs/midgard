@@ -38,8 +38,7 @@
  * - After each driver run, S6 (`l1-follower.intents.ts`, I1) seeds wallets
  *   and reconciles intents, then the journal re-reads its refusal holds
  *   (workers' too); its and the journal's holds join the driver's.
- * - Everything the follower cannot clear by itself is a named `/readyz`
- *   reason (`l1-follower.readiness.ts`). Nothing here exits the process.
+ * - Uncleared states are named `/readyz` reasons; nothing here exits.
  */
 import { L1NodeTransport } from "@al-ft/l1-node-transport";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -75,12 +74,10 @@ import {
   operatorSetProjection,
   stateQueueTailOf,
 } from "../l1-operator-set/index.js";
-import {
-  landedStateQueueHook,
-  stateQueueProjection,
-} from "../l1-state-queue/index.js";
+import { landedStateQueueHook } from "../l1-state-queue/index.js";
 import {
   landedBlockHook,
+  landedStateQueueProjection,
   nodeLandedBlockPorts,
 } from "../landed-blocks/index.js";
 import { NodeConfig } from "./config.js";
@@ -254,6 +251,9 @@ const followL1 = Effect.fnUntraced(function* (
   const runtime = yield* Effect.runtime<never>();
   const log = (line: string) =>
     Runtime.runFork(runtime)(Effect.logInfo(`L1 follower: ${line}`));
+  const dbRuntime = yield* Effect.runtime<
+    Database | NodeConfig | Globals | Lucid | ContractDeploymentIdentity
+  >();
   const opened = yield* Effect.acquireRelease(
     Effect.try(() => {
       const transport = new L1NodeTransport({
@@ -268,7 +268,10 @@ const followL1 = Effect.fnUntraced(function* (
           ...projectionStoreOptions(
             [
               eventProjection(plan.projection),
-              stateQueueProjection(plan.stateQueue),
+              landedStateQueueProjection(
+                plan.stateQueue,
+                Runtime.runPromise(dbRuntime),
+              ),
               operatorSetProjection(plan.operatorSet),
               forcedOrderProjection(plan.forcedOrders),
               intentJournalProjection,
@@ -312,9 +315,6 @@ const followL1 = Effect.fnUntraced(function* (
       `the follower store or transport did not open: ${message(opened.left.error)}`,
     );
   const { transport, store, abort } = opened.right;
-  const dbRuntime = yield* Effect.runtime<
-    Database | NodeConfig | Globals | Lucid | ContractDeploymentIdentity
-  >();
   const operatorSet = yield* followerOperatorSet({
     store,
     config: plan.operatorSet,
@@ -353,7 +353,7 @@ const followL1 = Effect.fnUntraced(function* (
       foreignBlockInclusion: landedBlockHook({
         store,
         config: plan.stateQueue,
-        ports: nodeLandedBlockPorts({ store, events: plan.projection }),
+        ports: nodeLandedBlockPorts(store, plan),
         run: (effect) => Runtime.runPromise(dbRuntime)(effect),
       }),
       forcedOrderIngestion: forcedOrderIngestionHook({
@@ -421,6 +421,7 @@ const followL1 = Effect.fnUntraced(function* (
       steps: 0,
       prunedThroughSlot: null,
       lastError: null,
+      floorLagSlots: null,
       failures: 0,
     },
   } as const;

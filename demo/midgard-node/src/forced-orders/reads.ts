@@ -4,6 +4,7 @@
  * transaction after checking the point is canonical in the follower store.
  */
 import {
+  changedUtxosIn,
   decodeOutRef,
   type FactStore,
   liveUtxosIn,
@@ -17,7 +18,7 @@ import {
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import type { ForcedOrderConfig } from "./config.js";
-import { lucidUtxo, outRefLabel } from "./derive.js";
+import { authenticOrder, lucidUtxo, outRefLabel } from "./derive.js";
 import { FORCED_ORDERS_TABLE } from "./schema.js";
 
 export type ForcedOrderStatus = "resolved" | "carriage_pending" | "malformed";
@@ -137,5 +138,83 @@ export const forcedOrdersAt = (
       programMaterial: material.utxos.map((utxo) =>
         lucidUtxo(utxo.outRef, utxo.output),
       ),
+    };
+  });
+
+/**
+ * One forced order the projection admitted at or before a point, live or
+ * spent since: its inclusion time and, read from its order output, its id
+ * and raw datum (null when that output cannot be read or authenticated
+ * there, which a reader treats as not yet known, never as absent).
+ */
+export type AdmittedForcedOrder = Readonly<{
+  outRef: OutRef;
+  inclusionTime: bigint;
+  order: Readonly<{ idCbor: Buffer; datum: Buffer }> | null;
+}>;
+
+export type AdmittedForcedOrdersRead =
+  | Readonly<{ kind: "ok"; orders: readonly AdmittedForcedOrder[] }>
+  | PointRefusal;
+
+/**
+ * Every forced order admitted at or before `at`, whatever its resolution
+ * status and whether or not it is spent since, from the projection's rows
+ * and the retained order outputs, in one transaction after checking the
+ * point is canonical. A row the follower rewound is gone; a spent row stays
+ * until the prune passes it.
+ */
+export const forcedOrdersAdmittedAt = (
+  store: FactStore,
+  config: ForcedOrderConfig,
+  at: Point,
+): Promise<AdmittedForcedOrdersRead> =>
+  store.transaction("read", async (tx): Promise<AdmittedForcedOrdersRead> => {
+    const status = await pointStatusIn(tx, store.dialect, at);
+    if (status.kind !== "canonical") return status;
+    const rows = await tx.query(
+      `SELECT order_tx_hash, order_output_index, inclusion_time
+       FROM ${FORCED_ORDERS_TABLE}
+       WHERE order_slot <= ?
+       ORDER BY order_slot, order_tx_hash, order_output_index`,
+      [at.slot],
+    );
+    const outRefs = rows.map((row) => ({
+      txHash: buf(row.order_tx_hash),
+      index: num(row.order_output_index),
+    }));
+    const outputs = new Map<string, StoredOutput>();
+    if (outRefs.length > 0) {
+      const read = await changedUtxosIn(
+        tx,
+        store.dialect,
+        { by: "outref", outRefs },
+        null,
+      );
+      if (read.kind !== "ok") return read;
+      for (const utxo of read.utxos)
+        outputs.set(outRefLabel(utxo.outRef), utxo);
+    }
+    return {
+      kind: "ok",
+      orders: rows.map((row, index) => {
+        const outRef = outRefs[index]!;
+        const output = outputs.get(outRefLabel(outRef));
+        const order =
+          output === undefined
+            ? null
+            : authenticOrder(lucidUtxo(outRef, output.output), config.policyId);
+        return {
+          outRef,
+          inclusionTime: BigInt(row.inclusion_time as number | string),
+          order:
+            order === null || order.utxo.datum == null
+              ? null
+              : {
+                  idCbor: Buffer.from(order.idCbor),
+                  datum: Buffer.from(order.utxo.datum, "hex"),
+                },
+        };
+      }),
     };
   });

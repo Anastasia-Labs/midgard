@@ -2,20 +2,24 @@
  * Replay of a foreign landed block (plan §7.3, N3): its DA payload, from
  * the node's retained copy or the public DA transport, replayed on its
  * parent's ledger against the events the follower projects at the view and
- * the forced orders the node ingested. The block's event sets must be
- * exactly the in-window events known there (`start < inclusion <= end`);
- * an id the payload names that is not known yet is `missing`, a known
- * in-window id it leaves out is `invalid`. A block that ends past what the
- * view can know (`view time + event wait - 1`) is `missing`.
+ * the forced orders the forced-order projection admitted at the view (every
+ * admitted order, live or spent since, whatever its resolution status: the
+ * facts at the view, never the node's ingested rows). The block's event
+ * sets must be exactly the in-window events known there
+ * (`start < inclusion <= end`): an id the payload names that is not known
+ * there is `event_unknown`; a known in-window id it leaves out, or one it
+ * names twice, is `invalid`; an in-window order whose output cannot be read
+ * back at the view is `forced_order_pending`. A block that ends past what
+ * the view can know (`view time + event wait - 1`) is `missing`, like a DA
+ * payload that is not available yet.
  */
 import { outRefToCbor } from "@al-ft/lucid-midgard";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { reconstructMidgardTransaction } from "@al-ft/midgard-core/consensus-validation";
 import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
-import type { FactStore } from "@al-ft/midgard-l1-follower";
+import type { FactStore, View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
@@ -29,6 +33,11 @@ import {
   ForcedTransactionsDB,
   WithdrawalsDB,
 } from "../database/index.js";
+import {
+  type ForcedOrderConfig,
+  forcedOrdersAdmittedAt,
+  outRefLabel,
+} from "../forced-orders/index.js";
 import type { EventProjectionConfig } from "../l1-events/config.js";
 import { userEventEntry } from "../l1-events/entries.js";
 import { eventsAt } from "../l1-events/reads.js";
@@ -55,7 +64,7 @@ import type { WithdrawalMembership } from "./store.js";
 /** A block's verdict, carried through the replay's error channel. */
 class Verdict extends Error {
   constructor(
-    readonly kind: "missing" | "invalid",
+    readonly kind: Exclude<ReplayOutcome["kind"], "replayed">,
     readonly detail: string,
   ) {
     super(detail);
@@ -63,6 +72,7 @@ class Verdict extends Error {
 }
 
 const missing = (detail: string) => new Verdict("missing", detail);
+const unknownEvent = (detail: string) => new Verdict("event_unknown", detail);
 const invalid = (detail: string) => new Verdict("invalid", detail);
 
 const exact = (
@@ -75,7 +85,7 @@ const exact = (
     return invalid(`the block names a ${kind} twice`);
   const unknown = ids.find((id) => !known.has(id));
   if (unknown !== undefined)
-    return missing(`${kind} ${unknown} is not known at the view`);
+    return unknownEvent(`${kind} ${unknown} is not known at the view`);
   const left = [...known].find((id) => !ids.includes(id));
   if (left !== undefined)
     return invalid(`the block leaves out in-window ${kind} ${left}`);
@@ -123,28 +133,52 @@ const payloadOf = (headerHash: string, header: SDK.Header) =>
       catch: (cause) =>
         invalid(`the retained DA payload does not decode: ${String(cause)}`),
     });
+    // The body is the block's before its event lists are read, as a fetched
+    // payload's is.
+    if (
+      payload.block_body.header_hash !== headerHash ||
+      (yield* SDK.hashBlockHeader(payload.block_body.header).pipe(
+        Effect.orElseSucceed(() => undefined),
+      )) !== headerHash
+    )
+      return yield* Effect.fail(
+        invalid("the retained DA payload's identity differs from the block"),
+      );
     return { payload, acquired: undefined };
   });
 
-/** The in-window forced orders the node ingested: order id hex to raw datum. */
-const forcedInWindow = (header: SDK.Header) =>
+/**
+ * The forced orders admitted in the block's window at the view: order id
+ * hex to raw datum, from the facts. An in-window order whose output cannot
+ * be read back there is a wait.
+ */
+const forcedInWindow = (
+  store: FactStore,
+  config: ForcedOrderConfig,
+  view: View,
+  inWindow: (time: bigint) => boolean,
+) =>
   Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const C = ForcedTransactionsDB.Columns;
-    const rows = yield* sql<{ id: Buffer; datum: Buffer }>`
-      SELECT ${sql(C.TX_ORDER_ID)} AS id, ${sql(C.RAW_DATUM)} AS datum
-      FROM ${sql(ForcedTransactionsDB.tableName)}
-      WHERE (EXTRACT(EPOCH FROM ${sql(C.INCLUSION_TIME)}) * 1000)::bigint > ${header.startTime.toString()}::bigint
-        AND (EXTRACT(EPOCH FROM ${sql(C.INCLUSION_TIME)}) * 1000)::bigint <= ${header.endTime.toString()}::bigint`;
-    return new Map(
-      rows.map(
-        (row) =>
-          [
-            Buffer.from(row.id).toString("hex"),
-            Buffer.from(row.datum),
-          ] as const,
-      ),
+    const read = yield* Effect.promise(() =>
+      forcedOrdersAdmittedAt(store, config, view.point),
     );
+    if (read.kind !== "ok")
+      return yield* Effect.fail(
+        missing(`the forced orders are unreadable: ${read.kind}`),
+      );
+    const forced = new Map<string, Buffer>();
+    for (const admitted of read.orders) {
+      if (!inWindow(admitted.inclusionTime)) continue;
+      if (admitted.order === null)
+        return yield* Effect.fail(
+          new Verdict(
+            "forced_order_pending",
+            `forced order ${outRefLabel(admitted.outRef)} is admitted in the window but its output cannot be read at the view`,
+          ),
+        );
+      forced.set(admitted.order.idCbor.toString("hex"), admitted.order.datum);
+    }
+    return forced;
   });
 
 const depositLedgerKey = (idCbor: string) => {
@@ -174,7 +208,7 @@ const material = (
       if (step.phase === "Deposit") {
         const entry = deposits.get(source[0]);
         if (entry === undefined)
-          return yield* Effect.fail(missing("a deposit is not known"));
+          return yield* Effect.fail(unknownEvent("a deposit is not known"));
         if (entry.info !== source[1])
           return yield* Effect.fail(
             invalid("a deposit differs from its L1 event"),
@@ -183,7 +217,7 @@ const material = (
       }
       const entry = withdrawals.get(source[0]);
       if (entry === undefined)
-        return yield* Effect.fail(missing("a withdrawal is not known"));
+        return yield* Effect.fail(unknownEvent("a withdrawal is not known"));
       const outRef = yield* WithdrawalsDB.toLedgerOutRef({
         [WithdrawalsDB.Columns.L2_OUTREF]: Buffer.from(entry.l2Outref, "hex"),
       });
@@ -214,7 +248,9 @@ const material = (
       Effect.gen(function* () {
         const datum = forced.get(source[0]);
         if (datum === undefined)
-          return yield* Effect.fail(missing("a forced order is not known"));
+          return yield* Effect.fail(
+            unknownEvent("a forced order is not known"),
+          );
         yield* Effect.try({
           try: () => {
             const payload = SDK.decodeTxOrderDatumCbor(datum).event.tx;
@@ -274,6 +310,7 @@ export const replayForeignBlock =
   (deps: {
     readonly store: FactStore;
     readonly events: EventProjectionConfig;
+    readonly forcedOrders: ForcedOrderConfig;
   }) =>
   (input: ReplayInput) =>
     Effect.gen(function* () {
@@ -324,7 +361,12 @@ export const replayForeignBlock =
             });
         }
       }
-      const forced = yield* forcedInWindow(header);
+      const forced = yield* forcedInWindow(
+        deps.store,
+        deps.forcedOrders,
+        view,
+        inWindow,
+      );
       const { payload, acquired } = yield* payloadOf(headerHash, header);
       const body = payload.block_body;
       const mismatch =

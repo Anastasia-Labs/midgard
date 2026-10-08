@@ -126,6 +126,7 @@ export type Adapter = Readonly<{
   /** A fresh store, plus a function that reopens a new store on the same database. */
   open: (
     k: number,
+    extra?: Partial<FactStoreOptions>,
   ) => Promise<{ store: FactStore; reopen: () => FactStore; url?: string }>;
 }>;
 
@@ -135,20 +136,21 @@ export const storeAdapters = (
 ): readonly Adapter[] => [
   {
     name: "sqlite",
-    open: async (k) => {
+    open: async (k, extra = {}) => {
       const path = join(scratch, `${String(Math.random()).slice(2)}.db`);
       const reopen = (): FactStore =>
-        openSqliteFactStore({ ...options(k), path });
+        openSqliteFactStore({ ...options(k), ...extra, path });
       return { store: reopen(), reopen };
     },
   },
   {
     name: "postgres",
-    open: async (k) => {
+    open: async (k, extra = {}) => {
       const { url } = await databases.create();
       const reopen = (): FactStore =>
         openPostgresFactStore({
           ...options(k),
+          ...extra,
           connection: { connectionString: url },
         });
       return { store: reopen(), reopen, url };
@@ -156,8 +158,13 @@ export const storeAdapters = (
   },
 ];
 
-export const started = async (adapter: Adapter, k = 2, blocks = 3) => {
-  const opened = await adapter.open(k);
+export const started = async (
+  adapter: Adapter,
+  k = 2,
+  blocks = 3,
+  extra: Partial<FactStoreOptions> = {},
+) => {
+  const opened = await adapter.open(k, extra);
   expect(await opened.store.start()).toMatchObject({
     kind: "ready",
     cursor: null,

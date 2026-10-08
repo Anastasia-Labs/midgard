@@ -52,7 +52,11 @@ import {
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
 import { landedBlocksSimProjection } from "./helpers/landed-blocks-sim.js";
-import { newSimMempool } from "./helpers/landed-blocks-sim.model.js";
+import {
+  insertSimCursor,
+  newSimMempool,
+} from "./helpers/landed-blocks-sim.mempool.js";
+import { newSimOwnBook } from "./helpers/landed-blocks-sim.own.js";
 import {
   type LandedSimStats,
   type SimOwner,
@@ -149,10 +153,21 @@ const runScenario = (
   open: ForkRunOptions["open"],
   stats: LandedSimStats,
   label: string,
+  node: Readonly<{
+    offlineFor: number;
+    lateFor: number;
+    mergeHeavy: boolean;
+  }> = {
+    // Every third scenario starts with the node down.
+    offlineFor: label.length % 3 === 0 ? 8 : 0,
+    lateFor: 6,
+    mergeHeavy: false,
+  },
 ) =>
   Effect.gen(function* () {
     yield* resetApplicationTables;
     yield* DepositsDB.insertEntries(universe.deposits.map(({ row }) => row));
+    yield* insertSimCursor;
     // Node startup seeds the working ledger with the genesis outputs.
     yield* MempoolLedgerDB.insert([
       ...(yield* ledgerRows(universe.genesis, new Map())),
@@ -173,6 +188,11 @@ const runScenario = (
                 mempool: newSimMempool(),
                 stats,
                 label,
+                book: newSimOwnBook(),
+                ...node,
+                includes: new Map(),
+                lateUntil: new Map(),
+                completed: new Set(),
               }),
             ],
           }),
@@ -229,6 +249,22 @@ const expectEveryCase = (stats: LandedSimStats, prunes: number): void => {
     "dependentRejections",
     "rejectionsOnRollback",
     "latentHoleClosed",
+    "foreignIncluded",
+    "batchRejections",
+    "batchSettled",
+    "ownCommits",
+    "ownAppends",
+    "liveRebases",
+    "ownProcessed",
+    "ownMerges",
+    "ownResolutions",
+    "ownOnRemovedBase",
+    "ownRevivals",
+    "offlineChecks",
+    "coalescedMerges",
+    "bootstrapsPastGenesis",
+    "heldPastMerge",
+    "behindCompared",
   ] as const)
     expect({ field, count: stats[field] > 0 }).toEqual({ field, count: true });
 };
@@ -275,6 +311,16 @@ describe.each([
             open,
             stats,
             `${name}:long`,
+          );
+          // The root moves often: the node comes up past several merges,
+          // and a late payload stays missing past its block's merge.
+          total += yield* runScenario(
+            runtime,
+            { ...LONG, seed: 0x0b4 },
+            open,
+            stats,
+            `${name}:long-down`,
+            { offlineFor: 40, lateFor: 24, mergeHeavy: true },
           );
           return total;
         }),

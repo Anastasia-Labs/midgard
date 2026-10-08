@@ -144,6 +144,11 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const EVENT_HISTORY_OWNER = yield* Ref.make<EventHistoryOwner | undefined>(
       undefined,
     );
+    // Why the last landed-block rebase failed, until one succeeds; the
+    // landed-block hold shows it (`landed_block_rebase_failed`).
+    const LANDED_BLOCK_REBASE_FAILURE = yield* Ref.make<string | undefined>(
+      undefined,
+    );
     // The node's L1 follower (N1): the shared follow loop and its
     // follower-change driver, or why the node has none.
     const L1_FOLLOWER = yield* Ref.make<L1FollowerState>(
@@ -242,6 +247,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       TX_QUEUE_WAKE_GENERATION,
       NATIVE_MPF_OWNER,
       EVENT_HISTORY_OWNER,
+      LANDED_BLOCK_REBASE_FAILURE,
       L1_FOLLOWER,
       L1_HEAD_SEQUENCE,
       ADMISSION_BACKLOG_GAUGE,

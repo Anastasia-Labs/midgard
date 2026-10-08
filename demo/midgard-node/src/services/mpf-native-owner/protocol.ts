@@ -117,6 +117,20 @@ export type NativeMpfCanonicalRootRecovery = Readonly<{
   targetRoot: string;
 }>;
 
+/** `restoreCanonicalRoot` refused a target whose closure is not retained in full. */
+export class NativeMpfRootNotRetained extends Error {
+  readonly _tag = "NativeMpfRootNotRetained";
+  constructor(
+    readonly targetRoot: string,
+    options?: ErrorOptions,
+  ) {
+    super(
+      `Native MPF canonical recovery target root ${targetRoot} is not retained in full; refusing to restore`,
+      options,
+    );
+  }
+}
+
 export interface NativeMpfOwnerService extends NativeMpfOwnerClient {
   createWorkerPort(): MessagePort;
   promote(handle: NativeMpfGenerationHandle): Promise<void>;

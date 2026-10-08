@@ -4,7 +4,7 @@ import { SqlClient } from "@effect/sql";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { Cause, Effect, Option, pipe, Ref } from "effect";
+import { Cause, Effect, Fiber, Option, pipe, Ref } from "effect";
 
 import { closeDaLibp2pPublicationTransport } from "../da/libp2p-producer.js";
 import {
@@ -65,6 +65,7 @@ import {
   seedLatestLocalBlockBoundaryOnStartup,
 } from "./listen-startup.js";
 import { releaseLedgerStoreLeaseOfPreviousNodeProcess } from "./listen-startup.release-ledger-store-lease-of-previous-node-process.js";
+import { reportHistorySyncReasons } from "./listen-startup.report-history-sync.js";
 import { shouldRunGenesisOnStartup } from "./startup-policy.js";
 
 /**
@@ -305,7 +306,15 @@ export const runNode = (
     );
     yield* Ref.set(globals.EVENT_HISTORY_OWNER, historyOwner);
     yield* startup.setStage("history_sync");
+    // A held owner (a failed landed-block rebase it retries) keeps startup
+    // here, unready by name, never exiting.
+    const historySyncReport = yield* Effect.fork(
+      reportHistorySyncReasons((reasons) =>
+        startup.setStage("history_sync", reasons),
+      ),
+    );
     yield* historyOwner.awaitReady.pipe(
+      Effect.ensuring(Fiber.interrupt(historySyncReport)),
       Effect.mapError(
         (cause) =>
           new DatabaseInitializationError({

@@ -4,9 +4,16 @@
  * interventions R1 to R5 and `origin_mismatch`, `l1_follower_catching_up`,
  * `l1_follower_waiting`, `l1_follower_apply_stuck`,
  * `l1_follower_prune_failing`), every hold of the
- * follower-change driver (`l1_events_*`, and the forced-order hook's
+ * follower-change driver (`l1_events_*`; the forced-order hook's
  * `forced_order_carriage_pending`, `forced_order_admission_stopped` and
- * `forced_order_ingestion_failed`), the intent stage's (`wallet_seed_pending`,
+ * `forced_order_ingestion_failed`; and landed-block processing's, from
+ * `landed-blocks/holds.ts`: `landed_block_invalid`,
+ * `landed_block_own_journal_abandoned`, `landed_block_event_unknown`,
+ * `landed_block_forced_order_pending`, `landed_block_awaiting_da`,
+ * `landed_block_rebase_failed`, `landed_block_replay_failed`,
+ * `landed_blocks_waiting`, `confirmed_ledger_behind` and
+ * `landed_block_rebase_pending`, the first by priority named as the reason
+ * and the rest in its detail), the intent stage's (`wallet_seed_pending`,
  * `intent_reconcile_failed`, `intent_reconcile_transient`) and the intent
  * journal's refusals, the worker threads' included (`intent_journal_*`,
  * `intent_input_untracked`, `intent_bytes_mismatch`, `intent_undecodable`,
@@ -14,6 +21,11 @@
  * `l1_follower_unconfigured` while the node has no follower, and
  * `l1_node_config_unreadable` while its network magic is retried. Each fails
  * readiness by name; none stops the process, and `/healthz` stays live.
+ *
+ * One degradation is a detail, leaving the node ready:
+ * `landed_frontier_prune_floor:<slots>` while the landed frontier's prune
+ * floor holds the follower's prune boundary that many slots back (the facts
+ * the frontier still needs are kept; the store grows until it moves).
  */
 import type { FactStore, FollowStatus } from "@al-ft/midgard-l1-follower";
 
@@ -32,6 +44,9 @@ export const L1_FOLLOWER_UNCONFIGURED = "l1_follower_unconfigured";
  * once they do.
  */
 export const L1_NODE_CONFIG_UNREADABLE = "l1_node_config_unreadable";
+
+/** The landed frontier's prune floor holds the follower's prune boundary back (detail, with the lag in slots). */
+export const LANDED_FRONTIER_PRUNE_FLOOR = "landed_frontier_prune_floor";
 
 /** The projection at the follower's current view, or why there is none. */
 export type FollowerPlanRead =
@@ -97,6 +112,8 @@ export const L1_FOLLOWER_NOT_STARTED: L1FollowerState = {
 export type L1FollowerReadiness = Readonly<{
   /** Named reasons, each one failing `/readyz`. */
   reasons: readonly string[];
+  /** Named degradations that leave the node ready. */
+  details: readonly string[];
   /** The report `/readyz` carries for them. */
   report: Readonly<Record<string, unknown>>;
 }>;
@@ -108,6 +125,7 @@ export const l1FollowerReadiness = (
   if (state.kind === "unconfigured")
     return {
       reasons: [L1_FOLLOWER_UNCONFIGURED],
+      details: [],
       report: {
         state: "unconfigured",
         readiness: [{ reason: L1_FOLLOWER_UNCONFIGURED, detail: state.detail }],
@@ -116,6 +134,7 @@ export const l1FollowerReadiness = (
   if (state.kind === "waiting")
     return {
       reasons: [state.reason],
+      details: [],
       report: {
         state: "waiting",
         readiness: [{ reason: state.reason, detail: state.detail }],
@@ -129,6 +148,12 @@ export const l1FollowerReadiness = (
     if (!reasons.includes(reason)) reasons.push(reason);
   return {
     reasons,
+    details:
+      status.prune.floorLagSlots === null
+        ? []
+        : [
+            `${LANDED_FRONTIER_PRUNE_FLOOR}:${status.prune.floorLagSlots.toString()}`,
+          ],
     report: {
       state: status.state,
       readiness,

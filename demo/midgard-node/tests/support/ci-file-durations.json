@@ -156,7 +156,6 @@
     "tests/forced-submission-settlement.test.ts": 16.2,
     "tests/forced-transactions-root.test.ts": 2.6,
     "tests/forced-transactions.test.ts": 3.4,
-    "tests/foreign-base-rebinding.test.ts": 2.4,
     "tests/foreign-block-import.normal.test.ts": 3.4,
     "tests/foreign-block-import.test.ts": 3.9,
     "tests/foreign-retained-da.test.ts": 7.2,

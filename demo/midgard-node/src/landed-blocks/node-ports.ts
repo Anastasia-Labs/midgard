@@ -14,7 +14,9 @@ import { Effect, Ref } from "effect";
 
 import { numbered } from "../database/follower-schema.js";
 import { MutationJobsDB } from "../database/index.js";
+import type { ForcedOrderConfig } from "../forced-orders/index.js";
 import type { EventProjectionConfig } from "../l1-events/config.js";
+import type { StateQueueProjectionConfig } from "../l1-state-queue/index.js";
 import { utxoToLedgerInsertMaterial } from "../mpf/ledger-hydration.js";
 import { NodeConfig } from "../services/config.js";
 import {
@@ -23,6 +25,7 @@ import {
 } from "../services/event-history-producer.js";
 import { Globals } from "../services/globals.globals.js";
 import { finalizeConfirmedMergeProgram } from "../transactions/state-queue/merge-to-confirmed-state.finalize-confirmed-merge-program.js";
+import { readQueueHistory } from "./history.js";
 import { ownJournal } from "./journal.js";
 import { ledgerRows } from "./ledger.js";
 import type { LandedBlockPorts } from "./ports.js";
@@ -68,14 +71,24 @@ const requestRebase = (reason: string) =>
     return undefined;
   });
 
-export const nodeLandedBlockPorts = (deps: {
-  readonly store: FactStore;
-  readonly events: EventProjectionConfig;
-}) =>
+/** The node's landed-block ports over `store`, with the follower plan's configs. */
+export const nodeLandedBlockPorts = (
+  store: FactStore,
+  plan: {
+    readonly projection: EventProjectionConfig;
+    readonly forcedOrders: ForcedOrderConfig;
+    readonly stateQueue: StateQueueProjectionConfig;
+  },
+) =>
   ({
     confirmView,
+    queueHistory: (view) => readQueueHistory(store, plan.stateQueue, view),
     write: (work) => runHistoryProducer(withHistoryWrite(work)),
-    replay: replayForeignBlock(deps),
+    replay: replayForeignBlock({
+      store,
+      events: plan.projection,
+      forcedOrders: plan.forcedOrders,
+    }),
     ownJournal,
     ownMergeCompleted: (headerHash) =>
       MutationJobsDB.retrieveByJobId(
@@ -91,6 +104,9 @@ export const nodeLandedBlockPorts = (deps: {
       runHistoryProducer(finalizeConfirmedMergeProgram(input)),
     genesis,
     requestRebase,
+    rebaseFailure: Effect.flatMap(Globals, (globals) =>
+      Ref.get(globals.LANDED_BLOCK_REBASE_FAILURE),
+    ),
   }) satisfies LandedBlockPorts<NodeLandedBlockContext>;
 
 export type NodeLandedBlockContext = Effect.Effect.Context<

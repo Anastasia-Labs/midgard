@@ -4,9 +4,10 @@
  * under the fork simulator in tests.
  */
 import type { View } from "@al-ft/midgard-l1-follower";
-import type { Effect } from "effect";
+import { Data, Effect } from "effect";
 
 import type * as Ledger from "../database/utils/ledger.js";
+import type { LandedStateQueueElement } from "../l1-state-queue/index.js";
 import type { Database } from "../services/database.js";
 import type { ReplayInput, ReplayOutcome } from "./replay.js";
 
@@ -26,6 +27,13 @@ export type OwnJournal = Readonly<{
 export type LandedBlockPorts<R> = Readonly<{
   /** Whether the follower is still at `view`; runs inside the write's transaction. */
   confirmView: (view: View) => Effect.Effect<boolean, unknown, R | Database>;
+  /**
+   * The queue outputs retained at `view`, live or spent since
+   * (`stateQueueHistoryIn`); fails `ViewMoved` if the follower left `view`.
+   */
+  queueHistory: (
+    view: View,
+  ) => Effect.Effect<readonly LandedStateQueueElement[], unknown, R | Database>;
   /** Runs `work` in one gated transaction that it owns (the outermost one). */
   write: <A, E>(
     work: Effect.Effect<A, E, R | Database>,
@@ -60,4 +68,28 @@ export type LandedBlockPorts<R> = Readonly<{
   requestRebase: (
     reason: string,
   ) => Effect.Effect<string | undefined, unknown, R | Database>;
+  /** Why the last rebase failed, until one runs (the owner retries it). */
+  rebaseFailure: Effect.Effect<string | undefined, unknown, R | Database>;
 }>;
+
+/** The follower moved off the view a write was computed at. */
+export class ViewMoved extends Data.TaggedError("ViewMoved")<
+  Record<string, never>
+> {}
+
+/**
+ * Runs `work` in one write transaction that first checks the follower is
+ * still at `view`; fails `ViewMoved` (writing nothing) if it is not.
+ */
+export const viewChecked = <R, A, E>(
+  ports: LandedBlockPorts<R>,
+  view: View,
+  work: Effect.Effect<A, E, R | Database>,
+) =>
+  ports.write(
+    Effect.gen(function* () {
+      if (!(yield* ports.confirmView(view)))
+        return yield* Effect.fail(new ViewMoved({}));
+      return yield* work;
+    }),
+  );

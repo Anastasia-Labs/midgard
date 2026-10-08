@@ -756,8 +756,8 @@
   },
   {
     "file": "midgard-l1-follower/src/store/fact-store.ts",
-    "max": 533,
-    "reason": "The fact store is one state owner: start, the writer lane, the lease fence, the live-outref cache and the generation listeners share private state, and the record logic itself lives in store/tracked-set-record.ts. SI (+48): the start compares the configured protocol tracked set with the store's record and, on an addition, resets and notifies the generation listeners; the wallets option and the record and replay-flag accessors. Moving the public type declarations out is a separate proven pure move."
+    "max": 537,
+    "reason": "The fact store is one state owner: start, the writer lane, the lease fence, the live-outref cache and the generation listeners share private state, and the record logic itself lives in store/tracked-set-record.ts. SI (+48): the start compares the configured protocol tracked set with the store's record and, on an addition, resets and notifies the generation listeners; the wallets option and the record and replay-flag accessors. N3-fix (+4): the roles' prune-floor option, passed to the prune step through the store context. Moving the public type declarations out is a separate proven pure move."
   },
   {
     "file": "midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",
@@ -971,7 +971,7 @@
   },
   {
     "file": "midgard-node/src/services/mpf-native-owner/service.production-native-mpf-owner-service.ts",
-    "max": 930,
+    "max": 928,
     "reason": "ProductionNativeMpfOwnerService is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
   },
   {

@@ -15,6 +15,11 @@ export type PruneResult = Readonly<{
   done: boolean;
   /** The slot facts are complete from after this step. */
   prunedThroughSlot: number;
+  /**
+   * How many slots a role's floor holds the boundary below the block k
+   * below the cursor; null when no floor holds it.
+   */
+  floorLagSlots: number | null;
 }>;
 
 const pinClauses = (
@@ -44,7 +49,13 @@ export const pruneIn = async (
 ): Promise<PruneResult> => {
   const { dialect, registry, k, pins } = context;
   const cursor = await readCursor(tx, dialect, "update");
-  if (cursor === null) return { deleted: {}, done: true, prunedThroughSlot: 0 };
+  if (cursor === null)
+    return {
+      deleted: {},
+      done: true,
+      prunedThroughSlot: 0,
+      floorLagSlots: null,
+    };
   const rowId = dialect.rowId;
   const deleted: Record<string, number> = {};
   let done = true;
@@ -75,13 +86,35 @@ export const pruneIn = async (
   const boundary = boundaryRows[0];
   if (boundary === undefined) {
     await pruneRollbackLog();
-    return { deleted, done, prunedThroughSlot: cursor.prunedThroughSlot };
+    return {
+      deleted,
+      done,
+      prunedThroughSlot: cursor.prunedThroughSlot,
+      floorLagSlots: null,
+    };
+  }
+  // A role's floor holds the boundary at or below its slot: the boundary
+  // block becomes the last one at or below it.
+  const kSlot = asNumber(boundary.slot);
+  let floor: number | null = null;
+  for (const role of context.pruneFloors) {
+    const slot = await role.floor({ tx, dialect });
+    if (slot !== null && (floor === null || slot < floor)) floor = slot;
+  }
+  const held = floor !== null && floor < kSlot;
+  let boundaryHeight = asNumber(boundary.height);
+  if (held) {
+    const below = await tx.query(
+      "SELECT height FROM l1_blocks WHERE slot <= ? ORDER BY slot DESC LIMIT 1",
+      [floor],
+    );
+    boundaryHeight = below[0] === undefined ? 0 : asNumber(below[0].height);
   }
   const boundarySlot = Math.max(
-    asNumber(boundary.slot),
+    held ? floor! : kSlot,
     cursor.prunedThroughSlot,
   );
-  const boundaryHeight = asNumber(boundary.height);
+  const floorLagSlots = boundarySlot < kSlot ? kSlot - boundarySlot : null;
   if (boundarySlot > cursor.prunedThroughSlot)
     await tx.query("UPDATE l1_follower_cursor SET pruned_through_slot = ?", [
       boundarySlot,
@@ -134,5 +167,5 @@ export const pruneIn = async (
     [],
   );
   await pruneRollbackLog();
-  return { deleted, done, prunedThroughSlot: boundarySlot };
+  return { deleted, done, prunedThroughSlot: boundarySlot, floorLagSlots };
 };
