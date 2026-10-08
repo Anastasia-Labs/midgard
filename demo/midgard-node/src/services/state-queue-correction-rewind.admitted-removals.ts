@@ -125,7 +125,13 @@ export type ChainMember = Readonly<{
 
 export type Obligation =
   | Readonly<{ kind: "none" }>
-  | Readonly<{ kind: "blocked"; reason: string }>
+  | Readonly<{
+      kind: "blocked";
+      reason: string;
+      /** A removed block's journal does not describe the header its admitted
+       * correction removed (see `validateChain`). */
+      journalUnbound?: true;
+    }>
   | Readonly<{
       kind: "ready";
       chain: readonly ChainMember[];

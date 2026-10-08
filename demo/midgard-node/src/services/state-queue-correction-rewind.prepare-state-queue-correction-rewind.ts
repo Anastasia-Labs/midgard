@@ -16,6 +16,12 @@ import type { NodeConfigDep } from "./config.js";
 import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
 import { Globals } from "./globals.js";
 import { executeHistoryDependentRecovery } from "./history-dependent-recovery.js";
+import {
+  clearLivenessIncident,
+  CORRECTION_REWIND_JOURNAL_UNBOUND,
+  HISTORY_CORRECTION_REWIND_SOURCE,
+  raiseLivenessIncident,
+} from "./liveness-halt.js";
 import { ProductionNativeMpfOwnerService } from "./mpf-native-owner/service.js";
 import { reincludeStateQueueCorrectedBlocks } from "./state-queue-correction-recovery.js";
 import {
@@ -41,9 +47,11 @@ class Held {
   constructor(
     readonly reason: string,
     readonly nativeState = false,
+    readonly journalUnbound = false,
   ) {}
 }
-const held = (reason: string) => Effect.fail(new Held(reason));
+const held = (reason: string, journalUnbound = false) =>
+  Effect.fail(new Held(reason, false, journalUnbound));
 /** Held on the native owner itself: it cannot open yet, or its durable root
  * is not one this rewind can prove it restores from. */
 const heldOnNativeState = (reason: string) =>
@@ -88,6 +96,9 @@ export const nativeOwnerOpenWait = (cause: unknown): string | undefined => {
  * when the obligation or its native owner is blocked (the disposition keeps
  * the gate closed, and the owner re-evaluates it after a backoff). A hold on
  * the native owner's state returns CORRECTION_REWIND_HELD_ON_NATIVE_STATE.
+ * A hold on a removed block's journal that does not describe its removed
+ * header raises `correction_rewind_journal_unbound` (readiness reports it);
+ * every other outcome of an evaluation clears it.
  */
 export const prepareStateQueueCorrectionRewind = (input: {
   readonly bindingDigest: string;
@@ -98,14 +109,13 @@ export const prepareStateQueueCorrectionRewind = (input: {
 }) =>
   Effect.gen(function* () {
     const { checkpoint, preparation, authority, config } = input;
+    const globals = yield* Globals;
     const ready = (obligation: Obligation) =>
       obligation.kind === "ready"
         ? Effect.succeed(obligation)
-        : held(
-            obligation.kind === "blocked"
-              ? obligation.reason
-              : "the removed chain is no longer owed",
-          );
+        : obligation.kind === "blocked"
+          ? held(obligation.reason, obligation.journalUnbound === true)
+          : held("the removed chain is no longer owed");
     const owned = <A, E, R>(work: Effect.Effect<A, E, R>) =>
       Authority.withRecovery(
         preparation.token,
@@ -136,8 +146,13 @@ export const prepareStateQueueCorrectionRewind = (input: {
           return { chain, retained: retained.intent };
         }
         const obligation = yield* loadObligation(authority);
-        if (obligation.kind === "none")
+        if (obligation.kind === "none") {
+          yield* clearLivenessIncident(
+            globals,
+            HISTORY_CORRECTION_REWIND_SOURCE,
+          );
           return yield* logBlocked(input.bindingDigest, undefined);
+        }
         return { chain: yield* ready(obligation), retained: undefined };
       }),
     );
@@ -157,7 +172,6 @@ export const prepareStateQueueCorrectionRewind = (input: {
       ...records.map((record) => record[C.EXPECTED_UTXOS_ROOT]),
     ];
     const journalDigest = chainIdentity(proved.chain);
-    const globals = yield* Globals;
     let owner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
     if (owner === undefined) {
       // Open only retained native bytes; never genesis-bootstrap or replay a
@@ -333,16 +347,29 @@ export const prepareStateQueueCorrectionRewind = (input: {
       }),
     });
     blockedReasons.delete(input.bindingDigest);
+    yield* clearLivenessIncident(globals, HISTORY_CORRECTION_REWIND_SOURCE);
     yield* Effect.logInfo(
       `State-queue correction rewind restored native root ${targetRoot} and reincluded block(s) ${members.map(({ headerHash, kind }) => `${headerHash}(${kind})`).join(",")}.`,
     );
   }).pipe(
     Effect.catchIf(
       (error): error is Held => error instanceof Held,
-      ({ reason, nativeState }) =>
-        logBlocked(input.bindingDigest, reason).pipe(
-          Effect.as(
-            nativeState ? CORRECTION_REWIND_HELD_ON_NATIVE_STATE : undefined,
+      ({ reason, nativeState, journalUnbound }) =>
+        Effect.flatMap(Globals, (globals) =>
+          (journalUnbound
+            ? raiseLivenessIncident(
+                globals,
+                HISTORY_CORRECTION_REWIND_SOURCE,
+                CORRECTION_REWIND_JOURNAL_UNBOUND,
+                `${reason}. The rewind holds with native MPF, the SQL root and the journal unchanged, and the history gate stays closed, which holds block production; every evaluation re-derives it from the journal. Operator action is needed if the journal does not change.`,
+                { escalateAfterMs: 0 },
+              )
+            : clearLivenessIncident(globals, HISTORY_CORRECTION_REWIND_SOURCE)
+          ).pipe(
+            Effect.zipRight(logBlocked(input.bindingDigest, reason)),
+            Effect.as(
+              nativeState ? CORRECTION_REWIND_HELD_ON_NATIVE_STATE : undefined,
+            ),
           ),
         ),
     ),

@@ -33,6 +33,7 @@ import { prepareSignedHeaderRecovery } from "./history-signed-header-recovery.js
 import { ingestAtFollowerView } from "./l1-follower.recovery.js";
 import {
   clearLivenessIncident,
+  HISTORY_CORRECTION_REWIND_SOURCE,
   HISTORY_SIGNED_INTENT_RELEASE_SOURCE,
 } from "./liveness-halt.js";
 import { Lucid } from "./lucid.js";
@@ -266,6 +267,12 @@ export const makeProductionEventHistoryOwner = <E = never, R = never>(input: {
             const rewind =
               yield* stateQueueCorrectionRewindDisposition(rewindAuthority);
             if (rewind !== undefined) return rewind;
+            // No admitted removal leaves a local journal unresolved, so no
+            // rewind evaluation will run to clear its held reason.
+            yield* clearLivenessIncident(
+              yield* Globals,
+              HISTORY_CORRECTION_REWIND_SOURCE,
+            );
             const release = yield* expiredIntentReleaseClearingIncident(
               {
                 binding,
