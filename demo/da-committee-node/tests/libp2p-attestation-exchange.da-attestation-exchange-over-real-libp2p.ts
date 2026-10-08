@@ -58,7 +58,7 @@ import {
   payloadSourceFromBytes,
   tempDir,
 } from "./helpers.js";
-import { withFinalSnapshot } from "./helpers/final-snapshot.js";
+import { fakeL1Source } from "./helpers/fake-l1-source.js";
 import {
   errorMessage,
   type GossipSubscribers,
@@ -609,7 +609,7 @@ const runCommitteeLifecycle = async ({
     return new CommitteeService({
       config,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({
             header: committee.header,

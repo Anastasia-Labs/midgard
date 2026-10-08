@@ -8,6 +8,13 @@ import type { Pool } from "pg";
  */
 const OPEN_HEADER_PREDICATE = `record->>'status' IN ('unattested', 'attesting')`;
 
+/**
+ * A header whose L1 outcome is not settled: not recorded as merged or
+ * removed. The committee writes a terminal record only once the exit is
+ * final (deeper than k), so a terminal record never needs re-reading.
+ */
+export const UNSETTLED_HEADER_PREDICATE = `record->>'status' NOT IN ('merged', 'removed')`;
+
 const SUBMITTED_PREDICATE = `record->>'resultStatus' IN ('submitted', 'confirmed')`;
 
 /**
@@ -205,13 +212,18 @@ UPDATE committee_da_signatures
 /**
  * Indexes and triggers. The open-header index serves the readiness probe's
  * per-header reads, which therefore cost O(headers not yet final), not
- * O(store). The triggers keep `committee_store_counts`, so the probe reads
+ * O(store); the unsettled-header index serves the tick's header read the
+ * same way. The triggers keep `committee_store_counts`, so the probe reads
  * its totals without listing rows.
  */
 const COMMITTEE_STORE_DERIVED_SQL = `
 CREATE INDEX IF NOT EXISTS committee_state_queue_headers_open
   ON committee_state_queue_headers (header_hash)
   WHERE ${OPEN_HEADER_PREDICATE};
+
+CREATE INDEX IF NOT EXISTS committee_state_queue_headers_unsettled
+  ON committee_state_queue_headers (header_hash)
+  WHERE ${UNSETTLED_HEADER_PREDICATE};
 
 CREATE INDEX IF NOT EXISTS committee_da_signatures_signed_decisions
   ON committee_da_signatures (header_hash)

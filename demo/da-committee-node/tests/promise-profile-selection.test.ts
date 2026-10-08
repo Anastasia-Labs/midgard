@@ -15,7 +15,7 @@ describe("explicit committee promise profile selection", () => {
     const service = new CommitteeService({
       config: f.config,
       store,
-      stateQueueProvider: f.provider,
+      l1: f.provider,
       payloadSource: f.payloadSource,
       signer: {
         publicKeyHex: f.signerValidation.signerPublicKeyHex,
@@ -62,7 +62,7 @@ describe("explicit committee promise profile selection", () => {
         {
           config: f.config,
           store: reopened,
-          stateQueueProvider: f.provider,
+          l1: f.provider,
           payloadSource: f.payloadSource,
           signer: {
             publicKeyHex: f.signerValidation.signerPublicKeyHex,
@@ -108,7 +108,7 @@ describe("explicit committee promise profile selection", () => {
           {
             config: f.config,
             store: f.store,
-            stateQueueProvider: f.provider,
+            l1: f.provider,
             payloadSource: f.payloadSource,
             signer: {
               publicKeyHex: f.signerValidation.signerPublicKeyHex,
@@ -125,23 +125,6 @@ describe("explicit committee promise profile selection", () => {
     } finally {
       retirement.journal.close();
     }
-  });
-
-  it("does not clear ordinary source quarantine or claim readiness without adoption", async () => {
-    const f = await promiseAdmissionFixture();
-    const service = f.service(f.store, false);
-    await service.initialize();
-    const source = (await f.store.getL1SourceState())!;
-    await f.store.saveL1SourceState({
-      ...source,
-      status: "quarantined",
-      quarantineReason: "controlled existing source hold",
-      quarantinedAt: new Date().toISOString(),
-    });
-    expect(await service.tick()).toMatchObject({ signedHeaders: 0 });
-    expect(f.sign).not.toHaveBeenCalled();
-    expect(await service.readinessSnapshot()).toMatchObject({ ready: false });
-    expect((await f.store.getL1SourceState())?.status).toBe("quarantined");
   });
 
   it("refuses partial selection instead of treating it as ordinary mode", () => {

@@ -22,7 +22,7 @@ import {
   openTestCommitteeStore,
   testStoreDatabase,
 } from "./committee-store.js";
-import { withFinalSnapshot } from "./final-snapshot.js";
+import { fakeL1Source } from "./fake-l1-source.js";
 import { testPromiseRuntimePolicy } from "./promise-runtime-policy.js";
 
 // An explicit bounded test actor model; production has no inferred policy.
@@ -153,7 +153,7 @@ export const promiseAdmissionFixture = async () => {
       source,
       now: () => 1_000,
     });
-  const provider = withFinalSnapshot({
+  const provider = fakeL1Source({
     fetchStateQueueNodes: async () =>
       [first, second].map((item, index) =>
         makeObservedNode({
@@ -167,7 +167,7 @@ export const promiseAdmissionFixture = async () => {
     new CommitteeService({
       config,
       store: activeStore,
-      stateQueueProvider: provider,
+      l1: provider,
       payloadSource,
       signer,
       signerValidation,

@@ -264,8 +264,8 @@ describe("runRetentionCycleV1", () => {
     let injected = false;
     const wrapped = new Proxy(store, {
       get(target, property, receiver) {
-        if (property === "listStateQueueHeaders") {
-          return async () => {
+        if (property === "getStateQueueHeaders") {
+          return async (headerHashes: readonly string[]) => {
             if (!injected) {
               injected = true;
               await seed(store, [
@@ -276,7 +276,7 @@ describe("runRetentionCycleV1", () => {
                 },
               ]);
             }
-            return store.listStateQueueHeaders();
+            return store.getStateQueueHeaders(headerHashes);
           };
         }
         const value = Reflect.get(target, property, receiver) as unknown;

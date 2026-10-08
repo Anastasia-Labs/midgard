@@ -88,63 +88,35 @@ describe("openCommitteeStore", () => {
     }
   });
 
-  it("persists canonical L1 quarantine state across a store restart", async () => {
+  it("persists the L1 source state across a store restart and refuses a malformed one", async () => {
     const database = await testStoreDatabase();
     const store = await openTestCommitteeStore(database);
-    await store.saveL1SourceState({
-      schemaVersion: 1,
-      sourceMode: "external_providers",
+    const validState = {
+      schemaVersion: 1 as const,
+      sourceMode: "local_node" as const,
       network: "Preprod",
       authoritySha256: "91".repeat(32),
-      status: "quarantined",
-      observations: [],
+      status: "healthy" as const,
+      observations: [
+        {
+          headerHash: "84".repeat(28),
+          stateQueueOutRef: `${"85".repeat(32)}#1`,
+          stateQueueStatus: "unattested" as const,
+          slot: 90,
+          blockHash: "86".repeat(32),
+          finalized: true,
+          hasPersistedDecision: true,
+        },
+      ],
       observedAt: "2026-07-28T00:00:00.000Z",
-      stateQueueReplayAnchor: {
-        deploymentIdentityDigest: "81".repeat(32),
-        stateQueuePolicyId: "82".repeat(28),
-        queue: [
-          { headerHash: null, outRef: `${"83".repeat(32)}#0` },
-          { headerHash: "84".repeat(28), outRef: `${"85".repeat(32)}#1` },
-        ],
-        blockNo: "90",
-        transactionIndex: "2",
-      },
-      quarantineReason: "provider fork",
-      quarantinedAt: "2026-07-28T00:00:01.000Z",
-    });
+    };
+    await store.saveL1SourceState(validState);
     await closeTestCommitteeStore(store);
     const restarted = await openTestCommitteeStore(database);
-    await expect(restarted.getL1SourceState()).resolves.toMatchObject({
-      sourceMode: "external_providers",
-      status: "quarantined",
-      quarantineReason: "provider fork",
-      stateQueueReplayAnchor: {
-        deploymentIdentityDigest: "81".repeat(32),
-        stateQueuePolicyId: "82".repeat(28),
-        blockNo: "90",
-        transactionIndex: "2",
-      },
-    });
+    await expect(restarted.getL1SourceState()).resolves.toEqual(validState);
     await expect(
       restarted.saveL1SourceState({
-        schemaVersion: 1,
-        sourceMode: "local_node",
-        network: "Preprod",
-        authoritySha256: "91".repeat(32),
-        status: "quarantined",
-        observations: [],
-        observedAt: "2026-07-28T00:00:00.000Z",
-        quarantineReason: "",
-        quarantinedAt: "not-a-time",
-      }),
-    ).rejects.toThrow(/lacks evidence/u);
-    await expect(
-      restarted.saveL1SourceState({
-        schemaVersion: 1,
-        sourceMode: "local_node",
-        network: "Preprod",
-        authoritySha256: "91".repeat(32),
-        status: "healthy",
+        ...validState,
         observations: [
           {
             headerHash: "not-a-hash",
@@ -154,66 +126,21 @@ describe("openCommitteeStore", () => {
             hasPersistedDecision: true,
           },
         ],
-        observedAt: "2026-07-28T00:00:00.000Z",
       }),
     ).rejects.toThrow(/observation is malformed/u);
-    await expect(
-      restarted.saveL1SourceState({
-        schemaVersion: 1,
-        sourceMode: "local_node",
-        network: "Preprod",
-        authoritySha256: "not-a-digest",
-        status: "healthy",
-        observations: [],
-        observedAt: "2026-07-28T00:00:00.000Z",
-      }),
-    ).rejects.toThrow(/state is malformed/u);
-
-    const validState = {
-      schemaVersion: 1 as const,
-      sourceMode: "local_node" as const,
-      network: "Preprod",
-      authoritySha256: "91".repeat(32),
-      status: "healthy" as const,
-      observations: [],
-      observedAt: "2026-07-28T00:00:00.000Z",
-    };
-    const validAnchor = {
-      deploymentIdentityDigest: "81".repeat(32),
-      stateQueuePolicyId: "82".repeat(28),
-      queue: [
-        { headerHash: null, outRef: `${"83".repeat(32)}#0` },
-        { headerHash: "84".repeat(28), outRef: `${"85".repeat(32)}#1` },
-      ],
-      blockNo: "90",
-      transactionIndex: "2",
-    };
-    const hostileAnchors: readonly unknown[] = [
-      { ...validAnchor, trusted: true },
-      { ...validAnchor, queue: [] },
-      {
-        ...validAnchor,
-        queue: [
-          { headerHash: "84".repeat(28), outRef: `${"83".repeat(32)}#0` },
-        ],
-      },
-      {
-        ...validAnchor,
-        queue: [
-          ...validAnchor.queue,
-          { headerHash: "86".repeat(28), outRef: `${"85".repeat(32)}#1` },
-        ],
-      },
-      { ...validAnchor, transactionIndex: "02" },
+    const hostileStates: readonly unknown[] = [
+      { ...validState, authoritySha256: "not-a-digest" },
+      { ...validState, sourceMode: "external_providers" },
+      { ...validState, status: "quarantined" },
+      { ...validState, quarantineReason: "provider fork" },
+      { ...validState, stateQueueReplayAnchor: { blockNo: "90" } },
     ];
-    for (const stateQueueReplayAnchor of hostileAnchors) {
+    for (const hostile of hostileStates) {
       await expect(
-        restarted.saveL1SourceState({
-          ...validState,
-          stateQueueReplayAnchor,
-        } as never),
-      ).rejects.toThrow(/replay anchor is malformed/u);
+        restarted.saveL1SourceState(hostile as never),
+      ).rejects.toThrow(/state is malformed/u);
     }
+    await expect(restarted.getL1SourceState()).resolves.toEqual(validState);
   });
 
   it("accepts only exact explicit-source DA signature records on writes", async () => {
@@ -430,7 +357,7 @@ describe("openCommitteeStore", () => {
     ).rejects.toThrow(/retry does not match durable identity/u);
   });
 
-  it("serializes concurrent decisions and makes L1 quarantine terminal", async () => {
+  it("serializes concurrent decisions into one source state holding both", async () => {
     const store = await openTestCommitteeStore();
     const firstSignature = daSignatureRecord();
     const secondCommitment = availabilityCommitment("23".repeat(28));
@@ -514,53 +441,6 @@ describe("openCommitteeStore", () => {
         { headerHash: secondSignature.headerHash, hasPersistedDecision: true },
       ],
     });
-
-    await store.quarantineL1Decisions({
-      schemaVersion: 1,
-      sourceMode: "local_node",
-      network: "Preprod",
-      authoritySha256: "91".repeat(32),
-      status: "quarantined",
-      observations: [],
-      observedAt: "2026-07-28T00:00:02.000Z",
-      quarantineReason: "canonical rollback",
-      quarantinedAt: "2026-07-28T00:00:03.000Z",
-    });
-    await expect(
-      store.completeDecisionEffect({
-        effectId: first.effect.effectId,
-        expectedAttemptCount: 1,
-        status: "published",
-        updatedAt: "2026-07-28T00:00:04.000Z",
-        signature: { ...firstSignature, broadcastStatus: "posted" },
-      }),
-    ).rejects.toThrow(/does not match the pending attempt/u);
-    await expect(
-      store.saveDaSignature({
-        ...firstSignature,
-        broadcastStatus: "posted",
-      }),
-    ).rejects.toThrow(/L1 source is quarantined/u);
-    await expect(store.listDecisionOutbox()).resolves.toMatchObject([
-      {
-        effectId: first.effect.effectId,
-        status: "failed",
-        quarantineReason: "canonical rollback",
-      },
-      {
-        effectId: second.effect.effectId,
-        status: "failed",
-        quarantineReason: "canonical rollback",
-      },
-    ]);
-    await expect(
-      store.getDaSignature({
-        headerHash: firstSignature.headerHash,
-        availabilityCommitmentDigest:
-          firstSignature.availabilityCommitmentDigest,
-        signerIndex: firstSignature.signerIndex,
-      }),
-    ).resolves.toMatchObject({ broadcastStatus: "post_failed" });
   });
 });
 

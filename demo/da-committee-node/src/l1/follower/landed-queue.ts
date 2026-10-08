@@ -87,25 +87,33 @@ const COLUMNS =
   "tx_hash, output_index, kind, asset_name, node_key, next_key, header_hash, da_status, end_time_ms, problems, datum, created_slot, created_height, created_tx_index, spent_slot";
 
 /**
- * The queue outputs live at `atSlot` (default: the cursor, where every row
- * still open is live). Ordered by outref, so the result is a pure function of
- * the facts whatever order the backend keeps rows in.
+ * The queue outputs live at the cursor: every row still open. Ordered by
+ * outref, so the result is a pure function of the facts whatever order the
+ * backend keeps rows in.
  */
-export const readLiveQueueRows = async (
+export const readLiveQueueRows = async (tx: SqlTx): Promise<QueueRow[]> =>
+  (
+    await tx.query(
+      `SELECT ${COLUMNS} FROM ${COMMITTEE_QUEUE_TABLE} WHERE spent_slot IS NULL ORDER BY tx_hash, output_index`,
+    )
+  ).map(toRow);
+
+/**
+ * The header hashes the queue outputs live at `atSlot` carry (roots and
+ * nodes; an invalid output carries none), sorted.
+ */
+export const readQueueHeaderHashesAt = async (
   tx: SqlTx,
-  atSlot?: number,
-): Promise<QueueRow[]> => {
-  const rows =
-    atSlot === undefined
-      ? await tx.query(
-          `SELECT ${COLUMNS} FROM ${COMMITTEE_QUEUE_TABLE} WHERE spent_slot IS NULL ORDER BY tx_hash, output_index`,
-        )
-      : await tx.query(
-          `SELECT ${COLUMNS} FROM ${COMMITTEE_QUEUE_TABLE} WHERE created_slot <= ? AND (spent_slot IS NULL OR spent_slot > ?) ORDER BY tx_hash, output_index`,
-          [atSlot, atSlot],
-        );
-  return rows.map(toRow);
-};
+  atSlot: number,
+): Promise<string[]> =>
+  (
+    await tx.query(
+      `SELECT DISTINCT header_hash FROM ${COMMITTEE_QUEUE_TABLE} WHERE kind <> 'invalid' AND header_hash IS NOT NULL AND created_slot <= ? AND (spent_slot IS NULL OR spent_slot > ?)`,
+      [atSlot, atSlot],
+    )
+  )
+    .map((row) => String(row.header_hash))
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 
 /** Why the landed queue cannot be walked into one list from one root. */
 export type QueueUnhealthyReason =

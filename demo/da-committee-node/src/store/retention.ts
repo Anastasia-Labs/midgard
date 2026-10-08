@@ -199,7 +199,9 @@ export const retentionCandidates = async (
   options: RetentionScanOptions,
 ): Promise<readonly RetentionCandidate[]> => {
   const payloads = await store.listDaPayloads();
-  const headers = await store.listStateQueueHeaders();
+  const headers = await store.getStateQueueHeaders(
+    payloads.map(({ headerHash }) => headerHash),
+  );
   const headerByHash = new Map<string, StateQueueHeaderRecord>(
     headers.map((header) => [header.headerHash, header]),
   );

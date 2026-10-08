@@ -1,9 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { join } from "node:path";
 
 import {
-  Blockfrost,
   Kupmios,
   type LucidEvolution,
   PROTOCOL_PARAMETERS_DEFAULT,
@@ -11,15 +9,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { LoadedCommitteeConfig } from "../src/config.js";
-import { daAttestationReaderFromConfig } from "../src/l1/da-attestation-reader.js";
 import { lucidFromProviderUrl } from "../src/l1/lucid.js";
 import {
   committeeLucidSlotOptions,
   DaCommitteeCustomSlotMappingError,
 } from "../src/l1/lucid-network.js";
 import { providerFromUrl } from "../src/l1/provider.js";
-import { tempDir } from "./helpers.js";
 
 export const CUSTOM_MAGIC = 424_242;
 
@@ -141,10 +136,7 @@ beforeEach(() => {
   const kupmios = vi
     .spyOn(Kupmios.prototype, "getProtocolParameters")
     .mockResolvedValue(PROTOCOL_PARAMETERS_DEFAULT);
-  const blockfrost = vi
-    .spyOn(Blockfrost.prototype, "getProtocolParameters")
-    .mockResolvedValue(PROTOCOL_PARAMETERS_DEFAULT);
-  lucidBuilds = () => kupmios.mock.calls.length + blockfrost.mock.calls.length;
+  lucidBuilds = () => kupmios.mock.calls.length;
 });
 
 afterEach(async () => {
@@ -206,7 +198,7 @@ export const KUPMIOS_SITES: readonly KupmiosSite[] = [
       lucidOf(await stateQueueProvider({ network, ogmios, networkMagic })),
   },
   {
-    name: "the coordinator and availability client (lucidFromProviderUrl)",
+    name: "the availability client (lucidFromProviderUrl)",
     build: async ({ network, ogmios, networkMagic }) =>
       (
         await lucidFromProviderUrl(
@@ -216,33 +208,6 @@ export const KUPMIOS_SITES: readonly KupmiosSite[] = [
           networkMagic,
         )
       ).lucid,
-  },
-  {
-    name: "the DA attestation reader",
-    build: async ({ network, ogmios, networkMagic }) => {
-      const dir = await tempDir();
-      const reader = await daAttestationReaderFromConfig({
-        network,
-        cardanoL1Source: {
-          sourceMode: "local_node",
-          authorityNodeId: "local-cardano-node",
-          authorityDigest: "ab".repeat(32),
-          networkMagic,
-        },
-        l1Source: {
-          sourceMode: "local_node",
-          authorityNodeId: "local-cardano-node",
-          chainSyncProviderUrl: `chain-sync:ogmios:${ogmios.url}`,
-          chainSyncCursorPath: join(dir, "chain-sync-cursor.json"),
-          queryProviderUrls: [kupmiosUrl(ogmios)],
-        },
-        localState: {
-          kind: "database",
-          url: "postgresql://unused.invalid/committee",
-        },
-      } as unknown as LoadedCommitteeConfig);
-      return lucidOf(reader);
-    },
   },
 ];
 

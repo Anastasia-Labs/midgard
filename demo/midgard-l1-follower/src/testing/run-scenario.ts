@@ -374,7 +374,12 @@ export const runForkScenario = async (
         stats.checkpoints += 1;
       }
       for (const projection of projections) {
-        const failure = await projection.check?.({ store, step, chain });
+        const failure = await projection.check?.({
+          store,
+          reference,
+          step,
+          chain,
+        });
         if (failure !== undefined && failure !== null)
           throw new ForkFailure(`${projection.name}: ${failure}`);
       }

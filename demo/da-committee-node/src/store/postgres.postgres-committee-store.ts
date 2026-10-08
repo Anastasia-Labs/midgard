@@ -23,10 +23,6 @@ import {
   type StateQueueHeaderRecord,
 } from "../domain.js";
 import type { SignedHeader } from "../l1/follower/obligations.js";
-import type {
-  L1RecoveryCertificate,
-  L1RecoverySnapshot,
-} from "../l1/recovery-incident.js";
 import {
   type CommitteeDeploymentRecord,
   type CommitteeStore,
@@ -35,16 +31,11 @@ import {
   type DecisionOutboxStatus,
   InFlightDecisionAttempts,
   type L1SourceState,
-  mergeQuarantinedL1SourceState,
   parseDecisionOutboxRecord,
   parseL1SourceState,
   resolveDaPayloadSave,
   type RetainedPayloadPruneRequest,
 } from "../store.js";
-import {
-  postgresApplyL1Recovery,
-  postgresL1RecoverySnapshot,
-} from "./l1-recovery-postgres.js";
 import {
   assertConflictEvidenceRowIdentity,
   assertDecisionOutboxRowIdentity,
@@ -58,7 +49,6 @@ import {
   decodeRecord,
   decodeRow,
   encodeRecord,
-  ensureL1SourceStateRow,
   type JsonRecordRow,
   lockL1SourceState,
   mergeLockedL1SourceState,
@@ -71,6 +61,7 @@ import { PostgresStoreInstanceLock } from "./postgres.instance-lock.js";
 import {
   COMMITTEE_READINESS_COUNTS_SQL,
   initializeCommitteeSchema,
+  UNSETTLED_HEADER_PREDICATE,
 } from "./postgres.schema.js";
 import * as capacity from "./promise-capacity-postgres.js";
 import { postgresPromiseResources } from "./promise-resource-usage.js";
@@ -105,20 +96,6 @@ export class PostgresCommitteeStore implements CommitteeStore {
   private readonly pool: Pool;
   readonly instanceLock: PostgresStoreInstanceLock;
   private readonly inFlightDecisions = new InFlightDecisionAttempts();
-
-  readL1RecoverySnapshot(): Promise<L1RecoverySnapshot> {
-    return postgresL1RecoverySnapshot(this.pool, this.instanceLock);
-  }
-  applyL1RecoveryCertificate(
-    certificate: L1RecoveryCertificate,
-  ): Promise<void> {
-    return postgresApplyL1Recovery(
-      this.pool,
-      this.instanceLock,
-      this.retirement,
-      certificate,
-    );
-  }
 
   private constructor(pool: Pool, instanceLock: PostgresStoreInstanceLock) {
     this.pool = pool;
@@ -465,9 +442,7 @@ export class PostgresCommitteeStore implements CommitteeStore {
       }
       if (
         existing.status !== "pending" ||
-        existing.attemptCount !== args.expectedAttemptCount ||
-        existing.quarantineReason !== undefined ||
-        existing.quarantinedAt !== undefined
+        existing.attemptCount !== args.expectedAttemptCount
       ) {
         throw new Error(
           "decision outbox completion does not match the pending attempt",
@@ -499,102 +474,6 @@ export class PostgresCommitteeStore implements CommitteeStore {
     });
   }
 
-  async quarantineL1Decisions(state: L1SourceState): Promise<void> {
-    const canonical = parseL1SourceState(state);
-    if (canonical.status !== "quarantined") {
-      throw new Error(
-        "L1 decision quarantine requires quarantined source state",
-      );
-    }
-    await this.withClient(async (client) => {
-      await ensureL1SourceStateRow(client, canonical);
-      const current = await lockL1SourceState(client);
-      const quarantined = mergeQuarantinedL1SourceState(current, canonical);
-      const headerHashes = quarantined.observations
-        .filter(({ hasPersistedDecision }) => hasPersistedDecision)
-        .map(({ headerHash }) => headerHash);
-      const reason = `l1_source_quarantined:${quarantined.quarantineReason!}`;
-      await client.query(
-        `UPDATE committee_l1_source_state
-           SET record = $1::jsonb, updated_at = NOW()
-           WHERE id = 1`,
-        [encodeRecord(quarantined)],
-      );
-      if (headerHashes.length > 0) {
-        await client.query(
-          `UPDATE committee_state_queue_headers
-             SET record =
-                   record ||
-                   jsonb_build_object(
-                     'status', 'conflicted',
-                     'validationErrors',
-                       COALESCE(record->'validationErrors', '[]'::jsonb) ||
-                       to_jsonb($2::text),
-                     'updatedAt', $3::text
-                   ),
-                 updated_at = NOW()
-             WHERE header_hash = ANY($1::text[])`,
-          [headerHashes, reason, quarantined.quarantinedAt],
-        );
-        // Preserve retained payloads: see CommitteeStore.quarantineL1Decisions.
-        await client.query(
-          `UPDATE committee_da_signatures
-             SET record = record || jsonb_build_object(
-                   'broadcastStatus', 'post_failed'
-                 ),
-                 updated_at = NOW()
-             WHERE header_hash = ANY($1::text[])`,
-          [headerHashes],
-        );
-        await client.query(
-          `UPDATE committee_l1_submissions
-             SET record =
-                   record ||
-                   jsonb_build_object(
-                     'resultStatus', 'failed',
-                     'failureCause', $2::text
-                   ),
-                 updated_at = NOW()
-             WHERE header_hash = ANY($1::text[])`,
-          [headerHashes, reason],
-        );
-        await client.query(
-          `UPDATE committee_peer_broadcasts
-             SET record =
-                   (record - 'nextAttemptAt') ||
-                   jsonb_build_object(
-                     'status', 'failed',
-                     'lastError', $2::text,
-                     'updatedAt', $3::text
-                   ),
-                 updated_at = NOW()
-             WHERE header_hash = ANY($1::text[])`,
-          [headerHashes, reason, quarantined.quarantinedAt],
-        );
-        await client.query(
-          `UPDATE committee_decision_outbox
-             SET record =
-                   record ||
-                   jsonb_build_object(
-                     'status', 'failed',
-                     'lastError', $2::text,
-                     'quarantineReason', $3::text,
-                     'quarantinedAt', $4::text,
-                     'updatedAt', $4::text
-                   ),
-                 updated_at = NOW()
-             WHERE header_hash = ANY($1::text[])`,
-          [
-            headerHashes,
-            reason,
-            quarantined.quarantineReason,
-            quarantined.quarantinedAt,
-          ],
-        );
-      }
-    });
-  }
-
   async upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void> {
     await this.upsertRecord(
       "committee_state_queue_headers",
@@ -603,9 +482,23 @@ export class PostgresCommitteeStore implements CommitteeStore {
     );
   }
 
-  async listStateQueueHeaders(): Promise<readonly StateQueueHeaderRecord[]> {
+  async listUnsettledStateQueueHeaders(): Promise<
+    readonly StateQueueHeaderRecord[]
+  > {
     return this.listRecords<StateQueueHeaderRecord>(
-      "SELECT record FROM committee_state_queue_headers ORDER BY header_hash",
+      `SELECT record FROM committee_state_queue_headers
+       WHERE ${UNSETTLED_HEADER_PREDICATE} ORDER BY header_hash`,
+    );
+  }
+
+  async getStateQueueHeaders(
+    headerHashes: readonly string[],
+  ): Promise<readonly StateQueueHeaderRecord[]> {
+    if (headerHashes.length === 0) return [];
+    return this.listRecords<StateQueueHeaderRecord>(
+      `SELECT record FROM committee_state_queue_headers
+       WHERE header_hash = ANY($1::text[]) ORDER BY header_hash`,
+      [[...new Set(headerHashes)]],
     );
   }
 
@@ -763,12 +656,6 @@ export class PostgresCommitteeStore implements CommitteeStore {
   async saveDaSignature(record: DaSignatureRecord): Promise<void> {
     const canonicalRecord = parseDaSignatureRecord(record);
     await this.withClient(async (client) => {
-      const sourceState = await lockL1SourceState(client);
-      if (sourceState?.status === "quarantined") {
-        throw new Error(
-          "cannot persist a DA signature while the L1 source is quarantined",
-        );
-      }
       await upsertSignatureWithClient(client, canonicalRecord);
     });
   }

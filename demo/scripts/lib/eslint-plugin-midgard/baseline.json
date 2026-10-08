@@ -404,14 +404,8 @@
     "da-committee-node/src/committee-service.committee-service.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
-        "left.headerHash.localeCompare(right.headerHash),",
+        ".sort((left, right) => left.headerHash.localeCompare(right.headerHash));",
         "].sort((left, right) => left.headerHash.localeCompare(right.headerHash));"
-      ]
-    },
-    "da-committee-node/src/config.parse-l1-source-config.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        ".sort((left, right) => left.authorityId.localeCompare(right.authorityId));"
       ]
     },
     "da-committee-node/src/coordinator/on-chain.on-chain-lifecycle-coordinator-deps.ts": {
@@ -425,12 +419,9 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["`${headerHash}${commitmentDigest}`.localeCompare("]
     },
-    "da-committee-node/src/l1/da-attestation-reader.lucid-da-attestation-chain-reader.ts": {
+    "da-committee-node/src/l1/da-attestation-reader.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "left.outRef.localeCompare(right.outRef),",
-        "left.outRef.localeCompare(right.outRef),"
-      ]
+      "sites": ["left.outRef.localeCompare(right.outRef),"]
     },
     "da-committee-node/src/l1/state-queue-replay-provider.open-rpc.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",

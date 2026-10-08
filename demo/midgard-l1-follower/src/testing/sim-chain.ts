@@ -163,7 +163,18 @@ export class SimChain {
     return { point: blockPoint(point), blockNo: BigInt(height) };
   }
 
-  /** Appends a block of `txs` to the chain and serves its roll-forward. */
+  /** The slot of the next block `forward` appends: one or two past the tip. */
+  nextSlot(): number {
+    const parent = this.tip;
+    return parent.point.slot + 1 + ((parent.height + 1 + this.branch) % 2);
+  }
+
+  /**
+   * Appends a block of `txs` to the chain and serves its roll-forward.
+   * Throws, as the ledger refuses it, on a transaction whose validity
+   * interval excludes the block's slot (`invalidBefore` inclusive,
+   * `invalidAfter` exclusive).
+   */
   forward(txs: readonly SimTx[]): Readonly<{
     event: RollForward;
     encoded: EncodedBlock;
@@ -172,11 +183,19 @@ export class SimChain {
     const height = parent.height + 1;
     const block: SimBlock = {
       height,
-      slot: parent.point.slot + 1 + ((height + this.branch) % 2),
+      slot: this.nextSlot(),
       prevHash: parent.point.hash,
       branch: this.branch,
       txs,
     };
+    for (const tx of txs)
+      if (
+        (tx.invalidAfter !== undefined && block.slot >= tx.invalidAfter) ||
+        (tx.invalidBefore !== undefined && block.slot < tx.invalidBefore)
+      )
+        throw new RangeError(
+          `a block at slot ${block.slot} cannot include a transaction valid in [${tx.invalidBefore ?? "-"}, ${tx.invalidAfter ?? "-"})`,
+        );
     const encoded = encodeBlock(block);
     const undo: Undo = { added: [], removed: [] };
     txs.forEach((tx, index) => {

@@ -21,9 +21,6 @@ export const localAuthorityRegistry = new Map<
  * preflight's; a hung Kupo fails the read instead of wedging the caller. */
 export const KUPO_HEALTH_TIMEOUT_MS = 10_000;
 
-/** Bound on one Blockfrost read (the latest block or the genesis). */
-export const BLOCKFROST_REQUEST_TIMEOUT_MS = 20_000;
-
 /**
  * Kupo indexes each block shortly after the node adopts it, so one read of
  * both tips can straddle a block arrival. Re-read briefly until they agree;

@@ -19,7 +19,7 @@ import {
   openTestCommitteeStore,
   saveHealthyL1SourceState,
 } from "./helpers/committee-store.js";
-import { withFinalSnapshot } from "./helpers/final-snapshot.js";
+import { fakeL1Source } from "./helpers/fake-l1-source.js";
 
 describe("multi-node DA committee integration", () => {
   it("uses a peer signature to init, add, and apply threshold DA attestation without HTTP DA transport", async () => {
@@ -79,7 +79,7 @@ describe("multi-node DA committee integration", () => {
       },
     );
     const peerStore = await openTestCommitteeStore();
-    const observedHeaderProvider = withFinalSnapshot({
+    const observedHeaderProvider = fakeL1Source({
       fetchStateQueueNodes: async () => [
         makeObservedNode({ header, headerHash, depth: 10 }),
       ],
@@ -88,7 +88,7 @@ describe("multi-node DA committee integration", () => {
     const peerService = new CommitteeService({
       config: peerConfig,
       store: peerStore,
-      stateQueueProvider: observedHeaderProvider,
+      l1: observedHeaderProvider,
       payloadSource,
       signer: peerSigner,
       signerValidation: peerValidation,
@@ -182,7 +182,7 @@ describe("multi-node DA committee integration", () => {
     const coordinatorService = new CommitteeService({
       config: coordinatorConfig,
       store: coordinatorStore,
-      stateQueueProvider: observedHeaderProvider,
+      l1: observedHeaderProvider,
       payloadSource,
       signer: coordinatorSigner,
       signerValidation: coordinatorValidation,

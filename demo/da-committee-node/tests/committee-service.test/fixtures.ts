@@ -79,23 +79,6 @@ export const retainedSignedPayload = async (
   });
 };
 
-/**
- * Moves the persisted replay anchor to `queue`, as if it had run ahead of the
- * persisted decision observations: authenticated replay from it then carries
- * no step for any output change before it. No honest tick does this; it
- * reaches the decision-transition check behind a successful scan.
- */
-export const runAnchorAheadOfObservations = async (
-  store: CommitteeStore,
-  queue: SDK.StateQueueTransitionNode[],
-): Promise<void> => {
-  const state = (await store.getL1SourceState())!;
-  await store.saveL1SourceState({
-    ...state,
-    stateQueueReplayAnchor: { ...state.stateQueueReplayAnchor!, queue },
-  });
-};
-
 export const attestedDaStatus = (): SDK.DaAvailabilityStateQueueStatus => ({
   Attested: { commitment_hash: "aa".repeat(32) },
 });

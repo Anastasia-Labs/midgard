@@ -192,10 +192,7 @@ const pointRequests = (data: StoreData): readonly RetirementPointRequest[] => {
     add(c.point);
     if (c.certifiedAt) add(c.certifiedAt);
   }
-  for (const o of data.chainCursor?.observations ?? []) {
-    add(o);
-    for (const step of o.authenticatedSteps ?? []) add(step);
-  }
+  for (const o of data.chainCursor?.observations ?? []) add(o);
   if (data.retirementFloor?.point) add(data.retirementFloor.point);
   return [...points.values()];
 };

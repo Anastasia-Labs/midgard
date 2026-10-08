@@ -13,23 +13,20 @@ export const STARTUP_RETRY_MAX_MS = 30_000;
 /**
  * A startup failure no retry can repair: the configuration contradicts the
  * deployment or the chain. Everything else a dependency throws while the
- * node starts (Postgres, Kupo or Ogmios not up yet, a peer address that does
- * not resolve yet) is retried.
+ * node starts (Postgres, the availability responder's Kupo or Ogmios not up
+ * yet, a peer address that does not resolve yet) is retried.
  *
  * - the store holds state of another deployment
- *   (`stale_deployment_state_requires_fresh_redeploy`), or a persisted L1
- *   source configuration other than the configured one;
- * - the live chain's DA parameters contradict the committee configuration,
- *   or its network identity cannot be or is not proven
- *   (`L1SourceIntegrityError`, `L1NetworkMagicUnconfiguredError`).
+ *   (`stale_deployment_state_requires_fresh_redeploy`);
+ * - the availability responder's L1 reads contradict the chain, or their
+ *   network identity cannot be or is not proven (`L1SourceIntegrityError`,
+ *   `L1NetworkMagicUnconfiguredError`).
  */
 export const isFatalStartupError = (error: unknown): boolean =>
   error instanceof L1SourceIntegrityError ||
   error instanceof L1NetworkMagicUnconfiguredError ||
   (error instanceof Error &&
-    /stale_deployment_state_requires_fresh_redeploy|persisted L1 source state does not match configured/u.test(
-      error.message,
-    ));
+    /stale_deployment_state_requires_fresh_redeploy/u.test(error.message));
 
 /** The readiness reason a failed startup attempt reports. */
 export const startupReason = (error: unknown): string =>

@@ -4,37 +4,22 @@ import {
   type FactStore,
   openPostgresFactStore,
   openSqliteFactStore,
-  type OutRef,
   stepSettled,
 } from "@al-ft/midgard-l1-follower";
 import {
   SIM_ORIGIN,
-  SimChain,
   simStoreOptions,
-  type SimTx,
-  simUniverse,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
 import { afterAll, describe, expect, it } from "vitest";
 
-import {
-  type SignedHeader,
-  slotTimeMs,
-} from "../src/l1/follower/obligations.js";
+import { type SignedHeader } from "../src/l1/follower/obligations.js";
 import {
   committeeProjection,
   readCommitteeView,
 } from "../src/l1/follower/projection.js";
-import { headerHashOf } from "../src/l1/follower/queue-derivation.js";
 import { postgresTestDatabases } from "../tests/helpers/postgres-database.js";
-import {
-  nodeDatum,
-  queueOutput,
-  rootDatum,
-  SIM_QUEUE,
-  SIM_SLOT_TIME,
-  simHeader,
-} from "../tests/l1-follower/queue-sim.js";
+import { QueueChain } from "../tests/l1-follower/queue-chain.js";
+import { SIM_QUEUE, SIM_SLOT_TIME } from "../tests/l1-follower/queue-sim.js";
 
 /**
  * B5 (plan §16.2), the tick half: one committee tick on the follower
@@ -43,15 +28,21 @@ import {
  * queue, headers awaiting attestation, obligations) in one snapshot, with
  * every queue header signed by the member. Target: p99 ≤ 50 ms.
  *
+ * Before the queue is built, a history prefix appends and merges HISTORY
+ * headers, one block each, and nothing prunes: every closed queue row and
+ * spent output of that history stays in the store. The tick must not slow
+ * down with that history.
+ *
  * The mutation and readiness halves of B5 belong to C2.
  */
 const K = 2_160;
 const PARAMETERS = { confirmationDepth: 15, securityParameter: K } as const;
 const Q = Number(process.env.COMMITTEE_B5_Q ?? "1000");
 const TICKS = Number(process.env.COMMITTEE_B5_TICKS ?? "400");
+const HISTORY = Number(process.env.COMMITTEE_B5_HISTORY ?? "5000");
+const SIGNED = process.env.COMMITTEE_B5_SIGNED ?? "retained";
 const TARGET_P99_MS = 50;
 
-const GENESIS_HASH = "00".repeat(28);
 const projection = committeeProjection(SIM_QUEUE);
 
 const now = (): number => Number(process.hrtime.bigint()) / 1e6;
@@ -61,125 +52,23 @@ const percentile = (values: readonly number[], p: number): number => {
   return sorted[Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1)]!;
 };
 
-type Node = {
-  outRef: OutRef;
-  header: SDK.Header;
-  hash: string;
-  status: SDK.DaAvailabilityStateQueueStatus;
-  link: string | null;
-};
-
 /**
- * A linear state queue on the simulator's chain: a root, then one append or
- * one attestation per block. The tail is relinked by each append, as the
- * validator requires.
+ * The member's signed decisions: every queue header, and each merged header
+ * while its merge is at most k deep (plan §11: a decision is kept to k after
+ * its header is gone). `COMMITTEE_B5_SIGNED=all` keeps every merged header's
+ * decision instead.
  */
-class QueueChain {
-  readonly chain = new SimChain(
-    simUniverse(),
-    SIM_ORIGIN,
-    simStoreOptions([projection], K, "sqlite").trackedSet,
-  );
-  private root: { outRef: OutRef; link: string | null } | null = null;
-  readonly nodes: Node[] = [];
-  private attested = 0;
-
-  private forward(tx: SimTx) {
-    const step = this.chain.forward([tx]);
-    return { event: step.event, txHash: step.encoded.txHashes[0] as Buffer };
-  }
-
-  init() {
-    const step = this.forward({
-      inputs: [this.chain.outsideInput()],
-      outputs: [
-        queueOutput(
-          SDK.STATE_QUEUE_ROOT_ASSET_NAME,
-          rootDatum(GENESIS_HASH, 0, null),
-        ),
-      ],
-      nonce: this.chain.nonce(),
-    });
-    this.root = { outRef: { txHash: step.txHash, index: 0 }, link: null };
-    return step.event;
-  }
-
-  append() {
-    const root = this.root!;
-    const tail = this.nodes.at(-1);
-    const nonce = this.chain.nonce();
-    const header = simHeader(
-      nonce,
-      tail?.hash ?? GENESIS_HASH,
-      slotTimeMs(this.chain.tip.point.slot + 3, SIM_SLOT_TIME),
-    );
-    const hash = headerHashOf(header);
-    const relinked =
-      tail === undefined
-        ? queueOutput(
-            SDK.STATE_QUEUE_ROOT_ASSET_NAME,
-            rootDatum(GENESIS_HASH, 0, hash),
-          )
-        : queueOutput(
-            `${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${tail.hash}`,
-            nodeDatum(tail.header, tail.status, hash),
-          );
-    const step = this.forward({
-      inputs: [tail?.outRef ?? root.outRef],
-      outputs: [
-        relinked,
-        queueOutput(
-          `${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${hash}`,
-          nodeDatum(header, "Unattested", null),
-        ),
-      ],
-      nonce,
-    });
-    if (tail === undefined)
-      this.root = { outRef: { txHash: step.txHash, index: 0 }, link: hash };
-    else {
-      tail.outRef = { txHash: step.txHash, index: 0 };
-      tail.link = hash;
-    }
-    this.nodes.push({
-      outRef: { txHash: step.txHash, index: 1 },
-      header,
-      hash,
-      status: "Unattested",
-      link: null,
-    });
-    return step.event;
-  }
-
-  /** Attests the oldest unattested node. */
-  attest() {
-    const node = this.nodes[this.attested]!;
-    this.attested += 1;
-    const nonce = this.chain.nonce();
-    node.status = {
-      Attested: { commitment_hash: nonce.toString(16).padStart(64, "0") },
-    };
-    const step = this.forward({
-      inputs: [node.outRef],
-      outputs: [
-        queueOutput(
-          `${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${node.hash}`,
-          nodeDatum(node.header, node.status, node.link),
-        ),
-      ],
-      nonce,
-    });
-    node.outRef = { txHash: step.txHash, index: 0 };
-    return step.event;
-  }
-
-  signed(): SignedHeader[] {
-    return this.nodes.map((node) => ({
-      headerHash: node.hash,
-      endTimeMs: node.header.endTime,
-    }));
-  }
-}
+const signedOf = (queue: QueueChain): SignedHeader[] => {
+  const tip = queue.chain.tip.height;
+  const retained =
+    SIGNED === "all"
+      ? queue.merged
+      : queue.merged.filter(({ mergedAt }) => tip - mergedAt + 1 <= K);
+  return [...retained, ...queue.nodes].map((node) => ({
+    headerHash: node.hash,
+    endTimeMs: node.header.endTime,
+  }));
+};
 
 const apply = async (
   store: FactStore,
@@ -201,6 +90,10 @@ const run = async (store: FactStore, dialect: DialectName) => {
   const queue = new QueueChain();
   const preloadStart = now();
   await apply(store, queue.init());
+  for (let i = 0; i < HISTORY; i += 1) {
+    await apply(store, queue.append());
+    await apply(store, queue.merge());
+  }
   for (let i = 0; i < Q; i += 1) await apply(store, queue.append());
   const preloadMs = now() - preloadStart;
   if (dialect === "postgres")
@@ -211,12 +104,12 @@ const run = async (store: FactStore, dialect: DialectName) => {
   const views: number[] = [];
   let lastView = await readCommitteeView(store, {
     ...options,
-    signed: queue.signed(),
+    signed: signedOf(queue),
   });
   for (let i = 0; i < TICKS; i += 1) {
     // Two attestations per append: the queue grows slowly past Q.
     const event = i % 3 === 0 ? queue.append() : queue.attest();
-    const signed = queue.signed();
+    const signed = signedOf(queue);
     const start = now();
     await apply(store, event);
     const applied = now();
@@ -235,7 +128,9 @@ const run = async (store: FactStore, dialect: DialectName) => {
   return {
     dialect,
     q: { start: Q, end: queue.nodes.length },
-    signed: queue.nodes.length,
+    history: HISTORY,
+    signed: signedOf(queue).length,
+    signedRule: SIGNED,
     awaitingAtEnd: lastView?.awaiting.length,
     obligationsAtEnd: lastView?.obligations.length,
     preloadMs: Math.round(preloadMs),

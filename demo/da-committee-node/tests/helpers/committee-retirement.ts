@@ -85,13 +85,6 @@ export const retentionFixture = async (store: CommitteeStore) => {
     status: "healthy",
     observations: [],
     observedAt: "2026-10-02T00:00:00.000Z",
-    stateQueueReplayAnchor: {
-      deploymentIdentityDigest: deploymentFingerprint,
-      stateQueuePolicyId: "11".repeat(28),
-      queue: [{ headerHash: null, outRef: `${"22".repeat(32)}#0` }],
-      blockNo: "100",
-      transactionIndex: "0",
-    },
   };
   await store.saveL1SourceState(state);
   const deployment = {

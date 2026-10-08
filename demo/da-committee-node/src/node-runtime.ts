@@ -20,8 +20,11 @@ import {
   type DaPeerRegistry,
   StoreBackedDaAttestationProtocol,
 } from "./da/libp2p/index.js";
-import { daAttestationReaderFromConfig } from "./l1/da-attestation-reader.js";
-import { startShadowFollower } from "./l1/follower/shadow-follower-runtime.js";
+import { followerDaAttestationReader } from "./l1/da-attestation-reader.js";
+import {
+  startCommitteeL1Follower,
+  untilCommitteeL1SourceReady,
+} from "./l1/follower/l1-follower.js";
 import { providerFromConfig } from "./l1/provider.js";
 import { PeerSignatureCoordinator } from "./peer/coordinator.js";
 import { PeerSignaturePoller } from "./peer/poller.js";
@@ -51,8 +54,8 @@ export type CommitteeNodeRuntime = Awaited<
 >;
 
 /**
- * Opens every dependency of a running committee node (store, L1 readers,
- * coordinators, libp2p) and initializes the service. One attempt of the
+ * Opens every dependency of a running committee node (store, its L1
+ * follower, coordinators, libp2p) and initializes the service. One attempt of the
  * startup retry: on any failure it closes what it opened and rethrows, so the
  * next attempt starts clean.
  */
@@ -74,8 +77,18 @@ export const openCommitteeNodeRuntime = async (
     const store = await openCommitteeStore(config.localState, storeLockEvents);
     closers.push(() => store.close?.());
     await assertCommitteePromiseEnrollment(config, store);
-    const provider = await providerFromConfig(config);
-    const daChainReader = await daAttestationReaderFromConfig(config);
+    // The committee's L1 follower, held on the store's instance lock
+    // session: it writes only while this process holds the store.
+    const follower = await startCommitteeL1Follower(
+      config,
+      async () => store.instanceLock.followerWriterLease(),
+      (line) => process.stderr.write(`${line}\n`),
+    );
+    closers.push(() => follower.stop());
+    const daChainReader =
+      follower.store === null
+        ? undefined
+        : followerDaAttestationReader(follower.store, config);
     const availabilityCommitmentAuthority =
       daAvailabilityCommitmentAuthorityFromConfig(config);
     const daAttestationProtocol = new StoreBackedDaAttestationProtocol({
@@ -155,6 +168,7 @@ export const openCommitteeNodeRuntime = async (
     const onChainCoordinator = config.l1SubmissionEnabled
       ? await onChainCoordinatorFromConfig(
           config,
+          follower.lucid,
           daChainReader,
           store,
           undefined,
@@ -220,7 +234,7 @@ export const openCommitteeNodeRuntime = async (
     const service = new CommitteeService({
       config,
       store,
-      stateQueueProvider: provider,
+      l1: follower.source,
       payloadSource,
       get signer() {
         return actuationReady ? signer : undefined;
@@ -243,6 +257,7 @@ export const openCommitteeNodeRuntime = async (
     });
     await service.initialize();
     if (!actuationReady) {
+      await untilCommitteeL1SourceReady(follower.source);
       const bootstrap = await service.tick();
       if (bootstrap.errors.length !== 0 || service.latestL1View() === undefined)
         throw new Error(
@@ -250,7 +265,11 @@ export const openCommitteeNodeRuntime = async (
         );
     }
     const availabilityRuntime = config.l1SubmissionEnabled
-      ? await availabilityResponderFromConfig(config, store, provider)
+      ? await availabilityResponderFromConfig(
+          config,
+          store,
+          await providerFromConfig(config),
+        )
       : undefined;
     if (availabilityRuntime !== undefined)
       closers.push(() => availabilityRuntime?.close());
@@ -273,20 +292,11 @@ export const openCommitteeNodeRuntime = async (
     actuationReady = true;
     closers.push(() => daLibp2pNode.stop());
     await daLibp2pNode.start();
-    // Phase A of the L1 follower: off unless its status file is named, and
-    // nothing the committee does reads it.
-    const shadowFollower = startShadowFollower(
-      config,
-      process.env,
-      // Held on the store's instance lock session: the follower writes only
-      // while this process holds the store.
-      async () => store.instanceLock.followerWriterLease(),
-      (line) => process.stderr.write(`${line}\n`),
-    );
-    if (shadowFollower !== undefined) closers.push(() => shadowFollower.stop());
     return {
       store,
       service,
+      l1: follower.source,
+      l1Lucid: follower.lucid,
       daLibp2pNode,
       onChainCoordinator,
       availabilityRuntime,

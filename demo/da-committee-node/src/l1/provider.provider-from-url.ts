@@ -23,18 +23,7 @@ import {
   type ChainPointAwareStateQueueProvider,
   LucidStateQueueProvider,
 } from "./provider.lucid-state-queue-provider.js";
-import { MultiStateQueueProvider } from "./provider.multi-state-queue-provider.js";
-import {
-  assertNetworkMagic,
-  BLOCKFROST_REQUEST_TIMEOUT_MS,
-} from "./provider.ogmios-rpc-session.js";
 import { FixtureStateQueueProvider } from "./provider.parse-fixture-chain-sync-events.js";
-import {
-  type CanonicalChainPoint,
-  getRecord,
-  safeBlockHash,
-  safeSlot,
-} from "./provider.parse-persisted-chain-sync-state.js";
 import {
   kupmiosChainPointResolver,
   kupmiosCurrentChainPointResolver,
@@ -51,62 +40,38 @@ export const providerFromConfig = async (
   config: LoadedCommitteeConfig,
 ): Promise<StateQueueProvider> => {
   const urls = config.cardanoProviderUrls;
-  if (config.l1Source.sourceMode === "local_node") {
-    const localSource = config.l1Source;
-    const authority = localNodeChainAuthorityFromConfig(config);
-    const cursorPath = localNodeChainCursorPath(localSource);
-    const authorityFingerprint = localAuthorityFingerprint(
-      config.network,
-      localSource.authorityNodeId,
-      localSource.chainSyncProviderUrl,
-    );
-    const queryProviders = await joinNativeReads(
-      urls.map(async (url) =>
-        requireStateQueueReplaySource(url, await providerFromUrl(url, config)),
-      ),
-    );
-    const pointAware = queryProviders.map((provider, index) => {
-      if (!("currentChainPoint" in provider)) {
-        throw new Error(
-          `local_node query surface ${index.toString()} cannot prove its current chain point`,
-        );
-      }
-      return provider as ChainPointAwareStateQueueProvider;
-    });
-    return new LocalNodeStateQueueProvider(
-      authority,
-      pointAware,
-      urls.map(
-        (_, index) =>
-          `query:${localSource.authorityNodeId}:${index.toString()}`,
-      ),
-      new FileChainSyncConsumerCursorStore(
-        `${cursorPath}.watcher-consumer-v1`,
-        authorityFingerprint,
-      ),
-    );
-  }
-  if (
-    config.cardanoL1Source.sourceMode === "external_providers" &&
-    (urls.length < 2 ||
-      config.cardanoL1Source.providerAuthorityIds.length !== urls.length)
-  ) {
-    throw new Error(
-      "external_providers mode requires at least two matched provider authority identities",
-    );
-  }
-  const providers = await Promise.all(
-    urls.map(async (url, index) =>
-      requireStateQueueReplaySource(
-        url,
-        await providerFromUrl(url, config, index),
-      ),
+  const localSource = config.l1Source;
+  const authority = localNodeChainAuthorityFromConfig(config);
+  const cursorPath = localNodeChainCursorPath(localSource);
+  const authorityFingerprint = localAuthorityFingerprint(
+    config.network,
+    localSource.authorityNodeId,
+    localSource.chainSyncProviderUrl,
+  );
+  const queryProviders = await joinNativeReads(
+    urls.map(async (url) =>
+      requireStateQueueReplaySource(url, await providerFromUrl(url, config)),
     ),
   );
-  return new MultiStateQueueProvider(providers, {
-    sourceMode: "external_providers",
-    identities: config.l1Source.providers.map(({ identity }) => identity),
+  const pointAware = queryProviders.map((provider, index) => {
+    if (!("currentChainPoint" in provider)) {
+      throw new Error(
+        `local_node query surface ${index.toString()} cannot prove its current chain point`,
+      );
+    }
+    return provider as ChainPointAwareStateQueueProvider;
   });
+  return new LocalNodeStateQueueProvider(
+    authority,
+    pointAware,
+    urls.map(
+      (_, index) => `query:${localSource.authorityNodeId}:${index.toString()}`,
+    ),
+    new FileChainSyncConsumerCursorStore(
+      `${cursorPath}.watcher-consumer-v1`,
+      authorityFingerprint,
+    ),
+  );
 };
 
 export const providerFromUrl = async (
@@ -124,7 +89,6 @@ export const providerFromUrl = async (
     readonly fraudProofPolicyId?: string;
     readonly fraudProofAddress?: string;
   },
-  providerIndex = 0,
 ): Promise<StateQueueProvider> => {
   if (url.startsWith("fixture:")) {
     return new FixtureStateQueueProvider(
@@ -134,13 +98,6 @@ export const providerFromUrl = async (
   }
   if (url.startsWith("file:")) {
     return new FixtureStateQueueProvider(new URL(url).pathname, config.network);
-  }
-  if (url.startsWith("blockfrost:")) {
-    // Blockfrost serves no authenticated ordered state-queue history, so a
-    // committee reading the queue through it could never follow a change.
-    throw new Error(
-      "blockfrost: cannot serve the state queue: it has no authenticated ordered history source; use kupmios:<kupo-url>|<ogmios-url>",
-    );
   }
   if (url.startsWith("kupmios:")) {
     if (config.deploymentFingerprint === undefined) {
@@ -183,7 +140,6 @@ export const providerFromUrl = async (
       stateQueuePolicyId: config.stateQueuePolicyId,
       providerSource: l1AuthorityProviderSource(
         config,
-        providerIndex,
         `kupmios:${kupoUrl}|${ogmiosUrl}`,
       ),
       chainPointResolver: kupmiosChainPointResolver(
@@ -225,107 +181,4 @@ export const providerFromUrl = async (
   throw new Error(
     `unsupported CARDANO_PROVIDER_URLS entry ${url}; supported forms are fixture:<path>, file:<path>, and kupmios:<kupo-url>|<ogmios-url>`,
   );
-};
-
-export const parseBlockfrostUrl = (
-  value: string,
-): { readonly apiUrl: string; readonly projectId: string } => {
-  const raw = value.slice("blockfrost:".length);
-  const hashIndex = raw.lastIndexOf("#");
-  if (hashIndex <= 0 || hashIndex === raw.length - 1) {
-    throw new Error(
-      "blockfrost provider URL must be blockfrost:<api-url>#<project-id>",
-    );
-  }
-  return {
-    apiUrl: raw.slice(0, hashIndex),
-    projectId: raw.slice(hashIndex + 1),
-  };
-};
-
-export const blockfrostCurrentChainPointResolver =
-  (
-    network: string,
-    apiUrl: string,
-    projectId: string,
-    timeoutMs = BLOCKFROST_REQUEST_TIMEOUT_MS,
-    networkMagic?: number,
-  ) =>
-  async (): Promise<CanonicalChainPoint> => {
-    const [latest, liveNetwork] = await Promise.all([
-      blockfrostJson(
-        apiUrl,
-        projectId,
-        "/blocks/latest",
-        parseBlockfrostLatestBlock,
-        timeoutMs,
-      ),
-      blockfrostJson(
-        apiUrl,
-        projectId,
-        "/genesis",
-        parseBlockfrostNetwork,
-        timeoutMs,
-      ),
-    ]);
-    assertNetworkMagic(
-      network,
-      liveNetwork.networkMagic,
-      "Blockfrost",
-      networkMagic,
-    );
-    return {
-      network,
-      slot: latest.slot,
-      blockHash: latest.hash,
-      blockHeight: latest.height,
-      providerSource: `blockfrost:${apiUrl}`,
-      observedAt: new Date().toISOString(),
-    };
-  };
-
-const blockfrostJson = async <T>(
-  apiUrl: string,
-  projectId: string,
-  path: string,
-  parse: (value: unknown) => T,
-  timeoutMs: number,
-): Promise<T> => {
-  const response = await fetch(`${apiUrl.replace(/\/$/, "")}${path}`, {
-    headers: { project_id: projectId },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Blockfrost ${path} returned ${response.status.toString()} ${response.statusText}`,
-    );
-  }
-  return parse(await response.json());
-};
-
-type BlockfrostLatestBlock = {
-  readonly slot: number;
-  readonly hash: string;
-  readonly height: number;
-};
-
-const parseBlockfrostLatestBlock = (value: unknown): BlockfrostLatestBlock => {
-  const block = getRecord(value, "Blockfrost latest block");
-  return {
-    slot: safeSlot(block.slot, "Blockfrost latest block slot"),
-    hash: safeBlockHash(block.hash, "Blockfrost latest block hash"),
-    height: safeSlot(block.height, "Blockfrost latest block height"),
-  };
-};
-
-const parseBlockfrostNetwork = (
-  value: unknown,
-): { readonly networkMagic: number } => {
-  const result = getRecord(value, "Blockfrost genesis");
-  return {
-    networkMagic: safeSlot(
-      result.network_magic,
-      "Blockfrost genesis network magic",
-    ),
-  };
 };

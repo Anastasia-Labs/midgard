@@ -19,7 +19,7 @@ import {
 } from "../src/tick-runner.js";
 import { minimalConfig, payloadSourceFromBytes, tempDir } from "./helpers.js";
 import { openTestCommitteeStore } from "./helpers/committee-store.js";
-import { withFinalSnapshot } from "./helpers/final-snapshot.js";
+import { fakeL1Source } from "./helpers/fake-l1-source.js";
 
 const POLL_MS = 2_000;
 const FATAL_MS = 600_000;
@@ -159,7 +159,7 @@ beforeAll(async () => {
       signerPublicKey: signer.publicKeyHex,
     }),
     store,
-    stateQueueProvider: withFinalSnapshot({
+    l1: fakeL1Source({
       fetchStateQueueNodes: async () => [],
     }),
     payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),

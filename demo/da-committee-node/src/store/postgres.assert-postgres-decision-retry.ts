@@ -13,7 +13,6 @@ import {
   mergeL1SourceState,
   parseL1SourceState,
   parseStoredJson,
-  UNKNOWN_STATE_QUEUE_STATUS,
 } from "../store.js";
 import type { PostgresStoreInstanceLockEvents } from "./postgres.instance-lock.js";
 
@@ -268,9 +267,6 @@ export const assertPostgresDecisionRetry = (
     existing.headerHash !== next.headerHash ||
     existing.stateQueueOutRef !== next.stateQueueOutRef ||
     existing.signerIndex !== next.signerIndex ||
-    existing.slot !== next.slot ||
-    existing.blockHash !== next.blockHash ||
-    existing.finalized !== next.finalized ||
     existing.createdAt !== next.createdAt ||
     next.attemptCount !== existing.attemptCount + 1
   ) {
@@ -290,11 +286,7 @@ export const assertPostgresDecisionSourceState = (
     sourceState.sourceMode !== effect.sourceMode ||
     sourceState.network !== effect.network ||
     observation?.stateQueueOutRef !== effect.stateQueueOutRef ||
-    observation.stateQueueStatus === UNKNOWN_STATE_QUEUE_STATUS ||
-    observation.finalized !== true ||
-    observation.hasPersistedDecision !== true ||
-    observation.slot !== effect.slot ||
-    observation.blockHash !== effect.blockHash
+    observation.hasPersistedDecision !== true
   ) {
     throw new Error("decision outbox lacks matching durable L1 observation");
   }

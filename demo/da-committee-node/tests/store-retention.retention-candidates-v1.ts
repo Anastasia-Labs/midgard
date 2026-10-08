@@ -174,7 +174,7 @@ describe("terminal recovery payload retirement", () => {
     await seed(store, [
       { headerHash, endTimeMs: PAST_HORIZON, status: "removed" },
     ]);
-    const header = (await store.listStateQueueHeaders())[0]!;
+    const header = (await store.getStateQueueHeader(headerHash))!;
     const request = { ...retentionOptions(), headerHash };
     for (const depth of [12, 2160]) {
       await store.upsertStateQueueHeader({

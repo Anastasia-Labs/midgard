@@ -143,30 +143,15 @@ export const localAuthorityFingerprint = (
 
 export const l1AuthorityProviderSource = (
   config: Pick<LoadedCommitteeConfig, "cardanoL1Source">,
-  providerIndex: number,
   surfaceIdentity: string,
 ): string => {
   const authority = config.cardanoL1Source;
   const surfaceDigest = createHash("sha256")
     .update(surfaceIdentity)
     .digest("hex");
-  if (authority.sourceMode === "local_node") {
-    return [
-      "local_node",
-      authority.authorityNodeId,
-      authority.authorityDigest,
-      surfaceDigest,
-    ].join(":");
-  }
-  const providerAuthorityId = authority.providerAuthorityIds[providerIndex];
-  if (providerAuthorityId === undefined) {
-    throw new Error(
-      "external provider is missing its configured authority identity",
-    );
-  }
   return [
-    "external_providers",
-    providerAuthorityId,
+    "local_node",
+    authority.authorityNodeId,
     authority.authorityDigest,
     surfaceDigest,
   ].join(":");

@@ -5,7 +5,6 @@ import {
   parseNativeLedgerConfig,
   rejectRetiredWatcherEnvNames,
 } from "../src/config.js";
-import { externalProviderConfigEnv } from "./config.deployment-manifest-id-from-file.js";
 import {
   libp2pConfigEnv,
   libp2pManifest,
@@ -111,7 +110,7 @@ describe("local node ledger settings", () => {
     );
   });
 
-  it("is loaded in both L1 source modes", async () => {
+  it("is loaded all-or-none", async () => {
     const dir = await tempDir();
     const { manifestPath, deploymentInfoPath } = await writeConfigFiles(
       dir,
@@ -126,19 +125,6 @@ describe("local node ledger settings", () => {
       nativeLedger: {
         authorityNodeId: "test-cardano-node",
         socketPath: nativeLedgerEnv.CARDANO_LOCAL_NODE_SOCKET_PATH,
-      },
-    });
-    await expect(
-      loadCommitteeConfig({
-        ...baseEnv,
-        ...externalProviderConfigEnv(),
-        ...nativeLedgerEnv,
-      }),
-    ).resolves.toMatchObject({
-      cardanoL1Source: { sourceMode: "external_providers" },
-      nativeLedger: {
-        authorityNodeId: "local-cardano-node",
-        binaryPath: nativeLedgerEnv.CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH,
       },
     });
     await expect(

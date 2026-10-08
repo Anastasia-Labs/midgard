@@ -23,7 +23,6 @@ import { loadPublicRetainedDaRuntimeConfig } from "../src/public-retained-da-con
 import { retentionCycleOptions } from "../src/store/retention.js";
 import {
   deploymentManifestIdFromFile,
-  externalProviderConfigEnv,
   withRecomputedDeploymentManifestId,
   writeDaContractDeploymentFixture,
 } from "./config.deployment-manifest-id-from-file.js";
@@ -710,13 +709,16 @@ describe("loadCommitteeConfig", () => {
     ).rejects.toThrow(/must be omitted for named Cardano networks/);
   });
 
-  it("enforces disjoint local-node and external-provider authority identities", async () => {
+  it("accepts only the local node as the L1 source, with same-node query surfaces", async () => {
     const dir = await tempDir();
     const { manifestPath, deploymentInfoPath } = await writeConfigFiles(
       dir,
       libp2pManifest("01".repeat(32)),
     );
     const baseEnv = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
+    await expect(loadCommitteeConfig(baseEnv)).resolves.toMatchObject({
+      cardanoL1Source: { sourceMode: "local_node", networkMagic: 1 },
+    });
     await expect(
       loadCommitteeConfig({
         ...baseEnv,
@@ -724,49 +726,24 @@ describe("loadCommitteeConfig", () => {
           "blockfrost:https://preview-a.example/api#project",
       }),
     ).rejects.toThrow(/local_node mode permits only same-node kupmios/);
-
-    const external = await loadCommitteeConfig({
-      ...baseEnv,
-      ...externalProviderConfigEnv(),
-    });
-    expect(external.cardanoL1Source).toMatchObject({
-      sourceMode: "external_providers",
-      providerAuthorityIds: ["11".repeat(32), "22".repeat(32)],
-      networkMagic: 1,
-    });
-
     await expect(
       loadCommitteeConfig({
         ...baseEnv,
-        ...externalProviderConfigEnv(),
-        CARDANO_PROVIDER_AUTHORITY_IDS: `${"11".repeat(32)},${"11".repeat(32)}`,
+        CARDANO_L1_SOURCE_MODE: "external_providers",
       }),
-    ).rejects.toThrow(/operationally independent/);
-    await expect(
-      loadCommitteeConfig({
-        ...baseEnv,
-        ...externalProviderConfigEnv(),
-        CARDANO_PROVIDER_URLS:
-          "blockfrost:https://preview-a.example/api#project",
-        CARDANO_PROVIDER_AUTHORITY_IDS: "11".repeat(32),
-      }),
-    ).rejects.toThrow(/at least two/);
-    // Every external provider serves the state queue, and Blockfrost has no
-    // authenticated ordered history of it: refused at startup.
-    for (const urls of [
-      "blockfrost:https://preview-a.example/api#project-a,blockfrost:https://preview-b.example/api#project-b",
-      "kupmios:https://kupo-a.example|wss://ogmios-a.example,blockfrost:https://preview-b.example/api#project-b",
-    ]) {
-      await expect(
-        loadCommitteeConfig({
-          ...baseEnv,
-          ...externalProviderConfigEnv(),
-          CARDANO_PROVIDER_URLS: urls,
-        }),
-      ).rejects.toThrow(
-        "external_providers mode requires kupmios providers: blockfrost has no authenticated ordered state-queue history source",
-      );
-    }
+    ).rejects.toThrow("CARDANO_L1_SOURCE_MODE must be local_node");
+    expect(() =>
+      parseL1SourceConfig(
+        {
+          CARDANO_L1_SOURCE_MODE: "external_providers",
+          CARDANO_EXTERNAL_PROVIDER_IDENTITIES: "operator-a,operator-b",
+        },
+        [
+          "kupmios:https://kupo-a.example|wss://ogmios-a.example",
+          "kupmios:https://kupo-b.example|wss://ogmios-b.example",
+        ],
+      ),
+    ).toThrow("CARDANO_L1_SOURCE_MODE must be local_node");
   });
 
   it("requires an explicit L1 source mode and keeps local query surfaces under one authority", async () => {
@@ -888,115 +865,6 @@ describe("loadCommitteeConfig", () => {
         authorityNodeId: "preview-node-b",
       }),
     ).not.toBe(baseline);
-  });
-
-  it("requires two distinct operational identities in external-provider mode", () => {
-    const baseEnv: Record<string, string> = {
-      CARDANO_L1_SOURCE_MODE: "external_providers",
-      CARDANO_EXTERNAL_PROVIDER_IDENTITIES: "operator-a,operator-b",
-    };
-    expect(
-      parseL1SourceConfig(baseEnv, [
-        "blockfrost:https://a.example#project-a",
-        "blockfrost:https://b.example#project-b",
-      ]),
-    ).toMatchObject({
-      sourceMode: "external_providers",
-      providers: [{ identity: "operator-a" }, { identity: "operator-b" }],
-    });
-    expect(() =>
-      parseL1SourceConfig(
-        {
-          ...baseEnv,
-          CARDANO_EXTERNAL_PROVIDER_IDENTITIES: "operator-a",
-        },
-        ["blockfrost:https://a.example#project-a"],
-      ),
-    ).toThrow(/at least two operationally independent/u);
-    expect(() =>
-      parseL1SourceConfig(
-        {
-          ...baseEnv,
-          CARDANO_EXTERNAL_PROVIDER_IDENTITIES: "operator-a,operator-a",
-        },
-        [
-          "blockfrost:https://a.example#project-a",
-          "blockfrost:https://b.example#project-b",
-        ],
-      ),
-    ).toThrow(/distinct operational provider identities/u);
-    expect(() =>
-      parseL1SourceConfig(
-        {
-          ...baseEnv,
-          CARDANO_EXTERNAL_PROVIDER_IDENTITIES: "operator-a,operator-b",
-        },
-        [
-          "blockfrost:https://shared.example/api/#project-a",
-          "blockfrost:https://SHARED.example:443/other#project-b",
-        ],
-      ),
-    ).toThrow(/share normalized endpoint https:\/\/shared\.example/u);
-    expect(() =>
-      parseL1SourceConfig(
-        {
-          ...baseEnv,
-          CARDANO_EXTERNAL_PROVIDER_IDENTITIES: "operator-a,operator-b",
-        },
-        [
-          "kupmios:https://kupo-a.example|wss://shared-ogmios.example",
-          "kupmios:https://kupo-b.example|wss://shared-ogmios.example/",
-        ],
-      ),
-    ).toThrow(/share normalized endpoint https:\/\/shared-ogmios\.example/u);
-    const plaintextKupmios = [
-      "kupmios:http://kupo-a.example|ws://ogmios-a.example",
-      "kupmios:http://kupo-b.example|ws://ogmios-b.example",
-    ];
-    expect(() => parseL1SourceConfig(baseEnv, plaintextKupmios)).toThrow(
-      /require HTTPS Kupo and TLS-protected WSS\/HTTPS Ogmios/u,
-    );
-    expect(
-      parseL1SourceConfig(
-        { ...baseEnv, CARDANO_L1_TEST_MODE: "true" },
-        plaintextKupmios,
-      ),
-    ).toMatchObject({ sourceMode: "external_providers" });
-    expect(() =>
-      parseL1SourceConfig(
-        {
-          ...baseEnv,
-          CARDANO_EXTERNAL_PROVIDER_IDENTITIES: "operator-a,operator-b",
-        },
-        [
-          "blockfrost:https://shared.example.#project-a",
-          "blockfrost:https://shared.example#project-b",
-        ],
-      ),
-    ).toThrow(/share normalized endpoint https:\/\/shared\.example/u);
-    expect(
-      parseL1SourceConfig(baseEnv, [
-        "blockfrost:https://a.example#project-a",
-        "blockfrost:https://b.example#project-b",
-      ]),
-    ).toMatchObject({
-      providers: [
-        {
-          operationalIdentity: {
-            operatorId: "operator-a",
-            transport: "blockfrost_https",
-            normalizedEndpoints: ["https://a.example"],
-          },
-        },
-        {
-          operationalIdentity: {
-            operatorId: "operator-b",
-            transport: "blockfrost_https",
-            normalizedEndpoints: ["https://b.example"],
-          },
-        },
-      ],
-    });
   });
 
   // Eleven separate on-disk manifest/load cycles exceeded five seconds in
@@ -1194,32 +1062,6 @@ describe("loadCommitteeConfig", () => {
     ).rejects.toThrow(/L1_SUBMITTER_KEY_SOURCE/);
   });
 
-  it("requires a live Cardano provider in self-submitting coordinator mode", async () => {
-    const dir = await tempDir();
-    const member = "01".repeat(32);
-    const manifestPath = join(dir, "manifest.json");
-    const deploymentInfoPath = await writeDaContractDeploymentFixture(dir);
-    await writeFile(
-      manifestPath,
-      JSON.stringify(
-        libp2pManifest(
-          member,
-          ["committee", "coordinator"],
-          await deploymentManifestIdFromFile(deploymentInfoPath),
-        ),
-      ),
-    );
-    await expect(
-      loadCommitteeConfig({
-        ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
-        DA_SIGNER_INDEX: "0",
-        DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
-        L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
-        DA_L1_SUBMISSION_ENABLED: "true",
-      }),
-    ).rejects.toThrow(/blockfrost: or kupmios:/);
-  });
-
   it("requires script CBOR and reference-script UTxOs in self-submitting coordinator mode", async () => {
     const dir = await tempDir();
     const member = "01".repeat(32);
@@ -1240,7 +1082,6 @@ describe("loadCommitteeConfig", () => {
     await expect(
       loadCommitteeConfig({
         ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
-        ...externalProviderConfigEnv(),
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
         L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
@@ -1267,7 +1108,6 @@ describe("loadCommitteeConfig", () => {
     await expect(
       loadCommitteeConfig({
         ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
-        ...externalProviderConfigEnv(),
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
         L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
@@ -1311,7 +1151,6 @@ describe("loadCommitteeConfig", () => {
 
     const config = await loadCommitteeConfig({
       ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
-      ...externalProviderConfigEnv(),
       L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
       DA_L1_SUBMISSION_ENABLED: "true",
       DA_L1_MIN_PLAIN_ADA_LOVELACE: "30000000000",
@@ -1352,7 +1191,6 @@ describe("loadCommitteeConfig", () => {
     );
     const baseEnv = {
       ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
-      ...externalProviderConfigEnv(),
       L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
       DA_L1_SUBMISSION_ENABLED: "true",
     };
@@ -1422,7 +1260,6 @@ describe("loadCommitteeConfig", () => {
     );
     const baseEnv = {
       ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
-      ...externalProviderConfigEnv(),
       L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
       DA_L1_SUBMISSION_ENABLED: "true",
     };

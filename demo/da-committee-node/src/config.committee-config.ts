@@ -22,41 +22,20 @@ export type LocalStateConfig = {
   readonly url: string;
 };
 
-export type CardanoL1SourceConfig =
-  | {
-      readonly sourceMode: "local_node";
-      readonly authorityNodeId: string;
-      readonly authorityDigest: string;
-      readonly networkMagic: number;
-    }
-  | {
-      readonly sourceMode: "external_providers";
-      readonly providerAuthorityIds: readonly string[];
-      readonly authorityDigest: string;
-      readonly networkMagic: number;
-    };
+export type CardanoL1SourceConfig = {
+  readonly sourceMode: "local_node";
+  readonly authorityNodeId: string;
+  readonly authorityDigest: string;
+  readonly networkMagic: number;
+};
 
-export type L1SourceConfig =
-  | {
-      readonly sourceMode: "local_node";
-      readonly authorityNodeId: string;
-      readonly chainSyncProviderUrl: string;
-      readonly chainSyncCursorPath?: string;
-      readonly queryProviderUrls: readonly string[];
-    }
-  | {
-      readonly sourceMode: "external_providers";
-      readonly providers: readonly {
-        readonly identity: string;
-        readonly url: string;
-        readonly operationalIdentity: {
-          readonly operatorId: string;
-          readonly transport: "blockfrost_https" | "kupmios" | "fixture";
-          readonly normalizedEndpoints: readonly string[];
-          readonly backendKey: string;
-        };
-      }[];
-    };
+export type L1SourceConfig = {
+  readonly sourceMode: "local_node";
+  readonly authorityNodeId: string;
+  readonly chainSyncProviderUrl: string;
+  readonly chainSyncCursorPath?: string;
+  readonly queryProviderUrls: readonly string[];
+};
 
 export const l1SourceAuthorityDigest = (
   network: string,
@@ -64,21 +43,13 @@ export const l1SourceAuthorityDigest = (
 ): string =>
   createHash("sha256")
     .update(
-      JSON.stringify(
-        source.sourceMode === "local_node"
-          ? {
-              network,
-              sourceMode: source.sourceMode,
-              authorityNodeId: source.authorityNodeId,
-              chainSyncProviderUrl: source.chainSyncProviderUrl,
-              queryProviderUrls: source.queryProviderUrls,
-            }
-          : {
-              network,
-              sourceMode: source.sourceMode,
-              providers: source.providers,
-            },
-      ),
+      JSON.stringify({
+        network,
+        sourceMode: source.sourceMode,
+        authorityNodeId: source.authorityNodeId,
+        chainSyncProviderUrl: source.chainSyncProviderUrl,
+        queryProviderUrls: source.queryProviderUrls,
+      }),
     )
     .digest("hex");
 

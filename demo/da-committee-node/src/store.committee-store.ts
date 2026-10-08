@@ -16,12 +16,6 @@ import type {
 } from "./domain.js";
 import type { SignedHeader } from "./l1/follower/obligations.js";
 import type {
-  L1RecoveryCertificate,
-  L1RecoverySnapshot,
-} from "./l1/recovery-incident.js";
-import type { StateQueueReplayAnchor } from "./l1/state-queue-scanner.js";
-import type { StateQueueOutputStep } from "./l1/terminal-retention-observation.js";
-import type {
   PromiseStoreResourceLimits,
   PromiseStoreResourceUsage,
 } from "./store/promise-resource-usage.js";
@@ -147,59 +141,33 @@ export type DecisionOutboxRecord = {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly lastError?: string;
-  readonly quarantineReason?: string;
-  readonly quarantinedAt?: string;
 };
 
+export type L1ObservedStatus = StateQueueHeaderRecord["status"];
+
 /**
- * The status of an observation made where the node saw only authenticated
- * replay, which carries each header's outputs but not their datums: a
- * catch-up that moved a header to an output the snapshot does not show it at.
- * It is never guessed. A later observation of the same output fills it in, as
- * does one that final replay explains moving the header on from there, and
- * neither may contradict the status known before it; no decision binds to an
- * observation with this status.
+ * Where the committee last saw a header on L1 (the follower's landed queue).
+ * Informational: a rollback below k moves it with the chain, and a decision
+ * is bound by its own signature row (class B), never by this observation.
  */
-export const UNKNOWN_STATE_QUEUE_STATUS = "unknown";
-
-export type L1ObservedStatus =
-  | StateQueueHeaderRecord["status"]
-  | typeof UNKNOWN_STATE_QUEUE_STATUS;
-
 export type L1ObservedDecision = {
   readonly headerHash: string;
   readonly stateQueueOutRef: string;
   readonly stateQueueStatus: L1ObservedStatus;
-  /**
-   * Present exactly when `stateQueueStatus` is unknown: the last status the
-   * node knew this header by, which a later observation filling the unknown
-   * status in may not contradict (see `persistedDecisionTransition`).
-   */
-  readonly lastKnownStatus?: StateQueueHeaderRecord["status"];
   readonly slot?: number;
   readonly blockHash?: string;
   readonly finalized: boolean;
   readonly hasPersistedDecision: boolean;
-  /**
-   * The final authenticated replay steps, oldest first, that moved or removed
-   * this header's output in the scan that made this observation. Present only
-   * when there were any; they are what lets a persisted decision's output or
-   * status change (see `persistedDecisionTransition`).
-   */
-  readonly authenticatedSteps?: readonly StateQueueOutputStep[];
 };
 
 export type L1SourceState = {
   readonly schemaVersion: 1;
-  readonly sourceMode: "local_node" | "external_providers";
+  readonly sourceMode: "local_node";
   readonly network: string;
   readonly authoritySha256: string;
-  readonly status: "healthy" | "quarantined";
+  readonly status: "healthy";
   readonly observations: readonly L1ObservedDecision[];
   readonly observedAt: string;
-  readonly stateQueueReplayAnchor?: StateQueueReplayAnchor;
-  readonly quarantineReason?: string;
-  readonly quarantinedAt?: string;
 };
 
 export type CommitteeDeploymentRecord = {
@@ -272,8 +240,6 @@ export interface CommitteeStore {
   }): Promise<void>;
   getDeployment(): Promise<CommitteeDeploymentRecord | undefined>;
   getL1SourceState(): Promise<L1SourceState | undefined>;
-  readL1RecoverySnapshot(): Promise<L1RecoverySnapshot>;
-  applyL1RecoveryCertificate(certificate: L1RecoveryCertificate): Promise<void>;
   saveL1SourceState(state: L1SourceState): Promise<void>;
   getDecisionOutbox(
     effectId: string,
@@ -301,23 +267,18 @@ export interface CommitteeStore {
     readonly lastError?: string;
     readonly signature?: DaSignatureRecord;
   }): Promise<void>;
-  /**
-   * Atomically records the quarantined source and stops every decision that
-   * depends on it: each header with a persisted decision becomes
-   * `conflicted`, and its signature broadcasts, L1 submissions, peer
-   * broadcasts and decision effects fail.
-   *
-   * Retained payloads are deliberately left untouched. Quarantine is a hold
-   * on chain authority, not evidence about bytes: a payload this member
-   * verified and signed keeps its bytes, digest and `verified` status, so it
-   * can still be served and used to answer an availability challenge for the
-   * commitment it was signed under. Divergent bytes stay `conflicted` as
-   * they were. Readers that make a new decision gate on the header and the
-   * source state, never on the payload status alone.
-   */
-  quarantineL1Decisions(state: L1SourceState): Promise<void>;
   upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void>;
-  listStateQueueHeaders(): Promise<readonly StateQueueHeaderRecord[]>;
+  /**
+   * The headers whose L1 outcome is not settled yet: every header not
+   * recorded as merged or removed. A terminal record is written only once
+   * its exit is final, so the settled history is never listed. Read
+   * through a partial index, so the tick's read does not grow with it.
+   */
+  listUnsettledStateQueueHeaders(): Promise<readonly StateQueueHeaderRecord[]>;
+  /** The stored records of `headerHashes` (absent ones are left out). */
+  getStateQueueHeaders(
+    headerHashes: readonly string[],
+  ): Promise<readonly StateQueueHeaderRecord[]>;
   /**
    * The readiness probe's counts. Totals come from counters the store keeps
    * as it writes; the per-header counts read only headers not yet final.

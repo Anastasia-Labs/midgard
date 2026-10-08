@@ -1,16 +1,9 @@
 import {
-  type BlockSummary,
-  decodeBlock,
+  type FactStore,
   type FollowerProjection,
   isSafe,
-  type OutRef,
-  outRefKey,
 } from "@al-ft/midgard-l1-follower";
-import {
-  type ForkScenario,
-  type ForkStep,
-  type SimOutput,
-} from "@al-ft/midgard-l1-follower/testing";
+import { type ForkScenario } from "@al-ft/midgard-l1-follower/testing";
 
 import {
   type SignedHeader,
@@ -21,8 +14,10 @@ import {
   type CommitteeView,
   readCommitteeView,
 } from "../../src/l1/follower/projection.js";
+import { compareWithFreshReplay } from "./queue-sim-fresh.js";
+import { type ExpectedQueue, QueueOracle } from "./queue-sim-oracle.js";
 import {
-  decodeElement,
+  commitInvalidAfter,
   isQueueOutput,
   queueTraffic,
   type QueueTrafficOptions,
@@ -32,131 +27,8 @@ import {
   SIM_SLOT_TIME,
 } from "./queue-sim-traffic.js";
 
+export * from "./queue-sim-oracle.js";
 export * from "./queue-sim-traffic.js";
-
-/**
- * The simulator's prune cases stay off for the committee until C1: the
- * committee check compares obligations with an exact oracle, and over
- * pruned rows the reads differ from it (C1 relaxes the oracle and turns
- * these cases on; review finding 6, E7).
- */
-export const COMMITTEE_PRUNE = { prune: false } as const;
-
-/** The expected landed queue, from the canonical blocks alone. */
-export type ExpectedQueue = Readonly<{
-  healthy: boolean;
-  outRefs: readonly string[];
-  /** Commit height of every header ever seen on the current chain. */
-  commitHeight: ReadonlyMap<string, number>;
-  /** Creation height of every live queue output. */
-  createdHeight: ReadonlyMap<string, number>;
-}>;
-
-const label = (outRef: OutRef): string =>
-  `${outRef.txHash.toString("hex")}#${outRef.index.toString()}`;
-
-/**
- * An oracle independent of the store: it keeps the canonical blocks from
- * the event stream and replays the queue outputs over them.
- */
-export class QueueOracle {
-  readonly blocks: BlockSummary[] = [];
-  /** prevHeaderHash of every header ever seen, on any branch. */
-  readonly prevOf = new Map<string, string>();
-
-  observe(step: ForkStep): void {
-    const event = step.event;
-    if (event.kind === "roll_forward") {
-      this.blocks.push(decodeBlock(event.block));
-      return;
-    }
-    if (event.point.kind !== "point") throw new Error("rollback to genesis");
-    const hash = Buffer.from(event.point.hash, "hex");
-    while (
-      this.blocks.length > 0 &&
-      !this.blocks[this.blocks.length - 1]!.point.hash.equals(hash)
-    )
-      this.blocks.pop();
-  }
-
-  tipHeight(origin: number): number {
-    return this.blocks.at(-1)?.height ?? origin;
-  }
-
-  slotAtHeight(height: number): number | null {
-    return (
-      this.blocks.find((block) => block.height === height)?.point.slot ?? null
-    );
-  }
-
-  expected(): ExpectedQueue {
-    const live = new Map<
-      string,
-      { outRef: OutRef; output: SimOutput; height: number }
-    >();
-    const commitHeight = new Map<string, number>();
-    for (const block of this.blocks)
-      for (const tx of block.txs) {
-        if (!tx.isValid) continue;
-        for (const input of tx.inputs) live.delete(outRefKey(input));
-        tx.outputs.forEach((output, index) => {
-          if (!output.address.equals(SIM_QUEUE.stateQueueAddress)) return;
-          const names = output.assets.get(SIM_QUEUE.stateQueuePolicyId);
-          if (names === undefined) return;
-          const simOutput: SimOutput = {
-            address: output.address,
-            lovelace: output.lovelace,
-            assets: output.assets,
-            ...(output.datum === null ? {} : { datum: output.datum }),
-          };
-          const outRef = { txHash: tx.hash, index };
-          live.set(outRefKey(outRef), {
-            outRef,
-            output: simOutput,
-            height: block.height,
-          });
-          const element = decodeElement(outRef, simOutput);
-          if (element.header !== null) {
-            this.prevOf.set(element.headerHash, element.header.prevHeaderHash);
-            if (!commitHeight.has(element.headerHash))
-              commitHeight.set(element.headerHash, block.height);
-          }
-        });
-      }
-    const elements = [...live.values()].map((entry) => ({
-      ...decodeElement(entry.outRef, entry.output),
-      height: entry.height,
-    }));
-    const roots = elements.filter((element) => element.header === null);
-    const nodes = elements.filter((element) => element.header !== null);
-    const byKey = new Map(nodes.map((node) => [node.headerHash, node]));
-    const outRefs: string[] = [];
-    let healthy = roots.length === 1;
-    if (healthy) {
-      const root = roots[0]!;
-      outRefs.push(label(root.outRef));
-      let key = root.datum.link;
-      while (key !== null) {
-        const next = byKey.get(key);
-        if (next === undefined) {
-          healthy = false;
-          break;
-        }
-        outRefs.push(label(next.outRef));
-        key = next.datum.link;
-      }
-      if (outRefs.length !== nodes.length + 1) healthy = false;
-    }
-    return {
-      healthy,
-      outRefs,
-      commitHeight,
-      createdHeight: new Map(
-        elements.map((element) => [label(element.outRef), element.height]),
-      ),
-    };
-  }
-}
 
 /** What the committee fork checks counted over one run. */
 export type CommitteeSimStats = {
@@ -168,6 +40,18 @@ export type CommitteeSimStats = {
   disappeared: number;
   cannotLand: number;
   final: number;
+  /** Reads of an absent signed header past retention (store pruned). */
+  beyondRetention: number;
+  /**
+   * Reads of an absent signed header whose latest final block sits at the
+   * last slot its commit could use or the first it could not: the exact
+   * boundary of `cannot_land`.
+   */
+  boundary: number;
+  /** Removed commits that landed again. */
+  relanded: number;
+  /** Steps compared with a fresh replay over a pruned store. */
+  prunedViews: number;
   /** Rollbacks after which the queue was shorter, and still healthy. */
   tailRemovedHealthy: number;
   unhealthy: number;
@@ -180,12 +64,26 @@ export const zeroStats = (): CommitteeSimStats => ({
   disappeared: 0,
   cannotLand: 0,
   final: 0,
+  beyondRetention: 0,
+  boundary: 0,
+  relanded: 0,
+  prunedViews: 0,
   tailRemovedHealthy: 0,
   unhealthy: 0,
 });
 
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((value, index) => value === b[index]);
+
+const committeeViewOf = (
+  store: FactStore,
+  signed: ReadonlyMap<string, SignedHeader>,
+): Promise<CommitteeView | null> =>
+  readCommitteeView(store, {
+    parameters: SIM_DEPTHS,
+    slotTime: SIM_SLOT_TIME,
+    signed: [...signed.values()],
+  });
 
 /**
  * The committee projection with its simulator traffic and §5.5 checks (plan
@@ -197,11 +95,17 @@ const sameList = (a: readonly string[], b: readonly string[]): boolean =>
  * - signing: a signable header is signed even when a sibling was signed on
  *   another fork, and no signed header is ever reported unsignable for the
  *   sibling reason (there is none);
- * - obligations: a signed header is `final` exactly when its commit is more
- *   than k deep, `cannot_land` exactly when it is absent and a final block is
- *   past its end time, and its payload is released (and its decision made
- *   deletable) in those two states only;
- * - a decision, once signed, is never re-signed with other content.
+ * - obligations, for safety: `final` only for a commit more than k deep;
+ *   `cannot_land` or `beyond_retention` for an absent header only once no
+ *   block its commit could use can still be added (the latest final block
+ *   is at or past the commit's last valid slot), and `pending` only until a
+ *   final block is later than its end time; the payload is released (and the
+ *   decision made deletable) only in the terminal states;
+ * - monotonicity: a header once read terminal while absent never lands;
+ * - a decision, once signed, is never re-signed with other content;
+ * - the committee view equals the view over a fresh, never-pruned replay of
+ *   the same chain, up to the differences pruning is allowed to make (see
+ *   `prunedPairs`).
  */
 export const committeeSimProjection = (
   stats: CommitteeSimStats,
@@ -211,23 +115,43 @@ export const committeeSimProjection = (
   const oracle = new QueueOracle();
   const signed = new Map<string, SignedHeader>();
   const everSignedAbsent = new Set<string>();
+  const everCommitted = new Set<string>();
+  let committed = new Set<string>();
+  /** Headers read terminal while absent: none may land again. */
+  const terminalAbsent = new Map<string, string>();
   let previousLength = 0;
   return {
     ...base,
     traffic: queueTraffic(options),
     protects: isQueueOutput,
-    check: async ({ store, step }) => {
+    check: async ({ store, reference, step }) => {
       oracle.observe(step);
       stats.steps += 1;
-      const view = await readCommitteeView(store, {
-        parameters: SIM_DEPTHS,
-        slotTime: SIM_SLOT_TIME,
-        signed: [...signed.values()],
-      });
-      if (view === null) return "no committee view";
+      const view = await committeeViewOf(store, signed);
+      const fresh = await committeeViewOf(reference, signed);
+      if (view === null || fresh === null) return "no committee view";
       const expected = oracle.expected();
-      const failure = checkView(view, expected, oracle, signed, stats);
+      for (const [headerHash, state] of terminalAbsent)
+        if (expected.commitHeight.has(headerHash))
+          return `header ${headerHash} read ${state} while absent, then landed`;
+      for (const headerHash of expected.commitHeight.keys())
+        if (!committed.has(headerHash) && everCommitted.has(headerHash))
+          stats.relanded += 1;
+      committed = new Set(expected.commitHeight.keys());
+      for (const headerHash of committed) everCommitted.add(headerHash);
+      const pruned = view.prunedThroughSlot > fresh.prunedThroughSlot;
+      const failure =
+        checkView(view, expected, oracle, signed, stats, pruned) ??
+        compareWithFreshReplay(view, fresh, pruned, expected);
       if (failure !== null) return failure;
+      if (pruned) stats.prunedViews += 1;
+      for (const obligation of view.obligations)
+        if (
+          !expected.commitHeight.has(obligation.headerHash) &&
+          (obligation.state === "cannot_land" ||
+            obligation.state === "beyond_retention")
+        )
+          terminalAbsent.set(obligation.headerHash, obligation.state);
       if (!view.queue.healthy) {
         stats.unhealthy += 1;
         if (options.expectHealthy === true)
@@ -259,10 +183,7 @@ export const committeeSimProjection = (
         stats.signed += 1;
       }
       for (const obligation of view.obligations)
-        if (
-          obligation.state === "pending" ||
-          obligation.state === "cannot_land"
-        )
+        if (obligation.state !== "landed" && obligation.state !== "final")
           if (!everSignedAbsent.has(obligation.headerHash)) {
             everSignedAbsent.add(obligation.headerHash);
             stats.disappeared += 1;
@@ -272,12 +193,39 @@ export const committeeSimProjection = (
   };
 };
 
+/**
+ * Obligation states allowed for a header committed on the current chain.
+ * `permanent`: its commit is final, or at or below the store's
+ * `prunedThroughSlot`, below which the follower refuses every rollback.
+ * Over a pruned store such a commit's outputs may all be gone: it then
+ * reads as not committed, which keeps the decision (`pending`) or is
+ * terminal (`beyond_retention`), never `cannot_land`.
+ */
+const allowedPresent = (
+  oracleFinal: boolean,
+  permanent: boolean,
+  pruned: boolean,
+) =>
+  new Set<string>([
+    ...(oracleFinal ? ["final"] : []),
+    ...(!oracleFinal || pruned ? ["landed"] : []),
+    ...(pruned && permanent ? ["beyond_retention", "pending"] : []),
+  ]);
+
+/** Obligation states allowed for a header absent from the current chain. */
+const allowedAbsent = (unlandable: boolean, late: boolean, pruned: boolean) =>
+  new Set<string>([
+    ...(unlandable ? [pruned ? "beyond_retention" : "cannot_land"] : []),
+    ...(!late || pruned ? ["pending"] : []),
+  ]);
+
 const checkView = (
   view: CommitteeView,
   expected: ExpectedQueue,
   oracle: QueueOracle,
   signed: ReadonlyMap<string, SignedHeader>,
   stats: CommitteeSimStats,
+  pruned: boolean,
 ): string | null => {
   const projected = [
     ...(view.queue.root === null ? [] : [view.queue.root.outRef]),
@@ -298,7 +246,7 @@ const checkView = (
       return `awaiting ${header.headerHash} signable ${String(header.signable)} at depth ${header.depth.toString()}`;
   }
   const boundaryHeight = tip - SIM_K;
-  const boundarySlot = [...oracle.blocks]
+  const finalSlot = [...oracle.blocks]
     .reverse()
     .find((block) => block.height <= boundaryHeight)?.point.slot;
   for (const obligation of view.obligations) {
@@ -306,25 +254,47 @@ const checkView = (
     if (header === undefined)
       return `obligation for unsigned ${obligation.headerHash}`;
     const commit = expected.commitHeight.get(obligation.headerHash);
-    let state: string;
+    let allowed: ReadonlySet<string>;
     if (commit !== undefined) {
-      state = tip - commit + 1 > SIM_K ? "final" : "landed";
+      const oracleFinal = tip - commit + 1 > SIM_K;
+      const commitSlot = oracle.slotAtHeight(commit);
+      allowed = allowedPresent(
+        oracleFinal,
+        oracleFinal ||
+          (commitSlot !== null && commitSlot <= view.prunedThroughSlot),
+        pruned,
+      );
     } else {
+      // A commit lands only in a block before its `invalidAfter` slot; once
+      // the latest final block is at or past the last such slot, every block
+      // still to come is later, and the header can never land.
+      const invalidAfter = commitInvalidAfter(Number(header.endTimeMs));
+      const unlandable =
+        finalSlot !== undefined && finalSlot >= invalidAfter - 1;
       const late =
-        boundarySlot !== undefined &&
-        slotTimeMs(boundarySlot, SIM_SLOT_TIME) > Number(header.endTimeMs);
-      state = late ? "cannot_land" : "pending";
+        finalSlot !== undefined &&
+        slotTimeMs(finalSlot, SIM_SLOT_TIME) > Number(header.endTimeMs);
+      if (
+        finalSlot !== undefined &&
+        (finalSlot === invalidAfter - 1 || finalSlot === invalidAfter)
+      )
+        stats.boundary += 1;
+      allowed = allowedAbsent(unlandable, late, pruned);
     }
-    if (obligation.state !== state)
-      return `obligation ${obligation.headerHash} ${obligation.state}, oracle ${state}`;
-    const released = state === "final" || state === "cannot_land";
+    if (!allowed.has(obligation.state))
+      return `obligation ${obligation.headerHash} ${obligation.state}, oracle allows ${[...allowed].join("|") || "nothing"} (${commit === undefined ? "absent" : "committed"}, pruned ${String(pruned)})`;
+    const released =
+      obligation.state === "final" ||
+      obligation.state === "cannot_land" ||
+      obligation.state === "beyond_retention";
     if (
-      obligation.retainPayload === released ||
+      obligation.retainCommitRecord === released ||
       obligation.decisionDeletable !== released
     )
-      return `obligation ${obligation.headerHash} ${state}: retain ${String(obligation.retainPayload)}, deletable ${String(obligation.decisionDeletable)}`;
-    if (state === "cannot_land") stats.cannotLand += 1;
-    if (state === "final") stats.final += 1;
+      return `obligation ${obligation.headerHash} ${obligation.state}: retain ${String(obligation.retainCommitRecord)}, deletable ${String(obligation.decisionDeletable)}`;
+    if (obligation.state === "cannot_land") stats.cannotLand += 1;
+    if (obligation.state === "beyond_retention") stats.beyondRetention += 1;
+    if (obligation.state === "final") stats.final += 1;
   }
   if (view.obligations.length !== signed.size)
     return `${view.obligations.length.toString()} obligations for ${signed.size.toString()} signed headers`;

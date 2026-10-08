@@ -3,7 +3,6 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 import {
   type PromiseCapacityEvidence,
   promiseCapacityEvidenceKey,
-  promiseCapacityPointId,
 } from "../src/availability/promise-capacity-evidence.js";
 import { retiredPromiseCutoffs } from "../src/availability/promise-cutoff-source.js";
 import type { L1SourceState } from "../src/store.js";
@@ -99,32 +98,13 @@ describe("Postgres durable promise capacity evidence", () => {
       ),
     ).toBeUndefined();
   });
-  it("requires durable source authority and rejects quarantined writes without changing an existing observation", async () => {
+  it("requires durable source authority before any capacity write", async () => {
     const store = await open((await databases.create()).url);
     await expect(store.savePromiseCapacityEvidence(record)).rejects.toThrow(
       "lacks durable L1 source state",
     );
     await store.saveL1SourceState(source);
     await store.savePromiseCapacityEvidence(record);
-    await store.saveL1SourceState({
-      ...source,
-      status: "quarantined",
-      quarantineReason: "fork_requires_recovery",
-      quarantinedAt: "2026-10-02T00:00:01.000Z",
-    });
-    await expect(
-      store.savePromiseCapacityEvidence(
-        {
-          ...record,
-          certifiedAt: {
-            slot: 2261,
-            blockNo: 2261,
-            blockHash: "9a".repeat(32),
-          },
-        },
-        promiseCapacityPointId(record.point),
-      ),
-    ).rejects.toThrow("source is quarantined");
     expect(
       await store.getPromiseCapacityEvidence(
         promiseCapacityEvidenceKey(record),

@@ -13,7 +13,7 @@ import {
   payloadSourceFromBytes,
   tempDir,
 } from ".././helpers.js";
-import { withFinalSnapshot } from ".././helpers/final-snapshot.js";
+import { fakeL1Source } from ".././helpers/fake-l1-source.js";
 import { terminateInstanceLockSessions } from ".././helpers/postgres-database.js";
 import {
   attestedDaStatus,
@@ -21,7 +21,6 @@ import {
   failPayloadSource,
   openTestCommitteeStore,
   postgresDatabases,
-  runAnchorAheadOfObservations,
   testStoreDatabase,
 } from "./fixtures.js";
 
@@ -56,7 +55,7 @@ export const registerSigningTests = () => {
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -176,7 +175,7 @@ export const registerSigningTests = () => {
     const first = new CommitteeService({
       config: configured,
       store: firstStore,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -241,7 +240,7 @@ export const registerSigningTests = () => {
     const restarted = new CommitteeService({
       config: configured,
       store: restartedStore,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -303,7 +302,7 @@ export const registerSigningTests = () => {
       signer,
       signerIndex: 0,
     });
-    const stateQueueProvider = withFinalSnapshot({
+    const l1 = fakeL1Source({
       fetchStateQueueNodes: async () => [
         makeObservedNode({ header, headerHash, depth: 10 }),
       ],
@@ -326,7 +325,7 @@ export const registerSigningTests = () => {
       const crashed = new CommitteeService({
         config: configured,
         store: crashedStore,
-        stateQueueProvider,
+        l1,
         payloadSource: payloadSourceFromBytes(payloadCbor),
         signer,
         signerValidation,
@@ -358,7 +357,7 @@ export const registerSigningTests = () => {
       const restarted = new CommitteeService({
         config: configured,
         store: restartedStore,
-        stateQueueProvider,
+        l1,
         payloadSource: failPayloadSource(
           "durable local signature must suppress payload refetch",
         ),
@@ -447,7 +446,7 @@ export const registerSigningTests = () => {
       new CommitteeService({
         config: configured,
         store,
-        stateQueueProvider: withFinalSnapshot({
+        l1: fakeL1Source({
           fetchStateQueueNodes: async () => [
             makeObservedNode({ header, headerHash, depth: 10 }),
           ],
@@ -550,7 +549,7 @@ export const registerSigningTests = () => {
       new CommitteeService({
         config: configured,
         store,
-        stateQueueProvider: withFinalSnapshot({
+        l1: fakeL1Source({
           fetchStateQueueNodes: async () => nodes,
         }),
         payloadSource,
@@ -618,7 +617,7 @@ export const registerSigningTests = () => {
     ]);
   });
 
-  it("quarantines an attested replacement of a signed header that authenticated replay from the durable anchor does not explain", async () => {
+  it("follows an attested replacement of a signed header to its new output, keeping the one signature", async () => {
     const dir = await tempDir();
     const { header, headerHash, payloadCbor } = await makePayloadFixture();
     const seed = "00".repeat(31) + "31";
@@ -650,7 +649,7 @@ export const registerSigningTests = () => {
     const service = new CommitteeService({
       config: configured,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           sourceView === "attested"
             ? makeObservedNode({
@@ -685,36 +684,29 @@ export const registerSigningTests = () => {
       errors: [],
     });
 
-    // The scan of the replaced output succeeds from an anchor already past
-    // it, but no authenticated step leads from the signed output to it.
-    await expect(store.getL1SourceState()).resolves.toMatchObject({
-      stateQueueReplayAnchor: {
-        queue: [
-          { headerHash: null, outRef: `${"00".repeat(32)}#0` },
-          { headerHash, outRef: firstOutRef },
-        ],
-      },
-    });
-    await runAnchorAheadOfObservations(store, [
-      { headerHash: null, outRef: `${"00".repeat(32)}#0` },
-      { headerHash, outRef: attestedOutRef },
-    ]);
+    const signatures = await store.listDaSignatures(headerHash);
+    expect(signatures).toHaveLength(1);
     sourceView = "attested";
     await expect(service.tick()).resolves.toMatchObject({
       signedHeaders: 0,
-      errors: [expect.stringContaining("decision_forked")],
+      errors: [],
+    });
+    await expect(store.getStateQueueHeader(headerHash)).resolves.toMatchObject({
+      stateQueueOutRef: attestedOutRef,
+      finalized: true,
     });
     await expect(store.getL1SourceState()).resolves.toMatchObject({
-      status: "quarantined",
-      quarantineReason: expect.stringContaining("decision_forked"),
+      status: "healthy",
       observations: [
         {
           headerHash,
-          stateQueueOutRef: firstOutRef,
-          stateQueueStatus: "unattested",
+          stateQueueOutRef: attestedOutRef,
           hasPersistedDecision: true,
         },
       ],
     });
+    await expect(store.listDaSignatures(headerHash)).resolves.toEqual(
+      signatures,
+    );
   });
 };

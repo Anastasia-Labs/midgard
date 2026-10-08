@@ -15,7 +15,7 @@ import {
   payloadSourceFromBytes,
   tempDir,
 } from ".././helpers.js";
-import { withFinalSnapshot } from ".././helpers/final-snapshot.js";
+import { fakeL1Source } from ".././helpers/fake-l1-source.js";
 import {
   expectedCommitment,
   failPayloadSource,
@@ -55,7 +55,7 @@ export const registerPayloadsTests = () => {
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -129,7 +129,7 @@ export const registerPayloadsTests = () => {
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -210,7 +210,7 @@ export const registerPayloadsTests = () => {
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -320,7 +320,7 @@ export const registerPayloadsTests = () => {
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -389,7 +389,7 @@ export const registerPayloadsTests = () => {
     const service = new CommitteeService({
       config: configWithDaHash,
       store,
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
@@ -475,7 +475,7 @@ const reverifyHarness = async (payloadBytes: Buffer, header: Header) => {
   const service = new CommitteeService({
     config: configWithDaHash,
     store,
-    stateQueueProvider: withFinalSnapshot({
+    l1: fakeL1Source({
       fetchStateQueueNodes: async () => [
         makeObservedNode({ header, headerHash, depth: 10 }),
       ],

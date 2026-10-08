@@ -1,4 +1,8 @@
 import { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
+import {
+  FOLLOWER_CATCHING_UP,
+  WALLET_SEED_PENDING,
+} from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { expect, it, vi } from "vitest";
 
@@ -11,7 +15,7 @@ import {
   type DaBondPoolEvent,
 } from "../../src/coordinator/pool-monitor.js";
 import { DaPeerRegistry } from "../../src/da/libp2p/DaPeerRegistry.js";
-import { type StateQueueProvider } from "../../src/l1/state-queue-scanner.js";
+import { type CommitteeL1Readiness } from "../../src/l1/follower/l1-follower.js";
 import { loadDaSigner } from "../../src/signer.js";
 import { createCommitteeTickRunner } from "../../src/tick-runner.js";
 import {
@@ -19,7 +23,7 @@ import {
   payloadSourceFromBytes,
   tempDir,
 } from ".././helpers.js";
-import { withFinalSnapshot } from ".././helpers/final-snapshot.js";
+import { fakeL1Source } from ".././helpers/fake-l1-source.js";
 import { openTestCommitteeStore } from "./fixtures.js";
 
 export const registerReadinessTests = () => {
@@ -39,7 +43,7 @@ export const registerReadinessTests = () => {
     new CommitteeService({
       config,
       store: await openTestCommitteeStore(),
-      stateQueueProvider: { fetchStateQueueNodes: async () => [] },
+      l1: fakeL1Source({ fetchStateQueueNodes: async () => [] }),
       payloadSource: {
         fetchPayloadCandidates: async () => ({
           ok: false,
@@ -56,7 +60,7 @@ export const registerReadinessTests = () => {
     );
   });
 
-  it("is not ready while local chain-sync is still catching up to the tip", async () => {
+  it("is not ready, and decides nothing, while the L1 follower names a reason", async () => {
     const dir = await tempDir();
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
@@ -66,16 +70,14 @@ export const registerReadinessTests = () => {
       signerSeed: seed,
       signerPublicKey: signer.publicKeyHex,
     });
-    let catchUp:
-      | { events: number; cursorSlot: number; tipSlot: number }
-      | undefined;
+    let following: CommitteeL1Readiness[] = [];
     const service = new CommitteeService({
       config,
       store: await openTestCommitteeStore(),
-      stateQueueProvider: {
-        ...withFinalSnapshot({ fetchStateQueueNodes: async () => [] }),
-        chainSyncCatchUpProgress: () => catchUp,
-      } as StateQueueProvider,
+      l1: fakeL1Source({
+        fetchStateQueueNodes: async () => [],
+        readiness: () => following,
+      }),
       payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
     });
     await service.initialize();
@@ -84,16 +86,30 @@ export const registerReadinessTests = () => {
       ready: true,
     });
 
-    // A later sync that is still catching up leaves the last tick's view
-    // behind: the member reports not ready until it reaches the tip.
-    catchUp = { events: 4_096, cursorSlot: 1_000, tipSlot: 90_000 };
+    // A follower catching up holds the tick and names itself in readiness;
+    // it is ready again the moment the follower is.
+    following = [
+      { reason: FOLLOWER_CATCHING_UP, detail: "cursor 1000, tip 90000" },
+    ];
+    await expect(service.tick()).resolves.toMatchObject({
+      held: [`${FOLLOWER_CATCHING_UP}: cursor 1000, tip 90000`],
+    });
     await expect(service.readinessSnapshot()).resolves.toMatchObject({
       ready: false,
-      reasons: [
-        "l1_chain_sync_catching_up: events=4096, cursorSlot=1000, tipSlot=90000",
-      ],
+      reasons: [`${FOLLOWER_CATCHING_UP}: cursor 1000, tip 90000`],
     });
-    catchUp = undefined;
+
+    // An owed own-wallet seed is unready but holds no decision.
+    following = [{ reason: WALLET_SEED_PENDING, detail: "not seeded yet" }];
+    const result = await service.tick();
+    expect(result.held).toBeUndefined();
+    await expect(service.readinessSnapshot()).resolves.toMatchObject({
+      ready: false,
+      reasons: [`${WALLET_SEED_PENDING}: not seeded yet`],
+    });
+
+    following = [];
+    await service.tick();
     await expect(service.readinessSnapshot()).resolves.toMatchObject({
       ready: true,
     });
@@ -112,7 +128,7 @@ export const registerReadinessTests = () => {
     const service = new CommitteeService({
       config,
       store: await openTestCommitteeStore(),
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [],
       }),
       payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
@@ -159,7 +175,7 @@ export const registerReadinessTests = () => {
     const service = new CommitteeService({
       config,
       store: await openTestCommitteeStore(),
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [],
       }),
       payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
@@ -230,7 +246,7 @@ export const registerReadinessTests = () => {
     const service = new CommitteeService({
       config,
       store: await openTestCommitteeStore(),
-      stateQueueProvider: withFinalSnapshot({
+      l1: fakeL1Source({
         fetchStateQueueNodes: async () => [],
       }),
       payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
@@ -325,7 +341,7 @@ export const registerReadinessTests = () => {
     ]);
   });
 
-  it("keeps a tick whose local chain-sync is still moving toward the tip clear of the L1-view deadline", async () => {
+  it("keeps a member whose L1 follower is still moving toward the tip clear of the L1-view deadline", async () => {
     const dir = await tempDir();
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
@@ -336,25 +352,24 @@ export const registerReadinessTests = () => {
       signerPublicKey: signer.publicKeyHex,
     });
     let nowMs = Date.parse("2026-09-26T00:00:00.000Z");
-    let catchUp:
-      | { events: number; cursorSlot: number; tipSlot: number }
-      | undefined;
+    let cursorSlot: number | null = null;
     const service = new CommitteeService({
       config,
       store: await openTestCommitteeStore(),
-      stateQueueProvider: {
-        ...withFinalSnapshot({ fetchStateQueueNodes: async () => [] }),
-        chainSyncCatchUpProgress: () => catchUp,
-      } as StateQueueProvider,
+      l1: fakeL1Source({
+        fetchStateQueueNodes: async () => [],
+        readiness: () => [
+          { reason: FOLLOWER_CATCHING_UP, detail: "far behind the tip" },
+        ],
+        cursorSlot: () => cursorSlot,
+      }),
       payloadSource: payloadSourceFromBytes(Buffer.alloc(0)),
       now: () => new Date(nowMs),
     });
     await service.initialize();
     const fatalMs = 240_000;
     const runner = createCommitteeTickRunner({
-      // The first tick of a member far behind: synchronizeToTip walks
-      // chain-sync for longer than the deadline before any view exists.
-      tick: () => new Promise<never>(() => undefined),
+      tick: async () => service.tick(),
       runAvailabilityResponse: async () => undefined,
       runRetention: async () => undefined,
       latestL1View: () => service.latestL1View(),
@@ -365,18 +380,14 @@ export const registerReadinessTests = () => {
       nowMs: () => nowMs,
       write: () => undefined,
     });
-    void runner.runTick();
 
     for (let chunk = 1; chunk <= 3; chunk += 1) {
       nowMs += fatalMs;
-      catchUp = {
-        events: chunk * 4_096,
-        cursorSlot: chunk * 1_000,
-        tipSlot: 90_000,
-      };
+      cursorSlot = chunk * 1_000;
       await runner.runTick();
       expect(runner.liveness().l1ViewUnavailable).toBeUndefined();
     }
+    expect(service.latestL1View()).toBeUndefined();
     // A cursor that stops moving is no progress.
     nowMs += fatalMs + 1;
     await runner.runTick();
