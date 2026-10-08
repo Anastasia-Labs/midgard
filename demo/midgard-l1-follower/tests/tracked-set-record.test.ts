@@ -205,6 +205,7 @@ describe.each(adapters)("the tracked-set record ($name)", (adapter) => {
       expect(await store.trackedSetRecord()).toEqual({
         trackedSet: trackedSetItems(BASE),
         replaying: false,
+        replayHeight: null,
       });
       // The wallet is tracked all the same.
       expect(store.trackedSet().addresses.has(hex(WALLET))).toBe(true);
@@ -249,6 +250,7 @@ describe.each(adapters)("the tracked-set record ($name)", (adapter) => {
       expect(await removed.trackedSetRecord()).toEqual({
         trackedSet: trackedSetItems(reduced),
         replaying: false,
+        replayHeight: null,
       });
     } finally {
       await removed.close();
@@ -318,28 +320,36 @@ describe.each(adapters)("the tracked-set record ($name)", (adapter) => {
             ? started.trackedSet.tables
             : [],
         ).not.toContain("role_signed");
-        // To every listener the reset is a rewind from b3 to the origin
-        // that deleted every live outref.
+        // To every listener the reset is a rewind from b3 to the origin,
+        // marked as a reset: its deleted and unspent lists are empty.
         expect(heard).toHaveLength(1);
         const event = heard[0]!;
         expect(event.generation).toBe(1);
-        expect(event.rewound).toMatchObject({
+        expect(event.rewound).toEqual({
           kind: "rewound",
+          reset: true,
           generation: 1,
           from: B3,
           to: ORIGIN.point,
           depth: 3,
+          cursor: {
+            point: ORIGIN.point,
+            height: ORIGIN.height,
+            generation: 1,
+            origin: ORIGIN.point,
+            prunedThroughSlot: ORIGIN.point.slot,
+          },
           unspent: [],
+          deleted: [],
         });
-        expect(
-          event.rewound.deleted
-            .map((o) => `${hex(o.txHash)}|${o.index}`)
-            .sort(),
-        ).toEqual(previousLive);
+        // Every live row is gone all the same.
+        expect(await liveOutRefs(store)).toEqual([]);
+        expect(previousLive.length).toBeGreaterThan(0);
         expect(await roleRows(store)).toEqual(previousRole);
         expect(await store.trackedSetRecord()).toEqual({
           trackedSet: trackedSetItems(grown),
           replaying: true,
+          replayHeight: ORIGIN.height + 3,
         });
         // The replay from the origin rebuilds what a fresh store holds.
         await follow(store);
@@ -350,8 +360,8 @@ describe.each(adapters)("the tracked-set record ($name)", (adapter) => {
             await freshDump(await adapter.database(), grown),
           ),
         ).toBeNull();
-        expect(await store.endTrackedSetReplay()).toBe(true);
-        expect(await store.endTrackedSetReplay()).toBe(false);
+        expect(await store.endTrackedSetReplay()).toBe("ended");
+        expect(await store.endTrackedSetReplay()).toBe("not_replaying");
         expect(await store.trackedSetRecord()).toMatchObject({
           replaying: false,
         });

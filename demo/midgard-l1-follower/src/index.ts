@@ -282,13 +282,16 @@ export {
   resetToOrigin,
 } from "./store/reset.js";
 export type { RewindNoop, Rewound } from "./store/rewind.js";
+export { type RewindsSince, rewindsSinceIn } from "./store/rewinds-since.js";
 export type { SeedCursorMoved, SeedOutput, SeedResult } from "./store/seed.js";
 export {
+  normalizeTrackedSet,
   readTrackedSetRecordIn,
   type TrackedSetCheck,
   type TrackedSetItems,
   trackedSetItems,
   type TrackedSetRecord,
+  type TrackedSetReplayEnd,
 } from "./store/tracked-set-record.js";
 export { currentViewIn, viewValidIn, viewValidQuery } from "./store/view.js";
 export type * from "./types.js";

@@ -9,6 +9,7 @@ import {
 } from "@al-ft/midgard-l1-follower/lint";
 import { describe, expect, it } from "vitest";
 
+import { WATCHER_FOLLOWER_GENERATION_TABLE } from "../../src/l1-follower/follower-generation.js";
 import {
   WATCHER_DA_ATTESTATIONS_TABLE,
   WATCHER_DEPARTED_HEADERS_TABLE,
@@ -116,7 +117,7 @@ const PROJECTION_SOURCES = [
 ];
 
 describe("watcher projection lints (F2 schema, F4 determinism)", () => {
-  it("declares eight class D-t tables, registered as temporal, the proof-retention tables and the pruned-key records, on both dialects", () => {
+  it("declares eight class D-t tables, registered as temporal, the proof-retention tables, the pruned-key records and the decision driver's handled generation, on both dialects", () => {
     const registry = createTemporalRegistry(projection.temporalTables);
     for (const dialect of ["postgres", "sqlite"] as const) {
       const sets = [projection.migrations(dialect)];
@@ -140,6 +141,7 @@ describe("watcher projection lints (F2 schema, F4 determinism)", () => {
         [WATCHER_TX_INPUTS_TABLE, "C"],
         [WATCHER_PRUNED_UNITS_TABLE, "B"],
         [WATCHER_PRUNED_HEADERS_TABLE, "B"],
+        [WATCHER_FOLLOWER_GENERATION_TABLE, "B"],
       ]);
     }
   });

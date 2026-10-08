@@ -286,12 +286,30 @@ CREATE INDEX l1_tx_mint_policy ON l1_tx_mint_policies (policy_id);
 CREATE INDEX l1_event_keys_slot ON l1_event_keys (first_canonical_slot);
 `;
 
+/**
+ * The height the cursor held when a reset marked the replay
+ * (`tracked-set-record.ts`): the replay ends at the node tip only once the
+ * cursor is back at it. The record is bookkeeping (created by
+ * `FOLLOWER_BOOKKEEPING_DDL` before any migration), so this adds the column.
+ */
+const POSTGRES_0002 = `
+ALTER TABLE l1_follower_tracked_set ADD COLUMN replay_height bigint;
+`;
+
+const SQLITE_0002 = `
+ALTER TABLE l1_follower_tracked_set ADD COLUMN replay_height INTEGER;
+`;
+
 export const followerMigrations = (dialect: DialectName): MigrationSet => ({
   namespace: FOLLOWER_MIGRATION_NAMESPACE,
   migrations: [
     {
       id: "0001_fact_schema",
       sql: dialect === "postgres" ? POSTGRES_0001 : SQLITE_0001,
+    },
+    {
+      id: "0002_tracked_set_replay_height",
+      sql: dialect === "postgres" ? POSTGRES_0002 : SQLITE_0002,
     },
   ],
 });

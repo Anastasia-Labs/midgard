@@ -52,6 +52,7 @@ import {
   type RewindNoop,
   type Rewound,
 } from "./rewind.js";
+import { type RewindsSince, rewindsSinceIn } from "./rewinds-since.js";
 import { StoreIntegrityError } from "./rows.js";
 import {
   initializeIn,
@@ -64,9 +65,11 @@ import {
 import {
   checkTrackedSetIn,
   endTrackedSetReplayIn,
+  normalizeTrackedSet,
   readTrackedSetRecordIn,
   type TrackedSetCheck,
   type TrackedSetRecord,
+  type TrackedSetReplayEnd,
   withTrackedAddresses,
 } from "./tracked-set-record.js";
 import { currentViewIn, viewValidIn } from "./view.js";
@@ -101,7 +104,7 @@ export type StartResult =
       migrated: readonly string[];
       /** The configured protocol tracked set against the store's record. */
       trackedSet: TrackedSetCheck;
-      /** A tracked-set reset is replaying from the origin (`tracked_set_changed`). */
+      /** A store reset is replaying from the origin (`tracked_set_changed`). */
       replaying: boolean;
     }>
   | Intervention
@@ -114,7 +117,7 @@ export type InitializeResult =
 export type FactStoreOptions = Readonly<{
   /** The security parameter k in blocks (2,160 on mainnet and preprod). */
   securityParameter: number;
-  /** The role's protocol tracked set (§5.2), recorded (`tracked-set-record.ts`). */
+  /** The role's protocol tracked set (§5.2), any-case hex, recorded (`tracked-set-record.ts`). */
   trackedSet: TrackedSet;
   /** Own wallets: tracked by address, seeded (§5.3 step 4), never recorded. */
   wallets?: readonly Buffer[];
@@ -158,6 +161,10 @@ export type FactStore = Readonly<{
     at: Point,
     outputs: readonly SeedOutput[],
   ): Promise<SeedResult | SeedCursorMoved | StoreError | StoreLocked | null>;
+  /**
+   * Own wallets only (`withTrackedAddresses`): a protocol item added here
+   * skips the start's record check and its reset, so its facts stay incomplete.
+   */
   setTrackedSet(trackedSet: TrackedSet): void;
   /**
    * The manifest's `hubOracleOneShot` outref: each applied block that holds
@@ -168,10 +175,12 @@ export type FactStore = Readonly<{
   /** The protocol-init fact for `oneShot`; it outlives the pruning of the init tx. */
   protocolInit(oneShot: OutRef): Promise<reads.TxSpending | null>;
   trackedSet(): TrackedSet;
-  /** The recorded protocol tracked set and its `replaying` flag; null before `initialize`. */
+  /** The recorded protocol tracked set and its replay mark; null before `initialize`. */
   trackedSetRecord(): Promise<TrackedSetRecord | null>;
-  /** Clears `replaying` once the follower reported the cursor at the node tip; true when it was set. */
-  endTrackedSetReplay(): Promise<boolean | StoreError | StoreLocked>;
+  /** Clears the replay mark at the node tip once the cursor is back at its pre-reset height. */
+  endTrackedSetReplay(): Promise<
+    TrackedSetReplayEnd | StoreError | StoreLocked
+  >;
   /** Whether an outref is a live tracked row (the in-memory set). */
   isTrackedLive(outRef: OutRef): boolean;
   liveOutRefCount(): number;
@@ -191,6 +200,8 @@ export type FactStore = Readonly<{
   currentView(): Promise<View | null>;
   viewValid(view: View): Promise<boolean>;
   onGeneration(listener: GenerationListener): () => void;
+  /** The rewinds and resets after generation `after`, for a reader that missed one (`rewinds-since.ts`). */
+  rewindsSince(after: number | null): Promise<RewindsSince | null>;
   /** A transaction on the store's backend, for reads and guarded writes. */
   transaction<T>(
     mode: TransactionMode,
@@ -266,7 +277,9 @@ export const createFactStore = (
   const lane = new Lane();
   const live = new Set<string>();
   const listeners = new Set<GenerationListener>();
-  let tracked = withTrackedAddresses(options.trackedSet, options.wallets ?? []);
+  // Normalised once: qualification, the record and `initialize` compare it.
+  const protocolSet = normalizeTrackedSet(options.trackedSet);
+  let tracked = withTrackedAddresses(protocolSet, options.wallets ?? []);
   let protocolInitOneShot: OutRef | null = null;
   let broken: Intervention | null = null;
   let started = false;
@@ -343,7 +356,7 @@ export const createFactStore = (
           ...(options.migrations ?? []),
         ]);
         const check = await backend.transaction("write", (tx) =>
-          checkTrackedSetIn(tx, dialect, options.trackedSet),
+          checkTrackedSetIn(tx, dialect, protocolSet),
         );
         // To every listener the reset is a rewind to the origin.
         if (check.kind === "reset") notify(check.rewound);
@@ -386,7 +399,7 @@ export const createFactStore = (
         if (refusal !== null) return refusal;
         try {
           return await fencedWrite((tx) =>
-            initializeIn(tx, dialect, origin, options.trackedSet),
+            initializeIn(tx, dialect, origin, protocolSet),
           );
         } catch (error) {
           return { kind: "error", error: asError(error) } as const;
@@ -471,7 +484,7 @@ export const createFactStore = (
         const refusal = writeRefusal();
         if (refusal !== null) return refusal;
         try {
-          return await fencedWrite(endTrackedSetReplayIn);
+          return await fencedWrite((tx) => endTrackedSetReplayIn(tx, dialect));
         } catch (error) {
           return { kind: "error", error: asError(error) } as const;
         }
@@ -506,6 +519,7 @@ export const createFactStore = (
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    rewindsSince: (after) => read((tx) => rewindsSinceIn(tx, dialect, after)),
     transaction: (mode, run) => backend.transaction(mode, run),
     liveUtxos: (filter, at) =>
       read((tx) => reads.liveUtxosIn(tx, dialect, filter, at)),

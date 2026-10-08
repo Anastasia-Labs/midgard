@@ -52,9 +52,12 @@ const pause = (ms: number): Promise<void> =>
  * follower's cursor, so an event the follower failed to apply is served
  * again on the next stream.
  */
-export const scriptedTransport = (s: Script) => ({
-  /** The scripted node is always reachable. */
-  readiness: { ready: true, nodeToClientVersion: 32784 } as TransportReadiness,
+export const scriptedTransport = (
+  s: Script,
+  /** The node is reachable unless a test says otherwise. */
+  readiness: TransportReadiness = { ready: true, nodeToClientVersion: 32784 },
+) => ({
+  readiness,
   onReadiness: (): (() => void) => () => undefined,
   openChainSync: (): ChainSyncStream => {
     const open = s.opens;
@@ -116,6 +119,8 @@ export const follow = async (
     origin?: OriginConfig;
     until: (status: FollowStatus) => boolean;
     timeoutMs?: number;
+    /** The transport's readiness for the whole run (default: ready). */
+    readiness?: TransportReadiness;
   }> &
     Partial<Pick<FollowChainOptions, "stuckAfter" | "prune" | "onStatus">>,
 ): Promise<FollowRun> => {
@@ -126,7 +131,7 @@ export const follow = async (
   let reached = false;
   const running = followChain({
     store: options.store,
-    transport: scriptedTransport(options.script),
+    transport: scriptedTransport(options.script, options.readiness),
     origin: options.origin ?? simOrigin(),
     signal: abort.signal,
     backoffMs: { initial: 1, max: 4 },

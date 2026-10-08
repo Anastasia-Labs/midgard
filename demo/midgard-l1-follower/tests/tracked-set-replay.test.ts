@@ -176,6 +176,90 @@ describe.each(adapters)(
       }
     });
 
+    it("keeps replaying at the tip of a node whose chain is below the height the cursor held before the reset, and ends once the cursor is back at it", async () => {
+      const open = await adapter.database();
+      await followedDump(open, REDUCED, events);
+      const before = await (async () => {
+        const store = open(REDUCED);
+        try {
+          await store.start();
+          return (await store.cursor())!.height;
+        } finally {
+          await store.close();
+        }
+      })();
+      const half = Math.floor(events.length / 2);
+      const s = script(behind(events.slice(0, half)));
+      const store = open(FULL);
+      try {
+        const { statuses } = await follow({
+          store,
+          script: s,
+          until: (status) => status.atTip,
+        });
+        const last = statuses[statuses.length - 1]!;
+        expect(last.atTip).toBe(true);
+        // Not vacuous: the node tip is below the height before the reset.
+        expect(last.cursor!.height).toBeLessThan(before);
+        expect(last.replaying).toBe(true);
+        expect(reasons(last)).toContain(FOLLOWER_TRACKED_SET_CHANGED);
+        expect(await store.trackedSetRecord()).toMatchObject({
+          replaying: true,
+          replayHeight: before,
+        });
+        // The node catches up: the first tip at the old height ends it.
+        s.events = behind(events);
+        const { statuses: rest } = await follow({
+          store,
+          script: s,
+          until: (status) => status.atTip && !status.replaying,
+        });
+        const end = rest[rest.length - 1]!;
+        expect(end.cursor!.height).toBeGreaterThanOrEqual(before);
+        expect(reasons(end)).not.toContain(FOLLOWER_TRACKED_SET_CHANGED);
+        expect(await store.trackedSetRecord()).toMatchObject({
+          replaying: false,
+          replayHeight: null,
+        });
+      } finally {
+        await store.close();
+      }
+    });
+
+    it("keeps replaying at the tip while the node is unavailable", async () => {
+      const open = await adapter.database();
+      await followedDump(open, REDUCED, events);
+      const store = open(FULL);
+      try {
+        const s = script(behind(events));
+        const { statuses } = await follow({
+          store,
+          script: s,
+          until: appliedAll(s),
+          readiness: {
+            ready: false,
+            reason: "sidecar_starting",
+            detail: "the test's node is away",
+          },
+        });
+        const last = statuses[statuses.length - 1]!;
+        // The cursor is at the node tip; only the node's absence holds it.
+        expect(last.tip).not.toBeNull();
+        expect(last.cursor?.slot).toBe(last.tip?.slot);
+        expect(last.atTip).toBe(false);
+        expect(
+          statuses
+            .filter((status) => status.events > 0)
+            .every((status) => status.replaying),
+        ).toBe(true);
+        expect(await store.trackedSetRecord()).toMatchObject({
+          replaying: true,
+        });
+      } finally {
+        await store.close();
+      }
+    });
+
     it("a restart mid-replay keeps tracked_set_changed until the tip", async () => {
       const open = await adapter.database();
       await followedDump(open, REDUCED, events);

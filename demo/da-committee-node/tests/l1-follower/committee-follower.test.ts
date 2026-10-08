@@ -1,7 +1,11 @@
 import {
   type FactStore,
+  FOLLOWER_APPLY_STUCK,
   FOLLOWER_CATCHING_UP,
+  FOLLOWER_MIGRATION_FAILED,
   FOLLOWER_NODE_UNAVAILABLE,
+  FOLLOWER_PRUNE_FAILING,
+  FOLLOWER_TRACKED_SET_CHANGED,
   FOLLOWER_WAITING,
   type FollowStatus,
   openSqliteFactStore,
@@ -270,5 +274,26 @@ describe("waiting for the committee's L1 source", () => {
         { reason: "rollback_beyond_k", detail: "deep" },
       ]),
     ).toEqual({ reason: "rollback_beyond_k", detail: "deep" });
+  });
+
+  it.each([
+    [FOLLOWER_CATCHING_UP, "transient"],
+    [FOLLOWER_WAITING, "transient"],
+    [FOLLOWER_NODE_UNAVAILABLE, "transient"],
+    [FOLLOWER_TRACKED_SET_CHANGED, "transient"],
+    [WALLET_SEED_PENDING, "transient"],
+    [FOLLOWER_APPLY_STUCK, "intervention"],
+    [FOLLOWER_MIGRATION_FAILED, "intervention"],
+    [FOLLOWER_PRUNE_FAILING, "intervention"],
+    [L1_FOLLOWER_UNCONFIGURED, "intervention"],
+    ["rollback_beyond_k", "intervention"],
+    ["intersection_outside_history", "intervention"],
+    ["origin_after_protocol_init", "intervention"],
+    ["origin_not_on_chain", "intervention"],
+    ["origin_mismatch", "intervention"],
+    ["store_integrity", "intervention"],
+  ] as const)("classifies %s as %s", (reason, kind) => {
+    const found = committeeL1InterventionReason([{ reason, detail: "d" }]);
+    expect(found === undefined ? "transient" : "intervention").toBe(kind);
   });
 });
