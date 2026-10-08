@@ -420,17 +420,17 @@ export const registerL1AbsorptionTests = () => {
         scannedHeaders: 1,
         signedHeaders: 1,
       });
-      expect(
-        await h.committeeStore.listDaSignatures(first.headerHash),
-      ).toHaveLength(1);
-      expect(
-        await h.committeeStore.listDaSignatures(sibling.headerHash),
-      ).toHaveLength(1);
-      expect(
-        (await h.committeeStore.listSignedDecisions())
-          .map(({ headerHash }) => headerHash)
-          .sort(),
-      ).toEqual([first.headerHash, sibling.headerHash].sort());
+      // The replaced header's commit is on no chain and the latest final
+      // block is past its end time: `cannot_land`, its decision deleted (§11).
+      const endTimeMs = Number(first.header.endTime);
+      const view = h.service.latestL1View();
+      expect(view?.finalBlockTimeMs).toBeGreaterThan(endTimeMs);
+      const decided = await h.committeeStore.listSignedDecisions();
+      expect(decided).toMatchObject([{ headerHash: sibling.headerHash }]);
+      const firstRows = await h.committeeStore.listDaSignatures(
+        first.headerHash,
+      );
+      expect(firstRows).toEqual([]);
     });
 
     it("stays ready once every other output of the protocol-init tx is spent k deep: the hub oracle keeps it", async () => {

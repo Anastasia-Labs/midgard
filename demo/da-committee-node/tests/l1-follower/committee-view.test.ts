@@ -11,6 +11,7 @@ import {
 } from "@al-ft/midgard-l1-follower/testing";
 import { afterAll, describe, expect, it } from "vitest";
 
+import { slotTimeMs } from "../../src/l1/follower/obligations.js";
 import {
   committeeProjection,
   readCommitteeView,
@@ -118,6 +119,53 @@ describe.each([
           ]),
         ),
       );
+    } finally {
+      await close();
+    }
+  });
+
+  it("reads the release clock as the latest final block's slot start, so an end time inside that slot is still pending", async () => {
+    const { store, close } = await open();
+    try {
+      expect(await store.start()).toMatchObject({ kind: "ready" });
+      expect(
+        await store.initialize({
+          point: SIM_ORIGIN.point,
+          height: SIM_ORIGIN.height,
+        }),
+      ).toMatchObject({ kind: "initialized" });
+      const queue = new QueueChain();
+      const apply = async (
+        event: Parameters<typeof applyChainSyncEvent>[1],
+      ): Promise<void> => {
+        expect(stepSettled(await applyChainSyncEvent(store, event))).toBe(true);
+      };
+      await apply(queue.init());
+      for (let i = 0; i < K + 2; i += 1) await apply(queue.empty());
+      const read = (endTimesMs: readonly bigint[]) =>
+        readCommitteeView(store, {
+          parameters: PARAMETERS,
+          slotTime: SIM_SLOT_TIME,
+          // Headers never committed: only the release clock decides them.
+          signed: endTimesMs.map((endTimeMs, i) => ({
+            headerHash: (i + 1).toString(16).padStart(56, "0"),
+            endTimeMs,
+          })),
+        });
+      const first = await read([]);
+      expect(first?.finalSlot).not.toBeNull();
+      const slotStartMs = slotTimeMs(first!.finalSlot!, SIM_SLOT_TIME);
+      expect(first?.finalBlockTimeMs).toBe(slotStartMs);
+      const view = await read([
+        BigInt(slotStartMs - 1),
+        BigInt(slotStartMs),
+        BigInt(slotStartMs + SIM_SLOT_TIME.slotLength / 2),
+      ]);
+      expect(view?.obligations.map(({ state }) => state)).toEqual([
+        "cannot_land",
+        "pending",
+        "pending",
+      ]);
     } finally {
       await close();
     }

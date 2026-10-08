@@ -110,6 +110,36 @@ export const terminalRecordOf = (
     : null;
 
 /**
+ * Where a live header's L1 reconciliation stands, read from this tick's
+ * record of its landed output (plan §8.2), never from the stored
+ * `l1_reconcile` outbox record: that record only caches what was last
+ * submitted.
+ *
+ * - `owed`: the output is unattested or attesting at a safe depth in a
+ *   healthy queue; the member reconciles it on this tick.
+ * - `attested`: the output is attested at a safe depth, not yet final. A
+ *   later tick that reads the header's output unattested again reads it
+ *   `owed`.
+ * - `final`: the attested output is final (depth > k).
+ * - `waiting`: the output is not at a safe depth, or its status is outside
+ *   the submitter's scope; nothing is submitted against it.
+ */
+export type ReconcileStanding = "owed" | "attested" | "final" | "waiting";
+
+export const reconcileStandingOf = (
+  record: StateQueueHeaderRecord,
+  parameters: Pick<DepthParameters, "securityParameter">,
+): ReconcileStanding => {
+  if (!record.finalized) return "waiting";
+  if (record.status === "unattested" || record.status === "attesting")
+    return "owed";
+  if (record.status !== "attested") return "waiting";
+  return isFinal(record.observedChainPoint.depth ?? 0, parameters)
+    ? "final"
+    : "attested";
+};
+
+/**
  * The first record whose DA status identity differs from the stored record
  * of the same output. An output's datum never changes, so the store
  * recorded something the chain never held.

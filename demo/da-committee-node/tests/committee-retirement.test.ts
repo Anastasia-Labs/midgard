@@ -85,7 +85,12 @@ describe("paired committee retirement", () => {
     f.setPoint({ ...descendantPoint, blockNo: expiryPoint.blockNo + 2159 });
     await f.compact();
     expect(await f.store.getDaPayload(seeded.header.headerHash)).toBeDefined();
-    f.setPoint(descendantPoint);
+    // Depth 2161 (k + 1): final.
+    const finalPoint = {
+      ...descendantPoint,
+      blockNo: expiryPoint.blockNo + 2160,
+    };
+    f.setPoint(finalPoint);
     const oldToken = f.store.captureRetirementGuard();
     expect(await f.compact()).toEqual([seeded.header.headerHash]);
     expect(() =>
@@ -109,7 +114,7 @@ describe("paired committee retirement", () => {
     expect(data.retirementFloor).toMatchObject({
       headerEndTimeMs: 1,
       point: expiryPoint,
-      certifiedAt: descendantPoint,
+      certifiedAt: finalPoint,
       generation: 3,
     });
     expect(data.retirementFloor?.checkpoint).toBeUndefined();

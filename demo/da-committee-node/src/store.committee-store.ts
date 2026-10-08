@@ -39,6 +39,13 @@ export type RetainedPayloadPruneRequest = {
   readonly confirmedHeadHash: string;
   /** Every header hash live in the L1 state queue of the caller's view. */
   readonly liveQueueHeaderHashes: ReadonlySet<string>;
+  /**
+   * With the payload, also delete its header row and the rows still keyed
+   * by it, unless the member's own signed decision for the header is still
+   * stored (`CommitteeStore.pruneSignedDecisions` then takes them). Set only
+   * without promise adoption, where retirement is the only deleter.
+   */
+  readonly releaseHeader?: boolean;
 };
 
 export type StoreData = {
@@ -61,6 +68,12 @@ export type StoreData = {
   readonly decisionOutbox: Record<string, DecisionOutboxRecord>;
 };
 
+/**
+ * The outcome of the last attempt at a decision effect. For `l1_reconcile`
+ * it caches what the submit path last reported (`reconciled`: it submitted);
+ * whether the header is still owed is read from each tick's facts
+ * (`reconcileStandingOf`), never from this status.
+ */
 export type DecisionOutboxStatus =
   | "pending"
   | "published"
@@ -301,10 +314,25 @@ export interface CommitteeStore {
    * Every header this member signed, with the end time it signed under: the
    * `signed` input of the committee's obligations projection
    * (`readCommitteeView`). It is read from the member's own signature rows
-   * (class B), which a follower reset or rewind never erases; only
-   * retirement prunes them, with their header.
+   * (class B), which a follower reset or rewind never erases; they are
+   * pruned only once deletable (`pruneSignedDecisions`), or by retirement
+   * under promise adoption.
    */
   listSignedDecisions(): Promise<readonly SignedHeader[]>;
+  /**
+   * Deletes the member's signed decision for each of `headerHashes` with
+   * the rows keyed by its header hash (plan §11, class B): every
+   * availability signature, the decision outbox, the peer broadcasts, the
+   * L1 submissions and the header's L1 observation; the header row and its
+   * attestation candidates too, unless a payload is still retained for it.
+   * Conflict evidence and peer nonces are kept. The caller decides which
+   * decisions are deletable (`decisionsToPrune`). A header with a decision
+   * effect in flight in this instance is skipped, and nothing is deleted
+   * under a retirement floor. Returns the hashes pruned.
+   */
+  pruneSignedDecisions(
+    headerHashes: readonly string[],
+  ): Promise<readonly string[]>;
   getStateQueueHeader(
     headerHash: string,
   ): Promise<StateQueueHeaderRecord | undefined>;
