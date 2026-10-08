@@ -84,19 +84,22 @@ describe("exact journey balances", () => {
 describe("withdrawal payout decision", () => {
   const conclusion: SettlementAttempt = {
     phase: "conclude",
-    status: "confirmed",
+    status: "pending",
     txHash: "a".repeat(64),
     signedCbor: "",
   };
   const complete = [{ phase: "complete" }];
-  it("refuses two confirmed conclusions for one withdrawal", () =>
+  it("refuses two unexpired conclusions for one withdrawal", () =>
     expect(() =>
       payoutConclusion({
         jobs: complete,
-        attempts: [conclusion, { ...conclusion, txHash: "b".repeat(64) }],
+        attempts: [
+          conclusion,
+          { ...conclusion, status: "final", txHash: "b".repeat(64) },
+        ],
       }),
-    ).toThrow("More than one confirmed payout"));
-  it("waits for a complete job with one confirmed conclusion", () => {
+    ).toThrow("More than one unexpired payout"));
+  it("waits for a complete job with one unexpired conclusion", () => {
     expect(
       payoutConclusion({
         jobs: [{ phase: "concluding" }],
@@ -106,9 +109,16 @@ describe("withdrawal payout decision", () => {
     expect(
       payoutConclusion({
         jobs: complete,
-        attempts: [{ ...conclusion, status: "submitted" }],
+        attempts: [{ ...conclusion, status: "expired" }],
       }),
     ).toBeUndefined();
+    const final = { ...conclusion, status: "final" };
+    expect(
+      payoutConclusion({
+        jobs: complete,
+        attempts: [{ ...conclusion, status: "expired" }, final],
+      }),
+    ).toBe(final);
     expect(payoutConclusion({ jobs: complete, attempts: [conclusion] })).toBe(
       conclusion,
     );

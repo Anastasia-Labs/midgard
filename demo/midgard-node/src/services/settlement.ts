@@ -15,11 +15,10 @@ import "./config.js";
 import "./database.js";
 import "./lucid.js";
 import "./midgard-contracts.js";
-import "./settlement-output.js";
 import "./settlement.reconcile-attempt.js";
+import "./settlement.status.js";
 import "./settlement.build-job.js";
 export {
-  reconcileRestoredSettlementFees,
   settlementProgram,
   settlementTick,
   settlementWorkerLayer,
@@ -27,9 +26,9 @@ export {
 export {
   canExpireSettlementAttempt,
   inspectSettlementAttempt,
-  reconcileSettlementReceipts,
   type SettlementHealth,
   settlementNextPhase,
   settlementWaitUntil,
   settlementWalletAddress,
 } from "./settlement.reconcile-attempt.js";
+export { type SettlementLevel, settlementLevel } from "./settlement.status.js";

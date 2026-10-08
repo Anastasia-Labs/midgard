@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { DepthParameters } from "@al-ft/midgard-l1-follower";
 import { SqlClient } from "@effect/sql";
 import { CML, type LucidEvolution } from "@lucid-evolution/lucid";
 import { Cause, Effect, Layer, Option, Schedule } from "effect";
@@ -12,7 +13,6 @@ import {
   initializePayoutProgram,
 } from "../commands/reserve-payout.js";
 import * as Journal from "../database/settlement.js";
-import { synchronizePublicationIndexerPoint } from "../transactions/reference-publication-provider.js";
 import { ReservePayoutTransport } from "../transactions/reserve-payout.js";
 import { TxSignError } from "../transactions/utils.js";
 import { NodeConfig } from "./config.js";
@@ -28,14 +28,17 @@ import {
   MidgardContractServices,
 } from "./midgard-contracts.js";
 import {
-  exactStatus,
   inspectSettlementAttempt,
   reconcileAttempt,
-  reconcileSettlementReceipts,
   type SettlementHealth,
   settlementWaitUntil,
   settlementWalletAddress,
 } from "./settlement.reconcile-attempt.js";
+import {
+  noOpenAttempt,
+  settleAttempts,
+  settlementDepthParameters,
+} from "./settlement.status.js";
 import {
   settlementCall,
   settlementCauseDetail,
@@ -43,70 +46,16 @@ import {
   settlementJobError,
 } from "./settlement-call.js";
 
-/** Fair scheduling must not reuse a rollback-restored coin before recovering
- * the old signed body that reserved it. Only visible wallet coins are queried. */
-export const reconcileRestoredSettlementFees = (
-  owner: Journal.SettlementOwner,
-  lucid: Pick<LucidEvolution, "transactionStatus" | "utxosAt">,
-) =>
-  Effect.gen(function* () {
-    const config = yield* NodeConfig;
-    const wallet = yield* settlementCall("settlement wallet utxosAt", () =>
-      lucid.utxosAt(owner.walletAddress),
-    );
-    const receipt = yield* Journal.restoredFeeReceipt(
-      owner,
-      wallet.map((u) => `${u.txHash}#${u.outputIndex}`),
-    );
-    if (receipt === undefined) return true;
-    yield* settlementCall("indexer sync", () =>
-      synchronizePublicationIndexerPoint(
-        config.L1_OGMIOS_KEY,
-        config.L1_KUPO_KEY,
-      ),
-    );
-    const status = yield* exactStatus(lucid, receipt.tx_hash);
-    if (status.status !== "confirmed") {
-      yield* Journal.resumeReceipt(owner, receipt);
-      return false;
-    }
-    // The initial wallet query may itself have been behind the receipt query.
-    const refreshed = yield* settlementCall("settlement wallet utxosAt", () =>
-      lucid.utxosAt(owner.walletAddress),
-    );
-    if (
-      refreshed.some((u) =>
-        receipt.fee_inputs.includes(`${u.txHash}#${u.outputIndex}`),
-      )
-    )
-      return yield* Effect.fail(
-        new Error(
-          "Settlement indexer reports a confirmed receipt and its unspent fee input; waiting for consistent evidence",
-        ),
-      );
-    return true;
-  });
-
 const buildJob = (
   owner: Journal.SettlementOwner,
   job: Journal.SettlementJob,
   lucid: LucidEvolution,
-  generation: string,
+  parameters: DepthParameters,
 ) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const journal = yield* IntentJournal;
     let phase = job.phase;
-    if (
-      phase !== "complete" &&
-      !(yield* reconcileRestoredSettlementFees(owner, lucid))
-    )
-      return;
-    // Recheck receipts after every history recovery generation, including node restart.
-    if (job.verified_generation !== generation) {
-      if (!(yield* reconcileSettlementReceipts(owner, job, lucid))) return;
-      yield* Journal.updateJob(owner, job, phase, generation);
-    }
     if (phase === "complete") return;
     if (job.kind === "withdrawal") {
       const payout = yield* payoutStatusProgram(job.event_id);
@@ -152,7 +101,6 @@ const buildJob = (
               signed_cbor: signed.toCBOR(),
               required_outputs: [...required],
               status: "pending",
-              recovery: false,
               fee_inputs: walletUtxos
                 .map((u) => `${u.txHash}#${u.outputIndex}`)
                 .filter((out) => selectedInputs.includes(out)),
@@ -177,7 +125,13 @@ const buildJob = (
                 sql
                   .withTransaction(
                     journalInsert.pipe(
-                      Effect.zipRight(Journal.saveAttempt(owner, attempt)),
+                      Effect.zipRight(
+                        Journal.saveAttempt(
+                          owner,
+                          attempt,
+                          noOpenAttempt(owner, parameters),
+                        ),
+                      ),
                     ),
                   )
                   .pipe(Effect.provideService(SqlClient.SqlClient, sql)),
@@ -204,31 +158,32 @@ export const settlementTick = (
   lucid: LucidEvolution,
   report: (health: SettlementHealth) => void,
 ) => {
-  // This closure is reused across ticks. Pending confirmation does not consume
-  // a turn: alternate selections so neither current work nor recovery starves.
-  let preferCompleted = false;
   return Effect.gen(function* () {
-    const generation = yield* Journal.assertOwner(owner);
-    const pending = yield* Journal.pending(owner.deploymentId);
-    if (pending !== undefined) {
+    yield* Journal.assertOwner(owner);
+    const parameters = yield* settlementDepthParameters;
+    // Every open attempt's outcome is derived from the intent journal at
+    // the follower's cursor; the oldest one not yet confirmed blocks new
+    // work until it lands cd deep or is proven expired.
+    const blocker = yield* settleAttempts(owner, parameters);
+    if (blocker !== undefined) {
+      const { attempt } = blocker;
       const detail = yield* reconcileAttempt(
         owner,
-        pending,
+        attempt,
+        blocker.status,
         lucid,
-        generation,
       ).pipe(
         Effect.mapError((cause) =>
-          settlementJobError(pending, `${pending.phase} reconcile`, cause),
+          settlementJobError(attempt, `${attempt.phase} reconcile`, cause),
         ),
       );
       report({ observedAt: Date.now(), state: "waiting", detail });
       return;
     }
-    const job = yield* Journal.nextJob(owner, generation, preferCompleted);
+    const job = yield* Journal.nextJob(owner);
     if (job !== undefined) {
-      preferCompleted = !preferCompleted;
       const result = yield* Effect.exit(
-        buildJob(owner, job, lucid, generation),
+        buildJob(owner, job, lucid, parameters),
       );
       if (result._tag === "Failure") {
         // Name the job and phase in the stored error and the health report,
@@ -244,13 +199,7 @@ export const settlementTick = (
           ? settlementWaitUntil(failure.value, Date.now())
           : undefined;
         if (due !== undefined) {
-          yield* Journal.updateJob(
-            owner,
-            job,
-            job.phase,
-            job.verified_generation,
-            due - Date.now(),
-          );
+          yield* Journal.updateJob(owner, job, job.phase, due - Date.now());
           report({
             observedAt: Date.now(),
             state: "waiting",
@@ -259,14 +208,7 @@ export const settlementTick = (
           return;
         }
         const delay = Math.min(60_000, 5_000 * 2 ** Math.min(job.failures, 4));
-        yield* Journal.updateJob(
-          owner,
-          job,
-          job.phase,
-          job.verified_generation,
-          delay,
-          detail,
-        );
+        yield* Journal.updateJob(owner, job, job.phase, delay, detail);
         return yield* Effect.fail(new Error(detail));
       }
     }

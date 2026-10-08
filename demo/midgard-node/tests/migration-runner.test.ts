@@ -100,6 +100,7 @@ describe("splitSqlStatements", () => {
       { version: 12, name: "receipt_settlements", transactional: true },
       { version: 13, name: "mempool_inclusion_marks", transactional: true },
       { version: 14, name: "confirmed_ledger_merges", transactional: true },
+      { version: 15, name: "settlement_status_derived", transactional: true },
     ]);
   });
 

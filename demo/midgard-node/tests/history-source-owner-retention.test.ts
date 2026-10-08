@@ -477,15 +477,15 @@ it("restarts near its head, appends at an open gate without recovery, ignores a 
               holdSlot: pinned.slot,
               anchorHeight: pinned.height,
             });
-            // The interrupted settlement keeps its confirmation evidence
-            // until the pending attempt is confirmed.
+            // The interrupted settlement keeps its block evidence until the
+            // pending attempt is final (stored once more than k blocks deep).
             latest = yield* extend;
             yield* owner
               .awaitReadyAt(latest)
               .pipe(Effect.timeout("15 seconds"));
             expect((yield* load).anchor).toEqual(pinned);
             expect((yield* owner.retentionHold)?.holdSlot).toBe(pinned.slot);
-            yield* sql`UPDATE settlement_attempts SET status = 'confirmed' WHERE deployment_id = ${settlementDeployment}`;
+            yield* sql`UPDATE settlement_attempts SET status = 'final' WHERE deployment_id = ${settlementDeployment}`;
             latest = yield* extend;
             yield* owner
               .awaitReadyAt(latest)

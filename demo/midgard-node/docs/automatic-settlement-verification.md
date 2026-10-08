@@ -4,6 +4,18 @@ Base: `c8b62ed6ce1be2424dba7bbd15d02d1e35391b11`. Checks ran against the
 shared working checkout, which also contains unrelated changes. No deployment,
 production database migration, service reset, commit or push was performed.
 
+**Since then (L1 follower, #804 N6b):** an attempt's confirmation is no longer
+stored or read from event history and Kupo output evidence. It is the intent
+journal's derived status (plan §8.2): landed at depth >= cd lets its job take
+the next phase, a rollback below cd reverts that, and only `final` (landed more
+than k deep) is stored, by the follower's prune step. Migration
+`0015_settlement_status_derived` removed the `confirmed` status, the
+restored-fee-coin and one-pending indexes, the recovery flag and the
+history-generation recheck. The F1, indexer-recovery, backlog-auditing and
+restored-fee mechanisms below, and their mutation commands, describe the
+pre-follower design and no longer exist; the follower is the authority for
+landed depth and rollback.
+
 ## Behavior and operating requirements
 
 `listen` supervises a settlement worker thread with its own Lucid client,
@@ -11,15 +23,15 @@ dedicated fee/collateral wallet, serial transaction stream and two SQL connectio
 Deposit consumption and valid withdrawal finalization enqueue durable jobs in the
 same SQL transaction. Builders preserve the existing settlement proof,
 retirement protection, reserve accounting and exact payout rules. Each signed
-transaction is journaled before broadcast. Confirmation uses deployment-bound
-block depth and exact historical outputs, including outputs already spent.
+transaction is journaled before broadcast. Confirmation is the intent
+journal's derived landed depth against the deployment-bound confirmation depth.
 
-The worker retries deferred work, survives restarts by reconciling signed bytes,
-and rechecks completed receipts after history recovery. Current work alternates
-with historical auditing; restored fee coins are reconciled before reuse, with
-an independent guard at the durable write. Replacement requires
-expiry and synchronized evidence. Pending attempts retain their confirmation
-history. A stalled worker is terminated and restarted; its journal survives.
+The worker retries deferred work and survives restarts by reconciling signed
+bytes. No new attempt is journaled while an earlier one reads short of cd, a
+check made under the owner-row lock at the durable write, so a fee coin a
+rollback restored is never reused. Replacement requires expiry and synchronized
+evidence. Attempts not yet final hold their history evidence. A stalled worker
+is terminated and restarted; its journal survives.
 Settlement health is exposed separately from L2 readiness.
 
 Upgrading requires `db:migrate` and a funded `L1_SETTLEMENT_SEED_PHRASE`, distinct
@@ -173,7 +185,7 @@ A base-branch execution was not performed; no baseline-pass claim is made.
 - `demo/midgard-node/src/workers/settlement.ts`
 - `demo/midgard-node/tests/settlement.test.ts`
 - `demo/midgard-node/tests/settlement-journal.test.ts`
-- `demo/midgard-node/src/services/settlement-output.ts`
+- `demo/midgard-node/src/services/settlement-output.ts` (deleted by N6b)
 - `demo/midgard-node/src/services/event-history-owner.ts`
 - `demo/midgard-node/src/transactions/reference-publication-provider.ts`
 - `demo/midgard-node/tests/history-source-owner-retention.test.ts`

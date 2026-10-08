@@ -1,6 +1,5 @@
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
-import { isDeadStatus } from "@al-ft/midgard-l1-follower";
-import { depth as depthOf, isSafe } from "@al-ft/midgard-l1-follower/heads";
+import { type IntentStatus, isDeadStatus } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -14,10 +13,7 @@ import * as Journal from "../database/settlement.js";
 import { synchronizePublicationIndexerPoint } from "../transactions/reference-publication-provider.js";
 import { NodeConfig, type NodeConfigDep } from "./config.js";
 import type { UnwrittenHold } from "./intent-journal.holds.js";
-import { readIntentStatus } from "./intent-journal.js";
-import { ContractDeploymentIdentity } from "./midgard-contracts.js";
 import { settlementCall, settlementCheck } from "./settlement-call.js";
-import { readSettlementOutputEvidence } from "./settlement-output.js";
 
 export type SettlementHealth = {
   observedAt: number;
@@ -168,65 +164,26 @@ const spendingInputs = (attempt: Journal.SettlementAttempt) => {
   }));
 };
 
+/**
+ * The tick's work on the attempt that blocks new work (`settleAttempts`):
+ * one whose derived status (`status`, null when not journaled) is not yet
+ * confirmed. Landed short of cd, it waits. Otherwise it is expired once the
+ * indexer proves it can never land; until then it waits for S6.
+ */
 export const reconcileAttempt = (
   owner: Journal.SettlementOwner,
   attempt: Journal.SettlementAttempt,
+  status: IntentStatus | null,
   lucid: LucidEvolution,
-  generation: string,
 ) =>
   Effect.gen(function* () {
     const config = yield* NodeConfig;
-    const identity = yield* ContractDeploymentIdentity;
     const { validToSlot } = yield* settlementCheck(
       "inspect settlement attempt",
       () => inspectSettlementAttempt(attempt),
     );
-    const status = yield* exactStatus(lucid, attempt.tx_hash);
-    if (status.status === "confirmed") {
-      const depth =
-        identity.l1Finality?.confirmationDepth ??
-        identity.manifest?.l1Finality.confirmationDepth;
-      if (depth === undefined)
-        return yield* Effect.fail(
-          new Error("Settlement requires manifest-bound L1 finality"),
-        );
-      const heights =
-        status.confirmation.blockHash === undefined
-          ? null
-          : yield* Journal.confirmationHeights(
-              owner,
-              status.confirmation.blockHash,
-            );
-      if (
-        heights === null ||
-        !isSafe(depthOf(heights.tipHeight, heights.blockHeight), {
-          confirmationDepth: depth,
-        })
-      )
-        return "waiting for authenticated confirmation depth";
-      if (attempt.required_outputs.length > 0) {
-        const blockHash = status.confirmation.blockHash;
-        if (blockHash === undefined)
-          return "waiting for confirmation block identity";
-        const exact = yield* settlementCall("Kupo output evidence", () =>
-          readSettlementOutputEvidence(config.L1_KUPO_KEY, attempt, blockHash),
-        );
-        if (!exact)
-          return yield* Effect.fail(
-            new Error(
-              `Confirmed settlement ${attempt.tx_hash} lacks its exact expected outputs`,
-            ),
-          );
-      }
-      yield* Journal.finishAttempt(
-        owner,
-        attempt,
-        "confirmed",
-        settlementNextPhase(attempt.phase),
-        generation,
-      );
-      return "confirmed settlement transaction";
-    }
+    if (status?.kind === "landed")
+      return `settlement transaction ${attempt.tx_hash} landed at depth ${status.depth}; waiting for confirmation depth`;
     const before = yield* settlementCall("indexer sync", () =>
       synchronizePublicationIndexerPoint(
         config.L1_OGMIOS_KEY,
@@ -269,13 +226,7 @@ export const reconcileAttempt = (
               )),
         })
       ) {
-        yield* Journal.finishAttempt(
-          owner,
-          attempt,
-          "expired",
-          attempt.phase,
-          generation,
-        );
+        yield* Journal.expireAttempt(owner, attempt);
         return "expired unsubmitted body; rebuilding from current state";
       }
       return yield* Effect.fail(
@@ -290,35 +241,7 @@ export const reconcileAttempt = (
     // from the mempool and spendable, and never sends a dead intent (§8.2:
     // an input spent by another tx, expired, failed). This tick only reads
     // status; a dead body waits for the expiry decision above.
-    const intentStatus = yield* readIntentStatus(attempt.tx_hash);
-    if (intentStatus !== null && isDeadStatus(intentStatus))
-      return `settlement transaction ${attempt.tx_hash} is dead (${intentStatus.kind}); not resubmitted`;
+    if (status !== null && isDeadStatus(status))
+      return `settlement transaction ${attempt.tx_hash} is dead (${status.kind}); not resubmitted`;
     return `settlement transaction ${attempt.tx_hash} journaled; S6 sends its exact bytes until it lands`;
-  });
-
-/** Synchronize before both positive and negative receipt observations: a
- * lagging indexer may still report a confirmation from the rolled-back fork. */
-export const reconcileSettlementReceipts = (
-  owner: Journal.SettlementOwner,
-  job: Journal.SettlementJob,
-  lucid: Pick<LucidEvolution, "transactionStatus">,
-) =>
-  Effect.gen(function* () {
-    const config = yield* NodeConfig;
-    const receipts = yield* Journal.attempts(job);
-    if (receipts.length > 0)
-      yield* settlementCall("indexer sync", () =>
-        synchronizePublicationIndexerPoint(
-          config.L1_OGMIOS_KEY,
-          config.L1_KUPO_KEY,
-        ),
-      );
-    for (const receipt of receipts) {
-      const status = yield* exactStatus(lucid, receipt.tx_hash);
-      if (status.status !== "confirmed") {
-        yield* Journal.resumeReceipt(owner, receipt);
-        return false;
-      }
-    }
-    return true;
   });
