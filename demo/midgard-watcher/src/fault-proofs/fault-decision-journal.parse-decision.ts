@@ -1,7 +1,3 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, realpath } from "node:fs/promises";
-import { dirname, join } from "node:path";
-
 import {
   COMPLETE_CANONICAL_REPLAY,
   HEADER_CLASSIFIER,
@@ -9,10 +5,6 @@ import {
   type HeaderDecision,
 } from "@al-ft/midgard-fault-proofs";
 
-import {
-  publishExclusiveFile,
-  syncDirectory,
-} from "../storage/exclusive-record-file.js";
 import {
   canonicalDigest,
   DETECTION_IDENTIFIER,
@@ -22,9 +14,7 @@ import {
   exactString,
   HEADER_HASH,
   IDENTIFIER,
-  MAX_RECORD_BYTES,
   NATURAL,
-  type UnsafeWatcherFaultDecisionJournalStorage,
 } from "./fault-decision-journal.exact-record.js";
 import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 
@@ -193,48 +183,3 @@ export const parseDecision = (
   }
   return Object.freeze({ ...decision, decisionDigest });
 };
-
-export const readBounded = async (
-  storage: UnsafeWatcherFaultDecisionJournalStorage,
-  path: string,
-): Promise<Uint8Array> => {
-  const bytes = await storage.read(path);
-  if (bytes.byteLength === 0 || bytes.byteLength > MAX_RECORD_BYTES) {
-    throw new Error("watcher fault decision journal record size is invalid");
-  }
-  return Uint8Array.from(bytes);
-};
-
-export const productionStorage: UnsafeWatcherFaultDecisionJournalStorage =
-  Object.freeze({
-    prepare: async (parent, directory) => {
-      await mkdir(parent, { recursive: true, mode: 0o700 });
-      if ((await realpath(parent)) !== parent) {
-        throw new Error(
-          "watcher fault decision journal parent traverses a symlink",
-        );
-      }
-      await mkdir(directory, { recursive: true, mode: 0o700 });
-      if ((await realpath(directory)) !== directory) {
-        throw new Error("watcher fault decision journal traverses a symlink");
-      }
-    },
-    list: async (directory) =>
-      (await readdir(directory, { withFileTypes: true })).map((entry) =>
-        Object.freeze({ name: entry.name, isFile: entry.isFile() }),
-      ),
-    read: async (path) => Uint8Array.from(await readFile(path)),
-    writeExclusive: async (path, bytes) => {
-      // Stage outside the strictly scanned journal, on the same filesystem.
-      // Linking publishes complete, fsynced bytes without replacing a revision.
-      await publishExclusiveFile({
-        stagingPath: join(
-          dirname(dirname(path)),
-          `.fault-decision-${randomUUID()}.tmp`,
-        ),
-        path,
-        bytes,
-      });
-    },
-    syncDirectory,
-  });

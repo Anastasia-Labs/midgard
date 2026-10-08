@@ -1,6 +1,3 @@
-import { mkdir, readdir, realpath } from "node:fs/promises";
-import { join } from "node:path";
-
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
   assertWorkflowActuationPermitIdentity,
@@ -18,7 +15,9 @@ import {
 import { type WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 import type { WatcherFaultProofExecutionAdmission } from "./fault-proof-execution.js";
 import { type WatcherProofExecution } from "./fault-proof-objective-journal.js";
+import { listWatcherProofObjectives } from "./fault-proof-objective-table.js";
 import { type WatcherFaultProofProgressRequest } from "./fault-proof-progress-authority.js";
+import type { WatcherJournalDatabase } from "./watcher-journal-database.js";
 
 export const WATCHER_FAULT_PROOF_SUPERVISOR_SCHEMA_VERSION =
   "midgard-watcher-production-fault-proof-supervisor-v1" as const;
@@ -102,6 +101,9 @@ export type WatcherFaultProofSupervisorStatus = Readonly<{
   deadlineHealth: "safe" | "at_risk" | "unsafe";
   earliestDeadlineJob: WatcherFaultProofJob | null;
   remainingSafeStartMs: string | null;
+  /** A fault-proof journal holds its cap of live rows: readiness reports
+   * journal_capacity until rows complete or are pruned. */
+  journalCapacity: boolean;
 }>;
 
 export type WatcherFaultProofSupervisor = Readonly<{
@@ -159,74 +161,32 @@ export type SupervisorDependencies = Readonly<{
   ): error is WorkflowActuationRevokedError;
 }>;
 
-export const exactWorkflowDirectories = async (
-  journalRoot: string,
+/** The recorded objectives that still hold work, in category order. */
+export const recordedWorkflowObjectives = (
+  database: WatcherJournalDatabase,
   categories: readonly WatcherInstalledWorkflowCategory[],
-): Promise<
-  readonly Readonly<{
-    mode: "resume";
-    category: WatcherInstalledWorkflowCategory;
-    headerHash: string;
-  }>[]
-> => {
-  const root = join(journalRoot, "fault-proofs");
-  await mkdir(root, { recursive: true, mode: 0o700 });
-  if ((await realpath(root)) !== root) {
-    throw new Error("watcher fault-proof journal root traverses a symlink");
-  }
-  const allowed = new Set<string>(categories);
-  const categoryEntries = await readdir(root, { withFileTypes: true });
-  for (const entry of categoryEntries) {
-    if (!allowed.has(entry.name) || !entry.isDirectory()) {
-      throw new Error(
-        `watcher fault-proof journal contains unknown category ${entry.name}`,
-      );
-    }
-  }
-  const jobs: Readonly<{
-    mode: "resume";
-    category: WatcherInstalledWorkflowCategory;
-    headerHash: string;
-  }>[] = [];
-  for (const category of categories) {
-    const categoryPath = join(root, category);
-    const categoryEntry = categoryEntries.find(
-      (entry) => entry.name === category,
-    );
-    if (categoryEntry === undefined) continue;
-    if ((await realpath(categoryPath)) !== categoryPath) {
-      throw new Error(
-        `watcher fault-proof category ${category} traverses a symlink`,
-      );
-    }
-    const headerEntries = await readdir(categoryPath, {
-      withFileTypes: true,
-    });
-    headerEntries.sort((left, right) => left.name.localeCompare(right.name));
-    for (const entry of headerEntries) {
-      if (!entry.isDirectory() || !HEADER_HASH.test(entry.name)) {
-        throw new Error(
-          `watcher fault-proof journal contains invalid ${category} target ${entry.name}`,
-        );
-      }
-      const headerPath = join(categoryPath, entry.name);
-      if ((await realpath(headerPath)) !== headerPath) {
-        throw new Error(
-          `watcher fault-proof target ${category}/${entry.name} traverses a symlink`,
-        );
-      }
-      jobs.push(
-        Object.freeze({ mode: "resume", category, headerHash: entry.name }),
-      );
-      if (jobs.length > MAX_RECOVERABLE_WORKFLOWS) {
-        throw new Error(
-          "watcher fault-proof journal exceeds the recovery bound",
-        );
-      }
-    }
-  }
-  return Object.freeze(jobs);
-};
+): readonly Readonly<{
+  mode: "resume";
+  category: WatcherInstalledWorkflowCategory;
+  headerHash: string;
+}>[] =>
+  Object.freeze(
+    listWatcherProofObjectives(database, categories)
+      .filter(({ state }) => state !== "marked")
+      .map(({ objective }) =>
+        Object.freeze({ mode: "resume" as const, ...objective }),
+      )
+      .sort(
+        (left, right) =>
+          categories.indexOf(left.category) -
+            categories.indexOf(right.category) ||
+          (left.headerHash < right.headerHash
+            ? -1
+            : left.headerHash > right.headerHash
+              ? 1
+              : 0),
+      ),
+  );
 
 export const validateJob = (
   job: WatcherFaultProofJob | UnsafeWatcherFaultProofJobForTest,

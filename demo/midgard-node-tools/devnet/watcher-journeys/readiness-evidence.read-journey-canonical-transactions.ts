@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
 import { isAbsolute, join, normalize } from "node:path";
 import { createInterface } from "node:readline";
 
@@ -11,9 +10,8 @@ import { CML, coreToUtxo } from "@lucid-evolution/lucid";
 import {
   admitWatcherNativeRollForwardBlock,
   parseWatcherNativeChainSyncEvent,
-  WATCHER_FAULT_DECISION_RECORD_SCHEMA_VERSION,
+  readWatcherFaultDecisionEvidence,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-  type WatcherPersistedFaultDecisionRecord,
 } from "midgard-watcher";
 
 import { readJourneyArtifact } from "./artifacts.js";
@@ -178,39 +176,19 @@ export const readJourneyCanonicalTransactions = async (path: string) => {
   return { transactions, blocks, tip };
 };
 
-/** Audit persisted decision bytes; opening the production writer would create files. */
+/** Audit the persisted decisions read-only; opening the production writer
+ * needs the watcher's journal key. */
 export const readDecisions = async (
   runDirectory: string,
   fingerprint: string,
 ) => {
-  const directory = join(
-    runDirectory,
-    "work/journeys/runtime/workflows/fault-decisions",
-  );
-  const names = (await readdir(directory)).sort();
-  let prior: string | null = null;
-  const decisions: WatcherPersistedFaultDecisionRecord["decision"][] = [];
-  for (let index = 0; index < names.length; index++) {
-    assert.equal(
-      names[index],
-      `${index.toString().padStart(20, "0")}.json`,
-      "Decision journal has a revision gap",
-    );
-    const bytes = await readFile(join(directory, names[index]!));
-    const record: WatcherPersistedFaultDecisionRecord = JSON.parse(
-      bytes.toString("utf8"),
-    );
-    assert.equal(
-      record.schemaVersion,
-      WATCHER_FAULT_DECISION_RECORD_SCHEMA_VERSION,
-    );
-    assert.equal(record.revision, index.toString());
-    assert.equal(record.priorRecordSha256, prior);
-    assert.equal(
-      bytes.toString("utf8"),
-      `${canonicalJson(record, "decision record")}\n`,
-    );
-    const { decisionDigest, ...decision } = record.decision;
+  const decisions = readWatcherFaultDecisionEvidence({
+    directory: join(runDirectory, "work/journeys/runtime/workflows"),
+    deploymentFingerprint: fingerprint,
+    launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+  });
+  for (const record of decisions) {
+    const { decisionDigest, ...decision } = record;
     assert.equal(
       canonicalDigest(decision),
       decisionDigest,
@@ -221,8 +199,6 @@ export const readDecisions = async (
       [...decision.launchScope].sort(),
       [...WATCHER_INSTALLED_WORKFLOW_CATEGORIES].sort(),
     );
-    decisions.push(record.decision);
-    prior = sha256(bytes);
   }
   return decisions;
 };

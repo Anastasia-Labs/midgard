@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import {
   copyFile,
   mkdir,
@@ -34,8 +35,9 @@ import {
 } from "midgard-node/tests/helpers/published-workflow-deployment";
 import { expect, it, vi } from "vitest";
 
-import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
+import { readWatcherFaultDecisionEvidence } from "../../src/fault-proofs/fault-decision-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
+import { WATCHER_JOURNAL_DATABASE_FILE } from "../../src/fault-proofs/watcher-journal-database.js";
 import { makeWatcherFinalityPolicy } from "../../src/l1/finality-engine.js";
 import { WatcherLocalKupmios } from "../../src/l1/native-reward-account.js";
 import {
@@ -437,15 +439,18 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       if (watcher!.status().phase !== "live")
         throw new Error("Watcher stopped while processing the fixture");
     };
-    // Observe a fresh durable view, independently of the service's cache.
+    // Observe a fresh durable view, independently of the service's cache
+    // and its connection: the evidence reader opens the file read-only.
     const readDecisions = async () =>
-      (
-        await openWatcherFaultDecisionJournal({
-          directory: config.workflowJournalDirectory,
-          deploymentFingerprint: deployment.manifest.manifestId,
-          launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-        })
-      ).readAll();
+      existsSync(
+        join(config.workflowJournalDirectory, WATCHER_JOURNAL_DATABASE_FILE),
+      )
+        ? readWatcherFaultDecisionEvidence({
+            directory: config.workflowJournalDirectory,
+            deploymentFingerprint: deployment.manifest.manifestId,
+            launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+          }).map((decision) => ({ decision }))
+        : [];
     const latestDiagnostics = (
       kind: "l1_source" | "verification" | "da_fetch",
     ) => {

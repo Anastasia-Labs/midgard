@@ -51,6 +51,8 @@ import {
  */
 export const createWatcherProverFundingAuthorityFactory = (input: {
   readonly journalRoot: string;
+  /** The key the fault-proof journals' rows are authenticated with. */
+  readonly journalAuthenticationKey: Uint8Array;
   readonly launchScope: readonly WatcherInstalledWorkflowCategory[];
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly protocolParameters: WatcherProtocolParameterRuntimeAuthority;
@@ -185,6 +187,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
       let reservationPolicy = policy;
       await authorizeWatcherProverFundingRecovery({
         journalRoot: input.journalRoot,
+        journalAuthenticationKey: input.journalAuthenticationKey,
         deploymentIdentity: input.deploymentIdentity,
         actuationPermit: request.actuationPermit,
         category: request.category,

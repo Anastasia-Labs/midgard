@@ -7,7 +7,7 @@ import { journalJsonDigest } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit } from "@lucid-evolution/lucid";
 import {
-  openWatcherFaultDecisionJournal,
+  readWatcherFaultDecisionEvidence,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
 } from "midgard-watcher";
 import { expect } from "vitest";
@@ -289,14 +289,17 @@ export const runJourney = async (
       trustedHeadRevision,
       WATCHER_LAUNCH_TIMEOUT_MS,
     );
+    // The watcher holds the journal key; its rows are read as evidence.
     const readDecisions = async () =>
-      (
-        await openWatcherFaultDecisionJournal({
-          directory: config.workflowJournalDirectory,
-          deploymentFingerprint: deployment.manifest.manifestId,
-          launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-        })
-      ).readAll();
+      existsSync(
+        join(config.workflowJournalDirectory, "watcher-journals.sqlite"),
+      )
+        ? readWatcherFaultDecisionEvidence({
+            directory: config.workflowJournalDirectory,
+            deploymentFingerprint: deployment.manifest.manifestId,
+            launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+          }).map((decision) => ({ decision }))
+        : [];
     await poll(
       `automatic ${fixture.category} decision`,
       async () => {

@@ -1,6 +1,3 @@
-import { mkdir, readdir, realpath } from "node:fs/promises";
-import { join } from "node:path";
-
 import {
   assertWorkflowActuationPermitIdentity,
   createWorkflowReconciliationPermitController,
@@ -20,18 +17,27 @@ import {
   assertWatcherNativeBlockAdmission,
   type WatcherNativeBlockAdmission,
 } from "../l1/native-block-admission.js";
-import { openWatcherFaultDecisionJournal } from "./fault-decision-journal.js";
-import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 import {
-  isWatcherProofCompletionMarked,
-  markWatcherProofCompletionBeyondRecovery,
-} from "./fault-proof-completion-marker.js";
+  openWatcherFaultDecisionJournal,
+  type WatcherFaultDecisionJournal,
+} from "./fault-decision-journal.js";
+import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 import {
   readWatcherProofExecution,
   type WatcherProofExecution,
   type WatcherProofObjective,
 } from "./fault-proof-objective-journal.js";
+import {
+  canOpenWatcherProofObjective,
+  completeWatcherProofObjective,
+  forgetWatcherProofObjective,
+  listWatcherProofObjectives,
+  pruneWatcherProofObjective,
+  watcherProofJobActive,
+  watcherProofMarkerMatches,
+} from "./fault-proof-objective-table.js";
 import type { WatcherFaultProofDeadline } from "./fault-proof-supervisor.js";
+import { openWatcherJournalDatabase } from "./watcher-journal-database.js";
 
 export type WatcherFaultProofProgressRequest = Readonly<{
   observation: WatcherAuthenticatedStateQueueObservation;
@@ -58,7 +64,8 @@ export type WatcherFaultProofProgressAuthority = Readonly<{
   ): Promise<readonly WatcherFaultProofProgressContext[]>;
   revokeAuthority(reason: string): void;
   unfinishedCount(): number;
-  /** A completion verified beyond rollback recovery is also marked durably. */
+  /** Records the completion; one verified beyond rollback recovery is
+   * marked, so the next start skips it and prunes its workflow journal. */
   markCompleted(
     objective: WatcherProofObjective,
     verified?: Readonly<{
@@ -90,9 +97,8 @@ type Objective = {
 };
 const keyOf = ({ category, headerHash }: WatcherProofObjective): string =>
   `${category}:${headerHash}`;
-const MAX_OBJECTIVES = 2_048;
-const isCompletedJournal = (objective: Objective): boolean =>
-  objective.entries?.some(({ event }) => event.kind === "completed") === true;
+// Bounds the recently admitted decisions kept in memory.
+const MAX_CACHED_DECISIONS = 2_048;
 
 /** Restored decisions authorize observation of signed work only. The supervisor
  * revalidates the latest selected execution immediately before funding. */
@@ -100,7 +106,21 @@ export const createWatcherFaultProofProgressAuthority = (input: {
   readonly journalRoot: string;
   readonly deploymentFingerprint: string;
   readonly categories: readonly WatcherInstalledWorkflowCategory[];
+  readonly authenticationKey: Uint8Array;
 }): WatcherFaultProofProgressAuthority => {
+  const database = () =>
+    openWatcherJournalDatabase({
+      journalRoot: input.journalRoot,
+      authenticationKey: input.authenticationKey,
+    });
+  let decisionJournal: Promise<WatcherFaultDecisionJournal> | undefined;
+  const openDecisions = (): Promise<WatcherFaultDecisionJournal> =>
+    (decisionJournal ??= openWatcherFaultDecisionJournal({
+      directory: input.journalRoot,
+      deploymentFingerprint: input.deploymentFingerprint,
+      launchScope: input.categories,
+      authenticationKey: input.authenticationKey,
+    }));
   const objectives = new Map<string, Objective>();
   const decisions = new Map<string, HeaderFaultDecision>();
   let initialized: Promise<void> | undefined;
@@ -119,34 +139,12 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       decisions.set(digest, cached);
       return cached;
     }
-    // Journal handles retain their admitted snapshot. The bridge's writer may
-    // have appended this decision since startup, so a genuine cache miss must
-    // re-admit the current disk chain rather than reuse a stale reader handle.
-    const journal = await openWatcherFaultDecisionJournal({
-      directory: input.journalRoot,
-      deploymentFingerprint: input.deploymentFingerprint,
-      launchScope: input.categories,
-    });
-    for (const { decision } of await journal.readAll()) {
-      if (
-        decision.decision === "fault_detected" &&
-        decision.decisionDigest === digest
-      ) {
-        decisions.set(digest, decision);
-        return decision;
-      }
-    }
-    return undefined;
-  };
-  // Completed journals stay indexed until canonical verification retires
-  // them, but they hold no unfinished work and are never erased, so counting
-  // them would refuse every restart once enough proofs had completed.
-  const assertRecoveryBound = (): void => {
-    let unfinished = 0;
-    for (const objective of objectives.values())
-      if (!isCompletedJournal(objective)) unfinished += 1;
-    if (unfinished > MAX_OBJECTIVES)
-      throw new Error("proof progress exceeds its recovery bound");
+    // The bridge's writer may have appended this decision since startup;
+    // the journal reads the rows committed since its last read.
+    const decision = (await (await openDecisions()).read(digest))?.decision;
+    if (decision?.decision !== "fault_detected") return undefined;
+    decisions.set(digest, decision);
+    return decision;
   };
   const pruneDecisions = (): void => {
     const retained = new Set(
@@ -163,7 +161,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     );
     for (const digest of inactive.slice(
       0,
-      Math.max(0, inactive.length - MAX_OBJECTIVES),
+      Math.max(0, inactive.length - MAX_CACHED_DECISIONS),
     ))
       decisions.delete(digest);
   };
@@ -174,7 +172,15 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       objective: objective.decision,
       selectedWorkflowId: objective.workflowId,
     });
-    if (execution === undefined) return;
+    if (execution !== undefined) await adoptExecution(objective, execution);
+  };
+  const adoptExecution = async (
+    objective: Pick<Objective, "entries" | "workflowId"> & {
+      decision?: HeaderFaultDecision;
+    },
+    execution: WatcherProofExecution,
+  ): Promise<void> => {
+    const target = execution.entries[0]!.identity;
     const decisionDigest = execution.entries[0]!.identity.decisionDigest;
     const decision =
       decisionDigest === undefined
@@ -182,8 +188,9 @@ export const createWatcherFaultProofProgressAuthority = (input: {
         : await readDecision(decisionDigest);
     if (
       decision === undefined ||
-      decision.category !== objective.decision.category ||
-      decision.headerHash !== objective.decision.headerHash
+      decision.category !== target.category ||
+      target.target.kind !== "state_queue_header" ||
+      decision.headerHash !== target.target.headerHash
     )
       throw new Error(
         "proof progress has no exact recorded execution decision",
@@ -193,53 +200,40 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     objective.workflowId = execution.workflowId;
   };
   const initialize = async (): Promise<void> => {
-    const journal = await openWatcherFaultDecisionJournal({
-      directory: input.journalRoot,
-      deploymentFingerprint: input.deploymentFingerprint,
-      launchScope: input.categories,
-    });
-    for (const { decision } of await journal.readAll())
+    for (const { decision } of await (await openDecisions()).readAll())
       if (decision.decision === "fault_detected")
         decisions.set(decision.decisionDigest, decision);
-    const root = join(input.journalRoot, "fault-proofs");
-    await mkdir(root, { recursive: true, mode: 0o700 });
-    if ((await realpath(root)) !== root)
-      throw new Error("proof progress journal traverses a symlink");
-    const categories = new Set<string>(input.categories);
-    let unfinished = 0;
-    for (const category of await readdir(root, { withFileTypes: true })) {
-      if (!category.isDirectory() || !categories.has(category.name))
-        throw new Error("proof progress journal contains an unknown category");
-      const categoryPath = join(root, category.name);
-      if ((await realpath(categoryPath)) !== categoryPath)
-        throw new Error("proof progress category traverses a symlink");
-      for (const header of await readdir(categoryPath, {
-        withFileTypes: true,
-      })) {
-        if (!header.isDirectory() || !/^[0-9a-f]{56}$/u.test(header.name))
-          throw new Error("proof progress journal contains an invalid target");
-        // A completion verified beyond rollback recovery holds no work.
-        const target = { category: category.name, headerHash: header.name };
-        if (await isWatcherProofCompletionMarked({ ...input, target }))
-          continue;
-        const candidates = [...decisions.values()].filter(
-          (decision) =>
-            decision.category === category.name &&
-            decision.headerHash === header.name,
-        );
-        const candidate = candidates[0];
-        if (candidate === undefined)
-          throw new Error(
-            "proof progress target has no recorded fault decision",
-          );
-        const objective: Objective = { decision: candidate };
-        await loadExecution(objective);
-        if (objective.entries !== undefined) {
-          objectives.set(keyOf(candidate), objective);
-          if (!isCompletedJournal(objective) && ++unfinished > MAX_OBJECTIVES)
-            throw new Error("proof progress exceeds its recovery bound");
-        }
+    // Startup lists the objective table, never the workflow directories.
+    const rows = listWatcherProofObjectives(database(), input.categories);
+    for (const row of rows) {
+      const target = row.objective;
+      const execution = await readWatcherProofExecution({
+        journalRoot: input.journalRoot,
+        deploymentFingerprint: input.deploymentFingerprint,
+        objective: target,
+      });
+      // Rows of an active job are left to that job's own finish.
+      const settled = !watcherProofJobActive(database(), target);
+      // A completion verified beyond rollback recovery holds no work.
+      if (
+        settled &&
+        row.marker !== null &&
+        (execution === undefined ||
+          watcherProofMarkerMatches(row.marker, execution))
+      ) {
+        await pruneWatcherProofObjective(database(), input.journalRoot, target);
+        continue;
       }
+      // A job queued but never started left no execution and holds no work;
+      // a live fault queues it again.
+      if (execution === undefined) {
+        if (settled)
+          forgetWatcherProofObjective(database(), target, { decisions: false });
+        continue;
+      }
+      const objective = {} as Objective;
+      await adoptExecution(objective, execution);
+      objectives.set(keyOf(target), objective);
     }
     pruneDecisions();
   };
@@ -289,7 +283,6 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     objective.entries = execution.entries;
     objective.workflowId = execution.workflowId;
     objectives.set(keyOf(key), objective);
-    assertRecoveryBound();
     pruneDecisions();
   };
   return Object.freeze({
@@ -390,20 +383,26 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           throw new Error(
             "proof progress fault differs from its authenticated observation or authority",
           );
-        decisions.set(fault.decision.decisionDigest, fault.decision);
-        const objective = objectives.get(currentKey!) ?? {
-          decision: fault.decision,
-        };
-        objective.currentPermit = fault.actuationPermit;
-        objective.currentDecisionDigest = fault.decision.decisionDigest;
-        objectives.set(currentKey!, objective);
-        contexts.push({
-          observationRevision,
-          ...fault,
-          rollbackGeneration: request.rollbackGeneration,
-        });
+        // At its cap of open objectives the table refuses a new one: the
+        // supervisor reports journal_capacity and a later observation retries.
+        if (
+          objectives.has(currentKey!) ||
+          canOpenWatcherProofObjective(database(), fault.decision)
+        ) {
+          decisions.set(fault.decision.decisionDigest, fault.decision);
+          const objective = objectives.get(currentKey!) ?? {
+            decision: fault.decision,
+          };
+          objective.currentPermit = fault.actuationPermit;
+          objective.currentDecisionDigest = fault.decision.decisionDigest;
+          objectives.set(currentKey!, objective);
+          contexts.push({
+            observationRevision,
+            ...fault,
+            rollbackGeneration: request.rollbackGeneration,
+          });
+        }
       }
-      assertRecoveryBound();
       if (changed) {
         for (const [key, objective] of objectives) {
           if (key === currentKey) continue;
@@ -481,12 +480,13 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     markCompleted: async (objective, verified) => {
       objectives.delete(keyOf(objective));
       pruneDecisions();
-      if (verified !== undefined)
-        await markWatcherProofCompletionBeyondRecovery({
-          ...input,
-          objective,
-          ...verified,
-        });
+      // The row frees the cap slot and spares a restart one verification. A
+      // failed write leaves it open, so the next start verifies it again.
+      try {
+        completeWatcherProofObjective(database(), objective, verified);
+      } catch {
+        // Verified again on the next start.
+      }
     },
   });
 };

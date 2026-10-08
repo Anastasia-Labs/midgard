@@ -26,6 +26,7 @@ import {
   type WatcherProverFundingUtxoProvider,
 } from "../../src/runtime/watcher-runtime.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
 const directories: string[] = [];
 
@@ -251,6 +252,7 @@ describe("watcher production prover funding permit mint V1", () => {
     const admitted = createWatcherProverFundingAuthorityFactory({
       launchScope: ["doubleSpend"],
       journalRoot: process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
+      journalAuthenticationKey: TEST_JOURNAL_KEY,
       deploymentIdentity: makeWatcherDeploymentAuthorityFixture().result,
       protocolParameters:
         await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
@@ -278,6 +280,7 @@ describe("watcher production prover funding permit mint V1", () => {
     const factory = createWatcherProverFundingAuthorityFactory({
       launchScope: ["doubleSpend"],
       journalRoot: process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
+      journalAuthenticationKey: TEST_JOURNAL_KEY,
       deploymentIdentity,
       protocolParameters:
         await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
@@ -305,6 +308,7 @@ describe("watcher production prover funding permit mint V1", () => {
     const factory = createWatcherProverFundingAuthorityFactory({
       launchScope: ["doubleSpend"],
       journalRoot: process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
+      journalAuthenticationKey: TEST_JOURNAL_KEY,
       deploymentIdentity,
       protocolParameters,
       store,

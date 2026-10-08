@@ -1,33 +1,41 @@
-import * as fs from "node:fs/promises";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   openWatcherFaultDecisionJournal,
+  readWatcherFaultDecisionEvidence,
   unsafeOpenWatcherFaultDecisionJournalForTest,
 } from "../../src/fault-proofs/fault-decision-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
 import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import {
+  closeWatcherJournalDatabase,
+  WATCHER_JOURNAL_DATABASE_FILE,
+} from "../../src/fault-proofs/watcher-journal-database.js";
 import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import {
+  journalDirectory,
+  removeJournalDirectories,
+  TEST_JOURNAL_KEY,
+} from "../support/watcher-journal-fixture.js";
 
-vi.mock("node:fs/promises", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("node:fs/promises")>()),
-}));
-
-const directories: string[] = [];
 const DEPLOYMENT = "dd".repeat(32);
 const HEADER = "aa".repeat(28);
 const DIGEST = "bb".repeat(32);
 
-const directory = async (): Promise<string> => {
-  const path = await mkdtemp("/var/tmp/midgard-fault-decisions-");
-  directories.push(path);
-  return path;
-};
+const directory = (): Promise<string> =>
+  journalDirectory("midgard-fault-decisions");
+
+const journalInput = (root: string) => ({
+  directory: root,
+  deploymentFingerprint: DEPLOYMENT,
+  launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+  authenticationKey: TEST_JOURNAL_KEY,
+});
 
 const faultDecision = (
   overrides: Readonly<Record<string, unknown>> = {},
@@ -76,95 +84,49 @@ const healthyDecision = (): Readonly<Record<string, unknown>> => {
   });
 };
 
-afterEach(async () => {
-  vi.restoreAllMocks();
-  await Promise.all(
-    directories
-      .splice(0)
-      .map(async (path) => await rm(path, { force: true, recursive: true })),
-  );
-});
+afterEach(removeJournalDirectories);
 
 describe("production fault decision journal", () => {
-  it("exposes only complete records to a fresh reader during a delayed write", async () => {
+  it("shows a second handle the rows another handle committed", async () => {
     const root = await directory();
-    const input = {
-      directory: root,
-      deploymentFingerprint: DEPLOYMENT,
-      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-    };
-    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest(input);
+    const writer = await unsafeOpenWatcherFaultDecisionJournalForTest(
+      journalInput(root),
+    );
+    const reader = await openWatcherFaultDecisionJournal(journalInput(root));
+    expect(await reader.readAll()).toEqual([]);
     const first =
-      await journal.unsafeAppendDecisionEnvelopeForTest(faultDecision());
-    let markWriteStarted!: () => void;
-    let releaseWrite!: () => void;
-    const writeStarted = new Promise<void>((resolve) => {
-      markWriteStarted = resolve;
-    });
-    const writeGate = new Promise<void>((resolve) => {
-      releaseWrite = resolve;
-    });
-    const originalOpen = fs.open;
-    vi.spyOn(fs, "open").mockImplementation(async (...args) => {
-      const handle = await originalOpen(...args);
-      if (args[1] === "wx") {
-        const originalWrite = handle.writeFile.bind(handle);
-        vi.spyOn(handle, "writeFile").mockImplementationOnce(async (bytes) => {
-          if (!(bytes instanceof Uint8Array))
-            throw new Error("fixture expects bytes");
-          const middle = Math.floor(bytes.length / 2);
-          await originalWrite(bytes.subarray(0, middle));
-          markWriteStarted();
-          await writeGate;
-          await originalWrite(bytes.subarray(middle));
-        });
-      }
-      return handle;
-    });
-    const append =
-      journal.unsafeAppendDecisionEnvelopeForTest(healthyDecision());
-    try {
-      await writeStarted;
-      const reader = await openWatcherFaultDecisionJournal(input);
-      expect(await reader.readAll()).toEqual([first]);
-    } finally {
-      releaseWrite();
-      await append;
-    }
-    const reader = await openWatcherFaultDecisionJournal(input);
-    expect((await reader.readAll()).map(({ revision }) => revision)).toEqual([
-      "0",
-      "1",
-    ]);
-    expect(await readdir(root)).toEqual(["fault-decisions"]);
+      await writer.unsafeAppendDecisionEnvelopeForTest(faultDecision());
+    expect(await reader.read(first.decision.decisionDigest)).toEqual(first);
+    const second =
+      await writer.unsafeAppendDecisionEnvelopeForTest(healthyDecision());
+    expect(await reader.readAll()).toEqual([first, second]);
+    expect(first.revision).toBe("1");
+    expect(second.revision).toBe("2");
   });
 
-  it("never overwrites an existing revision when independent writers collide", async () => {
+  it("keeps every row across a restart and serves them as evidence", async () => {
     const root = await directory();
-    const input = {
-      directory: root,
-      deploymentFingerprint: DEPLOYMENT,
-      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-    };
-    const first = await unsafeOpenWatcherFaultDecisionJournalForTest(input);
-    const second = await unsafeOpenWatcherFaultDecisionJournalForTest(input);
-    await first.unsafeAppendDecisionEnvelopeForTest(faultDecision());
-    const path = join(root, "fault-decisions", "00000000000000000000.json");
-    const original = await readFile(path);
-    await expect(
-      second.unsafeAppendDecisionEnvelopeForTest(healthyDecision()),
-    ).rejects.toMatchObject({ code: "EEXIST" });
-    expect(await readFile(path)).toEqual(original);
-    expect(await first.audit()).toEqual(await first.readAll());
-    expect(await readdir(root)).toEqual(["fault-decisions"]);
+    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest(
+      journalInput(root),
+    );
+    const first =
+      await journal.unsafeAppendDecisionEnvelopeForTest(faultDecision());
+    closeWatcherJournalDatabase(root);
+    const reopened = await openWatcherFaultDecisionJournal(journalInput(root));
+    expect(await reopened.readAll()).toEqual([first]);
+    expect(
+      readWatcherFaultDecisionEvidence({
+        directory: root,
+        deploymentFingerprint: DEPLOYMENT,
+        launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+      }),
+    ).toEqual([first.decision]);
   });
 
   it("admits out-ref detection identifiers without relaxing violation identifiers", async () => {
-    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest({
-      directory: await directory(),
-      deploymentFingerprint: DEPLOYMENT,
-      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-    });
+    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest(
+      journalInput(await directory()),
+    );
     const envelope = faultDecision({
       detectionId: `double-spend:0:1:0:${DIGEST}#0`,
     });
@@ -182,25 +144,21 @@ describe("production fault decision journal", () => {
       ),
     ).rejects.toThrow("detection id is invalid");
   });
+
   it("persists exact envelopes but never recreates runnable authority", async () => {
     const root = await directory();
-    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest({
-      directory: root,
-      deploymentFingerprint: DEPLOYMENT,
-      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-    });
+    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest(
+      journalInput(root),
+    );
     const first =
       await journal.unsafeAppendDecisionEnvelopeForTest(faultDecision());
     const duplicate =
       await journal.unsafeAppendDecisionEnvelopeForTest(faultDecision());
-    expect(first.revision).toBe("0");
+    expect(first.revision).toBe("1");
     expect(duplicate).toEqual(first);
 
-    const reopened = await openWatcherFaultDecisionJournal({
-      directory: root,
-      deploymentFingerprint: DEPLOYMENT,
-      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-    });
+    closeWatcherJournalDatabase(root);
+    const reopened = await openWatcherFaultDecisionJournal(journalInput(root));
     const [persisted] = await reopened.readAll();
     expect(persisted?.decision.decision).toBe("fault_detected");
     if (persisted?.decision.decision !== "fault_detected")
@@ -243,41 +201,23 @@ describe("production fault decision journal", () => {
     await supervisor.close();
   });
 
-  it("serializes concurrent decisions into one contiguous hash chain", async () => {
+  it("commits concurrent decisions as consecutive revisions", async () => {
     const root = await directory();
-    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest({
-      directory: root,
-      deploymentFingerprint: DEPLOYMENT,
-      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-    });
+    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest(
+      journalInput(root),
+    );
     await Promise.all([
       journal.unsafeAppendDecisionEnvelopeForTest(faultDecision()),
       journal.unsafeAppendDecisionEnvelopeForTest(healthyDecision()),
     ]);
     const records = await journal.readAll();
-    expect(records.map(({ revision }) => revision)).toEqual(["0", "1"]);
-    expect(records[1]!.priorRecordSha256).toMatch(/^[0-9a-f]{64}$/u);
-
-    const secondPath = join(
-      root,
-      "fault-decisions",
-      "00000000000000000001.json",
-    );
-    await writeFile(
-      secondPath,
-      `${JSON.stringify({ ...records[1], priorRecordSha256: "00".repeat(32) })}\n`,
-      "utf8",
-    );
-    await expect(journal.audit()).rejects.toThrow("chain is invalid");
+    expect(records.map(({ revision }) => revision)).toEqual(["1", "2"]);
   });
 
-  it("rejects scope, category, digest, and record-layout substitutions", async () => {
-    const root = await directory();
-    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest({
-      directory: root,
-      deploymentFingerprint: DEPLOYMENT,
-      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-    });
+  it("rejects scope, category and digest substitutions", async () => {
+    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest(
+      journalInput(await directory()),
+    );
     const swappedScope = [...WATCHER_INSTALLED_WORKFLOW_CATEGORIES];
     [swappedScope[0], swappedScope[1]] = [swappedScope[1]!, swappedScope[0]!];
     await expect(
@@ -299,124 +239,63 @@ describe("production fault decision journal", () => {
         decisionDigest: "00".repeat(32),
       }),
     ).rejects.toThrow("decision digest mismatch");
-
-    await writeFile(
-      join(root, "fault-decisions", "unexpected.json"),
-      "{}\n",
-      "utf8",
-    );
-    await expect(journal.audit()).rejects.toThrow(
-      "contains invalid entry unexpected.json",
-    );
+    expect(await journal.readAll()).toEqual([]);
   });
 
-  it("appends 10,000 decisions with one opening scan and one exact read-back each", async () => {
-    const files = new Map<string, Uint8Array>();
-    let listCalls = 0;
-    let readCalls = 0;
-    let writeCalls = 0;
-    let syncCalls = 0;
-    const root = "/var/lib/midgard/test-fault-decision-scale";
+  it("refuses a row whose authenticated body was swapped for another decision", async () => {
+    const root = await directory();
     const journal = await unsafeOpenWatcherFaultDecisionJournalForTest(
-      {
-        directory: root,
-        deploymentFingerprint: DEPLOYMENT,
-        launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-      },
-      Object.freeze({
-        prepare: async () => undefined,
-        list: async (directory) => {
-          listCalls += 1;
-          const prefix = `${directory}/`;
-          return [...files.keys()]
-            .filter((path) => path.startsWith(prefix))
-            .map((path) =>
-              Object.freeze({
-                name: path.slice(prefix.length),
-                isFile: true,
-              }),
-            );
-        },
-        read: async (path) => {
-          readCalls += 1;
-          const bytes = files.get(path);
-          if (bytes === undefined) throw new Error("missing test record");
-          return Uint8Array.from(bytes);
-        },
-        writeExclusive: async (path, bytes) => {
-          writeCalls += 1;
-          if (files.has(path)) throw new Error("exclusive create conflict");
-          files.set(path, Uint8Array.from(bytes));
-        },
-        syncDirectory: async () => {
-          syncCalls += 1;
-        },
-      }),
+      journalInput(root),
     );
-    for (let index = 0; index < 10_000; index += 1) {
+    const fault =
+      await journal.unsafeAppendDecisionEnvelopeForTest(faultDecision());
+    await journal.unsafeAppendDecisionEnvelopeForTest(healthyDecision());
+    closeWatcherJournalDatabase(root);
+    // Swap the two rows' keys: each row keeps its own MAC, which binds its
+    // key, so the edit must be refused at the next start.
+    const database = new DatabaseSync(
+      join(root, WATCHER_JOURNAL_DATABASE_FILE),
+    );
+    database
+      .prepare(
+        "UPDATE watcher_fault_decisions SET row_key = 'swap' WHERE row_key = ?",
+      )
+      .run(fault.decision.decisionDigest);
+    database.close();
+    await expect(
+      openWatcherFaultDecisionJournal(journalInput(root)),
+    ).rejects.toThrow("row swap MAC differs");
+  });
+
+  it("appends 2,000 decisions at one row each", async () => {
+    const root = await directory();
+    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest(
+      journalInput(root),
+    );
+    for (let index = 0; index < 2_000; index += 1)
       await journal.unsafeAppendDecisionEnvelopeForTest(
         faultDecision({
           detectionId: `double_spend_v1:${index.toString()}:${DIGEST}`,
           position: index.toString(),
         }),
       );
-    }
-    expect((await journal.readAll()).length).toBe(10_000);
-    expect({ listCalls, readCalls, writeCalls, syncCalls }).toEqual({
-      listCalls: 1,
-      readCalls: 10_000,
-      writeCalls: 10_000,
-      syncCalls: 10_000,
-    });
-  }, 30_000);
-
-  it("serializes a full audit behind an in-flight exclusive append", async () => {
-    const files = new Map<string, Uint8Array>();
-    let releaseWrite!: () => void;
-    let markWriteStarted!: () => void;
-    const writeStarted = new Promise<void>((resolve) => {
-      markWriteStarted = resolve;
-    });
-    const writeGate = new Promise<void>((resolve) => {
-      releaseWrite = resolve;
-    });
-    const root = "/var/lib/midgard/test-fault-decision-concurrency";
-    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest(
+    expect((await journal.readAll()).length).toBe(2_000);
+    const database = new DatabaseSync(
+      join(root, WATCHER_JOURNAL_DATABASE_FILE),
       {
-        directory: root,
-        deploymentFingerprint: DEPLOYMENT,
-        launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+        readOnly: true,
       },
-      Object.freeze({
-        prepare: async () => undefined,
-        list: async (directory) => {
-          const prefix = `${directory}/`;
-          return [...files.keys()]
-            .filter((path) => path.startsWith(prefix))
-            .map((path) => ({
-              name: path.slice(prefix.length),
-              isFile: true,
-            }));
-        },
-        read: async (path) => {
-          const bytes = files.get(path);
-          if (bytes === undefined) throw new Error("missing test record");
-          return bytes;
-        },
-        writeExclusive: async (path, bytes) => {
-          files.set(path, Uint8Array.from(bytes));
-          markWriteStarted();
-          await writeGate;
-        },
-        syncDirectory: async () => undefined,
-      }),
     );
-    const appending =
-      journal.unsafeAppendDecisionEnvelopeForTest(faultDecision());
-    await writeStarted;
-    const auditing = journal.audit();
-    releaseWrite();
-    await expect(appending).resolves.toMatchObject({ revision: "0" });
-    await expect(auditing).resolves.toHaveLength(1);
-  });
+    const count = (sql: string) =>
+      Number((database.prepare(sql).get() as { n: number }).n);
+    expect(count("SELECT count(*) AS n FROM watcher_fault_decisions")).toBe(
+      2_000,
+    );
+    expect(
+      count(
+        "SELECT count(*) AS n FROM watcher_journal_revisions WHERE journal = 'fault_decisions'",
+      ),
+    ).toBe(64);
+    database.close();
+  }, 120_000);
 });

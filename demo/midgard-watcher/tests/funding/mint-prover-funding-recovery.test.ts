@@ -21,6 +21,7 @@ import { unsafeOpenWatcherFaultDecisionJournalForTest } from "../../src/fault-pr
 import { authorizeWatcherProverFundingRecovery } from "../../src/funding/prover-funding-recovery.js";
 import type { WatcherProverFundingReservationStore } from "../../src/funding/prover-funding-reservation.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -69,6 +70,7 @@ const setup = async () => {
     directory: journalRoot,
     deploymentFingerprint: deploymentIdentity.manifestId,
     launchScope,
+    authenticationKey: TEST_JOURNAL_KEY,
   });
   await decisions.unsafeAppendDecisionEnvelopeForTest(decision);
   const identity = {
@@ -179,6 +181,7 @@ const setup = async () => {
     authorize: () =>
       authorizeWatcherProverFundingRecovery({
         journalRoot,
+        journalAuthenticationKey: TEST_JOURNAL_KEY,
         deploymentIdentity,
         actuationPermit: controller.permit,
         category: identity.category,

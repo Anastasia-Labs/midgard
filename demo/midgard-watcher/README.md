@@ -92,6 +92,21 @@ head is published. Ordinary event-history restart restores its authenticated
 semantic validation and corroborates the exact current native head. Full replay
 remains an explicit recovery operation.
 
+The fault decision, proof queue and proof objective journals are tables in
+`watcher-journals.sqlite` inside the workflow journal directory. Each record is
+one row, authenticated with the rollback key, and each commit is one chained
+revision, so a persist writes only the rows it changes. Startup verifies every
+row and the latest 64 revisions, and refuses a tampered, deleted, replayed or
+reordered record. An objective whose completion was verified deeper than
+rollback recovery reaches is skipped at the next start and pruned with its
+workflow journal. Only open objectives count toward the cap of 2,048; at the
+cap the watcher stays up and `/readyz` reports `journal_capacity` until
+objectives complete.
+
+Every watcher SQLite file, the journals included, must sit on a local disk,
+never a network filesystem (NFS, SMB and the like): those break SQLite's file
+locking and its write-ahead log.
+
 Earlier development formats have no automatic compatibility fallback. A
 format refusal requires explicit audited recovery or a separately authorized
 fresh deployment; it does not authorize discarding an existing deployment's

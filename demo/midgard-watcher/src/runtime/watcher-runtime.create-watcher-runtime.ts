@@ -341,6 +341,7 @@ export const createWatcherRuntime = async (input: {
       supervisor: faultProofSupervisor,
       stateQueueSource,
       journalDirectory: input.config.workflowJournalDirectory,
+      authenticationKey: trusted.rollbackAuthenticationKey,
       runtimeConfigPath: input.config.watcherRuntimeConfigPath,
       maximumClassificationConcurrency: 16,
       operationsSink: operations.sink,

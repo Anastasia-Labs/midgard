@@ -13,6 +13,7 @@ import {
 } from "../support/completed-proof-journal-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervisor-idle.js";
+import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
 // The double-spend classifier fixture launches one family, so the installed
 // scope is narrowed to that family for this file only.
@@ -56,6 +57,7 @@ describe("fault-proof supervisor queue order", () => {
       directory: root,
       deploymentFingerprint: deploymentIdentity.manifestId,
       launchScope: reconciled.launchScope,
+      authenticationKey: TEST_JOURNAL_KEY,
     });
     await journal.appendLiveDecision(reconciled);
     await writeExecution(root, reconciled, true);
