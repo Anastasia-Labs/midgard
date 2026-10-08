@@ -30,8 +30,9 @@ COPY midgard-core ./midgard-core
 COPY midgard-sdk ./midgard-sdk
 COPY midgard-validation ./midgard-validation
 COPY midgard-fault-proofs ./midgard-fault-proofs
+COPY midgard-l1-follower ./midgard-l1-follower
 COPY da-committee-node ./da-committee-node
-RUN pnpm --filter @al-ft/lucid-midgard run build:contrib-raw && pnpm --filter @al-ft/l1-node-transport run build:contrib-raw && pnpm --filter @al-ft/midgard-core run build:contrib-raw && pnpm --filter @al-ft/midgard-sdk run build:contrib-raw && pnpm --filter @al-ft/midgard-validation run build:contrib-raw && pnpm --filter @al-ft/midgard-fault-proofs run build:contrib-raw && pnpm --filter da-committee-node run build:contrib-raw
+RUN pnpm --filter @al-ft/lucid-midgard run build:contrib-raw && pnpm --filter @al-ft/l1-node-transport run build:contrib-raw && pnpm --filter @al-ft/midgard-core run build:contrib-raw && pnpm --filter @al-ft/midgard-sdk run build:contrib-raw && pnpm --filter @al-ft/midgard-validation run build:contrib-raw && pnpm --filter @al-ft/midgard-fault-proofs run build:contrib-raw && pnpm --filter @al-ft/midgard-l1-follower run build:contrib-raw && pnpm --filter da-committee-node run build:contrib-raw
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm --filter da-committee-node deploy --prod /prod/da
 FROM node:22.22.2-bookworm-slim
 WORKDIR /app

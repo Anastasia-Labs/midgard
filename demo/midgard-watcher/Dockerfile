@@ -50,6 +50,7 @@ COPY midgard-core ./midgard-core
 COPY midgard-validation ./midgard-validation
 COPY midgard-sdk ./midgard-sdk
 COPY midgard-fault-proofs ./midgard-fault-proofs
+COPY midgard-l1-follower ./midgard-l1-follower
 COPY midgard-watcher ./midgard-watcher
 # The production chain only, dependencies first. `midgard-watcher...` would
 # also select its dev-only workspace edges (midgard-node and the packages
@@ -60,6 +61,7 @@ RUN pnpm --filter @al-ft/midgard-core run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-sdk run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-validation run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-fault-proofs run build:contrib-raw
+RUN pnpm --filter @al-ft/midgard-l1-follower run build:contrib-raw
 RUN pnpm --filter midgard-watcher run build:contrib-raw
 # Same store as the install step: `deploy --prod` re-resolves the git-hosted
 # merkle-patricia-forestry dependency, and only a store that already holds the
