@@ -165,6 +165,67 @@ describe("intersectionPoints", () => {
     ]);
   });
 
+  it("a fork between 2,049 and k blocks deep intersects at the retained boundary and rewinds without R1", async () => {
+    // Mainnet k: the exponential gaps stop at 2,048, the next one (4,096)
+    // lies below k, so only the boundary candidate keeps such a fork inside
+    // the window.
+    const k = 2_160;
+    const store = openSqliteFactStore({
+      ...simStoreOptions([], k, "sqlite"),
+      path: ":memory:",
+    });
+    opened.push(store);
+    expect(await store.start()).toMatchObject({ kind: "ready" });
+    expect(await store.initialize(SIM_ORIGIN)).toMatchObject({
+      kind: "initialized",
+    });
+    const chain = new SimChain(simUniverse(), SIM_ORIGIN);
+    const points = [];
+    const length = 2_400;
+    for (let i = 0; i < length; i += 1) {
+      const { event } = chain.forward([]);
+      points.push(event.point);
+      expect((await applyChainSyncEvent(store, event)).result.kind).toBe(
+        "applied",
+      );
+    }
+    for (let done = false; !done; ) {
+      const pruned = await store.prune();
+      if (!("done" in pruned)) throw new Error(JSON.stringify(pruned));
+      done = pruned.done;
+    }
+    // The node switched to a fork whose last common block is 2,100 deep.
+    const forkDepth = 2_100;
+    const key = (point: ReturnType<typeof transportPoint>): string =>
+      `${String(point.slot)}.${point.hash}`;
+    const shared = new Set(
+      [
+        transportPoint(SIM_ORIGIN.point),
+        ...points.slice(0, length - forkDepth),
+      ].map(key),
+    );
+    const offered = await intersectionPoints(store);
+    // Best first: strictly descending, the boundary right after the 2,048 gap.
+    const boundary = points[length - 1 - k];
+    const at = (point: ReturnType<typeof transportPoint> | undefined): number =>
+      offered.findIndex((offer) => key(offer) === key(point!));
+    expect(at(boundary)).toBeGreaterThan(0);
+    expect(at(boundary)).toBe(at(points[length - 1 - 2_048]) + 1);
+    // FindIntersect answers with the first offered point on the node's chain.
+    const intersection = offered.find((point) => shared.has(key(point)));
+    expect(intersection).toEqual(boundary);
+    const step = await applyChainSyncEvent(store, {
+      kind: "roll_backward",
+      seq: 1n,
+      point: intersection!,
+      tip: {
+        point: intersection!,
+        blockNo: BigInt(SIM_ORIGIN.height + length - k),
+      },
+    });
+    expect(step.result).toMatchObject({ kind: "rewound", depth: k });
+  }, 120_000);
+
   it("offers only the origin for a store at its origin", async () => {
     const store = await freshStore();
     expect(await intersectionPoints(store)).toEqual([
@@ -212,7 +273,7 @@ describe("checkpointFailure", () => {
     );
     const wrongValidTo = {
       ...checkpoint,
-      checks: [{ ...present!, invalidAfter: 1 } as const],
+      checks: [{ ...present!, invalidAfter: 1n } as const],
     };
     expect(await checkpointFailure(store, wrongValidTo)).toMatch(
       /re-landed tx: expected stored \(valid true, invalidAfter 1\)/u,

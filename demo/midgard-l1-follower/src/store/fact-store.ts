@@ -114,6 +114,8 @@ export type GenerationListener = (
 export type FactStore = Readonly<{
   dialect: SqlBackend["dialect"];
   registry: TemporalRegistry;
+  /** The security parameter k this store rewinds and prunes with, in blocks. */
+  securityParameter: number;
   /**
    * Takes the writer lease (`store_locked` while another process holds it;
    * retry with backoff), migrates, runs INV1–INV6 (R5 on failure), loads
@@ -273,6 +275,7 @@ export const createFactStore = (
   const store: FactStore = {
     dialect,
     registry,
+    securityParameter: options.securityParameter,
     start: () =>
       lane.run(async (): Promise<StartResult> => {
         if (lease !== null && (fenced || lease.lost())) {
