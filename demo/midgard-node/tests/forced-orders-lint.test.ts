@@ -4,6 +4,7 @@
  * the modules its S3 derivation runs read no clock, randomness or network.
  */
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import {
   createTemporalRegistry,
@@ -12,6 +13,7 @@ import {
 import {
   declaredTables,
   lintDeterminism,
+  lintDeterminismModules,
   lintSchema,
 } from "@al-ft/midgard-l1-follower/lint";
 import { describe, expect, it } from "vitest";
@@ -21,7 +23,25 @@ import {
   forcedOrderMigrations,
 } from "../src/forced-orders/index.js";
 
-/** What runs in the writer transaction (`forcedOrderDerivation` and its imports). */
+/**
+ * What runs in the writer transaction (`forcedOrderDerivation`) and every
+ * module it imports: each forced-order module except the driver side (the
+ * ingest hook, the horizon, the reads, the row builder and the barrel),
+ * which runs outside the writer transaction against the node's database.
+ */
+const LINTED = lintDeterminismModules({
+  root: fileURLToPath(new URL("..", import.meta.url)),
+  include: ["src/forced-orders/*.ts"],
+  exclude: [
+    "src/forced-orders/entry.ts",
+    "src/forced-orders/horizon.ts",
+    "src/forced-orders/index.ts",
+    "src/forced-orders/ingest.ts",
+    "src/forced-orders/reads.ts",
+  ],
+});
+
+/** The modules the lint once named by hand: it must still reach each. */
 const DERIVATION_MODULES = [
   "src/forced-orders/carriage.ts",
   "src/forced-orders/config.ts",
@@ -60,15 +80,17 @@ describe("forced-order projection lints", () => {
     ).not.toEqual([]);
   });
 
-  it("keeps the derivation modules free of clocks, randomness and the network", () => {
-    const files = DERIVATION_MODULES.map(read);
-    expect(lintDeterminism(files)).toEqual([]);
-    const [derive] = files.filter((file) => file.path.endsWith("derive.ts"));
+  it("keeps the derivation and its imports free of clocks, randomness, the network and the host", () => {
+    expect(LINTED.problems).toEqual([]);
+    expect(LINTED.files).toEqual(
+      expect.arrayContaining(DERIVATION_MODULES) as unknown,
+    );
+    const derive = read("src/forced-orders/derive.ts");
     expect(
       lintDeterminism([
         {
-          ...derive!,
-          source: `${derive!.source}\nexport const t = Date.now();\n`,
+          ...derive,
+          source: `${derive.source}\nexport const t = Date.now();\n`,
         },
       ]).map((problem) => problem.rule),
     ).toEqual(["clock"]);
