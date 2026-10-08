@@ -169,6 +169,34 @@ export class NativeMpfFullIndexCapExceeded extends Error {
   }
 }
 
+/** `promote` refused a candidate root whose full index would exceed `cap`,
+ * whose configured value is `limit`, so the owner could not load it at its
+ * next start. `observed` is the candidate's full-index record count or byte
+ * size. The promotion changed nothing: its generation is discarded, and the
+ * durable root marker and the store stay at the last promoted root. */
+export class NativeMpfPromotionIndexCapExceeded extends Error {
+  readonly _tag = "NativeMpfPromotionIndexCapExceeded";
+  constructor(
+    readonly candidateRoot: string,
+    readonly cap: NativeMpfFullIndexCap,
+    readonly limit: number,
+    readonly observed: number,
+  ) {
+    super(
+      `Native MPF promotion refused: ${fullIndexCapMessage(candidateRoot, cap, limit, observed)}, so the owner could not load it at its next start`,
+    );
+  }
+}
+
+/** The live durable root's full-index size, which every promotion accounts
+ * for, and the promotion the owner last refused over a full-index cap, until
+ * a later promotion or a canonical restore succeeds. */
+export type NativeMpfFullIndexHealth = {
+  readonly bytes: number;
+  readonly records: number;
+  readonly promotionRefusal: NativeMpfPromotionIndexCapExceeded | undefined;
+};
+
 /** `restoreCanonicalRoot` could not read the target root's node closure from
  * the native MPF store because a store read failed. Transient: the restore
  * changed nothing, and a later restore reads the closure again. */

@@ -956,8 +956,8 @@
   },
   {
     "file": "midgard-node/src/services/mpf-native-owner/service.production-native-mpf-owner-service.ts",
-    "max": 928,
-    "reason": "ProductionNativeMpfOwnerService is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+    "max": 966,
+    "reason": "ProductionNativeMpfOwnerService is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. The live root's full-index size and the last cap refusal are owner state every promotion, restore and restart updates; the accounting itself lives in service.full-index-accounting.ts."
   },
   {
     "file": "midgard-node/src/transactions/reference-publication.publish-reference-scripts.ts",
