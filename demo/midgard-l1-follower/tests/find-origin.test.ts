@@ -17,6 +17,12 @@ afterEach(async () => {
 });
 
 const fill = (byte: number): Buffer => Buffer.alloc(32, byte);
+/**
+ * A scan that misses its stop at the node tip waits for a block that never
+ * comes: this bound turns that into a failure instead of a hang under the
+ * package's long default.
+ */
+const SCAN_BOUND = { timeout: 10_000 };
 const PREPARE = txBody(fill(0x77), 200_000);
 const PREPARE_ID = blake2b256(PREPARE).toString("hex");
 
@@ -37,7 +43,7 @@ const makeChain = (): FakeBlock[] => {
   return [b1, b2, b3, b4];
 };
 
-describe("findOrigin over the fake sidecar", () => {
+describe("findOrigin over the fake sidecar", SCAN_BOUND, () => {
   const blocks = makeChain();
   const [b1, b2, b3] = blocks as [FakeBlock, FakeBlock, FakeBlock];
   const expected = {
@@ -83,6 +89,21 @@ describe("findOrigin over the fake sidecar", () => {
     ).toMatchObject({ kind: "not_found" });
   });
 
+  it("is not_found at once when started at the tip", async () => {
+    const transport = await fakes.transport("origin", blocks);
+    const tip = blocks[3]!;
+    expect(
+      await findOrigin({
+        transport,
+        txHash: PREPARE_ID,
+        from: { slot: tip.slot, blockHash: tip.hash },
+      }),
+    ).toEqual({
+      kind: "not_found",
+      scannedTo: { slot: 40, blockHash: tip.hash },
+    });
+  });
+
   it("refuses a start point the node does not have", async () => {
     const transport = await fakes.transport("origin", blocks);
     expect(
@@ -103,7 +124,7 @@ describe("findOrigin over the fake sidecar", () => {
   });
 });
 
-describe("midgard-l1-follower find-origin", () => {
+describe("midgard-l1-follower find-origin", SCAN_BOUND, () => {
   const run = async (args: readonly string[], env = {}) => {
     const out: string[] = [];
     const err: string[] = [];

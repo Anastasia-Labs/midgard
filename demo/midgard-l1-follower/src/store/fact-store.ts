@@ -307,6 +307,8 @@ export const createFactStore = (
         const report = await checkInvariants();
         if (!report.ok)
           return markBroken(`at start: ${describeViolations(report)}`);
+        // A clean start recovers an earlier R5 (after a reset, say).
+        broken = null;
         live.clear();
         const count = await loadLiveOutRefs(
           (after) =>
@@ -422,6 +424,8 @@ export const createFactStore = (
     liveOutRefCount: () => live.size,
     prune: (budget = DEFAULT_PRUNE_BUDGET) =>
       lane.run(async () => {
+        if (broken !== null)
+          return { kind: "error", error: new Error(broken.detail) } as const;
         const refusal = writeRefusal();
         if (refusal !== null) return refusal;
         try {
