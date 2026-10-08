@@ -135,11 +135,36 @@ export type ValidationCaptureContext = Awaited<
 /**
  * Classifies the retained header as observed from the follower store; the
  * retained predecessor and classifier-origin context remain the ordinary
- * classifier fixture's.
+ * classifier fixture's. The decision must select a validation-trace dispute.
  */
 export const classifyValidationCapture = async (
-  context: ValidationCaptureContext,
-  captured: SyntheticStateQueueObservationCapture,
+  context: Pick<ValidationCaptureContext, "retained" | "deploymentAuthority">,
+  captured: Pick<
+    SyntheticStateQueueObservationCapture,
+    "observation" | "header"
+  >,
+  deploymentAuthority = context.deploymentAuthority,
+) => {
+  const decision = await classifyRetainedValidationHeader(
+    context,
+    captured,
+    deploymentAuthority,
+  );
+  expect(decision).toMatchObject({
+    decision: "fault_detected",
+    category: "validationTraceDispute",
+    headerHash: captured.header.headerHash,
+  });
+  return decision;
+};
+
+/** The classifier's decision on the retained header, whatever it is. */
+export const classifyRetainedValidationHeader = async (
+  context: Pick<ValidationCaptureContext, "retained" | "deploymentAuthority">,
+  captured: Pick<
+    SyntheticStateQueueObservationCapture,
+    "observation" | "header"
+  >,
   deploymentAuthority = context.deploymentAuthority,
 ) => {
   const observation = authenticatedHeaderObservation(context.retained.block, {
@@ -269,11 +294,6 @@ export const classifyValidationCapture = async (
         minimumConfirmationDepth:
           DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       }),
-  });
-  expect(decision).toMatchObject({
-    decision: "fault_detected",
-    category: "validationTraceDispute",
-    headerHash: captured.header.headerHash,
   });
   return decision;
 };

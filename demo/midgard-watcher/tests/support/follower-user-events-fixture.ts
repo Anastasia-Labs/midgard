@@ -45,7 +45,20 @@ import {
 
 /** The synthetic origin deployment and what its follower reads with. */
 export const followerUserEventsDeployment = (ruleBundleCommitment?: string) => {
-  const deployment = makeOriginDeployment(ruleBundleCommitment);
+  const followed = followerUserEventsDeploymentOf(
+    makeOriginDeployment(ruleBundleCommitment),
+  );
+  return Object.freeze({
+    ...followed,
+    /** The hub-oracle output the activation transaction created. */
+    hubOutRef: activationHubOutRef(followed.scripts.hub),
+  });
+};
+
+/** What a follower of `deployment` reads with. */
+export const followerUserEventsDeploymentOf = (
+  deployment: ReturnType<typeof makeOriginDeployment>,
+) => {
   const deploymentIdentity = deployment.result;
   const scripts = readWatcherUserEventScriptBinding({
     binding: verifyWatcherUserEventScriptBinding({
@@ -67,13 +80,15 @@ export const followerUserEventsDeployment = (ruleBundleCommitment?: string) => {
     scripts,
     authority,
     followedScripts,
-    /** The hub-oracle output the activation transaction created. */
-    hubOutRef: activationHubOutRef(scripts.hub),
   });
 };
 
 export type FollowerUserEventsDeployment = ReturnType<
   typeof followerUserEventsDeployment
+>;
+
+export type FollowedUserEventsDeployment = ReturnType<
+  typeof followerUserEventsDeploymentOf
 >;
 
 const activationHubOutRef = (
@@ -136,7 +151,7 @@ const followerPoint = (point: Point) => ({
  */
 export const openFollowerUserEvents = async (
   input: Readonly<{
-    deployment: FollowerUserEventsDeployment;
+    deployment: FollowedUserEventsDeployment;
     origin?: Point;
     k?: number;
   }>,
