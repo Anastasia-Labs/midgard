@@ -197,15 +197,6 @@ it("preserves actual inline and external Deposit raw map pair order and duplicat
       );
     nonces.sort((a, b) => key(a).localeCompare(key(b)));
     const reserved = new Set(nonces.map(outRefLabel));
-    const selectFunding = async (nonce: UTxO) =>
-      lucid.overrideUTxOs(
-        (await lucid.utxosAt(user.address)).filter(
-          (u) =>
-            plain(u) &&
-            (!reserved.has(outRefLabel(u)) ||
-              outRefLabel(u) === outRefLabel(nonce)),
-        ),
-      );
     const binding = await Effect.runPromise(
       makeEventHistorySourceBinding({
         contracts,
@@ -307,8 +298,16 @@ it("preserves actual inline and external Deposit raw map pair order and duplicat
       );
       await deployment.chain.awaitLedgerTime(Number(protectedUntil) + 60_000);
       vi.setSystemTime(emulator.now());
+      // The reserved nonces stay out of this build's funding only.
       const prepare = async () => {
-        await selectFunding(nonce);
+        lucid.overrideUTxOs(
+          (await lucid.utxosAt(user.address)).filter(
+            (u) =>
+              plain(u) &&
+              (!reserved.has(outRefLabel(u)) ||
+                outRefLabel(u) === outRefLabel(nonce)),
+          ),
+        );
         return Effect.runPromise(
           SDK.prepareDepositSubmissionProgram(lucid, contracts, {
             nonceInput: nonce,
@@ -321,7 +320,7 @@ it("preserves actual inline and external Deposit raw map pair order and duplicat
               depositMinting: deployment.references.get("depositMint")!,
             },
           }),
-        );
+        ).finally(() => lucid.clearUTxOOverride());
       };
       let prepared = await prepare();
       const payloadCbor = ordered(

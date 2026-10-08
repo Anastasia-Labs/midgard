@@ -85,7 +85,6 @@ const fixture = async (confirmed = false) => {
     address,
     assets: { lovelace: 50_000_000n },
   };
-  const refresh = vi.fn(async () => [funding]);
   const override = vi.fn();
   const fresh = signed(1500);
   const build = vi
@@ -132,7 +131,6 @@ const fixture = async (confirmed = false) => {
             address: async () => address,
             getUtxos: async () => [funding],
           }),
-          utxosAt: refresh,
           overrideUTxOs: override,
         },
         contracts: {},
@@ -152,7 +150,7 @@ const fixture = async (confirmed = false) => {
     fresh,
     saved,
     build,
-    refresh,
+    override,
     readRecovery,
     submit,
     delaySlots,
@@ -171,7 +169,7 @@ it.each(["expired", "invalidated"] as const)(
       publishJourneyForcedOrder(f.input, Buffer.from("80", "hex")),
     ).resolves.toEqual({ transactionId: f.fresh.txHash, outputIndex: 0n });
     expect(f.build).toHaveBeenCalledOnce();
-    expect(f.refresh).toHaveBeenCalledTimes(2);
+    expect(f.override).not.toHaveBeenCalled();
     expect(f.submit).toHaveBeenCalledExactlyOnceWith(f.fresh.signedCbor);
     expect(await readJourneyArtifact(f.path)).toMatchObject({
       ...f.fresh,

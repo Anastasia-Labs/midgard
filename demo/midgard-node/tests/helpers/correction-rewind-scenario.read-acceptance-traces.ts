@@ -312,7 +312,6 @@ export const submitWithdrawal = async (h: ContentHandle, target: NodeUtxo) => {
   );
   const signed = await built.tx.sign.withWallet().complete();
   expect(await wallet.awaitTx(await signed.submit())).toBe(true);
-  wallet.overrideUTxOs(await wallet.utxosAt(address));
   await h.synchronize();
   return built.metadata.inclusionTime;
 };

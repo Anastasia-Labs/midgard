@@ -29,7 +29,6 @@ import {
   initializePayoutProgram,
   paymentCredentialOf,
   payoutStatusProgram,
-  refreshWalletUtxosFromProvider,
   resolveEventSettlementProofProgram,
   runNodeCommandProgram,
   SDK,
@@ -65,7 +64,6 @@ it("preserves public raw external events through real settlement, refund, payout
     const signed = await publication.tx.sign.withWallet().complete();
     const hash = await signed.submit();
     expect(await owner.awaitTx(hash)).toBe(true);
-    owner.overrideUTxOs(await owner.utxosAt(await owner.wallet().address()));
     const outputs = await owner.utxosByOutRef([
       { txHash: hash, outputIndex: publication.publicationOutputIndex },
     ]);
@@ -111,7 +109,6 @@ it("preserves public raw external events through real settlement, refund, payout
     const signedDeposit = await builtDeposit.tx.sign.withWallet().complete();
     const depositHash = await signedDeposit.submit();
     expect(await owner.awaitTx(depositHash)).toBe(true);
-    owner.overrideUTxOs(await owner.utxosAt(ownerAddress));
     await h.observer.flush();
     const deposits = await Effect.runPromise(
       SDK.fetchDepositUTxOsProgram(
@@ -258,7 +255,6 @@ it("preserves public raw external events through real settlement, refund, payout
     const signedInvalid = await builtInvalid.tx.sign.withWallet().complete();
     const invalidHash = await signedInvalid.submit();
     expect(await owner.awaitTx(invalidHash)).toBe(true);
-    owner.overrideUTxOs(await owner.utxosAt(ownerAddress));
     await h.observer.flush();
     const invalidOrders = await Effect.runPromise(
       SDK.fetchWithdrawalUTxOsProgram(
@@ -422,7 +418,6 @@ it("preserves public raw external events through real settlement, refund, payout
       (input) =>
         consumedWalletInputs.some((spent) => label(input) === label(spent)),
     );
-    await refreshWalletUtxosFromProvider(lucid);
     const refreshedWallet = await lucid.wallet().getUtxos();
     expect(
       refreshedWallet.some((input) =>
@@ -514,7 +509,6 @@ it("preserves public raw external events through real settlement, refund, payout
       .complete();
     const withdrawalHash = await signedWithdrawal.submit();
     expect(await owner.awaitTx(withdrawalHash)).toBe(true);
-    owner.overrideUTxOs(await owner.utxosAt(ownerAddress));
     await h.observer.flush();
     const withdrawals = await Effect.runPromise(
       SDK.fetchWithdrawalUTxOsProgram(
@@ -689,7 +683,6 @@ it("preserves public raw external events through real settlement, refund, payout
       ["Withdrawal", withdrawalRetained],
     ] as const) {
       diagnostic.stage = `reclaim-${kind}-${retained.txHash}`;
-      owner.overrideUTxOs(await owner.utxosAt(ownerAddress));
       await ensureSeparateCollateralUtxo(owner);
       const reclaimed = await Effect.runPromise(
         SDK.buildReclaimEventHistoryDataTxProgram(owner, fixture.contracts, {

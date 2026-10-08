@@ -37,7 +37,6 @@ import {
   mergeMaturityWindow,
   MidgardContracts,
   NodeConfig,
-  refreshWalletUtxosFromProvider,
   runBlockConfirmation,
   runCommitWorkerUntilSubmitted,
   runLocalFinalizationRecoveryWorker,
@@ -209,7 +208,6 @@ const openMergeLifecycle = async () => {
     const signed = await built.tx.sign.withWallet().complete();
     const hash = await signed.submit();
     expect(await wallet.awaitTx(hash)).toBe(true);
-    await refreshWalletUtxosFromProvider(wallet);
     await h.synchronize();
     return hash;
   };

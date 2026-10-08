@@ -181,7 +181,6 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     const signed = await built.tx.sign.withWallet().complete();
     const hash = await signed.submit();
     expect(await wallet.awaitTx(hash)).toBe(true);
-    wallet.overrideUTxOs(await wallet.utxosAt(address));
     await h.synchronize();
     return hash;
   };

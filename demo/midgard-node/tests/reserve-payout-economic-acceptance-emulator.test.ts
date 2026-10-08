@@ -39,7 +39,6 @@ import {
   initializePayoutProgram,
   paymentCredentialOf,
   payoutStatusProgram,
-  refreshWalletUtxosFromProvider,
   resolveEventSettlementProofProgram,
   SDK,
   utxosProgram,
@@ -143,7 +142,6 @@ it("enforces reserve sibling/accounting and exact payout economics on a real set
     );
     const depositSigned = await depositTx.tx.sign.withWallet().complete();
     expect(await owner.awaitTx(await depositSigned.submit())).toBe(true);
-    owner.overrideUTxOs(await owner.utxosAt(ownerAddress));
     await h.synchronize();
     const deposits = await Effect.runPromise(
       SDK.fetchDepositUTxOsProgram(
@@ -226,7 +224,6 @@ it("enforces reserve sibling/accounting and exact payout economics on a real set
     );
     const withdrawalSigned = await withdrawalTx.tx.sign.withWallet().complete();
     expect(await owner.awaitTx(await withdrawalSigned.submit())).toBe(true);
-    owner.overrideUTxOs(await owner.utxosAt(ownerAddress));
     await h.synchronize();
     const withdrawals = await Effect.runPromise(
       SDK.fetchWithdrawalUTxOsProgram(
@@ -297,7 +294,6 @@ it("enforces reserve sibling/accounting and exact payout economics on a real set
 
     diagnostic.stage = "reserve-funding";
     await ensureSeparateCollateralUtxo(lucid);
-    await refreshWalletUtxosFromProvider(lucid);
     const references = {
       referenceScriptsAddress: fixture.referenceScriptsAccount.address,
     };
@@ -453,7 +449,6 @@ it("enforces reserve sibling/accounting and exact payout economics on a real set
     };
 
     diagnostic.stage = "terminal-payout";
-    await refreshWalletUtxosFromProvider(lucid);
     const conclusion = await Effect.runPromise(
       SDK.buildConcludePayoutTxProgram(lucid, fixture.contracts, {
         ...references,
