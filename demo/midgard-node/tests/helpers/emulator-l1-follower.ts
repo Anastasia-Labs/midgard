@@ -55,6 +55,7 @@ import {
   followerBlockHash,
   writeFollowerTip,
 } from "./follower-view.js";
+import { mirrorEmulatorStateQueue } from "./landed-state-queue.js";
 
 const failed = (message: string, cause?: unknown) =>
   new DatabaseError({ table: "l1_follower_cursor", message, cause });
@@ -218,8 +219,8 @@ export type EmulatorFollowerFixture = {
 };
 
 /**
- * Brings the follower tables to the emulator's tip and returns the plan
- * there. With `globals`, the node's follower state becomes a caught-up
+ * Brings the follower tables to the emulator's tip (the event keys and the
+ * state queue's outputs, P1's facts) and returns the plan there. With `globals`, the node's follower state becomes a caught-up
  * follower whose current plan is this one, so a history owner's recovery
  * ingests it (`ingestAtFollowerView`).
  */
@@ -243,6 +244,7 @@ export const syncEmulatorFollower = (
       orders,
       yield* emulatorChain(lucid),
     );
+    yield* mirrorEmulatorStateQueue(lucid, fixture.contracts.stateQueue);
     if (globals !== undefined)
       yield* Ref.set(globals.L1_FOLLOWER, {
         ...runningFollower(),

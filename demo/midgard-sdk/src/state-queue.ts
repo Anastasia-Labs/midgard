@@ -15,6 +15,7 @@ import "./tx-output-utils.js";
 import "./state-queue.state-queue-redeemer-schema.js";
 import "./state-queue.emulator-state-queue-commit-block-header-params.js";
 import "./state-queue.collect-remove-slashing-inputs.js";
+import "./state-queue.decode-state-queue-output.js";
 import "./state-queue.build-state-queue-removal-tx.js";
 import "./state-queue.incomplete-emulator-commit-block-header-tx-program.js";
 import "./state-queue.incomplete-remove-fraudulent-blocks-link-tx-program.js";
@@ -29,6 +30,13 @@ export {
   resolveFraudProverRewardOutputIndex,
   sortStateQueueUTxOs,
 } from "./state-queue.collect-remove-slashing-inputs.js";
+export {
+  type DecodedStateQueueOutput,
+  decodeStateQueueOutput,
+  stateQueueHeaderHash,
+  type StateQueueOutputProblem,
+  type StateQueueOutputValue,
+} from "./state-queue.decode-state-queue-output.js";
 export {
   type EmulatorStateQueueCommitBlockHeaderParams,
   type EmulatorStateQueueRemoveFraudulentBlocksLinkHeaderParams,

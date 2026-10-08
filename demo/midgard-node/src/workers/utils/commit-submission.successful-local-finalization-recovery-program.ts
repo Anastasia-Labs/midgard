@@ -1,5 +1,6 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Effect, Option, Schedule } from "effect";
 
@@ -15,7 +16,11 @@ import {
 import { DatabaseError } from "../../database/utils/common.js";
 import { Columns as TxColumns } from "../../database/utils/tx.js";
 import type { MidgardMpf, MpfError } from "../../mpf/index.js";
-import { type Database, Lucid } from "../../services/index.js";
+import { type Database } from "../../services/index.js";
+import {
+  findLandedBlock,
+  readLandedStateQueue,
+} from "../../services/landed-state-queue.js";
 import type { TxSubmitError } from "../../transactions/utils.js";
 import { batchProgram } from "../../utils.js";
 import type { WorkerInput, WorkerOutput } from "./commit-block-header.js";
@@ -240,31 +245,17 @@ export const failedSubmissionProgram = (
 export const recoverSubmittedTxHashByHeaderProgram = (
   stateQueueAuthValidator: SDK.AuthenticatedValidator,
   expectedHeaderHash: string,
-): Effect.Effect<Option.Option<string>, never, Lucid> =>
+): Effect.Effect<Option.Option<string>, never, SqlClient.SqlClient> =>
   Effect.gen(function* () {
-    const lucid = yield* Lucid;
-    const fetchConfig: SDK.StateQueueFetchConfig = {
-      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-      stateQueuePolicyId: stateQueueAuthValidator.policyId,
-    };
-    const sortedBlocks = yield* SDK.fetchSortedStateQueueUTxOsProgram(
-      lucid.api,
-      fetchConfig,
+    const read = yield* readLandedStateQueue(stateQueueAuthValidator);
+    if (read.kind !== "ok")
+      return yield* Effect.fail(`${read.kind}: ${read.detail}`);
+    const block = findLandedBlock(read.queue, expectedHeaderHash);
+    if (block === undefined) return Option.none();
+    yield* Effect.logWarning(
+      `🔹 Submit errored but on-chain header ${expectedHeaderHash} is already present in canonical state_queue; recovering submission state.`,
     );
-    for (const block of sortedBlocks) {
-      if (block.datum.key === "Empty") {
-        continue;
-      }
-      const header = yield* SDK.getHeaderFromStateQueueDatum(block.datum);
-      const headerHash = yield* SDK.hashBlockHeader(header);
-      if (headerHash === expectedHeaderHash) {
-        yield* Effect.logWarning(
-          `🔹 Submit errored but on-chain header ${expectedHeaderHash} is already present in canonical state_queue; recovering submission state.`,
-        );
-        return Option.some(block.utxo.txHash);
-      }
-    }
-    return Option.none();
+    return Option.some(block.element.utxo.txHash);
   }).pipe(
     Effect.catchAll((error) =>
       Effect.gen(function* () {

@@ -13,7 +13,6 @@ import { MempoolLedgerDB } from "../src/database/index.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import type { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.js";
 import { initializeArchitectureGOwner } from "../src/services/native-mpf-startup.js";
-import { fetchStateQueueSnapshotProgram } from "../src/services/state-queue-topology.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
@@ -23,6 +22,8 @@ import {
   attestQueuedStateQueueHeader,
   CML,
   commitConfirmRecoverAndMerge,
+  Database,
+  emulatorStateQueueSnapshot,
   ensureSeparateCollateralUtxo,
   fetchLatestCommittedBlock,
   mergeMaturityWindow,
@@ -86,11 +87,11 @@ it("restarts the production native initializer after withdrawal empties an unmer
     );
   const queue = () =>
     Effect.runPromise(
-      fetchStateQueueSnapshotProgram(
+      emulatorStateQueueSnapshot(
         fixture.operatorLucid,
         fixture.contracts.stateQueue,
         "startup",
-      ),
+      ).pipe(Effect.provide(Database.layer)),
     );
   const submit = async (built: { tx: TxSignBuilder }) => {
     const signed = await built.tx.sign.withWallet().complete();
@@ -271,7 +272,7 @@ it("restarts the production native initializer after withdrawal empties an unmer
     );
     expect((await ledger()).spendable).toHaveLength(0);
     const unmerged = await queue();
-    expect(unmerged.topology.parsedNodeCount).toBe(2);
+    expect(unmerged.blockCount).toBe(1);
     expect(unmerged.tailCommitBase.roots.utxosRoot).toBe(
       SDK.EMPTY_MERKLE_TREE_ROOT,
     );
@@ -321,7 +322,7 @@ it("restarts the production native initializer after withdrawal empties an unmer
       globals,
       production,
     });
-    expect(merged.postMergeSnapshot.topology.parsedNodeCount).toBe(1);
+    expect(merged.postMergeSnapshot.blockCount).toBe(0);
     await restart("restart-merged-empty");
     diagnostic.stage = "missing-initialized-store";
     const beforeMissing = await ledger();

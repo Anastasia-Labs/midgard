@@ -1,5 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
+import { SqlClient } from "@effect/sql";
+import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";
@@ -7,6 +8,10 @@ import { DatabaseError } from "../database/utils/common.js";
 import * as Ledger from "../database/utils/ledger.js";
 import { MidgardMpf } from "../mpf/index.js";
 import { Lucid, MidgardContracts, NodeConfig } from "../services/index.js";
+import {
+  findLandedBlock,
+  requireLandedStateQueue,
+} from "../services/landed-state-queue.js";
 import {
   awaitExactTransactionConfirmation,
   type TxSignError,
@@ -159,38 +164,26 @@ const waitForTxConfirmation = (
       }),
   });
 
+/** The committed block's outref, once the landed queue holds it. */
 const fetchCommittedBlockOutRef = ({
-  lucid,
   contracts,
   headerHash,
 }: {
-  readonly lucid: LucidEvolution;
   readonly contracts: SDK.MidgardValidators;
   readonly headerHash: string;
-}): Effect.Effect<string, SDK.LucidError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const unit = toUnit(
-        contracts.stateQueue.policyId,
-        SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash,
-      );
-      const utxos = await lucid.utxosAtWithUnit(
-        contracts.stateQueue.spendingScriptAddress,
-        unit,
-      );
-      if (utxos.length !== 1) {
-        throw new Error(
-          `expected exactly one committed state_queue block UTxO for ${headerHash}, found ${utxos.length}`,
-        );
-      }
-      return `${utxos[0].txHash}#${utxos[0].outputIndex}`;
-    },
-    catch: (cause) =>
-      new SDK.LucidError({
-        message: "Failed to resolve committed state_queue block outref",
-        cause,
-      }),
-  }).pipe(
+}): Effect.Effect<string, SDK.StateQueueError, SqlClient.SqlClient> =>
+  requireLandedStateQueue(contracts.stateQueue, "the explicit commit").pipe(
+    Effect.flatMap((queue) => {
+      const block = findLandedBlock(queue, headerHash);
+      return block === undefined
+        ? Effect.fail(
+            new SDK.StateQueueError({
+              message: "The committed block is not in the landed state queue",
+              cause: `header_hash=${headerHash}`,
+            }),
+          )
+        : Effect.succeed(block.outRef);
+    }),
     Effect.retry(
       Schedule.intersect(
         Schedule.fixed(EXPLICIT_COMMIT_BLOCK_VISIBILITY_DELAY),
@@ -217,7 +210,7 @@ export const commitExplicitBlockHeaderProgram = (
   | SDK.HashingError
   | TxSignError
   | TxSubmitError,
-  Lucid | MidgardContracts | NodeConfig
+  Lucid | MidgardContracts | NodeConfig | SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
     const lucidService = yield* Lucid;
@@ -228,10 +221,7 @@ export const commitExplicitBlockHeaderProgram = (
       stateQueuePolicyId: contracts.stateQueue.policyId,
     };
 
-    const latestBlock = yield* fetchLatestCommittedBlockLocal(
-      lucid,
-      fetchConfig,
-    );
+    const latestBlock = yield* fetchLatestCommittedBlockLocal(fetchConfig);
     const endTime = new Date(
       resolveExplicitCommitCandidateEndTimeMs(params.endTimeMs),
     );
@@ -287,7 +277,6 @@ export const commitExplicitBlockHeaderProgram = (
     }
     const blockOutRef = shouldAwait
       ? yield* fetchCommittedBlockOutRef({
-          lucid,
           contracts,
           headerHash: newHeaderHash,
         })

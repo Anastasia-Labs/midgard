@@ -23,6 +23,7 @@ import {
   NodeConfig,
 } from "../src/services/index.js";
 import { makeRetentionL1Queue } from "./helpers/retention-l1-view.js";
+import { provideDatabaseLayers } from "./utils.js";
 
 const SWEEP_MS = 1_000;
 const FATAL_MS = 60_000;
@@ -293,7 +294,9 @@ describe("retention L1 view exemption sets", () => {
       confirmedHeadHash: "ab".repeat(28),
       liveUtxosRoots: ["71".repeat(32), "72".repeat(32)],
     });
-    const view = await Effect.runPromise(queue.provide(fetchRetentionL1View));
+    const view = await Effect.runPromise(
+      provideDatabaseLayers(queue.provide(fetchRetentionL1View)),
+    );
     expect(view.confirmedHeadHash.toString("hex")).toBe("ab".repeat(28));
     expect(
       view.liveQueueHeaderHashes.map((hash) => hash.toString("hex")),

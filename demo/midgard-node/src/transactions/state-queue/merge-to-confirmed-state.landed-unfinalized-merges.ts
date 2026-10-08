@@ -1,7 +1,7 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, LucidEvolution } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { Effect, type Exit, Metric, Option } from "effect";
 
 import {
@@ -11,7 +11,7 @@ import {
 import { DatabaseError } from "../../database/utils/common.js";
 import { Database, Globals } from "../../services/index.js";
 import {
-  fetchL1ConfirmedState,
+  fetchLandedConfirmedState,
   finalizeConfirmedMergeProgram,
   type LandedUnfinalizedMerge,
   MAX_LANDED_MERGE_CATCH_UP,
@@ -171,18 +171,16 @@ export const finalizeMergesLandedThrough = (
  * recovery that revoked the permit before the finalization could write.
  */
 export const finalizeLandedMergesProgram = (
-  lucid: LucidEvolution,
   fetchConfig: SDK.StateQueueFetchConfig,
 ): Effect.Effect<
   readonly string[],
   | DatabaseError
   | SDK.HashingError
-  | SDK.LucidError
   | SDK.StateQueueError
   | SDK.DataCoercionError,
   Database | Globals
 > =>
-  fetchL1ConfirmedState(lucid, fetchConfig).pipe(
+  fetchLandedConfirmedState(fetchConfig).pipe(
     Effect.flatMap(finalizeMergesLandedThrough),
   );
 
@@ -227,9 +225,6 @@ export const mergeDurationTimer = Metric.timer(
   "merge_duration",
   "Duration of one merge attempt in milliseconds",
 );
-
-// 30 minutes.
-export const MAX_LIFE_OF_LOCAL_SYNC: number = 1_800_000;
 
 export type MergeErrorCode =
   | "E_MERGE_LAYOUT_DERIVATION_FAILED"

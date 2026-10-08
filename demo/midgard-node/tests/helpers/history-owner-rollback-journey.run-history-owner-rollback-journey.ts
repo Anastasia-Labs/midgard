@@ -690,7 +690,7 @@ export const runHistoryOwnerRollbackJourney = async ({
         globals,
         production,
       });
-      expect(merged.postMergeSnapshot.topology.parsedNodeCount).toBe(1);
+      expect(merged.postMergeSnapshot.blockCount).toBe(0);
       const stableQueue = await Effect.runPromise(
         SDK.fetchSortedStateQueueUTxOsProgram(
           fixture.operatorLucid,

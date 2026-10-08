@@ -22,6 +22,7 @@ import { settlementFiber } from "../fibers/settlement.js";
 import { signedIntentRebroadcastFiber } from "../fibers/signed-intent-rebroadcast.js";
 import { Globals } from "../services/globals.js";
 import { type NodeConfigDep, writeBehindFiber } from "../services/index.js";
+import { onL1HeadChange } from "../services/l1-head-trigger.js";
 import {
   awaitHaltCleared,
   FIBER_HALT_SOURCES,
@@ -52,6 +53,39 @@ const heldSchedule = <A, E, R>(
           globals,
           FIBER_HALT_SOURCES[name],
         ),
+      ),
+    ),
+  );
+
+/**
+ * `makeFiber` on the next L1 head change (`onL1HeadChange`), at most
+ * `maxIdleMs` apart: its ticks read the node's projections, never L1.
+ */
+const onHeadChange = <A, E, R>(
+  maxIdleMs: number,
+  makeFiber: (schedule: Schedule.Schedule<number>) => Effect.Effect<A, E, R>,
+) =>
+  Effect.flatMap(Globals, (globals) =>
+    Effect.flatMap(
+      onL1HeadChange(globals, Duration.millis(maxIdleMs)),
+      makeFiber,
+    ),
+  );
+
+/** `makeFiber` on `onHeadChange`, held like `heldSchedule`. */
+const heldOnHeadChange = <A, E, R>(
+  name: HeldFiber,
+  maxIdleMs: number,
+  makeFiber: (schedule: Schedule.Schedule<number>) => Effect.Effect<A, E, R>,
+) =>
+  Effect.flatMap(Globals, (globals) =>
+    Effect.flatMap(awaitHaltCleared(globals, FIBER_HALT_SOURCES[name]), () =>
+      Effect.flatMap(
+        onL1HeadChange(globals, Duration.millis(maxIdleMs)),
+        (schedule) =>
+          makeFiber(
+            pausedWhileHalted(schedule, globals, FIBER_HALT_SOURCES[name]),
+          ),
       ),
     ),
   );
@@ -92,8 +126,9 @@ export const nodeFibers = ({
     nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
     blockCommitmentFiber,
   ),
-  blockConfirmation: blockConfirmationFiber(
-    mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
+  blockConfirmation: onHeadChange(
+    nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION,
+    blockConfirmationFiber,
   ),
   signedIntentRebroadcast: signedIntentRebroadcastFiber(mkSchedule(1_000)),
   operatorWatchdog: heldSchedule(
@@ -111,9 +146,14 @@ export const nodeFibers = ({
   retentionSweeper: retentionSweeperFiber(
     mkSchedule(nodeConfig.WAIT_BETWEEN_RETENTION_SWEEPS),
   ),
-  merge: heldSchedule("merge", nodeConfig.WAIT_BETWEEN_MERGE_TXS, mergeFiber),
-  attestationTimeoutCorrection: attestationTimeoutCorrectionFiber(
-    mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS),
+  merge: heldOnHeadChange(
+    "merge",
+    nodeConfig.WAIT_BETWEEN_MERGE_TXS,
+    mergeFiber,
+  ),
+  attestationTimeoutCorrection: onHeadChange(
+    nodeConfig.WAIT_BETWEEN_MERGE_TXS,
+    attestationTimeoutCorrectionFiber,
   ),
   mpfPayloadAudit: mpfPayloadAuditFiber,
   nativeMpfOwnerSupervisor: nativeMpfOwnerSupervisorFiber(

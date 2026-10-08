@@ -3,6 +3,7 @@
  * simulator, its scenario runner and corpus, and the fresh-replay
  * comparison. Never imported by production code.
  */
+export { insertSeedRowsIn } from "../store/seed.js";
 export {
   forkCorpus,
   forkEpisodeArbitrary,

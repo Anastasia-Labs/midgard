@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { buildListenRouter } from "../src/commands/listen-router.js";
 import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
+import { STATE_QUEUE_UNHEALTHY } from "../src/l1-state-queue/index.js";
 import { NodeConfig } from "../src/services/config.js";
 import {
   Globals,
@@ -462,6 +463,8 @@ describe("GET /readyz names the L1 follower's reasons (N1)", () => {
       "l1_events_ingestion_waiting",
       "l1_events_ingestion_failed",
       "l1_events_hook_failed",
+      // N2: the landed state queue (P1) is unhealthy; reads keep serving.
+      STATE_QUEUE_UNHEALTHY,
     ])
       await holds(
         runningFollower(followingAtTip(), [{ reason, detail: "fixture" }]),

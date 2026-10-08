@@ -4,6 +4,10 @@ import { Cause, Data, Effect, Option, pipe } from "effect";
 import { parentPort, workerData } from "worker_threads";
 
 import { ConfigError, NodeConfig } from "../services/config.js";
+import {
+  Database,
+  type DatabaseInitializationError,
+} from "../services/database.js";
 import { Lucid } from "../services/lucid.js";
 import { MidgardContracts } from "../services/midgard-contracts.js";
 import { serializeStateQueueUTxO } from "./utils/commit-block-header.js";
@@ -59,7 +63,6 @@ export const probeSubmittedTx = (
   );
 
 const awaitPendingBlockResolution = (
-  lucid: LucidEvolution,
   stateQueueAuthValidator: StateQueueAuthValidator,
   pendingBlock: NonNullable<WorkerInput["data"]["pendingBlock"]>,
   timeoutMs: number,
@@ -69,7 +72,6 @@ const awaitPendingBlockResolution = (
     const pollIntervalMs = 2_000;
     while (Date.now() - startedAt < timeoutMs) {
       const sortedBlocks = yield* fetchSortedCommittedStateQueueBlocks(
-        lucid,
         stateQueueAuthValidator,
       );
       const latestBlock =
@@ -124,10 +126,11 @@ const resolveStateQueueAuthValidator = (): Effect.Effect<
   });
 
 const provideConfirmationWorkerServices = <A, E>(
-  effect: Effect.Effect<A, E, MidgardContracts | Lucid | NodeConfig>,
-): Effect.Effect<A, E | ConfigError, never> =>
+  effect: Effect.Effect<A, E, MidgardContracts | Lucid | NodeConfig | Database>,
+): Effect.Effect<A, E | ConfigError | DatabaseInitializationError, never> =>
   pipe(
     effect,
+    Effect.provide(Database.workerLayer),
     Effect.provide(MidgardContracts.Default),
     Effect.provide(Lucid.Default),
     Effect.provide(NodeConfig.layer),
@@ -138,7 +141,7 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
 ): Effect.Effect<
   WorkerOutput,
   unknown,
-  MidgardContracts | Lucid | NodeConfig
+  MidgardContracts | Lucid | NodeConfig | Database
 > =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
@@ -154,7 +157,6 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
     ) =>
       Effect.gen(function* () {
         const sortedBlocks = yield* fetchSortedCommittedStateQueueBlocks(
-          lucid.api,
           stateQueueAuthValidator,
         );
         const latestBlock =
@@ -173,7 +175,6 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
     if (workerInput.data.firstRun) {
       yield* Effect.logInfo("🔍 First run. Fetching the latest block...");
       const sortedBlocks = yield* fetchSortedCommittedStateQueueBlocks(
-        lucid.api,
         stateQueueAuthValidator,
       );
       const latestBlock =
@@ -193,7 +194,6 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
         "🔍 No active pending block. Refreshing canonical state_queue snapshot...",
       );
       const sortedBlocks = yield* fetchSortedCommittedStateQueueBlocks(
-        lucid.api,
         stateQueueAuthValidator,
       );
       const latestBlock =
@@ -215,7 +215,6 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
     );
     if (!pendingBlockHasSubmittedTx(pendingBlock)) {
       const sortedBlocks = yield* fetchSortedCommittedStateQueueBlocks(
-        lucid.api,
         stateQueueAuthValidator,
       );
       const latestBlock =
@@ -305,7 +304,6 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
     }
     const confirmationResult = yield* Effect.either(
       awaitPendingBlockResolution(
-        lucid.api,
         stateQueueAuthValidator,
         pendingBlock,
         nodeConfig.BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS,

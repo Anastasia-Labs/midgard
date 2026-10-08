@@ -22,7 +22,7 @@ import "../fibers/index.js";
 import "../genesis.js";
 import "@al-ft/midgard-core/ogmios-slot";
 import "../services/index.js";
-import "../services/state-queue-topology.js";
+import "../services/landed-state-queue.js";
 import "../transactions/initialization.js";
 import "../transactions/operators/commands.js";
 import "../transactions/reference-scripts.js";

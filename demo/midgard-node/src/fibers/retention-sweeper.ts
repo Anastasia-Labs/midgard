@@ -41,11 +41,11 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
+import { requireLandedStateQueue } from "../services/landed-state-queue.js";
 import {
   clearLivenessIncident,
   raiseLivenessIncident,
 } from "../services/liveness-halt.js";
-import { fetchCanonicalStateQueueNodesProgram } from "../services/state-queue-topology.js";
 import { fetchDaPayloadRetirementProofs } from "./retention-sweeper.da-retirement-view.js";
 import {
   RETENTION_HISTORY_PRUNE_BUDGET_MS,
@@ -145,49 +145,31 @@ export const retentionL1ViewTimeoutMs = (input: {
 };
 
 /**
- * Reads the retention exemption sets from L1 by walking the state-queue linked
- * list from its root NFT, the traversal the commit and merge fibers use.
+ * The retention exemption sets from the landed state queue (P1): the
+ * confirmed header and every live block header.
  */
 export const fetchRetentionL1View: Effect.Effect<
   DaPayloadsDB.RetentionL1View,
-  | SDK.LucidError
-  | SDK.StateQueueError
-  | SDK.DataCoercionError
-  | SDK.HashingError,
-  Lucid | MidgardContracts
+  SDK.StateQueueError,
+  MidgardContracts | SqlClient.SqlClient
 > = Effect.gen(function* () {
-  const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const nodes = yield* fetchCanonicalStateQueueNodesProgram(
-    lucid.api,
+  const queue = yield* requireLandedStateQueue(
     contracts.stateQueue,
+    "the retention sweep",
   );
-  let confirmedHeadHash: string | undefined;
-  const liveQueueHeaderHashes: Buffer[] = [];
-  for (const node of nodes) {
-    if (node.datum.key === "Empty") {
-      const { data } = yield* SDK.getConfirmedStateFromStateQueueDatum(
-        node.datum,
-      );
-      confirmedHeadHash = data.headerHash;
-    } else {
-      const header = yield* SDK.getHeaderFromStateQueueDatum(node.datum);
-      liveQueueHeaderHashes.push(
-        Buffer.from(yield* SDK.hashBlockHeader(header), "hex"),
-      );
-    }
-  }
-  if (confirmedHeadHash === undefined) {
+  if (queue.root === null)
     return yield* Effect.fail(
       new SDK.StateQueueError({
         message: "State queue has no ConfirmedState root node",
-        cause: `nodes=${nodes.length.toString()}`,
+        cause: `nodes=${queue.nodes.length.toString()}`,
       }),
     );
-  }
   return {
-    confirmedHeadHash: Buffer.from(confirmedHeadHash, "hex"),
-    liveQueueHeaderHashes,
+    confirmedHeadHash: Buffer.from(queue.root.headerHash, "hex"),
+    liveQueueHeaderHashes: queue.nodes.map((node) =>
+      Buffer.from(node.headerHash, "hex"),
+    ),
   };
 });
 

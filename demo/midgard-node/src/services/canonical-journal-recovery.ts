@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Cause, Effect, Option, Runtime } from "effect";
 
@@ -20,7 +19,8 @@ import {
 import { eventHistoryCanonicalJson } from "../l1-event-history-source.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import { withHistoryWrite } from "./event-history-producer.js";
-import { Database, Lucid, MidgardContracts } from "./index.js";
+import { Database, MidgardContracts } from "./index.js";
+import { requireLandedStateQueue } from "./landed-state-queue.js";
 import { ROOT_TAIL_HEADER_HASH } from "./state-queue-correction-rewind.admitted-removals.js";
 
 export type CanonicalCommittedHeaderIdentity = {
@@ -368,26 +368,17 @@ export const withCanonicalHeaderJournals = (
   );
 
 export const fetchCanonicalCommittedHeaders = Effect.gen(function* () {
-  const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const committedBlocks = yield* SDK.fetchSortedStateQueueUTxOsProgram(
-    lucid.api,
-    {
-      stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-      stateQueuePolicyId: contracts.stateQueue.policyId,
-    },
+  const queue = yield* requireLandedStateQueue(
+    contracts.stateQueue,
+    "canonical journal recovery",
   );
-  const headers: CanonicalCommittedHeaderIdentity[] = [];
-  for (const block of committedBlocks) {
-    if (block.datum.key === "Empty") {
-      continue;
-    }
-    const header = yield* SDK.getHeaderFromStateQueueDatum(block.datum);
-    headers.push({
-      headerHash: Buffer.from(yield* SDK.hashBlockHeader(header), "hex"),
-      endTimeMs: Number(header.endTime),
-    });
-  }
+  const headers: CanonicalCommittedHeaderIdentity[] = queue.nodes.map(
+    (node) => ({
+      headerHash: Buffer.from(node.headerHash, "hex"),
+      endTimeMs: Number(node.endTimeMs),
+    }),
+  );
   return yield* withCanonicalHeaderJournals(headers);
 });
 

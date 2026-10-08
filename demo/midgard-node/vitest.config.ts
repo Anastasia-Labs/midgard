@@ -73,6 +73,8 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/readiness-honest-degradation-route.test.ts
  *   tests/history-expired-intent-release-query-budget.test.ts
  *   tests/state-queue-mutation-lease-settle-retry.test.ts
+ *   tests/l1-state-queue-liveness.test.ts
+ *   tests/l1-state-queue-fiber-tick-spy.test.ts
  */
 
 // A committed `bail` makes the suite's cost and its result set unreproducible:

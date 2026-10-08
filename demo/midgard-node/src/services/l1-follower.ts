@@ -16,6 +16,10 @@
  *   transaction. Orphaned admissions, or deposits whose spendable ledger row
  *   was restored, are recovery work: the write rolls back, the owner is asked
  *   to reconcile, and the driver holds `l1_events_orphan_recovery`.
+ * - The driver's first hook reads the landed state queue (P1, N2) at the
+ *   view it applies: it publishes the queue length, bumps the head signal
+ *   the planner fibers wake on (`l1-head-trigger.ts`) and holds
+ *   `state_queue_unhealthy` while the queue is unhealthy.
  * - Everything the follower cannot clear by itself is a named `/readyz`
  *   reason (`l1-follower.readiness.ts`). Nothing here exits the process.
  */
@@ -44,6 +48,10 @@ import {
 } from "../l1-events/driver.js";
 import type { EventProjectionConfig } from "../l1-events/index.js";
 import { eventProjection } from "../l1-events/projection.js";
+import {
+  landedStateQueueHook,
+  stateQueueProjection,
+} from "../l1-state-queue/index.js";
 import { NodeConfig } from "./config.js";
 import type { Database } from "./database.js";
 import {
@@ -60,6 +68,7 @@ import {
   type FollowerPlanRead,
   type L1FollowerHandle,
 } from "./l1-follower.readiness.js";
+import { publishL1HeadChange } from "./l1-head-trigger.js";
 import { Lucid } from "./lucid.js";
 import {
   ContractDeploymentIdentity,
@@ -304,7 +313,10 @@ export const startL1Follower = Effect.gen(function* () {
       try {
         store = openPostgresFactStore({
           ...projectionStoreOptions(
-            [eventProjection(plan.projection)],
+            [
+              eventProjection(plan.projection),
+              stateQueueProjection(plan.stateQueue),
+            ],
             {
               securityParameter: plan.securityParameter,
               // The protocol-init tx qualifies through the hub oracle mint.
@@ -345,6 +357,24 @@ export const startL1Follower = Effect.gen(function* () {
     store,
     config: plan.projection,
     sink,
+    hooks: {
+      landedStateQueue: landedStateQueueHook({
+        store,
+        config: plan.stateQueue,
+        publish: (change, read) =>
+          Runtime.runPromise(runtime)(
+            Effect.gen(function* () {
+              if (read.kind === "ok")
+                yield* Ref.set(
+                  globals.BLOCKS_IN_QUEUE,
+                  read.queue.nodes.length,
+                );
+              if (change.kind !== "unchanged")
+                yield* publishL1HeadChange(globals);
+            }),
+          ),
+      }),
+    },
     log: (line) => log(`driver: ${line}`),
   });
   const trigger = coalescedRunner(

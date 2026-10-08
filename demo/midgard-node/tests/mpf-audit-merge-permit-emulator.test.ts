@@ -30,7 +30,6 @@ import type { NodeConfigDep } from "../src/services/config.js";
 import { HistoryProducer } from "../src/services/event-history-producer.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
-import { fetchStateQueueSnapshotProgram } from "../src/services/state-queue-topology.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
@@ -41,6 +40,7 @@ import {
   BlocksDB,
   ContractDeploymentIdentity,
   Database,
+  emulatorStateQueueSnapshot,
   ensureSeparateCollateralUtxo,
   fetchLatestCommittedBlock,
   Globals,
@@ -169,11 +169,11 @@ it("audits the native MPF root at the committed tip, and merges manually only un
   };
   const queue = () =>
     Effect.runPromise(
-      fetchStateQueueSnapshotProgram(
+      emulatorStateQueueSnapshot(
         fixture.operatorLucid,
         fixture.contracts.stateQueue,
         "startup",
-      ),
+      ).pipe(Effect.provide(Database.layer)),
     );
   const submit = async (built: { tx: TxSignBuilder }) => {
     const signed = await built.tx.sign.withWallet().complete();
@@ -771,7 +771,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     expect(decodeMergeBody(standaloneAdmin).cause).toContain(
       "History owner is not initialized",
     );
-    expect((await queue()).topology.parsedNodeCount).toBe(3);
+    expect((await queue()).blockCount).toBe(2);
     expect(await mergeJob(first.headerHash)).toBeUndefined();
 
     // History recovery revokes the permit after the merge registered: the
@@ -819,7 +819,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       Either.isLeft(revoked) &&
         formatUnknownError(revoked.left, { includeCause: true }),
     ).toContain("History authority generation or owner changed");
-    expect((await queue()).topology.parsedNodeCount).toBe(3);
+    expect((await queue()).blockCount).toBe(2);
     expect(await mergeJob(first.headerHash)).toBeUndefined();
     expect(await authorityRow()).toMatchObject({ state: "recovering" });
     // A node whose history owner is not Ready blocks the repair with evidence.
@@ -829,7 +829,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       available: false,
       reason: expect.stringContaining("History source gate is closed"),
     });
-    expect((await queue()).topology.parsedNodeCount).toBe(3);
+    expect((await queue()).blockCount).toBe(2);
     // An owner that lost its generation stays closed, and its lease cannot be
     // retired under the revoked generation: the node restarts once that lease
     // lapses (expired here rather than waited out).
@@ -865,7 +865,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     expect(await mergeJob(first.headerHash)).toMatchObject({
       [MutationJobsDB.Columns.STATUS]: MutationJobsDB.Status.Completed,
     });
-    expect((await queue()).topology.parsedNodeCount).toBe(2);
+    expect((await queue()).blockCount).toBe(1);
     expect(await reconcile(first.headerHash, false)).toMatchObject({
       status: "satisfied",
       nextAction: null,
@@ -973,7 +973,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     expect(await reconcile(second.headerHash, false)).toMatchObject({
       status: "satisfied",
     });
-    expect((await queue()).topology.parsedNodeCount).toBe(1);
+    expect((await queue()).blockCount).toBe(0);
 
     // Fully merged: the confirmed ledger has caught up with the native tip.
     expect(await run(runLedgerPayloadAudit)).toMatchObject({

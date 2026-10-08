@@ -25,7 +25,7 @@ import {
 import { prepareForeignNativeReplay } from "./foreign-native-replay.js";
 import { reconcileLandedMergeConfirmedLedger } from "./history-landed-merge-ledger.js";
 import { retainedLocalNativeRoot } from "./history-local-native-root.js";
-import { Lucid } from "./lucid.js";
+import { landedStateQueueUTxOs } from "./landed-state-queue.js";
 import { MidgardContracts } from "./midgard-contracts.js";
 import type {
   NativeMpfOwnerService,
@@ -36,7 +36,6 @@ import {
   digest,
   EVENT_LOG_DIGEST_DOMAIN,
 } from "./mpf-native-owner/service.normalize-owner-options.js";
-import { fetchCanonicalStateQueueNodesProgram } from "./state-queue-topology.js";
 
 const promise = <A>(work: () => Promise<A>) =>
   Effect.tryPromise({ try: work, catch: (cause) => cause });
@@ -164,13 +163,12 @@ export const recoverForeignNativeAdoptions = (input: {
       WHERE status NOT IN ('finalized','abandoned') LIMIT 1`;
       if (pending.length !== 0) return;
     }
-    const lucid = yield* Lucid;
     const contracts = yield* MidgardContracts;
     const observe = Effect.gen(function* () {
       yield* input.preparation.assertCurrent;
-      const nodes = yield* fetchCanonicalStateQueueNodesProgram(
-        lucid.api,
+      const nodes = yield* landedStateQueueUTxOs(
         contracts.stateQueue,
+        "foreign native adoption",
       );
       const tail = nodes.at(-1);
       if (tail === undefined)

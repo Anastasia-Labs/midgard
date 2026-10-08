@@ -79,6 +79,13 @@ export {
   type TipObservation,
 } from "./heads.js";
 export {
+  type LinkedQueueEntry,
+  type LinkedQueueUnhealthyReason,
+  type LinkedQueueWalk,
+  type LinkedQueueWalkOptions,
+  walkLinkedQueue,
+} from "./linked-queue.js";
+export {
   intersectionFailure,
   originAnchor,
   type OriginConfig,

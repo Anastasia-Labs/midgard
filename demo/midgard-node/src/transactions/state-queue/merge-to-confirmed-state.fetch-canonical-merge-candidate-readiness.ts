@@ -1,6 +1,7 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Address, LucidEvolution } from "@lucid-evolution/lucid";
+import type { SqlClient } from "@effect/sql";
+import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Metric, Ref } from "effect";
 
 import { jsonReplacer } from "../../commands/command-utils.js";
@@ -8,6 +9,10 @@ import { Entry as LedgerEntry } from "../../database/utils/ledger.js";
 import { emitQueueStateMetrics } from "../../fibers/queue-metrics.js";
 import { l1NowUnixTimeMs } from "../../l1-heads.js";
 import { Globals } from "../../services/index.js";
+import {
+  requireLandedStateQueue,
+  stateQueueContractOf,
+} from "../../services/landed-state-queue.js";
 import { breakDownTx } from "../../utils.js";
 import { BlockTxPayload } from "../utils.js";
 import {
@@ -17,7 +22,6 @@ import {
   type OldestQueuedBlockCandidateReadiness,
 } from "./merge-readiness.js";
 import {
-  MAX_LIFE_OF_LOCAL_SYNC,
   type MergeErrorCode,
   mergeFailureCounter,
   mergeMissingBlockTxsCounter,
@@ -102,14 +106,6 @@ export const failMergeWithCode = (
 const firstBlockOutRef = (firstBlockUTxO: SDK.StateQueueUTxO): string =>
   `${firstBlockUTxO.utxo.txHash}#${firstBlockUTxO.utxo.outputIndex.toString()}`;
 
-const isEmptyConfirmedStateLinkError = (error: unknown): boolean =>
-  typeof error === "object" &&
-  error !== null &&
-  "_tag" in error &&
-  (error as { readonly _tag?: unknown })._tag === "LinkedListError" &&
-  "cause" in error &&
-  (error as { readonly cause?: unknown }).cause === 'Given link is "Empty"';
-
 /**
  * Classifies the oldest queued block for merging. Maturity is judged at the
  * L1 `slotNow` (plan §3.6), never the wall clock: a clock that runs fast must
@@ -126,24 +122,23 @@ export const fetchCanonicalMergeCandidateReadiness = (
   | SDK.HashingError
   | SDK.LinkedListError
   | SDK.LucidError
-  | SDK.StateQueueError
+  | SDK.StateQueueError,
+  SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
-    const fetchedCandidate = yield* Effect.either(
-      SDK.fetchConfirmedStateAndItsLinkProgram(lucid, fetchConfig),
+    // The root and its link, from the healthy landed queue (P1).
+    const queue = yield* requireLandedStateQueue(
+      stateQueueContractOf(fetchConfig),
+      "merge",
     );
-    if (fetchedCandidate._tag === "Left") {
-      if (isEmptyConfirmedStateLinkError(fetchedCandidate.left)) {
-        return {
-          status: "no_candidate",
-          reason: "confirmed_state_link_empty",
-        } satisfies CanonicalMergeCandidateReadiness;
-      }
-      return yield* Effect.fail(fetchedCandidate.left);
+    const confirmedUTxO = queue.root?.element;
+    const firstBlockUTxO = queue.nodes[0]?.element;
+    if (confirmedUTxO === undefined || firstBlockUTxO === undefined) {
+      return {
+        status: "no_candidate",
+        reason: "confirmed_state_link_empty",
+      } satisfies CanonicalMergeCandidateReadiness;
     }
-
-    const { confirmed: confirmedUTxO, link: firstBlockUTxO } =
-      fetchedCandidate.right;
     if (firstBlockUTxO.datum.key === "Empty") {
       return yield* Effect.fail(
         new SDK.StateQueueError({
@@ -266,47 +261,19 @@ export const preflightDecodeBlockTxs = (
     { concurrency: "unbounded" },
   );
 
+/** Blocks in the healthy landed queue (P1), published to the queue gauges. */
 export const getStateQueueLength = (
-  lucid: LucidEvolution,
-  stateQueueAddress: Address,
-): Effect.Effect<number, SDK.LucidError, Globals> =>
+  fetchConfig: SDK.StateQueueFetchConfig,
+): Effect.Effect<number, SDK.StateQueueError, Globals | SqlClient.SqlClient> =>
   Effect.gen(function* () {
     const globals = yield* Globals;
-    const LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH = yield* Ref.get(
-      globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
+    const queue = yield* requireLandedStateQueue(
+      stateQueueContractOf(fetchConfig),
+      "merge",
     );
-    const now_millis = Date.now();
-    if (
-      now_millis - LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH >
-      MAX_LIFE_OF_LOCAL_SYNC
-    ) {
-      // We consider in-memory state queue length stale.
-      yield* Effect.logInfo(
-        `🔸 Fetching state queue length from ${stateQueueAddress}...`,
-      );
-      const stateQueueUtxos = yield* Effect.tryPromise({
-        try: () => lucid.utxosAt(stateQueueAddress),
-        catch: (e) =>
-          new SDK.LucidError({
-            message: `Failed to fetch UTxOs at state queue address: ${stateQueueAddress}`,
-            cause: e,
-          }),
-      });
-
-      yield* Ref.set(
-        globals.BLOCKS_IN_QUEUE,
-        Math.max(0, stateQueueUtxos.length - 1),
-      );
-      yield* Ref.set(
-        globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
-        Date.now(),
-      );
-      yield* emitQueueStateMetrics;
-
-      return Math.max(0, stateQueueUtxos.length - 1);
-    } else {
-      return yield* Ref.get(globals.BLOCKS_IN_QUEUE);
-    }
+    yield* Ref.set(globals.BLOCKS_IN_QUEUE, queue.nodes.length);
+    yield* emitQueueStateMetrics;
+    return queue.nodes.length;
   });
 
 export const slotFromUnixTime = (

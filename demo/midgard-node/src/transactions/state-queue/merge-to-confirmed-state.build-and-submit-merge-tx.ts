@@ -90,10 +90,7 @@ export const buildAndSubmitMergeTx = (
     const mergeStartedAt = Date.now();
     const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
-    const currentStateQueueLength = yield* getStateQueueLength(
-      lucid,
-      fetchConfig.stateQueueAddress,
-    );
+    const currentStateQueueLength = yield* getStateQueueLength(fetchConfig);
     const minQueueLengthForMerging =
       nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
       DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING;
@@ -535,10 +532,6 @@ export const buildAndSubmitMergeTx = (
       } satisfies MergeTxResult;
     } else {
       yield* Ref.set(globals.BLOCKS_IN_QUEUE, 0);
-      yield* Ref.set(
-        globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
-        Date.now(),
-      );
       yield* emitQueueStateMetrics;
       yield* Effect.logInfo("🔸 No blocks found in queue.");
       yield* mergeDurationTimer(

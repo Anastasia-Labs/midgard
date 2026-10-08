@@ -58,9 +58,10 @@ export const insertSeedOutputsIn = async (
 };
 
 /**
- * The seed-row write without the cursor check. Only the fork simulator's
- * fresh-replay reference uses it directly, to carry the store's seed rows
- * into a store that never saw the seed's cursor.
+ * The seed-row write without the cursor check. Only test tooling uses it
+ * directly: the fork simulator's fresh-replay reference, to carry the
+ * store's seed rows into a store that never saw the seed's cursor, and
+ * stand-ins for a followed chain (the testing export).
  */
 export const insertSeedRowsIn = async (
   tx: SqlTx,

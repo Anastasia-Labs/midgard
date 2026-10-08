@@ -28,6 +28,7 @@ import {
   NodeConfig,
   StateQueueCorrectionRewindIntegrityError,
 } from "../services/index.js";
+import { landedStateQueueUTxOs } from "../services/landed-state-queue.js";
 import {
   clearLivenessIncident,
   HaltSource,
@@ -60,10 +61,12 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
       stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
       stateQueuePolicyId: contracts.stateQueue.policyId,
     };
-    const queue = yield* SDK.fetchSortedStateQueueUTxOsProgram(
-      lucid.api,
-      fetchConfig,
+    const readQueue = landedStateQueueUTxOs(
+      contracts.stateQueue,
+      "attestation-timeout correction",
     );
+    const queue = yield* readQueue;
+    const runtime = yield* Effect.runtime<Database>();
     // The timeout is an L1 deadline, judged at the L1 `slotNow`; an unknown
     // slot fails the tick and the fiber retries.
     const l1NowMs = yield* l1NowUnixTimeMs(lucid.api);
@@ -134,11 +137,7 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
       kupoUrl: nodeConfig.L1_KUPO_KEY,
       ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
       readQueue: async () =>
-        await queueNodes(
-          await Effect.runPromise(
-            SDK.fetchSortedStateQueueUTxOsProgram(lucid.api, fetchConfig),
-          ),
-        ),
+        await queueNodes(await Runtime.runPromise(runtime)(readQueue)),
     });
     const observerResult = yield* reconcileStateQueueCorrections({
       source,

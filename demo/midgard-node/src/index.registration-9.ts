@@ -5,7 +5,6 @@ import {
   assertUserCliWalletIsOperationallyIsolated,
   failCli,
   provideDatabaseTxServices,
-  provideTxServices,
   runCliEffect,
   tapJson,
 } from "./commands/cli-runtime.js";
@@ -113,7 +112,7 @@ program
       endTimeMs: parseOptionalEndTimeMs(opts.endTimeMs),
       awaitConfirmation: opts.awaitConfirmation !== false,
     };
-    const mainEffect = provideTxServices(
+    const mainEffect = provideDatabaseTxServices(
       commitExplicitBlockHeaderProgram(params).pipe(tapJson()),
     );
 

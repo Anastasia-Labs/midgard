@@ -17,11 +17,11 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
-import { recoverNativeMpfForLocalFinalization } from "../services/native-mpf-local-finalization.js";
 import {
-  fetchStateQueueSnapshotProgram,
+  landedStateQueueSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
-} from "../services/state-queue-topology.js";
+} from "../services/landed-state-queue.js";
+import { recoverNativeMpfForLocalFinalization } from "../services/native-mpf-local-finalization.js";
 import {
   WorkerInput,
   WorkerOutput,
@@ -80,8 +80,7 @@ export const buildAndSubmitCommitmentBlockAction = (
     let BASE_SNAPSHOT_ID: string | undefined;
     let STATE_QUEUE_HAS_UNMERGED_TAIL = false;
     if (!LOCAL_FINALIZATION_PENDING) {
-      const snapshot = yield* fetchStateQueueSnapshotProgram(
-        lucid.api,
+      const snapshot = yield* landedStateQueueSnapshot(
         contracts.stateQueue,
         "commit_preflight",
       );

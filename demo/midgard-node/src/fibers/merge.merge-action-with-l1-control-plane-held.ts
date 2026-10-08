@@ -17,9 +17,10 @@ import {
   NodeConfig,
 } from "../services/index.js";
 import {
-  fetchStateQueueSnapshotProgram,
+  awaitPostMergeSnapshot,
+  landedStateQueueSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
-} from "../services/state-queue-topology.js";
+} from "../services/landed-state-queue.js";
 import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   mergeSubmitValidityEvidence,
@@ -127,7 +128,7 @@ export const mergeActionWithL1ControlPlaneHeld = (
     // Its failure fails this attempt, and the attempt runs under the producer
     // permit, so only while the history owner is Ready. A merge landing after
     // this read is finalized by buildAndSubmitMergeTx before it builds on it.
-    yield* finalizeLandedMergesProgram(lucid.api, fetchConfig);
+    yield* finalizeLandedMergesProgram(fetchConfig);
     const minQueueLength =
       nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
       DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING;
@@ -257,8 +258,7 @@ export const mergeActionWithL1ControlPlaneHeld = (
             }
           }
 
-          const preMergeSnapshot = yield* fetchStateQueueSnapshotProgram(
-            lucid.api,
+          const preMergeSnapshot = yield* landedStateQueueSnapshot(
             stateQueueAuthValidator,
             "manual_status",
           );
@@ -284,10 +284,7 @@ export const mergeActionWithL1ControlPlaneHeld = (
             ],
             { concurrency: "unbounded" },
           );
-          const queueLength = Math.max(
-            0,
-            preMergeSnapshot.topology.parsedNodeCount - 1,
-          );
+          const queueLength = preMergeSnapshot.blockCount;
           const preflight = planMergePreflight({
             force,
             queueLength,
@@ -367,10 +364,9 @@ export const mergeActionWithL1ControlPlaneHeld = (
                 : { nowUnixTime: mergeTxResult.nowUnixTime }),
             } satisfies MergeActionResult;
           }
-          const snapshot = yield* fetchStateQueueSnapshotProgram(
-            lucid.api,
+          const snapshot = yield* awaitPostMergeSnapshot(
             stateQueueAuthValidator,
-            "post_merge",
+            mergeTxResult.headerHash,
           );
           yield* refreshStateQueueGlobalsFromSnapshot(globals, snapshot);
           yield* Effect.logInfo(

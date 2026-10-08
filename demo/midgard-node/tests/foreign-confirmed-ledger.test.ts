@@ -18,12 +18,12 @@ import * as Engine from "../src/database/mpfEngineState.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/index.js";
 import { HistoryPreparation } from "../src/services/event-history-recovery.js";
 import { reconcileForeignConfirmedLedger } from "../src/services/foreign-confirmed-ledger.js";
+import * as LandedQueue from "../src/services/landed-state-queue.js";
 import { Lucid } from "../src/services/lucid.js";
 import {
   ContractDeploymentIdentity,
   MidgardContracts,
 } from "../src/services/midgard-contracts.js";
-import * as Topology from "../src/services/state-queue-topology.js";
 import type { VerifiedForeignCommitBase } from "../src/workers/commit-block-header.verify-foreign-base.js";
 import { countsFromLengths, headerFor } from "./da-payload.record.js";
 import {
@@ -191,7 +191,7 @@ const fixture = async (unchanged = false) => {
   ];
   let nodes = queue(headerHash, afterRoot);
   const fetch = vi
-    .spyOn(Topology, "fetchCanonicalStateQueueNodesProgram")
+    .spyOn(LandedQueue, "landedStateQueueUTxOs")
     .mockImplementation(() => Effect.succeed(nodes));
   const preparation = { token, assertCurrent: Effect.void };
   const reconcile = () =>

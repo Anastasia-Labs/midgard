@@ -8,7 +8,13 @@ import {
   depositDataToEntry,
   withdrawalDataToEntry,
 } from "../l1-event-history-entries.js";
-import { Lucid, MidgardContracts, NodeConfig } from "../services/index.js";
+import {
+  Database,
+  Lucid,
+  MidgardContracts,
+  NodeConfig,
+} from "../services/index.js";
+import { landedStateQueueUTxOs } from "../services/landed-state-queue.js";
 import {
   depositPayloadOf,
   outRefOf,
@@ -92,15 +98,16 @@ const lucidPromise = <A>(message: string, run: () => Promise<A>) =>
 export const collectL1StateView: Effect.Effect<
   L1StateView,
   unknown,
-  Lucid | MidgardContracts | NodeConfig
+  Lucid | MidgardContracts | NodeConfig | Database
 > = Effect.gen(function* () {
   const { api: lucid } = yield* Lucid;
   const contracts = yield* MidgardContracts;
   const nodeConfig = yield* NodeConfig;
-  const queue = yield* SDK.fetchSortedStateQueueUTxOsProgram(lucid, {
-    stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-    stateQueuePolicyId: contracts.stateQueue.policyId,
-  });
+  // The queue as the node's follower landed it (P1).
+  const queue = yield* landedStateQueueUTxOs(
+    contracts.stateQueue,
+    "state reconciliation",
+  );
   const rootNode = queue[0];
   if (rootNode === undefined || rootNode.datum.key !== "Empty") {
     return yield* Effect.fail(

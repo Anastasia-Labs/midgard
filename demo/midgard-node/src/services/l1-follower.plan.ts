@@ -9,6 +9,10 @@ import {
   type EventProjectionConfig,
   eventProjectionConfigFromContracts,
 } from "../l1-events/index.js";
+import {
+  type StateQueueProjectionConfig,
+  stateQueueProjectionConfig,
+} from "../l1-state-queue/index.js";
 import type { NodeConfigDep } from "./config.js";
 
 /** How the node's follower runs, or the missing piece that stops it. */
@@ -24,6 +28,8 @@ export type L1FollowerPlan =
       /** k: the manifest's automaticRecoveryMaxDepth. */
       securityParameter: number;
       projection: EventProjectionConfig;
+      /** The landed state queue (P1). */
+      stateQueue: StateQueueProjectionConfig;
       hubOraclePolicyId: string;
     }>;
 
@@ -45,7 +51,10 @@ export const l1FollowerPlan = (input: {
     | "POSTGRES_DB"
   >;
   readonly contracts: Parameters<typeof SDK.requireEventHistoryContracts>[0] &
-    Readonly<{ hubOracle: Readonly<{ policyId: string }> }>;
+    Readonly<{
+      hubOracle: Readonly<{ policyId: string }>;
+      stateQueue: Readonly<{ spendingScriptAddress: string; policyId: string }>;
+    }>;
   readonly securityParameter: number;
 }): L1FollowerPlan => {
   const { config } = input;
@@ -100,6 +109,7 @@ export const l1FollowerPlan = (input: {
     },
     securityParameter: input.securityParameter,
     projection,
+    stateQueue: stateQueueProjectionConfig(input.contracts.stateQueue),
     hubOraclePolicyId: input.contracts.hubOracle.policyId.toLowerCase(),
   };
 };

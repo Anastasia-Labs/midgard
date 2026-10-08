@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import type { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
@@ -111,7 +112,7 @@ export const buildUnsignedCommitTx = (
   | SDK.LinkedListError
   | TxSignError
   | TxSubmitError,
-  Lucid | NodeConfig
+  Lucid | NodeConfig | SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
     const history = yield* Effect.serviceOption(HistoryProducer);

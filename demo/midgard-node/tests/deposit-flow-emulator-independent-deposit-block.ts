@@ -30,7 +30,6 @@ import {
   NodeConfig,
   type NodeConfigDep,
 } from "../src/services/index.js";
-import { fetchCanonicalStateQueueNodesProgram } from "../src/services/state-queue-topology.js";
 import { materializeConfirmedLedgerSnapshot } from "../src/transactions/state-queue/confirmed-ledger-snapshot.js";
 import { verifyForeignCommitBase } from "../src/workers/commit-block-header.verify-foreign-base.js";
 import { buildUnsignedCommitTx } from "../src/workers/commit-block-header/build-unsigned-tx.js";
@@ -46,6 +45,7 @@ import {
   submitDepositWithDiagnostics,
 } from "./deposit-flow-emulator-shared.js";
 import type { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { emulatorStateQueueUTxOs } from "./helpers/landed-state-queue.js";
 
 export const submitOwnedDeposit = async (
   owner: Awaited<ReturnType<typeof openHistoryProductionOwnerLifecycle>>,
@@ -238,7 +238,7 @@ export const verifyCurrentForeignParent = (
   headerHash: string,
 ) =>
   Effect.gen(function* () {
-    const nodes = yield* fetchCanonicalStateQueueNodesProgram(
+    const nodes = yield* emulatorStateQueueUTxOs(
       lucidService.api,
       contracts.stateQueue,
     );

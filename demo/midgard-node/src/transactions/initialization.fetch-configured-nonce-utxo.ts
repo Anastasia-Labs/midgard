@@ -2,6 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   LucidEvolution,
   type Network,
+  toUnit,
   type TxBuilder,
   type TxSignBuilder,
   UTxO,
@@ -9,7 +10,6 @@ import {
 import { Effect } from "effect";
 
 import { slotToUnixTimeForLucidOrEmulatorFallback } from "../lucid-time.js";
-import { type StateQueueTopology } from "../services/state-queue-topology.js";
 import { outRefLabel } from "../tx-context.js";
 import {
   DEFAULT_DEPLOYMENT_VALIDITY_BACKOFF_MS,
@@ -40,6 +40,29 @@ export const isDaParamsInitialized = (
     catch: (cause) =>
       new SDK.LucidError({
         message: "Failed to query DA params initialization state",
+        cause,
+      }),
+  });
+
+/**
+ * Returns whether the state-queue root NFT is already present at the queue
+ * address: one exact-unit lookup, never a scan of the address.
+ */
+export const isStateQueueInitialized = (
+  lucid: LucidEvolution,
+  stateQueue: SDK.AuthenticatedValidator,
+): Effect.Effect<boolean, SDK.LucidError> =>
+  Effect.tryPromise({
+    try: async () =>
+      (
+        await lucid.utxosAtWithUnit(
+          stateQueue.spendingScriptAddress,
+          toUnit(stateQueue.policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME),
+        )
+      ).length > 0,
+    catch: (cause) =>
+      new SDK.LucidError({
+        message: "Failed to query state-queue initialization state",
         cause,
       }),
   });
@@ -205,7 +228,8 @@ export const makePartialProtocolDeploymentError = (
 export type ProtocolDeploymentStatus = {
   readonly hubOracleWitness: UTxO | null;
   readonly correctionLockWitness: SDK.CorrectionLockUTxO | null;
-  readonly stateQueueTopology: StateQueueTopology;
+  /** The state-queue root NFT is live (its queue's health is P1's, not init's). */
+  readonly stateQueueInitialized: boolean;
   readonly depositHistoryInitialized: boolean;
   readonly withdrawalHistoryInitialized: boolean;
   readonly daParamsInitialized: boolean;

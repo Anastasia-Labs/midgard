@@ -17,10 +17,10 @@ import type { Database } from "./database.js";
 import { withHistoryWrite } from "./event-history-producer.js";
 import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
 import type { Globals } from "./globals.js";
+import { landedStateQueueSnapshot } from "./landed-state-queue.js";
 import { Lucid } from "./lucid.js";
 import { MidgardContracts } from "./midgard-contracts.js";
 import { ProductionNativeMpfOwnerService } from "./mpf-native-owner/service.js";
-import { fetchStateQueueSnapshotProgram } from "./state-queue-topology.js";
 
 /**
  * The node refuses to start the native owner from an unpinned binary: the
@@ -133,14 +133,12 @@ export const initializeArchitectureGOwner = <R = never>(
                 })),
               ),
           );
-          const lucid = yield* Lucid;
           const contracts = yield* MidgardContracts;
-          const snapshot = yield* fetchStateQueueSnapshotProgram(
-            lucid.api,
+          const snapshot = yield* landedStateQueueSnapshot(
             contracts.stateQueue,
             "startup",
           );
-          if (snapshot.topology.parsedNodeCount !== 1)
+          if (snapshot.blockCount !== 0)
             return yield* Effect.fail(
               new Error(
                 "Native genesis bootstrap requires the authenticated clean state queue",
@@ -167,10 +165,8 @@ export const initializeArchitectureGOwner = <R = never>(
           // An unstamped nonempty trie is trusted only at the committed tail
           // root. A store left from an earlier run must not be stamped onto a
           // fresh database, where it would first fail at the next commit.
-          const lucid = yield* Lucid;
           const contracts = yield* MidgardContracts;
-          const snapshot = yield* fetchStateQueueSnapshotProgram(
-            lucid.api,
+          const snapshot = yield* landedStateQueueSnapshot(
             contracts.stateQueue,
             "startup",
           );

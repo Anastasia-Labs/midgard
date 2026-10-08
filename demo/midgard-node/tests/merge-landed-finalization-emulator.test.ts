@@ -2,7 +2,6 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { SqlClient } from "@effect/sql";
 import {
   type LucidEvolution,
-  toUnit,
   type TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import { Effect, Either, Option, Ref } from "effect";
@@ -20,7 +19,6 @@ import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import { HistoryProducer } from "../src/services/event-history-producer.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
-import { fetchStateQueueSnapshotProgram } from "../src/services/state-queue-topology.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
@@ -30,6 +28,7 @@ import {
   attestQueuedStateQueueHeader,
   ContractDeploymentIdentity,
   Database,
+  emulatorStateQueueSnapshot,
   ensureSeparateCollateralUtxo,
   fetchLatestCommittedBlock,
   Globals,
@@ -45,6 +44,7 @@ import {
 } from "./deposit-flow-emulator-shared.js";
 import { dropPendingEmulatorTransaction } from "./helpers/correction-rewind-scenario.js";
 import { openHistoryProductionOwnerLifecycle } from "./helpers/history-production-owner-lifecycle.js";
+import { mirrorEmulatorStateQueue } from "./helpers/landed-state-queue.js";
 import { assertLandedMergeParentRefusal } from "./helpers/merge-landed-finalization-parent-refusal.js";
 
 // Every confirmed merge's in-flight local-finalization outcome as the merge
@@ -56,7 +56,29 @@ const mergeHooks = vi.hoisted(() => ({
     readonly succeeded: boolean;
   }[],
   confirmationWindowMs: undefined as number | undefined,
+  /** Runs once, right after the next direct read of the landed queue (P1). */
+  afterLandedQueueRead: undefined as
+    | (() => import("effect").Effect.Effect<void, unknown, any>)
+    | undefined,
 }));
+// The merge's landed-merge catch-up reads P1 directly (`readLandedStateQueue`);
+// a test can act right after that read, before the attempt reads P1 again.
+vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => {
+  const { Effect: E } = await import("effect");
+  const actual =
+    await importOriginal<
+      typeof import("../src/services/landed-state-queue.js")
+    >();
+  const readLandedStateQueue: typeof actual.readLandedStateQueue = (
+    stateQueue,
+  ) =>
+    E.tap(actual.readLandedStateQueue(stateQueue), () => {
+      const after = mergeHooks.afterLandedQueueRead;
+      mergeHooks.afterLandedQueueRead = undefined;
+      return after === undefined ? E.void : E.orDie(after());
+    });
+  return { ...actual, readLandedStateQueue };
+});
 vi.mock(
   "../src/transactions/state-queue/merge-to-confirmed-state.js",
   async (importOriginal) => {
@@ -131,13 +153,13 @@ const openMergeLifecycle = async () => {
   const queuedBlocks = async () =>
     (
       await Effect.runPromise(
-        fetchStateQueueSnapshotProgram(
+        emulatorStateQueueSnapshot(
           fixture.operatorLucid,
           fixture.contracts.stateQueue,
           "startup",
-        ),
+        ).pipe(Effect.provide(Database.layer)),
       )
-    ).topology.parsedNodeCount - 1;
+    ).blockCount;
   const mergeJob = (headerHash: string) =>
     run(
       MutationJobsDB.retrieveByJobId(
@@ -263,11 +285,11 @@ const openMergeLifecycle = async () => {
     expect(recovery.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
     const tail = (
       await Effect.runPromise(
-        fetchStateQueueSnapshotProgram(
+        emulatorStateQueueSnapshot(
           fixture.operatorLucid,
           fixture.contracts.stateQueue,
           "startup",
-        ),
+        ).pipe(Effect.provide(Database.layer)),
       )
     ).tailCommitBase;
     expect(tail.headerHash).not.toBeNull();
@@ -658,35 +680,24 @@ it("finalizes a merge that lands between an attempt's catch-up and its build bef
     }
 
     // The held merge lands just after the next attempt's catch-up read the
-    // state-queue root, so that catch-up still sees the second block queued.
-    const rootUnit = toUnit(
-      fixture.contracts.stateQueue.policyId,
-      SDK.STATE_QUEUE_ROOT_ASSET_NAME,
-    );
+    // landed queue (P1), so that catch-up still sees the second block
+    // queued; the follower then sees the landing before the attempt's next
+    // read.
     let landings = 0;
-    const api = new Proxy(m.h.lucidService.api, {
-      get(target, property) {
-        if (property === "utxosAtWithUnit")
-          return async (address: string, unit: string) => {
-            const utxos = await target.utxosAtWithUnit(address, unit);
-            if (unit === rootUnit && landings === 0) {
-              landings += 1;
-              expect(await fixture.emulator.submitTx(held.txCbor)).toBe(
-                held.txHash,
-              );
-              fixture.emulator.awaitBlock(1);
-              expect(Object.keys(fixture.emulator.mempool)).toEqual([]);
-            }
-            return utxos;
-          };
-        const value = Reflect.get(target, property, target);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    });
-    const merged = await m.run(Effect.either(mergeAction(true)), {
-      ...m.h.lucidService,
-      api,
-    });
+    mergeHooks.afterLandedQueueRead = () =>
+      Effect.gen(function* () {
+        landings += 1;
+        expect(
+          yield* Effect.promise(() => fixture.emulator.submitTx(held.txCbor)),
+        ).toBe(held.txHash);
+        fixture.emulator.awaitBlock(1);
+        expect(Object.keys(fixture.emulator.mempool)).toEqual([]);
+        yield* mirrorEmulatorStateQueue(
+          fixture.operatorLucid,
+          fixture.contracts.stateQueue,
+        );
+      });
+    const merged = await m.run(Effect.either(mergeAction(true)));
     expect(landings).toBe(1);
     expect(Either.isRight(merged) && merged.right).toMatchObject({
       status: "merged",

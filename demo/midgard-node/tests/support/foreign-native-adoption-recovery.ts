@@ -20,6 +20,7 @@ import * as ConfirmedRecovery from "../../src/services/foreign-confirmed-ledger.
 import { recoverForeignNativeAdoptions } from "../../src/services/foreign-native-adoption.js";
 import { foreignAdoptionProjection } from "../../src/services/foreign-native-adoption-projection.js";
 import { assertForeignVerificationSource } from "../../src/services/foreign-verification-source.js";
+import * as LandedQueue from "../../src/services/landed-state-queue.js";
 import { Lucid } from "../../src/services/lucid.js";
 import {
   ContractDeploymentIdentity,
@@ -34,7 +35,6 @@ import {
   digest,
   EVENT_LOG_DIGEST_DOMAIN,
 } from "../../src/services/mpf-native-owner/service.normalize-owner-options.js";
-import * as Topology from "../../src/services/state-queue-topology.js";
 import * as Verification from "../../src/workers/commit-block-header.verify-foreign-base.js";
 import { countsFromLengths, headerFor } from "../da-payload.record.js";
 import { hash, run } from "../event-history-recovery-plans.registration.js";
@@ -199,7 +199,7 @@ export const adoptionRecoveryFixture = async (
     assetName: SDK.STATE_QUEUE_ROOT_ASSET_NAME,
   };
   root.utxo.datum = SDK.encodeLinkedListNodeView(root.datum);
-  vi.spyOn(Topology, "fetchCanonicalStateQueueNodesProgram").mockReturnValue(
+  vi.spyOn(LandedQueue, "landedStateQueueUTxOs").mockReturnValue(
     Effect.succeed([root, node]),
   );
   const verify = vi

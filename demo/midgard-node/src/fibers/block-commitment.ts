@@ -8,7 +8,7 @@ import "../services/globals.js";
 import "../services/history-commit-window.js";
 import "../services/index.js";
 import "../services/native-mpf-local-finalization.js";
-import "../services/state-queue-topology.js";
+import "../services/landed-state-queue.js";
 import "../workers/utils/commit-end-time.js";
 import "../workers/utils/common.js";
 import "../workers/utils/scheduler-refresh.js";

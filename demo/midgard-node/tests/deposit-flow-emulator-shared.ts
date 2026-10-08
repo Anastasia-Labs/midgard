@@ -45,10 +45,10 @@ import "../src/lucid-time.js";
 import "../src/mpf/index.js";
 import "../src/services/event-history-producer.js";
 import "../src/services/index.js";
+import "../src/services/landed-state-queue.js";
 import "../src/services/mempool-ledger-cache.js";
 import "../src/services/native-mpf-local-finalization.js";
 import "../src/services/native-mpf-startup.js";
-import "../src/services/state-queue-topology.js";
 import "../src/services/write-behind.js";
 import "../src/transactions/da-attestation.js";
 import "../src/transactions/initialization.js";
@@ -188,7 +188,6 @@ import type { ContractDeploymentIdentityValue } from "../src/services/midgard-co
 import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/index.js";
 import { recoverNativeMpfForLocalFinalization } from "../src/services/native-mpf-local-finalization.js";
 import { initializeArchitectureGOwner } from "../src/services/native-mpf-startup.js";
-import { fetchStateQueueSnapshotProgram } from "../src/services/state-queue-topology.js";
 import { WriteBehindLive } from "../src/services/write-behind.js";
 import { attestStateQueueOnceProgram } from "../src/transactions/da-attestation.js";
 import {
@@ -257,6 +256,11 @@ import {
   ingestEmulatorEventsUnowned,
   syncEmulatorFollower,
 } from "./helpers/emulator-l1-follower.js";
+import {
+  emulatorStateQueueSnapshot,
+  mirrorEmulatorStateQueue,
+  withEmulatorStateQueue,
+} from "./helpers/landed-state-queue.js";
 import {
   nativeOwnerBinaryPath,
   nativeOwnerBinarySha256,
@@ -668,6 +672,8 @@ const unownedNativeOwner = (
     const running = unownedNativeOwners.get(nodeConfig.LEDGER_MPF_DB_PATH);
     if (running !== undefined) return running;
     const globals = yield* Globals.pipe(Effect.provide(Globals.Default));
+    // Its startup reads the landed queue (P1) at the emulator's tip.
+    yield* mirrorEmulatorStateQueue(lucidService.api, contracts.stateQueue);
     const owner = yield* initializeArchitectureGOwner(globals, nodeConfig).pipe(
       Effect.provideService(LucidService, lucidService as any),
       Effect.provideService(MidgardContracts, contracts as any),
@@ -720,6 +726,7 @@ export const withUnownedNativeOwnerStopped = async <A>(
     const nodeConfig = await makeNodeConfigForFixture(fixture);
     await Effect.runPromise(
       unownedNativeOwner(fixture.contracts, lucidService, nodeConfig).pipe(
+        withEmulatorStateQueue(lucidService.api, fixture.contracts.stateQueue),
         Effect.zipRight(attachUnownedNativeOwner(globals)),
         Effect.provide(Database.layer),
         Effect.provideService(UnownedHistoryFixture, true),
@@ -792,37 +799,46 @@ const runFixtureCommitProgram = (
   nodeConfig: NodeConfigDep | undefined,
   production: OwnedCommitFixture | undefined,
 ) => {
+  // The commit path reads the landed queue (P1): follow the emulator's.
+  const followed = withEmulatorStateQueue(
+    lucidService.api,
+    contracts.stateQueue,
+  );
   if (production === undefined)
-    return Effect.gen(function* () {
-      const config = nodeConfig ?? (yield* fixtureNodeConfigFromEnvironment);
-      return yield* runUnownedNativeCommit(
-        contracts,
-        lucidService,
-        config,
-        input,
-        (nativeInput) =>
-          commitWorkerProgram(
-            contracts,
-            lucidService,
-            nativeInput,
-            undefined,
-            config,
-          ),
-      );
-    });
-  return runOwnedNativeCommit(
-    contracts,
-    lucidService,
-    production,
-    input,
-    (nativeInput) =>
-      commitWorkerProgram(
-        contracts,
-        lucidService,
-        nativeInput,
-        undefined,
-        production.nodeConfig,
-      ),
+    return followed(
+      Effect.gen(function* () {
+        const config = nodeConfig ?? (yield* fixtureNodeConfigFromEnvironment);
+        return yield* runUnownedNativeCommit(
+          contracts,
+          lucidService,
+          config,
+          input,
+          (nativeInput) =>
+            commitWorkerProgram(
+              contracts,
+              lucidService,
+              nativeInput,
+              undefined,
+              config,
+            ),
+        );
+      }),
+    );
+  return followed(
+    runOwnedNativeCommit(
+      contracts,
+      lucidService,
+      production,
+      input,
+      (nativeInput) =>
+        commitWorkerProgram(
+          contracts,
+          lucidService,
+          nativeInput,
+          undefined,
+          production.nodeConfig,
+        ),
+    ),
   );
 };
 
@@ -982,6 +998,10 @@ export const runMergeUntilMerged = async ({
         await Effect.runPromise(attachUnownedNativeOwner(globals));
       lastResult = await Effect.runPromise(
         mergeAction(force).pipe(
+          withEmulatorStateQueue(
+            lucidService.api,
+            fixture.contracts.stateQueue,
+          ),
           (program) =>
             production === undefined
               ? program.pipe(Effect.provideService(UnownedHistoryFixture, true))
@@ -1259,6 +1279,7 @@ export const runNodeCommandProgram = <A>(
     await Effect.runPromise(attachUnownedNativeOwner(globals));
     return Effect.runPromise(
       effect.pipe(
+        withEmulatorStateQueue(lucidService.api, fixture.contracts.stateQueue),
         Effect.provideService(LucidService, lucidService as any),
         Effect.provideService(MidgardContracts, fixture.contracts as any),
         // The wave made the merge/settlement command paths require the
@@ -1547,7 +1568,7 @@ export const commitConfirmRecoverAndMerge = async ({
     globals,
     production,
   });
-  expect(mergeResult.postMergeSnapshot.topology.parsedNodeCount).toBe(1);
+  expect(mergeResult.postMergeSnapshot.blockCount).toBe(0);
 
   const settlementUnit = toUnit(
     fixture.contracts.settlement.policyId,
@@ -1787,8 +1808,8 @@ export {
   DepositsDB,
   driveEmulatorFollower,
   Effect,
+  emulatorStateQueueSnapshot,
   encodeMidgardCekProgramMaterialSidecar,
-  fetchStateQueueSnapshotProgram,
   ForcedTransactionsDB,
   Globals,
   ImmutableDB,

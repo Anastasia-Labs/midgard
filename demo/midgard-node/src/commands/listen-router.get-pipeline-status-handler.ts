@@ -16,6 +16,7 @@ import {
 import * as SettlementJournal from "../database/settlement.js";
 import { blockCommitmentAction } from "../fibers/index.js";
 import * as Genesis from "../genesis.js";
+import { formatLandedStateQueue } from "../l1-state-queue/index.js";
 import {
   ContractDeploymentIdentity,
   Globals,
@@ -23,10 +24,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "../services/index.js";
-import {
-  fetchStateQueueTopologyProgram,
-  formatStateQueueTopology,
-} from "../services/state-queue-topology.js";
+import { readLandedStateQueue } from "../services/landed-state-queue.js";
 import * as Initialization from "../transactions/initialization.js";
 import { failWith500 } from "./listen-response.js";
 import { parseFixedHexParam } from "./listen-router.get-tx-handler.js";
@@ -288,29 +286,36 @@ export const getBlockHandler = Effect.gen(function* () {
 );
 
 /**
- * `GET /init`: initializes protocol state when startup policy and on-chain
- * topology allow it.
+ * `GET /init`: initializes protocol state when startup policy and the landed
+ * state queue (P1) allow it.
  */
 export const getInitHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✨ Initialization request received`);
-  const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const topology = yield* fetchStateQueueTopologyProgram(
-    lucid.api,
-    contracts.stateQueue,
-  );
-  if (topology.initialized) {
-    const details = formatStateQueueTopology(topology);
-    if (!topology.healthy) {
+  const read = yield* readLandedStateQueue(contracts.stateQueue);
+  if (read.kind !== "ok") {
+    return yield* HttpServerResponse.json(
+      {
+        error: "Cannot initialize: the landed state queue is unavailable",
+        reason: read.kind,
+        details: read.detail,
+      },
+      { status: 503 },
+    );
+  }
+  const landed = read.queue;
+  if (landed.policyOutputCount > 0) {
+    const details = formatLandedStateQueue(landed);
+    if (!landed.healthy) {
       yield* Effect.logWarning(
-        `GET /${INIT_ENDPOINT} - Refusing to initialize over invalid state_queue topology (${details}): ${topology.reason ?? "unknown"}`,
+        `GET /${INIT_ENDPOINT} - Refusing to initialize over an unhealthy state queue (${details})`,
       );
       return yield* HttpServerResponse.json(
         {
           error:
-            "Cannot initialize: configured state_queue policy already has invalid on-chain topology",
+            "Cannot initialize: configured state_queue policy already has an unhealthy landed queue",
           details,
-          reason: topology.reason ?? "unknown",
+          reason: landed.reason ?? "unknown",
         },
         { status: 409 },
       );

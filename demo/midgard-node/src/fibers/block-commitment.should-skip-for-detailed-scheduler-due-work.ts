@@ -20,9 +20,9 @@ import {
   MidgardContracts,
 } from "../services/index.js";
 import {
-  fetchStateQueueSnapshotProgram,
+  landedStateQueueSnapshot,
   type StateQueueSnapshot,
-} from "../services/state-queue-topology.js";
+} from "../services/landed-state-queue.js";
 import {
   type SerializedStateQueueUTxO,
   WorkerOutput,
@@ -107,8 +107,7 @@ export const planPreLeaseCommitSchedulerDueWork = Effect.gen(function* () {
   if (LOCAL_FINALIZATION_PENDING) {
     return localFinalizationPendingCommitSchedulerPlan();
   }
-  const snapshot = yield* fetchStateQueueSnapshotProgram(
-    lucid.api,
+  const snapshot = yield* landedStateQueueSnapshot(
     contracts.stateQueue,
     "commit_preflight",
   );

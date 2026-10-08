@@ -17,7 +17,11 @@ import {
   reviveEarliestCanonicalPayloadJournal,
 } from "../services/canonical-journal-recovery.js";
 import { signedCommitNode } from "../services/history-expired-intent-release.js";
-import { Globals, Lucid, MidgardContracts } from "../services/index.js";
+import { Globals, MidgardContracts } from "../services/index.js";
+import {
+  landedStateQueueSnapshot,
+  refreshStateQueueGlobalsFromSnapshot,
+} from "../services/landed-state-queue.js";
 import {
   HaltSource,
   raiseLivenessIncident,
@@ -26,10 +30,6 @@ import {
   SIGNED_INTENT_UNDECIDED,
   SIGNED_INTENT_UNDECIDED_ESCALATION_MS,
 } from "../services/signed-intent-undecided.js";
-import {
-  fetchStateQueueSnapshotProgram,
-  refreshStateQueueGlobalsFromSnapshot,
-} from "../services/state-queue-topology.js";
 import {
   applyConfirmedLedgerDeltaChainTransaction,
   materializeConfirmedLedgerSnapshot,
@@ -126,12 +126,10 @@ export const recoverCanonicalJournalsOnStartup = ({
  * tip during startup.
  */
 export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
-  const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
   const globals = yield* Globals;
 
-  const snapshot = yield* fetchStateQueueSnapshotProgram(
-    lucid.api,
+  const snapshot = yield* landedStateQueueSnapshot(
     contracts.stateQueue,
     "startup",
   );
@@ -143,7 +141,7 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
   yield* Effect.logInfo(
     `Startup state-queue snapshot hydrated: tail=${snapshot.tailCommitBase.outRef},snapshot=${snapshot.snapshotId}`,
   );
-  if (snapshot.topology.parsedNodeCount <= 1) {
+  if (snapshot.blockCount === 0) {
     const confirmedLedgerEntries = yield* ConfirmedLedgerDB.retrieve;
     const confirmedLedgerRoot = yield* computeLedgerMpfRootFromLedgerEntries(
       confirmedLedgerEntries,

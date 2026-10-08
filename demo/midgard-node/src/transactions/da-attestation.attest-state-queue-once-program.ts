@@ -66,7 +66,6 @@ export const attestStateQueueOnceProgram = (
       contracts,
     );
     const targets = yield* fetchUnattestedHeaders(
-      lucid,
       contracts,
       options.headerHash,
     );

@@ -1,5 +1,5 @@
 import { TxHash } from "@lucid-evolution/lucid";
-import { Deferred, Effect, Ref } from "effect";
+import { Deferred, Effect, Ref, SubscriptionRef } from "effect";
 
 import type { OperatorMembershipState } from "../fibers/operator-membership.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
@@ -35,12 +35,8 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
   effect: Effect.gen(function* () {
     const now = Date.now();
 
-    // In-memory state queue length.
+    // Blocks in the landed state queue (P1), as last read.
     const BLOCKS_IN_QUEUE = yield* Ref.make<number>(0);
-
-    // Latest moment the in-memory state queue length was synchronized with
-    // on-chain state.
-    const LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH = yield* Ref.make<number>(0);
 
     // Needed for development to prevent other actions triggering while spending
     // all UTxOs at state queue.
@@ -153,6 +149,9 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const L1_FOLLOWER = yield* Ref.make<L1FollowerState>(
       L1_FOLLOWER_NOT_STARTED,
     );
+    // Bumped by the follower driver each time it applies a new view (N2):
+    // the head change the planner fibers wake on (`l1-head-trigger.ts`).
+    const L1_HEAD_SEQUENCE = yield* SubscriptionRef.make<number>(0);
 
     const NATIVE_MPF_OWNER = yield* Ref.make<NativeMpfOwnerService | undefined>(
       undefined,
@@ -221,7 +220,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
 
     return {
       BLOCKS_IN_QUEUE,
-      LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
       RESET_IN_PROGRESS,
       OPERATOR_MEMBERSHIP,
       OPERATOR_MEMBERSHIP_MISSING_HEIGHT,
@@ -246,6 +244,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       NATIVE_MPF_OWNER,
       EVENT_HISTORY_OWNER,
       L1_FOLLOWER,
+      L1_HEAD_SEQUENCE,
       FOREIGN_BASE_VERIFICATION,
       ADMISSION_BACKLOG_GAUGE,
       LOCAL_FINALIZATION_PENDING,

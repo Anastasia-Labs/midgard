@@ -345,7 +345,7 @@ it("retains the exact durable signed commitment after an accepted submission los
       globals,
       production,
     });
-    expect(merged.postMergeSnapshot.topology.parsedNodeCount).toBe(1);
+    expect(merged.postMergeSnapshot.blockCount).toBe(0);
     const settled = await lucid.utxosAtWithUnit(
       fixture.contracts.settlement.spendingScriptAddress,
       fixture.contracts.settlement.policyId + accepted.headerHash,

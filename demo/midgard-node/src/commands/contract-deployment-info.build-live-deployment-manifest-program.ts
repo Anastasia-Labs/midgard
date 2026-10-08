@@ -248,7 +248,7 @@ export const reconcileInitializedDeploymentManifestProgram = ({
         new Error(
           `Cannot reconcile deployment manifest for an incomplete protocol deployment: missing_components=[${deploymentStatus.missingComponents.join(
             ",",
-          )}],state_queue_healthy=${deploymentStatus.stateQueueTopology.healthy.toString()}`,
+          )}]`,
         ),
       );
     }

@@ -34,10 +34,10 @@ export const numbered = (text: string): string => {
 };
 
 /**
- * Applies the follower schema in the caller's SQL transaction: the follower's
- * migration runner, over the node's open transaction connection.
+ * The follower's SQL interface over the node's connection: inside a
+ * `withTransaction`, every statement runs on its transaction connection.
  */
-export const installFollowerSchema = Effect.gen(function* () {
+export const followerSqlTx = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const run = Runtime.runPromise(yield* Effect.runtime<SqlClient.SqlClient>());
   const tx: SqlTx = {
@@ -50,6 +50,15 @@ export const installFollowerSchema = Effect.gen(function* () {
         await run(sql.unsafe(statement));
     },
   };
+  return tx;
+});
+
+/**
+ * Applies the follower schema in the caller's SQL transaction: the follower's
+ * migration runner, over the node's open transaction connection.
+ */
+export const installFollowerSchema = Effect.gen(function* () {
+  const tx = yield* followerSqlTx;
   const backend: SqlBackend = {
     dialect: postgresDialect,
     transaction: (_mode, work) => work(tx),
