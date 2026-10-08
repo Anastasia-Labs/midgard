@@ -1,6 +1,7 @@
 import { TxHash } from "@lucid-evolution/lucid";
 import { Effect, Ref, SubscriptionRef } from "effect";
 
+import type { DriverHold } from "../l1-events/driver.js";
 import type { OperatorMembershipState } from "../l1-operator-set/membership.js";
 import type { PublishedOperatorSet } from "../l1-operator-set/snapshot.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
@@ -144,9 +145,10 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const EVENT_HISTORY_OWNER = yield* Ref.make<EventHistoryOwner | undefined>(
       undefined,
     );
-    // Why the last landed-block rebase failed, until one succeeds; the
-    // landed-block hold shows it (`landed_block_rebase_failed`).
-    const LANDED_BLOCK_REBASE_FAILURE = yield* Ref.make<string | undefined>(
+    // Why the last landed-block rebase failed, until one succeeds: the
+    // reason and detail the landed-block hold shows
+    // (`landed_block_batch_undecided` or `landed_block_rebase_failed`).
+    const LANDED_BLOCK_REBASE_FAILURE = yield* Ref.make<DriverHold | undefined>(
       undefined,
     );
     // The node's L1 follower (N1): the shared follow loop and its

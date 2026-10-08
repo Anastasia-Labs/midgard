@@ -6,7 +6,8 @@
  * - every failure the rebase can meet past the transient ones (the native
  *   move, the event check, the batch closure, the receipt reversal, the
  *   ledger encoding) is caught: the preparation returns, the failure is
- *   recorded and raised as `landed_block_rebase_failed`, the reconciliation
+ *   recorded and raised as `landed_block_rebase_failed` (an undecided batch
+ *   member as `landed_block_batch_undecided`), the reconciliation
  *   stays pending, and the next attempt after the cause is gone runs the
  *   rebase and clears it; a fresh process meets the same hold;
  * - a batch co-member a base block includes is settled by it, while the
@@ -22,7 +23,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { reportHistorySyncReasons } from "../src/commands/listen-startup.report-history-sync.js";
 import { foldToRoot } from "../src/landed-blocks/fold.js";
-import { LANDED_BLOCK_REBASE_FAILED } from "../src/landed-blocks/holds.js";
+import {
+  LANDED_BLOCK_BATCH_UNDECIDED,
+  LANDED_BLOCK_REBASE_FAILED,
+} from "../src/landed-blocks/holds.js";
 import type { LandedBlockPorts } from "../src/landed-blocks/ports.js";
 import { REBASE_REJECTIONS } from "../src/landed-blocks/rebase.js";
 import { rollBackRows } from "../src/landed-blocks/settlements.js";
@@ -141,6 +145,7 @@ describe(
       expectHeld(
         await attempt(globals),
         /batch's acceptance cannot be reversed/,
+        LANDED_BLOCK_BATCH_UNDECIDED,
       );
       await sqlRun(
         globals,

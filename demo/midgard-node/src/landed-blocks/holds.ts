@@ -42,7 +42,14 @@ export const CONFIRMED_LEDGER_OWN_BLOCK_PENDING =
 export const LANDED_BLOCK_REBASE_PENDING = "landed_block_rebase_pending";
 /** The rebase failed; the history owner retries it on its backoff. */
 export const LANDED_BLOCK_REBASE_FAILED = "landed_block_rebase_failed";
-/** The liveness source the failed rebase raises `landed_block_rebase_failed` under. */
+/**
+ * The rebase's batch closure reached an acceptance receipt with a member
+ * that is neither pending, settled, nor recorded rejected, so it cannot
+ * reverse the batch; the history owner retries the rebase on its backoff,
+ * and the reason clears once a rebase runs.
+ */
+export const LANDED_BLOCK_BATCH_UNDECIDED = "landed_block_batch_undecided";
+/** The liveness source a failed rebase raises its reason under. */
 export const LANDED_BLOCK_REBASE_SOURCE = "landed_block_rebase";
 
 const PRIORITY = [
@@ -51,6 +58,7 @@ const PRIORITY = [
   LANDED_BLOCK_EVENT_UNKNOWN,
   LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_AWAITING_DA,
+  LANDED_BLOCK_BATCH_UNDECIDED,
   LANDED_BLOCK_REBASE_FAILED,
   LANDED_BLOCK_REPLAY_FAILED,
   CONFIRMED_LEDGER_BASE_MISMATCH,

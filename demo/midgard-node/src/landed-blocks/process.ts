@@ -25,9 +25,10 @@
  *    path.
  * 4. A foreign row the working ledger does not hold yet, or a removed row,
  *    asks the history owner for the rebase and holds
- *    `landed_block_rebase_pending` until it ran, or
- *    `landed_block_rebase_failed` (with the failure) while the owner
- *    retries a rebase that failed.
+ *    `landed_block_rebase_pending` until it ran, or, while the owner
+ *    retries a rebase that failed, `landed_block_batch_undecided` (the
+ *    batch closure met an undecided receipt member) or
+ *    `landed_block_rebase_failed` (any other failure), with the failure.
  * 5. With the frontier at the root, the retained folds' merge points are
  *    brought up to the queue history, and the folds whose merge is at or
  *    below the follower's prune boundary are dropped.
@@ -68,7 +69,6 @@ import {
   LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_INVALID,
   LANDED_BLOCK_OWN_JOURNAL_ABANDONED,
-  LANDED_BLOCK_REBASE_FAILED,
   LANDED_BLOCK_REBASE_PENDING,
   LANDED_BLOCK_REPLAY_FAILED,
   LANDED_BLOCKS_WAITING,
@@ -395,8 +395,7 @@ const run = <R>(
     if (rebaseNeeded(yield* retrieveRows)) {
       // A failed rebase is already pending on the owner's backoff.
       const failure = yield* ports.rebaseFailure;
-      if (failure !== undefined)
-        holds.push(hold(LANDED_BLOCK_REBASE_FAILED, failure));
+      if (failure !== undefined) holds.push(failure);
       else {
         const blocked = yield* ports.requestRebase(
           "Landed blocks changed what the working ledger must hold",
@@ -435,7 +434,7 @@ export const processLandedQueue = <R>(
                       LANDED_BLOCKS_WAITING,
                       "the history owner is recovering",
                     )
-                  : hold(LANDED_BLOCK_REBASE_FAILED, failure),
+                  : failure,
               ),
             )
           : Effect.succeed(hold(LANDED_BLOCK_REPLAY_FAILED, String(error))),

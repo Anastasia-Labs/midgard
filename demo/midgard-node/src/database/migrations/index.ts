@@ -14,6 +14,7 @@ import receiptSettlementsSql from "./sql/0012_receipt_settlements.sql";
 import mempoolInclusionMarksSql from "./sql/0013_mempool_inclusion_marks.sql";
 import confirmedLedgerMergesSql from "./sql/0014_confirmed_ledger_merges.sql";
 import settlementStatusDerivedSql from "./sql/0015_settlement_status_derived.sql";
+import receiptRejectionsSql from "./sql/0016_receipt_rejections.sql";
 
 export type Migration = {
   readonly version: number;
@@ -129,6 +130,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: settlementStatusDerivedSql,
     transactional: true,
   },
+  {
+    version: 16,
+    name: "receipt_rejections",
+    checksumSha256: sha256Hex(receiptRejectionsSql),
+    sql: receiptRejectionsSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -211,6 +219,7 @@ export const APPLICATION_TABLE_NAMES = [
   "event_history_incarnations",
   "event_history_l2_ledger_receipts",
   "event_history_l2_ledger_receipt_settlements",
+  "event_history_l2_ledger_receipt_rejections",
   "event_history_recovery_plans",
   "follower_event_ingestion",
   "node_landed_blocks",
