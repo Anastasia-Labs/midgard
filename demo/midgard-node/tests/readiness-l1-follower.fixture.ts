@@ -22,6 +22,7 @@ export const followingAtTip = (
     node: null,
     tip: { slot: 100, height: 10 },
     atTip: true,
+    replaying: false,
     events: 1,
     lastError: null,
     prune: { steps: 0, prunedThroughSlot: null, lastError: null },

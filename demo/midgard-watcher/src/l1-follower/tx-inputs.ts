@@ -221,7 +221,13 @@ export const createTxInputsResolver = (
     const cursor = await store.cursor();
     if (cursor === null) return [];
     const sweepKey = `${cursor.generation.toString()}:${cursor.prunedThroughSlot.toString()}`;
-    if (sweepKey !== lastSweep) {
+    // While a tracked-set reset replays from the origin, the txs whose
+    // inputs are stored are not back in l1_txs yet, and an input more than
+    // k deep could never be read again: the sweep waits for the first tip.
+    if (
+      sweepKey !== lastSweep &&
+      (await store.trackedSetRecord())?.replaying !== true
+    ) {
       await store.transaction("write", (tx) => tx.query(SWEEP_SQL));
       lastSweep = sweepKey;
     }

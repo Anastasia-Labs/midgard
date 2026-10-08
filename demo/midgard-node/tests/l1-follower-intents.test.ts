@@ -333,16 +333,14 @@ describe.each(["sqlite", "postgres"] as const)(
 );
 
 describe("the node intent tracked set", () => {
-  it("is the seeded wallets, the protocol payment credentials and the hub-oracle policy", () => {
-    const wallet = Buffer.from("60".padEnd(58, "1"), "hex");
+  it("is the protocol payment credentials and the hub-oracle policy, without the seeded wallets", () => {
     expect(
       nodeIntentTrackedSet({
-        seededAddresses: [wallet],
         protocolPaymentCredentials: ["ab".repeat(28)],
         hubOraclePolicyId: "cd".repeat(28),
       }),
     ).toEqual({
-      addresses: new Set([wallet.toString("hex")]),
+      addresses: new Set(),
       paymentCredentials: new Set(["ab".repeat(28)]),
       policies: new Set(["cd".repeat(28)]),
     });

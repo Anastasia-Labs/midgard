@@ -27,8 +27,10 @@ export class FollowerMigrationError extends Error {
  * The follower's bookkeeping, created before any migration and outside the
  * catalog, so `follower reset --to-origin` never deletes it: the migration
  * ledger, the table catalog (each migrated table's declared class, which
- * reset reads), and the writer row (the lease's fencing epoch and the
- * generation the next `initialize` starts at).
+ * reset reads), the writer row (the lease's fencing epoch and the
+ * generation the next `initialize` starts at), and the tracked-set record
+ * (the protocol tracked set the facts were built under, and whether a
+ * tracked-set reset is still replaying; `store/tracked-set-record.ts`).
  */
 export const FOLLOWER_BOOKKEEPING_DDL = `
 -- class: A; retention: one row per applied migration, forever; reset keeps it
@@ -56,6 +58,15 @@ CREATE TABLE IF NOT EXISTS l1_follower_writer (
 
 INSERT INTO l1_follower_writer (id, writer_epoch, next_generation)
   SELECT 1, 0, 0 WHERE NOT EXISTS (SELECT 1 FROM l1_follower_writer);
+
+-- class: A; retention: one row forever; reset keeps it (and rewrites it on a tracked-set reset)
+CREATE TABLE IF NOT EXISTS l1_follower_tracked_set (
+  id integer PRIMARY KEY CHECK (id = 1),
+  addresses text NOT NULL,
+  payment_credentials text NOT NULL,
+  policies text NOT NULL,
+  replaying integer NOT NULL
+);
 `;
 
 const checksum = (sql: string): string =>

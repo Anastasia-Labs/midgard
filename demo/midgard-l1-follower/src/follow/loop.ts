@@ -11,6 +11,7 @@ import {
   startFromOrigin,
 } from "../origin.js";
 import { FollowerMigrationError } from "../schema/migrate.js";
+import { describeTrackedSetCheck } from "../store/tracked-set-record.js";
 import type { Intervention } from "../types.js";
 import {
   applyChainSyncEvent,
@@ -93,6 +94,7 @@ export const followChain = async (
     node: nodeOf(options.transport.readiness),
     tip: null,
     atTip: false,
+    replaying: false,
     events: 0,
     lastError: null,
     prune: { steps: 0, prunedThroughSlot: null, lastError: null },
@@ -278,6 +280,18 @@ export const followChain = async (
       cursor !== null &&
       cursor.point.slot === Number(tip.slot) &&
       cursor.point.hash.toString("hex") === tip.hash;
+    // The first report at the tip ends a tracked-set replay; a failed
+    // clear keeps the reason and the next event at the tip tries again.
+    let replaying = status.replaying;
+    if (replaying && atTip) {
+      const ended = await store.endTrackedSetReplay();
+      if (typeof ended === "boolean") {
+        replaying = false;
+        log("tracked-set replay reached the node tip");
+      } else if (ended.kind === "store_locked") return "relock";
+      else
+        log(`clearing the tracked-set replay failed: ${ended.error.message}`);
+    }
     await publish({
       state: "following",
       waiting: null,
@@ -285,6 +299,7 @@ export const followChain = async (
       events: status.events + 1,
       lastError: null,
       atTip: atTip && status.node === null,
+      replaying,
       tip:
         tip.kind === "point"
           ? { slot: Number(tip.slot), height: Number(event.tip.blockNo) }
@@ -323,6 +338,9 @@ export const followChain = async (
         await stopOn(started);
         return finish();
       }
+      const change = describeTrackedSetCheck(started.trackedSet);
+      if (change !== null) log(change);
+      await publish({ replaying: started.replaying });
       const begun = await startFromOrigin({
         store,
         transport: options.transport,

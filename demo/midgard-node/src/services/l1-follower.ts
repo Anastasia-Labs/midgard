@@ -293,7 +293,6 @@ const followL1 = Effect.fnUntraced(function* (
               // The protocol-init tx qualifies through the hub oracle mint;
               // the rest is the intent journal's invariant (§8.2).
               trackedSet: nodeIntentTrackedSet({
-                seededAddresses,
                 protocolPaymentCredentials:
                   protocolPaymentCredentials(contracts),
                 hubOraclePolicyId: plan.hubOraclePolicyId,
@@ -301,6 +300,8 @@ const followL1 = Effect.fnUntraced(function* (
             },
             "postgres",
           ),
+          // Seeded (§5.3 step 4), never in the tracked-set record.
+          wallets: seededAddresses,
           connection: {
             connectionString: plan.connectionString,
             maxConnections: 4,
@@ -416,6 +417,7 @@ const followL1 = Effect.fnUntraced(function* (
     node: null,
     tip: null,
     atTip: false,
+    replaying: false,
     events: 0,
     lastError: null,
     prune: { steps: 0, prunedThroughSlot: null, lastError: null },

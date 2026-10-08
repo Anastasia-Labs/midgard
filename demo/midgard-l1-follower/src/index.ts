@@ -39,6 +39,7 @@ export {
   FOLLOWER_CATCHING_UP,
   FOLLOWER_MIGRATION_FAILED,
   FOLLOWER_NODE_UNAVAILABLE,
+  FOLLOWER_TRACKED_SET_CHANGED,
   FOLLOWER_WAITING,
   type FollowReadiness,
   type FollowReadinessReason,
@@ -273,5 +274,12 @@ export {
 } from "./store/reset.js";
 export type { RewindNoop, Rewound } from "./store/rewind.js";
 export type { SeedCursorMoved, SeedOutput, SeedResult } from "./store/seed.js";
+export {
+  readTrackedSetRecordIn,
+  type TrackedSetCheck,
+  type TrackedSetItems,
+  trackedSetItems,
+  type TrackedSetRecord,
+} from "./store/tracked-set-record.js";
 export { currentViewIn, viewValidIn, viewValidQuery } from "./store/view.js";
 export type * from "./types.js";

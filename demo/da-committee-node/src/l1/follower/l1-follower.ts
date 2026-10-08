@@ -15,7 +15,6 @@ import {
   projectionStoreOptions,
   WALLET_SEED_PENDING,
   type WalletSeeder,
-  withTrackedAddresses,
   type WriterLease,
 } from "@al-ft/midgard-l1-follower";
 import { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
@@ -247,7 +246,8 @@ type FollowerParts = Readonly<{
 
 /**
  * The committee follower's store options: the committee projection and its
- * tracked set, with the committee's own wallets tracked by address.
+ * tracked set, with the committee's own wallets tracked by address
+ * (`wallets`: seeded, never in the store's tracked-set record).
  */
 export const committeeFollowerStoreOptions = (
   config: LoadedCommitteeConfig,
@@ -275,10 +275,7 @@ export const committeeFollowerStoreOptions = (
     },
     dialect,
   );
-  return {
-    ...options,
-    trackedSet: withTrackedAddresses(options.trackedSet, wallets),
-  };
+  return { ...options, wallets };
 };
 
 const openFollowerParts = async (

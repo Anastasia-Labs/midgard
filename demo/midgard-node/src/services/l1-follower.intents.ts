@@ -49,13 +49,16 @@ const HEADER_FAMILIES: ReadonlySet<string> = new Set([
   "merge",
 ]);
 
-/** The node follower's tracked set (§8.2's invariant plus protocol init). */
+/**
+ * The node follower's protocol tracked set (§8.2's invariant plus protocol
+ * init). The seeded wallets are not in it: they go to the store as
+ * `FactStoreOptions.wallets`, tracked by address but never recorded.
+ */
 export const nodeIntentTrackedSet = (input: {
-  readonly seededAddresses: readonly Buffer[];
   readonly protocolPaymentCredentials: readonly string[];
   readonly hubOraclePolicyId: string;
 }): TrackedSet => ({
-  addresses: new Set(input.seededAddresses.map((a) => a.toString("hex"))),
+  addresses: new Set(),
   paymentCredentials: new Set(input.protocolPaymentCredentials),
   policies: new Set([input.hubOraclePolicyId]),
 });

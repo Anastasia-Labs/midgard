@@ -4,8 +4,18 @@ import {
   type Dialect,
   type SqlTx,
 } from "../sql/backend.js";
-import type { Cursor, OutputSummary, OutRef, Point } from "../types.js";
+import type {
+  Cursor,
+  OutputSummary,
+  OutRef,
+  Point,
+  TrackedSet,
+} from "../types.js";
 import { insertOutputs, readCursor } from "./rows.js";
+import {
+  trackedSetItems,
+  writeTrackedSetRecordIn,
+} from "./tracked-set-record.js";
 import { readWriterStateIn } from "./writer-state.js";
 
 export type SeedOutput = Readonly<{ outRef: OutRef; output: OutputSummary }>;
@@ -102,12 +112,14 @@ const sameOutRef = (left: OutRef, right: OutRef): boolean =>
  * Writes the origin block row and the cursor. The generation starts at the
  * writer row's `next_generation`: 0 on a new store, and above every
  * generation used before a reset. Idempotent for the same origin; a
- * different origin on an initialized store is refused.
+ * different origin on an initialized store is refused. A new cursor records
+ * `trackedSet`, the protocol tracked set (`tracked-set-record.ts`).
  */
 export const initializeIn = async (
   tx: SqlTx,
   dialect: Dialect,
   origin: Readonly<{ point: Point; height: number }>,
+  trackedSet: TrackedSet,
 ): Promise<
   | { kind: "initialized" | "already_initialized"; cursor: Cursor }
   | { kind: "origin_mismatch"; cursor: Cursor }
@@ -137,6 +149,7 @@ export const initializeIn = async (
       origin.point.slot,
     ],
   );
+  await writeTrackedSetRecordIn(tx, trackedSetItems(trackedSet), "keep");
   const cursor = await readCursor(tx, dialect);
   if (cursor === null) throw new Error("cursor row vanished after insert");
   return { kind: "initialized", cursor };
