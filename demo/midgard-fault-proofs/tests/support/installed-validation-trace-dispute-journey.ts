@@ -58,6 +58,48 @@ const PAYLOAD_ENVELOPE_SHA = "ab".repeat(32);
 const PAYLOAD_SHA = "cd".repeat(32);
 
 /**
+ * The fixture's challenge, admitted by the production challenge authority at
+ * a fixed payload coordinate (the replay input is the fixture's own).
+ */
+export const admitFixedCoordinateChallenge = async ({
+  fixture,
+  setup,
+}: Readonly<{
+  fixture: Readonly<{
+    header: InstalledValidationJourneyFixture["header"];
+    claim: Parameters<typeof admitValidationTraceChallenge>[0]["claim"];
+    challengerReplayInput: Parameters<
+      typeof admitValidationTraceChallenge
+    >[0]["challengerReplayInput"];
+  }>;
+  setup: Readonly<{ headerHash: string }>;
+}>): Promise<InstalledValidationChallengeSupply> => ({
+  deploymentFingerprint: DEPLOYMENT,
+  challenge: await admitValidationTraceChallenge({
+    coordinate: {
+      schemaVersion: "midgard-production-w25-challenge-coordinate-v1",
+      deploymentFingerprint: DEPLOYMENT,
+      stateQueueObservationDigest: "22".repeat(32),
+      headerHash: setup.headerHash,
+      payloadEnvelopeSha256: PAYLOAD_ENVELOPE_SHA,
+      payloadSha256: PAYLOAD_SHA,
+      transcriptDigest: "33".repeat(32),
+      blockReplayResultDigest: "44".repeat(32),
+      coordinate: { domain: "transaction", index: "0" },
+    },
+    evidence: {
+      headerHash: setup.headerHash,
+      payloadEnvelopeSha256: PAYLOAD_ENVELOPE_SHA,
+      payloadSha256: PAYLOAD_SHA,
+      header: fixture.header,
+    } as unknown as CanonicalBlockEvidence,
+    claim: fixture.claim,
+    challengerReplayInput: fixture.challengerReplayInput,
+    exactL1ReferenceOutRefs: [],
+  }),
+});
+
+/**
  * Stages the complete installed-workflow ledger for the sole interactive
  * family and returns the production R6 runner plus the emulator-side operator
  * counterparty. Every publication mirrors the reference dispute journey
@@ -98,31 +140,8 @@ export const stageInstalledValidationTraceDisputeJourney = async (
         terminalCounterMismatch,
         repeatedRequiredSigners,
       }),
-    supplyChallenge: async ({ fixture, setup }) => ({
-      deploymentFingerprint: DEPLOYMENT,
-      challenge: await admitValidationTraceChallenge({
-        coordinate: {
-          schemaVersion: "midgard-production-w25-challenge-coordinate-v1",
-          deploymentFingerprint: DEPLOYMENT,
-          stateQueueObservationDigest: "22".repeat(32),
-          headerHash: setup.headerHash,
-          payloadEnvelopeSha256: PAYLOAD_ENVELOPE_SHA,
-          payloadSha256: PAYLOAD_SHA,
-          transcriptDigest: "33".repeat(32),
-          blockReplayResultDigest: "44".repeat(32),
-          coordinate: { domain: "transaction", index: "0" },
-        },
-        evidence: {
-          headerHash: setup.headerHash,
-          payloadEnvelopeSha256: PAYLOAD_ENVELOPE_SHA,
-          payloadSha256: PAYLOAD_SHA,
-          header: fixture.header,
-        } as unknown as CanonicalBlockEvidence,
-        claim: fixture.claim,
-        challengerReplayInput: fixture.challengerReplayInput,
-        exactL1ReferenceOutRefs: [],
-      }),
-    }),
+    supplyChallenge: async (staged) =>
+      await admitFixedCoordinateChallenge(staged),
   });
   return { ...journey, challenge: journey.challenge!, config: journey.config! };
 };

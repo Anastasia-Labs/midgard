@@ -22,7 +22,10 @@ export const createWatcherFaultProofSupervisor = (input: {
   readonly deploymentFingerprint: string;
   readonly deadlineAlertHeadroomMs: number;
   readonly queueAuthenticationKey: Uint8Array;
-  readonly execution: WatcherFaultProofExecution;
+  readonly execution: Pick<
+    WatcherFaultProofExecution,
+    "verifyCompleted" | "execute"
+  >;
   /** The follower-store pins that hold open objectives' L1 history. */
   readonly proofRetention: WatcherProofRetention;
   /** Funding reservations held because their recorded decision is missing. */

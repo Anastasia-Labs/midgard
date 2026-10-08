@@ -8,7 +8,7 @@ import type {
 } from "./journal.js";
 import {
   FraudProofL1CheckpointChangedError,
-  FraudProofL1UnavailableError,
+  isFraudProofL1WaitError,
 } from "./l1-source.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
@@ -92,7 +92,7 @@ export const reobserveRequiredWorkflowParent = async ({
         return resumeOnObservation(
           `reconciliation awaits a stable boundary for ${intent.actionId}: ${cause.message}`,
         );
-      if (cause instanceof FraudProofL1UnavailableError) throw cause;
+      if (isFraudProofL1WaitError(cause)) throw cause;
       return await stalled(
         `reconciliation failed for ${intent.actionId}: ${formatUnknownError(cause)}`,
       );

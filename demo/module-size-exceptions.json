@@ -251,8 +251,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/validation-dispute/submit/semantic-resolution.ts",
-    "max": 2397,
-    "reason": "submitValidationDisputeSemanticResolution is the dominant indivisible declaration (2249 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 2391,
+    "reason": "submitValidationDisputeSemanticResolution is the dominant indivisible declaration (2242 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/value-not-preserved/union-plan.plan-conservation-fold.ts",
@@ -1556,8 +1556,8 @@
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/fault-proof-objective-progress.test.ts",
-    "max": 785,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. W1 (+2): the supervisor takes the follower's proof retention (a storeless one here). W2b-fix R2 (+1): the supervisor takes the funding runtime's reservation holds (none here). W3 (+47): the user-event runtime and its history driver are gone (-2), and both polarities pin that a completion marked beyond k is final for a job queued at a later generation while one not yet k deep is verified again (+49)."
+    "max": 846,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. W1 (+2): the supervisor takes the follower's proof retention (a storeless one here). W2b-fix R2 (+1): the supervisor takes the funding runtime's reservation holds (none here). W3 (+47): the user-event runtime and its history driver are gone (-2), and both polarities pin that a completion marked beyond k is final for a job queued at a later generation while one not yet k deep is verified again (+49). CEKF (+61): a refused L1 read, in the run (direct and wrapped) and in the completion check, holds the objective by name (fault_proof_l1_refused) through the real execution and supervisor instead of ending liveness, and the next observation clears it; the harness exposes its execution's readiness."
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/fault-proof-supervisor.test.ts",

@@ -1,5 +1,6 @@
 import {
   FraudProofL1CheckpointChangedError,
+  FraudProofL1RefusedError,
   FraudProofL1UnavailableError,
   type FraudProofRawL1Point,
 } from "@al-ft/midgard-fault-proofs";
@@ -16,13 +17,18 @@ import {
  * source (`fault-proof-l1-source.ts`) and its signed-intent recovery.
  */
 
-/** A raw read the follower refused for a reason that is neither a moved chain nor a missing cursor. */
-export class WatcherFaultProofL1RefusedError extends Error {
+/**
+ * A raw read the follower refused for a reason that is neither a moved chain
+ * nor a missing cursor. The workflow hands it to the watcher, which holds the
+ * objective by name instead of failing the process.
+ */
+export class WatcherFaultProofL1RefusedError extends FraudProofL1RefusedError {
   constructor(
-    readonly reason: RawReadRefusal,
-    readonly detail: string,
+    override readonly reason: RawReadRefusal,
+    detail: string,
   ) {
-    super(`the follower refused the read (${reason}): ${detail}`);
+    super(reason, detail);
+    this.message = `the follower refused the read (${reason}): ${detail}`;
     this.name = "WatcherFaultProofL1RefusedError";
   }
 }

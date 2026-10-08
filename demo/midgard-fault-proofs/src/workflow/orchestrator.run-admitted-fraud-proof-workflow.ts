@@ -44,7 +44,7 @@ import {
 } from "./journal.js";
 import {
   FraudProofL1CheckpointChangedError,
-  FraudProofL1UnavailableError,
+  isFraudProofL1WaitError,
 } from "./l1-source.js";
 import { adoptLandedSupersededAttempt } from "./orchestrator.adopt-landed-superseded-attempt.js";
 import {
@@ -543,7 +543,7 @@ export const runAdmittedFraudProofWorkflow = async ({
           return resumeOnObservation(
             `reconciliation awaits a stable boundary for ${action.actionId}: ${cause.message}`,
           );
-        if (cause instanceof FraudProofL1UnavailableError) throw cause;
+        if (isFraudProofL1WaitError(cause)) throw cause;
         return await stalled(
           `reconciliation failed for ${action.actionId}: ${formatUnknownError(cause)}`,
         );
@@ -735,7 +735,7 @@ export const runAdmittedFraudProofWorkflow = async ({
           checkpoint: "before_terminal_verify",
         });
       } catch (cause) {
-        if (cause instanceof FraudProofL1UnavailableError) throw cause;
+        if (isFraudProofL1WaitError(cause)) throw cause;
         return await stalled(
           `terminal verification failed: ${formatUnknownError(cause)}`,
         );
@@ -846,7 +846,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         cause instanceof WorkflowFundingReservationUnavailableError
       )
         return resumeOnObservation(cause.message);
-      if (cause instanceof FraudProofL1UnavailableError) throw cause;
+      if (isFraudProofL1WaitError(cause)) throw cause;
       return await stalled(
         `preflight failed for ${action.actionId}: ${formatUnknownError(cause)}`,
         adapterPreflightFailed ? "preflight" : undefined,
@@ -888,7 +888,7 @@ export const runAdmittedFraudProofWorkflow = async ({
     } catch (cause) {
       if (cause instanceof WorkflowFundingReservationUnavailableError)
         return resumeOnObservation(cause.message);
-      if (cause instanceof FraudProofL1UnavailableError) throw cause;
+      if (isFraudProofL1WaitError(cause)) throw cause;
       return await stalled(
         `funding reservation failed for ${action.actionId}: ${formatUnknownError(cause)}`,
       );

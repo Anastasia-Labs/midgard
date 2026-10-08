@@ -187,8 +187,9 @@ const groupAddresses = (
 /**
  * Deterministic address classifier over the resolved family chain. Control
  * stages are registered first and win over any later group that compiles to
- * the same address (none do today; the guard keeps the first, most specific
- * classification if a future chain revision aliases addresses).
+ * the same address. The split ScriptSources redeemer-item chain shares its
+ * normalizers, source authenticator and first executors with the CEK context
+ * item chain, so those stages classify as `cek_context_item_stage`.
  */
 export const buildValidationTraceDisputeAddressClassifier = (
   chain: FamilyChain,

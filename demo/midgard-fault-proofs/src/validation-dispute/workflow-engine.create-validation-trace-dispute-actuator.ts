@@ -16,8 +16,6 @@ import {
   captureCursorRemoval,
   type CursorFamilyActionInput,
 } from "../workflow/cursor-family-runtime.js";
-import { journalJsonDigest } from "../workflow/journal.js";
-import { workflowTransactionReferenceInputOutRefs } from "../workflow/transaction-boundary.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   cancelValidationCekContext,
@@ -31,15 +29,10 @@ import {
   submitValidationDisputePrepareResolution,
   submitValidationDisputePrepareSelected,
   submitValidationDisputeReveal,
-  submitValidationDisputeSemanticResolution,
   submitValidationDisputeTimeout,
   submitValidationDisputeVerifySource,
 } from "./submit.js";
 import { captureCanonicalCheckpoint } from "./workflow-canonical-continuation.js";
-import {
-  captureCekContinuation,
-  cekPreparationRouteInput,
-} from "./workflow-cek-continuation.js";
 import {
   type ValidationTraceDisputeActuationMaterial,
   type ValidationTraceDisputeActuatorAction,
@@ -57,6 +50,7 @@ import {
   VALIDATION_TRACE_DISPUTE_CATEGORY_ID,
 } from "./workflow-family.js";
 import { createValidationTraceOneStepArgumentResolver } from "./workflow-one-step-argument.js";
+import { captureSemanticResolution } from "./workflow-semantic-resolution-capture.js";
 
 /**
  * Family actuator. Builders stop after local UPLC evaluation and signing;
@@ -366,67 +360,13 @@ export const createValidationTraceDisputeActuator = (
             publishedThreadScriptReference,
           });
           if (canonical !== undefined) return canonical;
-          if (action.cekPreparedResolutionCbor !== undefined)
-            return await captureCekContinuation({
-              config,
-              oneStepArgumentFor,
-              action,
-              material,
-              ...(retained === undefined ? {} : { retained }),
-              preparedResolutionCbor: action.cekPreparedResolutionCbor,
-              input,
-            });
-          const { argument: oneStepArgument, delivery } =
-            await oneStepArgumentFor({
-              material,
-              threadOutRef: action.threadOutRef,
-              retained,
-              action,
-            });
-          const transaction = await captureLocallyEvaluatedTransaction(
-            async (preSubmitBoundary) => {
-              await submitValidationDisputeSemanticResolution({
-                ...common,
-                threadOutRef: action.threadOutRef,
-                oneStepArgument,
-                ...(delivery === undefined
-                  ? {}
-                  : {
-                      carriageMaterial: delivery.material,
-                      referenceScriptUtxo: delivery.semanticReference,
-                    }),
-                ...(action.scriptSourcesItemPreparedCbor === undefined
-                  ? {}
-                  : {
-                      scriptSourcesItemPreparedCbor:
-                        action.scriptSourcesItemPreparedCbor,
-                    }),
-                preSubmitBoundary,
-                awaitConfirmation: false,
-              });
-            },
-          );
-          if (
-            delivery !== undefined &&
-            journalJsonDigest(
-              [
-                ...workflowTransactionReferenceInputOutRefs(transaction.signed),
-              ].sort(),
-            ) !== journalJsonDigest(delivery.durableBinding.referenceOutRefs)
-          )
-            throw new Error(
-              "validation semantic transaction changed its prepared reference set",
-            );
-          return Object.freeze({
-            transaction,
-            durableRouteInput: {
-              transitionCborHex: hex(oneStepArgument.transitionCbor),
-              auxiliaryCborHex: hex(oneStepArgument.auxiliaryCbor),
-              ...(delivery === undefined
-                ? {}
-                : { fieldCarriageBinding: delivery.durableBinding }),
-              ...cekPreparationRouteInput(oneStepArgument, input),
-            },
+          return await captureSemanticResolution({
+            config,
+            oneStepArgumentFor,
+            action,
+            material,
+            ...(retained === undefined ? {} : { retained }),
+            input,
           });
         }
         case "cancel_semantic_route": {

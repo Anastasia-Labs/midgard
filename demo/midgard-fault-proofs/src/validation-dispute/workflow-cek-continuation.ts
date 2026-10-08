@@ -34,18 +34,6 @@ export const isStagedCekRoute = (argument: {
     argument.semanticResolverIndex === 3);
 
 /**
- * The route input a CEK core or context first stage journals: the prepared
- * resolution it consumes, which every later stage resumes against.
- */
-export const cekPreparationRouteInput = (
-  argument: Parameters<typeof isStagedCekRoute>[0],
-  input: UTxO,
-): { readonly cekPreparedResolutionCbor?: string } =>
-  isStagedCekRoute(argument) && input.datum != null
-    ? { cekPreparedResolutionCbor: input.datum }
-    : {};
-
-/**
  * Captures the next stage of a CEK core or context route from its live
  * checkpoint. The one-step argument is rebuilt from the admitted material
  * against the prepared resolution the route's first stage consumed, so the

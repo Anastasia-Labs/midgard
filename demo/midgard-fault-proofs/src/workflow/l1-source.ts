@@ -80,6 +80,30 @@ export class FraudProofL1UnavailableError extends Error {
   }
 }
 
+/**
+ * The L1 source refused a read it cannot answer as asked: the facts it needs
+ * were pruned, lie before its origin, or are not tracked. It says nothing
+ * about the fault, so the workflow never stalls on it or reads it as an
+ * absence; its caller holds the objective, named by `reason`, and runs it
+ * again on a later observation.
+ */
+export class FraudProofL1RefusedError extends Error {
+  constructor(
+    readonly reason: string,
+    readonly detail: string,
+  ) {
+    super(`the L1 source refused the read (${reason}): ${detail}`);
+    this.name = "FraudProofL1RefusedError";
+  }
+}
+
+/** An L1 failure the workflow hands to its caller to wait on, never stalls on. */
+export const isFraudProofL1WaitError = (
+  error: unknown,
+): error is FraudProofL1UnavailableError | FraudProofL1RefusedError =>
+  error instanceof FraudProofL1UnavailableError ||
+  error instanceof FraudProofL1RefusedError;
+
 export const assertFraudProofL1Source = (
   value: unknown,
 ): FraudProofL1Source => {

@@ -1,3 +1,6 @@
+import { readdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import { midgardValidationDescriptorsCanDispute } from "@al-ft/midgard-core/validation-dispute";
 import { createManifestBoundValidationTraceDisputeWorkflow } from "@al-ft/midgard-fault-proofs";
 import {
@@ -134,26 +137,64 @@ const stageFollowedJourney = async (
   return { journey, followed: followed! };
 };
 
+type Journey = Awaited<ReturnType<typeof stageFollowedJourney>>["journey"];
+type JourneyResult = Awaited<ReturnType<Journey["runCold"]>>["result"];
+
+/** Plays the dispute cold, one workflow invocation per hop, to completion. */
+const runJourneyToCompletion = async (
+  journey: Journey,
+  afterRun: (result: JourneyResult) => Promise<void> = async () => {},
+) => {
+  let { result } = await journey.runCold();
+  for (let hop = 0; hop < 200 && result.kind !== "completed"; hop++) {
+    if (result.kind === "stalled") throw new Error(result.reason);
+    await afterRun(result);
+    await journey.advance(result);
+    if (result.kind === "awaiting_counterparty") {
+      await journey.operatorResponds();
+      journey.emulator.awaitBlock();
+    }
+    ({ result } = await journey.runCold());
+  }
+  if (result.kind !== "completed") throw new Error("journey did not complete");
+  return result;
+};
+
+/** The submission intents of a finished journey, in journal order. */
+const submissionIntents = (
+  result: Extract<JourneyResult, { kind: "completed" }>,
+) =>
+  result.entries.flatMap(({ event }) =>
+    event.kind === "submission_intent" ? [event] : [],
+  );
+
+/** Stages the forged CEK core successor and captures the watcher's challenge. */
+const stageForgedCekCoreJourney = async () => {
+  let decisionDigest: string | undefined;
+  const staged = await stageFollowedJourney(
+    "forgedCekCoreSuccessor",
+    async (watcher, journey) => {
+      const decision = await watcher.classify();
+      expect(decision).toMatchObject({
+        decision: "fault_detected",
+        category: "validationTraceDispute",
+        headerHash: journey.setup.headerHash,
+      });
+      const capture = await watcher.capture(decision);
+      decisionDigest = capture.decisionDigest;
+      return {
+        challenge: capture.challenge,
+        decisionDigest: capture.decisionDigest,
+      };
+    },
+  );
+  return { ...staged, decisionDigest: decisionDigest! };
+};
+
 describe("follower-sourced validation-trace dispute on the installed workflow", () => {
   it("captures a forged CEK core successor from follower facts and wins the dispute on-chain", async () => {
-    let decisionDigest: string | undefined;
-    const { journey, followed } = await stageFollowedJourney(
-      "forgedCekCoreSuccessor",
-      async (watcher, staged) => {
-        const decision = await watcher.classify();
-        expect(decision).toMatchObject({
-          decision: "fault_detected",
-          category: "validationTraceDispute",
-          headerHash: staged.setup.headerHash,
-        });
-        const capture = await watcher.capture(decision);
-        decisionDigest = capture.decisionDigest;
-        return {
-          challenge: capture.challenge,
-          decisionDigest: capture.decisionDigest,
-        };
-      },
-    );
+    const { journey, followed, decisionDigest } =
+      await stageForgedCekCoreJourney();
     const { challenge, fixture, setup } = journey;
     expect(fixture.evidence.oneStepArgument).toMatchObject(
       FOLLOWER_VALIDATION_CEK_CORE_STEP,
@@ -190,23 +231,11 @@ describe("follower-sourced validation-trace dispute on the installed workflow", 
     // The CEK core resolution is a chain of transactions; every stage
     // reaches the pre-submit boundary, so the workflow submits it one stage
     // per move and never stalls.
-    let { result } = await journey.runCold();
-    for (let hop = 0; hop < 200 && result.kind !== "completed"; hop++) {
-      if (result.kind === "stalled") throw new Error(result.reason);
-      await journey.advance(result);
-      if (result.kind === "awaiting_counterparty") {
-        await journey.operatorResponds();
-        journey.emulator.awaitBlock();
-      }
-      ({ result } = await journey.runCold());
-    }
-    expect(result.kind).toBe("completed");
-    if (result.kind !== "completed")
-      throw new Error("journey did not complete");
+    const result = await runJourneyToCompletion(journey);
     // The binder stage, then each later CEK core stage resumed against the
     // preparation the binder consumed; no route was cancelled.
-    const intents = result.entries.flatMap(({ event }) =>
-      event.kind === "submission_intent" ? [event.actionInput] : [],
+    const intents = submissionIntents(result).map(
+      ({ actionInput }) => actionInput,
     );
     const semantic = intents.filter(
       ({ stage }) => stage === "semantic_resolution",
@@ -237,6 +266,64 @@ describe("follower-sourced validation-trace dispute on the installed workflow", 
         ),
       ),
     ).toHaveLength(1);
+  }, 900_000);
+
+  it("recomputes a corrupt journaled CEK preparation from the thread history and still wins the dispute", async () => {
+    const { journey } = await stageForgedCekCoreJourney();
+    const journalRoot = join(journey.directory, "journal");
+    let corruption: { original: string; corrupt: string } | undefined;
+    const result = await runJourneyToCompletion(journey, async () => {
+      if (corruption !== undefined) return;
+      // The journal's newest submission intent is the route the next move
+      // resumes against; once it carries the CEK preparation, corrupt it on
+      // disk as a torn write would.
+      for (const workflow of await readdir(journalRoot)) {
+        const names = (await readdir(join(journalRoot, workflow))).sort();
+        for (const name of names.reverse()) {
+          const path = join(journalRoot, workflow, name);
+          const entry = JSON.parse(await readFile(path, "utf8"));
+          if (entry.event.kind !== "submission_intent") continue;
+          const route = entry.event.durableRecovery?.durableRouteInput;
+          if (typeof route?.cekPreparedResolutionCbor !== "string") break;
+          const original: string = route.cekPreparedResolutionCbor;
+          const corrupt = original.slice(0, 40);
+          route.cekPreparedResolutionCbor = corrupt;
+          await writeFile(path, JSON.stringify(entry));
+          corruption = { original, corrupt };
+          break;
+        }
+      }
+    });
+    expect(corruption).toBeDefined();
+    const intents = submissionIntents(result);
+    // The next stage was planned against the corrupt preparation, captured
+    // against the one recomputed from the thread history, and journaled that
+    // one for every later stage; no route was cancelled.
+    const recovered = intents.findIndex(
+      ({ actionInput }) =>
+        actionInput.cekPreparedResolutionCbor === corruption!.corrupt,
+    );
+    expect(recovered).toBeGreaterThan(0);
+    expect(
+      intents[recovered]!.durableRecovery?.durableRouteInput,
+    ).toMatchObject({ cekPreparedResolutionCbor: corruption!.original });
+    expect(
+      intents
+        .slice(recovered + 1)
+        .filter(
+          ({ actionInput }) => actionInput.stage === "semantic_resolution",
+        )
+        .map(({ actionInput }) => actionInput.cekPreparedResolutionCbor),
+    ).not.toContain(corruption!.corrupt);
+    expect(
+      intents.filter(
+        ({ actionInput }) => actionInput.stage === "cancel_semantic_route",
+      ),
+    ).toEqual([]);
+    const workflow = await createManifestBoundValidationTraceDisputeWorkflow(
+      journey.config!,
+    );
+    expect((await workflow.deriveStage(Date.now())).kind).toBe("removed");
   }, 900_000);
 
   it("finds an honest commitment healthy, and source verification refuses to open a dispute of it", async () => {
