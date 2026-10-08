@@ -161,6 +161,9 @@ const scriptedNode = (
       _at: unknown,
       use: (session: { query: () => Promise<Uint8Array> }) => unknown,
     ) => use({ query: () => Promise.resolve(encodeUtxoAnswer([...ledger])) }),
+    // The scripted node is always reachable: no readiness change to report.
+    readiness: { ready: true, nodeToClientVersion: 32784 },
+    onReadiness: (): (() => void) => () => undefined,
     close: () => Promise.resolve(),
   } as unknown as L1NodeTransport;
   return { state, transport };
