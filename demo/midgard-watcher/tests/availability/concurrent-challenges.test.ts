@@ -699,6 +699,7 @@ describe("the DA bond pool is read every reconciliation and never blocks (spec #
           remainingSafeStartMs: null,
           journalIntegrity: null,
           journalUnavailable: null,
+          journalDecisionMissing: [],
         }),
       } as unknown as WatcherFaultProofSupervisor,
       launchScopeStatus: () => ({

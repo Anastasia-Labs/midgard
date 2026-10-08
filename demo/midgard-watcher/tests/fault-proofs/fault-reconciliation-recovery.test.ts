@@ -176,6 +176,7 @@ describe("existing signed workflow recovery authority", () => {
       });
     let ran = 0;
     const supervisor = createWatcherFaultProofSupervisor({
+      reservationDecisionHolds: () => [],
       proofRetention: storelessProofRetention,
       journalRoot: root,
       deploymentFingerprint: DEPLOYMENT,

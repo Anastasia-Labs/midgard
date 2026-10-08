@@ -94,7 +94,7 @@ const isTrackedAddress = (tracked: Tracked, address: CML.Address): boolean => {
 };
 
 /** Whether the tracked set covers an output (address, credential or policy). */
-const isTrackedOutput = (
+export const isTrackedOutput = (
   tracked: Tracked,
   output: CML.TransactionOutput,
 ): boolean => {

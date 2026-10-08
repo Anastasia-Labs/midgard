@@ -60,7 +60,10 @@ import {
   createWatcherUserEventRuntime,
   type WatcherUserEventRuntime,
 } from "./user-event-runtime.js";
-import { openWatcherProverFundingRuntime } from "./watcher-prover-funding-runtime.js";
+import {
+  openWatcherProverFundingRuntime,
+  recheckFundingDecisionHolds,
+} from "./watcher-prover-funding-runtime.js";
 import { closeWatcherAllocatedResources } from "./watcher-runtime.close-allocated-resources.js";
 import { createWatcherRuntimeLifecycle } from "./watcher-runtime.create-lifecycle.js";
 import {
@@ -269,6 +272,7 @@ export const createWatcherRuntime = async (input: {
         ),
       launchScope: faultProofApplication.installedCategories,
       journalRoot: input.config.workflowJournalDirectory,
+      fundingInputFacts: activeFollower.fundingInputFacts,
     });
     proverFundingStore = fundingRuntime.store;
 
@@ -293,6 +297,7 @@ export const createWatcherRuntime = async (input: {
         operationsSink: () => operations.sink,
       }),
       proofRetention: activeFollower.proofRetention,
+      reservationDecisionHolds: fundingRuntime.factory.decisionHolds,
     });
     faultProofSupervisor = activeSupervisor;
 
@@ -427,6 +432,10 @@ export const createWatcherRuntime = async (input: {
     decisionDriver = activeDriver;
     unsubscribeL1 = [
       activeFollower.onChange(refreshFollowerReadiness),
+      recheckFundingDecisionHolds(
+        fundingRuntime.factory,
+        activeFollower.onChange,
+      ),
       store.onGeneration(() => {
         operations.sink.setAlert({
           code: "chain_rollback",

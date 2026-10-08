@@ -37,6 +37,10 @@ import {
   type WatcherFaultProofSupervisorStatus,
 } from "./fault-proof-supervisor.validate-job.js";
 import {
+  isWatcherProofDecisionMissingError,
+  type WatcherDecisionHold,
+} from "./watcher-decision-hold.js";
+import {
   isWatcherJournalCapacityError,
   isWatcherJournalIntegrityError,
   isWatcherJournalUnavailableError,
@@ -56,6 +60,8 @@ export const createSupervisor = (input: {
   readonly exposeUnsafeRunnerForTest: boolean;
   /** Holds each open objective's L1 history past k (E1 ruling). */
   readonly proofRetention?: WatcherProofRetention;
+  /** Funding reservations held because their recorded decision is missing. */
+  readonly reservationDecisionHolds?: () => readonly WatcherDecisionHold[];
 }): WatcherFaultProofSupervisor | UnsafeWatcherFaultProofSupervisorForTest => {
   if (!DEPLOYMENT_FINGERPRINT.test(input.deploymentFingerprint)) {
     throw new Error(
@@ -187,15 +193,17 @@ export const createSupervisor = (input: {
   // validation failure from becoming an unhandled rejection before mounting.
   void done.catch(() => undefined);
 
-  // A refused journal (`journal_integrity`) or one that could not be opened
-  // (`journal_unavailable`) holds the watcher unready and never fails the
-  // process; every other failure blocks it.
+  // A refused journal (`journal_integrity`), one that could not be opened
+  // (`journal_unavailable`) or work whose recorded decision is missing
+  // (`journal_decision_missing`) holds the watcher unready and never fails
+  // the process; every other failure blocks it.
   const block = (error: unknown, job: WatcherFaultProofJob | null): Error => {
     const normalized =
       error instanceof Error ? error : new Error(String(error));
     if (
       isWatcherJournalIntegrityError(error) ||
-      isWatcherJournalUnavailableError(error)
+      isWatcherJournalUnavailableError(error) ||
+      isWatcherProofDecisionMissingError(error)
     )
       return normalized;
     if (phase !== "blocked" && phase !== "closed") {
@@ -435,6 +443,14 @@ export const createSupervisor = (input: {
             checkpoint: error.checkpoint,
           });
         }
+      } else if (isWatcherProofDecisionMissingError(error)) {
+        // Held until its header leaves the finalized queue; never run again.
+        await progressAuthority.holdObjective(error.hold);
+        outcome = Object.freeze({
+          kind: "pending" as const,
+          resume: "await_observation" as const,
+          reason: error.message,
+        });
       } else {
         failure = block(error, job);
       }
@@ -883,6 +899,10 @@ export const createSupervisor = (input: {
             ? watcherJournalUnavailable(input.journalRoot)
             : null,
         journalCapacity: journalIntegrity === null && journalCapacity,
+        journalDecisionMissing: Object.freeze([
+          ...progressAuthority.decisionHolds(),
+          ...(input.reservationDecisionHolds?.() ?? []),
+        ]),
       });
     },
     durableQueueStatus: () => {

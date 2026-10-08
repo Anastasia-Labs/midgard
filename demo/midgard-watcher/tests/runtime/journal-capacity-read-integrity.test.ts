@@ -44,6 +44,7 @@ describe("readiness over a capacity read that meets corruption (R7)", () => {
   it("answers /readyz 503 journal_integrity, never 400", async () => {
     const journalRoot = await journalDirectory("midgard-journal-capacity");
     const supervisor = createWatcherFaultProofSupervisor({
+      reservationDecisionHolds: () => [],
       journalRoot,
       deploymentFingerprint: DEPLOYMENT,
       deadlineAlertHeadroomMs:

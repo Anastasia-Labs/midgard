@@ -38,6 +38,11 @@ import {
   watcherProofMarkerMatches,
 } from "./fault-proof-objective-table.js";
 import type { WatcherFaultProofDeadline } from "./fault-proof-supervisor.js";
+import {
+  isWatcherProofDecisionMissingError,
+  type WatcherDecisionHold,
+  WatcherProofDecisionMissingError,
+} from "./watcher-decision-hold.js";
 import { openWatcherJournalDatabase } from "./watcher-journal-database.js";
 import { watcherJournalOpener } from "./watcher-journal-database.opener.js";
 
@@ -65,7 +70,12 @@ export type WatcherFaultProofProgressAuthority = Readonly<{
     request: WatcherFaultProofProgressRequest,
   ): Promise<readonly WatcherFaultProofProgressContext[]>;
   revokeAuthority(reason: string): void;
+  /** Open objectives, held ones included. */
   unfinishedCount(): number;
+  /** Objectives held because their recorded decision is missing. */
+  decisionHolds(): readonly WatcherDecisionHold[];
+  /** Holds an objective whose execution names a missing decision. */
+  holdObjective(hold: WatcherDecisionHold): Promise<void>;
   /** Records the completion; one verified beyond rollback recovery is
    * marked, so the next start skips it and prunes its workflow journal. */
   markCompleted(
@@ -129,6 +139,13 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       { retryInBackground: false },
     ).open;
   const objectives = new Map<string, Objective>();
+  // Objectives whose execution names a decision the journal does not hold:
+  // they take no new work and clear once their header leaves the finalized
+  // queue (journal_decision_missing).
+  const held = new Map<
+    string,
+    WatcherDecisionHold & Readonly<{ kind: "objective" }>
+  >();
   const decisions = new Map<string, HeaderFaultDecision>();
   // A retry is safe: initialization reads the journals before it changes any
   // state, so a latched journal throws again at its first read, and an open
@@ -177,6 +194,47 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     ))
       decisions.delete(digest);
   };
+  const missingDecision = (
+    target: WatcherProofObjective,
+    decisionDigest: string | undefined,
+    detail: string,
+  ): WatcherProofDecisionMissingError =>
+    new WatcherProofDecisionMissingError({
+      kind: "objective",
+      category: target.category,
+      headerHash: target.headerHash,
+      decisionDigest: decisionDigest ?? null,
+      detail: `${target.category}/${target.headerHash}: ${detail} (${decisionDigest ?? "none"})`,
+    });
+  // The objective keeps its L1 history pinned while held; a hold is never
+  // dispatched again in this process.
+  const holdObjective = async (hold: WatcherDecisionHold): Promise<void> => {
+    if (hold.kind !== "objective") return;
+    const key = keyOf(hold);
+    if (!held.has(key) && !objectives.has(key))
+      await input.retention?.pin(hold);
+    objectives.delete(key);
+    held.set(key, hold);
+  };
+  // A held objective whose header left the finalized queue has resolved:
+  // its proof or another landed and is final, or the header merged.
+  const clearResolvedHolds = async (
+    observation: WatcherAuthenticatedStateQueueObservation,
+  ): Promise<void> => {
+    for (const [key, hold] of held) {
+      if (
+        observation.finalizedHeaders.some(
+          ({ headerHash }) => headerHash === hold.headerHash,
+        )
+      )
+        continue;
+      held.delete(key);
+      await input.retention?.release(hold);
+      // Rows of an active job are left to that job's own finish.
+      if (!watcherProofJobActive(database(), hold))
+        forgetWatcherProofObjective(database(), hold, { decisions: false });
+    }
+  };
   const loadExecution = async (objective: Objective): Promise<void> => {
     const execution = await readWatcherProofExecution({
       journalRoot: input.journalRoot,
@@ -198,13 +256,19 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       decisionDigest === undefined
         ? undefined
         : await readDecision(decisionDigest);
+    if (target.target.kind !== "state_queue_header")
+      throw new Error("proof progress execution names no queue header");
     if (
       decision === undefined ||
       decision.category !== target.category ||
-      target.target.kind !== "state_queue_header" ||
       decision.headerHash !== target.target.headerHash
     )
-      throw new Error(
+      throw missingDecision(
+        {
+          category: target.category as WatcherInstalledWorkflowCategory,
+          headerHash: target.target.headerHash,
+        },
+        decisionDigest,
         "proof progress has no exact recorded execution decision",
       );
     objective.decision = decision;
@@ -247,7 +311,13 @@ export const createWatcherFaultProofProgressAuthority = (input: {
         continue;
       }
       const objective = {} as Objective;
-      await adoptExecution(objective, execution);
+      try {
+        await adoptExecution(objective, execution);
+      } catch (error) {
+        if (!isWatcherProofDecisionMissingError(error)) throw error;
+        await holdObjective(error.hold);
+        continue;
+      }
       await input.retention?.pin(target);
       objectives.set(keyOf(target), objective);
     }
@@ -283,11 +353,18 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       decision === undefined ||
       decision.category !== key.category ||
       decision.headerHash !== key.headerHash
-    )
-      throw new Error(
+    ) {
+      const error = missingDecision(
+        key,
+        first.identity.decisionDigest,
         "proof progress execution update omitted its exact recorded decision",
       );
-    if (!objectives.has(keyOf(key))) await input.retention?.pin(key);
+      await holdObjective(error.hold);
+      throw error;
+    }
+    if (!objectives.has(keyOf(key)) && !held.has(keyOf(key)))
+      await input.retention?.pin(key);
+    held.delete(keyOf(key));
     const objective = objectives.get(keyOf(key)) ?? { decision };
     if (
       objective.workflowId !== undefined &&
@@ -323,6 +400,8 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       const nextGeneration = BigInt(request.rollbackGeneration);
       if (nextGeneration !== generation) latestNativeProgress = undefined;
       generation = nextGeneration;
+      await clearResolvedHolds(request.observation);
+      if (epoch !== startedEpoch) return [];
       const queuePoint = request.observation.nativePoint;
       const progress = request.nativeProgress;
       if (progress !== undefined) {
@@ -402,9 +481,11 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           );
         // At its cap of open objectives the table refuses a new one: the
         // supervisor reports journal_capacity and a later observation retries.
+        // A held objective takes no new work until it resolves.
         if (
-          objectives.has(currentKey!) ||
-          canOpenWatcherProofObjective(database(), fault.decision)
+          !held.has(currentKey!) &&
+          (objectives.has(currentKey!) ||
+            canOpenWatcherProofObjective(database(), fault.decision))
         ) {
           if (!objectives.has(currentKey!)) {
             await input.retention?.pin(fault.decision);
@@ -429,7 +510,14 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           if (key === currentKey) continue;
           // Newly started work acquires its durable identity on its first
           // historical observation. Already restored identities stay indexed.
-          if (objective.entries === undefined) await loadExecution(objective);
+          if (objective.entries === undefined)
+            try {
+              await loadExecution(objective);
+            } catch (error) {
+              if (!isWatcherProofDecisionMissingError(error)) throw error;
+              await holdObjective(error.hold);
+              continue;
+            }
           if (epoch !== startedEpoch) return [];
           if (
             objective.entries === undefined ||
@@ -464,7 +552,9 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       pruneDecisions();
       return Object.freeze(contexts);
     },
-    unfinishedCount: () => objectives.size,
+    unfinishedCount: () => objectives.size + held.size,
+    decisionHolds: () => Object.freeze([...held.values()]),
+    holdObjective,
     revokeAuthority: (reason) => {
       for (const objective of objectives.values()) {
         if (objective.currentPermit !== undefined)
@@ -500,6 +590,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     },
     markCompleted: async (objective, verified) => {
       objectives.delete(keyOf(objective));
+      held.delete(keyOf(objective));
       pruneDecisions();
       // The row frees the cap slot and spares a restart one verification. A
       // failed write leaves it open, so the next start verifies it again.

@@ -200,7 +200,11 @@ export type WatcherOperationsReadinessReason =
   | "journal_integrity"
   /** The journals could not be opened; `supervisor.journalUnavailable` names
    * the failure. Held while the open is retried; clears once it succeeds. */
-  | "journal_unavailable";
+  | "journal_unavailable"
+  /** Proof work or a funding reservation names a decision the journal does
+   * not hold; `supervisor.journalDecisionMissing` lists each. Held, never
+   * run again; each clears once L1 facts resolve it. */
+  | "journal_decision_missing";
 
 export type WatcherOperationsL1Degradation = Readonly<{
   reason: string;

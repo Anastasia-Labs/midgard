@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as DecisionJournal from "../../src/fault-proofs/fault-decision-journal.js";
 import { createWatcherFaultProofProgressAuthority } from "../../src/fault-proofs/fault-proof-progress-authority.js";
 import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { isWatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { WATCHER_JOURNAL_DATABASE_FILE } from "../../src/fault-proofs/watcher-journal-database.js";
 import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.js";
 import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
@@ -312,12 +313,23 @@ describe("supervisor historical progress authority", () => {
             await authority.markCompleted(fixture.old);
             await authority.updateExecution(update);
           }
+        } else if (availability === "missing") {
+          // A missing decision holds the objective by name.
+          const missing = authority.updateExecution(update);
+          await expect(missing).rejects.toThrow("omitted its exact recorded");
+          await expect(missing).rejects.toSatisfy(
+            isWatcherProofDecisionMissingError,
+          );
+          const { category, headerHash, decisionDigest } = fixture.old;
+          expect(authority.decisionHolds()).toMatchObject([
+            { kind: "objective", category, headerHash, decisionDigest },
+          ]);
+          expect(authority.unfinishedCount()).toBe(1);
         } else {
           await expect(authority.updateExecution(update)).rejects.toThrow(
-            availability === "missing"
-              ? "omitted its exact recorded decision"
-              : `row ${fixture.old.decisionDigest} MAC differs`,
+            `row ${fixture.old.decisionDigest} MAC differs`,
           );
+          expect(authority.decisionHolds()).toEqual([]);
         }
         // The miss reads the writer's commits through the open journal; it
         // never reopens it.

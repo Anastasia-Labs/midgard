@@ -30,6 +30,7 @@ import type {
 } from "./fault-proof-application.js";
 import type { WatcherFaultProofJob } from "./fault-proof-supervisor.js";
 import { isWatcherPreflightStalledResult } from "./preflight-stall-retry.js";
+import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
 
 /** Chosen by the supervisor after reloading and validating the durable journal. */
 export type WatcherFaultProofExecutionAdmission = Readonly<{
@@ -362,6 +363,11 @@ export const createWatcherFaultProofExecution = (dependencies: {
         if (isWorkflowActuationRevokedError(error)) {
           record("cancelled");
           return { kind: "authority_revoked", error };
+        }
+        // The supervisor holds the objective (journal_decision_missing).
+        if (isWatcherProofDecisionMissingError(error)) {
+          record("reconciling");
+          throw error;
         }
         if (
           error instanceof FraudProofL1CheckpointChangedError ||

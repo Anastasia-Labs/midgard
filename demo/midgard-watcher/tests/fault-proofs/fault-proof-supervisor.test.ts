@@ -11,6 +11,7 @@ import {
   unsafeCreateWatcherFaultProofSupervisorForTest,
   type WatcherFaultProofJob,
 } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
@@ -70,6 +71,7 @@ describe("production fault-proof supervisor", () => {
   it("does not expose caller-selected category dispatch in production", async () => {
     const root = await directory();
     const supervisor = createWatcherFaultProofSupervisor({
+      reservationDecisionHolds: () => [],
       proofRetention: storelessProofRetention,
       journalRoot: root,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
@@ -183,6 +185,7 @@ describe("production fault-proof supervisor", () => {
       join(symlinkRoot, "fault-proofs", "doubleSpend", h28(0xbb)),
     );
     const linked = createWatcherFaultProofSupervisor({
+      reservationDecisionHolds: () => [],
       journalRoot: symlinkRoot,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       deadlineAlertHeadroomMs:
@@ -447,6 +450,57 @@ describe("production fault-proof supervisor", () => {
         rollbackGeneration: "0",
       }),
     ).rejects.toThrow("supervisor is blocked");
+  });
+
+  it("holds a job whose recorded decision is missing by name and keeps running later targets", async () => {
+    const root = await directory();
+    const hold = {
+      kind: "objective",
+      category: "doubleSpend",
+      headerHash: h28(0x33),
+      decisionDigest: "33".repeat(32),
+      detail: "proof progress has no exact recorded execution decision",
+    } as const;
+    const ran: string[] = [];
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      run: async ({ category }) => {
+        ran.push(category);
+        if (category === "doubleSpend")
+          throw new WatcherProofDecisionMissingError(hold);
+        return { kind: "completed" };
+      },
+    });
+    await supervisor.recoverExisting(null);
+    const held = supervisor.unsafeRunOrResumeForTest({
+      mode: "run",
+      category: "doubleSpend",
+      headerHash: h28(0x33),
+      decisionDigest: "33".repeat(32),
+      rollbackGeneration: "0",
+    });
+    await expect(held).resolves.toMatchObject({
+      kind: "pending",
+      resume: "await_observation",
+    });
+    await expect(
+      supervisor.unsafeRunOrResumeForTest({
+        mode: "run",
+        category: "networkId",
+        headerHash: h28(0x44),
+        decisionDigest: "44".repeat(32),
+        rollbackGeneration: "0",
+      }),
+    ).resolves.toEqual({ kind: "completed" });
+    expect(ran).toEqual(["doubleSpend", "networkId"]);
+    expect(supervisor.status()).toMatchObject({
+      phase: "accepting",
+      blockedJob: null,
+      journalDecisionMissing: [hold],
+    });
+    await supervisor.close();
+    await expect(supervisor.done).resolves.toBeUndefined();
   });
 
   it("runs queued jobs by earliest authenticated safe-start deadline", async () => {

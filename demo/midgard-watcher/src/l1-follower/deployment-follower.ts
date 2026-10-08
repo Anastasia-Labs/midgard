@@ -5,6 +5,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { WatcherFaultProofL1 } from "../fault-proofs/fault-proof-application.production-dependencies.js";
+import type { WatcherFundingInputFacts } from "../funding/prover-funding-input-facts.js";
 import type { WatcherDeploymentProtocolScriptAuthority } from "../runtime/deployment-identity.parse-trust-roots.js";
 import {
   createWatcherFaultProofL1Source,
@@ -15,12 +16,16 @@ import {
   parseHubOracleOneShot,
   type WatcherFollowerRuntime,
   type WatcherFollowerRuntimeInput,
+  watcherSecurityParameter,
 } from "./follower-runtime.js";
+import { createWatcherFundingInputFacts } from "./funding-input-facts.js";
 
 export type WatcherDeploymentFollower = WatcherFollowerRuntime &
   Readonly<{
     /** The fault-proof families' L1: follower sources and the provider. */
     faultProofL1: WatcherFaultProofL1;
+    /** Where prover reservation inputs stand, at the release-final depth. */
+    fundingInputFacts: WatcherFundingInputFacts;
   }>;
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
@@ -122,6 +127,10 @@ export const openWatcherDeploymentFollower = (
           proofRetention: follower.proofRetention,
         }),
       provider: follower.provider,
+    }),
+    fundingInputFacts: createWatcherFundingInputFacts({
+      store: follower.store,
+      recoveryDepth: watcherSecurityParameter(input.automaticRecoveryMaxDepth),
     }),
   });
 };

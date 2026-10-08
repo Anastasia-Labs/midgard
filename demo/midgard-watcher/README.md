@@ -101,7 +101,7 @@ reordered record; so does any later read of a row that fails its MAC, does not
 parse, or differs from its key. A refusal holds for the rest of the process:
 the watcher stays up, `/readyz` reports `journal_integrity`, and `/v1/status`
 names the failure in `supervisor.journalIntegrity` until an operator repairs
-the journals and restarts the watcher. If the journals cannot be opened at
+the journals (below) and restarts the watcher. If the journals cannot be opened at
 all (a busy, locked or unreadable file), the watcher stays up, `/readyz`
 reports `journal_unavailable` and `supervisor.journalUnavailable` names the
 failure, while the watcher retries the open, backing off from 1 s to 30 s; the
@@ -112,6 +112,28 @@ An objective whose completion was verified deeper than rollback recovery
 reaches is skipped at the next start and pruned with its workflow journal. Only open objectives count toward the cap of 2,048; at the
 cap the watcher stays up and `/readyz` reports `journal_capacity` until
 objectives complete.
+
+To repair refused journals: stop the watcher, move `watcher-journals.sqlite`
+and its `-wal` and `-shm` files aside (never delete them), and start it again.
+The new journals start empty. The workflow journals, the funding store and
+the L1 follower's facts survive, so proofs and funding reservations may name
+fault decisions the new journals do not hold. The watcher never runs such work
+again and never exits over it: it holds each item, `/readyz` reports
+`journal_decision_missing`, and `supervisor.journalDecisionMissing` in
+`/v1/status` names each held objective or reservation with its decision.
+
+- A held proof objective clears once its header leaves the finalized state
+  queue: its proof, or another one, landed and is final, or the header merged.
+  A fresh detection of the same fault does not restart it.
+- A held funding reservation is read again on every follower change. If every
+  input is spent at or below the release-final point (`automaticRecoveryMaxDepth
+  - 2` blocks deep), it is dropped. If its inputs are unspent there and still
+    unspent at the tip, and it holds no signed transaction, its inputs return to
+    the wallet. Otherwise it stays held.
+
+Retention handles the rest. Workflow directories, follower pins of objectives
+that are never admitted again, and the leases of reservations that hold a
+signed transaction stay in place. The moved-aside file is never read again.
 
 Every watcher SQLite file, the journals included, must sit on a local disk,
 never a network filesystem (NFS, SMB and the like): those break SQLite's file

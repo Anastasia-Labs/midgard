@@ -17,6 +17,7 @@ import type { WatcherFaultProofExecutionAdmission } from "./fault-proof-executio
 import { type WatcherProofExecution } from "./fault-proof-objective-journal.js";
 import { listWatcherProofObjectives } from "./fault-proof-objective-table.js";
 import { type WatcherFaultProofProgressRequest } from "./fault-proof-progress-authority.js";
+import type { WatcherDecisionHold } from "./watcher-decision-hold.js";
 import type { WatcherJournalDatabase } from "./watcher-journal-database.js";
 
 export const WATCHER_FAULT_PROOF_SUPERVISOR_SCHEMA_VERSION =
@@ -110,6 +111,10 @@ export type WatcherFaultProofSupervisorStatus = Readonly<{
   /** A fault-proof journal holds its cap of live rows: readiness reports
    * journal_capacity until rows complete or are pruned. */
   journalCapacity: boolean;
+  /** Objectives and funding reservations whose recorded decision is
+   * missing: readiness reports journal_decision_missing until each one
+   * resolves from L1 facts. */
+  journalDecisionMissing: readonly WatcherDecisionHold[];
 }>;
 
 export type WatcherFaultProofSupervisor = Readonly<{

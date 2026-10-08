@@ -39,6 +39,7 @@ const DEPLOYMENT = "dd".repeat(32);
 
 const startSupervisor = (journalRoot: string) => {
   const supervisor = createWatcherFaultProofSupervisor({
+    reservationDecisionHolds: () => [],
     journalRoot,
     deploymentFingerprint: DEPLOYMENT,
     deadlineAlertHeadroomMs: MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,

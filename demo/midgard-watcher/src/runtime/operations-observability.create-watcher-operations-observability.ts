@@ -146,7 +146,6 @@ export const createWatcherOperationsObservability = (input: {
     values.push(value);
     if (values.length > maximumRetainedDiagnostics) values.shift();
   };
-
   const alerts = createWatcherAlertBook({
     append: (record) => append<WatcherAlertDiagnostic>(record),
     daFetchMaximumAgeMs:
@@ -322,6 +321,8 @@ export const createWatcherOperationsObservability = (input: {
     if (supervisor.journalUnavailable !== null)
       reasons.push("journal_unavailable");
     if (supervisor.journalCapacity) reasons.push("journal_capacity");
+    if (supervisor.journalDecisionMissing.length > 0)
+      reasons.push("journal_decision_missing");
     if (latestL1Sources.size === 0) reasons.push("l1_source_unavailable");
     else if (sources.stale > 0 || sources.disagreement > 0)
       reasons.push("l1_source_stale");
