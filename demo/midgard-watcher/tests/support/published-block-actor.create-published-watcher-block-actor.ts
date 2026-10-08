@@ -71,9 +71,6 @@ export const createPublishedWatcherBlockActor = async ({
   const address = await lucid.wallet().address();
   const awaitConfirmed = async (txHash: string) => {
     await lucid.awaitTx(txHash, 500);
-    // Operator onboarding maintains an explicit wallet snapshot. Refresh it
-    // after direct SDK transactions so their successors use the live ledger.
-    lucid.overrideUTxOs(await lucid.utxosAt(address));
   };
   /**
    * Wait for a transaction with a validity upper bound. Confirmation is the
@@ -97,7 +94,6 @@ export const createPublishedWatcherBlockActor = async ({
         throw new PublishedTransactionExpiredError(label, txHash, expiryMs);
       await chain.delaySlots(1);
     }
-    lucid.overrideUTxOs(await lucid.utxosAt(address));
   };
   const outputLanded = (txHash: string) => async () =>
     (
@@ -160,7 +156,6 @@ export const createPublishedWatcherBlockActor = async ({
       )
     ).length === 1;
   const onboardOperator = async () => {
-    lucid.overrideUTxOs(await lucid.utxosAt(address));
     onStage("operator registration");
     await Effect.runPromise(
       registerOperatorProgram(
@@ -328,7 +323,6 @@ export const createPublishedWatcherBlockActor = async ({
     } catch (error) {
       if (!(error instanceof PublishedTransactionExpiredError)) throw error;
       onStage("scheduler appointment expired unminted; reappointing");
-      lucid.overrideUTxOs(await lucid.utxosAt(address));
       return appointScheduler();
     }
     await chain.awaitLedgerTime(Number(schedulerStart) + 1);
@@ -632,10 +626,7 @@ export const createPublishedWatcherBlockActor = async ({
       const bound = expiryMs ?? chain.now() + DA_SUBMISSION_TIMEOUT_MS;
       let missingSince: number | undefined;
       for (;;) {
-        if (await anyOutputLanded(txHash, signedCbor)) {
-          lucid.overrideUTxOs(await lucid.utxosAt(address));
-          return record;
-        }
+        if (await anyOutputLanded(txHash, signedCbor)) return record;
         // The apply spends the target itself, so its absence alone does not
         // name the spender; only an absence our outputs never follow does.
         if (await targetMissing()) {
@@ -824,7 +815,6 @@ export const createPublishedWatcherBlockActor = async ({
       } catch (error) {
         if (!(error instanceof PublishedTransactionExpiredError)) throw error;
         onStage(`${error.label} expired unminted; rebuilding the apply`);
-        lucid.overrideUTxOs(await lucid.utxosAt(address));
       }
     }
     if (applied === "consumed") return reconcile();

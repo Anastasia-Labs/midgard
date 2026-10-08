@@ -82,7 +82,6 @@ export const openHistoryProjectionLifecycle = async () => {
     .complete({ localUPLCEval: true });
   const funded = await fund.sign.withWallet().complete();
   expect(await lucid.awaitTx(await funded.submit())).toBe(true);
-  lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
   vi.setSystemTime(emulator.now());
   const reference = (role: string) => {
     const result = deployment.references.get(role);

@@ -910,12 +910,6 @@
       "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
       "sites": ["lucid.overrideUTxOs(funding);"]
     },
-    "midgard-node/tests/helpers/history-projection-lifecycle.ts": {
-      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
-      "sites": [
-        "lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));"
-      ]
-    },
     "midgard-node/tests/l1-event-history-authenticated-replay-emulator.test.ts": {
       "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
       "sites": ["owner.overrideUTxOs("]
@@ -1051,26 +1045,6 @@
       "sites": [
         "owner.overrideUTxOs(await owner.utxosAt(ownerAddress));",
         "owner.overrideUTxOs(await owner.utxosAt(ownerAddress));"
-      ]
-    },
-    "midgard-watcher/tests/support/published-block-actor.create-published-watcher-block-actor.ts": {
-      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
-      "sites": [
-        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
-        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
-        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
-        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
-        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
-        "lucid.overrideUTxOs(await lucid.utxosAt(address));"
-      ]
-    },
-    "midgard-watcher/tests/support/published-deposit-trace.stage-published-deposit-trace.ts": {
-      "reason": "Test or devnet harness code pinning a snapshot it just read (a fresh utxosAt result, a filtered subset of one, a chosen funding set, or an empty view) on an instance the harness owns, before its next build; the harness re-pins before each build rather than releasing.",
-      "sites": [
-        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
-        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
-        "lucid.overrideUTxOs(await lucid.utxosAt(address));",
-        "lucid.overrideUTxOs(await lucid.utxosAt(address));"
       ]
     }
   },
