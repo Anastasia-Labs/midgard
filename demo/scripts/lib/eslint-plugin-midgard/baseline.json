@@ -549,10 +549,6 @@
         ".sort(([left], [right]) => left.localeCompare(right))"
       ]
     },
-    "midgard-fault-proofs/src/workflow/local-kupmios-raw-l1-authority.create-local-kupmios-fraud-proof-raw-l1-snapshot-authority.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
-    },
     "midgard-fault-proofs/src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
@@ -847,10 +843,6 @@
         ".sort(([left], [right]) => left.localeCompare(right))"
       ]
     },
-    "midgard-watcher/src/indexers/authenticated-state-queue-observation.restore-trusted-persisted-observation-chain.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": ["return left.queueOutRef.localeCompare(right.queueOutRef);"]
-    },
     "midgard-watcher/src/indexers/user-event-indexer/local-history.local-stable-snapshot.ts": {
       "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
       "sites": [
@@ -877,10 +869,6 @@
       "sites": [
         "].sort((left, right) => left.outRef.localeCompare(right.outRef)),"
       ]
-    },
-    "midgard-watcher/src/runtime/chain-coordinator.canonical-path-from-history.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [": left.blockHash.localeCompare(right.blockHash);"]
     },
     "midgard-watcher/src/runtime/deployment-identity.verify-watcher-deployment-identity.ts": {
       "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
@@ -1317,24 +1305,9 @@
       "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
       "sites": ["BigInt(observation.nativePoint.finalityDepth) <"]
     },
-    "midgard-watcher/src/indexers/authenticated-state-queue-observation.derive-observation.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
-      "sites": ["BigInt(localObservation.block.chainPoint.depth) <"]
-    },
-    "midgard-watcher/src/indexers/authenticated-state-queue-observation.merged-headers.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
-      "sites": [
-        "if (raw.confirmationDepth < RELEASE_FINALITY_DEPTH) return null;",
-        "next.confirmationDepth < RELEASE_FINALITY_DEPTH ||"
-      ]
-    },
     "midgard-watcher/src/indexers/authenticated-state-queue-observation.parse-persisted-header.ts": {
       "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
       "sites": ["BigInt(record.finalityDepth) < BigInt(RELEASE_FINALITY_DEPTH)"]
-    },
-    "midgard-watcher/src/indexers/authenticated-state-queue-observation.restore-persisted-observation-chain.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
-      "sites": ["raw.confirmationDepth < Number(checkpoint.finalityDepth)"]
     },
     "midgard-watcher/src/indexers/user-event-reference-authority.create-watcher-local-user-event-reference-authority.ts": {
       "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
@@ -1368,19 +1341,6 @@
     "midgard-watcher/src/l1/resolved-block-observation.ts": {
       "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
       "sites": ["BigInt(point.depth) < BigInt(minimumConfirmationDepth)"]
-    },
-    "midgard-watcher/src/runtime/chain-coordinator.advance-canonical.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
-      "sites": [
-        "BigInt(depthAtTip(candidate, event)) >= confirmationDepth",
-        "BigInt(depthAtTip(run.at(-1)!, event)) > confirmationDepth;",
-        "if (BigInt(depth) < confirmationDepth) return;",
-        "if (BigInt(depthAtTip(target, event)) < confirmationDepth) return;"
-      ]
-    },
-    "midgard-watcher/src/runtime/chain-coordinator.create-coordinator.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
-      "sites": ["BigInt(depthAtTip(block, event)) <"]
     },
     "midgard-watcher/src/runtime/user-event-runtime.create-watcher-user-event-runtime.ts": {
       "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",

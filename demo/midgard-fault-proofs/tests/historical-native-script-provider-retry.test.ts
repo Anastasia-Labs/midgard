@@ -4,7 +4,7 @@ import {
   fetchHistoricalProviderRecord,
   HistoricalNativeScriptProviderUnavailableError,
 } from "../src/workflow/historical-native-script-corpus.create-historical-native-script-provider-roster.js";
-import { LocalKupmiosTransportUnavailableError } from "../src/workflow/local-kupmios-http-ogmios-source.read-admitted-local-kupmios-signed-transaction-recovery.js";
+import { FraudProofL1UnavailableError } from "../src/workflow/l1-source.js";
 
 const URL_A = new URL("http://127.0.0.1:9/midgard/v1/historical-payload/a/b");
 const RECORD = Object.freeze({ schemaVersion: "record", value: "exact" });
@@ -71,7 +71,7 @@ describe("historical provider read retry", () => {
       const { outcome, sleeps } = read(fetchImpl);
       const failure = await outcome.catch((error: unknown) => error);
       expect(failure).toBeInstanceOf(Error);
-      expect(failure).not.toBeInstanceOf(LocalKupmiosTransportUnavailableError);
+      expect(failure).not.toBeInstanceOf(FraudProofL1UnavailableError);
       expect((failure as Error).message).toBe(
         `historical provider history-a returned HTTP ${status.toString()}`,
       );
@@ -116,7 +116,7 @@ describe("historical provider read retry", () => {
       HistoricalNativeScriptProviderUnavailableError,
     );
     // The supervisor's existing transport classifier waits on this type.
-    expect(failure).toBeInstanceOf(LocalKupmiosTransportUnavailableError);
+    expect(failure).toBeInstanceOf(FraudProofL1UnavailableError);
     expect(failure).toMatchObject({
       sourceId: "history-a",
       message: "historical provider history-a returned HTTP 503",
