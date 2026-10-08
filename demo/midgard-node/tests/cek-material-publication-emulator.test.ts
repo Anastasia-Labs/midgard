@@ -1,3 +1,5 @@
+import "./helpers/follower-emulator-installed.js";
+
 import { readFileSync } from "node:fs";
 
 import {

@@ -1,3 +1,4 @@
+import "./helpers/follower-emulator-installed.js";
 import "node:crypto";
 import "node:fs/promises";
 import "node:http";

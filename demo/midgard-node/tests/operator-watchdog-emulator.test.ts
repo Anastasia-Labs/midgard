@@ -7,6 +7,8 @@
  * and signs with it later. The watchdog must neither select a wallet while a
  * merge holds the permit nor depend on the wallet a merge left selected.
  */
+import "./helpers/follower-emulator-installed.js";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   generateSeedPhrase,

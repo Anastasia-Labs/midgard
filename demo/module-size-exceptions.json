@@ -1006,8 +1006,8 @@
   },
   {
     "file": "midgard-node/tests/availability-challenge-operation.test.ts",
-    "max": 641,
-    "reason": "Retained test registration “availability operation signed recovery” (562 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 643,
+    "reason": "Retained test registration “availability operation signed recovery” (562 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. N1K2 (+2): the suite installs the node's follower provider on its emulators, the provider it runs with."
   },
   {
     "file": "midgard-node/tests/availability-challenge-pool-slash-lifecycle.test.ts",
@@ -1101,8 +1101,8 @@
   },
   {
     "file": "midgard-node/tests/deposit-flow-emulator-merge-payout.test.ts",
-    "max": 1200,
-    "reason": "Retained test registration “deposit flow emulator” (1094 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. I1-fix (+15): the payout journey's journaled intents are replayed onto a follower of its chain, the one real flow that reaches the reserve-payout family."
+    "max": 1201,
+    "reason": "Retained test registration “deposit flow emulator” (1094 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. I1-fix (+15): the payout journey's journaled intents are replayed onto a follower of its chain, the one real flow that reaches the reserve-payout family. N1K2 (+1): the suite installs the node's follower provider on its emulators, the provider it runs with."
   },
   {
     "file": "midgard-node/tests/deposit-flow-emulator-shared.ts",
@@ -1286,8 +1286,8 @@
   },
   {
     "file": "midgard-node/tests/reference-publication.test.ts",
-    "max": 606,
-    "reason": "Retained test registration “funds the consolidation fees of a wallet holding exactly the lane requirements” (67 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 608,
+    "reason": "Retained test registration “funds the consolidation fees of a wallet holding exactly the lane requirements” (67 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. N1K2 (+2): the suite installs the node's follower provider on its emulators, the provider it runs with."
   },
   {
     "file": "midgard-node/tests/reserve-payout-builders.test.ts",

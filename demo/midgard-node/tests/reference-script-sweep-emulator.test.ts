@@ -1,3 +1,4 @@
+import "./helpers/follower-emulator-installed.js";
 import "./utils.js";
 // Loaded before the fixture's first submission, so its capture is complete.
 import "./helpers/emulator-chain-capture.js";

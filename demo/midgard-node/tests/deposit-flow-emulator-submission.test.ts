@@ -1,3 +1,5 @@
+import "./helpers/follower-emulator-installed.js";
+
 import { coreToTxOutput } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 

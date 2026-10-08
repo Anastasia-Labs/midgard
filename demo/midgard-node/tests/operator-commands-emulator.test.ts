@@ -9,6 +9,8 @@
  * funding preflight, witness derivation from a live snapshot, and the
  * scheduler route each retirement takes.
  */
+import "./helpers/follower-emulator-installed.js";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import { generateSeedPhrase, Lucid } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";

@@ -5,6 +5,8 @@
  * references the genuine holder, and with only such UTxOs there the build is
  * refused rather than referencing one.
  */
+import "./helpers/follower-emulator-installed.js";
+
 import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import {

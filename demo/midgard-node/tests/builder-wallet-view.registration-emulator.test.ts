@@ -9,8 +9,11 @@
  *   collateral), each is refused by name before submission, though the
  *   provider's wallet still offers the held outputs;
  * - a registration built while an own intent is live spends that intent's
- *   predicted change, and both land.
+ *   predicted change, never the output the intent spends that the provider
+ *   still offers until the spend confirms, and both land.
  */
+import "./helpers/follower-emulator-installed.js";
+
 import {
   type LucidEvolution,
   scriptFromNative,
@@ -181,9 +184,14 @@ describe("registrations funded from the node wallet view", () => {
     const live = await viewOf(env, lucid);
     expect(live.utxos.map(refOf)).toEqual([`${firstHash}#1`]);
     expect([...live.held]).toEqual([refOf(seed!)]);
-    // The provider has not seen the change: it offers nothing to fund with.
-    expect(await lucid.utxosAt(env.own.address)).toEqual([]);
+    // Until the payment confirms, the provider still offers the seed it
+    // spends and has not seen its change.
+    expect((await lucid.utxosAt(env.own.address)).map(refOf)).toEqual([
+      refOf(seed!),
+    ]);
 
+    // The registration funds from the view: the change, never the seed the
+    // live intent holds (a second spend of it would conflict).
     const registered = await registerScript(env, lucid);
     if (registered._tag === "Left") throw registered.left;
     const secondHash = registered.right.txHash!;

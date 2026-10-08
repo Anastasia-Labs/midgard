@@ -13,6 +13,8 @@
  * modeled cursor) the commit is journaled, its pending row's signed intent
  * is written and the tx is sent; a gate or journal refusal leaves neither.
  */
+import "./helpers/follower-emulator-installed.js";
+
 import { randomUUID } from "node:crypto";
 
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";

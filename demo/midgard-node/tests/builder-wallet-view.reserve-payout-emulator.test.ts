@@ -10,6 +10,8 @@
  * - with every own coin held by a live intent, the absorption is refused by
  *   name before anything is built.
  */
+import "./helpers/follower-emulator-installed.js";
+
 import {
   generateEmulatorAccount,
   type LucidEvolution,

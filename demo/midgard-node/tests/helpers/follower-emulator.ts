@@ -22,8 +22,10 @@
  *   emulator's ledger again (a test restored an earlier ledger), the store
  *   rewinds to that block's parent. A transaction the emulator dropped from
  *   its mempool is no longer confirmed by a later block.
- * - Mempool: like the ledger and Kupo, the follower still offers an output
- *   a pending transaction spends; the emulator's own reads hide it.
+ * - Mempool: like the ledger, the follower offers an output a pending
+ *   transaction spends until the spend confirms; the emulator's own reads
+ *   hide it. A node build funds from its wallet view, which holds the
+ *   inputs of the node's live intents (`intent-journal.wallet-view.ts`).
  * - The transport double answers `protocol_params`, the UTxO queries and the
  *   reward-account queries from the emulator, submits to the emulator, and
  *   answers mempool presence from its pending transactions.
