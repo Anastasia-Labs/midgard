@@ -13,6 +13,7 @@ import "./reference-scripts.require-staged-one-step-argument.js";
 export { validationSemanticResolverGlobalIndex } from "./reference-scripts.auxiliary-shape.js";
 export {
   deriveScriptSourcesItemSubmissionPlan,
+  isSplitScriptSourcesItemRoute,
   requireStagedOneStepArgument,
   scriptSourcesItemResumeIndex,
 } from "./reference-scripts.require-staged-one-step-argument.js";

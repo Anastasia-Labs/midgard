@@ -50,7 +50,7 @@
     "tests/fault-proofs/fault-proof-supervisor-runner-completion.test.ts": 1.2,
     "tests/fault-proofs/fault-proof-supervisor.test.ts": 2.2,
     "tests/fault-proofs/fault-reconciliation-recovery.test.ts": 1.8,
-    "tests/fault-proofs/follower-validation-dispute-journey.test.ts": 28,
+    "tests/fault-proofs/follower-validation-dispute-journey.test.ts": 39,
     "tests/fault-proofs/follower-validation-source-award-journey.test.ts": 26,
     "tests/fault-proofs/preflight-stall-retry.test.ts": 0,
     "tests/fault-proofs/replay-transcript-capture.test.ts": 16.6,

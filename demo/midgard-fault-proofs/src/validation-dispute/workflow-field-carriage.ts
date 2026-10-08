@@ -36,6 +36,10 @@ import {
   type ValidationTraceDisputeFieldCarriageBinding,
 } from "./workflow-engine.plan-validation-trace-dispute-move.js";
 import { recoverValidationTraceStateIndex } from "./workflow-engine.recover-validation-trace-state-index.js";
+import {
+  type ValidationStagedPreparationSource,
+  withStagedPreparation,
+} from "./workflow-staged-route-preparation.js";
 
 export const validationTraceFieldCarriageAction = (
   action: ValidationTraceDisputeActuatorAction,
@@ -79,12 +83,14 @@ export const createValidationTraceFieldCarriageProvider = ({
   signer,
   l1,
   material,
+  stagedPreparations,
 }: {
   readonly binding: ValidationTraceDisputeWorkflowDeploymentBinding;
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
   readonly l1: FraudProofFamilyL1ObservationPort<"validationTraceDispute">;
   readonly material: ValidationTraceDisputeActuationMaterial | undefined;
+  readonly stagedPreparations: ValidationStagedPreparationSource;
 }) => {
   const reference = async (name: string) => {
     const deployed = binding.referenceScriptsByContract[name];
@@ -122,11 +128,31 @@ export const createValidationTraceFieldCarriageProvider = ({
       outRef: parseOutRef(thread, "resolution thread"),
       label: "resolution thread",
     });
-    // A CEK stage continuation resolves against the preparation its route
-    // consumed, not the live stage checkpoint.
-    const prepared = action.input.cekPreparedResolutionCbor;
-    const utxo =
-      typeof prepared === "string" ? { ...live, datum: prepared } : live;
+    // A staged route's continuation (CEK core or context, or the split
+    // ScriptSources redeemer-item route) resolves against the preparation
+    // its route consumed, not the live stage checkpoint; a corrupt one is
+    // recomputed from the thread history.
+    const prepared =
+      action.input.cekPreparedResolutionCbor ??
+      action.input.scriptSourcesItemPreparedCbor;
+    if (typeof prepared !== "string")
+      return await requirementAgainst(action, material, live);
+    return await withStagedPreparation({
+      retained: prepared,
+      thread: live,
+      source: stagedPreparations,
+      use: async (preparation) =>
+        await requirementAgainst(action, material, {
+          ...live,
+          datum: preparation,
+        }),
+    });
+  };
+  const requirementAgainst = async (
+    action: FraudProofWorkflowAction,
+    material: ValidationTraceDisputeActuationMaterial,
+    utxo: UTxO,
+  ) => {
     const canonical = readCanonicalCheckpoint(
       utxo,
       binding.resolvedContracts.contracts.validationTraceDispute,

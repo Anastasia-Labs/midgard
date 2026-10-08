@@ -243,7 +243,9 @@ const setup = async (
       deploymentFingerprint: deploymentIdentity.manifestId,
       operationsSink: () => ({ recordProofStep: vi.fn(), setAlert: vi.fn() }),
     });
+  let execution: ReturnType<typeof createExecution> | undefined;
   const createSupervisor = (proofRetention = storelessProofRetention) => {
+    execution = createExecution();
     const supervisor = createWatcherFaultProofSupervisor({
       reservationDecisionHolds: () => [],
       proofRetention,
@@ -252,7 +254,7 @@ const setup = async (
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: new Uint8Array(32).fill(0xa5),
-      execution: createExecution(),
+      execution,
     });
     supervisors.push(supervisor);
     return supervisor;
@@ -334,6 +336,7 @@ const setup = async (
     createSupervisor,
     request,
     idle: waitForFaultProofSupervisorIdle,
+    readiness: () => execution?.readiness() ?? [],
     writeTerminal,
     runOrResume,
     verifyCompleted,
@@ -357,6 +360,64 @@ const setup = async (
 };
 
 describe("proof objective progress with durable funding and journals", () => {
+  it.each([
+    ["the run", "directly"],
+    ["the run", "wrapped"],
+    ["the completion check", "directly"],
+  ] as const)(
+    "a refused L1 read in %s (%s) holds the objective by name instead of failing the process",
+    async (where, how) => {
+      const test = await setup();
+      const refusal = new WatcherFaultProofL1RefusedError(
+        "untracked_address",
+        "addr_test1 is not tracked",
+      );
+      let refuse = true;
+      const refuseOnce = async () => {
+        if (!refuse) return;
+        refuse = false;
+        throw how === "wrapped"
+          ? new Error("the workflow could not observe", { cause: refusal })
+          : refusal;
+      };
+      if (where === "the run") test.setBeforeRun(refuseOnce);
+      else test.setBeforeCapture(refuseOnce);
+      test.setAfterRun(async () => {
+        await test.writeTerminal();
+        return { kind: "completed" };
+      });
+      const supervisor = test.createSupervisor();
+      let settled = false;
+      supervisor.done.then(
+        () => (settled = true),
+        () => (settled = true),
+      );
+      await test.request(supervisor, 1).accepted;
+      await test.idle(supervisor);
+      // Held and named: the supervisor keeps running, its liveness does not
+      // end, and /readyz names the refusal.
+      expect(supervisor.status().phase).toBe("accepting");
+      expect(supervisor.status().unfinishedObjectiveCount).toBe(1);
+      expect(settled).toBe(false);
+      expect(test.readiness()).toEqual([
+        {
+          reason: "fault_proof_l1_refused:untracked_address",
+          detail: `doubleSpend/${test.fixture.fresh.headerHash}: addr_test1 is not tracked`,
+        },
+      ]);
+      // The next observation runs it again, and a read the source answers
+      // ends the hold.
+      await test.request(supervisor, 2).accepted;
+      await test.idle(supervisor);
+      expect(supervisor.status().unfinishedObjectiveCount).toBe(0);
+      expect(test.readiness()).toEqual([]);
+      expect(test.runOrResume).toHaveBeenCalledTimes(
+        where === "the run" ? 2 : 1,
+      );
+      expect(settled).toBe(false);
+    },
+  );
+
   it("coalesces two generations and authenticates completion before another funding admission", async () => {
     const test = await setup();
     const entered = deferred(),

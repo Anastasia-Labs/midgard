@@ -101,6 +101,7 @@ import { type ContinueLayout } from "./redeemers.js";
 import {
   deriveScriptSourcesItemSubmissionPlan,
   hasValidationAuxiliaryShape,
+  isSplitScriptSourcesItemRoute,
   requirePublishedValidationSemanticReferenceScriptUtxo,
   requireStagedOneStepArgument,
   requireValidationCekSemanticReferenceScriptUtxo,
@@ -1124,14 +1125,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       stageTransactions: result.transactions,
     };
   }
-  const isSplitScriptSourcesStageOne =
-    resolverIndex === 8 &&
-    staged.semanticResolverIndex === 28 &&
-    hasValidationAuxiliaryShape(
-      staged.auxiliary,
-      VALIDATION_AUXILIARY_SHAPES.redeemerItemStep,
-    );
-  if (isSplitScriptSourcesStageOne) {
+  if (isSplitScriptSourcesItemRoute({ resolverIndex }, staged)) {
     if (proofItemReferenceUtxo !== undefined) {
       throw new Error(
         "ScriptSources split stage-one route does not accept a proof-item reference",

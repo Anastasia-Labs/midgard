@@ -283,6 +283,16 @@ export const createWatcherRuntime = async (input: {
     });
     proverFundingStore = fundingRuntime.store;
 
+    const execution = createWatcherFaultProofExecution({
+      application: faultProofApplication,
+      fundingFactory: fundingRuntime.factory,
+      walletAddress: proverWalletAddress,
+      provider,
+      journalRoot: input.config.workflowJournalDirectory,
+      runtimeConfigPath: input.config.watcherRuntimeConfigPath,
+      deploymentFingerprint: deploymentIdentity.manifestId,
+      operationsSink: () => operations.sink,
+    });
     const activeSupervisor = createWatcherFaultProofSupervisor({
       journalRoot: input.config.workflowJournalDirectory,
       deploymentFingerprint: deploymentIdentity.manifestId,
@@ -293,16 +303,7 @@ export const createWatcherRuntime = async (input: {
         watcherConfig.deadlines.proofSubmitMs,
       ),
       queueAuthenticationKey: rollbackAuthenticationKey,
-      execution: createWatcherFaultProofExecution({
-        application: faultProofApplication,
-        fundingFactory: fundingRuntime.factory,
-        walletAddress: proverWalletAddress,
-        provider,
-        journalRoot: input.config.workflowJournalDirectory,
-        runtimeConfigPath: input.config.watcherRuntimeConfigPath,
-        deploymentFingerprint: deploymentIdentity.manifestId,
-        operationsSink: () => operations.sink,
-      }),
+      execution,
       proofRetention: activeFollower.proofRetention,
       reservationDecisionHolds: fundingRuntime.factory.decisionHolds,
       journalBusyRequeue: {
@@ -317,7 +318,6 @@ export const createWatcherRuntime = async (input: {
       driver: () => decisionDriver,
     });
     const refreshFollowerReadiness = (): void => void l1.refresh();
-    const l1Readiness = l1.read;
     const operations = createWatcherOperationsObservability({
       deploymentFingerprint: deploymentIdentity.manifestId,
       supervisor: activeSupervisor,
@@ -329,7 +329,7 @@ export const createWatcherRuntime = async (input: {
       durableProofQueueStatus: activeSupervisor.durableQueueStatus,
       retainedDaTransportStatus:
         faultProofApplication.retainedDaTransportStatus,
-      l1Readiness,
+      l1Readiness: () => [...l1.read(), ...execution.readiness()],
       l1Degradations: l1.degradations,
     });
     retainedDaOperationsBinding = bindWatcherRetainedDaOperations({

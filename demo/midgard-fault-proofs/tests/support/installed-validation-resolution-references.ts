@@ -1,7 +1,11 @@
-import { CEK_CORE_STAGE_REFERENCES } from "@al-ft/midgard-sdk";
+import {
+  CEK_CORE_STAGE_REFERENCES,
+  sharedRedeemerItemReferenceScripts,
+} from "@al-ft/midgard-sdk";
 
 import {
   resolveValidationTraceDisputeDeploymentContracts,
+  validationScriptSourcesSemanticReferenceScriptDeploymentEntry,
   validationSemanticResolverGlobalIndex,
 } from "../../src/index.js";
 import { validationCekSemanticReferenceScriptDeploymentEntry } from "../../src/validation-dispute/submit.js";
@@ -181,6 +185,47 @@ export const stageInstalledValidationResolutionReferences = async ({
       };
     }
   }
+  if (resolverIndex === 8 && semanticResolverIndex === 28) {
+    // The split ScriptSources redeemer-item route consumes its envelope under
+    // its deployment entry, and each shared item stage and the settlement by
+    // authenticated reference.
+    canonicalPublications[
+      validationScriptSourcesSemanticReferenceScriptDeploymentEntry(
+        resolverIndex,
+        semanticResolverIndex,
+      )!
+    ] = {
+      scriptHash: semanticContract.spendingScriptHash,
+      utxo: semanticPublication.utxo,
+    };
+    const stages =
+      contracts.fraudProofContracts.validationTraceDispute
+        .scriptSourcesStageOneRedeemerStages;
+    for (const { deploymentEntry, role, validator } of [
+      ...sharedRedeemerItemReferenceScripts(stages),
+      {
+        deploymentEntry:
+          "validationTraceDisputeRedeemerItemSettlement" as const,
+        role: "V1 validation-trace redeemer item settlement" as const,
+        validator: stages.settlement,
+      },
+    ]) {
+      const publication = await publishAuthenticatedValidationDisputeControl({
+        lucid: challengerLucid,
+        authPolicy: referenceScriptAuth,
+        publisher: referenceScriptPublisher,
+        target: {
+          control: deploymentEntry,
+          name: role,
+          script: validator.spendingScript,
+        },
+      });
+      canonicalPublications[deploymentEntry] = {
+        scriptHash: validator.spendingScriptHash,
+        utxo: publication.utxo,
+      };
+    }
+  }
   const { targetOperatorLucid, targetChallengerLucid } =
     await createRealL1TargetLucids({
       emulator,
@@ -195,13 +240,17 @@ export const stageInstalledValidationResolutionReferences = async ({
   const builtDeploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
     validationDisputePublication,
     removalReferenceScripts: removal.published,
-    validationValueAndMintSemanticReferences: [
-      {
-        semanticResolverIndex,
-        scriptHash: semanticContract.spendingScriptHash,
-        utxo: semanticPublication.utxo,
-      },
-    ],
+    // The split ScriptSources envelope is published under its own entry.
+    validationValueAndMintSemanticReferences:
+      resolverIndex === 8 && semanticResolverIndex === 28
+        ? []
+        : [
+            {
+              semanticResolverIndex,
+              scriptHash: semanticContract.spendingScriptHash,
+              utxo: semanticPublication.utxo,
+            },
+          ],
   });
   // The boundary-selected prepare resolver has no canonical deployment-entry
   // name; the workflow engine resolves its publication by immutable script

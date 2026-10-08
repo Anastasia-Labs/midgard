@@ -162,6 +162,55 @@ describe("supervisor execution adapter with durable funding", () => {
     expect(test.getUtxos).not.toHaveBeenCalled();
   });
 
+  it("waits on a fresh observation while a dispute awaits its counterparty", async () => {
+    const test = await setup();
+    const before = await test.fixture.records();
+    const reason =
+      "validationTraceDispute awaiting counterparty until 1767225600000";
+    test.runOrResume.mockResolvedValueOnce({
+      kind: "awaiting_counterparty",
+      reason,
+      responseDeadline: 1_767_225_600_000,
+    });
+    expect(await test.execution.execute(test.input)).toEqual({
+      kind: "pending",
+      resume: "await_observation",
+      reason,
+    });
+    expect(test.recordProofStep).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: "reconciling" }),
+    );
+    expect(test.setAlert).not.toHaveBeenCalled();
+    expect(await test.fixture.records()).toEqual(before);
+  });
+
+  it.each([
+    [
+      { kind: "awaiting_counterparty" },
+      "Watcher doubleSpend workflow did not progress: invalid execution outcome",
+    ],
+    [
+      { kind: "stalled", reason: "confirmed action still required" },
+      "Watcher doubleSpend workflow did not progress: confirmed action still required",
+    ],
+    [
+      { kind: "no_fault_detected", classification: {} },
+      "the family's own classification returned no_fault_detected for an admitted fault",
+    ],
+    [
+      { kind: "unprovable_gap", classification: {} },
+      "the family's own classification returned unprovable_gap for an admitted fault",
+    ],
+    [{ kind: "unknown_kind", reason: "x" }, "did not progress: x"],
+  ])("keeps %j fail-closed with a named reason", async (result, message) => {
+    const test = await setup();
+    test.runOrResume.mockResolvedValueOnce(result);
+    await expect(test.execution.execute(test.input)).rejects.toThrow(message);
+    expect(test.setAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "proof_submission_failure" }),
+    );
+  });
+
   it("refuses existing-only recovery without a durable reservation before querying the wallet", async () => {
     const test = await setup(true);
     const before = await test.fixture.records();
