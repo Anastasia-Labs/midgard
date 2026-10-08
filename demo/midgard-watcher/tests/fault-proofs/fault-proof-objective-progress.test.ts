@@ -1,4 +1,5 @@
-import { rename } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
@@ -58,6 +59,7 @@ import { storelessProofRetention } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 const finishControl = vi.hoisted(() => ({
   beforeFinish: async (): Promise<void> => undefined,
+  beforeRegister: async (): Promise<void> => undefined,
   beforeDecisionRead: async (): Promise<void> => undefined,
 }));
 vi.mock("../../src/fault-proofs/fault-proof-queue-journal.js", async (load) => {
@@ -73,6 +75,10 @@ vi.mock("../../src/fault-proofs/fault-proof-queue-journal.js", async (load) => {
       const journal = await actual.openWatcherFaultProofQueueJournal(input);
       return {
         ...journal,
+        register: async (...args: Parameters<typeof journal.register>) => {
+          await finishControl.beforeRegister();
+          return await journal.register(...args);
+        },
         markFinished: async (
           ...args: Parameters<typeof journal.markFinished>
         ) => {
@@ -122,6 +128,7 @@ const deferred = () => {
 const supervisors: ReturnType<typeof createWatcherFaultProofSupervisor>[] = [];
 beforeEach(() => {
   finishControl.beforeFinish = async () => undefined;
+  finishControl.beforeRegister = async () => undefined;
   finishControl.beforeDecisionRead = async () => undefined;
 });
 afterEach(async () => {
@@ -412,6 +419,18 @@ const objectiveRows = (journalRoot: string): readonly string[] =>
     ["doubleSpend"],
   ).map(({ objective }) => `${objective.category}/${objective.headerHash}`);
 
+/** The states of a journal's rows. */
+const journalStates = (
+  journalRoot: string,
+  journal: "fault_proof_queue" | "fault_decisions",
+): readonly string[] =>
+  openWatcherJournalDatabase({
+    journalRoot,
+    authenticationKey: TEST_JOURNAL_KEY,
+  })
+    .rows(journal)
+    .map(({ state }) => state);
+
 describe("proof objective progress with durable funding and journals", () => {
   it("holds an objective past its latest safe start with no signed attempt by name, again after a restart, until its header leaves the queue", async () => {
     const test = await setup(20n, true, true);
@@ -561,10 +580,11 @@ describe("proof objective progress with durable funding and journals", () => {
     expect(supervisor.status().phase).toBe("accepting");
   });
 
-  it("releases an unheld objective with no signed attempt once its header leaves the queue, and admits it again if the header returns", async () => {
+  it("releases an unheld objective with no signed attempt once its header leaves the queue, with its workflow directory, and admits it afresh if the header returns", async () => {
     const test = await setup(BigInt(Date.now()), true, true);
     const { pinned, retention } = recordingRetention();
     const objective = `doubleSpend/${test.fixture.fresh.headerHash}`;
+    const directory = test.fixture.journalDirectory;
     const expectOpen = (
       supervisor: ReturnType<typeof test.createSupervisor>,
     ) => {
@@ -575,6 +595,7 @@ describe("proof objective progress with durable funding and journals", () => {
       });
       expect([...pinned]).toEqual([objective]);
       expect(objectiveRows(test.fixture.journalRoot)).toEqual([objective]);
+      expect(existsSync(directory)).toBe(true);
     };
     const expectReleased = (
       supervisor: ReturnType<typeof test.createSupervisor>,
@@ -583,39 +604,245 @@ describe("proof objective progress with durable funding and journals", () => {
         phase: "accepting",
         unfinishedObjectiveCount: 0,
         journalDecisionMissing: [],
+        objectiveCleanupFailures: [],
       });
       expect([...pinned]).toEqual([]);
       expect(objectiveRows(test.fixture.journalRoot)).toEqual([]);
+      expect(existsSync(directory)).toBe(false);
     };
+    const lastMode = () => test.runOrResume.mock.calls.at(-1)![0].mode;
     const supervisor = test.createSupervisor(retention);
     // It runs inside its window, signs nothing and is not held.
     await test.request(supervisor, 2).accepted;
     await test.idle(supervisor);
     expect(test.runOrResume).toHaveBeenCalledOnce();
+    expect(lastMode()).toBe("resume");
     expectOpen(supervisor);
     // A new observation that still queues its header keeps it.
     await test.request(supervisor, 3).accepted;
     await test.idle(supervisor);
     expectOpen(supervisor);
     // Its header left the finalized queue: nothing drives it again, so its
-    // row, its L1 history pin and its unfinished count go.
+    // row, its workflow directory, its L1 history pin and its unfinished
+    // count go.
     await test.request(supervisor, 4, test.fixture.fresh, false).accepted;
     await test.idle(supervisor);
     expectReleased(supervisor);
-    const runs = test.runOrResume.mock.calls.length;
+    // A rollback that brings the header back admits it as a fresh objective
+    // in the same process: a new execution, not the departed one.
+    let runs = test.runOrResume.mock.calls.length;
+    await test.request(supervisor, 5).accepted;
+    await test.idle(supervisor);
+    expectOpen(supervisor);
+    expect(test.runOrResume).toHaveBeenCalledTimes(runs + 1);
+    expect(lastMode()).toBe("run");
+    await test.request(supervisor, 6, test.fixture.fresh, false).accepted;
+    await test.idle(supervisor);
+    expectReleased(supervisor);
+    runs = test.runOrResume.mock.calls.length;
     await supervisor.close();
     // A restart over the same stores does not adopt it again.
     await test.fixture.restartStore();
     const restarted = test.createSupervisor(retention);
-    await test.request(restarted, 5, test.fixture.fresh, false).accepted;
+    await test.request(restarted, 7, test.fixture.fresh, false).accepted;
     await test.idle(restarted);
     expectReleased(restarted);
     expect(test.runOrResume).toHaveBeenCalledTimes(runs);
-    // A rollback that brings the header back admits it as a fresh objective.
-    await test.request(restarted, 6).accepted;
+    // Nor does a returning header after the restart resume a departed one.
+    await test.request(restarted, 8).accepted;
     await test.idle(restarted);
     expectOpen(restarted);
     expect(test.runOrResume).toHaveBeenCalledTimes(runs + 1);
+    expect(lastMode()).toBe("run");
+  });
+
+  // A crash during a job leaves its queue row active; nothing in a later
+  // process finishes it.
+  const crashMidJob = async (test: Awaited<ReturnType<typeof setup>>) => {
+    const { pinned, retention } = recordingRetention();
+    test.setBeforeRun(async () => {
+      throw new Error("the process died mid-job");
+    });
+    const crashed = test.createSupervisor(retention);
+    await test.request(crashed, 2).accepted;
+    await expect(crashed.done).rejects.toThrow("the process died mid-job");
+    await crashed.close();
+    expect(
+      journalStates(test.fixture.journalRoot, "fault_proof_queue"),
+    ).toEqual(["active"]);
+    test.setBeforeRun(async () => undefined);
+    await test.fixture.restartStore();
+    return { pinned, restarted: test.createSupervisor(retention) };
+  };
+
+  it("settles the job a crash left active once its header leaves the queue with nothing signed, and releases the objective", async () => {
+    const test = await setup(BigInt(Date.now()), true, true);
+    const { pinned, restarted } = await crashMidJob(test);
+    await test.request(restarted, 3, test.fixture.fresh, false).accepted;
+    await test.idle(restarted);
+    expect(restarted.status()).toMatchObject({
+      phase: "accepting",
+      unfinishedObjectiveCount: 0,
+      objectiveCleanupFailures: [],
+    });
+    expect([...pinned]).toEqual([]);
+    expect(objectiveRows(test.fixture.journalRoot)).toEqual([]);
+    expect(
+      journalStates(test.fixture.journalRoot, "fault_proof_queue"),
+    ).toEqual([]);
+    expect(existsSync(test.fixture.journalDirectory)).toBe(false);
+    expect(test.runOrResume).toHaveBeenCalledOnce();
+  });
+
+  it("forgets a job a crash left active before its execution was written once its header leaves the queue", async () => {
+    const test = await setup(BigInt(Date.now()), true, true);
+    const { pinned, restarted } = await crashMidJob(test);
+    await rm(test.fixture.journalDirectory, { recursive: true });
+    // While its header is queued the row stays: a live fault requeues it.
+    await restarted.requestProgress({
+      observation: progressObservation({
+        deploymentFingerprint: deploymentIdentity.manifestId,
+        header: test.fixture.fixture,
+        revision: 3,
+      }),
+      rollbackGeneration: "3",
+    });
+    await test.idle(restarted);
+    expect(objectiveRows(test.fixture.journalRoot)).toEqual([
+      `doubleSpend/${test.fixture.fresh.headerHash}`,
+    ]);
+    expect(
+      journalStates(test.fixture.journalRoot, "fault_proof_queue"),
+    ).toEqual(["active"]);
+    await test.request(restarted, 4, test.fixture.fresh, false).accepted;
+    await test.idle(restarted);
+    expect(restarted.status()).toMatchObject({
+      phase: "accepting",
+      unfinishedObjectiveCount: 0,
+      objectiveCleanupFailures: [],
+    });
+    expect([...pinned]).toEqual([]);
+    expect(objectiveRows(test.fixture.journalRoot)).toEqual([]);
+    expect(
+      journalStates(test.fixture.journalRoot, "fault_proof_queue"),
+    ).toEqual([]);
+  });
+
+  it("keeps reconciling a job a crash left active with a signed attempt after its header leaves the queue", async () => {
+    const test = await setup(BigInt(Date.now()));
+    const { pinned, restarted } = await crashMidJob(test);
+    test.setBeforeRun(async (invocation) => {
+      expect(
+        assertWorkflowActuationPermitIdentity({
+          permit: invocation.actuationPermit,
+          category: "doubleSpend",
+          rollbackGeneration: "3",
+        }).authority,
+      ).toBe("reconciliation");
+    });
+    await test.request(restarted, 3, test.fixture.fresh, false).accepted;
+    await test.idle(restarted);
+    expect(test.runOrResume).toHaveBeenCalledTimes(2);
+    expect(restarted.status()).toMatchObject({
+      phase: "accepting",
+      unfinishedObjectiveCount: 1,
+    });
+    const objective = `doubleSpend/${test.fixture.fresh.headerHash}`;
+    expect([...pinned]).toEqual([objective]);
+    expect(objectiveRows(test.fixture.journalRoot)).toEqual([objective]);
+    expect(
+      journalStates(test.fixture.journalRoot, "fault_proof_queue"),
+    ).toEqual(["finished"]);
+    expect(existsSync(test.fixture.journalDirectory)).toBe(true);
+  });
+
+  it.each([
+    ["marked beyond k is pruned in process", 2_160, true],
+    ["not yet k deep keeps its rows and directory", 1_000_000_000, false],
+  ])(
+    "a completion %s once its job has finished",
+    async (_name, securityParameter, pruned) => {
+      const test = await setup();
+      test.setAfterRun(async () => {
+        await test.writeTerminal();
+        return { kind: "completed" };
+      });
+      const supervisor = test.createSupervisor({
+        ...storelessProofRetention,
+        securityParameter,
+      });
+      await test.request(supervisor, 1, test.fixture.old).accepted;
+      await test.idle(supervisor);
+      // Kept while an observation still queues its header.
+      await supervisor.requestProgress({
+        observation: progressObservation({
+          deploymentFingerprint: deploymentIdentity.manifestId,
+          header: test.fixture.fixture,
+          revision: 2,
+        }),
+        rollbackGeneration: "2",
+      });
+      await test.idle(supervisor);
+      expect(existsSync(test.fixture.journalDirectory)).toBe(true);
+      // The next pass that does not prunes a final completion, as the next
+      // start would.
+      await test.request(supervisor, 3, test.fixture.fresh, false).accepted;
+      await test.idle(supervisor);
+      expect(supervisor.status()).toMatchObject({
+        phase: "accepting",
+        unfinishedObjectiveCount: 0,
+        objectiveCleanupFailures: [],
+      });
+      const root = test.fixture.journalRoot;
+      expect(existsSync(test.fixture.journalDirectory)).toBe(!pruned);
+      expect(objectiveRows(root)).toEqual(
+        pruned ? [] : [`doubleSpend/${test.fixture.fresh.headerHash}`],
+      );
+      expect(journalStates(root, "fault_proof_queue")).toEqual(
+        pruned ? [] : ["finished"],
+      );
+      expect(journalStates(root, "fault_decisions")).toHaveLength(
+        pruned ? 0 : 2,
+      );
+      expect(test.runOrResume).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("leaves a final completion's directory to the job handed over after its finish", async () => {
+    const test = await setup();
+    const entered = deferred(),
+      release = deferred();
+    test.setBeforeRun(async () => {
+      entered.resolve();
+      await release.promise;
+    });
+    test.setAfterRun(async () => {
+      await test.writeTerminal();
+      return { kind: "completed" };
+    });
+    const supervisor = test.createSupervisor();
+    // A pass runs after the first job's durable finish, while the update that
+    // arrived during its run is being registered.
+    let registrations = 0;
+    finishControl.beforeRegister = async () => {
+      if (++registrations !== 2) return;
+      await test.request(supervisor, 3, test.fixture.fresh, false).accepted;
+    };
+    await test.request(supervisor, 1, test.fixture.old).accepted;
+    await Promise.race([entered.promise, supervisor.done]);
+    await test.request(supervisor, 2).accepted;
+    release.resolve();
+    await Promise.race([test.completionVerified, supervisor.done]);
+    await test.idle(supervisor);
+    expect(registrations).toBe(2);
+    expect(supervisor.status().phase).toBe("accepting");
+    // The handed-over job met the completion, not a fresh objective.
+    expect(test.runOrResume).toHaveBeenCalledOnce();
+    expect(test.getUtxos).not.toHaveBeenCalled();
+    await test.request(supervisor, 4, test.fixture.fresh, false).accepted;
+    await test.idle(supervisor);
+    expect(existsSync(test.fixture.journalDirectory)).toBe(false);
+    expect(objectiveRows(test.fixture.journalRoot)).toEqual([]);
   });
 
   it("keeps reconciling an objective with a signed attempt after its header leaves the queue", async () => {
@@ -645,6 +872,7 @@ describe("proof objective progress with durable funding and journals", () => {
     });
     expect([...pinned]).toEqual([objective]);
     expect(objectiveRows(test.fixture.journalRoot)).toEqual([objective]);
+    expect(existsSync(test.fixture.journalDirectory)).toBe(true);
   });
 
   it.each([

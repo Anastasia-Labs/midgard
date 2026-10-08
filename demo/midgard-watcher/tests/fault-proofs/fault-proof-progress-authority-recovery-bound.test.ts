@@ -243,7 +243,7 @@ describe("proof progress restart over the objective table (L2)", () => {
     expect(database.count("fault_decisions")).toBe(2);
   });
 
-  it("leaves the rows of an objective whose job is active to that job's finish", async () => {
+  it("forgets the rows of an objective a crash left active with no execution once its header has left the queue", async () => {
     const restart = await restartOver(2, "open");
     const headerHash = journalState.headers[0]!;
     journalState.missing.add(headerHash);
@@ -256,12 +256,12 @@ describe("proof progress restart over the objective table (L2)", () => {
         body: { identity: { category: "doubleSpend", headerHash } },
       }),
     );
+    // No job of this process owns the row, and nothing was signed.
     await restart.admit();
     const database = restart.database();
-    expect(database.row("fault_proof_objectives", scope)?.state).toBe("open");
-    expect(database.row("fault_proof_queue", "77".repeat(32))?.state).toBe(
-      "active",
-    );
+    expect(database.row("fault_proof_objectives", scope)).toBeUndefined();
+    expect(database.row("fault_proof_queue", "77".repeat(32))).toBeUndefined();
+    expect(restart.authority.cleanupFailures()).toEqual([]);
   });
 
   it("restarts over more open objectives than the cap without throwing and reports capacity", async () => {

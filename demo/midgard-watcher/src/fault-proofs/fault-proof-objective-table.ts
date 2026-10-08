@@ -1,6 +1,3 @@
-import { rm } from "node:fs/promises";
-import { join } from "node:path";
-
 import { isFinal } from "@al-ft/midgard-l1-follower/heads";
 
 import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
@@ -30,7 +27,8 @@ import {
  * - `completed`: its completion was verified, but not yet beyond rollback
  *   recovery, so the next start verifies it again.
  * - `marked`: its completion was verified beyond rollback recovery; the row
- *   records which execution, so the next start skips it and prunes it.
+ *   records which execution; once its job is done the row and its workflow
+ *   directory are pruned, by the next release pass or the next start.
  */
 const JOURNAL = "fault_proof_objectives" satisfies WatcherJournalName;
 
@@ -109,8 +107,8 @@ const completionMarker = (
     : null;
 
 /** Records a verified completion; one verified beyond rollback recovery (k
- * deep, the follower's `securityParameter`) is marked with its execution so
- * the next start skips and prunes it. Without a k nothing is marked. True
+ * deep, the follower's `securityParameter`) is marked with its execution, so
+ * it is never run or verified again and is pruned. Without a k nothing is marked. True
  * once the row holds a marker. */
 export const completeWatcherProofObjective = (
   database: WatcherJournalDatabase,
@@ -309,21 +307,6 @@ export const watcherProofJobPending = (
         state,
       }).length > 0,
   );
-
-/** Prunes a completion verified beyond rollback recovery: its workflow
- * journal, then its rows, decisions included. A crash in between leaves a
- * marked row with no execution, which the next start prunes. */
-export const pruneWatcherProofObjective = async (
-  database: WatcherJournalDatabase,
-  journalRoot: string,
-  objective: WatcherProofObjective,
-): Promise<void> => {
-  await rm(
-    join(journalRoot, "fault-proofs", objective.category, objective.headerHash),
-    { recursive: true, force: true },
-  );
-  forgetWatcherProofObjective(database, objective, { decisions: true });
-};
 
 /** Whether a journal holds its cap of live rows: unready, never an exit. */
 export const watcherJournalCapacityReached = (

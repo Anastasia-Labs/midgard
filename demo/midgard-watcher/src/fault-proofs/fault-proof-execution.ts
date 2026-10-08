@@ -1,5 +1,4 @@
 import { mkdir, realpath } from "node:fs/promises";
-import { join } from "node:path";
 
 import {
   assertWorkflowActuationPermitIdentity,
@@ -30,7 +29,10 @@ import type {
   WatcherFaultProofApplication,
   WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.js";
-import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
+import {
+  type WatcherProofObjective,
+  watcherProofObjectiveDirectory,
+} from "./fault-proof-objective-journal.js";
 import type { WatcherFaultProofJob } from "./fault-proof-supervisor.js";
 import { isWatcherPreflightStalledResult } from "./preflight-stall-retry.js";
 import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
@@ -351,11 +353,9 @@ export const createWatcherFaultProofExecution = (dependencies: {
           throw new Error(
             "fault-proof execution admission changed its objective or authority",
           );
-        const journalDirectory = join(
+        const journalDirectory = watcherProofObjectiveDirectory(
           dependencies.journalRoot,
-          "fault-proofs",
-          category,
-          headerHash,
+          { category, headerHash },
         );
         await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
         if ((await realpath(journalDirectory)) !== journalDirectory)

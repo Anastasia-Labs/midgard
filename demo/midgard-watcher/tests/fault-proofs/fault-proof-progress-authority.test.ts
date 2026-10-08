@@ -293,7 +293,16 @@ describe("supervisor historical progress authority", () => {
 
   it("refreshes an initially unsigned indexed execution after its real journal records an intent", async () => {
     const test = await setup(true);
-    expect(await test.authority.admit(test.request)).toEqual([]);
+    // Its header is still queued, so the unsigned objective is not released.
+    expect(
+      await test.authority.admit({
+        ...test.request,
+        observation: progressObservation({
+          deploymentFingerprint: deploymentIdentity.manifestId,
+          header: test.fixture.fixture,
+        }),
+      }),
+    ).toEqual([]);
     await test.fixture.append(test.fixture.handoff.preflight);
     await test.fixture.append(test.fixture.handoff.submissionIntent);
     const entries = await test.fixture.journal.load(

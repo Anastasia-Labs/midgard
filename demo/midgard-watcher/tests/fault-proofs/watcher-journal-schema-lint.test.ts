@@ -16,8 +16,9 @@ import {
 
 /** The journal modules and every module they import: every commit's rows,
  * MACs and digests come from these alone, so a restart recomputes exactly
- * what was written. The host reads allowed open the journal's directory and
- * remove a pruned objective's workflow journals; no row reads the host. */
+ * what was written. The host reads allowed open the journal's directory; no
+ * row reads the host. Workflow directories are removed outside these modules
+ * (fault-proof-objective-cleanup.ts). */
 const LINTED = lintDeterminismModules({
   root: fileURLToPath(new URL("../..", import.meta.url)),
   include: [
@@ -45,12 +46,6 @@ const LINTED = lintDeterminismModules({
       text: "setTimeout",
       reason:
         "schedules the background reopen retry; no row, MAC or digest reads it",
-    },
-    {
-      path: "src/fault-proofs/fault-proof-objective-table.ts",
-      rule: "host_import",
-      text: 'import { rm } from "node:fs/promises";',
-      reason: "removes a pruned objective's workflow journal directory",
     },
   ],
 });
