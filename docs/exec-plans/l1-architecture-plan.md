@@ -320,7 +320,8 @@ Depth is also counted three different ways today:
 
 - inclusive: `demo/midgard-node/src/database/settlement.ts:100`;
 - descendants only: `demo/midgard-node/src/services/signed-intent-canonical-coverage.ts:230-231`;
-- head − d: `demo/midgard-node/src/fibers/operator-membership.ts:266`.
+- head − d: `demo/midgard-node/src/fibers/operator-membership.ts:266` (that file was
+  since deleted by N6, #804). <!-- doc-links:historical -->
 
 The heads module (§9) defines depth once. Retention points already use k:
 `demo/midgard-node/src/services/event-history-owner.retention.ts:31-50` and

@@ -12,7 +12,7 @@ Scope: node foreign payload retriever/store and reconciliation fiber; foreign ev
 
 ### [F1] CONFIRMED major — unauthenticated address donations can stop an active operator
 
-Where: `demo/midgard-node/src/fibers/operator-membership.ts:231`, `:247`, `:250`, `:340`, `:349`, `:371`; `demo/midgard-node/src/l1-ledger-snapshot.ts:224`.
+Where: `demo/midgard-node/src/fibers/operator-membership.ts:231`, `:247`, `:250`, `:340`, `:349`, `:371`; `demo/midgard-node/src/l1-ledger-snapshot.ts:224`. The membership file was since deleted by #804. <!-- doc-links:historical -->
 
 Defect: the membership monitor requires historical existence of every indexer output at four public addresses, including irrelevant permissionless donations, then disables all duties if any such output did not exist at its checkpoint.
 
