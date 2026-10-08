@@ -383,10 +383,7 @@ export const replayJournaledOnFollower = async (input: {
         .join(", ");
     };
     const actionOf = (hash: string) =>
-      stage
-        .lastReport()
-        ?.intents.find((entry) => entry.intent.txHash.toString("hex") === hash)
-        ?.action;
+      stage.lastReport()?.entry(Buffer.from(hash, "hex"))?.action;
 
     // The seed at the origin: the genesis outputs at the seeded addresses.
     const seededHolds = await stage.run();

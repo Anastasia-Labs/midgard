@@ -53,9 +53,7 @@ const open = async () => {
 };
 
 const statusOf = (env: IntentEmulator, hash: string) =>
-  env.stage
-    .lastReport()!
-    .intents.find((entry) => entry.intent.txHash.toString("hex") === hash);
+  env.stage.lastReport()!.entry(Buffer.from(hash, "hex"));
 
 /** A payout funding step's intent (content: the settled event's id). */
 const fundingIntent = (label: string) =>

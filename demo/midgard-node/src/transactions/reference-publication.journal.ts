@@ -23,18 +23,30 @@ import {
   submitSignedTxWithRecovery,
 } from "./utils.js";
 
-/** A funding step (consolidation or split), journaled and confirmed. */
+/**
+ * A funding step (consolidation or split), journaled and confirmed. Its
+ * content reference is its target: the hashes (hex) of the scripts it
+ * funds (`funds`), concatenated, so the §8.4 predicate wants it while one
+ * of them is not yet published.
+ */
 export const submitPublicationFunding = (
   journal: IntentJournalService,
   lucid: LucidEvolution,
   unsigned: TxSignBuilder,
   step: "consolidate" | "split",
-  options: SubmitRecoveryOptions,
+  {
+    funds,
+    ...options
+  }: SubmitRecoveryOptions & Readonly<{ funds: readonly string[] }>,
 ) =>
   handleSignSubmit(
     lucid,
     unsigned,
-    journaledIntent("reference_funding", `reference_publication:${step}`),
+    journaledIntent(
+      "reference_funding",
+      `reference_publication:${step}`,
+      Buffer.concat(funds.map((hash) => Buffer.from(hash, "hex"))),
+    ),
     options,
   ).pipe(Effect.provideService(IntentJournal, journal));
 

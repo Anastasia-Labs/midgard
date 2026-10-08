@@ -10,116 +10,75 @@
  * - A projection that cannot be read (no view, an unhealthy queue or
  *   operator set, a missing input to the predicate) throws: S6 keeps the
  *   intent live and raises a named transient `/readyz` hold.
- * - The families whose target state is not in the facts (certificate
- *   registrations, working-capital funding) throw `FamilyPredicateUnavailable`:
- *   their intents are never resubmitted and never abandoned.
+ * - A predicate that a later view will decide throws `IntentPredicateWait`
+ *   with its own named hold (`INTENT_EVENTS_NOT_DEEP`).
+ * - Every node family has a predicate (`PREDICATES`); the payout,
+ *   reference-script and stake-registration families are in
+ *   `l1-follower.intent-predicates.wallet.ts`.
  */
 import {
   currentViewIn,
-  decodeTransaction,
-  type Dialect,
   encodeOutRef,
-  type FactStore,
   type IntentState,
-  liveUtxosIn,
-  type OutRef,
-  readIntentIn,
-  type SqlTx,
-  type View,
 } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
+import { Effect } from "effect";
 
-import { eventKeyOfId } from "../l1-events/by-id.js";
 import {
   createOperatorSetMirror,
   type OperatorSet,
-  type OperatorSetConfig,
   type OperatorSetMirror,
 } from "../l1-operator-set/index.js";
 import {
   type LandedStateQueue,
   landedStateQueueIn,
   landedTail,
-  type StateQueueProjectionConfig,
 } from "../l1-state-queue/index.js";
+import type { NodeIntentFamily } from "./intent-journal.js";
+import {
+  contentRefHex,
+  count,
+  keyRest,
+  type NodeFamilyPredicateDeps,
+  type Read,
+  spends,
+  validFromMs,
+} from "./l1-follower.intent-predicates.read.js";
+import {
+  payout,
+  referenceFunding,
+  referencePublication,
+  referenceSweep,
+  stakeRegistration,
+} from "./l1-follower.intent-predicates.wallet.js";
+import { IntentPredicateWait } from "./l1-follower.intents.js";
 
-/** A family whose target state the follower's facts do not hold. */
-export class FamilyPredicateUnavailable extends Error {
-  constructor(family: string) {
-    super(
-      `the ${family} family's target state is not in the follower's facts; its intent is held, never resent or abandoned`,
-    );
-    this.name = "FamilyPredicateUnavailable";
-  }
-}
-
-export type NodeFamilyPredicateDeps = Readonly<{
-  store: Pick<FactStore, "dialect" | "transaction">;
-  stateQueue: StateQueueProjectionConfig;
-  /** The operator set and this operator's key hash; null when the key is unreadable. */
-  operatorSet: Readonly<{ config: OperatorSetConfig; ownKey: string }> | null;
-  /** POSIX milliseconds at the start of a slot (the node's slot clock). */
-  slotToPosixMs: (slot: number) => number;
-  /** The horizon lag d: a commit's events are at least d blocks below the tip. */
-  horizonLagBlocks: number;
-}>;
-
-type Read = Readonly<{
-  tx: SqlTx;
-  dialect: Dialect;
-  view: View;
-  state: IntentState;
-  deps: NodeFamilyPredicateDeps;
-  queue: () => Promise<LandedStateQueue>;
-  operators: () => Promise<OperatorSet>;
-}>;
-
-const outRefText = (outRef: OutRef): string =>
-  `${outRef.txHash.toString("hex")}#${outRef.index.toString()}`;
-
-const spends = (state: IntentState, outRef: string): boolean =>
-  state.intent.inputs.some((input) => outRefText(input) === outRef);
-
-/** The text after `prefix` in the workflow key; a key of another shape throws. */
-const keyRest = (state: IntentState, prefix: string): string => {
-  const { workflowKey } = state.intent;
-  if (!workflowKey.startsWith(prefix))
-    throw new Error(
-      `${state.intent.family} intent key ${workflowKey} lacks ${prefix}`,
-    );
-  return workflowKey.slice(prefix.length);
-};
-
-const contentRefHex = (state: IntentState): string => {
-  if (state.intent.contentRef === null)
-    throw new Error(
-      `${state.intent.family} intent ${state.intent.workflowKey} has no content reference`,
-    );
-  return state.intent.contentRef.toString("hex");
-};
+export type { NodeFamilyPredicateDeps } from "./l1-follower.intent-predicates.read.js";
 
 const queueNode = (queue: LandedStateQueue, headerHash: string) =>
   queue.nodes.find((node) => node.headerHash === headerHash);
 
-const count = async (
-  tx: SqlTx,
-  sql: string,
-  params: readonly (Buffer | number | string)[],
-): Promise<number> => {
-  const rows = await tx.query(sql, [...params]);
-  return Number(rows[0]?.n ?? 0);
-};
-
-/** The time the intent's validity starts at, or the tip's when it has no lower bound. */
-const validFromMs = (read: Read): number =>
-  read.deps.slotToPosixMs(
-    read.state.intent.validFromSlot ?? read.view.point.slot,
-  );
+/**
+ * A commit's included event is canonical but admitted fewer than d blocks
+ * below the view (a rewind made it shallow): the commit waits for the chain
+ * to bury it again.
+ */
+export const INTENT_EVENTS_NOT_DEEP = "intent_included_events_not_deep";
 
 /**
- * Every event the commit's block journal includes is canonical (its
- * admission identity is in the follower's key set) and admitted at least
- * d blocks below the view.
+ * Whether the events the commit's block journal includes allow it at this
+ * view (B3):
+ *
+ * - `false` when one is not canonical: its member names no admission
+ *   identity, the identity is not in the follower's key set, or a forced
+ *   member has no forced row, or neither an admission key nor order fields;
+ * - an `IntentPredicateWait` (`INTENT_EVENTS_NOT_DEEP`) when all are
+ *   canonical but one was admitted above `view.height - d`: a rewind that
+ *   left the event admitted only makes it shallower, and the regrown chain
+ *   buries it again;
+ * - `true` otherwise.
+ *
+ * A non-canonical event wins over a shallow one.
  */
 const includedEventsSettled = async (
   read: Read,
@@ -127,21 +86,33 @@ const includedEventsSettled = async (
 ): Promise<boolean> => {
   const { tx, view, deps } = read;
   const highest = view.height - deps.horizonLagBlocks;
+  let shallowest: number | null = null;
+  const note = (height: unknown): void => {
+    if (height === null || height === undefined) return;
+    const at = Number(height);
+    if (at > highest && (shallowest === null || at > shallowest))
+      shallowest = at;
+  };
   for (const [kind, table] of [
     ["deposit", "pending_block_finalization_deposits"],
     ["withdrawal", "pending_block_finalization_withdrawals"],
   ] as const) {
-    const unsettled = await count(
+    const missing = await count(
       tx,
       `SELECT count(*) AS n FROM ${table} m WHERE m.header_hash = ?
         AND (m.l1_event_key IS NULL OR m.l1_origin_outref IS NULL
           OR NOT EXISTS (SELECT 1 FROM l1_event_keys k WHERE k.kind = ?
-            AND k.key = m.l1_event_key AND k.origin_outref = m.l1_origin_outref)
-          OR EXISTS (SELECT 1 FROM node_l1_events e WHERE e.kind = ?
-            AND e.event_key = m.l1_event_key AND e.admitted_height > ?))`,
-      [headerHash, kind, kind, highest],
+            AND k.key = m.l1_event_key AND k.origin_outref = m.l1_origin_outref))`,
+      [headerHash, kind],
     );
-    if (unsettled > 0) return false;
+    if (missing > 0) return false;
+    const deepest = await tx.query(
+      `SELECT max(e.admitted_height) AS height FROM ${table} m
+        JOIN node_l1_events e ON e.kind = ? AND e.event_key = m.l1_event_key
+        WHERE m.header_hash = ?`,
+      [kind, headerHash],
+    );
+    note(deepest[0]?.height);
   }
   const forced = await tx.query(
     `SELECT f.tx_order_l1_tx_hash AS tx_hash, f.tx_order_l1_output_index AS output_index
@@ -165,9 +136,43 @@ const includedEventsSettled = async (
       [txHash, index],
     );
     if (keyed === 0 && orders.length === 0) return false;
-    if (orders.some((order) => Number(order.height) > highest)) return false;
+    for (const order of orders) note(order.height);
   }
+  if (shallowest !== null)
+    throw new IntentPredicateWait(
+      INTENT_EVENTS_NOT_DEEP,
+      `commit ${headerHash.toString("hex")}: an included event was admitted at height ${String(shallowest)}, fewer than ${deps.horizonLagBlocks.toString()} blocks below the view at height ${view.height.toString()}`,
+    );
   return true;
+};
+
+/**
+ * The state queue's Q61 append fence (`state_queue_head_allows_append_v1`,
+ * `onchain/aiken/validators/state-queue.ak:137-158`), which a non-empty
+ * append checks against the queue's head (`state-queue.ak:1207-1229`): no
+ * completed fraud proof on the head, and its DA status Attested or
+ * Published, or Unattested with the transaction's inclusive upper validity
+ * bound strictly before `end_time + da_attestation_timeout`; Challenged
+ * never. The inclusive upper bound is the POSIX time of the exclusive upper
+ * slot bound minus one; an unattested head with no upper bound cannot pass
+ * (the validator requires a closed range). An empty queue (the root is the
+ * tail) has no head to check. The head's header validity is the walk's
+ * decode (a node of another protocol version is not a queue node).
+ */
+const headAllowsAppend = (read: Read, queue: LandedStateQueue): boolean => {
+  const head = queue.nodes[0];
+  if (head === undefined) return true;
+  const node = Effect.runSync(
+    SDK.getStateQueueNodeFromStateQueueDatum(head.element.datum),
+  );
+  if (node.proven_fraud !== null) return false;
+  const status = SDK.daAvailabilityStateQueueStatusKind(node.da_attestation);
+  if (status === "Challenged") return false;
+  if (status !== "Unattested") return true;
+  const { validToSlot } = read.state.intent;
+  if (validToSlot === null) return false;
+  const inclusiveUpper = BigInt(read.deps.slotToPosixMs(validToSlot)) - 1n;
+  return inclusiveUpper < head.endTimeMs + SDK.DA_ATTESTATION_TIMEOUT_MS;
 };
 
 /**
@@ -199,6 +204,7 @@ const commit = async (read: Read): Promise<boolean> => {
   const queue = await read.queue();
   if (landedTail(queue)?.outRef !== tail || !spends(read.state, tail))
     return false;
+  if (!headAllowsAppend(read, queue)) return false;
   if (!schedulerOurs(read, await read.operators())) return false;
   return includedEventsSettled(read, header);
 };
@@ -296,86 +302,9 @@ const operatorTransition = async (read: Read): Promise<boolean> => {
   }
 };
 
-/**
- * Settlement and reserve payouts; the content reference is the settled
- * event's id CBOR. Absorb and initialize retire the list event, so the
- * event must still be listed (its admission identity in the key set) and
- * not retired. Fund and conclude spend the payout the initialize created
- * (the event is retired by then): every input must still be a live fact,
- * so no other transaction settled the payout. Key: `...:<step>`.
- */
-const payout = async (read: Read): Promise<boolean> => {
-  const step = read.state.intent.workflowKey.split(":").at(-1);
-  const eventId = read.state.intent.contentRef;
-  if (eventId === null) throw new Error("a payout intent names no event");
-  if (step === "absorb" || step === "absorb_deposit" || step === "initialize")
-    return (
-      (await count(
-        read.tx,
-        `SELECT count(*) AS n FROM node_l1_events e JOIN l1_event_keys k
-          ON k.kind = e.kind AND k.key = e.event_key
-          WHERE e.kind = ? AND e.event_key = ? AND e.event_id = ?
-            AND e.retired_slot IS NULL`,
-        [
-          step === "initialize" ? "withdrawal" : "deposit",
-          eventKeyOfId(eventId),
-          eventId,
-        ],
-      )) > 0
-    );
-  if (step !== "fund" && step !== "add_funds" && step !== "conclude")
-    throw new Error(`unknown payout step ${step ?? ""}`);
-  return allInputsLive(read);
-};
-
-const allInputsLive = async (read: Read): Promise<boolean> => {
-  const live = await liveUtxosIn(read.tx, read.dialect, {
-    by: "outref",
-    outRefs: read.state.intent.inputs,
-  });
-  if (live.kind !== "ok") throw new Error(`intent inputs: ${live.kind}`);
-  return live.utxos.length === read.state.intent.inputs.length;
-};
-
-/** Publication: some script it publishes is not yet live at a reference output of another tx. */
-const referencePublication = async (read: Read): Promise<boolean> => {
-  const intent = await readIntentIn(
-    read.tx,
-    read.dialect,
-    read.state.intent.txHash,
-  );
-  if (intent === null) throw new Error("the intent left the journal");
-  const scripts = decodeTransaction(intent.txCbor).outputs.flatMap((output) =>
-    output.scriptRef === null ? [] : [output.scriptRef.hash],
-  );
-  if (scripts.length === 0)
-    throw new Error("a reference publication publishes no script");
-  for (const hash of scripts)
-    if (
-      (await count(
-        read.tx,
-        "SELECT count(*) AS n FROM l1_outputs WHERE script_ref_hash = ? AND spent_slot IS NULL AND tx_hash <> ?",
-        [hash, intent.txHash],
-      )) === 0
-    )
-      return true;
-  return false;
-};
-
-/** Sweep: every reference-script output it spends is still live. */
-const referenceSweep = async (read: Read): Promise<boolean> => {
-  const live = await liveUtxosIn(read.tx, read.dialect, {
-    by: "outref",
-    outRefs: read.state.intent.inputs,
-  });
-  if (live.kind !== "ok") throw new Error(`sweep inputs: ${live.kind}`);
-  const swept = live.utxos.filter((utxo) => utxo.output.scriptRef !== null);
-  return (
-    swept.length > 0 && live.utxos.length === read.state.intent.inputs.length
-  );
-};
-
-const PREDICATES: Readonly<Record<string, (read: Read) => Promise<boolean>>> = {
+const PREDICATES: Readonly<
+  Record<NodeIntentFamily, (read: Read) => Promise<boolean>>
+> = {
   commit,
   scheduler_refresh: operatorTransition,
   merge,
@@ -392,6 +321,9 @@ const PREDICATES: Readonly<Record<string, (read: Read) => Promise<boolean>>> = {
   settlement: payout,
   reference_publication: referencePublication,
   reference_sweep: referenceSweep,
+  reference_funding: referenceFunding,
+  script_reward_registration: stakeRegistration,
+  phas_membership: stakeRegistration,
 };
 
 /** The §8.4 predicate over the projections (see the module doc). */
@@ -403,9 +335,13 @@ export const nodeFamilyPredicate = (
       ? null
       : createOperatorSetMirror(deps.operatorSet);
   return async (state) => {
-    const predicate = PREDICATES[state.intent.family];
+    const predicate = (
+      PREDICATES as Readonly<
+        Record<string, ((read: Read) => Promise<boolean>) | undefined>
+      >
+    )[state.intent.family];
     if (predicate === undefined)
-      throw new FamilyPredicateUnavailable(state.intent.family);
+      throw new Error(`no §8.4 predicate for family ${state.intent.family}`);
     return deps.store.transaction("write", async (tx) => {
       const { dialect } = deps.store;
       const view = await currentViewIn(tx, dialect);

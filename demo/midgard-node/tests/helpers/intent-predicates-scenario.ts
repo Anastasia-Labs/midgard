@@ -211,6 +211,7 @@ export const openPredicateScenario = async (
     spare,
     spend,
     record,
+    deps,
     verdict,
     sql,
   };

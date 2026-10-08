@@ -5,24 +5,15 @@
  * - every intent is recorded: each input, reference input and collateral
  *   is a tracked fact or a journaled parent's output, at the tip before it
  *   landed;
- * - a family whose §8.4 predicate reads the follower's facts is judged
- *   wanted there (`resubmit`), unless it is chained on a parent landing in
- *   the same block, when S6 waits on its inputs;
- * - a family whose target state is not in the facts is held there
- *   (`wait_transient`), never resent or abandoned;
+ * - every family's §8.4 predicate reads the follower's facts, and judges
+ *   the intent wanted there (`resubmit`), unless it is chained on a parent
+ *   landing in the same block, when S6 waits on its inputs;
  * - once its block applies, it is landed (`follow`).
  */
 import { expect } from "vitest";
 
 import type { NodeIntentFamily } from "../../src/services/intent-journal.js";
 import type { ReplayConfig, ReplayedIntent } from "./intent-journal-replay.js";
-
-/** The families whose target state the follower does not hold (`FamilyPredicateUnavailable`). */
-export const FAMILIES_WITHOUT_FACTS: readonly NodeIntentFamily[] = [
-  "reference_funding",
-  "script_reward_registration",
-  "phas_membership",
-];
 
 /**
  * Asserts each replayed intent's outcome, and that the families replayed
@@ -44,14 +35,7 @@ export const expectReplayedFamilies = (
       outcome: "recorded",
       after: "follow",
     });
-    if (FAMILIES_WITHOUT_FACTS.includes(entry.family))
-      expect(entry, entry.family).toMatchObject({
-        verdict: expect.stringContaining(
-          "target state is not in the follower's facts",
-        ),
-        before: "wait_transient",
-      });
-    else if (entry.chained)
+    if (entry.chained)
       expect(entry, entry.family).toMatchObject({ before: "wait_inputs" });
     else
       expect(entry, entry.family).toMatchObject({

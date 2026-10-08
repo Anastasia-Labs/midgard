@@ -16,7 +16,7 @@ import {
   type SqlTx,
   type SqlValue,
 } from "../sql/backend.js";
-import { readCursor } from "../store/rows.js";
+import { insertRows, readCursor } from "../store/rows.js";
 import type { OutRef, View } from "../types.js";
 import {
   appendIntentEventIn,
@@ -213,8 +213,33 @@ export const insertIntentIn = async (
     intent.built.point.hash,
     intent.contentRef,
   ];
+  // Postgres stamps `recorded_seq` with the transaction id by default;
+  // SQLite takes the next counter value (writers are serial).
+  if (dialect.name === "sqlite") {
+    const next = await tx.query(
+      "UPDATE l1_intent_record_seq SET next = next + 1 RETURNING next - 1 AS seq",
+    );
+    values.push(asNumber(next[0]?.seq));
+  }
   await tx.query(
-    `INSERT INTO l1_intents (${INTENT_COLUMNS}) VALUES (${placeholders(values.length)})`,
+    `INSERT INTO l1_intents (${INTENT_COLUMNS}${dialect.name === "sqlite" ? ", recorded_seq" : ""}) VALUES (${placeholders(values.length)})`,
     values,
+  );
+  const spends = new Map<string, OutRef>();
+  for (const outRef of [
+    ...intent.inputs,
+    ...intent.referenceInputs,
+    ...intent.collaterals,
+  ])
+    spends.set(encodeOutRef(outRef).toString("hex"), outRef);
+  await insertRows(
+    tx,
+    "l1_intent_spends",
+    ["out_tx", "out_index", "tx_hash"],
+    [...spends.values()].map((outRef) => [
+      outRef.txHash,
+      outRef.index,
+      intent.txHash,
+    ]),
   );
 };

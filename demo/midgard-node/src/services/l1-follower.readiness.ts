@@ -7,7 +7,10 @@
  * follower-change driver (`l1_events_*`, and the forced-order hook's
  * `forced_order_carriage_pending`, `forced_order_admission_stopped` and
  * `forced_order_ingestion_failed`), the intent stage's (`wallet_seed_pending`,
- * `intent_reconcile_failed`, `intent_reconcile_transient`) and the intent
+ * `intent_reconcile_failed`, `intent_reconcile_transient`,
+ * `intent_resubmit_rejected`, a predicate's wait such as
+ * `intent_included_events_not_deep`, and `tracked_set_changed` while the
+ * store replays a tracked-set reset) and the intent
  * journal's refusals, the worker threads' included (`intent_journal_*`,
  * `intent_input_untracked`, `intent_bytes_mismatch`, `intent_undecodable`,
  * `intent_content_ref_missing`), and
