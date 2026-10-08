@@ -128,6 +128,6 @@ The finalizer takes:
   `--state-correction-l1-observation` and
   `--state-correction-recovery-observation`.
 
-It builds its live authority from the stack node's `L1_PROVIDER=Kupmios`, the
-loopback `L1_KUPO_KEY` and `L1_OGMIOS_KEY`, and the stack's database, and
-refuses provider failover or a remote endpoint.
+It builds its live authority from the stack's loopback `L1_KUPO_KEY` and
+`L1_OGMIOS_KEY` and the stack's database, and refuses provider failover or a
+remote endpoint.

@@ -187,7 +187,6 @@ export const mergeActionWithL1ControlPlaneHeld = (
       }
       const preLeaseLocalLedgerGate = yield* captureMergeLocalLedgerGate({
         lucid: lucid.api,
-        nodeConfig,
         validFromUnixTime: preLeaseCandidate.readiness.validFromUnixTime,
         headerHash: preLeaseCandidate.readiness.headerHash,
         candidateIdentity: preLeaseCandidate.readiness.candidateIdentity,
@@ -240,7 +239,6 @@ export const mergeActionWithL1ControlPlaneHeld = (
           if (leasedCandidate.status === "candidate") {
             const leasedLocalLedgerGate = yield* captureMergeLocalLedgerGate({
               lucid: lucid.api,
-              nodeConfig,
               validFromUnixTime: leasedCandidate.readiness.validFromUnixTime,
               leaseToken,
               headerHash: leasedCandidate.readiness.headerHash,

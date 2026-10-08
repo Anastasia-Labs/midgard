@@ -4,6 +4,10 @@ import { appendFile, copyFile, readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 
+import {
+  closeSharedL1NodeTransports,
+  sharedL1NodeTransport,
+} from "@al-ft/l1-node-transport";
 import { referenceScriptAuthUnit } from "@al-ft/midgard-sdk";
 import {
   generateSeedPhrase,
@@ -11,10 +15,7 @@ import {
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
-import {
-  cardanoProtocolParametersIdentityFromProvider,
-  queryLocalOgmiosProtocolParameters,
-} from "midgard-node/commands/contract-deployment-info";
+import { cardanoProtocolParametersIdentityFromLedger } from "midgard-node/commands/contract-deployment-info";
 import {
   awaitReferenceScriptPublicationReadiness,
   type PublishedWorkflowDeploymentResume,
@@ -25,7 +26,7 @@ import {
   synchronizePublicationIndexer,
 } from "midgard-node/tests/helpers/reference-publication-chain";
 import { WatcherLocalKupmios } from "midgard-watcher";
-import { expect, it } from "vitest";
+import { afterAll, expect, it } from "vitest";
 
 import {
   readJourneyArtifact,
@@ -39,6 +40,8 @@ import { loadJourneyContext } from "./live-context.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
+
+afterAll(closeSharedL1NodeTransports);
 
 it.skipIf(runDirectory === undefined)(
   "publishes the actual installed deployment on the isolated Cardano devnet",
@@ -102,9 +105,15 @@ it.skipIf(runDirectory === undefined)(
       await pause(1000);
     }
     await verifyJourneyConfiguration({ runDirectory, ogmiosUrl });
-    const parameters = await cardanoProtocolParametersIdentityFromProvider(
-      provider,
-      await queryLocalOgmiosProtocolParameters(ogmiosUrl),
+    // The node's own snapshot source: the devnet node's ledger, over the
+    // transport sidecar.
+    const nodeTransport = sharedL1NodeTransport({
+      binaryPath: join(runDirectory, "work/midgard-l1-node-transport"),
+      socketPath: join(runDirectory, "cardano/ipc/node.socket"),
+      networkMagic: genesis.networkMagic,
+    });
+    const parameters = await cardanoProtocolParametersIdentityFromLedger(() =>
+      nodeTransport.query({ query: "protocol_params" }),
     );
     await writeFile(
       join(runDirectory, "work/verified-protocol-parameters.json"),

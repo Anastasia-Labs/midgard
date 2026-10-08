@@ -202,9 +202,6 @@ export const validatePhase4ProcessIsolationValues = (
       `Phase 4 POSTGRES_DB must start with ${ISOLATED_DATABASE_PREFIX}`,
     );
   }
-  if (requiredValue(values, "L1_PROVIDER") !== "Kupmios") {
-    throw new Error("Phase 4 process acceptance requires L1_PROVIDER=Kupmios");
-  }
   if (
     requiredValue(values, "MIN_FEE_A") !== "0" ||
     requiredValue(values, "MIN_FEE_B") !== "0"

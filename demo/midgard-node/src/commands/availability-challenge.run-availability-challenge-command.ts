@@ -3,13 +3,15 @@ import { isAbsolute, normalize } from "node:path";
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, Lucid, paymentCredentialOf } from "@lucid-evolution/lucid";
+import {
+  Data,
+  type Network,
+  paymentCredentialOf,
+} from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
-import {
-  makeNodeKupmios,
-  nativeLedgerSettingsFromEnv,
-} from "../services/native-ledger.js";
+import type { NodeL1Access } from "../services/l1-provider.js";
+import { resolveNetwork } from "./address-from-seed.js";
 import { buildAvailabilityCommandTransaction } from "./availability-challenge.build-availability-command-transaction.js";
 import {
   type AvailabilityCommandAction,
@@ -18,9 +20,12 @@ import {
   planAvailabilityCommandAction,
 } from "./availability-challenge.plan-availability-command-action.js";
 import { availabilityDeploymentFromManifest } from "./availability-challenge-deployment.js";
-import { availabilityCommandCanonicalSource } from "./availability-challenge-source.js";
+import {
+  availabilityCommandCanonicalSource,
+  availabilityStoreUnitHistory,
+} from "./availability-challenge-source.js";
 import { readDeploymentManifestFile } from "./contract-deployment-info.js";
-import { resolveKupmiosConfig } from "./l1-utxos.js";
+import { commandLucid, withCommandL1Access } from "./l1-command-access.js";
 
 export const runAvailabilityChallengeCommand = async (
   action: AvailabilityCommandAction,
@@ -56,19 +61,35 @@ export const runAvailabilityChallengeCommand = async (
     );
   const manifest = readDeploymentManifestFile(options.manifest);
   verifyFinalizedDeploymentManifest(manifest);
-  const connection = resolveKupmiosConfig({
-    kupoUrl: options.kupoUrl,
-    ogmiosUrl: options.ogmiosUrl,
-    network: manifest.network,
-    env,
-  });
-  const provider = makeNodeKupmios({
-    kupoUrl: connection.kupoUrl,
-    ogmiosUrl: connection.ogmiosUrl,
-    network: connection.network,
-    nativeLedger: nativeLedgerSettingsFromEnv(env),
-  });
-  const lucid = await Lucid(provider, connection.network, {
+  const network = resolveNetwork({ network: manifest.network, env });
+  return withCommandL1Access({ network, env }, (access) =>
+    runAvailabilityOnAccess(
+      action,
+      options,
+      env,
+      seed,
+      manifest,
+      network,
+      access,
+    ),
+  );
+};
+
+/**
+ * The command over the node's L1 access: Lucid on the follower provider and
+ * the ledger's slot mapping, the canonical source on the follower store,
+ * submission through the provider.
+ */
+const runAvailabilityOnAccess = async (
+  action: AvailabilityCommandAction,
+  options: AvailabilityCommandOptions,
+  env: NodeJS.ProcessEnv,
+  seed: string,
+  manifest: ReturnType<typeof readDeploymentManifestFile>,
+  network: Network,
+  access: NodeL1Access,
+): Promise<unknown> => {
+  const lucid = await commandLucid(access, network, {
     evaluator: createScalusEvaluator(),
   });
   lucid.selectWallet.fromSeed(seed, { addressType: "Enterprise" });
@@ -102,7 +123,7 @@ export const runAvailabilityChallengeCommand = async (
     );
   lucid.selectWallet.fromSeed(seed, { addressType: "Enterprise" });
   const deployment = await availabilityDeploymentFromManifest(lucid, manifest);
-  const source = availabilityCommandCanonicalSource({ lucid, ...connection });
+  const source = availabilityCommandCanonicalSource({ lucid, access });
   const journal = openAvailabilityOperationJournal(options.journal);
   try {
     const canonicalAnchor = await source.readBoundary();
@@ -120,7 +141,7 @@ export const runAvailabilityChallengeCommand = async (
         await source.assertCanonicalAncestor(canonicalAnchor);
       },
       observe: source.observe,
-      submit: (cbor) => provider.submitTx(cbor),
+      submit: (cbor) => access.provider.submitTx(cbor),
     };
     if (action === "recover") {
       return {
@@ -238,7 +259,10 @@ export const runAvailabilityChallengeCommand = async (
         buildAvailabilityCommandTransaction(
           lucid,
           deployment,
-          availabilityCommandBuildContext(manifest, connection.kupoUrl),
+          availabilityCommandBuildContext(
+            manifest,
+            availabilityStoreUnitHistory(access.store),
+          ),
           snapshot,
           operation,
           options,

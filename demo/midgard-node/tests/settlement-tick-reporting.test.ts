@@ -43,17 +43,14 @@ import { runSettlementWorker } from "../src/workers/settlement.run-settlement-wo
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
-vi.mock(
-  "../src/transactions/reference-publication-provider.js",
-  async (original) => ({
+vi.mock("../src/l1-provider-view.js", async (original) => {
+  const { Effect: E } = await import("effect");
+  return {
     ...(await original<object>()),
-    // The indexer tip, below the pending body's validity bound.
-    synchronizePublicationIndexerPoint: async () => ({
-      slot: 10,
-      id: "b1".repeat(32),
-    }),
-  }),
-);
+    // The L1 view point, below the pending body's validity bound.
+    providerViewPoint: () => E.succeed({ slot: 10, id: "b1".repeat(32) }),
+  };
+});
 
 const run = <A, E>(
   effect: Effect.Effect<A, E, SqlClient.SqlClient | NodeConfig>,

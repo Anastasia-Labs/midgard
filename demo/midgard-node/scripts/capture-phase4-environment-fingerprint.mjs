@@ -92,14 +92,10 @@ const document = {
   },
   postgres: component("PHASE4_POSTGRES", "postgres"),
   provider: {
-    kind: required("L1_PROVIDER"),
+    // The node reads and submits through the local node's socket.
+    kind: "l1_node",
     routeSha256: sha256(
-      Buffer.from(
-        JSON.stringify({
-          kupo: required("L1_KUPO_KEY"),
-          ogmios: required("L1_OGMIOS_KEY"),
-        }),
-      ),
+      Buffer.from(JSON.stringify({ socket: required("L1_NODE_SOCKET_PATH") })),
     ),
   },
   deploymentManifest: {

@@ -1,3 +1,4 @@
+import { L1ProviderTransientError } from "@al-ft/midgard-l1-follower/provider";
 import type * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -7,68 +8,53 @@ import {
   type LucidEvolution,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { NodeConfig } from "../src/services/index.js";
+import { registerL1ProviderView } from "../src/l1-provider-view.js";
 import {
   indexedL1Slot,
   settleExpiredHistoryAttempt,
 } from "../src/transactions/event-history-submission.indexed-l1-slot.js";
 
-/** Kupo's `/health` Prometheus text, as lc1's Kupo serves it. */
-const kupoHealth = (checkpoint: string) =>
-  [
-    "# TYPE kupo_configuration_indexes gauge",
-    "kupo_configuration_indexes  1.0",
-    "# TYPE kupo_connection_status gauge",
-    "kupo_connection_status  1.0",
-    "# TYPE kupo_most_recent_checkpoint counter",
-    `kupo_most_recent_checkpoint  ${checkpoint}`,
-    "# TYPE kupo_most_recent_node_tip counter",
-    "kupo_most_recent_node_tip  48280",
-    "",
-  ].join("\n");
-
-const fromKupo = (response: Response) => {
-  const fetch = vi.fn(async () => response);
-  vi.stubGlobal("fetch", fetch);
-  // A Lucid with no emulator provider reads the configured Kupo.
-  const slot = Effect.runPromise(
-    indexedL1Slot({} as LucidEvolution).pipe(
-      Effect.provideService(NodeConfig, {
-        L1_KUPO_KEY: "http://kupo.test/",
-      } as never),
-    ),
-  );
-  return { fetch, slot };
-};
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
-
 describe("indexed L1 slot outside the emulator", () => {
-  it("reads Kupo's most recent checkpoint from its health metrics", async () => {
-    const { fetch, slot } = fromKupo(new Response(kupoHealth("48271")));
-    expect(await slot).toBe(48271);
-    expect(fetch).toHaveBeenCalledWith("http://kupo.test/health", {
-      headers: { accept: "text/plain" },
-      signal: expect.any(AbortSignal),
+  it("reads the follower's synchronized view point registered for the client", async () => {
+    const lucid = await Lucid(new Emulator([]), "Custom");
+    const reads: string[] = [];
+    registerL1ProviderView([lucid], {
+      submitSlotSnapshot: () =>
+        Effect.fail(
+          new Error("the submit-slot snapshot is not the indexed slot"),
+        ),
+      viewPoint: () =>
+        Effect.sync(() => {
+          reads.push("view");
+          return { slot: 48_271, id: "ab".repeat(32) };
+        }),
     });
+    expect(await Effect.runPromise(indexedL1Slot(lucid))).toBe(48_271);
+    expect(reads).toEqual(["view"]);
   });
 
-  it("reads a checkpoint printed as a whole float, like Kupo's gauges", async () => {
-    expect(await fromKupo(new Response(kupoHealth("48271.0"))).slot).toBe(
-      48271,
-    );
+  it("treats a follower behind the node's tip as no indexed slot", async () => {
+    const lucid = await Lucid(new Emulator([]), "Custom");
+    registerL1ProviderView([lucid], {
+      submitSlotSnapshot: () => Effect.die("unused"),
+      viewPoint: () =>
+        Effect.fail(
+          new L1ProviderTransientError("follower", "behind_node_tip"),
+        ),
+    });
+    expect(await Effect.runPromise(indexedL1Slot(lucid))).toBeUndefined();
   });
 
-  it.each([
-    ["an unhealthy Kupo", new Response(kupoHealth("48271"), { status: 503 })],
-    ["a missing checkpoint", new Response("# TYPE kupo_x gauge\nkupo_x  1.0")],
-    ["a fractional checkpoint", new Response(kupoHealth("48271.5"))],
-  ])("treats %s as no indexed slot", async (_, response) => {
-    expect(await fromKupo(response).slot).toBeUndefined();
+  it("treats a client with no registered view and no emulator as no indexed slot", async () => {
+    expect(
+      await Effect.runPromise(
+        indexedL1Slot({
+          config: () => ({ provider: undefined }),
+        } as unknown as LucidEvolution),
+      ),
+    ).toBeUndefined();
   });
 });
 

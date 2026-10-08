@@ -68,7 +68,6 @@ export const validateDaKeySetEncoding = (
  * derived values that other services depend on. Keeping it in one place makes
  * production configuration easier to audit.
  */
-type Provider = "Kupmios";
 
 /**
  * The SQL quota counts each unique material entry (32-byte root plus at most
@@ -121,11 +120,11 @@ export const boundedValidationInteger = (
  * Fully-decoded runtime configuration required by the node.
  */
 export type NodeConfigDep = {
-  L1_PROVIDER: Provider;
   L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: number;
-  L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS: number;
   L1_RECENT_TX_VISIBILITY_TIMEOUT_MS: number;
   L1_RECENT_TX_404_MAX_DELAY_MS: number;
+  /** The event-history owner's own Ogmios and Kupo (listen), and the
+   * history-genesis-pin command's Ogmios; no other node path reads them. */
   L1_OGMIOS_KEY: string;
   L1_KUPO_KEY: string;
   /** Local ledger for reward-account reads; Ogmios cannot answer them. */

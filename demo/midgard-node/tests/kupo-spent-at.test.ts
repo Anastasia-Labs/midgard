@@ -11,7 +11,6 @@ import {
 } from "@al-ft/midgard-test-support/l1-recordings";
 import { describe, expect, it } from "vitest";
 
-import { availabilityForeignSpendResolver } from "../src/commands/availability-challenge-source.js";
 import {
   fetchKupoAncestorPoint,
   fetchKupoSpend,
@@ -309,40 +308,5 @@ describe("Kupo spent_at, read off recorded preprod spends", () => {
         queueRootInput!,
       ),
     ).rejects.toThrow(message);
-  });
-});
-
-/**
- * The node's readers wired into the SDK's verified foreign-spend check (whose
- * own cases live in midgard-sdk), read off the recorded removal.
- */
-describe("availability foreign spend, through the node's readers", () => {
-  it("reports a spend whose consuming transaction lists the input", async () => {
-    const ogmios = recordedOgmiosWebSocket(removal);
-    const resolve = availabilityForeignSpendResolver({
-      kupoUrl: KUPO_URL,
-      ogmiosUrl: OGMIOS_URL,
-      readBoundary: async () => ({
-        pointId: "tip",
-        slot: removalBlock.slot + 100,
-        blockNo: 5_220_548 + 40,
-        blockHash: "ab".repeat(32),
-      }),
-      fetchImpl: recordedFetch(removal),
-      webSocketFactory: (url) => new ogmios.WebSocket(url),
-    });
-    await expect(
-      resolve(
-        `${queueRootInput!.txHash}#${queueRootInput!.outputIndex.toString()}`,
-      ),
-    ).resolves.toStrictEqual({
-      outRef: `${queueRootInput!.txHash}#${queueRootInput!.outputIndex.toString()}`,
-      spendingTxHash: removal.transaction!.id,
-      spendPoint: `${removalBlock.slot.toString()}:${removalBlock.id}`,
-      confirmationDepth: 40,
-      spendingTransactionCbor: (
-        recordedTransaction(removal) as { cbor: string }
-      ).cbor,
-    });
   });
 });

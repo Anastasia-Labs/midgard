@@ -162,7 +162,7 @@ export const summarizeL1Observation = (samples) => {
       .map((point, index) => point.timestampMs - tipChanges[index].timestampMs),
   );
   return {
-    source: "node_readyz.localOgmiosSlot.currentSlot",
+    source: "node_readyz.localLedgerSlot.currentSlot",
     sampleCount: points.length,
     startTipSlot: points[0]?.tipSlot ?? null,
     endTipSlot: points[points.length - 1]?.tipSlot ?? null,

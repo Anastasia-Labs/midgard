@@ -14,7 +14,7 @@ export const validateStepEvidence = (stepId, evidence, context, reasons) => {
         evidence?.runMode !== "fresh" ||
         evidence?.engine !== "architecture_g" ||
         evidence?.localUplc !== true ||
-        evidence?.provider !== "Kupmios" ||
+        evidence?.provider !== "l1_node" ||
         evidence?.cleanDeployment !== true ||
         !ready(evidence?.readiness)
       ) {

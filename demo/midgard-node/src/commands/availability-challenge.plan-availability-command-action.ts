@@ -27,8 +27,6 @@ export type AvailabilityCommandOptions = Readonly<{
   fundingOutRef?: string;
   payloadFile?: string;
   trancheIndex?: number;
-  kupoUrl?: string;
-  ogmiosUrl?: string;
 }>;
 
 export const parseAvailabilityOutRef = (
@@ -213,44 +211,34 @@ export const availabilityTimeoutRentRefundAddress = (
     { type: "Key", hash: actor },
   );
 
-type KupoFetch = (url: string) => Promise<{
-  readonly ok: boolean;
-  readonly status: number;
-  json(): Promise<unknown>;
-}>;
+/**
+ * The inline datums of every retained output that ever held one unit, live or
+ * spent (`availabilityStoreUnitHistory` over the node's follower store).
+ */
+export type AvailabilityUnitHistory = (
+  input: Readonly<{ policyId: string; assetName: string }>,
+) => Promise<readonly (string | null)[]>;
 
 /**
  * Recovers the commitment preimage an Open needs. After Apply the queue node
  * keeps only `commitment_hash`; the full commitment lives in the DA
- * attestation datum that Apply spent. This reads every indexed output that ever
- * held the block's DAAT token, with datums resolved, and returns the
- * commitment whose hash equals the node's. The hash authenticates the answer,
- * and the SDK Open builder checks it again against the node.
+ * attestation datum that Apply spent. This reads every retained output that
+ * ever held the block's DAAT token and returns the commitment whose hash
+ * equals the node's. The hash authenticates the answer, and the SDK Open
+ * builder checks it again against the node.
  */
 export const recoverAvailabilityOpenCommitment = async (input: {
-  readonly kupoUrl: string;
+  readonly unitHistory: AvailabilityUnitHistory;
   readonly daAttestationPolicyId: string;
   readonly headerHash: string;
   readonly commitmentHash: string;
-  readonly fetch?: KupoFetch;
 }): Promise<SDK.DaAvailabilityCommitment> => {
-  const pattern = `${input.daAttestationPolicyId}.${SDK.daAttestationAssetName(input.headerHash)}`;
-  const url = `${input.kupoUrl.replace(/\/+$/u, "")}/matches/${pattern}?resolve_hashes`;
-  const response = await (input.fetch ?? globalThis.fetch)(url);
-  if (!response.ok)
-    throw new Error(
-      `Kupo refused the DA attestation history query ${url}: HTTP ${response.status.toString()}`,
-    );
-  const matches = await response.json();
-  if (!Array.isArray(matches))
-    throw new Error(`Kupo answered ${url} with something other than a list`);
-  for (const match of matches) {
-    if (typeof match !== "object" || match === null || !("datum" in match))
-      throw new Error(
-        `Kupo did not resolve datums for ${url}; run Kupo v2.10.0 or later, which honours ?resolve_hashes`,
-      );
-    const datum: unknown = match.datum;
-    if (typeof datum !== "string") continue;
+  const datums = await input.unitHistory({
+    policyId: input.daAttestationPolicyId,
+    assetName: SDK.daAttestationAssetName(input.headerHash),
+  });
+  for (const datum of datums) {
+    if (datum === null) continue;
     try {
       const attestation = Data.from(datum, SDK.DaAttestationDatum);
       if (
@@ -265,7 +253,7 @@ export const recoverAvailabilityOpenCommitment = async (input: {
     }
   }
   throw new Error(
-    `No indexed DA attestation output for header ${input.headerHash} holds a commitment hashing to ${input.commitmentHash}; opening needs a Kupo index that keeps spent outputs`,
+    `No retained DA attestation output for header ${input.headerHash} holds a commitment hashing to ${input.commitmentHash}; the follower store prunes spent outputs past its retention window`,
   );
 };
 
@@ -274,17 +262,17 @@ export type AvailabilityCommandBuildContext = Readonly<{
   daChallengeWindowMs: bigint;
   /** Absent when the manifest records no DA attestation policy. */
   daAttestationPolicyId: string | undefined;
-  /** The Kupo index Open reads the commitment preimage from. */
-  kupoUrl: string;
+  /** The unit history Open reads the commitment preimage from. */
+  unitHistory: AvailabilityUnitHistory;
 }>;
 
 export const availabilityCommandBuildContext = (
   manifest: DeploymentManifest,
-  kupoUrl: string,
+  unitHistory: AvailabilityUnitHistory,
 ): AvailabilityCommandBuildContext => ({
   daChallengeWindowMs: BigInt(
     manifest.deploymentProfile.timing.da_challenge_window_ms,
   ),
   daAttestationPolicyId: manifest.contracts.daAttestationMint?.scriptHash,
-  kupoUrl,
+  unitHistory,
 });

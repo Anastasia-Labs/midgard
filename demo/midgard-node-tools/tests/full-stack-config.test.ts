@@ -84,7 +84,6 @@ async function fixture() {
   const env: Record<string, string> = {
     NETWORK: "Preprod",
     MIDGARD_DEPLOYMENT_PROFILE: "preprod-testing",
-    L1_PROVIDER: "Kupmios",
     RUN_GENESIS_ON_STARTUP: "false",
     L1_KUPO_KEY: "http://127.0.0.1:1442",
     L1_OGMIOS_KEY: "http://127.0.0.1:1337",

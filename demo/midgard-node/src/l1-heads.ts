@@ -22,15 +22,7 @@
  * at `slot(tip − d) + W − 1` from it (`laggedEligibilityCap` in
  * `services/history-commit-window.ts`).
  */
-import {
-  type LocalOgmiosShelleyGenesisSlotOptions,
-  type LocalOgmiosSubmitSlotOptions,
-  queryLocalOgmiosShelleyGenesisSlotConfig,
-  queryLocalOgmiosSubmitSlotSnapshot,
-  type ShelleyGenesisSlotEvidence,
-  SUBMIT_SLOT_LENGTH_MS,
-  type SubmitSlotSnapshot,
-} from "@al-ft/midgard-core/ogmios-slot";
+import { SUBMIT_SLOT_LENGTH_MS } from "@al-ft/midgard-core/ogmios-slot";
 import type {
   Cursor,
   Point as L1Point,
@@ -182,74 +174,6 @@ export const l1NowUnixTimeMs = (
   Effect.map(l1SlotNow(api), (slot) =>
     slotToUnixTimeForLucidOrEmulatorFallback(api, slot),
   );
-
-export const fetchLocalOgmiosSubmitSlotSnapshot = (
-  options: LocalOgmiosSubmitSlotOptions,
-): Effect.Effect<SubmitSlotSnapshot, Error> =>
-  Effect.tryPromise({
-    try: (effectSignal) =>
-      queryLocalOgmiosSubmitSlotSnapshot({
-        ...options,
-        signal:
-          options.signal === undefined
-            ? effectSignal
-            : AbortSignal.any([options.signal, effectSignal]),
-      }),
-    catch: (cause) =>
-      cause instanceof Error
-        ? cause
-        : new Error("Failed to fetch local Ogmios submit slot", { cause }),
-  });
-
-export const fetchLocalOgmiosShelleyGenesisSlotConfig = (
-  options: LocalOgmiosShelleyGenesisSlotOptions,
-): Effect.Effect<ShelleyGenesisSlotEvidence, Error> =>
-  Effect.tryPromise({
-    try: (effectSignal) =>
-      queryLocalOgmiosShelleyGenesisSlotConfig({
-        ...options,
-        signal:
-          options.signal === undefined
-            ? effectSignal
-            : AbortSignal.any([options.signal, effectSignal]),
-      }),
-    catch: (cause) =>
-      cause instanceof Error
-        ? cause
-        : new Error("Failed to fetch local Ogmios Shelley genesis", {
-            cause,
-          }),
-  });
-
-export const makeLocalOgmiosSubmitSlotSnapshotProvider = (
-  options: Omit<LocalOgmiosSubmitSlotOptions, "nowMs">,
-): (() => Effect.Effect<SubmitSlotSnapshot, unknown>) => {
-  return () =>
-    fetchLocalOgmiosSubmitSlotSnapshot({ ...options, nowMs: Date.now() });
-};
-
-export const localOgmiosSubmitSlotEvidence = (
-  snapshot: SubmitSlotSnapshot,
-): string => {
-  const health = snapshot.health;
-  return [
-    `submitSlot=${snapshot.currentSlot.toString()}`,
-    `slotSource=${snapshot.source}`,
-    `observedAtMs=${snapshot.observedAtMs.toString()}`,
-    ...(health?.connectionStatus === undefined
-      ? []
-      : [`connectionStatus=${health.connectionStatus}`]),
-    ...(health?.networkSynchronization === undefined
-      ? []
-      : [`networkSynchronization=${health.networkSynchronization.toString()}`]),
-    ...(health?.lastKnownTipSlot === undefined
-      ? []
-      : [`lastKnownTipSlot=${health.lastKnownTipSlot.toString()}`]),
-    ...(health?.lastTipUpdate === undefined
-      ? []
-      : [`lastTipUpdate=${health.lastTipUpdate}`]),
-  ].join(",");
-};
 
 /** The block d below the follower's covered tip, or why there is none. */
 export type L1BlockBelowCoveredTip =

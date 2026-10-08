@@ -37,7 +37,7 @@ const snapshot = (
   currentSlot: number,
   ledgerTipSlot?: number,
 ): SubmitSlotSnapshot => ({
-  source: "local_ogmios_tip",
+  source: "l1_node_tip",
   currentSlot,
   ...(ledgerTipSlot === undefined ? {} : { ledgerTipSlot }),
   observedAtMs: lucid.slotToUnixTime(currentSlot),

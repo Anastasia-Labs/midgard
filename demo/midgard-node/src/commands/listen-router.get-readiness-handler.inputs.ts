@@ -57,17 +57,21 @@ export const readinessDatabaseError = (error: unknown): string => {
 export const READINESS_L1_PROVIDER_UNHEALTHY_AFTER_MS = 5 * 60_000;
 
 /** The provider-failure bound readiness applies: never shorter than the
- * L1 tip staleness this deployment's genesis derives (ten block intervals),
- * so a tip gap the derived bound still calls honest stays a detail. */
+ * ledger-tip staleness bound (`L1_NODE_BEHIND_MAX_MS`), so a tip gap that
+ * bound still calls honest stays a detail. */
 export const readinessL1ProviderUnhealthyAfterMs = (
-  derivedTipMaxAgeMs: number | undefined,
+  nodeBehindMaxMs: number | undefined,
 ): number =>
   Math.max(
     READINESS_L1_PROVIDER_UNHEALTHY_AFTER_MS,
-    derivedTipMaxAgeMs !== undefined && Number.isFinite(derivedTipMaxAgeMs)
-      ? derivedTipMaxAgeMs
+    nodeBehindMaxMs !== undefined && Number.isFinite(nodeBehindMaxMs)
+      ? nodeBehindMaxMs
       : 0,
   );
+
+/** The local node transport is not ready; the suffix is its unready reason
+ * (`node_unreachable`, `sidecar_unavailable`, ...). */
+export const L1_TRANSPORT_UNREADY = "l1_transport_unready";
 
 /** The provider's readiness reason, or the detail a still-recent failure
  * reports instead. Both the latest success and the latest exact (HubOracle)

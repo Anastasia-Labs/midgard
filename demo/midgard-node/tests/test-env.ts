@@ -79,7 +79,8 @@ export const testDatabaseNames = (): readonly string[] => {
 };
 
 const TEST_ENV_DEFAULTS: Record<string, string> = {
-  L1_PROVIDER: "Kupmios",
+  // The history owner's transport inputs (listen.run-node.ts); the node's
+  // own L1 reads go through the local node transport.
   L1_OGMIOS_KEY: "http://127.0.0.1:1337",
   L1_KUPO_KEY: "http://127.0.0.1:1442",
   L1_OPERATOR_SEED_PHRASE:

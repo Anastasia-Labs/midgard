@@ -4,6 +4,7 @@ import {
   TransportTimeoutError,
   TransportUnavailableError,
 } from "@al-ft/l1-node-transport";
+import { deriveDeploymentManifestCardanoProtocolParametersFromLedger } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -11,7 +12,6 @@ import {
   createWatcherProtocolParameterRuntimeAuthority,
   refreshWatcherProtocolParameterRuntimeAuthority,
 } from "../../src/funding/prover-funding.js";
-import { deriveDeploymentManifestCardanoProtocolParametersFromLedger } from "../../src/funding/prover-funding.ledger-parameters.js";
 import { WatcherProverFundingUnavailableError } from "../../src/funding/prover-funding-reservation.js";
 import { isWatcherL1TransientFailure } from "../../src/l1/transient-failure.js";
 import { retryWatcherL1Transient } from "../../src/l1/transient-retry.js";

@@ -10,8 +10,8 @@ import { Effect } from "effect";
 
 import { EventSettlementProofError } from "../commands/event-settlement-proof.js";
 import * as Journal from "../database/settlement.js";
-import { synchronizePublicationIndexerPoint } from "../transactions/reference-publication-provider.js";
-import { NodeConfig, type NodeConfigDep } from "./config.js";
+import { providerViewPoint } from "../l1-provider-view.js";
+import { type NodeConfigDep } from "./config.js";
 import type { UnwrittenHold } from "./intent-journal.holds.js";
 import { settlementCall, settlementCheck } from "./settlement-call.js";
 
@@ -168,7 +168,8 @@ const spendingInputs = (attempt: Journal.SettlementAttempt) => {
  * The tick's work on the attempt that blocks new work (`settleAttempts`):
  * one whose derived status (`status`, null when not journaled) is not yet
  * confirmed. Landed short of cd, it waits. Otherwise it is expired once the
- * indexer proves it can never land; until then it waits for S6.
+ * L1 view (the follower at the node's tip, read before and after) proves it
+ * can never land; until then it waits for S6.
  */
 export const reconcileAttempt = (
   owner: Journal.SettlementOwner,
@@ -177,18 +178,14 @@ export const reconcileAttempt = (
   lucid: LucidEvolution,
 ) =>
   Effect.gen(function* () {
-    const config = yield* NodeConfig;
     const { validToSlot } = yield* settlementCheck(
       "inspect settlement attempt",
       () => inspectSettlementAttempt(attempt),
     );
     if (status?.kind === "landed")
       return `settlement transaction ${attempt.tx_hash} landed at depth ${status.depth}; waiting for confirmation depth`;
-    const before = yield* settlementCall("indexer sync", () =>
-      synchronizePublicationIndexerPoint(
-        config.L1_OGMIOS_KEY,
-        config.L1_KUPO_KEY,
-      ),
+    const before = yield* settlementCall("L1 view sync", () =>
+      Effect.runPromise(providerViewPoint(lucid)),
     );
     if (before.slot >= validToSlot) {
       const observed = yield* exactStatus(lucid, attempt.tx_hash);
@@ -200,11 +197,8 @@ export const reconcileAttempt = (
         owner,
         inputs.map((out) => out.txHash),
       );
-      const after = yield* settlementCall("indexer sync", () =>
-        synchronizePublicationIndexerPoint(
-          config.L1_OGMIOS_KEY,
-          config.L1_KUPO_KEY,
-        ),
+      const after = yield* settlementCall("L1 view sync", () =>
+        Effect.runPromise(providerViewPoint(lucid)),
       );
       if (
         canExpireSettlementAttempt({

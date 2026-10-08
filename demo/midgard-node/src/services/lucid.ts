@@ -1,28 +1,36 @@
+import type { TransportReadiness } from "@al-ft/l1-node-transport";
 import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import * as LE from "@lucid-evolution/lucid";
-import { Config, Effect, Option, Schedule } from "effect";
+import { Duration, Effect, Schedule, type Scope } from "effect";
 
 import {
-  resolveCustomSlotMapping,
+  resolveLucidSlotMapping,
   retryTransientSubmitSlotSnapshot,
 } from "../custom-slot-mapping.js";
-import {
-  fetchLocalOgmiosSubmitSlotSnapshot,
-  readL1FollowerTipSlot,
-  registerL1TipSource,
-} from "../l1-heads.js";
-import { providerRouteSummary } from "../provider-diagnostics.js";
+import { readL1FollowerTipSlot, registerL1TipSource } from "../l1-heads.js";
+import { registerL1ProviderView } from "../l1-provider-view.js";
 import { configureReferencePublication } from "../transactions/reference-publication.js";
-import { synchronizePublicationIndexer } from "../transactions/reference-publication-provider.js";
 import { selectNodeWallet } from "../transactions/utils.wallet-view.js";
 import { ConfigError, NodeConfig } from "./config.js";
-import { makeNodeKupmios } from "./native-ledger.js";
+import {
+  NODE_L1_ACCESS_UNCONFIGURED,
+  openNodeL1AccessFromConfig,
+} from "./l1-provider.js";
+
+const asError = (cause: unknown): Error =>
+  cause instanceof Error ? cause : new Error(String(cause), { cause });
+
+/** Capped backoff while the node's config files do not yield its network magic. */
+const OPEN_RETRY = Schedule.exponential(Duration.millis(500)).pipe(
+  Schedule.union(Schedule.spaced(Duration.seconds(30))),
+);
 
 /**
  * Builds the Lucid service bundle used by the node, including reference-script
- * and operator-wallet specializations. Live runtime uses only the configured
- * local Kupmios route, and Custom networks use an authoritative per-instance
- * slot mapping shared by both clients.
+ * and operator-wallet specializations. Both clients read through one
+ * `L1FollowerProvider` over the node's follower store and the local node's
+ * transport (`services/l1-provider.ts`), on the slot mapping the ledger
+ * reports.
  */
 const makeLucid: Effect.Effect<
   {
@@ -35,64 +43,68 @@ const makeLucid: Effect.Effect<
     submitSlotSnapshot: () => Effect.Effect<SubmitSlotSnapshot, Error>;
     // Optional so hand-built test services need not supply them.
     readSubmitSlotSnapshotOnce?: () => Effect.Effect<SubmitSlotSnapshot, Error>;
-    ogmiosTipMaxAgeMs?: number;
+    /** The local node transport's readiness, for `/readyz`. */
+    l1TransportReadiness?: () => TransportReadiness;
+    /** The local node's socket, for diagnostics. */
+    l1Endpoint?: string;
+    /** The ledger's raw `protocol_params` answer, read now. */
+    l1ProtocolParametersCbor?: () => Promise<Uint8Array>;
     switchToOperatorsMainWallet: Effect.Effect<void>;
     switchToOperatorsMergingWallet: Effect.Effect<void>;
     switchToReferenceScriptWallet: Effect.Effect<void>;
   },
   ConfigError,
-  NodeConfig
+  NodeConfig | Scope.Scope
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
-  // Optional override of the genesis-derived local-Ogmios tip-age bound.
-  const tipMaxAgeOverride = yield* Config.option(
-    Config.integer("L1_OGMIOS_TIP_MAX_AGE_MS").pipe(
-      Config.validate({
-        message: "L1_OGMIOS_TIP_MAX_AGE_MS must be a positive integer",
-        validation: (value) => value > 0,
+  if (nodeConfig.L1_NATIVE_LEDGER === undefined)
+    return yield* Effect.fail(
+      new ConfigError({
+        message: `The node's L1 provider needs ${NODE_L1_ACCESS_UNCONFIGURED}`,
+        cause: "l1-node-unconfigured",
+        fieldsAndValues: [["NETWORK", nodeConfig.NETWORK]],
       }),
+    );
+  // Opening reads only the node's config files (for its network magic);
+  // while they are unreadable this waits with a logged reason, never exits.
+  const access = yield* Effect.acquireRelease(
+    Effect.tryPromise({
+      try: () => openNodeL1AccessFromConfig(nodeConfig),
+      catch: asError,
+    }).pipe(
+      Effect.tapError((error) =>
+        Effect.logWarning(
+          `L1 provider unready: the local node's config is unreadable; waits and re-reads. cause=${error.message}`,
+        ),
+      ),
+      Effect.retry(OPEN_RETRY),
+      Effect.mapError(
+        (cause) =>
+          new ConfigError({
+            message: "Failed to open the node's L1 access",
+            cause,
+            fieldsAndValues: [["NETWORK", nodeConfig.NETWORK]],
+          }),
+      ),
     ),
-  ).pipe(
-    Effect.mapError(
-      (cause) =>
-        new ConfigError({
-          message: "Invalid L1_OGMIOS_TIP_MAX_AGE_MS",
-          cause,
-          fieldsAndValues: [],
-        }),
-    ),
+    (opened) => Effect.promise(opened.close),
   );
-  // The genesis-derived mapping is built once in the main thread and
-  // inherited by every worker; a block gap or an Ogmios restart makes this
-  // wait with a logged unready reason, never exit.
-  const slotMapping = yield* resolveCustomSlotMapping({
-    ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-    timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
-    custom: nodeConfig.NETWORK === "Custom",
-    ...(Option.isSome(tipMaxAgeOverride)
-      ? { tipMaxAgeMs: tipMaxAgeOverride.value }
-      : {}),
+  // A node or sidecar that is not reachable makes this wait with a logged
+  // unready reason, never exit.
+  const slotConfig = yield* resolveLucidSlotMapping({
+    read: access.slotConfig,
   }).pipe(
     Effect.mapError(
       (cause) =>
         new ConfigError({
           message: "Failed to initialize the Lucid slot mapping",
           cause,
-          fieldsAndValues: [
-            ["NETWORK", nodeConfig.NETWORK],
-            ["L1_OGMIOS_KEY", nodeConfig.L1_OGMIOS_KEY],
-          ],
+          fieldsAndValues: [["NETWORK", nodeConfig.NETWORK]],
         }),
     ),
   );
-  const slotConfig = slotMapping.slotConfig;
-  const ogmiosTipMaxAgeMs = slotMapping.tipMaxAgeMs;
   const readLedgerTip = () =>
-    fetchLocalOgmiosSubmitSlotSnapshot({
-      ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-      timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
-      maxHealthAgeMs: ogmiosTipMaxAgeMs,
-    });
+    Effect.tryPromise({ try: access.submitSlotSnapshot, catch: asError });
   const operatorMainAddress = LE.walletFromSeed(
     nodeConfig.L1_OPERATOR_SEED_PHRASE,
     {
@@ -107,35 +119,19 @@ const makeLucid: Effect.Effect<
   ).address;
   yield* Effect.logInfo("Initializing Lucid...");
   yield* Effect.logInfo(
-    `L1 provider route: ${JSON.stringify(
-      providerRouteSummary({
-        provider: nodeConfig.L1_PROVIDER,
-        network: nodeConfig.NETWORK,
-      }),
-    )}`,
+    `L1 provider route: ${JSON.stringify({
+      primary: "l1_node",
+      network: nodeConfig.NETWORK,
+      socket: access.endpoint,
+    })}`,
   );
   const lucid: LE.LucidEvolution = yield* Effect.tryPromise({
-    try: () => {
-      const kupmiosProvider = makeNodeKupmios({
-        kupoUrl: nodeConfig.L1_KUPO_KEY,
-        ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-        network: nodeConfig.NETWORK,
-        nativeLedger: nodeConfig.L1_NATIVE_LEDGER,
-      });
-      return LE.Lucid(
-        kupmiosProvider,
-        nodeConfig.NETWORK,
-        slotConfig === undefined ? undefined : { slotConfig },
-      );
-    },
+    try: () => LE.Lucid(access.provider, nodeConfig.NETWORK, { slotConfig }),
     catch: (e) =>
       new ConfigError({
         message: `An error occurred on lucid initialization`,
         cause: e,
-        fieldsAndValues: [
-          ["L1_PROVIDER", nodeConfig.L1_PROVIDER],
-          ["NETWORK", nodeConfig.NETWORK],
-        ],
+        fieldsAndValues: [["NETWORK", nodeConfig.NETWORK]],
       }),
   }).pipe(
     Effect.tapError(Effect.logInfo),
@@ -143,11 +139,7 @@ const makeLucid: Effect.Effect<
   );
   const referenceScriptsApi: LE.LucidEvolution = yield* Effect.tryPromise({
     try: () =>
-      LE.Lucid(
-        lucid.config().provider,
-        nodeConfig.NETWORK,
-        slotConfig === undefined ? undefined : { slotConfig },
-      ),
+      LE.Lucid(lucid.config().provider, nodeConfig.NETWORK, { slotConfig }),
     catch: (e) =>
       new ConfigError({
         message: "An error occurred while initializing reference-scripts Lucid",
@@ -163,14 +155,17 @@ const makeLucid: Effect.Effect<
   );
   yield* switchToReferenceScriptWallet;
   // Both clients read one L1 view: their `l1SlotNow` comes from the L1
-  // follower's covered tip (N1). The Ogmios submit-slot read below only
+  // follower's covered tip (N1). The ledger-tip submit-slot read below only
   // bounds a new tx's validity interval; it never moves `l1SlotNow`.
-  registerL1TipSource(
-    [lucid, referenceScriptsApi],
-    readL1FollowerTipSlot,
-    slotConfig === undefined ? {} : { slotLengthMs: slotConfig.slotLength },
-  );
+  registerL1TipSource([lucid, referenceScriptsApi], readL1FollowerTipSlot, {
+    slotLengthMs: slotConfig.slotLength,
+  });
   const readSubmitSlotSnapshotOnce = readLedgerTip;
+  registerL1ProviderView([lucid, referenceScriptsApi], {
+    submitSlotSnapshot: readSubmitSlotSnapshotOnce,
+    viewPoint: () =>
+      Effect.tryPromise({ try: access.synchronizedViewPoint, catch: asError }),
+  });
   const referenceScriptsWalletAddress = yield* Effect.tryPromise({
     try: () => referenceScriptsApi.wallet().address(),
     catch: (e) =>
@@ -227,11 +222,7 @@ const makeLucid: Effect.Effect<
   }
   configureReferencePublication(referenceScriptsApi, {
     mode: "chained",
-    synchronize: () =>
-      synchronizePublicationIndexer(
-        nodeConfig.L1_OGMIOS_KEY,
-        nodeConfig.L1_KUPO_KEY,
-      ),
+    synchronize: async () => (await access.synchronizedViewPoint()).slot,
   });
   yield* Effect.logInfo("Lucid built successfully.");
   return {
@@ -247,7 +238,9 @@ const makeLucid: Effect.Effect<
     // One read under the same bound, for probes that schedule their own
     // retries (the readiness refresher).
     readSubmitSlotSnapshotOnce,
-    ogmiosTipMaxAgeMs,
+    l1TransportReadiness: access.transportReadiness,
+    l1Endpoint: access.endpoint,
+    l1ProtocolParametersCbor: access.protocolParametersCbor,
     switchToOperatorsMainWallet: Effect.sync(() =>
       selectNodeWallet(lucid, nodeConfig.L1_OPERATOR_SEED_PHRASE),
     ),
@@ -263,6 +256,6 @@ const makeLucid: Effect.Effect<
  * helpers used by the node.
  */
 export class Lucid extends Effect.Service<Lucid>()("Lucid", {
-  effect: makeLucid,
+  scoped: makeLucid,
   dependencies: [NodeConfig.layer],
 }) {}

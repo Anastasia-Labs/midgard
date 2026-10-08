@@ -148,18 +148,19 @@ describe("withdrawal payout decision", () => {
       signedCbor: transaction.to_cbor_hex(),
     };
     const assets = { lovelace: "10000000" };
-    const frame = (result: unknown[]) =>
-      JSON.stringify({
-        jsonrpc: "2.0",
-        method: "queryLedgerState/utxo",
-        result,
-      });
-    const row = (id = txHash, index = 0) => ({
-      transaction: { id },
-      index,
-      address,
-      value: { ada: { lovelace: 10_000_000 } },
-    });
+    // A `utxo_by_txin` answer: a CBOR map from `[txHash, index]` to the
+    // ledger's output (here the payout output's own bytes).
+    const outputCbor = Buffer.from(outputs.get(0).to_cbor_bytes());
+    const answer = (rows: readonly (readonly [string, number])[]) =>
+      Buffer.concat([
+        Buffer.from([0xa0 + rows.length]),
+        ...rows.flatMap(([id, index]) => [
+          Buffer.from([0x82, 0x58, 0x20]),
+          Buffer.from(id, "hex"),
+          Buffer.from([index]),
+          outputCbor,
+        ]),
+      ]);
     it("binds the payout output to the recorded transaction id", () => {
       expect(payoutOutRef(attempt, address, assets)).toEqual({
         txHash,
@@ -171,20 +172,25 @@ describe("withdrawal payout decision", () => {
     });
     it("waits until the node's ledger holds the payout output", () => {
       const outRef = payoutOutRef(attempt, address, assets);
-      expect(includedPayout(outRef, address, frame([]))).toBeUndefined();
-      expect(includedPayout(outRef, address, frame([row()]))).toEqual({
+      expect(includedPayout(outRef, answer([]))).toBeUndefined();
+      expect(includedPayout(outRef, answer([[txHash, 0]]))).toEqual({
         outputIndex: 0,
       });
     });
     it("refuses an answer for another output", () => {
       const outRef = payoutOutRef(attempt, address, assets);
-      for (const other of [row("c".repeat(64)), row(txHash, 1)])
-        expect(() => includedPayout(outRef, address, frame([other]))).toThrow(
+      for (const rows of [
+        [["c".repeat(64), 0]],
+        [[txHash, 1]],
+        [
+          [txHash, 0],
+          [txHash, 1],
+        ],
+      ] as const)
+        expect(() => includedPayout(outRef, answer(rows))).toThrow(
           "another output",
         );
-      expect(() => includedPayout(outRef, address, "{}")).toThrow(
-        "no UTxO result",
-      );
+      expect(() => includedPayout(outRef, Buffer.from([0x80]))).toThrow();
     });
   });
 });

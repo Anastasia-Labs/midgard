@@ -1,4 +1,4 @@
-import type { ShelleyGenesisSlotEvidence } from "@al-ft/midgard-core/ogmios-slot";
+import type { SlotConfig } from "@lucid-evolution/lucid";
 
 import {
   boundedNonEmptyString,
@@ -18,14 +18,19 @@ import {
   sameJson,
 } from "./mpf-commit-candidate-artifacts.architecture-gcommit-candidate-input.js";
 
+/**
+ * The candidate's recorded slot configuration is the live one: its network
+ * is the node's, and a Custom network's mapping is the local node's ledger
+ * slot mapping.
+ */
 export const assertArchitectureGCandidateSlotRuntimeIdentity = ({
   input,
   runtimeNetwork,
-  customGenesis,
+  ledgerSlotConfig,
 }: {
   readonly input: ArchitectureGCommitCandidateInput;
   readonly runtimeNetwork: "Mainnet" | "Preview" | "Preprod" | "Custom";
-  readonly customGenesis?: ShelleyGenesisSlotEvidence;
+  readonly ledgerSlotConfig?: SlotConfig;
 }): void => {
   const document = input.forcedValidationSlotConfigArtifact.document;
   if (document.network !== runtimeNetwork) {
@@ -36,17 +41,16 @@ export const assertArchitectureGCandidateSlotRuntimeIdentity = ({
   if (runtimeNetwork !== "Custom") return;
   if (
     document.source.kind !== "local_ogmios_genesis" ||
-    customGenesis === undefined ||
-    document.source.configurationSha256 !== customGenesis.configurationSha256 ||
+    ledgerSlotConfig === undefined ||
     JSON.stringify(document.slotConfig) !==
       JSON.stringify({
-        zeroTime: customGenesis.startTimeMs,
-        zeroSlot: 0,
-        slotLength: customGenesis.slotLengthMs,
+        zeroTime: ledgerSlotConfig.zeroTime,
+        zeroSlot: ledgerSlotConfig.zeroSlot,
+        slotLength: ledgerSlotConfig.slotLength,
       })
   ) {
     throw new Error(
-      "Architecture G Custom slot configuration does not match the live configured Ogmios genesis",
+      "Architecture G Custom slot configuration does not match the local node's ledger slot mapping",
     );
   }
 };

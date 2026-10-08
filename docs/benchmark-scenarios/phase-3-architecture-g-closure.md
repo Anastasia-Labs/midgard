@@ -168,7 +168,7 @@ the offline verifier requires both retained log artifacts to carry a clean
 `midgard-secret-scanned-log-v1` result with zero redactions. Thus a failing
 driver can preserve useful diagnostics without allowing a seed, signing key,
 password, or raw transaction body into retained evidence.
-The verifier enforces the field-level evidence contract: fresh/Kupmios/local
+The verifier enforces the field-level evidence contract: fresh/local-node/local
 UPLC readiness; confirmed and projected deposit; at least two unique L2
 admissions; DA metadata, payload CBOR, watcher status, and attestation hashes;
 automatic merge and finalized headers; exact three-address balances and zero DB

@@ -213,7 +213,7 @@ describe("scheduler refresh witness selection", () => {
     };
 
     const snapshot = schedulerSlotSnapshotFromSubmitSlot(lucid as never, {
-      source: "local_ogmios_tip",
+      source: "l1_node_tip",
       currentSlot: 12,
       observedAtMs: 1_779_149_999_000,
       slotLengthMs: 1_000,
@@ -543,7 +543,7 @@ describe("scheduler refresh witness selection", () => {
         deltaSlots: 10,
         waitMs: 10_000,
         slotLengthMs: 1_000,
-        slotSource: "local_ogmios_tip",
+        slotSource: "l1_node_tip",
         invalidBeforeSlot: 28,
         invalidHereafterSlot: 40,
         reason: "wait_ms=10000,max_inline_wait_ms=5000",
@@ -563,7 +563,7 @@ describe("scheduler refresh witness selection", () => {
         dueSlot: 30,
         dueAtMs: 11_000,
         waitMs: 10_000,
-        slotSource: "local_ogmios_tip",
+        slotSource: "l1_node_tip",
         dependencyKey: "scheduler=tx#0,current_operator=aa",
         invalidationKey: "scheduler=tx#0,current_operator=aa",
       },
@@ -591,7 +591,7 @@ describe("scheduler refresh witness selection", () => {
       schedulerRefreshDueWorkFromNoInlineSubmitDefer({
         defer,
         localSubmitSlot: {
-          source: "local_ogmios_tip",
+          source: "l1_node_tip",
           currentSlot: 12,
           observedAtMs: 1_000,
           slotLengthMs: 1_000,
@@ -609,7 +609,7 @@ describe("scheduler refresh witness selection", () => {
         dueSlot: 17,
         dueAtMs: 6_000,
         waitMs: 5_000,
-        slotSource: "local_ogmios_tip",
+        slotSource: "l1_node_tip",
         dependencyKey: "scheduler=tx#0,current_operator=aa",
         invalidationKey: "scheduler=tx#0,current_operator=aa",
       },
@@ -642,7 +642,7 @@ describe("scheduler refresh witness selection", () => {
     const dueWork = schedulerRefreshDueWorkFromNoInlineSubmitDefer({
       defer,
       localSubmitSlot: {
-        source: "local_ogmios_tip",
+        source: "l1_node_tip",
         currentSlot: 12,
         observedAtMs: 1_000,
         slotLengthMs: 1_000,
@@ -680,7 +680,7 @@ describe("scheduler refresh witness selection", () => {
     expect(
       schedulerRefreshRequiredOutsideMutationWorkerDueWork({
         submitTimingSnapshot: {
-          source: "local_ogmios_tip",
+          source: "l1_node_tip",
           currentSlot: 30,
           observedAtMs: 7_000,
           slotLengthMs: 1_000,
@@ -700,7 +700,7 @@ describe("scheduler refresh witness selection", () => {
         dueSlot: 31,
         dueAtMs: 8_000,
         waitMs: 1_000,
-        slotSource: "local_ogmios_tip",
+        slotSource: "l1_node_tip",
         dependencyKey: "scheduler=tx#0,current_operator=aa",
         invalidationKey: "scheduler=tx#0,current_operator=aa",
       },

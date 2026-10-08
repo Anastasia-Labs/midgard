@@ -6,6 +6,7 @@ import { Effect } from "effect";
 import { expect, vi } from "vitest";
 
 import * as Journal from "../../src/database/settlement.js";
+import * as L1View from "../../src/l1-provider-view.js";
 import * as IntentJournal from "../../src/services/intent-journal.js";
 import { Lucid } from "../../src/services/lucid.js";
 import {
@@ -14,7 +15,6 @@ import {
   settlementTick,
 } from "../../src/services/settlement.js";
 import { settlementDepthParameters } from "../../src/services/settlement.status.js";
-import * as publicationProvider from "../../src/transactions/reference-publication-provider.js";
 import type { openHistoryProductionOwnerLifecycle } from "./history-production-owner-lifecycle.js";
 import { withoutFollowerJournal } from "./intent-journal.js";
 
@@ -74,12 +74,12 @@ export const openAutomaticSettlement = async (
         confirmation: { ...observed.confirmation, blockHash: block.point.id },
       };
     });
-  const barrier = vi
-    .spyOn(publicationProvider, "synchronizePublicationIndexerPoint")
-    .mockImplementation(async () => {
+  const barrier = vi.spyOn(L1View, "providerViewPoint").mockImplementation(() =>
+    Effect.promise(async () => {
       const points = (await h.evidence()).points;
       return points[points.length - 1]!.point;
-    });
+    }),
+  );
   const journalStatus = vi
     .spyOn(IntentJournal, "readIntentStatus")
     .mockImplementation((hash) =>

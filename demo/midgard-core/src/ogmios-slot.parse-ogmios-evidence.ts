@@ -5,7 +5,11 @@
 import { createHash } from "node:crypto";
 
 export type SubmitSlotSnapshot = {
-  readonly source: "local_ogmios_tip" | "emulator" | "test";
+  /**
+   * `l1_node_tip`: the local node's ledger tip over local state query, with
+   * `currentSlot` from wall time on the ledger's slot configuration.
+   */
+  readonly source: "local_ogmios_tip" | "l1_node_tip" | "emulator" | "test";
   readonly currentSlot: number;
   /**
    * The slot of the ledger's latest block. `currentSlot` runs ahead of it on

@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import {
   computeDeploymentManifestJsonDigest,
   type DeploymentManifestCardanoProtocolParameters,
+  deriveDeploymentManifestCardanoProtocolParametersFromLedger,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
@@ -12,7 +13,6 @@ import {
   type VerifiedWatcherDeploymentIdentity,
   watcherDeploymentProtocolParameterAuthority,
 } from "../runtime/deployment-identity.js";
-import { deriveDeploymentManifestCardanoProtocolParametersFromLedger } from "./prover-funding.ledger-parameters.js";
 import { createWatcherProtocolParameterHistoryStorage } from "./prover-funding-parameter-history.js";
 import {
   type WatcherProverFundingReservationRecord,

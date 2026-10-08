@@ -5,6 +5,7 @@ import * as LE from "@lucid-evolution/lucid";
 import { compareOutRefs } from "../tx-context.js";
 import { resolveNetwork } from "./address-from-seed.js";
 import { parseAddressArgument } from "./command-utils.js";
+import { commandLucid, withCommandL1Access } from "./l1-command-access.js";
 
 export type L1Utxo = {
   readonly txHash: string;
@@ -24,25 +25,7 @@ export type L1UtxosResult = {
   readonly utxos: readonly L1Utxo[];
 };
 
-export type KupmiosFetchConfig = {
-  readonly address: string;
-  readonly kupoUrl: string;
-  readonly ogmiosUrl: string;
-  readonly network: Network;
-  readonly lucidFactory?: LucidFactory;
-};
-
-export type KupmiosConfig = {
-  readonly kupoUrl: string;
-  readonly ogmiosUrl: string;
-  readonly network: Network;
-};
-
 type LucidUtxoReader = Pick<LE.LucidEvolution, "utxosAt">;
-type LucidFactory = (
-  provider: LE.Provider,
-  network: Network,
-) => Promise<LucidUtxoReader>;
 
 const orderAssetsByUnit = (assets: Readonly<Assets>): Readonly<Assets> =>
   Object.fromEntries(
@@ -62,49 +45,14 @@ const sumL1UtxoAssets = (utxos: readonly L1Utxo[]): Readonly<Assets> => {
 };
 
 /**
- * Validates and normalizes local Kupmios connection settings for the command.
- * The network goes through the CLI network parser, which refuses `Custom`.
+ * The command's network, through the CLI network parser, which refuses
+ * `Custom`.
  */
-export const resolveKupmiosConfig = (input?: {
-  readonly kupoUrl?: string;
-  readonly ogmiosUrl?: string;
+export const resolveL1UtxosNetwork = (input?: {
   readonly network?: string;
   readonly env?: NodeJS.ProcessEnv;
-}): KupmiosConfig => {
-  const env = input?.env ?? process.env;
-  const network = resolveNetwork({ network: input?.network, env });
-  return { ...resolveKupmiosUrls({ ...input, env }), network };
-};
-
-/**
- * Validates and normalizes the local Kupo and Ogmios URLs alone, for a
- * command that takes its network from a verified deployment manifest rather
- * than from the CLI network parser (`da-bond`).
- */
-export const resolveKupmiosUrls = (input?: {
-  readonly kupoUrl?: string;
-  readonly ogmiosUrl?: string;
-  readonly env?: NodeJS.ProcessEnv;
-}): Omit<KupmiosConfig, "network"> => {
-  const env = input?.env ?? process.env;
-  const kupoUrl = input?.kupoUrl?.trim() ?? env.L1_KUPO_KEY?.trim() ?? "";
-  const ogmiosUrl = input?.ogmiosUrl?.trim() ?? env.L1_OGMIOS_KEY?.trim() ?? "";
-
-  if (kupoUrl.length === 0) {
-    throw new Error(
-      "Kupo URL is required. Pass --kupo-url or set L1_KUPO_KEY.",
-    );
-  }
-  if (ogmiosUrl.length === 0) {
-    throw new Error(
-      "Ogmios URL is required. Pass --ogmios-url or set L1_OGMIOS_KEY.",
-    );
-  }
-  return {
-    kupoUrl: new URL(kupoUrl).toString().replace(/\/+$/, ""),
-    ogmiosUrl: new URL(ogmiosUrl).toString().replace(/\/+$/, ""),
-  };
-};
+}): Network =>
+  resolveNetwork({ network: input?.network, env: input?.env ?? process.env });
 
 export const lucidUtxoToL1Utxo = (utxo: UTxO): L1Utxo => {
   return {
@@ -122,19 +70,18 @@ export const lucidUtxoToL1Utxo = (utxo: UTxO): L1Utxo => {
   };
 };
 
-/**
- * Fetches local Kupmios-visible UTxOs for a payment address.
- */
-export const fetchKupmiosAddressUtxos = async ({
+/** The UTxOs a Lucid reader answers for a payment address, in ledger order. */
+export const readAddressUtxos = async ({
   address,
-  kupoUrl,
-  ogmiosUrl,
-  network,
-  lucidFactory = LE.Lucid,
-}: KupmiosFetchConfig): Promise<L1UtxosResult> => {
+  reader,
+}: {
+  readonly address: string;
+  readonly reader: LucidUtxoReader;
+}): Promise<L1UtxosResult> => {
   const normalizedAddress = parseAddressArgument(address);
-  const lucid = await lucidFactory(new LE.Kupmios(kupoUrl, ogmiosUrl), network);
-  const utxos = (await lucid.utxosAt(normalizedAddress)).map(lucidUtxoToL1Utxo);
+  const utxos = (await reader.utxosAt(normalizedAddress)).map(
+    lucidUtxoToL1Utxo,
+  );
 
   utxos.sort(compareOutRefs);
 
@@ -145,3 +92,24 @@ export const fetchKupmiosAddressUtxos = async ({
     utxos,
   };
 };
+
+/**
+ * The UTxOs at a payment address through the node's L1 access: the follower
+ * store's facts for a tracked address, the local node's ledger at its tip for
+ * any other.
+ */
+export const fetchAddressUtxos = async ({
+  address,
+  network,
+  env,
+}: {
+  readonly address: string;
+  readonly network: Network;
+  readonly env?: NodeJS.ProcessEnv;
+}): Promise<L1UtxosResult> =>
+  withCommandL1Access({ network, env }, async (access) =>
+    readAddressUtxos({
+      address,
+      reader: await commandLucid(access, network),
+    }),
+  );

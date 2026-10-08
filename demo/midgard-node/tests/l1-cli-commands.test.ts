@@ -8,66 +8,33 @@ import {
 } from "../src/commands/address-from-seed.js";
 import { formatJson } from "../src/commands/command-utils.js";
 import {
-  fetchKupmiosAddressUtxos,
   lucidUtxoToL1Utxo,
-  resolveKupmiosConfig,
-  resolveKupmiosUrls,
+  readAddressUtxos,
+  resolveL1UtxosNetwork,
 } from "../src/commands/l1-utxos.js";
 
 const VALID_ADDRESS =
   "addr_test1qzyem8ex0v9v76q0u52x3t2xmj5rkhjd9rsd44kx3klsut4qga2669x30zsng46mhfrrk4ngylfnnlda7rkfvxq5fywqvurkrs";
 
 describe("l1-utxos command helpers", () => {
-  it("resolves local Kupmios config from explicit values and trims URLs", () => {
-    expect(
-      resolveKupmiosConfig({
-        kupoUrl: " http://127.0.0.1:1442/ ",
-        ogmiosUrl: " ws://127.0.0.1:1337/ ",
-        network: "Preprod",
-      }),
-    ).toEqual({
-      kupoUrl: "http://127.0.0.1:1442",
-      ogmiosUrl: "ws://127.0.0.1:1337",
-      network: "Preprod",
-    });
-  });
-
-  it("falls back to environment variables for local Kupmios config", () => {
-    expect(
-      resolveKupmiosConfig({
-        env: {
-          L1_KUPO_KEY: "http://127.0.0.1:1442",
-          L1_OGMIOS_KEY: "http://127.0.0.1:1337",
-          NETWORK: "Preprod",
-        },
-      }),
-    ).toEqual({
-      kupoUrl: "http://127.0.0.1:1442",
-      ogmiosUrl: "http://127.0.0.1:1337",
-      network: "Preprod",
-    });
+  it("resolves the network from the option, else the environment", () => {
+    expect(resolveL1UtxosNetwork({ network: "Preprod", env: {} })).toBe(
+      "Preprod",
+    );
+    expect(resolveL1UtxosNetwork({ env: { NETWORK: "Preview" } })).toBe(
+      "Preview",
+    );
   });
 
   it("keeps refusing Custom for the commands that resolve their network here (l1-utxos, availability-challenge)", () => {
-    // Neither builds a Custom slot mapping; only `da-bond` admits Custom,
-    // taking its network from the verified manifest instead (P25(4)).
-    const urls = {
-      kupoUrl: "http://127.0.0.1:1442",
-      ogmiosUrl: "ws://127.0.0.1:1337",
-    };
-    expect(() => resolveKupmiosConfig({ ...urls, network: "Custom" })).toThrow(
+    // Only `da-bond` admits Custom, taking its network from the verified
+    // manifest instead (P25(4)).
+    expect(() => resolveL1UtxosNetwork({ network: "Custom", env: {} })).toThrow(
       'Unsupported network "Custom"',
     );
-    expect(() =>
-      resolveKupmiosConfig({
-        env: {
-          L1_KUPO_KEY: urls.kupoUrl,
-          L1_OGMIOS_KEY: urls.ogmiosUrl,
-          NETWORK: "Custom",
-        },
-      }),
-    ).toThrow('Unsupported network "Custom"');
-    expect(resolveKupmiosUrls(urls)).toEqual(urls);
+    expect(() => resolveL1UtxosNetwork({ env: { NETWORK: "Custom" } })).toThrow(
+      'Unsupported network "Custom"',
+    );
   });
 
   it("maps Lucid UTxOs into deterministic bigint-backed output", () => {
@@ -100,33 +67,28 @@ describe("l1-utxos command helpers", () => {
     });
   });
 
-  it("fetches local Kupmios UTxOs through a Lucid reader", async () => {
-    const lucidFactory = vi.fn().mockResolvedValue({
-      utxosAt: vi.fn().mockResolvedValue([
-        {
-          txHash: "22".repeat(32),
-          outputIndex: 1,
-          assets: { lovelace: 1n },
-          address: VALID_ADDRESS,
-        },
-        {
-          txHash: "00".repeat(31) + "01",
-          outputIndex: 0,
-          assets: { lovelace: 5n },
-          address: VALID_ADDRESS,
-        },
-      ]),
-    });
+  it("reads an address's UTxOs through a Lucid reader, in ledger order", async () => {
+    const utxosAt = vi.fn().mockResolvedValue([
+      {
+        txHash: "22".repeat(32),
+        outputIndex: 1,
+        assets: { lovelace: 1n },
+        address: VALID_ADDRESS,
+      },
+      {
+        txHash: "00".repeat(31) + "01",
+        outputIndex: 0,
+        assets: { lovelace: 5n },
+        address: VALID_ADDRESS,
+      },
+    ]);
 
-    const result = await fetchKupmiosAddressUtxos({
+    const result = await readAddressUtxos({
       address: VALID_ADDRESS,
-      kupoUrl: "http://127.0.0.1:1442",
-      ogmiosUrl: "http://127.0.0.1:1337",
-      network: "Preprod",
-      lucidFactory,
+      reader: { utxosAt },
     });
 
-    expect(lucidFactory).toHaveBeenCalledTimes(1);
+    expect(utxosAt).toHaveBeenCalledWith(VALID_ADDRESS);
     expect(result.utxoCount).toBe(2);
     expect(result.totals).toEqual({ lovelace: 6n });
     expect(result.utxos[0]).toMatchObject({

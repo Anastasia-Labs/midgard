@@ -77,9 +77,10 @@ export {
 } from "./contract-deployment-info.build-reference-script-out-ref-map.js";
 export {
   buildDeploymentManifestIdentityContextProgram,
-  cardanoProtocolParametersIdentityFromProvider,
+  cardanoProtocolParametersIdentity,
+  cardanoProtocolParametersIdentityFromLedger,
   deploymentDaTransportProfile,
-  queryLocalOgmiosProtocolParameters,
+  ledgerProtocolParametersReader,
 } from "./contract-deployment-info.exact-protocol-parameter-snapshot.js";
 
 export { computeDeploymentManifestId, DEPLOYMENT_MANIFEST_SCHEMA_VERSION };

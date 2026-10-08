@@ -1,93 +1,44 @@
-import { ogmiosSlotEvidenceUnavailableCause } from "@al-ft/midgard-core/ogmios-slot";
+import { L1ProviderTransientError } from "@al-ft/midgard-l1-follower/provider";
+import type { SlotConfig } from "@lucid-evolution/lucid";
 import { Effect, Logger } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  CUSTOM_SLOT_MAPPING_ENVIRONMENT_KEY,
-  type CustomSlotMappingEnvironment,
-  resolveCustomSlotMapping,
+  resolveLucidSlotMapping,
   retryTransientSubmitSlotSnapshot,
 } from "../src/custom-slot-mapping.js";
-import { fetchLocalOgmiosSubmitSlotSnapshot } from "../src/l1-heads.js";
+import {
+  L1LedgerBehindError,
+  ledgerSubmitSlotSnapshot,
+  transientL1ReadCause,
+} from "../src/services/l1-provider.js";
 
-const OGMIOS = "http://127.0.0.1:1337";
 // Whole seconds in the past, so wall-clock slots are exact.
 const GENESIS_START_MS = Math.floor(Date.now() / 1_000) * 1_000 - 3_600_000;
+const LEDGER: SlotConfig = {
+  zeroTime: GENESIS_START_MS,
+  zeroSlot: 0,
+  slotLength: 1_000,
+};
 const slotAt = (ms: number) => Math.floor((ms - GENESIS_START_MS) / 1_000);
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
+type Answer = "ok" | "transport_down" | "two-second-slots" | "malformed";
 
-type Health = "fresh" | "stale" | "malformed";
-
-/**
- * A fake local Ogmios. `health` answers successive `/health` polls (the last
- * entry repeats); `genesis` answers successive genesis queries likewise.
- */
-const fakeOgmios = (options: {
-  readonly health?: readonly Health[];
-  readonly genesis?: ReadonlyArray<"ok" | "down" | "two-second-slots">;
-}) => {
-  const calls = { genesis: 0, health: 0, tip: 0 };
-  const pick = <T>(list: readonly T[], index: number): T =>
-    list[Math.min(index, list.length - 1)]!;
-  const fetchImpl = async (url: string, init?: RequestInit) => {
-    const now = Date.now();
-    if (url.endsWith("/health")) {
-      const state = pick(options.health ?? ["fresh"], calls.health);
-      calls.health += 1;
-      const updatedAt = state === "stale" ? now - 300_000 : now - 1_000;
-      return json(
-        state === "malformed"
-          ? { networkSynchronization: 1 }
-          : {
-              connectionStatus: "connected",
-              networkSynchronization: 1,
-              lastKnownTip: { slot: slotAt(updatedAt) },
-              lastTipUpdate: new Date(updatedAt).toISOString(),
-            },
-      );
-    }
-    const method = (JSON.parse(String(init?.body)) as { method: string })
-      .method;
-    if (method === "queryNetwork/tip") {
-      calls.tip += 1;
-      return json({ jsonrpc: "2.0", result: { slot: slotAt(now - 1_000) } });
-    }
-    const state = pick(options.genesis ?? ["ok"], calls.genesis);
-    calls.genesis += 1;
-    if (state === "down") {
-      throw new TypeError("fetch failed");
-    }
-    return json({
-      jsonrpc: "2.0",
-      result: {
-        networkMagic: 42,
-        startTime: new Date(GENESIS_START_MS).toISOString(),
-        slotLength: {
-          milliseconds: state === "two-second-slots" ? 2_000 : 1_000,
-        },
-        activeSlotsCoefficient: "1/20",
-      },
-    });
+/** Successive answers of the ledger's slot-configuration read (the last repeats). */
+const ledgerReads = (answers: readonly Answer[]) => {
+  let calls = 0;
+  const read = async (): Promise<SlotConfig> => {
+    const answer = answers[Math.min(calls, answers.length - 1)]!;
+    calls += 1;
+    if (answer === "transport_down")
+      throw new L1ProviderTransientError("transport", "node_unreachable");
+    if (answer === "malformed")
+      throw new Error("era history is not an array of at least 1 items");
+    return answer === "two-second-slots"
+      ? { ...LEDGER, slotLength: 2_000 }
+      : LEDGER;
   };
-  return { calls, fetchImpl };
-};
-
-const environment = (isMainThread: boolean, shared?: unknown) => {
-  const sets: unknown[] = [];
-  const env: CustomSlotMappingEnvironment = {
-    isMainThread,
-    get: (key) =>
-      key === CUSTOM_SLOT_MAPPING_ENVIRONMENT_KEY ? shared : undefined,
-    set: (_key, value) => {
-      sets.push(value);
-    },
-  };
-  return { env, sets };
+  return { read, calls: () => calls };
 };
 
 const run = <A, E>(effect: Effect.Effect<A, E>) => {
@@ -104,165 +55,107 @@ const run = <A, E>(effect: Effect.Effect<A, E>) => {
 
 const FAST = { baseDelayMs: 1, maxDelayMs: 2 } as const;
 
-const resolve = (
-  ogmios: ReturnType<typeof fakeOgmios>,
-  env: CustomSlotMappingEnvironment,
-  custom = true,
-) =>
-  resolveCustomSlotMapping({
-    ogmiosUrl: OGMIOS,
-    timeoutMs: 1_000,
-    custom,
-    fetchImpl: ogmios.fetchImpl,
-    retry: FAST,
-    environment: env,
-  });
-
-const unready = (logs: readonly string[], reason: string) =>
-  logs.filter((line) => line.includes(`unready: reason=${reason}`)).length;
-
-describe("the node's Custom Lucid slot mapping", () => {
-  it("waits out a 300 s-old tip, then builds the mapping exactly once", async () => {
-    const ogmios = fakeOgmios({ health: ["stale", "stale", "stale", "fresh"] });
-    const { env, sets } = environment(true);
-    const { result, logs } = await run(resolve(ogmios, env));
-
+describe("the node's Lucid slot mapping, from the ledger", () => {
+  it("waits out an unreachable node with a logged reason, then resolves the ledger's mapping", async () => {
+    const ledger = ledgerReads(["transport_down", "transport_down", "ok"]);
+    const { result, logs } = await run(
+      resolveLucidSlotMapping({ read: ledger.read, retry: FAST }),
+    );
     expect(result._tag).toBe("Right");
-    const mapping = result._tag === "Right" ? result.right : undefined;
-    expect(mapping).toMatchObject({
-      ogmiosUrl: OGMIOS,
-      slotConfig: {
-        zeroTime: GENESIS_START_MS,
-        zeroSlot: 0,
-        slotLength: 1_000,
-      },
-      tipMaxAgeMs: 200_000,
-    });
-    expect(ogmios.calls.genesis).toBe(1);
-    expect(ogmios.calls.health).toBe(4);
-    expect(unready(logs, "ogmios_tip_stale")).toBe(3);
-    expect(sets).toEqual([mapping]);
+    expect(result._tag === "Right" ? result.right : undefined).toEqual(LEDGER);
+    expect(ledger.calls()).toBe(3);
+    expect(
+      logs.filter((line) =>
+        line.includes("L1 slot mapping unready: L1 provider transport"),
+      ),
+    ).toHaveLength(2);
   });
 
-  it("waits out an unreachable Ogmios before the genesis query lands", async () => {
-    const ogmios = fakeOgmios({ genesis: ["down", "down", "ok"] });
-    const { env, sets } = environment(true);
-    const { result, logs } = await run(resolve(ogmios, env));
-
-    expect(result._tag).toBe("Right");
-    expect(ogmios.calls.genesis).toBe(3);
-    expect(unready(logs, "ogmios_unreachable")).toBe(2);
-    expect(sets).toHaveLength(1);
-  });
-
-  it("refuses a genesis slot length other than the profile's at once", async () => {
-    const ogmios = fakeOgmios({ genesis: ["two-second-slots"] });
-    const { env, sets } = environment(true);
-    const { result, logs } = await run(resolve(ogmios, env));
-
+  it("refuses a ledger slot length other than the profile's at once", async () => {
+    const ledger = ledgerReads(["two-second-slots"]);
+    const { result, logs } = await run(
+      resolveLucidSlotMapping({ read: ledger.read, retry: FAST }),
+    );
     expect(result._tag).toBe("Left");
     expect(String(result._tag === "Left" ? result.left : "")).toMatch(
-      /Custom slot length disagreement/u,
+      /Ledger slot length disagreement/u,
     );
-    expect(ogmios.calls).toEqual({ genesis: 1, health: 0, tip: 0 });
+    expect(ledger.calls()).toBe(1);
     expect(logs.some((line) => line.includes("unready"))).toBe(false);
-    expect(sets).toEqual([]);
   });
 
-  it("refuses a malformed health answer at once", async () => {
-    const ogmios = fakeOgmios({ health: ["malformed", "fresh"] });
-    const { env, sets } = environment(true);
-    const { result } = await run(resolve(ogmios, env));
-
+  it("refuses an unreadable ledger answer without re-reading", async () => {
+    const ledger = ledgerReads(["malformed", "ok"]);
+    const { result } = await run(
+      resolveLucidSlotMapping({ read: ledger.read, retry: FAST }),
+    );
     expect(result._tag).toBe("Left");
-    expect(ogmios.calls.health).toBe(1);
-    expect(sets).toEqual([]);
-  });
-
-  it("lets a worker inherit the main thread's mapping without a query", async () => {
-    const main = fakeOgmios({});
-    const mainEnv = environment(true);
-    const { result: published } = await run(resolve(main, mainEnv.env));
-    expect(published._tag).toBe("Right");
-
-    const worker = fakeOgmios({ health: ["stale"] });
-    const workerEnv = environment(false, mainEnv.sets[0]);
-    const { result } = await run(resolve(worker, workerEnv.env));
-    expect(result).toEqual(published);
-    expect(worker.calls).toEqual({ genesis: 0, health: 0, tip: 0 });
-    expect(workerEnv.sets).toEqual([]);
-  });
-
-  it("ignores a published mapping for another Ogmios", async () => {
-    const worker = fakeOgmios({});
-    const { env } = environment(false, {
-      version: 1,
-      ogmiosUrl: "http://elsewhere:1337",
-      slotConfig: { zeroTime: 0, zeroSlot: 0, slotLength: 1_000 },
-      tipMaxAgeMs: 200_000,
-      genesisConfigurationSha256: "00",
-    });
-    const { result } = await run(resolve(worker, env));
-    expect(result._tag).toBe("Right");
-    // A worker without an inherited mapping reads genesis alone; the tip
-    // health check stays with the main thread.
-    expect(worker.calls).toEqual({ genesis: 1, health: 0, tip: 0 });
-  });
-
-  it("keeps only the tip-age bound on a named network", async () => {
-    const ogmios = fakeOgmios({ health: ["stale"] });
-    const { env } = environment(true);
-    const { result } = await run(resolve(ogmios, env, false));
-    expect(result._tag === "Right" ? result.right : undefined).toEqual({
-      version: 1,
-      ogmiosUrl: OGMIOS,
-      tipMaxAgeMs: 200_000,
-      genesisConfigurationSha256: expect.any(String),
-    });
-    expect(ogmios.calls.health).toBe(0);
+    expect(ledger.calls()).toBe(1);
   });
 });
 
 describe("the submit-slot snapshot at submit time", () => {
-  const readOnce = (ogmios: ReturnType<typeof fakeOgmios>) => () =>
-    fetchLocalOgmiosSubmitSlotSnapshot({
-      ogmiosUrl: OGMIOS,
-      fetchImpl: ogmios.fetchImpl,
-      maxHealthAgeMs: 200_000,
-    });
+  const BOUND_MS = 200_000;
+  /** Successive ledger tips, as milliseconds behind now (the last repeats). */
+  const readOnce = (lagsMs: readonly number[]) => {
+    let calls = 0;
+    const read = () =>
+      Effect.try({
+        try: () => {
+          const now = Date.now();
+          const lag = lagsMs[Math.min(calls, lagsMs.length - 1)]!;
+          calls += 1;
+          return ledgerSubmitSlotSnapshot({
+            slotConfig: LEDGER,
+            ledgerTipSlot: slotAt(now - lag),
+            nowMs: now,
+            boundMs: BOUND_MS,
+          });
+        },
+        catch: (cause) =>
+          cause instanceof Error ? cause : new Error(String(cause)),
+      });
+    return { read, calls: () => calls };
+  };
   const retry = { maxAttempts: 4, baseDelayMs: 1, maxDelayMs: 2 } as const;
 
-  it("re-reads a stale tip and proceeds once it is fresh", async () => {
-    const ogmios = fakeOgmios({ health: ["stale", "stale", "fresh"] });
+  it("re-reads a tip behind wall time and proceeds once it is within the bound", async () => {
+    const ledger = readOnce([300_000, 300_000, 1_000]);
     const { result } = await run(
-      retryTransientSubmitSlotSnapshot(readOnce(ogmios), retry),
+      retryTransientSubmitSlotSnapshot(ledger.read, retry),
     );
     expect(result._tag).toBe("Right");
-    expect(ogmios.calls.health).toBe(3);
-    expect(ogmios.calls.tip).toBe(1);
+    expect(result._tag === "Right" ? result.right.source : "").toBe(
+      "l1_node_tip",
+    );
+    expect(ledger.calls()).toBe(3);
   });
 
-  it("still refuses a tip that stays stale past the bound", async () => {
-    const ogmios = fakeOgmios({ health: ["stale"] });
+  it("still refuses a tip that stays behind past the bound", async () => {
+    const ledger = readOnce([300_000]);
     const { result } = await run(
-      retryTransientSubmitSlotSnapshot(readOnce(ogmios), retry),
+      retryTransientSubmitSlotSnapshot(ledger.read, retry),
     );
     expect(result._tag).toBe("Left");
     expect(
-      ogmiosSlotEvidenceUnavailableCause(
-        result._tag === "Left" ? result.left : undefined,
-      )?.reason,
-    ).toBe("ogmios_tip_stale");
-    expect(ogmios.calls.health).toBe(4);
-    expect(ogmios.calls.tip).toBe(0);
+      transientL1ReadCause(result._tag === "Left" ? result.left : undefined),
+    ).toBeInstanceOf(L1LedgerBehindError);
+    expect(ledger.calls()).toBe(4);
   });
 
-  it("refuses a malformed answer without re-reading", async () => {
-    const ogmios = fakeOgmios({ health: ["malformed", "fresh"] });
+  it("refuses a non-transient failure without re-reading", async () => {
+    let calls = 0;
     const { result } = await run(
-      retryTransientSubmitSlotSnapshot(readOnce(ogmios), retry),
+      retryTransientSubmitSlotSnapshot(
+        () =>
+          Effect.suspend(() => {
+            calls += 1;
+            return Effect.fail(new Error("protocol parameters are malformed"));
+          }),
+        retry,
+      ),
     );
     expect(result._tag).toBe("Left");
-    expect(ogmios.calls.health).toBe(1);
+    expect(calls).toBe(1);
   });
 });

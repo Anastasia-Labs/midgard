@@ -170,7 +170,6 @@ export const assertPhase4GenesisLedgerGate = ({
   readonly config: Pick<
     NodeConfigDep,
     | "NETWORK"
-    | "L1_PROVIDER"
     | "L1_OGMIOS_KEY"
     | "L1_KUPO_KEY"
     | "MIN_FEE_A"
@@ -202,11 +201,6 @@ export const assertPhase4GenesisLedgerGate = ({
   if (config.RUN_GENESIS_ON_STARTUP || env.RUN_GENESIS_ON_STARTUP !== "false") {
     fail(
       "Phase 4 genesis ledger command requires RUN_GENESIS_ON_STARTUP=false",
-    );
-  }
-  if (config.L1_PROVIDER !== "Kupmios" || env.L1_PROVIDER !== "Kupmios") {
-    fail(
-      "Phase 4 genesis ledger command requires the isolated Kupmios provider",
     );
   }
   requireLoopbackHttpEndpoint(config.L1_OGMIOS_KEY, "L1_OGMIOS_KEY");

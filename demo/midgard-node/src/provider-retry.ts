@@ -161,7 +161,8 @@ export const isConnectionClassError = (error: unknown): boolean =>
 /**
  * True for a provider failure that a later attempt can clear: an error that
  * declares itself retryable (`KupmiosError`, the Ogmios slot-evidence and DA
- * quorum errors), an Ogmios error answer whose code says the node cannot
+ * quorum errors, the L1 ledger tip behind wall time), the follower
+ * provider's `L1ProviderTransientError`, an Ogmios error answer whose code says the node cannot
  * answer now (Kupmios marks every Ogmios error answer non-retryable, because
  * Ogmios sends them all as HTTP 400), a structured transport, resolver or
  * connection code on any cause, or a known transient provider message. A
@@ -177,6 +178,8 @@ export const isRetryableProviderError = (error: unknown): boolean => {
     chain.some(
       (link) =>
         link.retryable === true ||
+        // The follower provider's node, sidecar, store or follower outage.
+        link.name === "L1ProviderTransientError" ||
         isTransientOgmiosJsonRpcFailure(link) ||
         link.name === "TimeoutError" ||
         hasTransientConnectionShape(link, [

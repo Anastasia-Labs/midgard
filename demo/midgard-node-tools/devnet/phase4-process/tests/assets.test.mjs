@@ -158,7 +158,6 @@ test("acceptance env is canonical when node.env lacks run-scoped values", async 
   const output = readFileSync(join(runDir, "secrets/acceptance.env"), "utf8");
   for (const expected of [
     'NETWORK="Custom"',
-    'L1_PROVIDER="Kupmios"',
     'L1_OGMIOS_KEY="http://127.0.0.1:2337"',
     'L1_KUPO_KEY="http://127.0.0.1:2442"',
     'POSTGRES_HOST="127.0.0.1"',
@@ -177,6 +176,7 @@ test("acceptance env is canonical when node.env lacks run-scoped values", async 
     new RegExp(`^MPF_NATIVE_OWNER_BINARY_SHA256="${ownerSha256}"$`, "m"),
   );
   assert.doesNotMatch(output, /Blockfrost|POSTGRES_HOST="stale"/);
+  assert.doesNotMatch(output, /^L1_PROVIDER=/m);
   assert.doesNotMatch(output, /MPF_NATIVE_OWNER_SIDECAR_PATH/);
   rmSync(runDir, { recursive: true, force: true });
 });

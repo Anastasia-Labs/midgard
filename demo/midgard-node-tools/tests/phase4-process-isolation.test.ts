@@ -21,7 +21,6 @@ const values = (): Record<string, string> => ({
   POSTGRES_HOST: "127.0.0.1",
   POSTGRES_PORT: "5544",
   POSTGRES_DB: "midgard_phase4_process_test",
-  L1_PROVIDER: "Kupmios",
   L1_OGMIOS_KEY: "http://127.0.0.1:2337",
   L1_KUPO_KEY: "http://127.0.0.1:2442",
   MIN_FEE_A: "0",

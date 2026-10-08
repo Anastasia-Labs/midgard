@@ -1,203 +1,31 @@
 import "./utils.js";
 
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { SqlClient } from "@effect/sql";
-import { Effect, Ref } from "effect";
-import { describe, expect, it, vi } from "vitest";
+import { Effect } from "effect";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildListenRouter } from "../src/commands/listen-router.js";
 import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
 import {
   FORCED_ORDER_CARRIAGE_PENDING,
   FORCED_ORDER_INGESTION_FAILED,
 } from "../src/forced-orders/index.js";
 import { STATE_QUEUE_UNHEALTHY } from "../src/l1-state-queue/index.js";
-import { NodeConfig } from "../src/services/config.js";
-import {
-  Globals,
-  nextL1ProviderHealthEvidence,
-} from "../src/services/globals.js";
 import {
   L1_FOLLOWER_NOT_STARTED,
   type L1FollowerState,
 } from "../src/services/l1-follower.readiness.js";
-import { Lucid } from "../src/services/lucid.js";
-import {
-  ContractDeploymentIdentity,
-  MidgardContracts,
-} from "../src/services/midgard-contracts.js";
-import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/protocol.js";
-import { ValidationPool } from "../src/services/validation-pool.js";
 import {
   header,
   journalFixture,
 } from "./local-mutation-job-abandonment.journal-fixture.js";
 import {
+  type L1AccessStub,
+  readyz,
+} from "./readiness-honest-degradation-route.readyz-fixture.js";
+import {
   followingAtTip,
   runningFollower,
-  seedCaughtUpL1Follower,
 } from "./readiness-l1-follower.fixture.js";
-import { withFailingStatements } from "./sql-fault-injection.js";
-import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
-
-// Only the settings /readyz reads. Provider evidence is always published
-// before the request, so the handler never probes a real provider.
-const nodeConfig = {
-  READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS: 60_000,
-  L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: 1_000,
-  READINESS_MAX_HEARTBEAT_AGE_MS: 60_000,
-  READINESS_MAX_DURABLE_ADMISSION_BACKLOG: 1_000,
-  READINESS_MAX_DURABLE_ADMISSION_AGE_MS: 60_000,
-  UNCONFIRMED_BLOCK_MAX_AGE_MS: 60_000,
-  VALIDATION_WORKER_JOB_TIMEOUT_MS: 60_000,
-  STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS: 60_000,
-  MIN_QUEUE_LENGTH_FOR_MERGING: 1,
-} as unknown as NodeConfig["Type"];
-
-const responsiveOwner = {
-  diagnostics: () =>
-    Promise.resolve({
-      ownerEpoch: Buffer.alloc(16, 1),
-      durableRoot: "ab".repeat(32),
-      residentNodes: 0,
-      residentEdges: 0,
-      residentBytes: 0,
-      activeGenerations: 0,
-      generatedNodes: 0,
-      generatedBytes: 0,
-      rssBytes: 0,
-      peakRssBytes: 0,
-      childRestarts: 0,
-    }),
-} as unknown as NativeMpfOwnerService;
-
-type ProviderObservation = {
-  readonly healthy: boolean;
-  readonly agoMs: number;
-};
-
-type Readyz = {
-  readonly status: number;
-  readonly ready: boolean;
-  readonly reasons: readonly string[];
-  readonly details: readonly string[];
-  readonly dbError?: string;
-  readonly settlement?: unknown;
-  readonly pendingFinalizationAgeMs?: number | null;
-  readonly signedIntentUnresolvedAgeMs?: number | null;
-  readonly providerQueryHealthy?: boolean;
-  readonly l1Follower?: { readonly state: string; readonly node?: unknown };
-};
-
-const SUCCESS_NOW: readonly ProviderObservation[] = [
-  { healthy: true, agoMs: 0 },
-];
-
-const readyz = ({
-  provider = SUCCESS_NOW,
-  databaseDown = false,
-  journal = Effect.void,
-  ogmiosTipMaxAgeMs,
-  forceProviderProbe = false,
-  l1Follower,
-  path = "readyz",
-}: {
-  readonly provider?: readonly ProviderObservation[];
-  readonly databaseDown?: boolean;
-  readonly journal?: Effect.Effect<void, unknown, never>;
-  readonly ogmiosTipMaxAgeMs?: number;
-  readonly forceProviderProbe?: boolean;
-  /** The L1 follower state; a caught-up follower by default. */
-  readonly l1Follower?: L1FollowerState;
-  readonly path?: "readyz" | "healthz";
-} = {}): Promise<Readyz> =>
-  Effect.runPromise(
-    provideDatabaseLayers(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        // Reset before and after: the handler reads journal ages, jobs and
-        // leases from the real tables, so a row another file left would turn
-        // a ready answer unready, and one left here would leak into the next.
-        const clear = resetApplicationTables;
-        yield* clear;
-        return yield* Effect.gen(function* () {
-          yield* journal;
-          const globals = yield* Globals;
-          yield* seedCaughtUpL1Follower(globals, l1Follower);
-          for (const observation of provider)
-            yield* Ref.update(globals.L1_PROVIDER_HEALTH, (current) =>
-              nextL1ProviderHealthEvidence({
-                current,
-                healthy: observation.healthy,
-                ...(observation.healthy
-                  ? {}
-                  : { error: "HubOracle query failed: fetch failed" }),
-                observedAtMs: Date.now() - observation.agoMs,
-                successKind: "exact",
-              }),
-            );
-          yield* Ref.set(globals.NATIVE_MPF_OWNER, responsiveOwner);
-          // A serving node has authenticated its own active membership.
-          yield* Ref.set(globals.OPERATOR_MEMBERSHIP, "active");
-          const request = buildListenRouter().pipe(
-            Effect.provideService(
-              HttpServerRequest.HttpServerRequest,
-              HttpServerRequest.fromWeb(
-                new Request(`http://midgard.test/${path}`),
-              ),
-            ),
-          );
-          const response = (yield* databaseDown
-            ? request.pipe(
-                Effect.provideService(
-                  SqlClient.SqlClient,
-                  withFailingStatements(sql, () => true),
-                ),
-              )
-            : request) as HttpServerResponse.HttpServerResponse;
-          const web = HttpServerResponse.toWeb(response);
-          const body = (yield* Effect.promise(() => web.json())) as Omit<
-            Readyz,
-            "status"
-          >;
-          return { ...body, status: web.status };
-        }).pipe(Effect.ensuring(Effect.orDie(clear)));
-      }).pipe(
-        Effect.provideService(NodeConfig, {
-          ...nodeConfig,
-          ...(forceProviderProbe
-            ? {
-                READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS: 1,
-                L1_PROVIDER: "Kupmios",
-                L1_OGMIOS_KEY: "http://ogmios.readyz.test",
-                L1_KUPO_KEY: "http://kupo.readyz.test",
-                NETWORK: "Custom",
-                L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS: 60_000,
-              }
-            : {}),
-        }),
-        Effect.provideService(ValidationPool, {
-          poolSize: 1,
-          stats: Effect.succeed({
-            oldestInFlightAgeMs: 0,
-            liveWorkers: 1,
-            restartingWorkers: 0,
-          }),
-        } as unknown as ValidationPool["Type"]),
-        Effect.provideService(Lucid, { ogmiosTipMaxAgeMs } as Lucid),
-        Effect.provideService(MidgardContracts, {} as MidgardContracts),
-        Effect.provideService(
-          ContractDeploymentIdentity,
-          ContractDeploymentIdentity.make({
-            kind: "derived",
-            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-          }),
-        ),
-        Effect.provide(Globals.Default),
-      ) as unknown as Effect.Effect<Readyz, unknown, never>,
-    ),
-  );
 
 const signIntent = (headerHash: Buffer) =>
   Effect.gen(function* () {
@@ -225,44 +53,31 @@ describe("GET /readyz under internal transients", () => {
     { boundMs: 10_000, ageMs: 15_000, healthy: false },
     { boundMs: 600_000, ageMs: 350_000, healthy: true },
   ])(
-    "uses the runtime $boundMs ms tip bound in the raw probe for a $ageMs ms gap",
+    "uses the runtime $boundMs ms ledger-tip bound in the raw probe for a $ageMs ms gap",
     async ({ boundMs, ageMs, healthy }) => {
-      const calls: string[] = [];
-      vi.stubGlobal("fetch", async (url: string) => {
-        calls.push(url);
-        if (url === "http://kupo.readyz.test/health") return new Response("ok");
-        return new Response(
-          JSON.stringify(
-            url.endsWith("/health")
-              ? {
-                  connectionStatus: "connected",
-                  networkSynchronization: 1,
-                  lastKnownTip: { slot: 41 },
-                  lastTipUpdate: new Date(Date.now() - ageMs).toISOString(),
-                }
-              : { jsonrpc: "2.0", result: { slot: 41 } },
-          ),
-        );
+      let reads = 0;
+      const response = await readyz({
+        provider: [{ healthy: true, agoMs: 1_000 }],
+        nodeBehindMaxMs: boundMs,
+        l1Access: {
+          transport: { ready: true, nodeToClientVersion: 16 },
+          ledgerLagMs: ageMs,
+          onRead: () => {
+            reads += 1;
+          },
+        },
+        forceProviderProbe: true,
       });
-      try {
-        const response = await readyz({
-          provider: [{ healthy: true, agoMs: 1_000 }],
-          ogmiosTipMaxAgeMs: boundMs,
-          forceProviderProbe: true,
-        });
-        expect(calls).toContain("http://ogmios.readyz.test/health");
-        expect(response.providerQueryHealthy).toBe(healthy);
-        // Failed probes remain within the existing readiness grace after a
-        // recent exact success; the tip policy is distinct from that grace.
-        expect(response.status).toBe(200);
-        expect(response.details).toEqual(
-          healthy
-            ? []
-            : [expect.stringMatching(/^provider_query_degraded:l1-provider:/u)],
-        );
-      } finally {
-        vi.unstubAllGlobals();
-      }
+      expect(reads).toBeGreaterThan(0);
+      expect(response.providerQueryHealthy).toBe(healthy);
+      // Failed probes remain within the existing readiness grace after a
+      // recent exact success; the tip policy is distinct from that grace.
+      expect(response.status).toBe(200);
+      expect(response.details).toEqual(
+        healthy
+          ? []
+          : [expect.stringMatching(/^provider_query_degraded:l1-provider:/u)],
+      );
     },
   );
 
@@ -315,14 +130,14 @@ describe("GET /readyz under internal transients", () => {
     }
   });
 
-  it("holds a provider failure as a detail for as long as the derived L1 tip bound allows", async () => {
+  it("holds a provider failure as a detail for as long as the ledger-tip bound allows", async () => {
     const provider = [
       { healthy: true, agoMs: 6 * 60_000 },
       { healthy: false, agoMs: 0 },
     ];
     const insideDerived = await readyz({
       provider,
-      ogmiosTipMaxAgeMs: 10 * 60_000,
+      nodeBehindMaxMs: 10 * 60_000,
     });
     expect(insideDerived.status).toBe(200);
     expect(insideDerived.reasons).toEqual([]);
@@ -331,7 +146,7 @@ describe("GET /readyz under internal transients", () => {
     );
     const pastDerived = await readyz({
       provider,
-      ogmiosTipMaxAgeMs: 5 * 60_000,
+      nodeBehindMaxMs: 5 * 60_000,
     });
     expect(pastDerived.status).toBe(503);
     expect(pastDerived.reasons).toEqual([
@@ -495,5 +310,42 @@ describe("GET /readyz names the L1 follower's reasons (N1)", () => {
         runningFollower(followingAtTip(), [{ reason, detail: "fixture" }]),
         reason,
       );
+  });
+});
+
+describe("GET /readyz names the local node transport's fault", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    "node_unreachable",
+    "sidecar_restarting",
+    "node_handshake_failed",
+  ] as const)(
+    "goes unready on a %s transport while liveness answers and the process stays up",
+    async (reason) => {
+      const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("the readiness handler must never exit");
+      });
+      const l1Access: L1AccessStub = {
+        transport: { ready: false, reason, detail: "fixture" },
+      };
+      const response = await readyz({ l1Access });
+      expect(response.status).toBe(503);
+      expect(response.ready).toBe(false);
+      expect(response.reasons).toEqual([`l1_transport_unready:${reason}`]);
+      const health = await readyz({ l1Access, path: "healthz" });
+      expect(health.status).toBe(200);
+      expect(exit).not.toHaveBeenCalled();
+    },
+  );
+
+  it("raises no transport reason on a ready transport", async () => {
+    const response = await readyz({
+      l1Access: { transport: { ready: true, nodeToClientVersion: 16 } },
+    });
+    expect(response.status).toBe(200);
+    expect(response.reasons).toEqual([]);
   });
 });

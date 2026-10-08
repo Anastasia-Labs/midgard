@@ -2,6 +2,7 @@ import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { registeredSubmitSlotSnapshot } from "../l1-provider-view.js";
 import {
   type InlineWaitPolicy,
   type SubmitTimingPlan,
@@ -151,6 +152,10 @@ export const resolvePreSubmitSlotSnapshot = (
 ): Effect.Effect<SubmitSlotSnapshot, unknown> => {
   if (slotSnapshot !== undefined) {
     return slotSnapshot();
+  }
+  const registered = registeredSubmitSlotSnapshot(lucid);
+  if (registered !== undefined) {
+    return registered();
   }
   const emulatorSnapshot = emulatorSubmitSlotSnapshot(lucid);
   if (emulatorSnapshot !== undefined) {

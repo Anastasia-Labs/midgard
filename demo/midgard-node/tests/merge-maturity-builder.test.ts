@@ -5,6 +5,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { registerL1ProviderView } from "../src/l1-provider-view.js";
 import { Globals, NodeConfig } from "../src/services/index.js";
 import {
   registerTestL1Tip,
@@ -18,7 +19,6 @@ const getHeaderFromStateQueueDatumMock = vi.hoisted(() => vi.fn());
 const hashBlockHeaderMock = vi.hoisted(() => vi.fn());
 const fetchFirstBlockTxsMock = vi.hoisted(() => vi.fn());
 const breakDownTxMock = vi.hoisted(() => vi.fn());
-const makeLocalOgmiosSubmitSlotSnapshotProviderMock = vi.hoisted(() => vi.fn());
 const localSlotSnapshotProviderMock = vi.hoisted(() => vi.fn());
 
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
@@ -60,15 +60,6 @@ vi.mock("../src/utils.js", async (importOriginal) => {
   return {
     ...actual,
     breakDownTx: breakDownTxMock,
-  };
-});
-
-vi.mock("../src/l1-heads.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/l1-heads.js")>();
-  return {
-    ...actual,
-    makeLocalOgmiosSubmitSlotSnapshotProvider:
-      makeLocalOgmiosSubmitSlotSnapshotProviderMock,
   };
 });
 
@@ -207,7 +198,6 @@ describe("merge builder maturity preflight", () => {
     hashBlockHeaderMock.mockReset();
     fetchFirstBlockTxsMock.mockReset();
     breakDownTxMock.mockReset();
-    makeLocalOgmiosSubmitSlotSnapshotProviderMock.mockReset();
     localSlotSnapshotProviderMock.mockReset();
     fakeLucidUtxosAt.mockReset();
 
@@ -234,9 +224,11 @@ describe("merge builder maturity preflight", () => {
         slotLengthMs: 1_000,
       }),
     );
-    makeLocalOgmiosSubmitSlotSnapshotProviderMock.mockImplementation(
-      () => localSlotSnapshotProviderMock,
-    );
+    // The client's submit-slot reader: the local node's ledger tip.
+    registerL1ProviderView([fakeLucid], {
+      submitSlotSnapshot: localSlotSnapshotProviderMock,
+      viewPoint: () => Effect.fail(new Error("no view point in this test")),
+    });
   });
 
   afterEach(() => {
@@ -334,7 +326,7 @@ describe("merge builder maturity preflight", () => {
         localSubmitSlotSnapshot: {
           currentSlot: 12,
           slotLengthMs: 1_000,
-          source: "local_ogmios_tip",
+          source: "l1_node_tip",
         },
         nowMs: 1_000,
       }),
@@ -345,7 +337,7 @@ describe("merge builder maturity preflight", () => {
       dueSlot: 17,
       dueAtMs: 6_000,
       waitMs: 5_000,
-      slotSource: "local_ogmios_tip",
+      slotSource: "l1_node_tip",
       reason: expect.stringContaining("provider_current_slot=7"),
       dependencyKey: "merge:candidate:10:12",
       invalidationKey: "merge:candidate:10:12",
