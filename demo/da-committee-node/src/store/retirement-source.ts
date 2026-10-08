@@ -48,7 +48,7 @@ export type CommitteeRetirementSourceDependencies = Readonly<{
   ) => Promise<PromiseCapacityPoint>;
   /** Verified native genesis/era-history conversion, never a host clock. */
   slotTimeMs: (slot: number) => number;
-  /** Complete, byte/row-capped physical script reads at the current boundary. */
+  /** Complete script-address reads from the follower's facts at the current boundary. */
   readRawSnapshot: (
     scope: SDK.DaAvailabilityReadScope,
   ) => Promise<SDK.DaAvailabilitySnapshotUtxos>;
@@ -57,7 +57,7 @@ export type CommitteeRetirementSourceDependencies = Readonly<{
     boundary: PromiseCapacityPoint,
     scope: SDK.DaAvailabilityReadScope,
   ) => Promise<RetirementPointProof | null>;
-  /** The reader must verify the exact txHash in its native canonical block body. */
+  /** The block a valid stored transaction `txHash` landed in, on the follower's chain. */
   readSubmissionPoint: (
     txHash: string,
     boundary: PromiseCapacityPoint,

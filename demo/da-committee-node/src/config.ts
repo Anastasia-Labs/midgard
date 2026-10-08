@@ -27,7 +27,6 @@ export {
   type DaParamsConfig,
   DEFAULT_L1_SUBMITTER_PREFLIGHT,
   l1SourceAuthorityDigest,
-  type L1SourceConfig,
   type L1SubmitterPreflightConfig,
   LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
   LIBP2P_DA_MIN_RETENTION_DAYS,
@@ -49,7 +48,6 @@ export {
   rejectRetiredWatcherEnvNames,
 } from "./config.l1-submitter-preflight-config.js";
 export { loadCommitteeConfig } from "./config.load-committee-config.js";
-export { parseL1SourceConfig } from "./config.parse-l1-source-config.js";
 export {
   assertLibp2pDaRetentionDays,
   DaRetentionWindowConfigError,

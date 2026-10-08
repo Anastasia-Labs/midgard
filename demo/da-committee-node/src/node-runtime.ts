@@ -1,8 +1,11 @@
 import type { DaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 
+import { deferredAvailabilityResponder } from "./availability/deferred-responder.js";
 import { availabilityResponderFromConfig } from "./availability/factory.js";
 import { committeePromiseAdmission } from "./availability/promise-admission.js";
 import { assertCommitteePromiseEnrollment } from "./availability/promise-profile-selection.js";
+import type { AvailabilityResponderReport } from "./availability/responder.js";
+import type { AvailabilityResponseLoopEnforcement } from "./availability-response-loop.js";
 import { CommitteeService } from "./committee-service.js";
 import type { LoadedCommitteeConfig } from "./config.js";
 import { onChainCoordinatorFromConfig } from "./coordinator/factory.js";
@@ -22,10 +25,10 @@ import {
 } from "./da/libp2p/index.js";
 import { followerDaAttestationReader } from "./l1/da-attestation-reader.js";
 import {
+  type CommitteeL1Readiness,
   startCommitteeL1Follower,
   untilCommitteeL1SourceReady,
 } from "./l1/follower/l1-follower.js";
-import { providerFromConfig } from "./l1/provider.js";
 import { PeerSignatureCoordinator } from "./peer/coordinator.js";
 import { PeerSignaturePoller } from "./peer/poller.js";
 import { daAvailabilityCommitmentAuthorityFromConfig } from "./peer/signatures.js";
@@ -49,6 +52,14 @@ export type CommitteeNodeLocalSetup = {
   readonly libp2pPrivateKeySource: string;
 };
 
+/** The availability responder a running node drains, and its promise hooks. */
+export type CommitteeAvailabilityRuntime = Readonly<{
+  responder: Readonly<{ drain: () => Promise<AvailabilityResponderReport> }>;
+  close: () => void;
+  promiseLoopEnforcement?: AvailabilityResponseLoopEnforcement;
+  compactRetainedPromises?: () => Promise<readonly string[]>;
+}>;
+
 export type CommitteeNodeRuntime = Awaited<
   ReturnType<typeof openCommitteeNodeRuntime>
 >;
@@ -58,10 +69,17 @@ export type CommitteeNodeRuntime = Awaited<
  * follower, coordinators, libp2p) and initializes the service. One attempt of the
  * startup retry: on any failure it closes what it opened and rethrows, so the
  * next attempt starts clean.
+ *
+ * An adopted promise profile needs the follower ready before its bootstrap
+ * scan: while the follower holds the committee (catching up, or a reason
+ * only an operator clears, such as `rollback_beyond_k`), the attempt waits
+ * and reports the reasons to `onL1Held` on every poll, the process up. The
+ * non-adopted responder is built on its first drain the follower is ready for.
  */
 export const openCommitteeNodeRuntime = async (
   local: CommitteeNodeLocalSetup,
   storeLockEvents: PostgresStoreInstanceLockEvents,
+  onL1Held?: (reasons: readonly CommitteeL1Readiness[]) => void,
 ) => {
   const { config, signer, committeeValidation, signerValidation } = local;
   const { daIdentity, daPeerRegistry } = local;
@@ -257,28 +275,27 @@ export const openCommitteeNodeRuntime = async (
     });
     await service.initialize();
     if (!actuationReady) {
-      await untilCommitteeL1SourceReady(follower.source);
+      await untilCommitteeL1SourceReady(follower.source, {
+        ...(onL1Held === undefined ? {} : { onHeld: onL1Held }),
+      });
       const bootstrap = await service.tick();
       if (bootstrap.errors.length !== 0 || service.latestL1View() === undefined)
         throw new Error(
           "Adopted committee startup requires a complete healthy unsigned scan",
         );
     }
-    const availabilityRuntime = config.l1SubmissionEnabled
-      ? await availabilityResponderFromConfig(
-          config,
-          store,
-          await providerFromConfig(config),
-        )
-      : undefined;
-    if (availabilityRuntime !== undefined)
-      closers.push(() => availabilityRuntime?.close());
-    availabilityRuntime?.bindRetirementOperationalPins?.(() =>
+    const adopted =
+      config.l1SubmissionEnabled &&
+      config.availabilityPromiseAdoption !== undefined
+        ? await availabilityResponderFromConfig(config, store, follower)
+        : undefined;
+    if (adopted !== undefined) closers.push(() => adopted.close());
+    adopted?.bindRetirementOperationalPins?.(() =>
       service.readRetirementOperationalPins(),
     );
-    await availabilityRuntime?.compactRetainedPromises?.();
+    await adopted?.compactRetainedPromises?.();
     if (config.availabilityPromiseAdoption !== undefined) {
-      if (signerValidation === undefined || availabilityRuntime === undefined)
+      if (signerValidation === undefined || adopted === undefined)
         throw new Error(
           "Adopted committee startup has no signing admission authority",
         );
@@ -286,9 +303,18 @@ export const openCommitteeNodeRuntime = async (
         config,
         store,
         signerValidation,
-        source: availabilityRuntime.promiseAdmissionSource,
+        source: adopted.promiseAdmissionSource,
       });
     }
+    const deferred =
+      config.l1SubmissionEnabled && adopted === undefined
+        ? deferredAvailabilityResponder(follower.source, () =>
+            availabilityResponderFromConfig(config, store, follower),
+          )
+        : undefined;
+    if (deferred !== undefined) closers.push(() => deferred.close());
+    const availabilityRuntime: CommitteeAvailabilityRuntime | undefined =
+      adopted ?? deferred;
     actuationReady = true;
     closers.push(() => daLibp2pNode.stop());
     await daLibp2pNode.start();

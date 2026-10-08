@@ -10,7 +10,7 @@ import {
 } from "../../src/availability/promise-admission.js";
 import { CommitteeService } from "../../src/committee-service.js";
 import type { DaPayloadSource } from "../../src/da/source.js";
-import { hashBlockHeader } from "../../src/l1/state-queue-scanner.js";
+import { headerHashOf } from "../../src/l1/follower/queue-derivation.js";
 import { loadDaSigner, validateDaSignerMembership } from "../../src/signer.js";
 import {
   makeObservedNode,
@@ -42,7 +42,7 @@ export const promiseAdmissionFixture = async () => {
     base: Awaited<ReturnType<typeof makePayloadFixture>>,
     header: SDK.Header,
   ) => {
-    const headerHash = hashBlockHeader(header);
+    const headerHash = headerHashOf(header);
     const payload = {
       ...base.payload,
       block_body: {

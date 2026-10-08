@@ -5,7 +5,7 @@ import {
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
 import { type DeploymentManifestAvailabilityChallenge } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { type L1Origin } from "@al-ft/midgard-core/l1-origin";
+import { formatL1Origin, type L1Origin } from "@al-ft/midgard-core/l1-origin";
 
 import type { CommitteePromiseAdoptionConfig } from "./config.promise-admission.js";
 import type { DaCommitteeMember } from "./domain.js";
@@ -22,41 +22,36 @@ export type LocalStateConfig = {
   readonly url: string;
 };
 
+/** The Cardano network the committee's node runs, by its magic. */
 export type CardanoL1SourceConfig = {
-  readonly sourceMode: "local_node";
-  readonly authorityNodeId: string;
-  readonly authorityDigest: string;
   readonly networkMagic: number;
 };
 
-export type L1SourceConfig = {
-  readonly sourceMode: "local_node";
-  readonly authorityNodeId: string;
-  readonly chainSyncProviderUrl: string;
-  readonly chainSyncCursorPath?: string;
-  readonly queryProviderUrls: readonly string[];
-};
-
+/**
+ * The identity of the committee's L1 source: its network, its node's
+ * authority id, and the deployment's L1 origin (whose block hash names the
+ * chain). The committee store is bound to it; a change is reported, never
+ * fatal.
+ */
 export const l1SourceAuthorityDigest = (
-  network: string,
-  source: L1SourceConfig,
+  config: Pick<CommitteeConfig, "network" | "l1Origin" | "nativeLedger">,
 ): string =>
   createHash("sha256")
     .update(
       JSON.stringify({
-        network,
-        sourceMode: source.sourceMode,
-        authorityNodeId: source.authorityNodeId,
-        chainSyncProviderUrl: source.chainSyncProviderUrl,
-        queryProviderUrls: source.queryProviderUrls,
+        network: config.network,
+        authorityNodeId: config.nativeLedger?.authorityNodeId ?? null,
+        l1Origin:
+          config.l1Origin === undefined
+            ? null
+            : formatL1Origin(config.l1Origin),
       }),
     )
     .digest("hex");
 
 /**
- * Local node ledger used for reward-account reads. Ogmios omits registered
- * reward accounts that have no stake-pool delegation, so registration checks
- * query the node's ledger through the native chain-sync helper instead.
+ * The committee's local node: its socket, configuration and the native
+ * transport binary the L1 follower reads and submits through.
  */
 export type NativeLedgerConfig = {
   readonly authorityNodeId: string;
@@ -78,8 +73,6 @@ export type CommitteeConfig = {
   readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
   readonly consensusProfile: MidgardConsensusProfile;
   readonly midgardNodeDeployment: MidgardNodeDeployment;
-  readonly l1Source: L1SourceConfig;
-  readonly cardanoProviderUrls: readonly string[];
   /** Absent when no local node ledger is configured; reward-account reads then fail closed. */
   readonly nativeLedger?: NativeLedgerConfig;
   /** The operator-configured L1 origin point (`L1_ORIGIN`); absent when unset. */
@@ -145,8 +138,7 @@ export type CommitteeConfig = {
 
 /**
  * The configuration a committee L1 client factory reads: the committee
- * configuration plus the configured network magic, which a `Custom` client's
- * Ogmios must match before its slot mapping is read.
+ * configuration plus the configured network magic.
  */
 export type CommitteeL1ClientConfig = CommitteeConfig & {
   readonly cardanoL1Source: Pick<CardanoL1SourceConfig, "networkMagic">;

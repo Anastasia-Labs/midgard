@@ -28,6 +28,7 @@ import {
   nativeLedgerPaths,
 } from "../src/full-stack/native-ledger.js";
 import { StackProcesses } from "../src/full-stack/process.js";
+import { L1OriginUndeterminedError } from "../src/l1-origin.js";
 import {
   RecordingProcesses,
   removeStackFixtures,
@@ -58,7 +59,7 @@ it("leaves the exported Cardano configuration readable to container users", asyn
     expect((await stat(path)).mode & 0o777).toBe(mode);
 });
 
-it("generates committee configurations accepted by the real loader with persistent local chain authority", async () => {
+it("generates committee configurations accepted by the real loader: the run's L1 origin and local node, no chain index", async () => {
   const directory = await mkdtemp(join(tmpdir(), "midgard-stack-services-"));
   try {
     const sample = JSON.parse(
@@ -87,8 +88,6 @@ it("generates committee configurations accepted by the real loader with persiste
     );
     const env: Record<string, string> = {
       DA_THRESHOLD: "2",
-      L1_KUPO_KEY: "http://127.0.0.1:1442",
-      L1_OGMIOS_KEY: "http://127.0.0.1:1337",
       L1_OPERATOR_SEED_PHRASE: entropyToMnemonic("00".repeat(16)),
       DA_COSIGNER_SEED_PHRASE: entropyToMnemonic("ff".repeat(16)),
     };
@@ -125,6 +124,12 @@ it("generates committee configurations accepted by the real loader with persiste
       "deploymentInfo/contract-deployment-info.json",
     );
     await copyFile(fixture.path, manifest);
+    // Before the origin step restored the run's origin, no committee
+    // environment is written.
+    await expect(
+      generateDaServices(new StackProcesses(config, env)),
+    ).rejects.toBeInstanceOf(L1OriginUndeterminedError);
+    env.L1_ORIGIN = `100.${"ab".repeat(32)}`;
     const generated = await generateDaServices(
       new StackProcesses(config, env),
     ).finally(() => process.umask(umask));
@@ -174,7 +179,17 @@ it("generates committee configurations accepted by the real loader with persiste
         ),
         MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: manifest,
       });
-      expect(loaded.l1Source.sourceMode).toBe("local_node");
+      expect(loaded.l1Origin).toEqual({
+        slot: 100,
+        blockHash: "ab".repeat(32),
+      });
+      expect(
+        Object.keys(serviceEnv).filter((name) =>
+          /KUPO|OGMIOS|PROVIDER_URL|L1_SOURCE_MODE|CHAIN_SYNC_(URL|CURSOR)/u.test(
+            name,
+          ),
+        ),
+      ).toEqual([]);
       expect(loaded.nativeLedger?.binaryPath).toBe(
         "/app/native-ledger/midgard-l1-node-transport",
       );

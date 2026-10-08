@@ -43,12 +43,7 @@ const loadedConfig = (
     signerSeed: "00".repeat(32),
     signerPublicKey: "11".repeat(32),
   }),
-  cardanoL1Source: {
-    sourceMode: "local_node",
-    authorityNodeId: "local-cardano-node",
-    authorityDigest: "ee".repeat(32),
-    networkMagic: 42,
-  },
+  cardanoL1Source: { networkMagic: 42 },
   ...fields,
 });
 

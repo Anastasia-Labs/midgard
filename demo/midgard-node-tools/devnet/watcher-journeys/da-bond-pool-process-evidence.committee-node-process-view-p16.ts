@@ -33,23 +33,23 @@ describe("committee node process view (P16)", () => {
     ).toEqual({ httpStatus: 200, ready: true, reasons: [], poolReasons: [] });
   });
 
-  it("reads the L1 source status and its quarantine reason from /readyz", () => {
-    const reason = "committee replay cannot advance its durable queue";
+  it("reads the L1 source status and its follower intervention from /readyz", () => {
+    const reason = "rollback_beyond_k: the node rolled back 2161 blocks";
     expect(
       parseDaBondPoolReadyz(
         503,
         JSON.stringify({
           ready: false,
-          reasons: [`L1 source is quarantined: ${reason}`],
+          reasons: [reason],
           l1Source: {
             sourceMode: "local_node",
-            status: "quarantined",
+            status: "intervention",
             observedAt: "2026-09-29T05:52:05.000Z",
-            quarantineReason: reason,
+            intervention: reason,
           },
         }),
       ).l1Source,
-    ).toEqual({ status: "quarantined", quarantineReason: reason });
+    ).toEqual({ status: "intervention", intervention: reason });
     expect(
       parseDaBondPoolReadyz(
         200,

@@ -1,5 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -33,20 +33,12 @@ export const discoverAvailabilityResponderChallenges = async (
   onSkipped: (skipped: AvailabilityResponderSkippedRecord) => void = () => {},
   reads?: Readonly<{
     scope: SDK.DaAvailabilityReadScope;
-    readUtxos?: (
-      address: string,
-      scope: SDK.DaAvailabilityReadScope,
-    ) => Promise<UTxO[]>;
     onSnapshot?: (snapshot: SDK.DaAvailabilitySnapshotUtxos) => void;
   }>,
 ): Promise<readonly AvailabilityResponderChallenge[]> => {
   const utxosAt = (address: string) =>
     reads
-      ? reads.scope.read(() =>
-          reads.readUtxos
-            ? reads.readUtxos(address, reads.scope)
-            : lucid.utxosAt(address),
-        )
+      ? reads.scope.read(() => lucid.utxosAt(address))
       : lucid.utxosAt(address);
   const [availabilityUtxos, stateQueueUtxos, correctionLockUtxos] =
     await Promise.all([

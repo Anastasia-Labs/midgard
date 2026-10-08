@@ -38,12 +38,8 @@ import {
   optionalNonEmpty,
   optionalSplitList,
   requireEnv,
-  splitList,
 } from "./config.operational-provider-identity.js";
-import {
-  cardanoL1SourceConfig,
-  parseL1SourceConfig,
-} from "./config.parse-l1-source-config.js";
+import { cardanoL1SourceConfig } from "./config.parse-l1-source-config.js";
 import {
   assertLibp2pDaRetentionDays,
   deploymentFingerprintConfig,
@@ -160,15 +156,7 @@ export const loadCommitteeConfig = async (
       "DA_L1_SUBMITTER_ID must be present in DA_L1_SUBMITTER_IDS",
     );
   }
-  const cardanoProviderUrls = splitList(
-    requireEnv(env, "CARDANO_PROVIDER_URLS"),
-  );
-  const cardanoL1Source = cardanoL1SourceConfig({
-    env,
-    network,
-    cardanoProviderUrls,
-  });
-  const l1Source = parseL1SourceConfig(env, cardanoProviderUrls);
+  const cardanoL1Source = cardanoL1SourceConfig({ env, network });
   const nativeLedger = parseNativeLedgerConfig(env);
   const daCommitteeMembers = libp2pDaTransport.peers.map((member) => ({
     index: member.signerIndex,
@@ -235,8 +223,6 @@ export const loadCommitteeConfig = async (
     availabilityChallenge: manifestAvailabilityChallenge,
     consensusProfile,
     midgardNodeDeployment,
-    l1Source,
-    cardanoProviderUrls,
     ...(nativeLedger === undefined ? {} : { nativeLedger }),
     ...(l1Origin === undefined ? {} : { l1Origin }),
     finalityDepth: configuredFinalityDepth,

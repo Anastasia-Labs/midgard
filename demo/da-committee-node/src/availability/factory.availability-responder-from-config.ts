@@ -9,15 +9,14 @@ import {
   correctionLockValidatorFromDeploymentInfo,
   daAttestationValidatorsFromDeployment,
 } from "../l1/deployment.js";
-import { lucidFromProviderUrl } from "../l1/lucid.js";
-import type { StateQueueProvider } from "../l1/state-queue-scanner.js";
+import { committeeAvailabilityReads } from "../l1/follower/availability-reads.js";
+import type { CommitteeL1Follower } from "../l1/follower/l1-follower.js";
 import { selectL1SubmitterWallet } from "../l1/submitter.js";
 import type { CommitteeStore } from "../store.js";
 import { createCommitteePromiseAdmissionSource } from "./create-promise-admission-source.js";
 import {
   availabilityParametersFromConfig,
   availabilityResponderCollateral,
-  availabilityResponderL1ReadersFromConfig,
   availabilityResponderOperations,
 } from "./factory.availability-responder-operations.js";
 import { configuredCommitteePromiseRuntime } from "./factory.configured-promise-runtime.js";
@@ -31,13 +30,20 @@ import { availabilityResponderReferenceScripts } from "./reference-scripts.js";
 import { AvailabilityResponder } from "./responder.js";
 import { assertAvailabilityResponderSourceHealthy } from "./source-authority.js";
 
+/**
+ * The availability responder and promise admission source on the committee's
+ * L1 follower: every L1 read is the follower's facts or the node's ledger
+ * state, and every submit goes to the node's LocalTxSubmission through the
+ * follower's provider. Build it once the follower is ready: its first reads
+ * (reference scripts, the hub oracle, collateral) need the follower's facts.
+ */
 export const availabilityResponderFromConfig = async (
   config: CommitteeL1ClientConfig,
   store: CommitteeStore,
-  chainProvider: StateQueueProvider,
-  deps: { readonly lucidFromProviderUrl: typeof lucidFromProviderUrl } = {
-    lucidFromProviderUrl,
-  },
+  follower: Pick<
+    CommitteeL1Follower,
+    "source" | "store" | "provider" | "lucid"
+  >,
 ): Promise<{
   readonly responder: AvailabilityResponder;
   readonly promiseAdmissionSource: CommitteePromiseAdmissionSource;
@@ -57,34 +63,16 @@ export const availabilityResponderFromConfig = async (
       "Live availability responder requires DA_AVAILABILITY_JOURNAL_PATH and a dedicated DA_AVAILABILITY_SUBMITTER_KEY_SOURCE",
     );
   }
-  if (
-    config.l1Source.sourceMode !== "local_node" ||
-    chainProvider.currentChainSyncCursor === undefined
-  ) {
+  const { provider } = follower;
+  if (follower.store === null || provider === null)
     throw new Error(
-      "Live availability responder requires the configured local_node canonical chain-sync authority",
+      "Live availability responder requires the committee's L1 follower",
     );
-  }
-  const providerUrl = config.cardanoProviderUrls[0];
-  if (
-    !providerUrl?.startsWith("kupmios:") ||
-    !config.l1Source.queryProviderUrls.includes(providerUrl)
-  ) {
-    throw new Error(
-      "Live availability responder requires a canonical kupmios query provider from L1_SOURCE_QUERY_PROVIDER_URLS",
-    );
-  }
-  const [kupoUrl, ogmiosUrl] = providerUrl.slice("kupmios:".length).split("|");
-  if (!kupoUrl || !ogmiosUrl)
-    throw new Error(
-      "Availability responder has an invalid kupmios provider URL",
-    );
-  const { lucid } = await deps.lucidFromProviderUrl(
-    providerUrl,
-    config.network,
-    config.nativeLedger,
-    config.cardanoL1Source.networkMagic,
-  );
+  const reads = committeeAvailabilityReads({
+    store: follower.store,
+    readiness: () => follower.source.readiness(),
+  });
+  const lucid = await follower.lucid();
   await selectL1SubmitterWallet(lucid, config.availabilitySubmitterKeySource);
   const actor = paymentCredentialOf(await lucid.wallet().address());
   if (actor.type !== "Key")
@@ -141,9 +129,6 @@ export const availabilityResponderFromConfig = async (
   const reportedSkips = new Set<string>();
   const assertSourceHealthy = (): Promise<void> =>
     assertAvailabilityResponderSourceHealthy(store, config);
-  const provider = lucid.config().provider;
-  if (provider === undefined)
-    throw new Error("Availability responder has no transaction provider");
   // Only collateral comes from this wallet: publication and settlement fees are
   // protected shares of the challenger's on-chain bond.
   await availabilityResponderCollateral(
@@ -162,13 +147,15 @@ export const availabilityResponderFromConfig = async (
       return await configuredCommitteePromiseRuntime({
         config,
         store,
-        chainProvider,
         lucid,
+        reads,
+        ledger: {
+          protocolParameters: () => provider.getProtocolParameters(),
+          slotConfig: () => provider.slotConfig(),
+        },
         deployment,
         actorId: actor.hash,
         journal,
-        kupoUrl,
-        ogmiosUrl,
       });
     } catch (error) {
       journal.close();
@@ -178,13 +165,7 @@ export const availabilityResponderFromConfig = async (
   const { readBoundary, assertActuationCurrent, context, reconcile } =
     availabilityResponderOperations({
       lucid,
-      readers: availabilityResponderL1ReadersFromConfig({
-        config,
-        lucid,
-        kupoUrl,
-        ogmiosUrl,
-        currentCursor: chainProvider.currentChainSyncCursor.bind(chainProvider),
-      }),
+      reads,
       assertSourceHealthy,
       context: {
         deploymentIdentity: contractManifestId,
@@ -196,6 +177,7 @@ export const availabilityResponderFromConfig = async (
           lucid,
           deployment.parameters,
         ),
+        // The node's LocalTxSubmission, through the follower's provider.
         submit: (signedCbor) => provider.submitTx(signedCbor),
       },
     });
@@ -210,8 +192,7 @@ export const availabilityResponderFromConfig = async (
       store,
       journal,
       lucid,
-      ogmiosUrl,
-      currentCursor: chainProvider.currentChainSyncCursor.bind(chainProvider),
+      reads,
       readBoundary,
       assertActuationCurrent,
     }),
@@ -237,7 +218,10 @@ export const availabilityResponderFromConfig = async (
           },
         );
         const after = await readBoundary();
-        if (before.pointId !== after.pointId)
+        if (
+          before.pointId !== after.pointId ||
+          before.generation !== after.generation
+        )
           throw new Error(
             "Canonical source changed during availability challenge discovery",
           );

@@ -10,14 +10,25 @@ import type {
   CommitteePromiseWorkload,
 } from "./promise-runtime-policy.js";
 
+/**
+ * A view of the committee's L1 follower (plan §8.1): its rollback
+ * generation and the block it was read at. Work bound to it stays current
+ * while no rollback has undone that block.
+ */
+export type CommitteePromiseSourceView = Readonly<{
+  generation: number;
+  slot: number;
+  blockHash: string;
+}>;
+
 export type CommitteePromiseCausalArtifact = Readonly<{
-  schemaVersion: 2;
+  schemaVersion: 3;
   policyId: string;
   binding: CommitteePromiseRuntimeBinding;
   sourceBinding: Readonly<{
     sourceDigest: string;
     genesisDigest: string;
-    rollbackGeneration: number;
+    view: CommitteePromiseSourceView;
   }>;
   enforcement: readonly CommitteePromiseStageEnforcement[];
   workloadCaps: CommitteePromiseWorkload;
@@ -97,7 +108,7 @@ export const verifyCommitteePromiseCausalPolicy = (
     )
       throw new Error("trusted_causal_policy_digest_mismatch");
     if (
-      artifact.schemaVersion !== 2 ||
+      artifact.schemaVersion !== 3 ||
       !artifact.policyId ||
       canonical(artifact.binding) !== canonical(input.liveBinding) ||
       !hash(artifact.binding.deploymentFingerprint) ||
@@ -110,7 +121,9 @@ export const verifyCommitteePromiseCausalPolicy = (
         canonical(input.liveSourceBinding) ||
       !hash(artifact.sourceBinding.sourceDigest) ||
       !hash(artifact.sourceBinding.genesisDigest) ||
-      !natural(artifact.sourceBinding.rollbackGeneration)
+      !natural(artifact.sourceBinding.view.generation) ||
+      !natural(artifact.sourceBinding.view.slot) ||
+      !hash(artifact.sourceBinding.view.blockHash)
     )
       throw new Error("causal_runtime_binding_mismatch");
     if (

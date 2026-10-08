@@ -23,8 +23,8 @@ import {
   DaLibp2pNode,
   DaPayloadSubmitAdmission,
 } from "da-committee-node/da/libp2p";
-import { hashBlockHeader } from "da-committee-node/l1/state-queue-scanner";
 import { PostgresCommitteeStore } from "da-committee-node/store/postgres";
+import { Effect } from "effect";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
@@ -253,7 +253,9 @@ describe("real multi-peer DA publication", () => {
         startTime: fixture.header.startTime + 10n,
         endTime: fixture.header.endTime + 10n,
       };
-      const secondHeaderHash = hashBlockHeader(secondHeader);
+      const secondHeaderHash = Effect.runSync(
+        SDK.hashBlockHeader(secondHeader),
+      );
       const secondPayloadCbor = SDK.encodeDaPayload({
         ...fixture.payload,
         block_body: {

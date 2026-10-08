@@ -70,12 +70,9 @@ describe("multi-node DA committee integration", () => {
     const coordinatorStore = await saveHealthyL1SourceState(
       await openTestCommitteeStore(),
       {
-        sourceMode: coordinatorConfig.l1Source.sourceMode,
+        sourceMode: "local_node",
         network: coordinatorConfig.network,
-        authoritySha256: l1SourceAuthorityDigest(
-          coordinatorConfig.network,
-          coordinatorConfig.l1Source,
-        ),
+        authoritySha256: l1SourceAuthorityDigest(coordinatorConfig),
       },
     );
     const peerStore = await openTestCommitteeStore();

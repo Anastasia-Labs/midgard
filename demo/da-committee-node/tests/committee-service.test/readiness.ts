@@ -367,6 +367,10 @@ export const registerReadinessTests = () => {
       now: () => new Date(nowMs),
     });
     await service.initialize();
+    // Catching up is a wait, not an intervention.
+    const snapshot = await service.readinessSnapshot();
+    expect(snapshot.l1Source?.status).not.toBe("intervention");
+    expect(snapshot.l1Source?.intervention).toBeUndefined();
     const fatalMs = 240_000;
     const runner = createCommitteeTickRunner({
       tick: async () => service.tick(),

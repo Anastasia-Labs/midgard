@@ -7,6 +7,7 @@ import {
   identityFromSeedHex,
   loadDaLibp2pIdentity,
 } from "@al-ft/midgard-core/da-libp2p-identity";
+import { formatL1Origin, type L1Origin } from "@al-ft/midgard-core/l1-origin";
 import { loadCommitteeConfig } from "da-committee-node/config";
 import { DaPeerRegistry } from "da-committee-node/da/libp2p";
 
@@ -241,7 +242,9 @@ export const reuseDaBondPoolCommitteeRuntime = (input: {
 
 /**
  * The deployment, network and L1 source variables of the committee node's
- * environment, from the pair of manifests it loads.
+ * environment, from the pair of manifests it loads. The committee's L1
+ * follower reads the local node from `l1Origin`; no chain index is
+ * configured.
  */
 export const daBondPoolCommitteeSettings = (input: {
   readonly runtimeManifestPath: string;
@@ -249,9 +252,8 @@ export const daBondPoolCommitteeSettings = (input: {
   readonly network: string;
   /** Required for `Custom`; omitted for a named network. */
   readonly networkMagic?: number;
-  readonly kupoUrl: string;
-  readonly ogmiosUrl: string;
-  readonly chainSyncCursorPath: string;
+  /** The deployment's origin (`deriveL1Origin` on its hub-oracle nonce). */
+  readonly l1Origin: L1Origin;
   readonly finalityDepth: number;
   readonly nativeLedger?: Readonly<{
     socket: string;
@@ -265,11 +267,8 @@ export const daBondPoolCommitteeSettings = (input: {
   ...(input.networkMagic === undefined
     ? {}
     : { CARDANO_NETWORK_MAGIC: input.networkMagic.toString() }),
-  CARDANO_PROVIDER_URLS: `kupmios:${input.kupoUrl}|${input.ogmiosUrl}`,
-  CARDANO_L1_SOURCE_MODE: "local_node",
   CARDANO_LOCAL_NODE_AUTHORITY_ID: "local-cardano-node",
-  CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: `chain-sync:kupmios:${input.kupoUrl}|${input.ogmiosUrl}`,
-  CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH: input.chainSyncCursorPath,
+  L1_ORIGIN: formatL1Origin(input.l1Origin),
   CARDANO_FINALITY_DEPTH: input.finalityDepth.toString(),
   ...(input.nativeLedger === undefined
     ? {}

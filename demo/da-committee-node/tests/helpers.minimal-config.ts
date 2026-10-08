@@ -197,14 +197,6 @@ export const minimalConfig = ({
     availabilityChallengeYields: minimalAvailabilityChallengeYields(),
     stateQueueYields: minimalStateQueueYields(),
   },
-  l1Source: {
-    sourceMode: "local_node",
-    authorityNodeId: "fixture-node",
-    chainSyncProviderUrl: "chain-sync:fixture:/tmp/state-queue.json",
-    chainSyncCursorPath: "/tmp/state-queue.chain-sync-cursor.json",
-    queryProviderUrls: ["fixture:/tmp/state-queue.json"],
-  },
-  cardanoProviderUrls: ["fixture:/tmp/state-queue.json"],
   finalityDepth: 2,
   automaticRecoveryMaxDepth: 2,
   daTransport: {

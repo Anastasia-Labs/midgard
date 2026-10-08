@@ -27,8 +27,8 @@ import { isTransientTransportError } from "./ledger-tip.js";
  * A read that got no answer (`isTransientTransportError`) while the node is
  * `alive` is polled past until the bound, and the last answer stands; with
  * no answer at all by the bound, the last such error is rethrown. A status
- * or body the node did answer is judged as it is. An answer whose L1 source
- * is quarantined returns at once: the node never leaves that state.
+ * or body the node did answer is judged as it is. An answer whose L1 follower
+ * holds the node on an intervention returns at once: no wait clears it.
  */
 export const awaitDaBondPoolCommitteeSync = async (deps: {
   readonly read: () => Promise<DaBondPoolReadyzRead>;
@@ -77,7 +77,7 @@ export const awaitDaBondPoolCommitteeSync = async (deps: {
     last = { read, readyz, fresh, synced, reads };
     if (
       synced ||
-      readyz.l1Source?.status === "quarantined" ||
+      readyz.l1Source?.status === "intervention" ||
       now() >= deadline
     )
       return last;

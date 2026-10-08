@@ -3,6 +3,7 @@ import {
   createWalletSeeder,
   type DepthParameters,
   type FactStore,
+  type FactStoreOptions,
   followChain,
   FOLLOWER_CATCHING_UP,
   FOLLOWER_WAITING,
@@ -37,7 +38,7 @@ import {
 } from "./projection.js";
 
 /** The committee's follower is not configured; the detail names what is missing. */
-export const L1_FOLLOWER_NOT_CONFIGURED = "l1_follower_not_configured";
+export const L1_FOLLOWER_UNCONFIGURED = "l1_follower_unconfigured";
 
 /** A reason the committee's L1 source holds it unready. */
 export type CommitteeL1Readiness = Readonly<{ reason: string; detail: string }>;
@@ -75,6 +76,11 @@ export type CommitteeL1Follower = Readonly<{
   source: CommitteeL1Source;
   /** Null when the follower is not configured. */
   store: FactStore | null;
+  /**
+   * The follower's provider: facts, the node's ledger state and its
+   * LocalTxSubmission. Null when the follower is not configured.
+   */
+  provider: L1FollowerProvider | null;
   /** A Lucid client on the follower's provider; throws when not configured. */
   lucid(): Promise<LucidEvolution>;
   /** Settles once the follower stopped and released its store and transport. */
@@ -84,7 +90,9 @@ export type CommitteeL1Follower = Readonly<{
 const message = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-const depthParameters = (config: LoadedCommitteeConfig): DepthParameters => ({
+export const depthParameters = (
+  config: LoadedCommitteeConfig,
+): DepthParameters => ({
   confirmationDepth: config.finalityDepth,
   // k: the manifest's automaticRecoveryMaxDepth (plan §1, terms).
   securityParameter: config.automaticRecoveryMaxDepth,
@@ -96,7 +104,7 @@ const unconfiguredSource = (
   reason: string,
 ): CommitteeL1Source => ({
   parameters,
-  readiness: () => [{ reason: L1_FOLLOWER_NOT_CONFIGURED, detail: reason }],
+  readiness: () => [{ reason: L1_FOLLOWER_UNCONFIGURED, detail: reason }],
   cursorSlot: () => null,
   readView: async () => null,
   pointStatus: async () => ({ kind: "not_initialized", detail: reason }),
@@ -167,27 +175,44 @@ export const committeeL1Source = (
 };
 
 /**
+ * The first reason in `reasons` no wait clears (an intervention such as
+ * `rollback_beyond_k`, a stuck point, no configuration), or undefined while
+ * the follower only catches up or backs off.
+ */
+export const committeeL1InterventionReason = (
+  reasons: readonly CommitteeL1Readiness[],
+): CommitteeL1Readiness | undefined =>
+  reasons.find(
+    ({ reason }) =>
+      reason !== FOLLOWER_CATCHING_UP &&
+      reason !== FOLLOWER_WAITING &&
+      reason !== WALLET_SEED_PENDING,
+  );
+
+/**
  * Resolves once the follower holds the committee for nothing but an owed
- * wallet seed (the committee's next view read settles it). While it only
- * catches up or backs off, it waits; any other reason (an intervention, a
- * stuck point, no configuration) no wait clears, so it throws that reason.
+ * wallet seed (the committee's next view read settles it). Never gives up:
+ * while any other reason holds, it reports the reasons to `onHeld` on every
+ * poll and waits, so a rollback beyond k or a missing configuration holds
+ * the committee unready with the process up. `onHeld` may throw to stop the
+ * wait (a one-shot run does on a reason no wait clears).
  */
 export const untilCommitteeL1SourceReady = async (
   source: Pick<CommitteeL1Source, "readiness">,
-  pollMs = 1_000,
+  options: Readonly<{
+    onHeld?: (reasons: readonly CommitteeL1Readiness[]) => void;
+    pollMs?: number;
+  }> = {},
 ): Promise<void> => {
   for (;;) {
     const reasons = source
       .readiness()
       .filter(({ reason }) => reason !== WALLET_SEED_PENDING);
     if (reasons.length === 0) return;
-    const blocking = reasons.find(
-      ({ reason }) =>
-        reason !== FOLLOWER_CATCHING_UP && reason !== FOLLOWER_WAITING,
+    options.onHeld?.(reasons);
+    await new Promise((resolve) =>
+      setTimeout(resolve, options.pollMs ?? 1_000),
     );
-    if (blocking !== undefined)
-      throw new Error(`${blocking.reason}: ${blocking.detail}`);
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
 };
 
@@ -201,10 +226,47 @@ type FollowerParts = Readonly<{
   store: FactStore;
   transport: L1NodeTransport;
   wallets: readonly Buffer[];
+  provider: L1FollowerProvider;
   slotTime: () => Promise<SlotTime>;
   lucid: () => Promise<LucidEvolution>;
   close: () => Promise<void>;
 }>;
+
+/**
+ * The committee follower's store options: the committee projection and its
+ * tracked set, with the committee's own wallets tracked by address.
+ */
+export const committeeFollowerStoreOptions = (
+  config: LoadedCommitteeConfig,
+  parameters: DepthParameters,
+  wallets: readonly Buffer[],
+  dialect: "postgres" | "sqlite",
+): FactStoreOptions => {
+  const options = projectionStoreOptions(
+    [
+      committeeProjection(
+        {
+          stateQueueAddress: addressBytes(config.stateQueueAddress),
+          stateQueuePolicyId: config.stateQueuePolicyId.toLowerCase(),
+        },
+        committeeTracked(config),
+      ),
+    ],
+    {
+      securityParameter: parameters.securityParameter,
+      trackedSet: {
+        addresses: new Set(),
+        paymentCredentials: new Set(),
+        policies: new Set(),
+      },
+    },
+    dialect,
+  );
+  return {
+    ...options,
+    trackedSet: withTrackedAddresses(options.trackedSet, wallets),
+  };
+};
 
 const openFollowerParts = async (
   config: LoadedCommitteeConfig,
@@ -213,13 +275,6 @@ const openFollowerParts = async (
   writerLease: CommitteeWriterLease,
   log: (line: string) => void,
 ): Promise<FollowerParts> => {
-  const projection = committeeProjection(
-    {
-      stateQueueAddress: addressBytes(config.stateQueueAddress),
-      stateQueuePolicyId: config.stateQueuePolicyId.toLowerCase(),
-    },
-    committeeTracked(config),
-  );
   const wallets = await ownWallets(config);
   const transport = new L1NodeTransport({
     binaryPath: plan.binaryPath,
@@ -229,21 +284,8 @@ const openFollowerParts = async (
   });
   let store: FactStore;
   try {
-    const options = projectionStoreOptions(
-      [projection],
-      {
-        securityParameter: parameters.securityParameter,
-        trackedSet: {
-          addresses: new Set(),
-          paymentCredentials: new Set(),
-          policies: new Set(),
-        },
-      },
-      "postgres",
-    );
     store = openPostgresFactStore({
-      ...options,
-      trackedSet: withTrackedAddresses(options.trackedSet, wallets),
+      ...committeeFollowerStoreOptions(config, parameters, wallets, "postgres"),
       connection: {
         connectionString: plan.databaseUrl,
         maxConnections: 4,
@@ -271,6 +313,7 @@ const openFollowerParts = async (
     store,
     transport,
     wallets,
+    provider,
     slotTime,
     lucid: async () =>
       Lucid(provider, network, {
@@ -292,7 +335,7 @@ const openFollowerParts = async (
  * writes only while this process holds the store; while the lock is
  * suspended or passive, its loop waits on `store_locked`. Never throws for
  * a missing configuration: the committee then stays unready with
- * `l1_follower_not_configured`.
+ * `l1_follower_unconfigured`.
  */
 export const startCommitteeL1Follower = async (
   config: LoadedCommitteeConfig,
@@ -306,6 +349,7 @@ export const startCommitteeL1Follower = async (
     return {
       source: unconfiguredSource(parameters, plan.reason),
       store: null,
+      provider: null,
       lucid: () =>
         Promise.reject(
           new Error(`L1 follower is not configured: ${plan.reason}`),
@@ -350,6 +394,7 @@ export const startCommitteeL1Follower = async (
       ...(seeder === undefined ? {} : { seeder }),
     }),
     store,
+    provider: parts.provider,
     lucid: parts.lucid,
     stop: async () => {
       abort.abort();

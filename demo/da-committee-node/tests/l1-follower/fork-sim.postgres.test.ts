@@ -8,6 +8,10 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { postgresTestDatabases } from "../helpers/postgres-database.js";
 import {
+  availabilityReadsSimProjection,
+  zeroAvailabilityReadStats,
+} from "./availability-reads-sim.js";
+import {
   committeeForkCorpus,
   committeeSimProjection,
   SIM_K,
@@ -38,12 +42,15 @@ describe("committee projections in the fork simulator (Postgres)", () => {
     [...forkCorpus(SIM_K), ...committeeForkCorpus()].map(
       (entry) => [entry.name, entry.scenario] as const,
     ),
-  )("corpus: %s", async (_, scenario) => {
+  )("corpus: %s", { timeout: 60_000 }, async (_, scenario) => {
     const stats = zeroStats();
     const outcome = await runForkScenario(scenario, {
       open: openPostgres,
       k: SIM_K,
-      projections: [committeeSimProjection(stats, { expectHealthy: true })],
+      projections: [
+        committeeSimProjection(stats, { expectHealthy: true }),
+        availabilityReadsSimProjection(zeroAvailabilityReadStats()),
+      ],
     });
     expect(
       outcome.ok ? "ok" : `step ${outcome.step.toString()}: ${outcome.reason}`,

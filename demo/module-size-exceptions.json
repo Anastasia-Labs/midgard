@@ -1,7 +1,7 @@
 [
   {
     "file": "da-committee-node/src/committee-service.committee-service.ts",
-    "max": 1426,
+    "max": 1424,
     "reason": "CommitteeService is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. T161 (+9): payload verification first resolves the block's pre-state from the parent payload, before the verdict, so an unavailable parent withholds attestation without marking the payload rejected; a split of this module is a separate proven pure move."
   },
   {
@@ -26,8 +26,8 @@
   },
   {
     "file": "da-committee-node/tests/config.load-committee-config.ts",
-    "max": 1502,
-    "reason": "Retained test registration “loadCommitteeConfig” (1269 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 1236,
+    "reason": "Retained test registration “loadCommitteeConfig” (981 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "da-committee-node/tests/coordinator.coordinator-witness-and-candidate-planning.ts",
@@ -53,16 +53,6 @@
     "file": "da-committee-node/tests/peer-coordinator.test.ts",
     "max": 595,
     "reason": "Retained test registration “PeerSignatureCoordinator” (616 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. C2 (+18): the stores it signs into are Postgres, which require the durable L1 source state a node saves at startup."
-  },
-  {
-    "file": "da-committee-node/tests/provider.test.ts",
-    "max": 3953,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
-  },
-  {
-    "file": "da-committee-node/tests/state-queue-scanner.test.ts",
-    "max": 601,
-    "reason": "Retained test registration “state queue scanner” (680 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "da-committee-node/tests/store-factory.test.ts",
@@ -796,7 +786,7 @@
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.create-live-da-bond-pool-journey-port.ts",
-    "max": 1630,
+    "max": 1623,
     "reason": "createLiveDaBondPoolJourneyPort is the dominant indivisible declaration (1473 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {

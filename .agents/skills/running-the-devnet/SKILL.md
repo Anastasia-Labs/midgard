@@ -111,12 +111,12 @@ node .agents/skills/running-the-devnet/scripts/devnet-wait.mjs \
 
 It polls every `--url` until all are ready, and exits with:
 
-| Exit | Meaning                                                                                                                                                   |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0    | Ready: every URL answered HTTP 200 and no body said `ready: false` or a disconnected Kupo                                                                 |
-| 1    | Crashed: a `--pid` is gone, a `--log` gained a known fatal line, or a DA committee reported a quarantined L1 source. The tail of every `--log` is printed |
-| 2    | Timed out: every URL answered, not all became ready. The last reasons are printed                                                                         |
-| 3    | Unreachable: a URL never answered, no `--url` was given, or the arguments were unusable. Never a pass                                                     |
+| Exit | Meaning                                                                                                                                                         |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Ready: every URL answered HTTP 200 and no body said `ready: false` or a disconnected Kupo                                                                       |
+| 1    | Crashed: a `--pid` is gone, a `--log` gained a known fatal line, or a DA committee is held on an L1 follower intervention. The tail of every `--log` is printed |
+| 2    | Timed out: every URL answered, not all became ready. The last reasons are printed                                                                               |
+| 3    | Unreachable: a URL never answered, no `--url` was given, or the arguments were unusable. Never a pass                                                           |
 
 Enforced by `.agents/skills/running-the-devnet/scripts/devnet-wait.mjs` and its
 tests [ci: Agent Skills CI/Test scripts shipped inside skills]. Blind spots, stated

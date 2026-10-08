@@ -20,7 +20,7 @@ import type {
   DaStoredPayloadRootSet,
   StateQueueHeaderRecord,
 } from "../src/domain.js";
-import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
+import { headerHashOf } from "../src/l1/follower/queue-derivation.js";
 import { makePayloadFixture } from "./helpers.js";
 
 const deploymentFingerprint = "01".repeat(32);
@@ -349,7 +349,7 @@ const rebindContextWithHeader = async (
   context: VerifiedContext,
   header: SDK.Header,
 ): Promise<VerifiedContext> => {
-  const headerHash = hashBlockHeader(header);
+  const headerHash = headerHashOf(header);
   const payload: SDK.DaPayload = {
     ...context.payload,
     block_body: {

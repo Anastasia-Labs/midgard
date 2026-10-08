@@ -16,7 +16,6 @@ import {
   LIBP2P_DA_MIN_RETENTION_DAYS,
   LIBP2P_DA_TRANSPORT_LIMITS,
   loadCommitteeConfig,
-  parseL1SourceConfig,
 } from "../src/config.js";
 import { parseMidgardNodeDeploymentInfo } from "../src/l1/deployment.js";
 import { loadPublicRetainedDaRuntimeConfig } from "../src/public-retained-da-config.js";
@@ -27,6 +26,17 @@ import {
   writeDaContractDeploymentFixture,
 } from "./config.deployment-manifest-id-from-file.js";
 import { tempDir } from "./helpers.js";
+import {
+  DEPLOYMENT_MANIFEST_ID,
+  LIBP2P_PEER_ID_A,
+  LIBP2P_PEER_ID_B,
+  LIBP2P_PEER_ID_PUBLIC,
+  LIBP2P_PRIVATE_KEY_SOURCE,
+  libp2pConfigEnv,
+  libp2pManifest,
+  writeConfigFiles,
+  writeMinimalDeploymentInfo,
+} from "./helpers/committee-config-files.js";
 import { readDaDeploymentFixture } from "./helpers/deployment-fixture.js";
 
 describe("loadCommitteeConfig indexed signer sources", () => {
@@ -60,7 +70,7 @@ describe("loadCommitteeConfig indexed signer sources", () => {
       dir,
       manifest,
     );
-    return { dir, env: libp2pConfigEnv(dir, manifestPath, deploymentInfoPath) };
+    return { dir, env: libp2pConfigEnv(manifestPath, deploymentInfoPath) };
   };
 
   it.each([0, 1] as const)(
@@ -257,9 +267,7 @@ describe("loadCommitteeConfig", () => {
     });
     await writeFile(deploymentInfoPath, JSON.stringify(canonicalManifest));
     await expect(
-      loadCommitteeConfig(
-        libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
-      ),
+      loadCommitteeConfig(libp2pConfigEnv(manifestPath, deploymentInfoPath)),
     ).resolves.toMatchObject({
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     });
@@ -272,9 +280,7 @@ describe("loadCommitteeConfig", () => {
       }),
     );
     await expect(
-      loadCommitteeConfig(
-        libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
-      ),
+      loadCommitteeConfig(libp2pConfigEnv(manifestPath, deploymentInfoPath)),
     ).rejects.toThrow(/schemaVersion must be/u);
   });
 
@@ -287,7 +293,7 @@ describe("loadCommitteeConfig", () => {
     await writeFile(manifestPath, JSON.stringify(manifest));
     await writeMinimalDeploymentInfo(deploymentInfoPath);
     const config = await loadCommitteeConfig({
-      ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+      ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
       DA_SIGNER_INDEX: "0",
       DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
     });
@@ -304,7 +310,7 @@ describe("loadCommitteeConfig", () => {
       dir,
       manifest,
     );
-    const base = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
+    const base = libp2pConfigEnv(manifestPath, deploymentInfoPath);
 
     await expect(loadCommitteeConfig(base)).resolves.toMatchObject({
       finalityDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
@@ -323,7 +329,7 @@ describe("loadCommitteeConfig", () => {
       dir,
       manifest,
     );
-    const base = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
+    const base = libp2pConfigEnv(manifestPath, deploymentInfoPath);
 
     const view = {
       confirmedHeadHash: "aa".repeat(28),
@@ -393,7 +399,7 @@ describe("loadCommitteeConfig", () => {
     );
 
     const config = await loadCommitteeConfig(
-      libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+      libp2pConfigEnv(manifestPath, deploymentInfoPath),
     );
 
     expect(config.network).toBe("Preprod");
@@ -481,7 +487,7 @@ describe("loadCommitteeConfig", () => {
     ).rejects.toThrow(/DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE/);
     await expect(
       loadCommitteeConfig({
-        ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+        ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
         DA_PUBLIC_RETAINED_DA_ENABLED: "true",
         DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE: `seed:${"03".repeat(32)}`,
       }),
@@ -501,7 +507,7 @@ describe("loadCommitteeConfig", () => {
     );
 
     const config = await loadCommitteeConfig(
-      libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+      libp2pConfigEnv(manifestPath, deploymentInfoPath),
     );
 
     expect(config.deploymentFingerprint).toBe(DEPLOYMENT_MANIFEST_ID);
@@ -513,7 +519,7 @@ describe("loadCommitteeConfig", () => {
       dir,
       libp2pManifest("01".repeat(32)),
     );
-    const baseEnv = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
+    const baseEnv = libp2pConfigEnv(manifestPath, deploymentInfoPath);
     for (const [name, value] of Object.entries({
       DA_PAYLOAD_ENDPOINTS: "http://da-0.example",
       DA_PEER_ENDPOINTS: "0@http://da-1.example",
@@ -532,7 +538,7 @@ describe("loadCommitteeConfig", () => {
       dir,
       libp2pManifest("01".repeat(32)),
     );
-    const baseEnv = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
+    const baseEnv = libp2pConfigEnv(manifestPath, deploymentInfoPath);
     const missingKeyEnv: Record<string, string> = { ...baseEnv };
     delete missingKeyEnv.DA_LIBP2P_PRIVATE_KEY_SOURCE;
 
@@ -653,7 +659,7 @@ describe("loadCommitteeConfig", () => {
       const deploymentInfoPath = join(dir, "deployment.json");
       await writeFile(manifestPath, JSON.stringify(manifest));
       await writeFile(deploymentInfoPath, JSON.stringify(customDeployment));
-      const baseEnv = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
+      const baseEnv = libp2pConfigEnv(manifestPath, deploymentInfoPath);
 
       await expect(loadCommitteeConfig(baseEnv)).rejects.toThrow(
         /CARDANO_NETWORK_MAGIC is required for Custom/,
@@ -668,28 +674,7 @@ describe("loadCommitteeConfig", () => {
         ...baseEnv,
         CARDANO_NETWORK_MAGIC: "424242",
       });
-      expect(config.cardanoL1Source).toMatchObject({
-        sourceMode: "local_node",
-        authorityNodeId: "test-cardano-node",
-        networkMagic: 424242,
-      });
-      expect(config.cardanoL1Source.authorityDigest).toMatch(/^[0-9a-f]{64}$/u);
-
-      const otherAuthority = await loadCommitteeConfig({
-        ...baseEnv,
-        CARDANO_NETWORK_MAGIC: "424242",
-        CARDANO_LOCAL_NODE_AUTHORITY_ID: "other-cardano-node",
-      });
-      expect(otherAuthority.cardanoL1Source.authorityDigest).not.toBe(
-        config.cardanoL1Source.authorityDigest,
-      );
-      const otherMagic = await loadCommitteeConfig({
-        ...baseEnv,
-        CARDANO_NETWORK_MAGIC: "424243",
-      });
-      expect(otherMagic.cardanoL1Source.authorityDigest).not.toBe(
-        config.cardanoL1Source.authorityDigest,
-      );
+      expect(config.cardanoL1Source).toEqual({ networkMagic: 424242 });
     } finally {
       binding.mockRestore();
     }
@@ -703,168 +688,70 @@ describe("loadCommitteeConfig", () => {
     );
     await expect(
       loadCommitteeConfig({
-        ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+        ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
         CARDANO_NETWORK_MAGIC: "2",
       }),
     ).rejects.toThrow(/must be omitted for named Cardano networks/);
   });
 
-  it("accepts only the local node as the L1 source, with same-node query surfaces", async () => {
+  it("loads with no chain index configured: no Kupo, Ogmios or provider-URL key", async () => {
     const dir = await tempDir();
     const { manifestPath, deploymentInfoPath } = await writeConfigFiles(
       dir,
       libp2pManifest("01".repeat(32)),
     );
-    const baseEnv = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
-    await expect(loadCommitteeConfig(baseEnv)).resolves.toMatchObject({
-      cardanoL1Source: { sourceMode: "local_node", networkMagic: 1 },
-    });
-    await expect(
-      loadCommitteeConfig({
-        ...baseEnv,
-        CARDANO_PROVIDER_URLS:
-          "blockfrost:https://preview-a.example/api#project",
-      }),
-    ).rejects.toThrow(/local_node mode permits only same-node kupmios/);
-    await expect(
-      loadCommitteeConfig({
-        ...baseEnv,
-        CARDANO_L1_SOURCE_MODE: "external_providers",
-      }),
-    ).rejects.toThrow("CARDANO_L1_SOURCE_MODE must be local_node");
-    expect(() =>
-      parseL1SourceConfig(
-        {
-          CARDANO_L1_SOURCE_MODE: "external_providers",
-          CARDANO_EXTERNAL_PROVIDER_IDENTITIES: "operator-a,operator-b",
-        },
-        [
-          "kupmios:https://kupo-a.example|wss://ogmios-a.example",
-          "kupmios:https://kupo-b.example|wss://ogmios-b.example",
-        ],
+    const env = libp2pConfigEnv(manifestPath, deploymentInfoPath);
+    expect(
+      Object.entries(env).filter(([name, value]) =>
+        /kupo|ogmios|kupmios|PROVIDER_URL|L1_SOURCE_MODE|CHAIN_SYNC_URL/iu.test(
+          `${name}=${value}`,
+        ),
       ),
-    ).toThrow("CARDANO_L1_SOURCE_MODE must be local_node");
+    ).toEqual([]);
+    const config = await loadCommitteeConfig(env);
+    expect(config.cardanoL1Source).toEqual({ networkMagic: 1 });
+    expect(
+      Object.keys(config).filter((key) =>
+        /provider|^l1Source$|kupo|ogmios/iu.test(key),
+      ),
+    ).toEqual([]);
   });
 
-  it("requires an explicit L1 source mode and keeps local query surfaces under one authority", async () => {
-    const baseEnv = {
-      CARDANO_L1_SOURCE_MODE: "local_node",
-      CARDANO_L1_TEST_MODE: "true",
-      CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
-      CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: "chain-sync:fixture:/tmp/state.json",
-      CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
-        "/tmp/state.chain-sync-cursor.json",
-    };
-    const missingMode: Record<string, string> = { ...baseEnv };
-    delete missingMode.CARDANO_L1_SOURCE_MODE;
-    expect(() =>
-      parseL1SourceConfig(missingMode, ["fixture:/tmp/state.json"]),
-    ).toThrow(/CARDANO_L1_SOURCE_MODE is required/u);
-
-    expect(
-      parseL1SourceConfig(baseEnv, ["fixture:/tmp/state.json"]),
-    ).toMatchObject({
-      sourceMode: "local_node",
-      authorityNodeId: "preview-node-a",
-      chainSyncProviderUrl: "chain-sync:fixture:/tmp/state.json",
-      chainSyncCursorPath: "/tmp/state.chain-sync-cursor.json",
-      queryProviderUrls: ["fixture:/tmp/state.json"],
-    });
-    expect(() =>
-      parseL1SourceConfig(
-        {
-          ...baseEnv,
-          CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: "fixture:/tmp/state.json",
-        },
-        ["fixture:/tmp/state.json"],
-      ),
-    ).toThrow(/chain-sync:<provider>/u);
-    expect(() =>
-      parseL1SourceConfig(
-        {
-          ...baseEnv,
-          CARDANO_L1_TEST_MODE: "false",
-        },
-        ["fixture:/tmp/state.json"],
-      ),
-    ).toThrow(/CARDANO_L1_TEST_MODE=true/u);
-    expect(() =>
-      parseL1SourceConfig(
-        {
-          ...baseEnv,
-          CARDANO_L1_TEST_MODE: "false",
-        },
-        ["kupmios:http://kupo.local|ws://ogmios.local"],
-      ),
-    ).toThrow(/local chain-sync sources.*CARDANO_L1_TEST_MODE=true/u);
-    expect(
-      parseL1SourceConfig(
-        {
-          CARDANO_L1_SOURCE_MODE: "local_node",
-          CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
-          CARDANO_LOCAL_NODE_CHAIN_SYNC_URL:
-            "chain-sync:kupmios:http://kupo.local|ws://ogmios.local",
-          CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
-            "/var/lib/midgard/chain-sync-cursor.json",
-        },
-        ["kupmios:http://kupo.local|ws://ogmios.local"],
-      ),
-    ).toMatchObject({
-      sourceMode: "local_node",
-      authorityNodeId: "preview-node-a",
-    });
-    expect(() =>
-      parseL1SourceConfig(
-        {
-          CARDANO_L1_SOURCE_MODE: "local_node",
-          CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
-          CARDANO_LOCAL_NODE_CHAIN_SYNC_URL:
-            "chain-sync:ogmios:ws://ogmios.local",
-          CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
-            "/var/lib/midgard/chain-sync-cursor.json",
-        },
-        ["blockfrost:https://cardano.example#project"],
-      ),
-    ).toThrow(/must be kupmios: backed by the local authority/u);
-    expect(() =>
-      parseL1SourceConfig(
-        {
-          CARDANO_L1_SOURCE_MODE: "local_node",
-          CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
-          CARDANO_LOCAL_NODE_CHAIN_SYNC_URL:
-            "chain-sync:ogmios:ws://ogmios-a.local",
-          CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
-            "/var/lib/midgard/chain-sync-cursor.json",
-        },
-        ["kupmios:http://kupo.local|ws://ogmios-b.local"],
-      ),
-    ).toThrow(/not backed by the configured chain-sync authority/u);
-  });
-
-  it("binds the authority digest to the source mode, network, and authority endpoints", () => {
-    const local = parseL1SourceConfig(
-      {
-        CARDANO_L1_SOURCE_MODE: "local_node",
-        CARDANO_L1_TEST_MODE: "true",
-        CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
-        CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: "chain-sync:fixture:/tmp/state.json",
-        CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
-          "/tmp/state.chain-sync-cursor.json",
+  it("binds the L1 source authority digest to the network, node authority and L1 origin", () => {
+    const base = {
+      network: "Preprod",
+      nativeLedger: {
+        authorityNodeId: "preview-node-a",
+        socketPath: "/run/cardano/node.socket",
+        nodeConfigPath: "/etc/cardano/config.json",
+        binaryPath: "/usr/local/bin/midgard-native-chain-sync",
       },
-      ["fixture:/tmp/state.json"],
-    );
-    if (local.sourceMode !== "local_node") {
-      throw new Error("expected local-node source fixture");
-    }
-    const baseline = l1SourceAuthorityDigest("Preprod", local);
+      l1Origin: { slot: 7, blockHash: "ab".repeat(32) },
+    };
+    const baseline = l1SourceAuthorityDigest(base);
     expect(baseline).toMatch(/^[0-9a-f]{64}$/u);
-    expect(l1SourceAuthorityDigest("Preview", local)).not.toBe(baseline);
+    expect(l1SourceAuthorityDigest({ ...base, network: "Preview" })).not.toBe(
+      baseline,
+    );
     expect(
-      l1SourceAuthorityDigest("Preprod", {
-        ...local,
-        authorityNodeId: "preview-node-b",
+      l1SourceAuthorityDigest({
+        ...base,
+        nativeLedger: { ...base.nativeLedger, authorityNodeId: "node-b" },
       }),
     ).not.toBe(baseline);
+    expect(
+      l1SourceAuthorityDigest({
+        ...base,
+        l1Origin: { slot: 7, blockHash: "cd".repeat(32) },
+      }),
+    ).not.toBe(baseline);
+    // Paths are not identity: moving the socket keeps the binding.
+    expect(
+      l1SourceAuthorityDigest({
+        ...base,
+        nativeLedger: { ...base.nativeLedger, socketPath: "/tmp/node.socket" },
+      }),
+    ).toBe(baseline);
   });
 
   // Eleven separate on-disk manifest/load cycles exceeded five seconds in
@@ -999,7 +886,7 @@ describe("loadCommitteeConfig", () => {
     }
     await writeFile(manifestPath, JSON.stringify(manifest));
     const config = await loadCommitteeConfig({
-      ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+      ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
       DA_SIGNER_INDEX: "0",
       DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
     });
@@ -1054,7 +941,7 @@ describe("loadCommitteeConfig", () => {
     );
     await expect(
       loadCommitteeConfig({
-        ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+        ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
         DA_L1_SUBMISSION_ENABLED: "true",
@@ -1081,7 +968,7 @@ describe("loadCommitteeConfig", () => {
     await writeFile(deploymentInfoPath, JSON.stringify(deploymentWithId));
     await expect(
       loadCommitteeConfig({
-        ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+        ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
         L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
@@ -1107,7 +994,7 @@ describe("loadCommitteeConfig", () => {
     );
     await expect(
       loadCommitteeConfig({
-        ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+        ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
         L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
@@ -1150,7 +1037,7 @@ describe("loadCommitteeConfig", () => {
     );
 
     const config = await loadCommitteeConfig({
-      ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+      ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
       L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
       DA_L1_SUBMISSION_ENABLED: "true",
       DA_L1_MIN_PLAIN_ADA_LOVELACE: "30000000000",
@@ -1190,7 +1077,7 @@ describe("loadCommitteeConfig", () => {
       ),
     );
     const baseEnv = {
-      ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+      ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
       L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
       DA_L1_SUBMISSION_ENABLED: "true",
     };
@@ -1259,7 +1146,7 @@ describe("loadCommitteeConfig", () => {
       ),
     );
     const baseEnv = {
-      ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+      ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
       L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
       DA_L1_SUBMISSION_ENABLED: "true",
     };
@@ -1301,7 +1188,7 @@ describe("loadCommitteeConfig", () => {
     await writeFile(deploymentInfoPath, JSON.stringify(deploymentWithId));
     await expect(
       loadCommitteeConfig({
-        ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+        ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
       }),
@@ -1323,162 +1210,9 @@ describe("loadCommitteeConfig", () => {
     await writeFile(manifestPath, JSON.stringify(manifest));
     await writeFile(deploymentInfoPath, JSON.stringify(deploymentWithId));
     await expect(
-      loadCommitteeConfig(
-        libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
-      ),
+      loadCommitteeConfig(libp2pConfigEnv(manifestPath, deploymentInfoPath)),
     ).rejects.toThrow(/contracts\.payoutMint is required/);
   });
-});
-
-const LIBP2P_PEER_ID_A = "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
-
-const LIBP2P_PEER_ID_B = "12D3KooWR3iZBFz6W2fyFdRt2t45x2Ytz9p6c9JwHyDqaN49XU47";
-
-const LIBP2P_PEER_ID_PUBLIC =
-  "12D3KooWCQ8WRN84GxEkR7k8dV6gb4ca3bNqM5LmT3evQVfBPGwv";
-
-const LIBP2P_PRIVATE_KEY_SOURCE = `seed:${"00".repeat(31)}01`;
-
-const canonicalDeploymentManifest = await readDaDeploymentFixture();
-
-export const DEPLOYMENT_MANIFEST_ID = canonicalDeploymentManifest.manifestId;
-if (typeof DEPLOYMENT_MANIFEST_ID !== "string") {
-  throw new Error("Canonical deployment fixture is missing manifestId");
-}
-
-export const libp2pManifest = (
-  member: string,
-  roles: readonly string[] = ["committee", "retrieval"],
-  deploymentManifestId = DEPLOYMENT_MANIFEST_ID,
-): Record<string, unknown> => ({
-  schemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
-  network: "Preprod",
-  deployment: {
-    fingerprint: deploymentManifestId.toUpperCase(),
-    contract_deployment_manifest_id: deploymentManifestId,
-    contract_deployment_info_sha256: "cd".repeat(32),
-    identity_source: "contract_deployment_manifest_id",
-  },
-  runtime_topology: {
-    target: "committee",
-    profile: "public",
-    producer_peer_id: LIBP2P_PEER_ID_B,
-    local_signer_index: 0,
-  },
-  da_transport: {
-    kind: "libp2p",
-    no_http_da_transport: true,
-    listen_multiaddrs: ["/ip4/0.0.0.0/tcp/0"],
-    announce_multiaddrs: [
-      `/dns4/da-a.example/tcp/4001/p2p/${LIBP2P_PEER_ID_A}`,
-    ],
-    bootstrap_multiaddrs: [
-      `/dns4/bootstrap.example/tcp/4001/p2p/${LIBP2P_PEER_ID_B}`,
-    ],
-    retention_days: LIBP2P_DA_MIN_RETENTION_DAYS,
-    gossip: {
-      strict_sign: true,
-      emit_self: false,
-      allowed_topics_only: true,
-      max_gossip_message_bytes: LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
-    },
-    limits: {
-      max_payload_bytes: LIBP2P_DA_TRANSPORT_LIMITS.maxPayloadBytes,
-      max_inline_response_bytes:
-        LIBP2P_DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
-      max_chunk_bytes: LIBP2P_DA_TRANSPORT_LIMITS.maxChunkBytes,
-      max_streams_per_peer: LIBP2P_DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
-      request_timeout_ms: LIBP2P_DA_TRANSPORT_LIMITS.requestTimeoutMs,
-    },
-  },
-  public_retained_da: {
-    profile: "public-retained-da-v1",
-    access_policy: "any_noise_authenticated_peer",
-    peer_id: LIBP2P_PEER_ID_PUBLIC,
-    listen_multiaddrs: ["/ip4/0.0.0.0/tcp/0"],
-    announce_multiaddrs: [
-      `/dns4/public-da.example/tcp/4002/p2p/${LIBP2P_PEER_ID_PUBLIC}`,
-    ],
-    protocols: [
-      "capabilities",
-      "payload-by-header",
-      "payload-chunk",
-      "metadata-by-header",
-      "proof-bundle-by-header",
-      "trace-step-by-index",
-      "event-to-step-by-event",
-    ],
-    limits: {
-      max_streams_per_peer: 4,
-      max_inflight_requests: 32,
-      max_inflight_requests_per_peer: 2,
-      max_inflight_proof_requests: 1,
-      request_timeout_ms: LIBP2P_DA_TRANSPORT_LIMITS.requestTimeoutMs,
-    },
-  },
-  da_committee: {
-    threshold: 1,
-    members: [
-      {
-        signer_index: 0,
-        da_vkey: member,
-        peer_id: LIBP2P_PEER_ID_A,
-        multiaddrs: [`/dns4/da-a.example/tcp/4001/p2p/${LIBP2P_PEER_ID_A}`],
-        roles,
-      },
-    ],
-  },
-});
-
-export const writeConfigFiles = async (
-  dir: string,
-  manifest: Record<string, unknown>,
-): Promise<{
-  readonly manifestPath: string;
-  readonly deploymentInfoPath: string;
-}> => {
-  const manifestPath = join(dir, "manifest.json");
-  const deploymentInfoPath = join(dir, "deployment.json");
-  await writeFile(manifestPath, JSON.stringify(manifest));
-  await writeMinimalDeploymentInfo(deploymentInfoPath);
-  return { manifestPath, deploymentInfoPath };
-};
-
-const writeMinimalDeploymentInfo = async (
-  path: string,
-  manifestId = DEPLOYMENT_MANIFEST_ID,
-): Promise<void> => {
-  const fixture = await readDaDeploymentFixture();
-  await writeFile(
-    path,
-    JSON.stringify({
-      ...fixture,
-      manifestId,
-    }),
-  );
-};
-
-export const libp2pConfigEnv = (
-  dir: string,
-  manifestPath: string,
-  deploymentInfoPath: string,
-): Record<string, string> => ({
-  MIDGARD_DEPLOYMENT_MANIFEST_PATH: manifestPath,
-  MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: deploymentInfoPath,
-  CARDANO_L1_SOURCE_MODE: "local_node",
-  CARDANO_LOCAL_NODE_AUTHORITY_ID: "test-cardano-node",
-  CARDANO_L1_TEST_MODE: "true",
-  CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: "chain-sync:fixture:/tmp/state.json",
-  CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH: join(
-    dir,
-    "chain-sync-cursor.json",
-  ),
-  CARDANO_PROVIDER_URLS: "fixture:/tmp/state.json",
-  CARDANO_FINALITY_DEPTH: String(
-    DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-  ),
-  DA_LIBP2P_PRIVATE_KEY_SOURCE: LIBP2P_PRIVATE_KEY_SOURCE,
-  DA_COMMITTEE_DATABASE_URL: "postgresql://unused.invalid/committee",
 });
 
 const expectLibp2pManifestRejects = async (
@@ -1495,7 +1229,7 @@ const expectLibp2pManifestRejects = async (
   );
   await expect(
     loadCommitteeConfig({
-      ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+      ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
       ...envOverrides,
     }),
   ).rejects.toThrow(error);

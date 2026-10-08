@@ -25,7 +25,6 @@ import {
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { computeDaPayloadRoots } from "da-committee-node/da/payload";
-import { hashBlockHeader } from "da-committee-node/l1/state-queue-scanner";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
@@ -307,7 +306,7 @@ export const fixture = async (
   };
   const roots = await computeDaPayloadRoots(unhashed);
   const header = { ...unhashed.block_body.header, ...counts, ...roots };
-  const headerHash = hashBlockHeader(header);
+  const headerHash = Effect.runSync(SDK.hashBlockHeader(header));
   const payload: SDK.DaPayload = {
     ...unhashed,
     block_body: { ...unhashed.block_body, header, header_hash: headerHash },

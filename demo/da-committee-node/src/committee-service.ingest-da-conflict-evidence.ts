@@ -169,7 +169,13 @@ export type CommitteeReadinessSnapshot = {
   readonly promiseAdmission?: AvailabilityResponseAdmissionDecision;
   readonly l1Source?: {
     readonly sourceMode: "local_node";
-    readonly status: "uninitialized" | "healthy";
+    /**
+     * `intervention`: the follower holds the committee on a reason no wait
+     * clears (`rollback_beyond_k`, a stuck point, no configuration); the
+     * process stays up and `intervention` names it.
+     */
+    readonly status: "uninitialized" | "healthy" | "intervention";
+    readonly intervention?: string;
     readonly observedAt?: string;
   };
   readonly deployment: {

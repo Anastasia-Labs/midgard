@@ -4,8 +4,6 @@ import { describe, expect, it } from "vitest";
 
 import { createCommitteeApiServer } from "../src/api/server.js";
 import type { CommitteeReadinessSnapshot } from "../src/committee-service.js";
-import { L1NetworkMagicUnconfiguredError } from "../src/l1/provider.ogmios-rpc-session.js";
-import { L1SourceIntegrityError } from "../src/l1/source-integrity.js";
 import {
   isFatalStartupError,
   listenStartingServer,
@@ -33,7 +31,8 @@ describe("committee node startup retry", () => {
     const started = await retryStartup({
       attempt: async () => {
         attempts += 1;
-        if (attempts <= 5) throw new Error("connect ECONNREFUSED ogmios:1337");
+        if (attempts <= 5)
+          throw new Error("connect ENOENT /run/cardano/node.socket");
         return "runtime";
       },
       onFailure: (reason) => reasons.push(reason),
@@ -49,16 +48,12 @@ describe("committee node startup retry", () => {
     expect(attempts).toBe(6);
     expect(sleeps).toEqual([10, 20, 40, 50, 50]);
     expect(new Set(reasons)).toEqual(
-      new Set(["starting:connect ECONNREFUSED ogmios:1337"]),
+      new Set(["starting:connect ENOENT /run/cardano/node.socket"]),
     );
   });
 
-  it("exits at once on a configuration that contradicts the deployment or the chain", async () => {
+  it("exits at once only on a store that holds another deployment's state", async () => {
     const fatal = [
-      new L1SourceIntegrityError(
-        "availability query surface reports another network",
-      ),
-      new L1NetworkMagicUnconfiguredError("no network magic"),
       new Error(
         "stale_deployment_state_requires_fresh_redeploy: stored_manifest_id=aa",
       ),
