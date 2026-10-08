@@ -39,9 +39,8 @@
  *    There is no code path in this module that accepts an operator-supplied
  *    root set, count set, or header.
  *
- * Bytes are arguments, not transports. The envelope bytes come from the W21
- * hash-addressed canonical block store (`canonical-block-store.ts`), which
- * persisted exactly what a public DA peer served; this module never fetches.
+ * Bytes are arguments, not transports. The envelope bytes are exactly what a
+ * public DA peer served; this module never fetches.
  * `daProvenance` must be `public_or_permissionless_da` or the evaluation fails
  * closed.
  *

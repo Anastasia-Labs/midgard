@@ -7,7 +7,7 @@ import { type WatcherDaProofInput } from "./durable-store.js";
 
 /**
  * The public DA request and record shapes: what one libp2p exchange carries,
- * and the verified public DA records the canonical block store persists.
+ * and the verified public DA records it returns.
  */
 
 export const WATCHER_PUBLIC_DA_CLIENT_SCHEMA_VERSION =

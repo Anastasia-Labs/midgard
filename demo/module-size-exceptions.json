@@ -1046,7 +1046,7 @@
   },
   {
     "file": "midgard-node/tests/benchmarks/validation-stage-b.bench.ts",
-    "max": 1502,
+    "max": 1500,
     "reason": "Retained test registration “Phase 2 sustained real-Postgres Stage B operator benchmark” (522 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1321,7 +1321,7 @@
   },
   {
     "file": "midgard-node/tests/phase2-benchmark-report.test.ts",
-    "max": 751,
+    "max": 745,
     "reason": "Retained test registration “Phase 2 benchmark report gate” (732 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1541,7 +1541,7 @@
   },
   {
     "file": "midgard-watcher/src/index.ts",
-    "max": 748,
+    "max": 707,
     "reason": "Public export surface only. Splitting this facade adds barrel indirection without separating implementation. Integrated recovered DA branch source; exact measured line count."
   },
   {

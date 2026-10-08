@@ -158,7 +158,6 @@
     "tests/runtime/user-event-runtime.test.ts": 151,
     "tests/runtime/watcher-runtime.test.ts": 7.3,
     "tests/storage/block-progress-store.test.ts": 1.5,
-    "tests/storage/canonical-block-store.test.ts": 1.6,
     "tests/storage/canonical-json.test.ts": 0.8,
     "tests/storage/durable-runtime-candidate-generation.test.ts": 3.5,
     "tests/storage/durable-runtime-reconcile-live.test.ts": 2.8,
