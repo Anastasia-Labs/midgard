@@ -11,8 +11,11 @@
  *   (`l1_output_assets` by policy and asset name).
  * - The retained payload: that one outref.
  *
- * All three reads run at the follower's tip in the caller's transaction, so
- * they never mix two chain states.
+ * All three reads run at the follower's tip in the caller's transaction.
+ * They never mix two chain states when that transaction is one snapshot: the
+ * follower store's read transaction, or `inFollowerSnapshot` over the node
+ * database. A READ COMMITTED transaction gives each statement its own
+ * snapshot, so a block applied between two of them would be read half.
  */
 import {
   currentViewIn,

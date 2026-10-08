@@ -72,10 +72,11 @@ afterAll(async () => {
   await databases.dropAll();
 });
 
-/** A record that never keeps anything (an activation it never saw final). */
+/** A record that never keeps anything (a node database that lost it). */
 const lostRecord: OperatorActivityRecord = {
   read: () => Promise.resolve(null),
   write: () => Promise.resolve(),
+  clear: () => Promise.resolve(),
 };
 
 /**
@@ -152,6 +153,15 @@ const summary = (set: OperatorSet) => ({
   unhealthy: set.unhealthy,
 });
 
+/** Prunes the follower store to completion. */
+const pruneAll = async (store: FactStore): Promise<void> => {
+  for (;;) {
+    const pruned = await store.prune();
+    if ("kind" in pruned) throw new Error(`prune: ${pruned.kind}`);
+    if (pruned.done) return;
+  }
+};
+
 describe.each(["sqlite", "postgres"] as const)(
   "the node operator set over follower facts (%s)",
   (dialect) => {
@@ -200,8 +210,8 @@ describe.each(["sqlite", "postgres"] as const)(
         lists.assetName("active", OWN),
       ]);
 
-      // Blocks that touch nothing the set holds: no row. (Past k the
-      // activation is recorded, so later runs read the record's point.)
+      // Blocks that touch nothing the set holds: no row. (The first run
+      // recorded the activation, so every later run reads its point.)
       await idle(K + 1);
       expect((await node.step()).run).toMatchObject({ rowsRead: 0 });
       await idle(1);
@@ -319,11 +329,7 @@ describe.each(["sqlite", "postgres"] as const)(
       expect(beforePrune.run.loaded).toBe(false);
       expect(beforePrune.run.set.ownActivity.length).toBeGreaterThan(0);
       expect(beforePrune.run.membership.state).toBe("removed");
-      for (;;) {
-        const pruned = await store.prune();
-        if ("kind" in pruned) throw new Error(`prune: ${pruned.kind}`);
-        if (pruned.done) break;
-      }
+      await pruneAll(store);
       const kept = await node.step();
       expect(kept.run.set.ownActivity).toEqual([]);
       expect(kept.run.membership.state).toBe("removed");
@@ -342,6 +348,98 @@ describe.each(["sqlite", "postgres"] as const)(
         await nodeProcess(store, memoryActivityRecord())
       ).step();
       expect(fresh.run.membership.state).toBe("unknown");
+    });
+
+    it("records an activation at depth 1, so a slash while the node is offline for more than k still reads removed", async () => {
+      const { store, lists, live, land, idle } = await chainOf();
+      await land(lists.insert(live(), "active", OWN));
+      const record = memoryActivityRecord();
+      const node = await nodeProcess(store, record);
+      // Both reads see the activation at depth ≤ k: the record is written
+      // on the first one, not once the block is final.
+      expect((await node.step()).run.membership.state).toBe("active");
+      expect(await record.read()).not.toBeNull();
+      await idle(2);
+      expect((await node.step()).run.membership.state).toBe("active");
+
+      // The node goes down. The operator is slashed, more than k blocks
+      // pass and the follower prunes the spend.
+      await land(lists.remove(live(), "active", OWN));
+      await idle(K + 2);
+      await pruneAll(store);
+
+      // The restarted node has only the record to go on, and reads removed.
+      const back = await (await nodeProcess(store, record)).step();
+      expect(back.run.set.ownActivity).toEqual([]);
+      expect(back.run.membership.state).toBe("removed");
+      expect(back.run.membership.detail).toContain("in no operator list");
+      expect(back.reason).toBe(OPERATOR_REMOVED);
+      expect(back.hold).toBeUndefined();
+    });
+
+    it("clears a record whose activation a fork orphaned, so it never counts once pruned", async () => {
+      const { store, driver, lists, live, land, idle } = await chainOf();
+      await idle(1);
+      await land(lists.insert(live(), "active", OWN));
+      const record = memoryActivityRecord();
+      const node = await nodeProcess(store, record);
+      expect((await node.step()).run.membership.state).toBe("active");
+      const recorded = await record.read();
+      expect(recorded).not.toBeNull();
+
+      // The block that activated the operator is orphaned at depth 1, and
+      // the operator never activates on the winning fork.
+      await driver.backward(1);
+      await idle(1);
+      const orphaned = await node.step();
+      expect(orphaned.run.membership.state).toBe("unknown");
+      expect(orphaned.reason).toBeUndefined();
+      expect(await record.read()).toBeNull();
+
+      // Past k and pruned, the orphaned point sits below the retained
+      // window, where a record would count (`point_beyond_retention`); the
+      // record is gone, so nothing counts, in this process or a restart.
+      await idle(K + 2);
+      await pruneAll(store);
+      expect((await store.cursor())!.prunedThroughSlot).toBeGreaterThan(
+        recorded!.point.slot,
+      );
+      for (const proc of [node, await nodeProcess(store, record)]) {
+        const read = await proc.step();
+        expect(read.run.membership.state).toBe("unknown");
+        expect(read.reason).toBeUndefined();
+      }
+      expect(await record.read()).toBeNull();
+    });
+
+    it("reloads once the follower prunes past its last read, and drops a foreign node removed meanwhile", async () => {
+      const { store, lists, live, land, idle } = await chainOf();
+      await land(lists.insert(live(), "active", FOREIGN));
+      await land(lists.insert(live(), "active", OWN));
+      const node = await nodeProcess(store, memoryActivityRecord());
+      const first = await node.step();
+      expect(first.run.set.active.map((n) => n.assetName)).toContain(
+        lists.assetName("active", FOREIGN),
+      );
+
+      // The hook does not run again until the follower has applied more
+      // than k blocks and pruned past the mirror's last read.
+      await land(lists.remove(live(), "active", FOREIGN));
+      await idle(K + 2);
+      await pruneAll(store);
+      expect((await store.cursor())!.prunedThroughSlot).toBeGreaterThan(
+        first.run.set.view.point.slot,
+      );
+
+      const after = await node.step();
+      expect(after.run.loaded).toBe(true);
+      expect(after.run.set.active.map((n) => n.assetName)).not.toContain(
+        lists.assetName("active", FOREIGN),
+      );
+      const fresh = await (
+        await nodeProcess(store, memoryActivityRecord())
+      ).step();
+      expect(summary(after.run.set)).toEqual(summary(fresh.run.set));
     });
 
     it("reads the retired insertion anchor as the live predecessor by asset name", async () => {

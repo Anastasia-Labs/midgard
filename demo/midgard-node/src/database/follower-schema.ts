@@ -73,6 +73,30 @@ export const followerSqlTx = Effect.gen(function* () {
 });
 
 /**
+ * Runs `work` over the follower's facts on one snapshot: a `REPEATABLE READ,
+ * READ ONLY` transaction of the node database, so every statement of `work`
+ * reads one chain state, however many blocks the follower applies meanwhile,
+ * and none can write. It opens its own transaction: inside a caller's, the
+ * isolation level can no longer be set and the transaction fails.
+ */
+export const inFollowerSnapshot = <A>(
+  work: (tx: SqlTx) => Promise<A>,
+): Effect.Effect<A, unknown, SqlClient.SqlClient> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`;
+        const tx = yield* followerSqlTx;
+        return yield* Effect.tryPromise({
+          try: () => work(tx),
+          catch: (cause) => cause,
+        });
+      }),
+    );
+  });
+
+/**
  * Applies the follower schema in the caller's SQL transaction: the follower's
  * migration runner, over the node's open transaction connection.
  */
