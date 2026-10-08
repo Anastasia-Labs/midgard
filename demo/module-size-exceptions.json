@@ -976,8 +976,8 @@
   },
   {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-deposit-only-commit.ts",
-    "max": 517,
-    "reason": "submitDepositOnlyCommit is the dominant indivisible declaration (466 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d. I2 (-30): the stale-operator-wallet retry and the confirmation reconcile pin are gone; the commit funds from the wallet view. I3 (+1): the journal-time recheck also refuses an included event shallower than d (plan §8.1)."
+    "max": 516,
+    "reason": "submitDepositOnlyCommit is the dominant indivisible declaration (466 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d. I2 (-30): the stale-operator-wallet retry and the confirmation reconcile pin are gone; the commit funds from the wallet view. I3 (+1): the journal-time recheck also refuses an included event shallower than d (plan §8.1). NBF2 (-1): a header held by a signed abandoned journal returns the next-window wait before the crash checkpoint, which unnests the journal submit."
   },
   {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-tx-backed-commit.ts",

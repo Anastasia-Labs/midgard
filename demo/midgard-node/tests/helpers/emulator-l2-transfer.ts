@@ -103,13 +103,26 @@ export const admitTransfersTogether = async (
       }),
     );
   }
+  return settleAdmissions(
+    h,
+    builts.map(({ txId }) => txId),
+  );
+};
+
+/** Drain the node's durable admission queue until each of `txIds` is
+ * terminal, as the node's processor would; returns each admission status, in
+ * order. Throws when a row is still not terminal after `ADMISSION_SETTLE_MS`. */
+export const settleAdmissions = async (
+  h: Pick<Lifecycle, "fixture" | "command">,
+  txIds: readonly Buffer[],
+) => {
   const readStatuses = () =>
     read(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         return yield* sql<{ tx_id: Buffer; status: string }>`
           SELECT tx_id, status FROM tx_admissions
-          WHERE tx_id IN ${sql.in(builts.map(({ txId }) => txId))}`;
+          WHERE tx_id IN ${sql.in(txIds)}`;
       }),
     );
   // A drain whose slot a woken background drain already holds returns at
@@ -136,8 +149,8 @@ export const admitTransfersTogether = async (
   }
   await alignMempoolToEmulatorClock(h);
   const rows = await readStatuses();
-  return builts.map(
-    ({ txId }) => rows.find((row) => row.tx_id.equals(txId))?.status,
+  return txIds.map(
+    (txId) => rows.find((row) => row.tx_id.equals(txId))?.status,
   );
 };
 

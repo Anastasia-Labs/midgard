@@ -84,6 +84,7 @@ export const shouldPreserveCommitMpfRoots = (output: WorkerOutput): boolean => {
       return true;
     case "FailureOutput":
     case "AwaitingCommitBaseOutput":
+    case "AwaitingNextCommitWindowOutput":
     case "RegisteredDueWorkOutput":
     case "NothingToCommitOutput":
       return false;

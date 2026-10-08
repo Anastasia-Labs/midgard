@@ -114,6 +114,17 @@ export type AwaitingCommitBaseOutput = {
   readonly detail: string;
 };
 
+/** The commit waits for the next scheduler window: an abandoned journal
+ * whose commit was signed holds this block's header hash (identical content on
+ * the same base, built in the same window). Its signed bytes can still land
+ * and be revived from it, so it is kept; the next window's block end time
+ * gives the replacement another header. */
+export type AwaitingNextCommitWindowOutput = {
+  readonly type: "AwaitingNextCommitWindowOutput";
+  readonly heldHeaderHash: string;
+  readonly detail: string;
+};
+
 export type SubmittedAwaitingLocalFinalizationOutput = {
   type: "SubmittedAwaitingLocalFinalizationOutput";
   submittedTxHash: string;
@@ -154,6 +165,7 @@ export type WorkerOutput =
   | FailureOutput
   | RegisteredDueWorkOutput
   | AwaitingCommitBaseOutput
+  | AwaitingNextCommitWindowOutput
   | SubmittedAwaitingLocalFinalizationOutput
   | SubmittedAwaitingConfirmationOutput
   | SuccessfulLocalFinalizationRecoveryOutput;

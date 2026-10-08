@@ -63,6 +63,7 @@ import {
   submitErrorReferencesOutRef,
 } from "./submission.commit-event-sources.js";
 import {
+  awaitNextCommitWindow,
   retainedIntentFailure,
   submitWithDurableIntent,
 } from "./submission.submit-with-durable-intent.js";
@@ -369,95 +370,93 @@ export const submitDepositOnlyCommit = ({
                     includedForcedTransactionEntries,
                     includedWithdrawalEntries,
                   });
-                return yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-                  {
-                    headerHash: headerHashBuffer,
-                    preparedTxHash: Buffer.from(preparedTxHash, "hex"),
-                    headerCbor: newHeaderCbor,
-                    metadata,
-                    blockEndTime: new Date(blockEndTimeMs),
-                    depositEventIds: includedDepositEventIds,
-                    depositEntries: includedDepositEntries,
-                    forcedTransactionEventIds:
-                      includedForcedTransactionEventIds,
-                    forcedTransactionEntries: includedForcedTransactionEntries,
-                    withdrawalEventIds: includedWithdrawalEventIds,
-                    withdrawalEntries: includedWithdrawalEntries,
-                    mempoolTxIds: [],
-                    mempoolTxs: [],
-                    mempoolTxProgramMaterialSidecars: [],
-                    mempoolTxSourceTable: "none",
-                    transitionTraceMembers,
-                    eventToStepMembers,
-                    validationTraceMembers,
-                    validationTraceWitnessMembers:
-                      validationTraceMembers.flatMap((entry) =>
-                        entry.witnesses.map(([key, value]) => ({
-                          keyCbor: Buffer.from(key, "hex"),
-                          valueCbor: Buffer.from(value, "hex"),
-                        })),
-                      ),
-                    ledgerDelta: {
-                      spent: journalLedgerState.ledgerDelta.spent,
-                      produced: journalUtxoEntries(
-                        journalLedgerState.ledgerDelta.produced,
-                      ),
-                    },
-                    utxoPayloadAggregate,
-                    nativeMpfReplay,
-                  },
-                  { beforeJournalInsert },
-                ).pipe(
-                  Effect.andThen(
-                    reachCommitCrashCheckpoint(
-                      "journal_prepared_before_submit",
-                    ),
-                  ),
-                  Effect.andThen(
-                    Effect.matchEffect(
-                      revalidateStateQueueLease(workerInput).pipe(
-                        Effect.andThen(
-                          assertLiveTailCommitBase(contracts, commitBaseTail),
+                const prepared =
+                  yield* PendingBlockFinalizationsDB.preparePendingSubmission(
+                    {
+                      headerHash: headerHashBuffer,
+                      preparedTxHash: Buffer.from(preparedTxHash, "hex"),
+                      headerCbor: newHeaderCbor,
+                      metadata,
+                      blockEndTime: new Date(blockEndTimeMs),
+                      depositEventIds: includedDepositEventIds,
+                      depositEntries: includedDepositEntries,
+                      forcedTransactionEventIds:
+                        includedForcedTransactionEventIds,
+                      forcedTransactionEntries:
+                        includedForcedTransactionEntries,
+                      withdrawalEventIds: includedWithdrawalEventIds,
+                      withdrawalEntries: includedWithdrawalEntries,
+                      mempoolTxIds: [],
+                      mempoolTxs: [],
+                      mempoolTxProgramMaterialSidecars: [],
+                      mempoolTxSourceTable: "none",
+                      transitionTraceMembers,
+                      eventToStepMembers,
+                      validationTraceMembers,
+                      validationTraceWitnessMembers:
+                        validationTraceMembers.flatMap((entry) =>
+                          entry.witnesses.map(([key, value]) => ({
+                            keyCbor: Buffer.from(key, "hex"),
+                            valueCbor: Buffer.from(value, "hex"),
+                          })),
                         ),
-                        Effect.andThen(
-                          submitWithDurableIntent(
-                            headerHashBuffer,
-                            signAndSubmitProgram,
-                          ),
+                      ledgerDelta: {
+                        spent: journalLedgerState.ledgerDelta.spent,
+                        produced: journalUtxoEntries(
+                          journalLedgerState.ledgerDelta.produced,
                         ),
-                      ),
-                      {
-                        onFailure: (error) =>
-                          Effect.gen(function* () {
-                            const retained = yield* retainedIntentFailure(
-                              headerHashBuffer,
-                              error,
-                            );
-                            if (retained !== undefined) return retained;
-                            return yield* handleDepositOnlySubmissionFailure({
-                              error,
-                              headerHashBuffer,
-                              expectedTailOutRef:
-                                stateQueueOutRef(commitBaseTail),
-                            });
-                          }),
-                        onSuccess: (txHash) =>
-                          PendingBlockFinalizationsDB.markSubmitted(
-                            headerHashBuffer,
-                            Buffer.from(fromHex(txHash)),
-                          ).pipe(
-                            Effect.andThen(
-                              submittedAwaitingConfirmationOutput(
-                                txHash,
-                                txSize,
-                                blockEndTimeMs,
-                                newHeaderHash,
-                              ),
-                            ),
-                          ),
                       },
+                      utxoPayloadAggregate,
+                      nativeMpfReplay,
+                    },
+                    { beforeJournalInsert },
+                  );
+                if (prepared.kind === "held")
+                  return yield* awaitNextCommitWindow(prepared.heldHeaderHash);
+                yield* reachCommitCrashCheckpoint(
+                  "journal_prepared_before_submit",
+                );
+                return yield* Effect.matchEffect(
+                  revalidateStateQueueLease(workerInput).pipe(
+                    Effect.andThen(
+                      assertLiveTailCommitBase(contracts, commitBaseTail),
+                    ),
+                    Effect.andThen(
+                      submitWithDurableIntent(
+                        headerHashBuffer,
+                        signAndSubmitProgram,
+                      ),
                     ),
                   ),
+                  {
+                    onFailure: (error) =>
+                      Effect.gen(function* () {
+                        const retained = yield* retainedIntentFailure(
+                          headerHashBuffer,
+                          error,
+                        );
+                        if (retained !== undefined) return retained;
+                        return yield* handleDepositOnlySubmissionFailure({
+                          error,
+                          headerHashBuffer,
+                          expectedTailOutRef: stateQueueOutRef(commitBaseTail),
+                        });
+                      }),
+                    onSuccess: (txHash) =>
+                      PendingBlockFinalizationsDB.markSubmitted(
+                        headerHashBuffer,
+                        Buffer.from(fromHex(txHash)),
+                      ).pipe(
+                        Effect.andThen(
+                          submittedAwaitingConfirmationOutput(
+                            txHash,
+                            txSize,
+                            blockEndTimeMs,
+                            newHeaderHash,
+                          ),
+                        ),
+                      ),
+                  },
                 );
               });
             }),

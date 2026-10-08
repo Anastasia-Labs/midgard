@@ -69,6 +69,7 @@ export {
   type NativeMpfReplayInput,
   type PendingBlockFinalization,
   type PendingBlockFinalizationMetadata,
+  type PreparedPendingSubmission,
   type PrepareInput,
   type Record,
   type UtxoPayloadSizeAggregate,

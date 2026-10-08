@@ -44,6 +44,7 @@ import {
 } from "./block-commitment.promote-or-recover-native-mpf.js";
 import { runCommitWorkerInThread } from "./block-commitment.run-commit-worker-in-thread.js";
 import { publishCommitMempoolLedgerMutation } from "./block-commitment.should-skip-for-detailed-scheduler-due-work.js";
+import { COMMIT_WINDOW_PENDING } from "./block-commitment.worker-readiness.js";
 import { classifyCommitWorkerOutputForMutationLease } from "./commit-worker-failure-classification.js";
 import { nativeMpfWorkerInput } from "./native-mpf-worker-input.js";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
@@ -387,6 +388,12 @@ export const buildAndSubmitCommitmentBlockAction = (
       case "AwaitingCommitBaseOutput": {
         yield* Effect.logWarning(
           `🔹 Commit deferred awaiting its base header_hash=${workerOutput.baseHeaderHash}: ${workerOutput.detail}`,
+        );
+        break;
+      }
+      case "AwaitingNextCommitWindowOutput": {
+        yield* Effect.logWarning(
+          `🔹 Commit deferred awaiting the next window (${COMMIT_WINDOW_PENDING}) header_hash=${workerOutput.heldHeaderHash}: ${workerOutput.detail}`,
         );
         break;
       }

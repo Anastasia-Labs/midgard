@@ -95,6 +95,7 @@ const simulate = (
   return { ledger, changed };
 };
 
+/** Each rebuilt output's ledger ids, and the current rows the rebuild drops. */
 const provenance = (ledger: ReadonlyMap<string, Buffer>) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -108,13 +109,15 @@ const provenance = (ledger: ReadonlyMap<string, Buffer>) =>
       tx_id: Buffer;
       source_event_id: Buffer | null;
     }>`SELECT outref, tx_id, source_event_id FROM mempool_ledger`;
+    const dropped: Buffer[] = [];
     for (const row of working)
       if (ledger.has(hex(row.outref)))
         known.set(hex(row.outref), {
           txId: row.tx_id,
           sourceEventId: row.source_event_id,
         });
-    return known;
+      else dropped.push(row.outref);
+    return { known, dropped };
   });
 
 const ledgerRow = (
@@ -206,7 +209,7 @@ export const rebuildWorkingLedger = (input: {
       ),
     );
     const { ledger } = simulate(base, pending, rejected);
-    const known = yield* provenance(ledger);
+    const { known, dropped } = yield* provenance(ledger);
     for (const tx of pending)
       for (const row of tx.produced)
         known.set(hex(row[Columns.OUTREF]), {
@@ -217,9 +220,18 @@ export const rebuildWorkingLedger = (input: {
     const rows: LedgerRow[] = [];
     for (const [outRef, output] of ledger)
       rows.push(yield* ledgerRow(outRef, output, known.get(outRef)));
-    yield* sql`DELETE FROM mempool_ledger`;
+    // A row the rebuild keeps is updated in place, so it keeps its
+    // time_stamp_tz: an unpublished acceptance's inverse receipt matches the
+    // outputs it produced on every column. A row new to the ledger takes the
+    // column default.
+    for (let start = 0; start < dropped.length; start += 1_000)
+      yield* sql`DELETE FROM mempool_ledger
+        WHERE outref IN ${sql.in(dropped.slice(start, start + 1_000))}`;
     for (let start = 0; start < rows.length; start += 1_000)
-      yield* sql`INSERT INTO mempool_ledger ${sql.insert(rows.slice(start, start + 1_000))}`;
+      yield* sql`INSERT INTO mempool_ledger ${sql.insert(rows.slice(start, start + 1_000))}
+        ON CONFLICT (outref) DO UPDATE SET tx_id = EXCLUDED.tx_id,
+          output = EXCLUDED.output, address = EXCLUDED.address,
+          source_event_id = EXCLUDED.source_event_id`;
     const rejectedTxIds = yield* recordRejections(
       rejected,
       input.codes,
