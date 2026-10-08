@@ -132,8 +132,8 @@ const query = (route: "GET" | "batch", options: Options = {}) =>
             yield* sql`CREATE TEMP TABLE da_payload_terminal_outcomes (header_hash bytea, terminal_outcome text, transition_kind text, deployment_identity_digest bytea, state_queue_policy_id bytea, finality_depth bigint) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE event_history_authority (singleton boolean, deployment_identity bytea, owner_token uuid, generation bigint, state text, lease_until timestamptz) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE immutable (tx_id bytea) ON COMMIT DROP`;
-            yield* sql`CREATE TEMP TABLE mempool (tx_id bytea) ON COMMIT DROP`;
-            yield* sql`CREATE TEMP TABLE processed_mempool (tx_id bytea) ON COMMIT DROP`;
+            yield* sql`CREATE TEMP TABLE mempool (tx_id bytea, included_by bytea) ON COMMIT DROP`;
+            yield* sql`CREATE TEMP TABLE processed_mempool (tx_id bytea, included_by bytea) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE tx_rejections (tx_id bytea, reject_code text, reject_detail text, created_at timestamptz) ON COMMIT DROP`;
             yield* sql`CREATE TEMP TABLE tx_admissions (tx_id bytea, status text) ON COMMIT DROP`;
             yield* sql`INSERT INTO immutable VALUES (${txId})`;

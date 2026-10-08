@@ -144,8 +144,8 @@ export const getPipelineStatusHandler = Effect.gen(function* () {
         ORDER BY created_at ASC
         LIMIT 1`,
       TxAdmissionsDB.countBacklog,
-      sql<PipelineStatusCountOnlyRow>`SELECT COUNT(*)::bigint AS count FROM mempool`,
-      sql<PipelineStatusCountOnlyRow>`SELECT COUNT(*)::bigint AS count FROM processed_mempool`,
+      sql<PipelineStatusCountOnlyRow>`SELECT COUNT(*)::bigint AS count FROM mempool WHERE included_by IS NULL`,
+      sql<PipelineStatusCountOnlyRow>`SELECT COUNT(*)::bigint AS count FROM processed_mempool WHERE included_by IS NULL`,
       MutationJobsDB.countUnfinished,
       StateQueueMutationLeasesDB.inspect({ recentLimit: 5 }),
       SettlementJournal.inspectBacklog(

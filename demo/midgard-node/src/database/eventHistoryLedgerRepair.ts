@@ -50,9 +50,10 @@ const lockOrphanedAdmissions = (sql: SqlClient.SqlClient) =>
   });
 
 /** An unreversed acceptance receipt consumed the deposit with follower
- * admission `orphan` and some transaction of its batch is no longer in the
- * mempool: the dependency already left the unpublished overlay, so the orphan
- * cannot be repaired from retained receipts. */
+ * admission `orphan` and some transaction of its batch is no longer pending
+ * in the mempool (gone, or marked by a block that includes it): the
+ * dependency already left the unpublished overlay, so the orphan cannot be
+ * repaired from retained receipts. */
 export const orphanHasPublishedDependency = (
   binding: Buffer,
   orphan: OrphanAdmission,
@@ -64,13 +65,13 @@ export const orphanHasPublishedDependency = (
           AND EXISTS (SELECT 1 FROM jsonb_populate_recordset(NULL::deposits_utxos, r.deposits_before) d
             WHERE d.l1_event_key = ${orphan.l1_event_key} AND d.l1_origin_outref = ${orphan.l1_origin_outref})
           AND EXISTS (SELECT 1 FROM unnest(r.tx_ids) AS ids(tx_id)
-            WHERE NOT EXISTS (SELECT 1 FROM mempool m WHERE m.tx_id = ids.tx_id)) LIMIT 1`;
+            WHERE NOT EXISTS (SELECT 1 FROM mempool m WHERE m.tx_id = ids.tx_id AND m.included_by IS NULL)) LIMIT 1`;
     return rows.length !== 0;
   });
 
 /** Receipt `sequence` cannot be inverted as one unpublished batch: it lacks
  * its after-image or payloads, or one of its transactions is no longer an
- * accepted, unassigned mempool entry. */
+ * accepted, unassigned, unmarked mempool entry. */
 export const ledgerReceiptIsIncomplete = (sequence: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -79,7 +80,8 @@ export const ledgerReceiptIsIncomplete = (sequence: string) =>
           EXISTS (SELECT 1 FROM unnest(r.tx_ids) AS ids(tx_id)
             LEFT JOIN mempool m ON m.tx_id = ids.tx_id
             LEFT JOIN tx_admissions a ON a.tx_id = ids.tx_id
-            WHERE m.tx_id IS NULL OR a.status IS DISTINCT FROM 'accepted'
+            WHERE m.tx_id IS NULL OR m.included_by IS NOT NULL
+              OR a.status IS DISTINCT FROM 'accepted'
               OR EXISTS (SELECT 1 FROM blocks b WHERE b.tx_id = ids.tx_id)
               OR EXISTS (SELECT 1 FROM immutable i WHERE i.tx_id = ids.tx_id)
               OR EXISTS (SELECT 1 FROM pending_block_finalization_txs p WHERE p.member_id = ids.tx_id))
@@ -124,7 +126,7 @@ export const pendingHistoryLedgerDisposition = (change: HistoryOwnerChange) =>
         FROM withdrawal_utxos w WHERE ${orphanedAdmission(sql, "w", "withdrawal")}
     ) SELECT 1 FROM orphans o WHERE
       EXISTS (SELECT 1 FROM pending_block_finalizations WHERE status NOT IN ('locally_applied', 'abandoned'))
-      OR EXISTS (SELECT 1 FROM processed_mempool)
+      OR EXISTS (SELECT 1 FROM processed_mempool WHERE included_by IS NULL)
       OR o.projected_header_hash IS NOT NULL OR o.status = 'finalized'
       OR EXISTS (SELECT 1 FROM pending_block_finalization_deposits m WHERE ${sameAdmission(sql, "m", "o")})
       OR EXISTS (SELECT 1 FROM pending_block_finalization_withdrawals m WHERE ${sameAdmission(sql, "m", "o")})
@@ -161,7 +163,8 @@ export const requeueUnpublishedHistoryLedger = (input: {
     const binding = Buffer.from(input.bindingDigest, "hex");
     const assigned = yield* sql`SELECT 1 FROM pending_block_finalizations
     WHERE status NOT IN ('locally_applied', 'abandoned')
-    UNION ALL SELECT 1 FROM processed_mempool LIMIT 1`;
+    UNION ALL SELECT 1 FROM processed_mempool WHERE included_by IS NULL
+    LIMIT 1`;
     if (assigned.length !== 0)
       return yield* refuse(
         "Unpublished overlay requeue requires pending-candidate disposition",
@@ -171,10 +174,11 @@ export const requeueUnpublishedHistoryLedger = (input: {
       tx_ids: Buffer[];
     }>`SELECT sequence::text, tx_ids
       FROM event_history_l2_ledger_receipts r WHERE binding_digest = ${binding}
-        AND reversed_at_revision IS NULL AND EXISTS (SELECT 1 FROM mempool m WHERE m.tx_id = ANY(r.tx_ids))
+        AND reversed_at_revision IS NULL AND EXISTS (SELECT 1 FROM mempool m
+          WHERE m.tx_id = ANY(r.tx_ids) AND m.included_by IS NULL)
       ORDER BY r.sequence DESC FOR UPDATE`;
-    const uncovered = yield* sql`SELECT 1 FROM mempool m WHERE
-      (SELECT count(*) FROM event_history_l2_ledger_receipts r WHERE binding_digest = ${binding}
+    const uncovered = yield* sql`SELECT 1 FROM mempool m
+      WHERE m.included_by IS NULL AND (SELECT count(*) FROM event_history_l2_ledger_receipts r WHERE binding_digest = ${binding}
         AND reversed_at_revision IS NULL AND m.tx_id = ANY(r.tx_ids)) <> 1 LIMIT 1`;
     if (uncovered.length !== 0)
       return yield* refuse(
@@ -284,7 +288,8 @@ export const repairUnpublishedHistoryLedger = (change: HistoryOwnerChange) =>
 
     const pending = yield* sql`SELECT 1 FROM pending_block_finalizations
       WHERE status NOT IN ('locally_applied', 'abandoned') LIMIT 1`;
-    const processed = yield* sql`SELECT 1 FROM processed_mempool LIMIT 1`;
+    const processed = yield* sql`SELECT 1 FROM processed_mempool
+      WHERE included_by IS NULL LIMIT 1`;
     if (pending.length !== 0 || processed.length !== 0)
       return yield* refuse(
         "Orphan repair requires explicit pending-candidate or signed-submission disposition",

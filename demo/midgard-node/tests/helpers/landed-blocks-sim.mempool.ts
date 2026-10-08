@@ -5,13 +5,15 @@
  * the model of what a working-ledger rebuild makes of them.
  *
  * The model replays the pending transactions in admission order on a base
- * ledger. One a base block includes leaves the pending set: a foreign
- * block's is dropped, an own block's waits for that block's merge. Of the
- * rest, one whose input is gone is rejected ("direct"), one that spends a
- * rejected transaction's output with it ("dependent"), and every pending
+ * ledger. One a block on the base's lineage includes is settled, not
+ * pending: its row stays (marked) until that block folds, then leaves; a
+ * rollback that takes the block off the lineage makes it pending again. Of
+ * the rest, one whose input is gone is rejected ("direct"), one that spends
+ * a rejected transaction's output with it ("dependent"), and every pending
  * co-member of an acceptance receipt that holds a rejected transaction
- * ("batch"), transitively; a co-member a base block includes is settled by
- * it. A rejection is final, and reverses the receipts it touches.
+ * ("batch"), transitively; a co-member a block on the lineage includes
+ * (folded or not) is settled by it. A rejection is final, and reverses the
+ * receipts it touches.
  */
 import {
   decodeMidgardTxOutput,
@@ -35,6 +37,8 @@ export type SimPendingTx = Readonly<{
   spent: readonly Buffer[];
   produced: readonly Ledger.MinimalEntry[];
   at: Date;
+  /** The row's transaction bytes (a filler unless given). */
+  cbor?: Buffer;
 }>;
 
 export type SimRejection = "direct" | "dependent" | "batch";
@@ -43,7 +47,7 @@ export type SimRejection = "direct" | "dependent" | "batch";
 export type SimReceipt = { ids: readonly string[]; reversed: boolean };
 
 export type SimMempool = {
-  /** Pending, in admission order (own-included ones until their merge). */
+  /** Every row, in admission order: pending, or included by a block that has not folded. */
   survivors: SimPendingTx[];
   rejected: Map<string, SimRejection>;
   receipts: SimReceipt[];
@@ -59,32 +63,38 @@ export const newSimMempool = (): SimMempool => ({
   poolUsed: 0,
 });
 
-/** What the base blocks include, as hex transaction ids. */
+/**
+ * The settlement oracle, as hex transaction ids: what the blocks on the
+ * base's lineage that the node processed include (the record a rollback
+ * rewinds and a fold keeps), and the live own block's members.
+ */
 export type SimIncluded = Readonly<{
-  foreign: ReadonlySet<string>;
-  own: ReadonlySet<string>;
+  settled: ReadonlySet<string>;
+  /** Settled by a folded block, by the folded block's kind: those rows are gone. */
+  folded: ReadonlyMap<string, "own" | "foreign">;
 }>;
 
 export type SimSettlement = Readonly<{
   ledger: Map<string, Buffer>;
   newly: readonly (readonly [string, SimRejection])[];
-  dropped: readonly string[];
   /** A batch was rejected around a co-member a base block settled. */
   batchSettled: boolean;
+  /** ...around one a folded block settled, by that block's kind. */
+  foldThenReject: ReadonlySet<"own" | "foreign">;
 }>;
 
 /**
  * Rebuilds the model's working ledger on `base`; moves the pending
  * transactions that cannot apply to the rejections and drops the ones a
- * foreign base block includes. A string is a model failure: a batch the
- * rebuild could neither reject nor settle.
+ * folded block includes. A string is a model failure: a batch the rebuild
+ * could neither reject nor settle.
  */
 export const settleMempool = (
   mempool: SimMempool,
   base: ReadonlyMap<string, Buffer>,
   included: SimIncluded,
 ): SimSettlement | string => {
-  const settled = new Set([...included.foreign, ...included.own]);
+  const { settled, folded } = included;
   const pending = mempool.survivors.filter((tx) => !settled.has(hex(tx.id)));
   const pendingIds = new Set(pending.map((tx) => hex(tx.id)));
   const rejected = new Map<string, SimRejection>();
@@ -117,6 +127,7 @@ export const settleMempool = (
     return { ledger, changed };
   };
   let batchSettled = false;
+  const foldThenReject = new Set<"own" | "foreign">();
   for (let widened = true; widened; ) {
     widened = false;
     while (simulate(true).changed);
@@ -127,6 +138,8 @@ export const settleMempool = (
         if (rejected.has(id)) continue;
         if (settled.has(id)) {
           batchSettled = true;
+          const kind = folded.get(id);
+          if (kind !== undefined) foldThenReject.add(kind);
           continue;
         }
         if (!pendingIds.has(id))
@@ -140,13 +153,11 @@ export const settleMempool = (
   for (const receipt of mempool.receipts)
     if (!receipt.reversed && receipt.ids.some((id) => rejected.has(id)))
       receipt.reversed = true;
-  const dropped = mempool.survivors
-    .map((tx) => hex(tx.id))
-    .filter((id) => included.foreign.has(id));
-  const gone = new Set([...dropped, ...rejected.keys()]);
-  mempool.survivors = mempool.survivors.filter((tx) => !gone.has(hex(tx.id)));
+  mempool.survivors = mempool.survivors.filter(
+    (tx) => !rejected.has(hex(tx.id)) && !folded.has(hex(tx.id)),
+  );
   for (const [id, reason] of rejected) mempool.rejected.set(id, reason);
-  return { ledger, newly: [...rejected], dropped, batchSettled };
+  return { ledger, newly: [...rejected], batchSettled, foldThenReject };
 };
 
 /** Admits `txs` the way the node's admission leaves them: mempool, delta, working ledger. */
@@ -158,7 +169,8 @@ export const admitPending = (txs: readonly SimPendingTx[]) =>
         for (const tx of txs) {
           yield* TxUtils.insertEntry(MempoolDB.tableName, {
             [TxUtils.Columns.TX_ID]: tx.id,
-            [TxUtils.Columns.TX]: Buffer.from("a1".repeat(16), "hex"),
+            [TxUtils.Columns.TX]:
+              tx.cbor ?? Buffer.from("a1".repeat(16), "hex"),
             [TxUtils.Columns.TIMESTAMPTZ]: tx.at,
           });
           for (const outRef of tx.spent)

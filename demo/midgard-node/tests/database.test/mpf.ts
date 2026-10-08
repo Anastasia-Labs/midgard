@@ -464,6 +464,7 @@ export const registerMpfTests = () => {
               projectedDepositEventIds: [successDeposit[DepositsDB.Columns.ID]],
               projectedWithdrawalEventIds: [],
               projectedForcedTransactionEventIds: [],
+              includedTxIds: [],
             });
             const mergedConfirmed = yield* ConfirmedLedgerDB.retrieve;
             expect(utxoSet(mergedConfirmed)).toEqual(utxoSet(states[2]!));
@@ -494,6 +495,12 @@ export const registerMpfTests = () => {
             });
             yield* BlocksDB.insert(mergeHeaderHash, [failureTxHash]);
             yield* DepositsDB.insertEntries([failureDeposit]);
+            const failureEvents = {
+              projectedDepositEventIds: [failureDeposit[DepositsDB.Columns.ID]],
+              projectedWithdrawalEventIds: [],
+              projectedForcedTransactionEventIds: [],
+              includedTxIds: [],
+            };
             const wrongBaseFinalization = yield* Effect.either(
               finalizeConfirmedMergeTransaction({
                 headerHash: mergeHeaderHash,
@@ -501,11 +508,7 @@ export const registerMpfTests = () => {
                   ...parentChildSnapshot,
                   baseRoot: roots[1]!,
                 },
-                projectedDepositEventIds: [
-                  failureDeposit[DepositsDB.Columns.ID],
-                ],
-                projectedWithdrawalEventIds: [],
-                projectedForcedTransactionEventIds: [],
+                ...failureEvents,
               }),
             );
             expect(wrongBaseFinalization._tag).toBe("Left");
@@ -540,11 +543,7 @@ export const registerMpfTests = () => {
                   ...parentChildSnapshot,
                   root: roots[1]!,
                 },
-                projectedDepositEventIds: [
-                  failureDeposit[DepositsDB.Columns.ID],
-                ],
-                projectedWithdrawalEventIds: [],
-                projectedForcedTransactionEventIds: [],
+                ...failureEvents,
               }),
             );
             expect(wrongFinalRootFinalization._tag).toBe("Left");

@@ -224,8 +224,15 @@ describe("startup after a process killed mid local finalization", () => {
           const blocks = yield* sql<{ readonly count: string }>`SELECT
             COUNT(*)::text AS count FROM blocks
             WHERE header_hash = ${killed} AND tx_id = ${tx.txId}`;
+          // The included row stays, marked by the block, until it folds.
           const mempool = yield* sql<{ readonly count: string }>`SELECT
-            COUNT(*)::text AS count FROM mempool WHERE tx_id = ${tx.txId}`;
+            COUNT(*)::text AS count FROM mempool
+            WHERE tx_id = ${tx.txId} AND included_by IS NULL`;
+          const marks = yield* sql<{ readonly included_by: Buffer }>`SELECT
+            included_by FROM mempool WHERE tx_id = ${tx.txId}`;
+          expect(marks.map((row) => Buffer.from(row.included_by))).toEqual([
+            killed,
+          ]);
           expect(
             [immutable, blocks, mempool].map((rows) => rows[0]!.count),
           ).toEqual(["1", "1", "0"]);

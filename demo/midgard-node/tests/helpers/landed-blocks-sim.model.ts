@@ -3,8 +3,9 @@
  * landed-block rows, confirmed-ledger frontier, `confirmed_ledger`, working
  * ledger, mempool, rejections and deposit statuses must be after
  * processing, derived from the canonical queue, the traffic's registry, the
- * simulated mempool (`landed-blocks-sim.mempool.ts`) and the frontier the
- * model itself derived on the previous check. It shares nothing with the
+ * simulated mempool (`landed-blocks-sim.mempool.ts`), the model's settlement
+ * record (which block on the processed chain includes each transaction) and
+ * the frontier the model itself derived on the previous check. It shares nothing with the
  * code under test beyond the universe's outputs.
  *
  * Processing walks the root's lineage from the frontier, then the queue's
@@ -40,7 +41,15 @@ export const readActual = (registry: SimRegistry) =>
       output: Buffer;
       source_event_id: Buffer | null;
     }>`SELECT outref, output, source_event_id FROM mempool_ledger`;
-    const mempool = yield* sql<{ tx_id: Buffer }>`SELECT tx_id FROM mempool`;
+    const mempool = yield* sql<{
+      tx_id: Buffer;
+      included_by: Buffer | null;
+    }>`SELECT tx_id, included_by FROM mempool`;
+    const settlements = yield* sql<{ tx_id: Buffer; settled_by: Buffer }>`
+    SELECT s.tx_id, s.settled_by
+    FROM event_history_l2_ledger_receipt_settlements s
+    JOIN event_history_l2_ledger_receipts r ON r.sequence = s.receipt_sequence
+    WHERE r.reversed_at_revision IS NULL`;
     const rejections = yield* sql<{ tx_id: Buffer; reject_code: string }>`
     SELECT tx_id, reject_code FROM tx_rejections`;
     const deposits = yield* sql<{
@@ -60,6 +69,14 @@ export const readActual = (registry: SimRegistry) =>
         ),
       ),
       mempool: sorted(mempool.map((row) => hex(row.tx_id))),
+      marked: sorted(
+        mempool
+          .filter((row) => row.included_by !== null)
+          .map((row) => `${hex(row.tx_id)}@${hex(row.included_by!)}`),
+      ),
+      settlements: sorted(
+        settlements.map((row) => `${hex(row.tx_id)}@${hex(row.settled_by)}`),
+      ),
       rejections: sorted(
         rejections.map((row) => `${hex(row.tx_id)}:${row.reject_code}`),
       ),
@@ -187,9 +204,11 @@ export const modelProcessing = (
 
 /**
  * What the node's state must be: `confirmed_ledger` at the frontier, the
- * working ledger the model rebuilt, the mempool and rejections, and every
- * deposit's status (consumed up to the frontier, projected to its header on
- * the processed chain).
+ * working ledger the model rebuilt, the mempool (a row a block on the
+ * processed chain includes marked by it) and rejections, the receipt
+ * members of unreversed receipts recorded settled by the block in
+ * `settledBy` that includes them, and every deposit's status (consumed up
+ * to the frontier, projected to its header on the processed chain).
  */
 export const expectedState = (
   universe: SimUniverse,
@@ -197,6 +216,7 @@ export const expectedState = (
   model: Readonly<{ frontier: string; tip: string }>,
   workingLedger: ReadonlyMap<string, Buffer>,
   mempool: SimMempool,
+  settledBy: ReadonlyMap<string, string>,
 ) => {
   const frontier = registry.get(model.frontier)!;
   const tipInfo = registry.get(model.tip)!;
@@ -235,6 +255,19 @@ export const expectedState = (
       )
       .sort(),
     mempool: mempool.survivors.map((tx) => hex(tx.id)).sort(),
+    marked: mempool.survivors
+      .filter((tx) => settledBy.has(hex(tx.id)))
+      .map((tx) => `${hex(tx.id)}@${settledBy.get(hex(tx.id))}`)
+      .sort(),
+    settlements: mempool.receipts
+      .filter((receipt) => !receipt.reversed)
+      .flatMap((receipt) =>
+        receipt.ids.flatMap((id) => {
+          const header = settledBy.get(id);
+          return header === undefined ? [] : [`${id}@${header}`];
+        }),
+      )
+      .sort(),
     rejections: [...mempool.rejected]
       .map(([id, reason]) => `${id}:${REBASE_REJECTIONS[reason].code}`)
       .sort(),

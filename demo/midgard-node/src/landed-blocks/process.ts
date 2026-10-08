@@ -68,8 +68,8 @@ import {
   netDelta,
 } from "./ledger.js";
 import { type LandedBlockPorts, viewChecked, ViewMoved } from "./ports.js";
-import { rollBackRows } from "./settlements.js";
-import { insertRow, type LandedBlockRow, retrieveRows } from "./store.js";
+import { processRow, rollBackRows } from "./settlements.js";
+import { type LandedBlockRow, retrieveRows } from "./store.js";
 
 type Parent = Readonly<{
   headerHash: string;
@@ -351,7 +351,7 @@ const run = <R>(ports: LandedBlockPorts<R>, queue: LandedStateQueue) =>
         holds.push(step.hold);
         break;
       }
-      yield* viewChecked(ports, queue.view, insertRow(step.row));
+      yield* viewChecked(ports, queue.view, processRow(step.row));
       applyDelta(ledger, step.row);
       parent = {
         headerHash: step.row.headerHash,

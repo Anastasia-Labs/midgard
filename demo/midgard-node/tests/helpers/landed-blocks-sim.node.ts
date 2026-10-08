@@ -136,7 +136,7 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
     if (txs.length === 0) return;
     await run(admitPending(txs));
     const batches =
-      txs.length > 1 && mempool.admitted % 3 === 0
+      txs.length > 1 && mempool.admitted % 3 !== 1
         ? [txs]
         : txs.map((tx) => [tx]);
     for (const batch of batches) {
@@ -169,14 +169,21 @@ export const simNode = (env: LandedSimEnv, run: Run) => {
     return undefined;
   };
 
-  /** Commits an own block on the processed tip `tip`, the queue's tail. */
-  const commit = async (tip: string, candidate: string | undefined) => {
+  /**
+   * Commits an own block on the processed tip `tip`, the queue's tail,
+   * selecting from `pending` (the survivors no block on the chain includes).
+   */
+  const commit = async (
+    tip: string,
+    candidate: string | undefined,
+    pending: readonly SimPendingTx[],
+  ) => {
     const { block, info, journal } = ownBlockOn(
       env.universe,
       env.registry,
       book,
       tip,
-      mempool.survivors,
+      pending,
       candidate,
     );
     await run(insertOwnJournal(journal));

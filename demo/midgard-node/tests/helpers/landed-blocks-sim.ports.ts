@@ -13,7 +13,7 @@ import { Effect, type Runtime } from "effect";
 import {
   ConfirmedLedgerDB,
   DepositsDB,
-  MempoolDB,
+  MempoolInclusionsDB,
 } from "../../src/database/index.js";
 import { readQueueHistory } from "../../src/landed-blocks/history.js";
 import { ownJournal } from "../../src/landed-blocks/journal.js";
@@ -24,6 +24,7 @@ import {
 } from "../../src/landed-blocks/ledger.js";
 import type { LandedBlockPorts } from "../../src/landed-blocks/ports.js";
 import { rebasePlan } from "../../src/landed-blocks/rebase-target.js";
+import { recordSettlements } from "../../src/landed-blocks/settlements.js";
 import { retrieveRows } from "../../src/landed-blocks/store.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../../src/mpf/ledger-hydration.js";
 import type { Database } from "../../src/services/database.js";
@@ -72,6 +73,10 @@ export type LandedSimStats = TrafficStats & {
   batchRejections: number;
   /** Batches rejected around a member a base block settled. */
   batchSettled: number;
+  /** ...around a member an own block settled that had folded already. */
+  foldThenRejectOwn: number;
+  /** ...around a member a foreign block settled that had folded already. */
+  foldThenRejectForeign: number;
   ownCommits: number;
   /**
    * Rebases whose target held a live own block (a commit's, a journal
@@ -129,6 +134,8 @@ export const zeroLandedSimStats = (): LandedSimStats => ({
   foreignIncluded: 0,
   batchRejections: 0,
   batchSettled: 0,
+  foldThenRejectOwn: 0,
+  foldThenRejectForeign: 0,
   ownCommits: 0,
   liveRebases: 0,
   ownProcessed: 0,
@@ -224,6 +231,8 @@ export const simPorts = (
       const ledger = ledgerMap(input.parentEntries);
       for (const key of [...ledger.keys()])
         if (env.universe.xKeys.has(key)) ledger.delete(key);
+      const ySpent = env.universe.ySpent(info.h);
+      if (ySpent !== undefined) ledger.delete(hex(ySpent.outref));
       const produced = [
         env.universe.y(info.h),
         env.universe.x(info.h, info.b),
@@ -232,31 +241,33 @@ export const simPorts = (
       for (const entry of produced)
         ledger.set(hex(entry.outref), Buffer.from(entry.output));
       const entries = ledgerEntries(ledger);
-      // Every other block includes the node's pending transactions that
-      // spend the parent's X (as the block does), fixed at its first replay.
+      // Every other block includes the node's pending (unmarked)
+      // transactions that spend the parent's X (as the block does), with
+      // every pending transaction that spends their outputs, fixed at its
+      // first replay.
       let txIds = env.includes.get(input.headerHash);
       if (txIds === undefined) {
-        const parentX = new Set(
+        const reached = new Set(
           [...input.parentEntries]
             .map((entry) => hex(entry.outref))
             .filter((key) => env.universe.xKeys.has(key)),
         );
         const pending = new Set(
-          (yield* sql<{ tx_id: Buffer }>`SELECT tx_id FROM mempool`).map(
-            (row) => hex(row.tx_id),
-          ),
+          (yield* sql<{ tx_id: Buffer }>`SELECT tx_id FROM mempool
+            WHERE included_by IS NULL`).map((row) => hex(row.tx_id)),
         );
-        txIds =
-          (info.h + info.b) % 2 === 0
-            ? env.mempool.survivors
-                .filter(
-                  (tx) =>
-                    pending.has(hex(tx.id)) &&
-                    tx.spent.length > 0 &&
-                    tx.spent.every((outRef) => parentX.has(hex(outRef))),
-                )
-                .map((tx) => tx.id)
-            : [];
+        const included: Buffer[] = [];
+        if ((info.h + info.b) % 2 === 0)
+          for (const tx of env.mempool.survivors)
+            if (
+              pending.has(hex(tx.id)) &&
+              tx.spent.length > 0 &&
+              tx.spent.every((outRef) => reached.has(hex(outRef)))
+            ) {
+              included.push(tx.id);
+              for (const entry of tx.produced) reached.add(hex(entry.outref));
+            }
+        txIds = included;
         env.includes.set(input.headerHash, txIds);
       }
       return {
@@ -275,8 +286,9 @@ export const simPorts = (
   ownMergeCompleted: (headerHash) =>
     Effect.succeed(env.completed.has(headerHash)),
   // The node's local merge finalization, as far as processing sees it: the
-  // block's delta folds into `confirmed_ledger` and the transactions it
-  // included leave the mempool.
+  // block's delta folds into `confirmed_ledger`, the receipt members it
+  // included are recorded settled, and the rows it marked leave the
+  // mempool.
   finalizeOwnMerge: ({ headerHash }) =>
     withHistoryWrite(
       Effect.gen(function* () {
@@ -292,7 +304,8 @@ export const simPorts = (
         yield* ConfirmedLedgerDB.insertMultiple([
           ...(yield* ledgerRows(row.produced, new Map())),
         ]);
-        if (row.txIds.length > 0) yield* MempoolDB.clearTxs([...row.txIds]);
+        yield* recordSettlements([row]);
+        yield* MempoolInclusionsDB.deleteIncluded(headerHash);
         env.completed.add(hash);
         const ids = new Set(row.txIds.map(hex));
         env.mempool.survivors = env.mempool.survivors.filter(

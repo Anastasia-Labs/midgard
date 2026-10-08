@@ -12,6 +12,7 @@ import {
   ForcedTransactionsDB,
   ImmutableDB,
   MempoolDB,
+  MempoolInclusionsDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   WithdrawalsDB,
@@ -343,6 +344,9 @@ export const reincludeStateQueueCorrectedBlocks = (
               record.withdrawalEventIds,
               headerHash,
             );
+            // Rows the block marked stay in their tables: clearing its mark
+            // makes them pending again; the restore re-adds any that left.
+            yield* MempoolInclusionsDB.clearMarks([headerHash]);
             yield* MempoolDB.restoreJournalEntries(mempoolEntries);
             yield* ProcessedMempoolDB.insertTxs([...processedEntries]);
             yield* BlocksDB.clearBlock(headerHash);

@@ -151,11 +151,13 @@ const readMemberHeaders = (journal: Pending.Record) =>
     }),
   );
 
+/** The pending mempool: a row a block's inclusion mark holds is not pending. */
 const readMempool = () =>
   read(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      const rows = yield* sql<{ tx_id: Buffer }>`SELECT tx_id FROM mempool`;
+      const rows = yield* sql<{ tx_id: Buffer }>`SELECT tx_id FROM mempool
+        WHERE included_by IS NULL`;
       return rows.map((row) => hex(row.tx_id));
     }),
   );

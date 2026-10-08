@@ -7,13 +7,13 @@ import { WriteBehind } from "../services/write-behind.js";
 import { ProcessedTx } from "../utils.js";
 import type * as AddressHistoryDB from "./addressHistory.js";
 import * as DepositsDB from "./deposits.js";
+import * as MempoolInclusionsDB from "./mempoolInclusions.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import * as MempoolTxDeltasDB from "./mempoolTxDeltas.js";
 import {
   clearTable,
   DatabaseError,
   logDatabaseError,
-  retrieveNumberOfEntries,
   sqlErrorToDatabaseError,
 } from "./utils/common.js";
 import * as Ledger from "./utils/ledger.js";
@@ -204,17 +204,18 @@ export const insert = (
   insertMultiple([processedTx]);
 
 /**
- * Retrieves mempool transaction CBOR by transaction hash.
+ * Retrieves pending mempool transaction CBOR by transaction hash (a row a
+ * block's inclusion mark holds is not pending).
  */
 export const retrieveTxCborByHash = (txHash: Buffer) =>
-  Tx.retrieveValue(tableName, txHash);
+  MempoolInclusionsDB.retrievePendingValue(tableName, txHash);
 
 /**
- * Retrieves mempool transaction CBOR blobs for a batch of hashes.
+ * Retrieves pending mempool transaction CBOR blobs for a batch of hashes.
  */
 export const retrieveTxCborsByHashes = (
   txHashes: Buffer[] | readonly Buffer[],
-) => Tx.retrieveValues(tableName, txHashes);
+) => MempoolInclusionsDB.retrievePendingValues(tableName, txHashes);
 
 export type MempoolCursor = {
   readonly timeStampTz: Date;
@@ -249,7 +250,8 @@ export const retrievePage = ({
         ${sql(Tx.Columns.TX)},
         ${sql(Tx.Columns.TIMESTAMPTZ)}
       FROM ${sql(tableName)}
-      WHERE ((${afterTime}::timestamptz IS NULL)
+      WHERE ${sql(MempoolInclusionsDB.INCLUDED_BY)} IS NULL
+        AND ((${afterTime}::timestamptz IS NULL)
         OR (${sql(Tx.Columns.TIMESTAMPTZ)}, ${sql(Tx.Columns.TX_ID)}) >
            (${afterTime}::timestamptz, ${afterTxId}::bytea))
         AND (${upperTime}::timestamptz IS NULL
@@ -280,8 +282,9 @@ export const retrievePage = ({
     sqlErrorToDatabaseError(tableName, "Failed to retrieve mempool page"),
   );
 
+/** The number of pending (unmarked) mempool rows. */
 export const retrieveTxCount: Effect.Effect<bigint, DatabaseError, Database> =
-  retrieveNumberOfEntries(tableName);
+  MempoolInclusionsDB.countPending(tableName);
 
 export const clearTxs = (
   txHashes: Buffer[],

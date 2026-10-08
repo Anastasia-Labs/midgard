@@ -11,11 +11,13 @@ import {
   PendingBlockFinalizationsDB,
   WithdrawalsDB,
 } from "../../database/index.js";
+import * as MempoolInclusionsDB from "../../database/mempoolInclusions.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "../../database/utils/common.js";
 import { formatLandedStateQueue } from "../../l1-state-queue/index.js";
+import { recordSettlements } from "../../landed-blocks/settlements.js";
 import { withHistoryWrite } from "../../services/event-history-producer.js";
 import { Database, Globals } from "../../services/index.js";
 import {
@@ -45,18 +47,27 @@ export type ConfirmedMergeNativeOwnerObservation = {
   readonly activeGenerations: number;
 };
 
+/**
+ * Folds an own merged block into `confirmed_ledger` in one transaction. The
+ * block's transactions (`includedTxIds`, its journal members) settle their
+ * receipt members for good (recorded here too, so a block that folds with
+ * no rebase between still records them), and the pending-table rows the
+ * block marked are deleted.
+ */
 export const finalizeConfirmedMergeTransaction = ({
   headerHash,
   snapshot,
   projectedDepositEventIds,
   projectedWithdrawalEventIds,
   projectedForcedTransactionEventIds,
+  includedTxIds,
 }: {
   readonly headerHash: Buffer;
   readonly snapshot: ConfirmedLedgerSnapshot;
   readonly projectedDepositEventIds: readonly Buffer[];
   readonly projectedWithdrawalEventIds: readonly Buffer[];
   readonly projectedForcedTransactionEventIds: readonly Buffer[];
+  readonly includedTxIds: readonly Buffer[];
 }): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -81,6 +92,10 @@ export const finalizeConfirmedMergeTransaction = ({
           projectedForcedTransactionEventIds,
           headerHash,
         ).pipe(Effect.withSpan("mark-merged-forced-transactions-finalized"));
+        yield* recordSettlements([
+          { headerHash: headerHash.toString("hex"), txIds: includedTxIds },
+        ]);
+        yield* MempoolInclusionsDB.deleteIncluded(headerHash);
       }),
     );
   }).pipe(
@@ -226,6 +241,7 @@ export const finalizeConfirmedMergeProgram = ({
       projectedDepositEventIds,
       projectedWithdrawalEventIds,
       projectedForcedTransactionEventIds,
+      includedTxIds: finalizedJournal.value.mempoolTxIds,
     });
     const ownerObservation = yield* observeNativeOwnerAfterConfirmedMerge({
       nativeMpfOwner: yield* Ref.get(globals.NATIVE_MPF_OWNER),

@@ -4,8 +4,9 @@
  * every chain-sync event the node processes the landed queue and runs the
  * working-ledger rebase it asks for, then equals a fresh derivation from
  * the canonical chain (`helpers/landed-blocks-sim.model.ts`): its rows, the
- * confirmed and working ledgers, the native MPF root, the mempool, the
- * rejections and the deposit statuses.
+ * confirmed and working ledgers, the native MPF root, the mempool and its
+ * inclusion marks, the rejections, the recorded receipt settlements and the
+ * deposit statuses.
  *
  * Each suite proves its corpus exercised every case: every block processed
  * exactly once across restarts, crashes and head changes; a rollback that
@@ -14,7 +15,8 @@
  * ledger too); a block whose replay misses its header's root is never
  * adopted and holds `landed_block_invalid` with the process up; late DA,
  * transient replay faults and a merge a rollback undid each hold by name
- * and clear.
+ * and clear; a batch is rejected around a member an own block, and one a
+ * foreign block, settled and folded before the rejection.
  */
 import "./utils.js";
 
@@ -252,6 +254,8 @@ const expectEveryCase = (stats: LandedSimStats, prunes: number): void => {
     "foreignIncluded",
     "batchRejections",
     "batchSettled",
+    "foldThenRejectOwn",
+    "foldThenRejectForeign",
     "ownCommits",
     "ownAppends",
     "liveRebases",
@@ -349,6 +353,7 @@ describe.each([
           ),
         ),
       );
+      console.info("landed-blocks fork-sim (random)", JSON.stringify(stats));
       expect(stats.comparedChecks).toBeGreaterThan(0);
     }, 1_800_000);
   },

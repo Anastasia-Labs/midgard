@@ -64,7 +64,7 @@ import {
   settleChainDeposits,
 } from "./rebase-events.js";
 import { rebasePlan, type RebaseTarget, walkTarget } from "./rebase-target.js";
-import { recordSettlements } from "./settlements.js";
+import { markRows, recordSettlements } from "./settlements.js";
 import { deleteRows, markApplied } from "./store.js";
 
 export const REBASE_RECOVERY_DOMAIN = "midgard/landed-block-rebase/v1";
@@ -196,12 +196,13 @@ export const rebaseSql = (target: RebaseTarget) =>
     yield* resetUnheldEvents(target, removed);
     yield* assignChainEvents(foreign);
     // A receipt member a processed (landed) row includes is settled by it
-    // from this rebuild on; the live own block has not landed.
-    yield* recordSettlements(
-      target.steps.flatMap((step) =>
-        step.row === undefined ? [] : [step.row],
-      ),
+    // from this rebuild on, and the row marks it in the pending tables; the
+    // live own block has not landed.
+    const processed = target.steps.flatMap((step) =>
+      step.row === undefined ? [] : [step.row],
     );
+    yield* markRows(processed);
+    yield* recordSettlements(processed);
     const rebuilt = yield* rebuildWorkingLedger({
       base: ledger,
       baseDeposits: new Map(

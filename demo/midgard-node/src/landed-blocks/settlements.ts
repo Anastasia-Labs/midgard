@@ -2,19 +2,31 @@
  * Acceptance-receipt members a landed block settled (plan §7.3, N3), kept
  * on the receipt (`event_history_l2_ledger_receipt_settlements`, migration
  * 0012): one row per unreversed receipt member a landed block includes,
- * naming that block. The working-ledger rebuild that applies the block
- * writes them in its transaction; the batch closure of that and every later
- * rebuild reads a recorded member as settled by the base. A rollback that
- * takes the block off the landed chain rewinds its rows in the transaction
- * that records the rollback (and a block that relands records them again),
- * so the record holds only the landed base.
+ * naming that block. Every write that makes a landed row processed records
+ * them in its own transaction: the processing insert, a reland, and the
+ * rebase that applies the row; the local merge finalization of an own block
+ * records them too, so a block that folds without a rebase between is
+ * recorded. The batch closure of every later rebuild reads a recorded
+ * member as settled by the base. A rollback that takes the block off the
+ * landed chain rewinds its rows in the transaction that records the
+ * rollback (and a block that relands records them again), so the record
+ * holds only the landed base, folded blocks included.
+ *
+ * The same writes mark the block's rows in the pending tables
+ * (`mempoolInclusions.ts`); the rollback clears the marks.
  */
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect } from "effect";
 
+import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
 import { sqlErrorToDatabaseError } from "../database/utils/common.js";
-import { deleteRows, type LandedBlockRow, setState } from "./store.js";
+import {
+  deleteRows,
+  insertRow,
+  type LandedBlockRow,
+  setState,
+} from "./store.js";
 
 export const settlementsTableName =
   "event_history_l2_ledger_receipt_settlements";
@@ -70,12 +82,35 @@ export const rewindSettlements = (headerHashes: readonly string[]) =>
     ),
   );
 
+/** Marks the pending-table rows each block in `rows` includes. */
+export const markRows = (
+  rows: readonly Pick<LandedBlockRow, "headerHash" | "txIds">[],
+) =>
+  Effect.forEach(
+    rows,
+    (row) => MempoolInclusionsDB.markIncluded(row.headerHash, row.txIds),
+    { discard: true },
+  );
+
+/**
+ * Processes a landed block: inserts its row, marks the pending-table rows
+ * it includes, and records the receipt members it settles.
+ */
+export const processRow = (row: LandedBlockRow) =>
+  Effect.gen(function* () {
+    yield* insertRow(row);
+    yield* markRows([row]);
+    yield* recordSettlements([row]);
+  });
+
 /**
  * A rollback took the processed rows `left` off the landed chain: an
  * applied foreign row stays as `removed` until the rebase reverts it, every
- * other row goes, and the settlements any of them recorded are rewound.
+ * other row goes, the settlements any of them recorded are rewound, and the
+ * marks they set are cleared, so the rows they included are pending again.
  * The removed rows `relands` landed again before a rebase reverted them:
- * they are processed again and settle their receipt members again.
+ * they are processed again, mark their rows and settle their receipt
+ * members again.
  */
 export const rollBackRows = (
   left: readonly LandedBlockRow[],
@@ -94,9 +129,11 @@ export const rollBackRows = (
         .map((row) => row.headerHash),
     );
     yield* rewindSettlements(left.map((row) => row.headerHash));
+    yield* MempoolInclusionsDB.clearMarks(left.map((row) => row.headerHash));
     yield* setState(
       relands.map((row) => row.headerHash),
       "processed",
     );
+    yield* markRows(relands);
     yield* recordSettlements(relands);
   });

@@ -8,6 +8,7 @@ import { Effect } from "effect";
 
 import {
   MempoolDB,
+  MempoolInclusionsDB,
   MempoolLedgerDB,
   MempoolTxDeltasDB,
   ProcessedMempoolDB,
@@ -69,11 +70,16 @@ const producedRow = (
       }),
   });
 
-/** Every pending transaction whose ledger effects are in `mempool_ledger`,
- * in admission order, with its exact spends and outputs. */
+/** Every pending (unmarked) transaction whose ledger effects are in
+ * `mempool_ledger`, in admission order, with its exact spends and outputs. A
+ * row a block's inclusion mark holds is in that block, not pending. */
 export const loadPendingTxs = Effect.gen(function* () {
-  const mempool = yield* Tx.retrieveAllEntries(MempoolDB.tableName);
-  const processed = yield* Tx.retrieveAllEntries(ProcessedMempoolDB.tableName);
+  const mempool = yield* MempoolInclusionsDB.retrievePendingEntries(
+    MempoolDB.tableName,
+  );
+  const processed = yield* MempoolInclusionsDB.retrievePendingEntries(
+    ProcessedMempoolDB.tableName,
+  );
   const seen = new Set<string>();
   const ordered: {
     entry: Tx.EntryWithTimeStamp;
