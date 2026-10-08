@@ -1,9 +1,8 @@
-import { createDaAvailabilityReadScope } from "@al-ft/midgard-sdk";
-import JSONBig from "json-bigint";
+import { L1NodeTransport } from "@al-ft/l1-node-transport";
 
-import { openAcceptanceNativeSession } from "../devnet-stack/acceptance-native-session.js";
 import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent } from "./journal.js";
+import { hostL1Node } from "./native-ledger.js";
 import {
   includedPayout,
   payoutConclusion,
@@ -11,8 +10,6 @@ import {
   type SettlementObservation,
 } from "./payout-body.js";
 import { poll, type StackProcesses } from "./process.js";
-
-const json = JSONBig({ useNativeBigInt: true, strict: true });
 
 export async function settlementEvidence(
   processes: StackProcesses,
@@ -42,32 +39,23 @@ export async function settlementEvidence(
   ])) as SettlementObservation;
 }
 
-/** One bounded Ogmios read of the payout output reference at the local node's tip. */
+/** One bounded read of the payout output reference at the local node's tip. */
 async function queryPayoutOutput(
-  endpoint: string,
+  processes: StackProcesses,
   outRef: { txHash: string; outputIndex: number },
 ) {
-  const scope = createDaAvailabilityReadScope({
-    deadlineEpochMs: Date.now() + 30_000,
-    attemptTimeoutMs: 30_000,
+  const transport = new L1NodeTransport({
+    ...hostL1Node(processes),
+    requestTimeoutMs: 30_000,
+    readyTimeoutMs: 30_000,
   });
   try {
-    const session = await openAcceptanceNativeSession({
-      endpoint,
-      scope,
-      parseJson: (text) => json.parse(text),
+    return await transport.query({
+      query: "utxo_by_txin",
+      txIns: [{ txId: outRef.txHash, index: outRef.outputIndex }],
     });
-    try {
-      return await session.request("queryLedgerState/utxo", {
-        outputReferences: [
-          { transaction: { id: outRef.txHash }, index: outRef.outputIndex },
-        ],
-      });
-    } finally {
-      await session.close();
-    }
   } finally {
-    scope.close();
+    await transport.close();
   }
 }
 
@@ -82,9 +70,6 @@ export async function awaitExactPayout(
   address: string,
   assets: Record<string, string>,
 ) {
-  // The session dials loopback addresses only; the configured URL is already local.
-  const endpoint = new URL(processes.env.L1_OGMIOS_KEY!);
-  if (endpoint.hostname === "localhost") endpoint.hostname = "127.0.0.1";
   return poll(
     "exact canonical withdrawal payout",
     processes.config.timeoutMs,
@@ -93,11 +78,11 @@ export async function awaitExactPayout(
       const attempt = payoutConclusion(status);
       if (attempt === undefined) return undefined;
       const outRef = payoutOutRef(attempt, address, assets);
-      const frame = await queryPayoutOutput(endpoint.href, outRef).catch(
+      const answer = await queryPayoutOutput(processes, outRef).catch(
         () => undefined,
       );
-      if (frame === undefined) return undefined;
-      const output = includedPayout(outRef, address, frame);
+      if (answer === undefined) return undefined;
+      const output = includedPayout(outRef, answer);
       if (output === undefined) return undefined;
       return {
         eventId,

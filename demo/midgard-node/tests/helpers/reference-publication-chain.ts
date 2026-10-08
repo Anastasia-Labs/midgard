@@ -7,7 +7,7 @@ import "./publication-journal-lock.js";
 import "./reference-publication-chain.publication-journal.js";
 import "./reference-publication-chain.reference-publication-chain.js";
 import "./reference-publication-chain.publish-reference-chain.js";
-export { synchronizePublicationIndexer } from "../../src/transactions/reference-publication-provider.js";
+export { synchronizePublicationIndexer } from "./publication-indexer-barrier.js";
 export {
   DEFAULT_PUBLICATION_SCHEDULE,
   publicationAuthorityLifetime,

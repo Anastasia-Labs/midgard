@@ -36,11 +36,28 @@ vi.mock("../src/services/config.js", async (importOriginal) => {
     value: Layer.succeed(original.NodeConfig, {
       PORT: 0,
       NETWORK: "Custom",
-      L1_OGMIOS_KEY: "http://provider.invalid",
+      L1_NATIVE_LEDGER: {
+        socketPath: "/run/cardano/node.socket",
+        nodeConfigPath: "/etc/cardano/config.json",
+        binaryPath: "/opt/midgard/bin/midgard-l1-node-transport",
+      },
       L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: 100,
     } as NodeConfig["Type"]),
   });
   return original;
+});
+// The node's L1 access opens without a node; the slot-mapping read below
+// is the boundary the startup waits on.
+vi.mock("../src/services/l1-provider.js", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("../src/services/l1-provider.js")>();
+  return {
+    ...original,
+    openNodeL1AccessFromConfig: async () => ({
+      endpoint: "/run/cardano/node.socket",
+      close: async () => {},
+    }),
+  };
 });
 vi.mock("../src/custom-slot-mapping.js", async (importOriginal) => {
   const original =
@@ -48,7 +65,7 @@ vi.mock("../src/custom-slot-mapping.js", async (importOriginal) => {
   const { Effect } = await import("effect");
   return {
     ...original,
-    resolveCustomSlotMapping: () =>
+    resolveLucidSlotMapping: () =>
       Effect.async<never, Error>((resume) => {
         seen.resumeProvider = resume;
       }),
@@ -59,7 +76,7 @@ vi.mock("../src/services/index.js", async (importOriginal) => {
     await importOriginal<typeof import("../src/services/index.js")>();
   const { Effect, Layer } = await import("effect");
   // The actual provider composition and Lucid.Default remain; later services
-  // must stay unreachable while Lucid waits for its Custom network observation.
+  // must stay unreachable while Lucid waits on the ledger's slot mapping.
   Object.defineProperty(original.Globals, "Default", { value: Layer.empty });
   return {
     ...original,

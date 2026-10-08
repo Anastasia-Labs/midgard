@@ -42,7 +42,8 @@ import {
  * variables.
  */
 const makeConfig = Effect.gen(function* () {
-  const provider = yield* Config.literal("Kupmios")("L1_PROVIDER");
+  // Read only for the event-history owner's own transport (listen) and the
+  // history-genesis-pin command; no other node path reads Kupo or Ogmios.
   const ogmiosKey = yield* Config.string("L1_OGMIOS_KEY");
   const kupoKey = yield* Config.string("L1_KUPO_KEY");
   const nativeLedgerValues = yield* Config.all(
@@ -95,19 +96,6 @@ const makeConfig = Effect.gen(function* () {
       if (!Number.isSafeInteger(value) || value <= 0) {
         throw new Error(
           "L1_PROVIDER_PREFLIGHT_TIMEOUT_MS must be a positive safe integer",
-        );
-      }
-      return value;
-    }),
-  );
-  const l1ProviderRateLimitCooldownMs = yield* Config.integer(
-    "L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS",
-  ).pipe(
-    Config.withDefault(60_000),
-    Config.mapAttempt((value) => {
-      if (!Number.isSafeInteger(value) || value <= 0) {
-        throw new Error(
-          "L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS must be a positive safe integer",
         );
       }
       return value;
@@ -901,9 +889,7 @@ const makeConfig = Effect.gen(function* () {
   );
 
   return {
-    L1_PROVIDER: provider,
     L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: l1ProviderPreflightTimeoutMs,
-    L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS: l1ProviderRateLimitCooldownMs,
     L1_RECENT_TX_VISIBILITY_TIMEOUT_MS: l1RecentTxVisibilityTimeoutMs,
     L1_RECENT_TX_404_MAX_DELAY_MS: l1RecentTx404MaxDelayMs,
     L1_OGMIOS_KEY: ogmiosKey,

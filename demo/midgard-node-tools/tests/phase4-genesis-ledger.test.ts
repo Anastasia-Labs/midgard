@@ -37,7 +37,6 @@ const gateEnv = (): NodeJS.ProcessEnv => ({
   MIDGARD_PHASE4_RUN_DIR: "/tmp/midgard-phase4-test",
   MIDGARD_PHASE4_NETWORK_MAGIC: "424242",
   NETWORK: "Custom",
-  L1_PROVIDER: "Kupmios",
   POSTGRES_DB: "midgard_phase4_process_test",
   POSTGRES_PORT: "5544",
   MIN_FEE_A: "0",
@@ -50,7 +49,6 @@ const gateEnv = (): NodeJS.ProcessEnv => ({
 const gateConfig = () =>
   ({
     NETWORK: "Custom",
-    L1_PROVIDER: "Kupmios",
     L1_OGMIOS_KEY: "http://127.0.0.1:2337",
     L1_KUPO_KEY: "http://127.0.0.1:2442",
     MIN_FEE_A: 0n,

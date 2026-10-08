@@ -33,7 +33,7 @@ environment variables; it never holds their values. Verify the node `.env` it
 points at, without printing seed phrases:
 
 - `NETWORK=Preprod` and `MIDGARD_DEPLOYMENT_PROFILE=preprod-testing`;
-- `L1_PROVIDER=Kupmios`, loopback Kupo and Ogmios URLs, and no
+- loopback Kupo and Ogmios URLs (the history owner's), and no
   `L1_PROVIDER_FAILOVER`;
 - `RUN_GENESIS_ON_STARTUP=false` and the exact L2 `MIN_FEE_A`/`MIN_FEE_B`;
 - an explicit `MIDGARD_POSTGRES_HOST_PORT` that is neither 5433 nor 55433

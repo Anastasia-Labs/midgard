@@ -8,7 +8,6 @@ import "../commands/event-settlement-proof.js";
 import "../commands/reserve-inspection.js";
 import "../commands/reserve-payout.js";
 import "../database/settlement.js";
-import "../transactions/reference-publication-provider.js";
 import "../transactions/reserve-payout.js";
 import "../transactions/utils.js";
 import "./config.js";

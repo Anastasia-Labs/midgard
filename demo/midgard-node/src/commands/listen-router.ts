@@ -74,7 +74,7 @@ export {
   l1ProviderEvidenceIsFresh,
   l1ProviderReadinessEvidenceIsFresh,
   type L1ProviderReadinessProbe,
-  localOgmiosSlotFromPreflight,
+  localLedgerSlotFromPreflight,
   runBoundedDirectL1ProviderPreflight,
 } from "./listen-router.l1-provider-readiness-evidence-is-fresh.js";
 export {

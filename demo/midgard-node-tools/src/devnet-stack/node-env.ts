@@ -100,7 +100,8 @@ export const nodeEnvironment = (input: {
     // Commands without a --run-state flag read it from here; the default is
     // relative to the node checkout, not this run.
     MIDGARD_RUN_STATE_PATH: layout.deploymentRunState,
-    L1_PROVIDER: "Kupmios",
+    // The history owner's own Ogmios and Kupo endpoints; the node reads and
+    // submits through the cardano-node socket (L1_NODE_* below).
     L1_OGMIOS_KEY: ogmios,
     L1_KUPO_KEY: kupo,
     ...(historyGenesisPin === null

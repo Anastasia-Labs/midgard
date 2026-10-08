@@ -1,18 +1,21 @@
-import { defaultWebSocketFactory } from "./l1-kupmios.fetch-kupo-spend.js";
+/**
+ * The acceptance harness's selected-chain depth of one block, read from the
+ * devnet's Ogmios (the harness's own reader; the node reads its follower).
+ */
 import {
-  HEX_32,
   normalizeOgmiosWebSocketUrl,
-  type WebSocketFactory,
-} from "./l1-kupmios.l1-chain-point.js";
-import {
   ogmiosJsonRpcAnswerCode,
   openOgmiosSession,
-} from "./l1-kupmios.open-ogmios-session.js";
+  type WebSocketFactory,
+} from "midgard-node/l1-kupmios";
+
+const HEX_32 = /^[0-9a-f]{64}$/u;
 
 /**
  * Proves this exact block belongs to the selected chain at the response's tip.
- * Its depth includes inclusion. Kupo's spend plus an independent tip height
- * cannot prove ancestry: Kupo may still name a shallow orphan from an old fork.
+ * Its depth includes inclusion; `null` when the block is not on the selected
+ * chain. Kupo's spend plus an independent tip height cannot prove ancestry:
+ * Kupo may still name a shallow orphan from an old fork.
  */
 export const canonicalOgmiosBlockDepth = async (args: {
   readonly ogmiosUrl: string;
@@ -20,12 +23,12 @@ export const canonicalOgmiosBlockDepth = async (args: {
   readonly slot: number;
   readonly blockNo: bigint;
   readonly timeoutMs: number;
-  readonly webSocketFactory?: WebSocketFactory;
+  readonly webSocketFactory: WebSocketFactory;
 }): Promise<bigint | null> => {
   const session = await openOgmiosSession({
     url: normalizeOgmiosWebSocketUrl(args.ogmiosUrl),
     timeoutMs: args.timeoutMs,
-    webSocketFactory: args.webSocketFactory ?? defaultWebSocketFactory,
+    webSocketFactory: args.webSocketFactory,
   });
   try {
     let result: { intersection?: unknown; tip?: unknown };

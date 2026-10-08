@@ -1,6 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { type Network, type TxBuilder } from "@lucid-evolution/lucid";
-import { Effect, Either } from "effect";
+import { type Effect } from "effect";
 
 import { parseNetworkArgument } from "./address-from-seed.js";
 import {
@@ -307,34 +307,22 @@ export const daBondAssembleCommand = async (
   };
 };
 
-export type DaBondChainOptions = Readonly<{
-  manifest: string;
-  kupoUrl?: string;
-  ogmiosUrl?: string;
-}>;
+export type DaBondChainOptions = Readonly<{ manifest: string }>;
 
 /**
- * A `Custom` deployment whose slot mapping the local Ogmios did not give:
- * the command stops before it builds anything.
+ * A deployment whose slot mapping the local node's ledger did not give: the
+ * command stops before it builds anything.
  */
-export class DaBondCustomSlotMappingError extends Error {
-  override readonly name = "DaBondCustomSlotMappingError";
+export class DaBondSlotMappingError extends Error {
+  override readonly name = "DaBondSlotMappingError";
 }
 
 /**
  * The network a verified manifest names. The public networks go through the
  * CLI network parser unchanged; `Custom` (a local devnet) is admitted here,
- * and only here, because `daBondLucid` gives it the node's slot mapping.
+ * and only here, because `daBondLucid` gives it the ledger's slot mapping.
  */
 export const daBondNetwork = (manifestNetwork: string): Network =>
   manifestNetwork === "Custom"
     ? "Custom"
     : parseNetworkArgument(manifestNetwork);
-
-export const runOrThrow = async <A>(
-  program: Effect.Effect<A, Error>,
-): Promise<A> =>
-  Either.getOrThrowWith(
-    await Effect.runPromise(Effect.either(program)),
-    (error) => error,
-  );

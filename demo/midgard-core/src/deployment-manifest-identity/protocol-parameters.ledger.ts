@@ -1,13 +1,12 @@
 import { CborTag, type CborValue, decodeCbor } from "@al-ft/l1-node-transport";
-import {
-  type DeploymentManifestCardanoProtocolParameters,
-  parseDeploymentManifestCardanoProtocolParameters,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
+
+import { parseDeploymentManifestCardanoProtocolParameters } from "./protocol-parameters.js";
+import { type DeploymentManifestCardanoProtocolParameters } from "./types.js";
 
 /**
- * The funding parameters of the node's current Conway `PParams`, read from
- * the raw `protocol_params` local-state-query answer (the 31 fields in
- * cardano-ledger `conway.cddl` order). Rationals stay exact.
+ * The manifest's protocol-parameter snapshot of the node's current Conway
+ * `PParams`, read from the raw `protocol_params` local-state-query answer
+ * (the 31 fields in cardano-ledger `conway.cddl` order). Rationals stay exact.
  *
  * The reference-script fee tiers past the base price are ledger constants,
  * not protocol parameters: a 25,600-byte tier, a 6/5 multiplier per tier and

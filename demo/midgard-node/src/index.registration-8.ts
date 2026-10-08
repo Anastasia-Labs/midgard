@@ -92,15 +92,10 @@ program
         });
         const limits = yield* Effect.tryPromise({
           try: async () => {
-            const provider = lucidService.referenceScriptsApi.config().provider;
-            if (provider === undefined) {
-              throw new Error("Lucid has no configured Cardano provider");
-            }
             const { snapshot } =
-              await ContractDeploymentInfo.cardanoProtocolParametersIdentityFromProvider(
-                provider,
-                await ContractDeploymentInfo.queryLocalOgmiosProtocolParameters(
-                  nodeConfig.L1_OGMIOS_KEY,
+              await ContractDeploymentInfo.cardanoProtocolParametersIdentityFromLedger(
+                ContractDeploymentInfo.ledgerProtocolParametersReader(
+                  lucidService,
                 ),
               );
             return referenceScriptSweepLimitsFromProtocolParameters(snapshot);

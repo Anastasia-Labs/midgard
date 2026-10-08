@@ -22,6 +22,7 @@ import {
   VERSION,
 } from "./index.registration.js";
 import * as Services from "./services/index.js";
+import { openNodeL1AccessFromConfig } from "./services/l1-provider.js";
 
 daBondChainOptions(
   daBond
@@ -168,26 +169,16 @@ daBondChainOptions(
 program
   .command("l1-utxos")
   .description(
-    "Fetch and print Cardano L1 UTxOs for an address through local Kupmios",
+    "Fetch and print Cardano L1 UTxOs for an address through the local node and the node's follower store",
   )
-  .requiredOption(
-    "--address <address>",
-    "Cardano payment address to query from local Kupmios",
-  )
-  .option("--kupo-url <url>", "Override Kupo URL; defaults to L1_KUPO_KEY")
-  .option(
-    "--ogmios-url <url>",
-    "Override Ogmios URL; defaults to L1_OGMIOS_KEY",
-  )
+  .requiredOption("--address <address>", "Cardano payment address to query")
   .option("--network <network>", "Override network; defaults to NETWORK")
   .action(async (_args, options) => {
     let address: string;
-    let kupmiosConfig: L1UtxosCommand.KupmiosConfig;
+    let network: ReturnType<typeof L1UtxosCommand.resolveL1UtxosNetwork>;
     try {
       address = parseAddressArgument(options.opts().address);
-      kupmiosConfig = L1UtxosCommand.resolveKupmiosConfig({
-        kupoUrl: options.opts().kupoUrl,
-        ogmiosUrl: options.opts().ogmiosUrl,
+      network = L1UtxosCommand.resolveL1UtxosNetwork({
         network: options.opts().network,
       });
     } catch (error) {
@@ -196,11 +187,7 @@ program
     }
 
     try {
-      const result = await L1UtxosCommand.fetchKupmiosAddressUtxos({
-        address,
-        ...kupmiosConfig,
-      });
-      writeJson(result);
+      writeJson(await L1UtxosCommand.fetchAddressUtxos({ address, network }));
     } catch (error) {
       failCli("l1-utxos", error);
     }
@@ -226,23 +213,34 @@ program
 program
   .command("l1-provider-preflight")
   .description(
-    "Check the configured L1 provider route and fail before state-changing work when no source is healthy",
+    "Check the local node's transport and ledger tip, and fail before state-changing work when it is not healthy",
   )
   .option("--json", "Print machine-readable JSON", true)
   .action(async () => {
     const mainEffect = Effect.gen(function* () {
       const nodeConfig = yield* Services.NodeConfig;
-      const report = yield* Effect.tryPromise(() =>
-        L1ProviderPreflightCommand.runL1ProviderPreflight({
-          config: nodeConfig,
-        }),
+      const report = yield* Effect.acquireUseRelease(
+        Effect.tryPromise(() => openNodeL1AccessFromConfig(nodeConfig)),
+        (access) =>
+          Effect.tryPromise(() =>
+            L1ProviderPreflightCommand.runL1ProviderPreflight({
+              config: {
+                network: nodeConfig.NETWORK,
+                endpoint: access.endpoint,
+                timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
+                transportReadiness: access.transportReadiness,
+                readSubmitSlotSnapshot: access.submitSlotSnapshot,
+              },
+            }),
+          ),
+        (access) => Effect.promise(access.close),
       );
       yield* Effect.sync(() => {
         writeJson(report);
       });
       if (!report.ok) {
         return yield* Effect.fail(
-          new Error("No configured L1 provider source passed preflight"),
+          new Error("The local node failed the L1 preflight"),
         );
       }
       return report;

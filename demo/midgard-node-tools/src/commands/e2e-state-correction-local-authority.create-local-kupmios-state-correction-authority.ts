@@ -18,9 +18,6 @@ import type { StateCorrectionIndependentAuthority } from "./e2e-state-correction
 export const createLocalKupmiosStateCorrectionAuthority = (
   config: LocalKupmiosStateCorrectionAuthorityConfig,
 ): StateCorrectionIndependentAuthority => {
-  if (config.provider !== "Kupmios") {
-    throw new Error("Q57 authority requires L1_PROVIDER=Kupmios");
-  }
   if (l1ProviderFailoverEnabled(config.providerFailover)) {
     throw new Error("Q57 authority forbids L1 provider failover");
   }

@@ -200,9 +200,7 @@ describe("DA bond pool live port: availability validity and lapses", () => {
     await expect(
       wait(
         scripted([
-          new Error(
-            "Availability command requires Kupo and Ogmios aligned at the same canonical tip",
-          ),
+          new Error("L1 provider follower unavailable: behind_node_tip"),
           new Error(
             "Availability transaction inclusion changed during its canonical read",
           ),
@@ -213,9 +211,7 @@ describe("DA bond pool live port: availability validity and lapses", () => {
     await expect(
       wait(
         scripted([
-          new Error(
-            "Availability command requires Kupo and Ogmios aligned at the same canonical tip",
-          ),
+          new Error("L1 provider follower unavailable: behind_node_tip"),
           "expired",
         ]),
       ),
@@ -242,9 +238,7 @@ describe("DA bond pool live port: availability validity and lapses", () => {
     ).toBe(txId);
     expect(
       availabilitySubmissionToAwait(
-        new Error(
-          "Availability command requires Kupo and Ogmios aligned at the same canonical tip",
-        ),
+        new Error("L1 provider follower unavailable: behind_node_tip"),
         txId,
         pending,
       ),
@@ -271,7 +265,7 @@ describe("DA bond pool live port: availability validity and lapses", () => {
   it("re-plans a lapsed transaction up to the cap and retries only an unjournaled transient error", async () => {
     const lapsed = new AvailabilityIntentLapsedError(txId);
     const transient = new Error(
-      "Availability command requires Kupo and Ogmios aligned at the same canonical tip",
+      "L1 provider follower unavailable: behind_node_tip",
     );
     const state = {
       journaled: true,

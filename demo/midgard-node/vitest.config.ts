@@ -48,13 +48,17 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/l1-event-history-signed-intent-restart-emulator.test.ts
  *   tests/l1-event-history-signed-intent-continuation-emulator.test.ts
  *   tests/commit-replacement-state-queue-emulator.test.ts
+ *   tests/follower-provider.commit-replacement-state-queue-emulator.test.ts
  *   tests/database.test.ts
  *   tests/da-bond-pool-bootstrap-emulator.test.ts
+ *   tests/follower-provider.da-bond-pool-bootstrap-emulator.test.ts
  *   tests/deposit-flow-emulator-commit-selection.test.ts
  *   tests/deposit-flow-emulator-confirmation-journal.test.ts
  *   tests/deposit-flow-emulator-input-resolution.test.ts
  *   tests/deposit-flow-emulator-merge-payout.test.ts
+ *   tests/follower-provider.deposit-flow-emulator-merge-payout.test.ts
  *   tests/deposit-flow-emulator-submission.test.ts
+ *   tests/follower-provider.deposit-flow-emulator-submission.test.ts
  *   tests/merge-landed-finalization.test.ts
  *   tests/merge-landed-finalization-emulator.test.ts
  *   tests/migration-locking.test.ts
@@ -63,6 +67,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/retention-enforcement.test.ts
  *   tests/correction-admission-rollback-emulator.test.ts
  *   tests/state-queue-node-floor-challenge-emulator.test.ts
+ *   tests/follower-provider.state-queue-node-floor-challenge-emulator.test.ts
  *   tests/state-reconciliation-emulator.test.ts
  *   tests/tx-admissions-claim-load.test.ts
  *   tests/tx-admissions-monotone-timestamps.test.ts
@@ -73,8 +78,12 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/state-queue-mutation-lease-settle-retry.test.ts
  *   tests/forced-order-carriage.test.ts
  *   tests/forced-order-carriage-emulator.test.ts
+ *   tests/follower-provider.forced-order-carriage-emulator.test.ts
  *   tests/l1-state-queue-liveness.test.ts
  *   tests/l1-state-queue-fiber-tick-spy.test.ts
+ *   tests/follower-provider.history-commit-horizon-lag-emulator.test.ts
+ *   tests/follower-provider.intent-journal-commit-gate-emulator.test.ts
+ *   tests/follower-provider.operator-watchdog-emulator.test.ts
  */
 
 // A committed `bail` makes the suite's cost and its result set unreproducible:

@@ -968,7 +968,7 @@ const readCounters = async () => {
       const readiness = await httpClient.request(`${submitEndpoint}/readyz`);
       if (readiness.ok) {
         const body = readiness.json();
-        const slot = Number(body?.localOgmiosSlot?.currentSlot);
+        const slot = Number(body?.localLedgerSlot?.currentSlot);
         counters.l1TipSlot = Number.isFinite(slot) ? slot : null;
       }
     } catch {

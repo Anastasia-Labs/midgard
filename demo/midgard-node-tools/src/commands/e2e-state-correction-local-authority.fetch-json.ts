@@ -73,7 +73,6 @@ export interface LocalKupmiosStateCorrectionSource {
 }
 
 export type LocalKupmiosStateCorrectionAuthorityConfig = {
-  readonly provider: string | undefined;
   readonly providerFailover: string | undefined;
   readonly kupoUrl: string;
   readonly ogmiosUrl: string;

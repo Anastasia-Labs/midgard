@@ -69,6 +69,12 @@ const customSlotConfigDocument = {
   },
 };
 
+const customLedgerSlotConfig = {
+  zeroTime: customGenesis.startTimeMs,
+  zeroSlot: 0,
+  slotLength: customGenesis.slotLengthMs,
+};
+
 const customSlotConfigArtifactPath = join(
   evidenceDirectory,
   "custom-slot-config.json",
@@ -253,24 +259,30 @@ describe("Architecture G commit-candidate probe V1 artifacts", () => {
       assertArchitectureGCandidateSlotRuntimeIdentity({
         input: custom,
         runtimeNetwork: "Custom",
-        customGenesis,
+        ledgerSlotConfig: customLedgerSlotConfig,
       }),
     ).not.toThrow();
     expect(() =>
       assertArchitectureGCandidateSlotRuntimeIdentity({
         input: custom,
         runtimeNetwork: "Custom",
-        customGenesis: {
-          ...customGenesis,
-          configurationSha256: hash(99),
+        ledgerSlotConfig: {
+          ...customLedgerSlotConfig,
+          zeroTime: customLedgerSlotConfig.zeroTime + 1_000,
         },
       }),
-    ).toThrow(/does not match the live configured Ogmios genesis/u);
+    ).toThrow(/does not match the local node's ledger slot mapping/u);
+    expect(() =>
+      assertArchitectureGCandidateSlotRuntimeIdentity({
+        input: custom,
+        runtimeNetwork: "Custom",
+      }),
+    ).toThrow(/does not match the local node's ledger slot mapping/u);
   });
 
-  it("names the Custom chain by its genesis, never by the Ogmios endpoint", () => {
-    // The evidence carries no endpoint, so any Ogmios in front of the same
-    // genesis is admitted; a different genesis (another chain) never is.
+  it("checks the Custom chain by its ledger slot mapping, never by an endpoint", () => {
+    // The evidence carries no endpoint; the live check is the local node's
+    // ledger slot mapping, so a chain with another start never matches.
     expect(customSlotConfigDocument.source).toStrictEqual({
       kind: "local_ogmios_genesis",
       configurationSha256: customGenesis.configurationSha256,
@@ -299,22 +311,18 @@ describe("Architecture G commit-candidate probe V1 artifacts", () => {
         },
       } as unknown as ReturnType<typeof candidateInput>;
     };
-    const otherChainGenesis = parseOgmiosShelleyGenesisSlotConfig({
-      ...customOgmiosPayload,
-      result: { ...customOgmiosPayload.result, networkMagic: 4242 },
-    });
-    expect(otherChainGenesis.configurationSha256).not.toBe(
-      customGenesis.configurationSha256,
-    );
     expect(() =>
       assertArchitectureGCandidateSlotRuntimeIdentity({
         input: decodeArchitectureGCommitCandidateInput(
           withSource(customSlotConfigDocument.source, "custom-same.json"),
         ),
         runtimeNetwork: "Custom",
-        customGenesis: otherChainGenesis,
+        ledgerSlotConfig: {
+          ...customLedgerSlotConfig,
+          zeroTime: customLedgerSlotConfig.zeroTime + 86_400_000,
+        },
       }),
-    ).toThrow(/does not match the live configured Ogmios genesis/u);
+    ).toThrow(/does not match the local node's ledger slot mapping/u);
     // An artifact that still names an endpoint is not this schema.
     expect(() =>
       decodeArchitectureGCommitCandidateInput(

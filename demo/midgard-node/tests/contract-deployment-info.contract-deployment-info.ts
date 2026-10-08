@@ -1,6 +1,7 @@
 import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { type CborInput, CborTag, encodeCbor } from "@al-ft/l1-node-transport";
 import { MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION } from "@al-ft/midgard-core/consensus-profile";
 import { referenceScriptAuthTokenName } from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
@@ -17,9 +18,11 @@ import {
   buildContractDeploymentInfoProgram,
   buildDeploymentManifest,
   buildReferenceScriptOutRefMap,
-  cardanoProtocolParametersIdentityFromProvider,
+  cardanoProtocolParametersIdentity,
+  cardanoProtocolParametersIdentityFromLedger,
   defaultContractDeploymentInfoOutputPath,
   DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+  ledgerProtocolParametersReader,
   parseDeploymentManifest,
   verifyDeploymentManifestAgainstConfig,
 } from "../src/commands/contract-deployment-info.js";
@@ -50,55 +53,45 @@ import { withRealEventHistoryForTest } from "./helpers/event-history.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 describe("contract deployment info", () => {
-  it("derives the exact Cardano parameter snapshot and digest from the configured provider", async () => {
-    let calls = 0;
-    const identity = await cardanoProtocolParametersIdentityFromProvider(
-      {
-        getProtocolParameters: async () => {
+  unitIt(
+    "derives the exact Cardano parameter snapshot and digest from the ledger's protocol parameters",
+    async () => {
+      const rational = (numerator: bigint, denominator: bigint) =>
+        new CborTag(30n, [numerator, denominator]);
+      const fields: CborInput[] = Array.from({ length: 31 }, () => 0n);
+      fields[0] = 44n;
+      fields[1] = 155_381n;
+      fields[3] = 16_384n;
+      fields[14] = 4_310n;
+      fields[16] = [rational(577n, 10_000n), rational(721n, 10_000_000n)];
+      fields[17] = [16_500_000n, 10_000_000_000n];
+      fields[19] = 5_000n;
+      fields[20] = 150n;
+      fields[21] = 3n;
+      fields[30] = rational(15n, 1n);
+      let calls = 0;
+      const identity = await cardanoProtocolParametersIdentityFromLedger(
+        async () => {
           calls += 1;
-          return {
-            minFeeA: 44,
-            minFeeB: 155_381,
-            priceMem: 0.0577,
-            priceStep: 0.0000721,
-            coinsPerUtxoByte: 4_310n,
-            collateralPercentage: 150,
-            maxCollateralInputs: 3,
-            maxTxSize: 16_384,
-            maxValSize: 5_000,
-            maxTxExMem: 16_500_000n,
-            maxTxExSteps: 10_000_000_000n,
-            minFeeRefScriptCostPerByte: 15,
-          };
+          return encodeCbor(fields);
         },
-      },
-      {
-        jsonrpc: "2.0",
-        id: "fixture",
-        result: {
-          minFeeCoefficient: 44,
-          minFeeConstant: { ada: { lovelace: 155_381 } },
-          scriptExecutionPrices: {
-            memory: "577/10000",
-            cpu: "721/10000000",
-          },
-          minUtxoDepositCoefficient: 4_310,
-          collateralPercentage: 150,
-          maxCollateralInputs: 3,
-          maxTransactionSize: { bytes: 16_384 },
-          maxValueSize: { bytes: 5_000 },
-          maxExecutionUnitsPerTransaction: {
-            memory: 16_500_000,
-            cpu: 10_000_000_000,
-          },
-          minFeeReferenceScripts: { base: 15, range: 25_600, multiplier: 1.2 },
-          maxReferenceScriptsSizePerTransaction: { bytes: 204_800 },
-        },
-      },
-    );
-    expect(calls).toBe(1);
-    expect(identity.snapshot).toEqual(TEST_CARDANO_PARAMETERS);
-  });
+      );
+      expect(calls).toBe(1);
+      expect(identity.snapshot).toEqual(TEST_CARDANO_PARAMETERS);
+      expect(identity).toEqual(
+        cardanoProtocolParametersIdentity(TEST_CARDANO_PARAMETERS),
+      );
+    },
+  );
+
+  unitIt(
+    "refuses a Lucid service without the ledger's protocol-parameter reader",
+    () => {
+      expect(() => ledgerProtocolParametersReader({})).toThrow(
+        /no reader of the local node's protocol parameters/,
+      );
+    },
+  );
 
   it.effect(
     "builds explicit script entries for the current validator bundle",

@@ -84,7 +84,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       lastSuccessKind: null,
       lastFailureAtMs: 0,
       lastFailure: null,
-      lastOgmiosSlot: null,
+      lastLedgerSlot: null,
     });
 
     // The state queue UTxO confirmed by the confirmation worker, unused for

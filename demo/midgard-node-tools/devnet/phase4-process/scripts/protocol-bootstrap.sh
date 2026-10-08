@@ -58,7 +58,7 @@ unset MIDGARD_DEPLOYMENT_MANIFEST_PATH MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH
 # leaves node.env refused by write-acceptance-env.sh rather than stale.
 unset L1_ORIGIN L1_NODE_SOCKET_PATH L1_NODE_CONFIG_PATH L1_NODE_TRANSPORT_BINARY_PATH
 upsert_private_env L1_ORIGIN "" "$node_env"
-export NETWORK=Custom L1_PROVIDER=Kupmios RUN_GENESIS_ON_STARTUP=false MIN_FEE_A=0 MIN_FEE_B=0
+export NETWORK=Custom RUN_GENESIS_ON_STARTUP=false MIN_FEE_A=0 MIN_FEE_B=0
 upsert_private_env MIN_FEE_A 0 "$node_env"
 upsert_private_env MIN_FEE_B 0 "$node_env"
 export L1_OGMIOS_KEY="http://127.0.0.1:$MIDGARD_PHASE4_OGMIOS_PORT" L1_KUPO_KEY="http://127.0.0.1:$MIDGARD_PHASE4_KUPO_PORT"

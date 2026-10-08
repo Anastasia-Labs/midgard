@@ -297,35 +297,3 @@ export const configuredAvailabilityChallenge =
         (name) => `${name} must be an explicit positive decimal integer`,
       ),
     );
-
-export const protocolRecord = (
-  value: unknown,
-  field: string,
-): Record<string, unknown> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${field} must be an object`);
-  }
-  return value as Record<string, unknown>;
-};
-
-export const protocolNatural = (value: unknown, field: string): string => {
-  if (typeof value === "bigint" && value >= 0n) return value.toString(10);
-  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
-    return value.toString(10);
-  }
-  if (typeof value === "string" && /^(?:0|[1-9][0-9]*)$/u.test(value)) {
-    return value;
-  }
-  throw new Error(`${field} must be a canonical natural`);
-};
-
-export const protocolGcd = (left: bigint, right: bigint): bigint => {
-  let a = left < 0n ? -left : left;
-  let b = right < 0n ? -right : right;
-  while (b !== 0n) {
-    const remainder = a % b;
-    a = b;
-    b = remainder;
-  }
-  return a;
-};

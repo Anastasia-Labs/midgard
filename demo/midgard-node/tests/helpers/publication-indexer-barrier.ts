@@ -1,3 +1,9 @@
+/**
+ * The Kupo/Ogmios indexer barrier the real-node publication drills
+ * (`reference-publication-node`, `reference-publication-local-devnet`) run
+ * their own Kupmios client behind. The node itself reads the follower's view
+ * (`services/l1-provider.ts`).
+ */
 import { setTimeout as pause } from "node:timers/promises";
 
 import { Schema } from "effect";

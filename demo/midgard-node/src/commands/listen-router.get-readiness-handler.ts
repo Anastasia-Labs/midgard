@@ -5,8 +5,8 @@ import { Effect, Option, Ref } from "effect";
 
 import { StateQueueMutationLeasesDB } from "../database/index.js";
 import { attestationTimeoutCorrectionReadinessBounds } from "../fibers/index.js";
-import { localOgmiosSubmitSlotEvidence } from "../l1-heads.js";
 import { READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS } from "../l1-provider-readiness-probe.js";
+import { submitSlotEvidence } from "../l1-provider-view.js";
 import { deploymentIdentityDigestOf } from "../l1-queue-terminals/index.js";
 import {
   DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
@@ -31,6 +31,7 @@ import {
 } from "../transactions/state-queue/merge-readiness.js";
 import { runL1ProviderPreflight } from "./l1-provider-preflight.js";
 import {
+  L1_TRANSPORT_UNREADY,
   l1ProviderReadiness,
   pendingFinalizationAgeDetail,
   readinessDatabaseError,
@@ -123,7 +124,21 @@ export const getReadinessHandler = Effect.gen(function* () {
       ? 0
       : nowMillis - unconfirmedSubmittedBlockSinceMs;
 
-  const lucidService = yield* Effect.serviceOption(Lucid);
+  const lucidService = Option.getOrUndefined(
+    yield* Effect.serviceOption(Lucid),
+  );
+  // The live node's L1 access: its transport and its ledger-tip read. A
+  // hand-built service without them reads as an access not yet open.
+  const l1Access =
+    lucidService?.l1TransportReadiness === undefined ||
+    lucidService.readSubmitSlotSnapshotOnce === undefined ||
+    lucidService.l1Endpoint === undefined
+      ? undefined
+      : {
+          endpoint: lucidService.l1Endpoint,
+          transportReadiness: lucidService.l1TransportReadiness,
+          readSubmitSlotSnapshotOnce: lucidService.readSubmitSlotSnapshotOnce,
+        };
   const providerHealthBefore = yield* Ref.get(globals.L1_PROVIDER_HEALTH);
   const cachedProviderEvidenceIsFresh = l1ProviderReadinessEvidenceIsFresh({
     evidence: providerHealthBefore,
@@ -146,21 +161,23 @@ export const getReadinessHandler = Effect.gen(function* () {
     : yield* runExactGatedDirectL1ProviderProbe({
         globals,
         directProbe: runBoundedDirectL1ProviderPreflight({
-          runPreflight: (signal) =>
-            runL1ProviderPreflight({
+          runPreflight: async (signal) => {
+            if (l1Access === undefined)
+              throw new Error(
+                "The node's L1 access is not open yet (the Lucid service is starting)",
+              );
+            return runL1ProviderPreflight({
               config: {
-                L1_PROVIDER: nodeConfig.L1_PROVIDER,
-                L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: providerProbeTimeoutMs,
-                L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS:
-                  nodeConfig.L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS,
-                L1_OGMIOS_KEY: nodeConfig.L1_OGMIOS_KEY,
-                L1_KUPO_KEY: nodeConfig.L1_KUPO_KEY,
-                NETWORK: nodeConfig.NETWORK,
-                L1_OGMIOS_TIP_MAX_AGE_MS:
-                  Option.getOrUndefined(lucidService)?.ogmiosTipMaxAgeMs,
+                network: nodeConfig.NETWORK,
+                endpoint: l1Access.endpoint,
+                timeoutMs: providerProbeTimeoutMs,
+                transportReadiness: l1Access.transportReadiness,
+                readSubmitSlotSnapshot: () =>
+                  Effect.runPromise(l1Access.readSubmitSlotSnapshotOnce()),
               },
               signal,
-            }),
+            });
+          },
           timeoutMs: providerProbeTimeoutMs,
         }),
         now: Date.now,
@@ -304,11 +321,17 @@ export const getReadinessHandler = Effect.gen(function* () {
     lastExactSuccessAtMs: providerHealthAfter.lastExactSuccessAtMs,
     nowMs: providerEvidenceObservedAtMs,
     unhealthyAfterMs: readinessL1ProviderUnhealthyAfterMs(
-      Option.getOrUndefined(lucidService)?.ogmiosTipMaxAgeMs,
+      nodeConfig.L1_NODE_BEHIND_MAX_MS,
     ),
   });
   if (providerReadiness.reason !== undefined)
     reasons.push(providerReadiness.reason);
+  // The local node transport the node's Lucid reads and submits through: an
+  // unreachable node or sidecar is named at once; the process stays up and
+  // the transport's supervisor retries.
+  const l1Transport = l1Access?.transportReadiness();
+  if (l1Transport !== undefined && !l1Transport.ready)
+    reasons.push(`${L1_TRANSPORT_UNREADY}:${l1Transport.reason}`);
   // A raised reason holds the fibers its source halts for as long as it is
   // raised, possibly for good, while every heartbeat stays fresh.
   const livenessReasons = yield* activeLivenessReasons(globals);
@@ -380,11 +403,15 @@ export const getReadinessHandler = Effect.gen(function* () {
         ? null
         : Math.max(0, Date.now() - providerHealthAfter.lastExactSuccessAtMs),
     providerQueryError: providerProbe.error,
-    localOgmiosSlot:
-      providerProbe.ogmiosSlot !== null
+    l1Transport:
+      l1Access === undefined
+        ? null
+        : { endpoint: l1Access.endpoint, readiness: l1Transport ?? null },
+    localLedgerSlot:
+      providerProbe.ledgerSlot !== null
         ? {
-            ...providerProbe.ogmiosSlot,
-            evidence: localOgmiosSubmitSlotEvidence(providerProbe.ogmiosSlot),
+            ...providerProbe.ledgerSlot,
+            evidence: submitSlotEvidence(providerProbe.ledgerSlot),
             mode: providerProbe.mode,
             evidenceAgeMs: providerProbe.evidenceAgeMs,
           }

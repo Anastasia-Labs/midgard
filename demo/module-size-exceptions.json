@@ -776,12 +776,12 @@
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.create-live-da-bond-pool-journey-port.ts",
-    "max": 1623,
-    "reason": "createLiveDaBondPoolJourneyPort is the dominant indivisible declaration (1473 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 1642,
+    "reason": "createLiveDaBondPoolJourneyPort is the dominant indivisible declaration (1473 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N1K (+19): the availability command flow opens the node's L1 access (its follower store and local node) from the stack environment and reads the Open commitment's unit history from that store, instead of Kupo and Ogmios URLs."
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.da-bond-pool-live-port-availability-validity-and-lapses.ts",
-    "max": 600,
+    "max": 594,
     "reason": "Retained test registration “DA bond pool live port: availability validity and lapses” (569 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -816,7 +816,7 @@
   },
   {
     "file": "midgard-node-tools/scripts/verify-phase4-journal-kill-recovery-summary.mjs",
-    "max": 1019,
+    "max": 1018,
     "reason": "The retained CLI identity, blueprint-relative loading and mutually dependent summary validation group share the original executable boundary. Independent validation helpers were extracted. Remaining division requires a dedicated separation of loading and validation ownership."
   },
   {
@@ -856,7 +856,7 @@
   },
   {
     "file": "midgard-node-tools/tests/phase4-journal-kill-recovery-summary-verifier.test.mjs",
-    "max": 527,
+    "max": 526,
     "reason": "Retained test registration “fails closed on schema, isolation, and journal-kill mutations” (113 lines) and its validSummary fixture (73 lines) share the suite-local transaction and database-state fixtures. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -936,7 +936,7 @@
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
-    "max": 1062,
+    "max": 1048,
     "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+3): reads the horizon lag d from config.history-commit-horizon-lag.ts, which refuses a negative, fractional or deeper-than-k value at startup. I5 (+3): reads the node-behind bound L1_NODE_BEHIND_MAX_MS from config.node-behind.ts, which refuses a non-positive or fractional value at startup. N4 (-15): the deleted correction observer's STATE_QUEUE_CORRECTION_FINALITY_DEPTH is no longer read."
   },
   {
@@ -966,7 +966,7 @@
   },
   {
     "file": "midgard-node/src/transactions/state-queue/merge-to-confirmed-state.build-and-submit-merge-tx.ts",
-    "max": 562,
+    "max": 560,
     "reason": "buildAndSubmitMergeTx is the dominant indivisible declaration (495 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+13): the merge submission names its journaled intent and the header it merges. I2 (-2): merge funding reads the wallet view; no wallet pin. I5 (+4): the merge opens its intent plan before its L1 reads and records under it."
   },
   {
@@ -996,7 +996,7 @@
   },
   {
     "file": "midgard-node/tests/availability-challenge-command.test.ts",
-    "max": 562,
+    "max": 559,
     "reason": "Retained test registration “operational availability commands” (505 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1051,12 +1051,12 @@
   },
   {
     "file": "midgard-node/tests/contract-deployment-info.contract-deployment-info.ts",
-    "max": 1193,
+    "max": 1186,
     "reason": "Retained test registration “contract deployment info” (1149 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/da-bond-command.test.ts",
-    "max": 1057,
+    "max": 954,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -1166,7 +1166,7 @@
   },
   {
     "file": "midgard-node/tests/l1-control-plane.test.ts",
-    "max": 1257,
+    "max": 1248,
     "reason": "Retained test registration “L1 control-plane serialization” (1237 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1256,8 +1256,8 @@
   },
   {
     "file": "midgard-node/tests/mpf-commit-candidate-probe-artifacts.test.ts",
-    "max": 548,
-    "reason": "Retained test registration “Architecture G commit-candidate probe V1 artifacts” (325 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 556,
+    "reason": "Retained test registration “Architecture G commit-candidate probe V1 artifacts” (325 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. N1K (+8): the Custom slot identity is checked against the local node's ledger slot mapping instead of the Ogmios genesis, including the refusal when no ledger mapping was read."
   },
   {
     "file": "midgard-node/tests/mpf-native-owner-service.test.ts",

@@ -16,9 +16,9 @@ import {
   ProcessedMempoolDB,
 } from "../database/index.js";
 import * as Tx from "../database/utils/tx.js";
-import { fetchLocalOgmiosShelleyGenesisSlotConfig } from "../l1-heads.js";
 import { NodeConfig } from "../services/config.js";
 import { type Lucid } from "../services/index.js";
+import { openNodeL1AccessFromConfig } from "../services/l1-provider.js";
 import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/index.js";
 import { batchProgram, breakDownTx } from "../utils.js";
 import {
@@ -41,6 +41,11 @@ const probePath = resolve(fileURLToPath(import.meta.url));
 const probeSha256 = createHash("sha256")
   .update(readFileSync(probePath))
   .digest("hex");
+
+const probeError =
+  (step: string) =>
+  (cause: unknown): Error =>
+    new Error(`Commit-candidate probe failed to ${step}`, { cause });
 
 const loadInput = async (): Promise<{
   readonly input: ReturnType<typeof decodeArchitectureGCommitCandidateInput>;
@@ -135,19 +140,27 @@ void (async () => {
     const program = Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       const nodeConfig = yield* NodeConfig;
-      const customGenesis =
+      const ledgerSlotConfig =
         nodeConfig.NETWORK === "Custom"
-          ? yield* fetchLocalOgmiosShelleyGenesisSlotConfig({
-              ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-              timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
-            })
+          ? yield* Effect.acquireUseRelease(
+              Effect.tryPromise({
+                try: () => openNodeL1AccessFromConfig(nodeConfig),
+                catch: probeError("open the node's L1 access"),
+              }),
+              (access) =>
+                Effect.tryPromise({
+                  try: access.slotConfig,
+                  catch: probeError("read the ledger slot mapping"),
+                }),
+              (access) => Effect.promise(access.close),
+            )
           : undefined;
       yield* Effect.try({
         try: () =>
           assertArchitectureGCandidateSlotRuntimeIdentity({
             input,
             runtimeNetwork: nodeConfig.NETWORK,
-            customGenesis,
+            ledgerSlotConfig,
           }),
         catch: (cause) =>
           cause instanceof Error

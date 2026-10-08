@@ -14,7 +14,8 @@
  * - Open, responses, settlements, Close, Timeout and the follow-up removal:
  *   the availability command flow of `midgard-node availability-challenge`
  *   (#690), composed in process from its exported steps: the canonical
- *   Kupo/Ogmios source, the durable operation journal, reconciliation before
+ *   source on the node's L1 access (its follower store and local node), the
+ *   durable operation journal, reconciliation before
  *   every action, a snapshot bracketed by two equal canonical points, the
  *   command's action planner and transaction builder. The composed form is
  *   needed because the CLI entry point resolves only Mainnet, Preprod and
@@ -25,7 +26,8 @@
  *   `da-bond-pool-cli-process.ts`); each chain is the step's `cli` evidence,
  *   and its transaction is confirmed by the adapter's own pool read. The
  *   `da-bond` CLI admits the devnet's `Custom` network (P25, #691) with the
- *   node's own Ogmios-derived slot mapping;
+ *   slot mapping from the local node's ledger, and reads through the node's
+ *   L1 access (the local node and the node database);
  * - the pool snapshot: `da-bond status` over a `DaBondContext` built as
  *   `loadDaBondContext` builds it, with the devnet's slot configuration and
  *   the ledger tip as its clock. That context never submits;
@@ -63,8 +65,8 @@
  *   node (checked before it starts, after each start, before each step and
  *   before each Open): a watcher would contest the journey's challenges, and
  *   a committee node holding the payload would answer the withheld block;
- * - Kupo indexes every address (`*`), which the Open's commitment recovery
- *   and the challenge snapshots read;
+ * - Kupo indexes every address (`*`), which the adapter's own reads (the
+ *   challenge snapshots and the expired-commit spend read) use;
  * - the state queue holds only its root. The journey appends B1 as the head
  *   (`root.next`), because only the head can be removed after its availability
  *   Timeout, so it needs a freshly deployed run directory. A resumed run

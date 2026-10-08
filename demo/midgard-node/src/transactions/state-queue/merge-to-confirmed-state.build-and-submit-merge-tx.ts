@@ -233,7 +233,6 @@ export const buildAndSubmitMergeTx = (
 
       const localLedgerGate = yield* captureMergeLocalLedgerGate({
         lucid,
-        nodeConfig,
         validFromUnixTime: mergeMaturity.validFromUnixTime,
         leaseToken: options?.leaseToken,
         headerHash: recomputedHeaderHash,
@@ -430,7 +429,6 @@ export const buildAndSubmitMergeTx = (
         candidateIdentity: oldestBlockReadiness.candidateIdentity,
       });
       const submitRecoveryOptions = mergeSubmitRecoveryOptions(
-        nodeConfig,
         submitDueWorkEvidence,
         options?.submitSlotSnapshot,
         options?.confirmationDeadlineMs,
@@ -515,7 +513,7 @@ export const buildAndSubmitMergeTx = (
       if (submitOutcome.status === "deferred") {
         const dueWork = yield* registerMergeNoInlineSubmitDueWork(
           submitOutcome.defer,
-          nodeConfig,
+          lucid,
           options?.submitSlotSnapshot,
         );
         yield* Effect.logInfo(

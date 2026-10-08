@@ -1,13 +1,43 @@
-import { describe, expect, it } from "vitest";
+import type { WebSocketFactory } from "midgard-node/l1-kupmios";
+import { describe, expect, it, vi } from "vitest";
 
-import { canonicalOgmiosBlockDepth } from "../src/l1-kupmios.js";
-import { intersectionSocket } from "./helpers/ogmios-intersection-socket.js";
+import { canonicalOgmiosBlockDepth } from "../src/devnet-stack/acceptance-native-canonical-depth.js";
+
+const intersectionSocket = (
+  answer: (request: {
+    method: string;
+    params: { points: { slot: number; id: string }[] };
+  }) => { readonly result?: unknown; readonly error?: unknown },
+) => {
+  const close = vi.fn<() => void>();
+  const requests: unknown[] = [];
+  const factory: WebSocketFactory = () => {
+    const listeners = new Map<string, ((event: never) => void)[]>();
+    return {
+      send: (payload) => {
+        const request = JSON.parse(payload);
+        requests.push(request);
+        queueMicrotask(() => {
+          const response = { id: request.id, ...answer(request) };
+          for (const listener of listeners.get("message") ?? [])
+            listener({ data: JSON.stringify(response) } as never);
+        });
+      },
+      close,
+      addEventListener: (type, listener) => {
+        listeners.set(type, [...(listeners.get(type) ?? []), listener]);
+        if (type === "open") queueMicrotask(() => listener({} as never));
+      },
+    };
+  };
+  return { factory, close, requests };
+};
 
 const h32 = (digit: string) => digit.repeat(64);
 
 const block = { blockHash: h32("9"), slot: 100, blockNo: 90n };
 const tip = { id: h32("f"), slot: 9999, height: 2251 };
-const read = (factory: ReturnType<typeof intersectionSocket>["factory"]) =>
+const read = (factory: WebSocketFactory) =>
   canonicalOgmiosBlockDepth({
     ogmiosUrl: "ws://ogmios.test",
     ...block,

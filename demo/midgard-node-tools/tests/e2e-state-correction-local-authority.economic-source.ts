@@ -103,7 +103,6 @@ const economicSource = ({
   };
   return {
     source: createLocalKupmiosStateCorrectionSource({
-      provider: "Kupmios",
       providerFailover: undefined,
       kupoUrl: "http://127.0.0.1:1442",
       ogmiosUrl: "http://127.0.0.1:1337",

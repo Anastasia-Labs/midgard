@@ -11,8 +11,9 @@
 # version because the Mithril bootstrap compares it against the certified
 # snapshot's cardano_node_version.
 
+# The history owner's own Ogmios and Kupo endpoints; the node's L1 reads and
+# submissions go through the cardano-node socket below.
 x-l1-env: &l1-env
-  L1_PROVIDER: Kupmios
   L1_OGMIOS_KEY: http://cardano-node-ogmios:1337
   L1_KUPO_KEY: http://kupo:1442
 

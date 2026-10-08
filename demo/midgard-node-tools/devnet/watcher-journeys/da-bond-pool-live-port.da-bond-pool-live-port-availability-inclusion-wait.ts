@@ -49,12 +49,10 @@ describe("DA bond pool live port: chain reads", () => {
     expect(awaitTimeBudgetMs(1_000, 40_000, 5)).toBe(5);
   });
 
-  it("retries only canonical-alignment errors", () => {
+  it("retries only canonical-alignment and L1-unavailable errors", () => {
     expect(
       isTransientCanonicalError(
-        new Error(
-          "Availability command requires Kupo and Ogmios aligned at the same canonical tip",
-        ),
+        new Error("L1 provider follower unavailable: behind_node_tip"),
       ),
     ).toBe(true);
     expect(

@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { runNodeFiberSet } from "../src/commands/listen.node-fibers.js";
 import { NodeConfig } from "../src/services/config.js";
 import { Globals } from "../src/services/globals.js";
+import { L1LedgerBehindError } from "../src/services/l1-provider.js";
 import { Lucid } from "../src/services/lucid.js";
 import { MidgardContracts } from "../src/services/midgard-contracts.js";
 
@@ -14,7 +15,7 @@ import { MidgardContracts } from "../src/services/midgard-contracts.js";
 const probes = vi.hoisted(() => ({
   calls: [] as { readonly probe: string; readonly args: unknown }[],
   hubOracleHangs: false,
-  tipAgeMs: undefined as number | undefined,
+  ledgerBehind: false,
 }));
 
 vi.mock("../src/transactions/initialization.js", async (importOriginal) => ({
@@ -28,48 +29,22 @@ vi.mock("../src/transactions/initialization.js", async (importOriginal) => ({
     }),
 }));
 
-vi.mock("../src/l1-heads.js", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../src/l1-heads.js")>();
-  return {
-    ...original,
-    fetchLocalOgmiosSubmitSlotSnapshot: (
-      options: Parameters<
-        typeof original.fetchLocalOgmiosSubmitSlotSnapshot
-      >[0],
-    ) =>
-      Effect.suspend(() => {
-        probes.calls.push({ probe: "local_ogmios_slot", args: options });
-        if (probes.tipAgeMs === undefined) return Effect.succeed(ogmiosSlot);
-        const nowMs = Date.now();
-        return original.fetchLocalOgmiosSubmitSlotSnapshot({
-          ...options,
-          nowMs,
-          fetchImpl: async (url) =>
-            new Response(
-              JSON.stringify(
-                url.endsWith("/health")
-                  ? {
-                      connectionStatus: "connected",
-                      networkSynchronization: 1,
-                      lastKnownTip: { slot: 77 },
-                      lastTipUpdate: new Date(
-                        nowMs - probes.tipAgeMs!,
-                      ).toISOString(),
-                    }
-                  : { jsonrpc: "2.0", result: { slot: 77 } },
-              ),
-            ),
-        });
-      }),
-  };
-});
-
-const ogmiosSlot = {
-  source: "local_ogmios_tip" as const,
+const ledgerSlot = {
+  source: "l1_node_tip" as const,
   currentSlot: 77,
+  ledgerTipSlot: 77,
   observedAtMs: 1_000,
   slotLengthMs: 1_000,
 };
+
+/** The Lucid service's one-shot ledger read, recorded like the other probes. */
+const readSubmitSlotSnapshotOnce = () =>
+  Effect.suspend(() => {
+    probes.calls.push({ probe: "ledger_slot", args: undefined });
+    return probes.ledgerBehind
+      ? Effect.fail(new L1LedgerBehindError(77, 400, 323_000, 200_000))
+      : Effect.succeed(ledgerSlot);
+  });
 const lucidApi = { name: "lucid-api" };
 const contracts = { name: "contracts" };
 
@@ -84,7 +59,6 @@ const nodeConfigWith = (preflightTimeoutMs: number) =>
     WAIT_BETWEEN_MERGE_TXS: 1_000,
     TX_QUEUE_POLL_INTERVAL_MS: 1_000,
     L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: preflightTimeoutMs,
-    L1_OGMIOS_KEY: "http://ogmios.wiring.test",
   }) as unknown as NodeConfig["Type"];
 
 // Stand-ins for the fibers runNode builds from its startup state.
@@ -105,10 +79,7 @@ const runNodeFibers = (preflightTimeoutMs: number) =>
  * Starts the refresher from the fiber set runNode runs and returns the first
  * evidence it publishes.
  */
-const firstRefreshOfNodeFiberSet = (
-  preflightTimeoutMs: number,
-  ogmiosTipMaxAgeMs = 200_000,
-) => {
+const firstRefreshOfNodeFiberSet = (preflightTimeoutMs: number) => {
   const nodeConfig = nodeConfigWith(preflightTimeoutMs);
   return Effect.runPromise(
     Effect.gen(function* () {
@@ -133,7 +104,7 @@ const firstRefreshOfNodeFiberSet = (
       Effect.provideService(NodeConfig, nodeConfig),
       Effect.provideService(Lucid, {
         api: lucidApi,
-        ogmiosTipMaxAgeMs,
+        readSubmitSlotSnapshotOnce,
       } as unknown as Lucid),
       Effect.provideService(
         MidgardContracts,
@@ -158,59 +129,37 @@ describe("L1 provider readiness refresher wiring in runNode", () => {
     expect(fibers).toMatchObject(startupFibers);
   });
 
-  it.each([
-    { preflightTimeoutMs: 50, holdMs: 50 },
-    { preflightTimeoutMs: 10_000, holdMs: 2_000 },
-  ])(
-    "reads the HubOracle and then the local Ogmios slot, bounded at $holdMs ms for a $preflightTimeoutMs ms preflight timeout",
-    async ({ preflightTimeoutMs, holdMs }) => {
+  it.each([{ preflightTimeoutMs: 50 }, { preflightTimeoutMs: 10_000 }])(
+    "reads the HubOracle and then the local ledger's submit slot for a $preflightTimeoutMs ms preflight timeout",
+    async ({ preflightTimeoutMs }) => {
       probes.calls.length = 0;
       probes.hubOracleHangs = false;
       const evidence = await firstRefreshOfNodeFiberSet(preflightTimeoutMs);
 
       expect(probes.calls).toEqual([
         { probe: "hub_oracle", args: { lucid: lucidApi, contracts } },
-        {
-          probe: "local_ogmios_slot",
-          args: {
-            ogmiosUrl: "http://ogmios.wiring.test",
-            timeoutMs: holdMs,
-            maxHealthAgeMs: 200_000,
-          },
-        },
+        { probe: "ledger_slot", args: undefined },
       ]);
       expect(evidence).toMatchObject({
         lastObservationKind: "exact_success",
         lastExactObservationKind: "exact_success",
-        lastOgmiosSlot: ogmiosSlot,
+        lastLedgerSlot: ledgerSlot,
       });
     },
   );
 
-  it.each([
-    { boundMs: 200_000, ageMs: 150_000, healthy: true },
-    { boundMs: 10_000, ageMs: 15_000, healthy: false },
-    { boundMs: 600_000, ageMs: 350_000, healthy: true },
-  ])(
-    "uses the resolved $boundMs ms tip bound for an exact probe aged $ageMs ms",
-    async ({ boundMs, ageMs, healthy }) => {
-      probes.calls.length = 0;
-      probes.hubOracleHangs = false;
-      probes.tipAgeMs = ageMs;
-      try {
-        const evidence = await firstRefreshOfNodeFiberSet(1_000, boundMs);
-        expect(evidence.lastExactObservationKind).toBe(
-          healthy ? "exact_success" : "exact_failure",
-        );
-        if (!healthy)
-          expect(evidence.lastExactFailure).toContain(
-            "Ogmios lastTipUpdate is stale",
-          );
-      } finally {
-        probes.tipAgeMs = undefined;
-      }
-    },
-  );
+  it("publishes a ledger tip behind wall time as an exact failure naming the lag", async () => {
+    probes.calls.length = 0;
+    probes.hubOracleHangs = false;
+    probes.ledgerBehind = true;
+    try {
+      const evidence = await firstRefreshOfNodeFiberSet(1_000);
+      expect(evidence.lastExactObservationKind).toBe("exact_failure");
+      expect(evidence.lastExactFailure).toContain("l1_node_behind");
+    } finally {
+      probes.ledgerBehind = false;
+    }
+  });
 
   it.each([
     { preflightTimeoutMs: 50, holdMs: 50 },

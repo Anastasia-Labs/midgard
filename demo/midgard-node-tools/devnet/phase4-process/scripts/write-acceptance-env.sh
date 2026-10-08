@@ -51,7 +51,8 @@ const values = {
   ...walletValues,
   ...runValues,
   NETWORK: "Custom",
-  L1_PROVIDER: "Kupmios",
+  // The history owner's own Ogmios and Kupo endpoints; each node reads and
+  // submits through the run's cardano-node socket (followerInputs below).
   L1_OGMIOS_KEY: `http://127.0.0.1:${requiredRun("MIDGARD_PHASE4_OGMIOS_PORT")}`,
   L1_KUPO_KEY: `http://127.0.0.1:${requiredRun("MIDGARD_PHASE4_KUPO_PORT")}`,
   POSTGRES_HOST: "127.0.0.1",
@@ -87,6 +88,9 @@ values.MPF_NATIVE_OWNER_BINARY_SHA256 = owner.sha256;
 // node its own LEDGER_MPF_DB_PATH, so each must derive its own sidecar from it
 // (<LEDGER_MPF_DB_PATH>.architecture-g.sidecar) instead of sharing one path.
 delete values.MPF_NATIVE_OWNER_SIDECAR_PATH;
+// The node has no L1 provider choice; a node.env that still names one is
+// not carried into the acceptance env.
+delete values.L1_PROVIDER;
 // Every node follows L1 from the run's own node and origin; refuse, naming the
 // input, rather than write an env whose nodes never become ready.
 Object.assign(values, followerInputs(nodeValues, runDir));

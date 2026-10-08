@@ -33,11 +33,15 @@ import {
   mintingValidatorOf,
   spendingValidatorOf,
 } from "midgard-node/commands/availability-challenge-deployment";
-import { availabilityCommandCanonicalSource } from "midgard-node/commands/availability-challenge-source";
+import {
+  availabilityCommandCanonicalSource,
+  availabilityStoreUnitHistory,
+} from "midgard-node/commands/availability-challenge-source";
 import {
   type DaBondContext,
   daBondStatusCommand,
 } from "midgard-node/commands/da-bond";
+import { openCommandL1Access } from "midgard-node/commands/l1-command-access";
 import { daLocalSigners } from "midgard-node/da/local-signers";
 import { fetchKupoSpend } from "midgard-node/l1-kupmios";
 import {
@@ -553,6 +557,18 @@ export const createLiveDaBondPoolJourneyPort = async (
     throw new DaBondPoolCommitteeUnavailableError(
       `run.env lacks the devnet Postgres ${postgresMissing.join(", ")}`,
     );
+  // The node's L1 access, as a node command opens it from its environment:
+  // the local node and the node database its follower writes.
+  const nodeL1AccessEnv: Record<string, string> = {
+    L1_NODE_SOCKET_PATH: nativeLedgerPaths.socket,
+    L1_NODE_CONFIG_PATH: nativeLedgerPaths.config,
+    L1_NODE_TRANSPORT_BINARY_PATH: nativeLedgerPaths.binary,
+    POSTGRES_HOST: "127.0.0.1",
+    POSTGRES_PORT: postgres.port!,
+    POSTGRES_USER: postgres.user!,
+    POSTGRES_PASSWORD: postgres.password!,
+    POSTGRES_DB: postgres.database!,
+  };
   // A resumed run restarts the node on the database its earlier run left,
   // as the normal run's restart before step 6 does.
   const recordedCommittee =
@@ -750,15 +766,11 @@ export const createLiveDaBondPoolJourneyPort = async (
     }),
     command: [process.execPath, cliBin],
     manifestPath,
-    kupoUrl: context.kupoUrl,
-    ogmiosUrl: context.ogmiosUrl,
     env: {
       ...inheritedEnv,
       MIDGARD_CONFIG_MODE: "disabled",
       MIDGARD_DOTENV_MODE: "disabled",
-      L1_NODE_SOCKET_PATH: nativeLedgerPaths.socket,
-      L1_NODE_CONFIG_PATH: nativeLedgerPaths.config,
-      L1_NODE_TRANSPORT_BINARY_PATH: nativeLedgerPaths.binary,
+      ...nodeL1AccessEnv,
     },
     workDirectory: (label) => {
       const directory = join(
@@ -799,22 +811,26 @@ export const createLiveDaBondPoolJourneyPort = async (
   });
   mkdirSync(join(evidenceDirectory, "cli"), { recursive: true });
 
-  // The availability command flow, composed from the CLI's steps.
+  // The availability command flow, composed from the CLI's steps, on the
+  // node's L1 access (its follower store and local node) as the CLI opens it.
   const availabilityDeployment = await availabilityDeploymentFromManifest(
     challengerLucid,
     manifest,
   );
+  const nodeL1Access = await openCommandL1Access({
+    network: "Custom",
+    env: nodeL1AccessEnv,
+  });
   const buildContext = {
     daChallengeWindowMs: BigInt(
       manifest.deploymentProfile.timing.da_challenge_window_ms,
     ),
     daAttestationPolicyId: manifest.contracts.daAttestationMint?.scriptHash,
-    kupoUrl: context.kupoUrl,
+    unitHistory: availabilityStoreUnitHistory(nodeL1Access.store),
   };
   const source = availabilityCommandCanonicalSource({
     lucid: challengerLucid,
-    kupoUrl: context.kupoUrl,
-    ogmiosUrl: context.ogmiosUrl,
+    access: nodeL1Access,
   });
   const retryTransient = async <T>(
     label: string,
@@ -829,7 +845,9 @@ export const createLiveDaBondPoolJourneyPort = async (
           attempt >= MAX_TRANSIENT_RETRIES
         )
           throw error;
-        log(`${label}: Kupo is catching up with Ogmios; retrying`);
+        log(
+          `${label}: the canonical source is not ready (${String(error)}); retrying`,
+        );
         await pause(POLL_MS);
       }
     }
@@ -1139,6 +1157,7 @@ export const createLiveDaBondPoolJourneyPort = async (
           );
       } finally {
         journal.close();
+        await nodeL1Access.close();
       }
     },
 

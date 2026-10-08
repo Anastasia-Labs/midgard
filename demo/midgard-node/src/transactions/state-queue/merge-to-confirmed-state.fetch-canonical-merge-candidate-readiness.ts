@@ -41,11 +41,6 @@ export type CanonicalMergeCandidateReadiness =
       readonly reason: string;
     };
 
-export type SubmitSlotConfig = {
-  readonly L1_OGMIOS_KEY: string;
-  readonly L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: number;
-};
-
 export type MergeTxResult =
   | {
       readonly status: "merged";

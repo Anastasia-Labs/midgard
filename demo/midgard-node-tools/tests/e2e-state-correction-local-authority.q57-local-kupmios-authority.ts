@@ -282,7 +282,6 @@ describe("Q57 local Kupmios authority", () => {
     const source = makeSource();
     expect(() =>
       createLocalKupmiosStateCorrectionAuthority({
-        provider: "Kupmios",
         providerFailover: "true",
         kupoUrl: "http://127.0.0.1:1442",
         ogmiosUrl: "http://127.0.0.1:1337",
@@ -302,7 +301,6 @@ describe("Q57 local Kupmios authority", () => {
     ).toThrow(/forbids L1 provider failover/u);
     expect(() =>
       createLocalKupmiosStateCorrectionAuthority({
-        provider: "Kupmios",
         providerFailover: undefined,
         kupoUrl: "https://kupo.example.com",
         ogmiosUrl: "http://127.0.0.1:1337",

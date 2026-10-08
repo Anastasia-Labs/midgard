@@ -146,7 +146,7 @@ export const runExactGatedDirectL1ProviderProbe = <E, R>({
           }
           return yield* recordDirectProbeSuccess({
             globals,
-            ogmiosSlot: attempt.right,
+            ledgerSlot: attempt.right,
             observedAtMs: completedAtMs,
             expectedRevision: startRevision,
           });
@@ -246,7 +246,7 @@ export const resolveL1ProviderReadinessSnapshot = ({
       probeRevision === evidence.evidenceRevision ? localMode : snapshotMode,
     evidenceAgeMs,
     error,
-    ogmiosSlot: healthy ? evidence.lastOgmiosSlot : null,
+    ledgerSlot: healthy ? evidence.lastLedgerSlot : null,
   };
 };
 

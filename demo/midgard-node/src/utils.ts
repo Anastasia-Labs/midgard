@@ -147,9 +147,11 @@ Make sure you first have set the environment variable for your seed phrase:
 
 \u0009${chalk.bold("SEED_PHRASE")}\u0009 Your wallet's seed phrase
 
-For the local Kupmios provider:
-\u0009${chalk.bold("KUPO_URL")}   \u0009 URL of your Kupo instance
-\u0009${chalk.bold("OGMIOS_URL")} \u0009 URL of your Ogmios instance
+For the node's L1 access (its local Cardano node and follower store):
+\u0009${chalk.bold("L1_NODE_SOCKET_PATH")}           \u0009 The local node's socket
+\u0009${chalk.bold("L1_NODE_CONFIG_PATH")}           \u0009 The local node's config file
+\u0009${chalk.bold("L1_NODE_TRANSPORT_BINARY_PATH")} \u0009 The node transport sidecar
+\u0009${chalk.bold("POSTGRES_*")}                    \u0009 The node database
 `;
 
 export class FileSystemError extends Data.TaggedError(
