@@ -5,10 +5,18 @@ import { describe, expect, it, vi } from "vitest";
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { Globals } from "../src/services/globals.js";
 import {
+  activeLivenessReasons,
   CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED,
   HISTORY_CORRECTION_REWIND_SOURCE,
+  NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
+  NATIVE_MPF_RESTORE_READ_ESCALATION_MS,
+  NATIVE_MPF_RESTORE_READ_TRANSIENT,
 } from "../src/services/liveness-halt.js";
-import { NativeMpfRootNotRetained } from "../src/services/mpf-native-owner/protocol.js";
+import {
+  NativeMpfFullIndexCapExceeded,
+  NativeMpfRestoreReadFailed,
+  NativeMpfRootNotRetained,
+} from "../src/services/mpf-native-owner/protocol.js";
 import {
   CORRECTION_REWIND_HELD_ON_NATIVE_STATE,
   prepareStateQueueCorrectionRewind,
@@ -281,4 +289,102 @@ describe("the correction rewind while its native owner does not retain the targe
     });
     expect(owner.durableRoot).toBe(UTXOS_ROOT);
   });
+});
+
+describe("the correction rewind whose native restore is refused over a full-index cap or on a failed read", () => {
+  it.each([
+    {
+      name: "its target root's full index is over the byte cap",
+      refuse: (targetRoot: string) =>
+        new NativeMpfFullIndexCapExceeded(
+          targetRoot,
+          "FULL_INDEX_MAX_BYTES",
+          536_870_912,
+          536_870_990,
+        ),
+      reason: NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
+      escalateAfterMs: 0,
+      text: "over the full-index byte cap FULL_INDEX_MAX_BYTES = 536870912",
+    },
+    {
+      name: "reading its target root's closure failed",
+      refuse: (targetRoot: string) =>
+        new NativeMpfRestoreReadFailed(targetRoot, {
+          cause: Object.assign(new Error("IO error: read failed"), {
+            code: "LEVEL_IO_ERROR",
+          }),
+        }),
+      reason: NATIVE_MPF_RESTORE_READ_TRANSIENT,
+      escalateAfterMs: NATIVE_MPF_RESTORE_READ_ESCALATION_MS,
+      text: "Operator action is needed only if the read keeps failing",
+    },
+  ])(
+    "holds on the native state under its own reason when $name, then completes once the restore succeeds",
+    async ({ refuse, reason, escalateAfterMs, text }) => {
+      const owner = ownerModel(ZERO_ROOT);
+      let refusing = true;
+      owner.beforeRestore = async ({ targetRoot }) => {
+        if (refusing) throw refuse(targetRoot);
+      };
+      const logs: string[] = [];
+      const captured = Logger.add(
+        Logger.make(({ message }) => {
+          logs.push([message].flat().map(String).join(" "));
+        }),
+      );
+      const result = await onNode(undefined, (node) =>
+        Effect.gen(function* () {
+          yield* removedE;
+          fixture.open = owner;
+          const returned = yield* prepare(node).pipe(Effect.provide(captured));
+          const attempts = [yield* rewind(node), yield* rewind(node)];
+          const escalation = (yield* activeLivenessReasons(
+            yield* Globals,
+          )).find(
+            ({ source }) => source === HISTORY_CORRECTION_REWIND_SOURCE,
+          )?.escalateAfterMs;
+          const held = { ...(yield* state), root: owner.durableRoot };
+          refusing = false;
+          const completed = yield* rewind(node);
+          return {
+            returned,
+            attempts,
+            escalation,
+            held,
+            completed,
+            after: yield* state,
+          };
+        }),
+      );
+      expect(result.returned).toBe(CORRECTION_REWIND_HELD_ON_NATIVE_STATE);
+      for (const attempt of result.attempts) {
+        expect(attempt.failure).toBeUndefined();
+        expect(attempt.raised.get(HISTORY_CORRECTION_REWIND_SOURCE)).toBe(
+          reason,
+        );
+      }
+      expect(result.escalation).toBe(escalateAfterMs);
+      expect(logs.find((line) => line.startsWith(`${reason}:`))).toContain(
+        text,
+      );
+      expect(result.held).toEqual({
+        e: Pending.Status.PendingSubmission,
+        digest: undefined,
+        plans: ["prepared"],
+        ownerOpen: true,
+        root: ZERO_ROOT,
+      });
+      expect(result.completed.failure).toBeUndefined();
+      expect(
+        result.completed.raised.get(HISTORY_CORRECTION_REWIND_SOURCE),
+      ).toBeUndefined();
+      expect(result.after).toEqual({
+        e: Pending.Status.Abandoned,
+        digest: REMOVAL,
+        plans: ["applied"],
+        ownerOpen: true,
+      });
+      expect(owner.durableRoot).toBe(UTXOS_ROOT);
+    },
+  );
 });

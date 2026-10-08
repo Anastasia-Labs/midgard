@@ -117,7 +117,9 @@ export type NativeMpfCanonicalRootRecovery = Readonly<{
   targetRoot: string;
 }>;
 
-/** `restoreCanonicalRoot` refused a target whose closure is not retained in full. */
+/** `restoreCanonicalRoot` refused a target whose node closure is not in the
+ * native MPF store: a record the target root reaches is absent, or is not a
+ * well-formed node. Raised for nothing else; the restore changed nothing. */
 export class NativeMpfRootNotRetained extends Error {
   readonly _tag = "NativeMpfRootNotRetained";
   constructor(
@@ -126,6 +128,58 @@ export class NativeMpfRootNotRetained extends Error {
   ) {
     super(
       `Native MPF canonical recovery target root ${targetRoot} is not retained in full; refusing to restore`,
+      options,
+    );
+  }
+}
+
+/** The full-index caps the native MPF owner loads a root under: TypeScript
+ * `FULL_INDEX_MAX_RECORDS` and `FULL_INDEX_MAX_BYTES`, which the native child
+ * mirrors with its own constants of the same names. */
+export type NativeMpfFullIndexCap =
+  | "FULL_INDEX_MAX_RECORDS"
+  | "FULL_INDEX_MAX_BYTES";
+
+/** Names `cap`, its configured `limit` and what `root`'s closure reached. */
+export const fullIndexCapMessage = (
+  root: string,
+  cap: NativeMpfFullIndexCap,
+  limit: number,
+  observed: number,
+) =>
+  cap === "FULL_INDEX_MAX_RECORDS"
+    ? `Native MPF root ${root} reaches ${observed.toString()} records, over the full-index record cap FULL_INDEX_MAX_RECORDS = ${limit.toString()}`
+    : `Native MPF root ${root} has a full index of at least ${observed.toString()} bytes, over the full-index byte cap FULL_INDEX_MAX_BYTES = ${limit.toString()}`;
+
+/** `restoreCanonicalRoot` refused a target whose node closure is in the
+ * native MPF store but whose full index exceeds `cap`, whose configured value
+ * is `limit`, so the owner cannot load it. `observed` is the closure's record
+ * count, or the index bytes counted when the byte cap was crossed. The
+ * restore changed nothing. */
+export class NativeMpfFullIndexCapExceeded extends Error {
+  readonly _tag = "NativeMpfFullIndexCapExceeded";
+  constructor(
+    readonly targetRoot: string,
+    readonly cap: NativeMpfFullIndexCap,
+    readonly limit: number,
+    readonly observed: number,
+    options?: ErrorOptions,
+  ) {
+    super(fullIndexCapMessage(targetRoot, cap, limit, observed), options);
+  }
+}
+
+/** `restoreCanonicalRoot` could not read the target root's node closure from
+ * the native MPF store because a store read failed. Transient: the restore
+ * changed nothing, and a later restore reads the closure again. */
+export class NativeMpfRestoreReadFailed extends Error {
+  readonly _tag = "NativeMpfRestoreReadFailed";
+  constructor(
+    readonly targetRoot: string,
+    options: ErrorOptions & { readonly cause: unknown },
+  ) {
+    super(
+      `Native MPF canonical recovery could not read target root ${targetRoot}'s node closure from the native MPF store: ${options.cause instanceof Error ? options.cause.message : String(options.cause)}`,
       options,
     );
   }

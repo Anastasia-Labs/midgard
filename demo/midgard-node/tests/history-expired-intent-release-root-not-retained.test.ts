@@ -8,9 +8,15 @@ import { isRecoverableHistorySourceFailure } from "../src/services/event-history
 import {
   HISTORY_REPLACED_BLOCK_REVIVAL_SOURCE,
   HISTORY_SIGNED_INTENT_RELEASE_SOURCE,
+  NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
+  NATIVE_MPF_RESTORE_READ_TRANSIENT,
   SIGNED_INTENT_TARGET_ROOT_NOT_RETAINED,
 } from "../src/services/liveness-halt.js";
-import { NativeMpfRootNotRetained } from "../src/services/mpf-native-owner/protocol.js";
+import {
+  NativeMpfFullIndexCapExceeded,
+  NativeMpfRestoreReadFailed,
+  NativeMpfRootNotRetained,
+} from "../src/services/mpf-native-owner/protocol.js";
 import {
   journal,
   S_COMMIT,
@@ -209,6 +215,74 @@ describe("the signed-intent release whose native restore is refused as not retai
     expect(result.after.restores).toBe(1);
     expect(result.after.statuses[2]).toBe(Pending.Status.Abandoned);
   });
+});
+
+describe("the signed-intent release whose native restore is refused over a full-index cap or on a failed read", () => {
+  it.each([
+    {
+      name: "over the record cap",
+      refuse: (targetRoot: string) =>
+        new NativeMpfFullIndexCapExceeded(
+          targetRoot,
+          "FULL_INDEX_MAX_RECORDS",
+          2_000_000,
+          2_000_001,
+        ),
+      reason: NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
+      text: "FULL_INDEX_MAX_RECORDS = 2000000",
+    },
+    {
+      name: "on a failed read",
+      refuse: (targetRoot: string) =>
+        new NativeMpfRestoreReadFailed(targetRoot, {
+          cause: new Error("IO error: read failed"),
+        }),
+      reason: NATIVE_MPF_RESTORE_READ_TRANSIENT,
+      text: "could not read target root",
+    },
+  ])(
+    "holds under the release source with its own reason when refused $name, then completes",
+    async ({ refuse, reason, text }) => {
+      fixture.queue = wHoldsTheSlot;
+      fixture.coverage = deep;
+      const owner = ownerModel(ZERO_ROOT);
+      let refusing = true;
+      owner.beforeRestore = async ({ targetRoot }) => {
+        if (refusing) throw refuse(targetRoot);
+      };
+      const { logs, layer } = capturing();
+      const headers = [W_HEADER, S_HEADER, X_HEADER];
+      const result = await onNode(owner, (node) =>
+        Effect.gen(function* () {
+          yield* seedDisplaced(Pending.Status.LocallyApplied);
+          yield* withNativeReplay(X_HEADER);
+          const before = yield* state(owner, headers);
+          const attempts = [
+            yield* release(node).pipe(Effect.provide(layer)),
+            yield* release(node),
+          ];
+          const held = yield* state(owner, headers);
+          refusing = false;
+          const completed = yield* release(node);
+          return { before, attempts, held, completed };
+        }),
+      );
+      for (const attempt of result.attempts) {
+        expect(attempt.failure).toBeUndefined();
+        expect(attempt.raised.get(HISTORY_SIGNED_INTENT_RELEASE_SOURCE)).toBe(
+          reason,
+        );
+      }
+      expect(logs.find((line) => line.startsWith(`${reason}:`))).toContain(
+        text,
+      );
+      expect(result.held).toEqual({ ...result.before, plans: ["prepared"] });
+      expect(result.completed.failure).toBeUndefined();
+      expect(
+        result.completed.raised.get(HISTORY_SIGNED_INTENT_RELEASE_SOURCE),
+      ).toBeUndefined();
+    },
+  );
 });
 
 describe("the replaced-block revival whose displaced-chain restore is refused as not retained", () => {

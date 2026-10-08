@@ -174,6 +174,19 @@ export const clearLivenessIncident = (
     yield* clearLivenessReason(globals, source);
   });
 
+/** Clears `reason` under `source` only if it is the reason raised there, so
+ * one evaluation never clears another's reason under a shared source. */
+export const clearLivenessReasonIf = (
+  globals: LivenessGlobals,
+  source: string,
+  reason: string,
+): Effect.Effect<void> =>
+  Effect.flatMap(Ref.get(globals.LIVENESS_REASONS), (reasons) =>
+    reasons.get(source) === reason
+      ? clearLivenessIncident(globals, source)
+      : Effect.void,
+  );
+
 /** One reason the node raises right now, as readiness reports it. */
 export type ActiveLivenessReason = Readonly<{
   source: string;
@@ -339,13 +352,15 @@ export const SIGNED_INTENT_REPLACEMENT_INTEGRITY =
  * once a journal is active or no revival candidate remains. */
 export const SIGNED_INTENT_JOURNAL_UNBOUND = "signed_intent_journal_unbound";
 
-/** A native restore of the signed-intent release, or of the replaced-block
+/** A native restore of the signed-intent release, of the replaced-block
  * revival (its displaced-chain rewind, its displacement compensation or its
- * retained displacement's inverse), was refused because the native MPF store
- * does not retain the target root in full (`NativeMpfRootNotRetained`): the
- * sibling of `CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED`, raised under the
- * release source (`HISTORY_SIGNED_INTENT_RELEASE_SOURCE`) or the revival
- * source (`HISTORY_REPLACED_BLOCK_REVIVAL_SOURCE`). The refusal changes
+ * retained displacement's inverse), or of signed-header recovery, was refused
+ * because the native MPF store does not retain the target root in full
+ * (`NativeMpfRootNotRetained`): the sibling of
+ * `CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED`, raised under the release
+ * source (`HISTORY_SIGNED_INTENT_RELEASE_SOURCE`), the revival source
+ * (`HISTORY_REPLACED_BLOCK_REVIVAL_SOURCE`) or the signed-header recovery
+ * source (`HISTORY_SIGNED_HEADER_RECOVERY_SOURCE`). The refusal changes
  * nothing: the recovery holds with its plan retained, native MPF, the SQL
  * root and the journals as they are, and the history gate closed (the
  * retained plan keeps the reconciliation pending); every evaluation retries
@@ -388,6 +403,50 @@ export const CORRECTION_REWIND_JOURNAL_UNBOUND =
  * that retains the root in full, and restarts it. */
 export const CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED =
   "correction_rewind_target_root_not_retained";
+
+/** The source signed-header recovery raises under while its native restore
+ * is refused (`SIGNED_INTENT_TARGET_ROOT_NOT_RETAINED`,
+ * `NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED` or
+ * `NATIVE_MPF_RESTORE_READ_TRANSIENT`). Like
+ * `HISTORY_SIGNED_INTENT_RELEASE_SOURCE` it holds no fiber: the recovery's
+ * retained plan keeps the history gate closed, which holds block
+ * production. A signed-header evaluation that meets no such refusal clears
+ * it. */
+export const HISTORY_SIGNED_HEADER_RECOVERY_SOURCE =
+  "history_signed_header_recovery";
+
+/** A history recovery's native restore (the correction rewind, the
+ * signed-intent release, the replaced-block revival or signed-header
+ * recovery) was refused because the target root's node closure is in the
+ * native MPF store but its full index is over a full-index cap
+ * (`NativeMpfFullIndexCapExceeded`, whose message names the cap,
+ * `FULL_INDEX_MAX_RECORDS` or `FULL_INDEX_MAX_BYTES`, and its value). Raised
+ * under the recovery's own source. The refusal changes nothing: the
+ * recovery holds with its plan retained, native MPF, the SQL root and the
+ * journals as they are, and the history gate closed; every evaluation
+ * retries the restore, and one of that source that meets no such refusal
+ * clears it. The caps are fixed in the node build (the TypeScript owner and
+ * its native child each enforce them), so the node cannot load the root
+ * until it runs a build whose caps cover it. */
+export const NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED =
+  "native_mpf_restore_index_cap_exceeded";
+
+/** A history recovery's native restore was refused because reading the
+ * target root's node closure from the native MPF store failed
+ * (`NativeMpfRestoreReadFailed`): a LevelDB read error other than a missing,
+ * corrupt or undecodable record. Raised under the recovery's own source.
+ * The refusal changes nothing, and every evaluation retries the restore on
+ * the history owner's backoff; the first that reads the closure clears it
+ * (or raises the refusal that read finds). Escalated, in the log and on
+ * readiness, after `NATIVE_MPF_RESTORE_READ_ESCALATION_MS`. */
+export const NATIVE_MPF_RESTORE_READ_TRANSIENT =
+  "native_mpf_restore_read_transient";
+
+/** How long `NATIVE_MPF_RESTORE_READ_TRANSIENT` stays raised before it is
+ * escalated: the same ten minutes as an undecided signed intent (thirty
+ * nominal L1 blocks), well past the history owner's 30 s maximum backoff,
+ * so a read that fails for that long is not a passing blip. */
+export const NATIVE_MPF_RESTORE_READ_ESCALATION_MS = 10 * 60_000;
 
 /** The source the commit worker's DA frame notices raise under. It holds no
  * fiber: the block is already refused on every tick (by the pre-submit frame

@@ -17,13 +17,17 @@ import type { HistoryRecoveryPreparation } from "./event-history-recovery.js";
 import { Globals } from "./globals.js";
 import {
   executeHistoryDependentRecovery,
-  rootNotRetained,
+  nativeRestoreHoldEscalation,
+  nativeRestoreHoldText,
+  nativeRestoreRefusal,
 } from "./history-dependent-recovery.js";
 import {
   clearLivenessIncident,
   CORRECTION_REWIND_JOURNAL_UNBOUND,
   CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED,
   HISTORY_CORRECTION_REWIND_SOURCE,
+  NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
+  NATIVE_MPF_RESTORE_READ_TRANSIENT,
   raiseLivenessIncident,
 } from "./liveness-halt.js";
 import { ProductionNativeMpfOwnerService } from "./mpf-native-owner/service.js";
@@ -57,7 +61,9 @@ class Held {
 }
 type HeldIncident =
   | typeof CORRECTION_REWIND_JOURNAL_UNBOUND
-  | typeof CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED;
+  | typeof CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED
+  | typeof NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED
+  | typeof NATIVE_MPF_RESTORE_READ_TRANSIENT;
 /** What a raised hold adds to its reason: what stays unchanged, and what
  * clears it. */
 const heldIncidentText: Readonly<Record<HeldIncident, string>> = {
@@ -65,7 +71,21 @@ const heldIncidentText: Readonly<Record<HeldIncident, string>> = {
     "The rewind holds with native MPF, the SQL root and the journal unchanged, and the history gate stays closed, which holds block production; every evaluation re-derives it from the journal. Operator action is needed if the journal does not change.",
   [CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED]:
     "The rewind holds with its recovery plan retained and native MPF, the SQL root and the journals unchanged, and the history gate stays closed, which holds block production; every evaluation retries the restore. Operator action is needed: stop the node, install at LEDGER_MPF_DB_PATH a native MPF store that retains this root in full (such as a backup of the store taken while it did), and restart it; the next evaluation completes the rewind.",
+  [NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED]: nativeRestoreHoldText(
+    "index_cap",
+    "rewind",
+  ),
+  [NATIVE_MPF_RESTORE_READ_TRANSIENT]: nativeRestoreHoldText(
+    "read_transient",
+    "rewind",
+  ),
 };
+/** The rewind's hold incident for each native restore refusal. */
+const restoreRefusalIncident = {
+  not_retained: CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED,
+  index_cap: NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
+  read_transient: NATIVE_MPF_RESTORE_READ_TRANSIENT,
+} as const;
 const held = (reason: string, journalUnbound = false) =>
   Effect.fail(
     new Held(
@@ -75,8 +95,8 @@ const held = (reason: string, journalUnbound = false) =>
     ),
   );
 /** Held on the native owner itself: it cannot open yet, its durable root is
- * not one this rewind can prove it restores from, or it does not retain the
- * rewind's target root in full. */
+ * not one this rewind can prove it restores from, or it refused to restore
+ * the rewind's target root. */
 const heldOnNativeState = (reason: string, incident?: HeldIncident) =>
   Effect.fail(new Held(reason, true, incident));
 
@@ -123,8 +143,11 @@ export const nativeOwnerOpenWait = (cause: unknown): string | undefined => {
  * header raises `correction_rewind_journal_unbound`, and a native restore
  * refused because the native MPF store does not retain the target root in
  * full holds on the native state and raises
- * `correction_rewind_target_root_not_retained` (readiness reports both); its
- * plan stays retained, and every evaluation retries the restore. Every other
+ * `correction_rewind_target_root_not_retained`; one refused because the
+ * root's full index is over a full-index cap, or because reading it failed,
+ * holds the same way and raises `native_mpf_restore_index_cap_exceeded` or
+ * `native_mpf_restore_read_transient` (readiness reports each). Its plan
+ * stays retained, and every evaluation retries the restore. Every other
  * outcome of an evaluation clears them.
  */
 export const prepareStateQueueCorrectionRewind = (input: {
@@ -373,17 +396,19 @@ export const prepareStateQueueCorrectionRewind = (input: {
         yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
       }),
     }).pipe(
-      // The native owner refuses a target root it does not retain in full
-      // before it changes its marker, and before the SQL transaction opens:
-      // nothing changed, and the retained plan is resumed by the next
-      // evaluation.
+      // The native owner refuses a target root it does not retain in full,
+      // one over a full-index cap, or one it could not read, before it
+      // changes its marker and before the SQL transaction opens: nothing
+      // changed, and the retained plan is resumed by the next evaluation.
       Effect.catchIf(
-        (error) => rootNotRetained(error) !== undefined,
-        (error) =>
-          heldOnNativeState(
-            `${rootNotRetained(error)!.message} (native MPF durable root ${durableRoot}, removed chain ${members.map(({ headerHash }) => headerHash).join(",")})`,
-            CORRECTION_REWIND_TARGET_ROOT_NOT_RETAINED,
-          ),
+        (error) => nativeRestoreRefusal(error) !== undefined,
+        (error) => {
+          const refusal = nativeRestoreRefusal(error)!;
+          return heldOnNativeState(
+            `${refusal.error.message} (native MPF durable root ${durableRoot}, removed chain ${members.map(({ headerHash }) => headerHash).join(",")})`,
+            restoreRefusalIncident[refusal.kind],
+          );
+        },
       ),
     );
     blockedReasons.delete(input.bindingDigest);
@@ -402,7 +427,12 @@ export const prepareStateQueueCorrectionRewind = (input: {
                 HISTORY_CORRECTION_REWIND_SOURCE,
                 incident,
                 `${reason}. ${heldIncidentText[incident]}`,
-                { escalateAfterMs: 0 },
+                {
+                  escalateAfterMs:
+                    incident === NATIVE_MPF_RESTORE_READ_TRANSIENT
+                      ? nativeRestoreHoldEscalation("read_transient")
+                      : 0,
+                },
               )
             : clearLivenessIncident(globals, HISTORY_CORRECTION_REWIND_SOURCE)
           ).pipe(
