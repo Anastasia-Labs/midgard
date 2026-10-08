@@ -8,8 +8,9 @@
  *   and a later read without it (a rollback that undid it, a re-activation)
  *   clears it. No journal, no provider, no exit.
  * - The evidence that this operator was once active outlives the facts'
- *   retention through the activity record, written only for an activation
- *   at a final block.
+ *   retention through the activity record (`activity.ts`), written the first
+ *   time the set holds an own active-node row, at any landed depth, and
+ *   replaced or cleared once its block reads orphaned.
  * - A malformed directory holds `/readyz` on `operator_set_unhealthy`; the
  *   membership is still derived from this operator's own nodes.
  */
@@ -21,10 +22,10 @@ import {
   type SqlTx,
   type StoredBlock,
 } from "@al-ft/midgard-l1-follower";
-import { depth, isFinal, levelAtDepth } from "@al-ft/midgard-l1-follower/heads";
+import { depth, levelAtDepth } from "@al-ft/midgard-l1-follower/heads";
 
 import type { DriverHold, DriverHook } from "../l1-events/driver.js";
-import type { OperatorActivityRecord } from "./activity.js";
+import type { OperatorActivityRecord, RecordedActivity } from "./activity.js";
 import {
   classifyOperatorMembership,
   type OperatorMembership,
@@ -80,16 +81,28 @@ export const operatorSetHook =
         recordedStatus !== null &&
         (recordedStatus.kind === "canonical" ||
           recordedStatus.kind === "point_beyond_retention");
-      let finalActivation: StoredBlock | null = null;
-      if (!recordedCounts)
-        for (const own of set.ownActivity) {
-          if (own.createdSlot === null) continue;
-          const block = await blockAt(tx, own.createdSlot);
-          if (block !== null && isFinal(depthOf(block), options.depth)) {
-            finalActivation = block;
+      // New evidence when there is no counting record: the deepest own
+      // active-node row's creating block on the stored chain, or, when that
+      // block is below the retained window, the view itself (its chain holds
+      // the row).
+      let evidence: RecordedActivity | null = null;
+      if (!recordedCounts && set.ownActivity.length > 0) {
+        const created = set.ownActivity
+          .flatMap((own) => (own.createdSlot === null ? [] : [own.createdSlot]))
+          .sort((a, b) => a - b);
+        for (const slot of created) {
+          const block = await blockAt(tx, slot);
+          if (block !== null) {
+            evidence = {
+              point: { slot: block.slot, hash: block.hash },
+              height: block.height,
+            };
             break;
           }
         }
+        evidence ??= { point: set.view.point, height: set.view.height };
+      }
+      const orphaned = recordedStatus?.kind === "point_not_canonical";
       // Where the removal sits: the own retired node, or the last spend of
       // the own active node.
       const spends = set.ownActivity.flatMap((own) =>
@@ -116,17 +129,18 @@ export const operatorSetHook =
         rowsRead: refreshed.rowsRead,
         loaded: refreshed.loaded,
         recordedCounts,
-        finalActivation,
+        evidence,
+        orphaned,
         removedAt,
       };
     });
     // No view yet: the first run after the follower has one reads it.
     if (read.kind !== "ok") return undefined;
-    if (read.finalActivation !== null)
-      await activity.write(read.finalActivation);
+    if (read.evidence !== null) await activity.write(read.evidence);
+    else if (read.orphaned) await activity.clear();
     const membership = classifyOperatorMembership(
       read.set,
-      read.recordedCounts || read.finalActivation !== null,
+      read.recordedCounts || read.evidence !== null,
       read.removedAt,
     );
     await options.publish({

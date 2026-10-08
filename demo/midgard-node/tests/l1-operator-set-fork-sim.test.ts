@@ -5,8 +5,11 @@
  * rollbacks and prunes. After every chain-sync event the set the mirror
  * kept by reading only changed rows equals a fresh load of the same facts,
  * membership included, and its live lists equal a load of a fresh
- * forward-only replay. Each suite proves it exercised both read paths and
- * every membership state.
+ * forward-only replay. A second mirror reads only after the steps that
+ * prune, as a node whose hook runs lag the follower: the prune has passed
+ * its last read, so it reloads and equals a fresh load too. Each suite proves
+ * it exercised both read paths, a prune past a read and every membership
+ * state.
  */
 import type { FollowerProjection } from "@al-ft/midgard-l1-follower";
 import {
@@ -66,6 +69,8 @@ type Stats = {
   checks: number;
   incremental: number;
   loads: number;
+  /** Lagging reads in one generation that reloaded: a prune passed the last read. */
+  prunedPastRead: number;
   rowsRead: number;
   states: Record<OperatorMembershipState, number>;
   operations: Record<string, number>;
@@ -75,6 +80,7 @@ const zeroStats = (): Stats => ({
   checks: 0,
   incremental: 0,
   loads: 0,
+  prunedPastRead: 0,
   rowsRead: 0,
   states: { unknown: 0, active: 0, awaiting_activation: 0, removed: 0 },
   operations: {},
@@ -193,13 +199,30 @@ const operatorSetSimProjection = (stats: Stats): FollowerProjection => {
   const fresh = () =>
     createOperatorSetMirror({ config: fixture.config, ownKey: OWN });
   const kept = fresh();
+  const lagging = fresh();
   return {
     ...operatorSetProjection(fixture.config),
     traffic: lifecycleTraffic(lists, stats),
     protects: (output: SimOutput) =>
       [...(output.assets?.keys() ?? [])].some((policy) => policies.has(policy)),
-    check: async ({ store, reference }) => {
+    check: async ({ store, reference, step }) => {
       stats.checks += 1;
+      // The lagging mirror reads first, so `loaded` below is fresh either way.
+      const lastRead = lagging.view();
+      if (lastRead === null || step.prune === true) {
+        const lagged = await refreshOf(store, lagging);
+        const load = await refreshOf(store, fresh());
+        if (lagged.kind !== "ok" || load.kind !== "ok")
+          return `lagging read: ${lagged.kind}/${load.kind}`;
+        if (
+          lastRead !== null &&
+          lagged.loaded &&
+          lagged.set.view.generation === lastRead.generation
+        )
+          stats.prunedPastRead += 1;
+        const lag = differ(summary(lagged.set, true), summary(load.set, true));
+        if (lag !== null) return `lagging set != fresh load: ${lag}`;
+      }
       const incremental = await refreshOf(store, kept);
       const loaded = await refreshOf(store, fresh());
       const replayed = await refreshOf(reference, fresh());
@@ -282,6 +305,7 @@ describe.each([
     console.info("node operator set fork-sim", JSON.stringify(stats));
     expect(stats.incremental).toBeGreaterThan(0);
     expect(stats.loads).toBeGreaterThan(0);
+    expect(stats.prunedPastRead).toBeGreaterThan(0);
     expect(stats.rowsRead).toBeGreaterThan(0);
     for (const state of [
       "unknown",

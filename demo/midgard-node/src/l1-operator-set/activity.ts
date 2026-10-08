@@ -2,15 +2,24 @@
  * The record that this operator was once active (D-N7). An operator that a
  * slash or a bond recovery takes out of every list leaves only its spent
  * active node behind, and the follower prunes spent rows past k. The record
- * keeps the evidence: the block that created the own active node, written
- * once that block is final, so no rollback can take it back.
+ * keeps the evidence: a block on whose chain this operator's active node
+ * existed, written the first time the hook sees an own active-node row, at
+ * any landed depth (an operator slashed while its node is offline for more
+ * than k must still read removed when the node returns).
  *
  * It is `operator_membership_observations` (migration 0003), keyed by
- * (manifest_id, operator_key). A row an earlier release wrote at the head
- * counts only while the follower's facts do not show its block orphaned
- * (`pointStatusIn`): on the stored chain, or below the retained window.
+ * (manifest_id, operator_key). The record counts while the follower's facts
+ * do not show its block orphaned (`pointStatusIn`): on the stored chain, or
+ * below the retained window. A hook run that finds its block orphaned
+ * replaces it with current evidence or clears it. Every orphaning happens
+ * within k, inside the retained window, and the driver runs the hook on every
+ * rewind it sees, so the orphaned point is gone before it can fall below the
+ * window and count. The one exception is a node whose driver does not run
+ * between the rewind and a prune past the point (it caught up more than k
+ * blocks first); that record then counts, which only reads `removed` for an
+ * operator that is in no list at all.
  */
-import type { Point, StoredBlock } from "@al-ft/midgard-l1-follower";
+import type { Point } from "@al-ft/midgard-l1-follower";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
@@ -19,8 +28,10 @@ export type RecordedActivity = Readonly<{ point: Point; height: number }>;
 export type OperatorActivityRecord = Readonly<{
   /** The recorded activation, or null. */
   read: () => Promise<RecordedActivity | null>;
-  /** Records an activation at a final block. */
-  write: (block: StoredBlock) => Promise<void>;
+  /** Records (or replaces) the evidence of an activation. */
+  write: (activity: RecordedActivity) => Promise<void>;
+  /** Drops a record whose block a fork orphaned. */
+  clear: () => Promise<void>;
 }>;
 
 /** A record kept in memory only (tests, and a deployment without a manifest). */
@@ -28,11 +39,12 @@ export const memoryActivityRecord = (): OperatorActivityRecord => {
   let recorded: RecordedActivity | null = null;
   return {
     read: () => Promise.resolve(recorded),
-    write: (block) => {
-      recorded = {
-        point: { slot: block.slot, hash: block.hash },
-        height: block.height,
-      };
+    write: (activity) => {
+      recorded = activity;
+      return Promise.resolve();
+    },
+    clear: () => {
+      recorded = null;
       return Promise.resolve();
     },
   };
@@ -74,17 +86,25 @@ export const databaseActivityRecord = (options: {
               };
         }),
       ),
-    write: (block) =>
+    write: ({ point, height }) =>
       options.run(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           yield* sql`INSERT INTO operator_membership_observations
             (manifest_id, operator_key, active_block_hash, active_block_slot, active_block_height)
-            VALUES (${manifestId}, ${operatorKey}, ${block.hash}, ${block.slot}, ${block.height})
+            VALUES (${manifestId}, ${operatorKey}, ${point.hash}, ${point.slot}, ${height})
             ON CONFLICT (manifest_id, operator_key) DO UPDATE SET
               active_block_hash = EXCLUDED.active_block_hash,
               active_block_slot = EXCLUDED.active_block_slot,
               active_block_height = EXCLUDED.active_block_height`;
+        }),
+      ),
+    clear: () =>
+      options.run(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM operator_membership_observations
+            WHERE manifest_id = ${manifestId} AND operator_key = ${operatorKey}`;
         }),
       ),
   };
