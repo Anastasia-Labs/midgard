@@ -1132,6 +1132,7 @@ jobs:
             watcher-journeys/kupo-consumption.test.ts \
             watcher-journeys/ledger-tip.test.ts \
             watcher-journeys/live-chain.test.ts \
+            watcher-journeys/local-kupmios.test.ts \
             watcher-journeys/native-recorder.test.ts \
             watcher-journeys/native-script-publication.test.ts \
             watcher-journeys/operations.test.ts \

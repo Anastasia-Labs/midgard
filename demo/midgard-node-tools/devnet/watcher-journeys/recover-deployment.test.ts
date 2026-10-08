@@ -10,10 +10,10 @@ import {
 import {
   admitWatcherNativeRollForwardBlock,
   parseWatcherNativeChainSyncEvent,
-  WatcherLocalKupmios,
 } from "midgard-watcher";
 import { expect, it } from "vitest";
 
+import { JourneyLocalKupmios } from "./local-kupmios.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 
 // Recovery consumes captured raw Cardano blocks; no transaction or receipt is
@@ -32,7 +32,7 @@ it.skipIf(process.env.MIDGARD_WATCHER_RECOVER_DEPLOYMENT !== "1")(
           return [line.slice(0, at), line.slice(at + 1)];
         }),
     );
-    const provider = new WatcherLocalKupmios(
+    const provider = new JourneyLocalKupmios(
       `http://127.0.0.1:${env.MIDGARD_PHASE4_KUPO_PORT}`,
       `http://127.0.0.1:${env.MIDGARD_PHASE4_OGMIOS_PORT}`,
       native,

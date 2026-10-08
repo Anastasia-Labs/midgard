@@ -154,7 +154,7 @@ describe("raw L1 snapshot V1 admission", () => {
     const included = mutable(value.snapshot);
     // Move the observed tip back to the cursor while retaining all exact history.
     included.cursor.tip = included.cursor.point;
-    included.provenance.ogmiosTip = included.cursor.point;
+    included.provenance.tipPoint = included.cursor.point;
     included.cursor.confirmationDepth = 1;
     included.transactions[0]!.confirmationDepth = 2;
     expect(() => admit(included, value.request)).toThrow(/observation depth/u);
@@ -202,7 +202,7 @@ describe("raw L1 snapshot V1 admission", () => {
     );
 
     const forgedCheckpoint = mutable(value.snapshot);
-    forgedCheckpoint.provenance.kupoCheckpoint = chainPoint({
+    forgedCheckpoint.provenance.boundaryPoint = chainPoint({
       slot: "1071",
       blockNo: "71",
       blockHash: "99".repeat(32),

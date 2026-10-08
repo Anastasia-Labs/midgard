@@ -181,9 +181,9 @@ export const captureRetainedPlutusIdentityOrigins = async (
           trustClass: "authenticated_cardano_l1",
           sourceId: "retained-origin-unit-fixture",
           grade: "security",
-          sourceMode: "local_kupo_ogmios",
-          kupoCheckpoint: cursor,
-          ogmiosTip: tip,
+          sourceMode: "local_chain_follower",
+          boundaryPoint: cursor,
+          tipPoint: tip,
         },
         cursor: {
           point: cursor,

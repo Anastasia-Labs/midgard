@@ -1,10 +1,6 @@
 import { CML } from "@lucid-evolution/lucid";
 
 import type { WatcherNativeBlockAdmission } from "../l1/native-block-admission.js";
-import {
-  type VerifiedWatcherDeploymentIdentity,
-  watcherDeploymentAppliedScriptHashes,
-} from "./deployment-identity.js";
 
 export const WATCHER_BLOCK_RELEVANCE_SCHEMA_VERSION =
   "midgard-watcher-block-relevance-v1" as const;
@@ -48,37 +44,6 @@ export const makeWatcherBlockRelevancePolicy = (
     trackedScriptHashes: tracked,
   });
 };
-
-/**
- * The one relevance predicate every watcher component shares: every deployed
- * protocol script credential and minting policy, the hub oracle policy, the
- * user-event certificate policy, and the deposit, withdrawal and forced-order
- * spend credentials and policies. Kupo is configured with the same
- * credentials, so a block this predicate calls quiet is one Kupo would have
- * matched nothing in.
- */
-export const makeWatcherDeploymentBlockRelevancePolicy = (input: {
-  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
-  readonly scripts: Readonly<{
-    hub: Readonly<{ policyId: string }>;
-    certificatePolicyId: string;
-    deposit: Readonly<{ policyId: string; spendScriptHash: string }>;
-    withdrawal: Readonly<{ policyId: string; spendScriptHash: string }>;
-    forcedOrder: Readonly<{ policyId: string; spendScriptHash: string }>;
-  }>;
-}): WatcherBlockRelevancePolicy =>
-  makeWatcherBlockRelevancePolicy([
-    ...Object.values(
-      watcherDeploymentAppliedScriptHashes(input.deploymentIdentity),
-    ),
-    input.scripts.hub.policyId,
-    input.scripts.certificatePolicyId,
-    ...[
-      input.scripts.deposit,
-      input.scripts.withdrawal,
-      input.scripts.forcedOrder,
-    ].flatMap(({ policyId, spendScriptHash }) => [policyId, spendScriptHash]),
-  ]);
 
 const scriptHashOfCredential = (
   credential: CML.Credential | undefined,

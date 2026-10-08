@@ -90,7 +90,6 @@
     "tests/l1-follower/event-refusals.test.ts": 1.6,
     "tests/l1-follower/follower-provider-family-reads.test.ts": 7.0,
     "tests/l1-follower/follower-runtime-node-options.test.ts": 1.2,
-    "tests/l1/local-kupmios-confirmation.test.ts": 1.6,
     "tests/l1/native-block-admission.test.ts": 1.3,
     "tests/l1/native-genesis-identity.test.ts": 1.2,
     "tests/l1/transient-failure.test.ts": 1.3,

@@ -3,20 +3,20 @@ import {
   NativeLedgerKupmios,
 } from "@al-ft/midgard-core/native-reward-account";
 import { type KupmiosOptions } from "@lucid-evolution/lucid";
-
 import {
   deriveWatcherNativeGenesisIdentity,
   type WatcherNativeNodeConfig,
-} from "./native-chain-sync.derive-watcher-native-genesis-identity.js";
+} from "midgard-watcher";
 
-export type WatcherNativeRewardAccountQuery = Readonly<{
+/** The journey devnet's local node, as the reward-account ledger query reads it. */
+export type JourneyNativeNodeQuery = Readonly<{
   watcherConfig: WatcherNativeNodeConfig;
   binaryPath: string;
   timeoutMs: number;
 }>;
 
-const watcherNativeLedgerAuthority = async (
-  input: WatcherNativeRewardAccountQuery,
+const journeyNativeLedgerAuthority = async (
+  input: JourneyNativeNodeQuery,
 ): Promise<NativeLedgerAuthority> => {
   const source = input.watcherConfig.l1.source;
   const identity = await deriveWatcherNativeGenesisIdentity(input);
@@ -31,18 +31,22 @@ const watcherNativeLedgerAuthority = async (
   };
 };
 
-/** Kupo/Ogmios transport with reward-account state obtained from the local ledger. */
-export class WatcherLocalKupmios extends NativeLedgerKupmios {
+/**
+ * The journey devnet's Kupo/Ogmios transport, with reward-account state read
+ * from the local ledger. Only the devnet journeys' own Lucid uses it; the
+ * watcher reads L1 through its chain follower.
+ */
+export class JourneyLocalKupmios extends NativeLedgerKupmios {
   constructor(
     kupoUrl: string,
     ogmiosUrl: string,
-    native: WatcherNativeRewardAccountQuery,
+    native: JourneyNativeNodeQuery,
     options?: KupmiosOptions,
   ) {
     super(
       kupoUrl,
       ogmiosUrl,
-      () => watcherNativeLedgerAuthority(native),
+      () => journeyNativeLedgerAuthority(native),
       options,
     );
   }

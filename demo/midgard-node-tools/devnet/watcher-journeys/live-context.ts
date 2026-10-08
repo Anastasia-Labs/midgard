@@ -13,10 +13,10 @@ import {
 } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
-import { WatcherLocalKupmios } from "midgard-watcher";
 
 import { postOgmiosQuery, readOgmiosTipSlot } from "./ledger-tip.js";
 import { createLiveWorkflowChain } from "./live-chain.js";
+import { JourneyLocalKupmios } from "./local-kupmios.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 
 type Deployment = Awaited<ReturnType<typeof publishWorkflowDeploymentOnChain>>;
@@ -78,7 +78,7 @@ export const loadJourneyContext = async (runDirectory: string) => {
   };
   const kupoUrl = `http://127.0.0.1:${runEnv.MIDGARD_PHASE4_KUPO_PORT}`;
   const ogmiosUrl = `http://127.0.0.1:${runEnv.MIDGARD_PHASE4_OGMIOS_PORT}`;
-  const provider = new WatcherLocalKupmios(
+  const provider = new JourneyLocalKupmios(
     kupoUrl,
     ogmiosUrl,
     await journeyNativeNodeQuery(runDirectory),

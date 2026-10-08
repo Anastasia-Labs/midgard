@@ -324,11 +324,11 @@ describe("snapshot authority: admitted, provenance exact", () => {
     ).toEqual(snapshot);
     expect(snapshot.provenance).toEqual({
       trustClass: "authenticated_cardano_l1",
-      sourceId: "midgard-local-kupo-http-ogmios-ws-source-v1:watcher-test",
+      sourceId: "midgard-local-chain-follower-source-v2:watcher-test",
       grade: "security",
-      sourceMode: "local_kupo_ogmios",
-      kupoCheckpoint: fx.points.p5,
-      ogmiosTip: fx.tipPoint(),
+      sourceMode: "local_chain_follower",
+      boundaryPoint: fx.points.p5,
+      tipPoint: fx.tipPoint(),
     });
     expect(snapshot.cursor.rollbackCursor).toBe(
       computeFraudProofRawL1RollbackCursor({
@@ -368,8 +368,8 @@ describe("snapshot authority: admitted, provenance exact", () => {
     const fx = await fixture();
     for (const sourceId of [
       "",
-      "midgard-local-kupo-http-ogmios-ws-source-v1:",
-      "midgard-local-kupo-http-ogmios-ws-source-v1: padded",
+      "midgard-local-chain-follower-source-v2:",
+      "midgard-local-chain-follower-source-v2: padded",
       "other-source-v1:watcher",
     ])
       expect(() =>
