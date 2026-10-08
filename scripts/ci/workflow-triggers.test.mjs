@@ -130,6 +130,7 @@ const scenarios = {
     files: ["demo/midgard-l1-follower/src/index.ts"],
     runs: [
       "midgard-node-ci:*",
+      "midgard-watcher-ci:watcher",
       "repo-tools-ci:repo-tools",
       "agent-skills-ci:skills",
     ],
