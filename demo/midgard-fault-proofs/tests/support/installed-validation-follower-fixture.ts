@@ -49,9 +49,15 @@ export const FOLLOWER_VALIDATION_CEK_CORE_STEP = Object.freeze({
  * (its retained work unchanged). `honest`: the script is the identity
  * program, and the operator commits the replayed trace it accepts under. A
  * normal source's committed descriptor must accept, so an honest commitment
- * of a normal transaction is an accepting one.
+ * of a normal transaction is an accepting one. `replayedRejection`: the
+ * script runs an unbound variable, and the operator commits the replayed
+ * trace as it is, under a rejecting descriptor whose code is the replayed
+ * one; the descriptor equals the replay, and the transition is a no-op.
  */
-export type FollowerValidationCommitment = "forgedCekCoreSuccessor" | "honest";
+export type FollowerValidationCommitment =
+  | "forgedCekCoreSuccessor"
+  | "honest"
+  | "replayedRejection";
 
 const forgeAcceptingTerminal = (
   replayed: DeterministicValidationMachineTrace,
@@ -89,7 +95,12 @@ export const buildFollowerValidationDisputeFixture = async ({
       ? buildRetainedPlutusIdentityFixture
       : buildRetainedPlutusUnboundVariableFixture;
   const retained = await build(
-    { verdict: "accepted" },
+    commitment === "replayedRejection"
+      ? {
+          verdict: "rejected",
+          reason: { PlutusExecutionFailed: { execution_index: 0n } },
+        }
+      : { verdict: "accepted" },
     {
       operatorVkey,
       predecessorFrame: {
@@ -101,14 +112,14 @@ export const buildFollowerValidationDisputeFixture = async ({
       blockEndTimeMs: now + 121_000,
       committedTrace: (replayed) =>
         (committed =
-          commitment === "honest"
-            ? replayed
-            : forgeAcceptingTerminal(replayed)),
+          commitment === "forgedCekCoreSuccessor"
+            ? forgeAcceptingTerminal(replayed)
+            : replayed),
     },
   );
   const operatorTrace = committed!;
-  // Measured, not assumed: the replay convicts the forged case's script
-  // execution and accepts the honest one.
+  // Measured, not assumed: the replay convicts the unbound variable's script
+  // execution and accepts the identity program.
   const replayedRejection =
     commitment === "honest" ? null : RejectCodes.PlutusScriptInvalid;
   if (retained.replay.trace.rejectionCode !== replayedRejection)
@@ -126,16 +137,17 @@ export const buildFollowerValidationDisputeFixture = async ({
     predecessorHeader: retained.predecessor.header,
     operatorTrace,
     challengerTrace,
-    // An honest commitment has no fault to argue; it stages the same
-    // resolution references so both polarities run one ledger.
+    // Only the forged successor has a one-step argument; the other
+    // commitments stage the same resolution references so every polarity
+    // runs one ledger.
     evidence:
-      commitment === "honest"
-        ? { oneStepArgument: FOLLOWER_VALIDATION_CEK_CORE_STEP }
-        : buildValidationDisputeEvidenceBundle({
+      commitment === "forgedCekCoreSuccessor"
+        ? buildValidationDisputeEvidenceBundle({
             operatorTrace,
             challengerTrace,
             currentTime: now + 2_000,
-          }),
+          })
+        : { oneStepArgument: FOLLOWER_VALIDATION_CEK_CORE_STEP },
     eventKey,
     /** The retained classifier fixture the header and payload come from. */
     retained,

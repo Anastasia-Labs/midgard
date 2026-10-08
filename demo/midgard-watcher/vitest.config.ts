@@ -56,6 +56,7 @@ export default defineConfig({
             exclude: [
               "./tests/fault-proofs/watcher-installed-journey.test.ts",
               "./tests/fault-proofs/follower-validation-dispute-journey.test.ts",
+              "./tests/fault-proofs/follower-validation-source-award-journey.test.ts",
             ],
             globalSetup: [blueprintStampGlobalSetup],
           },
@@ -71,6 +72,7 @@ export default defineConfig({
           include: [
             "./tests/fault-proofs/watcher-installed-journey.test.ts",
             "./tests/fault-proofs/follower-validation-dispute-journey.test.ts",
+            "./tests/fault-proofs/follower-validation-source-award-journey.test.ts",
           ],
           globalSetup: [interactiveEmulatorSetup],
           env: { MIDGARD_REAL_BLUEPRINT_PATH: interactiveEmulatorBlueprint },
