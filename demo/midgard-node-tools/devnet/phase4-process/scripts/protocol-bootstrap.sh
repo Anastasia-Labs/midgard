@@ -53,6 +53,11 @@ export MIDGARD_DOTENV_MODE=disabled
 # existing one-shot UTxO.
 unset HUB_ORACLE_ONE_SHOT_TX_HASH HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX
 unset MIDGARD_DEPLOYMENT_MANIFEST_PATH MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH
+# The node's L1 follower inputs are derived below from this run's nonce. Clear
+# an earlier run's origin first, so a bootstrap that stops before deriving it
+# leaves node.env refused by write-acceptance-env.sh rather than stale.
+unset L1_ORIGIN L1_NODE_SOCKET_PATH L1_NODE_CONFIG_PATH L1_NATIVE_CHAIN_SYNC_BINARY_PATH
+upsert_private_env L1_ORIGIN "" "$node_env"
 export NETWORK=Custom L1_PROVIDER=Kupmios RUN_GENESIS_ON_STARTUP=false MIN_FEE_A=0 MIN_FEE_B=0
 upsert_private_env MIN_FEE_A 0 "$node_env"
 upsert_private_env MIN_FEE_B 0 "$node_env"
@@ -68,6 +73,16 @@ pnpm build
 # The snapshot binds both distributions; build the tooling CLI from the same
 # tree before it seeds the isolated genesis ledger.
 pnpm --dir "$tools_root" build
+# The node follows L1 through the run's own node: the transport binary and a
+# host-path node config go into the run before anything is spent on L1.
+transport_root=$(CDPATH= cd -- "$node_root/../l1-node-transport" && pwd)
+follower_cli="$node_root/../midgard-l1-follower/dist/cli.js"
+follower_inputs="$script_dir/l1-follower-inputs.mjs"
+pnpm --dir "$transport_root" run native:build
+[ -f "$follower_cli" ] || die "the midgard-l1-follower CLI is not built at $follower_cli"
+transport_binary=$(node "$follower_inputs" install-transport "$MIDGARD_PHASE4_RUN_DIR" "$transport_root/dist/native/midgard-l1-node-transport")
+host_config=$(node "$follower_inputs" host-config "$MIDGARD_PHASE4_RUN_DIR")
+cardano_socket=$(node "$follower_inputs" socket-path "$MIDGARD_PHASE4_RUN_DIR")
 node dist/index.js db:migrate
 MIDGARD_PHASE4_GENESIS_BOOTSTRAP=phase4-local-devnet-l2-genesis-v1 \
 MIDGARD_PHASE4_PROCESS_TARGET=local-devnet \
@@ -83,6 +98,18 @@ output_index=$(jq -er '(.outputIndex // (.outRef | split("#")[1] | tonumber))' "
 export HUB_ORACLE_ONE_SHOT_TX_HASH="$tx_hash" HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX="$output_index"
 upsert_private_env HUB_ORACLE_ONE_SHOT_TX_HASH "$tx_hash" "$node_env"
 upsert_private_env HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX "$output_index" "$node_env"
+# L1_ORIGIN is the point immediately before the nonce tx's block, scanned from
+# this run's genesis; find-origin exits non-zero unless it found the tx.
+origin_output="$MIDGARD_PHASE4_RUN_DIR/work/l1-origin.find-origin.json"
+node "$follower_cli" find-origin --tx "$(printf '%s' "$tx_hash" | tr 'A-F' 'a-f')" \
+  --network-magic "$MIDGARD_PHASE4_NETWORK_MAGIC" \
+  --socket "$cardano_socket" --sidecar "$transport_binary" >"$origin_output" \
+  || die "cannot derive L1_ORIGIN from the hub-oracle nonce tx $tx_hash"
+l1_origin=$(node "$follower_inputs" record-origin "$MIDGARD_PHASE4_RUN_DIR" "$tx_hash" "$origin_output")
+upsert_private_env L1_NODE_SOCKET_PATH "$cardano_socket" "$node_env"
+upsert_private_env L1_NODE_CONFIG_PATH "$host_config" "$node_env"
+upsert_private_env L1_NATIVE_CHAIN_SYNC_BINARY_PATH "$transport_binary" "$node_env"
+upsert_private_env L1_ORIGIN "$l1_origin" "$node_env"
 node dist/index.js deploy-reference-script-node-runtime --run-state "$run_state" --contract-deployment-info-output "$manifest"
 export MIDGARD_DEPLOYMENT_MANIFEST_PATH="$manifest"
 export MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH="$manifest"

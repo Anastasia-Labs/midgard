@@ -158,12 +158,14 @@ export const independentChecks = () => [
       "demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",
     ],
     display:
-      "node --test demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",
+      "node --test demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs demo/midgard-node-tools/devnet/phase4-process/tests/l1-follower-inputs.test.mjs demo/midgard-node-tools/devnet/phase4-process/tests/protocol-bootstrap-follower.test.mjs",
     plan: () => [
       step(
         node(
           "--test",
           "demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",
+          "demo/midgard-node-tools/devnet/phase4-process/tests/l1-follower-inputs.test.mjs",
+          "demo/midgard-node-tools/devnet/phase4-process/tests/protocol-bootstrap-follower.test.mjs",
         ),
       ),
     ],

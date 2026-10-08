@@ -54,6 +54,26 @@ node has its own `LEDGER_MPF_DB_PATH` and derives its own sidecar from it; the
 acceptance command refuses an env file that sets one. Rebuilding the owner
 changes its hash, so a rebuilt binary needs a fresh run.
 
+Every node follows L1 through the run's own node, and stays unready
+(`l1_follower_unconfigured` on `/readyz`) without its follower inputs, so the
+journal-kill-recovery gate would never see a ready node. `protocol-bootstrap.sh`
+writes them (`scripts/l1-follower-inputs.mjs`). Before the hub-oracle nonce it
+builds `midgard-l1-node-transport` (`pnpm --dir ../l1-node-transport run
+native:build`, which needs Go), copies it to `bin/`, and writes
+`config/host-config.json`, the node config with its `/genesis/` paths rewritten
+to the run's `genesis/`. After the nonce it runs `midgard-l1-follower
+find-origin` on the nonce tx against the run's node socket, scanning from
+genesis, records the result in `work/l1-origin.json`, and sets `L1_ORIGIN`,
+`L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH` and
+`L1_NATIVE_CHAIN_SYNC_BINARY_PATH` in `node.env`. It clears an earlier run's
+`L1_ORIGIN` first and stops if find-origin does not find the tx.
+`write-acceptance-env.sh` copies the six inputs (those four and the one-shot)
+into `acceptance.env`, and refuses with `Phase4L1FollowerInputError`, naming
+the input, when one is missing, when a local-node path is not the run's own or
+goes through a symlink, or when `L1_ORIGIN` was not derived from this run's
+nonce. The acceptance command refuses an env file without them
+(`NodeFollowerUnconfiguredError`).
+
 Bootstrap deterministically overwrites run-scoped Postgres fields from `run.env` before starting services, collapsing duplicate keys so stale generic values in a copied `node.env` cannot cross runs.
 It also pins `MIN_FEE_A=0` and `MIN_FEE_B=0` in both the private node inputs
 and immutable acceptance environment. This makes the fixed 50,000-lovelace A/B
@@ -205,7 +225,7 @@ untouched.
 Run static tests with:
 
 ```bash
-node --test devnet/phase4-process/tests/assets.test.mjs
+pnpm run test:phase4:devnet-assets
 ```
 
 The fresh-chain funding policy is shared with `devnet-stack` in

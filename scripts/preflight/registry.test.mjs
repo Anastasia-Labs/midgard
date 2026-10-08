@@ -332,6 +332,8 @@ test("new validation runs the documented commands with its own prerequisites", (
           "node",
           "--test",
           "demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",
+          "demo/midgard-node-tools/devnet/phase4-process/tests/l1-follower-inputs.test.mjs",
+          "demo/midgard-node-tools/devnet/phase4-process/tests/protocol-bootstrap-follower.test.mjs",
         ],
       ],
     ],

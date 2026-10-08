@@ -37,7 +37,7 @@
     "accept:phase4:journal-kill-recovery": "node dist/index.js e2e-journal-kill-recovery-acceptance --node-root ../midgard-node",
     "verify:phase4:journal-kill-recovery-summary": "node scripts/verify-phase4-journal-kill-recovery-summary.mjs",
     "test:phase4:journal-kill-recovery-summary-verifier": "node --test tests/phase4-journal-kill-recovery-summary-verifier.test.mjs",
-    "test:phase4:devnet-assets": "node --test devnet/phase4-process/tests/assets.test.mjs devnet/phase4-process/tests/custom-chain-config.test.mjs",
+    "test:phase4:devnet-assets": "node --test devnet/phase4-process/tests/assets.test.mjs devnet/phase4-process/tests/custom-chain-config.test.mjs devnet/phase4-process/tests/l1-follower-inputs.test.mjs devnet/phase4-process/tests/protocol-bootstrap-follower.test.mjs",
     "test:e2e-reliability": "export NODE_ENV='emulator' && vitest run tests/e2e-da-gates.test.ts tests/e2e-service-supervisor.test.ts tests/e2e-runner.test.ts tests/e2e-summary.test.ts --disableConsoleIntercept",
     "pretest": "pnpm --dir ../lucid-midgard run build && pnpm --dir ../midgard-sdk run build",
     "test": "pnpm run test:phase4:journal-kill-recovery-summary-verifier && pnpm run test:phase4:devnet-assets && export NODE_ENV='emulator' && vitest run --disableConsoleIntercept",

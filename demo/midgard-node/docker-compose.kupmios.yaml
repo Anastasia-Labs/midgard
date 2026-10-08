@@ -17,11 +17,25 @@ x-l1-env: &l1-env
   L1_KUPO_KEY: http://kupo:1442
 
 services:
+  # The node's L1 follower reads the in-stack cardano-node directly: its
+  # socket, its config (exported by cardano-config-export) and the
+  # midgard-l1-node-transport binary baked into the image. It also needs
+  # L1_ORIGIN from .env (see .env.example); without it the node stays unready
+  # (l1_follower_unconfigured) rather than exiting.
   midgard-node:
-    environment: *l1-env
+    environment:
+      <<: *l1-env
+      L1_NODE_SOCKET_PATH: /ipc/node.socket
+      L1_NODE_CONFIG_PATH: /cardano-config/config.json
+      L1_NATIVE_CHAIN_SYNC_BINARY_PATH: /usr/local/bin/midgard-l1-node-transport
+    volumes:
+      - ./cardano/ipc:/ipc
+      - ./cardano/config:/cardano-config:ro
     depends_on:
       postgres:
         condition: service_healthy
+      cardano-config-export:
+        condition: service_completed_successfully
       cardano-node-ogmios:
         condition: service_healthy
       kupo:
@@ -93,6 +107,24 @@ services:
       - "${CARDANO_NODE_EKG_PORT:-12788}:12788"
       - "${CARDANO_NODE_PROM_PORT:-12798}:12798"
     restart: always
+    networks:
+      midgard_net:
+
+  # Copies the node config and genesis files the cardano-node image runs with
+  # to ./cardano/config, so host-side readers (midgard-node's L1 follower, a
+  # watcher's MIDGARD_L1_CONFIG_DIR) see the same files. Reruns on every up,
+  # so an image bump refreshes them.
+  cardano-config-export:
+    image: ghcr.io/intersectmbo/cardano-node:${CARDANO_NODE_IMAGE_TAG:-11.1.0}@${CARDANO_NODE_IMAGE_DIGEST:-sha256:7b36384afd9d78e787c02f9b9a0868ed74b28a04b7d447325a68b1f397ddb43a}
+    entrypoint:
+      - /bin/sh
+      - /bootstrap/export-cardano-config.sh
+    environment:
+      NETWORK: ${NETWORK}
+    volumes:
+      - ./cardano/config:/export
+      - ./scripts/export-cardano-config.sh:/bootstrap/export-cardano-config.sh:ro
+    restart: "no"
     networks:
       midgard_net:
 
