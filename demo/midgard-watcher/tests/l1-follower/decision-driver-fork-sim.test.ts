@@ -245,7 +245,6 @@ const watcherOver = (
         invalidateForRollback: () => {
           seen.bridgeInvalidations += 1;
         },
-        beforeHistoryAdvance: () => undefined,
       },
       availability: {
         // The availability actor reads its L1 payloads at the pass's tip.

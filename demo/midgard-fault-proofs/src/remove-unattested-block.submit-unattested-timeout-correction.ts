@@ -1,3 +1,4 @@
+import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import {
   DA_ATTESTATION_TIMEOUT_MS,
   fetchCorrectionLockUTxOProgram,
@@ -35,7 +36,6 @@ import {
   type SubmitUnattestedTimeoutCorrectionResult,
 } from "./remove-unattested-block.reconcile-last-timeout-correction-step.js";
 import {
-  isSpentInputSubmitRejection,
   recoverTimeoutCorrectionAttempt,
   resolveTimeoutCorrectionValidityRange,
   type SubmitUnattestedTimeoutCorrectionParams,

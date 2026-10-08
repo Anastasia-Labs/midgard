@@ -12,15 +12,20 @@ import { expect, it as unitIt, vi } from "vitest";
 
 import { loadRealBlueprintSha256 } from "../src/services/midgard-contracts.js";
 
+/** The real blueprint's bytes, from `MIDGARD_REAL_BLUEPRINT_PATH` when set. */
+export const realBlueprintBytes = () =>
+  readFile(
+    process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+      new URL("../../../onchain/aiken/plutus.json", import.meta.url),
+  );
+
 export const registerBlueprintProfileBindingTests = () => {
   unitIt.each(["missing", "digest", "bytes"])(
     "rejects a %s blueprint profile binding",
     async (mutation) => {
       const dir = await mkdtemp(join(tmpdir(), "midgard-profile-blueprint-"));
       const blueprintPath = join(dir, "plutus.json");
-      const raw = await readFile(
-        new URL("../../../onchain/aiken/plutus.json", import.meta.url),
-      );
+      const raw = await realBlueprintBytes();
       try {
         await writeFile(blueprintPath, raw);
         if (mutation !== "missing") {

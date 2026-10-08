@@ -273,6 +273,7 @@ export {
 } from "./store/pin.js";
 export {
   CHECKPOINT_INTERVAL,
+  type PruneFloorLag,
   type PruneResult,
   ROLLBACK_LOG_ROWS,
 } from "./store/prune.js";

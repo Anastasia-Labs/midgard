@@ -279,7 +279,7 @@ and every write below can also return `StoreLocked` (the lease was lost).
 | `applyBlock(block)`                                   | `BlockApplied { cursor, qualified, created, spent } \| ApplyRejection { reason: "not_initialized" \| "not_on_cursor" } \| Intervention \| StoreError`                                     |
 | `rewind(target: Point)`                               | `Rewound { generation, from, to, depth, cursor, unspent, deleted } \| RewindNoop \| Intervention \| StoreError`                                                                           |
 | `insertSeedOutputs(at: Point, outputs: SeedOutput[])` | `SeedResult { cursor, inserted, skipped } \| SeedCursorMoved \| StoreError \| StoreLocked \| null` (null: not initialized; `cursor_moved`: `at` is no longer the cursor, nothing written) |
-| `prune(budget = 5000)`                                | `PruneResult { deleted, done, prunedThroughSlot } \| StoreError`                                                                                                                          |
+| `prune(budget = 5000)`                                | `PruneResult { deleted, done, prunedThroughSlot, floorLags } \| StoreError`                                                                                                               |
 | `checkInvariants()`                                   | `InvariantReport { ok, violations }` (full INV1–INV6)                                                                                                                                     |
 | `cursor()`                                            | `Cursor \| null`                                                                                                                                                                          |
 | `currentView()` / `viewValid(view)`                   | `View \| null` / `boolean`                                                                                                                                                                |
@@ -528,6 +528,10 @@ type FollowStatus = {
     steps: number;
     prunedThroughSlot: number | null;
     lastError: string | null;
+    failures: number; // prune passes failed in a row; reset by the next success
+    // each role prune floor holding the boundary back, named by the floor
+    // (`PruneFloor.name`), with its lag in slots; empty when none does
+    floorLags: readonly { floor: string; lagSlots: number }[];
   };
 };
 ```

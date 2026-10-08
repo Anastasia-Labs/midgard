@@ -806,13 +806,12 @@ it("advances journal pruning while a signed-header recovery plan remains prepare
   });
   for (let n = 20; n < 26; n++) {
     const prepared = await prepare(await read(), n);
-    const retained = await run(
+    await run(
       Authority.withRecovery(
         f.token,
         append(prepared, 10_000, ({ after }) => Effect.succeed(after)),
       ),
     );
-    expect(retained.hold).toBeUndefined();
   }
   const current = await read();
   expect(current.head).toEqual({ id: hash(25), slot: 106, height: 7 });

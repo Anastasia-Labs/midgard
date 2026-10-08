@@ -74,7 +74,8 @@ const NETWORK = SELECTED_DEPLOYMENT_PROFILE.network;
 const BLUEPRINT = SDK.parseFaultProofBlueprint(
   JSON.parse(
     readFileSync(
-      new URL("../../../onchain/aiken/plutus.json", import.meta.url),
+      process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+        new URL("../../../onchain/aiken/plutus.json", import.meta.url),
       "utf8",
     ),
   ),

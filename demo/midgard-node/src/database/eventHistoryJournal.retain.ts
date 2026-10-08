@@ -16,7 +16,6 @@ import {
   requireExpected,
   type Retention,
   RETENTION_BATCH,
-  type RetentionHold,
 } from "./eventHistoryJournal.prepare-append.js";
 import {
   type ApplicationRow,
@@ -43,9 +42,9 @@ import {
 import { DatabaseError } from "./utils/common.js";
 
 /** Advance the anchor to the deepest journaled block that is past the rollback
- * horizon (height <= tipHeight - horizon), strictly behind head (so the retained
- * canonical range is never empty) and never so far that the first retained
- * block starts after holdSlot, by at most RETENTION_BATCH blocks. The anchor
+ * horizon (height <= tipHeight - horizon) and strictly behind head (so the
+ * retained canonical range is never empty), by at most RETENTION_BATCH
+ * blocks. The anchor
  * moves with its snapshot digest in this transaction, and the applications at
  * or behind it (plus orphan branches rooted there) are deleted. Once the anchor
  * has left the seed point, replay receipts are deleted in bounded batches too.
@@ -66,30 +65,13 @@ export const retain = (
     const limit = yield* checked(() => {
       natural(retention.tipHeight);
       natural(retention.horizon);
-      if (retention.holdSlot !== undefined) natural(retention.holdSlot);
       return Math.min(
         retention.tipHeight - retention.horizon,
         current.head.height - 1,
         current.anchor.height + RETENTION_BATCH,
       );
     });
-    let target = limit;
-    let holding = false;
-    if (retention.holdSlot !== undefined && target > current.anchor.height) {
-      // The deepest block whose successor still starts at or before holdSlot.
-      const [held] = yield* sql<{
-        height: string | null;
-      }>`SELECT max(block_height)::text AS height FROM event_history_block_applications
-        WHERE binding_digest = ${key} AND canonical AND block_slot <= ${retention.holdSlot}`;
-      const cap =
-        held?.height === null || held?.height === undefined
-          ? current.anchor.height
-          : natural(held.height) - 1;
-      if (cap < target) {
-        target = Math.max(cap, current.anchor.height);
-        holding = true;
-      }
-    }
+    const target = limit;
     let anchor = current.anchor;
     let anchorSnapshotDigest = current.anchorSnapshotDigest;
     if (target > current.anchor.height) {
@@ -143,17 +125,7 @@ export const retain = (
     const seed = yield* checked(() => originReplayHead(current.originReceipt));
     if (seed === undefined || !samePoint(seed, anchor))
       yield* pruneReplayReceipts(binding.digest, RETENTION_BATCH);
-    const hold: RetentionHold | undefined = holding
-      ? Object.freeze({
-          holdSlot: retention.holdSlot!,
-          anchorHeight: anchor.height,
-          unheldAnchorHeight: Math.min(
-            retention.tipHeight - retention.horizon,
-            current.head.height - 1,
-          ),
-        })
-      : undefined;
-    return { anchor, anchorSnapshotDigest, hold };
+    return { anchor, anchorSnapshotDigest };
   });
 
 /** What an applied append hands its callback, in the same transaction: the
@@ -289,7 +261,7 @@ export const appendRecovering = (
         changes: staged.fresh.changes,
       },
     );
-    const { hold } = yield* retain(
+    yield* retain(
       binding,
       {
         anchor: actual.anchor,
@@ -304,7 +276,6 @@ export const appendRecovering = (
       applied: true as const,
       after,
       changes: staged.fresh.changes,
-      hold,
     };
   });
 

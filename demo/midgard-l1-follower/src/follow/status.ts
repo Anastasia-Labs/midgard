@@ -5,6 +5,7 @@ import type {
 
 import type { OriginConfig } from "../origin.js";
 import type { FactStore } from "../store/fact-store.js";
+import type { PruneFloorLag } from "../store/prune.js";
 import type { InterventionReason } from "../types.js";
 
 /** The cursor is not known to be at the node's tip (before the first event too). */
@@ -101,8 +102,8 @@ export type FollowStatus = Readonly<{
     lastError: string | null;
     /** Prune passes failed in a row; the next successful one resets it. */
     failures: number;
-    /** Slots a role's prune floor holds the boundary back (null: none). */
-    floorLagSlots: number | null;
+    /** Each role prune floor holding the boundary back, by name, with its lag in slots (empty: none). */
+    floorLags: readonly PruneFloorLag[];
   }>;
 }>;
 

@@ -1,12 +1,4 @@
-import {
-  computeFraudProofRawL1PointId,
-  type FraudProofRawL1Point,
-} from "@al-ft/midgard-fault-proofs";
-import type {
-  FactStore,
-  FollowStatus,
-  Point,
-} from "@al-ft/midgard-l1-follower";
+import type { FactStore, FollowStatus } from "@al-ft/midgard-l1-follower";
 
 import type { WatcherAvailabilityRuntime } from "../availability/runtime.js";
 import {
@@ -14,7 +6,6 @@ import {
   WatcherFaultDecisionRetired,
 } from "../fault-proofs/fault-decision-bridge.js";
 import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
-import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.exact-record.js";
 import {
   readHandledFollowerGeneration,
   writeHandledFollowerGeneration,
@@ -27,14 +18,13 @@ import {
 
 /**
  * The watcher's decision driver (ticket W1, with W3's rollback handling):
- * every fault decision, availability action and history advance is a pure
- * function of the follower's facts at the tip and at the release depth.
+ * every fault decision and availability action is a pure function of the
+ * follower's facts at the tip and at the release depth.
  *
  * One pass reads both observations in their own read transactions and hands
- * them to the availability runtime, the user-event history and the decision
- * bridge, in that order. Passes are single-flight and coalesced: every
- * follower change wakes the driver, and a change during a pass runs one more
- * pass after it.
+ * them to the availability runtime and the decision bridge, in that order.
+ * Passes are single-flight and coalesced: every follower change wakes the
+ * driver, and a change during a pass runs one more pass after it.
  *
  * A follower rewind (any depth below k) revokes the bridge's and the
  * availability runtime's authority synchronously, inside the store's
@@ -50,19 +40,15 @@ import {
  * the facts: from the generation the driver last handled
  * (`follower-generation.ts`) through the store's rollback log. Both paths
  * meet in one handler, idempotent per generation: the invalidations, the
- * rewind count and `onRewind` run once for each new generation, and the
- * history target is the lowest one either path saw (rolling the history
- * back to a point at or above its head is a no-op). The pull reads from the
- * higher of the durable marker and the generation this process last rolled
- * the history back through, so a pull of a generation already applied in
- * this process (the marker waits on the retirement reset) rolls nothing
- * back again.
+ * rewind count and `onRewind` run once for each new generation, so a pull of
+ * a generation this process already handled (the marker waits on the
+ * retirement reset) changes nothing.
  *
- * The durable marker moves only once the history is back at every target
- * and the replay-transcript retirement reset the last rewind started held.
- * The pass waits for that reset at most `retryDelayMs`; while it is still
- * pending or failed, the driver is unready by name and the marker waits
- * (a failed reset is retried by the next pass, one `retryDelayMs` later).
+ * The durable marker moves only once the replay-transcript retirement reset
+ * the last rewind started held. The pass waits for that reset at most
+ * `retryDelayMs`; while it is still pending or failed, the driver is unready
+ * by name and the marker waits (a failed reset is retried by the next pass,
+ * one `retryDelayMs` later).
  *
  * Liveness: a pass never throws out of the driver. A failure is a named
  * readiness reason with its detail and a retry after `retryDelayMs`.
@@ -70,9 +56,6 @@ import {
 
 /** A pass failed; the detail names the failure. Retried after the delay. */
 export const WATCHER_DECISION_PASS_FAILED = "watcher_decision_pass_failed";
-/** The local user-event history failed or closed; event-backed families cannot decide. */
-export const WATCHER_USER_EVENT_HISTORY_UNAVAILABLE =
-  "user_event_history_unavailable";
 /** The release-depth observation is not available yet (for example a short chain). */
 export const WATCHER_RELEASE_OBSERVATION_PENDING =
   "release_observation_pending";
@@ -106,15 +89,6 @@ export type WatcherDecisionReadiness = Readonly<{
   detail: string;
 }>;
 
-type DriverHistory = Readonly<{
-  read(): Readonly<{
-    status: string;
-    currentPoint: Readonly<{ slot: string; blockNo: string }>;
-  }>;
-  advanceThrough(point: FraudProofRawL1Point): Promise<unknown>;
-  handleRollback(point: WatcherNativeChainSyncPoint): Promise<unknown>;
-}>;
-
 export type WatcherDecisionDriverInput = Readonly<{
   store: Pick<
     FactStore,
@@ -132,14 +106,11 @@ export type WatcherDecisionDriverInput = Readonly<{
     | "recoverExisting"
     | "reconcileAndDispatch"
     | "invalidateForRollback"
-    | "beforeHistoryAdvance"
   >;
   availability: Pick<
     WatcherAvailabilityRuntime,
     "reconcile" | "invalidateForRollback"
   >;
-  /** The local user-event history; it advances through release-final points. */
-  history?: DriverHistory;
   /** Replay-transcript retirement at release-final observations. */
   retirement?: Readonly<{
     /** No proof work is pending or running: retirement may sweep. */
@@ -192,24 +163,6 @@ export type WatcherDecisionDriver = Readonly<{
 const message = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-const rawPoint = (
-  observation: WatcherAuthenticatedStateQueueObservation,
-): FraudProofRawL1Point => {
-  const { blockHash, slot, blockNo } = observation.nativePoint;
-  return {
-    blockHash,
-    slot,
-    blockNo,
-    pointId: computeFraudProofRawL1PointId({ blockHash, slot, blockNo }),
-  };
-};
-
-const nativePoint = (point: Point): WatcherNativeChainSyncPoint => ({
-  kind: "point",
-  blockHash: point.hash.toString("hex"),
-  slot: point.slot.toString(),
-});
-
 /** A failure that only says a rewind or a newer pass retired the work. */
 const retired = (error: unknown): boolean =>
   error instanceof WatcherFaultDecisionRetired;
@@ -242,17 +195,12 @@ export const createWatcherDecisionDriver = (
     { reason: "watcher_decision_pending", detail: "no pass has completed" },
   ];
   // Every rewind owes the bridge a recovery preparation before its next
-  // dispatch, and owes the history a rollback to the lowest rewind target.
+  // dispatch.
   let recoveryPending = true;
-  let historyRewindTo: Point | null = null;
   let recoveredCount: number | null = null;
   // The highest follower generation this process handled; null before the
   // first push or pull.
   let handledGeneration: number | null = null;
-  // The highest generation this process rolled the history back through
-  // (every target up to it applied); null before the first. The pull reads
-  // from it when it is above the durable marker.
-  let historyAppliedGeneration: number | null = null;
   // The last retirement reset a rewind started; the durable handled
   // generation moves only once it held.
   type RetirementReset = {
@@ -310,10 +258,8 @@ export const createWatcherDecisionDriver = (
     retirementReset = reset;
   };
 
-  /** One rewind or reset to `to` at `generation`, pushed or pulled. */
-  const rewound = (generation: number, to: Point): void => {
-    if (historyRewindTo === null || to.slot < historyRewindTo.slot)
-      historyRewindTo = to;
+  /** One rewind or reset at `generation`, pushed or pulled. */
+  const rewound = (generation: number): void => {
     if (handledGeneration !== null && generation <= handledGeneration) return;
     handledGeneration = generation;
     // Synchronous: no runnable authority survives into the next await.
@@ -326,12 +272,10 @@ export const createWatcherDecisionDriver = (
     input.onRewind?.(generation);
   };
 
-  const unsubscribeGeneration = input.store.onGeneration(
-    ({ generation, rewound: event }) => {
-      rewound(generation, event.to);
-      wake();
-    },
-  );
+  const unsubscribeGeneration = input.store.onGeneration(({ generation }) => {
+    rewound(generation);
+    wake();
+  });
   const unsubscribeChange = input.onFollowerChange(() => wake());
 
   const observe = async (depth: number): Promise<WatcherObservationRead> =>
@@ -342,20 +286,9 @@ export const createWatcherDecisionDriver = (
       releaseDepth: input.releaseDepth,
     });
 
-  const rewindHistory = async (history: DriverHistory): Promise<void> => {
-    const target = historyRewindTo;
-    if (target === null) return;
-    const head = history.read().currentPoint;
-    if (BigInt(head.slot) > BigInt(target.slot))
-      await history.handleRollback(nativePoint(target));
-    // A newer rewind during the call keeps its own (lower or equal) target.
-    if (historyRewindTo === target) historyRewindTo = null;
-  };
-
   /**
    * The pull: every rewind after the generation last handled durably. A
-   * rewind found here that the push already delivered changes nothing but
-   * the history target, which is the same or lower.
+   * rewind found here that the push already delivered changes nothing.
    */
   const catchUp = async (): Promise<
     Readonly<{
@@ -364,22 +297,17 @@ export const createWatcherDecisionDriver = (
     }>
   > => {
     const handled = await readHandledFollowerGeneration(input.store);
-    const applied = historyAppliedGeneration;
-    const since = await input.store.rewindsSince(
-      handled === null || (applied !== null && applied > handled)
-        ? applied
-        : handled,
-    );
+    const since = await input.store.rewindsSince(handled);
     if (since === null) return { handled, generation: null };
-    if (since.target !== null) rewound(since.generation, since.target);
+    if (since.target !== null) rewound(since.generation);
     else if (handledGeneration === null || since.generation > handledGeneration)
       handledGeneration = since.generation;
     return { handled, generation: since.generation };
   };
 
   /**
-   * Moves the durable handled generation, once the history is back at every
-   * target and the last retirement reset held. Waits for a pending reset at
+   * Moves the durable handled generation, once the last retirement reset
+   * held. Waits for a pending reset at
    * most `retryDelayMs`. Returns why the marker waits, or null.
    */
   const recordHandled = async (
@@ -432,24 +360,8 @@ export const createWatcherDecisionDriver = (
     }
     const pulled = await catchUp();
     const reasons: WatcherDecisionReadiness[] = [];
-    const history = input.history;
-    let historyApplied = true;
-    if (history !== undefined) {
-      const status = history.read().status;
-      if (status === "failed" || status === "closed") {
-        historyApplied = false;
-        reasons.push({
-          reason: WATCHER_USER_EVENT_HISTORY_UNAVAILABLE,
-          detail: `the local user-event history is ${status}`,
-        });
-      } else await rewindHistory(history);
-    }
-    // The history went back to every target this pass saw (or there is none).
-    if (history === undefined || (historyApplied && historyRewindTo === null)) {
-      historyAppliedGeneration = handledGeneration;
-      const waiting = await recordHandled(pulled);
-      if (waiting !== null) reasons.push(waiting);
-    }
+    const waiting = await recordHandled(pulled);
+    if (waiting !== null) reasons.push(waiting);
     const tip = await observe(1);
     if (tip.kind === "unready") {
       held = [{ reason: tip.reason, detail: tip.detail }, ...reasons];
@@ -457,18 +369,9 @@ export const createWatcherDecisionDriver = (
     }
     inclusion = tip.observation;
     const release = await observe(input.releaseDepth);
-    if (release.kind === "ok") {
+    if (release.kind === "ok")
       await input.availability.reconcile(release.observation, true);
-      if (
-        history !== undefined &&
-        history.read().status === "ready" &&
-        BigInt(release.observation.nativePoint.blockNo) >
-          BigInt(history.read().currentPoint.blockNo)
-      ) {
-        input.bridge.beforeHistoryAdvance();
-        await history.advanceThrough(rawPoint(release.observation));
-      }
-    } else
+    else
       reasons.push({
         reason: WATCHER_RELEASE_OBSERVATION_PENDING,
         detail: `${release.reason}: ${release.detail}`,

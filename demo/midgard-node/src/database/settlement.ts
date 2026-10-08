@@ -1,8 +1,6 @@
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
-import { sqlErrorToDatabaseError } from "./utils/common.js";
-
 export type SettlementKind = "deposit" | "withdrawal";
 export type SettlementPhase = "absorb" | "initialize" | "fund" | "conclude";
 export type SettlementJob = {
@@ -205,34 +203,15 @@ export const saveAttempt = <E, R>(
         WHERE deployment_id = ${owner.deploymentId} FOR UPDATE`;
         yield* unsettled;
         yield* sql`INSERT INTO settlement_attempts
-      (deployment_id, kind, event_id, phase, tx_hash, signed_cbor, required_outputs, fee_inputs, status, hold_slot)
+      (deployment_id, kind, event_id, phase, tx_hash, signed_cbor, required_outputs, fee_inputs, status)
       VALUES (${attempt.deployment_id}, ${attempt.kind}, ${attempt.event_id}, ${attempt.phase},
         ${attempt.tx_hash}, ${attempt.signed_cbor},
         ARRAY(SELECT jsonb_array_elements_text(CAST(${JSON.stringify(attempt.required_outputs)} AS TEXT)::jsonb))::integer[],
         ARRAY(SELECT jsonb_array_elements_text(CAST(${JSON.stringify(attempt.fee_inputs)} AS TEXT)::jsonb)),
-        ${attempt.status}, (SELECT point_slot FROM event_history_authority WHERE singleton))`;
+        ${attempt.status})`;
       }),
     );
   });
-
-/** Keep the block evidence an attempt not yet final may need: the lowest hold
- * of the pending attempts (the partial open-attempt index bounds the read to
- * them, independent of settled event history size). */
-export const settlementRetentionHoldSlot = (deploymentId: string) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<{
-      hold_slot: string | null;
-    }>`SELECT MIN(hold_slot)::text AS hold_slot FROM settlement_attempts
-    WHERE deployment_id = ${deploymentId} AND status = 'pending'`;
-    const hold = rows[0]?.hold_slot;
-    return hold === undefined || hold === null ? undefined : Number(hold);
-  }).pipe(
-    sqlErrorToDatabaseError(
-      "settlement_attempts",
-      "Failed to read settlement retention hold",
-    ),
-  );
 
 export const updateJob = (
   owner: SettlementOwner,

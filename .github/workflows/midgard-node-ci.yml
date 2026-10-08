@@ -752,13 +752,6 @@ jobs:
         with:
           blueprint: "true"
           interactive-blueprint: "true"
-      # Vitest loads every workspace package from source, but
-      # tests/runtime/authority-initialization-command.test.ts runs the built
-      # CLI (dist/cli.js) in a plain Node child, which imports the built core,
-      # SDK, validation and fault-proof packages. The guarded build builds
-      # that closure first.
-      - name: Build the watcher CLI the suite runs
-        run: pnpm --dir demo/midgard-watcher run build
       # The test run records each file's seconds (durationShards in
       # midgard-test-support); `test-durations` merges the shards' records into
       # the refreshed shard table.

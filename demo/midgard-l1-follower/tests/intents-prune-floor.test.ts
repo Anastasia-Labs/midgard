@@ -240,7 +240,10 @@ describe.each(["sqlite", "postgres"] as const)(
       // boundary, below the block k under the cursor.
       const last = steps.at(-1)!;
       expect(last.prunedThroughSlot).toBe(mark.boundarySlot);
-      expect(last.floorLagSlots).toBeGreaterThan(0);
+      expect(last.floorLags.map(({ floor }) => floor)).toEqual([
+        "intent_journal_replay",
+      ]);
+      expect(last.floorLags[0]!.lagSlots).toBeGreaterThan(0);
       for (const step of steps)
         expect(step.prunedThroughSlot).toBeLessThanOrEqual(mark.boundarySlot);
       // Every spend above the mark's boundary and its tx rows are kept.
@@ -266,11 +269,14 @@ describe.each(["sqlite", "postgres"] as const)(
       // Still replaying: the floor holds the boundary however often prune runs.
       const held = await prune(store);
       expect(held.prunedThroughSlot).toBe(mark.boundarySlot);
-      expect(held.floorLagSlots).toBeGreaterThan(0);
+      expect(held.floorLags.map(({ floor }) => floor)).toEqual([
+        "intent_journal_replay",
+      ]);
+      expect(held.floorLags[0]!.lagSlots).toBeGreaterThan(0);
 
       expect(await store.endTrackedSetReplay()).toBe("ended");
       const lifted = await prune(store);
-      expect(lifted.floorLagSlots).toBeNull();
+      expect(lifted.floorLags).toEqual([]);
       expect(lifted.prunedThroughSlot).toBeGreaterThan(mark.boundarySlot);
       expect(lifted.prunedThroughSlot).toBe(
         (await store.transaction("read", readPruneMarkIn))?.boundarySlot,
@@ -314,7 +320,7 @@ describe.each(["sqlite", "postgres"] as const)(
       expect(await count(store, ...SPENT(simTxHash(funding)))).toBe(1);
       expect(await store.endTrackedSetReplay()).toBe("ended");
       const lifted = await prune(store);
-      expect(lifted.floorLagSlots).toBeNull();
+      expect(lifted.floorLags).toEqual([]);
       expect(lifted.prunedThroughSlot).toBeGreaterThan(SIM_ORIGIN.point.slot);
       expect(await count(store, ...SPENT(simTxHash(funding)))).toBe(0);
     });

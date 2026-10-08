@@ -407,7 +407,7 @@ const followL1 = Effect.fnUntraced(function* (
       steps: 0,
       prunedThroughSlot: null,
       lastError: null,
-      floorLagSlots: null,
+      floorLags: [],
       failures: 0,
     },
   } as const;

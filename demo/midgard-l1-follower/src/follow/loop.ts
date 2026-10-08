@@ -101,7 +101,7 @@ export const followChain = async (
       steps: 0,
       prunedThroughSlot: null,
       lastError: null,
-      floorLagSlots: null,
+      floorLags: [],
       failures: 0,
     },
   };
@@ -199,7 +199,7 @@ export const followChain = async (
         steps: status.prune.steps + 1,
         prunedThroughSlot: pruned.prunedThroughSlot,
         lastError: null,
-        floorLagSlots: pruned.floorLagSlots,
+        floorLags: pruned.floorLags,
         failures: 0,
       },
     });

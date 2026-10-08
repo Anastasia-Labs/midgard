@@ -30,8 +30,8 @@ The worker retries deferred work and survives restarts by reconciling signed
 bytes. No new attempt is journaled while an earlier one reads short of cd, a
 check made under the owner-row lock at the durable write, so a fee coin a
 rollback restored is never reused. Replacement requires expiry and synchronized
-evidence. Attempts not yet final hold their history evidence. A stalled worker
-is terminated and restarted; its journal survives.
+evidence. An attempt stays open until it is final. A stalled worker is
+terminated and restarted; its journal survives.
 Settlement health is exposed separately from L2 readiness.
 
 Upgrading requires `db:migrate` and a funded `L1_SETTLEMENT_SEED_PHRASE`, distinct
@@ -87,6 +87,9 @@ review lenses. The final pass found no remaining ranked finding.
 - F2, confirmation block pruned during downtime: closed by a durable pending
   hold composed with the existing retention hold. Removing that wiring in the
   isolated worktree failed the owner retention assertion.
+  Confirmation now reads the intent journal's landed depth instead of history
+  evidence, so this hold was later deleted with its `hold_slot` column
+  (migration 0017).
 - Indexer recovery edges: closed by synchronizing before auditing any receipt
   batch. This covers missing receipts during catch-up and stale positive
   confirmations from a rolled-back fork. Removing synchronization failed the

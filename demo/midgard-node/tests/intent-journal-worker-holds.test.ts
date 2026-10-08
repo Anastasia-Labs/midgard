@@ -106,7 +106,7 @@ const following: FollowStatus = {
     prunedThroughSlot: null,
     lastError: null,
     failures: 0,
-    floorLagSlots: null,
+    floorLags: [],
   },
   readiness: [],
 };

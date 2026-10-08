@@ -78,8 +78,6 @@ export type WatcherFaultDecisionBridge = Readonly<{
   dispatchPrepared(): Promise<unknown> | null;
   /** Invalidates all runnable authority synchronously on native rollback. */
   invalidateForRollback(): void;
-  /** Fence advancing history without revoking a target that does not consume it. */
-  beforeHistoryAdvance(): void;
   /** Revokes all runnable authority before production shutdown can await I/O. */
   invalidateForShutdown(): void;
   status(): Readonly<{

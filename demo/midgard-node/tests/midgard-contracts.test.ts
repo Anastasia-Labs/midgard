@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -55,7 +55,10 @@ import {
   collectScriptInventory,
   scriptInventoryId,
 } from "./helpers/script-inventory.js";
-import { registerBlueprintProfileBindingTests } from "./midgard-contracts.blueprint-binding.js";
+import {
+  realBlueprintBytes,
+  registerBlueprintProfileBindingTests,
+} from "./midgard-contracts.blueprint-binding.js";
 
 describe("midgard contracts registry", () => {
   registerBlueprintProfileBindingTests();
@@ -308,12 +311,7 @@ describe("midgard contracts registry", () => {
     async ({ title, mutation, error }) => {
       const dir = await mkdtemp(join(tmpdir(), "midgard-queue-blueprint-"));
       const blueprintPath = join(dir, "plutus.json");
-      const raw = JSON.parse(
-        await readFile(
-          new URL("../../../onchain/aiken/plutus.json", import.meta.url),
-          "utf8",
-        ),
-      ) as {
+      const raw = JSON.parse((await realBlueprintBytes()).toString("utf8")) as {
         validators: {
           title: string;
           compiledCode: string;

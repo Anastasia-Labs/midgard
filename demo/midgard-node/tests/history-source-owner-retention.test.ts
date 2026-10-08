@@ -96,7 +96,7 @@ const gate = Effect.gen(function* () {
 // Accepted emulator initialization and observed empty intervals feed production
 // source decoding, replay, journal and SQL authority. Branch ancestry, a lagging
 // network-tip answer are controlled models.
-it("restarts near its head, appends at an open gate without recovery, ignores a lagging tip, bounds follower lag, holds retention visibly and refuses a rollback past its anchor", async () => {
+it("restarts near its head, appends at an open gate without recovery, ignores a lagging tip, bounds follower lag, retains the rollback horizon and refuses a rollback past its anchor", async () => {
   const { h, interval } = await openLifecycle();
   h.batches.push(await interval());
   const source = makeRollbackHistoryTransport(h);
@@ -436,76 +436,25 @@ it("restarts near its head, appends at an open gate without recovery, ignores a 
             expect((yield* authority).generation).toBe(completedGeneration);
             expect(yield* produces(owner)).toBe("Right");
 
-            // 4. The owner wires the settlement hold slot into retention, and a
-            // hold keeping the anchor more than k behind is reported once per
-            // transition and exposed as status.
+            // 4. Retention keeps the anchor exactly the rollback horizon
+            // behind the head.
             yield* owner.close;
-            const pinned = (yield* load).anchor;
-            const settlementDeployment = h.binding.manifestId;
-            yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
-              VALUES (${settlementDeployment}, 'deposit', '01', 'absorb')`;
-            yield* sql`INSERT INTO settlement_attempts
-              (deployment_id, kind, event_id, phase, tx_hash, signed_cbor, required_outputs, fee_inputs, status, hold_slot)
-              VALUES (${settlementDeployment}, 'deposit', '01', 'absorb', ${"ac".repeat(32)}, 'test-retention-body', ARRAY[0], ARRAY['fee#0'], 'pending', ${pinned.slot})`;
-            logs.length = 0;
             owner = yield* makeOwner(2);
             yield* owner.awaitReadyAt(next).pipe(Effect.timeout("15 seconds"));
             let latest = next;
-            for (let n = 0; n < 4; n++) {
+            for (let n = 0; n < 5; n++) {
               latest = yield* extend;
               yield* owner
                 .awaitReadyAt(latest)
                 .pipe(Effect.timeout("15 seconds"));
             }
-            const held = yield* load;
-            expect(held.anchor).toEqual(pinned);
-            const status = yield* owner.retentionHold;
-            expect(status).toEqual({
-              holdSlot: pinned.slot,
-              anchorHeight: pinned.height,
-              unheldAnchorHeight: latest.height - 2,
-              heldBlocks: latest.height - 2 - pinned.height,
-              rollbackHorizon: 2,
-            });
-            const holding = logs.filter(
-              ({ annotations }) =>
-                annotations.event === "history_retention_hold",
-            );
-            expect(holding).toHaveLength(1);
-            expect(holding[0]!.annotations).toMatchObject({
-              state: "holding",
-              holdSlot: pinned.slot,
-              anchorHeight: pinned.height,
-            });
-            // The interrupted settlement keeps its block evidence until the
-            // pending attempt is final (stored once more than k blocks deep).
-            latest = yield* extend;
-            yield* owner
-              .awaitReadyAt(latest)
-              .pipe(Effect.timeout("15 seconds"));
-            expect((yield* load).anchor).toEqual(pinned);
-            expect((yield* owner.retentionHold)?.holdSlot).toBe(pinned.slot);
-            yield* sql`UPDATE settlement_attempts SET status = 'final' WHERE deployment_id = ${settlementDeployment}`;
-            latest = yield* extend;
-            yield* owner
-              .awaitReadyAt(latest)
-              .pipe(Effect.timeout("15 seconds"));
-            expect(yield* owner.retentionHold).toBeUndefined();
-            expect(
-              logs
-                .filter(
-                  ({ annotations }) =>
-                    annotations.event === "history_retention_hold",
-                )
-                .map(({ annotations }) => annotations.state),
-            ).toEqual(["holding", "released"]);
-            const released = yield* load;
-            expect(released.anchor.height).toBe(latest.height - 2);
+            const retained = yield* load;
+            expect(retained.anchor.height).toBe(latest.height - 2);
 
             // 8. A rollback below the retained anchor is refused before any
             // retained block is undone.
             const below = source.points.find(
-              ({ point }) => point.height === released.anchor.height - 1,
+              ({ point }) => point.height === retained.anchor.height - 1,
             )!.point;
             source.rollbackTo(below.id);
             const stopped = yield* owner.awaitStopped.pipe(
@@ -517,9 +466,9 @@ it("restarts near its head, appends at an open gate without recovery, ignores a 
             );
             yield* owner.close;
             const refused = yield* load;
-            expect(refused.head).toEqual(released.head);
-            expect(refused.revision).toBe(released.revision);
-            expect(refused.anchor).toEqual(released.anchor);
+            expect(refused.head).toEqual(retained.head);
+            expect(refused.revision).toBe(retained.revision);
+            expect(refused.anchor).toEqual(retained.anchor);
             expect(ledgerScans(source.requests)).toBe(1);
           }).pipe(Effect.provide(Logger.add(capture))),
         ),

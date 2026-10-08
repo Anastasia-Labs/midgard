@@ -1,11 +1,9 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import { CML, type LucidEvolution, type OutRef } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  isUnknownOutputReferenceSubmitError,
-  parseOutsideValidityIntervalDetails,
-} from "../transactions/utils.js";
+import { parseOutsideValidityIntervalDetails } from "../transactions/utils.js";
 
 export class SignedNonceConflictError extends Error {
   override readonly name = "SignedNonceConflictError";
@@ -43,7 +41,7 @@ const ogmiosSubmitFailureCode = (error: unknown): number | undefined => {
  */
 const isDefiniteLedgerRejection = (error: unknown) => {
   if (ogmiosSubmitFailureCode(error) === undefined) return false;
-  if (isUnknownOutputReferenceSubmitError(error)) return false;
+  if (isSpentInputSubmitRejection(error)) return false;
   const validity = parseOutsideValidityIntervalDetails(error);
   return !(
     validity !== null && validity.currentSlot < validity.invalidBeforeSlot
