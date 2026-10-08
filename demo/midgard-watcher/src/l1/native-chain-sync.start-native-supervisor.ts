@@ -379,8 +379,9 @@ export const startNativeSupervisor = async (
   };
   const done = (async () => {
     try {
-      // The node's first reply acknowledges the intersection. The transport
-      // consumes it, so the read delivers it as its first event.
+      // The read's first event is always the rollback to the intersection.
+      // The transport delivers that rollback itself only when the
+      // intersection is not the first requested point; it is skipped below.
       await deliver(
         Object.freeze({
           schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
@@ -389,6 +390,7 @@ export const startNativeSupervisor = async (
           tip: currentTip,
         }),
       );
+      let first = true;
       for (;;) {
         let next: ChainSyncEvent | undefined;
         try {
@@ -400,6 +402,16 @@ export const startNativeSupervisor = async (
           );
         }
         if (next === undefined) break;
+        const restatesIntersection =
+          first &&
+          next.kind === "roll_backward" &&
+          watcherCanonicalJson(fromChainPoint(next.point)) ===
+            watcherCanonicalJson(selectedIntersection);
+        first = false;
+        if (restatesIntersection) {
+          owned.ack(next.seq);
+          continue;
+        }
         await deliver(watcherEvent(next));
         // An exact-point query holds its single credit: no block follows.
         if (!exact && !closing) owned.ack(next.seq);

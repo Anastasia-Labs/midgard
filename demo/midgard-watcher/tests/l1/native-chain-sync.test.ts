@@ -424,12 +424,15 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
 
   it("offers every durable ancestor in one intersection and binds explicit Origin", async () => {
     const transport = await fakeNodeTransport("retry_intersection");
+    const events: WatcherNativeChainSyncEvent[] = [];
     const runtime = await startWatcherNativeChainSyncWithRetry({
       binaryPath: transport.binaryPath,
       watcherConfig: config(),
       intersectionCandidates: [INTERSECTION, { kind: "origin" }],
       startupTimeoutMs: 2_000,
-      onEvent: async () => undefined,
+      onEvent: async (event) => {
+        events.push(event);
+      },
       unsafeReadIdentityFileForTest: readIdentityFixture,
     });
     try {
@@ -438,6 +441,13 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
         watcherNativeChainSyncAuthorityDetails(runtime.authority)
           ?.selectedIntersection,
       ).toEqual({ kind: "origin" });
+      // The node intersected below the first candidate, so the transport
+      // restates the intersection as a rollback; the read delivers it once.
+      await expect.poll(() => events.length).toBe(1);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(events).toMatchObject([
+        { kind: "roll_backward", point: { kind: "origin" } },
+      ]);
     } finally {
       await runtime.close();
     }

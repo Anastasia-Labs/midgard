@@ -53,8 +53,11 @@ export const samePoint = (a, b) =>
  *
  * - hello({socketPath, networkMagic}): undefined, {nodeToClientVersion}, or
  *   {fatal: {code, message, status}} to refuse the session.
- * - openStream({points, startSeq, window, consumerAt}, stream): {intersection, tip}
+ * - openStream({points, startSeq, window}, stream): {intersection, tip}
  *   or {notFound: tip}; may be async. `stream` delivers events within credit.
+ *   As the sidecar does, the fake delivers a rollback to the intersection
+ *   before the handler's events whenever the intersection is not the first
+ *   requested point (the consumer's position).
  * - acquire(point | undefined), ledgerQuery({query, ...params}):
  *   Uint8Array (the raw answer) or {error: {code, message}}.
  * - submit(tx, era): {accepted: true} | {rejection: Uint8Array} | {error}.
@@ -90,6 +93,11 @@ export const serveFakeSidecar = (handler) => {
     };
     const flush = () => {
       while (state.opened && !state.closed && state.queue.length > 0) {
+        if (state.queue[0].kind === "skip") {
+          state.queue.shift();
+          state.lastSeq += 1n;
+          continue;
+        }
         if (state.lastSeq - state.acked >= BigInt(state.window)) {
           // A failure is not an event and takes no credit: as with the
           // sidecar, the events held back by the credit are never sent.
@@ -158,6 +166,10 @@ export const serveFakeSidecar = (handler) => {
         state.queue.push({ kind: "fail", code, message });
         flush();
       },
+      skipSequence() {
+        state.queue.push({ kind: "skip" });
+        flush();
+      },
       onClose(listener) {
         state.closeListeners.push(listener);
       },
@@ -209,10 +221,6 @@ export const serveFakeSidecar = (handler) => {
             points: header.points.map(decodePoint),
             startSeq: BigInt(header.startSeq),
             window: Number(header.window),
-            consumerAt:
-              header.consumerAt === undefined
-                ? undefined
-                : decodePoint(header.consumerAt),
           },
           api,
         );
@@ -242,6 +250,13 @@ export const serveFakeSidecar = (handler) => {
           point: encodePoint(result.intersection),
           tip: encodeTip(result.tip),
         });
+        const intersection = decodePoint(encodePoint(result.intersection));
+        if (!samePoint(decodePoint(header.points[0]), intersection))
+          state.queue.unshift({
+            kind: "backward",
+            point: result.intersection,
+            tip: result.tip,
+          });
         state.opened = true;
         flush();
         return;
@@ -369,6 +384,8 @@ export const serveFakeSidecar = (handler) => {
   return {
     /** Ends the session as the sidecar does on a fault. */
     fatal,
+    /** Writes one frame as given, as a broken sidecar might. */
+    writeFrame: write,
     /** Ends the process without a frame, as a crash would. */
     exit: (status) => process.exit(status),
   };
@@ -392,7 +409,7 @@ export const writeFakeSidecar = async ({
 import { serveFakeSidecar } from ${JSON.stringify(self)};
 import createHandler from ${JSON.stringify(handler)};
 let session;
-const controls = { fatal: (...args) => session.fatal(...args), exit: (status) => process.exit(status) };
+const controls = { fatal: (...args) => session.fatal(...args), writeFrame: (...args) => session.writeFrame(...args), exit: (status) => process.exit(status) };
 session = serveFakeSidecar(await createHandler(${JSON.stringify(options)}, controls));
 `,
   );

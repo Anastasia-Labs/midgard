@@ -65,7 +65,7 @@ to the run's `genesis/`. After the nonce it runs `midgard-l1-follower
 find-origin` on the nonce tx against the run's node socket, scanning from
 genesis, records the result in `work/l1-origin.json`, and sets `L1_ORIGIN`,
 `L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH` and
-`L1_NATIVE_CHAIN_SYNC_BINARY_PATH` in `node.env`. It clears an earlier run's
+`L1_NODE_TRANSPORT_BINARY_PATH` in `node.env`. It clears an earlier run's
 `L1_ORIGIN` first and stops if find-origin does not find the tx.
 `write-acceptance-env.sh` copies the six inputs (those four and the one-shot)
 into `acceptance.env`, and refuses with `Phase4L1FollowerInputError`, naming

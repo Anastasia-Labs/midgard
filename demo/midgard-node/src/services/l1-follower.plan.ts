@@ -80,7 +80,7 @@ export const l1FollowerPlan = (input: {
   });
   if (config.L1_NATIVE_LEDGER === undefined)
     return missing(
-      "no local node is configured (L1_NODE_SOCKET_PATH, L1_NODE_CONFIG_PATH, L1_NATIVE_CHAIN_SYNC_BINARY_PATH)",
+      "no local node is configured (L1_NODE_SOCKET_PATH, L1_NODE_CONFIG_PATH, L1_NODE_TRANSPORT_BINARY_PATH)",
     );
   if (config.L1_ORIGIN === null) return missing("L1_ORIGIN is not set");
   const oneShotTx = config.HUB_ORACLE_ONE_SHOT_TX_HASH.toLowerCase();

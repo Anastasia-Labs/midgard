@@ -233,7 +233,7 @@ const fixture = async () => {
     deploymentAuthorityPath: join(directory, "deployment-authority.json"),
     ruleBundlePath: join(directory, "rule-bundle.json"),
     fundingProfileBundlePath: join(directory, "funding-profiles.json"),
-    nativeChainSyncBinaryPath: "/usr/local/bin/midgard-l1-node-transport",
+    l1NodeTransportBinaryPath: "/usr/local/bin/midgard-l1-node-transport",
     trustedHeadAuthorityEndpoint: "http://127.0.0.1:43123",
     operationsEndpoint: "http://127.0.0.1:43124",
     httpBearerSecretSource: {

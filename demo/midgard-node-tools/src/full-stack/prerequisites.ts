@@ -72,7 +72,7 @@ export async function prepareStackPrerequisites(processes: StackProcesses) {
     "native-l1-node-transport-build",
     "pnpm",
     ["--filter", "@al-ft/l1-node-transport", "native:build"],
-    { CGO_ENABLED: "0", GOTOOLCHAIN: "go1.25.7" },
+    { CGO_ENABLED: "0", GOTOOLCHAIN: "go1.26.5" },
     workspace,
     "host",
   );

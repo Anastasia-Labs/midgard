@@ -54,8 +54,7 @@ const acceptanceEnv = async () => {
       ShelleyGenesisFile: join(runDir, "genesis/shelley-genesis.json"),
     }),
   );
-  // Where the run's node listens; the magic read resolves the path only.
-  writeFileSync(join(runDir, "cardano/ipc/node.socket"), "");
+  // The run's node socket does not exist yet: the magic read needs none.
   const result = await fixtures.writeAcceptanceEnv(runDir);
   expect(result.status, result.stderr).toBe(0);
   return {
@@ -90,11 +89,7 @@ describe("Phase 4 acceptance env and the node's L1 follower", () => {
       // The follower's first step after planning: the run's network magic.
       await expect(
         nativeLedgerNetworkMagic(
-          {
-            socketPath: plan.socketPath,
-            nodeConfigPath: plan.nodeConfigPath,
-            binaryPath: plan.binaryPath,
-          },
+          { nodeConfigPath: plan.nodeConfigPath },
           "Custom",
         ),
       ).resolves.toBe(NETWORK_MAGIC);

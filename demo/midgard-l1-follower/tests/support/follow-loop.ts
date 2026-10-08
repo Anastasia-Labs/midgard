@@ -2,6 +2,7 @@ import {
   type ChainSyncEvent,
   type ChainSyncStream,
   IntersectNotFoundError,
+  type TransportReadiness,
 } from "@al-ft/l1-node-transport";
 
 import {
@@ -52,6 +53,9 @@ const pause = (ms: number): Promise<void> =>
  * again on the next stream.
  */
 export const scriptedTransport = (s: Script) => ({
+  /** The scripted node is always reachable. */
+  readiness: { ready: true, nodeToClientVersion: 32784 } as TransportReadiness,
+  onReadiness: (): (() => void) => () => undefined,
   openChainSync: (): ChainSyncStream => {
     const open = s.opens;
     s.opens += 1;

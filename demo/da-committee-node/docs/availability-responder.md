@@ -49,7 +49,7 @@ deployment's origin point (`<slot>.<block hash>`, as
 ```sh
 CARDANO_LOCAL_NODE_SOCKET_PATH=/run/cardano/node.socket
 CARDANO_LOCAL_NODE_CONFIG_PATH=/etc/cardano/config.json
-CARDANO_NATIVE_CHAIN_SYNC_BINARY_PATH=/opt/midgard/midgard-l1-node-transport
+CARDANO_L1_NODE_TRANSPORT_BINARY_PATH=/opt/midgard/midgard-l1-node-transport
 ```
 
 The binary is the node transport sidecar; build it with

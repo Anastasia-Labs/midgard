@@ -83,7 +83,7 @@ const generate = async (root: string, portOffset: number) => {
     deploymentAuthorityPath: paths.authority,
     ruleBundlePath: paths.rules,
     fundingProfileBundlePath: paths.fundingProfiles,
-    nativeChainSyncBinaryPath: join(layout.bin, "midgard-l1-node-transport"),
+    l1NodeTransportBinaryPath: join(layout.bin, "midgard-l1-node-transport"),
     trustedHeadAuthorityEndpoint: "http://127.0.0.1:43123",
     operationsEndpoint: "http://127.0.0.1:43124",
     httpBearerSecretSource: {

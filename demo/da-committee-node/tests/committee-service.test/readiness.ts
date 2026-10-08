@@ -1,6 +1,7 @@
 import { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
 import {
   FOLLOWER_CATCHING_UP,
+  FOLLOWER_NODE_UNAVAILABLE,
   WALLET_SEED_PENDING,
 } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -98,6 +99,23 @@ export const registerReadinessTests = () => {
       ready: false,
       reasons: [`${FOLLOWER_CATCHING_UP}: cursor 1000, tip 90000`],
     });
+
+    // A lost L1 node is named, and is transient: no intervention.
+    following = [
+      {
+        reason: FOLLOWER_NODE_UNAVAILABLE,
+        detail: "node_unreachable: dial: no such file",
+      },
+    ];
+    await service.tick();
+    const lost = await service.readinessSnapshot();
+    expect(lost).toMatchObject({
+      ready: false,
+      reasons: [
+        `${FOLLOWER_NODE_UNAVAILABLE}: node_unreachable: dial: no such file`,
+      ],
+    });
+    expect(lost.l1Source).not.toHaveProperty("intervention");
 
     // An owed own-wallet seed is unready but holds no decision.
     following = [{ reason: WALLET_SEED_PENDING, detail: "not seeded yet" }];

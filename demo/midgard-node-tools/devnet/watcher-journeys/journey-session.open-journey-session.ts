@@ -327,7 +327,7 @@ export const openJourneySession = async (
         deploymentAuthorityPath: authority.authorityPath,
         ruleBundlePath: authority.ruleBundlePath,
         fundingProfileBundlePath: authority.fundingProfileBundlePath,
-        nativeChainSyncBinaryPath: nativeQuery.binaryPath,
+        l1NodeTransportBinaryPath: nativeQuery.binaryPath,
         trustedHeadAuthorityEndpoint,
         operationsEndpoint,
         httpBearerSecretSource: bearerKey,

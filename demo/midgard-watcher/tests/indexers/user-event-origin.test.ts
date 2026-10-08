@@ -442,7 +442,7 @@ const fixture = async (options: FixtureOptions = {}) => {
   const args = {
     watcherConfig: config(nodeConfig, genesisConfig),
     deploymentIdentity: deployment.result,
-    nativeChainSyncBinaryPath: binaryPath,
+    l1NodeTransportBinaryPath: binaryPath,
     point: target,
     limits: { timeoutMs: 5_000 },
   };

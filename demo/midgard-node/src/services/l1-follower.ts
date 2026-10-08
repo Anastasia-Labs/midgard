@@ -105,8 +105,12 @@ import {
   nodeFamilyPredicate,
   nodeIntentTrackedSet,
 } from "./l1-follower.intents.js";
+import {
+  recordUnconfigured,
+  withNodeNetworkMagic,
+} from "./l1-follower.network-magic.js";
 import { followerOperatorSet } from "./l1-follower.operator-set.js";
-import { l1FollowerPlan } from "./l1-follower.plan.js";
+import { type L1FollowerPlan, l1FollowerPlan } from "./l1-follower.plan.js";
 import {
   followerCaughtUp,
   type FollowerPlanRead,
@@ -118,7 +122,6 @@ import {
   ContractDeploymentIdentity,
   MidgardContracts,
 } from "./midgard-contracts.js";
-import { nativeLedgerNetworkMagic } from "./native-ledger.js";
 
 /** The ingestion found recovery work; its transaction rolled back. */
 class FollowerRecoveryRequired extends Data.TaggedError(
@@ -248,47 +251,18 @@ const cursorKey = (status: FollowStatus): string | null =>
     ? null
     : `${status.cursor.generation.toString()}:${status.cursor.slot.toString()}`;
 
-/**
- * Starts the node's follower in the caller's scope and records it in
- * `Globals.L1_FOLLOWER`; closing the scope stops the loop and releases its
- * store and transport. A follower the configuration does not allow is
- * recorded as `unconfigured` (a `/readyz` reason) and the node keeps running.
- */
-export const startL1Follower = Effect.gen(function* () {
+/** The follower over `plan`, once the node's network magic is known. */
+const followL1 = Effect.fnUntraced(function* (
+  plan: Extract<L1FollowerPlan, { kind: "run" }>,
+  networkMagic: number,
+) {
   const config = yield* NodeConfig;
   const contracts = yield* MidgardContracts;
   const identity = yield* ContractDeploymentIdentity;
   const globals = yield* Globals;
   const finality =
     identity.manifest?.l1Finality ?? DEPLOYMENT_MANIFEST_L1_FINALITY;
-  const plan = l1FollowerPlan({
-    config,
-    contracts,
-    securityParameter: finality.automaticRecoveryMaxDepth,
-  });
-  const unconfigured = (detail: string) =>
-    Effect.logWarning(`L1 follower is not running: ${detail}`).pipe(
-      Effect.zipRight(
-        Ref.set(globals.L1_FOLLOWER, { kind: "unconfigured", detail }),
-      ),
-    );
-  if (plan.kind === "unconfigured") return yield* unconfigured(plan.detail);
-  const networkMagic = yield* Effect.either(
-    Effect.tryPromise(() =>
-      nativeLedgerNetworkMagic(
-        {
-          socketPath: plan.socketPath,
-          binaryPath: plan.binaryPath,
-          nodeConfigPath: plan.nodeConfigPath,
-        },
-        config.NETWORK,
-      ),
-    ),
-  );
-  if (networkMagic._tag === "Left")
-    return yield* unconfigured(
-      `the local node's network magic is unreadable: ${message(networkMagic.left.error)}`,
-    );
+  const unconfigured = (detail: string) => recordUnconfigured(globals, detail);
   const sink = yield* readyProducerSink;
   const journal = yield* IntentJournal;
   const seededAddresses = nodeSeededAddresses(config);
@@ -300,7 +274,7 @@ export const startL1Follower = Effect.gen(function* () {
       const transport = new L1NodeTransport({
         binaryPath: plan.binaryPath,
         socketPath: plan.socketPath,
-        networkMagic: networkMagic.right,
+        networkMagic,
         onDiagnostic: (line) => log(`transport: ${line}`),
       });
       let store: FactStore;
@@ -439,6 +413,7 @@ export const startL1Follower = Effect.gen(function* () {
     stuck: null,
     protocolInit: "unknown",
     cursor: null,
+    node: null,
     tip: null,
     atTip: false,
     events: 0,
@@ -480,6 +455,35 @@ export const startL1Follower = Effect.gen(function* () {
   );
   yield* Effect.logInfo(
     `L1 follower started from ${plan.origin.origin.slot.toString()}.${plan.origin.origin.hash.toString("hex")}`,
+  );
+});
+
+/**
+ * Starts the node's follower in the caller's scope and records it in
+ * `Globals.L1_FOLLOWER`; closing the scope stops the loop and releases its
+ * store and transport. A follower the configuration does not allow is
+ * recorded as `unconfigured` (a `/readyz` reason) and the node keeps running.
+ * While the node's config files do not yield its network magic, the state is
+ * `l1_node_config_unreadable` and the node keeps starting; the follower
+ * starts in the background once the magic reads.
+ */
+export const startL1Follower = Effect.gen(function* () {
+  const config = yield* NodeConfig;
+  const contracts = yield* MidgardContracts;
+  const identity = yield* ContractDeploymentIdentity;
+  const globals = yield* Globals;
+  const finality =
+    identity.manifest?.l1Finality ?? DEPLOYMENT_MANIFEST_L1_FINALITY;
+  const plan = l1FollowerPlan({
+    config,
+    contracts,
+    securityParameter: finality.automaticRecoveryMaxDepth,
+  });
+  if (plan.kind === "unconfigured")
+    return yield* recordUnconfigured(globals, plan.detail);
+  return yield* withNodeNetworkMagic(
+    { globals, nodeConfigPath: plan.nodeConfigPath, network: config.NETWORK },
+    (networkMagic) => followL1(plan, networkMagic),
   );
 });
 

@@ -164,7 +164,7 @@ test("acceptance env carries the node's L1 follower inputs", async () => {
       L1_ORIGIN,
       L1_NODE_SOCKET_PATH: join(runDir, "cardano/ipc/node.socket"),
       L1_NODE_CONFIG_PATH: join(runDir, "config/host-config.json"),
-      L1_NATIVE_CHAIN_SYNC_BINARY_PATH: join(
+      L1_NODE_TRANSPORT_BINARY_PATH: join(
         runDir,
         "bin/midgard-l1-node-transport",
       ),
@@ -205,7 +205,7 @@ for (const key of [
   "L1_ORIGIN",
   "L1_NODE_SOCKET_PATH",
   "L1_NODE_CONFIG_PATH",
-  "L1_NATIVE_CHAIN_SYNC_BINARY_PATH",
+  "L1_NODE_TRANSPORT_BINARY_PATH",
   "HUB_ORACLE_ONE_SHOT_TX_HASH",
   "HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX",
 ])

@@ -20,7 +20,7 @@ this document specifies the configuration and behavior it relies on.
 
 Use Node 22.16 or newer, the repository's pnpm, its pinned Aiken compiler, Docker
 Compose 2.21 or newer (setup refuses older versions), Go (setup selects
-1.25.7), Rust/Cargo and Linux `flock`. Install the workspace dependencies first. Setup builds
+1.26.5), Rust/Cargo and Linux `flock`. Install the workspace dependencies first. Setup builds
 the Preprod contract profile and the workspace runtimes. Provider startup may
 need several hours to download and synchronize the Preprod snapshots.
 

@@ -1702,7 +1702,7 @@
   {
     "file": "midgard-watcher/tests/support/user-event-origin-fixture.create-synthetic-user-event-origin-fixture.ts",
     "max": 1057,
-    "reason": "createSyntheticUserEventOriginFixture is the dominant indivisible declaration (1006 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W1 (+59): the synthetic node answers the follower's chain-sync and ledger-state queries (utxo by address and by outref) from the fixture's ledger."
+    "reason": "createSyntheticUserEventOriginFixture is the dominant indivisible declaration (996 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. F1 (+10): the synthetic node is served through the node transport's fake sidecar (writeFakeSidecar over the fixture's handler module, in a realpath'd directory), and cleanup closes the shared transports. W1 (+59): the synthetic node answers the follower's chain-sync and ledger-state queries (utxo by address and by outref) from the fixture's ledger."
   },
   {
     "file": "midgard-watcher/tests/verification/block-replay.w25-roots-and-deterministic-replay.ts",

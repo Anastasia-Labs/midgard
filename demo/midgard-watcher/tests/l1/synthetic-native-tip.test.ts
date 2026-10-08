@@ -108,7 +108,7 @@ describe("synthetic native stream and controlled tip", () => {
       ).toBe(fixture.activationTransactionCbor);
       const enumerated: WatcherNativeChainSyncEvent[] = [];
       const enumeration = await startWatcherNativeChainSync({
-        binaryPath: fixture.nativeChainSyncBinaryPath,
+        binaryPath: fixture.l1NodeTransportBinaryPath,
         watcherConfig: parseWatcherConfig(fixture.watcherConfig),
         intersection: {
           kind: "point",
@@ -139,7 +139,7 @@ describe("synthetic native stream and controlled tip", () => {
       await enumeration.close();
       const monitored: WatcherNativeChainSyncEvent[] = [];
       const monitor = await startWatcherNativeChainSync({
-        binaryPath: fixture.nativeChainSyncBinaryPath,
+        binaryPath: fixture.l1NodeTransportBinaryPath,
         watcherConfig: parseWatcherConfig(fixture.watcherConfig),
         intersection: {
           kind: "point",
@@ -171,7 +171,7 @@ describe("synthetic native stream and controlled tip", () => {
         const args = {
           watcherConfig: parseWatcherConfig(fixture.watcherConfig),
           deploymentIdentity: fixture.deploymentIdentity,
-          nativeChainSyncBinaryPath: fixture.nativeChainSyncBinaryPath,
+          l1NodeTransportBinaryPath: fixture.l1NodeTransportBinaryPath,
           point: block.point,
           limits: { timeoutMs: 10_000 },
         };

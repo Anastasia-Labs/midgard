@@ -96,7 +96,7 @@ export const historyRecordedBinding = (
     config.watcherRuntimeConfigPath !== layout.watcherRuntimeConfig ||
     config.faultProofInfrastructure.manifestPath !== paths.manifest ||
     config.fundingProfileBundlePath !== paths.fundingProfiles ||
-    config.nativeChainSyncBinaryPath !==
+    config.l1NodeTransportBinaryPath !==
       join(layout.bin, "midgard-l1-node-transport")
   )
     refuse("history configuration does not name this run's recorded release");

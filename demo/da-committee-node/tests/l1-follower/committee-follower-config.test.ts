@@ -53,7 +53,7 @@ const runnable: Partial<LoadedCommitteeConfig> = {
     authorityNodeId: "local-cardano-node",
     socketPath: "/run/cardano/node.socket",
     nodeConfigPath: "/etc/cardano/config.json",
-    binaryPath: "/opt/midgard/midgard-chain-sync",
+    binaryPath: "/opt/midgard/midgard-l1-node-transport",
   },
   contractDeploymentInfo: {
     hubOracleOneShot: { txHash: ONE_SHOT_TX, outputIndex: 3 },
@@ -66,7 +66,7 @@ describe("how the committee's follower runs", () => {
       kind: "run",
       databaseUrl: "postgresql://unused.invalid/committee",
       socketPath: "/run/cardano/node.socket",
-      binaryPath: "/opt/midgard/midgard-chain-sync",
+      binaryPath: "/opt/midgard/midgard-l1-node-transport",
       networkMagic: 42,
       origin: {
         origin: { slot: 1_234, hash: Buffer.from(ORIGIN_HASH, "hex") },

@@ -22,6 +22,8 @@ const (
 
 	requestQueueDepth = 256
 	monitorBound      = 30 * time.Second
+	// maxRequestDeadline bounds the hello's requestDeadlineMs.
+	maxRequestDeadline = 24 * time.Hour
 )
 
 type session struct {
@@ -33,6 +35,9 @@ type session struct {
 	out          *frameWriter
 	primary      *nodeConn
 	pool         *csPool
+	// requestDeadline bounds one LocalStateQuery or LocalTxSubmission
+	// request, from its frame's arrival to its answer.
+	requestDeadline time.Duration
 
 	mu         sync.Mutex
 	streams    map[uint64]*csStream
@@ -198,8 +203,9 @@ func (s *session) dispatch(f frame) error {
 		if err := decodeHeader(f.header, &h); err != nil {
 			return err
 		}
+		deadline := time.Now().Add(s.requestDeadline)
 		s.enqueue(queueLSQ, h.ID, func() {
-			if err := s.lsq.acquire(h.Point); err != nil {
+			if err := s.lsq.acquire(h.Point, deadline); err != nil {
 				s.nodeFault(h.ID, err)
 				return
 			}
@@ -211,8 +217,9 @@ func (s *session) dispatch(f frame) error {
 		if err := decodeHeader(f.header, &h); err != nil {
 			return err
 		}
+		deadline := time.Now().Add(s.requestDeadline)
 		s.enqueue(queueLSQ, h.ID, func() {
-			if err := s.lsq.release(); err != nil {
+			if err := s.lsq.release(deadline); err != nil {
 				s.nodeFault(h.ID, err)
 				return
 			}
@@ -224,8 +231,9 @@ func (s *session) dispatch(f frame) error {
 		if err := decodeHeader(f.header, &h); err != nil {
 			return err
 		}
+		deadline := time.Now().Add(s.requestDeadline)
 		s.enqueue(queueLSQ, h.ID, func() {
-			result, err := s.lsq.run(h)
+			result, err := s.lsq.run(h, deadline)
 			if err != nil {
 				s.nodeFault(h.ID, err)
 				return
@@ -241,7 +249,8 @@ func (s *session) dispatch(f frame) error {
 			return err
 		}
 		tx := f.payload
-		s.enqueue(queueSubmit, h.ID, func() { s.runSubmit(h, tx) })
+		deadline := time.Now().Add(s.requestDeadline)
+		s.enqueue(queueSubmit, h.ID, func() { s.runSubmit(h, tx, deadline) })
 		return nil
 	case "monitor_has_tx":
 		var h monitorHasTxHeader
@@ -303,7 +312,7 @@ func (s *session) openStream(h csOpenHeader) error {
 	return nil
 }
 
-func (s *session) runSubmit(h submitHeader, tx []byte) {
+func (s *session) runSubmit(h submitHeader, tx []byte, deadline time.Time) {
 	if len(tx) == 0 {
 		s.answerError(h.ID, refuse("invalid_request", "submit needs the transaction as payload"))
 		return
@@ -323,7 +332,7 @@ func (s *session) runSubmit(h submitHeader, tx []byte) {
 		}
 		era = uint16(txType)
 	}
-	accepted, reason, err := s.submit.submit(era, tx)
+	accepted, reason, err := s.submit.submit(era, tx, deadline)
 	if err != nil {
 		s.nodeFault(h.ID, err)
 		return
@@ -418,18 +427,21 @@ func runSession(in io.Reader, out io.Writer, diagnostics io.Writer, stop <-chan 
 	if err == nil {
 		err = noPayload(first)
 	}
-	if err == nil && (hello.Version == nil || hello.NetworkMagic == nil || hello.SocketPath == "") {
-		err = errors.New("hello needs version, socketPath and networkMagic")
-	}
-	if err != nil {
-		_ = writer.write(fatalHeader{Type: "fatal", Code: "malformed_frame", Message: err.Error()}, nil)
-		return exitClientMisuse
-	}
-	if *hello.Version != protocolVersion {
+	if err == nil && hello.Version != nil && *hello.Version != protocolVersion {
 		_ = writer.write(fatalHeader{
 			Type: "fatal", Code: "version_unsupported",
 			Message: fmt.Sprintf("frame protocol version %d is not supported; this sidecar speaks %d", *hello.Version, protocolVersion),
 		}, nil)
+		return exitClientMisuse
+	}
+	if err == nil && (hello.Version == nil || hello.NetworkMagic == nil || hello.SocketPath == "" || hello.RequestDeadlineMs == nil) {
+		err = errors.New("hello needs version, socketPath, networkMagic and requestDeadlineMs")
+	}
+	if err == nil && (*hello.RequestDeadlineMs == 0 || *hello.RequestDeadlineMs > uint64(maxRequestDeadline/time.Millisecond)) {
+		err = fmt.Errorf("requestDeadlineMs must be within 1..%d", maxRequestDeadline/time.Millisecond)
+	}
+	if err != nil {
+		_ = writer.write(fatalHeader{Type: "fatal", Code: "malformed_frame", Message: err.Error()}, nil)
 		return exitClientMisuse
 	}
 	if *hello.NetworkMagic == 0 || *hello.NetworkMagic > math.MaxUint32 {
@@ -466,9 +478,10 @@ func runSession(in io.Reader, out io.Writer, diagnostics io.Writer, stop <-chan 
 		diagnostics: diagnostics, out: writer, primary: primary,
 		streams: map[uint64]*csStream{}, done: make(chan struct{}),
 	}
+	s.requestDeadline = time.Duration(*hello.RequestDeadlineMs) * time.Millisecond
 	s.pool = &csPool{session: s, primaryFree: true}
-	s.lsq = &lsqClient{raw: primary.lsq, node: primary}
-	s.submit = &submitClient{raw: primary.submit, node: primary}
+	s.lsq = &lsqClient{boundedClient: boundedClient{raw: primary.lsq, node: primary}}
+	s.submit = &submitClient{boundedClient{raw: primary.submit, node: primary}}
 	if primary.monitor != nil {
 		s.monitor = &monitorClient{raw: primary.monitor, node: primary}
 	}

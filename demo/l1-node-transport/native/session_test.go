@@ -135,9 +135,17 @@ func (h *harness) expect(kind string) received {
 	return f
 }
 
+// testDeadlineMs is the request deadline of a test session's hello.
+const testDeadlineMs = 10_000
+
 func (h *harness) hello() {
 	h.t.Helper()
-	h.sendRaw(map[string]any{"type": "hello", "version": 1, "socketPath": h.socket, "networkMagic": testMagic}, nil)
+	h.helloWithDeadline(testDeadlineMs)
+}
+
+func (h *harness) helloWithDeadline(deadlineMs uint64) {
+	h.t.Helper()
+	h.sendRaw(map[string]any{"type": "hello", "version": 1, "socketPath": h.socket, "networkMagic": testMagic, "requestDeadlineMs": deadlineMs}, nil)
 	h.expect("hello_ok")
 }
 
@@ -160,13 +168,9 @@ func samePoint(t *testing.T, got any, want mocknode.Block) {
 	}
 }
 
-func (h *harness) open(stream uint64, points []any, startSeq uint64, window uint64, consumerAt any) received {
+func (h *harness) open(stream uint64, points []any, startSeq uint64, window uint64) received {
 	h.t.Helper()
-	header := map[string]any{"type": "cs_open", "id": h.id(), "stream": stream, "points": points, "startSeq": startSeq, "window": window}
-	if consumerAt != nil {
-		header["consumerAt"] = consumerAt
-	}
-	h.sendRaw(header, nil)
+	h.sendRaw(map[string]any{"type": "cs_open", "id": h.id(), "stream": stream, "points": points, "startSeq": startSeq, "window": window}, nil)
 	return h.next()
 }
 
@@ -221,17 +225,30 @@ func TestHelloRefusesUnsupportedVersionAndMalformedFirstFrame(t *testing.T) {
 	h2.status <- <-h2.status
 
 	h3 := startSidecar(t, node, socket)
-	h3.sendRaw(map[string]any{"type": "hello", "version": 1, "socketPath": socket, "networkMagic": testMagic, "extra": 1}, nil)
+	h3.sendRaw(map[string]any{"type": "hello", "version": 1, "socketPath": socket, "networkMagic": testMagic, "requestDeadlineMs": testDeadlineMs, "extra": 1}, nil)
 	if f := h3.expect("fatal"); f.header["code"] != "malformed_frame" {
 		t.Fatalf("unknown hello key admitted: %v", f.header)
 	}
 	h3.status <- <-h3.status
+
+	for _, deadline := range []any{nil, 0} {
+		h4 := startSidecar(t, node, socket)
+		hello := map[string]any{"type": "hello", "version": 1, "socketPath": socket, "networkMagic": testMagic}
+		if deadline != nil {
+			hello["requestDeadlineMs"] = deadline
+		}
+		h4.sendRaw(hello, nil)
+		if f := h4.expect("fatal"); f.header["code"] != "malformed_frame" {
+			t.Fatalf("hello with request deadline %v admitted: %v", deadline, f.header)
+		}
+		h4.status <- <-h4.status
+	}
 }
 
 func TestHelloReportsUnreachableNode(t *testing.T) {
 	socket := filepath.Join(t.TempDir(), "absent.socket")
 	h := startSidecar(t, nil, socket)
-	h.sendRaw(map[string]any{"type": "hello", "version": 1, "socketPath": socket, "networkMagic": testMagic}, nil)
+	h.sendRaw(map[string]any{"type": "hello", "version": 1, "socketPath": socket, "networkMagic": testMagic, "requestDeadlineMs": testDeadlineMs}, nil)
 	if f := h.expect("fatal"); f.header["code"] != "node_unreachable" {
 		t.Fatalf("got %v", f.header)
 	}
@@ -247,17 +264,20 @@ func TestIntersectsOnTheFirstKnownPointOfTheList(t *testing.T) {
 	h := startSidecar(t, node, socket)
 	h.hello()
 	unknown := []any{uint64(999), bytes.Repeat([]byte{1}, 32)}
-	opened := h.open(1, []any{unknown, point(blocks[2]), []any{}}, 0, 10, nil)
+	opened := h.open(1, []any{unknown, point(blocks[2]), []any{}}, 0, 10)
 	if opened.header["type"] != "cs_opened" {
 		t.Fatalf("got %v", opened.header)
 	}
 	samePoint(t, opened.header["point"], blocks[2])
-	h.forward(1, 1, blocks[3])
-	h.forward(1, 2, blocks[4])
+	// The intersection is not the first point: the consumer moves back.
+	back := h.expect("cs_roll_backward")
+	samePoint(t, back.header["point"], blocks[2])
+	h.forward(1, 2, blocks[3])
+	h.forward(1, 3, blocks[4])
 	h.quiet(150 * time.Millisecond)
 
 	// From the origin the first block's parent is the genesis hash.
-	opened = h.open(2, []any{[]any{}}, 0, 10, nil)
+	opened = h.open(2, []any{[]any{}}, 0, 10)
 	if opened.header["type"] != "cs_opened" || len(opened.header["point"].([]any)) != 0 {
 		t.Fatalf("got %v", opened.header)
 	}
@@ -265,9 +285,68 @@ func TestIntersectsOnTheFirstKnownPointOfTheList(t *testing.T) {
 		h.forward(2, uint64(i)+1, block)
 	}
 
-	notFound := h.open(3, []any{unknown}, 0, 10, nil)
+	notFound := h.open(3, []any{unknown}, 0, 10)
 	if notFound.header["type"] != "cs_intersect_not_found" || asUint(t, notFound.header["stream"]) != 3 {
 		t.Fatalf("got %v", notFound.header)
+	}
+}
+
+// The first requested point is the consumer's position. The rollback that
+// follows FindIntersect is delivered, at the next sequence number, exactly
+// when the node intersected anywhere else.
+func TestInitialRollbackIsDeliveredUnlessTheFirstPointIsTheIntersection(t *testing.T) {
+	node, socket := startNode(t)
+	blocks := extend(t, node, 6, 0)
+	h := startSidecar(t, node, socket)
+	h.hello()
+	if f := h.open(1, []any{point(blocks[3]), point(blocks[1])}, 7, 10); f.header["type"] != "cs_opened" {
+		t.Fatalf("got %v", f.header)
+	}
+	h.forward(1, 8, blocks[4])
+	h.forward(1, 9, blocks[5])
+	closeID := h.id()
+	h.sendRaw(map[string]any{"type": "cs_close", "id": closeID, "stream": 1}, nil)
+	h.expect("ok")
+
+	// The consumer's block left the chain; the node intersects lower.
+	node.Rollback(2)
+	fork := extend(t, node, 2, 1)
+	opened := h.open(2, []any{point(blocks[3]), point(blocks[1]), []any{}}, 7, 10)
+	samePoint(t, opened.header["point"], blocks[1])
+	back := h.expect("cs_roll_backward")
+	if asUint(t, back.header["stream"]) != 2 || asUint(t, back.header["seq"]) != 8 {
+		t.Fatalf("rollback %v", back.header)
+	}
+	samePoint(t, back.header["point"], blocks[1])
+	h.forward(2, 9, fork[0])
+	h.forward(2, 10, fork[1])
+}
+
+// A node whose first reply after FindIntersect is not the rollback to the
+// intersection breaks the protocol; on the primary connection that ends
+// the session.
+func TestNonConformantFirstReplyIsAProtocolViolation(t *testing.T) {
+	for name, first := range map[string]mocknode.FirstReply{
+		"rollback elsewhere": mocknode.FirstReplyRollbackToOrigin,
+		"roll forward":       mocknode.FirstReplyRollForward,
+	} {
+		t.Run(name, func(t *testing.T) {
+			node, socket := startNode(t)
+			blocks := extend(t, node, 4, 0)
+			node.SetFirstReply(first)
+			h := startSidecar(t, node, socket)
+			h.hello()
+			if f := h.open(1, []any{point(blocks[1])}, 0, 10); f.header["type"] != "cs_opened" {
+				t.Fatalf("got %v", f.header)
+			}
+			if f := h.expect("fatal"); f.header["code"] != "protocol_violation" {
+				t.Fatalf("got %v", f.header)
+			}
+			if status := <-h.status; status != exitFatal {
+				t.Fatalf("status %d", status)
+			}
+			h.status <- 0
+		})
 	}
 }
 
@@ -276,7 +355,7 @@ func TestCreditWindowBoundsRequestsAndFrames(t *testing.T) {
 	blocks := extend(t, node, 40, 0)
 	h := startSidecar(t, node, socket)
 	h.hello()
-	if f := h.open(1, []any{[]any{}}, 100, 5, nil); f.header["type"] != "cs_opened" {
+	if f := h.open(1, []any{[]any{}}, 100, 5); f.header["type"] != "cs_opened" {
 		t.Fatalf("got %v", f.header)
 	}
 	for i := range 5 {
@@ -318,7 +397,7 @@ func TestSustainedPipelinedCatchUpDeliversEveryBlock(t *testing.T) {
 	blocks := extend(t, node, 600, 0)
 	h := startSidecar(t, node, socket)
 	h.hello()
-	if f := h.open(1, []any{[]any{}}, 0, maxWindow, nil); f.header["type"] != "cs_opened" {
+	if f := h.open(1, []any{[]any{}}, 0, maxWindow); f.header["type"] != "cs_opened" {
 		t.Fatalf("got %v", f.header)
 	}
 	for i, block := range blocks {
@@ -332,7 +411,7 @@ func TestRollbackIsOrderedInTheSequence(t *testing.T) {
 	blocks := extend(t, node, 10, 0)
 	h := startSidecar(t, node, socket)
 	h.hello()
-	h.open(1, []any{[]any{}}, 0, 50, nil)
+	h.open(1, []any{[]any{}}, 0, 50)
 	for i, block := range blocks {
 		h.forward(1, uint64(i)+1, block)
 	}
@@ -357,7 +436,7 @@ func TestCloseAnswersOkAndNothingFollows(t *testing.T) {
 	blocks := extend(t, node, 30, 0)
 	h := startSidecar(t, node, socket)
 	h.hello()
-	h.open(1, []any{[]any{}}, 0, 3, nil)
+	h.open(1, []any{[]any{}}, 0, 3)
 	for i := range 3 {
 		h.forward(1, uint64(i)+1, blocks[i])
 	}
@@ -369,7 +448,7 @@ func TestCloseAnswersOkAndNothingFollows(t *testing.T) {
 	h.ack(1, 3)
 	h.quiet(200 * time.Millisecond)
 	// The primary chain-sync is lent again once drained.
-	if f := h.open(2, []any{point(blocks[9])}, 0, 2, nil); f.header["type"] != "cs_opened" {
+	if f := h.open(2, []any{point(blocks[9])}, 0, 2); f.header["type"] != "cs_opened" {
 		t.Fatalf("got %v", f.header)
 	}
 	h.forward(2, 1, blocks[10])
@@ -381,9 +460,9 @@ func TestConcurrentStreamsUseAuxiliaryConnections(t *testing.T) {
 	blocks := extend(t, node, 6, 0)
 	h := startSidecar(t, node, socket)
 	h.hello()
-	h.open(1, []any{[]any{}}, 0, 1, nil)
+	h.open(1, []any{[]any{}}, 0, 1)
 	h.forward(1, 1, blocks[0])
-	if f := h.open(2, []any{point(blocks[3])}, 0, 5, nil); f.header["type"] != "cs_opened" {
+	if f := h.open(2, []any{point(blocks[3])}, 0, 5); f.header["type"] != "cs_opened" {
 		t.Fatalf("got %v", f.header)
 	}
 	h.forward(2, 1, blocks[4])
@@ -400,7 +479,7 @@ func TestResumeAfterRestartHasNoGapAndNoDuplicate(t *testing.T) {
 	blocks := extend(t, node, 12, 0)
 	h := startSidecar(t, node, socket)
 	h.hello()
-	h.open(1, []any{[]any{}}, 0, 4, nil)
+	h.open(1, []any{[]any{}}, 0, 4)
 	for i := range 4 {
 		h.forward(1, uint64(i)+1, blocks[i])
 	}
@@ -413,7 +492,7 @@ func TestResumeAfterRestartHasNoGapAndNoDuplicate(t *testing.T) {
 	h.status <- 0
 	r := startSidecar(t, node, socket)
 	r.hello()
-	opened := r.open(1, []any{point(blocks[5]), point(blocks[1]), []any{}}, 6, 4, point(blocks[5]))
+	opened := r.open(1, []any{point(blocks[5]), point(blocks[1]), []any{}}, 6, 4)
 	samePoint(t, opened.header["point"], blocks[5])
 	for i := 6; i < 10; i++ {
 		r.forward(1, uint64(i)+1, blocks[i])
@@ -428,7 +507,7 @@ func TestResumeAfterRestartHasNoGapAndNoDuplicate(t *testing.T) {
 	fork := extend(t, node, 2, 1)
 	q := startSidecar(t, node, socket)
 	q.hello()
-	opened = q.open(1, []any{point(blocks[9]), point(blocks[7]), []any{}}, 10, 4, point(blocks[9]))
+	opened = q.open(1, []any{point(blocks[9]), point(blocks[7]), []any{}}, 10, 4)
 	samePoint(t, opened.header["point"], blocks[7])
 	back := q.expect("cs_roll_backward")
 	if asUint(t, back.header["seq"]) != 11 {
@@ -504,6 +583,77 @@ func TestLocalStateQueryReturnsRawAnswers(t *testing.T) {
 	acquired := node.Acquired()
 	if len(acquired) != 2 || acquired[0] != "tip" {
 		t.Fatalf("acquisitions %v", acquired)
+	}
+}
+
+// A ledger request the node answers too slowly is refused with node_timeout
+// at its deadline; the session and its chain-sync streams carry on, and the
+// late reply is taken before the next request, never handed to it.
+func TestSlowLedgerRequestsTimeOutAndTheSessionLivesOn(t *testing.T) {
+	node, socket := startNode(t)
+	blocks := extend(t, node, 3, 0)
+	h := startSidecar(t, node, socket)
+	h.helloWithDeadline(300)
+	h.open(1, []any{[]any{}}, 0, 10)
+	for i, block := range blocks {
+		h.forward(1, uint64(i)+1, block)
+	}
+	h.sendRaw(map[string]any{"type": "lsq_acquire", "id": h.id()}, nil)
+	h.expect("ok")
+
+	node.SetLedgerDelay(time.Second)
+	queryID := h.id()
+	sent := time.Now()
+	h.sendRaw(map[string]any{"type": "lsq_query", "id": queryID, "query": "system_start"}, nil)
+	more := extend(t, node, 2, 0)
+	timedOut, delivered := false, 0
+	for !timedOut || delivered < len(more) {
+		f := h.next()
+		switch f.header["type"] {
+		case "error":
+			if asUint(t, f.header["id"]) != queryID || f.header["code"] != "node_timeout" {
+				t.Fatalf("got %v", f.header)
+			}
+			if waited := time.Since(sent); waited >= time.Second {
+				t.Fatalf("the refusal took %v, not the deadline", waited)
+			}
+			timedOut = true
+		case "cs_roll_forward":
+			if asUint(t, f.header["seq"]) != uint64(len(blocks)+delivered+1) {
+				t.Fatalf("got %v", f.header)
+			}
+			samePoint(t, f.header["point"], more[delivered])
+			delivered++
+		default:
+			t.Fatalf("got %v", f.header)
+		}
+	}
+
+	// The late system_start answer is drained; this query gets its own.
+	node.SetLedgerDelay(0)
+	time.Sleep(time.Second)
+	h.sendRaw(map[string]any{"type": "lsq_query", "id": h.id(), "query": "chain_point"}, nil)
+	f := h.expect("lsq_result")
+	want, _ := cbor.Marshal([]any{more[1].Slot, more[1].Hash})
+	if !bytes.Equal(f.payload, want) {
+		t.Fatalf("chain point %x is not the tip's", f.payload)
+	}
+
+	tx, _, err := mocknode.SampleTx()
+	if err != nil {
+		t.Fatal(err)
+	}
+	node.SetLedgerDelay(time.Second)
+	h.sendRaw(map[string]any{"type": "submit", "id": h.id()}, tx)
+	if f := h.expect("error"); f.header["code"] != "node_timeout" {
+		t.Fatalf("got %v", f.header)
+	}
+	node.SetLedgerDelay(0)
+	time.Sleep(time.Second)
+	h.sendRaw(map[string]any{"type": "submit", "id": h.id()}, tx)
+	h.expect("submit_accepted")
+	if got := len(node.Mempool()); got != 2 {
+		t.Fatalf("mempool holds %d transactions", got)
 	}
 }
 

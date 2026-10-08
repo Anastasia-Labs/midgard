@@ -198,7 +198,7 @@ describe("owned user-event runtime ordinary unavailable candidates", () => {
               new URL("../../../../onchain/aiken/plutus.json", import.meta.url),
             ),
         ),
-        nativeChainSyncBinaryPath: transport.nativeChainSyncBinaryPath,
+        l1NodeTransportBinaryPath: transport.l1NodeTransportBinaryPath,
         runtime: durable.runtime,
         archive: durable.archive,
         coverage: createInMemoryWatcherUserEventCoverageStore(),

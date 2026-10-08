@@ -337,7 +337,7 @@ test(
 const LOCAL_NODE_KEYS = {
   L1_NODE_SOCKET_PATH: "/ipc/node.socket",
   L1_NODE_CONFIG_PATH: "/cardano-config/config.json",
-  L1_NATIVE_CHAIN_SYNC_BINARY_PATH: "/usr/local/bin/midgard-l1-node-transport",
+  L1_NODE_TRANSPORT_BINARY_PATH: "/usr/local/bin/midgard-l1-node-transport",
 };
 
 const bindMount = (service, target) =>
@@ -350,9 +350,9 @@ test("the node image installs the transport where compose points", () => {
   assert.match(dockerfile, /^FROM golang:\S+ AS l1-node-transport$/mu);
   assert.ok(
     dockerfile.includes(
-      `COPY --from=l1-node-transport /out/midgard-l1-node-transport ${LOCAL_NODE_KEYS.L1_NATIVE_CHAIN_SYNC_BINARY_PATH}\n`,
+      `COPY --from=l1-node-transport /out/midgard-l1-node-transport ${LOCAL_NODE_KEYS.L1_NODE_TRANSPORT_BINARY_PATH}\n`,
     ),
-    "the node image must copy the transport to L1_NATIVE_CHAIN_SYNC_BINARY_PATH",
+    "the node image must copy the transport to L1_NODE_TRANSPORT_BINARY_PATH",
   );
 });
 

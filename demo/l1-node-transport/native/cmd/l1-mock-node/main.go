@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/anastasia-labs/midgard-l1-node-transport/mocknode"
 )
@@ -22,6 +23,7 @@ type command struct {
 	Height uint64  `json:"height"`
 	Tag    uint64  `json:"tag"`
 	Raw    *string `json:"raw"`
+	Ms     int64   `json:"ms"`
 }
 
 type wireBlock struct {
@@ -93,6 +95,8 @@ func main() {
 			node.SetShelleyAnswer(c.Tag, raw())
 		case "drop":
 			node.DropConnections()
+		case "ledgerDelay":
+			node.SetLedgerDelay(time.Duration(c.Ms) * time.Millisecond)
 		case "clearMempool":
 			node.ClearMempool()
 		case "stats":

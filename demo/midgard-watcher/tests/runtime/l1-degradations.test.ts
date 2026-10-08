@@ -3,6 +3,7 @@
  * readiness (ruling C on permanently unresolvable tx inputs), while the same
  * name as a follower readiness reason makes the watcher not ready.
  */
+import { FOLLOWER_NODE_UNAVAILABLE } from "@al-ft/midgard-l1-follower";
 import { describe, expect, it } from "vitest";
 
 import type { WatcherFollowerReadiness } from "../../src/l1-follower/follower-runtime.js";
@@ -90,5 +91,19 @@ describe("L1 degradations in operations observability", () => {
       l1Degradations: [],
     });
     expect(w.api.metrics().l1Degradations).toEqual({});
+  });
+
+  it("fails readiness by name while the follower reports the L1 node unavailable", async () => {
+    const lost = {
+      reason: FOLLOWER_NODE_UNAVAILABLE,
+      detail: "node_connection_lost: node socket closed",
+    };
+    const w = watcher({ readiness: [lost], degradations: [] });
+    await w.l1.refresh();
+    expect(w.api.status()).toMatchObject({
+      readiness: "not_ready",
+      readinessReasons: [FOLLOWER_NODE_UNAVAILABLE],
+      l1Readiness: [lost],
+    });
   });
 });

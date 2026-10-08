@@ -89,7 +89,7 @@ describe("onChainCoordinatorFromConfig", () => {
         authorityNodeId: "local-cardano-node",
         socketPath: "/run/cardano/node.socket",
         nodeConfigPath: "/etc/cardano/config.json",
-        binaryPath: "/opt/midgard/midgard-chain-sync",
+        binaryPath: "/opt/midgard/midgard-l1-node-transport",
       },
     };
     const lucid = {} as LucidEvolution;

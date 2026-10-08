@@ -82,7 +82,7 @@ describe("local watcher fixture finality chronology", () => {
         const owner = await openWatcherLocalHistoricalCapture({
           watcherConfig: fixture.watcherConfig,
           deploymentIdentity: fixture.deploymentIdentity,
-          nativeChainSyncBinaryPath: fixture.nativeChainSyncBinaryPath,
+          l1NodeTransportBinaryPath: fixture.l1NodeTransportBinaryPath,
           point: fixture.activationBlock.point,
           limits: { timeoutMs: 10_000 },
         });

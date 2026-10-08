@@ -1,6 +1,7 @@
 import {
   type FactStore,
   FOLLOWER_CATCHING_UP,
+  FOLLOWER_NODE_UNAVAILABLE,
   FOLLOWER_WAITING,
   type FollowStatus,
   openSqliteFactStore,
@@ -197,7 +198,7 @@ describe("waiting for the committee's L1 source", () => {
     expect(source.calls()).toBe(1);
   });
 
-  it.each([FOLLOWER_CATCHING_UP, FOLLOWER_WAITING])(
+  it.each([FOLLOWER_CATCHING_UP, FOLLOWER_WAITING, FOLLOWER_NODE_UNAVAILABLE])(
     "waits while the follower is %s, then resolves",
     async (reason) => {
       const source = scripted(
@@ -259,6 +260,7 @@ describe("waiting for the committee's L1 source", () => {
       committeeL1InterventionReason([
         { reason: FOLLOWER_CATCHING_UP, detail: "a" },
         { reason: FOLLOWER_WAITING, detail: "b" },
+        { reason: FOLLOWER_NODE_UNAVAILABLE, detail: "node_unreachable: d" },
         { reason: WALLET_SEED_PENDING, detail: "c" },
       ]),
     ).toBeUndefined();

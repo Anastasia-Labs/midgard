@@ -40,7 +40,7 @@ describe("native stream initial acknowledgement", () => {
       };
       stream = await startWatcherNativeChainSync({
         watcherConfig: parseWatcherConfig(fixture.watcherConfig),
-        binaryPath: fixture.nativeChainSyncBinaryPath,
+        binaryPath: fixture.l1NodeTransportBinaryPath,
         startupTimeoutMs: 10_000,
         intersection,
         onEvent: async (event) => {

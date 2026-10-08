@@ -43,7 +43,7 @@ export const openWatcherLocalHistoricalCapture = async (
   input: Readonly<{
     watcherConfig: unknown;
     deploymentIdentity: VerifiedWatcherDeploymentIdentity;
-    nativeChainSyncBinaryPath: string;
+    l1NodeTransportBinaryPath: string;
     point: FraudProofRawL1Point;
     signal?: AbortSignal;
     limits?: Readonly<{ timeoutMs?: number; maxRawResponseBytes?: number }>;
@@ -59,7 +59,7 @@ export const openWatcherLocalHistoricalCapture = async (
     [
       "watcherConfig",
       "deploymentIdentity",
-      "nativeChainSyncBinaryPath",
+      "l1NodeTransportBinaryPath",
       "point",
     ],
     ["signal", "limits"],
@@ -100,7 +100,7 @@ export const openWatcherLocalHistoricalCapture = async (
   const watcherConfig = parseWatcherConfig(input.watcherConfig);
   const deploymentIdentity = input.deploymentIdentity;
   assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
-  const binaryPath = input.nativeChainSyncBinaryPath;
+  const binaryPath = input.l1NodeTransportBinaryPath;
   if (typeof binaryPath !== "string")
     throw new Error("capture binary path is invalid");
   const started = performance.now();

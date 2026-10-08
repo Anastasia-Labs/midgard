@@ -47,6 +47,12 @@ export type SidecarOptions = Readonly<{
   binaryPath: string;
   socketPath: string;
   networkMagic: number;
+  /**
+   * The sidecar's bound on one ledger-state query or submission: a request
+   * the node does not answer within it is refused with `node_timeout`, and
+   * the session lives on.
+   */
+  requestDeadlineMs: number;
   helloTimeoutMs: number;
   onDiagnostic?: (line: string) => void;
 }>;
@@ -150,6 +156,7 @@ export class SidecarProcess {
         version: FRAME_PROTOCOL_VERSION,
         socketPath: this.options.socketPath,
         networkMagic: this.options.networkMagic,
+        requestDeadlineMs: this.options.requestDeadlineMs,
       });
       const frame = await answer;
       if (frame.header.version !== FRAME_PROTOCOL_VERSION)
@@ -235,16 +242,18 @@ export class SidecarProcess {
     if (this.#exit === undefined) this.#child.kill("SIGKILL");
   }
 
+  /**
+   * A frame the client cannot take (unreadable bytes, an answer whose id or
+   * stream is not a natural number) never throws out of the stdout
+   * listener: the sidecar is killed and the supervisor restarts it.
+   */
   #data(chunk: Buffer): void {
-    let frames: Frame[];
     try {
-      frames = this.#reader.push(chunk);
+      for (const frame of this.#reader.push(chunk)) this.#dispatch(frame);
     } catch (error) {
       this.#diagnostics += `\nmalformed sidecar output: ${(error as Error).message}`;
       this.kill();
-      return;
     }
-    for (const frame of frames) this.#dispatch(frame);
   }
 
   #dispatch(frame: Frame): void {

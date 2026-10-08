@@ -86,28 +86,18 @@ const assertCanonicalAbsolutePath = async (path: string, subject: string) => {
 };
 
 /**
- * Derives the authority's network magic and genesis identity from the node
- * configuration the local node runs with, so the query is bound to the
- * genesis the operator actually deployed rather than to a declared label.
+ * The network magic and genesis identity of the node configuration at
+ * `nodeConfigPath`, read from that file and the Shelley genesis it declares
+ * and checked against `network`. Static files only: the node's socket need
+ * not exist yet.
  */
-export const resolveNativeLedgerAuthority = async (input: {
-  readonly authorityNodeId: string;
-  readonly binaryPath: string;
+export const readNativeLedgerGenesis = async (input: {
   readonly network: NativeLedgerNetwork;
   readonly nodeConfigPath: string;
-  readonly socketPath: string;
-  readonly timeoutMs: number;
-}): Promise<NativeLedgerAuthority> => {
-  if (!AUTHORITY_ID.test(input.authorityNodeId))
-    throw new Error("Native ledger authority id is invalid");
-  if (
-    !Number.isSafeInteger(input.timeoutMs) ||
-    input.timeoutMs < 100 ||
-    input.timeoutMs > 120_000
-  )
-    throw new Error("Native reward-account query timeout is invalid");
+}): Promise<
+  Readonly<{ genesisIdentitySha256: string; networkMagic: number }>
+> => {
   await assertCanonicalAbsolutePath(input.nodeConfigPath, "Node config path");
-  await assertCanonicalAbsolutePath(input.socketPath, "Node socket path");
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const nodeConfig = record(
     JSON.parse(
@@ -145,13 +135,42 @@ export const resolveNativeLedgerAuthority = async (input: {
       `Shelley genesis network magic ${magic} differs from network ${input.network}`,
     );
   return {
-    authorityNodeId: input.authorityNodeId,
-    binaryPath: input.binaryPath,
     genesisIdentitySha256: createHash("sha256")
       .update(genesisBytes)
       .digest("hex"),
-    network: input.network,
     networkMagic: magic,
+  };
+};
+
+/**
+ * Derives the authority's network magic and genesis identity from the node
+ * configuration the local node runs with, so the query is bound to the
+ * genesis the operator actually deployed rather than to a declared label.
+ */
+export const resolveNativeLedgerAuthority = async (input: {
+  readonly authorityNodeId: string;
+  readonly binaryPath: string;
+  readonly network: NativeLedgerNetwork;
+  readonly nodeConfigPath: string;
+  readonly socketPath: string;
+  readonly timeoutMs: number;
+}): Promise<NativeLedgerAuthority> => {
+  if (!AUTHORITY_ID.test(input.authorityNodeId))
+    throw new Error("Native ledger authority id is invalid");
+  if (
+    !Number.isSafeInteger(input.timeoutMs) ||
+    input.timeoutMs < 100 ||
+    input.timeoutMs > 120_000
+  )
+    throw new Error("Native reward-account query timeout is invalid");
+  await assertCanonicalAbsolutePath(input.socketPath, "Node socket path");
+  const genesis = await readNativeLedgerGenesis(input);
+  return {
+    authorityNodeId: input.authorityNodeId,
+    binaryPath: input.binaryPath,
+    genesisIdentitySha256: genesis.genesisIdentitySha256,
+    network: input.network,
+    networkMagic: genesis.networkMagic,
     socketPath: input.socketPath,
     timeoutMs: input.timeoutMs,
   };

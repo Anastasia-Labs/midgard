@@ -37,7 +37,7 @@ export const parseWatcherProcessConfig = (
       "deploymentAuthorityPath",
       "ruleBundlePath",
       "fundingProfileBundlePath",
-      "nativeChainSyncBinaryPath",
+      "l1NodeTransportBinaryPath",
       "trustedHeadAuthorityEndpoint",
       "operationsEndpoint",
       "httpBearerSecretSource",
@@ -142,8 +142,8 @@ export const parseWatcherProcessConfig = (
       input.fundingProfileBundlePath,
       "watcher funding profile bundle",
     ),
-    nativeChainSyncBinaryPath: canonicalPath(
-      input.nativeChainSyncBinaryPath,
+    l1NodeTransportBinaryPath: canonicalPath(
+      input.l1NodeTransportBinaryPath,
       "native chain-sync binary",
     ),
     trustedHeadAuthorityEndpoint,

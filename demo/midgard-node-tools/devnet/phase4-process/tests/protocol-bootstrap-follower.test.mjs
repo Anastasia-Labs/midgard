@@ -186,7 +186,7 @@ test("protocol bootstrap derives L1_ORIGIN from the nonce and writes the followe
       `L1_ORIGIN=${L1_ORIGIN}`,
       `L1_NODE_SOCKET_PATH=${runDir}/cardano/ipc/node.socket`,
       `L1_NODE_CONFIG_PATH=${runDir}/config/host-config.json`,
-      `L1_NATIVE_CHAIN_SYNC_BINARY_PATH=${runDir}/bin/midgard-l1-node-transport`,
+      `L1_NODE_TRANSPORT_BINARY_PATH=${runDir}/bin/midgard-l1-node-transport`,
       `HUB_ORACLE_ONE_SHOT_TX_HASH=${NONCE_TX_HASH}`,
     ])
       assert.match(result.nodeEnv, new RegExp(`^${line}$`, "m"));
