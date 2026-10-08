@@ -197,7 +197,10 @@ export type WatcherOperationsReadinessReason =
   | "journal_capacity"
   /** A fault-proof journal failed integrity; `supervisor.journalIntegrity`
    * names the failure. Held until an operator repairs the journals. */
-  | "journal_integrity";
+  | "journal_integrity"
+  /** The journals could not be opened; `supervisor.journalUnavailable` names
+   * the failure. Held while the open is retried; clears once it succeeds. */
+  | "journal_unavailable";
 
 export type WatcherOperationsL1Degradation = Readonly<{
   reason: string;

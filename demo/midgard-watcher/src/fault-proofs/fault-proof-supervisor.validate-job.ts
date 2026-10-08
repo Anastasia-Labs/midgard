@@ -104,6 +104,9 @@ export type WatcherFaultProofSupervisorStatus = Readonly<{
   /** The journals' first integrity failure in this process, or null:
    * readiness reports journal_integrity until an operator repairs them. */
   journalIntegrity: string | null;
+  /** Why the journals could not be opened, or null: readiness reports
+   * journal_unavailable while the open is retried. */
+  journalUnavailable: string | null;
   /** A fault-proof journal holds its cap of live rows: readiness reports
    * journal_capacity until rows complete or are pruned. */
   journalCapacity: boolean;

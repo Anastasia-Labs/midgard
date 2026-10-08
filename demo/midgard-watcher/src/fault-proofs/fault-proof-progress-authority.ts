@@ -39,6 +39,7 @@ import {
 } from "./fault-proof-objective-table.js";
 import type { WatcherFaultProofDeadline } from "./fault-proof-supervisor.js";
 import { openWatcherJournalDatabase } from "./watcher-journal-database.js";
+import { watcherJournalOpener } from "./watcher-journal-database.opener.js";
 
 export type WatcherFaultProofProgressRequest = Readonly<{
   observation: WatcherAuthenticatedStateQueueObservation;
@@ -115,17 +116,26 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       journalRoot: input.journalRoot,
       authenticationKey: input.authenticationKey,
     });
-  let decisionJournal: Promise<WatcherFaultDecisionJournal> | undefined;
-  const openDecisions = (): Promise<WatcherFaultDecisionJournal> =>
-    (decisionJournal ??= openWatcherFaultDecisionJournal({
-      directory: input.journalRoot,
-      deploymentFingerprint: input.deploymentFingerprint,
-      launchScope: input.categories,
-      authenticationKey: input.authenticationKey,
-    }));
+  // A journal failure is retried by the next use.
+  const openDecisions: () => Promise<WatcherFaultDecisionJournal> =
+    watcherJournalOpener(
+      () =>
+        openWatcherFaultDecisionJournal({
+          directory: input.journalRoot,
+          deploymentFingerprint: input.deploymentFingerprint,
+          launchScope: input.categories,
+          authenticationKey: input.authenticationKey,
+        }),
+      { retryInBackground: false },
+    ).open;
   const objectives = new Map<string, Objective>();
   const decisions = new Map<string, HeaderFaultDecision>();
-  let initialized: Promise<void> | undefined;
+  // A retry is safe: initialization reads the journals before it changes any
+  // state, so a latched journal throws again at its first read, and an open
+  // that could not complete changed nothing.
+  const initializeOnce = watcherJournalOpener(() => initialize(), {
+    retryInBackground: false,
+  }).open;
   let epoch = 0;
   let lastObservation: string | undefined;
   let generation = -1n;
@@ -250,7 +260,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     readonly objective: WatcherProofObjective;
     readonly execution: WatcherProofExecution;
   }): Promise<void> => {
-    await (initialized ??= initialize());
+    await initializeOnce();
     const first = execution.entries[0];
     if (
       first === undefined ||
@@ -304,7 +314,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           "proof progress observation has a foreign deployment or generation",
         );
       const startedEpoch = epoch;
-      await (initialized ??= initialize());
+      await initializeOnce();
       if (
         epoch !== startedEpoch ||
         BigInt(request.rollbackGeneration) < generation

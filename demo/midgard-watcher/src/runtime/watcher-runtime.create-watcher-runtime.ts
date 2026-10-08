@@ -11,6 +11,7 @@ import {
   createWatcherFaultDecisionBridge,
   type WatcherFaultDecisionBridge,
 } from "../fault-proofs/fault-decision-bridge.js";
+import { validateWatcherFaultDecisionJournalConfiguration } from "../fault-proofs/fault-decision-journal.js";
 import { type WatcherFaultProofApplication } from "../fault-proofs/fault-proof-application.js";
 import { createWatcherFaultProofExecution } from "../fault-proofs/fault-proof-execution.js";
 import {
@@ -46,6 +47,7 @@ import {
   watcherDaBondPoolReadFailureReporter,
   watcherDaBondPoolReporter,
 } from "./operations-observability.js";
+import { refusePermanently } from "./permanent-refusal.js";
 import {
   loadWatcherSecretText,
   type WatcherProcessConfig,
@@ -97,9 +99,12 @@ const L1_READINESS_REFRESH_MS = 5_000;
  * release depth.
  *
  * Liveness: the operations server binds before the first decision pass, so
- * `/healthz` answers while the follower syncs; until the first pass
- * completes, and whenever the follower or a pass holds decisions, `/readyz`
- * names the reason. No L1 condition ends startup or the process.
+ * `/v1/status` (the liveness probe) answers while the follower syncs; there
+ * is no `/healthz` route. Until the first pass completes, and whenever the
+ * follower, a pass or the journals hold decisions, `/readyz` names the
+ * reason. No L1 condition, journal integrity failure or failed journal open
+ * ends the process after the server binds; bad configuration, the journals'
+ * directory and key included, exits before it binds.
  */
 export const createWatcherRuntime = async (input: {
   readonly config: WatcherProcessConfig;
@@ -240,6 +245,15 @@ export const createWatcherRuntime = async (input: {
         },
       });
 
+    // A bad journal directory or key exits before the operations server binds.
+    await refusePermanently("journal_configuration", () =>
+      validateWatcherFaultDecisionJournalConfiguration({
+        directory: input.config.workflowJournalDirectory,
+        deploymentFingerprint: deploymentIdentity.manifestId,
+        launchScope: faultProofApplication.installedCategories,
+        authenticationKey: trusted.rollbackAuthenticationKey,
+      }),
+    );
     const fundingRuntime = await openWatcherProverFundingRuntime({
       path: watcherConfig.storage.path,
       authenticationKey: trusted.rollbackAuthenticationKey,

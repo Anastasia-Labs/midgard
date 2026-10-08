@@ -39,9 +39,12 @@ import {
 import {
   isWatcherJournalCapacityError,
   isWatcherJournalIntegrityError,
+  isWatcherJournalUnavailableError,
   openWatcherJournalDatabase,
   watcherJournalIntegrityFailure,
+  watcherJournalUnavailable,
 } from "./watcher-journal-database.js";
+import { watcherJournalOpener } from "./watcher-journal-database.opener.js";
 
 export const createSupervisor = (input: {
   readonly journalRoot: string;
@@ -74,17 +77,19 @@ export const createSupervisor = (input: {
       "watcher fault-proof supervisor queue authentication key is invalid",
     );
   }
+  // An open that could not complete (journal_unavailable) is retried by
+  // every use and in the background; an integrity failure latches.
   let openedQueueJournal: WatcherFaultProofQueueJournal | null = null;
-  const queueJournal: Promise<WatcherFaultProofQueueJournal> =
-    openWatcherFaultProofQueueJournal({
-      journalRoot: input.journalRoot,
-      deploymentFingerprint: input.deploymentFingerprint,
-      authenticationKey: input.queueAuthenticationKey,
-    }).then((journal) => {
-      openedQueueJournal = journal;
-      return journal;
-    });
-  void queueJournal.catch(() => undefined); // each use reports the refusal
+  const queueOpener = watcherJournalOpener(
+    async () =>
+      (openedQueueJournal = await openWatcherFaultProofQueueJournal({
+        journalRoot: input.journalRoot,
+        deploymentFingerprint: input.deploymentFingerprint,
+        authenticationKey: input.queueAuthenticationKey,
+      })),
+    { retryInBackground: true },
+  );
+  const queueJournal = queueOpener.open;
   const categories = Object.freeze([...input.dependencies.categories]);
   const journals = () =>
     openWatcherJournalDatabase({
@@ -114,6 +119,7 @@ export const createSupervisor = (input: {
     );
   }
   let phase: WatcherFaultProofSupervisorStatus["phase"] = "accepting";
+  void queueJournal().catch(() => undefined); // each use reports the refusal
   let recovered = false;
   let recovery: Promise<number> | undefined;
   let queuedJobCount = 0;
@@ -181,12 +187,17 @@ export const createSupervisor = (input: {
   // validation failure from becoming an unhandled rejection before mounting.
   void done.catch(() => undefined);
 
-  // A refused journal holds the watcher unready (`journal_integrity`) and
-  // never fails the process; every other failure blocks it.
+  // A refused journal (`journal_integrity`) or one that could not be opened
+  // (`journal_unavailable`) holds the watcher unready and never fails the
+  // process; every other failure blocks it.
   const block = (error: unknown, job: WatcherFaultProofJob | null): Error => {
     const normalized =
       error instanceof Error ? error : new Error(String(error));
-    if (isWatcherJournalIntegrityError(error)) return normalized;
+    if (
+      isWatcherJournalIntegrityError(error) ||
+      isWatcherJournalUnavailableError(error)
+    )
+      return normalized;
     if (phase !== "blocked" && phase !== "closed") {
       phase = "blocked";
       blockedJob = job;
@@ -242,7 +253,7 @@ export const createSupervisor = (input: {
     }
     try {
       await (
-        await queueJournal
+        await queueJournal()
       ).markStarted(entry.jobIdentityDigest, now().toString());
       queuedJobCount -= 1;
     } catch (error) {
@@ -435,7 +446,7 @@ export const createSupervisor = (input: {
       if (failure === undefined) {
         try {
           await (
-            await queueJournal
+            await queueJournal()
           ).markFinished(entry.jobIdentityDigest, now().toString());
         } catch (error) {
           failure = block(error, job);
@@ -574,7 +585,7 @@ export const createSupervisor = (input: {
     // admitted inside the worker, after it acquires ownership of this objective.
     // At its cap of open objectives the journal refuses a new one: status
     // reports journal_capacity and a later observation retries.
-    const registration = await (await queueJournal)
+    const registration = await (await queueJournal())
       .register(identity, now().toString())
       .catch((error: unknown) => {
         if (isWatcherJournalCapacityError(error)) return null;
@@ -842,6 +853,17 @@ export const createSupervisor = (input: {
               remaining <= BigInt(input.deadlineAlertHeadroomMs)
             ? ("at_risk" as const)
             : ("safe" as const);
+      // Capacity is read first: a read that meets corruption latches it, and
+      // this same status reports journal_integrity.
+      let journalCapacity = false;
+      try {
+        journalCapacity =
+          openedQueueJournal !== null &&
+          watcherJournalIntegrityFailure(input.journalRoot) === null &&
+          watcherJournalCapacityReached(journals());
+      } catch (error) {
+        if (!isWatcherJournalIntegrityError(error)) throw error;
+      }
       const journalIntegrity = watcherJournalIntegrityFailure(
         input.journalRoot,
       );
@@ -856,14 +878,18 @@ export const createSupervisor = (input: {
         earliestDeadlineJob,
         remainingSafeStartMs: remaining?.toString() ?? null,
         journalIntegrity,
-        journalCapacity:
-          journalIntegrity === null &&
-          openedQueueJournal !== null &&
-          watcherJournalCapacityReached(journals()),
+        journalUnavailable:
+          journalIntegrity === null
+            ? watcherJournalUnavailable(input.journalRoot)
+            : null,
+        journalCapacity: journalIntegrity === null && journalCapacity,
       });
     },
     durableQueueStatus: () => {
       if (openedQueueJournal === null) {
+        // A journal failure answers as itself, never as a bad request:
+        // this throws the latched integrity failure or the failed open.
+        journals();
         throw new Error("fault-proof durable queue recovery is incomplete");
       }
       return openedQueueJournal.status();
@@ -871,6 +897,7 @@ export const createSupervisor = (input: {
     close: async () => {
       if (phase === "closed") return;
       if (phase === "accepting") phase = "closing";
+      queueOpener.close();
       for (const retry of transportRetries.values())
         if (retry.timer !== undefined) clearTimeout(retry.timer);
       await progressSerial;

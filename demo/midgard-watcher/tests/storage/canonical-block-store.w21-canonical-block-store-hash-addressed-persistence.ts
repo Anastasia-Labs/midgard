@@ -4,12 +4,13 @@ import { encodeDaPayload } from "@al-ft/midgard-sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  loadWatcherCanonicalBlockStore,
+  encodeWatcherCanonicalBlockStoreSnapshot,
+  makeEmptyWatcherCanonicalBlockStoreSnapshot,
   makeWatcherCanonicalDaPayloadRecord,
   makeWatcherCanonicalEventToStepRecord,
   makeWatcherCanonicalProofBundleRecord,
   makeWatcherCanonicalTraceStepRecord,
-  persistWatcherCanonicalPublicBytes,
+  parseWatcherCanonicalBlockStoreSnapshot,
   type WatcherCanonicalBlockRecord,
   WatcherCanonicalBlockStoreError,
   type WatcherCanonicalBlockStoreErrorCode,
@@ -18,7 +19,6 @@ import {
   watcherCanonicalRetentionWindowFromVerifiedManifest,
 } from "../../src/storage/canonical-block-store.js";
 import {
-  watcherCanonicalJson,
   type WatcherDurableAtomicBackend,
   watcherDurableStoreBytesSha256,
 } from "../../src/storage/durable-store.js";
@@ -28,7 +28,6 @@ import {
   EVENT_PROOF_BYTES,
   FINGERPRINT,
   HEADER_HASH,
-  identityOf,
   MARKER,
   PROOF_BUNDLE_BYTES,
   publicDaEventToStep,
@@ -131,6 +130,22 @@ export const expectStoreError = async (
   throw new Error(`Expected canonical block store rejection ${code}`);
 };
 
+/** A store holding `records` at revision 1, written without a backend write. */
+export const storeOf = (
+  ...records: readonly WatcherCanonicalBlockRecord[]
+): MemoryAtomicBackend =>
+  new MemoryAtomicBackend(
+    encodeWatcherCanonicalBlockStoreSnapshot(
+      parseWatcherCanonicalBlockStoreSnapshot({
+        ...makeEmptyWatcherCanonicalBlockStoreSnapshot(MARKER),
+        revision: "1",
+        records: [...records].sort((left, right) =>
+          left.input.inputId < right.input.inputId ? -1 : 1,
+        ),
+      }),
+    ),
+  );
+
 type MutableRecord = Record<string, any>;
 
 export const cloned = (record: WatcherCanonicalBlockRecord): MutableRecord =>
@@ -153,22 +168,11 @@ beforeEach(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// 1. Hash-addressed persistence of real public DA bytes
+// 1. Hash-addressed records of real public DA bytes
 // ---------------------------------------------------------------------------
 
-describe("W21 canonical block store: hash-addressed persistence", () => {
-  it("persists the exact envelope bytes of a verified public DA payload", async () => {
-    const backend = new MemoryAtomicBackend();
-    const result = await persistWatcherCanonicalPublicBytes({
-      backend,
-      deploymentIdentity: identityOf(),
-      record: payloadRecord,
-    });
-
-    expect(result.committed).toBe(true);
-    expect(result.alreadyPresent).toBe(false);
-    expect(result.revision).toBe("1");
-    expect(backend.writes).toBe(1);
+describe("W21 canonical block store: hash-addressed records", () => {
+  it("records the exact envelope bytes of a verified public DA payload", () => {
     expect(payloadRecord.input.payload.cborHex).toBe(envelope.toString("hex"));
     expect(payloadRecord.metadata.byteLength).toBe(envelope.length);
   });
@@ -193,32 +197,7 @@ describe("W21 canonical block store: hash-addressed persistence", () => {
     );
   });
 
-  it("reloads byte-identical bytes under the same inputId after a restart", async () => {
-    const backend = new MemoryAtomicBackend();
-    await persistWatcherCanonicalPublicBytes({
-      backend,
-      deploymentIdentity: identityOf(),
-      record: payloadRecord,
-    });
-
-    const loaded = await loadWatcherCanonicalBlockStore({
-      backend,
-      deploymentIdentity: identityOf(),
-      retentionWindow: windowFor(),
-    });
-    expect(loaded).not.toBeNull();
-    const stored = loaded!.snapshot.records[0]!;
-    expect(stored.input.inputId).toBe(payloadRecord.input.inputId);
-    expect(Buffer.from(stored.input.payload.cborHex, "hex")).toEqual(envelope);
-    expect(watcherCanonicalJson(stored)).toBe(
-      watcherCanonicalJson(payloadRecord),
-    );
-  });
-
-  it("persists proof-bundle, trace-step, and event-to-step artifacts under proof_input", async () => {
-    const backend = new MemoryAtomicBackend();
-    const identity = identityOf();
-
+  it("records proof-bundle, trace-step, and event-to-step artifacts under proof_input", () => {
     const bundle = makeWatcherCanonicalProofBundleRecord({
       proofBundle: publicDaProofBundle(),
       context: contextOf(),
@@ -235,20 +214,6 @@ describe("W21 canonical block store: hash-addressed persistence", () => {
       eventToStep: publicDaEventToStep(null),
       context: contextOf(),
     });
-
-    for (const record of [
-      payloadRecord,
-      bundle,
-      traceStep,
-      entry,
-      nonmembership,
-    ]) {
-      await persistWatcherCanonicalPublicBytes({
-        backend,
-        deploymentIdentity: identity,
-        record,
-      });
-    }
 
     expect(bundle.metadata.contentKind).toBe("proof_bundle");
     expect(bundle.input.kind).toBe("proof_input");
@@ -270,39 +235,5 @@ describe("W21 canonical block store: hash-addressed persistence", () => {
       sha256Hex(EVENT_PROOF_BYTES),
     );
     expect(nonmembership.metadata.innerSha256).toBeNull();
-
-    const loaded = await loadWatcherCanonicalBlockStore({
-      backend,
-      deploymentIdentity: identity,
-    });
-    expect(loaded!.snapshot.records).toHaveLength(5);
-    const inputIds = loaded!.snapshot.records.map(
-      (record) => record.input.inputId,
-    );
-    expect([...inputIds].sort()).toEqual(inputIds);
-  });
-
-  it("is an idempotent no-op when the identical bytes are persisted twice", async () => {
-    const backend = new MemoryAtomicBackend();
-    const identity = identityOf();
-    const first = await persistWatcherCanonicalPublicBytes({
-      backend,
-      deploymentIdentity: identity,
-      record: payloadRecord,
-    });
-    const before = Uint8Array.from(backend.bytes!);
-
-    const second = await persistWatcherCanonicalPublicBytes({
-      backend,
-      deploymentIdentity: identity,
-      record: payloadRecord,
-    });
-
-    expect(second.committed).toBe(false);
-    expect(second.alreadyPresent).toBe(true);
-    expect(second.inputId).toBe(first.inputId);
-    expect(second.snapshotSha256).toBe(first.snapshotSha256);
-    expect(backend.writes).toBe(1);
-    expect(backend.bytes).toEqual(before);
   });
 });

@@ -27,7 +27,7 @@ import {
   verifySnapshot,
   type WatcherCanonicalPruneDecision,
   type WatcherCanonicalPruneResult,
-} from "./canonical-block-store.persist-watcher-canonical-public-bytes.js";
+} from "./canonical-block-store.snapshot-codec.js";
 import { type WatcherDurableAtomicBackend } from "./durable-store.js";
 
 /**

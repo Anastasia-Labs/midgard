@@ -7,23 +7,18 @@ import {
   decodeWatcherCanonicalBlockStoreSnapshot,
   encodeWatcherCanonicalBlockStoreSnapshot,
   parseWatcherCanonicalBlockRecord,
-  persistWatcherCanonicalPublicBytes,
   WATCHER_CANONICAL_BLOCK_STORE_SCHEMA_VERSION,
 } from "../../src/storage/canonical-block-store.js";
 import {
   watcherCanonicalJson,
   watcherDurableStoreBytesSha256,
 } from "../../src/storage/durable-store.js";
-import {
-  identityOf,
-  MARKER,
-  sha256Hex,
-} from "./canonical-block-store.config-of.js";
+import { MARKER, sha256Hex } from "./canonical-block-store.config-of.js";
 import {
   cloned,
   expectStoreError,
-  MemoryAtomicBackend,
   payloadRecord,
+  storeOf,
 } from "./canonical-block-store.w21-canonical-block-store-hash-addressed-persistence.js";
 
 // ---------------------------------------------------------------------------
@@ -96,12 +91,7 @@ describe("W21 canonical block store: malformed inputs", () => {
   });
 
   it("rejects a non-canonical, a truncated, and a non-UTF8 snapshot encoding", async () => {
-    const backend = new MemoryAtomicBackend();
-    await persistWatcherCanonicalPublicBytes({
-      backend,
-      deploymentIdentity: identityOf(),
-      record: payloadRecord,
-    });
+    const backend = storeOf(payloadRecord);
     const canonical = new TextDecoder().decode(backend.bytes!);
 
     await expectStoreError(
@@ -175,12 +165,7 @@ describe("W21 canonical block store: malformed inputs", () => {
   });
 
   it("round-trips a snapshot through its canonical encoding", async () => {
-    const backend = new MemoryAtomicBackend();
-    await persistWatcherCanonicalPublicBytes({
-      backend,
-      deploymentIdentity: identityOf(),
-      record: payloadRecord,
-    });
+    const backend = storeOf(payloadRecord);
     const snapshot = decodeWatcherCanonicalBlockStoreSnapshot(backend.bytes!);
     expect(encodeWatcherCanonicalBlockStoreSnapshot(snapshot)).toEqual(
       backend.bytes,

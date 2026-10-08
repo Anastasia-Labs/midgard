@@ -6,6 +6,7 @@ export {
   openWatcherFaultDecisionJournal,
   readWatcherFaultDecisionEvidence,
   unsafeOpenWatcherFaultDecisionJournalForTest,
+  validateWatcherFaultDecisionJournalConfiguration,
 } from "./fault-decision-journal.create-journal.js";
 export {
   type UnsafeWatcherFaultDecisionJournalForTest,

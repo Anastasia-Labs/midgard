@@ -319,6 +319,8 @@ export const createWatcherOperationsObservability = (input: {
       reasons.push("deadline_at_risk");
     if (supervisor.deadlineHealth === "unsafe") reasons.push("deadline_unsafe");
     if (supervisor.journalIntegrity !== null) reasons.push("journal_integrity");
+    if (supervisor.journalUnavailable !== null)
+      reasons.push("journal_unavailable");
     if (supervisor.journalCapacity) reasons.push("journal_capacity");
     if (latestL1Sources.size === 0) reasons.push("l1_source_unavailable");
     else if (sources.stale > 0 || sources.disagreement > 0)
@@ -487,13 +489,11 @@ export const createWatcherOperationsObservability = (input: {
     },
   });
 
-  const handleHttpRequest = (request: Request): Promise<Response> =>
-    handleWatcherOperationsHttpRequest(request, api);
-
   return Object.freeze({
     schemaVersion: WATCHER_OPERATIONS_OBSERVABILITY,
     api,
     sink,
-    handleHttpRequest,
+    handleHttpRequest: (request: Request): Promise<Response> =>
+      handleWatcherOperationsHttpRequest(request, api),
   });
 };

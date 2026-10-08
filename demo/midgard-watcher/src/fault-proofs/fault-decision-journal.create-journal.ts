@@ -20,9 +20,12 @@ import {
 import { parseDecision } from "./fault-decision-journal.parse-decision.js";
 import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 import {
+  isWatcherJournalIntegrityError,
+  isWatcherJournalUnavailableError,
   openWatcherJournalDatabase,
   WATCHER_JOURNAL_DATABASE_FILE,
   WatcherJournalCapacityError,
+  WatcherJournalConfigurationError,
   type WatcherJournalDatabase,
   type WatcherJournalRow,
 } from "./watcher-journal-database.js";
@@ -177,6 +180,43 @@ const createJournal = (
         unsafeAppendDecisionEnvelopeForTest: appendEnvelope,
       })
     : journal;
+};
+
+/**
+ * Startup's check of the journal configuration, before the operations server
+ * binds: the deployment fingerprint, launch scope, directory and key. A
+ * configuration error throws `WatcherJournalConfigurationError`. The
+ * journals' own state does not throw here: an integrity failure is latched and
+ * an open that could not complete is retried, both reported by readiness.
+ */
+export const validateWatcherFaultDecisionJournalConfiguration = (
+  input: JournalInput,
+): void => {
+  try {
+    exactString(
+      input.deploymentFingerprint,
+      DIGEST,
+      "watcher fault decision deployment fingerprint",
+    );
+    exactLaunchScope(input.launchScope, input.launchScope);
+  } catch (error) {
+    throw new WatcherJournalConfigurationError(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  try {
+    openWatcherJournalDatabase({
+      journalRoot: input.directory,
+      authenticationKey: input.authenticationKey,
+    });
+  } catch (error) {
+    if (
+      isWatcherJournalIntegrityError(error) ||
+      isWatcherJournalUnavailableError(error)
+    )
+      return;
+    throw error;
+  }
 };
 
 export const openWatcherFaultDecisionJournal = async (

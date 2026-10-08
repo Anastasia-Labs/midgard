@@ -13,8 +13,12 @@ import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fa
 import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import {
   closeWatcherJournalDatabase,
+  isWatcherJournalIntegrityError,
+  openWatcherJournalDatabase,
   WATCHER_JOURNAL_DATABASE_FILE,
+  watcherJournalIntegrityFailure,
 } from "../../src/fault-proofs/watcher-journal-database.js";
+import { watcherObjectiveScope } from "../../src/fault-proofs/watcher-journal-schema.js";
 import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import {
@@ -265,6 +269,47 @@ describe("production fault decision journal", () => {
     await expect(
       openWatcherFaultDecisionJournal(journalInput(root)),
     ).rejects.toThrow("row swap MAC differs");
+  });
+
+  // Rows authenticated under the journal key, as a bug in an earlier writer
+  // could have left them: the refusal must latch, not fail the process.
+  const expectLatchedRefusal = async (
+    row: Readonly<{ key: string; body: unknown }>,
+    detail: string,
+  ): Promise<void> => {
+    const root = await directory();
+    openWatcherJournalDatabase({
+      journalRoot: root,
+      authenticationKey: TEST_JOURNAL_KEY,
+    }).transaction((tx) =>
+      tx.put("fault_decisions", {
+        key: row.key,
+        scope: watcherObjectiveScope("doubleSpend", HEADER),
+        state: "fault_detected",
+        body: row.body,
+      }),
+    );
+    closeWatcherJournalDatabase(root);
+    const failure = await openWatcherFaultDecisionJournal(
+      journalInput(root),
+    ).catch((error: unknown) => error);
+    expect(isWatcherJournalIntegrityError(failure)).toBe(true);
+    expect(String(failure)).toContain(detail);
+    expect(watcherJournalIntegrityFailure(root)).toContain(detail);
+  };
+
+  it("latches a refusal of an authenticated row that differs from its decision", async () => {
+    await expectLatchedRefusal(
+      { key: "cc".repeat(32), body: faultDecision() },
+      `row ${"cc".repeat(32)} differs from its decision`,
+    );
+  });
+
+  it("latches a refusal of an authenticated row whose body is not a decision", async () => {
+    await expectLatchedRefusal(
+      { key: "cc".repeat(32), body: { decision: "fault_detected" } },
+      `row ${"cc".repeat(32)} body is not a decision`,
+    );
   });
 
   it("appends 2,000 decisions at one row each", async () => {

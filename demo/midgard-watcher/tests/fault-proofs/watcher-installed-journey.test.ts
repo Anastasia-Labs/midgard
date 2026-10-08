@@ -10,6 +10,7 @@ import {
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
+import { DatabaseSync } from "node:sqlite";
 import { setTimeout as pause } from "node:timers/promises";
 
 import {
@@ -38,7 +39,10 @@ import { expect, it, vi } from "vitest";
 
 import { readWatcherFaultDecisionEvidence } from "../../src/fault-proofs/fault-decision-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
-import { WATCHER_JOURNAL_DATABASE_FILE } from "../../src/fault-proofs/watcher-journal-database.js";
+import {
+  closeWatcherJournalDatabase,
+  WATCHER_JOURNAL_DATABASE_FILE,
+} from "../../src/fault-proofs/watcher-journal-database.js";
 import { makeWatcherFinalityPolicy } from "../../src/l1/finality-engine.js";
 import { WatcherLocalKupmios } from "../../src/l1/native-reward-account.js";
 import {
@@ -59,6 +63,14 @@ import { createTerminalRelease } from "../support/terminal-release.js";
 import { startPublishedWatcherJourneyAuthorityFixture } from "../support/trusted-head-process-fixture.js";
 import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
 import { assertPublishedFundingCustodyRoles } from "./watcher-installed-journey.funding-policy-fixture.js";
+
+/** The fields of an operations response these probes read. */
+type ProbeBody = {
+  ready?: boolean;
+  reasons?: string[];
+  error?: string;
+  supervisor?: { journalIntegrity: string | null };
+};
 
 const transport = vi.hoisted(() => ({
   provider: undefined as Provider | undefined,
@@ -857,6 +869,70 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         join(evidenceDirectory, "watcher-installed-history-native-blocks.json"),
       );
     }
+    // W2-E2: a restart over journals that fail integrity binds the operations
+    // server and holds the watcher live and unready; it never fails startup.
+    await watcher.close();
+    watcher = undefined;
+    // The process's journal connection outlives the runtime; a restart is a
+    // new process, so close it as an exit would.
+    closeWatcherJournalDatabase(config.workflowJournalDirectory);
+    const shiftDecisionHead = (by: number) => {
+      const raw = new DatabaseSync(
+        join(config.workflowJournalDirectory, WATCHER_JOURNAL_DATABASE_FILE),
+      );
+      try {
+        raw
+          .prepare(
+            "UPDATE watcher_journal_heads SET revision = revision + ? WHERE journal = 'fault_decisions'",
+          )
+          .run(by);
+      } finally {
+        raw.close();
+      }
+    };
+    shiftDecisionHead(1);
+    let restartFailure: unknown;
+    const restarting = createWatcherRuntime({ config });
+    void restarting.catch((cause: unknown) => {
+      restartFailure = cause;
+    });
+    const probe = async (path: string) => {
+      const response = await fetch(`${config.operationsEndpoint}${path}`);
+      return {
+        status: response.status,
+        body: (await response.json()) as ProbeBody,
+      };
+    };
+    await stage(
+      "restart held unready over a refused journal",
+      async () => {
+        for (;;) {
+          if (restartFailure !== undefined) throw restartFailure;
+          const readyz = await probe("/readyz").catch(() => undefined);
+          if (readyz?.body.reasons?.includes("journal_integrity") === true) {
+            expect(readyz.status).toBe(503);
+            break;
+          }
+          await pause(100);
+        }
+        const live = await probe("/v1/status");
+        expect(live.status).toBe(200);
+        expect(live.body.supervisor?.journalIntegrity).toContain(
+          "head MAC differs",
+        );
+        expect(await probe("/v1/metrics")).toEqual({
+          status: 503,
+          body: { error: "journal_integrity" },
+        });
+      },
+      300_000,
+    );
+    // Repair the head and forget the refusal, as the restart that clears it
+    // would; the held startup then completes on the repaired journals.
+    shiftDecisionHead(-1);
+    closeWatcherJournalDatabase(config.workflowJournalDirectory);
+    watcher = await stage("startup after journal repair", () => restarting);
+    expect(watcher.faultProofSupervisor.status().journalIntegrity).toBeNull();
     succeeded = true;
   } catch (cause) {
     console.error(`Watcher journey stopped at ${activeStage}`, cause);

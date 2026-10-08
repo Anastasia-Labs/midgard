@@ -7,12 +7,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   decodeWatcherCanonicalBlockStoreSnapshot,
-  loadWatcherCanonicalBlockStore,
-  persistWatcherCanonicalPublicBytes,
+  pruneWatcherCanonicalBlockStore,
   resolveWatcherCanonicalRetentionWindow,
   WATCHER_CANONICAL_BLOCK_STORE_SCHEMA_VERSION,
   WATCHER_CANONICAL_SLOT_LENGTH_MS,
-  type WatcherCanonicalBlockRecord,
   WatcherCanonicalBlockStoreError,
   watcherCanonicalRetainUntilSlot,
   type WatcherCanonicalRetentionWindow,
@@ -28,9 +26,9 @@ import {
   cloned,
   expectStoreError,
   manifestWith,
-  MemoryAtomicBackend,
   OBSERVED_AT_SLOT,
   payloadRecord,
+  storeOf,
   windowFor,
 } from "./canonical-block-store.w21-canonical-block-store-hash-addressed-persistence.js";
 
@@ -39,62 +37,6 @@ import {
 // ---------------------------------------------------------------------------
 
 describe("W21 canonical block store: immutability", () => {
-  it("refuses a different record under an existing inputId and keeps the original", async () => {
-    const backend = new MemoryAtomicBackend();
-    const identity = identityOf();
-    await persistWatcherCanonicalPublicBytes({
-      backend,
-      deploymentIdentity: identity,
-      record: payloadRecord,
-    });
-    const before = Uint8Array.from(backend.bytes!);
-
-    const restated = cloned(payloadRecord);
-    restated.metadata.observedAtSlot = OBSERVED_AT_SLOT + 1;
-    restated.metadata.retainUntilSlot = watcherCanonicalRetainUntilSlot({
-      window: windowFor(),
-      observedAtSlot: OBSERVED_AT_SLOT + 1,
-    });
-
-    await expectStoreError(
-      async () =>
-        persistWatcherCanonicalPublicBytes({
-          backend,
-          deploymentIdentity: identity,
-          record: restated as unknown as WatcherCanonicalBlockRecord,
-        }),
-      "content_conflict",
-    );
-    expect(backend.bytes).toEqual(before);
-    expect(backend.writes).toBe(1);
-  });
-
-  it("refuses different bytes claiming an existing inputId and keeps the original", async () => {
-    const backend = new MemoryAtomicBackend();
-    const identity = identityOf();
-    await persistWatcherCanonicalPublicBytes({
-      backend,
-      deploymentIdentity: identity,
-      record: payloadRecord,
-    });
-    const before = Uint8Array.from(backend.bytes!);
-
-    const forged = cloned(payloadRecord);
-    forged.input.payload.cborHex = Buffer.alloc(64, 0x01).toString("hex");
-
-    await expectStoreError(
-      async () =>
-        persistWatcherCanonicalPublicBytes({
-          backend,
-          deploymentIdentity: identity,
-          record: forged as unknown as WatcherCanonicalBlockRecord,
-        }),
-      "integrity_mismatch",
-    );
-    expect(backend.bytes).toEqual(before);
-    expect(backend.writes).toBe(1);
-  });
-
   it("refuses a snapshot that carries the same inputId twice", () => {
     const duplicated = {
       schemaVersion: WATCHER_CANONICAL_BLOCK_STORE_SCHEMA_VERSION,
@@ -194,26 +136,24 @@ describe("W21 canonical block store: retention window", () => {
     ).rejects.toThrowError();
   });
 
-  it("refuses to load a store under a doctored retention window", async () => {
-    const backend = new MemoryAtomicBackend();
-    await persistWatcherCanonicalPublicBytes({
-      backend,
-      deploymentIdentity: identityOf(),
-      record: payloadRecord,
-    });
+  it("refuses to prune a store under a doctored retention window", async () => {
+    const backend = storeOf(payloadRecord);
     const doctored = {
       ...windowFor(),
       retentionDays: 1,
     } as WatcherCanonicalRetentionWindow;
     await expectStoreError(
       async () =>
-        loadWatcherCanonicalBlockStore({
+        pruneWatcherCanonicalBlockStore({
           backend,
           deploymentIdentity: identityOf(),
+          atSlot: payloadRecord.metadata.retainUntilSlot + 1,
+          stillChallengeableInputIds: [],
           retentionWindow: doctored,
         }),
       "retention_window_insufficient",
     );
+    expect(backend.writes).toBe(0);
   });
 
   it("refuses a window whose derived slot arithmetic has been tampered with", async () => {

@@ -101,9 +101,15 @@ reordered record; so does any later read of a row that fails its MAC, does not
 parse, or differs from its key. A refusal holds for the rest of the process:
 the watcher stays up, `/readyz` reports `journal_integrity`, and `/v1/status`
 names the failure in `supervisor.journalIntegrity` until an operator repairs
-the journals and restarts the watcher. An objective whose completion was verified deeper than
-rollback recovery reaches is skipped at the next start and pruned with its
-workflow journal. Only open objectives count toward the cap of 2,048; at the
+the journals and restarts the watcher. If the journals cannot be opened at
+all (a busy, locked or unreadable file), the watcher stays up, `/readyz`
+reports `journal_unavailable` and `supervisor.journalUnavailable` names the
+failure, while the watcher retries the open, backing off from 1 s to 30 s; the
+reason clears without a restart once an open succeeds. A journal directory
+that cannot be used, or a rollback key the journals were not written under, is
+a configuration error: the watcher exits before the operations server binds.
+An objective whose completion was verified deeper than rollback recovery
+reaches is skipped at the next start and pruned with its workflow journal. Only open objectives count toward the cap of 2,048; at the
 cap the watcher stays up and `/readyz` reports `journal_capacity` until
 objectives complete.
 

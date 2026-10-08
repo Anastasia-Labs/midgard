@@ -1,12 +1,11 @@
 /**
  * Canonical block/proof store (GOAL_SPEC 10.3 W21).
  *
- * The watcher must be able to prove, after the fact, exactly which public
- * bytes it verified and submitted against. This module is that record: it
- * persists the byte strings returned by the public DA client BEFORE any
- * verification or submission decision is taken, addressed by their own digest,
- * immutable once written, and deletable only through an explicit retention
- * prune that is bound to the deployment manifest's retention window.
+ * Nothing in the watcher writes or reads this store: its producer, the public
+ * DA client, was removed in W2b, and its persist and load functions with it.
+ * What remains are the retention-window helpers the deployment authority and
+ * replay transcripts use, the record and snapshot shapes and their codec, and
+ * the retention prune, which only ever finds an empty store.
  *
  * Design constraints, all deliberate:
  *
@@ -38,7 +37,7 @@ import "./durable-store.js";
 import "./canonical-block-store.parse-provenance.js";
 import "./canonical-block-store.parse-watcher-canonical-block-record.js";
 import "./canonical-block-store.parse-watcher-canonical-block-store-snapshot.js";
-import "./canonical-block-store.persist-watcher-canonical-public-bytes.js";
+import "./canonical-block-store.snapshot-codec.js";
 import "./canonical-block-store.prune-watcher-canonical-block-store.js";
 export {
   WATCHER_CANONICAL_BLOCK_STORE_ALERT_CODES,
@@ -75,15 +74,11 @@ export {
   type WatcherCanonicalRecordContext,
   watcherCanonicalRetainUntilSlot,
 } from "./canonical-block-store.parse-watcher-canonical-block-store-snapshot.js";
+export { pruneWatcherCanonicalBlockStore } from "./canonical-block-store.prune-watcher-canonical-block-store.js";
 export {
   decodeWatcherCanonicalBlockStoreSnapshot,
   encodeWatcherCanonicalBlockStoreSnapshot,
-  loadWatcherCanonicalBlockStore,
   makeEmptyWatcherCanonicalBlockStoreSnapshot,
-  persistWatcherCanonicalPublicBytes,
-  type WatcherCanonicalBlockStoreLoad,
-  type WatcherCanonicalPersistResult,
   type WatcherCanonicalPruneDecision,
   type WatcherCanonicalPruneResult,
-} from "./canonical-block-store.persist-watcher-canonical-public-bytes.js";
-export { pruneWatcherCanonicalBlockStore } from "./canonical-block-store.prune-watcher-canonical-block-store.js";
+} from "./canonical-block-store.snapshot-codec.js";
