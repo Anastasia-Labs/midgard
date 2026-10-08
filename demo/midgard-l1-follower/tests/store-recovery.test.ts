@@ -7,9 +7,8 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import {
   type BlockSummary,
-  type FactStore,
   FOLLOWER_MIGRATION_FAILED,
-  FollowerMigrationError,
+  type FollowerProjection,
   openSqliteFactStore,
 } from "../src/index.js";
 import {
@@ -17,6 +16,7 @@ import {
   forkCorpus,
   simStoreOptions,
 } from "../src/testing/index.js";
+import { fixtureMigrations } from "./support/fixture.js";
 import { follow, script } from "./support/follow-loop.js";
 import { FIXTURE_PROJECTION, SIM_K } from "./support/fork-sim.js";
 import { testDatabases } from "./support/postgres.js";
@@ -85,21 +85,40 @@ describe("followChain: a migration the store refuses at start", () => {
   ).steps.map((step) => step.event);
 
   it("is stuck at once with a named reason, and the process stays up", async () => {
-    const store = openSqliteFactStore({
+    // The store applied the fixture's migration; the next build ships the
+    // same migration id with different text.
+    const path = join(scratch, "changed-migration.sqlite");
+    const first = openSqliteFactStore({
       ...simStoreOptions([FIXTURE_PROJECTION], SIM_K, "sqlite"),
-      path: ":memory:",
+      path,
     });
-    const refusing: FactStore = {
-      ...store,
-      start: async () => {
-        throw new FollowerMigrationError(
-          "migration follower/0001_follower_core was applied with different text",
-        );
+    expect(await first.start()).toMatchObject({ kind: "ready" });
+    await first.close();
+    const changed: FollowerProjection = {
+      ...FIXTURE_PROJECTION,
+      migrations: (dialect) => {
+        const set = fixtureMigrations(dialect);
+        return {
+          ...set,
+          migrations: set.migrations.map((migration, index) =>
+            index === 0
+              ? {
+                  ...migration,
+                  sql: `${migration.sql}\n-- edited after it was applied\n`,
+                }
+              : migration,
+          ),
+        };
       },
     };
+    const store = openSqliteFactStore({
+      ...simStoreOptions([changed], SIM_K, "sqlite"),
+      path,
+    });
+    const id = fixtureMigrations("sqlite").migrations[0]!.id;
     try {
       const { statuses } = await follow({
-        store: refusing,
+        store,
         script: script(events),
         until: (status) => status.stuck !== null,
       });
@@ -107,8 +126,7 @@ describe("followChain: a migration the store refuses at start", () => {
       expect(stuck.stuck).toMatchObject({ at: "migration", failures: 1 });
       expect(stuck.readiness[0]).toEqual({
         reason: FOLLOWER_MIGRATION_FAILED,
-        detail:
-          "the store refused its migrations: migration follower/0001_follower_core was applied with different text",
+        detail: `the store refused its migrations: migration ${fixtureMigrations("sqlite").namespace}/${id} changed after it was applied`,
       });
       expect(stuck.state).toBe("waiting");
     } finally {

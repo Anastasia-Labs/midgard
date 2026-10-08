@@ -5,12 +5,17 @@ import {
   createWatcherFaultProofL1Source,
   WatcherFaultProofL1RefusedError,
 } from "../../src/l1-follower/fault-proof-l1-source.js";
+import { watcherUnitHistoryPolicies } from "../../src/l1-follower/projection.js";
 import {
   createWatcherProofRetention,
   type WatcherProofRetention,
   type WatcherProofUnitHoldResult,
 } from "../../src/l1-follower/proof-retention.js";
-import { fixture } from "../support/l1-follower-raw-reads-fixture.js";
+import {
+  D,
+  fixture,
+  pruneFixture,
+} from "../support/l1-follower-raw-reads-fixture.js";
 import {
   nodeDouble,
   nodeUnit,
@@ -92,7 +97,9 @@ describe("fault-proof L1 source: unit hold results", () => {
 
   it("over the follower's own retention: captures unpinned, and pinned", async () => {
     const fx = await fixture();
-    const retention = createWatcherProofRetention(fx.store);
+    const retention = createWatcherProofRetention(fx.store, {
+      unitHistoryPolicies: watcherUnitHistoryPolicies(D),
+    });
     const source = createWatcherFaultProofL1Source({
       store: fx.store,
       rawReads: fx.reads(),
@@ -113,6 +120,37 @@ describe("fault-proof L1 source: unit hold results", () => {
       await retention.pin({ category: "doubleSpend", headerHash: fx.header }),
     ).toEqual({ kind: "pinned" });
     await expect(capture()).resolves.toBeDefined();
+    expect(retention.degradations()).toEqual([]);
+  });
+
+  it("over the follower's own retention, after a prune: a pinned header's state-queue node unit holds and its capture reads", async () => {
+    const fx = await fixture();
+    const retention = createWatcherProofRetention(fx.store, {
+      unitHistoryPolicies: watcherUnitHistoryPolicies(D),
+    });
+    expect(
+      await retention.pin({ category: "doubleSpend", headerHash: fx.header }),
+    ).toEqual({ kind: "pinned" });
+    await pruneFixture(fx);
+    expect(await retention.holdUnits(fx.header, [nodeUnit(fx.header)])).toEqual(
+      { kind: "held" },
+    );
+    const source = createWatcherFaultProofL1Source({
+      store: fx.store,
+      rawReads: fx.reads(),
+      node: nodeDouble().node,
+      sourceId: SOURCE_ID,
+      proofRetention: retention,
+    });
+    const snapshot = (await source
+      .snapshotAuthority({
+        releaseFinality: RELEASE,
+        observationDepth: "release_finality",
+      })
+      .capture(requestFor(fx.header))) as FraudProofRawL1Snapshot;
+    expect(snapshot.history.map(({ unit }) => unit)).toEqual([
+      nodeUnit(fx.header),
+    ]);
     expect(retention.degradations()).toEqual([]);
   });
 });

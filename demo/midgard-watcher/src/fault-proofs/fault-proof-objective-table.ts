@@ -148,9 +148,11 @@ export const completeWatcherProofObjective = (
   });
 };
 
-/** True only for a marker bound to this exact completed execution under
- * the current k: a marker written under another k, or checked without one,
- * is verified again. */
+/** True only for a marker bound to this exact completed execution whose
+ * recorded confirmation depth is beyond rollback recovery under the current
+ * k: the depth alone decides, so a marker written under a smaller k that is
+ * not that deep, or one checked without a k, is verified again. The k a
+ * marker was written under (`recoveryDepth`) is a record only. */
 export const watcherProofMarkerMatches = (
   marker: WatcherProofCompletionMarker,
   execution: WatcherProofExecution | undefined,
@@ -165,8 +167,7 @@ export const watcherProofMarkerMatches = (
   return (
     expected !== null &&
     expected.workflowId === marker.workflowId &&
-    expected.journalDigest === marker.journalDigest &&
-    expected.recoveryDepth === marker.recoveryDepth
+    expected.journalDigest === marker.journalDigest
   );
 };
 

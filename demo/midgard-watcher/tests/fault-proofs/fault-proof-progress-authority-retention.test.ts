@@ -187,6 +187,13 @@ describe("proof progress holds each open objective's L1 history", () => {
     expect(restart.pinned).toEqual(restart.targets);
   });
 
+  it("releases, without verifying again, a completion marked under another k that is deep enough under this one", async () => {
+    // Marked 2,161 deep under k = 2,160; this deployment's k is 2,000.
+    const restart = await restartOver(2, true, 2_000);
+    expect(restart.pinned).toEqual([]);
+    expect(restart.released).toEqual(restart.targets);
+  });
+
   it("keeps the hold when the completion is verified below recovery depth", async () => {
     const restart = await restartOver(1, false);
     const [target] = restart.targets;

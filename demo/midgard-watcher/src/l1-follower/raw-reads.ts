@@ -1,11 +1,9 @@
-import type {
-  FraudProofRawL1Point,
-  FraudProofRawL1Utxo,
-} from "@al-ft/midgard-fault-proofs";
+import type { FraudProofRawL1Utxo } from "@al-ft/midgard-fault-proofs";
 import {
   depth,
   type FactStore,
   type OutRef,
+  type SqlRow,
   type SqlTx,
   type StoredBlock,
   type StoredTx,
@@ -13,6 +11,15 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 
+import { recordsUnitHistory } from "./projection.js";
+import { partlyPrunedIn } from "./proof-retention.js";
+import {
+  canonicalBlock,
+  isTrackedAddress,
+  missingRowReason,
+  prunedSinceOrigin,
+  samePoint,
+} from "./raw-reads.facts.js";
 import {
   type FollowerRawReads,
   type FollowerUnresolvedInput,
@@ -23,13 +30,10 @@ import {
   type RawRead,
   refused,
 } from "./raw-reads.types.js";
+import { outRefLabel, parseOutRefLabel, resolveRawUtxoIn } from "./reads.js";
 import {
-  createdOutputOf,
-  outRefLabel,
-  parseOutRefLabel,
-  resolveRawUtxoIn,
-} from "./reads.js";
-import {
+  WATCHER_PROOF_PIN_UNITS_TABLE,
+  WATCHER_PROOF_PINS_TABLE,
   WATCHER_QUEUE_UNIT_HISTORY_TABLE,
   WATCHER_UNIT_HISTORY_TABLE,
 } from "./tables.js";
@@ -52,89 +56,6 @@ import { resolveStoredInputIn } from "./tx-inputs.js";
  * refusal. Nothing is fetched by tx
  * id. Otherwise pure reads: no clock and no write.
  */
-
-const samePoint = (
-  left: FraudProofRawL1Point,
-  right: FraudProofRawL1Point,
-): boolean =>
-  left.slot === right.slot &&
-  left.blockHash === right.blockHash &&
-  left.blockNo === right.blockNo &&
-  left.pointId === right.pointId;
-
-/** The point as a canonical stored block, or why it is not one. */
-const canonicalBlock = async (
-  store: FactStore,
-  point: FraudProofRawL1Point,
-): Promise<RawRead<StoredBlock>> => {
-  const hash = Buffer.from(point.blockHash, "hex");
-  const status = await store.pointStatus({ slot: Number(point.slot), hash });
-  if (status.kind !== "canonical") return refused(status.kind, status.detail);
-  const block = await store.blockByHash(hash);
-  if (block === null || !samePoint(rawPointOf(block), point))
-    return refused(
-      "point_not_canonical",
-      "the point's height or id differs from the stored block",
-    );
-  return ok(block);
-};
-
-type Tracked = ReturnType<FactStore["trackedSet"]>;
-
-const isTrackedAddress = (tracked: Tracked, address: CML.Address): boolean => {
-  const payment = address.payment_cred();
-  const credential =
-    payment?.as_script()?.to_hex() ?? payment?.as_pub_key()?.to_hex();
-  return (
-    tracked.addresses.has(
-      Buffer.from(address.to_raw_bytes()).toString("hex"),
-    ) ||
-    (credential !== undefined && tracked.paymentCredentials.has(credential))
-  );
-};
-
-/** Whether the tracked set covers an output (address, credential or policy). */
-const isTrackedOutput = (
-  tracked: Tracked,
-  output: CML.TransactionOutput,
-): boolean => {
-  if (isTrackedAddress(tracked, output.address())) return true;
-  const policies = output.amount().multi_asset().keys();
-  for (let i = 0; i < policies.len(); i += 1)
-    if (tracked.policies.has(policies.get(i).to_hex())) return true;
-  return false;
-};
-
-/** The pruned-through slot, or null while nothing was pruned. */
-const prunedSinceOrigin = async (store: FactStore): Promise<number | null> => {
-  const cursor = await store.cursor();
-  if (cursor === null || cursor.prunedThroughSlot <= cursor.origin.slot)
-    return null;
-  return cursor.prunedThroughSlot;
-};
-
-/**
- * Why the follower holds no row for `outRef`: `unknown` when it provably
- * never held a tracked row for it, else `beyond_retention`.
- */
-const missingRowReason = async (
-  store: FactStore,
-  outRef: OutRef,
-): Promise<"unknown" | "beyond_retention"> => {
-  if ((await prunedSinceOrigin(store)) === null) return "unknown";
-  const creating = await store.txByHash(outRef.txHash);
-  if (creating === null) return "beyond_retention";
-  const body = CML.TransactionBody.from_cbor_bytes(creating.bodyCbor);
-  try {
-    const output = createdOutputOf(body, creating.isValid, outRef.index);
-    if (output === undefined) return "unknown";
-    return isTrackedOutput(store.trackedSet(), output)
-      ? "beyond_retention"
-      : "unknown";
-  } finally {
-    body.free();
-  }
-};
 
 const STATE_QUEUE_NODE_UNIT = (policyId: string): RegExp =>
   new RegExp(
@@ -267,8 +188,8 @@ export const createFollowerRawReads = (
   ) => {
     const match = nodeUnit.exec(unit);
     const followed =
-      /^[0-9a-f]{56}(?:[0-9a-f]{2}){0,32}$/u.test(unit) &&
-      (options.unitHistoryPolicies?.has(unit.slice(0, 56)) ?? false);
+      options.unitHistoryPolicies !== undefined &&
+      recordsUnitHistory(options.unitHistoryPolicies, unit);
     if (match === null && !followed)
       return refused(
         "unit_not_projected",
@@ -276,24 +197,64 @@ export const createFollowerRawReads = (
       );
     const block = await canonicalBlock(store, point);
     if (block.kind !== "ok") return block;
-    const rows = await store.transaction("read", (tx) =>
+    const [key, history, held] =
       match !== null
-        ? tx.query(
-            `SELECT tx_hash, block_hash, block_height, from_slot FROM ${WATCHER_QUEUE_UNIT_HISTORY_TABLE} WHERE header_hash = ? AND from_slot <= ? ORDER BY from_slot, tx_hash`,
-            [Buffer.from(match[1]!, "hex"), block.value.slot],
+        ? [
+            Buffer.from(match[1]!, "hex"),
+            { table: WATCHER_QUEUE_UNIT_HISTORY_TABLE, column: "header_hash" },
+            { table: WATCHER_PROOF_PINS_TABLE, column: "header_hash" },
+          ]
+        : [
+            Buffer.from(unit, "hex"),
+            { table: WATCHER_UNIT_HISTORY_TABLE, column: "unit" },
+            { table: WATCHER_PROOF_PIN_UNITS_TABLE, column: "unit" },
+          ];
+    const read = await store.transaction(
+      "read",
+      async (tx): Promise<RawRead<readonly SqlRow[]>> => {
+        const cursor = (
+          await tx.query(
+            "SELECT origin_slot, pruned_through_slot FROM l1_follower_cursor",
           )
-        : tx.query(
-            `SELECT tx_hash, block_hash, block_height, from_slot FROM ${WATCHER_UNIT_HISTORY_TABLE} WHERE unit = ? AND from_slot <= ? ORDER BY from_slot, tx_hash`,
-            [Buffer.from(unit, "hex"), block.value.slot],
-          ),
+        )[0];
+        const prunedThrough =
+          cursor === undefined ||
+          Number(cursor.pruned_through_slot) <= Number(cursor.origin_slot)
+            ? null
+            : Number(cursor.pruned_through_slot);
+        const rows = await tx.query(
+          `SELECT tx_hash, block_hash, block_height, from_slot FROM ${history.table} WHERE ${history.column} = ? AND from_slot <= ? ORDER BY from_slot, tx_hash`,
+          [key, block.value.slot],
+        );
+        // A unit's rows go once its removal (or burn) is k deep: after any
+        // pruning, no rows may be a history that was pruned.
+        if (prunedThrough !== null && rows.length === 0)
+          return refused(
+            "beyond_retention",
+            `no history of ${unit} is retained; it may have been pruned`,
+          );
+        // Unpinned rows closed at or before the pruned slot sit in a
+        // budget-cut prune step whose siblings may be gone: the same test as
+        // a pin's (`partlyPrunedIn`).
+        if (
+          prunedThrough !== null &&
+          (
+            await tx.query(
+              `SELECT 1 AS one FROM ${held.table} WHERE ${held.column} = ? LIMIT 1`,
+              [key],
+            )
+          ).length === 0 &&
+          (await partlyPrunedIn(tx, prunedThrough, key, [history]))
+        )
+          return refused(
+            "beyond_retention",
+            `a prune step has deleted part of the history of ${unit}`,
+          );
+        return ok(rows);
+      },
     );
-    // A unit's rows go once its removal (or burn) is k deep: after any
-    // pruning, no rows may be a history that was pruned.
-    if (rows.length === 0 && (await prunedSinceOrigin(store)) !== null)
-      return refused(
-        "beyond_retention",
-        `no history of ${unit} is retained; it may have been pruned`,
-      );
+    if (read.kind !== "ok") return read;
+    const rows = read.value;
     return ok({
       checkpoint: point,
       transactions: rows.map((row) => ({
