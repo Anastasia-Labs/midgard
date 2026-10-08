@@ -98,12 +98,25 @@ const writeQueueFacts = (
           cursor[0] === undefined
             ? slot
             : Math.max(slot, Number(cursor[0].slot));
-        const hash = followerBlockHash(tipSlot, generation);
-        yield* sql`INSERT INTO l1_blocks (slot, hash, height, parent_hash, qualifying_tx_count)
-          VALUES (${tipSlot}, ${hash}, ${tipSlot}, NULL, 0) ON CONFLICT DO NOTHING`;
+        // A block already stored at the tip slot (an earlier file's chain in
+        // this worker's database) stays the tip: the cursor must name a
+        // stored block, or P1 reads `point_not_canonical`.
+        const stored = yield* sql<{
+          hash: Uint8Array;
+          height: number | string;
+        }>`SELECT hash, height FROM l1_blocks WHERE slot = ${tipSlot}`;
+        const hash =
+          stored[0] === undefined
+            ? followerBlockHash(tipSlot, generation)
+            : Buffer.from(stored[0].hash);
+        const height =
+          stored[0] === undefined ? tipSlot : Number(stored[0].height);
+        if (stored[0] === undefined)
+          yield* sql`INSERT INTO l1_blocks (slot, hash, height, parent_hash, qualifying_tx_count)
+            VALUES (${tipSlot}, ${hash}, ${tipSlot}, NULL, 0)`;
         yield* sql`INSERT INTO l1_follower_cursor
             (id, slot, hash, height, generation, origin_slot, origin_hash, pruned_through_slot)
-          VALUES (true, ${tipSlot}, ${hash}, ${tipSlot}, ${generation}, 0, ${Buffer.alloc(32)}, 0)
+          VALUES (true, ${tipSlot}, ${hash}, ${height}, ${generation}, 0, ${Buffer.alloc(32)}, 0)
           ON CONFLICT (id) DO UPDATE SET slot = EXCLUDED.slot, hash = EXCLUDED.hash,
             height = EXCLUDED.height`;
         const tx = yield* followerSqlTx;
