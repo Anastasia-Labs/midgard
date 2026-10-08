@@ -8,8 +8,8 @@
  * live root is the frontier and every live node is processed), or with the
  * frontier's header outside the facts, it sets no floor.
  *
- * The prune reports how far the floor holds its boundary back
- * (`floorLagSlots`); readiness shows it as the degraded detail
+ * The prune reports how far the floor holds its boundary back, by the
+ * floor's name (`floorLags`); readiness shows it as the degraded detail
  * `landed_frontier_prune_floor:<lag slots>`.
  */
 import {

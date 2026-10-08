@@ -2,12 +2,10 @@
  * The decision driver's handled-generation marker (`follower-generation.ts`)
  * and its pull by generation (lane SI-fix2, ruling SIFIX-R2):
  *
- * - push and pull meet in one handler that merges the history target before
- *   it deduplicates by generation;
- * - the marker moves only after the history is back at every target and the
- *   replay-transcript retirement reset held;
- * - a pull of a generation this process already rolled the history back
- *   through rolls nothing back again;
+ * - push and pull meet in one handler that deduplicates by generation;
+ * - the marker moves only after the replay-transcript retirement reset held;
+ * - a pull of a generation this process already handled handles nothing
+ *   again;
  * - a failed or still pending retirement reset is a named readiness reason,
  *   and the pass waits for a pending one at most `retryDelayMs`;
  * - migration 0010 seeds the marker from the cursor of a store that has one.
@@ -36,7 +34,6 @@ import { readHandledFollowerGeneration } from "../../src/l1-follower/follower-ge
 import { watcherProjection } from "../../src/l1-follower/projection.js";
 import {
   createWatcherDecisionDriver,
-  WATCHER_DECISION_PASS_FAILED,
   WATCHER_RETIREMENT_RESET_FAILED,
   WATCHER_RETIREMENT_RESET_PENDING,
   type WatcherDecisionDriver,
@@ -70,61 +67,6 @@ afterAll(async () => {
   rmSync(scratch, { recursive: true, force: true });
 });
 
-const native = (point: Point) => ({
-  kind: "point",
-  blockHash: point.hash.toString("hex"),
-  slot: String(point.slot),
-});
-
-/**
- * A user-event history stand-in: it rolls back to a point, forgetting its
- * height (so the next release-final observation advances it again), and
- * can refuse its next rollbacks.
- */
-const historyStub = () => {
-  const rollbacks: unknown[] = [];
-  let refusals = 0;
-  let head = {
-    blockHash: SIM_ORIGIN.point.hash.toString("hex"),
-    slot: String(SIM_ORIGIN.point.slot),
-    blockNo: String(SIM_ORIGIN.height),
-    pointId: "",
-  };
-  return {
-    rollbacks,
-    refuseNext: (count: number) => {
-      refusals = count;
-    },
-    head: () => head,
-    history: {
-      read: () => ({
-        status: "ready" as const,
-        currentPoint: head,
-        headCursor: head,
-        generation: 0,
-      }),
-      advanceThrough: (point: typeof head) => {
-        head = point;
-        return Promise.resolve();
-      },
-      handleRollback: (point: { slot: string; blockHash: string }) => {
-        if (refusals > 0) {
-          refusals -= 1;
-          return Promise.reject(new Error("the history store is busy"));
-        }
-        rollbacks.push(point);
-        head = {
-          ...head,
-          slot: point.slot,
-          blockHash: point.blockHash,
-          blockNo: "0",
-        };
-        return Promise.resolve();
-      },
-    },
-  };
-};
-
 type Step = "reject" | "resolve" | "defer";
 
 /** Retirement whose resets follow `script` (then resolve); `settle` resolves the deferred ones. */
@@ -152,12 +94,9 @@ const scriptedRetirement = (script: readonly Step[]) => {
   };
 };
 
-type History = ReturnType<typeof historyStub>;
-
 const driverOn = (
   store: FactStore,
   c: Collaborators,
-  history: History,
   options: Readonly<{
     retryDelayMs: number;
     retirement?: ReturnType<typeof scriptedRetirement>["retirement"];
@@ -173,7 +112,6 @@ const driverOn = (
       releaseDepth: RELEASE_DEPTH,
       bridge: c.bridge as never,
       availability: c.availability as never,
-      history: history.history as never,
       ...(options.retirement === undefined
         ? {}
         : { retirement: options.retirement }),
@@ -213,7 +151,7 @@ const decided = async (driver: WatcherDecisionDriver, c: Collaborators) => {
 /**
  * A store at a protocol chain's tip: the init, a commit, then `blocks`
  * empty blocks. A first driver decided there (the marker is at generation
- * 0 and the history advanced); the returned chain extends it.
+ * 0); the returned chain extends it.
  */
 const decidedStore = async (name: string, blocks = 6) => {
   const store = openStore(join(scratch, `${name}.db`));
@@ -230,8 +168,7 @@ const decidedStore = async (name: string, blocks = 6) => {
   await forward([commitTx(queueState(chain, D)!, D)]);
   for (let i = 0; i < blocks; i += 1) await forward();
   const c = collaborators();
-  const history = historyStub();
-  const first = driverOn(store, c, history, { retryDelayMs: 10 });
+  const first = driverOn(store, c, { retryDelayMs: 10 });
   await decided(first, c);
   await first.close();
   const marker = () => readHandledFollowerGeneration(store);
@@ -243,27 +180,25 @@ const decidedStore = async (name: string, blocks = 6) => {
     expect((await store.rewind(target)).kind).toBe("rewound");
     return target;
   };
-  return { store, chain, c, history, forward, marker, rewind };
+  return { store, chain, c, forward, marker, rewind };
 };
 
 /** A rewind no driver heard, then the chain extended past its target. */
 const unheardRewind = async (name: string) => {
   const s = await decidedStore(name);
-  const target = await s.rewind(3);
+  await s.rewind(3);
   for (let i = 0; i < 4; i += 1) await s.forward();
-  // The history is above the target: the rollback is owed.
-  expect(BigInt(s.history.head().slot)).toBeGreaterThan(BigInt(target.slot));
-  return { ...s, target };
+  return s;
 };
 
 describe("the decision driver's handled generation", () => {
-  it("merges a pulled lower target before it deduplicates: a push of the next generation that lands first does not hide it", async () => {
+  it("handles a pulled generation once: a push of the next generation that lands first covers it", async () => {
     const s = await decidedStore("merge-before-dedupe", 8);
     // Generation 1, unheard, to a low target; the chain grows again.
     const low = await s.rewind(5);
     for (let i = 0; i < 5; i += 1) await s.forward();
     const rewound: number[] = [];
-    const driver = driverOn(s.store, s.c, s.history, {
+    const driver = driverOn(s.store, s.c, {
       retryDelayMs: 10,
       rewound,
     });
@@ -272,35 +207,14 @@ describe("the decision driver's handled generation", () => {
     expect(high.slot).toBeGreaterThan(low.slot);
     await until("the pass", () => driver.readiness().length === 0);
     await driver.idle();
-    expect(s.history.rollbacks).toEqual([native(low)]);
     expect(rewound).toEqual([2]);
     expect(await s.marker()).toBe(2);
   });
 
-  it("keeps the marker while the history rollback fails, and moves it once the rollback applied", async () => {
-    const s = await unheardRewind("history-fails-once");
-    s.history.refuseNext(1);
-    const driver = driverOn(s.store, s.c, s.history, { retryDelayMs: 60_000 });
-    driver.wake();
-    await until("the failed pass", () => driver.status().lastError !== null);
-    await driver.idle();
-    expect(driver.readiness().map(({ reason }) => reason)).toEqual([
-      WATCHER_DECISION_PASS_FAILED,
-    ]);
-    expect(await s.marker()).toBe(0);
-    expect(s.history.rollbacks).toEqual([]);
-
-    driver.wake();
-    await until("the next pass", () => driver.readiness().length === 0);
-    await driver.idle();
-    expect(s.history.rollbacks).toEqual([native(s.target)]);
-    expect(await s.marker()).toBe(1);
-  });
-
-  it("keeps the marker while the retirement reset fails, names the failure, and moves the marker once the retried reset held, rolling the history back once", async () => {
+  it("keeps the marker while the retirement reset fails, names the failure, and moves the marker once the retried reset held, handling the rewind once", async () => {
     const s = await unheardRewind("reset-fails-once");
     const r = scriptedRetirement(["reject", "defer"]);
-    const driver = driverOn(s.store, s.c, s.history, {
+    const driver = driverOn(s.store, s.c, {
       retryDelayMs: 60_000,
       retirement: r.retirement,
     });
@@ -320,26 +234,21 @@ describe("the decision driver's handled generation", () => {
     expect(await s.marker()).toBe(0);
     // The rewind's reset, and the pass's retry of it.
     expect(r.calls()).toBe(2);
-    expect(s.history.rollbacks).toEqual([native(s.target)]);
-    // The history advanced again past the target in that pass.
-    expect(BigInt(s.history.head().slot)).toBeGreaterThan(
-      BigInt(s.target.slot),
-    );
+    expect(driver.status().rewinds).toBe(1);
 
     // The retry holds: its settling wakes the driver.
     r.settle();
     await eventually("the marker", async () => (await s.marker()) === 1);
     await until("readiness", () => driver.readiness().length === 0);
     await driver.idle();
-    // The pull of the same generation rolled nothing back again.
-    expect(s.history.rollbacks).toEqual([native(s.target)]);
+    // The pull of the same generation handled nothing again.
     expect(driver.status().rewinds).toBe(1);
   });
 
-  it("retries a retirement reset that keeps failing one retry delay apart, names it every pass, and rolls the history back once", async () => {
+  it("retries a retirement reset that keeps failing one retry delay apart, names it every pass, and handles the rewind once", async () => {
     const s = await unheardRewind("reset-keeps-failing");
     const r = scriptedRetirement(["reject", "reject", "reject"]);
-    const driver = driverOn(s.store, s.c, s.history, {
+    const driver = driverOn(s.store, s.c, {
       retryDelayMs: 10,
       retirement: r.retirement,
     });
@@ -354,13 +263,13 @@ describe("the decision driver's handled generation", () => {
     expect(seen).toContain(WATCHER_RETIREMENT_RESET_FAILED);
     expect(seen).not.toContain(WATCHER_RETIREMENT_RESET_PENDING);
     expect(r.calls()).toBe(4);
-    expect(s.history.rollbacks).toEqual([native(s.target)]);
+    expect(driver.status().rewinds).toBe(1);
   });
 
   it("waits for a pending retirement reset at most the retry delay: the pass completes, names the wait, and the marker moves once the reset settles", async () => {
     const s = await unheardRewind("reset-pending");
     const r = scriptedRetirement(["defer"]);
-    const driver = driverOn(s.store, s.c, s.history, {
+    const driver = driverOn(s.store, s.c, {
       retryDelayMs: 20,
       retirement: r.retirement,
     });
@@ -381,7 +290,7 @@ describe("the decision driver's handled generation", () => {
     await eventually("the marker", async () => (await s.marker()) === 1);
     await until("readiness", () => driver.readiness().length === 0);
     expect(r.calls()).toBe(1);
-    expect(s.history.rollbacks).toEqual([native(s.target)]);
+    expect(driver.status().rewinds).toBe(1);
   });
 });
 

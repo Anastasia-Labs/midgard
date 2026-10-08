@@ -87,7 +87,6 @@ describe("production fault decision bridge", () => {
         observationDigest: i.toString(16).padStart(64, "0"),
       };
       h.admitted.add(next);
-      h.bridge.beforeHistoryAdvance();
       await h.bridge.reconcileAndDispatch(next);
     }
     const calls = h.application.classifyHeader.mock.calls.map(
@@ -623,8 +622,6 @@ describe("production fault decision bridge", () => {
         },
       };
       h.admitted.add(next);
-      // Actual follower order: fence history, complete availability recheck, dispatch queue.
-      h.bridge.beforeHistoryAdvance();
       const result = await h.bridge.reconcileAndDispatch(next);
       expect(result.target).toEqual(first.target);
       expect(h.retainedDecisionAuthorities.at(-1)).toBe(
@@ -736,7 +733,6 @@ describe("production fault decision bridge", () => {
         ],
       };
       h.admitted.add(changed);
-      h.bridge.beforeHistoryAdvance();
       expect((await h.bridge.reconcileAndDispatch(changed)).target).toBeNull();
       expect(h.restrictions).toEqual([]);
       expect(h.application.classifyHeader).toHaveBeenCalledOnce();
@@ -1058,35 +1054,30 @@ describe("production fault decision bridge", () => {
     expect(currentHarness.retainedDecisionAuthorities).toEqual([null, null]);
   });
 
-  it.each(["invalidateForRollback", "beforeHistoryAdvance"] as const)(
-    "%s retires authority during an awaited classification",
-    async (invalidate) => {
-      const current = observation([headerFixture("06")]);
-      const [header] = current.finalizedHeaders;
-      let release!: (value: ReturnType<typeof decision>) => void;
-      const waiting = new Promise<ReturnType<typeof decision>>((resolve) => {
-        release = resolve;
-      });
-      const currentHarness = harness({
-        current,
-        categoryByHeader: { [header!.headerHash]: "doubleSpend" },
-        classifyOverride: async () => await waiting,
-      });
-      const preparing = currentHarness.bridge.prepareForRecovery(current);
-      await vi.waitFor(() =>
-        expect(
-          currentHarness.application.classifyHeader,
-        ).toHaveBeenCalledOnce(),
-      );
-      currentHarness.bridge[invalidate]();
-      release(decision(header!.headerHash, "doubleSpend"));
-      await expect(preparing).rejects.toThrow(
-        "authority changed during fault classification",
-      );
-      expect(currentHarness.enqueued).toHaveLength(0);
-      expect(currentHarness.retainedDecisionAuthorities).toEqual([null, null]);
-    },
-  );
+  it("invalidateForRollback retires authority during an awaited classification", async () => {
+    const current = observation([headerFixture("06")]);
+    const [header] = current.finalizedHeaders;
+    let release!: (value: ReturnType<typeof decision>) => void;
+    const waiting = new Promise<ReturnType<typeof decision>>((resolve) => {
+      release = resolve;
+    });
+    const currentHarness = harness({
+      current,
+      categoryByHeader: { [header!.headerHash]: "doubleSpend" },
+      classifyOverride: async () => await waiting,
+    });
+    const preparing = currentHarness.bridge.prepareForRecovery(current);
+    await vi.waitFor(() =>
+      expect(currentHarness.application.classifyHeader).toHaveBeenCalledOnce(),
+    );
+    currentHarness.bridge.invalidateForRollback();
+    release(decision(header!.headerHash, "doubleSpend"));
+    await expect(preparing).rejects.toThrow(
+      "authority changed during fault classification",
+    );
+    expect(currentHarness.enqueued).toHaveLength(0);
+    expect(currentHarness.retainedDecisionAuthorities).toEqual([null, null]);
+  });
 
   it.each([false, true])(
     "canonical queue removal preserves the active invocation until explicit authority loss (%s)",
@@ -1101,8 +1092,6 @@ describe("production fault decision bridge", () => {
       await currentHarness.bridge.reconcileAndDispatch(current);
       const activePermit =
         currentHarness.progressRequests[0]!.fault!.actuationPermit;
-      currentHarness.bridge.beforeHistoryAdvance();
-      expect(currentHarness.revocations).toEqual([]);
       const removed = Object.freeze({
         ...observation([]),
         observationDigest: "55".repeat(32),

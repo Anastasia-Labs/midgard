@@ -234,13 +234,7 @@ export const getReadinessHandler = Effect.gen(function* () {
   // only a settlement worker that keeps dying does.
   const settlementReason = settlementReadinessReason(settlement, Date.now());
   if (settlementReason !== undefined) reasons.push(settlementReason);
-  // Informational: pending signed-header recovery holding history retention
-  // more than the rollback horizon back grows the journal until it resolves.
   const historyOwner = yield* Ref.get(globals.EVENT_HISTORY_OWNER);
-  const eventHistoryRetentionHold =
-    historyOwner === undefined
-      ? null
-      : ((yield* historyOwner.retentionHold) ?? null);
   // The history gate: closed while recovering, and named when an open gate's
   // follower falls further behind the source tip than it may.
   const eventHistoryFrontier =
@@ -421,7 +415,6 @@ export const getReadinessHandler = Effect.gen(function* () {
                 nativeMpfDiagnostics.right.ownerEpoch,
               ).toString("hex"),
             },
-    eventHistoryRetentionHold,
     eventHistoryFrontier,
     l1Follower: l1Follower.report,
     livenessReasons,

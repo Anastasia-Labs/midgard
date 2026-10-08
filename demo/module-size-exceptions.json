@@ -946,7 +946,7 @@
   },
   {
     "file": "midgard-node/src/services/event-history-owner.make-event-history-owner.ts",
-    "max": 963,
+    "max": 957,
     "reason": "makeEventHistoryOwner is the dominant indivisible declaration (952 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1121,7 +1121,7 @@
   },
   {
     "file": "midgard-node/tests/event-history-journal.test.ts",
-    "max": 2201,
+    "max": 2199,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -1136,7 +1136,7 @@
   },
   {
     "file": "midgard-node/tests/event-history-ready-append.test.ts",
-    "max": 902,
+    "max": 901,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -1156,7 +1156,7 @@
   },
   {
     "file": "midgard-node/tests/event-history-retired-membership.test.ts",
-    "max": 859,
+    "max": 858,
     "reason": "admit is the dominant indivisible declaration (148 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1181,7 +1181,7 @@
   },
   {
     "file": "midgard-node/tests/history-source-owner-retention.test.ts",
-    "max": 591,
+    "max": 540,
     "reason": "Retained production-owner lifecycle registration shares its emulator, follower gates and restart state across retention, readiness and rollback assertions. Independent fixture helpers are extracted; dividing the registration requires a separately verified harness refactor."
   },
   {
@@ -1271,7 +1271,7 @@
   },
   {
     "file": "midgard-node/tests/midgard-contracts.test.ts",
-    "max": 540,
+    "max": 538,
     "reason": "Retained test registration “midgard contracts registry” (486 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1501,7 +1501,7 @@
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-decision-bridge.create-bridge.ts",
-    "max": 609,
+    "max": 600,
     "reason": "createBridge is the dominant indivisible declaration (575 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1530,11 +1530,6 @@
     "reason": "openInternal is the dominant indivisible declaration (1404 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W2b-fix R2 (+7): an unused reservation whose recorded decision is missing and whose inputs are spent at a final view is dropped through the same guarded clear as a release, without the signed-history refusal."
   },
   {
-    "file": "midgard-watcher/src/runtime/watcher-runtime.decision-driver.ts",
-    "max": 575,
-    "reason": "createWatcherDecisionDriver is one state owner: the pass, the push and pull rewind handler, the history rollback target, the handled-generation marker and the retirement reset it waits on share private state and ordering invariants (the target merges before the generation dedupe; the marker moves only after the history rollback and a held reset). Splitting them apart would expose that state across modules rather than separate independent declarations. SI-fix2 (+86): the marker waits on the retirement reset, bounded by the retry delay, with named readiness reasons, and the pull reads from the generation this process already rolled the history back through. W3 (-1): the user-event runtime import is gone (the runtime is deleted) and the driver declares its history port locally."
-  },
-  {
     "file": "midgard-watcher/tests/availability/concurrent-challenges.test.ts",
     "max": 966,
     "reason": "Retained concurrent challenge registrations share the imported hoisted mock fixture. Fixture setup and independent held workflow regression were extracted and verified separately; further division needs a fixture lifetime refactor. W2b-fix (+2): the readiness fixture's supervisor stub reports healthy journals (journalIntegrity and journalUnavailable null), as every readiness reason reads them. W2b-fix R2 (+1): the stub also reports no missing-decision holds (journalDecisionMissing empty). W2b-R3 (+1): the stub also reports no busy database (journalBusy null)."
@@ -1546,7 +1541,7 @@
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/fault-decision-bridge.test.ts",
-    "max": 1267,
+    "max": 1256,
     "reason": "Retained test registration “production fault decision bridge” (1248 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {

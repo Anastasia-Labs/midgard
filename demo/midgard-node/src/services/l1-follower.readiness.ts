@@ -27,9 +27,12 @@
  * readiness by name; none stops the process, and `/healthz` stays live.
  *
  * One degradation is a detail, leaving the node ready:
- * `landed_frontier_prune_floor:<slots>` while the landed frontier's prune
- * floor holds the follower's prune boundary that many slots back (the facts
- * the frontier still needs are kept; the store grows until it moves).
+ * `<floor>_prune_floor:<slots>` for each role prune floor that holds the
+ * follower's prune boundary that many slots back, named by the declaring
+ * floor (`landed_frontier_prune_floor` for the landed frontier,
+ * `intent_journal_replay_prune_floor` for the intent journal's replay,
+ * `operator_activity_record_prune_floor` for the operator-activity record).
+ * The facts the floor still needs are kept; the store grows until it moves.
  *
  * The report also carries `confirmedLedger`: the confirmed-ledger frontier,
  * the slot of its merge and that merge's level (`landed`, `safe`, `final`).
@@ -63,9 +66,6 @@ export const cursorKey = (status: FollowStatus): string | null =>
     ? null
     : `${status.cursor.generation.toString()}:${status.cursor.slot.toString()}`;
 
-/** The landed frontier's prune floor holds the follower's prune boundary back (detail, with the lag in slots). */
-export const LANDED_FRONTIER_PRUNE_FLOOR = "landed_frontier_prune_floor";
-
 const starting = {
   state: "starting",
   interventions: [],
@@ -84,7 +84,7 @@ const starting = {
     steps: 0,
     prunedThroughSlot: null,
     lastError: null,
-    floorLagSlots: null,
+    floorLags: [],
     failures: 0,
   },
 } as const;
@@ -196,12 +196,9 @@ export const l1FollowerReadiness = (
     if (!reasons.includes(reason)) reasons.push(reason);
   return {
     reasons,
-    details:
-      status.prune.floorLagSlots === null
-        ? []
-        : [
-            `${LANDED_FRONTIER_PRUNE_FLOOR}:${status.prune.floorLagSlots.toString()}`,
-          ],
+    details: status.prune.floorLags.map(
+      ({ floor, lagSlots }) => `${floor}_prune_floor:${lagSlots.toString()}`,
+    ),
     report: {
       state: status.state,
       readiness,

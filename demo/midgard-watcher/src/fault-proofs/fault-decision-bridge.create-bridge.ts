@@ -590,15 +590,6 @@ export const createBridge = (input: {
     },
     dispatchPrepared,
     invalidateForRollback: () => invalidate("native_chain_rollback"),
-    beforeHistoryAdvance: () => {
-      // Ordinary canonical append cannot revoke an already classified historical
-      // fault before the following queue observation can reconcile its removal.
-      // Rollback uses the invalidator above.
-      classificationEpoch += 1;
-      input.dependencies.retainDecisionAuthorities(
-        targetDecision?.decisionDigest ?? null,
-      );
-    },
     invalidateForShutdown: () => invalidate("watcher_shutdown"),
     status: () =>
       Object.freeze({

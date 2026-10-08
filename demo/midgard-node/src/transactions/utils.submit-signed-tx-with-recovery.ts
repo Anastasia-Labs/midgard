@@ -1,4 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { LucidEvolution, TxSignBuilder } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
@@ -20,7 +21,6 @@ import {
   DEFAULT_SIGNED_TX_INLINE_WAIT_MS,
   EARLY_VALIDITY_RETRY_SLOT_BUFFER,
   INIT_RETRY_AFTER_MILLIS,
-  isUnknownOutputReferenceSubmitError,
   parseOutsideValidityIntervalDetails,
   resolveEarlyValidityRetry,
   RETRY_ATTEMPTS,
@@ -387,7 +387,7 @@ export const submitSignedTxWithRecovery = (
       }
 
       if (
-        isUnknownOutputReferenceSubmitError(e) &&
+        isSpentInputSubmitRejection(e) &&
         options.inlineWaitPolicy === "defer_positive_wait" &&
         options.unknownInputsFailFast === true
       ) {
@@ -402,7 +402,7 @@ export const submitSignedTxWithRecovery = (
         );
       }
 
-      if (isUnknownOutputReferenceSubmitError(e)) {
+      if (isSpentInputSubmitRejection(e)) {
         yield* Effect.logWarning(
           `Tx submit reported unknown inputs for ${txHash}; verifying the exact transaction through provider-neutral status before failing: ${submitError}`,
         );

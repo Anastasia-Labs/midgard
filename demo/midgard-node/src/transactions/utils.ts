@@ -33,7 +33,6 @@ export {
 export { fetchFirstBlockTxs } from "./utils.fetch-first-block-txs.js";
 export {
   EARLY_VALIDITY_RETRY_SLOT_BUFFER,
-  isUnknownOutputReferenceSubmitError,
   type OutsideValidityIntervalDetails,
   parseOutsideValidityIntervalDetails,
   resolveEarlyValidityRetry,

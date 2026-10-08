@@ -408,7 +408,7 @@ describe.each(adapters)("fact store ($name)", (adapter) => {
       expect(await store.prune()).toMatchObject({
         done: true,
         prunedThroughSlot: 101,
-        floorLagSlots: 2,
+        floorLags: [{ floor: "first", lagSlots: 2 }],
       });
       // TX1#0 was spent at 103, above the floor: kept, and readable at b2.
       expect(await store.output({ txHash: TX1, index: 0 })).not.toBeNull();
@@ -420,16 +420,40 @@ describe.each(adapters)("fact store ($name)", (adapter) => {
       floors[1] = 200;
       expect(await store.prune()).toMatchObject({
         prunedThroughSlot: 103,
-        floorLagSlots: null,
+        floorLags: [],
       });
       expect(await store.output({ txHash: TX1, index: 0 })).toBeNull();
       // The boundary never moves back below what was pruned.
       floors[0] = 100;
       expect(await store.prune()).toMatchObject({
         prunedThroughSlot: 103,
-        floorLagSlots: null,
+        floorLags: [],
       });
       expect((await store.checkInvariants()).ok).toBe(true);
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("names every lagging floor by its declared name, each with its own lag", async () => {
+    const { store } = await started(adapter, 1, 3, {
+      pruneFloors: [
+        { name: "first", floor: () => Promise.resolve(102) },
+        { name: "idle", floor: () => Promise.resolve(null) },
+        { name: "second", floor: () => Promise.resolve(101) },
+        { name: "above", floor: () => Promise.resolve(104) },
+      ],
+    });
+    try {
+      // The boundary k=1 below the tip is b2 (103); the lowest floor (101)
+      // holds it, and each floor below 103 is named with its own lag.
+      expect(await store.prune()).toMatchObject({
+        prunedThroughSlot: 101,
+        floorLags: [
+          { floor: "first", lagSlots: 1 },
+          { floor: "second", lagSlots: 2 },
+        ],
+      });
     } finally {
       await store.close();
     }

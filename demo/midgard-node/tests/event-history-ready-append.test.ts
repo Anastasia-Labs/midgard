@@ -533,7 +533,6 @@ const appendReady = (
       {
         tipHeight: prepared.block.point.height,
         horizon,
-        holdSlot: undefined,
       },
     ).pipe(
       Effect.tap((appended) =>

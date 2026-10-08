@@ -1737,7 +1737,6 @@ describe("bounded journal retention", () => {
     (height: number): Journal.Retention => ({
       tipHeight: height,
       horizon,
-      holdSlot: undefined,
     });
 
   it("prunes nothing below the horizon, then advances the anchor and deletes the rows behind it atomically", async () => {
@@ -1862,7 +1861,6 @@ describe("bounded journal retention", () => {
     const farTip = () => ({
       tipHeight: 1_000_000,
       horizon: 5,
-      holdSlot: undefined,
     });
     current = await forward(token, current, last + 1, farTip);
     expect(current.anchor.height).toBe(1 + Journal.RETENTION_BATCH);

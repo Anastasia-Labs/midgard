@@ -102,6 +102,7 @@ describe("splitSqlStatements", () => {
       { version: 14, name: "confirmed_ledger_merges", transactional: true },
       { version: 15, name: "settlement_status_derived", transactional: true },
       { version: 16, name: "receipt_rejections", transactional: true },
+      { version: 17, name: "drop_settlement_hold_slot", transactional: true },
     ]);
   });
 

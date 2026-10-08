@@ -23,7 +23,6 @@ export {
   type HistoryOwnerFrontier,
   HistoryOwnerUnavailable,
   type HistoryReconciliationPending,
-  type HistoryRetentionHold,
   PENDING_RECONCILIATION_BACKOFF_INITIAL_MS,
   PENDING_RECONCILIATION_BACKOFF_MAX_MS,
   PENDING_RECONCILIATION_BLOCKED_WARN_INTERVAL_MS,

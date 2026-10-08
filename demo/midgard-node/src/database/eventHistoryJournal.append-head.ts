@@ -312,7 +312,6 @@ const appendHead = (
       applied: true as const,
       after,
       changes: prepared.changes,
-      hold: kept.hold,
     };
   });
 
@@ -345,6 +344,5 @@ export const append = <A, E, R>(
       applied: true as const,
       revision: appended.after.revision,
       result,
-      hold: appended.hold,
     };
   }).pipe(sqlErrorToDatabaseError(table, "Failed to append history journal"));
