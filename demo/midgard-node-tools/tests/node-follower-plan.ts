@@ -2,7 +2,7 @@
  * Reads a builder's node environment with the node's own parsers and asks the
  * node whether its L1 follower runs (`l1FollowerPlan`), for a deployed
  * contracts fixture carrying the event-history lists, the hub oracle, the
- * state queue and the forced-order contracts.
+ * state queue, the operator set and the forced-order contracts.
  */
 import { ConfigProvider, Effect } from "effect";
 import { hubOracleOriginConfig } from "midgard-node/services/config.hub-oracle-origin";
@@ -21,11 +21,20 @@ const eventList = (byte: string) => ({
   retirement: { withdrawalScriptHash: byte.repeat(28) },
 });
 
-/** A deployment with both event lists, the hub oracle, the state queue and
- * the forced-order contracts. */
+const operatorContract = (byte: string) => ({
+  policyId: byte.repeat(28),
+  spendingScriptAddress: SCRIPT_ADDRESS,
+});
+
+/** A deployment with both event lists, the hub oracle, the state queue, the
+ * operator set and the forced-order contracts. */
 export const deployedContracts = {
   eventHistory: { deposit: eventList("d1"), withdrawal: eventList("e2") },
-  hubOracle: { policyId: "ab".repeat(28) },
+  hubOracle: operatorContract("ab"),
+  registeredOperators: operatorContract("b6"),
+  activeOperators: operatorContract("b7"),
+  retiredOperators: operatorContract("b8"),
+  scheduler: operatorContract("b9"),
   stateQueue: {
     policyId: "c3".repeat(28),
     spendingScriptAddress: SCRIPT_ADDRESS,
