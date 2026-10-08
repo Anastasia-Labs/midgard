@@ -16,6 +16,13 @@ export const FOLLOWER_APPLY_STUCK = "l1_follower_apply_stuck";
  * look; the process stays up and keeps retrying.
  */
 export const FOLLOWER_MIGRATION_FAILED = "l1_follower_migration_failed";
+/**
+ * The configured protocol tracked set added an item the store's record did
+ * not hold (or the store had no record): the start reset the store and the
+ * loop replays from the origin. Transient: cleared, in the store too, the
+ * first time the loop reports the cursor at the node tip.
+ */
+export const FOLLOWER_TRACKED_SET_CHANGED = "tracked_set_changed";
 
 /** A named reason a role's `/readyz` reports while the follower holds it unready. */
 export type FollowReadinessReason =
@@ -23,7 +30,8 @@ export type FollowReadinessReason =
   | typeof FOLLOWER_CATCHING_UP
   | typeof FOLLOWER_WAITING
   | typeof FOLLOWER_APPLY_STUCK
-  | typeof FOLLOWER_MIGRATION_FAILED;
+  | typeof FOLLOWER_MIGRATION_FAILED
+  | typeof FOLLOWER_TRACKED_SET_CHANGED;
 
 export type FollowReadiness = Readonly<{
   reason: FollowReadinessReason;
@@ -62,6 +70,8 @@ export type FollowStatus = Readonly<{
   tip: Readonly<{ slot: number; height: number }> | null;
   /** The cursor equals that tip. */
   atTip: boolean;
+  /** A tracked-set reset is replaying from the origin; cleared at the first `atTip`. */
+  replaying: boolean;
   /** Events applied by this loop. */
   events: number;
   /** The latest failure, cleared by the next applied event. */
@@ -122,6 +132,12 @@ export const readinessOf = (
     reasons.push({
       reason: FOLLOWER_WAITING,
       detail: `${status.waiting.cause}: ${status.waiting.detail}`,
+    });
+  if (status.replaying)
+    reasons.push({
+      reason: FOLLOWER_TRACKED_SET_CHANGED,
+      detail:
+        "the tracked set gained items the stored facts lacked; replaying from the origin until the cursor reaches the node tip",
     });
   if (!status.atTip)
     reasons.push({

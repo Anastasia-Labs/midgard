@@ -61,7 +61,8 @@ const refuseOutsideReferences = async (
   }
 };
 
-const resetIn = async (
+/** The reset's deletes and fence, inside the caller's write transaction. */
+export const resetIn = async (
   tx: SqlTx,
   dialect: Dialect,
 ): Promise<Exclude<ResetResult, StoreLocked>> => {

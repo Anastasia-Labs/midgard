@@ -5,7 +5,8 @@ import {
 
 import { decodeLedgerUtxos, type LedgerUtxo } from "../decode/utxo.js";
 import type { FactStore } from "../store/fact-store.js";
-import type { OutRef, Point, TrackedSet } from "../types.js";
+import { withTrackedAddresses } from "../store/tracked-set-record.js";
+import type { OutRef, Point } from "../types.js";
 import { transportPoint } from "./chain-sync.js";
 
 /** The ledger-state reads the seed needs (an `L1NodeTransport`). */
@@ -178,18 +179,7 @@ export const seedWallets = async (
   return last;
 };
 
-/** The tracked set with `addresses` added. */
-export const withTrackedAddresses = (
-  set: TrackedSet,
-  addresses: readonly Buffer[],
-): TrackedSet => ({
-  addresses: new Set([
-    ...set.addresses,
-    ...addresses.map((address) => address.toString("hex")),
-  ]),
-  paymentCredentials: set.paymentCredentials,
-  policies: set.policies,
-});
+export { withTrackedAddresses };
 
 export type WalletSeedStatus =
   | Readonly<{ kind: "ready" }>
@@ -229,7 +219,7 @@ export const createWalletSeeder = (
   input: Readonly<{
     store: FactStore;
     ledger: WalletLedger;
-    /** The role's own wallets; they must already be in the store's tracked set. */
+    /** The role's own wallets; they must already be in the store's tracked set (`FactStoreOptions.wallets`). */
     wallets: readonly Buffer[];
     attempts?: number;
   }>,

@@ -60,6 +60,14 @@ import {
   type SeedOutput,
   type SeedResult,
 } from "./seed.js";
+import {
+  checkTrackedSetIn,
+  endTrackedSetReplayIn,
+  readTrackedSetRecordIn,
+  type TrackedSetCheck,
+  type TrackedSetRecord,
+  withTrackedAddresses,
+} from "./tracked-set-record.js";
 import { currentViewIn, viewValidIn } from "./view.js";
 import {
   bumpWriterEpochIn,
@@ -90,6 +98,10 @@ export type StartResult =
       cursor: Cursor | null;
       liveOutRefs: number;
       migrated: readonly string[];
+      /** The configured protocol tracked set against the store's record. */
+      trackedSet: TrackedSetCheck;
+      /** A tracked-set reset is replaying from the origin (`tracked_set_changed`). */
+      replaying: boolean;
     }>
   | Intervention
   | StoreLocked;
@@ -101,8 +113,10 @@ export type InitializeResult =
 export type FactStoreOptions = Readonly<{
   /** The security parameter k in blocks (2,160 on mainnet and preprod). */
   securityParameter: number;
-  /** The role's static tracked set (§5.2); replace with `setTrackedSet`. */
+  /** The role's protocol tracked set (§5.2), recorded (`tracked-set-record.ts`). */
   trackedSet: TrackedSet;
+  /** Own wallets: tracked by address, seeded (§5.3 step 4), never recorded. */
+  wallets?: readonly Buffer[];
   /** The role's D-t tables (§7.2). */
   temporalTables?: readonly TemporalTableSpec[];
   /** The role's migrations (D-t tables and others), applied after the follower's. */
@@ -151,6 +165,10 @@ export type FactStore = Readonly<{
   /** The protocol-init fact for `oneShot`; it outlives the pruning of the init tx. */
   protocolInit(oneShot: OutRef): Promise<reads.TxSpending | null>;
   trackedSet(): TrackedSet;
+  /** The recorded protocol tracked set and its `replaying` flag; null before `initialize`. */
+  trackedSetRecord(): Promise<TrackedSetRecord | null>;
+  /** Clears `replaying` once the follower reported the cursor at the node tip; true when it was set. */
+  endTrackedSetReplay(): Promise<boolean | StoreError | StoreLocked>;
   /** Whether an outref is a live tracked row (the in-memory set). */
   isTrackedLive(outRef: OutRef): boolean;
   liveOutRefCount(): number;
@@ -244,7 +262,7 @@ export const createFactStore = (
   const lane = new Lane();
   const live = new Set<string>();
   const listeners = new Set<GenerationListener>();
-  let tracked = options.trackedSet;
+  let tracked = withTrackedAddresses(options.trackedSet, options.wallets ?? []);
   let protocolInitOneShot: OutRef | null = null;
   let broken: Intervention | null = null;
   let started = false;
@@ -281,6 +299,15 @@ export const createFactStore = (
       return run(tx);
     });
 
+  const notify = (rewound: Rewound): void => {
+    for (const listener of listeners)
+      try {
+        listener({ generation: rewound.generation, rewound });
+      } catch {
+        // A listener's failure never undoes or blocks a committed rewind.
+      }
+  };
+
   const markBroken = (detail: string): Intervention => {
     broken = integrity(detail);
     return broken;
@@ -311,6 +338,11 @@ export const createFactStore = (
           followerMigrations(dialect.name),
           ...(options.migrations ?? []),
         ]);
+        const check = await backend.transaction("write", (tx) =>
+          checkTrackedSetIn(tx, dialect, options.trackedSet),
+        );
+        // To every listener the reset is a rewind to the origin.
+        if (check.kind === "reset") notify(check.rewound);
         epoch = await backend.transaction("write", bumpWriterEpochIn);
         const report = await checkInvariants();
         if (!report.ok)
@@ -333,15 +365,25 @@ export const createFactStore = (
           (outRef) => live.add(outRefKey(outRef)),
         );
         const cursor = await read((tx) => reads.tipIn(tx, dialect));
+        const replaying = (await read(readTrackedSetRecordIn))?.replaying;
         started = true;
-        return { kind: "ready", cursor, liveOutRefs: count, migrated: applied };
+        return {
+          kind: "ready",
+          cursor,
+          liveOutRefs: count,
+          migrated: applied,
+          trackedSet: check,
+          replaying: replaying ?? false,
+        };
       }),
     initialize: (origin) =>
       lane.run(async () => {
         const refusal = writeRefusal();
         if (refusal !== null) return refusal;
         try {
-          return await fencedWrite((tx) => initializeIn(tx, dialect, origin));
+          return await fencedWrite((tx) =>
+            initializeIn(tx, dialect, origin, options.trackedSet),
+          );
         } catch (error) {
           return { kind: "error", error: asError(error) } as const;
         }
@@ -394,12 +436,7 @@ export const createFactStore = (
         if (result.kind !== "rewound") return result;
         for (const outRef of result.deleted) live.delete(outRefKey(outRef));
         for (const outRef of result.unspent) live.add(outRefKey(outRef));
-        for (const listener of listeners)
-          try {
-            listener({ generation: result.generation, rewound: result });
-          } catch {
-            // A listener's failure never undoes or blocks a committed rewind.
-          }
+        notify(result);
         return result;
       }),
     insertSeedOutputs: (at, outputs) =>
@@ -424,6 +461,17 @@ export const createFactStore = (
       tracked = next;
     },
     trackedSet: () => tracked,
+    trackedSetRecord: () => read(readTrackedSetRecordIn),
+    endTrackedSetReplay: () =>
+      lane.run(async () => {
+        const refusal = writeRefusal();
+        if (refusal !== null) return refusal;
+        try {
+          return await fencedWrite(endTrackedSetReplayIn);
+        } catch (error) {
+          return { kind: "error", error: asError(error) } as const;
+        }
+      }),
     watchProtocolInit: (oneShot) => {
       protocolInitOneShot = oneShot;
     },

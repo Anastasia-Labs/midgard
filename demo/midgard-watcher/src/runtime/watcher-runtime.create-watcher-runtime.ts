@@ -64,6 +64,7 @@ import { createWatcherRuntimeLifecycle } from "./watcher-runtime.create-lifecycl
 import {
   createWatcherDecisionDriver,
   type WatcherDecisionDriver,
+  watcherFollowerStarted,
 } from "./watcher-runtime.decision-driver.js";
 import { createWatcherL1Readiness } from "./watcher-runtime.l1-readiness.js";
 import { type WatcherRuntime } from "./watcher-runtime.launch-checks.js";
@@ -408,7 +409,10 @@ export const createWatcherRuntime = async (input: {
         retryDelayMs: watcherConfig.l1.requestTimeoutMs,
         log: (line) => process.stderr.write(`watcher decisions: ${line}\n`),
       },
-      { atTip: () => activeFollower.status()?.atTip === true },
+      {
+        atTip: () => activeFollower.status()?.atTip === true,
+        started: () => watcherFollowerStarted(activeFollower.status()),
+      },
     );
     decisionDriver = activeDriver;
     unsubscribeL1 = [

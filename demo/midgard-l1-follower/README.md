@@ -44,7 +44,8 @@ import { decodeBlock, openPostgresFactStore } from "@al-ft/midgard-l1-follower";
 const store = openPostgresFactStore({
   connection: { connectionString: process.env.DATABASE_URL! },
   securityParameter: 2160,
-  trackedSet, // addresses, payment credentials and policies (hex)
+  trackedSet, // protocol addresses, payment credentials and policies (hex); recorded
+  wallets, // own wallet addresses: tracked, seeded, never recorded
   temporalTables, // the role's D-t tables
   migrations: [roleMigrations], // creates them, with class headers
   derivations: [roleDerivation], // writes them, in the block's transaction
@@ -196,6 +197,38 @@ come from `PGPASSWORD` rather than the connection string. The same operation
 is `resetToOrigin(backend)`, which returns
 `{ kind: "reset", tables, nextGeneration } | StoreLocked`.
 
+### The tracked-set record
+
+The facts are complete from the origin only for the tracked set they were
+applied under (§5.3). The store records the role's protocol tracked set
+(`FactStoreOptions.trackedSet`: addresses, payment credentials and policies,
+as sorted lowercase hex) in the bookkeeping table `l1_follower_tracked_set`,
+which reset keeps. `initialize` writes it. Own wallets
+(`FactStoreOptions.wallets`) are tracked by address but never recorded: the
+wallet seed (below) covers them, and adding one never resets the store.
+
+Each `start()` that finds a cursor compares the configured protocol set with
+the record (`StartResult.trackedSet`):
+
+- `equal`: nothing happens;
+- `removed` (removals only): the record is rewritten; rows for the removed
+  items stay until their own retention rule removes them;
+- `reset` (any addition, `cause: "added"`, or no record on a store built
+  before the record existed, `cause: "unrecorded"`): in one transaction the
+  start deletes what `reset --to-origin` deletes (classes A, D-t and D-x;
+  class B and class C rows are kept), rewrites the record with its
+  `replaying` flag set, and raises the next generation. After the commit the
+  generation listeners hear it as a rewind from the old cursor to the origin
+  (`deleted` is every outref that was live), and the follow loop initializes
+  at the configured origin and replays. The loop logs the added items once.
+
+While `replaying` is set the loop's status has `replaying: true` and the
+role is unready with `tracked_set_changed` (transient). The loop clears the
+flag in the store the first time it reports the cursor at the node tip. The
+process never exits and no operator step is needed. A role reads the flag
+with `trackedSetRecord()`, for work that must wait out the replay (the
+watcher keeps its tx-input sweep off while it is set).
+
 ## API
 
 Value types (`Point`, `BlockSummary`, `TxSummary`, `OutputSummary`, `OutRef`,
@@ -221,7 +254,8 @@ type PostgresConnection =
 
 type FactStoreOptions = {
   securityParameter: number; // k in blocks
-  trackedSet: TrackedSet;
+  trackedSet: TrackedSet; // the protocol set, recorded (above)
+  wallets?: readonly Buffer[]; // own wallet addresses, tracked but never recorded
   temporalTables?: readonly TemporalTableSpec[];
   migrations?: readonly MigrationSet[];
   derivations?: readonly DerivationHook[];
@@ -236,7 +270,7 @@ and every write below can also return `StoreLocked` (the lease was lost).
 
 | Member                                                | Result                                                                                                                                                                                    |
 | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `start()`                                             | `{ kind: "ready", cursor, liveOutRefs, migrated } \| Intervention \| StoreLocked`                                                                                                         |
+| `start()`                                             | `{ kind: "ready", cursor, liveOutRefs, migrated, trackedSet, replaying } \| Intervention \| StoreLocked` (`trackedSet`: `unchecked`, `equal`, `removed` or `reset`, above)                |
 | `initialize({ point, height })`                       | `initialized \| already_initialized \| origin_mismatch` (with `cursor`), or `StoreError`                                                                                                  |
 | `applyBlock(block)`                                   | `BlockApplied { cursor, qualified, created, spent } \| ApplyRejection { reason: "not_initialized" \| "not_on_cursor" } \| Intervention \| StoreError`                                     |
 | `rewind(target: Point)`                               | `Rewound { generation, from, to, depth, cursor, unspent, deleted } \| RewindNoop \| Intervention \| StoreError`                                                                           |
@@ -245,8 +279,9 @@ and every write below can also return `StoreLocked` (the lease was lost).
 | `checkInvariants()`                                   | `InvariantReport { ok, violations }` (full INV1–INV6)                                                                                                                                     |
 | `cursor()`                                            | `Cursor \| null`                                                                                                                                                                          |
 | `currentView()` / `viewValid(view)`                   | `View \| null` / `boolean`                                                                                                                                                                |
-| `onGeneration(listener)`                              | unsubscribe function; called after each committed rewind                                                                                                                                  |
-| `setTrackedSet(set)` / `trackedSet()`                 | replaces / returns the static tracked set                                                                                                                                                 |
+| `onGeneration(listener)`                              | unsubscribe function; called after each committed rewind, and after a tracked-set reset (as a rewind to the origin)                                                                       |
+| `setTrackedSet(set)` / `trackedSet()`                 | replaces / returns the in-memory tracked set (the protocol set plus wallets); the record is unchanged                                                                                     |
+| `trackedSetRecord()` / `endTrackedSetReplay()`        | the recorded protocol set and its `replaying` flag (null before `initialize`) / clears the flag (the follow loop does, at the first tip)                                                  |
 | `isTrackedLive(outRef)` / `liveOutRefCount()`         | the in-memory live tracked-outref set                                                                                                                                                     |
 | `transaction(mode, run)`                              | a raw `SqlTx` on the store's backend (`"read"` snapshot or `"write"`)                                                                                                                     |
 | `close()`                                             | releases the writer lease and the backend after queued writes                                                                                                                             |
@@ -377,7 +412,8 @@ into, class B rows.
 The migration runner records every table a migration declares, with its
 class, in the catalog `l1_follower_tables`, and refuses a migration whose
 table lacks its header. The bookkeeping tables (`l1_follower_migrations`,
-`l1_follower_tables`, `l1_follower_writer`, in `FOLLOWER_BOOKKEEPING_DDL`)
+`l1_follower_tables`, `l1_follower_writer`, `l1_follower_tracked_set`, in
+`FOLLOWER_BOOKKEEPING_DDL`)
 are created before any migration and are not in the catalog. The lints load the TypeScript
 compiler, so they are kept out of the runtime entry point.
 
@@ -388,6 +424,9 @@ seedWallets(store, ledger: WalletLedger, addresses: Buffer[], attempts = 3): Pro
 createWalletSeeder({ store, ledger, wallets }): WalletSeeder
 // WalletLedger = Pick<L1NodeTransport, "withLedgerState">
 ```
+
+The role passes its own wallets to the store as `FactStoreOptions.wallets`
+(tracked by address, never in the tracked-set record) and to the seeder.
 
 Own wallets can hold UTxOs the follower never stored: created before the
 origin, or paid to a wallet after the origin while it was not tracked (also
@@ -478,6 +517,7 @@ type FollowStatus = {
   cursor: { slot: number; height: number; generation: number } | null;
   tip: { slot: number; height: number } | null; // the node tip of the last applied event
   atTip: boolean; // the cursor is that tip
+  replaying: boolean; // a tracked-set reset is replaying; cleared at the first atTip
   events: number; // events applied by this loop
   lastError: string | null; // cleared by the next applied event
   prune: {
@@ -502,6 +542,7 @@ own concern (the loop never makes the process unhealthy). Its reasons:
 | `l1_follower_apply_stuck`           | one event failed to apply `stuckAfter` times in a row, or once with a deterministic failure (an undecodable block, a constraint or data error). The loop keeps retrying; the next applied event clears it.                              |
 | `l1_follower_migration_failed`      | the store refused its migrations at start (a recorded migration whose text changed, or one that failed). The process stays up and the loop keeps retrying the start; a start whose migrations apply clears it.                          |
 | `l1_follower_waiting`               | backing off from a transient failure: the writer lease (`store_locked`), a stream failure or end (`stream`), a failed start or read (`store`), an apply failure below the stuck threshold (`apply`). Cleared by the next applied event. |
+| `tracked_set_changed`               | a start found an addition to the protocol tracked set (or no record) and reset the store; the loop replays from the origin. Transient; cleared, in the store too, at the first report at the node tip.                                  |
 | `l1_follower_catching_up`           | the cursor is not at the node tip of the last applied event (and before the first one). A role whose decisions stay safe on a lagging view may ignore it.                                                                               |
 
 `classifyFailure` sorts a failed write: `transient` (Postgres SQLSTATE

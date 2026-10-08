@@ -319,7 +319,6 @@ export const startL1Follower = Effect.gen(function* () {
               // The protocol-init tx qualifies through the hub oracle mint;
               // the rest is the intent journal's invariant (§8.2).
               trackedSet: nodeIntentTrackedSet({
-                seededAddresses,
                 protocolPaymentCredentials:
                   protocolPaymentCredentials(contracts),
                 hubOraclePolicyId: plan.hubOraclePolicyId,
@@ -327,6 +326,8 @@ export const startL1Follower = Effect.gen(function* () {
             },
             "postgres",
           ),
+          // Seeded (§5.3 step 4), never in the tracked-set record.
+          wallets: seededAddresses,
           connection: {
             connectionString: plan.connectionString,
             maxConnections: 4,
@@ -441,6 +442,7 @@ export const startL1Follower = Effect.gen(function* () {
     cursor: null,
     tip: null,
     atTip: false,
+    replaying: false,
     events: 0,
     lastError: null,
     prune: { steps: 0, prunedThroughSlot: null, lastError: null },

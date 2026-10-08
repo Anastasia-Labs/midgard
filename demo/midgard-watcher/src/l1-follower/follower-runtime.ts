@@ -9,7 +9,6 @@ import {
   projectionStoreOptions,
   WALLET_SEED_PENDING,
   type WalletSeedStatus,
-  withTrackedAddresses,
 } from "@al-ft/midgard-l1-follower";
 import { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
 import { getAddressDetails } from "@lucid-evolution/lucid";
@@ -136,17 +135,16 @@ export const openWatcherFollowerRuntime = (
         securityParameter: watcherSecurityParameter(
           input.automaticRecoveryMaxDepth,
         ),
-        trackedSet: withTrackedAddresses(
-          {
-            addresses: new Set(),
-            paymentCredentials: new Set(),
-            policies: new Set(),
-          },
-          wallets,
-        ),
+        trackedSet: {
+          addresses: new Set(),
+          paymentCredentials: new Set(),
+          policies: new Set(),
+        },
       },
       "sqlite",
     ),
+    // Seeded (§5.3 step 4), never in the tracked-set record.
+    wallets,
     path: input.storePath,
   });
   const rawReads = createFollowerRawReads(store, {
