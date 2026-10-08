@@ -302,6 +302,21 @@ export const createWatcherReplayTranscriptLifecycle = (input: {
       writeSummary(key, unresolvedLegacy);
     },
     ...operationDoors,
+    /**
+     * Whether a proof was handed a challenge built from this identity's
+     * transcript and has not finished: a workflow may have journaled that
+     * challenge's digest.
+     */
+    proofOperationOpen: async (
+      identity: WatcherReplayTranscriptIdentity,
+    ): Promise<boolean> =>
+      transaction("BEGIN", () => {
+        const key = identityKey(identity);
+        audit(key);
+        return check(key).some(
+          (pin) => pin.proof_started === 1 && pin.completed_slot === null,
+        );
+      }),
     resetRetirementWitnesses: async (): Promise<void> =>
       transaction("BEGIN IMMEDIATE", () => absence.clear()),
     retireExpired: async (

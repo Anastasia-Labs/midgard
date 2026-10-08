@@ -40,7 +40,6 @@ export {
   type TimeoutCorrectionRecovery,
 } from "./remove-unattested-block.reconcile-last-timeout-correction-step.js";
 export {
-  isSpentInputSubmitRejection,
   recoverTimeoutCorrectionAttempt,
   resolveTimeoutCorrectionValidityRange,
   type SubmitUnattestedTimeoutCorrectionParams,

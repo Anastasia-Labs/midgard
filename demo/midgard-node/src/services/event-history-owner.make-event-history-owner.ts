@@ -270,10 +270,7 @@ export const makeEventHistoryOwner = <E, R>(input: {
       checkpoint === null || tip === undefined || tip === "origin"
         ? 0
         : Math.max(0, tip.height - checkpoint.head.height);
-    const notices = makeHistoryOwnerNotices({
-      run,
-      rollbackHorizon: input.rollbackHorizon,
-    });
+    const notices = makeHistoryOwnerNotices({ run });
     const noteLag = () => {
       if (everReady) notices.lag(lagBlocks());
     };
@@ -658,7 +655,6 @@ export const makeEventHistoryOwner = <E, R>(input: {
           );
         }
         checkpoint = appended.result;
-        await notices.retention(appended.hold);
         noteLag();
         // Frontier waiters observe every appended head of an open gate.
         if (ready) notifyReadiness();
@@ -865,8 +861,6 @@ export const makeEventHistoryOwner = <E, R>(input: {
       /** Whether the source is following, reconnecting or waiting for Kupo,
        * with the current outage's start, attempts and last error. */
       sourceStatus: Effect.sync(() => outage.status()),
-      /** Set while retained evidence holds retention more than k blocks back. */
-      retentionHold: Effect.sync(() => notices.retentionHold()),
       /** The gate, and how far the journal head is behind the source tip. */
       frontier: Effect.sync(
         (): HistoryOwnerFrontier => ({

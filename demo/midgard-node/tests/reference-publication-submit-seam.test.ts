@@ -22,6 +22,7 @@ import {
 import { readProviderWalletView } from "../src/services/intent-journal.wallet-view.js";
 import { publishReferenceScripts } from "../src/transactions/reference-publication.js";
 import { selectNodeWallet } from "../src/transactions/utils.wallet-view.js";
+import { TEST_PLAN } from "./helpers/intent-journal.js";
 
 type Event =
   | Readonly<{ kind: "record"; family: string; cbor: string }>
@@ -47,7 +48,8 @@ const scenario = async (refusePublication: boolean) => {
     return true;
   };
   const journal: IntentJournalService = {
-    record: (intent, signedTxCbor, txHash, gate) =>
+    openPlan: Effect.succeed(TEST_PLAN),
+    record: (intent, signedTxCbor, txHash, _purpose, gate) =>
       intent.kind === "journaled" &&
       intent.family === "reference_publication" &&
       refusePublication

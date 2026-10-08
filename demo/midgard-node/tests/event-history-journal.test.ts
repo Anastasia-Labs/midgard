@@ -63,7 +63,7 @@ import {
 import { retainEverything } from "./helpers/history-journal-retention.js";
 import { seedHistoryJournalFixture } from "./helpers/history-journal-start.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // Coverage's own advanced-anchor checks sit behind Journal.load, which already
 // refuses the same corruption. A test may substitute the loaded checkpoint to
@@ -202,14 +202,7 @@ beforeAll(async () => {
     }),
   );
 }, 120_000);
-beforeEach(async () =>
-  run(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts, history_journal_l2_probe, pending_block_finalizations, processed_mempool, follower_event_ingestion, l1_event_keys, l1_follower_cursor, l1_blocks CASCADE`;
-    }),
-  ),
-);
+beforeEach(async () => run(resetApplicationTables));
 afterAll(async () =>
   run(
     Effect.gen(function* () {
@@ -1744,7 +1737,6 @@ describe("bounded journal retention", () => {
     (height: number): Journal.Retention => ({
       tipHeight: height,
       horizon,
-      holdSlot: undefined,
     });
 
   it("prunes nothing below the horizon, then advances the anchor and deletes the rows behind it atomically", async () => {
@@ -1869,7 +1861,6 @@ describe("bounded journal retention", () => {
     const farTip = () => ({
       tipHeight: 1_000_000,
       horizon: 5,
-      holdSlot: undefined,
     });
     current = await forward(token, current, last + 1, farTip);
     expect(current.anchor.height).toBe(1 + Journal.RETENTION_BATCH);

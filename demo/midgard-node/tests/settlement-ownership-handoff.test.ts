@@ -25,7 +25,7 @@ import {
   settlementWalletAddress,
 } from "../src/services/settlement.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const run = <A, E>(
   effect: Effect.Effect<A, E, SqlClient.SqlClient | NodeConfig>,
@@ -39,8 +39,7 @@ const REFUSAL =
 beforeEach(() =>
   run(
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE settlement_attempts, settlement_jobs, settlement_owners, event_history_authority CASCADE`;
+      yield* resetApplicationTables;
       const token = yield* Authority.acquire({
         deploymentIdentity: deploymentId,
         ownerToken: randomUUID(),

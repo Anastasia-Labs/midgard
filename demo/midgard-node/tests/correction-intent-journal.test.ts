@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 
 import { withCorrectionIntentJournal } from "../src/fibers/attestation-timeout-correction.reconcile-state-queue-corrections.js";
 import { IntentJournal } from "../src/services/intent-journal.js";
-import { recordingIntentJournal } from "./helpers/intent-journal.js";
+import { recordingIntentJournal, TEST_PLAN } from "./helpers/intent-journal.js";
 
 const step = (
   n: number,
@@ -40,6 +40,9 @@ const correction = (
   completed: false,
 });
 
+/** The workflow pass's plan and slot clock. */
+const PASS = { plan: TEST_PLAN, slotTime: (slot: number) => slot * 1000 };
+
 const memoryStore = (initial: TimeoutCorrectionJournal) => {
   let saved: TimeoutCorrectionJournal | undefined = initial;
   const store: TimeoutCorrectionJournalStore = {
@@ -61,6 +64,7 @@ describe("correction steps are journaled only on the send decision", () => {
       const store = withCorrectionIntentJournal(
         memoryStore(correction([step(0, landed)])),
         journal,
+        PASS,
       );
       const loaded = await store.load();
       expect(loaded?.steps[0]?.status).toBe(landed);
@@ -76,6 +80,7 @@ describe("correction steps are journaled only on the send decision", () => {
         kind: "journaled",
         family: "correction",
         workflowKey: `correction:${"cd".repeat(28)}:prune-descendant:${step(1, "prepared").removedHeaderHash}`,
+        plan: TEST_PLAN,
         contentRef: Buffer.from(step(1, "prepared").removedHeaderHash, "hex"),
       });
       // Saving it again (submitted, then a status refresh) journals nothing more.
@@ -98,6 +103,7 @@ describe("correction steps are journaled only on the send decision", () => {
         },
       },
       journal,
+      PASS,
     );
     await store.load();
     await store.save(correction([step(0, "prepared")]));

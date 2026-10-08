@@ -38,7 +38,6 @@ import {
   dropRecord,
   K,
   openStore,
-  ORIGIN_ROLLBACK,
   RECOVERY_DEPTH,
   RELEASE_DEPTH,
   scriptedTransport,
@@ -56,7 +55,7 @@ afterAll(() => {
 });
 
 describe("the decision driver over a tracked-set reset", () => {
-  it("hears the reset as a rewind to the origin: invalidates, re-arms recovery and rolls the history back to O", async () => {
+  it("hears the reset as a rewind to the origin: invalidates and re-arms recovery", async () => {
     const path = join(scratch, "driver-reset.db");
     const store = openStore(path);
     const c = collaborators();
@@ -75,9 +74,6 @@ describe("the decision driver over a tracked-set reset", () => {
     await driver.idle();
     const before = driver.current().observationDigest;
     expect(c.seen.recoveryPreparations).toBe(1);
-    expect(BigInt(c.head().slot)).toBeGreaterThan(
-      BigInt(SIM_ORIGIN.point.slot),
-    );
 
     // A start that finds the store unrecorded resets it.
     await dropRecord(store);
@@ -93,8 +89,8 @@ describe("the decision driver over a tracked-set reset", () => {
     expect(rewound).toEqual([1]);
     expect(driver.inclusion()).toBeNull();
 
-    // The replay from the origin: the next pass re-prepares recovery, the
-    // history went back to O, and the decision is the one before.
+    // The replay from the origin: the next pass re-prepares recovery, and
+    // the decision is the one before.
     expect((await store.initialize(SIM_ORIGIN)).kind).toBe("initialized");
     await applyAll(store, events);
     driver.wake();
@@ -103,7 +99,6 @@ describe("the decision driver over a tracked-set reset", () => {
       () => c.seen.recoveryPreparations === 2,
     );
     await driver.idle();
-    expect(c.seen.historyRollbacks).toEqual([ORIGIN_ROLLBACK]);
     expect(driver.readiness()).toEqual([]);
     expect(driver.current().observationDigest).toBe(before);
     expect(c.seen.dispatched.at(-1)).toBe(before);
@@ -113,7 +108,7 @@ describe("the decision driver over a tracked-set reset", () => {
     expect(c.seen.bridgeInvalidations).toBe(1);
   });
 
-  it("pulls a reset made at a start before it subscribed: rolls the history back to the origin once, raises one rewind, and a later driver raises none", async () => {
+  it("pulls a reset made at a start before it subscribed: raises one rewind, and a later driver raises none", async () => {
     const path = join(scratch, "driver-reset-before-subscribe.db");
     const c = collaborators();
     const rewound: number[] = [];
@@ -124,9 +119,6 @@ describe("the decision driver over a tracked-set reset", () => {
     expect((await first.initialize(SIM_ORIGIN)).kind).toBe("initialized");
     await applyAll(first, events);
     expect((await decideOnce(first, c, rewound)).rewinds).toBe(0);
-    expect(BigInt(c.head().slot)).toBeGreaterThan(
-      BigInt(SIM_ORIGIN.point.slot),
-    );
     await dropRecord(first);
     await first.close();
 
@@ -144,14 +136,13 @@ describe("the decision driver over a tracked-set reset", () => {
     const status = await decideOnce(store, c, rewound);
     expect(status.rewinds).toBe(1);
     expect(rewound).toEqual([1]);
-    expect(c.seen.historyRollbacks).toEqual([ORIGIN_ROLLBACK]);
     expect(c.seen.bridgeInvalidations).toBe(1);
     expect(c.seen.availabilityInvalidations).toBe(1);
 
     // Handled durably: the next process's driver raises none.
     expect((await decideOnce(store, c, rewound)).rewinds).toBe(0);
     expect(rewound).toEqual([1]);
-    expect(c.seen.historyRollbacks).toHaveLength(1);
+    expect(c.seen.bridgeInvalidations).toBe(1);
   });
 
   it("pulls a rewind its process stopped before handling, once, and a later driver raises none", async () => {
@@ -167,8 +158,6 @@ describe("the decision driver over a tracked-set reset", () => {
     const target = (await store.cursor())!.point;
     await applyAll(store, events.slice(4));
     expect((await decideOnce(store, c, rewound)).rewinds).toBe(0);
-    // The history moved past the rewind's target.
-    expect(BigInt(c.head().slot)).toBeGreaterThan(BigInt(target.slot));
 
     // A rewind with no driver subscribed: the process stopped before a
     // driver handled it.
@@ -178,16 +167,10 @@ describe("the decision driver over a tracked-set reset", () => {
     const status = await decideOnce(store, c, rewound);
     expect(status.rewinds).toBe(1);
     expect(rewound).toEqual([generation]);
-    expect(c.seen.historyRollbacks).toEqual([
-      {
-        kind: "point",
-        blockHash: target.hash.toString("hex"),
-        slot: String(target.slot),
-      },
-    ]);
+    expect(c.seen.bridgeInvalidations).toBe(1);
     expect((await decideOnce(store, c, rewound)).rewinds).toBe(0);
     expect(rewound).toEqual([generation]);
-    expect(c.seen.historyRollbacks).toHaveLength(1);
+    expect(c.seen.bridgeInvalidations).toBe(1);
   });
 
   it("makes no pass while the follower's start is held on a store with a cursor, and passes once it completes", async () => {

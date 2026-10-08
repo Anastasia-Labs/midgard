@@ -89,7 +89,6 @@ const fixtureOwner = (
     attempts: 0,
     lastError: null,
   }),
-  retentionHold: Effect.succeed(undefined),
   frontier: Effect.succeed({
     ready: true,
     headHeight: 1,

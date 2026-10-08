@@ -20,7 +20,6 @@ describe("correction observer journal dependencies", () => {
       isolatedDb(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
-          yield* sql`TRUNCATE event_history_recovery_plans`;
           const settled = header("dependency:settled");
           yield* observedJournal(settled);
           yield* PendingBlockFinalizationsDB.markFinalized(settled);

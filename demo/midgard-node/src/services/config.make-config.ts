@@ -20,6 +20,7 @@ import { validateRetentionDays } from "../database/retention-policy.js";
 import { historyCommitHorizonLagConfig } from "./config.history-commit-horizon-lag.js";
 import { hubOracleOriginConfig } from "./config.hub-oracle-origin.js";
 import { l1ContentSourcesConfig } from "./config.l1-content-sources.js";
+import { nodeBehindConfig } from "./config.node-behind.js";
 import {
   boundedValidationInteger,
   CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES,
@@ -214,6 +215,7 @@ const makeConfig = Effect.gen(function* () {
     }),
   );
   const historyCommitHorizonLag = yield* historyCommitHorizonLagConfig;
+  const nodeBehind = yield* nodeBehindConfig;
   const blockConfirmationAwaitTimeoutMs = yield* Config.integer(
     "BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS",
   ).pipe(Config.withDefault(12_000));
@@ -989,6 +991,7 @@ const makeConfig = Effect.gen(function* () {
       stateQueueMutationLeaseStaleGraceMs,
     STATE_QUEUE_CORRECTION_FINALITY_DEPTH: stateQueueCorrectionFinalityDepth,
     ...historyCommitHorizonLag,
+    ...nodeBehind,
     RETENTION_DAYS: retentionDays,
     WAIT_BETWEEN_RETENTION_SWEEPS: waitBetweenRetentionSweeps,
     L1_VIEW_FATAL_MS: l1ViewFatalMs,

@@ -1,4 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
@@ -20,10 +21,7 @@ import {
   type CommitHorizonLag,
 } from "../../services/history-commit-window.js";
 import { Database } from "../../services/index.js";
-import {
-  isUnknownOutputReferenceSubmitError,
-  type TxSubmitError,
-} from "../../transactions/utils.js";
+import { type TxSubmitError } from "../../transactions/utils.js";
 
 /** True when both lists hold the same ids, each exactly once. */
 const sameSourceIdSet = (
@@ -193,7 +191,7 @@ export const submitErrorReferencesOutRef = (
     '"',
   );
   return (
-    isUnknownOutputReferenceSubmitError(detail) &&
+    isSpentInputSubmitRejection(detail) &&
     detail.includes(txHash) &&
     (detail.includes(`"index":${outputIndex}`) ||
       detail.includes(`"index": ${outputIndex}`) ||

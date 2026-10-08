@@ -14,6 +14,7 @@ import { Database, Globals, NodeConfig } from "../../services/index.js";
 import {
   type IntentJournal,
   journaledIntent,
+  openPlan,
 } from "../../services/intent-journal.js";
 import {
   fetchReferenceScriptUtxosProgram,
@@ -92,6 +93,8 @@ export const buildAndSubmitMergeTx = (
     const mergeStartedAt = Date.now();
     const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
+    // S5: the plan opens before the merge's first L1 read.
+    const plan = yield* openPlan;
     const currentStateQueueLength = yield* getStateQueueLength(fetchConfig);
     const minQueueLengthForMerging =
       nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
@@ -471,6 +474,7 @@ export const buildAndSubmitMergeTx = (
             journaledIntent(
               "merge",
               `merge:head=${headerHash.toString("hex")}`,
+              plan,
               headerHash,
             ),
             submitRecoveryOptions,

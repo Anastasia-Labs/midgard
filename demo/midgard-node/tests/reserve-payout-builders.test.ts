@@ -36,6 +36,7 @@ import {
   submitAbsorbAfterProtectionProgram,
   submitInitializePayoutAfterProtectionProgram,
 } from "../src/commands/reserve-payout.js";
+import { openPlan } from "../src/services/intent-journal.js";
 import {
   __reservePayoutTest,
   buildAbsorbConfirmedDepositToReserveTxProgram,
@@ -953,17 +954,29 @@ describe("reserve/payout transaction builder primitives", () => {
       // Without protection at the first build nothing here would wait.
       expect(Number(protectedUntil) - Date.now()).toBeGreaterThan(4_000);
       const txHash = await runWithoutFollower(
-        retirement === "absorb"
-          ? submitAbsorbAfterProtectionProgram(f.lucid, f.contracts, {
-              ...common,
-              deposit: f.deposit,
-              membershipProof: f.depositMembershipProof,
-            })
-          : submitInitializePayoutAfterProtectionProgram(f.lucid, f.contracts, {
-              ...common,
-              withdrawal: f.withdrawal,
-              membershipProof: f.withdrawalMembershipProof,
-            }),
+        Effect.flatMap(openPlan, (plan) =>
+          retirement === "absorb"
+            ? submitAbsorbAfterProtectionProgram(
+                f.lucid,
+                f.contracts,
+                {
+                  ...common,
+                  deposit: f.deposit,
+                  membershipProof: f.depositMembershipProof,
+                },
+                plan,
+              )
+            : submitInitializePayoutAfterProtectionProgram(
+                f.lucid,
+                f.contracts,
+                {
+                  ...common,
+                  withdrawal: f.withdrawal,
+                  membershipProof: f.withdrawalMembershipProof,
+                },
+                plan,
+              ),
+        ),
       );
       expect(Date.now()).toBeGreaterThanOrEqual(
         Number(protectedUntil) + SUBMIT_SLOT_LENGTH_MS,

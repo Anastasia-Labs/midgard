@@ -279,7 +279,7 @@ and every write below can also return `StoreLocked` (the lease was lost).
 | `applyBlock(block)`                                   | `BlockApplied { cursor, qualified, created, spent } \| ApplyRejection { reason: "not_initialized" \| "not_on_cursor" } \| Intervention \| StoreError`                                     |
 | `rewind(target: Point)`                               | `Rewound { generation, from, to, depth, cursor, unspent, deleted } \| RewindNoop \| Intervention \| StoreError`                                                                           |
 | `insertSeedOutputs(at: Point, outputs: SeedOutput[])` | `SeedResult { cursor, inserted, skipped } \| SeedCursorMoved \| StoreError \| StoreLocked \| null` (null: not initialized; `cursor_moved`: `at` is no longer the cursor, nothing written) |
-| `prune(budget = 5000)`                                | `PruneResult { deleted, done, prunedThroughSlot } \| StoreError`                                                                                                                          |
+| `prune(budget = 5000)`                                | `PruneResult { deleted, done, prunedThroughSlot, floorLags } \| StoreError`                                                                                                               |
 | `checkInvariants()`                                   | `InvariantReport { ok, violations }` (full INV1–INV6)                                                                                                                                     |
 | `cursor()`                                            | `Cursor \| null`                                                                                                                                                                          |
 | `currentView()` / `viewValid(view)`                   | `View \| null` / `boolean`                                                                                                                                                                |
@@ -318,9 +318,13 @@ client; a transaction on it rejects, which the follow loop backs off from.
 
 A view is `(generation, point, height)`. `viewValid(view)` is true while no
 rewind happened since it was read, or its point is still stored. To guard a
-write in the role's own transaction, run `viewValidQuery(dialect, view)` (it
-takes `FOR SHARE` on the cursor row, so no rewind commits between the check
-and the write) or `viewValidIn(tx, dialect, view)`. Another process learns
+write in the role's own transaction, run `viewValidIn(tx, dialect, view)` in
+it (on Postgres it takes `FOR SHARE` on the cursor row, so no rewind commits
+between the check and the write; on SQLite the writer's `BEGIN IMMEDIATE`
+does). Intents bind to views too: `recordIntentIn` takes the planner's view
+(`builtAt`) and records a stale one with a `stale_at_write` event, and
+`decideSubmitIn` is a role's own send decision (S6), taken with the view
+check in one transaction. Another process learns
 of rewinds, and of resets, with `listenForGenerations(pool, (generation) =>
 …, onConnectionLost?)`, which returns an async `stop()`. If Postgres drops
 the listening connection, listening has stopped: `onConnectionLost(error)` is
@@ -506,6 +510,12 @@ type FollowChainOptions = {
   onStatus?: (status: FollowStatus) => void | Promise<void>; // awaited; a throw is logged
   stuckAfter?: number; // default 5
   prune?: { budget?: number; everyEvents?: number }; // default 500 rows, every 100 events
+  nodeBehind?: {
+    slotTime: (slot: number) => number | Promise<number>; // the slot's start, ms since the epoch
+    boundMs?: number; // default DEFAULT_NODE_BEHIND_MS, 300 000 (5 min)
+    checkEveryMs?: number; // the timer while no event arrives; default 10 000
+    now?: () => number; // default Date.now
+  };
 };
 
 type FollowStatus = {
@@ -519,7 +529,9 @@ type FollowStatus = {
   stuck: { at: string; failures: number; detail: string } | null;
   protocolInit: "seen" | "pending" | "unknown";
   cursor: { slot: number; height: number; generation: number } | null;
+  node: { reason: TransportUnreadyReason; detail: string } | null; // set while the transport is not ready
   tip: { slot: number; height: number } | null; // the node tip of the last applied event
+  nodeBehind: { tipSlot: number; lagMs: number; boundMs: number } | null; // set while that tip is past the bound
   atTip: boolean; // the cursor is that tip
   replaying: boolean; // a tracked-set reset is replaying; cleared at the first atTip
   events: number; // events applied by this loop
@@ -528,6 +540,10 @@ type FollowStatus = {
     steps: number;
     prunedThroughSlot: number | null;
     lastError: string | null;
+    failures: number; // prune passes failed in a row; reset by the next success
+    // each role prune floor holding the boundary back, named by the floor
+    // (`PruneFloor.name`), with its lag in slots; empty when none does
+    floorLags: readonly { floor: string; lagSlots: number }[];
   };
 };
 ```
@@ -549,6 +565,8 @@ own concern (the loop never makes the process unhealthy). Its reasons:
 | `tracked_set_changed`               | a start found an addition to the protocol tracked set (or no record) and reset the store; the loop replays from the origin. Transient; cleared, in the store too, at the first report at the node tip.                                                                                                                                                                                                                                                |
 | `l1_follower_catching_up`           | the cursor is not at the node tip of the last applied event (and before the first one). A role whose decisions stay safe on a lagging view may ignore it.                                                                                                                                                                                                                                                                                             |
 | `l1_follower_prune_failing`         | `PRUNE_FAILING_AFTER` (3) prune passes in a row failed (a prune hook threw, or the store did): facts past retention stay. One failure is not a reason; the next successful pass clears it.                                                                                                                                                                                                                                                            |
+| `l1_node_unavailable`               | the L1 node transport is not ready (the sidecar or the node is down or restarting); the detail carries the transport's reason. The loop keeps retrying; cleared once the transport is ready.                                                                                                                                                                                                                                                          |
+| `l1_node_behind`                    | the node tip of the last applied event is more than `nodeBehind.boundMs` behind wall-clock time (only with the `nodeBehind` option); the detail carries the lag. The node is reachable but its chain is stale (syncing, or cut off from its peers), so a role does not submit while it holds. Checked on each event and by a timer while none arrive; cleared by the first check within the bound. Never an exit.                                     |
 
 `classifyFailure` sorts a failed write: `transient` (Postgres SQLSTATE
 classes 08, 40, 53, 55, 57, network errno codes, pg's own connection errors,

@@ -12,7 +12,7 @@ import {
 import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as MpfEngineStateDB from "../src/database/mpfEngineState.js";
 import { HistoryPreparation } from "../src/services/event-history-recovery.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // A node killed while its commit worker or its own payload audit held the
 // ledger MPF lease leaves that lease live for its whole TTL; nothing else
@@ -45,16 +45,8 @@ const leaseOwner = Effect.gen(function* () {
   return rows[0]?.lease_owner ?? null;
 });
 
-beforeEach(async () =>
-  run(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE event_history_authority`;
-      yield* sql`UPDATE mpf_engine_state
-        SET lease_owner = NULL, lease_expires_at = NULL`;
-    }),
-  ),
-);
+// The lease upsert creates the ledger row an empty table lacks.
+beforeEach(async () => run(resetApplicationTables));
 
 describe("startup retires the ledger MPF lease of a killed node process", () => {
   for (const [site, killed, prefix] of [

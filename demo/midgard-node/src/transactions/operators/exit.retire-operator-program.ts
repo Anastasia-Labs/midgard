@@ -15,6 +15,8 @@ import {
   type OperatorEconomics,
   type OperatorExitError,
   OperatorExitRefusal,
+  type PlannedSnapshot,
+  plannedSnapshotProgram,
   resolveOperatorScriptRefsProgram,
   type RetirementSubmission,
   schedulerRouteOf,
@@ -43,8 +45,7 @@ export const retireOperatorProgram = (
     readonly operatorKeyHash: string;
     readonly mode: SDK.RetirementMode;
     readonly economics: OperatorEconomics;
-    readonly snapshot?: SDK.OperatorDirectorySnapshot;
-  },
+  } & PlannedSnapshot,
   options: { readonly label?: string } = {},
 ): Effect.Effect<RetirementSubmission, OperatorExitError, IntentJournal> =>
   Effect.gen(function* () {
@@ -53,9 +54,11 @@ export const retireOperatorProgram = (
       (input.mode === "voluntary"
         ? "retire-operator"
         : "force-retire-operator");
-    const snapshot =
-      input.snapshot ??
-      (yield* SDK.fetchOperatorDirectorySnapshotProgram(lucid, contracts));
+    const { snapshot, intentPlan } = yield* plannedSnapshotProgram(
+      lucid,
+      contracts,
+      input,
+    );
     const status = SDK.deriveOperatorStatus(
       snapshot,
       input.operatorKeyHash,
@@ -153,6 +156,7 @@ export const retireOperatorProgram = (
       journaledIntent(
         "retire",
         `retire:${input.mode}:${input.operatorKeyHash}`,
+        intentPlan,
       ),
       { label },
     );
@@ -187,15 +191,16 @@ export const recoverOperatorBondProgram = (
   referenceScriptsAddress: string,
   input: {
     readonly operatorKeyHash: string;
-    readonly snapshot?: SDK.OperatorDirectorySnapshot;
-  },
+  } & PlannedSnapshot,
   options: { readonly label?: string } = {},
 ): Effect.Effect<BondRecoverySubmission, OperatorExitError, IntentJournal> =>
   Effect.gen(function* () {
     const label = options.label ?? "recover-operator-bond";
-    const snapshot =
-      input.snapshot ??
-      (yield* SDK.fetchOperatorDirectorySnapshotProgram(lucid, contracts));
+    const { snapshot, intentPlan } = yield* plannedSnapshotProgram(
+      lucid,
+      contracts,
+      input,
+    );
     const nowMs = yield* resolveL1NowMs(lucid);
     const status = SDK.deriveOperatorStatus(
       snapshot,
@@ -271,7 +276,11 @@ export const recoverOperatorBondProgram = (
     const txHash = yield* handleSignSubmit(
       lucid,
       tx,
-      journaledIntent("recover_bond", `recover_bond:${input.operatorKeyHash}`),
+      journaledIntent(
+        "recover_bond",
+        `recover_bond:${input.operatorKeyHash}`,
+        intentPlan,
+      ),
       { label },
     );
     return {

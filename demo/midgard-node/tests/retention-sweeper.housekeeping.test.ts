@@ -25,7 +25,7 @@ import {
   remainingLabels,
 } from "./history-retention-prune.fixtures.js";
 import { header } from "./local-mutation-job-abandonment.journal-fixture.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 /** A manifest window other than the compiled profile's 15 days, so a sweep
  * pruning by it shows the window came from the manifest. */
@@ -35,12 +35,6 @@ const VIEW = {
   confirmedHeadHash: header("not-journaled"),
   liveQueueHeaderHashes: [],
 };
-
-const TABLES = `tx_rejections, address_history, mempool, processed_mempool,
-  state_queue_mutation_leases, pending_block_finalizations,
-  local_mutation_jobs, da_payload_terminal_outcomes, da_payloads,
-  state_queue_terminal_observer_states, event_history_authority,
-  deposits_utxos, withdrawal_utxos, settlement_jobs, settlement_attempts`;
 
 const ago = (sql: SqlClient.SqlClient, days: number) =>
   sql`NOW() - make_interval(secs => ${(days * DAY_MS) / 1000})`;
@@ -142,9 +136,7 @@ const sweep = (setup: { readonly refuseProducer?: boolean } = {}) =>
     provideDatabaseLayers(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const clear = sql.unsafe(
-          `TRUNCATE TABLE ${TABLES} RESTART IDENTITY CASCADE`,
-        );
+        const clear = resetApplicationTables;
         yield* clear;
         return yield* Effect.gen(function* () {
           yield* seed;

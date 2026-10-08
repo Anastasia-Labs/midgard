@@ -43,7 +43,8 @@ import {
 } from "./helpers/follower-view.js";
 import { retainEverything } from "./helpers/history-journal-retention.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
-import { applyMidgardNodeTestEnv, testDatabaseName } from "./test-env.js";
+import { applyMidgardNodeTestEnv } from "./test-env.js";
+import { resetApplicationTables } from "./utils.js";
 
 // PostgreSQL schema regression only. Strict decoded history snapshots and branch
 // ancestry are modeled. Direct DELETE below runs under actual recovery ownership
@@ -353,16 +354,7 @@ const admit = async (
 };
 
 beforeEach(async () => {
-  await run(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const [database] = yield* sql<{
-        name: string;
-      }>`SELECT current_database() AS name`;
-      expect(database?.name).toBe(testDatabaseName());
-      yield* sql`TRUNCATE event_history_recovery_plans, event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalizations, pending_block_finalization_deposits, pending_block_finalization_withdrawals, pending_block_finalization_txs, pending_block_finalization_forced_transactions, pending_block_finalization_transition_trace, pending_block_finalization_event_to_step, pending_block_finalization_validation_traces, pending_block_finalization_validation_trace_witnesses, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts, tx_admission_payloads, tx_admissions, mempool, mempool_tx_deltas, address_history, processed_mempool, blocks, immutable, follower_event_ingestion, l1_event_keys, l1_follower_cursor, l1_blocks CASCADE`;
-    }),
-  );
+  await run(resetApplicationTables);
 });
 const prepareSignedHeader = async (
   token: Authority.Token,
@@ -806,13 +798,12 @@ it("advances journal pruning while a signed-header recovery plan remains prepare
   });
   for (let n = 20; n < 26; n++) {
     const prepared = await prepare(await read(), n);
-    const retained = await run(
+    await run(
       Authority.withRecovery(
         f.token,
         append(prepared, 10_000, ({ after }) => Effect.succeed(after)),
       ),
     );
-    expect(retained.hold).toBeUndefined();
   }
   const current = await read();
   expect(current.head).toEqual({ id: hash(25), slot: 106, height: 7 });

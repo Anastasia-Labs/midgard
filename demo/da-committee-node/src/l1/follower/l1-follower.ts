@@ -6,6 +6,7 @@ import {
   type FactStoreOptions,
   followChain,
   FOLLOWER_CATCHING_UP,
+  FOLLOWER_NODE_BEHIND,
   FOLLOWER_NODE_UNAVAILABLE,
   FOLLOWER_TRACKED_SET_CHANGED,
   FOLLOWER_WAITING,
@@ -31,7 +32,7 @@ import {
   lucidNetwork,
   ownWallets,
 } from "./committee-follower-config.js";
-import type { SignedHeader, SlotTime } from "./obligations.js";
+import { type SignedHeader, type SlotTime, slotTimeMs } from "./obligations.js";
 import {
   committeeProjection,
   type CommitteeView,
@@ -189,9 +190,9 @@ export const committeeL1Source = (
 /**
  * The first reason in `reasons` no wait clears (an intervention such as
  * `rollback_beyond_k`, a stuck point, no configuration), or undefined while
- * the follower only catches up, backs off, waits for the L1 node, or
- * replays a store reset from the origin (`tracked_set_changed` clears once
- * the replay reaches the node tip).
+ * the follower only catches up, backs off, waits for the L1 node (down, or
+ * behind wall-clock time), or replays a store reset from the origin
+ * (`tracked_set_changed` clears once the replay reaches the node tip).
  */
 export const committeeL1InterventionReason = (
   reasons: readonly CommitteeL1Readiness[],
@@ -201,6 +202,7 @@ export const committeeL1InterventionReason = (
       reason !== FOLLOWER_CATCHING_UP &&
       reason !== FOLLOWER_WAITING &&
       reason !== FOLLOWER_NODE_UNAVAILABLE &&
+      reason !== FOLLOWER_NODE_BEHIND &&
       reason !== FOLLOWER_TRACKED_SET_CHANGED &&
       reason !== WALLET_SEED_PENDING,
   );
@@ -403,6 +405,11 @@ export const startCommitteeL1Follower = async (
     origin: plan.origin,
     signal: abort.signal,
     log: (line) => log(`L1 follower: ${line}`),
+    // `l1_node_behind` at the follower's default bound: the tick holds
+    // while it is set, and it clears when the node catches up.
+    nodeBehind: {
+      slotTime: async (slot) => slotTimeMs(slot, await parts.slotTime()),
+    },
     onStatus: (next) => {
       status = next;
     },

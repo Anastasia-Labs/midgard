@@ -64,16 +64,6 @@ export type HistoryReconciliationPending = Readonly<{
   reason: string;
 }>;
 
-/** Settlement or foreign-adoption evidence is keeping the journal anchor more
- * than the rollback horizon behind where the horizon alone would put it. */
-export type HistoryRetentionHold = Readonly<{
-  holdSlot: number;
-  anchorHeight: number;
-  unheldAnchorHeight: number;
-  heldBlocks: number;
-  rollbackHorizon: number;
-}>;
-
 export type HistoryOwnerCoverage = Readonly<{
   bindingDigest: string;
   checkpointRevision: string;

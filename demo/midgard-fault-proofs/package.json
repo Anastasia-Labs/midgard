@@ -51,6 +51,10 @@
       "midgard-source": "./src/cross-block-duplicate-event/settlement-authority.ts",
       "types": "./src/cross-block-duplicate-event/settlement-authority.ts"
     },
+    "./test-support/fabricated-history-witness": {
+      "midgard-source": "./src/fabricated-history-witness.ts",
+      "types": "./src/fabricated-history-witness.ts"
+    },
     "./test-support/prepare-fabricated-deposit": {
       "midgard-source": "./src/prepare-fabricated-deposit.ts",
       "types": "./src/prepare-fabricated-deposit.ts"

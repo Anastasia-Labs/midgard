@@ -60,6 +60,8 @@ const buildJob = (
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const journal = yield* IntentJournal;
+    // S5: the job's plan opens before its first L1 read.
+    const plan = yield* journal.openPlan;
     let phase = job.phase;
     if (phase === "complete") return;
     if (job.kind === "withdrawal") {
@@ -126,10 +128,12 @@ const buildJob = (
               journaledIntent(
                 "settlement",
                 `settlement:${job.kind}:${job.event_id}:${selectedPhase}`,
+                plan,
                 Buffer.from(job.event_id, "hex"),
               ),
               attempt.signed_cbor,
               attempt.tx_hash,
+              { kind: "record_only" },
               (journalInsert) =>
                 sql
                   .withTransaction(

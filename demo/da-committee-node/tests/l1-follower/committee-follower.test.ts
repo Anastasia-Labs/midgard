@@ -3,6 +3,7 @@ import {
   FOLLOWER_APPLY_STUCK,
   FOLLOWER_CATCHING_UP,
   FOLLOWER_MIGRATION_FAILED,
+  FOLLOWER_NODE_BEHIND,
   FOLLOWER_NODE_UNAVAILABLE,
   FOLLOWER_PRUNE_FAILING,
   FOLLOWER_TRACKED_SET_CHANGED,
@@ -202,20 +203,22 @@ describe("waiting for the committee's L1 source", () => {
     expect(source.calls()).toBe(1);
   });
 
-  it.each([FOLLOWER_CATCHING_UP, FOLLOWER_WAITING, FOLLOWER_NODE_UNAVAILABLE])(
-    "waits while the follower is %s, then resolves",
-    async (reason) => {
-      const source = scripted(
-        [{ reason, detail: "behind" }],
-        [{ reason, detail: "behind" }],
-        [],
-      );
-      await expect(
-        untilCommitteeL1SourceReady(source, { pollMs: 1 }),
-      ).resolves.toBeUndefined();
-      expect(source.calls()).toBe(3);
-    },
-  );
+  it.each([
+    FOLLOWER_CATCHING_UP,
+    FOLLOWER_WAITING,
+    FOLLOWER_NODE_UNAVAILABLE,
+    FOLLOWER_NODE_BEHIND,
+  ])("waits while the follower is %s, then resolves", async (reason) => {
+    const source = scripted(
+      [{ reason, detail: "behind" }],
+      [{ reason, detail: "behind" }],
+      [],
+    );
+    await expect(
+      untilCommitteeL1SourceReady(source, { pollMs: 1 }),
+    ).resolves.toBeUndefined();
+    expect(source.calls()).toBe(3);
+  });
 
   it.each(["rollback_beyond_k", L1_FOLLOWER_UNCONFIGURED])(
     "holds on %s, which no wait clears, reporting it every poll and never giving up",
@@ -265,6 +268,7 @@ describe("waiting for the committee's L1 source", () => {
         { reason: FOLLOWER_CATCHING_UP, detail: "a" },
         { reason: FOLLOWER_WAITING, detail: "b" },
         { reason: FOLLOWER_NODE_UNAVAILABLE, detail: "node_unreachable: d" },
+        { reason: FOLLOWER_NODE_BEHIND, detail: "node tip 600 s behind" },
         { reason: WALLET_SEED_PENDING, detail: "c" },
       ]),
     ).toBeUndefined();
@@ -280,6 +284,7 @@ describe("waiting for the committee's L1 source", () => {
     [FOLLOWER_CATCHING_UP, "transient"],
     [FOLLOWER_WAITING, "transient"],
     [FOLLOWER_NODE_UNAVAILABLE, "transient"],
+    [FOLLOWER_NODE_BEHIND, "transient"],
     [FOLLOWER_TRACKED_SET_CHANGED, "transient"],
     [WALLET_SEED_PENDING, "transient"],
     [FOLLOWER_APPLY_STUCK, "intervention"],

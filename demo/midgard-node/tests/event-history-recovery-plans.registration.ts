@@ -22,7 +22,8 @@ import { Database } from "../src/services/database.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
 import { retainEverything } from "./helpers/history-journal-retention.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
-import { applyMidgardNodeTestEnv, testDatabaseName } from "./test-env.js";
+import { applyMidgardNodeTestEnv } from "./test-env.js";
+import { resetApplicationTables } from "./utils.js";
 
 // Component verification: actual PostgreSQL authority, journal and atomic repair.
 // The strict decoded L1 snapshot and empty block ancestry are explicitly modeled;
@@ -247,12 +248,8 @@ beforeAll(async () => {
 
 const cleanup = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const [database] = yield* sql<{
-    name: string;
-  }>`SELECT current_database() AS name`;
-  expect(database?.name).toBe(testDatabaseName());
   yield* sql`CREATE TABLE IF NOT EXISTS history_recovery_plan_probe(label text PRIMARY KEY)`;
-  yield* sql`TRUNCATE history_recovery_plan_probe, event_history_recovery_plans, event_history_l2_ledger_receipts, mempool_ledger, deposits_utxos, withdrawal_utxos, pending_block_finalization_deposits, pending_block_finalization_withdrawals, event_history_cursor, event_history_block_applications, event_history_live_outputs, event_history_incarnations, event_history_authority, event_history_replay_receipts`;
+  yield* resetApplicationTables;
 });
 
 beforeEach(async () => {

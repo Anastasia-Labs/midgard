@@ -6,6 +6,7 @@ import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deploym
 import { describe, expect, it, vi } from "vitest";
 
 import { archiveWatcherValidationCapture } from "../../src/fault-proofs/fault-proof-application.archive-validation-capture.js";
+import { watcherReplayTranscriptClassification } from "../../src/storage/replay-transcript-completion.js";
 import { createWatcherSqliteReplayTranscriptStore } from "../../src/storage/replay-transcript-store.js";
 import {
   createWatcherAuthenticatedReplayTranscript,
@@ -89,6 +90,16 @@ const persistPreFollowerHead = (
   return digest;
 };
 
+/** The capture an archive call made; a hold fails the call. */
+const captured = async (
+  input: Parameters<typeof archiveWatcherValidationCapture>[0],
+) => {
+  const archived = await archiveWatcherValidationCapture(input);
+  if (archived.kind !== "captured")
+    throw new Error(`expected a capture: ${archived.detail}`);
+  return archived.capture;
+};
+
 const operationDigests = (database: DatabaseSync) =>
   (
     database
@@ -130,7 +141,7 @@ describe("archiving a validation capture over a pre-follower transcript head", (
         };
         // The pre-follower watcher archived this header and pinned its
         // decision; its transcript is v1.
-        const original = await archiveWatcherValidationCapture(input);
+        const original = await captured(input);
         const preFollower = persistPreFollowerHead(
           database,
           original.transcript,
@@ -144,7 +155,7 @@ describe("archiving a validation capture over a pre-follower transcript head", (
         vi.mocked(createWatcherAuthenticatedReplayTranscript).mockClear();
         vi.mocked(replayWatcherAuthenticatedReplayTranscript).mockClear();
 
-        const recaptured = await archiveWatcherValidationCapture(input);
+        const recaptured = await captured(input);
         expect(
           createWatcherAuthenticatedReplayTranscript,
         ).toHaveBeenCalledOnce();
@@ -176,7 +187,7 @@ describe("archiving a validation capture over a pre-follower transcript head", (
         });
         vi.mocked(createWatcherAuthenticatedReplayTranscript).mockClear();
 
-        const replayed = await archiveWatcherValidationCapture(input);
+        const replayed = await captured(input);
         expect(
           replayWatcherAuthenticatedReplayTranscript,
         ).toHaveBeenCalledOnce();
@@ -192,6 +203,87 @@ describe("archiving a validation capture over a pre-follower transcript head", (
           chainLength: 2,
         });
         expect(operationDigests(database)).toEqual([decision.decisionDigest]);
+        await observed.close();
+      } finally {
+        database.close();
+        await context.close();
+      }
+    },
+    180_000,
+  );
+});
+
+describe("archiving over a pre-follower transcript head whose proof is open", () => {
+  it.each(["normal", "forced"] as const)(
+    "holds the %s header: no recapture, no re-key, the v1 head stays, at every start",
+    async (kind) => {
+      const context = await setupValidationCapture(kind);
+      const database = new DatabaseSync(":memory:");
+      try {
+        const store = createWatcherSqliteReplayTranscriptStore(database);
+        const observed = await context.queue.observeFresh();
+        const decision = await classifyValidationCapture(context, observed);
+        const input = {
+          deploymentAuthority: context.deploymentAuthority,
+          stateQueueObservation: observed.observation,
+          header: observed.header,
+          decision,
+          userEvents: observed.follower.userEvents,
+          replayTranscriptStore: store,
+        };
+        const identity = {
+          deploymentFingerprint:
+            context.deploymentAuthority.deploymentIdentity.manifestId,
+          headerHash: observed.header.headerHash,
+          inclusionPoint: {
+            transactionHash: observed.header.observedTransactionHash,
+            blockHash: observed.header.observedBlockHash,
+            blockNo: observed.header.observedBlockNo,
+            slot: observed.header.observedSlot,
+            chainPointId: observed.header.observedChainPointId,
+          },
+        };
+        // The pre-follower watcher archived this header, classified it and
+        // handed its challenge to a proof, which has not completed.
+        const original = await captured(input);
+        await store.completeClassification(
+          watcherReplayTranscriptClassification(original),
+        );
+        expect(await store.proofOperationOpen(identity)).toBe(false);
+        await store.beginProofOperation(
+          watcherReplayTranscriptClassification(original),
+        );
+        expect(await store.proofOperationOpen(identity)).toBe(true);
+        const preFollower = persistPreFollowerHead(
+          database,
+          original.transcript,
+        );
+        vi.mocked(createWatcherAuthenticatedReplayTranscript).mockClear();
+        vi.mocked(replayWatcherAuthenticatedReplayTranscript).mockClear();
+
+        for (let start = 0; start < 2; start += 1) {
+          const held = await archiveWatcherValidationCapture(input);
+          expect(held).toMatchObject({
+            kind: "held_pre_follower",
+            preFollowerTranscriptDigest: preFollower,
+          });
+          expect(held.kind === "held_pre_follower" && held.detail).toMatch(
+            /held until the header leaves the finalized queue/u,
+          );
+          expect(
+            createWatcherAuthenticatedReplayTranscript,
+          ).not.toHaveBeenCalled();
+          expect(
+            replayWatcherAuthenticatedReplayTranscript,
+          ).not.toHaveBeenCalled();
+          expect(await store.read(identity)).toMatchObject({
+            headTranscriptDigest: preFollower,
+            previousTranscriptDigest: null,
+            chainLength: 1,
+          });
+          expect(operationDigests(database)).toEqual([decision.decisionDigest]);
+          expect(await store.proofOperationOpen(identity)).toBe(true);
+        }
         await observed.close();
       } finally {
         database.close();

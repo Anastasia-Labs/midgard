@@ -56,7 +56,6 @@ import {
   strikeOperatorToMaxStrikes,
 } from "./helpers/operator-inactivity.js";
 import { initOperatorExitFixture } from "./operator-exit-emulator.build-operator-exit-snapshot.js";
-import { resyncWallet } from "./operator-exit-emulator.build-retire-tx.js";
 import { forceRegisterOperator } from "./operator-exit-emulator.force-activate-operator.js";
 
 const ECONOMICS: OperatorEconomics = {
@@ -134,12 +133,12 @@ const exhaustStrikes = async (
   struckKeyHash: string,
 ) => {
   const successorLucid = await fixture.lucidFor(successorKeyHash);
-  const early = await Effect.runPromise(
+  const early = await runWithoutFollower(
     planTakeoverProgram(successorLucid, fixture.contracts),
   );
   if (early.plan.kind !== "not-yet") throw new Error("expected not-yet");
   advanceEmulatorPastUnixTime(fixture.emulator, early.plan.thresholdMs);
-  const due = await Effect.runPromise(
+  const due = await runWithoutFollower(
     planTakeoverProgram(successorLucid, fixture.contracts),
   );
   if (due.plan.kind !== "ready") throw new Error("expected ready");
@@ -313,9 +312,9 @@ describe("operator exits funded from the node wallet view", () => {
       },
     });
     const lucid = await env.wallet();
-    await resyncWallet(operator);
+    // The fixture pinned the operator's wallet; fund from the provider.
+    operator.clearUTxOOverride();
     const held = await fundOwn(env, 2_000_000_000n, operator);
-    await resyncWallet(operator);
     const spare = await fundOwn(env, 1_000_000_000n, operator);
     await holdCoin(env, lucid, held);
 

@@ -18,7 +18,10 @@ import {
 import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import type { IntentJournal } from "../src/services/intent-journal.js";
+import type {
+  IntentJournal,
+  IntentPlan,
+} from "../src/services/intent-journal.js";
 import {
   submitAbsorbConfirmedDepositToReserveProgram,
   submitAddReserveFundsToPayoutProgram,
@@ -110,13 +113,19 @@ const run = <A, E>(
 const lastAccepted = (env: IntentEmulator): string =>
   [...env.accepted.values()].at(-1)!.toString("hex");
 
-/** Runs one step; it must land, never touching `held`, its block followed. */
+/**
+ * Runs one step under a plan opened before the step's first L1 read (S5,
+ * as the payout commands open theirs); it must land, never touching `held`,
+ * its block followed.
+ */
 const step = async (
   env: IntentEmulator,
   held: UTxO,
-  effect: Effect.Effect<string, unknown, IntentJournal>,
+  build: (
+    plan: IntentPlan,
+  ) => Promise<Effect.Effect<string, unknown, IntentJournal>>,
 ): Promise<string> => {
-  const outcome = await run(env, effect);
+  const outcome = await run(env, await build(await env.plan()));
   if (outcome._tag === "Left") throw outcome.left;
   const cbor = lastAccepted(env);
   expect(inputsOf(cbor)).not.toContain(refOf(held));
@@ -152,44 +161,43 @@ describe("reserve payout steps funded from the node wallet view", () => {
     } = fixture;
 
     const hashes = [
-      await step(
-        env,
-        held!,
-        submitAbsorbConfirmedDepositToReserveProgram(lucid, contracts, {
-          deposit,
-          hubOracleRefInput,
-          membershipProof: depositMembershipProof,
-          referenceScriptsAddress,
-          nowMs: fixture.emulator.now(),
-          referenceScripts,
-          settlementRefInput,
-        }),
+      await step(env, held!, async (plan) =>
+        submitAbsorbConfirmedDepositToReserveProgram(
+          lucid,
+          contracts,
+          {
+            deposit,
+            hubOracleRefInput,
+            membershipProof: depositMembershipProof,
+            referenceScriptsAddress,
+            nowMs: fixture.emulator.now(),
+            referenceScripts,
+            settlementRefInput,
+          },
+          plan,
+        ),
       ),
     ];
-    const reserveInput = (await lucid.utxosAt(reserveAddress)).find(
-      (utxo) =>
-        utxo.assets.lovelace === 8_000_000n &&
-        Object.keys(utxo.assets).length === 1,
-    )!;
     hashes.push(
-      await step(
-        env,
-        held!,
-        submitInitializePayoutProgram(lucid, contracts, {
-          hubOracleRefInput,
-          membershipProof: withdrawalMembershipProof,
-          referenceScriptsAddress,
-          nowMs: fixture.emulator.now(),
-          referenceScripts,
-          settlementRefInput,
-          withdrawal,
-        }),
+      await step(env, held!, async (plan) =>
+        submitInitializePayoutProgram(
+          lucid,
+          contracts,
+          {
+            hubOracleRefInput,
+            membershipProof: withdrawalMembershipProof,
+            referenceScriptsAddress,
+            nowMs: fixture.emulator.now(),
+            referenceScripts,
+            settlementRefInput,
+            withdrawal,
+          },
+          plan,
+        ),
       ),
     );
     hashes.push(
-      await step(
-        env,
-        held!,
+      await step(env, held!, async (plan) =>
         submitAddReserveFundsToPayoutProgram(
           lucid,
           contracts,
@@ -200,16 +208,20 @@ describe("reserve payout steps funded from the node wallet view", () => {
               payoutUnit,
             ),
             referenceScripts,
-            reserveInput,
+            // The absorbed deposit's reserve output.
+            reserveInput: (await lucid.utxosAt(reserveAddress)).find(
+              (utxo) =>
+                utxo.assets.lovelace === 8_000_000n &&
+                Object.keys(utxo.assets).length === 1,
+            )!,
           },
           withdrawal.idCbor,
+          plan,
         ),
       ),
     );
     hashes.push(
-      await step(
-        env,
-        held!,
+      await step(env, held!, async (plan) =>
         submitConcludePayoutProgram(
           lucid,
           contracts,
@@ -222,6 +234,7 @@ describe("reserve payout steps funded from the node wallet view", () => {
             referenceScripts,
           },
           withdrawal.idCbor,
+          plan,
         ),
       ),
     );
@@ -239,17 +252,23 @@ describe("reserve payout steps funded from the node wallet view", () => {
     const lucid = await env.wallet();
     await holdWholeWallet(env, lucid, "inputs");
     const before = env.accepted.size;
+    const plan = await env.plan();
     const refused = await run(
       env,
-      submitAbsorbConfirmedDepositToReserveProgram(lucid, fixture.contracts, {
-        deposit: fixture.deposit,
-        hubOracleRefInput: fixture.hubOracleRefInput,
-        membershipProof: fixture.depositMembershipProof,
-        referenceScriptsAddress: fixture.referenceScriptsAddress,
-        nowMs: fixture.emulator.now(),
-        referenceScripts: fixture.referenceScripts,
-        settlementRefInput: fixture.settlementRefInput,
-      }),
+      submitAbsorbConfirmedDepositToReserveProgram(
+        lucid,
+        fixture.contracts,
+        {
+          deposit: fixture.deposit,
+          hubOracleRefInput: fixture.hubOracleRefInput,
+          membershipProof: fixture.depositMembershipProof,
+          referenceScriptsAddress: fixture.referenceScriptsAddress,
+          nowMs: fixture.emulator.now(),
+          referenceScripts: fixture.referenceScripts,
+          settlementRefInput: fixture.settlementRefInput,
+        },
+        plan,
+      ),
     );
     expect(refused._tag).toBe("Left");
     expect(causeTrail(refused)).toContain("wallet_view_empty");

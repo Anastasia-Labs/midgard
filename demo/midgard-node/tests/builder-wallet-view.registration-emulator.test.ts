@@ -160,7 +160,9 @@ describe("registrations funded from the node wallet view", () => {
     const lucid = await env.wallet();
     const [seed] = (await viewOf(env, lucid)).utxos;
 
-    // A prior own intent, sent and not yet landed, with change to the wallet.
+    // A prior own intent, sent and not yet landed, with change to the wallet;
+    // its plan opens before the view read it is built from (S5).
+    const plan = await env.plan();
     const inputs = await Effect.runPromise(
       readSelectedWalletViewInputs(lucid, "a payment").pipe(
         Effect.provide(env.journalLayer),
@@ -173,7 +175,7 @@ describe("registrations funded from the node wallet view", () => {
           .newTx()
           .pay.ToAddress(env.payee.address, { lovelace: 2_000_000n })
           .complete({ presetWalletInputs: inputs }),
-        ownPaymentIntent("chain-first"),
+        ownPaymentIntent("chain-first", plan),
       ).pipe(Effect.provide(env.journalLayer)),
     );
     const live = await viewOf(env, lucid);

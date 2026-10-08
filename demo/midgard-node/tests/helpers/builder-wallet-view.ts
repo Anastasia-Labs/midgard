@@ -11,18 +11,27 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { journaledIntent } from "../../src/services/intent-journal.js";
+import {
+  type IntentPlan,
+  journaledIntent,
+} from "../../src/services/intent-journal.js";
 import {
   readSelectedWalletView,
   signOverWalletView,
 } from "../../src/transactions/utils.wallet-view.js";
+import { RECORD_ONLY } from "./intent-journal.js";
 import type { IntentEmulator } from "./intent-journal-emulator.js";
 
-/** An own payment's journaled intent (a payout funding step's; content: a settled event's id). */
-export const ownPaymentIntent = (label: string) =>
+/**
+ * An own payment's journaled intent (a payout funding step's; content: a
+ * settled event's id) under `plan`, opened before the wallet-view read its
+ * build rests on (S5).
+ */
+export const ownPaymentIntent = (label: string, plan: IntentPlan) =>
   journaledIntent(
     "reserve_payout",
     `reserve_payout:${label}:add_funds`,
+    plan,
     Buffer.alloc(36, 1),
   );
 
@@ -121,6 +130,7 @@ export const holdWholeWallet = async (
   mode: "inputs" | "collateral",
 ): Promise<UTxO[]> => {
   const extra = mode === "collateral" ? await fundOwn(env, 3_000_000n) : null;
+  const plan = await env.plan();
   const own = (await viewOf(env, lucid)).utxos;
   const spent =
     extra === null ? [...own] : own.filter((u) => refOf(u) !== refOf(extra));
@@ -176,7 +186,12 @@ export const holdWholeWallet = async (
   const hash = CML.hash_transaction(
     CML.Transaction.from_cbor_hex(cbor).body(),
   ).to_hex();
-  await env.record(ownPaymentIntent(`holds-wallet-${mode}`), cbor, hash);
+  await env.record(
+    ownPaymentIntent(`holds-wallet-${mode}`, plan),
+    cbor,
+    hash,
+    RECORD_ONLY,
+  );
   const view = await viewOf(env, lucid);
   if (view.utxos.length !== 0)
     throw new Error("the holding intent left the wallet view an output");
@@ -193,6 +208,7 @@ export const holdCoin = async (
   lucid: LucidEvolution,
   coin: UTxO,
 ): Promise<string> => {
+  const plan = await env.plan();
   const unsigned = await lucid
     .newTx()
     .collectFrom([coin])
@@ -210,9 +226,10 @@ export const holdCoin = async (
     )
   ).complete();
   await env.record(
-    ownPaymentIntent(`holds-${coin.txHash.slice(0, 8)}`),
+    ownPaymentIntent(`holds-${coin.txHash.slice(0, 8)}`, plan),
     signed.toCBOR(),
     signed.toHash(),
+    RECORD_ONLY,
   );
   const view = await viewOf(env, lucid);
   if (!view.held.has(refOf(coin)))

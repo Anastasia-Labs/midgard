@@ -1,7 +1,8 @@
 /**
- * The intent-journal test harness: a SQLite fact store with the intent
- * projection over the simulated chain, the same chain as a model, and the
- * S6 reconciler with every dependency answering "go".
+ * The intent-journal test harness: a fact store (SQLite by default, or one
+ * a test opens) with the intent projection over the simulated chain, the
+ * same chain as a model, and the S6 reconciler with every dependency
+ * answering "go".
  */
 import { expect } from "vitest";
 
@@ -10,7 +11,9 @@ import {
   createIntentReconciler,
   decodeBlock,
   deriveIntentStatusesIn,
+  type DialectName,
   type FactStore,
+  type FactStoreOptions,
   intentJournalProjection,
   type IntentReconcilerOptions,
   type IntentState,
@@ -18,7 +21,6 @@ import {
   openSqliteFactStore,
   type OutRef,
   projectionStoreOptions,
-  recordIntentIn,
   type RecordIntentResult,
 } from "../../src/index.js";
 import {
@@ -29,6 +31,7 @@ import {
   simTxHash,
   simUniverse,
 } from "../../src/testing/index.js";
+import { recordAtCurrentView } from "./record-at-view.js";
 
 export const K = 3;
 export const u = simUniverse();
@@ -56,15 +59,22 @@ export type Harness = {
   fund: () => Promise<OutRef>;
 };
 
-export const open = async (): Promise<Harness> => {
-  const store = openSqliteFactStore({
-    ...projectionStoreOptions(
-      [intentJournalProjection],
-      { securityParameter: K, trackedSet: u.tracked },
-      "sqlite",
-    ),
-    path: ":memory:",
-  });
+/** The harness store's options for a dialect. */
+export const harnessStoreOptions = (dialect: DialectName): FactStoreOptions =>
+  projectionStoreOptions(
+    [intentJournalProjection],
+    { securityParameter: K, trackedSet: u.tracked },
+    dialect,
+  );
+
+export const open = async (
+  openStore: () => Promise<FactStore> | FactStore = () =>
+    openSqliteFactStore({
+      ...harnessStoreOptions("sqlite"),
+      path: ":memory:",
+    }),
+): Promise<Harness> => {
+  const store = await openStore();
   await store.start();
   const chain = new SimChain(u, SIM_ORIGIN);
   const blocks: BlockSummary[] = [];
@@ -87,7 +97,7 @@ export const open = async (): Promise<Harness> => {
     },
     record: (tx, extra = {}) =>
       store.transaction("write", (sql) =>
-        recordIntentIn(sql, store.dialect, {
+        recordAtCurrentView(sql, store.dialect, {
           family: "commit",
           workflowKey:
             extra.workflowKey ?? `commit:${simTxHash(tx).toString("hex")}`,

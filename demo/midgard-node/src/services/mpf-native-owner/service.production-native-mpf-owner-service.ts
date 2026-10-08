@@ -15,13 +15,21 @@ import {
   NATIVE_MPF_RPC_SCHEMA,
   type NativeMpfApplyResult,
   type NativeMpfCanonicalRootRecovery,
+  type NativeMpfFullIndexHealth,
   type NativeMpfGenerationHandle,
   type NativeMpfOwnerDiagnostics,
   type NativeMpfOwnerService,
+  type NativeMpfPromotionIndexCapExceeded,
   NativeMpfRpcKind,
   type PersistedNativeMpfReplay,
 } from "./protocol.js";
 import { assertStoredNode } from "./service.encode-stored-node.js";
+import {
+  candidateFullIndexSize,
+  type FullIndexSize,
+  fullIndexSizeOf,
+  promotionIndexCapBreach,
+} from "./service.full-index-accounting.js";
 import {
   assertPinnedOwnerBinary,
   NativeChildRpc,
@@ -72,12 +80,14 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
   private restoration: Promise<void> | undefined;
   private recoveryFailure: Error | undefined;
   private lastChildError: Error | undefined;
+  private promotionRefusal: NativeMpfPromotionIndexCapExceeded | undefined;
 
   private constructor(
     private readonly db: Level<string, StoredValue>,
     private rpc: NativeChildRpc,
     private readonly binarySha256: string,
     private durableRoot: string,
+    private fullIndexSize: FullIndexSize,
     private readonly options: NormalizedNativeMpfOwnerServiceOptions,
   ) {
     this.restartPolicy = new NativeOwnerRestartPolicy(options);
@@ -116,6 +126,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         rpc,
         normalized.binarySha256,
         marker,
+        fullIndexSizeOf(fullIndex),
         normalized,
       );
       service.installFailureHandler(rpc);
@@ -299,6 +310,21 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         handle.baseRoot,
         records,
       );
+      // The next start loads the durable root under the full-index caps, so a
+      // root over either is refused here, with nothing written.
+      const candidateSize = await candidateFullIndexSize({
+        db: this.db,
+        baseRoot: handle.baseRoot,
+        base: this.fullIndexSize,
+        candidateRoot,
+        records,
+      });
+      const breach = promotionIndexCapBreach(candidateRoot, candidateSize);
+      if (breach !== undefined) {
+        this.promotionRefusal = breach;
+        await this.discard(handle).catch(() => undefined);
+        throw breach;
+      }
       await this.options.faultInjectionForTests?.("before_promotion_batch");
       await this.db.batch([
         ...records.map((record) => ({
@@ -320,6 +346,8 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         throw new Error("Native MPF PromotionCommitted root mismatch");
       }
       this.durableRoot = candidateRoot;
+      this.fullIndexSize = candidateSize;
+      this.promotionRefusal = undefined;
       this.workerGenerationLeases.delete(this.generationKey(handle));
     });
   }
@@ -543,6 +571,8 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
       );
       this.rpc = replacement;
       this.durableRoot = plan.targetRoot;
+      this.fullIndexSize = fullIndexSizeOf(fullIndex);
+      this.promotionRefusal = undefined;
       this.workerGenerationLeases.clear();
       this.childRestarts += 1;
       this.installFailureHandler(replacement);
@@ -570,6 +600,13 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
 
   public restartHealth(): NativeOwnerRestartHealth {
     return this.restartPolicy.health();
+  }
+
+  /** The durable root's full-index size and the promotion last refused over
+   * a full-index cap, which a later promotion or restore that succeeds
+   * clears. */
+  public fullIndexHealth(): NativeMpfFullIndexHealth {
+    return { ...this.fullIndexSize, promotionRefusal: this.promotionRefusal };
   }
 
   private refusal(): Error | undefined {
@@ -735,6 +772,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     }
     this.rpc = rpc;
     this.durableRoot = marker;
+    this.fullIndexSize = fullIndexSizeOf(fullIndex);
     this.workerGenerationLeases.clear();
     this.recoveryFailure = undefined;
     this.childRestarts += 1;

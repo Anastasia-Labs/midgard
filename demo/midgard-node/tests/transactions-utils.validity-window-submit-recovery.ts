@@ -1,9 +1,9 @@
+import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import { OgmiosJsonRpcError } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  isUnknownOutputReferenceSubmitError,
   NoInlineSubmitDefer,
   resolveEarlyValidityRetryDelayMs,
   submitSignedTxWithRecovery,
@@ -756,7 +756,7 @@ describe("validity-window submit recovery", () => {
     expect(result._tag).toBe("Left");
     expect(submitProgram).toHaveBeenCalledTimes(1);
     expect(waits).toEqual([]);
-    expect(isUnknownOutputReferenceSubmitError(unknownInputError)).toBe(true);
+    expect(isSpentInputSubmitRejection(unknownInputError)).toBe(true);
   });
 
   it("accepts an unknown-input submit race only after exact status confirmation", async () => {

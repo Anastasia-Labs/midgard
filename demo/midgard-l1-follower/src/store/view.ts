@@ -18,14 +18,13 @@ export const currentViewIn = async (
 };
 
 /**
- * The §8.1 validity check as one statement, for a caller that runs it on its
- * own connection inside the transaction it guards. Returns one row with a
- * `valid` column (boolean on Postgres, 0/1 on SQLite). On Postgres the
- * statement takes `FOR SHARE` on the cursor row, so a rewind cannot commit
- * between the check and the guarded write; on SQLite the caller's
- * transaction must be `BEGIN IMMEDIATE`.
+ * The §8.1 validity check as one statement. Returns one row with a `valid`
+ * column (boolean on Postgres, 0/1 on SQLite). On Postgres the statement
+ * takes `FOR SHARE` on the cursor row, so a rewind cannot commit between
+ * the check and the guarded write; on SQLite the caller's transaction must
+ * be `BEGIN IMMEDIATE`.
  */
-export const viewValidQuery = (
+const viewValidQuery = (
   dialect: Dialect,
   view: View,
 ): Readonly<{ sql: string; params: readonly SqlValue[] }> => ({

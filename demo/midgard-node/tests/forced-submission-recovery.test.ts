@@ -21,7 +21,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { ForcedTransactionsDB as DB } from "../src/database/index.js";
 import { Database } from "../src/services/database.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const run = <A, E>(program: Effect.Effect<A, E, Database>) =>
   Effect.runPromise(Effect.scoped(provideDatabaseLayers(program)));
@@ -101,7 +101,7 @@ const classify = (id: Buffer) => ({
 });
 
 beforeEach(async () => {
-  await run(DB.clear);
+  await run(resetApplicationTables);
 });
 
 describe("forced submission persistence and recovery", () => {

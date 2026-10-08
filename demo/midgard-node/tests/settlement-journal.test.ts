@@ -13,7 +13,7 @@ import {
   noOpenAttempt,
   settleAttempts,
 } from "../src/services/settlement.status.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const run = <A, E>(
   effect: Effect.Effect<A, E, SqlClient.SqlClient | NodeConfig>,
@@ -91,12 +91,7 @@ beforeEach(() => {
   vi.spyOn(IntentJournal, "readIntentStatus").mockImplementation((hash) =>
     Effect.succeed(statuses.get(hash) ?? null),
   );
-  return run(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`TRUNCATE settlement_attempts, settlement_jobs, settlement_owners, event_history_authority, deposits_utxos, withdrawal_utxos CASCADE`;
-    }),
-  );
+  return run(resetApplicationTables);
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -209,7 +204,7 @@ describe("settlement durable submission journal", () => {
       }),
     );
   });
-  it("preserves a signed attempt across database scopes and holds history retention until it is final", async () => {
+  it("preserves a signed attempt across database scopes until it is final", async () => {
     const actor = owner();
     await run(
       Effect.gen(function* () {
@@ -226,22 +221,14 @@ describe("settlement durable submission journal", () => {
       job_phase: "absorb",
       latest: true,
     });
-    expect(await run(Journal.settlementRetentionHoldSlot(deploymentId))).toBe(
-      10,
-    );
     await run(
       Effect.gen(function* () {
-        // Safe is not final: the hold stays while it may still revert.
+        // Safe is not final: the attempt stays open while it may still revert.
         statuses.set(attempt().tx_hash, landed(3));
         yield* settleAttempts(actor, depths);
-        expect(yield* Journal.settlementRetentionHoldSlot(deploymentId)).toBe(
-          10,
-        );
+        expect(yield* Journal.openAttempts(deploymentId)).toHaveLength(1);
         const sql = yield* SqlClient.SqlClient;
         yield* sql`UPDATE settlement_attempts SET status = 'final'`;
-        expect(
-          yield* Journal.settlementRetentionHoldSlot(deploymentId),
-        ).toBeUndefined();
         // A final attempt of a complete job is no longer read.
         expect(yield* Journal.openAttempts(deploymentId)).toEqual([]);
       }),
