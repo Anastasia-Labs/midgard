@@ -27,7 +27,14 @@
  * `l1_node_config_unreadable` while its network magic is retried. Each fails
  * readiness by name; none stops the process, and `/healthz` stays live.
  *
- * One degradation is a detail, leaving the node ready:
+ * The driver's `l1_event_identity_conflict` holds name an event left out of
+ * ingestion because a local row of its public id carries another live
+ * admission or none.
+ *
+ * Two degradations are details, leaving the node ready:
+ * `l1_event_undecodable:<count>` while the driver leaves that many projected
+ * events out because they do not decode into the node's rows (the report's
+ * `refused` names each, up to `REFUSALS_REPORTED`), and
  * `<floor>_prune_floor:<slots>` for each role prune floor that holds the
  * follower's prune boundary that many slots back, named by the declaring
  * floor (`landed_frontier_prune_floor` for the landed frontier,
@@ -47,6 +54,8 @@ import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
 
 import {
   type DriverHold,
+  EVENT_UNDECODABLE,
+  type EventRefusal,
   type IngestionPlan,
   planIngestion,
 } from "../l1-events/driver.js";
@@ -60,6 +69,9 @@ export const L1_FOLLOWER_UNCONFIGURED = "l1_follower_unconfigured";
  * once they do.
  */
 export const L1_NODE_CONFIG_UNREADABLE = "l1_node_config_unreadable";
+
+/** How many refused events the report names; the detail counts them all. */
+export const REFUSALS_REPORTED = 32;
 
 /** The follower cursor's identity, to tell a moved cursor from a repeat. */
 export const cursorKey = (status: FollowStatus): string | null =>
@@ -125,6 +137,8 @@ export type L1FollowerHandle = Readonly<{
   planCurrent: () => Promise<FollowerPlanRead>;
   /** Where `confirmed_ledger` stands, with its merge's level (P10); null before the first run. */
   confirmedLedger?: () => ConfirmedLedgerPosition | null;
+  /** The undecodable events the driver's last applied view left out. */
+  refused?: () => readonly EventRefusal[];
 }>;
 
 export type L1FollowerState =
@@ -191,15 +205,21 @@ export const l1FollowerReadiness = (
     };
   const status = state.status();
   const holds = state.holds();
+  const refused = state.refused?.() ?? [];
   const readiness = [...status.readiness, ...holds];
   const reasons: string[] = [];
   for (const { reason } of readiness)
     if (!reasons.includes(reason)) reasons.push(reason);
   return {
     reasons,
-    details: status.prune.floorLags.map(
-      ({ floor, lagSlots }) => `${floor}_prune_floor:${lagSlots.toString()}`,
-    ),
+    details: [
+      ...(refused.length === 0
+        ? []
+        : [`${EVENT_UNDECODABLE}:${refused.length.toString()}`]),
+      ...status.prune.floorLags.map(
+        ({ floor, lagSlots }) => `${floor}_prune_floor:${lagSlots.toString()}`,
+      ),
+    ],
     report: {
       state: status.state,
       readiness,
@@ -212,6 +232,7 @@ export const l1FollowerReadiness = (
       events: status.events,
       lastError: status.lastError,
       prune: status.prune,
+      refused: refused.slice(0, REFUSALS_REPORTED),
       confirmedLedger: state.confirmedLedger?.() ?? null,
     },
   };

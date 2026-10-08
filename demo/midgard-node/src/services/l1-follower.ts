@@ -55,7 +55,10 @@ import {
 import { Data, Effect, Option, Ref, Runtime } from "effect";
 
 import { reconcileFollowerEvents } from "../database/follower-events.js";
-import { forcedOrderIngestionHook } from "../forced-orders/index.js";
+import {
+  forcedOrderIngestionHook,
+  NO_CONTENT_SOURCE,
+} from "../forced-orders/index.js";
 import {
   createFollowerDriver,
   EVENTS_INGESTION_FAILED,
@@ -193,6 +196,7 @@ export const readyProducerSink = Effect.gen(function* () {
               kind: "applied",
               inserted: result.right.ingestion.inserted,
               orphans: 0,
+              refused: result.right.ingestion.refused,
             };
       const error = result.left;
       if (error instanceof FollowerRecoveryRequired) {
@@ -233,6 +237,8 @@ const followL1 = Effect.fnUntraced(function* (
   const finality =
     identity.manifest?.l1Finality ?? DEPLOYMENT_MANIFEST_L1_FINALITY;
   const unconfigured = (detail: string) => recordUnconfigured(globals, detail);
+  if (plan.contentSources.length === 0)
+    yield* Effect.logWarning(`L1 follower: ${NO_CONTENT_SOURCE}`);
   const sink = yield* readyProducerSink;
   const journal = yield* IntentJournal;
   const seededAddresses = nodeSeededAddresses(config);
@@ -354,6 +360,7 @@ const followL1 = Effect.fnUntraced(function* (
             httpTxContentSource({ urlTemplate }),
           ),
         ],
+        contentSourcesConfigured: plan.contentSources.length > 0,
         run: (effect) => Runtime.runPromiseExit(dbRuntime)(effect),
         caughtUp: () => followerCaughtUp(status),
         log: (line) => log(`forced orders: ${line}`),
@@ -401,6 +408,7 @@ const followL1 = Effect.fnUntraced(function* (
     kind: "running",
     status: () => status,
     holds: () => [...driver.holds(), ...intents.holds(), ...journal.holds()],
+    refused: () => driver.refused(),
     planCurrent: () => planCurrentView(store, plan.projection),
     confirmedLedger: () => confirmedLedger,
   };

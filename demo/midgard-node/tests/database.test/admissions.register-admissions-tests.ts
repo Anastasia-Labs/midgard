@@ -95,6 +95,7 @@ import {
   makeMidgardTxOutput,
   makeOutRefCbor,
 } from ".././midgard-output-helpers.js";
+import { insertDeposits } from "../helpers/event-rows.js";
 import { registerTestL1Tip } from "../helpers/l1-tip.js";
 import { databaseTestDirectory } from "./admissions.database-test-directory.js";
 import {
@@ -589,7 +590,7 @@ export const registerAdmissionsTests = () => {
             // spends the other beside the rejected output.
             const deposit = projectedDeposit(0x13);
             const childDeposit = projectedDeposit(0x15);
-            yield* DepositsDB.insertEntries([deposit, childDeposit]);
+            yield* insertDeposits([deposit, childDeposit]);
             const depositSource =
               yield* DepositsDB.toMempoolLedgerEntry(deposit);
             const childDepositSource =
@@ -2969,7 +2970,7 @@ export const registerAdmissionsTests = () => {
               ),
               [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
             });
-            yield* DepositsDB.insertEntries([deposit]);
+            yield* insertDeposits([deposit]);
             const depositSource =
               yield* DepositsDB.toMempoolLedgerEntry(deposit);
             const normalSource = {
@@ -3078,7 +3079,7 @@ export const registerAdmissionsTests = () => {
               ),
               [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
             });
-            yield* DepositsDB.insertEntries([deposit]);
+            yield* insertDeposits([deposit]);
             const depositSource =
               yield* DepositsDB.toMempoolLedgerEntry(deposit);
             const normalSource = {

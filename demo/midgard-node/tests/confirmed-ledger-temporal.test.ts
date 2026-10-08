@@ -33,6 +33,7 @@ import {
   retrieveRows,
 } from "../src/landed-blocks/store.js";
 import { makeDepositEntry } from "./database.test/fixtures.make-deposit-submission-attempt.js";
+import { insertDeposits } from "./helpers/event-rows.js";
 import { admitPending } from "./helpers/landed-blocks-sim.mempool.js";
 import { simDigest } from "./helpers/landed-blocks-sim.universe.js";
 import {
@@ -102,7 +103,7 @@ describe("temporal confirmed_ledger on an own merged block", () => {
     const merged = queueOf(confirmedAt(a, ""), []);
     await inNode(
       Effect.gen(function* () {
-        yield* DepositsDB.insertEntries([deposit]);
+        yield* insertDeposits([deposit]);
         yield* processLandedQueue(ports(state), unmerged);
         // The fold and the unfold below read no whole ledger: O(delta).
         expect(
@@ -152,7 +153,7 @@ describe("temporal confirmed_ledger on an own merged block", () => {
     const merged = queueOf(confirmedAt(a, ""), []);
     await inNode(
       Effect.gen(function* () {
-        yield* DepositsDB.insertEntries([deposit]);
+        yield* insertDeposits([deposit]);
         yield* processLandedQueue(ports(state), queueOf(genesisState, [a]));
         const unchanged = Effect.gen(function* () {
           expect(yield* confirmedKeys).toEqual(sortedKeys(GENESIS));
@@ -221,7 +222,7 @@ describe("temporal confirmed_ledger on an own merged block", () => {
     const mergedA2 = queueOf(confirmedAt(a2, ""), []);
     await inNode(
       Effect.gen(function* () {
-        yield* DepositsDB.insertEntries([deposit]);
+        yield* insertDeposits([deposit]);
         yield* processLandedQueue(ports(state), queueOf(genesisState, [a]));
         yield* processLandedQueue(
           ports(state),

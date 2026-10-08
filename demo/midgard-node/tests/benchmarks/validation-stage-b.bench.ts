@@ -99,6 +99,7 @@ import {
 } from "../../src/services/write-behind.js";
 import { packPhaseAJob } from "../../src/workers/utils/validation-pool.js";
 import { projectDepositsToMempoolLedger } from "../helpers/deposit-projection.js";
+import { insertDeposits } from "../helpers/event-rows.js";
 import {
   type AdmissionInsert,
   assertGate,
@@ -785,7 +786,7 @@ const drainReplica = async (
                   [DepositsDB.Columns.PROJECTED_HEADER_HASH]: null,
                   [DepositsDB.Columns.STATUS]: DepositsDB.Status.Awaiting,
                 };
-                yield* DepositsDB.insertEntries([deposit]);
+                yield* insertDeposits([deposit]);
                 yield* projectDepositsToMempoolLedger([deposit]);
                 depositIngestions += 1;
                 yield* Effect.forkScoped(

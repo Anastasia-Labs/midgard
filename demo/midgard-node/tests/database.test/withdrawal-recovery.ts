@@ -4,6 +4,7 @@ import { describe, expect } from "vitest";
 
 import { WithdrawalsDB } from "../../src/database/index.js";
 import { resolveIncludedWithdrawalEntriesForWindow } from "../../src/mpf/event-window.js";
+import { insertWithdrawals } from "../helpers/event-rows.js";
 import { isolatedDb, makeHistoryWithdrawalEntry } from "./fixtures.js";
 
 export const registerWithdrawalRecoveryTests = () => {
@@ -24,7 +25,7 @@ export const registerWithdrawalRecoveryTests = () => {
               validity: WithdrawalsDB.Validity.WithdrawalIsValid,
               validityDetail: { checked: { z: 1, a: 2 } },
             };
-            yield* WithdrawalsDB.insertEntries([entry]);
+            yield* insertWithdrawals([entry]);
             yield* WithdrawalsDB.setSettlementInfoForEventIds([original]);
             yield* WithdrawalsDB.markAwaitingAsProjected([original]);
             yield* WithdrawalsDB.markProjectedByEventIds([original], header);
@@ -125,7 +126,7 @@ export const registerWithdrawalRecoveryTests = () => {
               validity: WithdrawalsDB.Validity.WithdrawalIsValid,
               validityDetail: {},
             };
-            yield* WithdrawalsDB.insertEntries([entry]);
+            yield* insertWithdrawals([entry]);
             expect(
               (yield* Effect.either(
                 resolveIncludedWithdrawalEntriesForWindow({

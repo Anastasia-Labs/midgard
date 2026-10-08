@@ -10,7 +10,6 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Deferred, Duration, Effect, Fiber, Option } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import * as Deposits from "../src/database/deposits.js";
 import * as Authority from "../src/database/eventHistoryAuthority.js";
 import * as Journal from "../src/database/eventHistoryJournal.js";
 import {
@@ -20,7 +19,6 @@ import {
 import * as ReplayReceipts from "../src/database/eventHistoryReplayReceipts.js";
 import * as Pending from "../src/database/pendingBlockFinalizations.js";
 import { formatDatabaseError } from "../src/database/utils/common.js";
-import * as Withdrawals from "../src/database/withdrawals.js";
 import { historyIncarnationEntry } from "../src/l1-event-history-entries.js";
 import {
   advanceEventHistoryListReplay,
@@ -46,6 +44,7 @@ import {
   HistoryPreparation,
   HistoryRecoverySuperseded,
 } from "../src/services/event-history-recovery.js";
+import { insertDeposits, insertWithdrawals } from "./helpers/event-rows.js";
 import {
   followerMaterialize,
   incarnationOutRef,
@@ -1479,8 +1478,8 @@ it.each(["deposit", "withdrawal"] as const)(
     );
     const insert =
       converted.kind === "deposit"
-        ? Deposits.insertEntries([converted.entry])
-        : Withdrawals.insertEntries([converted.entry]);
+        ? insertDeposits([converted.entry])
+        : insertWithdrawals([converted.entry]);
     await run(
       Authority.publishReady(token, {
         point: admitted.head,

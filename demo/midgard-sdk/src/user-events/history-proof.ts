@@ -36,15 +36,18 @@ export const eventHistoryOriginalAssets = (
   const facts = node.payload.Order.facts;
   const key = hash(Data.to(facts.event_id, OutputReference));
   const unit = policy + key;
+  if (!/^[0-9a-f]{56}$/u.test(policy))
+    throw new Error("History list policy is not a policy id");
+  if (node.position.Key[0] !== key)
+    throw new Error("History Order key is not the hash of its event id");
+  if (lockedAssets[unit] !== 1n)
+    throw new Error("History Order does not hold exactly one of its key token");
   if (
-    !/^[0-9a-f]{56}$/u.test(policy) ||
-    node.position.Key[0] !== key ||
-    lockedAssets[unit] !== 1n ||
     Object.keys(lockedAssets).some(
       (candidate) => candidate.startsWith(policy) && candidate !== unit,
     )
   )
-    throw new Error("History Order is missing its exact event authentication");
+    throw new Error("History Order holds another token of its list policy");
   const assets = { ...lockedAssets };
   delete assets[unit];
   const lovelace = (assets.lovelace ?? 0n) - facts.structural_lovelace;

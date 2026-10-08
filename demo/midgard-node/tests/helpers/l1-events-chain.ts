@@ -59,6 +59,7 @@ const payloadOf = (
   kind: EventKind,
   id: SDK.OutputReference,
   external: boolean,
+  l2NetworkId: bigint,
 ): SDK.EventHistoryPayload => {
   const data = external ? "ab".repeat(600) : "ab";
   return kind === "deposit"
@@ -66,7 +67,11 @@ const payloadOf = (
         DepositPayload: {
           event: {
             id,
-            info: { l2_address: address, l2_network_id: 0n, l2_datum: data },
+            info: {
+              l2_address: address,
+              l2_network_id: l2NetworkId,
+              l2_datum: data,
+            },
           },
         },
       }
@@ -110,13 +115,15 @@ export const eventOrder = (
     external?: boolean;
     inclusionTime?: bigint;
     next?: string | null;
+    /** A deposit's L2 network id; 0 unless set. */
+    l2NetworkId?: bigint;
   }> = {},
 ): EventOrder => {
   const config = listOf(kind);
   const id = eventIdOf(nonce);
   const key = eventKeyOf(nonce);
   const plan = SDK.prepareEventHistoryPayload(
-    payloadOf(kind, id, options.external === true),
+    payloadOf(kind, id, options.external === true, options.l2NetworkId ?? 0n),
     auth,
     BOUNDS,
   );

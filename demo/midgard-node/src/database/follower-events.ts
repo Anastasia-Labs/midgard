@@ -9,8 +9,13 @@
  * - A projected event without a row is inserted with its follower admission
  *   identity (event key, admission outref). One with a row of the same
  *   identity keeps the row's L2 state; only a withdrawal's location moves.
- *   A row of the same public id under another live identity, or none, is
- *   refused as the journal refused it.
+ * - One bad event never fails the run: an event that does not decode into a
+ *   node row (`l1_event_undecodable`), or whose public id has a row under
+ *   another live identity or none (`l1_event_identity_conflict`), is refused
+ *   by name and left out; the rest of the plan is ingested. The refusals are
+ *   a function of the plan and the node rows, so every run derives them
+ *   again. A row with no identity (one from before migration 0008) still
+ *   fails the run below, by the eligibility check every event table gets.
  * - Rows whose admission the follower no longer holds (orphans) are counted,
  *   never adopted: their dependents are rejected by the owner's recovery.
  * - Due deposits are projected into the mempool ledger (hidden until a
@@ -25,9 +30,14 @@ import { SqlClient, type Statement } from "@effect/sql";
 import type { Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { IngestionPlan } from "../l1-events/driver.js";
-import { userEventEntry } from "../l1-events/entries.js";
+import {
+  EVENT_IDENTITY_CONFLICT,
+  EVENT_UNDECODABLE,
+  type EventRefusal,
+  type IngestionPlan,
+} from "../l1-events/driver.js";
 import * as Deposits from "./deposits.js";
+import { identityOf, rowOf } from "./follower-events.row-of.js";
 import { followerViewValid } from "./follower-schema.js";
 import {
   type AdmissionKind,
@@ -53,20 +63,6 @@ const chunks = <A>(values: readonly A[]): A[][] => {
   return result;
 };
 
-/** The 34-byte admission outref: tx hash || u16 big-endian output index. */
-export const admissionOutRefBytes = (
-  outRef: ProjectedEvent["admission"]["outRef"],
-): Buffer => {
-  const index = Buffer.alloc(2);
-  index.writeUInt16BE(outRef.index);
-  return Buffer.concat([Buffer.from(outRef.txHash), index]);
-};
-
-const identityOf = (event: ProjectedEvent) => ({
-  l1_event_key: Buffer.from(event.key, "hex"),
-  l1_origin_outref: admissionOutRefBytes(event.admission.outRef),
-});
-
 type ExistingRow = {
   event_id: Buffer;
   l1_event_key: Buffer | null;
@@ -78,64 +74,6 @@ type ExistingRow = {
 
 const sameBytes = (a: Buffer | null, b: Buffer): boolean =>
   a !== null && a.equals(b);
-
-/** The node row of a projected event (ruling 2: a deposit's L1 tx hash is its admission tx). */
-const rowOf = (
-  event: ProjectedEvent,
-  network: Network,
-): Readonly<Record<string, Statement.Argument>> => {
-  const decoded = userEventEntry(event, network);
-  const identity = identityOf(event);
-  if (decoded.kind === "deposit") {
-    const entry = decoded.entry;
-    return {
-      [Deposits.Columns.ID]: Buffer.from(entry.idCbor, "hex"),
-      [Deposits.Columns.INFO]: Buffer.from(entry.infoCbor, "hex"),
-      [Deposits.Columns.INCLUSION_TIME]: new Date(entry.inclusionTimeMs),
-      [Deposits.Columns.DEPOSIT_L1_TX_HASH]: Buffer.from(
-        event.admission.outRef.txHash,
-      ),
-      [Deposits.Columns.LEDGER_TX_ID]: Buffer.from(entry.ledgerTxId, "hex"),
-      [Deposits.Columns.LEDGER_OUTPUT]: Buffer.from(entry.ledgerOutput, "hex"),
-      [Deposits.Columns.LEDGER_ADDRESS]: entry.ledgerAddress,
-      [Deposits.Columns.PROJECTED_HEADER_HASH]: null,
-      [Deposits.Columns.STATUS]: Deposits.Status.Awaiting,
-      ...identity,
-    };
-  }
-  const entry = decoded.entry;
-  return {
-    [Withdrawals.Columns.ID]: Buffer.from(entry.idCbor, "hex"),
-    [Withdrawals.Columns.RAW_EVENT_INFO]: Buffer.from(
-      entry.rawEventInfo,
-      "hex",
-    ),
-    [Withdrawals.Columns.SETTLEMENT_EVENT_INFO]: null,
-    [Withdrawals.Columns.INCLUSION_TIME]: new Date(entry.inclusionTimeMs),
-    [Withdrawals.Columns.WITHDRAWAL_L1_TX_HASH]: Buffer.from(
-      entry.l1TxHash,
-      "hex",
-    ),
-    [Withdrawals.Columns.WITHDRAWAL_L1_OUTPUT_INDEX]: entry.l1OutputIndex,
-    [Withdrawals.Columns.ASSET_NAME]: Buffer.from(entry.assetName, "hex"),
-    [Withdrawals.Columns.L2_OUTREF]: Buffer.from(entry.l2Outref, "hex"),
-    [Withdrawals.Columns.L2_OWNER]: Buffer.from(entry.l2Owner, "hex"),
-    [Withdrawals.Columns.L2_VALUE]: Buffer.from(entry.l2Value, "hex"),
-    [Withdrawals.Columns.L1_ADDRESS]: Buffer.from(entry.l1Address, "hex"),
-    [Withdrawals.Columns.L1_DATUM]: Buffer.from(entry.l1Datum, "hex"),
-    [Withdrawals.Columns.REFUND_ADDRESS]: Buffer.from(
-      entry.refundAddress,
-      "hex",
-    ),
-    [Withdrawals.Columns.REFUND_DATUM]: Buffer.from(entry.refundDatum, "hex"),
-    [Withdrawals.Columns.VALIDITY]: null,
-    [Withdrawals.Columns.CLASSIFICATION_REVISION]: 0,
-    [Withdrawals.Columns.REOPENED_FROM_HEADER_HASH]: null,
-    [Withdrawals.Columns.PROJECTED_HEADER_HASH]: null,
-    [Withdrawals.Columns.STATUS]: Withdrawals.Status.Awaiting,
-    ...identity,
-  };
-};
 
 const EVENT_TABLE: Readonly<Record<AdmissionKind, string>> = {
   deposit: Deposits.tableName,
@@ -153,6 +91,8 @@ export type FollowerIngestion = Readonly<{
   projected: number;
   /** Header-assigned deposits whose mempool row was restored: the cache must reload. */
   spendableUpserts: readonly MempoolLedgerDB.DepositEntry[];
+  /** Events refused by name and left out of this run. */
+  refused: readonly EventRefusal[];
 }>;
 
 export type FollowerIngestionOutcome =
@@ -171,6 +111,19 @@ const ingestKind = (
     let inserted = 0;
     let locationsMoved = 0;
     let retiredUnseen = 0;
+    const refused: EventRefusal[] = [];
+    const refuse = (
+      event: ProjectedEvent,
+      reason: EventRefusal["reason"],
+      detail: string,
+    ) =>
+      refused.push({
+        kind,
+        key: event.key,
+        idCbor: event.idCbor,
+        reason,
+        detail,
+      });
     for (const chunk of chunks(events)) {
       const ids = chunk.map((event) => Buffer.from(event.idCbor, "hex"));
       const existing = new Map(
@@ -193,15 +146,17 @@ const ingestKind = (
             retiredUnseen += 1;
             continue;
           }
-          const payload = yield* Effect.try({
-            try: () => rowOf(event, network),
-            catch: (cause) =>
-              new DatabaseError({
-                table: eventTable,
-                message: "Failed to decode a projected event into its node row",
-                cause,
-              }),
-          });
+          let payload: Readonly<Record<string, Statement.Argument>>;
+          try {
+            payload = rowOf(event, network);
+          } catch (cause) {
+            refuse(
+              event,
+              EVENT_UNDECODABLE,
+              cause instanceof Error ? cause.message : String(cause),
+            );
+            continue;
+          }
           inserts.push(
             kind === "withdrawal"
               ? {
@@ -220,11 +175,14 @@ const ingestKind = (
           // An orphaned row of the same public id waits for recovery to
           // reject its dependents and remove it; the id is readmitted after.
           if (row.l1_event_key !== null && !row.canonical) continue;
-          return yield* fail(
-            eventTable,
-            "Refusing to adopt a local event row by public ID without its exact history incarnation",
-            event.idCbor,
+          refuse(
+            event,
+            EVENT_IDENTITY_CONFLICT,
+            row.l1_event_key === null
+              ? "a local row of its public id has no admission identity"
+              : "a local row of its public id holds another live admission",
           );
+          continue;
         }
         // Same admission: the row keeps its L2 state. A deposit's L1 tx hash
         // is its admission tx (ruling 2); only a withdrawal's location moves.
@@ -265,7 +223,7 @@ const ingestKind = (
         inserted += written.length;
       }
     }
-    return { inserted, locationsMoved, retiredUnseen };
+    return { inserted, locationsMoved, retiredUnseen, refused };
   });
 
 const sameProjectedDepositEntry = (
@@ -437,6 +395,7 @@ export const reconcileFollowerEvents = (
         retiredUnseen: deposits.retiredUnseen + withdrawals.retiredUnseen,
         projected,
         spendableUpserts,
+        refused: [...deposits.refused, ...withdrawals.refused],
       },
     } as FollowerIngestionOutcome;
   }).pipe(sqlErrorToDatabaseError(table, "Failed follower event ingestion"));

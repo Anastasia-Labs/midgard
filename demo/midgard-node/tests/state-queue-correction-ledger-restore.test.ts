@@ -18,6 +18,7 @@ import {
   REWIND_REJECT_CODE_REOPENED_DEPOSIT_INPUT,
 } from "../src/services/state-queue-correction-ledger-restore.js";
 import * as RejectClosure from "../src/services/working-ledger-recompute.reject-closure.js";
+import { insertDeposits } from "./helpers/event-rows.js";
 import { admitPending } from "./helpers/landed-blocks-sim.mempool.js";
 import { immutableRow } from "./helpers/receipt-member-rows.js";
 import {
@@ -90,7 +91,7 @@ it("refuses a correction's ledger restore when a pending transaction has no delt
         yield* resetApplicationTables;
         const deposit = reopenedDeposit("reopened-deposit");
         const depositId = deposit[DepositsDB.Columns.ID];
-        yield* DepositsDB.insertEntries([deposit]);
+        yield* insertDeposits([deposit]);
         const undecodableTxId = deterministicFixtureTxHash(
           "ledger-restore.undecodable-tx",
         );
@@ -139,7 +140,7 @@ const reopenedBatch = async (other: "marked" | "gone") => {
   const outRef = await run(
     globals,
     Effect.gen(function* () {
-      yield* DepositsDB.insertEntries([deposit]);
+      yield* insertDeposits([deposit]);
       return (yield* DepositsDB.toMempoolLedgerEntry(deposit)).outref;
     }),
   );

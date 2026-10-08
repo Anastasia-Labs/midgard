@@ -28,6 +28,7 @@ import {
   FORCED_ORDERS_TABLE,
   forcedOrderProjection,
   forcedOrderTrackedSet,
+  NO_CONTENT_SOURCE,
 } from "../src/forced-orders/index.js";
 import {
   createFollowerDriver,
@@ -183,7 +184,12 @@ describe("forced-order carriage resolution (§12.3)", () => {
     const { hook, logs } = hookWith(store, { ledger: ledger.ledger, sources });
     const sink: FollowerEventSink = {
       apply: () =>
-        Promise.resolve({ kind: "applied", inserted: 0, orphans: 0 }),
+        Promise.resolve({
+          kind: "applied",
+          inserted: 0,
+          orphans: 0,
+          refused: [],
+        }),
     };
     const driver = createFollowerDriver({
       store,
@@ -209,6 +215,32 @@ describe("forced-order carriage resolution (§12.3)", () => {
     expect(driver.holds()).toEqual([]);
     expect(logs.join("\n")).toMatch(/resolved \(content indexer\)/u);
     await expectIngested(f.submitted, f.order);
+  });
+
+  it("leads a pending carriage with the missing content source only when none is configured", async () => {
+    const { store, chain, ledger, forward } = await follow();
+    const f = fixture(chain.chain);
+    await forward([f.publication]);
+    await forward([f.order]);
+    await forward([f.spend]);
+    for (let i = 0; i <= K; i += 1) await forward([]);
+    const awaited = `${f.carriage.txHash.toString("hex")}#0`;
+    const unset = await hookWith(store, {
+      ledger: ledger.ledger,
+      contentSourcesConfigured: false,
+    }).hook(UNCHANGED);
+    expect(unset?.reason).toBe(FORCED_ORDER_CARRIAGE_PENDING);
+    expect(unset?.detail.startsWith(`${NO_CONTENT_SOURCE} | `)).toBe(true);
+    expect(unset?.detail).toContain(awaited);
+    const configured = await hookWith(store, {
+      ledger: ledger.ledger,
+      sources: [simContentSource("indexer", [])],
+      contentSourcesConfigured: true,
+    }).hook(UNCHANGED);
+    expect(configured?.reason).toBe(FORCED_ORDER_CARRIAGE_PENDING);
+    expect(configured?.detail).toContain(awaited);
+    expect(configured?.detail).not.toContain(NO_CONTENT_SOURCE);
+    expect(await forcedRows()).toEqual([]);
   });
 
   it("refuses a source whose bytes do not hash to the requested tx id", async () => {

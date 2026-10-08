@@ -14,7 +14,6 @@ import "./withdrawals.restore-corrected-classification.js";
 export {
   Columns,
   type Entry,
-  insertEntries,
   retrieveAllEntries,
   retrieveByEventId,
   type SettlementInfoAssignment,

@@ -16,7 +16,11 @@
  * follower view. An order whose carriage no source has yet keeps the node
  * unready with `forced_order_carriage_pending` and is retried on the
  * driver's backoff; it never exits the process and never writes a
- * verdict. An order one of the three ruled admission stops refuses (the
+ * verdict. Its inclusion time bounds the commit horizon
+ * (`forcedOrderHorizon`), so it also holds every block that would end at
+ * or after it. With no content source configured the pending detail
+ * leads with `NO_CONTENT_SOURCE`: only the local ledger and the
+ * follower's own transactions can resolve its carriage. An order one of the three ruled admission stops refuses (the
  * auxiliary-data hash, the script program envelope, the output value size)
  * holds `forced_order_admission_stopped`, naming the stop; any other order
  * that cannot be rebuilt holds `forced_order_ingestion_failed`.
@@ -70,6 +74,12 @@ import { type ForcedOrderRow, forcedOrdersAt } from "./reads.js";
 
 /** An order's carriage resolved from no source yet; it is retried. */
 export const FORCED_ORDER_CARRIAGE_PENDING = "forced_order_carriage_pending";
+/**
+ * The note a pending carriage's detail leads with, and the node logs at
+ * start, when `L1_TX_CONTENT_SOURCES` is unset.
+ */
+export const NO_CONTENT_SOURCE =
+  "no L1 tx content source is configured: set L1_TX_CONTENT_SOURCES so carriage the local ledger and the follower's transactions lack can resolve";
 /** An order could not be rebuilt (malformed, or its bytes do not open). */
 export const FORCED_ORDER_INGESTION_FAILED = "forced_order_ingestion_failed";
 /**
@@ -99,6 +109,12 @@ export type ForcedOrderIngestionOptions = Readonly<{
   ledger?: LedgerOutputs;
   /** §12.3 step 4, in order. */
   sources?: readonly TxContentSource[];
+  /**
+   * Whether `sources` includes a configured remote content source
+   * (`L1_TX_CONTENT_SOURCES`); when false a pending carriage's detail leads
+   * with `NO_CONTENT_SOURCE`.
+   */
+  contentSourcesConfigured: boolean;
   run: RunDatabase;
   /**
    * Whether the follower is caught up; rows whose order is gone are deleted
@@ -407,6 +423,10 @@ export const forcedOrderIngestionHook =
       return hold(EVENTS_ORPHAN_RECOVERY, [
         `forced row(s) whose order left the chain wait for their block journal's recovery: ${orphaned.join(", ")}`,
       ]);
-    if (pending.length > 0) return hold(FORCED_ORDER_CARRIAGE_PENDING, pending);
+    if (pending.length > 0)
+      return hold(FORCED_ORDER_CARRIAGE_PENDING, [
+        ...(options.contentSourcesConfigured ? [] : [NO_CONTENT_SOURCE]),
+        ...pending,
+      ]);
     return undefined;
   };

@@ -5,14 +5,10 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
 import { Database } from "../services/database.js";
-import {
-  withHistoryIngestion,
-  withHistoryWrite,
-} from "../services/event-history-producer.js";
+import { withHistoryWrite } from "../services/event-history-producer.js";
 import {
   clearTable,
   DatabaseError,
-  logDatabaseError,
   sqlErrorToDatabaseError,
 } from "./utils/common.js";
 import * as Ledger from "./utils/ledger.js";
@@ -82,94 +78,6 @@ const projectedEventAdapter = ProjectedEvents.makeProjectedEventAdapter<Entry>({
       "Failed to clear projected header assignments for the given deposits",
   },
 });
-
-const sameEntryPayload = (left: Entry, right: Entry): boolean =>
-  left[Columns.ID].equals(right[Columns.ID]) &&
-  left[Columns.INFO].equals(right[Columns.INFO]) &&
-  left[Columns.INCLUSION_TIME].getTime() ===
-    right[Columns.INCLUSION_TIME].getTime() &&
-  left[Columns.DEPOSIT_L1_TX_HASH].equals(right[Columns.DEPOSIT_L1_TX_HASH]) &&
-  left[Columns.LEDGER_TX_ID].equals(right[Columns.LEDGER_TX_ID]) &&
-  left[Columns.LEDGER_OUTPUT].equals(right[Columns.LEDGER_OUTPUT]) &&
-  left[Columns.LEDGER_ADDRESS] === right[Columns.LEDGER_ADDRESS];
-
-export const insertEntries = (
-  entries: readonly Entry[],
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    if (entries.length <= 0) {
-      return;
-    }
-    const sql = yield* SqlClient.SqlClient;
-    const incomingById = new Map<string, Entry>();
-    for (const incoming of entries) {
-      const key = incoming[Columns.ID].toString("hex");
-      const existingIncoming = incomingById.get(key);
-      if (
-        existingIncoming !== undefined &&
-        !sameEntryPayload(existingIncoming, incoming)
-      ) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: tableName,
-            message:
-              "Refusing to insert deposits because the same event_id appears with conflicting payloads in one batch",
-            cause: `event_id=${key}`,
-          }),
-        );
-      }
-      incomingById.set(key, incoming);
-    }
-    const normalizedEntries = [...incomingById.values()];
-    // The whole payload is immutable, the L1 tx hash included (ruling 2: it
-    // is the admission tx, not the Order's current output). A known event is
-    // kept as it is; reject the entire batch if any of its payload differs.
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        const rows = yield* sql<{ [Columns.ID]: Buffer }>`
-          INSERT INTO ${sql(tableName)} ${sql.insert(normalizedEntries)}
-          ON CONFLICT (${sql(Columns.ID)}) DO UPDATE SET
-            ${sql(Columns.DEPOSIT_L1_TX_HASH)} = ${sql(tableName)}.${sql(Columns.DEPOSIT_L1_TX_HASH)}
-          WHERE ${sql(tableName)}.${sql(Columns.DEPOSIT_L1_TX_HASH)} = EXCLUDED.${sql(
-            Columns.DEPOSIT_L1_TX_HASH,
-          )}
-            AND ${sql(tableName)}.${sql(Columns.INFO)} = EXCLUDED.${sql(
-              Columns.INFO,
-            )}
-            AND ${sql(tableName)}.${sql(Columns.INCLUSION_TIME)} = EXCLUDED.${sql(
-              Columns.INCLUSION_TIME,
-            )}
-            AND ${sql(tableName)}.${sql(Columns.LEDGER_TX_ID)} = EXCLUDED.${sql(
-              Columns.LEDGER_TX_ID,
-            )}
-            AND ${sql(tableName)}.${sql(Columns.LEDGER_OUTPUT)} = EXCLUDED.${sql(
-              Columns.LEDGER_OUTPUT,
-            )}
-            AND ${sql(tableName)}.${sql(Columns.LEDGER_ADDRESS)} = EXCLUDED.${sql(
-              Columns.LEDGER_ADDRESS,
-            )}
-          RETURNING ${sql(Columns.ID)}
-        `;
-        if (rows.length !== normalizedEntries.length) {
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: tableName,
-              message:
-                "Refusing to upsert deposit because the same event_id has conflicting persisted payload",
-              cause: `requested=${normalizedEntries.length},upserted=${rows.length}`,
-            }),
-          );
-        }
-      }),
-    );
-  }).pipe(
-    withHistoryIngestion,
-    Effect.withLogSpan(`insertEntries ${tableName}`),
-    Effect.tapErrorTag("SqlError", (e) =>
-      logDatabaseError(tableName, "insertEntries", e),
-    ),
-    sqlErrorToDatabaseError(tableName, "Failed to insert given deposit UTxOs"),
-  );
 
 export const retrieveAllEntries = (): Effect.Effect<
   readonly Entry[],
