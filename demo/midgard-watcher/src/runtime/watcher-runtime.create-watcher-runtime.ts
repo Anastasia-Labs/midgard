@@ -429,6 +429,17 @@ export const createWatcherRuntime = async (input: {
           });
           refreshFollowerReadiness();
         },
+        // Once per generation, whether the driver heard the rewind or pulled
+        // it from the rollback log (one before it subscribed, or one a stop
+        // left unhandled).
+        onRewind: () => {
+          operations.sink.setAlert({
+            code: "chain_rollback",
+            subjectDigest: sourceIdentityDigest,
+            active: true,
+            observedAtMs: BigInt(Date.now()).toString(),
+          });
+        },
         retryDelayMs: watcherConfig.l1.requestTimeoutMs,
         log: (line) => process.stderr.write(`watcher decisions: ${line}\n`),
       },
@@ -444,14 +455,6 @@ export const createWatcherRuntime = async (input: {
         fundingRuntime.factory,
         activeFollower.onChange,
       ),
-      store.onGeneration(() => {
-        operations.sink.setAlert({
-          code: "chain_rollback",
-          subjectDigest: sourceIdentityDigest,
-          active: true,
-          observedAtMs: BigInt(Date.now()).toString(),
-        });
-      }),
     ];
     readinessTimer = setInterval(
       refreshFollowerReadiness,

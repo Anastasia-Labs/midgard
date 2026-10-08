@@ -7,6 +7,7 @@ import {
   followChain,
   FOLLOWER_CATCHING_UP,
   FOLLOWER_NODE_UNAVAILABLE,
+  FOLLOWER_TRACKED_SET_CHANGED,
   FOLLOWER_WAITING,
   type FollowReadiness,
   type FollowStatus,
@@ -188,7 +189,9 @@ export const committeeL1Source = (
 /**
  * The first reason in `reasons` no wait clears (an intervention such as
  * `rollback_beyond_k`, a stuck point, no configuration), or undefined while
- * the follower only catches up, backs off or waits for the L1 node.
+ * the follower only catches up, backs off, waits for the L1 node, or
+ * replays a store reset from the origin (`tracked_set_changed` clears once
+ * the replay reaches the node tip).
  */
 export const committeeL1InterventionReason = (
   reasons: readonly CommitteeL1Readiness[],
@@ -198,6 +201,7 @@ export const committeeL1InterventionReason = (
       reason !== FOLLOWER_CATCHING_UP &&
       reason !== FOLLOWER_WAITING &&
       reason !== FOLLOWER_NODE_UNAVAILABLE &&
+      reason !== FOLLOWER_TRACKED_SET_CHANGED &&
       reason !== WALLET_SEED_PENDING,
   );
 

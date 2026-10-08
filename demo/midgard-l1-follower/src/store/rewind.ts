@@ -9,8 +9,18 @@ import type { StoreContext } from "./context.js";
 import { describeViolations, runInvariantChecks } from "./invariants.js";
 import { readCursor } from "./rows.js";
 
+/**
+ * A rewind the store committed, as the generation listeners hear it. A
+ * store reset is heard as a rewind to the origin with `reset: true`; it
+ * deleted every class A, D-t and D-x row, so its `deleted` and `unspent` are
+ * empty and say nothing: a listener must not read them for a reset, and
+ * reloads from the store instead (the store's own live set is reloaded at
+ * start).
+ */
 export type Rewound = Readonly<{
   kind: "rewound";
+  /** A store reset (`resetIn`), not a chain rollback. */
+  reset?: true;
   generation: number;
   from: Point;
   to: Point;

@@ -285,14 +285,19 @@ export const followChain = async (
       cursor !== null &&
       cursor.point.slot === Number(tip.slot) &&
       cursor.point.hash.toString("hex") === tip.hash;
-    // The first report at the tip ends a tracked-set replay; a failed
-    // clear keeps the reason and the next event at the tip tries again.
+    // The cursor at the tip of an available node, as published.
+    const atNodeTip = atTip && status.node === null;
+    // The first report at the tip, with the cursor back at the height it
+    // held before the reset, ends a reset's replay; a failed clear keeps
+    // the reason and the next event at the tip tries again.
     let replaying = status.replaying;
-    if (replaying && atTip) {
+    if (replaying && atNodeTip) {
       const ended = await store.endTrackedSetReplay();
-      if (typeof ended === "boolean") {
+      if (ended === "ended" || ended === "not_replaying") {
         replaying = false;
-        log("tracked-set replay reached the node tip");
+        log("the reset's replay reached the node tip");
+      } else if (ended === "below_replay_height") {
+        // The node's chain is shorter than the one the reset left: wait.
       } else if (ended.kind === "store_locked") return "relock";
       else
         log(`clearing the tracked-set replay failed: ${ended.error.message}`);
@@ -303,7 +308,7 @@ export const followChain = async (
       stuck: null,
       events: status.events + 1,
       lastError: null,
-      atTip: atTip && status.node === null,
+      atTip: atNodeTip,
       replaying,
       tip:
         tip.kind === "point"

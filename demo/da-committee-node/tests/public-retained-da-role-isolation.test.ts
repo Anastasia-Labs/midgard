@@ -1,6 +1,9 @@
 import { randomBytes } from "node:crypto";
 
-import { followerMigrations } from "@al-ft/midgard-l1-follower";
+import {
+  FOLLOWER_BOOKKEEPING_DDL,
+  followerMigrations,
+} from "@al-ft/midgard-l1-follower";
 import { declaredTables } from "@al-ft/midgard-l1-follower/lint";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -39,6 +42,9 @@ describe("public retained-DA reader role isolation", () => {
     await store.close();
     admin = new Client({ connectionString: database.url });
     await admin.connect();
+    // The follower's order: its bookkeeping tables, then the migrations
+    // (a later follower migration alters a bookkeeping table).
+    await admin.query(FOLLOWER_BOOKKEEPING_DDL);
     for (const set of [
       followerMigrations("postgres"),
       committeeMigrations("postgres"),

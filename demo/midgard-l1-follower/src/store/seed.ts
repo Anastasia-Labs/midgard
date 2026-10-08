@@ -149,7 +149,7 @@ export const initializeIn = async (
       origin.point.slot,
     ],
   );
-  await writeTrackedSetRecordIn(tx, trackedSetItems(trackedSet), "keep");
+  await writeTrackedSetRecordIn(tx, trackedSetItems(trackedSet));
   const cursor = await readCursor(tx, dialect);
   if (cursor === null) throw new Error("cursor row vanished after insert");
   return { kind: "initialized", cursor };

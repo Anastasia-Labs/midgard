@@ -756,8 +756,8 @@
   },
   {
     "file": "midgard-l1-follower/src/store/fact-store.ts",
-    "max": 533,
-    "reason": "The fact store is one state owner: start, the writer lane, the lease fence, the live-outref cache and the generation listeners share private state, and the record logic itself lives in store/tracked-set-record.ts. SI (+48): the start compares the configured protocol tracked set with the store's record and, on an addition, resets and notifies the generation listeners; the wallets option and the record and replay-flag accessors. Moving the public type declarations out is a separate proven pure move."
+    "max": 547,
+    "reason": "The fact store is one state owner: start, the writer lane, the lease fence, the live-outref cache and the generation listeners share private state, and the record logic itself lives in store/tracked-set-record.ts. SI (+48): the start compares the configured protocol tracked set with the store's record and, on an addition, resets and notifies the generation listeners; the wallets option and the record and replay-flag accessors. SI-fix (+14): the protocol set normalised once at intake, the rollback-log pull accessor (rewindsSince) and the three-way replay-end result. Moving the public type declarations out is a separate proven pure move."
   },
   {
     "file": "midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",

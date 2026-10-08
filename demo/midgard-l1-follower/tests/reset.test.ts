@@ -138,12 +138,30 @@ describe.each(resetAdapters(databases, scratch))(
           "l1_outputs",
           "l1_event_keys",
           "l1_protocol_init",
-          "l1_rollbacks",
           "fixture_block_marks",
           "fixture_spend_log",
           "fixture_address_live_count",
         ])
           expect([table, await count(after, table)]).toEqual([table, 0]);
+        // The rollback log holds only the reset's own row, at its generation.
+        expect(
+          await after.transaction("read", async (tx) =>
+            (
+              await tx.query(
+                "SELECT generation, to_slot, depth_blocks FROM l1_rollbacks",
+              )
+            ).map((row) => [
+              asNumber(row.generation),
+              asNumber(row.to_slot),
+              asNumber(row.depth_blocks),
+            ]),
+          ),
+        ).toEqual([[1, ORIGIN.point.slot, 3]]);
+        // The reset marked the replay on the tracked-set record.
+        expect(await after.trackedSetRecord()).toMatchObject({
+          replaying: true,
+          replayHeight: 53,
+        });
         expect((await after.checkInvariants()).ok).toBe(true);
       } finally {
         await after.close();

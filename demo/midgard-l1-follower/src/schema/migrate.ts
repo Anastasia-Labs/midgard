@@ -30,7 +30,10 @@ export class FollowerMigrationError extends Error {
  * reset reads), the writer row (the lease's fencing epoch and the
  * generation the next `initialize` starts at), and the tracked-set record
  * (the protocol tracked set the facts were built under, and whether a
- * tracked-set reset is still replaying; `store/tracked-set-record.ts`).
+ * store reset is still replaying; `store/tracked-set-record.ts`). Columns
+ * added later come by follower migration (`replay_height`, 0002), never by
+ * editing this text: `CREATE TABLE IF NOT EXISTS` leaves an existing table
+ * as it is.
  */
 export const FOLLOWER_BOOKKEEPING_DDL = `
 -- class: A; retention: one row per applied migration, forever; reset keeps it

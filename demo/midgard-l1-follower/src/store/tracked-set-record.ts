@@ -1,11 +1,10 @@
 import {
-  asBuffer,
   asNumber,
   asString,
   type Dialect,
   type SqlTx,
 } from "../sql/backend.js";
-import type { OutRef, TrackedSet } from "../types.js";
+import type { TrackedSet } from "../types.js";
 import { resetIn } from "./reset.js";
 import type { Rewound } from "./rewind.js";
 import { readCursor } from "./rows.js";
@@ -23,13 +22,21 @@ import { readCursor } from "./rows.js";
  * - any addition, or no record (a store built before the record existed):
  *   the stored facts are incomplete for the added items, so the start resets
  *   the store (classes A, D-t and D-x; B and C are kept) and the follow loop
- *   replays from the origin, in the same transaction setting the record's
- *   `replaying` flag. The loop clears the flag the first time it reports the
- *   cursor at the node tip; until then the role is unready with
- *   `tracked_set_changed`.
+ *   replays from the origin.
+ *
+ * Every reset of a store with a record marks the replay in its own
+ * transaction (`resetIn`): this one and a manual `reset --to-origin` alike.
+ * The mark is the record's `replaying` flag and `replay_height`, the
+ * cursor height before the reset. While it is set, prune runs no projection
+ * prune hook (`pruneIn`: the facts below the cursor are incomplete until the
+ * replay passes them) and the role is unready with `tracked_set_changed`. The
+ * loop clears it at the first report at the node tip, with the node
+ * available, once the cursor height is at least `replay_height`.
  *
  * Own wallets are never part of the record: they are seeded at the cursor
- * (§5.3 step 4) and never reset the store.
+ * (§5.3 step 4) and never reset the store. The comparison is by item, as
+ * configured: an address whose payment credential is also tracked still
+ * counts as an item of its own (conservative: an item change resets).
  */
 
 /** A tracked set as sorted lowercase hex lists. */
@@ -41,9 +48,20 @@ export type TrackedSetItems = Readonly<{
 
 export type TrackedSetRecord = Readonly<{
   trackedSet: TrackedSetItems;
-  /** Set by a tracked-set reset; cleared at the first report at the node tip. */
+  /** Set by a reset; cleared at the node tip once the cursor reached `replayHeight`. */
   replaying: boolean;
+  /** The cursor height before the reset that set `replaying`; null when none was known. */
+  replayHeight: number | null;
 }>;
+
+/** What `endTrackedSetReplayIn` did. */
+export type TrackedSetReplayEnd =
+  /** The flag was set and is now cleared. */
+  | "ended"
+  /** The flag was not set. */
+  | "not_replaying"
+  /** The cursor is below the height it held before the reset: still replaying. */
+  | "below_replay_height";
 
 /** What the start found when it compared the configured set with the record. */
 export type TrackedSetCheck =
@@ -59,7 +77,10 @@ export type TrackedSetCheck =
       removed: TrackedSetItems;
       /** The catalog tables whose rows were deleted, sorted. */
       tables: readonly string[];
-      /** The rewind to the origin the reset amounts to, for the generation listeners. */
+      /**
+       * The rewind to the origin the reset amounts to, for the generation
+       * listeners. A reset marker (`reset: true`); its `deleted` is empty.
+       */
       rewound: Rewound;
     }>;
 
@@ -76,8 +97,22 @@ export const withTrackedAddresses = (
   policies: set.policies,
 });
 
+const lowercase = (values: Iterable<string>): Set<string> =>
+  new Set([...values].map((value) => value.toLowerCase()));
+
+/**
+ * The set with every item as lowercase hex, the form qualification and the
+ * record compare: `createFactStore` normalises the configured set once, so
+ * an item configured in uppercase qualifies the same outputs.
+ */
+export const normalizeTrackedSet = (set: TrackedSet): TrackedSet => ({
+  addresses: lowercase(set.addresses),
+  paymentCredentials: lowercase(set.paymentCredentials),
+  policies: lowercase(set.policies),
+});
+
 const sorted = (values: Iterable<string>): string[] =>
-  [...new Set([...values].map((value) => value.toLowerCase()))].sort();
+  [...lowercase(values)].sort();
 
 export const trackedSetItems = (set: TrackedSet): TrackedSetItems => ({
   addresses: sorted(set.addresses),
@@ -120,7 +155,7 @@ export const readTrackedSetRecordIn = async (
 ): Promise<TrackedSetRecord | null> => {
   const row = (
     await tx.query(
-      "SELECT addresses, payment_credentials, policies, replaying FROM l1_follower_tracked_set WHERE id = 1",
+      "SELECT addresses, payment_credentials, policies, replaying, replay_height FROM l1_follower_tracked_set WHERE id = 1",
     )
   )[0];
   if (row === undefined) return null;
@@ -131,44 +166,64 @@ export const readTrackedSetRecordIn = async (
       policies: hexList(row.policies),
     },
     replaying: asNumber(row.replaying) !== 0,
+    replayHeight:
+      row.replay_height === null || row.replay_height === undefined
+        ? null
+        : asNumber(row.replay_height),
   };
 };
 
-/** Writes the record; `keep` leaves an existing `replaying` flag as it is. */
+/**
+ * Writes the record's items. A new record is not replaying; an existing
+ * one keeps its replay mark (only `resetIn` sets it, only
+ * `endTrackedSetReplayIn` clears it).
+ */
 export const writeTrackedSetRecordIn = async (
   tx: SqlTx,
   items: TrackedSetItems,
-  replaying: boolean | "keep",
 ): Promise<void> => {
-  const values = [
-    JSON.stringify(items.addresses),
-    JSON.stringify(items.paymentCredentials),
-    JSON.stringify(items.policies),
-    replaying === true ? 1 : 0,
-  ];
   await tx.query(
     `INSERT INTO l1_follower_tracked_set (id, addresses, payment_credentials, policies, replaying)
-     VALUES (1, ?, ?, ?, ?)
+     VALUES (1, ?, ?, ?, 0)
      ON CONFLICT (id) DO UPDATE SET addresses = excluded.addresses,
        payment_credentials = excluded.payment_credentials,
-       policies = excluded.policies${replaying === "keep" ? "" : ", replaying = excluded.replaying"}`,
-    values,
+       policies = excluded.policies`,
+    [
+      JSON.stringify(items.addresses),
+      JSON.stringify(items.paymentCredentials),
+      JSON.stringify(items.policies),
+    ],
   );
 };
 
-/** Clears the `replaying` flag; true when it was set. */
-export const endTrackedSetReplayIn = async (tx: SqlTx): Promise<boolean> =>
-  (
-    await tx.query(
-      "UPDATE l1_follower_tracked_set SET replaying = 0 WHERE id = 1 AND replaying <> 0 RETURNING id",
-    )
-  ).length > 0;
+/**
+ * Clears the replay mark unless the cursor is below the height it held
+ * before the reset: a node tip below it is no proof the replay passed every
+ * fact the reset deleted.
+ */
+export const endTrackedSetReplayIn = async (
+  tx: SqlTx,
+  dialect: Dialect,
+): Promise<TrackedSetReplayEnd> => {
+  const cursor = await readCursor(tx, dialect, "update");
+  const record = await readTrackedSetRecordIn(tx);
+  if (record === null || !record.replaying) return "not_replaying";
+  if (
+    record.replayHeight !== null &&
+    (cursor === null || cursor.height < record.replayHeight)
+  )
+    return "below_replay_height";
+  await tx.query(
+    "UPDATE l1_follower_tracked_set SET replaying = 0, replay_height = NULL WHERE id = 1",
+  );
+  return "ended";
+};
 
 /**
  * The start's comparison, in one write transaction: on an addition or a
- * missing record, the reset, the new record with `replaying` set, and the
- * rewind to the origin the reset amounts to (from the old cursor, deleting
- * every live outref) all commit together.
+ * missing record, the new record, the reset with its replay mark and its
+ * `l1_rollbacks` row, and the rewind to the origin the reset amounts to all
+ * commit together.
  */
 export const checkTrackedSetIn = async (
   tx: SqlTx,
@@ -188,50 +243,21 @@ export const checkTrackedSetIn = async (
   const removed = record === null ? empty : minus(record.trackedSet, items);
   if (record !== null && isEmpty(added)) {
     if (isEmpty(removed)) return { kind: "equal" };
-    await writeTrackedSetRecordIn(tx, items, "keep");
+    await writeTrackedSetRecordIn(tx, items);
     return { kind: "removed", removed };
   }
-  const origin = (
-    await tx.query("SELECT height FROM l1_blocks WHERE slot = ? AND hash = ?", [
-      cursor.origin.slot,
-      cursor.origin.hash,
-    ])
-  )[0];
-  if (origin === undefined)
-    throw new Error("the origin block row is missing; the store is broken");
-  const originHeight = asNumber(origin.height);
-  const deleted: OutRef[] = (
-    await tx.query(
-      "SELECT tx_hash, output_index FROM l1_outputs WHERE spent_slot IS NULL",
-    )
-  ).map((row) => ({
-    txHash: asBuffer(row.tx_hash),
-    index: asNumber(row.output_index),
-  }));
+  // The record first: the reset marks the replay on it.
+  await writeTrackedSetRecordIn(tx, items);
   const reset = await resetIn(tx, dialect);
-  await writeTrackedSetRecordIn(tx, items, true);
+  if (reset.rewound === null)
+    throw new Error("the reset found no cursor under the cursor lock");
   return {
     kind: "reset",
     cause: record === null ? "unrecorded" : "added",
     added,
     removed,
     tables: reset.tables,
-    rewound: {
-      kind: "rewound",
-      generation: reset.nextGeneration,
-      from: cursor.point,
-      to: cursor.origin,
-      depth: cursor.height - originHeight,
-      cursor: {
-        point: cursor.origin,
-        height: originHeight,
-        generation: reset.nextGeneration,
-        origin: cursor.origin,
-        prunedThroughSlot: cursor.origin.slot,
-      },
-      unspent: [],
-      deleted,
-    },
+    rewound: reset.rewound,
   };
 };
 

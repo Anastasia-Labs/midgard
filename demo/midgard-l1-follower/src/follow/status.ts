@@ -22,10 +22,12 @@ export const FOLLOWER_MIGRATION_FAILED = "l1_follower_migration_failed";
 /** The L1 node transport is not ready; the detail carries its reason. */
 export const FOLLOWER_NODE_UNAVAILABLE = "l1_node_unavailable";
 /**
- * The configured protocol tracked set added an item the store's record did
- * not hold (or the store had no record): the start reset the store and the
- * loop replays from the origin. Transient: cleared, in the store too, the
- * first time the loop reports the cursor at the node tip.
+ * A store reset is replaying from the origin: the start reset the store
+ * because the configured protocol tracked set added an item its record did
+ * not hold or the store had no record, or an operator ran
+ * `reset --to-origin`. Transient: cleared, in the store too, the first time
+ * the loop reports the cursor at the tip of an available node with the
+ * cursor at least as high as before the reset.
  */
 export const FOLLOWER_TRACKED_SET_CHANGED = "tracked_set_changed";
 /**
@@ -87,7 +89,7 @@ export type FollowStatus = Readonly<{
   tip: Readonly<{ slot: number; height: number }> | null;
   /** The cursor equals that tip; false while `node` is set. */
   atTip: boolean;
-  /** A tracked-set reset is replaying from the origin; cleared at the first `atTip`. */
+  /** A store reset is replaying from the origin; cleared at the first `atTip` at or above the height before it. */
   replaying: boolean;
   /** Events applied by this loop. */
   events: number;
@@ -169,7 +171,7 @@ export const readinessOf = (
     reasons.push({
       reason: FOLLOWER_TRACKED_SET_CHANGED,
       detail:
-        "the tracked set gained items the stored facts lacked; replaying from the origin until the cursor reaches the node tip",
+        "the store was reset (a tracked-set change, a missing tracked-set record, or reset --to-origin); replaying from the origin until the cursor reaches the node tip and the height it held before the reset",
     });
   if (status.prune.failures >= PRUNE_FAILING_AFTER)
     reasons.push({

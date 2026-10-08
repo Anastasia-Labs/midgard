@@ -1,227 +1,67 @@
 /**
- * The watcher over a tracked-set reset (lane SI, rulings SI-R2 and SI-R3):
- * the start that resets the store tells the decision driver as a rewind to
- * the origin; the tx-input sweep waits for the replay to reach the tip, so
- * the inputs stored at ingest (class C) survive it; and the driver makes no
- * pass until the follower in this process has finished its store start.
+ * The decision driver over a store reset (lane SI, ruling SI-R2; lane
+ * SI-fix, ruling SIFIX-R1): the start that resets the store tells the
+ * driver as a rewind to the origin; a driver that was not subscribed (a
+ * reset at a start before it subscribed, a rewind its process stopped
+ * before handling) pulls it from the rollback log by generation, once; and
+ * the driver makes no pass until the follower in this process has finished
+ * its store start. The tx-input sweep's side is in
+ * `tracked-set-reset-inputs.test.ts`.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type {
-  ChainSyncEvent,
-  ChainSyncStream,
-  L1NodeTransport,
-} from "@al-ft/l1-node-transport";
 import {
-  decodeBlock,
-  type FactStore,
   openSqliteFactStore,
   projectionStoreOptions,
 } from "@al-ft/midgard-l1-follower";
-import {
-  encodeUtxoAnswer,
-  SIM_ORIGIN,
-  SimChain,
-  simStoreOptions,
-  simUniverse,
-  type SimUtxo,
-} from "@al-ft/midgard-l1-follower/testing";
+import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import {
-  openWatcherFollowerRuntime,
-  watcherSecurityParameter,
-} from "../../src/l1-follower/follower-runtime.js";
-import type { WatcherObservationAuthority } from "../../src/l1-follower/observation.js";
+import { openWatcherFollowerRuntime } from "../../src/l1-follower/follower-runtime.js";
 import { watcherProjection } from "../../src/l1-follower/projection.js";
-import { WATCHER_TX_INPUTS_TABLE } from "../../src/l1-follower/tables.js";
 import {
   createWatcherDecisionDriver,
   WATCHER_FOLLOWER_NOT_STARTED,
   watcherFollowerStarted,
 } from "../../src/runtime/watcher-runtime.decision-driver.js";
-import { okValue } from "../support/l1-follower-raw-reads-fixture.js";
+import { SIM_HUB_ORACLE_ONE_SHOT } from "../support/l1-follower-state-queue-traffic.js";
 import {
-  commitTx,
-  initTx,
-  queueState,
-  SIM_HUB_ORACLE_ONE_SHOT,
-  SIM_WATCHER_DEPLOYMENT,
-} from "../support/l1-follower-state-queue-traffic.js";
-import {
-  closeRemovedHeaders,
-  removedHeader,
-} from "../support/proof-retention-removed-header.js";
-
-const D = SIM_WATCHER_DEPLOYMENT;
-const RECOVERY_DEPTH = 4;
-const K = watcherSecurityParameter(RECOVERY_DEPTH);
-const RELEASE_DEPTH = 2;
-const SOURCE_ID = "tracked-set-reset";
-const ONE_SHOT: SimUtxo = {
-  outRef: SIM_HUB_ORACLE_ONE_SHOT,
-  output: { address: simUniverse().untrackedAddress, lovelace: 5_000_000n },
-};
-const AUTHORITY: WatcherObservationAuthority = {
-  authorityDigest: "a1".repeat(32),
-  deploymentFingerprint: "a2".repeat(32),
-  protocolScriptHashes: {
-    hubOracleMint: D.hubOracleMint,
-    stateQueueSpend: D.stateQueueSpend,
-    stateQueueMint: D.stateQueueMint,
-    correctionLockSpend: D.correctionLockSpend,
-    fraudProofSpend: D.fraudProofSpend,
-    fraudProofMint: D.fraudProofMint,
-    referenceScriptAuthMint: "b1".repeat(28),
-    availabilityChallengeSpend: D.availabilityChallengeSpend,
-    availabilityChallengeMint: D.availabilityChallengeMint,
-    daBondPoolSpend: D.daBondPoolSpend,
-    daBondPoolMint: "b2".repeat(28),
-    daAttestationMint: D.daAttestationMint,
-    availabilityChallengeOpenWithdraw: "b3".repeat(28),
-    availabilityChallengeSettleWithdraw: "b4".repeat(28),
-    availabilityChallengeCloseWithdraw: "b5".repeat(28),
-    availabilityChallengeTimeoutWithdraw: "b6".repeat(28),
-  },
-};
+  applyAll,
+  AUTHORITY,
+  chainEvents,
+  collaborators,
+  D,
+  decideOnce,
+  driverOver,
+  dropRecord,
+  K,
+  openStore,
+  ORIGIN_ROLLBACK,
+  RECOVERY_DEPTH,
+  RELEASE_DEPTH,
+  scriptedTransport,
+  SOURCE_ID,
+  until,
+} from "../support/l1-follower-store-reset.js";
 
 const scratch = mkdtempSync(join(tmpdir(), "watcher-tracked-set-reset-"));
 const opened: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of opened.splice(0).reverse()) await close();
-  await closeRemovedHeaders();
 });
 afterAll(() => {
   rmSync(scratch, { recursive: true, force: true });
 });
 
-const until = async (what: string, holds: () => boolean, ms = 20_000) => {
-  const deadline = Date.now() + ms;
-  while (!holds()) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-};
-
-/** A store at the start that drops its tracked-set record: the next start resets it. */
-const dropRecord = (store: FactStore) =>
-  store.transaction("write", (tx) =>
-    tx.query("DELETE FROM l1_follower_tracked_set"),
-  );
-
-/** The protocol init, then `blocks` blocks, a header commit in the first. */
-const chainEvents = (blocks: number) => {
-  const chain = new SimChain(simUniverse(), SIM_ORIGIN);
-  const events: ChainSyncEvent[] = [chain.forward([initTx(D)]).event];
-  for (let i = 0; i < blocks; i += 1) {
-    const state = i === 0 ? queueState(chain, D) : null;
-    events.push(
-      chain.forward(state === null ? [] : [commitTx(state, D)]).event,
-    );
-  }
-  return events;
-};
-
-const applyAll = async (
-  store: FactStore,
-  events: readonly ChainSyncEvent[],
-) => {
-  for (const event of events) {
-    if (event.kind !== "roll_forward") throw new Error("forward events only");
-    expect((await store.applyBlock(decodeBlock(event.block))).kind).toBe(
-      "applied",
-    );
-  }
-};
-
-/** Stub bridge, availability and user-event history counting what the driver asks of them. */
-const collaborators = () => {
-  const seen = {
-    bridgeInvalidations: 0,
-    availabilityInvalidations: 0,
-    recoveryPreparations: 0,
-    dispatched: [] as string[],
-    historyRollbacks: [] as unknown[],
-  };
-  let head = {
-    blockHash: SIM_ORIGIN.point.hash.toString("hex"),
-    slot: String(SIM_ORIGIN.point.slot),
-    blockNo: String(SIM_ORIGIN.height),
-    pointId: "",
-  };
-  const history = {
-    read: () => ({
-      status: "ready" as const,
-      currentPoint: head,
-      headCursor: head,
-      generation: 0,
-    }),
-    advanceThrough: (point: typeof head) => {
-      head = point;
-      return Promise.resolve();
-    },
-    handleRollback: (point: { slot: string; blockHash: string }) => {
-      seen.historyRollbacks.push(point);
-      head = { ...head, slot: point.slot, blockHash: point.blockHash };
-      return Promise.resolve();
-    },
-  };
-  const bridge = {
-    prepareForRecovery: (observation: { observationDigest: string }) => {
-      seen.recoveryPreparations += 1;
-      return Promise.resolve({
-        observationDigest: observation.observationDigest,
-        decisionDigests: [],
-        target: null,
-      });
-    },
-    recoverExisting: () => Promise.resolve(0),
-    reconcileAndDispatch: (observation: { observationDigest: string }) => {
-      seen.dispatched.push(observation.observationDigest);
-      return Promise.resolve({
-        observationDigest: observation.observationDigest,
-        decisionDigests: [],
-        target: null,
-      });
-    },
-    invalidateForRollback: () => {
-      seen.bridgeInvalidations += 1;
-    },
-    beforeHistoryAdvance: () => undefined,
-  };
-  const availability = {
-    reconcile: () => Promise.resolve(),
-    invalidateForRollback: () => {
-      seen.availabilityInvalidations += 1;
-    },
-  };
-  return { seen, history, bridge, availability, head: () => head };
-};
-
 describe("the decision driver over a tracked-set reset", () => {
   it("hears the reset as a rewind to the origin: invalidates, re-arms recovery and rolls the history back to O", async () => {
     const path = join(scratch, "driver-reset.db");
-    const store = openSqliteFactStore({
-      ...simStoreOptions([watcherProjection(D)], K, "sqlite"),
-      path,
-    });
+    const store = openStore(path);
     const c = collaborators();
-    const driver = createWatcherDecisionDriver(
-      {
-        store,
-        onFollowerChange: () => () => undefined,
-        authority: AUTHORITY,
-        sourceId: SOURCE_ID,
-        releaseDepth: RELEASE_DEPTH,
-        bridge: c.bridge as never,
-        availability: c.availability as never,
-        history: c.history as never,
-        retryDelayMs: 10,
-      },
-      { atTip: () => true, started: () => true },
-    );
+    const rewound: number[] = [];
+    const driver = driverOver(store, c, rewound);
     opened.push(async () => {
       await driver.close();
       await store.close();
@@ -250,6 +90,7 @@ describe("the decision driver over a tracked-set reset", () => {
     expect(c.seen.bridgeInvalidations).toBe(1);
     expect(c.seen.availabilityInvalidations).toBe(1);
     expect(driver.status().rewinds).toBe(1);
+    expect(rewound).toEqual([1]);
     expect(driver.inclusion()).toBeNull();
 
     // The replay from the origin: the next pass re-prepares recovery, the
@@ -262,16 +103,91 @@ describe("the decision driver over a tracked-set reset", () => {
       () => c.seen.recoveryPreparations === 2,
     );
     await driver.idle();
-    expect(c.seen.historyRollbacks).toEqual([
-      {
-        kind: "point",
-        blockHash: SIM_ORIGIN.point.hash.toString("hex"),
-        slot: String(SIM_ORIGIN.point.slot),
-      },
-    ]);
+    expect(c.seen.historyRollbacks).toEqual([ORIGIN_ROLLBACK]);
     expect(driver.readiness()).toEqual([]);
     expect(driver.current().observationDigest).toBe(before);
     expect(c.seen.dispatched.at(-1)).toBe(before);
+    // Heard pushed, then found again by the pull: handled once.
+    expect(driver.status().rewinds).toBe(1);
+    expect(rewound).toEqual([1]);
+    expect(c.seen.bridgeInvalidations).toBe(1);
+  });
+
+  it("pulls a reset made at a start before it subscribed: rolls the history back to the origin once, raises one rewind, and a later driver raises none", async () => {
+    const path = join(scratch, "driver-reset-before-subscribe.db");
+    const c = collaborators();
+    const rewound: number[] = [];
+    const events = chainEvents(6);
+    // The process before: a driver decided at the tip, then the process stopped.
+    const first = openStore(path);
+    expect((await first.start()).kind).toBe("ready");
+    expect((await first.initialize(SIM_ORIGIN)).kind).toBe("initialized");
+    await applyAll(first, events);
+    expect((await decideOnce(first, c, rewound)).rewinds).toBe(0);
+    expect(BigInt(c.head().slot)).toBeGreaterThan(
+      BigInt(SIM_ORIGIN.point.slot),
+    );
+    await dropRecord(first);
+    await first.close();
+
+    // The next process: the follower's start resets the store before the
+    // driver exists (the production order), then replays.
+    const store = openStore(path);
+    opened.push(() => store.close());
+    expect(await store.start()).toMatchObject({
+      kind: "ready",
+      trackedSet: { kind: "reset", cause: "unrecorded" },
+      replaying: true,
+    });
+    expect((await store.initialize(SIM_ORIGIN)).kind).toBe("initialized");
+    await applyAll(store, events);
+    const status = await decideOnce(store, c, rewound);
+    expect(status.rewinds).toBe(1);
+    expect(rewound).toEqual([1]);
+    expect(c.seen.historyRollbacks).toEqual([ORIGIN_ROLLBACK]);
+    expect(c.seen.bridgeInvalidations).toBe(1);
+    expect(c.seen.availabilityInvalidations).toBe(1);
+
+    // Handled durably: the next process's driver raises none.
+    expect((await decideOnce(store, c, rewound)).rewinds).toBe(0);
+    expect(rewound).toEqual([1]);
+    expect(c.seen.historyRollbacks).toHaveLength(1);
+  });
+
+  it("pulls a rewind its process stopped before handling, once, and a later driver raises none", async () => {
+    const path = join(scratch, "driver-rewind-unhandled.db");
+    const c = collaborators();
+    const rewound: number[] = [];
+    const events = chainEvents(6);
+    const store = openStore(path);
+    opened.push(() => store.close());
+    expect((await store.start()).kind).toBe("ready");
+    expect((await store.initialize(SIM_ORIGIN)).kind).toBe("initialized");
+    await applyAll(store, events.slice(0, 4));
+    const target = (await store.cursor())!.point;
+    await applyAll(store, events.slice(4));
+    expect((await decideOnce(store, c, rewound)).rewinds).toBe(0);
+    // The history moved past the rewind's target.
+    expect(BigInt(c.head().slot)).toBeGreaterThan(BigInt(target.slot));
+
+    // A rewind with no driver subscribed: the process stopped before a
+    // driver handled it.
+    expect((await store.rewind(target)).kind).toBe("rewound");
+    const generation = (await store.cursor())!.generation;
+
+    const status = await decideOnce(store, c, rewound);
+    expect(status.rewinds).toBe(1);
+    expect(rewound).toEqual([generation]);
+    expect(c.seen.historyRollbacks).toEqual([
+      {
+        kind: "point",
+        blockHash: target.hash.toString("hex"),
+        slot: String(target.slot),
+      },
+    ]);
+    expect((await decideOnce(store, c, rewound)).rewinds).toBe(0);
+    expect(rewound).toEqual([generation]);
+    expect(c.seen.historyRollbacks).toHaveLength(1);
   });
 
   it("makes no pass while the follower's start is held on a store with a cursor, and passes once it completes", async () => {
@@ -303,38 +219,7 @@ describe("the decision driver over a tracked-set reset", () => {
     await applyAll(holder, events.slice(0, held));
 
     const state = { acked: held };
-    const transport = {
-      openChainSync: (): ChainSyncStream => {
-        let position = state.acked;
-        let closed = false;
-        return {
-          opened: Promise.resolve(),
-          next: async () => {
-            for (;;) {
-              if (closed) return undefined;
-              if (position < events.length) return events[(position += 1) - 1];
-              await new Promise((resolve) => setTimeout(resolve, 2));
-            }
-          },
-          ack: (seq: bigint) => {
-            const index = events.findIndex((event) => event.seq === seq);
-            if (index >= 0) state.acked = Math.max(state.acked, index + 1);
-          },
-          close: () => {
-            closed = true;
-            return Promise.resolve();
-          },
-        } as unknown as ChainSyncStream;
-      },
-      withLedgerState: (
-        _at: unknown,
-        use: (session: { query: () => Promise<Uint8Array> }) => unknown,
-      ) => use({ query: () => Promise.resolve(encodeUtxoAnswer([ONE_SHOT])) }),
-      // The scripted node is always reachable: no readiness change to report.
-      readiness: { ready: true, nodeToClientVersion: 32784 },
-      onReadiness: (): (() => void) => () => undefined,
-      close: () => Promise.resolve(),
-    } as unknown as L1NodeTransport;
+    const transport = scriptedTransport(events, state);
     const follower = openWatcherFollowerRuntime({
       deployment: D,
       storePath: path,
@@ -392,60 +277,5 @@ describe("the decision driver over a tracked-set reset", () => {
     );
     expect(watcherFollowerStarted(follower.status())).toBe(true);
     expect(c.seen.recoveryPreparations).toBe(1);
-  });
-});
-
-describe("tx inputs over a tracked-set reset", () => {
-  it("keeps the inputs stored at ingest through the replay with no ledger read, and sweeps again once the replay reached the tip", async () => {
-    const r = await removedHeader({ pin: true, resolveAtIngest: true });
-    await r.passK();
-    const store = r.h.store;
-    const inputs = (txHash: string) =>
-      r.count(WATCHER_TX_INPUTS_TABLE, "tx_hash", txHash);
-    expect(await inputs(r.commitHash)).toBeGreaterThan(0);
-    // A row of a tx no fact names: what the sweep is for.
-    const stray = "ef".repeat(32);
-    await store.transaction("write", (tx) =>
-      tx.query(
-        `INSERT INTO ${WATCHER_TX_INPUTS_TABLE} (tx_hash, out_tx_hash, out_index, output_cbor) VALUES (?, ?, ?, ?)`,
-        [Buffer.from(stray, "hex"), Buffer.alloc(32, 0x01), 0, Buffer.of(0xa0)],
-      ),
-    );
-    const blocks = r.h.chain.rawBlocks();
-
-    await dropRecord(store);
-    expect(await store.start()).toMatchObject({
-      trackedSet: { kind: "reset" },
-      replaying: true,
-    });
-    // The node can serve none of the deep parents: any read would fail.
-    r.ledger.down(true);
-    expect((await store.initialize(SIM_ORIGIN)).kind).toBe("initialized");
-    // Mid-replay, before the commit is back in l1_txs.
-    expect((await store.applyBlock(decodeBlock(blocks[0]!))).kind).toBe(
-      "applied",
-    );
-    expect(await store.txByHash(Buffer.from(r.commitHash, "hex"))).toBeNull();
-    await r.resolver.step();
-    expect(await inputs(r.commitHash)).toBeGreaterThan(0);
-    expect(await inputs(stray)).toBe(1);
-    for (const raw of blocks.slice(1))
-      expect((await store.applyBlock(decodeBlock(raw))).kind).toBe("applied");
-    const unresolved = await r.resolver.step();
-    expect(unresolved.map(({ txHash }) => txHash)).not.toContain(r.commitHash);
-    expect(await inputs(stray)).toBe(1);
-    const raw = okValue(
-      await r.h.reads(true).rawTransaction(r.commitHash, r.commitPoint),
-    );
-    expect(raw.unresolvedInputs).toEqual([]);
-    expect(
-      raw.transaction.resolvedInputs.map(({ outRef }) => outRef),
-    ).toContain(r.operatorUtxo);
-
-    // The first report at the tip ends the replay: the sweep runs again.
-    expect(await store.endTrackedSetReplay()).toBe(true);
-    await r.resolver.step();
-    expect(await inputs(stray)).toBe(0);
-    expect(await inputs(r.commitHash)).toBeGreaterThan(0);
   });
 });

@@ -28,6 +28,7 @@ import {
   committeeTracked,
   ownWalletAddress,
 } from "../../src/l1/follower/committee-follower-config.js";
+import { committeeFollowerStoreOptions } from "../../src/l1/follower/l1-follower.js";
 import { committeeProjection } from "../../src/l1/follower/projection.js";
 import { minimalConfig } from "../helpers.js";
 import { SIM_QUEUE } from "./queue-sim.js";
@@ -268,6 +269,45 @@ describe("the committee's tracked set (plan §4.4, committee column)", () => {
           [...outputs, ...mints].map(([label, , tracked]) => [label, tracked]),
         ),
       );
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("holds none of the committee's own wallets: they are seeded, not tracked", async () => {
+    const runnableConfig = {
+      ...config,
+      stateQueueAddress: scriptAddress(hash28("f1")),
+    };
+    const wallet = credentialToAddress("Preprod", {
+      type: "Key",
+      hash: hash28("e5"),
+    });
+    const details = getAddressDetails(wallet);
+    const store = openSqliteFactStore({
+      ...committeeFollowerStoreOptions(
+        runnableConfig,
+        { confirmationDepth: 2, securityParameter: 4 },
+        [addressBytes(wallet)],
+        "sqlite",
+      ),
+      path: ":memory:",
+    });
+    try {
+      expect(await store.start()).toMatchObject({ kind: "ready" });
+      // The record is written with the store's first cursor.
+      expect(
+        await store.initialize({
+          point: SIM_ORIGIN.point,
+          height: SIM_ORIGIN.height,
+        }),
+      ).toMatchObject({ kind: "initialized" });
+      const record = await store.trackedSetRecord();
+      if (record === null) throw new Error("no tracked-set record");
+      // The record holds the protocol set (not vacuous) and no wallet item.
+      expect(record.trackedSet.policies.length).toBeGreaterThan(0);
+      expect(record.trackedSet.addresses).not.toContain(details.address.hex);
+      expect(record.trackedSet.paymentCredentials).not.toContain(hash28("e5"));
     } finally {
       await store.close();
     }

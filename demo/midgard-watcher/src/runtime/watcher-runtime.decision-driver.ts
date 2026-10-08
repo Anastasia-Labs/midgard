@@ -16,6 +16,10 @@ import {
 import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync.js";
 import {
+  readHandledFollowerGeneration,
+  writeHandledFollowerGeneration,
+} from "../l1-follower/follower-generation.js";
+import {
   readWatcherObservation,
   type WatcherObservationAuthority,
   type WatcherObservationRead,
@@ -43,6 +47,16 @@ import {
  * quarantined and nothing needs a restart. A rewind the follower refuses
  * (beyond k) stops the follower with an intervention, which the follower's
  * readiness reports; this driver keeps serving the last facts.
+ *
+ * A rewind or store reset the notification never reached (one at a start
+ * before the driver subscribed, or one its process stopped before handling)
+ * is pulled by generation at the top of every pass, before anything reads
+ * the facts: from the generation the driver last handled
+ * (`follower-generation.ts`) through the store's rollback log. Both paths
+ * meet in one handler, idempotent per generation: the invalidations, the
+ * rewind count and `onRewind` run once for each new generation, and the
+ * history target is the lowest one either path saw (rolling the history
+ * back to a point at or above its head is a no-op).
  *
  * Liveness: a pass never throws out of the driver. A failure is a named
  * readiness reason with its detail and a retry after `retryDelayMs`.
@@ -79,7 +93,10 @@ type DriverHistory = Pick<
 >;
 
 export type WatcherDecisionDriverInput = Readonly<{
-  store: Pick<FactStore, "transaction" | "onGeneration" | "cursor">;
+  store: Pick<
+    FactStore,
+    "transaction" | "onGeneration" | "cursor" | "rewindsSince"
+  >;
   /** Hears every follower status change (new block, rewind, wait). */
   onFollowerChange(listener: () => void): () => void;
   authority: WatcherObservationAuthority;
@@ -111,6 +128,8 @@ export type WatcherDecisionDriverInput = Readonly<{
   }>;
   /** The tip the driver last decided at, for L1 freshness reporting. */
   onDecided?: (tip: WatcherAuthenticatedStateQueueObservation) => void;
+  /** Once per follower generation a rewind or reset raised, pushed or pulled. */
+  onRewind?: (generation: number) => void;
   retryDelayMs: number;
   log?: (line: string) => void;
 }>;
@@ -201,6 +220,12 @@ export const createWatcherDecisionDriver = (
   let recoveryPending = true;
   let historyRewindTo: Point | null = null;
   let recoveredCount: number | null = null;
+  // The highest follower generation this process handled; null before the
+  // first push or pull.
+  let handledGeneration: number | null = null;
+  // The last retirement reset a rewind started; the durable handled
+  // generation moves only once it succeeded.
+  let retirementReset: Promise<boolean> | null = null;
 
   let resolveRecovered!: (count: number) => void;
   const recovered = new Promise<number>((resolve) => {
@@ -213,21 +238,39 @@ export const createWatcherDecisionDriver = (
   });
   const idleWaiters = new Set<() => void>();
 
-  const unsubscribeGeneration = input.store.onGeneration(({ rewound }) => {
+  const resetRetirement = (): void => {
+    if (input.retirement === undefined) return;
+    retirementReset = input.retirement.reset().then(
+      () => true,
+      (error: unknown) => {
+        log(`replay-transcript retirement reset failed: ${message(error)}`);
+        return false;
+      },
+    );
+  };
+
+  /** One rewind or reset to `to` at `generation`, pushed or pulled. */
+  const rewound = (generation: number, to: Point): void => {
+    if (historyRewindTo === null || to.slot < historyRewindTo.slot)
+      historyRewindTo = to;
+    if (handledGeneration !== null && generation <= handledGeneration) return;
+    handledGeneration = generation;
     // Synchronous: no runnable authority survives into the next await.
     input.bridge.invalidateForRollback();
     input.availability.invalidateForRollback();
     inclusion = null;
     rewinds += 1;
     recoveryPending = true;
-    if (historyRewindTo === null || rewound.to.slot < historyRewindTo.slot)
-      historyRewindTo = rewound.to;
-    if (input.retirement !== undefined)
-      void input.retirement.reset().catch((error: unknown) => {
-        log(`replay-transcript retirement reset failed: ${message(error)}`);
-      });
-    wake();
-  });
+    resetRetirement();
+    input.onRewind?.(generation);
+  };
+
+  const unsubscribeGeneration = input.store.onGeneration(
+    ({ generation, rewound: event }) => {
+      rewound(generation, event.to);
+      wake();
+    },
+  );
   const unsubscribeChange = input.onFollowerChange(() => wake());
 
   const observe = async (depth: number): Promise<WatcherObservationRead> =>
@@ -248,6 +291,47 @@ export const createWatcherDecisionDriver = (
     if (historyRewindTo === target) historyRewindTo = null;
   };
 
+  /**
+   * The pull: every rewind after the generation last handled durably. A
+   * rewind found here that the push already delivered changes nothing but
+   * the history target, which is the same or lower.
+   */
+  const catchUp = async (): Promise<
+    Readonly<{
+      handled: number | null;
+      generation: number | null;
+    }>
+  > => {
+    const handled = await readHandledFollowerGeneration(input.store);
+    const since = await input.store.rewindsSince(handled);
+    if (since === null) return { handled, generation: null };
+    if (since.target !== null) rewound(since.generation, since.target);
+    else if (handledGeneration === null || since.generation > handledGeneration)
+      handledGeneration = since.generation;
+    return { handled, generation: since.generation };
+  };
+
+  /**
+   * Moves the durable handled generation, once the history is back at every
+   * target and the last retirement reset held.
+   */
+  const recordHandled = async (
+    pulled: Readonly<{ handled: number | null; generation: number | null }>,
+  ): Promise<void> => {
+    if (pulled.generation === null || pulled.generation === pulled.handled)
+      return;
+    const pending = retirementReset;
+    if (pending !== null) {
+      if (!(await pending)) {
+        // Retried here; the next pass records the generation once it held.
+        if (retirementReset === pending) resetRetirement();
+        return;
+      }
+      if (retirementReset === pending) retirementReset = null;
+    }
+    await writeHandledFollowerGeneration(input.store, pulled.generation);
+  };
+
   const pass = async (): Promise<void> => {
     if (options.started?.() === false) {
       held = [
@@ -258,17 +342,23 @@ export const createWatcherDecisionDriver = (
       ];
       return;
     }
+    const pulled = await catchUp();
     const reasons: WatcherDecisionReadiness[] = [];
     const history = input.history;
+    let historyApplied = true;
     if (history !== undefined) {
       const status = history.read().status;
-      if (status === "failed" || status === "closed")
+      if (status === "failed" || status === "closed") {
+        historyApplied = false;
         reasons.push({
           reason: WATCHER_USER_EVENT_HISTORY_UNAVAILABLE,
           detail: `the local user-event history is ${status}`,
         });
-      else await rewindHistory(history);
+      } else await rewindHistory(history);
     }
+    // The history went back to every target this pass saw (or there is none).
+    if (history === undefined || (historyApplied && historyRewindTo === null))
+      await recordHandled(pulled);
     const tip = await observe(1);
     if (tip.kind === "unready") {
       held = [{ reason: tip.reason, detail: tip.detail }, ...reasons];

@@ -8,6 +8,7 @@ import {
   CHECKPOINT_TEMPORAL_TABLES,
   checkpointMigrationSql,
 } from "./checkpoints.js";
+import { followerGenerationMigrationSql } from "./follower-generation.js";
 import {
   DA_ATTESTATIONS_TEMPORAL_TABLE,
   daAttestationsMigrationSql,
@@ -150,6 +151,10 @@ export const watcherMigrations = (dialect: DialectName): MigrationSet => ({
     {
       id: "0008_watcher_proof_retention",
       sql: proofRetentionMigrationSql(dialect),
+    },
+    {
+      id: "0010_watcher_follower_generation",
+      sql: followerGenerationMigrationSql(dialect),
     },
   ],
 });
