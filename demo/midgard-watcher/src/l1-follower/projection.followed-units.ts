@@ -5,6 +5,7 @@ import type {
 } from "@al-ft/midgard-l1-follower";
 
 import {
+  WATCHER_PROOF_PIN_UNITS_TABLE,
   WATCHER_UNIT_CARRIERS_TABLE,
   WATCHER_UNIT_HISTORY_TABLE,
 } from "./tables.js";
@@ -37,6 +38,14 @@ export const FOLLOWED_UNITS_TEMPORAL_TABLES: readonly TemporalTableSpec[] = [
     startColumn: "from_slot",
     endColumn: "to_slot",
     retention: { kind: "closed_k_deep" },
+    // Held past k while an open proof objective reads the unit.
+    pinnedBy: [
+      {
+        column: "unit",
+        table: WATCHER_PROOF_PIN_UNITS_TABLE,
+        tableColumn: "unit",
+      },
+    ],
   },
 ];
 

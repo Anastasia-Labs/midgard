@@ -19,9 +19,20 @@ import {
   type WatcherProjectionDeployment,
   watcherUnitHistoryPolicies,
 } from "./projection.js";
+import {
+  createWatcherProofRetention,
+  type WatcherProofRetention,
+} from "./proof-retention.js";
 import { createFollowerRawReads } from "./raw-reads.js";
-import { ledgerOutputsFromTransport } from "./raw-reads.ledger.js";
+import {
+  ledgerOutputsFromTransport,
+  ledgerOutputsQueryFromTransport,
+} from "./raw-reads.ledger.js";
 import type { FollowerRawReads } from "./raw-reads.types.js";
+import {
+  createTxInputsResolver,
+  type WatcherL1Degradation,
+} from "./tx-inputs.js";
 import { readWatcherQueueView } from "./view.js";
 
 /**
@@ -48,10 +59,14 @@ export type WatcherFollowerRuntime = Readonly<{
   transport: L1NodeTransport;
   rawReads: FollowerRawReads;
   provider: L1FollowerProvider;
+  /** The pins that hold open proof objectives' history past k (E1 ruling). */
+  proofRetention: WatcherProofRetention;
   /** The latest follow status; null before the loop's first status. */
   status(): FollowStatus | null;
   /** Every reason the follower holds the watcher unready; empty when ready. */
   readiness(): Promise<readonly WatcherFollowerReadiness[]>;
+  /** Named conditions for status and metrics that never fail readiness. */
+  degradations(): Promise<readonly WatcherL1Degradation[]>;
   /** Hears every status change (a new block, a rewind, a wait). */
   onChange(listener: (status: FollowStatus) => void): () => void;
   /** Settles with the final status once the loop stops (abort or intervention). */
@@ -140,6 +155,14 @@ export const openWatcherFollowerRuntime = (
     ledgerOutputsAt: ledgerOutputsFromTransport(transport),
   });
   const provider = new L1FollowerProvider({ store, transport });
+  const proofRetention = createWatcherProofRetention(store);
+  // Resolves recorded txs' inputs at ingest, while the node still serves
+  // the predecessor's ledger state (E1 ruling, facet 2).
+  const txInputs = createTxInputsResolver({
+    store,
+    ledger: ledgerOutputsQueryFromTransport(transport),
+    log: (line) => log(`L1 follower: ${line}`),
+  });
   const seeder = createWalletSeeder({
     store,
     ledger: transport,
@@ -189,6 +212,7 @@ export const openWatcherFollowerRuntime = (
   // A rewind below the seed point owes the seed again (the seeder hears it).
   const unsubscribeRewind = store.onGeneration(() => {
     if (!seeder.ready()) stepSeed();
+    txInputs.trigger();
   });
 
   const done: Promise<FollowStatus | null> =
@@ -203,6 +227,7 @@ export const openWatcherFollowerRuntime = (
           onStatus: (status) => {
             latest = status;
             if (status.cursor !== null && !seeder.ready()) stepSeed();
+            if (status.cursor !== null) txInputs.trigger();
             for (const listener of listeners) {
               try {
                 listener(status);
@@ -245,6 +270,7 @@ export const openWatcherFollowerRuntime = (
         detail: `${seed.reason}: ${seed.detail}`,
       });
     try {
+      reasons.push(...(await txInputs.assess()).readiness);
       const cursor = await store.cursor();
       if (cursor !== null) {
         const view = await store.transaction("read", (tx) =>
@@ -268,8 +294,16 @@ export const openWatcherFollowerRuntime = (
     transport,
     rawReads,
     provider,
+    proofRetention,
     status: () => latest,
     readiness,
+    degradations: async () => {
+      try {
+        return (await txInputs.assess()).degradations;
+      } catch {
+        return [];
+      }
+    },
     onChange: (listener: (status: FollowStatus) => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -280,6 +314,7 @@ export const openWatcherFollowerRuntime = (
         abort.abort();
         await done.catch(() => undefined);
         await seeding?.catch(() => undefined);
+        await txInputs.close();
         unsubscribeRewind();
         seeder.close();
         listeners.clear();

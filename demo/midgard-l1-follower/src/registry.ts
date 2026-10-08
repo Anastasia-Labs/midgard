@@ -14,9 +14,12 @@ export type RetentionRule =
   | Readonly<{ kind: "owner"; description: string }>;
 
 /**
- * Keeps a row past its retention rule while `table` (a registered temporal
- * table) holds a row whose `tableColumn` equals this row's `column`: a
- * decision that reads the row stays answerable while the pinning row lives.
+ * Keeps a row past its retention rule while `table` holds a row whose
+ * `tableColumn` equals this row's `column`: a decision that reads the row
+ * stays answerable while the pinning row lives. `table` is a registered
+ * temporal table (itself possibly pinned: pins are transitive, never
+ * cyclic), or an owner-managed table a migration declares (the schema lint
+ * checks it), whose rows its owner deletes when the hold ends.
  */
 export type TemporalRowPin = Readonly<{
   column: string;
@@ -107,19 +110,19 @@ export const createTemporalRegistry = (
       );
     byName.set(spec.name, spec);
   }
+  // A registered pinning table prunes before the tables it pins (it comes
+  // after them in `tables`), so one prune step releases a whole pin chain.
+  const pinnedByTable = new Map<string, TemporalTableSpec[]>();
   for (const spec of specs)
     for (const pin of spec.pinnedBy ?? []) {
+      assertIdentifier(pin.table, "table");
       assertIdentifier(pin.column, "column");
       assertIdentifier(pin.tableColumn, "column");
-      const pinning = byName.get(pin.table);
-      if (pinning === undefined)
-        throw new RegistryError(
-          `${spec.name}: pinning table ${pin.table} is not registered`,
-        );
-      if ((pinning.pinnedBy ?? []).length > 0)
-        throw new RegistryError(
-          `${spec.name}: pinning table ${pin.table} is itself pinned`,
-        );
+      if (byName.has(pin.table))
+        pinnedByTable.set(pin.table, [
+          ...(pinnedByTable.get(pin.table) ?? []),
+          spec,
+        ]);
     }
   for (const spec of specs)
     for (const parent of spec.parents ?? []) {
@@ -130,7 +133,8 @@ export const createTemporalRegistry = (
           `${spec.name}: parent ${parent} is not registered`,
         );
     }
-  // Topological order, parents first; ties keep registration order.
+  // Topological order, parents (and the tables a table pins) first; ties
+  // keep registration order.
   const ordered: TemporalTableSpec[] = [];
   const state = new Map<string, "visiting" | "done">();
   const visit = (spec: TemporalTableSpec, path: string[]): void => {
@@ -138,13 +142,15 @@ export const createTemporalRegistry = (
     if (mark === "done") return;
     if (mark === "visiting")
       throw new RegistryError(
-        `parent cycle: ${[...path, spec.name].join(" -> ")}`,
+        `parent or pin cycle: ${[...path, spec.name].join(" -> ")}`,
       );
     state.set(spec.name, "visiting");
     for (const parent of spec.parents ?? []) {
       const parentSpec = byName.get(parent);
       if (parentSpec !== undefined) visit(parentSpec, [...path, spec.name]);
     }
+    for (const pinned of pinnedByTable.get(spec.name) ?? [])
+      visit(pinned, [...path, spec.name]);
     state.set(spec.name, "done");
     ordered.push(spec);
   };

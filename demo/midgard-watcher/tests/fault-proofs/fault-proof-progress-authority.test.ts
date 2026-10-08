@@ -21,6 +21,7 @@ import {
   setupFundingRecoveryFixture,
 } from "../support/fault-proof-funding-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import { storelessProofRetention } from "../support/proof-retention.js";
 
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -402,5 +403,65 @@ describe("supervisor historical progress authority", () => {
       authority: "reconciliation",
       decisionDigest: test.fixture.old.decisionDigest,
     });
+  });
+});
+
+describe("supervisor progress authority: proof retention", () => {
+  it("pins a newly admitted fault's header before indexing it, once", async () => {
+    const fixture = await setupFundingRecoveryFixture();
+    const journalRoot = await mkdtemp(
+      join(process.cwd(), ".watcher-progress-decision-"),
+    );
+    try {
+      const writer = await DecisionJournal.openWatcherFaultDecisionJournal({
+        directory: journalRoot,
+        deploymentFingerprint: deploymentIdentity.manifestId,
+        launchScope: fixture.old.launchScope,
+      });
+      const pinned: string[] = [];
+      const authority = createWatcherFaultProofProgressAuthority({
+        journalRoot,
+        deploymentFingerprint: deploymentIdentity.manifestId,
+        categories: fixture.old.launchScope,
+        retention: {
+          ...storelessProofRetention,
+          pin: async ({ category, headerHash }) => {
+            pinned.push(`${category}/${headerHash}`);
+          },
+        },
+      });
+      const observation = progressObservation({
+        deploymentFingerprint: deploymentIdentity.manifestId,
+        header: {
+          header: fixture.fixture.header,
+          headerHash: fixture.old.headerHash,
+        },
+      });
+      await authority.admit({ observation, rollbackGeneration: "1" });
+      expect(pinned).toEqual([]);
+      await writer.appendLiveDecision(fixture.old);
+      const admit = () =>
+        authority.admit({
+          observation,
+          rollbackGeneration: "1",
+          fault: {
+            decision: fixture.old,
+            deadline: watcherFaultProofDeadline(
+              observation.finalizedHeaders[0]!,
+            ),
+            actuationPermit: createWorkflowActuationPermitController({
+              decision: fixture.old,
+              rollbackGeneration: "1",
+            }).permit,
+          },
+        });
+      await admit();
+      await admit();
+      expect(pinned).toEqual([
+        `${fixture.old.category}/${fixture.old.headerHash}`,
+      ]);
+    } finally {
+      await rm(journalRoot, { recursive: true, force: true });
+    }
   });
 });

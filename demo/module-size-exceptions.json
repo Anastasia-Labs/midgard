@@ -1550,9 +1550,14 @@
     "reason": "createApplication is the dominant indivisible declaration (734 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
+    "file": "midgard-watcher/src/fault-proofs/fault-proof-progress-authority.ts",
+    "max": 507,
+    "reason": "createWatcherFaultProofProgressAuthority is one state owner: admission, execution updates, reconciliation and completion close over one objective index, decision cache and authority epoch, and share their revision checks; splitting it would redesign that ownership rather than separate independent declarations. W1 (+15): the authority pins each open objective's L1 history in the follower and releases it once the objective's completion marker holds (E1 ruling)."
+  },
+  {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-supervisor.create-supervisor.ts",
-    "max": 863,
-    "reason": "createSupervisor is the dominant indivisible declaration (828 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 869,
+    "reason": "createSupervisor is the dominant indivisible declaration (828 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W1 (+6): the supervisor hands the follower's proof retention to its progress authority, which holds each open objective's L1 history past k (E1 ruling)."
   },
   {
     "file": "midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority.ts",
@@ -1616,13 +1621,13 @@
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/fault-proof-objective-progress.test.ts",
-    "max": 731,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
+    "max": 733,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file\u2019s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. W1 (+2): the supervisor takes the follower's proof retention (a storeless one here)."
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/fault-proof-supervisor.test.ts",
-    "max": 575,
-    "reason": "Retained test registration \u201cproduction fault-proof supervisor\u201d (514 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 577,
+    "reason": "Retained test registration \u201cproduction fault-proof supervisor\u201d (514 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. W1 (+2): the supervisor takes the follower's proof retention (a storeless one here)."
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/replay-transcript-capture.test.ts",

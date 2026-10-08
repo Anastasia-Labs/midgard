@@ -1,4 +1,5 @@
 import type { WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
+import type { WatcherL1Degradation } from "../l1-follower/tx-inputs.js";
 import type {
   WatcherDecisionDriver,
   WatcherDecisionReadiness,
@@ -9,11 +10,13 @@ import type {
  * (an intervention, catching up, an unhealthy view) and then the decision
  * driver's. /readyz reads synchronously, so the follower's reasons are a
  * cache that `refresh` renews (on every follower change, after every
- * decision pass, and on a timer); the driver's are read live.
+ * decision pass, and on a timer); the driver's are read live. The
+ * follower's degradations (status and metrics only, never readiness) are
+ * cached alongside.
  */
 export const createWatcherL1Readiness = (
   input: Readonly<{
-    follower: Pick<WatcherFollowerRuntime, "readiness">;
+    follower: Pick<WatcherFollowerRuntime, "readiness" | "degradations">;
     driver: () => Pick<WatcherDecisionDriver, "readiness"> | undefined;
   }>,
 ) => {
@@ -23,10 +26,21 @@ export const createWatcherL1Readiness = (
       detail: "the follower has not reported a status yet",
     },
   ];
+  let degradations: readonly WatcherL1Degradation[] = [];
   let refreshing: Promise<void> | null = null;
   const refresh = (): Promise<void> => {
-    refreshing ??= input.follower
-      .readiness()
+    refreshing ??= Promise.all([
+      input.follower.readiness(),
+      input.follower.degradations().then(
+        (next) => {
+          degradations = next;
+        },
+        () => {
+          degradations = [];
+        },
+      ),
+    ])
+      .then(([reasons]) => reasons)
       .then(
         (reasons) => {
           followerReadiness = reasons;
@@ -54,5 +68,5 @@ export const createWatcherL1Readiness = (
       },
     ]),
   ];
-  return Object.freeze({ refresh, read });
+  return Object.freeze({ refresh, read, degradations: () => degradations });
 };

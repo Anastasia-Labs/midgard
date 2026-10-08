@@ -8,3 +8,9 @@ export const WATCHER_PROTOCOL_INIT_FAULTS_TABLE =
 export const WATCHER_DEPARTED_HEADERS_TABLE = "watcher_departed_headers";
 export const WATCHER_UNIT_CARRIERS_TABLE = "watcher_unit_carriers";
 export const WATCHER_UNIT_HISTORY_TABLE = "watcher_unit_history";
+/** Owner-managed (class B): the proof objectives whose L1 history is held. */
+export const WATCHER_PROOF_PINS_TABLE = "watcher_proof_pins";
+/** Owner-managed (class B): the followed units a held objective's proof reads. */
+export const WATCHER_PROOF_PIN_UNITS_TABLE = "watcher_proof_pin_units";
+/** Class C: the resolved inputs of every tx a unit history records. */
+export const WATCHER_TX_INPUTS_TABLE = "watcher_tx_inputs";

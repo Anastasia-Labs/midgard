@@ -26,7 +26,7 @@ import { Data } from "@lucid-evolution/lucid";
 import type { WatcherProjectionDeployment } from "../../src/l1-follower/projection.js";
 import { createSyntheticStateQueueHeader } from "./state-queue-observation-fixture.commit-transaction.js";
 
-const h28 = (byte: string): string => byte.repeat(28);
+export const h28 = (byte: string): string => byte.repeat(28);
 
 export const SIM_WATCHER_DEPLOYMENT: WatcherProjectionDeployment = {
   network: "Preprod",
@@ -78,11 +78,11 @@ const asset = (
   return map;
 };
 
-const datum = (cborHex: string): Buffer => Buffer.from(cborHex, "hex");
+export const datum = (cborHex: string): Buffer => Buffer.from(cborHex, "hex");
 
 const ZERO_ROOT = "00".repeat(32);
 
-const redeemer = (value: SDK.StateQueueRedeemer) => [
+export const redeemer = (value: SDK.StateQueueRedeemer) => [
   {
     purpose: "mint" as const,
     index: 0,
@@ -95,10 +95,12 @@ export const initTx = (
   deployment: WatcherProjectionDeployment = SIM_WATCHER_DEPLOYMENT,
   /** Where the root output goes (the state-queue address unless set). */
   rootAddress: Buffer = scriptAddress(deployment.stateQueueSpend),
+  /** The spent one-shot (a UTxO the model ledger holds, when set). */
+  oneShot: OutRef = SIM_HUB_ORACLE_ONE_SHOT,
 ): SimTx => {
   const { stateQueueMint: sq, hubOracleMint: hub } = deployment;
   return {
-    inputs: [SIM_HUB_ORACLE_ONE_SHOT],
+    inputs: [oneShot],
     outputs: [
       {
         address: scriptAddress(hub),
@@ -155,7 +157,7 @@ const unitOf = (utxo: SimUtxo, policy: string): string | null => {
   return names === undefined ? null : ([...names.keys()][0] ?? null);
 };
 
-const linkOf = (utxo: SimUtxo): string | null =>
+export const linkOf = (utxo: SimUtxo): string | null =>
   Data.from((utxo.output.datum as Buffer).toString("hex"), SDK.LinkedListDatum)
     .link;
 
@@ -227,10 +229,14 @@ export const queueState = (
   };
 };
 
-/** The CommitBlockHeader append on top of `state`: continued tail (0), new node (1). */
+/**
+ * The CommitBlockHeader append on top of `state`: continued tail (0), new
+ * node (1); `funding` adds an operator input (an untracked UTxO).
+ */
 export const commitTx = (
   state: QueueState,
   deployment: WatcherProjectionDeployment = SIM_WATCHER_DEPLOYMENT,
+  funding?: OutRef,
 ): SimTx => {
   const header: SDK.Header = {
     ...createSyntheticStateQueueHeader(),
@@ -257,7 +263,7 @@ export const commitTx = (
     ),
   };
   return {
-    inputs: [state.tail.outRef],
+    inputs: [state.tail.outRef, ...(funding === undefined ? [] : [funding])],
     referenceInputs: [state.lock.outRef],
     outputs: [
       continued,
@@ -298,7 +304,7 @@ export const commitTx = (
 const daatName = (headerHash: string): string =>
   `${SDK.DA_ATTESTATION_ASSET_NAME_PREFIX}${headerHash}`;
 
-const nonceOf = (outRef: OutRef): number =>
+export const nonceOf = (outRef: OutRef): number =>
   960_000 + outRef.txHash.readUInt16BE(0) * 8 + outRef.index;
 
 /** Mints the DAAT of the tail header (a stand-in attestation, no commitment). */

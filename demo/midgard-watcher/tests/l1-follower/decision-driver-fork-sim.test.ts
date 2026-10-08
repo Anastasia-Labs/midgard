@@ -5,10 +5,12 @@ import type {
 } from "@al-ft/l1-node-transport";
 import { decodeBlock, openSqliteFactStore } from "@al-ft/midgard-l1-follower";
 import {
+  encodeUtxoAnswer,
   SIM_ORIGIN,
   SimChain,
   simStoreOptions,
   simUniverse,
+  type SimUtxo,
 } from "@al-ft/midgard-l1-follower/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -22,6 +24,8 @@ import {
   type WatcherObservationAuthority,
 } from "../../src/l1-follower/observation.js";
 import { watcherProjection } from "../../src/l1-follower/projection.js";
+import { WATCHER_UNIT_HISTORY_TABLE } from "../../src/l1-follower/tables.js";
+import { L1_TX_INPUTS_UNRESOLVABLE } from "../../src/l1-follower/tx-inputs.js";
 import { startWatcherOperationsHttpServer } from "../../src/runtime/operations-http.js";
 import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
 import { createWatcherDecisionDriver } from "../../src/runtime/watcher-runtime.decision-driver.js";
@@ -48,6 +52,10 @@ const RECOVERY_DEPTH = 4;
 const K = watcherSecurityParameter(RECOVERY_DEPTH);
 const RELEASE_DEPTH = 2;
 const SOURCE_ID = "decision-driver-fork-sim";
+const ONE_SHOT: SimUtxo = {
+  outRef: SIM_HUB_ORACLE_ONE_SHOT,
+  output: { address: simUniverse().untrackedAddress, lovelace: 5_000_000n },
+};
 
 const AUTHORITY: WatcherObservationAuthority = {
   authorityDigest: "a1".repeat(32),
@@ -118,7 +126,10 @@ const until = async (what: string, holds: () => boolean, ms = 20_000) => {
  * A node serving the script up to `limit`: every stream resumes after the
  * last acknowledged event, as a node intersecting at the follower's cursor.
  */
-const scriptedNode = (events: readonly ChainSyncEvent[]) => {
+const scriptedNode = (
+  events: readonly ChainSyncEvent[],
+  ledger: readonly SimUtxo[] = [ONE_SHOT],
+) => {
   const state = { limit: 0, acked: 0 };
   const transport = {
     openChainSync: (): ChainSyncStream => {
@@ -144,8 +155,12 @@ const scriptedNode = (events: readonly ChainSyncEvent[]) => {
         },
       } as unknown as ChainSyncStream;
     },
-    withLedgerState: () =>
-      Promise.reject(new Error("the scripted node has no ledger state")),
+    // Its ledger state holds the one-shot the init spends (created before
+    // the scripted chain), which the follower stores at ingest.
+    withLedgerState: (
+      _at: unknown,
+      use: (session: { query: () => Promise<Uint8Array> }) => unknown,
+    ) => use({ query: () => Promise.resolve(encodeUtxoAnswer([...ledger])) }),
     close: () => Promise.resolve(),
   } as unknown as L1NodeTransport;
   return { state, transport };
@@ -178,8 +193,11 @@ const freshObservation = async (
 };
 
 /** The follower runtime over the scripted node, with the decision driver. */
-const watcherOver = (events: readonly ChainSyncEvent[]) => {
-  const node = scriptedNode(events);
+const watcherOver = (
+  events: readonly ChainSyncEvent[],
+  ledger?: readonly SimUtxo[],
+) => {
+  const node = scriptedNode(events, ledger);
   const follower = openWatcherFollowerRuntime({
     deployment: D,
     storePath: ":memory:",
@@ -381,5 +399,84 @@ describe("decision driver over the follower: rollbacks (W3/L3)", () => {
       before.observationDigest,
     );
     expect(exit).not.toHaveBeenCalled();
+  });
+
+  it("reports an unresolvable input as a degradation while /readyz stays ready, and fails /readyz by name only while a proof pin holds it", async () => {
+    // A node whose ledger lacks the one-shot the init spends: the init's
+    // input can never resolve.
+    const { events, pauses } = nodeScript((chain, events, pause) => {
+      events.push(chain.forward([initTx(D)]).event);
+      forward(chain, events, 3);
+      pause();
+    });
+    const watcher = watcherOver(events, []);
+    const observability = createWatcherOperationsObservability({
+      deploymentFingerprint: AUTHORITY.deploymentFingerprint,
+      supervisor: supervisor().runtime,
+      launchScopeStatus: () => ({
+        installedCategoryCount: 1,
+        requiredCategoryCount: 1,
+      }),
+      retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
+      // As the supervisor stub reports, so /v1/metrics reads.
+      durableProofQueueStatus: () => ({
+        queuedJobCount: 1,
+        oldestQueuedAtMs: "0",
+      }),
+      l1Readiness: () => watcher.l1.read(),
+      l1Degradations: () => watcher.l1.degradations(),
+    });
+    const server = await startWatcherOperationsHttpServer({
+      endpoint: "http://127.0.0.1:0",
+      observability,
+      unsafeAllowEphemeralPortForTest: true,
+    });
+    opened.push(async () => {
+      await server.close();
+      await watcher.driver.close();
+      await watcher.follower.close();
+    });
+    const l1Reasons = async () => {
+      await watcher.l1.refresh();
+      const body = (await (
+        await fetch(`${server.endpoint}/readyz`)
+      ).json()) as {
+        l1: { reason: string }[];
+      };
+      return body.l1.map(({ reason }) => reason);
+    };
+
+    await watcher.serve(pauses[0]!.events);
+    const deadline = Date.now() + 20_000;
+    while ((await watcher.follower.degradations()).length === 0) {
+      if (Date.now() > deadline) throw new Error("no degradation reported");
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(await watcher.follower.readiness()).toEqual([]);
+    expect(await l1Reasons()).not.toContain(L1_TX_INPUTS_UNRESOLVABLE);
+    const metrics = (await (
+      await fetch(`${server.endpoint}/v1/metrics`)
+    ).json()) as { l1Degradations: Record<string, string> };
+    expect(metrics.l1Degradations).toEqual({
+      [L1_TX_INPUTS_UNRESOLVABLE]: "1",
+    });
+
+    // A proof pin holding the init's hub-oracle history makes it blocking.
+    const [hubOracle] = await watcher.follower.store.transaction("read", (tx) =>
+      tx.query(`SELECT DISTINCT unit FROM ${WATCHER_UNIT_HISTORY_TABLE}`),
+    );
+    const target = { category: "doubleSpend", headerHash: "ab".repeat(28) };
+    await watcher.follower.proofRetention.pin(target);
+    await watcher.follower.proofRetention.holdUnits(target.headerHash, [
+      Buffer.from(hubOracle!.unit as Uint8Array).toString("hex"),
+    ]);
+    expect(await l1Reasons()).toContain(L1_TX_INPUTS_UNRESOLVABLE);
+    expect((await fetch(`${server.endpoint}/readyz`)).status).toBe(503);
+
+    await watcher.follower.proofRetention.release(target);
+    expect(await l1Reasons()).not.toContain(L1_TX_INPUTS_UNRESOLVABLE);
+    expect(watcher.l1.degradations()).toMatchObject([
+      { reason: L1_TX_INPUTS_UNRESOLVABLE, count: 1 },
+    ]);
   });
 });

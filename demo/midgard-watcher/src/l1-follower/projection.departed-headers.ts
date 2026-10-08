@@ -15,6 +15,7 @@ import {
 } from "../indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import {
   WATCHER_DEPARTED_HEADERS_TABLE,
+  WATCHER_PROOF_PINS_TABLE,
   WATCHER_QUEUE_OUTPUTS_TABLE,
   WATCHER_QUEUE_UNIT_HISTORY_TABLE,
 } from "./tables.js";
@@ -42,6 +43,14 @@ export const DEPARTED_HEADERS_TEMPORAL_TABLE: TemporalTableSpec = {
   startColumn: "from_slot",
   endColumn: "to_slot",
   retention: { kind: "closed_k_deep" },
+  // Held past k while a proof objective over the header is open.
+  pinnedBy: [
+    {
+      column: "header_hash",
+      table: WATCHER_PROOF_PINS_TABLE,
+      tableColumn: "header_hash",
+    },
+  ],
 };
 
 export const departedHeadersMigrationSql = (dialect: DialectName): string => {

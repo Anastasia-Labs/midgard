@@ -1,3 +1,4 @@
+import { TransportRequestError } from "@al-ft/l1-node-transport";
 import type {
   FraudProofRawL1Point,
   FraudProofRawL1Utxo,
@@ -183,7 +184,10 @@ export const harness = async (deployment: WatcherProjectionDeployment = D) => {
       const state =
         at !== "tip" && at.kind === "point" ? ledger.get(at.hash) : undefined;
       if (state === undefined || state.height < chain.tip.height - K)
-        throw new Error("acquire_point_too_old");
+        throw new TransportRequestError(
+          "acquire_point_too_old",
+          "the point is more than k blocks below the tip",
+        );
       return await use({
         query: async (query) => {
           if (query.query !== "utxo_by_txin")
@@ -208,7 +212,7 @@ export const harness = async (deployment: WatcherProjectionDeployment = D) => {
         ? { ledgerOutputsAt: ledgerOutputsFromTransport(node) }
         : {}),
     });
-  return { store, chain, forward, backward, pruneAll, reads, tipPoint };
+  return { store, chain, forward, backward, pruneAll, reads, tipPoint, node };
 };
 
 /**

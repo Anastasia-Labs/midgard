@@ -112,6 +112,44 @@ CREATE TABLE IF NOT EXISTS role_unregistered (from_slot bigint, to_slot bigint);
   });
 });
 
+describe("schema lint (row pins)", () => {
+  it("flags a row pin naming a table no migration declares", () => {
+    const pinned = createTemporalRegistry([
+      {
+        name: "role_log",
+        shape: "append_only",
+        slotColumn: "slot",
+        retention: { kind: "created_k_deep" },
+        pinnedBy: [
+          { column: "id", table: "role_hold", tableColumn: "id" },
+          { column: "id", table: "role_missing", tableColumn: "id" },
+        ],
+      },
+    ]);
+    const problems = lintSchema(
+      [
+        {
+          namespace: "role",
+          migrations: [
+            {
+              id: "0001",
+              sql: `-- class: B; retention: the owner deletes a row when its hold ends
+CREATE TABLE role_hold (id integer);
+-- class: D-t; retention: rows once slot is k deep, unless held
+CREATE TABLE role_log (id integer, slot bigint);
+`,
+            },
+          ],
+        },
+      ],
+      pinned,
+    );
+    expect(problems.map((problem) => [problem.table, problem.message])).toEqual(
+      [["role_log", "pinning table role_missing is declared by no migration"]],
+    );
+  });
+});
+
 describe("schema lint (class B foreign keys)", () => {
   const roleSet = (sql: string) => ({
     namespace: "role",

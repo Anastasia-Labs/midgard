@@ -119,6 +119,7 @@ export const openWatcherDeploymentFollower = (
           rawReads: follower.rawReads,
           node: follower.transport,
           sourceId: `${WATCHER_FAULT_PROOF_SOURCE_ID_PREFIX}${sourceId}`,
+          proofRetention: follower.proofRetention,
         }),
       provider: follower.provider,
     }),

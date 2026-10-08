@@ -153,19 +153,31 @@ describe("temporal registry", () => {
       ],
     ],
     [
-      "an unregistered pinning table",
+      "a pinning table name that is not an identifier",
       [
         {
           name: "t",
           shape: "append_only",
           slotColumn: "slot",
           retention: { kind: "created_k_deep" },
-          pinnedBy: [{ column: "id", table: "nope", tableColumn: "id" }],
+          pinnedBy: [{ column: "id", table: "c; DROP", tableColumn: "id" }],
         },
       ],
     ],
     [
-      "a pin through a pinned table",
+      "a table that pins itself",
+      [
+        {
+          name: "a",
+          shape: "append_only",
+          slotColumn: "slot",
+          retention: { kind: "created_k_deep" },
+          pinnedBy: [{ column: "id", table: "a", tableColumn: "id" }],
+        },
+      ],
+    ],
+    [
+      "a pin cycle",
       [
         {
           name: "a",
@@ -186,6 +198,7 @@ describe("temporal registry", () => {
           shape: "append_only",
           slotColumn: "slot",
           retention: { kind: "created_k_deep" },
+          pinnedBy: [{ column: "id", table: "a", tableColumn: "id" }],
         },
       ],
     ],
@@ -220,6 +233,34 @@ describe("temporal registry", () => {
     ],
   ] as const)("refuses %s", (_, specs) => {
     expect(() => createTemporalRegistry(specs)).toThrow(RegistryError);
+  });
+
+  it("orders a pin chain so each pinning table prunes before what it pins", () => {
+    const registry = createTemporalRegistry([
+      {
+        name: "c",
+        shape: "append_only",
+        slotColumn: "slot",
+        retention: { kind: "created_k_deep" },
+        pinnedBy: [{ column: "id", table: "owner_hold", tableColumn: "id" }],
+      },
+      {
+        name: "a",
+        shape: "append_only",
+        slotColumn: "slot",
+        retention: { kind: "created_k_deep" },
+        pinnedBy: [{ column: "id", table: "b", tableColumn: "id" }],
+      },
+      {
+        name: "b",
+        shape: "append_only",
+        slotColumn: "slot",
+        retention: { kind: "created_k_deep" },
+        pinnedBy: [{ column: "id", table: "c", tableColumn: "id" }],
+      },
+    ]);
+    // Prune order is the reverse: c, then b, then a.
+    expect(registry.tables.map((table) => table.name)).toEqual(["a", "b", "c"]);
   });
 });
 
@@ -300,6 +341,74 @@ CREATE TABLE log (id integer NOT NULL, slot INTEGER NOT NULL);
       );
       await pruneAll(store);
       await pruneAll(store);
+      expect(await ids(store, "keeper")).toEqual([]);
+      expect(await ids(store, "log")).toEqual([]);
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("holds a pin chain from an owner-managed table, and releases it in one prune", async () => {
+    const store = openSqliteFactStore({
+      ...options(2),
+      path: ":memory:",
+      temporalTables: [
+        {
+          name: "keeper",
+          shape: "versioned",
+          startColumn: "from_slot",
+          endColumn: "to_slot",
+          retention: { kind: "closed_k_deep" },
+          pinnedBy: [{ column: "id", table: "hold", tableColumn: "id" }],
+        },
+        {
+          name: "log",
+          shape: "append_only",
+          slotColumn: "slot",
+          retention: { kind: "created_k_deep" },
+          pinnedBy: [{ column: "id", table: "keeper", tableColumn: "id" }],
+        },
+      ],
+      migrations: [
+        {
+          namespace: "pins",
+          migrations: [
+            {
+              id: "0001",
+              sql: `
+-- class: B; retention: the owner deletes a row when its hold ends
+CREATE TABLE hold (id integer NOT NULL);
+-- class: D-t; retention: closed rows once to_slot is k deep, unless a hold row names them
+CREATE TABLE keeper (id integer NOT NULL, from_slot INTEGER NOT NULL, to_slot INTEGER);
+-- class: D-t; retention: rows once slot is k deep, unless a keeper row names them
+CREATE TABLE log (id integer NOT NULL, slot INTEGER NOT NULL);
+`,
+            },
+          ],
+        },
+      ],
+    });
+    try {
+      await store.start();
+      await store.initialize(ORIGIN);
+      for (const block of chain())
+        expect(await store.applyBlock(block)).toMatchObject({
+          kind: "applied",
+        });
+      await store.transaction("write", async (sql) => {
+        await sql.query("INSERT INTO hold (id) VALUES (1)");
+        await sql.query("INSERT INTO log (id, slot) VALUES (1, 101), (2, 101)");
+        await sql.query(
+          "INSERT INTO keeper (id, from_slot, to_slot) VALUES (1, 101, 101), (2, 101, 101)",
+        );
+      });
+      await pruneAll(store);
+      expect(await ids(store, "keeper")).toEqual([1]);
+      expect(await ids(store, "log")).toEqual([1]);
+      await store.transaction("write", (sql) =>
+        sql.query("DELETE FROM hold WHERE id = 1"),
+      );
+      expect(await store.prune(100)).toMatchObject({ done: true });
       expect(await ids(store, "keeper")).toEqual([]);
       expect(await ids(store, "log")).toEqual([]);
     } finally {

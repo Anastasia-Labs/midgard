@@ -20,6 +20,7 @@ import {
   assertWatcherNativeBlockAdmission,
   type WatcherNativeBlockAdmission,
 } from "../l1/native-block-admission.js";
+import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
 import { openWatcherFaultDecisionJournal } from "./fault-decision-journal.js";
 import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 import {
@@ -100,6 +101,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
   readonly journalRoot: string;
   readonly deploymentFingerprint: string;
   readonly categories: readonly WatcherInstalledWorkflowCategory[];
+  readonly retention?: WatcherProofRetention; // holds open objectives' L1 history
 }): WatcherFaultProofProgressAuthority => {
   const objectives = new Map<string, Objective>();
   const decisions = new Map<string, HeaderFaultDecision>();
@@ -220,8 +222,10 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           throw new Error("proof progress journal contains an invalid target");
         // A completion verified beyond rollback recovery holds no work.
         const target = { category: category.name, headerHash: header.name };
-        if (await isWatcherProofCompletionMarked({ ...input, target }))
+        if (await isWatcherProofCompletionMarked({ ...input, target })) {
+          await input.retention?.release(target); // a crash can leave the pin
           continue;
+        }
         const candidates = [...decisions.values()].filter(
           (decision) =>
             decision.category === category.name &&
@@ -235,6 +239,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
         const objective: Objective = { decision: candidate };
         await loadExecution(objective);
         if (objective.entries !== undefined) {
+          await input.retention?.pin(target);
           objectives.set(keyOf(candidate), objective);
           if (!isCompletedJournal(objective) && ++unfinished > MAX_OBJECTIVES)
             throw new Error("proof progress exceeds its recovery bound");
@@ -277,6 +282,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       throw new Error(
         "proof progress execution update omitted its exact recorded decision",
       );
+    if (!objectives.has(keyOf(key))) await input.retention?.pin(key);
     const objective = objectives.get(keyOf(key)) ?? { decision };
     if (
       objective.workflowId !== undefined &&
@@ -390,6 +396,10 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           throw new Error(
             "proof progress fault differs from its authenticated observation or authority",
           );
+        if (!objectives.has(currentKey!)) {
+          await input.retention?.pin(fault.decision);
+          if (epoch !== startedEpoch) return [];
+        }
         decisions.set(fault.decision.decisionDigest, fault.decision);
         const objective = objectives.get(currentKey!) ?? {
           decision: fault.decision,
@@ -481,12 +491,17 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     markCompleted: async (objective, verified) => {
       objectives.delete(keyOf(objective));
       pruneDecisions();
-      if (verified !== undefined)
-        await markWatcherProofCompletionBeyondRecovery({
-          ...input,
-          objective,
-          ...verified,
-        });
+      if (verified === undefined) return;
+      await markWatcherProofCompletionBeyondRecovery({
+        ...input,
+        objective,
+        ...verified,
+      });
+      // Released once the marker holds; unmarked, it is verified again.
+      const { retention } = input;
+      const marked = { ...input, target: objective };
+      if (retention && (await isWatcherProofCompletionMarked(marked)))
+        await retention.release(objective);
     },
   });
 };

@@ -19,6 +19,11 @@ import {
   WATCHER_UNIT_HISTORY_TABLE,
   watcherProjection,
 } from "../../src/l1-follower/projection.js";
+import {
+  WATCHER_PROOF_PIN_UNITS_TABLE,
+  WATCHER_PROOF_PINS_TABLE,
+  WATCHER_TX_INPUTS_TABLE,
+} from "../../src/l1-follower/tables.js";
 import { SIM_WATCHER_DEPLOYMENT } from "../support/l1-follower-state-queue-traffic.js";
 
 const projection = watcherProjection(SIM_WATCHER_DEPLOYMENT);
@@ -37,6 +42,7 @@ const PROJECTION_SOURCES = [
   "src/l1-follower/projection.da-attestations.ts",
   "src/l1-follower/projection.departed-headers.ts",
   "src/l1-follower/projection.protocol-init.ts",
+  "src/l1-follower/proof-retention.schema.ts",
   "src/l1-follower/raw-reads.ts",
   "src/l1-follower/raw-reads.types.ts",
   "src/l1-follower/reads.ts",
@@ -49,7 +55,7 @@ const PROJECTION_SOURCES = [
 ];
 
 describe("watcher projection lints (F2 schema, F4 determinism)", () => {
-  it("declares eight class D-t tables, registered as temporal, on both dialects", () => {
+  it("declares eight class D-t tables, registered as temporal, and the proof-retention tables, on both dialects", () => {
     const registry = createTemporalRegistry(projection.temporalTables);
     for (const dialect of ["postgres", "sqlite"] as const) {
       const sets = [projection.migrations(dialect)];
@@ -68,6 +74,9 @@ describe("watcher projection lints (F2 schema, F4 determinism)", () => {
         [WATCHER_DEPARTED_HEADERS_TABLE, "D-t"],
         [WATCHER_UNIT_CARRIERS_TABLE, "D-t"],
         [WATCHER_UNIT_HISTORY_TABLE, "D-t"],
+        [WATCHER_PROOF_PINS_TABLE, "B"],
+        [WATCHER_PROOF_PIN_UNITS_TABLE, "B"],
+        [WATCHER_TX_INPUTS_TABLE, "C"],
       ]);
     }
   });

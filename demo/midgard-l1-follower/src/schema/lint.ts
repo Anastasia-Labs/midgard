@@ -143,7 +143,8 @@ export const migrationTables = (
  * The schema lint (§5.1, §7.2, §11): every table in every migration declares
  * a class and a retention rule on the line above its `CREATE TABLE`, and
  * every D-t table is in the temporal registry (and every registered table is
- * a declared D-t or D-x table). A class B table declares no foreign key into
+ * a declared D-t or D-x table, and every table a registered row pin names is
+ * declared). A class B table declares no foreign key into
  * a table that is not class B: `follower reset --to-origin` and a rewind
  * delete non-B rows, and must never be blocked by, or cascade into, B rows.
  * Returns the problems; empty means clean.
@@ -193,6 +194,14 @@ export const lintSchema = (
         message:
           "registered temporal table is not declared D-t or D-x by any migration",
       });
+    for (const pin of spec.pinnedBy ?? [])
+      if (!declaredByName.has(pin.table))
+        scan.problems.push({
+          namespace: declared?.namespace ?? "(registry)",
+          migration: declared?.migration ?? "(registry)",
+          table: spec.name,
+          message: `pinning table ${pin.table} is declared by no migration`,
+        });
   }
   return scan.problems;
 };

@@ -278,6 +278,7 @@ export const createWatcherRuntime = async (input: {
         deploymentFingerprint: deploymentIdentity.manifestId,
         operationsSink: () => operations.sink,
       }),
+      proofRetention: activeFollower.proofRetention,
     });
     faultProofSupervisor = activeSupervisor;
 
@@ -299,6 +300,7 @@ export const createWatcherRuntime = async (input: {
       retainedDaTransportStatus:
         faultProofApplication.retainedDaTransportStatus,
       l1Readiness,
+      l1Degradations: l1.degradations,
     });
     retainedDaOperationsBinding = bindWatcherRetainedDaOperations({
       deploymentIdentity,

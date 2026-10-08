@@ -195,6 +195,12 @@ export type WatcherOperationsReadinessReason =
   | "retained_da_transport_failed"
   | "active_alert";
 
+export type WatcherOperationsL1Degradation = Readonly<{
+  reason: string;
+  count: string;
+  detail: string;
+}>;
+
 export type WatcherOperationsStatus = Readonly<{
   schemaVersion: typeof WATCHER_OPERATIONS_OBSERVABILITY;
   deploymentFingerprint: string;
@@ -210,6 +216,12 @@ export type WatcherOperationsStatus = Readonly<{
   readinessReasons: readonly (WatcherOperationsReadinessReason | string)[];
   /** The named L1 reasons with their detail; empty when L1 holds nothing. */
   l1Readiness: readonly Readonly<{ reason: string; detail: string }>[];
+  /**
+   * Named L1 degradations, for example `l1_tx_inputs_unresolvable` for
+   * recorded txs no open proof needs whose inputs can never resolve. Reported
+   * only: they never add a readiness reason.
+   */
+  l1Degradations: readonly WatcherOperationsL1Degradation[];
   retainedDaTransport: WatcherRetainedDaTransportStatus;
   launchScope: Readonly<{
     installedCategoryCount: string;
@@ -290,6 +302,8 @@ export type WatcherOperationsMetrics = Readonly<{
    * local L1 source (`pending_l1`). Diagnostics, never a readiness reason.
    */
   deferredClassifications: string;
+  /** The count of each named L1 degradation. Never a readiness reason. */
+  l1Degradations: Readonly<Record<string, string>>;
 }>;
 
 export type WatcherOperationsPage = Readonly<{

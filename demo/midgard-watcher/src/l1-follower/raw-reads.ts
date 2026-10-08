@@ -33,6 +33,7 @@ import {
   WATCHER_QUEUE_UNIT_HISTORY_TABLE,
   WATCHER_UNIT_HISTORY_TABLE,
 } from "./tables.js";
+import { resolveStoredInputIn } from "./tx-inputs.js";
 
 /**
  * The fraud-proof raw L1 reads, answered from the follower's facts and the
@@ -44,9 +45,11 @@ import {
  * has no stored creating body; a read that needs its exact bytes is
  * `l1_input_before_origin`, never a stand-in value.
  *
- * Input resolution order: the stored creating body, then the node's ledger
- * state at the inclusion block's predecessor (`ledgerOutputsAt`, only while
- * that point is acquirable), then a named refusal. Nothing is fetched by tx
+ * Input resolution order: the stored creating body, then the input bytes
+ * resolved at ingest for a tx a unit history records (tx-inputs.ts), then
+ * the node's ledger state at the inclusion block's predecessor
+ * (`ledgerOutputsAt`, only while that point is acquirable), then a named
+ * refusal. Nothing is fetched by tx
  * id. Otherwise pure reads: no clock and no write.
  */
 
@@ -331,7 +334,7 @@ export const createFollowerRawReads = (
     return ok(rawPointOf(block));
   };
 
-  /** Inputs from stored bodies, then the ledger at the predecessor, then a reason. */
+  /** Inputs from stored bodies or ingest-resolved bytes, then the ledger at the predecessor, then a reason. */
   const resolveInputs = async (
     stored: StoredTx,
     block: StoredBlock,
@@ -344,7 +347,10 @@ export const createFollowerRawReads = (
     const fromBodies = await store.transaction("read", async (tx) => {
       const utxos: (FraudProofRawL1Utxo | null)[] = [];
       for (const outRef of outRefs)
-        utxos.push(await resolveRawUtxoIn(tx, outRef));
+        utxos.push(
+          (await resolveRawUtxoIn(tx, outRef)) ??
+            (await resolveStoredInputIn(tx, outRef)),
+        );
       return utxos;
     });
     const missing = outRefs.filter((_, i) => fromBodies[i] === null);

@@ -24,6 +24,7 @@ import {
   withCheckpointRetries,
 } from "./fault-proof-l1-source.chain.js";
 import { createSignedTransactionRecovery } from "./fault-proof-l1-source.signed.js";
+import type { WatcherProofRetention } from "./proof-retention.js";
 import {
   type FollowerRawReads,
   rawPointOf,
@@ -73,11 +74,12 @@ type SnapshotSource = Readonly<{
   store: FactStore;
   rawReads: FollowerRawReads;
   sourceId: string;
+  proofRetention?: WatcherProofRetention;
 }>;
 
 /** One capture at one view; throws `FraudProofL1CheckpointChangedError` when the chain moved under it. */
 const captureOnce = async (
-  { store, rawReads, sourceId }: SnapshotSource,
+  { store, rawReads, sourceId, proofRetention }: SnapshotSource,
   request: FraudProofRawL1SnapshotRequest,
   releaseFinality: VerifiedFraudProofReleaseFinalityPolicy,
   observationDepth: FraudProofL1ObservationDepth,
@@ -96,6 +98,8 @@ const captureOnce = async (
       ...scope,
       utxos: required(await rawReads.addressUtxosAtPoint(scope.address, point)),
     });
+  // A pinned objective's followed units stay readable past k (E1 ruling).
+  await proofRetention?.holdUnits(request.headerHash, request.historyUnits);
   const histories = [];
   for (const unit of request.historyUnits)
     histories.push({
@@ -199,6 +203,8 @@ export const createWatcherFaultProofL1Source = (
     node: Pick<L1NodeTransport, "submit" | "hasTx">;
     /** The complete provenance sourceId, byte-identical to the earlier one. */
     sourceId: string;
+    /** Holds the units a pinned objective's captures read. */
+    proofRetention?: WatcherProofRetention;
   }>,
 ): FraudProofL1Source => {
   assertSourceId(input.sourceId);
@@ -206,6 +212,9 @@ export const createWatcherFaultProofL1Source = (
     store: input.store,
     rawReads: input.rawReads,
     sourceId: input.sourceId,
+    ...(input.proofRetention === undefined
+      ? {}
+      : { proofRetention: input.proofRetention }),
   };
   const source: FraudProofL1Source = {
     sourceVersion: FRAUD_PROOF_L1_SOURCE,

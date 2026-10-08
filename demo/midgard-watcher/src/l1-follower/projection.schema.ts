@@ -24,7 +24,9 @@ import {
   PROTOCOL_INIT_FAULTS_TEMPORAL_TABLE,
   protocolInitFaultsMigrationSql,
 } from "./projection.protocol-init.js";
+import { proofRetentionMigrationSql } from "./proof-retention.schema.js";
 import {
+  WATCHER_PROOF_PINS_TABLE,
   WATCHER_QUEUE_OUTPUTS_TABLE,
   WATCHER_QUEUE_UNIT_HISTORY_TABLE,
 } from "./tables.js";
@@ -45,6 +47,15 @@ export const WATCHER_TEMPORAL_TABLES: readonly TemporalTableSpec[] = [
     startColumn: "from_slot",
     endColumn: "to_slot",
     retention: { kind: "closed_k_deep" },
+    // Held past k while a proof objective over the header is open; its
+    // txs and checkpoints are held through it.
+    pinnedBy: [
+      {
+        column: "header_hash",
+        table: WATCHER_PROOF_PINS_TABLE,
+        tableColumn: "header_hash",
+      },
+    ],
   },
   DA_ATTESTATIONS_TEMPORAL_TABLE,
   PROTOCOL_INIT_FAULTS_TEMPORAL_TABLE,
@@ -135,6 +146,10 @@ export const watcherMigrations = (dialect: DialectName): MigrationSet => ({
     {
       id: "0007_watcher_followed_units",
       sql: followedUnitsMigrationSql(dialect),
+    },
+    {
+      id: "0008_watcher_proof_retention",
+      sql: proofRetentionMigrationSql(dialect),
     },
   ],
 });

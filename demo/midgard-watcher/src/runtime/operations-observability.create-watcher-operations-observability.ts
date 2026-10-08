@@ -53,6 +53,12 @@ export const createWatcherOperationsObservability = (input: {
     reason: string;
     detail: string;
   }>[];
+  /** Named L1 degradations, read synchronously; never readiness reasons. */
+  readonly l1Degradations?: () => readonly Readonly<{
+    reason: string;
+    count: number;
+    detail: string;
+  }>[];
   readonly nowMs?: () => bigint;
   readonly monotonicNowMs?: () => number;
   readonly l1FreshnessMaximumAgeMs?: number;
@@ -290,6 +296,13 @@ export const createWatcherOperationsObservability = (input: {
     });
   };
 
+  const l1Degradations = () =>
+    Object.freeze(
+      (input.l1Degradations?.() ?? []).map(({ reason, count, detail }) =>
+        Object.freeze({ reason, count: count.toString(), detail }),
+      ),
+    );
+
   const status = (): WatcherOperationsStatus => {
     const observedAt = nowMs();
     if (observedAt < 0n) throw new Error("observability clock is invalid");
@@ -335,6 +348,7 @@ export const createWatcherOperationsObservability = (input: {
       readiness: reasons.length === 0 ? "ready" : "not_ready",
       readinessReasons: Object.freeze(reasons),
       l1Readiness,
+      l1Degradations: l1Degradations(),
       retainedDaTransport,
       launchScope: scope,
       supervisor,
@@ -428,6 +442,9 @@ export const createWatcherOperationsObservability = (input: {
       activeAlertCount: alerts.active().length.toString(),
       unverifiedHeaders: unverifiedHeaders.summary(),
       deferredClassifications: unverifiedHeaders.deferred(),
+      l1Degradations: Object.freeze(
+        Object.fromEntries(l1Degradations().map((d) => [d.reason, d.count])),
+      ),
     });
   };
 
