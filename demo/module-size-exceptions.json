@@ -251,8 +251,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/validation-dispute/submit/semantic-resolution.ts",
-    "max": 2398,
-    "reason": "submitValidationDisputeSemanticResolution is the dominant indivisible declaration (2251 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 2397,
+    "reason": "submitValidationDisputeSemanticResolution is the dominant indivisible declaration (2249 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/value-not-preserved/union-plan.plan-conservation-fold.ts",

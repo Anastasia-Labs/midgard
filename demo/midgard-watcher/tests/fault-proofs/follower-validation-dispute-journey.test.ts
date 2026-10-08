@@ -187,30 +187,43 @@ describe("follower-sourced validation-trace dispute on the installed workflow", 
       ),
     );
 
-    // The CEK core resolution is a chain of transactions its builder submits
-    // itself, so the workflow's preflight of that move does not reach its
-    // pre-submit boundary and stalls once; the chain it submitted stands,
-    // and the next run reconciles past it.
-    let cekCoreStalls = 0;
+    // The CEK core resolution is a chain of transactions; every stage
+    // reaches the pre-submit boundary, so the workflow submits it one stage
+    // per move and never stalls.
     let { result } = await journey.runCold();
     for (let hop = 0; hop < 200 && result.kind !== "completed"; hop++) {
-      if (result.kind === "stalled") {
-        expect(result.reason).toMatch(
-          /^preflight failed for semantic_resolution:[0-9a-f]{64}: Error: transaction builder returned without reaching pre-submit boundary$/u,
-        );
-        cekCoreStalls += 1;
-        expect(cekCoreStalls).toBe(1);
+      if (result.kind === "stalled") throw new Error(result.reason);
+      await journey.advance(result);
+      if (result.kind === "awaiting_counterparty") {
+        await journey.operatorResponds();
         journey.emulator.awaitBlock();
-      } else {
-        await journey.advance(result);
-        if (result.kind === "awaiting_counterparty") {
-          await journey.operatorResponds();
-          journey.emulator.awaitBlock();
-        }
       }
       ({ result } = await journey.runCold());
     }
     expect(result.kind).toBe("completed");
+    if (result.kind !== "completed")
+      throw new Error("journey did not complete");
+    // The binder stage, then each later CEK core stage resumed against the
+    // preparation the binder consumed; no route was cancelled.
+    const intents = result.entries.flatMap(({ event }) =>
+      event.kind === "submission_intent" ? [event.actionInput] : [],
+    );
+    const semantic = intents.filter(
+      ({ stage }) => stage === "semantic_resolution",
+    );
+    expect(semantic.length).toBeGreaterThan(2);
+    expect(semantic[0]!.cekPreparedResolutionCbor).toBeUndefined();
+    expect(
+      semantic
+        .slice(1)
+        .map(
+          ({ cekPreparedResolutionCbor }) =>
+            typeof cekPreparedResolutionCbor === "string",
+        ),
+    ).toEqual(semantic.slice(1).map(() => true));
+    expect(
+      intents.filter(({ stage }) => stage === "cancel_semantic_route"),
+    ).toEqual([]);
     const workflow = await createManifestBoundValidationTraceDisputeWorkflow(
       journey.config!,
     );

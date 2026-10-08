@@ -14,8 +14,10 @@ import {
 } from "../runtime.js";
 import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import { type FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import { type CekContextStageKey } from "./cek-context.derive-cek-context-item-return-plan.js";
 import { deriveCekContextPlan } from "./cek-context.derive-cek-context-plan.js";
+import { reachOptionalPreSubmitBoundary } from "./submit/validity.js";
 
 export const submitCekContextChain = async ({
   lucid,
@@ -35,6 +37,7 @@ export const submitCekContextChain = async ({
   awardDatum,
   getValidityRange,
   maxTransactions,
+  preSubmitBoundary,
 }: {
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
@@ -63,6 +66,13 @@ export const submitCekContextChain = async ({
     readonly validTo: number;
   };
   readonly maxTransactions?: number;
+  /**
+   * Production workflow seam, reached by every stage after local evaluation
+   * and signing and before its submission. A capturing boundary stops the
+   * chain at the first stage from the live checkpoint; the workflow submits
+   * that stage and resumes the next one from the checkpoint it leaves.
+   */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }) => {
   if (
     maxTransactions !== undefined &&
@@ -220,6 +230,17 @@ export const submitCekContextChain = async ({
       throw new Error(
         `CEK context ${key} exceeds maximum signed transaction bytes`,
       );
+    await reachOptionalPreSubmitBoundary({
+      signed,
+      boundary: preSubmitBoundary,
+      referenceScriptCandidates: [
+        {
+          role: `CEK context ${key} spending validator`,
+          utxo: reference,
+          expectedScript: contract.spendingScript,
+        },
+      ],
+    });
     const txHash = await signed.submit();
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
     const nextThreadOutRef = `${txHash}#${outputIndex}`;
