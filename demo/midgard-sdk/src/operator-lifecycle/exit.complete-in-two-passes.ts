@@ -16,7 +16,11 @@ import {
   RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
 } from "../linked-list.js";
 import { type SchedulerDatum } from "../scheduler.js";
-import { type TxCompleteOptions } from "../tx-completion.js";
+import {
+  EMPTY_WALLET_INPUTS_CAUSE,
+  emptyWalletInputsRefusal,
+  type TxCompleteOptions,
+} from "../tx-completion.js";
 import {
   type ExactFeeBalancePlan,
   type ExactFeeOutputPlan,
@@ -152,17 +156,33 @@ export const applyExactFeePlan = (
 };
 
 /**
+ * Refuses an explicit wallet-input set that holds nothing. An operator-exit
+ * builder handed `walletInputs` selects coins, collateral and any pinned-fee
+ * balance from exactly those inputs and never reads the provider.
+ */
+export const requireExplicitWalletInputs = (
+  walletInputs: readonly UTxO[] | undefined,
+  label: string,
+): Effect.Effect<void, OperatorExitError> => {
+  const refusal = emptyWalletInputsRefusal(walletInputs, label);
+  return refusal === null
+    ? Effect.void
+    : failExit(refusal, EMPTY_WALLET_INPUTS_CAUSE);
+};
+
+/**
  * Balances a pinned-fee build against the submitting wallet's plain coins.
  * The endpoint's own inputs and declared outputs rarely add up to the fee on
  * their own (a list anchor whose link grew needs a min-ADA top-up), so the
- * wallet makes up the difference and takes the leftover back in one output.
- */
-/**
- * Plans a pinned-fee balance from the wallet's coins as the provider holds
- * them. The wallet's own view may be a cached prediction of an earlier
- * transaction's change, and an exact-fee transaction spends explicit inputs
- * with no coin selection, so a coin the ledger no longer holds would fail at
- * submission rather than be re-selected.
+ * wallet makes up the difference and takes the leftover back in one output,
+ * at the selected wallet's address.
+ *
+ * With `walletInputs` the plan spends exactly those coins: the caller's view
+ * (live facts less what its live intents spend, plus their predicted change)
+ * is the authority, and the provider is not read. Without them the coins are
+ * read from the provider as the ledger holds them, because Lucid's own wallet
+ * cache may predict change that never landed, and an exact-fee transaction
+ * spends explicit inputs with no coin selection to fall back on.
  */
 export const planExactFee = (input: {
   readonly lucid: LucidEvolution;
@@ -170,18 +190,27 @@ export const planExactFee = (input: {
   readonly feeLovelace: bigint;
   readonly scriptInputs: readonly UTxO[];
   readonly declaredOutputs: readonly ContractOutput[];
+  readonly walletInputs?: readonly UTxO[];
 }): Effect.Effect<ExactFeeBalancePlan, OperatorExitError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const remainderAddress = await input.lucid.wallet().address();
-      return planExactFeeBalance({
-        ...input,
-        walletUtxos: await input.lucid.utxosAt(remainderAddress),
-        remainderAddress,
-      });
-    },
-    catch: (cause) =>
-      exitError(`Failed to balance the pinned fee: ${String(cause)}`, cause),
+  Effect.gen(function* () {
+    yield* requireExplicitWalletInputs(input.walletInputs, input.label);
+    return yield* Effect.tryPromise({
+      try: async () => {
+        const remainderAddress = await input.lucid.wallet().address();
+        return planExactFeeBalance({
+          lucid: input.lucid,
+          label: input.label,
+          feeLovelace: input.feeLovelace,
+          scriptInputs: input.scriptInputs,
+          declaredOutputs: input.declaredOutputs,
+          walletUtxos:
+            input.walletInputs ?? (await input.lucid.utxosAt(remainderAddress)),
+          remainderAddress,
+        });
+      },
+      catch: (cause) =>
+        exitError(`Failed to balance the pinned fee: ${String(cause)}`, cause),
+    });
   });
 
 /**

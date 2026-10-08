@@ -5,11 +5,14 @@
  * wallet view (plan §8.5) the build selects from and the signature covers.
  */
 import * as SDK from "@al-ft/midgard-sdk";
-import type { LucidEvolution } from "@lucid-evolution/lucid";
+import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import type { IntentJournal } from "../../services/intent-journal.js";
-import { readWalletView } from "../utils.wallet-view.js";
+import {
+  readSelectedWalletViewInputs,
+  readWalletView,
+} from "../utils.wallet-view.js";
 import { isPlainAdaOnlyUtxo } from "../wallet-hygiene.js";
 
 /** Fee and change headroom kept beyond the value a command locks or pays. */
@@ -148,3 +151,23 @@ export const requireOperatorFundingProgram = (
     );
     return preflight;
   });
+
+/**
+ * The selected wallet's view (§8.5) as the explicit `walletInputs` an
+ * operator-lifecycle builder selects coins and collateral from. An empty view
+ * is refused by name (`wallet_view_empty` in the cause); the builder never
+ * falls back to the provider.
+ */
+export const operatorWalletInputsProgram = (
+  lucid: LucidEvolution,
+  label: string,
+): Effect.Effect<readonly UTxO[], SDK.StateQueueError, IntentJournal> =>
+  readSelectedWalletViewInputs(lucid, label).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SDK.StateQueueError({
+          message: `Failed to read the operator wallet view to fund ${label}: ${cause.message}`,
+          cause,
+        }),
+    ),
+  );

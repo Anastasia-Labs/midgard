@@ -30,6 +30,8 @@ import { provideDatabaseLayers } from "./utils.js";
 const run = <A, E>(
   effect: Effect.Effect<A, E, SqlClient.SqlClient | NodeConfig>,
 ) => Effect.runPromise(provideDatabaseLayers(effect));
+/** The stub L1 client's selected wallet (one object, as Lucid keeps it). */
+const stubWallet = {};
 const deploymentId = "a1".repeat(32);
 const REFUSAL =
   "Settlement wallet identity changed or another node owns settlement";
@@ -75,7 +77,12 @@ const worker = (token: string, seed: string) =>
         Effect.provideService(
           Lucid,
           new Lucid({
-            api: { selectWallet: { fromSeed: () => undefined } },
+            api: {
+              selectWallet: { fromSeed: () => undefined },
+              // `selectNodeWallet` keys the settlement wallet's signer by it.
+              wallet: () => stubWallet,
+              config: () => ({ network: "Preprod" }),
+            },
           } as unknown as Lucid),
         ),
       ),

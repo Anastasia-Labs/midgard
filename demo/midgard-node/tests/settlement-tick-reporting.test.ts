@@ -58,6 +58,8 @@ vi.mock(
 const run = <A, E>(
   effect: Effect.Effect<A, E, SqlClient.SqlClient | NodeConfig>,
 ) => Effect.runPromise(provideDatabaseLayers(effect));
+/** The stub L1 client's selected wallet (one object, as Lucid keeps it). */
+const stubWallet = {};
 const deploymentId = "a2".repeat(32);
 const UNKNOWN = "An unknown error occurred";
 /** A withdrawal event id as the journal keys it: the event's bytes in hex. */
@@ -161,10 +163,12 @@ const firstTick = (l1: (attempt: Journal.SettlementAttempt) => L1) =>
           new Lucid({
             api: {
               selectWallet: { fromSeed: () => undefined },
+              // `selectNodeWallet` keys the settlement wallet's signer by it.
+              wallet: () => stubWallet,
               transactionStatus:
                 transactionStatus ??
                 (async (txHash: string) => ({ txHash, status: "not_found" })),
-              config: () => ({ provider: { submitTx } }),
+              config: () => ({ network: "Preprod", provider: { submitTx } }),
               utxosAt,
             },
           } as unknown as Lucid),

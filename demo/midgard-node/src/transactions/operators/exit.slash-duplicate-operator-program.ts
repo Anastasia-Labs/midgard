@@ -17,6 +17,7 @@ import {
 import { type DuplicateSlashSubmission } from "./exit.retire-operator-program.js";
 import {
   collateralForExactFee,
+  operatorWalletInputsProgram,
   requireOperatorFundingProgram,
 } from "./funding-preflight.js";
 
@@ -166,6 +167,7 @@ export const slashDuplicateOperatorProgram = (
       slashingPenaltyLovelace: input.economics.slashingPenaltyLovelace,
       validFrom,
       validTo,
+      walletInputs: yield* operatorWalletInputsProgram(lucid, label),
     });
     const feeLovelace = tx.toTransaction().body().fee();
     const txHash = yield* handleSignSubmit(

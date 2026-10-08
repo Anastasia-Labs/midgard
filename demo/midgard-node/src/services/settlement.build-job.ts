@@ -15,6 +15,11 @@ import {
 import * as Journal from "../database/settlement.js";
 import { ReservePayoutTransport } from "../transactions/reserve-payout.js";
 import { TxSignError } from "../transactions/utils.js";
+import {
+  readWalletView,
+  selectNodeWallet,
+  signOverWalletView,
+} from "../transactions/utils.wallet-view.js";
 import { NodeConfig } from "./config.js";
 import { Database } from "./database.js";
 import {
@@ -76,13 +81,17 @@ const buildJob = (
       Effect.provideService(ReservePayoutTransport, {
         prepare: (tx, required) =>
           Effect.gen(function* () {
+            // Signed over the settlement wallet's view (§8.5), so a step that
+            // spends the predicted change of a live own intent gets its
+            // witness; the fee inputs are the body inputs that view holds.
+            const witnessed = yield* signOverWalletView(lucid, tx);
             const signed = yield* settlementCall(
               "sign settlement transaction",
-              () => tx.sign.withWallet().complete(),
+              () => witnessed.complete(),
             );
-            const walletUtxos = yield* settlementCall(
-              "settlement wallet utxosAt",
-              () => lucid.utxosAt(owner.walletAddress),
+            const { utxos: walletUtxos } = yield* readWalletView(
+              lucid,
+              owner.walletAddress,
             );
             const bodyInputs = CML.Transaction.from_cbor_hex(signed.toCBOR())
               .body()
@@ -139,6 +148,7 @@ const buildJob = (
             return attempt.tx_hash;
           }).pipe(
             Effect.provideService(SqlClient.SqlClient, sql),
+            Effect.provideService(IntentJournal, journal),
             Effect.mapError(
               (cause) =>
                 new TxSignError({
@@ -299,7 +309,7 @@ export const settlementProgram = (
       () => settlementWalletAddress(config),
     );
     const baseLucid = yield* Lucid;
-    baseLucid.api.selectWallet.fromSeed(config.L1_SETTLEMENT_SEED_PHRASE!);
+    selectNodeWallet(baseLucid.api, config.L1_SETTLEMENT_SEED_PHRASE!);
     // This client belongs exclusively to the worker; commands cannot switch it
     // back to the commitment wallet.
     const settlementLucid = new Lucid({

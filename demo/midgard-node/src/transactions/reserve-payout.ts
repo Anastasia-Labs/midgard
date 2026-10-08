@@ -1,5 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import type { LucidEvolution } from "@lucid-evolution/lucid";
+import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { Context, Effect, Option } from "effect";
 
 import {
@@ -12,6 +12,7 @@ import {
   TxSignError,
   TxSubmitError,
 } from "./utils.js";
+import { readSelectedWalletViewInputs } from "./utils.wallet-view.js";
 
 export type {
   AbsorbConfirmedDepositConfig,
@@ -88,6 +89,27 @@ const send = (
         );
   });
 
+/**
+ * `config` with the selected wallet's view (§8.5) as its `walletInputs`: the
+ * builder selects its fee input, coins and collateral from exactly those and
+ * never reads the provider. An empty view is refused by name.
+ */
+const fundedFromView = <C extends { readonly walletInputs?: readonly UTxO[] }>(
+  lucid: LucidEvolution,
+  config: C,
+  step: ReservePayoutStep,
+): Effect.Effect<C, SDK.ReservePayoutTxError, IntentJournal> =>
+  readSelectedWalletViewInputs(lucid, `the reserve payout ${step} step`).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SDK.ReservePayoutTxError({
+          message: `Failed to read the wallet view to fund the reserve payout ${step} step: ${cause.message}`,
+          cause,
+        }),
+    ),
+    Effect.map((walletInputs) => ({ ...config, walletInputs })),
+  );
+
 export const submitAbsorbConfirmedDepositToReserveProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -97,7 +119,7 @@ export const submitAbsorbConfirmedDepositToReserveProgram = (
     const built = yield* SDK.buildAbsorbConfirmedDepositToReserveTxProgram(
       lucid,
       contracts,
-      config,
+      yield* fundedFromView(lucid, config, "absorb_deposit"),
     );
     return yield* send(
       lucid,
@@ -117,7 +139,7 @@ export const submitInitializePayoutProgram = (
     const built = yield* SDK.buildInitializePayoutTxProgram(
       lucid,
       contracts,
-      config,
+      yield* fundedFromView(lucid, config, "initialize"),
     );
     return yield* send(
       lucid,
@@ -139,7 +161,7 @@ export const submitAddReserveFundsToPayoutProgram = (
     const built = yield* SDK.buildAddReserveFundsToPayoutTxProgram(
       lucid,
       contracts,
-      config,
+      yield* fundedFromView(lucid, config, "add_funds"),
     );
     return yield* send(lucid, built.tx, "add_funds", eventId, [
       Number(built.layout.payoutOutputIndex),
@@ -157,7 +179,7 @@ export const submitConcludePayoutProgram = (
     const built = yield* SDK.buildConcludePayoutTxProgram(
       lucid,
       contracts,
-      config,
+      yield* fundedFromView(lucid, config, "conclude"),
     );
     return yield* send(
       lucid,

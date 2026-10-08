@@ -204,13 +204,18 @@ export const buildAddReserveFundsToPayoutTxProgram = (
       config.referenceScripts,
       resolvedReferenceScripts,
     );
-    const feeInput = yield* selectFeeInputProgram(lucid, config.feeInput, [
-      config.payoutInput,
-      config.reserveInput,
-      hubOracleRefInput,
-      ...(refs.reserveSpending === undefined ? [] : [refs.reserveSpending]),
-      ...(refs.payoutSpending === undefined ? [] : [refs.payoutSpending]),
-    ]);
+    const feeInput = yield* selectFeeInputProgram(
+      lucid,
+      config.feeInput,
+      [
+        config.payoutInput,
+        config.reserveInput,
+        hubOracleRefInput,
+        ...(refs.reserveSpending === undefined ? [] : [refs.reserveSpending]),
+        ...(refs.payoutSpending === undefined ? [] : [refs.payoutSpending]),
+      ],
+      config.walletInputs,
+    );
     const txInputs = [config.payoutInput, config.reserveInput, feeInput];
     const txReferenceInputs = referenceInputs(hubOracleRefInput, [
       refs.reserveSpending,
@@ -343,6 +348,7 @@ export const buildAddReserveFundsToPayoutTxProgram = (
     return yield* completeWithFinalLayoutProgram({
       label: "reserve funding",
       lucid,
+      walletInputs: config.walletInputs,
       walletInputExclusions: [...txInputs, ...txReferenceInputs],
       makeTx,
       resolveLayout: () =>
