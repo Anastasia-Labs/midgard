@@ -173,6 +173,7 @@ export const fakeL1Source = (chain: FakeL1Chain): CommitteeL1Source => {
             .map((node) => node.headerHash),
         ].sort(),
         finalSlot: null,
+        finalBlockTimeMs: null,
         exits: (chain.exits?.() ?? []).filter((exit) =>
           asked.has(exit.headerHash),
         ),

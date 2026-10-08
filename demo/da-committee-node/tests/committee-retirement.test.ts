@@ -63,7 +63,7 @@ describe("paired committee retirement", () => {
     f.source.assert(token, seeded.header);
     s.close();
   });
-  it("keeps bytes for the signed15days and exactly2160 descendants, then atomically removes every cohort family and reopens", async () => {
+  it("keeps bytes for the signed15days and while the checkpoint is k deep (2159 descendants), then atomically removes every cohort family and reopens", async () => {
     const f = await setup();
     await f.compact();
     const seeded = await f.seed(1);
@@ -81,7 +81,8 @@ describe("paired committee retirement", () => {
     await f.compact();
     const provisional = await f.store.getRetirementFloor();
     expect(provisional?.checkpoint?.point).toEqual(expiryPoint);
-    f.setPoint({ ...descendantPoint, blockNo: expiryPoint.blockNo + 2160 });
+    // Depth 2160 (k): not final yet.
+    f.setPoint({ ...descendantPoint, blockNo: expiryPoint.blockNo + 2159 });
     await f.compact();
     expect(await f.store.getDaPayload(seeded.header.headerHash)).toBeDefined();
     f.setPoint(descendantPoint);

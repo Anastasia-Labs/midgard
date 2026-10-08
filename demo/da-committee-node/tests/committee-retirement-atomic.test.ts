@@ -231,7 +231,7 @@ describe("retirement atomic authority", () => {
     expect(
       await f.store.deleteDaPayloadIfPrunable({
         headerHash: f.seeded.header.headerHash,
-        nowMs: Number.MAX_SAFE_INTEGER,
+        finalBlockTimeMs: Number.MAX_SAFE_INTEGER,
         confirmedHeadHash: "00".repeat(32),
         liveQueueHeaderHashes: new Set(),
         automaticRecoveryMaxDepth: 2160,

@@ -2,6 +2,7 @@ import type {
   AvailabilityOperationActorSnapshot,
   AvailabilityOperationJournal,
 } from "@al-ft/midgard-core/availability-operation-journal";
+import { depth, isFinal } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -394,7 +395,11 @@ export const committeeRetirementSource = (
           }),
         );
       }
-      if (c.blockNo - checkpoint.point.blockNo <= binding.recoveryDepth) {
+      if (
+        !isFinal(depth(c.blockNo, checkpoint.point.blockNo), {
+          securityParameter: binding.recoveryDepth,
+        })
+      ) {
         await assertCurrent();
         return [];
       }

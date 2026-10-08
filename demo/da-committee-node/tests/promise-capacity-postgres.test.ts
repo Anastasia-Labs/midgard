@@ -73,10 +73,11 @@ describe("Postgres durable promise capacity evidence", () => {
       )?.certifiedAt;
     expect(await run()).toEqual(new Set([record.commitmentDigest]));
     expect(await certifiedAt()).toBeUndefined();
-    boundary = { slot: 2260, blockNo: 2260, blockHash: "9a".repeat(32) };
+    // Depth 2160 (k) is not final; depth 2161 is.
+    boundary = { slot: 2259, blockNo: 2259, blockHash: "9a".repeat(32) };
     expect(await run()).toEqual(new Set([record.commitmentDigest]));
     expect(await certifiedAt()).toBeUndefined();
-    boundary = { slot: 2261, blockNo: 2261, blockHash: "bc".repeat(32) };
+    boundary = { slot: 2260, blockNo: 2260, blockHash: "bc".repeat(32) };
     expect(await run()).toEqual(new Set([record.commitmentDigest]));
     await store.close();
     stores.delete(store);

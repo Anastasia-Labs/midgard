@@ -561,6 +561,7 @@ export class CommitteeService {
           ...live,
           ...view.finalQueueHeaderHashes,
         ]),
+        finalBlockTimeMs: view.finalBlockTimeMs,
       };
     }
     const errors: string[] = [];

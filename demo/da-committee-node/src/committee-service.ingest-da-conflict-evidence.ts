@@ -240,12 +240,13 @@ export type CoordinatorPublishResult = {
  * Retention exemption sets of the last tick that read a view on which the
  * committee decided, stamped with the time it was accepted: the confirmed
  * head and every header in the landed queue or in the queue at the latest
- * final block.
+ * final block, with that block's time as the release clock.
  */
 export type CommitteeL1View = {
   readonly observedAtMs: number;
   readonly confirmedHeadHash: string;
   readonly liveQueueHeaderHashes: ReadonlySet<string>;
+  readonly finalBlockTimeMs: number | null;
 };
 
 export const createDaConflictEvidenceGossipHandler = (args: {

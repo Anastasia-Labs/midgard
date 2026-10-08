@@ -334,6 +334,7 @@ describe("loadCommitteeConfig", () => {
     const view = {
       confirmedHeadHash: "aa".repeat(28),
       liveQueueHeaderHashes: new Set<string>(),
+      finalBlockTimeMs: null,
     };
     const unset = await loadCommitteeConfig(base);
     expect(unset.retentionAlertThresholdMs).toBeUndefined();
@@ -363,7 +364,7 @@ describe("loadCommitteeConfig", () => {
       alertThresholdMs: mergedWindowMs - 1,
       retentionDays: set.daTransport.retentionDays,
       deploymentFingerprint: set.deploymentFingerprint,
-      minimumFinalityDepth: set.finalityDepth,
+      automaticRecoveryMaxDepth: set.automaticRecoveryMaxDepth,
       confirmedHeadHash: view.confirmedHeadHash,
     });
     for (const refused of [

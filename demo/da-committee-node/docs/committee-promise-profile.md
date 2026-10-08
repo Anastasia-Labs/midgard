@@ -34,9 +34,9 @@ promise that 72 arbitrary coordinator cohorts fit. Prospective signature,
 outbox, source and singleton growth are charged before admission. A protected
 promise stops consuming capacity once its cutoff or terminal point is observed
 on the selected chain; a rollback of that observation charges it again until
-the cutoff is observed on the new chain. Certification beyond 2160 blocks after
-that observation is store-retirement bookkeeping only and never holds new
-signing. The signed 15-day retention window is preserved.
+the cutoff is observed on the new chain. Certification once that observation is
+final (more than 2160 blocks deep) is store-retirement bookkeeping only and
+never holds new signing. The signed 15-day retention window is preserved.
 
 The current scheduling limit can constrain signing cadence while a prior
 header remains challengeable. This optional committee-signature profile does

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
+import { depth, isFinal } from "@al-ft/midgard-l1-follower";
 import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
 
 import type { PromiseCapacityPoint } from "../availability/promise-capacity-evidence.js";
@@ -195,7 +196,9 @@ export const parseRetirementFloor = (
   if (
     point &&
     certifiedAt &&
-    (certifiedAt.blockNo - point.blockNo <= binding.recoveryDepth ||
+    (!isFinal(depth(certifiedAt.blockNo, point.blockNo), {
+      securityParameter: binding.recoveryDepth,
+    }) ||
       certifiedAt.slot <= point.slot ||
       certifiedAt.blockHash === point.blockHash)
   )

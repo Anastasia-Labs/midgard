@@ -75,8 +75,9 @@ const fixture = async () => {
   });
   /** The admission source's capacity read at the follower's boundary. */
   const retired = async (
-    terminalPoint: FollowerPoint,
+    terminalPoint: FollowerPoint | undefined,
     boundary?: Awaited<ReturnType<EmulatorFollower["reads"]["readBoundary"]>>,
+    promise: Partial<PromiseCapacityLiability> = {},
   ) => {
     const before = boundary ?? (await follower.reads.readBoundary());
     return retiredPromiseCutoffs({
@@ -92,7 +93,7 @@ const fixture = async () => {
       },
       canonicalTimeMs: before.slot * SLOT_MS,
       slotTimeMs: (slot) => slot * SLOT_MS,
-      liabilities: [{ ...liability, terminalPoint }],
+      liabilities: [{ ...liability, ...promise, terminalPoint }],
       readCanonicalPoint: (point) =>
         follower.reads.canonicalPoint(point, before),
       assertCurrent: async () => {
@@ -241,6 +242,68 @@ describe("promise capacity released at a terminal Close on the follower's facts,
           new Set([f.liability.commitmentDigest]),
         );
       }
+    },
+  );
+
+  it(
+    "certifies an expired promise's release exactly once, at final, through a rollback at depth cd + 1",
+    { timeout: 120_000 },
+    async () => {
+      const f = await fixture();
+      f.follower.retention.bind("records", () => f.store.readL1PinTargets());
+      const cd = f.config.finalityDepth;
+      const k = f.config.automaticRecoveryMaxDepth;
+      const before = f.follower.tip();
+      // The promise's open cutoff falls in the next block's slot.
+      const expiring = { cutoffTimeMs: (before.slot + 1) * SLOT_MS };
+      const released = new Set([f.liability.commitmentDigest]);
+      const expiry = await f.follower.forward();
+      await expect(f.retired(undefined, undefined, expiring)).resolves.toEqual(
+        released,
+      );
+      expect(await f.evidence()).toMatchObject({
+        retirementKind: "open_cutoff",
+        point: expiry,
+      });
+      // The expiry at depth cd + 1: safe, not final, so not certified.
+      await f.follower.empty(cd);
+      await expect(f.retired(undefined, undefined, expiring)).resolves.toEqual(
+        released,
+      );
+      expect((await f.evidence())?.certifiedAt).toBeUndefined();
+
+      // The rollback at depth cd + 1 takes the chain back before the
+      // cutoff: the promise is charged again, nothing was certified.
+      await f.follower.rollBackTo(before);
+      await expect(f.retired(undefined, undefined, expiring)).resolves.toEqual(
+        new Set(),
+      );
+      expect((await f.evidence())?.certifiedAt).toBeUndefined();
+
+      // The cutoff passes again on the new branch; certification waits
+      // for final (depth > k), then happens once.
+      const reExpiry = await f.follower.forward();
+      expect(reExpiry.blockHash).not.toBe(expiry.blockHash);
+      await expect(f.retired(undefined, undefined, expiring)).resolves.toEqual(
+        released,
+      );
+      await f.follower.empty(k - 1);
+      await expect(f.retired(undefined, undefined, expiring)).resolves.toEqual(
+        released,
+      );
+      expect(await f.evidence()).toMatchObject({ point: reExpiry });
+      expect((await f.evidence())?.certifiedAt).toBeUndefined();
+      const finalTip = await f.follower.empty(1);
+      await expect(f.retired(undefined, undefined, expiring)).resolves.toEqual(
+        released,
+      );
+      expect((await f.evidence())?.certifiedAt).toEqual(finalTip);
+      await f.follower.empty(3);
+      await expect(f.retired(undefined, undefined, expiring)).resolves.toEqual(
+        released,
+      );
+      expect((await f.evidence())?.certifiedAt).toEqual(finalTip);
+      expect(f.follower.pruneErrors).toEqual([]);
     },
   );
 });

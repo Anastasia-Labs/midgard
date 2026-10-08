@@ -1,4 +1,3 @@
-import { daRetentionPruneDecision } from "@al-ft/midgard-core";
 import {
   assertDeploymentMarkerMatches,
   type DeploymentMarker,
@@ -66,11 +65,7 @@ import {
 import { readCommitteeL1PinTargets } from "./postgres.stored-l1-points.js";
 import * as capacity from "./promise-capacity-postgres.js";
 import { postgresPromiseResources } from "./promise-resource-usage.js";
-import {
-  retentionBlockEndTimeMs,
-  retentionQueueReference,
-  terminalRecoveryFinal,
-} from "./retention.js";
+import { retainedPayloadPruneDecision } from "./retention.js";
 import { type CommitteeRetirementCertificate } from "./retirement-certificate.js";
 import {
   type CommitteeRetirementBreachPoint,
@@ -628,18 +623,8 @@ export class PostgresCommitteeStore implements CommitteeStore {
             );
       const prune =
         payload !== undefined &&
-        daRetentionPruneDecision({
-          nowMs: request.nowMs,
-          blockEndTimeMs: retentionBlockEndTimeMs(payload, header),
-          headerStatus: header?.status ?? "unobserved",
-          queueReference: retentionQueueReference(request.headerHash, request),
-          retentionDays: request.retentionDays,
-          terminalRecoveryFinal: terminalRecoveryFinal(
-            header,
-            request,
-            payload.deploymentFingerprint,
-          ),
-        }).decision === "prune";
+        retainedPayloadPruneDecision(payload, header, request).decision ===
+          "prune";
       const deleted =
         prune &&
         ((

@@ -94,12 +94,13 @@ describe("durable recovery-safe capacity release", () => {
       retirementKind: "open_cutoff",
     });
     expect(await certifiedAt()).toBeUndefined();
-    f.setBoundary({ slot: 2260, blockNo: 2260, blockHash: "78".repeat(32) });
+    // Depth 2160 (k) is not final; depth 2161 is.
+    f.setBoundary({ slot: 2259, blockNo: 2259, blockHash: "78".repeat(32) });
     expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
     expect(await certifiedAt()).toBeUndefined();
-    f.setBoundary({ slot: 2261, blockNo: 2261, blockHash: "9a".repeat(32) });
+    f.setBoundary({ slot: 2260, blockNo: 2260, blockHash: "9a".repeat(32) });
     expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
-    expect((await certifiedAt())?.blockNo).toBe(2261);
+    expect((await certifiedAt())?.blockNo).toBe(2260);
     await f.reopen();
     expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
     // The certified floor is monotonic even after the current tip becomes shallow.
@@ -108,7 +109,7 @@ describe("durable recovery-safe capacity release", () => {
     expect(
       (await f.getStore().getPromiseCapacityEvidence(f.key))?.certifiedAt
         ?.blockNo,
-    ).toBe(2261);
+    ).toBe(2260);
   });
   it("does not capture early time or active state; a later shallow Close releases at once and starts a new certification horizon", async () => {
     const f = await fixture();
@@ -260,16 +261,16 @@ describe("durable recovery-safe capacity release", () => {
       cutoffTimeMs: 10000000,
       terminalPoint: terminal,
     });
-    f.setBoundary({ slot: 2250, blockNo: 2250, blockHash: "78".repeat(32) });
+    f.setBoundary({ slot: 2249, blockNo: 2249, blockHash: "78".repeat(32) });
     expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
     expect(
       (await f.getStore().getPromiseCapacityEvidence(f.key))?.certifiedAt,
     ).toBeUndefined();
-    f.setBoundary({ slot: 2251, blockNo: 2251, blockHash: "9a".repeat(32) });
+    f.setBoundary({ slot: 2250, blockNo: 2250, blockHash: "9a".repeat(32) });
     expect(await f.run()).toEqual(new Set([liability.commitmentDigest]));
     expect(await f.getStore().getPromiseCapacityEvidence(f.key)).toMatchObject({
       retirementKind: "terminal",
-      certifiedAt: { blockNo: 2251 },
+      certifiedAt: { blockNo: 2250 },
     });
     f.setAbsent(true);
     await expect(f.run()).rejects.toThrow(

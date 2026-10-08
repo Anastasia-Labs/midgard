@@ -74,7 +74,6 @@ describe("retentionDeadlineReportV1", () => {
           ? {}
           : { retentionAlertThresholdMs: threshold }),
         deploymentFingerprint: FINGERPRINT,
-        finalityDepth: 30,
         automaticRecoveryMaxDepth: 2160,
         daTransport: { retentionDays: LIBP2P_DA_MIN_RETENTION_DAYS },
       };
@@ -85,6 +84,7 @@ describe("retentionDeadlineReportV1", () => {
           {
             confirmedHeadHash: HEAD,
             liveQueueHeaderHashes: new Set([LIVE_A, LIVE_B]),
+            finalBlockTimeMs: NOW,
           },
           NOW,
         ),
