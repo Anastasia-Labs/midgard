@@ -7,7 +7,7 @@
  *   hands the whole set to a sink, which ingests the admissions it lacks,
  *   moves locations and finds orphaned admissions (ruling 3);
  * - it then runs one typed hook per ticket that recomputes from the change
- *   (N3, N4, I1, I3, N6), in a fixed order.
+ *   (N3, N4, I1, I3, N6, N10), in a fixed order.
  *
  * It holds no loop of its own: the shared follow loop (`followChain`) calls
  * it through the node follower service. Every condition it cannot clear by
@@ -73,6 +73,8 @@ export type DriverHooks = Readonly<{
   orphanedCommitRecovery?: DriverHook;
   /** N6: settlement and the operator set. */
   settlementAndOperatorSet?: DriverHook;
+  /** N10: forced-order carriage resolution and ingestion. */
+  forcedOrderIngestion?: DriverHook;
 }>;
 
 export type DriverHook = (
@@ -85,6 +87,7 @@ export const DRIVER_HOOK_ORDER = [
   "intentStatus",
   "orphanedCommitRecovery",
   "settlementAndOperatorSet",
+  "forcedOrderIngestion",
 ] as const satisfies readonly (keyof DriverHooks)[];
 
 /** Every event of the projection at the view, both lists (P2). */

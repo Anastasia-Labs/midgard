@@ -2,7 +2,7 @@ import "node:crypto";
 import "node:fs/promises";
 import "@lucid-evolution/lucid";
 import "midgard-node/deployment-manifest";
-import "midgard-node/l1-tx-order-carriage";
+import "midgard-node/l1-kupmios";
 import "@al-ft/midgard-core/ogmios-slot";
 import "./e2e-release-finality-policy.js";
 import "./e2e-state-correction-local-authority.fetch-json.js";

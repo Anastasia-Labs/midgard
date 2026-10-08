@@ -3,6 +3,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { FORCED_ORDERS_TABLE } from "../src/forced-orders/index.js";
 import {
   HistoryProducer,
   type HistoryProducerPermit,
@@ -56,13 +57,13 @@ describe("authenticated commit window", () => {
     ).toThrow();
   });
 
-  // E-N1-2 item 3: the final refresh bounds the end time by min(owner
-  // coverage, follower ingestion); it never polls deposits or withdrawals.
+  // E-N1-2 item 3: the final recheck bounds the end time by min(owner
+  // coverage, follower ingestion, unbuilt forced orders); it polls nothing.
   it.each([
     ["owner coverage", 5_000],
     ["follower ingestion", 500],
   ] as const)(
-    "bounds the final refresh by %s, the lesser horizon, polling only tx orders",
+    "bounds the final recheck by %s, the lesser horizon",
     async (_bound, ingestedSlot) => {
       await run(
         Effect.gen(function* () {
@@ -80,26 +81,79 @@ describe("authenticated commit window", () => {
       expect(expected - EVENT_WAIT_DURATION_MS + 1).toBeLessThanOrEqual(
         ingestedSlot * 1000,
       );
-      const calls: string[] = [];
-      const refresh = (end: number) =>
+      const recheck = (end: number) =>
         run(
-          refreshCommitUserEventSourcesThroughBlockEnd(end, {
-            txOrder: (upperBound: Date) =>
-              Effect.sync(() => {
-                calls.push(`tx-order:${upperBound.getTime().toString()}`);
-                return upperBound;
-              }),
-          }).pipe(Effect.provideService(HistoryProducer, permit)),
+          refreshCommitUserEventSourcesThroughBlockEnd(end).pipe(
+            Effect.provideService(HistoryProducer, permit),
+          ),
         );
-      await refresh(expected);
-      expect(calls).toEqual([`tx-order:${expected.toString()}`]);
-      calls.length = 0;
-      await expect(refresh(expected + 1)).rejects.toThrow(
+      await recheck(expected);
+      await expect(recheck(expected + 1)).rejects.toThrow(
         /exceeds the ingested event horizon/,
       );
-      expect(calls).toEqual([]);
     },
   );
+
+  // N10: a live forced order the node has not rebuilt yet (carriage still
+  // pending) may fall due at its inclusion time, so no block reaches it.
+  it("bounds the horizon below the earliest live forced order the node has not ingested", async () => {
+    await run(
+      Effect.gen(function* () {
+        yield* resetApplicationTables;
+        yield* ingestFollowerViewUnowned(500);
+      }),
+    );
+    const follower = 500_000 + EVENT_WAIT_DURATION_MS - 1;
+    const horizon = () => run(commitEventHorizon(undefined));
+    const order = (
+      index: number,
+      inclusionTime: number,
+      spent: number | null,
+    ) =>
+      run(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO ${sql(FORCED_ORDERS_TABLE)} ${sql.insert({
+            order_tx_hash: Buffer.alloc(32, 7),
+            order_output_index: index,
+            order_tx_index: 0,
+            block_hash: Buffer.alloc(32, 8),
+            height: 10,
+            order_slot: 400,
+            spent_slot: spent,
+            parent_slot: 399,
+            parent_hash: Buffer.alloc(32, 9),
+            inclusion_time: inclusionTime,
+            status: "carriage_pending",
+            reference_inputs: Buffer.alloc(0),
+            block_datums: "{}",
+          })}`;
+        }),
+      );
+    expect(await horizon()).toBe(follower);
+    // Spent before the node ingested it: it can no longer fall due.
+    await order(0, 300_000, 450);
+    expect(await horizon()).toBe(follower);
+    await order(1, 400_000, null);
+    expect(await horizon()).toBe(399_999);
+    await order(2, 350_000, null);
+    expect(await horizon()).toBe(349_999);
+    // A bound past the follower's leaves the follower's.
+    await run(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE ${sql(FORCED_ORDERS_TABLE)} SET inclusion_time = ${follower + 10}`;
+      }),
+    );
+    expect(await horizon()).toBe(follower);
+    await expect(
+      run(
+        refreshCommitUserEventSourcesThroughBlockEnd(follower + 1).pipe(
+          Effect.provideService(HistoryProducer, permit),
+        ),
+      ),
+    ).rejects.toThrow(/exceeds the ingested event horizon/);
+  });
 
   it("allows no end time before the first ingestion or after a rewind removes the ingested view", async () => {
     const horizon = () => run(commitEventHorizon(permit.coverage));
@@ -118,9 +172,9 @@ describe("authenticated commit window", () => {
     expect(await horizon()).toBeNull();
     await expect(
       run(
-        refreshCommitUserEventSourcesThroughBlockEnd(0, {
-          txOrder: (upperBound: Date) => Effect.succeed(upperBound),
-        }).pipe(Effect.provideService(HistoryProducer, permit)),
+        refreshCommitUserEventSourcesThroughBlockEnd(0).pipe(
+          Effect.provideService(HistoryProducer, permit),
+        ),
       ),
     ).rejects.toThrow(/exceeds the ingested event horizon/);
     // The driver's next run ingests the new generation's view.

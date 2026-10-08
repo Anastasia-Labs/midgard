@@ -7,17 +7,17 @@ import {
 } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import { type OutRefLike } from "@al-ft/midgard-core/out-ref";
 
-import {
-  L1SourceUnavailable,
-  OgmiosRequestTimeout,
-} from "./l1-source-unavailable.js";
-import { type OgmiosSession } from "./l1-tx-order-carriage.fetch-kupo-spend.js";
+import { type OgmiosSession } from "./l1-kupmios.fetch-kupo-spend.js";
 import {
   HEX_28,
   HEX_32,
   type ObservedL1Transaction,
   type WebSocketFactory,
-} from "./l1-tx-order-carriage.l1-chain-point.js";
+} from "./l1-kupmios.l1-chain-point.js";
+import {
+  L1SourceUnavailable,
+  OgmiosRequestTimeout,
+} from "./l1-source-unavailable.js";
 
 /**
  * An Ogmios error answer whose code says the node cannot answer now (still
@@ -255,7 +255,7 @@ const exactOutRef = (value: unknown, label: string): OutRefLike => {
 };
 
 /**
- * Ogmios's JSON transaction view, narrowed to what a carriage read needs.
+ * Ogmios's JSON transaction view, narrowed to what the Kupmios readers need.
  *
  * The raw transaction CBOR is deliberately not used: Ogmios only emits a
  * transaction's `cbor` when the *server* was started with

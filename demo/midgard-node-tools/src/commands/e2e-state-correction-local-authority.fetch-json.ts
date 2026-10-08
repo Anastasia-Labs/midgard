@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { type WebSocketFactory } from "midgard-node/l1-tx-order-carriage";
+import { type WebSocketFactory } from "midgard-node/l1-kupmios";
 
 import { type ReleaseL1FinalityPolicy } from "./e2e-release-finality-policy.js";
 

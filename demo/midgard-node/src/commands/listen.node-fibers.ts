@@ -6,7 +6,6 @@ import {
   blockCommitmentFiber,
   blockConfirmationFiber,
   daPublicationReconcilerFiber,
-  fetchAndInsertTxOrderUTxOsFiber,
   L1_PROVIDER_EXACT_REFRESH_INTERVAL_MS,
   l1ProviderReadinessRefresherFiber,
   mergeFiber,
@@ -104,9 +103,6 @@ export const nodeFibers = ({
   operatorMembership: operatorMembershipFiber,
   l1ProviderReadinessRefresher: l1ProviderReadinessRefresherFiber(
     mkSchedule(L1_PROVIDER_EXACT_REFRESH_INTERVAL_MS),
-  ),
-  fetchAndInsertTxOrderUTxOs: fetchAndInsertTxOrderUTxOsFiber(
-    mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
   ),
   retentionSweeper: retentionSweeperFiber(
     mkSchedule(nodeConfig.WAIT_BETWEEN_RETENTION_SWEEPS),

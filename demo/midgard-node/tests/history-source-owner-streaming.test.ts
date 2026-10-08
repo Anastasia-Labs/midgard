@@ -2,7 +2,7 @@ import { CML, credentialToAddress } from "@lucid-evolution/lucid";
 import JSONBig from "json-bigint";
 import { describe, expect, it } from "vitest";
 
-import type { WebSocketLike } from "../src/l1-tx-order-carriage.js";
+import type { WebSocketLike } from "../src/l1-kupmios.js";
 import type { AcceptedHistoryObservation } from "./helpers/history-projection-observations.js";
 import {
   makeRecordedHistoryTransport,

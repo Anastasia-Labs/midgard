@@ -106,8 +106,8 @@ snapshot_release_tag="${KUPO_SNAPSHOT_RELEASE_TAG:-v2.8}"
 #           snapshot point are absent from the index).
 # origin:   restore nothing and let Kupo sync from origin (slow, complete).
 # Use origin when this node serves a Midgard deployment whose L1 history
-# starts before the snapshot was taken; the node's forced-order carriage
-# reader (src/l1-tx-order-carriage.ts) reads spent outputs.
+# starts before the snapshot was taken; the node's remaining Kupo readers
+# (src/l1-kupmios.ts) read spent outputs.
 bootstrap_mode="${KUPO_BOOTSTRAP_MODE:-snapshot}"
 case "$bootstrap_mode" in
   snapshot|origin) ;;

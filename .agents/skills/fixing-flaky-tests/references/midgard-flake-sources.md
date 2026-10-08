@@ -130,7 +130,7 @@ a test _wrong_ rather than intermittent live in the sibling catalogue,
 
 - **Symptom:** `EADDRINUSE`, or a test talking to a service it never started.
 - **Evidence:** test servers bind port 0 and read the assigned port
-  (`demo/midgard-node/tests/helpers/local-l1-observation.ts:480`,
+  (`demo/midgard-node/tests/state-queue-operational-tip.test.ts:74`,
   `demo/midgard-watcher/tests/support/state-queue-observation-fixture.ts:338`).
   Separately, the node test defaults point the L1 provider at
   `127.0.0.1:1337` and `127.0.0.1:1442`

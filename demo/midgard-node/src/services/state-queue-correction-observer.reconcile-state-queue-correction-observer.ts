@@ -6,7 +6,7 @@ import {
   withStateQueueAuthenticatedTransitionFinalityDepth,
 } from "@al-ft/midgard-sdk";
 
-import { type FetchLike } from "../l1-tx-order-carriage.js";
+import { type FetchLike } from "../l1-kupmios.js";
 import { sameQueue } from "./state-queue-correction-observer.create-database-state-queue-correction-observer-store.js";
 import {
   HEX_28,

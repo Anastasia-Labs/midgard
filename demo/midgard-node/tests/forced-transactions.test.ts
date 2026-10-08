@@ -13,7 +13,6 @@ import "vitest";
 import "../../midgard-validation/tests/validation-fixtures.js";
 import "../../da-committee-node/tests/helpers.js";
 import "../src/database/index.js";
-import "../src/fibers/fetch-and-insert-tx-order-utxos.js";
 import "../src/mpf/index.js";
 import "./midgard-output-helpers.js";
 import "./forced-transactions.make-signed-effectful-transaction.js";
@@ -67,7 +66,7 @@ import {
   ForcedTransactionsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
-import { publishedProgramMaterialEntries } from "../src/fibers/fetch-and-insert-tx-order-utxos.js";
+import { publishedProgramMaterialEntries } from "../src/forced-orders/index.js";
 import {
   buildDeterministicValidationTraceMembers,
   classifyForcedTransactions,

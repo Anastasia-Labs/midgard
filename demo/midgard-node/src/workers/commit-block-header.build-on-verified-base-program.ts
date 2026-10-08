@@ -14,7 +14,6 @@ import {
   Columns as TxColumns,
   type EntryWithTimeStamp,
 } from "../database/utils/tx.js";
-import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "../fibers/fetch-and-insert-tx-order-utxos.js";
 import { unixTimeToSlotForConfig } from "../lucid-time.js";
 import {
   configureCommitMpfRuntime,
@@ -233,8 +232,9 @@ export const buildOnVerifiedCommitBaseProgram = (
       }
     }
     // The event horizon (E-N1-2 item 3): the follower-change driver wrote
-    // every event row, so deposits and withdrawals are visible through
-    // min(journal coverage, follower ingestion). Nothing ingested yet: no
+    // every event row, so deposits, withdrawals and forced orders are
+    // visible through min(journal coverage, follower ingestion, the earliest
+    // forced order not yet rebuilt). Nothing ingested yet: no
     // end time is safe, so the commit holds.
     const eventHorizonMs = yield* commitEventHorizon(
       workerInput.history?.coverage,
@@ -249,20 +249,7 @@ export const buildOnVerifiedCommitBaseProgram = (
       workerInput.history === undefined ? undefined : new Date(eventHorizonMs);
     const depositIngestionBarrierTime = new Date(eventHorizonMs);
     const withdrawalIngestionBarrierTime = depositIngestionBarrierTime;
-    const txOrderIngestionBarrierTime = yield* acquireCommitLucidOnce.pipe(
-      Effect.flatMap((lucid) =>
-        fetchAndInsertTxOrderUTxOsForCommitBarrier(
-          withdrawalIngestionBarrierTime,
-        ).pipe(Effect.provideService(Lucid, lucid)),
-      ),
-    );
-    const userEventOnlyEndTime = [
-      depositIngestionBarrierTime,
-      withdrawalIngestionBarrierTime,
-      txOrderIngestionBarrierTime,
-    ].reduce((earliest, candidate) =>
-      candidate.getTime() < earliest.getTime() ? candidate : earliest,
-    );
+    const userEventOnlyEndTime = depositIngestionBarrierTime;
 
     let currentSchedulerWindow: CurrentOperatorSchedulerWindow | undefined;
     let currentWindowCommitEndTimeFit:
@@ -599,7 +586,7 @@ export const buildOnVerifiedCommitBaseProgram = (
             ? withdrawalIngestionBarrierTime
             : undefined,
           txOrderVisibilityBarrierTime: canBuildOnConfirmedBlock
-            ? txOrderIngestionBarrierTime
+            ? depositIngestionBarrierTime
             : undefined,
           depositOnlyEndTime: canBuildOnConfirmedBlock
             ? effectiveUserEventOnlyEndTime

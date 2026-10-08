@@ -10,11 +10,6 @@ import {
   type EventHistorySourceBinding,
   verifyEventHistoryCaptureHub,
 } from "./l1-event-history-source.js";
-import type { LedgerSnapshotPoint } from "./l1-ledger-snapshot.js";
-import {
-  KupoNotYetIndexed,
-  L1SourceUnavailable,
-} from "./l1-source-unavailable.js";
 import {
   fetchKupoAncestorPoint,
   fetchKupoCreationPoint,
@@ -23,7 +18,12 @@ import {
   openOgmiosSession,
   type WebSocketFactory,
   type WebSocketLike,
-} from "./l1-tx-order-carriage.js";
+} from "./l1-kupmios.js";
+import type { LedgerSnapshotPoint } from "./l1-ledger-snapshot.js";
+import {
+  KupoNotYetIndexed,
+  L1SourceUnavailable,
+} from "./l1-source-unavailable.js";
 
 export type HistoryTransportOptions = Readonly<{
   kupoUrl: string;

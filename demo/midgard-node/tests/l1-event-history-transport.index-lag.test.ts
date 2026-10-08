@@ -10,11 +10,11 @@ import {
   type HistoryTransportOptions,
   readEventHistoryCreatingBody,
 } from "../src/l1-event-history-transport.js";
+import type { WebSocketLike } from "../src/l1-kupmios.js";
 import {
   KupoNotYetIndexed,
   L1SourceUnavailable,
 } from "../src/l1-source-unavailable.js";
-import type { WebSocketLike } from "../src/l1-tx-order-carriage.js";
 
 const hash = (n: number) => n.toString(16).padStart(64, "0");
 const ancestor = { id: hash(1), slot: 1 };

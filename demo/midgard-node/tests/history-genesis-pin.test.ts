@@ -8,7 +8,7 @@ import {
   HISTORY_GENESIS_DIGEST_ALGORITHM,
   readEventHistoryGenesisLosslessSha256,
 } from "../src/l1-event-history-source.js";
-import type { WebSocketLike } from "../src/l1-tx-order-carriage.js";
+import type { WebSocketLike } from "../src/l1-kupmios.js";
 
 // 45000000000000001 is not a double: a Number parse rounds it to ...000.
 const GENESIS_WIRE =

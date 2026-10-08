@@ -39,7 +39,7 @@ import {
   daBondStatusCommand,
 } from "midgard-node/commands/da-bond";
 import { daLocalSigners } from "midgard-node/da/local-signers";
-import { fetchKupoSpend } from "midgard-node/l1-tx-order-carriage";
+import { fetchKupoSpend } from "midgard-node/l1-kupmios";
 import {
   authenticWatcherDaBondPool,
   deriveWatcherDaBondPoolObservation,

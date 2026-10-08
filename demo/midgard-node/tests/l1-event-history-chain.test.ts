@@ -12,7 +12,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { followEventHistoryChain } from "../src/l1-event-history-chain.js";
-import type { WebSocketLike } from "../src/l1-tx-order-carriage.js";
+import type { WebSocketLike } from "../src/l1-kupmios.js";
 import {
   anchor,
   flush,

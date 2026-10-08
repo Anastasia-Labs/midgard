@@ -22,29 +22,19 @@ const exactSources = {
 } as const;
 
 describe("commit source completeness", () => {
-  // Deposits and withdrawals are the follower-change driver's (E-N1-2 item 1):
-  // the final refresh polls tx orders only, and only after an ingestion.
-  it("refreshes only the tx-order source through the exact finalized end, after a follower ingestion", async () => {
+  // Deposits, withdrawals and forced orders are the follower-change
+  // driver's (E-N1-2 item 1, N10): the final recheck polls no source and
+  // passes only after an ingestion.
+  it("rechecks the exact finalized end against the horizon, after a follower ingestion", async () => {
     const blockEndTimeMs = Date.parse("2026-01-01T00:07:00.999Z");
-    const calls: string[] = [];
-    const refresh = refreshCommitUserEventSourcesThroughBlockEnd(
-      blockEndTimeMs,
-      {
-        txOrder: (upperBound: Date) =>
-          Effect.sync(() => {
-            calls.push(`tx-order:${upperBound.getTime().toString()}`);
-            return upperBound;
-          }),
-      },
-    );
+    const recheck =
+      refreshCommitUserEventSourcesThroughBlockEnd(blockEndTimeMs);
     await run(resetApplicationTables);
-    await expect(run(refresh)).rejects.toThrow(
+    await expect(run(recheck)).rejects.toThrow(
       /exceeds the ingested event horizon/,
     );
-    expect(calls).toEqual([]);
     await run(ingestFollowerViewUnowned(100));
-    await run(refresh);
-    expect(calls).toEqual([`tx-order:${blockEndTimeMs.toString()}`]);
+    await run(recheck);
   });
 
   it("accepts the exact due source sets independent of ordering", () => {

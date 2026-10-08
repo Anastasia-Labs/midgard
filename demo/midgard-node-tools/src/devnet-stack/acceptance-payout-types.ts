@@ -1,5 +1,5 @@
 import type { Assets, Network } from "@lucid-evolution/lucid";
-import type { ObservedL1TransactionAtPoint } from "midgard-node/l1-tx-order-carriage.l1-chain-point";
+import type { ObservedL1TransactionAtPoint } from "midgard-node/l1-kupmios.l1-chain-point";
 
 import type { WithdrawalRecord } from "./journey-values.js";
 

@@ -2,10 +2,7 @@ import { type StateQueueTransitionNode } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import {
-  type FetchLike,
-  normalizeKupoHttpUrl,
-} from "../l1-tx-order-carriage.js";
+import { type FetchLike, normalizeKupoHttpUrl } from "../l1-kupmios.js";
 import { type HistoricalQueueOutput } from "./state-queue-correction-observer.decode-kupo-correction-lock-match.js";
 import {
   HEX_28,

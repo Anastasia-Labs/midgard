@@ -6,6 +6,10 @@ import type { OriginConfig } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import {
+  type ForcedOrderConfig,
+  forcedOrderConfigFromContracts,
+} from "../forced-orders/config.js";
+import {
   type EventProjectionConfig,
   eventProjectionConfigFromContracts,
 } from "../l1-events/index.js";
@@ -24,7 +28,11 @@ export type L1FollowerPlan =
       /** k: the manifest's automaticRecoveryMaxDepth. */
       securityParameter: number;
       projection: EventProjectionConfig;
+      /** N10: the forced orders the follower projects and the node ingests. */
+      forcedOrders: ForcedOrderConfig;
       hubOraclePolicyId: string;
+      /** §12.3 step 4: by-id L1 tx sources, hash-checked. */
+      contentSources: readonly string[];
     }>;
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
@@ -37,6 +45,7 @@ export const l1FollowerPlan = (input: {
     | "L1_ORIGIN"
     | "HUB_ORACLE_ONE_SHOT_TX_HASH"
     | "HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX"
+    | "L1_TX_CONTENT_SOURCES"
     | "NETWORK"
     | "POSTGRES_HOST"
     | "POSTGRES_PORT"
@@ -45,6 +54,7 @@ export const l1FollowerPlan = (input: {
     | "POSTGRES_DB"
   >;
   readonly contracts: Parameters<typeof SDK.requireEventHistoryContracts>[0] &
+    Parameters<typeof forcedOrderConfigFromContracts>[0] &
     Readonly<{ hubOracle: Readonly<{ policyId: string }> }>;
   readonly securityParameter: number;
 }): L1FollowerPlan => {
@@ -79,6 +89,14 @@ export const l1FollowerPlan = (input: {
       `the deployment's event lists are missing: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+  let forcedOrders: ForcedOrderConfig;
+  try {
+    forcedOrders = forcedOrderConfigFromContracts(input.contracts);
+  } catch (error) {
+    return missing(
+      `the deployment's tx-order contracts are unreadable: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   const user = encodeURIComponent(config.POSTGRES_USER);
   const password = encodeURIComponent(config.POSTGRES_PASSWORD);
   const database = encodeURIComponent(config.POSTGRES_DB);
@@ -100,6 +118,8 @@ export const l1FollowerPlan = (input: {
     },
     securityParameter: input.securityParameter,
     projection,
+    forcedOrders,
     hubOraclePolicyId: input.contracts.hubOracle.policyId.toLowerCase(),
+    contentSources: config.L1_TX_CONTENT_SOURCES,
   };
 };

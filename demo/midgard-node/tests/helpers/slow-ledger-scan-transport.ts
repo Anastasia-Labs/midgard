@@ -1,4 +1,4 @@
-import type { WebSocketLike } from "../../src/l1-tx-order-carriage.js";
+import type { WebSocketLike } from "../../src/l1-kupmios.js";
 import { makeStreamingHistoryTransport } from "./history-source-owner-emulator.js";
 
 /**

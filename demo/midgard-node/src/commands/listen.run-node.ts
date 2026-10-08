@@ -17,10 +17,7 @@ import { PredecessorLeaseWait } from "../database/eventHistoryAuthority.js";
 import { DaPayloadsDB, InitDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { assertPhase1AcceptCrashCheckpointConfiguration } from "../e2e/phase1-accept-crash-checkpoint.js";
-import {
-  fetchAndInsertTxOrderUTxOs,
-  refreshAdmissionBacklogGauge,
-} from "../fibers/index.js";
+import { refreshAdmissionBacklogGauge } from "../fibers/index.js";
 import { untilOperatorRemoved } from "../fibers/operator-membership.js";
 import * as Genesis from "../genesis.js";
 import { makeProductionEventHistoryOwner } from "../services/event-history-runtime.js";
@@ -228,22 +225,6 @@ export const runNode = (
           yield* releaseStateQueueLeasesOfPreviousNodeProcess;
           yield* releaseLedgerStoreLeaseOfPreviousNodeProcess;
           yield* assertStartupMutationJobsRecoverable;
-          yield* runStartupProviderStepWithRetry(
-            "Startup tx-order catch-up",
-            fetchAndInsertTxOrderUTxOs,
-            startupProviderRetry,
-          ).pipe(
-            Effect.tapError(
-              logStartupFailure("Startup tx-order catch-up failed"),
-            ),
-            Effect.mapError(
-              (e) =>
-                new DatabaseInitializationError({
-                  message: "Startup tx-order catch-up failed",
-                  cause: e,
-                }),
-            ),
-          );
           yield* backfillMissingDaPayloadsFromFinalizedJournals({
             limit: 100,
           }).pipe(

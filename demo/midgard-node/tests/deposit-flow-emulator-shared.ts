@@ -159,7 +159,6 @@ import {
 import * as Ledger from "../src/database/utils/ledger.js";
 import { promoteOrRecoverNativeMpf } from "../src/fibers/block-commitment.js";
 import { buildBlockConfirmationAction } from "../src/fibers/block-confirmation.js";
-import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "../src/fibers/fetch-and-insert-tx-order-utxos.js";
 import { mergeAction, type MergeActionResult } from "../src/fibers/merge.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import { canonicalSlotConfigForLucid } from "../src/lucid-time.js";
@@ -1072,15 +1071,12 @@ export const runBarrierRefresherForTest = async (
 ) => {
   const nodeConfig = await makeNodeConfigForFixture(fixture);
   // The follower's event ingestion at the emulator tip (deposits due by now
-  // projected on request), then the tx-order barrier up to now.
-  const barrierPass = Effect.gen(function* () {
-    yield* ingestEmulatorEventsUnowned(fixture, {
-      globals,
-      ...(options.projectToLedger === true
-        ? { projectThroughMs: Date.now() }
-        : {}),
-    });
-    yield* fetchAndInsertTxOrderUTxOsForCommitBarrier(new Date());
+  // projected on request).
+  const barrierPass = ingestEmulatorEventsUnowned(fixture, {
+    globals,
+    ...(options.projectToLedger === true
+      ? { projectThroughMs: Date.now() }
+      : {}),
   });
   return Effect.runPromise(
     barrierPass.pipe(

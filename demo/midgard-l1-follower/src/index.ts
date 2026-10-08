@@ -8,6 +8,12 @@ export {
   outRefKey,
 } from "./codec.js";
 export { BlockDecodeError, decodeBlock } from "./decode/block.js";
+export {
+  type DecodedTransaction,
+  decodeTransaction,
+  transactionOutputAt,
+  TxDecodeError,
+} from "./decode/tx.js";
 export { decodeLedgerUtxos, type LedgerUtxo } from "./decode/utxo.js";
 export {
   findOrigin,
@@ -108,6 +114,19 @@ export {
   type TemporalRegistry,
   type TemporalTableSpec,
 } from "./registry.js";
+export {
+  httpTxContentSource,
+  type HttpTxContentSourceOptions,
+  type LedgerOutputs,
+  type LedgerPointUnavailable,
+  type ResolvedOutput,
+  type ResolveOutcome,
+  resolveOutputs,
+  type ResolveStep,
+  storeTxContentSource,
+  transportLedgerOutputs,
+  type TxContentSource,
+} from "./resolve/outputs.js";
 export {
   FOLLOWER_MIGRATION_NAMESPACE,
   followerMigrations,

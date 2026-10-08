@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 
-import type { WebSocketFactory } from "../../src/l1-tx-order-carriage.l1-chain-point.js";
+import type { WebSocketFactory } from "../../src/l1-kupmios.l1-chain-point.js";
 
 export const intersectionSocket = (
   answer: (request: {

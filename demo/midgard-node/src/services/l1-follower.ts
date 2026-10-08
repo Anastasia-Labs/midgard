@@ -16,6 +16,11 @@
  *   transaction. Orphaned admissions, or deposits whose spendable ledger row
  *   was restored, are recovery work: the write rolls back, the owner is asked
  *   to reconcile, and the driver holds `l1_events_orphan_recovery`.
+ * - The driver's forced-order hook (N10, plan §12.3) ingests the forced
+ *   orders the follower projects, resolving carriage its blocks did not
+ *   carry through the local node's ledger and the configured content
+ *   sources; carriage no source has yet is the transient
+ *   `forced_order_carriage_pending`, retried on the driver's backoff.
  * - Everything the follower cannot clear by itself is a named `/readyz`
  *   reason (`l1-follower.readiness.ts`). Nothing here exits the process.
  */
@@ -25,13 +30,20 @@ import {
   type FactStore,
   followChain,
   type FollowStatus,
+  httpTxContentSource,
   openPostgresFactStore,
   projectionStoreOptions,
   readinessOf,
+  storeTxContentSource,
+  transportLedgerOutputs,
 } from "@al-ft/midgard-l1-follower";
 import { Data, Effect, Option, Ref, Runtime } from "effect";
 
 import { reconcileFollowerEvents } from "../database/follower-events.js";
+import {
+  forcedOrderIngestionHook,
+  forcedOrderProjection,
+} from "../forced-orders/index.js";
 import {
   createFollowerDriver,
   type DriverHold,
@@ -304,7 +316,10 @@ export const startL1Follower = Effect.gen(function* () {
       try {
         store = openPostgresFactStore({
           ...projectionStoreOptions(
-            [eventProjection(plan.projection)],
+            [
+              eventProjection(plan.projection),
+              forcedOrderProjection(plan.forcedOrders),
+            ],
             {
               securityParameter: plan.securityParameter,
               // The protocol-init tx qualifies through the hub oracle mint.
@@ -341,10 +356,27 @@ export const startL1Follower = Effect.gen(function* () {
       `the follower store or transport did not open: ${message(opened.left.error)}`,
     );
   const { transport, store, abort } = opened.right;
+  const dbRuntime = yield* Effect.runtime<Database | NodeConfig>();
   const driver = createFollowerDriver({
     store,
     config: plan.projection,
     sink,
+    hooks: {
+      forcedOrderIngestion: forcedOrderIngestionHook({
+        store,
+        config: plan.forcedOrders,
+        consensusProfile: identity.consensusProfile,
+        ledger: transportLedgerOutputs(transport),
+        sources: [
+          storeTxContentSource(store),
+          ...plan.contentSources.map((urlTemplate) =>
+            httpTxContentSource({ urlTemplate }),
+          ),
+        ],
+        run: (effect) => Runtime.runPromiseExit(dbRuntime)(effect),
+        log: (line) => log(`forced orders: ${line}`),
+      }),
+    },
     log: (line) => log(`driver: ${line}`),
   });
   const trigger = coalescedRunner(

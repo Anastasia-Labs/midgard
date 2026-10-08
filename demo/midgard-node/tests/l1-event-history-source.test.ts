@@ -17,11 +17,11 @@ import {
   readBoundEventHistoryRawLedgerSnapshot,
   verifyEventHistoryCaptureHub,
 } from "../src/l1-event-history-source.js";
+import type { WebSocketLike } from "../src/l1-kupmios.js";
 import type {
   AcquiredLedgerSnapshot,
   LedgerSnapshotOutput,
 } from "../src/l1-ledger-snapshot.js";
-import type { WebSocketLike } from "../src/l1-tx-order-carriage.js";
 import type { ContractDeploymentIdentityValue } from "../src/services/midgard-contracts.js";
 import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest.js";
 import { productionRuntimeHistoryBinding } from "./helpers/production-history-binding.js";

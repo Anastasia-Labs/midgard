@@ -8,6 +8,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { buildListenRouter } from "../src/commands/listen-router.js";
 import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
+import {
+  FORCED_ORDER_CARRIAGE_PENDING,
+  FORCED_ORDER_INGESTION_FAILED,
+} from "../src/forced-orders/index.js";
 import { NodeConfig } from "../src/services/config.js";
 import {
   Globals,
@@ -462,6 +466,8 @@ describe("GET /readyz names the L1 follower's reasons (N1)", () => {
       "l1_events_ingestion_waiting",
       "l1_events_ingestion_failed",
       "l1_events_hook_failed",
+      FORCED_ORDER_CARRIAGE_PENDING,
+      FORCED_ORDER_INGESTION_FAILED,
     ])
       await holds(
         runningFollower(followingAtTip(), [{ reason, detail: "fixture" }]),

@@ -12,7 +12,7 @@ import {
   type KupoSpend,
   readOgmiosBlockTransaction,
   type WebSocketFactory,
-} from "../l1-tx-order-carriage.js";
+} from "../l1-kupmios.js";
 import { canonicalOgmiosBlockDepth } from "./state-queue-correction-observer.canonical-block-depth.js";
 import { sameQueue } from "./state-queue-correction-observer.create-database-state-queue-correction-observer-store.js";
 import {

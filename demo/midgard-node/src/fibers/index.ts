@@ -6,7 +6,6 @@ export * from "./attestation-timeout-correction.js";
 export * from "./block-commitment.js";
 export * from "./block-confirmation.js";
 export * from "./da-publication-reconciler.js";
-export * from "./fetch-and-insert-tx-order-utxos.js";
 export * from "./l1-provider-readiness-refresher.js";
 export * from "./merge.js";
 export * from "./monitor-mempool.js";

@@ -2,7 +2,7 @@ import {
   normalizeOgmiosWebSocketUrl,
   type WebSocketFactory,
   type WebSocketLike,
-} from "midgard-node/l1-tx-order-carriage";
+} from "midgard-node/l1-kupmios";
 
 import {
   HEX_28,

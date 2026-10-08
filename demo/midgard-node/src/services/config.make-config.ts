@@ -18,6 +18,7 @@ import {
 } from "../da/local-signers.js";
 import { validateRetentionDays } from "../database/retention-policy.js";
 import { hubOracleOriginConfig } from "./config.hub-oracle-origin.js";
+import { l1ContentSourcesConfig } from "./config.l1-content-sources.js";
 import {
   boundedValidationInteger,
   CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES,
@@ -512,6 +513,7 @@ const makeConfig = Effect.gen(function* () {
     ),
   );
   const hubOracleOrigin = yield* hubOracleOriginConfig;
+  const l1ContentSources = yield* l1ContentSourcesConfig;
   const operatorRequiredBondLovelace = yield* Config.string(
     "OPERATOR_REQUIRED_BOND_LOVELACE",
   ).pipe(
@@ -606,9 +608,6 @@ const makeConfig = Effect.gen(function* () {
     }),
   );
   const daHardeningConfig = readDaHardeningConfig();
-  const waitBetweenDepositUTxOFetches = yield* Config.integer(
-    "WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES",
-  ).pipe(Config.withDefault(10000));
   const promMetricsPort = yield* Config.integer("PROM_METRICS_PORT").pipe(
     Config.withDefault(9464),
   );
@@ -991,6 +990,7 @@ const makeConfig = Effect.gen(function* () {
     WAIT_BETWEEN_RETENTION_SWEEPS: waitBetweenRetentionSweeps,
     L1_VIEW_FATAL_MS: l1ViewFatalMs,
     ...hubOracleOrigin,
+    ...l1ContentSources,
     OPERATOR_REQUIRED_BOND_LOVELACE: operatorRequiredBondLovelace,
     OPERATOR_SLASHING_PENALTY_LOVELACE: operatorSlashingPenaltyLovelace,
     DA_COMMITTEE_HEX: daCommitteeHex,
@@ -1005,7 +1005,6 @@ const makeConfig = Effect.gen(function* () {
     MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS: daHardeningConfig.retryBackoffMs,
     MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS:
       daHardeningConfig.retryBackoffMaxMs,
-    WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: waitBetweenDepositUTxOFetches,
     PROM_METRICS_PORT: promMetricsPort,
     OLTP_EXPORTER_URL: oltpExporterUrl,
     POSTGRES_HOST: postgresHost,

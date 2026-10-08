@@ -263,7 +263,8 @@ describe("SDK/Aiken canonical V1 schema parity", () => {
 
     const sources = [
       "demo/midgard-sdk/src/user-events/tx-order.ts",
-      "demo/midgard-node/src/fibers/fetch-and-insert-tx-order-utxos.ts",
+      "demo/midgard-node/src/forced-orders/carriage.ts",
+      "demo/midgard-node/src/forced-orders/entry.ts",
       "onchain/aiken/lib/midgard/user-events/tx-order-v1.ak",
       "onchain/aiken/validators/user-events/tx-order-v1.ak",
     ];

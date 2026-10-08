@@ -976,7 +976,7 @@
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
-    "max": 1072,
+    "max": 1071,
     "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1011,7 +1011,7 @@
   },
   {
     "file": "midgard-node/src/workers/commit-block-header.build-on-verified-base-program.ts",
-    "max": 908,
+    "max": 895,
     "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1091,7 +1091,7 @@
   },
   {
     "file": "midgard-node/tests/commit-worker-failure-lease-classification.test.ts",
-    "max": 510,
+    "max": 508,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -1151,7 +1151,7 @@
   },
   {
     "file": "midgard-node/tests/deposit-flow-emulator-shared.ts",
-    "max": 1840,
+    "max": 1836,
     "reason": "Shared emulator harness: beforeAll/afterAll/afterEach own environment restoration, a writable manifest directory and per-test protocol lifecycle. Its mutually dependent helpers reference those bindings and hooks. Independent helpers were extracted; splitting the retained cohort needs an explicit harness ownership API."
   },
   {
@@ -1196,7 +1196,7 @@
   },
   {
     "file": "midgard-node/tests/forced-transactions.test.ts",
-    "max": 1169,
+    "max": 1168,
     "reason": "Retained test registration “V1 forced transaction material” (866 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. T161 (+236): adds the separate registration “forced transaction program material at its position” (an absent reference judged InputNotFound, a live reference's program committed for a Phase A rejection, node and committee agreement). Combined recovered source removes obsolete lines; cap reduced to the measured final source count."
   },
   {
