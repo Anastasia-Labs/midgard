@@ -326,6 +326,26 @@ export const HISTORY_REPLACED_BLOCK_REVIVAL_SOURCE =
 export const SIGNED_INTENT_REPLACEMENT_INTEGRITY =
   "signed_intent_replacement_integrity";
 
+/** The source the state-queue correction rewind raises under while it holds
+ * on a removed block's journal. Like `HISTORY_SIGNED_INTENT_RELEASE_SOURCE`
+ * it holds no fiber: the rewind's disposition keeps the history gate closed,
+ * which holds block production. (`HaltSource.stateQueueCorrectionRewind`
+ * is a different, halting source.) Every rewind evaluation re-derives it;
+ * it clears once the reinclusion completes, once an evaluation holds for
+ * another reason or finds nothing owed, and once no admitted removal leaves
+ * a local journal unresolved. */
+export const HISTORY_CORRECTION_REWIND_SOURCE = "history_correction_rewind";
+
+/** The earliest removed block's journal base is bound neither by a retained
+ * parent journal (none has its base tail header hash) nor by its own header:
+ * its header bytes do not hash to the removed header, or its replay base
+ * (base tail header hash, base root) or candidate root is not that header's
+ * predecessor or root (see `validateChain`). The rewind reads its target root
+ * from those columns, so it holds: native MPF, the SQL root and the journal
+ * stay as they are. */
+export const CORRECTION_REWIND_JOURNAL_UNBOUND =
+  "correction_rewind_journal_unbound";
+
 /** The source the commit worker's DA frame notices raise under. It holds no
  * fiber: the block is already refused on every tick (by the pre-submit frame
  * check, or by committing nothing while the transactions stay pending), so

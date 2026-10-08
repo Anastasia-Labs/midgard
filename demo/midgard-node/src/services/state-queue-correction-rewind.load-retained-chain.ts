@@ -73,9 +73,13 @@ export const loadRetainedChain = (
     }
     const validated = yield* validateChain(chain, authority.manifestId);
     if (validated.kind !== "ready")
-      return blocked(
-        `Retained correction rewind ${intent.headerHash} is no longer provable: ${validated.kind === "blocked" ? validated.reason : "no chain"}`,
-      );
+      return {
+        kind: "blocked",
+        reason: `Retained correction rewind ${intent.headerHash} is no longer provable: ${validated.kind === "blocked" ? validated.reason : "no chain"}`,
+        ...(validated.kind === "blocked" && validated.journalUnbound
+          ? { journalUnbound: true as const }
+          : {}),
+      } satisfies Obligation;
     if (
       chainIdentity(chain) !== intent.journalDigest ||
       chain[0]!.record[C.BASE_UTXOS_ROOT] !== intent.targetRoot

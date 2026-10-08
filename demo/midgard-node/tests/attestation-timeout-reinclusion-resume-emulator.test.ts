@@ -41,7 +41,7 @@ import {
 } from "./helpers/correction-rewind-scenario.js";
 import {
   assertClosedCorrectionGate,
-  assertUnboundRemovedLocalRoot,
+  assertUnboundRemovedJournalHolds,
   assertUnretainedCorrectionRoot,
 } from "./helpers/correction-rewind-source-gate.js";
 
@@ -242,7 +242,7 @@ it(
 );
 
 it(
-  "refuses a removed native root whose local journal parent is unbound and leaves native and SQL unchanged",
-  assertUnboundRemovedLocalRoot,
+  "holds the rewind of a removed block whose journal base does not bind to its removed header, with native, SQL and the gate unchanged and a named readiness reason, until the journal binds again",
+  assertUnboundRemovedJournalHolds,
   600_000,
 );
