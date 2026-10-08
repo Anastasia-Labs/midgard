@@ -25,6 +25,7 @@ import {
   protocolInitFaultsMigrationSql,
 } from "./projection.protocol-init.js";
 import { proofRetentionMigrationSql } from "./proof-retention.schema.js";
+import { prunedKeysMigrationSql } from "./pruned-keys.js";
 import {
   WATCHER_PROOF_PINS_TABLE,
   WATCHER_QUEUE_OUTPUTS_TABLE,
@@ -150,6 +151,10 @@ export const watcherMigrations = (dialect: DialectName): MigrationSet => ({
     {
       id: "0008_watcher_proof_retention",
       sql: proofRetentionMigrationSql(dialect),
+    },
+    {
+      id: "0009_watcher_pruned_keys",
+      sql: prunedKeysMigrationSql(dialect),
     },
   ],
 });

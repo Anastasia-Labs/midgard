@@ -8,11 +8,11 @@ import {
   type StoredBlock,
   type StoredTx,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 
-import { recordsUnitHistory } from "./projection.js";
+import { recordsUnitHistory, stateQueueNodeUnitPattern } from "./projection.js";
 import { partlyPrunedIn } from "./proof-retention.js";
+import { headerPrunedIn, unitPrunedIn } from "./pruned-keys.js";
 import {
   canonicalBlock,
   isTrackedAddress,
@@ -57,12 +57,6 @@ import { resolveStoredInputIn } from "./tx-inputs.js";
  * id. Otherwise pure reads: no clock and no write.
  */
 
-const STATE_QUEUE_NODE_UNIT = (policyId: string): RegExp =>
-  new RegExp(
-    `^${policyId}${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}([0-9a-f]{56})$`,
-    "u",
-  );
-
 const hex = (value: unknown): string =>
   Buffer.from(value as Uint8Array).toString("hex");
 
@@ -82,7 +76,7 @@ export const createFollowerRawReads = (
     ledgerOutputsAt?: LedgerOutputsAt;
   }>,
 ): FollowerRawReads => {
-  const nodeUnit = STATE_QUEUE_NODE_UNIT(options.stateQueuePolicyId);
+  const nodeUnit = stateQueueNodeUnitPattern(options.stateQueuePolicyId);
 
   /** A live row's exact bytes from its creating body; a seed row has none. */
   const exactRow = async (
@@ -197,17 +191,19 @@ export const createFollowerRawReads = (
       );
     const block = await canonicalBlock(store, point);
     if (block.kind !== "ok") return block;
-    const [key, history, held] =
+    const [key, history, held, prunedRows] =
       match !== null
         ? [
             Buffer.from(match[1]!, "hex"),
             { table: WATCHER_QUEUE_UNIT_HISTORY_TABLE, column: "header_hash" },
             { table: WATCHER_PROOF_PINS_TABLE, column: "header_hash" },
+            headerPrunedIn,
           ]
         : [
             Buffer.from(unit, "hex"),
             { table: WATCHER_UNIT_HISTORY_TABLE, column: "unit" },
             { table: WATCHER_PROOF_PIN_UNITS_TABLE, column: "unit" },
+            unitPrunedIn,
           ];
     const read = await store.transaction(
       "read",
@@ -233,17 +229,28 @@ export const createFollowerRawReads = (
             "beyond_retention",
             `no history of ${unit} is retained; it may have been pruned`,
           );
-        // Unpinned rows closed at or before the pruned slot sit in a
-        // budget-cut prune step whose siblings may be gone: the same test as
-        // a pin's (`partlyPrunedIn`).
-        if (
-          prunedThrough !== null &&
+        const unheld = async (): Promise<boolean> =>
           (
             await tx.query(
               `SELECT 1 AS one FROM ${held.table} WHERE ${held.column} = ? LIMIT 1`,
               [key],
             )
-          ).length === 0 &&
+          ).length === 0;
+        // A key's rows (a followed unit's, a header's queue history) all
+        // close together and it can have rows again later; once a prune step
+        // deleted its earlier rows, the rows left are not its whole history,
+        // and nothing held them first.
+        if ((await prunedRows(tx, key)) && (await unheld()))
+          return refused(
+            "beyond_retention",
+            `a prune step has deleted earlier history of ${unit}`,
+          );
+        // Unpinned rows closed at or before the pruned slot sit in a
+        // budget-cut prune step whose siblings may be gone: the same test as
+        // a pin's (`partlyPrunedIn`).
+        if (
+          prunedThrough !== null &&
+          (await unheld()) &&
           (await partlyPrunedIn(tx, prunedThrough, key, [history]))
         )
           return refused(

@@ -2,10 +2,11 @@
  * Proof retention when pruning wins (E1 ruling): the result is not dropped.
  * A pin or unit hold pruning beat is the named degradation
  * `l1_proof_history_pruned` until the objective is released, or until a
- * later hold of the same unit lands. A header no pin holds (a read for no
- * open objective) writes no hold. A unit with no history rows is held and
- * the raw read decides; the header's own state-queue node unit is held by
- * the header pin, not by a unit hold.
+ * later hold of the same unit finds its history whole. A header no pin
+ * holds (a read for no open objective) writes no hold. A unit with no
+ * history rows that no prune step deleted rows of is held and the raw read
+ * decides; the header's own state-queue node unit is held by the header
+ * pin, not by a unit hold.
  */
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -150,7 +151,7 @@ describe("proof retention: units held by the header pin, or with no history rows
     );
   });
 
-  it("writes the hold for a unit with no history rows after pruning, names no degradation, and leaves the refusal to the raw read", async () => {
+  it("writes the hold for a unit with no history rows, reports a unit a prune step deleted rows of, and leaves the refusal to the raw read", async () => {
     const r = await removedHeader({
       pin: true,
       resolveAtIngest: true,
@@ -164,17 +165,19 @@ describe("proof retention: units held by the header pin, or with no history rows
     ).toBe(0);
     expect(
       await r.retention.holdUnits(r.header, [FOLLOWED_UNIT, unminted]),
-    ).toEqual({ kind: "held" });
-    expect(await unitHolds(r, FOLLOWED_UNIT)).toBe(1);
+    ).toEqual({ kind: "already_pruned", units: [FOLLOWED_UNIT] });
+    expect(await unitHolds(r, FOLLOWED_UNIT)).toBe(0);
     expect(await unitHolds(r, unminted)).toBe(1);
-    expect(r.retention.degradations()).toEqual([]);
+    expect(r.retention.degradations()).toMatchObject([
+      { reason: L1_PROOF_HISTORY_PRUNED, count: 1 },
+    ]);
     for (const unit of [FOLLOWED_UNIT, unminted])
       expect(
         reasonOf(await r.h.reads().unitHistoryAtPoint(unit, r.h.tipPoint())),
       ).toBe("beyond_retention");
   });
 
-  it("clears a unit's degradation once a later hold of that unit lands", async () => {
+  it("keeps a unit's degradation once pruning has deleted the rest of its history", async () => {
     const r = await removedHeader({
       pin: true,
       resolveAtIngest: true,
@@ -189,10 +192,16 @@ describe("proof retention: units held by the header pin, or with no history rows
       { reason: L1_PROOF_HISTORY_PRUNED, count: 1 },
     ]);
     await r.h.pruneAll();
+    expect(
+      await r.count(WATCHER_UNIT_HISTORY_TABLE, "unit", FOLLOWED_UNIT),
+    ).toBe(0);
     expect(await r.retention.holdUnits(r.header, [FOLLOWED_UNIT])).toEqual({
-      kind: "held",
+      kind: "already_pruned",
+      units: [FOLLOWED_UNIT],
     });
-    expect(r.retention.degradations()).toEqual([]);
+    expect(r.retention.degradations()).toMatchObject([
+      { reason: L1_PROOF_HISTORY_PRUNED, count: 1 },
+    ]);
   });
 });
 

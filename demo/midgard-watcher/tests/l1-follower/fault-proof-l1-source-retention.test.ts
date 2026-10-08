@@ -99,6 +99,7 @@ describe("fault-proof L1 source: unit hold results", () => {
     const fx = await fixture();
     const retention = createWatcherProofRetention(fx.store, {
       unitHistoryPolicies: watcherUnitHistoryPolicies(D),
+      stateQueuePolicyId: D.stateQueueMint,
     });
     const source = createWatcherFaultProofL1Source({
       store: fx.store,
@@ -127,6 +128,7 @@ describe("fault-proof L1 source: unit hold results", () => {
     const fx = await fixture();
     const retention = createWatcherProofRetention(fx.store, {
       unitHistoryPolicies: watcherUnitHistoryPolicies(D),
+      stateQueuePolicyId: D.stateQueueMint,
     });
     expect(
       await retention.pin({ category: "doubleSpend", headerHash: fx.header }),

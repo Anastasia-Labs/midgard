@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
 import {
+  type DeterminismAllowance,
   lintDeterminismModules,
   lintDeterminismSource,
 } from "../src/lint/index.js";
@@ -196,6 +197,32 @@ export const stamp = (): number => Date.now();
     expect(lint(1, 2)).toEqual(["0:stale_allowance:setTimeout (1 of 2)"]);
   });
 
+  it("rejects a second allowance with the same path, rule and text, which accepts nothing", () => {
+    const entry = {
+      path: "src/projection/retry.ts",
+      rule: "clock" as const,
+      text: "setTimeout",
+      reason: "the retry timer",
+    };
+    const lint = (allow: DeterminismAllowance[]) =>
+      lintDeterminismModules({
+        root: tree({
+          "src/projection/retry.ts":
+            "export const a = setTimeout;\nexport const b = setTimeout;\n",
+        }),
+        include: ["src/projection/*.ts"],
+        allow,
+      }).problems.map(
+        ({ line, rule, text }) => `${String(line)}:${rule}:${text}`,
+      );
+    expect(lint([{ ...entry, count: 2 }])).toEqual([]);
+    expect(lint([entry, entry])).toEqual([
+      "0:duplicate_allowance:setTimeout (clock)",
+      "1:clock:setTimeout",
+      "2:clock:setTimeout",
+    ]);
+  });
+
   it("fails closed on a data import whose file is missing", () => {
     const root = tree({
       "src/projection/derive.ts": `import sql from "./gone.sql?raw";\nexport const derive = sql;\n`,
@@ -264,6 +291,38 @@ describe("determinism lint: global-object and host reads in one file", () => {
     ],
     ["const n = 1; import(`./${String(n)}.js`)", "unresolved_import"],
     ["require(name)", "unresolved_import"],
+    ["const { ...rest } = process; rest.env.X", "global_alias"],
+    ["const { [key]: e } = process; e.X", "global_alias"],
+    ["const { process: p } = globalThis; p.env.X", "global_alias"],
+    ['import { createRequire } from "node:module"', "host_import"],
+    ["process.argv", "environment"],
+    ["process.platform", "environment"],
+    ["process.cwd()", "environment"],
+    ["const { argv } = process", "environment"],
+    ['eval("1")', "dynamic_code"],
+    ['new Function("return 1")', "dynamic_code"],
+    ['globalThis.eval("1")', "dynamic_code"],
+    ['import { webcrypto } from "node:crypto"', "randomness"],
+    ['import { generateKeyPairSync } from "node:crypto"', "randomness"],
+    [
+      'import * as c from "node:crypto"; c.webcrypto.getRandomValues(new Uint8Array(4))',
+      "randomness",
+    ],
+    ["crypto.subtle.generateKey(spec, true, uses)", "randomness"],
+    ["Intl.DateTimeFormat().format(0)", "implicit_locale"],
+    ["new Intl.DateTimeFormat().format(0)", "implicit_locale"],
+    ['new Intl.DateTimeFormat("en").format(0)', "implicit_locale"],
+    ['new Intl.DateTimeFormat("en", { hour: "numeric" })', "implicit_locale"],
+    ["new Intl.NumberFormat().format(1)", "implicit_locale"],
+    ["new Intl.Collator(undefined).compare(a, b)", "implicit_locale"],
+    ["(1).toLocaleString()", "implicit_locale"],
+    ['day.toLocaleDateString("en")', "implicit_locale"],
+    ['"a".localeCompare("b")', "implicit_locale"],
+    ["name.toLocaleUpperCase()", "implicit_locale"],
+    ["const { DateTimeFormat } = Intl", "global_alias"],
+    ["const I = Intl; new I.DateTimeFormat()", "global_alias"],
+    ["AbortSignal.timeout(10)", "clock"],
+    ["const { timeout } = AbortSignal", "clock"],
   ])("%s is %s", (source, rule) => {
     expect(
       lintDeterminismSource("probe.ts", source).map((problem) => problem.rule),
@@ -275,6 +334,15 @@ describe("determinism lint: global-object and host reads in one file", () => {
       lintDeterminismSource(
         "pure.ts",
         'const at: Date | null = null; const x = globalThis.Number(1); const y = process === undefined; const z = typeof process; const m = Math.max(1, 2); void import("./x.js"); let t: ReturnType<typeof setTimeout> | null = null; void [at, x, y, z, m, t];',
+      ),
+    ).toEqual([]);
+  });
+
+  it("leaves locale formatting with an explicit locale and time zone, and Function or AbortSignal as types, alone", () => {
+    expect(
+      lintDeterminismSource(
+        "pure.ts",
+        'const d = new Intl.DateTimeFormat("en", { timeZone: "UTC" }).format(0); const n = new Intl.NumberFormat("en").format(1); const c = "a".localeCompare("b", "en"); const s = (1).toLocaleString("en"); const u = "a".toLocaleUpperCase("en"); const f: Function | null = null; const a = (x: unknown): x is AbortSignal => x instanceof AbortSignal; void [d, n, c, s, u, f, a];',
       ),
     ).toEqual([]);
   });

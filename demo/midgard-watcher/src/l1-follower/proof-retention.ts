@@ -5,7 +5,8 @@ import type {
   SqlTx,
 } from "@al-ft/midgard-l1-follower";
 
-import { recordsUnitHistory } from "./projection.js";
+import { recordsUnitHistory, stateQueueNodeUnitPattern } from "./projection.js";
+import { headerPrunedIn, unitPrunedIn } from "./pruned-keys.js";
 import {
   WATCHER_DEPARTED_HEADERS_TABLE,
   WATCHER_PROOF_PIN_UNITS_TABLE,
@@ -30,7 +31,11 @@ import type { WatcherL1Degradation } from "./tx-inputs.js";
  * a capture names them and only while the header holds a pin; a header's
  * unit rows go with its last pin. A unit with no history rows is held all
  * the same (it may not be minted yet), and the raw read decides what it
- * answers.
+ * answers, unless a prune step deleted rows of it (`unitPrunedIn`): then the
+ * rows left, if any, are not its whole history, and nothing holds it. The
+ * same goes for a header pin over a header whose queue history rows a prune
+ * step deleted (`headerPrunedIn`): a header committed again has rows again,
+ * and they are not its whole history.
  *
  * Both writes go through the follower's `pinRetained`, under its cursor
  * lock: a prune step either committed first, and the pin reports
@@ -38,8 +43,9 @@ import type { WatcherL1Degradation } from "./tx-inputs.js";
  *
  * No result is dropped. An objective whose history pruning removed first
  * is the named degradation `l1_proof_history_pruned` (status and metrics)
- * until it is released (a unit's, until a later hold of that unit lands);
- * its captures refuse to read the history rather than read a partial one. A capture whose header holds no pin reads for no open
+ * until it is released (a unit's, until a later hold of that unit finds its
+ * history whole); its captures refuse to read the history rather than read
+ * a partial one. A capture whose header holds no pin reads for no open
  * objective (header classification reads every finalized header before any
  * objective exists; an open objective's header holds a pin or is named
  * pruned), so it writes no hold and reads as before: within k the rows are
@@ -66,12 +72,15 @@ export type WatcherProofPinResult = PinResult;
 
 /**
  * `held`: every named unit's history is held from now on (or already was),
- * by a unit row or, for a state-queue node unit, by the header's pin.
+ * by a unit row or, for the header's own state-queue node unit, by the
+ * header's pin.
  * `not_pinned`: the header holds no pin (a read for no open objective), so
- * no unit hold was written.
+ * no unit hold was written; or a named unit is neither followed nor the
+ * header's own node unit (only that unit's own header pin could hold it),
+ * and the followed units are held.
  * `already_pruned`: a prune step had deleted part of the history of `units`
- * when the hold came; the other units are held. A header whose own pin
- * pruning beat reports every unit.
+ * when the hold came; the other followed units are held. A header whose own
+ * pin pruning beat reports every unit.
  */
 export type WatcherProofUnitHoldResult =
   | Readonly<{ kind: "held" }>
@@ -90,8 +99,8 @@ export type WatcherProofRetention = Readonly<{
   release(target: WatcherProofRetentionTarget): Promise<void>;
   /**
    * Holds the units a capture for `headerHash` reads, while the header is
-   * pinned: a followed unit by a unit row, any other unit (the header's
-   * state-queue node unit) through the header pin.
+   * pinned: a followed unit by a unit row, the header's own state-queue
+   * node unit through the header pin.
    */
   holdUnits(
     headerHash: string,
@@ -137,43 +146,60 @@ export const partlyPrunedIn = async (
 };
 
 /**
- * Whether a header's or unit's rows are complete under the cursor lock: a
- * pin row already holds them, or no prune step has reached part of them
- * (`partlyPrunedIn`). With no rows at all, `absent` decides.
+ * How a header's or unit's rows stand under the cursor lock:
+ * - `held`: a pin row already holds them;
+ * - `pruned`: a prune step has reached part of them (`partlyPrunedIn`), or
+ *   deleted some (`pruned`, the key's record);
+ * - `none`: no rows at all;
+ * - `whole`: no prune step has reached any of them.
  */
-const historyRetained = async (
+type HistoryState = "held" | "pruned" | "none" | "whole";
+
+const historyState = async (
   tx: SqlTx,
   cursor: Cursor,
   key: Buffer,
   held: KeyedTable,
   rows: readonly [KeyedTable, ...KeyedTable[]],
-  absent: boolean,
-): Promise<boolean> => {
+  pruned: (tx: SqlTx, key: Buffer) => Promise<boolean>,
+): Promise<HistoryState> => {
   const holds = await tx.query(
     `SELECT 1 AS one FROM ${held.table} WHERE ${held.column} = ? LIMIT 1`,
     [key],
   );
-  if (holds.length > 0) return true;
+  if (holds.length > 0) return "held";
+  if (await pruned(tx, key)) return "pruned";
   const present = await tx.query(
     `SELECT 1 AS one FROM ${rows[0].table} WHERE ${rows[0].column} = ? LIMIT 1`,
     [key],
   );
-  if (present.length === 0) return absent;
-  return !(await partlyPrunedIn(tx, cursor.prunedThroughSlot, key, rows));
+  if (present.length === 0) return "none";
+  return (await partlyPrunedIn(tx, cursor.prunedThroughSlot, key, rows))
+    ? "pruned"
+    : "whole";
 };
+
+/** Whether no prune step has run since the store's origin. */
+const unpruned = (cursor: Cursor): boolean =>
+  cursor.prunedThroughSlot <= cursor.origin.slot;
 
 /**
  * `unitHistoryPolicies` are the policies whose units' histories the
  * projection records (`watcherUnitHistoryPolicies`): the units a unit row
- * holds.
+ * holds. `stateQueuePolicyId` names the node units a header pin holds (each
+ * header's own).
  */
 export const createWatcherProofRetention = (
   store: Pick<
     FactStore,
     "transaction" | "pinRetained" | "securityParameter" | "dialect"
   >,
-  options: Readonly<{ unitHistoryPolicies: ReadonlySet<string> }>,
+  options: Readonly<{
+    unitHistoryPolicies: ReadonlySet<string>;
+    stateQueuePolicyId: string;
+  }>,
 ): WatcherProofRetention => {
+  const nodeUnit = stateQueueNodeUnitPattern(options.stateQueuePolicyId);
   /** `category:header` (or `header#unit`) to what pruning removed first. */
   const pruned = new Map<string, string>();
   const prunedHeader = (headerHash: string): boolean =>
@@ -196,9 +222,9 @@ export const createWatcherProofRetention = (
     pin: async ({ category, headerHash }) => {
       const header = headerBytes(headerHash);
       const result = await store.pinRetained({
-        retained: async (tx, cursor) =>
-          cursor !== null &&
-          (await historyRetained(
+        retained: async (tx, cursor) => {
+          if (cursor === null) return false;
+          const state = await historyState(
             tx,
             cursor,
             header,
@@ -210,9 +236,11 @@ export const createWatcherProofRetention = (
               },
               { table: WATCHER_DEPARTED_HEADERS_TABLE, column: "header_hash" },
             ],
-            // None of it stored: empty before any pruning, else cannot tell.
-            cursor.prunedThroughSlot <= cursor.origin.slot,
-          )),
+            headerPrunedIn,
+          );
+          // None of it stored: empty before any pruning, else cannot tell.
+          return state === "none" ? unpruned(cursor) : state !== "pruned";
+        },
         insert: async (tx) => {
           await tx.query(
             `INSERT INTO ${WATCHER_PROOF_PINS_TABLE} (header_hash, category) VALUES (?, ?) ON CONFLICT DO NOTHING`,
@@ -259,22 +287,32 @@ export const createWatcherProofRetention = (
         prunedHeader(headerHash)
           ? { kind: "already_pruned", units: [...units] }
           : { kind: "not_pinned" };
-      // A unit whose history the projection does not record in the unit
-      // table (the header's state-queue node unit) is held by the header's
-      // pin, through its queue unit history rows.
-      const followed = [...new Set(units)].filter((unit) =>
+      // The header's own state-queue node unit is held by the header's pin,
+      // through its queue unit history rows. Any other unit the projection
+      // does not record in the unit table (another header's node unit) only
+      // its own header's pin could hold: it is not held here.
+      const distinct = [...new Set(units)];
+      const followed = distinct.filter((unit) =>
         recordsUnitHistory(options.unitHistoryPolicies, unit),
+      );
+      const foreign = distinct.some(
+        (unit) =>
+          !followed.includes(unit) && nodeUnit.exec(unit)?.[1] !== headerHash,
       );
       if (followed.length === 0)
         return (await store.transaction("read", (tx) =>
           headerPinnedIn(tx, header, null),
         ))
-          ? { kind: "held" }
+          ? foreign
+            ? { kind: "not_pinned" }
+            : { kind: "held" }
           : unpinned();
       const gone: string[] = [];
       for (const unit of followed) {
         const unitBytes = Buffer.from(unit, "hex");
         let headerPinned = true;
+        let state = "held" as HistoryState;
+        let wasPruned = true;
         const result = await store.pinRetained({
           retained: async (tx, cursor) => {
             // Locked so a concurrent release cannot delete the pin between
@@ -282,15 +320,17 @@ export const createWatcherProofRetention = (
             // serializes every write transaction and its clause is empty).
             headerPinned = await headerPinnedIn(tx, header, "update");
             if (!headerPinned || cursor === null) return false;
-            return historyRetained(
+            wasPruned = !unpruned(cursor);
+            state = await historyState(
               tx,
               cursor,
               unitBytes,
               { table: WATCHER_PROOF_PIN_UNITS_TABLE, column: "unit" },
               [{ table: WATCHER_UNIT_HISTORY_TABLE, column: "unit" }],
-              // No rows: held all the same; the raw read decides.
-              true,
+              unitPrunedIn,
             );
+            // No rows and no record: held all the same; the raw read decides.
+            return state !== "pruned";
           },
           insert: async (tx) => {
             await tx.query(
@@ -306,11 +346,17 @@ export const createWatcherProofRetention = (
             unitKey(headerHash, unit),
             `the history of unit ${unit} for header ${headerHash}`,
           );
-        } else pruned.delete(unitKey(headerHash, unit));
+        } else if (state === "whole" || (state === "none" && !wasPruned))
+          // Only a hold that finds the history whole clears the unit's
+          // degradation: a hold over no rows after pruning, or over an
+          // existing hold, cannot tell whether pruning deleted it.
+          pruned.delete(unitKey(headerHash, unit));
       }
-      return gone.length === 0
-        ? { kind: "held" }
-        : { kind: "already_pruned", units: gone };
+      return gone.length > 0
+        ? { kind: "already_pruned", units: gone }
+        : foreign
+          ? { kind: "not_pinned" }
+          : { kind: "held" };
     },
     pinned: async () =>
       (

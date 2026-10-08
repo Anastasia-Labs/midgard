@@ -7,14 +7,18 @@ import {
   bannedModuleRule,
   CLOCK_GLOBALS,
   type DeterminismRule,
+  DYNAMIC_CODE_GLOBALS,
   GLOBAL_OBJECTS,
   INSPECTED_GLOBALS,
+  INTL_LOCALE_CONSTRUCTORS,
   isContainedGlobalRead,
   isValueReference,
+  LOCALE_METHODS,
+  memberRule,
   NETWORK_GLOBALS,
   normalise,
   RANDOM_IMPORTS,
-  RANDOM_MEMBERS,
+  ZONED_LOCALE_METHODS,
 } from "./determinism-vocabulary.js";
 
 export type { DeterminismRule } from "./determinism-vocabulary.js";
@@ -22,8 +26,9 @@ export type { DeterminismRule } from "./determinism-vocabulary.js";
 /**
  * The §7.2 determinism lint for S3 derivation modules: a derivation is a pure
  * function of facts, class B/C content and the manifest, so it may not read
- * a clock, draw randomness, reach the network or the sidecar, or read the
- * host (its files, its OS, its environment).
+ * a clock, draw randomness, reach the network or the sidecar, read the host
+ * (its files, its OS, its environment, its locale and time zone) or run code
+ * built at run time.
  */
 export type DeterminismProblem = Readonly<{
   path: string;
@@ -36,6 +41,42 @@ export type DeterminismLintOptions = Readonly<{
   /** Extra module specifiers (exact, or a prefix ending in `/`) to refuse. */
   bannedModules?: readonly string[];
 }>;
+
+/** Whether a call leaves out its locale (or, `zoned`, its time zone). */
+const implicitLocale = (
+  args: readonly ts.Expression[],
+  localeIndex: number,
+  zoned: boolean,
+): boolean => {
+  const absent = (arg: ts.Expression | undefined): boolean =>
+    arg === undefined ||
+    (ts.isIdentifier(arg) && arg.text === "undefined") ||
+    ts.isVoidExpression(arg);
+  if (absent(args[localeIndex])) return true;
+  if (!zoned) return false;
+  const options = args[localeIndex + 1];
+  if (absent(options)) return true;
+  return (
+    options !== undefined &&
+    ts.isObjectLiteralExpression(options) &&
+    !options.properties.some(
+      (property) =>
+        ts.isSpreadAssignment(property) ||
+        (property.name !== undefined &&
+          staticName(property.name) === "timeZone"),
+    )
+  );
+};
+
+/** The key a property or binding name spells, or null when computed. */
+const staticName = (name: ts.Node): string | null =>
+  ts.isIdentifier(name) ||
+  ts.isStringLiteralLike(name) ||
+  ts.isNumericLiteral(name)
+    ? name.text
+    : ts.isComputedPropertyName(name) && ts.isStringLiteralLike(name.expression)
+      ? name.expression.text
+      : null;
 
 type Scan = Readonly<{
   problems: DeterminismProblem[];
@@ -97,19 +138,14 @@ const scanSource = (
       return node.argumentExpression.text;
     return null;
   };
-  /** The rule a member read `base.member` breaks, if any. */
-  const memberRule = (base: string, member: string): DeterminismRule | null => {
-    if (base === "process" && member === "env") return "environment";
-    if (RANDOM_MEMBERS.get(base)?.has(member) === true)
-      return base === "process" ? "clock" : "randomness";
-    return null;
-  };
   const globalRule = (name: string): DeterminismRule | null =>
     CLOCK_GLOBALS.has(name)
       ? "clock"
       : NETWORK_GLOBALS.has(name)
         ? "network_global"
-        : null;
+        : DYNAMIC_CODE_GLOBALS.has(name)
+          ? "dynamic_code"
+          : null;
   /** `globalThis.process` read whole is an alias of `process`. */
   const wholeGlobalRule = (
     node: ts.Expression,
@@ -118,6 +154,28 @@ const scanSource = (
     INSPECTED_GLOBALS.has(name) && !isContainedGlobalRead(node)
       ? "global_alias"
       : null;
+  /**
+   * `Intl.X` read as a member: a call or construction with no locale (or a
+   * `DateTimeFormat` with no time zone) reads the host's; any other read
+   * lets the constructor escape the check.
+   */
+  const intlRule = (
+    node: ts.Expression,
+    member: string,
+  ): DeterminismRule | null => {
+    if (!INTL_LOCALE_CONSTRUCTORS.has(member)) return null;
+    const parent = node.parent;
+    return (ts.isCallExpression(parent) || ts.isNewExpression(parent)) &&
+      parent.expression === node
+      ? implicitLocale(parent.arguments ?? [], 0, member === "DateTimeFormat")
+        ? "implicit_locale"
+        : null
+      : "global_alias";
+  };
+  /** `base.member` read of a global (`base` as `globalName` names it). */
+  const readRule = (node: ts.Expression, base: string, member: string) =>
+    memberRule(base, member) ??
+    (base === "Intl" ? intlRule(node, member) : null);
   const visit = (node: ts.Node): void => {
     if (ts.isImportDeclaration(node)) {
       const clause = node.importClause;
@@ -152,10 +210,22 @@ const scanSource = (
         (ts.isIdentifier(callee) && callee.text === "require")
       )
         checkSpecifier(node, node.arguments[0]);
+      else if (ts.isPropertyAccessExpression(callee)) {
+        const locale = LOCALE_METHODS.get(callee.name.text);
+        if (
+          locale !== undefined &&
+          implicitLocale(
+            node.arguments,
+            locale,
+            ZONED_LOCALE_METHODS.has(callee.name.text),
+          )
+        )
+          report(node, "implicit_locale");
+      }
     } else if (ts.isPropertyAccessExpression(node)) {
       const base = globalName(node.expression);
       const rule =
-        (base === null ? null : memberRule(base, node.name.text)) ??
+        (base === null ? null : readRule(node, base, node.name.text)) ??
         (ts.isIdentifier(node.expression) &&
         GLOBAL_OBJECTS.has(node.expression.text)
           ? (globalRule(node.name.text) ??
@@ -169,7 +239,7 @@ const scanSource = (
       const base = globalName(node.expression);
       const member = node.argumentExpression.text;
       const rule =
-        (base === null ? null : memberRule(base, member)) ??
+        (base === null ? null : readRule(node, base, member)) ??
         (ts.isIdentifier(node.expression) &&
         GLOBAL_OBJECTS.has(node.expression.text)
           ? (globalRule(member) ?? wholeGlobalRule(node, member))
@@ -180,15 +250,28 @@ const scanSource = (
       ts.isObjectBindingPattern(node.name) &&
       node.initializer !== undefined
     ) {
-      // `const { env } = process`, `const { random } = Math`.
+      // `const { env } = process`, `const { random } = Math`. A rest element
+      // or a computed key of an inspected global lets members escape.
       const base = globalName(node.initializer);
       if (base !== null)
         for (const element of node.name.elements) {
-          const member = element.propertyName ?? element.name;
-          if (!ts.isIdentifier(member)) continue;
+          const member =
+            element.dotDotDotToken === undefined
+              ? staticName(element.propertyName ?? element.name)
+              : null;
           const rule =
-            memberRule(base, member.text) ??
-            (GLOBAL_OBJECTS.has(base) ? globalRule(member.text) : null);
+            member === null
+              ? INSPECTED_GLOBALS.has(base)
+                ? "global_alias"
+                : null
+              : (memberRule(base, member) ??
+                (base === "Intl" && INTL_LOCALE_CONSTRUCTORS.has(member)
+                  ? "global_alias"
+                  : null) ??
+                (GLOBAL_OBJECTS.has(base)
+                  ? (globalRule(member) ??
+                    (INSPECTED_GLOBALS.has(member) ? "global_alias" : null))
+                  : null));
           if (rule !== null) report(element, rule);
         }
     } else if (ts.isIdentifier(node) && isValueReference(node)) {
@@ -241,7 +324,9 @@ export type DeterminismModulesOptions = DeterminismLintOptions &
      * Problems the role accepts, each with its reason: exactly `count`
      * problems with this path, rule and text. A different number is a
      * problem: more keeps every one of them, and fewer (none included) is a
-     * `stale_allowance`, so the list cannot outlive or outgrow the code.
+     * `stale_allowance`, so the list cannot outlive or outgrow the code. A
+     * second entry with the same path, rule and text accepts nothing and is
+     * a `duplicate_allowance`.
      */
     allow?: readonly DeterminismAllowance[];
   }>;
@@ -358,7 +443,20 @@ export const lintDeterminismModules = (
     entry.text === problem.text;
   const allowed = new Set<DeterminismProblem>();
   const kept: DeterminismProblem[] = [];
+  const keys = new Set<string>();
   for (const entry of allow) {
+    // A second entry with the same key would add its count to the first's.
+    const key = JSON.stringify([entry.path, entry.rule, entry.text]);
+    if (keys.has(key)) {
+      kept.push({
+        path: entry.path,
+        line: 0,
+        rule: "duplicate_allowance",
+        text: `${entry.text} (${entry.rule})`,
+      });
+      continue;
+    }
+    keys.add(key);
     const matched = problems.filter((problem) => matches(entry, problem));
     const count = entry.count ?? 1;
     if (matched.length > count) continue;

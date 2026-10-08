@@ -3,11 +3,13 @@ import type {
   DerivationHook,
   DialectName,
   MigrationSet,
+  PruneHook,
   RetentionPins,
   SqlTx,
   TemporalTableSpec,
   TrackedSet,
 } from "@al-ft/midgard-l1-follower";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
   credentialToAddress,
@@ -32,6 +34,7 @@ import {
   WATCHER_TEMPORAL_TABLES,
   watcherMigrations,
 } from "./projection.schema.js";
+import { prunedKeyHooks } from "./pruned-keys.js";
 import {
   WATCHER_DA_ATTESTATIONS_TABLE,
   WATCHER_DEPARTED_HEADERS_TABLE,
@@ -127,6 +130,16 @@ export const recordsUnitHistory = (
   /^[0-9a-f]{56}(?:[0-9a-f]{2}){0,32}$/u.test(unit) &&
   policies.has(unit.slice(0, 56));
 
+/**
+ * A state-queue node unit of `stateQueuePolicyId`; its one group is the
+ * header hash whose `WATCHER_QUEUE_UNIT_HISTORY_TABLE` rows are its history.
+ */
+export const stateQueueNodeUnitPattern = (stateQueuePolicyId: string): RegExp =>
+  new RegExp(
+    `^${stateQueuePolicyId}${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}([0-9a-f]{56})$`,
+    "u",
+  );
+
 export type WatcherProjection = Readonly<{
   name: string;
   trackedSet: TrackedSet;
@@ -134,6 +147,7 @@ export type WatcherProjection = Readonly<{
   migrations: (dialect: DialectName) => MigrationSet;
   derivations: readonly DerivationHook[];
   retentionPins: RetentionPins;
+  pruneHooks: readonly PruneHook[];
 }>;
 
 type Anchor = Readonly<{
@@ -428,5 +442,6 @@ export const watcherProjection = (
         { table: WATCHER_UNIT_HISTORY_TABLE, column: "tx_hash" },
       ],
     },
+    pruneHooks: prunedKeyHooks(WATCHER_TEMPORAL_TABLES),
   };
 };

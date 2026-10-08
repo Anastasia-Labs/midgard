@@ -14,3 +14,7 @@ export const WATCHER_PROOF_PINS_TABLE = "watcher_proof_pins";
 export const WATCHER_PROOF_PIN_UNITS_TABLE = "watcher_proof_pin_units";
 /** Class C: the resolved inputs of every tx a unit history records. */
 export const WATCHER_TX_INPUTS_TABLE = "watcher_tx_inputs";
+/** Class B: the followed units a prune step deleted closed history rows of. */
+export const WATCHER_PRUNED_UNITS_TABLE = "watcher_pruned_units";
+/** Class B: the headers a prune step deleted closed queue history rows of. */
+export const WATCHER_PRUNED_HEADERS_TABLE = "watcher_pruned_headers";
