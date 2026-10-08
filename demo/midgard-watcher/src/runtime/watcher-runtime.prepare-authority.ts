@@ -6,6 +6,7 @@ import { makeWatcherFinalityPolicy } from "../l1/finality-engine.js";
 import { openWatcherSqliteDurableBackend } from "../storage/sqlite-durable-backend.js";
 import { loadWatcherVerifiedDeploymentAuthority } from "./deployment-authority.js";
 import { watcherDeploymentReleaseFinalityPolicy } from "./deployment-identity.js";
+import { warnWatcherLegacyJournalDirectories } from "./legacy-journal-directories.js";
 import {
   refusePermanently,
   WatcherPermanentRefusalError,
@@ -28,6 +29,9 @@ export const prepareWatcherRuntimeAuthority = async (
     ),
   );
   await prepareJournalDirectory(input.config.workflowJournalDirectory);
+  await warnWatcherLegacyJournalDirectories(
+    input.config.workflowJournalDirectory,
+  );
   const deploymentAuthority = await startup("deployment_authority", () =>
     refusePermanently("deployment_authority", () =>
       loadWatcherVerifiedDeploymentAuthority({

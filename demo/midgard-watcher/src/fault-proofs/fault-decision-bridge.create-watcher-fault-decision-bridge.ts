@@ -21,7 +21,10 @@ import {
   type BridgeDependencies,
   type WatcherFaultDecisionBridge,
 } from "./fault-decision-bridge.selected-target.js";
-import { openWatcherFaultDecisionJournal } from "./fault-decision-journal.js";
+import {
+  openWatcherFaultDecisionJournal,
+  type WatcherFaultDecisionJournal,
+} from "./fault-decision-journal.js";
 import {
   assertWatcherFaultProofApplication,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
@@ -53,12 +56,17 @@ export const createWatcherFaultDecisionBridge = async (input: {
   readonly warn?: BridgeDependencies["warn"];
 }): Promise<WatcherFaultDecisionBridge> => {
   assertWatcherFaultProofApplication(input.application);
-  const journal = await openWatcherFaultDecisionJournal({
-    directory: input.journalDirectory,
-    deploymentFingerprint: input.application.deploymentFingerprint,
-    launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-    authenticationKey: input.authenticationKey,
-  });
+  // The journal opens on a pass's first use, not here: a refused journal
+  // fails each pass (readiness reports journal_integrity) and never stops
+  // the operations server from binding.
+  let journal: WatcherFaultDecisionJournal | undefined;
+  const decisions = async (): Promise<WatcherFaultDecisionJournal> =>
+    (journal ??= await openWatcherFaultDecisionJournal({
+      directory: input.journalDirectory,
+      deploymentFingerprint: input.application.deploymentFingerprint,
+      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+      authenticationKey: input.authenticationKey,
+    }));
   return createBridge({
     application: input.application,
     runtimeConfigPath: input.runtimeConfigPath,
@@ -85,8 +93,9 @@ export const createWatcherFaultDecisionBridge = async (input: {
           .update(contents)
           .digest("hex");
       },
-      readRecords: journal.readAll,
-      append: journal.appendLiveDecision,
+      readRecords: async () => await (await decisions()).readAll(),
+      append: async (decision) =>
+        await (await decisions()).appendLiveDecision(decision),
       assertActuationPermitIdentity: assertWorkflowActuationPermitIdentity,
       createActuationController: (decision, rollbackGeneration) =>
         createWorkflowActuationPermitController({

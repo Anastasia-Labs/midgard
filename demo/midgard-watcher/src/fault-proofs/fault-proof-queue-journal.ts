@@ -3,6 +3,7 @@ import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application
 import { openWatcherProofObjective } from "./fault-proof-objective-table.js";
 import {
   openWatcherJournalDatabase,
+  type WatcherJournalDatabase,
   WatcherJournalIntegrityError,
   type WatcherJournalRow,
 } from "./watcher-journal-database.js";
@@ -72,17 +73,15 @@ const identityDigest = (
   return watcherSha256CanonicalJson({ deploymentFingerprint, ...identity });
 };
 
+/** A row that differs from its job identity refuses the journals. */
 const parseRow = (
+  database: WatcherJournalDatabase,
   deploymentFingerprint: string,
   row: WatcherJournalRow,
 ): QueueBody & Readonly<{ state: QueueState }> => {
   const body = row.body as QueueBody | null;
-  const fail = (): never => {
-    throw new WatcherJournalIntegrityError(
-      JOURNAL,
-      `row ${row.key} differs from its job identity`,
-    );
-  };
+  const fail = (): never =>
+    database.refuse(JOURNAL, `row ${row.key} differs from its job identity`);
   if (
     (row.state !== "queued" &&
       row.state !== "active" &&
@@ -125,7 +124,7 @@ export const openWatcherFaultProofQueueJournal = async (input: {
   });
   // Startup admits every row once; a foreign or altered row fails closed.
   for (const row of database.rows(JOURNAL))
-    parseRow(input.deploymentFingerprint, row);
+    parseRow(database, input.deploymentFingerprint, row);
 
   // Authenticated revisions establish event order. Wall time can move backward
   // during clock synchronization, so observation times are recorded but never
@@ -150,7 +149,7 @@ export const openWatcherFaultProofQueueJournal = async (input: {
         throw new Error(
           `fault-proof queue transition has no admitted predecessor: ${jobIdentityDigest}`,
         );
-      const prior = parseRow(input.deploymentFingerprint, row);
+      const prior = parseRow(database, input.deploymentFingerprint, row);
       if (prior.state !== from)
         throw new Error(
           `fault-proof queue transition requires ${from} predecessor, found ${prior.state}: ${jobIdentityDigest}`,
@@ -189,7 +188,7 @@ export const openWatcherFaultProofQueueJournal = async (input: {
             tx.delete(JOURNAL, row.key);
             continue;
           }
-          const prior = parseRow(input.deploymentFingerprint, row);
+          const prior = parseRow(database, input.deploymentFingerprint, row);
           if (prior.state === "queued")
             return Object.freeze({ queuedAtMs: prior.queuedAtMs });
           queuedAtMs = prior.queuedAtMs;

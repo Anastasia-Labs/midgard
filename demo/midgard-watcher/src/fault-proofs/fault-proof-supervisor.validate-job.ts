@@ -101,6 +101,9 @@ export type WatcherFaultProofSupervisorStatus = Readonly<{
   deadlineHealth: "safe" | "at_risk" | "unsafe";
   earliestDeadlineJob: WatcherFaultProofJob | null;
   remainingSafeStartMs: string | null;
+  /** The journals' first integrity failure in this process, or null:
+   * readiness reports journal_integrity until an operator repairs them. */
+  journalIntegrity: string | null;
   /** A fault-proof journal holds its cap of live rows: readiness reports
    * journal_capacity until rows complete or are pruned. */
   journalCapacity: boolean;

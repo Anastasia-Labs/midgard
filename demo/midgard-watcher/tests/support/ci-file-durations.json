@@ -165,7 +165,6 @@
     "tests/storage/durable-runtime.test.ts": 2.3,
     "tests/storage/durable-store-immutable-records.test.ts": 1.5,
     "tests/storage/durable-store.test.ts": 1,
-    "tests/storage/public-da-client.test.ts": 1.7,
     "tests/storage/public-da-transport-lifecycle.test.ts": 2.6,
     "tests/storage/replay-transcript-classification-retirement.test.ts": 3.5,
     "tests/storage/replay-transcript-store.test.ts": 1.9,

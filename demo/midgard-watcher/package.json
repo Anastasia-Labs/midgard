@@ -13,10 +13,6 @@
       "midgard-source": "./src/index.ts",
       "import": "./dist/index.js"
     },
-    "./public-da-client": {
-      "midgard-source": "./src/public-da-client.ts",
-      "import": "./dist/public-da-client.js"
-    },
     "./native-chain-sync": {
       "midgard-source": "./src/l1/native-chain-sync.ts",
       "import": "./dist/l1/native-chain-sync.js"
@@ -41,7 +37,7 @@
     "start": "env MALLOC_MMAP_THRESHOLD_=131072 node dist/cli.js start",
     "test": "env MALLOC_MMAP_THRESHOLD_=131072 vitest run",
     "typecheck": "tsc --noEmit",
-    "build:contrib-raw": "tsup src/index.ts src/cli.ts src/public-da-client.ts src/l1/native-chain-sync.ts --format esm"
+    "build:contrib-raw": "tsup src/index.ts src/cli.ts src/l1/native-chain-sync.ts --format esm"
   },
   "dependencies": {
     "@al-ft/l1-node-transport": "workspace:*",

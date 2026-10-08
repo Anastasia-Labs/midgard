@@ -10,15 +10,24 @@ import {
   readWatcherPublicDaFrames,
   WatcherPublicDaLibp2pTransport,
 } from "../../src/storage/public-da-libp2p-transport.js";
-import { FINGERPRINT } from "./public-da-client.raw-config.js";
-import {
-  asAsyncIterable,
-  collectBuffers,
-} from "./public-da-client.watcher-public-da-client-v1-auxiliary-da-surfaces.js";
 
-// ---------------------------------------------------------------------------
-// 10. Concrete TCP + Noise + Yamux transport framing and peer binding
-// ---------------------------------------------------------------------------
+const FINGERPRINT = "1a".repeat(32);
+
+const collectBuffers = async (
+  iterable: AsyncIterable<Buffer>,
+): Promise<Buffer[]> => {
+  const values: Buffer[] = [];
+  for await (const value of iterable) values.push(value);
+  return values;
+};
+
+const asAsyncIterable = async function* (
+  values: readonly Uint8Array[],
+): AsyncGenerator<Uint8Array> {
+  yield* values;
+};
+
+// Concrete TCP + Noise + Yamux transport framing and peer binding.
 
 describe("WatcherPublicDaLibp2pTransport", () => {
   const authenticatedPeerId =

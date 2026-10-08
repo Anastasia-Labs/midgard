@@ -470,11 +470,26 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       config.watcherRuntimeConfigPath,
       JSON.stringify(watcherConfig),
     );
+    // W2-E6: a leftover file journal is ignored, never imported, and never
+    // holds startup; the watcher names it once.
+    const legacyJournal = join(
+      config.workflowJournalDirectory,
+      "fault-decisions",
+    );
+    await mkdir(legacyJournal, { recursive: true, mode: 0o700 });
+    await writeFile(join(legacyJournal, "000001.json"), "{}");
+    const stderr = vi.spyOn(process.stderr, "write");
     watcher = await stage(
       "watcher startup",
       () => createWatcherRuntime({ config }),
       300_000,
     );
+    expect(
+      stderr.mock.calls
+        .map(([chunk]) => String(chunk))
+        .filter((line) => line.includes('"legacy_journal_ignored"')),
+    ).toEqual([expect.stringContaining(`"path":"${legacyJournal}"`)]);
+    stderr.mockRestore();
     let runtimeFailure: unknown;
     void watcher.done.catch((cause: unknown) => {
       runtimeFailure = cause;

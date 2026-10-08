@@ -194,7 +194,10 @@ export type WatcherOperationsReadinessReason =
   | "l1_source_stale"
   | "retained_da_transport_failed"
   | "active_alert"
-  | "journal_capacity";
+  | "journal_capacity"
+  /** A fault-proof journal failed integrity; `supervisor.journalIntegrity`
+   * names the failure. Held until an operator repairs the journals. */
+  | "journal_integrity";
 
 export type WatcherOperationsL1Degradation = Readonly<{
   reason: string;

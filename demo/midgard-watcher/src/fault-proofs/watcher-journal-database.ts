@@ -8,9 +8,14 @@ import {
   createWatcherJournalCodec,
   MODULUS,
   sameHex,
-  sha256Hex,
   ZERO_DIGEST,
 } from "./watcher-journal-database.codec.js";
+import { migrateWatcherJournals } from "./watcher-journal-database.migrate.js";
+import {
+  forgetWatcherJournalRefusal,
+  watcherJournalRefusal,
+  type WatcherJournalRefuse,
+} from "./watcher-journal-database.refusal.js";
 import {
   type Staged,
   type StoredHead,
@@ -18,23 +23,22 @@ import {
   type StoredRow,
   WATCHER_JOURNAL_DATABASE_FILE,
   type WatcherJournalDatabase,
-  WatcherJournalIntegrityError,
   type WatcherJournalRow,
   type WatcherJournalRowFilter,
   type WatcherJournalTransaction,
 } from "./watcher-journal-database.types.js";
 import { verifyWatcherJournal } from "./watcher-journal-database.verify.js";
 import {
-  WATCHER_JOURNAL_LEDGER_SQL,
-  WATCHER_JOURNAL_MIGRATIONS,
   WATCHER_JOURNAL_RETAINED_REVISIONS,
   WATCHER_JOURNAL_TABLES,
   WATCHER_JOURNALS,
   type WatcherJournalName,
 } from "./watcher-journal-schema.js";
 
+export { watcherJournalIntegrityFailure } from "./watcher-journal-database.refusal.js";
 export {
   isWatcherJournalCapacityError,
+  isWatcherJournalIntegrityError,
   WATCHER_JOURNAL_DATABASE_FILE,
   WatcherJournalCapacityError,
   type WatcherJournalDatabase,
@@ -60,6 +64,12 @@ export {
  * A whole-file rollback to an older consistent copy is not detectable without
  * an external anchor; the journals never claimed that.
  *
+ * A failed check refuses the journals for the rest of the process: every
+ * later call, and every later open of the same root, throws the first
+ * failure without touching the file again. The watcher stays up and reports
+ * the failure as the readiness reason `journal_integrity`; only a restart
+ * after an operator's repair, or a fresh deployment, clears it.
+ *
  * The file must sit on a local disk. Network filesystems break SQLite's
  * locking and its WAL.
  */
@@ -84,7 +94,8 @@ type RowFilter = WatcherJournalRowFilter & Readonly<{ afterRevision?: number }>;
 const createDatabase = (
   journalRoot: string,
   authenticationKey: Uint8Array,
-): WatcherJournalDatabase => {
+  refuse: WatcherJournalRefuse,
+): Omit<WatcherJournalDatabase, "refuse"> => {
   const codec = createWatcherJournalCodec(authenticationKey);
   const directory = canonicalDirectory(journalRoot);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -119,30 +130,6 @@ const createDatabase = (
     }
   };
 
-  const migrate = (): void =>
-    inTransaction("BEGIN IMMEDIATE", () => {
-      database.exec(WATCHER_JOURNAL_LEDGER_SQL);
-      for (const migration of WATCHER_JOURNAL_MIGRATIONS.migrations) {
-        const checksum = sha256Hex(migration.sql);
-        const applied = prepare(
-          "SELECT checksum FROM watcher_journal_migrations WHERE namespace = ? AND id = ?",
-        ).get(WATCHER_JOURNAL_MIGRATIONS.namespace, migration.id) as
-          | { checksum: string }
-          | undefined;
-        if (applied !== undefined) {
-          if (applied.checksum !== checksum)
-            throw new Error(
-              `watcher journal migration ${migration.id} changed after it was applied`,
-            );
-          continue;
-        }
-        database.exec(migration.sql);
-        prepare(
-          "INSERT INTO watcher_journal_migrations (namespace, id, checksum) VALUES (?, ?, ?)",
-        ).run(WATCHER_JOURNAL_MIGRATIONS.namespace, migration.id, checksum);
-      }
-    });
-
   const table = (journal: WatcherJournalName): string => {
     const name = WATCHER_JOURNAL_TABLES[journal];
     if (name === undefined)
@@ -166,10 +153,7 @@ const createDatabase = (
     if (stored === undefined)
       return { revision: 0, chain: ZERO_DIGEST, liveRows: 0, accumulator: 0n };
     if (stored.key_id !== codec.keyId)
-      throw new WatcherJournalIntegrityError(
-        journal,
-        "head is authenticated by another key",
-      );
+      refuse(journal, "head is authenticated by another key");
     const head: StoredHead = {
       revision: Number(stored.revision),
       chain: stored.chain,
@@ -177,7 +161,7 @@ const createDatabase = (
       accumulator: BigInt(`0x${stored.accumulator}`),
     };
     if (!sameHex(stored.mac, codec.headMac(journal, head)))
-      throw new WatcherJournalIntegrityError(journal, "head MAC differs");
+      refuse(journal, "head MAC differs");
     return head;
   };
 
@@ -191,18 +175,12 @@ const createDatabase = (
       revision < 1 ||
       !sameHex(stored.mac, codec.rowMac(journal, { ...stored, revision }))
     )
-      throw new WatcherJournalIntegrityError(
-        journal,
-        `row ${stored.row_key} MAC differs`,
-      );
+      refuse(journal, `row ${stored.row_key} MAC differs`);
     let body: unknown;
     try {
       body = JSON.parse(stored.body);
     } catch {
-      throw new WatcherJournalIntegrityError(
-        journal,
-        `row ${stored.row_key} body is malformed`,
-      );
+      refuse(journal, `row ${stored.row_key} body is malformed`);
     }
     return Object.freeze({
       key: stored.row_key,
@@ -431,7 +409,7 @@ const createDatabase = (
   };
 
   try {
-    migrate();
+    migrateWatcherJournals(database, prepare, inTransaction);
     verify();
   } catch (error) {
     database.close();
@@ -476,25 +454,36 @@ export const openWatcherJournalDatabase = (input: {
   const keyId = createHash("sha256")
     .update(input.authenticationKey)
     .digest("hex");
-  const existing = opened.get(input.journalRoot);
+  const root = input.journalRoot;
+  const existing = opened.get(root);
   if (existing !== undefined) {
     if (existing.keyId !== keyId)
       throw new Error("watcher journals are already open under another key");
     return existing.database;
   }
-  const database = createDatabase(input.journalRoot, input.authenticationKey);
+  const { guard, refuse } = watcherJournalRefusal(root);
+  const database = guard(createDatabase)(root, input.authenticationKey, refuse);
   const shared: WatcherJournalDatabase = Object.freeze({
-    ...database,
+    path: database.path,
+    transaction: guard(database.transaction),
+    row: guard(database.row),
+    rows: guard(database.rows),
+    count: guard(database.count),
+    head: guard(database.head),
+    verify: guard(database.verify),
+    refuse,
     close: () => {
-      opened.delete(input.journalRoot);
+      opened.delete(root);
       database.close();
     },
   });
-  opened.set(input.journalRoot, { keyId, database: shared });
+  opened.set(root, { keyId, database: shared });
   return shared;
 };
 
-/** Closes the process's connection, as a process exit would. */
+/** Closes the process's connection and forgets its refusal, as a process
+ * exit would. */
 export const closeWatcherJournalDatabase = (journalRoot: string): void => {
   opened.get(journalRoot)?.database.close();
+  forgetWatcherJournalRefusal(journalRoot);
 };

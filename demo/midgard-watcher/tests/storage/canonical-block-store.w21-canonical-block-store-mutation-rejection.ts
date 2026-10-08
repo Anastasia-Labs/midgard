@@ -11,9 +11,8 @@ import {
   type WatcherCanonicalBlockRecord,
 } from "../../src/storage/canonical-block-store.js";
 import {
-  clientFor,
-  HEADER_HASH,
   identityOf,
+  publicDaProofBundle,
   repeatHex,
   sha256Hex,
 } from "./canonical-block-store.config-of.js";
@@ -149,9 +148,7 @@ describe("W21 canonical block store: mutation rejection", () => {
   it("rejects a proof_input record whose stored bytes were flipped underneath the digest", async () => {
     const backend = new MemoryAtomicBackend();
     const bundle = makeWatcherCanonicalProofBundleRecord({
-      proofBundle: await clientFor(envelope).fetchProofBundleByHeader({
-        headerHash: HEADER_HASH,
-      }),
+      proofBundle: publicDaProofBundle(),
       context: contextOf(),
     });
     await persistWatcherCanonicalPublicBytes({

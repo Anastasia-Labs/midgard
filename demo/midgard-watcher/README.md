@@ -97,7 +97,11 @@ The fault decision, proof queue and proof objective journals are tables in
 one row, authenticated with the rollback key, and each commit is one chained
 revision, so a persist writes only the rows it changes. Startup verifies every
 row and the latest 64 revisions, and refuses a tampered, deleted, replayed or
-reordered record. An objective whose completion was verified deeper than
+reordered record; so does any later read of a row that fails its MAC, does not
+parse, or differs from its key. A refusal holds for the rest of the process:
+the watcher stays up, `/readyz` reports `journal_integrity`, and `/v1/status`
+names the failure in `supervisor.journalIntegrity` until an operator repairs
+the journals and restarts the watcher. An objective whose completion was verified deeper than
 rollback recovery reaches is skipped at the next start and pruned with its
 workflow journal. Only open objectives count toward the cap of 2,048; at the
 cap the watcher stays up and `/readyz` reports `journal_capacity` until
@@ -107,9 +111,12 @@ Every watcher SQLite file, the journals included, must sit on a local disk,
 never a network filesystem (NFS, SMB and the like): those break SQLite's file
 locking and its write-ahead log.
 
-Earlier development formats have no automatic compatibility fallback. A
-format refusal requires explicit audited recovery or a separately authorized
-fresh deployment; it does not authorize discarding an existing deployment's
+The file journals of earlier development formats (`fault-decisions/`,
+`fault-proof-queue-v1/` and `fault-proof-completions-v1/` in the workflow
+journal directory) are ignored, not refused: nothing imports them, the
+journals start fresh, and readiness never waits on them. At start the watcher
+logs one `legacy_journal_ignored` warning naming each non-empty one. Ignoring
+them neither deletes them nor authorizes discarding an existing deployment's
 durable state. Follow [state reset rules](../../docs/agents/state-reset.md). Evidence remains pinned by event, recovery, and
 proof dependencies; this change does not delete archives. See the
 [persistence record inventory](../../docs/midgard/decisions/watcher-persistence.md)

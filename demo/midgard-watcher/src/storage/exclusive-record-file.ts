@@ -2,7 +2,7 @@
  * revisions are exclusive-create files named by revision. A record name only
  * ever refers to complete, fsynced bytes. */
 import { randomUUID } from "node:crypto";
-import { type FileHandle, link, open, readdir, unlink } from "node:fs/promises";
+import { type FileHandle, link, open, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
 /**
@@ -49,20 +49,6 @@ export const publishExclusiveFile = async (input: {
   } finally {
     await unlink(input.stagingPath);
   }
-};
-
-/**
- * Removes staging files a crashed writer left in `directory`. Call it only
- * while opening the store, before this process publishes anything.
- */
-export const removeStagedRecordFiles = async (
-  directory: string,
-): Promise<void> => {
-  const staged = (await readdir(directory, { withFileTypes: true })).filter(
-    (entry) => entry.isFile() && STAGED_RECORD_FILE.test(entry.name),
-  );
-  for (const entry of staged) await unlink(join(directory, entry.name));
-  if (staged.length !== 0) await syncDirectory(directory);
 };
 
 /**

@@ -81,9 +81,7 @@ export const classifyDoubleSpend = async (seed = 91) => {
   return decision;
 };
 
-export type DoubleSpendDecision = Awaited<
-  ReturnType<typeof classifyDoubleSpend>
->;
+type DoubleSpendDecision = Awaited<ReturnType<typeof classifyDoubleSpend>>;
 
 const submissionEvents = (
   actionId: string,

@@ -164,6 +164,7 @@ const parseRow = (
   body: unknown,
   state: string,
   categories: ReadonlySet<string>,
+  refuse: (detail: string) => never,
 ): WatcherProofObjectiveRow => {
   const value = body as {
     category?: unknown;
@@ -184,7 +185,7 @@ const parseRow = (
         typeof marker.confirmationDepth !== "number" ||
         typeof marker.recoveryDepth !== "string"))
   )
-    throw new Error("proof objective row is malformed");
+    refuse("proof objective row is malformed");
   return Object.freeze({
     objective: Object.freeze({
       category: value.category as WatcherInstalledWorkflowCategory,
@@ -198,7 +199,8 @@ const parseRow = (
   });
 };
 
-/** Every recorded objective, in commit order. */
+/** Every recorded objective, in commit order. A row that does not parse or
+ * differs from its key refuses the journals for this process. */
 export const listWatcherProofObjectives = (
   database: WatcherJournalDatabase,
   categories: readonly WatcherInstalledWorkflowCategory[],
@@ -206,7 +208,9 @@ export const listWatcherProofObjectives = (
   const allowed = new Set<string>(categories);
   return Object.freeze(
     database.rows(JOURNAL).map((row) => {
-      const parsed = parseRow(row.body, row.state, allowed);
+      const refuse = (detail: string): never =>
+        database.refuse(JOURNAL, detail);
+      const parsed = parseRow(row.body, row.state, allowed, refuse);
       if (
         row.key !==
         watcherObjectiveScope(
@@ -214,7 +218,7 @@ export const listWatcherProofObjectives = (
           parsed.objective.headerHash,
         )
       )
-        throw new Error("proof objective row differs from its key");
+        refuse("proof objective row differs from its key");
       return parsed;
     }),
   );

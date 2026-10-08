@@ -1536,8 +1536,8 @@
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-supervisor.create-supervisor.ts",
-    "max": 887,
-    "reason": "createSupervisor is the dominant indivisible declaration (828 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W1 (+6): the supervisor hands the follower's proof retention to its progress authority, which holds each open objective's L1 history past k (E1 ruling)."
+    "max": 898,
+    "reason": "createSupervisor is the dominant indivisible declaration (828 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W1 (+6): the supervisor hands the follower's proof retention to its progress authority, which holds each open objective's L1 history past k (E1 ruling). W2b (+11): a refused journal holds the supervisor unready instead of blocking it, and its status names the refusal (journal_integrity)."
   },
   {
     "file": "midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority.ts",
@@ -1551,7 +1551,7 @@
   },
   {
     "file": "midgard-watcher/src/index.ts",
-    "max": 751,
+    "max": 748,
     "reason": "Public export surface only. Splitting this facade adds barrel indirection without separating implementation. Integrated recovered DA branch source; exact measured line count."
   },
   {
@@ -1568,11 +1568,6 @@
     "file": "midgard-watcher/src/runtime/user-event-runtime.create-watcher-user-event-runtime.ts",
     "max": 1564,
     "reason": "createWatcherUserEventRuntime is the dominant indivisible declaration (1488 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
-    "file": "midgard-watcher/src/storage/public-da-client.watcher-public-da-client.ts",
-    "max": 823,
-    "reason": "WatcherPublicDaClient is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
   },
   {
     "file": "midgard-watcher/tests/availability/concurrent-challenges.test.ts",
@@ -1616,8 +1611,8 @@
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/watcher-installed-journey.test.ts",
-    "max": 876,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. W1 (+47): the installed journey runs the watcher on its chain follower over the synthetic node (deployment follower, followed scripts, ledger-state queries)."
+    "max": 891,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. W1 (+47): the installed journey runs the watcher on its chain follower over the synthetic node (deployment follower, followed scripts, ledger-state queries). W2b (+15): the installed journey seeds a legacy fault-decisions journal and asserts the watcher starts past it with one legacy_journal_ignored warning."
   },
   {
     "file": "midgard-watcher/tests/funding/prover-funding-calculation.test.ts",
@@ -1691,7 +1686,7 @@
   },
   {
     "file": "midgard-watcher/tests/storage/retained-da-runtime.test.ts",
-    "max": 1145,
+    "max": 1131,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
