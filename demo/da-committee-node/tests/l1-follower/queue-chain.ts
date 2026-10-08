@@ -8,7 +8,10 @@ import {
 } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import { slotTimeMs } from "../../src/l1/follower/obligations.js";
+import {
+  type SlotTime,
+  slotTimeMs,
+} from "../../src/l1/follower/obligations.js";
 import { committeeProjection } from "../../src/l1/follower/projection.js";
 import { headerHashOf } from "../../src/l1/follower/queue-derivation.js";
 import {
@@ -30,10 +33,25 @@ export type QueueChainNode = {
   link: string | null;
 };
 
+type QueueRoot = {
+  outRef: OutRef;
+  headerHash: string;
+  endTimeMs: number;
+  link: string | null;
+};
+
+type QueueState = {
+  root: QueueRoot | null;
+  nodes: QueueChainNode[];
+  merged: (QueueChainNode & { mergedAt: number })[];
+  attested: number;
+};
+
 /**
  * A linear state queue on the simulator's chain: a root, then one append or
  * one attestation per block. The tail is relinked by each append, as the
- * validator requires.
+ * validator requires. `rollBack` drops blocks and restores the queue as it
+ * stood below them.
  */
 export class QueueChain {
   readonly chain = new SimChain(
@@ -41,23 +59,61 @@ export class QueueChain {
     SIM_ORIGIN,
     simStoreOptions([committeeProjection(SIM_QUEUE)], 1, "sqlite").trackedSet,
   );
-  private root: {
-    outRef: OutRef;
-    headerHash: string;
-    endTimeMs: number;
-    link: string | null;
-  } | null = null;
+  private root: QueueRoot | null = null;
   readonly nodes: QueueChainNode[] = [];
   /** Headers merged into the root, oldest first, with the merge's height. */
   readonly merged: (QueueChainNode & { mergedAt: number })[] = [];
   private attested = 0;
+  /** The queue below each block above the origin, oldest first. */
+  private readonly below: QueueState[] = [];
+
+  /** `slotTime` dates each appended header's end time (default the sim's). */
+  constructor(private readonly slotTime: SlotTime = SIM_SLOT_TIME) {}
+
+  private snapshot(): QueueState {
+    const node = (n: QueueChainNode): QueueChainNode => ({
+      ...n,
+      outRef: { ...n.outRef },
+    });
+    return {
+      root: this.root === null ? null : { ...this.root },
+      nodes: this.nodes.map(node),
+      merged: this.merged.map((n) => ({ ...node(n), mergedAt: n.mergedAt })),
+      attested: this.attested,
+    };
+  }
+
+  /** Records the queue below the block the caller is about to add. */
+  private beginBlock(): void {
+    this.below.push(this.snapshot());
+  }
 
   private forward(tx: SimTx) {
     const step = this.chain.forward([tx]);
     return { event: step.event, txHash: step.encoded.txHashes[0] as Buffer };
   }
 
+  /** A block that touches nothing the queue holds. */
+  empty() {
+    this.beginBlock();
+    return this.chain.forward([]).event;
+  }
+
+  /** Drops the top `depth` blocks; the queue is as it stood below them. */
+  rollBack(depth: number) {
+    const event = this.chain.backward(depth);
+    const restored = this.below.splice(this.below.length - depth)[0];
+    if (restored !== undefined) {
+      this.root = restored.root;
+      this.nodes.splice(0, this.nodes.length, ...restored.nodes);
+      this.merged.splice(0, this.merged.length, ...restored.merged);
+      this.attested = restored.attested;
+    }
+    return event;
+  }
+
   init() {
+    this.beginBlock();
     const step = this.forward({
       inputs: [this.chain.outsideInput()],
       outputs: [
@@ -78,13 +134,14 @@ export class QueueChain {
   }
 
   append() {
+    this.beginBlock();
     const root = this.root!;
     const tail = this.nodes.at(-1);
     const nonce = this.chain.nonce();
     const header = simHeader(
       nonce,
       tail?.hash ?? root.headerHash,
-      slotTimeMs(this.chain.tip.point.slot + 3, SIM_SLOT_TIME),
+      slotTimeMs(this.chain.tip.point.slot + 3, this.slotTime),
     );
     const hash = headerHashOf(header);
     const relinked =
@@ -130,6 +187,7 @@ export class QueueChain {
 
   /** Attests the oldest unattested node. */
   attest() {
+    this.beginBlock();
     const node = this.nodes[this.attested]!;
     this.attested += 1;
     const nonce = this.chain.nonce();
@@ -152,6 +210,7 @@ export class QueueChain {
 
   /** Merges the oldest node into the root: both spent, one new root. */
   merge() {
+    this.beginBlock();
     const root = this.root!;
     const node = this.nodes.shift()!;
     this.attested = Math.max(0, this.attested - 1);

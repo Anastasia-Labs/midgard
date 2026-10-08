@@ -30,7 +30,8 @@ import type {
 
 export type RetainedPayloadPruneRequest = {
   readonly headerHash: string;
-  readonly nowMs: number;
+  /** The release clock of the caller's view: its latest final block's time. */
+  readonly finalBlockTimeMs: number | null;
   readonly retentionDays?: number;
   readonly automaticRecoveryMaxDepth?: number;
   readonly deploymentFingerprint?: string;

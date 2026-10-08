@@ -150,10 +150,7 @@ describe("retentionCandidatesV1", () => {
         deploymentFingerprint: "ee".repeat(32),
       },
     ]);
-    const [candidate] = await retentionCandidates(store, {
-      ...retentionOptions(),
-      minimumFinalityDepth: 31,
-    });
+    const [candidate] = await retentionCandidates(store, retentionOptions());
     expect(candidate).toMatchObject({
       fingerprintMismatch: true,
       terminalHistoryAuthorityMismatch: false,
@@ -236,7 +233,7 @@ describe("pruneExpiredDaPayloadsV1", () => {
     ]);
     const request = {
       headerHash: hashOf(13),
-      nowMs: NOW,
+      finalBlockTimeMs: NOW,
       confirmedHeadHash: HEAD,
       liveQueueHeaderHashes: new Set<string>(),
       automaticRecoveryMaxDepth: 2160,
@@ -257,7 +254,7 @@ describe("pruneExpiredDaPayloadsV1", () => {
     expect(
       await store.deleteDaPayloadIfPrunable({
         ...request,
-        nowMs: NOW - 2 * RETENTION_MS_PER_DAY,
+        finalBlockTimeMs: NOW - 2 * RETENTION_MS_PER_DAY,
       }),
     ).toBe(false);
     expect(await store.getDaPayload(hashOf(13))).toBeDefined();

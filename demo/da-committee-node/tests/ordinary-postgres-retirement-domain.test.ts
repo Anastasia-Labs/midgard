@@ -72,7 +72,7 @@ describe("ordinary store has no adopted retirement floor", () => {
         expect(
           await store.deleteDaPayloadIfPrunable({
             headerHash: "00".repeat(28),
-            nowMs: 1_790_000_000_000,
+            finalBlockTimeMs: 1_790_000_000_000,
             confirmedHeadHash: "00".repeat(28),
             liveQueueHeaderHashes: new Set(),
           }),

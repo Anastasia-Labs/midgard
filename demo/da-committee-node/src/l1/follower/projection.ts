@@ -110,6 +110,12 @@ export type CommitteeView = Readonly<{
   finalQueueHeaderHashes: readonly string[];
   /** The slot of the latest final block the store holds, or null. */
   finalSlot: number | null;
+  /**
+   * The start time (POSIX ms) of that block's slot, or null: the clock every
+   * irreversible committee release is measured by. Unlike the wall clock it
+   * cannot run ahead of what a legal rollback leaves standing.
+   */
+  finalBlockTimeMs: number | null;
   /** The exits of the asked headers (`exitsOf`) whose node outputs are all spent. */
   exits: readonly QueueExit[];
   /** Block hash (hex) per created slot of each live node output. */
@@ -280,6 +286,10 @@ export const readCommitteeView = async (
   if (read === null) return null;
   const tipHeight = read.at.height;
   const queue = walkLandedQueue(read.rows);
+  const finalBlockTimeMs =
+    read.facts.finalBlockSlot === null
+      ? null
+      : slotTimeMs(read.facts.finalBlockSlot, options.slotTime);
   return {
     at: read.at,
     queue,
@@ -288,15 +298,13 @@ export const readCommitteeView = async (
       signed,
       presence: read.facts.presence,
       tipHeight,
-      finalBlockTimeMs:
-        read.facts.finalBlockSlot === null
-          ? null
-          : slotTimeMs(read.facts.finalBlockSlot, options.slotTime),
+      finalBlockTimeMs,
       pruned: read.pruned,
       parameters: options.parameters,
     }),
     finalQueueHeaderHashes: read.finalHeaderHashes,
     finalSlot: read.facts.finalBlockSlot,
+    finalBlockTimeMs,
     exits: read.exits,
     nodeBlocks: read.nodeBlocks,
     prunedThroughSlot: read.prunedThroughSlot,

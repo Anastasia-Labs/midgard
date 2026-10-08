@@ -52,6 +52,7 @@ const harness = (
       observedAtMs: now,
       confirmedHeadHash: "aa".repeat(28),
       liveQueueHeaderHashes: new Set(["bb".repeat(28)]),
+      finalBlockTimeMs: null,
     };
   };
   let readiness: CommitteeRetentionReadinessSnapshot = {

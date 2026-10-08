@@ -1,3 +1,5 @@
+import { depth, isFinal } from "@al-ft/midgard-l1-follower";
+
 import type { CommitteeStore } from "../store.js";
 import {
   type PromiseCapacityEvidence,
@@ -172,12 +174,17 @@ export const retiredPromiseCutoffs = async (
     )
       continue;
     // Capacity is released once the cutoff or terminal is observed on the
-    // selected chain. Certification past the recovery depth is bookkeeping
-    // for store retirement and never holds new signing. A rollback of an
-    // uncertified observation charges the promise again above until the
-    // cutoff is observed on the new chain.
+    // selected chain. Certification, once the observation is final (deeper
+    // than the recovery depth k), is bookkeeping for store retirement and
+    // never holds new signing. A rollback of an uncertified observation
+    // charges the promise again above until the cutoff is observed on the
+    // new chain.
     retired.add(liability.commitmentDigest);
-    if (selected.tip.blockNo - evidence.point.blockNo <= args.recoveryDepth)
+    if (
+      !isFinal(depth(selected.tip.blockNo, evidence.point.blockNo), {
+        securityParameter: args.recoveryDepth,
+      })
+    )
       continue;
     const certified: PromiseCapacityEvidence = {
       ...evidence,

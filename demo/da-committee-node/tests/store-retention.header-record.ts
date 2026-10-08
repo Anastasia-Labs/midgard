@@ -21,10 +21,11 @@ export const REQUIRED_RETENTION_MS =
 export const hashOf = (index: number): string =>
   index.toString(16).padStart(2, "0").repeat(28);
 
+/** Scan options whose release clock (the latest final block's time) is `nowMs`. */
 export const retentionOptions = (nowMs = NOW) => ({
   nowMs,
+  finalBlockTimeMs: nowMs as number | null,
   deploymentFingerprint: FINGERPRINT,
-  minimumFinalityDepth: 30,
   automaticRecoveryMaxDepth: 2160,
   confirmedHeadHash: hashOf(200),
   liveQueueHeaderHashes: new Set([hashOf(201), hashOf(202)]),

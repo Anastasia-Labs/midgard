@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { depth, isFinal } from "@al-ft/midgard-l1-follower";
+
 import type { PromiseCapacityPoint } from "../availability/promise-capacity-evidence.js";
 import type { StateQueueHeaderRecord } from "../domain.js";
 import type { StoreData } from "../store.committee-store.js";
@@ -260,6 +262,11 @@ export const planRetirement = (
   assertRetirementBinding(data, facts.binding);
   if (data.retirementFloor?.breach)
     throw new Error("Retirement floor was breached");
+  /** Whether `q` is final (deeper than k) at the boundary. */
+  const final = (q: PromiseCapacityPoint) =>
+    isFinal(depth(facts.boundary.blockNo, q.blockNo), {
+      securityParameter: facts.binding.recoveryDepth,
+    });
   const pins = new Set([
     ...facts.pinnedHeaderHashes,
     ...facts.financialHeaderHashes,
@@ -391,13 +398,7 @@ export const planRetirement = (
             `its submission ${submission.txHash} has no valid landing on the follower's chain`,
           );
       }
-      if (
-        cohortPoints.some(
-          (p) =>
-            facts.boundary.blockNo - p.blockNo <= facts.binding.recoveryDepth,
-        )
-      )
-        waiting = true;
+      if (cohortPoints.some((q) => !final(q))) waiting = true;
       if (headerHold !== undefined && !waiting) hold ??= headerHold;
       if (waiting || headerHold !== undefined) {
         eligible = false;
@@ -422,10 +423,7 @@ export const planRetirement = (
       ),
     );
   const p = facts.horizonPoint;
-  if (
-    facts.boundary.blockNo - p.blockNo <= facts.binding.recoveryDepth ||
-    points.some((q) => q.blockNo > p.blockNo || q.slot > p.slot)
-  )
+  if (!final(p) || points.some((q) => q.blockNo > p.blockNo || q.slot > p.slot))
     throw new Error(
       "Retirement horizon point does not cover every removed checkpoint",
     );
